@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
@@ -144,7 +144,9 @@ export function ProjectLayout() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
-          <Outlet />
+          <Suspense fallback={<div className="grid h-full min-h-[40vh] place-items-center py-20 text-sm text-muted"><span className="animate-pulse">Đang tải…</span></div>}>
+            <Outlet />
+          </Suspense>
         </div>
       </div>
 
