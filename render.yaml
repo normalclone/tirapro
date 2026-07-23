@@ -27,6 +27,7 @@ services:
     buildCommand: >-
       corepack enable &&
       pnpm install --frozen-lockfile &&
+      pnpm --filter @tirapro/types build &&
       pnpm --filter @tirapro/shared build &&
       pnpm --filter @tirapro/api exec prisma generate &&
       pnpm --filter @tirapro/api build
@@ -69,6 +70,7 @@ services:
     buildCommand: >-
       corepack enable &&
       pnpm install --frozen-lockfile &&
+      pnpm --filter @tirapro/types build &&
       pnpm --filter @tirapro/shared build &&
       pnpm --filter @tirapro/web build
     staticPublishPath: apps/web/dist
