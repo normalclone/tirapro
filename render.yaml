@@ -30,13 +30,14 @@ services:
       pnpm --filter @tirapro/shared build &&
       pnpm --filter @tirapro/api exec prisma generate &&
       pnpm --filter @tirapro/api build
-    # Chạy migrate + tạo extension pgvector/FTS + seed dữ liệu demo TRƯỚC mỗi lần deploy.
-    # (db:seed làm mới demo về trạng thái chuẩn mỗi deploy — bỏ nếu muốn giữ dữ liệu.)
-    preDeployCommand: >-
+    # Free tier KHÔNG hỗ trợ preDeployCommand → gộp vào startCommand (đều idempotent):
+    #   migrate deploy + db:raw (pgvector/FTS) chạy mỗi lần khởi động (no-op nếu đã có);
+    #   db:seed:init chỉ nạp demo khi DB còn rỗng (không reset ở các lần cold-start sau).
+    startCommand: >-
       pnpm --filter @tirapro/api exec prisma migrate deploy &&
       pnpm --filter @tirapro/api run db:raw &&
-      pnpm --filter @tirapro/api run db:seed
-    startCommand: node apps/api/dist/main.js
+      pnpm --filter @tirapro/api run db:seed:init &&
+      node apps/api/dist/main.js
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_VERSION

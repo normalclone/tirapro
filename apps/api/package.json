@@ -17,6 +17,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:raw": "prisma db execute --file ./prisma/sql/01_pgvector_fts.sql --schema ./prisma/schema.prisma",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:init": "node prisma/seed-if-empty.mjs",
     "db:reset": "prisma migrate reset --force",
     "db:studio": "prisma studio"
   },

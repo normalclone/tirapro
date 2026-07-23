@@ -18,8 +18,9 @@ Repo đã có sẵn [`render.yaml`](../render.yaml) mô tả 4 thành phần: Po
    - `tirapro-web` → `VITE_API_URL = https://tirapro-api.onrender.com/api/v1`
    - `tirapro-web` → `VITE_WS_URL = https://tirapro-api.onrender.com`
    Rồi **Manual Deploy** lại cả hai (web phải build lại để nhúng URL API).
-3. `preDeployCommand` của API tự chạy: `prisma migrate deploy` → `db:raw` (tạo extension `vector`/`pg_trgm`) → `db:seed` (nạp demo).
-   - ⚠️ `db:seed` **làm mới demo về trạng thái chuẩn mỗi lần deploy**. Muốn giữ dữ liệu người dùng nhập thì bỏ `&& ... db:seed` khỏi `preDeployCommand` trong `render.yaml` (chỉ seed 1 lần thủ công qua **Shell** của service: `pnpm --filter @tirapro/api run db:seed`).
+3. Khi API khởi động, `startCommand` tự chạy (đều idempotent): `prisma migrate deploy` → `db:raw` (tạo extension `vector`/`pg_trgm`) → `db:seed:init` (chỉ nạp demo **khi DB còn rỗng**) → chạy server.
+   - Free tier **không hỗ trợ `preDeployCommand`** nên gộp vào `startCommand`. Seed **không** reset dữ liệu ở các lần cold-start sau (chỉ chạy lần boot đầu, lúc chưa có workspace).
+   - Muốn **reset demo về trạng thái chuẩn**: xoá dữ liệu rồi restart, hoặc chạy `pnpm --filter @tirapro/api run db:seed` (gói có Shell/paid).
 4. (Tùy chọn) Bật AI thật: thêm biến `ANTHROPIC_API_KEY` cho `tirapro-api`. Bỏ trống → chạy heuristic.
 
 **Lưu ý gói Free:** web/API free **spin-down khi idle** (cold start ~1 phút); Postgres free **hết hạn ~30 ngày**. Demo lâu dài nên nâng plan.
