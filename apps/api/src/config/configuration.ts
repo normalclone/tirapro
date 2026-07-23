@@ -7,7 +7,8 @@ export function configuration() {
     nodeEnv: e.NODE_ENV,
     isProd: e.NODE_ENV === 'production',
     api: {
-      port: e.API_PORT,
+      // PaaS (Render/Railway/Fly…) tự cấp cổng qua $PORT — ưu tiên, fallback API_PORT khi chạy local.
+      port: process.env.PORT ? Number(process.env.PORT) : e.API_PORT,
       host: e.API_HOST,
       globalPrefix: e.API_GLOBAL_PREFIX,
       version: e.API_VERSION,

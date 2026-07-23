@@ -1,0 +1,86 @@
+# ============================================================================
+# Render Blueprint — dựng Tirapro (API + Web + Postgres[pgvector] + Redis) từ repo Git.
+# Dùng: Render Dashboard → New → Blueprint → chọn repo này → Apply.
+# Sau lần deploy đầu, điền các biến `sync: false` (URL chéo giữa 2 service) rồi deploy lại.
+# Chi tiết & phương án khác (VPS/Railway): xem docs/DEPLOY.md
+# LƯU Ý: đây là blueprint khởi điểm — rà lại plan/region cho phù hợp tài khoản của bạn.
+# ============================================================================
+
+databases:
+  - name: tirapro-db
+    databaseName: tirapro
+    plan: free # Free Postgres hết hạn sau ~30 ngày — nâng plan cho demo lâu dài
+    postgresMajorVersion: "16"
+
+services:
+  # ---- Redis / Key Value (realtime adapter + cache + presence) ----
+  - type: keyvalue
+    name: tirapro-redis
+    plan: free
+    ipAllowList: [] # chỉ nội bộ Render
+
+  # ---- API (NestJS) ----
+  - type: web
+    name: tirapro-api
+    runtime: node
+    plan: free # Free web spin-down khi idle (cold start ~1 phút)
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @tirapro/shared build &&
+      pnpm --filter @tirapro/api exec prisma generate &&
+      pnpm --filter @tirapro/api build
+    # Chạy migrate + tạo extension pgvector/FTS + seed dữ liệu demo TRƯỚC mỗi lần deploy.
+    # (db:seed làm mới demo về trạng thái chuẩn mỗi deploy — bỏ nếu muốn giữ dữ liệu.)
+    preDeployCommand: >-
+      pnpm --filter @tirapro/api exec prisma migrate deploy &&
+      pnpm --filter @tirapro/api run db:raw &&
+      pnpm --filter @tirapro/api run db:seed
+    startCommand: node apps/api/dist/main.js
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase: { name: tirapro-db, property: connectionString }
+      - key: DIRECT_URL
+        fromDatabase: { name: tirapro-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: tirapro-redis, property: connectionString }
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: EMBEDDING_PROVIDER
+        value: none
+      - key: STORAGE_DRIVER
+        value: local
+      # AI thật (tùy chọn): thêm ANTHROPIC_API_KEY ở Dashboard; bỏ trống → heuristic.
+      - key: CORS_ORIGIN
+        sync: false # điền URL web sau deploy đầu, vd: https://tirapro-web.onrender.com
+
+  # ---- Web (React/Vite — static) ----
+  - type: web
+    name: tirapro-web
+    runtime: static
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @tirapro/shared build &&
+      pnpm --filter @tirapro/web build
+    staticPublishPath: apps/web/dist
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VITE_API_URL
+        sync: false # https://tirapro-api.onrender.com/api/v1
+      - key: VITE_WS_URL
+        sync: false # https://tirapro-api.onrender.com
+      - key: VITE_ENABLE_PWA
+        value: "true"
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
