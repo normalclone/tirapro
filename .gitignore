@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+Thumbs.db
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Prisma
+apps/api/prisma/*.db
+
+# Uploads (local file storage)
+apps/api/uploads/
+
+# Turbo
+.turbo/
+
+# PWA / Vite
+apps/web/dev-dist/
+
+# Screenshot tool output (apps/web/scripts/shot.mjs)
+.shots/
+apps/web/.shots/
+
+# Local agent settings (not shared)
+.claude/settings.local.json

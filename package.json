@@ -1,0 +1,55 @@
+{
+  "name": "tirapro",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tirapro — Jira clone + nâng cấp (NestJS + React + AI + Realtime)",
+  "packageManager": "pnpm@10.21.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
+    "docker:up": "docker compose up -d postgres redis",
+    "docker:up:tools": "docker compose --profile tools up -d",
+    "docker:down": "docker compose down",
+    "db:generate": "pnpm --filter @tirapro/api db:generate",
+    "db:migrate": "pnpm --filter @tirapro/api db:migrate",
+    "db:migrate:deploy": "pnpm --filter @tirapro/api db:migrate:deploy",
+    "db:seed": "pnpm --filter @tirapro/api db:seed",
+    "db:reset": "pnpm --filter @tirapro/api db:reset",
+    "db:studio": "pnpm --filter @tirapro/api db:studio",
+    "setup": "pnpm install && pnpm docker:up && pnpm --filter @tirapro/shared build && pnpm db:migrate && pnpm db:seed",
+    "prepare": "husky || true"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": ["prettier --write"],
+    "*.{json,md,yml,yaml}": ["prettier --write"]
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "@scarf/scarf",
+      "argon2",
+      "esbuild",
+      "msgpackr-extract",
+      "prisma"
+    ]
+  }
+}
