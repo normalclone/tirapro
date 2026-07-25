@@ -33,10 +33,14 @@ export class AuthController {
 
   private setRefreshCookie(res: Response, token: string) {
     const days = 7;
+    const isProd = !!this.config.get<boolean>('isProd');
     res.cookie(REFRESH_COOKIE, token, {
       httpOnly: true,
-      secure: !!this.config.get<boolean>('isProd'),
-      sameSite: 'lax',
+      // Production: web và API thường KHÁC domain (vd *.onrender.com) → cookie phải
+      // SameSite=None + Secure thì trình duyệt mới gửi kèm khi gọi chéo site;
+      // nếu để 'lax' thì /auth/refresh luôn 401 → reload là bị đăng xuất.
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       path: '/',
       maxAge: days * 24 * 60 * 60 * 1000,
     });
@@ -82,7 +86,9 @@ export class AuthController {
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(req.cookies?.[REFRESH_COOKIE] as string);
-    res.clearCookie(REFRESH_COOKIE, { path: '/' });
+    // Xoá cookie phải khớp thuộc tính lúc set (secure/sameSite) thì trình duyệt mới chấp nhận.
+    const isProd = !!this.config.get<boolean>('isProd');
+    res.clearCookie(REFRESH_COOKIE, { path: '/', secure: isProd, sameSite: isProd ? 'none' : 'lax', httpOnly: true });
     return { success: true };
   }
 
