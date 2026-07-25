@@ -43,7 +43,7 @@ export function TeamsPanel() {
   function openCreate() { setEditing(null); setEditorOpen(true); }
   function openEdit(t: TeamDto) { setEditing(t); setEditorOpen(true); }
   function handleDelete(t: TeamDto) {
-    if (!window.confirm(`Xoá nhóm “${t.name}”? Các issue đang gắn nhóm này sẽ bỏ gắn (không xoá issue).`)) return;
+    if (!window.confirm(`Xoá nhóm “${t.name}”? Thành viên vẫn giữ nguyên trong workspace.`)) return;
     remove.mutate(t.id, { onError: (e) => toast.error(apiErrorMessage(e)), onSuccess: () => toast.success('Đã xoá nhóm') });
   }
 
@@ -52,7 +52,7 @@ export function TeamsPanel() {
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
         <div>
           <h2 className="text-base font-semibold text-ink-strong">Nhóm</h2>
-          <p className="mt-0.5 text-sm text-muted">Gom thành viên thành nhóm để tổ chức & thêm nhanh vào dự án.</p>
+          <p className="mt-0.5 text-sm text-muted">Gom thành viên thành nhóm để tổ chức và đặt vai trò dự án hàng loạt.</p>
         </div>
         {canManage && (
           <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4" /> Tạo nhóm</Button>
@@ -93,7 +93,7 @@ export function TeamsPanel() {
 
                 {canManage && (
                   <div className="flex shrink-0 items-center gap-1">
-                    <Button variant="ghost" size="icon" title="Thêm nhóm vào dự án" aria-label={`Thêm nhóm ${t.name} vào dự án`} onClick={() => setAssignTeam(t)}>
+                    <Button variant="ghost" size="icon" title="Đặt vai trò cho nhóm trong dự án" aria-label={`Đặt vai trò dự án cho nhóm ${t.name}`} onClick={() => setAssignTeam(t)}>
                       <FolderPlus className="h-4 w-4" />
                     </Button>
                     <Button variant="ghost" size="icon" title="Sửa nhóm" aria-label={`Sửa nhóm ${t.name}`} onClick={() => openEdit(t)}>

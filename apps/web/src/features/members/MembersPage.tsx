@@ -45,7 +45,7 @@ export function MembersPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Thành viên & nhóm</h1>
         <p className="mt-1 text-sm text-muted">
-          Những người có quyền truy cập workspace này, và các nhóm để tổ chức họ.
+          Thành viên tính trên workspace — ai ở đây đều tham gia mọi dự án trong workspace. Nhóm dùng để tổ chức họ.
         </p>
       </header>
 

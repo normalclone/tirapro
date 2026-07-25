@@ -85,6 +85,11 @@ export interface MemberDto {
   user: UserDto;
   roles: RoleRefDto[];
   joinedAt?: ISODate | null;
+  /**
+   * Chỉ dùng ở danh sách thành viên DỰ ÁN: `true` = vai trò được ĐẶT RIÊNG cho dự án
+   * này (ghi đè), `false` = đang dùng vai trò MẶC ĐỊNH suy từ vai trò workspace.
+   */
+  isOverride?: boolean;
 }
 
 /** Nhóm (team) đầy đủ — nhóm thành viên trong workspace. */

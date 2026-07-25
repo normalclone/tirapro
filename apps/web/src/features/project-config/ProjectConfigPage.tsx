@@ -15,7 +15,6 @@ import {
   History,
   Image as ImageIcon,
   Users,
-  UserPlus,
   SlidersHorizontal,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -24,8 +23,6 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { RoleBadge } from '@/components/ui/RoleBadge';
-import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
-import { SearchSelect } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
@@ -33,13 +30,10 @@ import { useAuth } from '@/stores/auth';
 import { useProject, useUploadProjectAvatar, useRemoveProjectAvatar } from '@/features/projects/api';
 import { useRoles } from '@/features/roles/api';
 import { EditRolesPopover } from '@/features/members/EditRolesPopover';
-import { AddPeopleDialog } from '@/features/members/AddPeopleDialog';
 import {
-  useAddProjectMember,
   useProjectMembers,
   useRemoveProjectMember,
   useSetProjectMemberRoles,
-  useWorkspaceUsers,
 } from '@/features/members/api';
 import {
   useComponents,
@@ -294,64 +288,36 @@ function MembersSection({ projectId }: { projectId?: string }) {
   const can = useAuth((s) => s.can);
   const canAdmin = can('project:admin');
 
+  // Thành viên dự án = TOÀN BỘ thành viên workspace (dự án dùng chung tập người dùng).
+  // `isOverride` cho biết vai trò đang là ĐẶT RIÊNG hay MẶC ĐỊNH theo vai trò workspace.
   const { data: members, isLoading } = useProjectMembers(projectId);
-  const { data: users } = useWorkspaceUsers();
   const { data: projectRoles } = useRoles('PROJECT');
 
-  const addMember = useAddProjectMember(projectId ?? '');
   const setRoles = useSetProjectMemberRoles(projectId ?? '');
-  const removeMember = useRemoveProjectMember(projectId ?? '');
+  const clearOverride = useRemoveProjectMember(projectId ?? '');
 
-  const [adding, setAdding] = useState(false);
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [userId, setUserId] = useState('');
-  const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [q, setQ] = useState('');
 
   const list = members ?? [];
-  const memberUserIds = new Set(list.map((m) => m.user.id));
   const roleOptions = (projectRoles ?? []).map((r) => ({ id: r.id, name: r.name, color: r.color }));
+  const query = q.trim().toLowerCase();
+  const shown = query
+    ? list.filter((m) => `${m.user.displayName} ${m.user.email}`.toLowerCase().includes(query))
+    : list;
 
-  // Người dùng workspace chưa là thành viên dự án (để thêm).
-  const addableUsers = (users ?? []).filter((u) => !memberUserIds.has(u.id));
-  const userSelectOptions = addableUsers.map((u) => ({ value: u.id, label: u.displayName, hint: u.email }));
-
-  function resetAdd() {
-    setAdding(false);
-    setUserId('');
-    setRoleIds([]);
-  }
-
-  function submitAdd() {
-    if (!userId) {
-      toast.error('Chọn một người dùng.');
-      return;
-    }
-    if (roleIds.length === 0) {
-      toast.error('Chọn ít nhất một vai trò.');
-      return;
-    }
-    addMember.mutate(
-      { userId, roleIds },
-      {
-        onSuccess: () => {
-          toast.success('Đã thêm thành viên vào dự án');
-          resetAdd();
-        },
-        onError: (e) => toast.error(apiErrorMessage(e)),
-      },
-    );
-  }
-
-  function handleRemove(name: string, uid: string) {
-    if (!window.confirm(`Gỡ ${name} khỏi dự án?`)) return;
-    removeMember.mutate(uid, { onError: (e) => toast.error(apiErrorMessage(e)) });
+  function handleReset(name: string, uid: string) {
+    if (!window.confirm(`Đưa ${name} về vai trò mặc định của workspace?`)) return;
+    clearOverride.mutate(uid, {
+      onSuccess: () => toast.success('Đã về vai trò mặc định'),
+      onError: (e) => toast.error(apiErrorMessage(e)),
+    });
   }
 
   return (
     <SectionCard
       icon={<Users className="h-4 w-4" />}
       title="Thành viên"
-      description="Người tham gia dự án và vai trò của họ trong dự án này."
+      description="Mọi thành viên workspace đều tham gia dự án này. Có thể đặt vai trò riêng cho từng người khi cần."
     >
       {isLoading ? (
         <div className="space-y-2">
@@ -359,132 +325,82 @@ function MembersSection({ projectId }: { projectId?: string }) {
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
-      ) : list.length === 0 && !adding ? (
+      ) : list.length === 0 ? (
         <EmptyState
           icon={<Users className="h-6 w-6" />}
-          title="Chưa có thành viên dự án"
-          description="Thêm thành viên từ workspace và gán vai trò cho họ."
-          action={
-            canAdmin ? (
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
-                  <Plus className="h-4 w-4" />
-                  Thêm thành viên
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => setBulkOpen(true)} disabled={!projectId}>
-                  <UserPlus className="h-4 w-4" />
-                  Thêm nhiều người
-                </Button>
-              </div>
-            ) : undefined
-          }
+          title="Workspace chưa có thành viên"
+          description="Thêm người vào workspace ở trang Thành viên — họ sẽ tự động tham gia mọi dự án."
         />
       ) : (
-        <ul className="divide-y divide-border">
-          {list.map((m) => (
-            <li key={m.membershipId} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-              <Avatar name={m.user.displayName} src={m.user.avatarUrl} size={32} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-ink">{m.user.displayName}</p>
-                <p className="truncate text-xs text-faint">{m.user.email}</p>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-1.5">
-                {m.roles.length > 0 ? (
-                  m.roles.map((r) => <RoleBadge key={r.id} name={r.name} color={r.color} />)
-                ) : (
-                  <span className="text-xs text-faint">Chưa có vai trò</span>
-                )}
-              </div>
-              {canAdmin && (
-                <div className="flex shrink-0 items-center gap-1">
-                  <EditRolesPopover
-                    roles={roleOptions}
-                    current={m.roles}
-                    saving={setRoles.isPending}
-                    onSave={(ids) => setRoles.mutateAsync({ userId: m.user.id, roleIds: ids })}
-                    trigger={
-                      <Button variant="ghost" size="icon" title="Sửa vai trò" aria-label={`Sửa vai trò của ${m.user.displayName}`}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    }
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted hover:text-danger"
-                    title="Gỡ khỏi dự án"
-                    aria-label={`Gỡ ${m.user.displayName} khỏi dự án`}
-                    onClick={() => handleRemove(m.user.displayName, m.user.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {canAdmin &&
-        (adding ? (
-          <div className="mt-4 space-y-3 rounded-md border border-border bg-surface-2 p-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted">Người dùng</label>
-              <SearchSelect
-                value={userId}
-                onChange={setUserId}
-                options={userSelectOptions}
-                placeholder="Chọn người dùng…"
-                searchPlaceholder="Tìm theo tên hoặc email…"
-                ariaLabel="Chọn người dùng để thêm vào dự án"
-              />
-              {addableUsers.length === 0 && (
-                <p className="mt-1 text-xs text-faint">
-                  Mọi người dùng workspace đã là thành viên dự án.
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted">Vai trò</label>
-              <RoleMultiSelect
-                options={roleOptions}
-                value={roleIds}
-                onChange={setRoleIds}
-                requireOne={false}
-                placeholder="Chọn vai trò dự án…"
-                ariaLabel="Vai trò trong dự án"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={submitAdd}
-                loading={addMember.isPending}
-                disabled={!userId || roleIds.length === 0}
-              >
-                Thêm
-              </Button>
-              <Button size="sm" variant="ghost" onClick={resetAdd} disabled={addMember.isPending}>
-                Huỷ
-              </Button>
-            </div>
+        <>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Tìm thành viên…"
+              className="h-9 max-w-xs text-sm"
+            />
+            <span className="shrink-0 text-sm text-muted">{list.length} người</span>
           </div>
-        ) : (
-          list.length > 0 && (
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
-                <Plus className="h-4 w-4" />
-                Thêm thành viên
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => setBulkOpen(true)} disabled={!projectId}>
-                <UserPlus className="h-4 w-4" />
-                Thêm nhiều người
-              </Button>
-            </div>
-          )
-        ))}
-
-      <AddPeopleDialog mode="project" projectId={projectId} open={bulkOpen} onClose={() => setBulkOpen(false)} />
+          <ul className="divide-y divide-border">
+            {shown.map((m) => (
+              <li key={m.user.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                <Avatar name={m.user.displayName} src={m.user.avatarUrl} size={32} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-ink">{m.user.displayName}</p>
+                  <p className="truncate text-xs text-faint">{m.user.email}</p>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  {m.roles.length > 0 ? (
+                    m.roles.map((r) => <RoleBadge key={r.id} name={r.name} color={r.color} />)
+                  ) : (
+                    <span className="text-xs text-faint">Chỉ xem</span>
+                  )}
+                  <span
+                    className={cn(
+                      'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                      m.isOverride ? 'bg-primary-subtle text-primary' : 'bg-surface-2 text-faint',
+                    )}
+                    title={m.isOverride ? 'Vai trò đặt riêng cho dự án này' : 'Vai trò mặc định theo vai trò workspace'}
+                  >
+                    {m.isOverride ? 'riêng' : 'mặc định'}
+                  </span>
+                </div>
+                {canAdmin && (
+                  <div className="flex shrink-0 items-center gap-1">
+                    <EditRolesPopover
+                      roles={roleOptions}
+                      current={m.roles}
+                      saving={setRoles.isPending}
+                      onSave={(ids) => setRoles.mutateAsync({ userId: m.user.id, roleIds: ids })}
+                      trigger={
+                        <Button variant="ghost" size="icon" title="Đặt vai trò riêng cho dự án" aria-label={`Đặt vai trò riêng cho ${m.user.displayName}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      }
+                    />
+                    {m.isOverride && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-muted hover:text-ink"
+                        title="Về vai trò mặc định"
+                        aria-label={`Đưa ${m.user.displayName} về vai trò mặc định`}
+                        onClick={() => handleReset(m.user.displayName, m.user.id)}
+                      >
+                        <History className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </li>
+            ))}
+            {shown.length === 0 && (
+              <li className="py-6 text-center text-sm text-muted">Không tìm thấy ai khớp “{q}”.</li>
+            )}
+          </ul>
+        </>
+      )}
     </SectionCard>
   );
 }

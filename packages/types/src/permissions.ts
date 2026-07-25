@@ -193,6 +193,21 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
   ],
 };
 
+/**
+ * Vai trò DỰ ÁN mặc định suy ra từ vai trò WORKSPACE.
+ *
+ * Mô hình: thành viên tính trên WORKSPACE — mọi dự án trong workspace dùng chung
+ * tập người dùng đó. Không cần "thêm người vào dự án": ai thuộc workspace là tự
+ * động có quyền ở MỌI dự án theo vai trò mặc định dưới đây. Vẫn có thể **ghi đè**
+ * vai trò riêng cho từng người ở từng dự án (ProjectMembership) khi cần.
+ * `null` = không tự cấp quyền dự án (vd Viewer chỉ đọc theo quyền workspace).
+ */
+export const DEFAULT_PROJECT_ROLE_BY_WS_ROLE: Record<string, SystemRoleName | null> = {
+  [SYSTEM_ROLES.WORKSPACE_ADMIN]: SYSTEM_ROLES.PROJECT_ADMIN,
+  [SYSTEM_ROLES.WORKSPACE_MEMBER]: SYSTEM_ROLES.DEVELOPER,
+  [SYSTEM_ROLES.WORKSPACE_VIEWER]: null,
+};
+
 /** Scope của từng system role (để seed & UI nhóm theo cấp). */
 export const SYSTEM_ROLE_SCOPE: Record<SystemRoleName, 'WORKSPACE' | 'PROJECT'> = {
   [SYSTEM_ROLES.WORKSPACE_ADMIN]: 'WORKSPACE',

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { RoleScope } from '@tirapro/types';
+import { DEFAULT_PROJECT_ROLE_BY_WS_ROLE, type RoleScope } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { RbacService } from '../rbac/rbac.service';
@@ -110,14 +110,59 @@ export class MembersService {
     if (!p) throw new NotFoundAppException('Dự án');
   }
 
+  /**
+   * Thành viên DỰ ÁN = TOÀN BỘ thành viên workspace (dự án dùng chung tập người dùng).
+   * Vai trò hiển thị là vai trò HIỆU LỰC: ghi đè riêng ở dự án nếu có, ngược lại là
+   * vai trò mặc định suy từ vai trò workspace (`DEFAULT_PROJECT_ROLE_BY_WS_ROLE`).
+   */
   async listProject(workspaceId: string, projectId: string) {
     await this.requireProject(workspaceId, projectId);
-    const rows = await this.prisma.projectMembership.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, user: { select: USER_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+    const [wsRows, overrides, projectRoles] = await Promise.all([
+      this.prisma.workspaceMembership.findMany({
+        where: { workspaceId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, joinedAt: true, user: { select: USER_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+      }),
+      this.prisma.projectMembership.findMany({
+        where: { projectId },
+        select: { id: true, userId: true, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+      }),
+      this.prisma.role.findMany({
+        where: { scope: 'PROJECT', OR: [{ workspaceId }, { workspaceId: null }] },
+        select: { id: true, name: true, color: true },
+      }),
+    ]);
+    const overrideByUser = new Map(overrides.map((o) => [o.userId, o]));
+    const projRoleByName = new Map(projectRoles.map((r) => [r.name, r]));
+
+    return wsRows.map((m) => {
+      const ov = overrideByUser.get(m.user.id);
+      if (ov) {
+        return { ...this.toMemberDto({ id: ov.id, user: m.user, roles: ov.roles }), isOverride: true };
+      }
+      // Vai trò mặc định theo vai trò workspace của người này.
+      const defaults: { id: string; name: string; color: string | null }[] = [];
+      for (const r of m.roles) {
+        const target = DEFAULT_PROJECT_ROLE_BY_WS_ROLE[r.role.name];
+        const found = target ? projRoleByName.get(target) : undefined;
+        if (found && !defaults.some((d) => d.id === found.id)) defaults.push(found);
+      }
+      return {
+        membershipId: m.id,
+        user: this.toUserDto(m.user),
+        roles: defaults,
+        joinedAt: m.joinedAt ? m.joinedAt.toISOString() : null,
+        isOverride: false,
+      };
     });
-    return rows.map((m) => this.toMemberDto(m));
+  }
+
+  /** Xoá GHI ĐÈ vai trò ở dự án → người này quay về vai trò mặc định của workspace. */
+  async clearProjectOverride(workspaceId: string, projectId: string, userId: string) {
+    await this.requireProject(workspaceId, projectId);
+    await this.prisma.projectMembership.deleteMany({ where: { projectId, userId } });
+    await this.rbac.invalidate(userId, workspaceId);
+    return { success: true };
   }
 
   async addProject(workspaceId: string, projectId: string, userId: string, roleIds: string[]) {
@@ -149,7 +194,9 @@ export class MembersService {
       where: { projectId_userId: { projectId, userId } },
       select: { id: true },
     });
-    if (!membership) throw new NotFoundAppException('Thành viên dự án');
+    // Chưa có ghi đè → TẠO MỚI (mọi thành viên workspace đều thuộc dự án theo mặc định,
+    // đặt vai trò riêng ở đây chính là tạo bản ghi đè).
+    if (!membership) return this.addProject(workspaceId, projectId, userId, roleIds);
     const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
     await this.prisma.$transaction([
       this.prisma.projectMembershipRole.deleteMany({ where: { membershipId: membership.id } }),
@@ -180,12 +227,6 @@ export class MembersService {
     return { added: toAdd.length, skipped: unique.length - toAdd.length };
   }
 
-  async removeProject(workspaceId: string, projectId: string, userId: string) {
-    await this.requireProject(workspaceId, projectId);
-    await this.prisma.projectMembership.delete({ where: { projectId_userId: { projectId, userId } } });
-    await this.rbac.invalidate(userId, workspaceId);
-    return { success: true };
-  }
 
   // ───────────────────────── helpers ─────────────────────────
 

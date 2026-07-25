@@ -111,9 +111,13 @@ export class ProjectMembersController {
     return this.members.setProjectRoles(this.ws(user), projectId, userId, dto.roleIds);
   }
 
+  /**
+   * Xoá vai trò RIÊNG (ghi đè) của người này trong dự án → quay về vai trò mặc định
+   * của workspace. Không "gỡ khỏi dự án" nữa vì mọi dự án dùng chung thành viên workspace.
+   */
   @Delete(':userId')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
-  async remove(@CurrentUser() user: AuthUser, @Param('projectId') projectId: string, @Param('userId') userId: string) {
-    return this.members.removeProject(this.ws(user), projectId, userId);
+  async clearOverride(@CurrentUser() user: AuthUser, @Param('projectId') projectId: string, @Param('userId') userId: string) {
+    return this.members.clearProjectOverride(this.ws(user), projectId, userId);
   }
 }

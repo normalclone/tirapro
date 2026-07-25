@@ -50,13 +50,13 @@ export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: 
       <button className="absolute inset-0 bg-black/30 animate-in fade-in duration-200" onClick={onClose} aria-label="Đóng" />
       <div className="relative flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
         <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <span className="text-sm font-medium text-ink">Thêm nhóm “{team.name}” vào dự án</span>
+          <span className="text-sm font-medium text-ink">Đặt vai trò cho nhóm “{team.name}” trong dự án</span>
           <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng"><X className="h-4 w-4" /></Button>
         </header>
 
         <div className="space-y-4 px-5 py-4">
           <p className="text-sm text-muted">
-            {team.memberCount} thành viên của nhóm sẽ được thêm vào dự án với vai trò bên dưới. Người đã ở trong dự án sẽ được cập nhật vai trò.
+            Mọi thành viên workspace đều đã tham gia dự án. Thao tác này đặt <strong>vai trò riêng</strong> trong dự án cho {team.memberCount} thành viên của nhóm (ghi đè vai trò mặc định).
           </p>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-muted">Dự án</label>
@@ -76,7 +76,7 @@ export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: 
 
         <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void submit()} loading={busy} disabled={!canSave}>Thêm vào dự án</Button>
+          <Button onClick={() => void submit()} loading={busy} disabled={!canSave}>Đặt vai trò</Button>
         </footer>
       </div>
     </div>
