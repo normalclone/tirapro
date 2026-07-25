@@ -19,12 +19,21 @@ interface Cand {
   avatarUrl: string | null;
   roleNames: string[];
   teams: { id: string; name: string; color: string | null }[];
+  status: string;
 }
+
+const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: 'Đang hoạt động',
+  INVITED: 'Đã mời',
+  DEACTIVATED: 'Đã vô hiệu hoá',
+};
 
 /**
  * Thêm NHIỀU người một lúc vào workspace hoặc dự án, có bộ lọc.
- * - workspace: ứng viên = user hệ thống CHƯA thuộc workspace (lọc: tìm kiếm).
+ * - workspace: ứng viên = user hệ thống CHƯA thuộc workspace (lọc: tìm kiếm + trạng thái tài khoản;
+ *   họ chưa có vai trò/nhóm trong workspace nên 2 lọc đó tự ẩn).
  * - project: ứng viên = thành viên workspace CHƯA ở dự án (lọc: tìm kiếm + nhóm + vai trò workspace).
+ * Bộ lọc hiển thị theo DỮ LIỆU: chỉ hiện khi có giá trị để lọc.
  */
 export function AddPeopleDialog({
   open, onClose, mode, projectId,
@@ -48,11 +57,12 @@ export function AddPeopleDialog({
   const [q, setQ] = useState('');
   const [teamFilter, setTeamFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setSelected(new Set());
-    setQ(''); setTeamFilter(''); setRoleFilter('');
+    setQ(''); setTeamFilter(''); setRoleFilter(''); setStatusFilter('');
     const def = (roles ?? []).find((r) => (isProject ? /developer|lập trình/i : /member|thành viên/i).test(r.name));
     setRoleIds(def ? [def.id] : roles?.[0] ? [roles[0].id] : []);
   }, [open, roles, isProject]);
@@ -70,23 +80,39 @@ export function AddPeopleDialog({
       }
       return (wsMembers ?? [])
         .filter((m) => !inProj.has(m.user.id))
-        .map((m) => ({ id: m.user.id, name: m.user.displayName, email: m.user.email, avatarUrl: m.user.avatarUrl, roleNames: m.roles.map((r) => r.name), teams: teamByUser.get(m.user.id) ?? [] }));
+        .map((m) => ({ id: m.user.id, name: m.user.displayName, email: m.user.email, avatarUrl: m.user.avatarUrl, roleNames: m.roles.map((r) => r.name), teams: teamByUser.get(m.user.id) ?? [], status: m.user.status as string }));
     }
     const inWs = new Set((wsMembers ?? []).map((m) => m.user.id));
     return (allUsers ?? [])
       .filter((u) => !inWs.has(u.id))
-      .map((u) => ({ id: u.id, name: u.displayName, email: u.email, avatarUrl: u.avatarUrl, roleNames: [], teams: [] }));
+      .map((u) => ({ id: u.id, name: u.displayName, email: u.email, avatarUrl: u.avatarUrl, roleNames: [], teams: [], status: u.status as string }));
   }, [isProject, allUsers, wsMembers, projMembers, teams]);
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
     return candidates.filter((c) => {
       if (query && !`${c.name} ${c.email}`.toLowerCase().includes(query)) return false;
-      if (isProject && teamFilter && !c.teams.some((t) => t.id === teamFilter)) return false;
-      if (isProject && roleFilter && !c.roleNames.includes(roleFilter)) return false;
+      if (teamFilter && !c.teams.some((t) => t.id === teamFilter)) return false;
+      if (roleFilter && !c.roleNames.includes(roleFilter)) return false;
+      if (statusFilter && c.status !== statusFilter) return false;
       return true;
     });
-  }, [candidates, q, teamFilter, roleFilter, isProject]);
+  }, [candidates, q, teamFilter, roleFilter, statusFilter]);
+
+  // Chỉ hiện bộ lọc khi thực sự có dữ liệu để lọc.
+  const teamOpts = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string; color: string | null }>();
+    candidates.forEach((c) => c.teams.forEach((t) => seen.set(t.id, t)));
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+  }, [candidates]);
+  const roleOpts = useMemo(
+    () => [...new Set(candidates.flatMap((c) => c.roleNames))].sort((a, b) => a.localeCompare(b, 'vi')),
+    [candidates],
+  );
+  const statusOpts = useMemo(
+    () => [...new Set(candidates.map((c) => c.status))].filter(Boolean).sort(),
+    [candidates],
+  );
 
   if (!open) return null;
 
@@ -136,23 +162,38 @@ export function AddPeopleDialog({
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tên hoặc email…" className="h-9 pl-8 text-sm" autoFocus />
           </div>
-          {isProject && (
-            <>
-              <SearchSelect
-                value={teamFilter}
-                onChange={setTeamFilter}
-                options={[{ value: '', label: 'Mọi nhóm' }, ...(teams ?? []).map((t) => ({ value: t.id, label: t.name, color: t.color }))]}
-                placeholder="Mọi nhóm"
-                className="h-9 w-40 text-sm"
-              />
-              <SearchSelect
-                value={roleFilter}
-                onChange={setRoleFilter}
-                options={[{ value: '', label: 'Mọi vai trò' }, ...[...new Set(candidates.flatMap((c) => c.roleNames))].map((n) => ({ value: n, label: n }))]}
-                placeholder="Mọi vai trò"
-                className="h-9 w-44 text-sm"
-              />
-            </>
+          {teamOpts.length > 0 && (
+            <SearchSelect
+              value={teamFilter}
+              onChange={setTeamFilter}
+              options={[{ value: '', label: 'Mọi nhóm' }, ...teamOpts.map((t) => ({ value: t.id, label: t.name, color: t.color }))]}
+              placeholder="Mọi nhóm"
+              searchPlaceholder="Tìm nhóm…"
+              ariaLabel="Lọc theo nhóm"
+              className="h-9 w-40 text-sm"
+            />
+          )}
+          {roleOpts.length > 0 && (
+            <SearchSelect
+              value={roleFilter}
+              onChange={setRoleFilter}
+              options={[{ value: '', label: 'Mọi vai trò' }, ...roleOpts.map((n) => ({ value: n, label: n }))]}
+              placeholder="Mọi vai trò"
+              searchPlaceholder="Tìm vai trò…"
+              ariaLabel="Lọc theo vai trò"
+              className="h-9 w-44 text-sm"
+            />
+          )}
+          {statusOpts.length > 1 && (
+            <SearchSelect
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[{ value: '', label: 'Mọi trạng thái' }, ...statusOpts.map((s) => ({ value: s, label: STATUS_LABEL[s] ?? s }))]}
+              placeholder="Mọi trạng thái"
+              searchPlaceholder="Tìm trạng thái…"
+              ariaLabel="Lọc theo trạng thái tài khoản"
+              className="h-9 w-44 text-sm"
+            />
           )}
         </div>
 
