@@ -40,12 +40,13 @@ export const allUsersKey = (search?: string) => ['all-users', search ?? ''] as c
  * Toàn bộ user trong hệ thống (pool do system admin quản lý ở nơi khác) — để chọn
  * thêm vào workspace hiện tại. Gated backend bằng `member:manage`.
  */
-export function useAllUsers(search?: string) {
+export function useAllUsers(search?: string, enabled = true) {
   const q = search?.trim() ?? '';
   return useQuery({
     queryKey: allUsersKey(q),
     queryFn: async () =>
       (await api.get<UserDto[]>('/users/all', { params: q ? { search: q } : undefined })).data,
+    enabled,
   });
 }
 
@@ -135,6 +136,20 @@ export function useAddMember() {
   });
 }
 
+/** Thêm NHIỀU người vào workspace một lúc (cùng bộ vai trò). */
+export function useAddMembersBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userIds, roleIds }: { userIds: string[]; roleIds: string[] }) =>
+      api.post<{ added: number; skipped: number }>('/members/bulk', { userIds, roleIds }).then((r) => r.data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: workspaceMembersKey });
+      void qc.invalidateQueries({ queryKey: workspaceUsersKey });
+      void qc.invalidateQueries({ queryKey: ['all-users'] });
+    },
+  });
+}
+
 /** Đặt lại toàn bộ vai trò (≥1) cho một thành viên workspace. */
 export function useSetMemberRoles() {
   const qc = useQueryClient();
@@ -185,6 +200,16 @@ export function useAddProjectMember(projectId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: projectMembersKey(projectId) });
     },
+  });
+}
+
+/** Thêm NHIỀU người vào dự án một lúc (chỉ người đã thuộc workspace). */
+export function useAddProjectMembersBulk(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userIds, roleIds }: { userIds: string[]; roleIds: string[] }) =>
+      api.post<{ added: number; skipped: number }>(`/projects/${projectId}/members/bulk`, { userIds, roleIds }).then((r) => r.data),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: projectMembersKey(projectId) }),
   });
 }
 

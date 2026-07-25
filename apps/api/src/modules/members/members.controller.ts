@@ -7,7 +7,7 @@ import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { MembersService } from './members.service';
-import { setRolesSchema, addProjectMemberSchema, type SetRolesInput, type AddProjectMemberInput } from './members.schemas';
+import { setRolesSchema, addProjectMemberSchema, addMembersBulkSchema, type SetRolesInput, type AddProjectMemberInput, type AddMembersBulkInput } from './members.schemas';
 
 @ApiTags('members')
 @Controller('members')
@@ -33,6 +33,16 @@ export class WorkspaceMembersController {
     @Body(new ZodValidationPipe(addProjectMemberSchema)) dto: AddProjectMemberInput,
   ) {
     return this.members.addWorkspace(this.ws(user), dto.userId, dto.roleIds);
+  }
+
+  /** Thêm NHIỀU người vào workspace một lúc. */
+  @Post('bulk')
+  @Permissions(PERMISSIONS.MEMBER_MANAGE)
+  async addBulk(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(addMembersBulkSchema)) dto: AddMembersBulkInput,
+  ) {
+    return this.members.addWorkspaceMany(this.ws(user), dto.userIds, dto.roleIds);
   }
 
   @Put(':userId/roles')
@@ -77,6 +87,17 @@ export class ProjectMembersController {
     @Body(new ZodValidationPipe(addProjectMemberSchema)) dto: AddProjectMemberInput,
   ) {
     return this.members.addProject(this.ws(user), projectId, dto.userId, dto.roleIds);
+  }
+
+  /** Thêm NHIỀU người vào dự án một lúc. */
+  @Post('bulk')
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  async addBulk(
+    @CurrentUser() user: AuthUser,
+    @Param('projectId') projectId: string,
+    @Body(new ZodValidationPipe(addMembersBulkSchema)) dto: AddMembersBulkInput,
+  ) {
+    return this.members.addProjectMany(this.ws(user), projectId, dto.userIds, dto.roleIds);
   }
 
   @Put(':userId/roles')

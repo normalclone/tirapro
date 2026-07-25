@@ -15,6 +15,7 @@ import {
   History,
   Image as ImageIcon,
   Users,
+  UserPlus,
   SlidersHorizontal,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -32,6 +33,7 @@ import { useAuth } from '@/stores/auth';
 import { useProject, useUploadProjectAvatar, useRemoveProjectAvatar } from '@/features/projects/api';
 import { useRoles } from '@/features/roles/api';
 import { EditRolesPopover } from '@/features/members/EditRolesPopover';
+import { AddPeopleDialog } from '@/features/members/AddPeopleDialog';
 import {
   useAddProjectMember,
   useProjectMembers,
@@ -301,6 +303,7 @@ function MembersSection({ projectId }: { projectId?: string }) {
   const removeMember = useRemoveProjectMember(projectId ?? '');
 
   const [adding, setAdding] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [userId, setUserId] = useState('');
   const [roleIds, setRoleIds] = useState<string[]>([]);
 
@@ -363,10 +366,16 @@ function MembersSection({ projectId }: { projectId?: string }) {
           description="Thêm thành viên từ workspace và gán vai trò cho họ."
           action={
             canAdmin ? (
-              <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
-                <Plus className="h-4 w-4" />
-                Thêm thành viên
-              </Button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
+                  <Plus className="h-4 w-4" />
+                  Thêm thành viên
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => setBulkOpen(true)} disabled={!projectId}>
+                  <UserPlus className="h-4 w-4" />
+                  Thêm nhiều người
+                </Button>
+              </div>
             ) : undefined
           }
         />
@@ -462,18 +471,20 @@ function MembersSection({ projectId }: { projectId?: string }) {
           </div>
         ) : (
           list.length > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="mt-4"
-              onClick={() => setAdding(true)}
-              disabled={!projectId}
-            >
-              <Plus className="h-4 w-4" />
-              Thêm thành viên
-            </Button>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
+                <Plus className="h-4 w-4" />
+                Thêm thành viên
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setBulkOpen(true)} disabled={!projectId}>
+                <UserPlus className="h-4 w-4" />
+                Thêm nhiều người
+              </Button>
+            </div>
           )
         ))}
+
+      <AddPeopleDialog mode="project" projectId={projectId} open={bulkOpen} onClose={() => setBulkOpen(false)} />
     </SectionCard>
   );
 }

@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Pencil, Trash2, Users } from 'lucide-react';
+import { Pencil, Trash2, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { MemberDto, UserStatus } from '@tirapro/types';
 import { InvitePanel } from '@/features/workspace/InvitePanel';
 import { TeamsPanel } from '@/features/teams/TeamsPanel';
+import { AddPeopleDialog } from './AddPeopleDialog';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { RoleBadge } from '@/components/ui/RoleBadge';
@@ -29,6 +30,7 @@ export function MembersPage() {
   const currentUserId = useAuth((s) => s.user?.id);
   const canManage = can('member:manage');
   const [tab, setTab] = useState<Tab>('members');
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const { data: members, isLoading } = useWorkspaceMembers();
   const { data: wsRoles } = useRoles('WORKSPACE');
@@ -73,9 +75,14 @@ export function MembersPage() {
         <section className="rounded-lg border border-border bg-surface">
           <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
             <h2 className="text-base font-semibold text-ink-strong">Danh sách thành viên</h2>
-            {members && members.length > 0 && (
-              <span className="text-sm text-muted">{members.length} người</span>
-            )}
+            <div className="flex items-center gap-3">
+              {members && members.length > 0 && <span className="text-sm text-muted">{members.length} người</span>}
+              {canManage && (
+                <Button size="sm" variant="secondary" onClick={() => setBulkOpen(true)}>
+                  <UserPlus className="h-4 w-4" /> Thêm nhiều người
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="p-5">
@@ -108,6 +115,8 @@ export function MembersPage() {
         </section>
       </div>
       )}
+
+      <AddPeopleDialog mode="workspace" open={bulkOpen} onClose={() => setBulkOpen(false)} />
     </div>
   );
 }

@@ -72,6 +72,24 @@ export class MembersService {
     return this.getWorkspaceMember(workspaceId, userId);
   }
 
+  /** Thêm NHIỀU người vào workspace cùng bộ vai trò; bỏ qua người đã là thành viên. */
+  async addWorkspaceMany(workspaceId: string, userIds: string[], roleIds: string[]) {
+    const ids = await this.validateRoles(workspaceId, roleIds, 'WORKSPACE');
+    const unique = [...new Set(userIds)];
+    const existUsers = await this.prisma.user.findMany({ where: { id: { in: unique } }, select: { id: true } });
+    const valid = new Set(existUsers.map((u) => u.id));
+    const already = await this.prisma.workspaceMembership.findMany({ where: { workspaceId, userId: { in: [...valid] } }, select: { userId: true } });
+    const alreadySet = new Set(already.map((a) => a.userId));
+    const toAdd = [...valid].filter((u) => !alreadySet.has(u));
+    for (const userId of toAdd) {
+      await this.prisma.workspaceMembership.create({
+        data: { workspaceId, userId, roleId: ids[0]!, joinedAt: new Date(), roles: { create: ids.map((roleId) => ({ roleId })) } },
+      });
+      await this.rbac.invalidate(userId, workspaceId);
+    }
+    return { added: toAdd.length, skipped: unique.length - toAdd.length };
+  }
+
   async removeWorkspace(workspaceId: string, userId: string, actingUserId: string) {
     if (userId === actingUserId) throw new ForbiddenAppException('Không thể tự gỡ chính mình');
     const ws = await this.prisma.workspace.findUnique({ where: { id: workspaceId }, select: { ownerId: true } });
@@ -140,6 +158,26 @@ export class MembersService {
     ]);
     await this.rbac.invalidate(userId, workspaceId);
     return this.getProjectMember(projectId, userId);
+  }
+
+  /** Thêm NHIỀU người vào dự án cùng bộ vai trò; chỉ nhận người ĐÃ thuộc workspace, bỏ qua người đã ở dự án. */
+  async addProjectMany(workspaceId: string, projectId: string, userIds: string[], roleIds: string[]) {
+    await this.requireProject(workspaceId, projectId);
+    const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
+    const unique = [...new Set(userIds)];
+    const wsMembers = await this.prisma.workspaceMembership.findMany({ where: { workspaceId, userId: { in: unique } }, select: { userId: true } });
+    const wsSet = new Set(wsMembers.map((m) => m.userId));
+    const valid = unique.filter((u) => wsSet.has(u));
+    const already = await this.prisma.projectMembership.findMany({ where: { projectId, userId: { in: valid } }, select: { userId: true } });
+    const alreadySet = new Set(already.map((a) => a.userId));
+    const toAdd = valid.filter((u) => !alreadySet.has(u));
+    for (const userId of toAdd) {
+      await this.prisma.projectMembership.create({
+        data: { projectId, userId, roleId: ids[0]!, roles: { create: ids.map((roleId) => ({ roleId })) } },
+      });
+      await this.rbac.invalidate(userId, workspaceId);
+    }
+    return { added: toAdd.length, skipped: unique.length - toAdd.length };
   }
 
   async removeProject(workspaceId: string, projectId: string, userId: string) {
