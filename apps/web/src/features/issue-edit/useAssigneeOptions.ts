@@ -29,13 +29,14 @@ export function useAssigneeOptions(projectId?: string): PersonOption[] {
     }
 
     return (users ?? []).map((u) => {
-      const position = (roleByUser.get(u.id) ?? []).join(' · ');
+      const roleNames = roleByUser.get(u.id) ?? [];
+      const position = roleNames.join(' · ');
       const userTeams = teamByUser.get(u.id) ?? [];
       const search = [u.displayName, u.email, position, ...userTeams.map((t) => t.name)]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
-      return { id: u.id, name: u.displayName, avatarUrl: u.avatarUrl, email: u.email, position, teams: userTeams, search };
+      return { id: u.id, name: u.displayName, avatarUrl: u.avatarUrl, email: u.email, position, roleNames, teams: userTeams, search };
     });
   }, [users, members, teams]);
 }

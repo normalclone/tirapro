@@ -4,6 +4,7 @@ import { Check, ChevronDown, UserRound, Users } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import type { PersonOption } from '@/components/ui/PeoplePicker';
 import { Input } from '@/components/ui/Input';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Avatar } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
@@ -21,10 +22,21 @@ export function applyAssigneeFilter<T extends Pick<IssueDto, 'assigneeId'>>(issu
 export function AssigneeFilter({ options, value, onChange }: { options: PersonOption[]; value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
+  // Lọc phụ TRONG danh sách người: theo vai trò và theo nhóm.
+  const [roleF, setRoleF] = useState('');
+  const [teamF, setTeamF] = useState('');
+
+  const allRoles = [...new Set(options.flatMap((o) => o.roleNames ?? []))].sort((a, b) => a.localeCompare(b, 'vi'));
+  const allTeams = [...new Set(options.flatMap((o) => (o.teams ?? []).map((t) => t.name)))].sort((a, b) => a.localeCompare(b, 'vi'));
 
   const selected = options.find((o) => o.id === value);
   const query = q.trim().toLowerCase();
-  const filtered = query ? options.filter((o) => o.search.includes(query)) : options;
+  const filtered = options.filter((o) => {
+    if (query && !o.search.includes(query)) return false;
+    if (roleF && !(o.roleNames ?? []).includes(roleF)) return false;
+    if (teamF && !(o.teams ?? []).some((t) => t.name === teamF)) return false;
+    return true;
+  });
   const active = value !== '';
   const label = value === '' ? 'Mọi người' : value === ASSIGNEE_UNASSIGNED ? 'Chưa gán' : selected?.name ?? 'Người phụ trách';
 
@@ -36,15 +48,15 @@ export function AssigneeFilter({ options, value, onChange }: { options: PersonOp
       role="option"
       aria-selected={isActive}
       onClick={onClick}
-      className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2', isActive && 'bg-surface-2')}
+      className={cn('flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2', isActive && 'bg-surface-2')}
     >
-      <Check className={cn('h-4 w-4 shrink-0 text-primary', isActive ? 'opacity-100' : 'opacity-0')} aria-hidden />
+      <Check className={cn('mt-0.5 h-4 w-4 shrink-0 text-primary', isActive ? 'opacity-100' : 'opacity-0')} aria-hidden />
       {node}
     </button>
   );
 
   return (
-    <Popover.Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(''); }}>
+    <Popover.Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setQ(''); setRoleF(''); setTeamF(''); } }}>
       <Popover.Trigger asChild>
         <button
           type="button"
@@ -66,8 +78,34 @@ export function AssigneeFilter({ options, value, onChange }: { options: PersonOp
           sideOffset={4}
           className="z-dropdown w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-border bg-surface shadow-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
         >
-          <div className="border-b border-border p-2">
+          <div className="space-y-2 border-b border-border p-2">
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm người…" autoFocus className="h-8 text-sm" />
+            {(allRoles.length > 0 || allTeams.length > 0) && (
+              <div className="flex gap-2">
+                {allRoles.length > 0 && (
+                  <SearchSelect
+                    value={roleF}
+                    onChange={setRoleF}
+                    options={[{ value: '', label: 'Mọi vai trò' }, ...allRoles.map((r) => ({ value: r, label: r }))]}
+                    placeholder="Mọi vai trò"
+                    searchPlaceholder="Tìm vai trò…"
+                    ariaLabel="Lọc theo vai trò"
+                    className="h-8 flex-1 text-xs"
+                  />
+                )}
+                {allTeams.length > 0 && (
+                  <SearchSelect
+                    value={teamF}
+                    onChange={setTeamF}
+                    options={[{ value: '', label: 'Mọi nhóm' }, ...allTeams.map((t) => ({ value: t, label: t }))]}
+                    placeholder="Mọi nhóm"
+                    searchPlaceholder="Tìm nhóm…"
+                    ariaLabel="Lọc theo nhóm"
+                    className="h-8 flex-1 text-xs"
+                  />
+                )}
+              </div>
+            )}
           </div>
           <ul className="max-h-72 overflow-y-auto p-1" role="listbox" aria-label="Người phụ trách">
             {query === '' && (
@@ -82,7 +120,23 @@ export function AssigneeFilter({ options, value, onChange }: { options: PersonOp
                 {optRow(value === o.id, () => pick(o.id), (
                   <>
                     <Avatar name={o.name} src={o.avatarUrl} size={22} />
-                    <span className="min-w-0 flex-1 truncate">{o.name}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{o.name}</span>
+                      {(o.position || (o.teams && o.teams.length > 0)) && (
+                        <span className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-muted">
+                          {o.position && <span className="truncate">{o.position}</span>}
+                          {o.teams?.map((t) => (
+                            <span
+                              key={t.name}
+                              className="rounded px-1 py-px text-[10px] font-medium"
+                              style={{ backgroundColor: `color-mix(in oklch, ${t.color || 'var(--faint)'} 16%, transparent)`, color: t.color || 'var(--faint)' }}
+                            >
+                              {t.name}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </span>
                   </>
                 ))}
               </li>

@@ -13,6 +13,8 @@ export interface PersonOption {
   email?: string;
   /** Vị trí = (các) vai trò, đã nối chuỗi để hiển thị. */
   position?: string;
+  /** Vai trò dạng mảng (để lọc chính xác theo từng vai trò). */
+  roleNames?: string[];
   teams?: { name: string; color?: string | null }[];
   /** Chuỗi thường-hoá gộp tên + email + vị trí + nhóm để tìm kiếm đa điều kiện. */
   search: string;
