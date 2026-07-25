@@ -320,10 +320,10 @@ export function DocumentationPage() {
 
             <section className="mb-14">
               <H2 id="vai-tro">Hiểu về vai trò</H2>
-              <P>Tirapro phân quyền theo <strong>2 cấp phạm vi</strong>. Quyền hiệu lực của bạn là <em>hợp</em> của cả hai — ví dụ bạn có thể là Lập trình viên ở dự án A nhưng chỉ Người xem ở dự án B.</P>
+              <P><strong>Thành viên tính trên workspace</strong>: ai thuộc workspace là tự động tham gia <em>mọi dự án</em> trong workspace đó — không cần thêm người vào từng dự án. Vai trò trong dự án <strong>mặc định</strong> suy từ vai trò workspace (Quản trị → Quản trị dự án · Thành viên → Lập trình viên · Người xem → chỉ đọc), và có thể <strong>đặt riêng</strong> cho từng người ở từng dự án khi cần.</P>
               <Cards>
                 <Card name="Vai trò cấp Workspace" val="Admin · Member · Viewer" desc="Quyền chung toàn workspace" />
-                <Card name="Vai trò cấp Dự án" val="Quản trị · Developer · Reporter" desc="Quyền trong từng dự án" />
+                <Card name="Vai trò cấp Dự án" val="Quản trị · Developer · Reporter" desc="Mặc định theo vai trò workspace; đặt riêng khi cần" />
               </Cards>
               <H3>Ai làm được gì — phạm vi Workspace</H3>
               <Matrix cols={['Hành động', 'Sys Admin', 'WS Admin', 'Member', 'Viewer']} rows={[
@@ -346,7 +346,7 @@ export function DocumentationPage() {
                 ['Xoá issue', <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />, <Perm v="no" />],
                 ['Kéo-thả trên board', <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />],
                 ['Quản lý sprint / workflow / board', <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />, <Perm v="no" />],
-                ['Quản lý thành viên dự án', <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />, <Perm v="no" />],
+                ['Đặt vai trò riêng trong dự án', <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />, <Perm v="no" />],
               ]} />
               <Legend />
               <Note kind="info">Xem vai trò của mình: vào <strong>Thành viên</strong> của workspace hoặc trang <strong>Cấu hình dự án → Thành viên</strong>. Không thấy một nút (sửa, kéo-thả, cấu hình)? Gần như chắc chắn do vai trò của bạn chưa có quyền đó.</Note>
@@ -489,7 +489,7 @@ export function DocumentationPage() {
               <H3>Mời người mới &amp; phân quyền</H3>
               <Steps items={[
                 <>Vào <strong>Thành viên</strong> của workspace, mời bằng email và chọn vai trò workspace.</>,
-                <>Vào từng dự án cần thiết → <strong>Cấu hình → Thành viên</strong>, thêm người và chọn vai trò dự án (Quản trị / Developer / Reporter).</>,
+                <>Xong! Họ đã tham gia mọi dự án. Chỉ khi cần vai trò khác mặc định ở một dự án, vào <strong>dự án → Cấu hình → Thành viên</strong> để <em>đặt vai trò riêng</em>.</>,
                 'Cần bộ quyền riêng? Tạo vai trò tuỳ biến trong Cài đặt → Vai trò rồi gán cho người dùng.',
               ]} />
             </section>
