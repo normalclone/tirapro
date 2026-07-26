@@ -48,6 +48,8 @@ import { IssueLinksModule } from './modules/issue-links/issue-links.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { MembersModule } from './modules/members/members.module';
 import { TeamsModule } from './modules/teams/teams.module';
+import { IssueExtrasModule } from './modules/issue-extras/issue-extras.module';
+import { SlaModule } from './modules/sla/sla.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
 import { ApiKeyModule } from './modules/api-keys/api-key.module';
@@ -114,6 +116,8 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     RolesModule,
     MembersModule,
     TeamsModule,
+    IssueExtrasModule,
+    SlaModule,
     AdminModule,
   ],
   providers: [

@@ -45,6 +45,16 @@ export const PERMISSIONS = {
   DIGEST_MANAGE: 'digest:manage',
   // Guides / onboarding
   GUIDE_MANAGE: 'guide:manage',
+  // Mô hình quản lý mở rộng
+  PROGRAM_MANAGE: 'program:manage',
+  GOAL_MANAGE: 'goal:manage',
+  RISK_MANAGE: 'risk:manage',
+  SLA_MANAGE: 'sla:manage',
+  TEST_MANAGE: 'test:manage',
+  WIKI_MANAGE: 'wiki:manage',
+  CLIENT_MANAGE: 'client:manage',
+  RESOURCE_MANAGE: 'resource:manage',
+  PLAN_MANAGE: 'plan:manage',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -87,6 +97,15 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: PERMISSIONS.IMPORT_RUN, description: 'Chạy migration/import', scope: 'WORKSPACE' },
   { key: PERMISSIONS.DIGEST_MANAGE, description: 'Quản lý báo cáo định kỳ (digest)', scope: 'PROJECT' },
   { key: PERMISSIONS.GUIDE_MANAGE, description: 'Tùy biến hướng dẫn/tour cho workspace', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.PROGRAM_MANAGE, description: 'Quản lý chương trình / danh mục dự án', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.GOAL_MANAGE, description: 'Quản lý mục tiêu (OKR)', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.RISK_MANAGE, description: 'Quản lý sổ rủi ro (RAID)', scope: 'PROJECT' },
+  { key: PERMISSIONS.SLA_MANAGE, description: 'Cấu hình SLA', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.TEST_MANAGE, description: 'Quản lý ca kiểm thử & đợt chạy', scope: 'PROJECT' },
+  { key: PERMISSIONS.WIKI_MANAGE, description: 'Tạo/sửa tài liệu nội bộ (wiki)', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.CLIENT_MANAGE, description: 'Quản lý khách hàng & hợp đồng', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.RESOURCE_MANAGE, description: 'Phân bổ nguồn lực & nghỉ phép', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.PLAN_MANAGE, description: 'Lịch trình: phụ thuộc, mốc, kế hoạch gốc', scope: 'PROJECT' },
 ];
 
 /** Tên các system role seed sẵn. */
@@ -130,6 +149,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.ISSUE_TRIAGE, PERMISSIONS.COMMENT_CREATE, PERMISSIONS.COMMENT_EDIT_OWN, PERMISSIONS.COMMENT_DELETE,
     PERMISSIONS.SPRINT_MANAGE, PERMISSIONS.BOARD_MANAGE, PERMISSIONS.BACKLOG_MANAGE, PERMISSIONS.WORKFLOW_EDIT,
     PERMISSIONS.CUSTOM_FIELD_MANAGE, PERMISSIONS.REPORT_VIEW, PERMISSIONS.DIGEST_MANAGE,
+    PERMISSIONS.PLAN_MANAGE, PERMISSIONS.RISK_MANAGE, PERMISSIONS.TEST_MANAGE,
   ],
   [SYSTEM_ROLES.PROJECT_DEVELOPER]: [
     PERMISSIONS.PROJECT_VIEW, PERMISSIONS.ISSUE_CREATE, PERMISSIONS.ISSUE_EDIT, PERMISSIONS.ISSUE_TRANSITION,
@@ -146,6 +166,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.ISSUE_ASSIGN, PERMISSIONS.ISSUE_LINK, PERMISSIONS.ISSUE_TRIAGE, PERMISSIONS.COMMENT_CREATE,
     PERMISSIONS.COMMENT_EDIT_OWN, PERMISSIONS.BACKLOG_MANAGE, PERMISSIONS.SPRINT_MANAGE,
     PERMISSIONS.CUSTOM_FIELD_MANAGE, PERMISSIONS.REPORT_VIEW, PERMISSIONS.DIGEST_MANAGE,
+    PERMISSIONS.PLAN_MANAGE, PERMISSIONS.RISK_MANAGE,
   ],
   // Product Owner: làm chủ backlog/ưu tiên, lập sprint, báo cáo.
   [SYSTEM_ROLES.PRODUCT_OWNER]: [
@@ -158,6 +179,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.PROJECT_VIEW, PERMISSIONS.ISSUE_EDIT, PERMISSIONS.ISSUE_TRANSITION, PERMISSIONS.ISSUE_ASSIGN,
     PERMISSIONS.ISSUE_LINK, PERMISSIONS.COMMENT_CREATE, PERMISSIONS.COMMENT_EDIT_OWN, PERMISSIONS.SPRINT_MANAGE,
     PERMISSIONS.BOARD_MANAGE, PERMISSIONS.BACKLOG_MANAGE, PERMISSIONS.WORKFLOW_EDIT, PERMISSIONS.REPORT_VIEW,
+    PERMISSIONS.PLAN_MANAGE, PERMISSIONS.RISK_MANAGE,
   ],
   // Developer: làm & chuyển trạng thái issue, liên kết, comment, backlog, báo cáo.
   [SYSTEM_ROLES.DEVELOPER]: [
@@ -169,7 +191,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
   [SYSTEM_ROLES.TESTER]: [
     PERMISSIONS.PROJECT_VIEW, PERMISSIONS.ISSUE_CREATE, PERMISSIONS.ISSUE_EDIT, PERMISSIONS.ISSUE_TRANSITION,
     PERMISSIONS.ISSUE_LINK, PERMISSIONS.ISSUE_TRIAGE, PERMISSIONS.COMMENT_CREATE, PERMISSIONS.COMMENT_EDIT_OWN,
-    PERMISSIONS.REPORT_VIEW,
+    PERMISSIONS.REPORT_VIEW, PERMISSIONS.TEST_MANAGE,
   ],
   // Designer (UI/UX): đóng góp issue, liên kết, comment, xem.
   [SYSTEM_ROLES.DESIGNER]: [

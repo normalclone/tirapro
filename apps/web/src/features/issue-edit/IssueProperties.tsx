@@ -7,6 +7,7 @@ import { useProjects } from '@/features/projects/api';
 import { useProjectSprints, useMoveToSprint } from '@/features/backlog/api';
 import { useUpdateIssue } from '@/features/issues/api';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
+import { ParticipantsRow } from '@/features/issue-extras/ParticipantsRow';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { Input } from '@/components/ui/Input';
@@ -283,6 +284,9 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
             </span>
           ) : '—'}
         </InfoRow>
+
+        {/* Người tham gia — nhiều người cùng theo việc này (ngoài phụ trách/báo cáo). */}
+        <ParticipantsRow issueId={issue.id} projectId={issue.projectId} />
       </div>
     </PanelSection>
   );

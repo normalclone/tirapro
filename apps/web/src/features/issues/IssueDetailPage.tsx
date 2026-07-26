@@ -16,6 +16,8 @@ import { CustomFieldsPanel } from '@/features/issue-fields/CustomFieldsPanel';
 import { AttachmentsPanel } from '@/features/attachments/AttachmentsPanel';
 import { ActivityPanel } from '@/features/activity/ActivityPanel';
 import { LinksPanel } from '@/features/issue-widgets/LinksPanel';
+import { ChecklistPanel } from '@/features/issue-extras/ChecklistPanel';
+import { IssueSlaBadge } from '@/features/sla/IssueSlaBadge';
 import { WatchButton } from '@/features/issue-widgets/WatchButton';
 import { IssuePeoplePanel, IssueDatesPanel, IssueSprintSubtitle, IssueStoryPointsInline, IssueTypeSelect, IssuePrioritySelect } from '@/features/issue-edit/IssueProperties';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
@@ -274,7 +276,10 @@ export function IssueDetailPage() {
                       {issue.summary}
                     </h1>
                   )}
-                  <span className="mt-1 shrink-0"><WatchButton issueId={issue.id} /></span>
+                  <div className="mt-1 flex shrink-0 items-center gap-2">
+                    <IssueSlaBadge issueId={issue.id} />
+                    <WatchButton issueId={issue.id} />
+                  </div>
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                   <IssueSprintSubtitle issue={issue} />
@@ -383,6 +388,9 @@ export function IssueDetailPage() {
                     <p className="mb-1.5 text-sm font-medium text-muted">Mô tả</p>
                     <IssueDescription issue={issue} />
                   </div>
+
+                  {/* Checklist — đầu việc nhỏ, nhẹ hơn sub-task */}
+                  <ChecklistPanel issueId={issue.id} />
 
                   <IssueRelations issue={issue} />
 
