@@ -1,5 +1,5 @@
 /**
- * Tiện ích ngày dùng chung cho Năng lực/Tải (resources) và Chấm công (timesheet).
+ * Tiện ích ngày cho Năng lực/Tải nguồn lực.
  *
  * Quy ước: MỌI mốc ngày được chuẩn hoá về nửa đêm UTC. Allocation/TimeOff/WorkLog là
  * dữ liệu "theo ngày" (không theo giờ địa phương), nên tính toán trên UTC giữ kết quả

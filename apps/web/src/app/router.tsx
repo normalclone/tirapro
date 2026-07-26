@@ -46,11 +46,9 @@ const ClientsPage = lazy(() => import('@/features/clients/ClientsPage').then((m)
 const GoalsPage = lazy(() => import('@/features/goals/GoalsPage').then((m) => ({ default: m.GoalsPage })));
 const RaidPage = lazy(() => import('@/features/raid/RaidPage').then((m) => ({ default: m.RaidPage })));
 const ResourcesPage = lazy(() => import('@/features/resources/ResourcesPage').then((m) => ({ default: m.ResourcesPage })));
-const TimesheetPage = lazy(() => import('@/features/timesheet/TimesheetPage').then((m) => ({ default: m.TimesheetPage })));
 const SlaPage = lazy(() => import('@/features/sla/SlaPage').then((m) => ({ default: m.SlaPage })));
 const WikiPage = lazy(() => import('@/features/wiki/WikiPage').then((m) => ({ default: m.WikiPage })));
 const AutomationPage = lazy(() => import('@/features/automation/AutomationPage').then((m) => ({ default: m.AutomationPage })));
-const TestingPage = lazy(() => import('@/features/testing/TestingPage').then((m) => ({ default: m.TestingPage })));
 // Overlay luôn mount trong shell nhưng không cần cho first paint → lazy (fallback null, mở mới tải).
 const CommandPalette = lazy(() => import('@/features/command/CommandPalette').then((m) => ({ default: m.CommandPalette })));
 const CreateIssueModal = lazy(() => import('@/features/issues/CreateIssueModal').then((m) => ({ default: m.CreateIssueModal })));
@@ -132,7 +130,6 @@ export const router = createBrowserRouter([
       { path: 'goals', element: <GoalsPage /> },
       { path: 'raid', element: <RaidPage /> },
       { path: 'resources', element: <ResourcesPage /> },
-      { path: 'timesheet', element: <TimesheetPage /> },
       { path: 'sla', element: <SlaPage /> },
       { path: 'wiki', element: <WikiPage /> },
       { path: 'automation', element: <AutomationPage /> },
@@ -151,7 +148,6 @@ export const router = createBrowserRouter([
           { path: 'reports', element: <ReportsPage /> },
           { path: 'gantt', element: <GanttPage /> },
           { path: 'tree', element: <TreePage /> },
-          { path: 'testing', element: <TestingPage /> },
           { path: 'config', element: <ProjectConfigPage /> },
         ],
       },

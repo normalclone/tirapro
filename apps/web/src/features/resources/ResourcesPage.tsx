@@ -210,7 +210,7 @@ function HeatMap({
   hoursPerDay: number;
 }) {
   return (
-    <Tooltip.Provider delayDuration={120}>
+    <Tooltip.Provider delayDuration={0} skipDelayDuration={0}>
       <div className="overflow-x-auto rounded-lg border border-border bg-surface">
         <table className="w-full border-collapse text-sm">
           <caption className="sr-only">Tải công việc theo người và theo tuần</caption>

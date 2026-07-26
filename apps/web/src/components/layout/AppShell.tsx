@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutGrid, LayoutDashboard, Settings, Plug, Filter, Users, Menu, X, Sparkles, ShieldCheck, Building2, SlidersHorizontal, Activity, ArrowLeft, Briefcase, Target, ShieldAlert, CalendarClock, Clock, AlarmClock, BookOpen, Handshake, Repeat } from 'lucide-react';
+import { LayoutGrid, LayoutDashboard, Settings, Plug, Filter, Users, Menu, X, Sparkles, ShieldCheck, Building2, SlidersHorizontal, Activity, ArrowLeft, Briefcase, Target, ShieldAlert, CalendarClock, AlarmClock, BookOpen, Handshake, Repeat } from 'lucide-react';
 import { WorkspaceSwitcher } from '@/features/workspace/WorkspaceSwitcher';
 import { GuideLauncher } from '@/features/guides/GuideLauncher';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
@@ -22,7 +22,6 @@ const NAV_ITEMS: { to: string; label: string; icon: ReactNode; match: (p: string
   { to: '/goals', label: 'Mục tiêu', icon: <Target className="h-4 w-4" />, match: (p) => p.startsWith('/goals') },
   { to: '/raid', label: 'Rủi ro', icon: <ShieldAlert className="h-4 w-4" />, match: (p) => p.startsWith('/raid') },
   { to: '/resources', label: 'Nguồn lực', icon: <CalendarClock className="h-4 w-4" />, match: (p) => p.startsWith('/resources') },
-  { to: '/timesheet', label: 'Chấm công', icon: <Clock className="h-4 w-4" />, match: (p) => p.startsWith('/timesheet') },
   { to: '/sla', label: 'SLA', icon: <AlarmClock className="h-4 w-4" />, match: (p) => p.startsWith('/sla') },
   { to: '/wiki', label: 'Tài liệu', icon: <BookOpen className="h-4 w-4" />, match: (p) => p.startsWith('/wiki') },
   { to: '/clients', label: 'Khách hàng', icon: <Handshake className="h-4 w-4" />, match: (p) => p.startsWith('/clients') },
