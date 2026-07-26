@@ -36,7 +36,7 @@ export interface WikiSearchHit {
   updatedAt: string;
 }
 
-/** `projectId` truyền lên API: rỗng = mọi phạm vi, `none` = tài liệu chung workspace. */
+/** `projectId` truyền lên API: rỗng = mọi phạm vi, `none` = tài liệu dùng chung cho cả tổ chức. */
 export const WIKI_SCOPE_SHARED = 'none';
 
 export const wikiTreeKey = (scope: string) => ['wiki', 'tree', scope] as const;

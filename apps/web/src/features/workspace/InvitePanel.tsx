@@ -16,7 +16,7 @@ import { useInvite } from './api';
 
 /**
  * Thẻ "Thêm thành viên": luồng CHÍNH là chọn một người dùng CÓ SẴN từ pool hệ thống
- * (do system admin quản lý ở nơi khác) rồi gán vai trò và thêm vào workspace. Luồng
+ * (do system admin quản lý ở nơi khác) rồi gán vai trò và thêm vào không gian làm việc. Luồng
  * phụ "Mời bằng email" (tạo tài khoản mới + mật khẩu tạm) nằm sau một nút gạt.
  * Gated bằng `member:manage` — trùng với cách MembersPage kiểm tra quyền.
  */
@@ -93,7 +93,7 @@ function AddExistingUser() {
   }, [wsRoles]);
   const effectiveRoleIds = roleIds.length > 0 ? roleIds : defaultRoleIds;
 
-  // Loại người đã ở trong workspace khỏi pool.
+  // Loại người đã ở trong không gian làm việc khỏi pool.
   const memberUserIds = useMemo(
     () => new Set((members ?? []).map((m) => m.user.id)),
     [members],

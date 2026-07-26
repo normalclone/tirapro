@@ -13,7 +13,7 @@ interface CreatedWorkspace {
   slug: string;
 }
 
-/** Tạo workspace mới; trả về workspace vừa tạo. */
+/** Lập không gian làm việc mới; trả về nơi vừa tạo. */
 function useCreateWorkspace() {
   return useMutation({
     mutationFn: (name: string) =>
@@ -59,7 +59,7 @@ export function CreateWorkspaceModal({
       const created = await create.mutateAsync(trimmedName);
       toast.success(`Đã tạo không gian làm việc ${created.name}`);
       onClose();
-      // Chuyển sang workspace mới: cấp token mới + reload (xử lý trong useSwitchWorkspace).
+      // Chuyển sang nơi vừa lập: cấp token mới + reload (xử lý trong useSwitchWorkspace).
       switchWs.mutate(created.id, {
         onError: (err) => toast.error(apiErrorMessage(err)),
       });

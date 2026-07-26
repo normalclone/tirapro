@@ -92,7 +92,7 @@ export function WikiPage() {
   const scopeOptions = useMemo(
     () => [
       { value: '', label: 'Tất cả tài liệu' },
-      { value: WIKI_SCOPE_SHARED, label: 'Dùng chung cả workspace' },
+      { value: WIKI_SCOPE_SHARED, label: 'Dùng chung cho mọi dự án' },
       ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
     ],
     [projects],
@@ -271,9 +271,9 @@ export function WikiPage() {
   return (
     <div className={pageContainer('xl')}>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Tài liệu nội bộ</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Wiki — tài liệu nội bộ</h1>
         <p className="mt-1 text-sm text-muted">
-          Nơi lưu quy trình, hướng dẫn và biên bản họp. Viết bằng Markdown, xếp thành cây trang, dùng chung cả workspace hoặc riêng từng dự án.
+          Nơi lưu quy trình, hướng dẫn và biên bản họp. Viết bằng Markdown, xếp thành cây trang, dùng chung cho cả tổ chức hoặc riêng từng dự án.
         </p>
       </header>
 

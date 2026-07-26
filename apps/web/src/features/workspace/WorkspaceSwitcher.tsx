@@ -9,8 +9,8 @@ import { useMyWorkspaces, useSwitchWorkspace, type MyWorkspace } from './api';
 import { CreateWorkspaceModal } from './CreateWorkspaceModal';
 
 /**
- * Nút chọn workspace ở THANH NAVBAR (góc trái): mở popover liệt kê workspace (tên + vai trò),
- * đánh dấu cái đang hoạt động, đổi & về màn Tổng quan của workspace mới khi chọn, tạo workspace mới.
+ * Nút chọn không gian làm việc ở THANH NAVBAR (góc trái): mở popover liệt kê các nơi (tên + vai trò),
+ * đánh dấu nơi đang hoạt động, đổi & về màn Tổng quan của nơi mới khi chọn, lập nơi mới.
  * Trigger gọn 1 dòng để vừa chiều cao navbar; tên ẩn trên màn nhỏ (chỉ còn badge + mũi tên).
  */
 export function WorkspaceSwitcher() {
@@ -105,7 +105,7 @@ export function WorkspaceSwitcher() {
   );
 }
 
-/** Ô vuông bo góc: hiện logo workspace nếu có, không thì chữ cái đầu. */
+/** Ô vuông bo góc: hiện logo của không gian làm việc nếu có, không thì chữ cái đầu. */
 function WsBadge({ name, src, variant }: { name: string; src?: string | null; variant?: 'active' }) {
   return (
     <span

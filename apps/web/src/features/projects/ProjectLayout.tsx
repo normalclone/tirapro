@@ -95,7 +95,7 @@ export function ProjectLayout() {
           <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-muted">{project?.key ?? key}</span>
 
           <Button size="sm" className="ml-2" onClick={() => openCreate({ projectKey: key })} disabled={!project?.id}>
-            <Plus className="h-4 w-4" /> Tạo issue
+            <Plus className="h-4 w-4" /> Tạo công việc
           </Button>
           {aiEnabled && (
             <Button variant="secondary" size="sm" onClick={() => setGenOpen(true)} disabled={!project?.id} data-tour="board-ai">

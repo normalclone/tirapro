@@ -94,7 +94,7 @@ export function ApiKeysPage() {
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-ink-strong">
           <KeyRound className="h-6 w-6 text-primary" /> API &amp; MCP
         </h1>
-        <p className="mt-1 text-sm text-muted">Cấp khoá để phần mềm khác &amp; trợ lý AI (qua MCP) khai thác dữ liệu workspace.</p>
+        <p className="mt-1 text-sm text-muted">Cấp khoá để phần mềm khác &amp; trợ lý AI (qua MCP) khai thác dữ liệu của không gian làm việc.</p>
       </header>
 
       {/* Điểm kết nối */}
@@ -148,7 +148,7 @@ export function ApiKeysPage() {
           <div>
             <p className="text-sm font-medium text-ink">Không có quyền quản lý API key</p>
             <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
-              Chỉ quản trị workspace mới tạo và quản lý được khoá API. Liên hệ quản trị workspace của bạn để được cấp quyền.
+              Chỉ quản trị chung mới tạo và quản lý được khoá API. Liên hệ quản trị chung của bạn để được cấp quyền.
             </p>
           </div>
         </section>

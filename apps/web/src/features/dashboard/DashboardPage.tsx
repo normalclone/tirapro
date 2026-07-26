@@ -115,7 +115,7 @@ function RecentsStrip() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Chế độ ADMIN — tổng quan toàn workspace, mọi dự án                  */
+/* Chế độ ADMIN — tổng quan toàn tổ chức, mọi dự án                    */
 /* ------------------------------------------------------------------ */
 
 function AdminOverview() {

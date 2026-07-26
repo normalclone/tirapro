@@ -8,7 +8,7 @@ import {
   useRemoveWorkspaceAvatar,
 } from './api';
 
-/** Logo/ảnh workspace đang hoạt động. Chỉ workspace admin mới đổi được. */
+/** Logo/ảnh của không gian làm việc đang hoạt động. Chỉ quản trị chung mới đổi được. */
 export function WorkspaceBrandingPanel() {
   const activeId = useAuth((s) => s.workspaceId);
   const canAdmin = useAuth((s) => s.can(PERMISSIONS.WORKSPACE_ADMIN));

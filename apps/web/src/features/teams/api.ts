@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TeamDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 
-/** Khoá cache danh sách nhóm (team) của workspace hiện tại. */
+/** Khoá cache danh sách nhóm (team) của không gian làm việc hiện tại. */
 export const teamsKey = ['teams'] as const;
 
 export interface TeamInput {
@@ -14,7 +14,7 @@ export interface TeamInput {
   memberIds?: string[];
 }
 
-/** Danh sách nhóm của workspace hiện tại (kèm lead, thành viên, số đếm). */
+/** Danh sách nhóm của không gian làm việc hiện tại (kèm lead, thành viên, số đếm). */
 export function useTeams() {
   return useQuery({
     queryKey: teamsKey,

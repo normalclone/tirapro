@@ -116,7 +116,7 @@ export function GenerateIssuesDialog({
       <div className="relative flex max-h-[84vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
         <header className="flex items-center gap-2 border-b border-border px-5 py-3">
           <Sparkles className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-ink">Tạo issue bằng AI</span>
+          <span className="text-sm font-medium text-ink">Tạo công việc bằng AI</span>
           <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng">
             <X className="h-4 w-4" />
           </Button>

@@ -24,10 +24,10 @@ const NAV_ITEMS: { to: string; label: string; icon: ReactNode; match: (p: string
   { to: '/settings', label: 'Cài đặt', icon: <Settings className="h-4 w-4" />, match: (p) => p.startsWith('/settings') },
 ];
 
-// Menu riêng cho Admin hệ thống — đứng trên mọi workspace (không gắn với 1 workspace nào).
+// Menu riêng cho Admin hệ thống — đứng trên mọi không gian làm việc (không gắn với nơi nào cụ thể).
 const ADMIN_NAV: { to: string; label: string; icon: ReactNode; match: (p: string) => boolean }[] = [
   { to: '/admin', label: 'Tổng quan', icon: <LayoutDashboard className="h-4 w-4" />, match: (p) => p === '/admin' },
-  { to: '/admin/workspaces', label: 'Workspaces', icon: <Building2 className="h-4 w-4" />, match: (p) => p.startsWith('/admin/workspaces') },
+  { to: '/admin/workspaces', label: 'Không gian làm việc', icon: <Building2 className="h-4 w-4" />, match: (p) => p.startsWith('/admin/workspaces') },
   { to: '/admin/accounts', label: 'Tài khoản', icon: <Users className="h-4 w-4" />, match: (p) => p.startsWith('/admin/accounts') },
   { to: '/admin/config', label: 'Cấu hình', icon: <SlidersHorizontal className="h-4 w-4" />, match: (p) => p.startsWith('/admin/config') },
   { to: '/admin/system', label: 'Hệ thống', icon: <Activity className="h-4 w-4" />, match: (p) => p.startsWith('/admin/system') },
@@ -140,11 +140,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          {/* Admin đứng trên mọi workspace → không có bộ chọn/nhãn workspace ở thanh trên. */}
+          {/* Admin đứng trên mọi nơi → không có bộ chọn/nhãn không gian làm việc ở thanh trên. */}
           {!admin && <WorkspaceSwitcher />}
           <div className="min-w-0 flex-1 truncate text-sm text-muted" data-tour="topbar-context" />
           <div className="flex items-center gap-2">
-            {/* Trợ lý AI gắn với workspace → chỉ hiện ngoài ngữ cảnh admin. */}
+            {/* Trợ lý AI gắn với không gian làm việc → chỉ hiện ngoài ngữ cảnh admin. */}
             {!admin && (
               <Button
                 variant="ghost"

@@ -8,7 +8,7 @@ import { apiErrorMessage } from '@/lib/api';
 
 /**
  * Popover sửa vai trò của một thành viên. Multi-select ≥1 vai trò rồi Lưu.
- * Dùng chung cho thành viên workspace & thành viên dự án — chỉ khác `roles`
+ * Dùng chung cho thành viên không gian làm việc & thành viên dự án — chỉ khác `roles`
  * (danh sách lựa chọn) và hàm `onSave`.
  */
 export function EditRolesPopover({

@@ -595,8 +595,8 @@ export function GanttPage() {
                             height: ROW_H - 14,
                             background: inferred
                               ? 'transparent'
-                              : `color-mix(in oklch, ${barColor} 34%, var(--surface))`,
-                            borderColor: `color-mix(in oklch, ${barColor} 60%, var(--surface))`,
+                              : `color-mix(in oklab, ${barColor} 34%, var(--surface))`,
+                            borderColor: `color-mix(in oklab, ${barColor} 60%, var(--surface))`,
                             boxShadow: isCritical ? '0 0 0 1.5px var(--danger)' : undefined,
                           }}
                         >

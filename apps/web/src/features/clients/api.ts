@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
-/** Khoá cache danh sách khách hàng của workspace hiện tại. */
+/** Khoá cache danh sách khách hàng của không gian làm việc hiện tại. */
 export const clientsKey = ['clients'] as const;
 
 export interface ClientProjectRef {

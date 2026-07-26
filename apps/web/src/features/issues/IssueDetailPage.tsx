@@ -506,10 +506,10 @@ function ActivityTabs({ issue, tab, onTab }: { issue: IssueDto; tab: 'comments' 
   );
 }
 
-/** Tên workspace hiện tại cho breadcrumb. */
+/** Tên không gian làm việc hiện tại cho breadcrumb. */
 function WorkspaceName() {
   const wsId = useAuth((s) => s.workspaceId);
   const { data: workspaces } = useMyWorkspaces();
   const name = workspaces?.find((w) => w.id === wsId)?.name;
-  return <span className="truncate">{name ?? 'Workspace'}</span>;
+  return <span className="truncate">{name ?? 'Không gian làm việc'}</span>;
 }

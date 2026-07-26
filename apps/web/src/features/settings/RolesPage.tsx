@@ -254,7 +254,7 @@ function RoleDialog({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Checklist hiển thị theo scope của vai trò (workspace ↔ project). Khi đổi scope
+  // Checklist hiển thị theo scope của vai trò (chung ↔ dự án). Khi đổi scope
   // lúc tạo mới, loại bỏ các quyền không còn thuộc scope đó.
   const visibleScopes: PermissionScope[] =
     scope === 'WORKSPACE' ? ['WORKSPACE'] : ['PROJECT'];

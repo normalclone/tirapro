@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
-/** Khoá cache danh mục chương trình của workspace hiện tại. */
+/** Khoá cache danh mục chương trình của không gian làm việc hiện tại. */
 export const programsKey = ['programs'] as const;
 export const programRollupKey = ['programs', 'rollup'] as const;
 

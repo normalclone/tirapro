@@ -9,7 +9,7 @@ export function AccountPage() {
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Tài khoản</h1>
         <p className="mt-1 text-sm text-muted">
-          Hồ sơ cá nhân và mật khẩu của bạn. Những thông tin này đi theo bạn ở mọi workspace, không riêng workspace hiện tại.
+          Hồ sơ cá nhân và mật khẩu của bạn. Những thông tin này đi theo bạn ở mọi không gian làm việc, không riêng nơi bạn đang mở.
         </p>
       </header>
 

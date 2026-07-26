@@ -230,11 +230,11 @@ export function WorkflowSettingsPage() {
                   <Input
                     id="wf-project"
                     value={projectId}
-                    placeholder="Để trống = áp dụng cho cả workspace"
+                    placeholder="Để trống = áp dụng cho mọi dự án"
                     onChange={(e) => setProjectId(e.target.value)}
                   />
                   <p className="mt-1 text-xs text-faint">
-                    Để trống nếu workflow dùng chung cho cả workspace.
+                    Để trống nếu quy trình dùng chung cho mọi dự án.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

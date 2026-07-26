@@ -56,7 +56,7 @@ export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: 
 
         <div className="space-y-4 px-5 py-4">
           <p className="text-sm text-muted">
-            Mọi thành viên workspace vốn đã có mặt trong dự án với <strong>vai trò mặc định</strong>. Thao tác này đặt{' '}
+            Mọi thành viên của không gian làm việc vốn đã có mặt trong dự án với <strong>vai trò mặc định</strong>. Thao tác này đặt{' '}
             <strong>vai trò riêng</strong> cho {team.memberCount} thành viên của nhóm trong dự án bạn chọn — vai trò riêng
             được dùng thay cho vai trò mặc định.
           </p>

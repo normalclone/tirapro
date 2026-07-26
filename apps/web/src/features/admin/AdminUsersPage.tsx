@@ -17,7 +17,7 @@ import {
   type AdminUser,
 } from './api';
 
-/** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền tạo workspace. */
+/** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập không gian làm việc. */
 export function AdminUsersPage() {
   const me = useAuth((s) => s.user);
   const { data: users, isLoading, isError, error, refetch } = useAdminUsers();

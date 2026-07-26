@@ -18,7 +18,7 @@ export function Field({ label, hint, htmlFor, children }: { label: string; hint?
 
 /**
  * Nội dung điền sẵn của công việc (loại, độ ưu tiên, tiêu đề, mô tả) — dùng chung cho
- * mẫu công việc và công việc lặp lại. Loại & độ ưu tiên lấy theo cấu hình workspace qua
+ * mẫu công việc và công việc lặp lại. Loại & độ ưu tiên lấy theo cấu hình chung qua
  * `/projects/:key/meta`; cần một mã dự án bất kỳ để nạp.
  */
 export function IssueDefaultsFields({
@@ -40,7 +40,7 @@ export function IssueDefaultsFields({
 
   const typeOptions = (meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name, color: t.color }));
   const priorityOptions = [
-    { value: '', label: 'Mặc định của workspace' },
+    { value: '', label: 'Theo mặc định chung' },
     ...(meta?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, color: p.color })),
   ];
 
@@ -65,7 +65,7 @@ export function IssueDefaultsFields({
             value={value.priorityId ?? ''}
             onChange={(v) => set({ priorityId: v || null })}
             options={priorityOptions}
-            placeholder="Mặc định của workspace"
+            placeholder="Theo mặc định chung"
             searchPlaceholder="Tìm độ ưu tiên…"
             ariaLabel="Độ ưu tiên"
             disabled={!projectKey}

@@ -56,7 +56,7 @@ export function ProfilePanel() {
         <div>
           <h2 className="text-base font-semibold text-ink-strong">Hồ sơ của tôi</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Những thông tin này hiện với mọi thành viên khác, ở mọi workspace bạn tham gia.
+            Những thông tin này hiện với mọi thành viên khác, ở mọi không gian làm việc bạn tham gia.
           </p>
         </div>
       </div>

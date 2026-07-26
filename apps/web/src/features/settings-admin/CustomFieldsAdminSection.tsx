@@ -201,7 +201,7 @@ export function CustomFieldsAdminSection() {
                   <Badge className="bg-danger/10 text-danger">Bắt buộc</Badge>
                 )}
                 <span className="truncate text-xs text-faint">
-                  {f.projectId ? `Dự án ${f.projectId}` : 'Toàn workspace'}
+                  {f.projectId ? `Dự án ${f.projectId}` : 'Toàn tổ chức'}
                 </span>
 
                 {canManage && (

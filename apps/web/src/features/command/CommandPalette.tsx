@@ -144,7 +144,7 @@ export function CommandPalette() {
           <ActionItem
             value="tao issue create"
             icon={<Plus className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
-            label="Tạo issue"
+            label="Tạo công việc"
             onSelect={() => runAction(() => openCreate({ projectKey: currentProjectKey(projects) ?? undefined }))}
           />
           <ActionItem

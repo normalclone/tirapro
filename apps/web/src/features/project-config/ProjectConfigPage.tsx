@@ -288,8 +288,8 @@ function MembersSection({ projectId }: { projectId?: string }) {
   const can = useAuth((s) => s.can);
   const canAdmin = can('project:admin');
 
-  // Thành viên dự án = TOÀN BỘ thành viên workspace (dự án dùng chung tập người dùng).
-  // `isOverride` cho biết vai trò đang là ĐẶT RIÊNG hay MẶC ĐỊNH theo vai trò workspace.
+  // Thành viên dự án = TOÀN BỘ thành viên của không gian làm việc (dự án dùng chung tập người dùng).
+  // `isOverride` cho biết vai trò đang là ĐẶT RIÊNG hay MẶC ĐỊNH theo vai trò chung.
   const { data: members, isLoading } = useProjectMembers(projectId);
   const { data: projectRoles } = useRoles('PROJECT');
 
@@ -306,7 +306,7 @@ function MembersSection({ projectId }: { projectId?: string }) {
     : list;
 
   function handleReset(name: string, uid: string) {
-    if (!window.confirm(`Đưa ${name} về vai trò mặc định của workspace?`)) return;
+    if (!window.confirm(`Đưa ${name} về vai trò mặc định chung?`)) return;
     clearOverride.mutate(uid, {
       onSuccess: () => toast.success('Đã về vai trò mặc định'),
       onError: (e) => toast.error(apiErrorMessage(e)),
@@ -317,7 +317,7 @@ function MembersSection({ projectId }: { projectId?: string }) {
     <SectionCard
       icon={<Users className="h-4 w-4" />}
       title="Thành viên"
-      description="Mọi thành viên workspace đều tham gia dự án này. Có thể đặt vai trò riêng cho từng người khi cần."
+      description="Mọi thành viên của không gian làm việc đều tham gia dự án này. Có thể đặt vai trò riêng cho từng người khi cần."
     >
       {isLoading ? (
         <div className="space-y-2">
@@ -328,8 +328,8 @@ function MembersSection({ projectId }: { projectId?: string }) {
       ) : list.length === 0 ? (
         <EmptyState
           icon={<Users className="h-6 w-6" />}
-          title="Workspace chưa có thành viên"
-          description="Thêm người vào workspace ở trang Thành viên — họ sẽ tự động tham gia mọi dự án."
+          title="Chưa có thành viên nào"
+          description="Thêm người vào không gian làm việc ở trang Thành viên — họ sẽ tự động tham gia mọi dự án."
         />
       ) : (
         <>
@@ -361,7 +361,7 @@ function MembersSection({ projectId }: { projectId?: string }) {
                       'rounded px-1.5 py-0.5 text-[10px] font-medium',
                       m.isOverride ? 'bg-primary-subtle text-primary' : 'bg-surface-2 text-faint',
                     )}
-                    title={m.isOverride ? 'Vai trò đặt riêng cho dự án này' : 'Vai trò mặc định theo vai trò workspace'}
+                    title={m.isOverride ? 'Vai trò đặt riêng cho dự án này' : 'Vai trò mặc định suy từ vai trò chung'}
                   >
                     {m.isOverride ? 'riêng' : 'mặc định'}
                   </span>
@@ -1311,7 +1311,7 @@ function DataSection({ projectId, canImport }: { projectId?: string; canImport: 
       <div className="space-y-6">
         {!canImport && (
           <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
-            Bạn không có quyền xuất/nhập dữ liệu. Liên hệ quản trị viên workspace nếu cần.
+            Bạn không có quyền xuất/nhập dữ liệu. Liên hệ quản trị chung nếu cần.
           </p>
         )}
 

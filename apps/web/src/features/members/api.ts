@@ -4,9 +4,9 @@ import { api } from '@/lib/api';
 import { queryClient, qk } from '@/lib/queryClient';
 import { useAuth } from '@/stores/auth';
 
-/** Khoá cache cho danh sách thành viên của workspace hiện tại. */
+/** Khoá cache cho danh sách thành viên của không gian làm việc hiện tại. */
 export const workspaceUsersKey = ['workspace-users'] as const;
-/** Khoá cache cho thành viên workspace kèm vai trò (GET /members). */
+/** Khoá cache cho thành viên chung kèm vai trò (GET /members). */
 export const workspaceMembersKey = ['workspace-members'] as const;
 /** Khoá cache cho thành viên của một dự án. */
 export const projectMembersKey = (projectId: string) => ['project-members', projectId] as const;
@@ -25,7 +25,7 @@ export interface ChangePasswordInput {
   newPassword: string;
 }
 
-/** Danh sách thành viên (user) trong workspace hiện tại. */
+/** Danh sách thành viên (user) trong không gian làm việc hiện tại. */
 export function useWorkspaceUsers() {
   return useQuery({
     queryKey: workspaceUsersKey,
@@ -33,12 +33,12 @@ export function useWorkspaceUsers() {
   });
 }
 
-/** Khoá cache cho toàn bộ user trong hệ thống (pool để chọn thêm vào workspace). */
+/** Khoá cache cho toàn bộ user trong hệ thống (pool để chọn thêm vào không gian làm việc). */
 export const allUsersKey = (search?: string) => ['all-users', search ?? ''] as const;
 
 /**
  * Toàn bộ user trong hệ thống (pool do system admin quản lý ở nơi khác) — để chọn
- * thêm vào workspace hiện tại. Gated backend bằng `member:manage`.
+ * thêm vào không gian làm việc hiện tại. Gated backend bằng `member:manage`.
  */
 export function useAllUsers(search?: string, enabled = true) {
   const q = search?.trim() ?? '';
@@ -109,10 +109,10 @@ export function useRemoveUserAvatar() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Thành viên workspace (kèm vai trò)                                  */
+/* Thành viên của không gian làm việc (kèm vai trò)                    */
 /* ------------------------------------------------------------------ */
 
-/** Danh sách thành viên workspace hiện tại kèm vai trò (GET /members). */
+/** Danh sách thành viên của không gian làm việc hiện tại kèm vai trò (GET /members). */
 export function useWorkspaceMembers() {
   return useQuery({
     queryKey: workspaceMembersKey,
@@ -121,7 +121,7 @@ export function useWorkspaceMembers() {
 }
 
 /**
- * Thêm một user CÓ SẴN (từ pool hệ thống) vào workspace hiện tại kèm vai trò.
+ * Thêm một user CÓ SẴN (từ pool hệ thống) vào không gian làm việc hiện tại kèm vai trò.
  * Idempotent: nếu đã là thành viên thì cập nhật lại vai trò (POST /members).
  */
 export function useAddMember() {
@@ -136,7 +136,7 @@ export function useAddMember() {
   });
 }
 
-/** Thêm NHIỀU người vào workspace một lúc (cùng bộ vai trò). */
+/** Thêm NHIỀU người vào không gian làm việc một lúc (cùng bộ vai trò). */
 export function useAddMembersBulk() {
   const qc = useQueryClient();
   return useMutation({
@@ -150,7 +150,7 @@ export function useAddMembersBulk() {
   });
 }
 
-/** Đặt lại toàn bộ vai trò (≥1) cho một thành viên workspace. */
+/** Đặt lại toàn bộ vai trò (≥1) cho một thành viên chung. */
 export function useSetMemberRoles() {
   const qc = useQueryClient();
   return useMutation({
@@ -163,7 +163,7 @@ export function useSetMemberRoles() {
   });
 }
 
-/** Gỡ một thành viên khỏi workspace (BE chặn gỡ owner/chính mình). */
+/** Gỡ một thành viên khỏi không gian làm việc (BE chặn gỡ owner/chính mình). */
 export function useRemoveMember() {
   const qc = useQueryClient();
   return useMutation({
@@ -189,7 +189,7 @@ export function useProjectMembers(projectId?: string) {
   });
 }
 
-/** Thêm thành viên (user có sẵn trong workspace) vào dự án với ≥1 vai trò. */
+/** Thêm thành viên (user có sẵn trong không gian làm việc) vào dự án với ≥1 vai trò. */
 export function useAddProjectMember(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -203,7 +203,7 @@ export function useAddProjectMember(projectId: string) {
   });
 }
 
-/** Thêm NHIỀU người vào dự án một lúc (chỉ người đã thuộc workspace). */
+/** Thêm NHIỀU người vào dự án một lúc (chỉ người đã thuộc không gian làm việc). */
 export function useAddProjectMembersBulk(projectId: string) {
   const qc = useQueryClient();
   return useMutation({

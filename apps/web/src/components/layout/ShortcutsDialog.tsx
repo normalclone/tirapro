@@ -12,7 +12,7 @@ const GROUPS: { title: string; items: { keys: string[]; label: string }[] }[] = 
     items: [
       { keys: ['⌘', 'K'], label: 'Mở bảng lệnh' },
       { keys: ['/'], label: 'Tìm kiếm / bảng lệnh' },
-      { keys: ['c'], label: 'Tạo issue' },
+      { keys: ['c'], label: 'Tạo công việc' },
       { keys: ['?'], label: 'Bảng phím tắt này' },
     ],
   },

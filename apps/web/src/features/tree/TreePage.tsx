@@ -92,7 +92,7 @@ export function TreePage() {
             <EmptyState
               icon={<ListTree className="h-8 w-8" aria-hidden />}
               title="Chưa có issue nào"
-              description="Tạo issue và đặt 'Issue cha' trong trang chi tiết để dựng cây phân cấp."
+              description="Mở một công việc, đặt trường “Việc cha” cho nó — cây phân cấp sẽ tự hiện ở đây."
             />
           </div>
         ) : (

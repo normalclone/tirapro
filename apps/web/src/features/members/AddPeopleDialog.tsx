@@ -29,10 +29,10 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
- * Thêm NHIỀU người một lúc vào workspace hoặc dự án, có bộ lọc.
- * - workspace: danh sách chọn = người có tài khoản CHƯA thuộc workspace (lọc: tìm kiếm + trạng thái
- *   tài khoản; họ chưa có vai trò/nhóm trong workspace nên 2 bộ lọc đó tự ẩn).
- * - project: danh sách chọn = thành viên workspace CHƯA ở dự án (lọc: tìm kiếm + nhóm + vai trò).
+ * Thêm NHIỀU người một lúc vào không gian làm việc hoặc dự án, có bộ lọc.
+ * - workspace: danh sách chọn = người có tài khoản CHƯA thuộc không gian làm việc (lọc: tìm kiếm +
+ *   trạng thái tài khoản; họ chưa có vai trò/nhóm ở đây nên 2 bộ lọc đó tự ẩn).
+ * - project: danh sách chọn = thành viên chung CHƯA ở dự án (lọc: tìm kiếm + nhóm + vai trò).
  * Bộ lọc hiển thị theo DỮ LIỆU: chỉ hiện khi có giá trị để lọc.
  */
 export function AddPeopleDialog({
@@ -152,7 +152,7 @@ export function AddPeopleDialog({
       <div className="relative flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
         <header className="flex items-center gap-2 border-b border-border px-5 py-3">
           <Users className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-ink">{isProject ? 'Thêm người vào dự án' : 'Thêm người vào workspace'}</span>
+          <span className="text-sm font-medium text-ink">{isProject ? 'Thêm người vào dự án' : 'Thêm người vào không gian làm việc'}</span>
           <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng"><X className="h-4 w-4" /></Button>
         </header>
 
@@ -245,14 +245,14 @@ export function AddPeopleDialog({
           {filtered.length === 0 && (
             <li className="px-3 py-10 text-center text-sm text-muted">
               {isProject
-                ? 'Không còn ai khớp bộ lọc. Xoá bớt bộ lọc, hoặc thêm người vào workspace trước.'
+                ? 'Không còn ai khớp bộ lọc. Xoá bớt bộ lọc, hoặc thêm người vào không gian làm việc trước.'
                 : 'Không còn ai khớp bộ lọc. Xoá bớt bộ lọc, hoặc mời người mới bằng email ở trang Thành viên.'}
             </li>
           )}
         </ul>
 
         <footer className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-3">
-          <label className="mr-1 text-sm text-muted" title={`Vai trò quyết định những người này được xem và làm gì trong ${isProject ? 'dự án' : 'workspace'}. Chọn được nhiều vai trò.`}>
+          <label className="mr-1 text-sm text-muted" title={`Vai trò quyết định những người này được xem và làm gì ${isProject ? 'trong dự án' : 'ở đây'}. Chọn được nhiều vai trò.`}>
             Vai trò khi thêm:
           </label>
           <div className="min-w-[14rem] flex-1"><RoleMultiSelect options={roleOptions} value={roleIds} onChange={setRoleIds} /></div>

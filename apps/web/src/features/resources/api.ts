@@ -30,7 +30,7 @@ export type TimeOffKind = 'LEAVE' | 'HOLIDAY' | 'OTHER';
 export interface TimeOffDto {
   id: string;
   workspaceId: string;
-  /** null = ngày lễ áp dụng cho toàn workspace. */
+  /** null = ngày lễ áp dụng cho toàn tổ chức. */
   userId: string | null;
   kind: TimeOffKind;
   startDate: string;

@@ -157,7 +157,7 @@ export function SeveritySection() {
         </ul>
       )}
 
-      {/* Form thêm mức độ — chỉ quản trị workspace */}
+      {/* Form thêm mức độ — chỉ quản trị chung */}
       {canManage && adding ? (
         <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
           <div className="flex flex-wrap items-end gap-3">

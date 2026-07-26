@@ -35,7 +35,7 @@ interface QuickAction {
 
 /** Nhãn cho trình tuỳ biến (tất cả tác vụ, kèm ghi chú ngữ cảnh). */
 const ACTION_META: { key: QuickActionKey; label: string; hint?: string }[] = [
-  { key: 'issue', label: 'Tạo issue' },
+  { key: 'issue', label: 'Tạo công việc' },
   { key: 'ai', label: 'Tạo bằng AI', hint: 'trong dự án' },
   { key: 'report', label: 'Báo lỗi', hint: 'trong dự án' },
   { key: 'watch', label: 'Theo dõi', hint: 'trong trang issue' },
@@ -70,7 +70,7 @@ export function FloatingActions() {
   const hasProject = !!project?.id;
   const onIssue = !!issueId;
   const watching = watchState?.watching ?? false;
-  // Tạo issue = mở TRANG tạo (không còn popup). Dùng dự án hiện tại, fallback dự án đầu tiên.
+  // Tạo công việc = mở TRANG tạo (không còn popup). Dùng dự án hiện tại, fallback dự án đầu tiên.
   const createTargetKey = project?.key ?? projects?.[0]?.key ?? '';
 
   // Đóng có chuyển động: chạy animate-out rồi mới unmount. Fallback tức thời khi
@@ -101,10 +101,10 @@ export function FloatingActions() {
     enabled.issue && {
       key: 'issue',
       icon: <Plus className="h-5 w-5" />,
-      label: 'Tạo issue',
+      label: 'Tạo công việc',
       onClick: run(() => {
         if (createTargetKey) openCreate({ projectKey: createTargetKey });
-        else toast.error('Hãy tạo dự án trước khi tạo issue');
+        else toast.error('Chưa có dự án nào — hãy tạo một dự án trước, rồi thêm công việc vào đó.');
       }),
     },
     hasProject && aiEnabled && enabled.ai && { key: 'ai', icon: <Sparkles className="h-5 w-5 text-primary" />, label: 'Tạo bằng AI', onClick: run(() => setGenAi(true)) },

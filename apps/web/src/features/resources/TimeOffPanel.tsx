@@ -81,7 +81,7 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
 
   function submit() {
     if (!form) return;
-    if (form.scope === 'person' && !form.userId) return toast.error('Hãy chọn người nghỉ, hoặc đổi phạm vi sang “Cả workspace”');
+    if (form.scope === 'person' && !form.userId) return toast.error('Hãy chọn người nghỉ, hoặc đổi phạm vi sang “Cả tổ chức”');
     if (!form.startDate || !form.endDate) return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
     if (form.endDate < form.startDate) return toast.error('Ngày kết thúc phải bằng hoặc sau ngày bắt đầu');
 
@@ -135,7 +135,7 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
                 onChange={(v) => setForm({ ...form, scope: v as FormState['scope'], kind: v === 'workspace' ? 'HOLIDAY' : form.kind })}
                 options={[
                   { value: 'person', label: 'Một thành viên nghỉ' },
-                  { value: 'workspace', label: 'Cả workspace nghỉ — ngày lễ chung' },
+                  { value: 'workspace', label: 'Cả tổ chức nghỉ — ngày lễ chung' },
                 ]}
                 ariaLabel="Phạm vi áp dụng"
               />
@@ -204,7 +204,7 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
                   </span>
                 ) : (
                   <span className="min-w-0 flex-1 text-sm text-ink" title="Ngày lễ chung — trừ số giờ làm được của tất cả thành viên.">
-                    Cả workspace
+                    Cả tổ chức
                   </span>
                 )}
 
@@ -244,7 +244,7 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
         title="Xoá ngày nghỉ?"
         description={
           pendingDelete
-            ? `${pendingDelete.user?.displayName ?? 'Cả workspace'} · ${shortDay(pendingDelete.startDate)} – ${shortDay(pendingDelete.endDate)}. Số giờ làm được sẽ được tính lại ngay.`
+            ? `${pendingDelete.user?.displayName ?? 'Cả tổ chức'} · ${shortDay(pendingDelete.startDate)} – ${shortDay(pendingDelete.endDate)}. Số giờ làm được sẽ được tính lại ngay.`
             : undefined
         }
         loading={remove.isPending}

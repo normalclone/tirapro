@@ -103,7 +103,7 @@ export function RaidEditorModal({
 
   const projectOptions = useMemo(
     () => [
-      { value: '', label: 'Toàn workspace' },
+      { value: '', label: 'Toàn tổ chức' },
       ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
     ],
     [projects],
@@ -264,14 +264,14 @@ export function RaidEditorModal({
             <Field label="Hạn xử lý" hint="(tùy chọn — ngày cần xong)" htmlFor="raid-due">
               <Input id="raid-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </Field>
-            <Field label="Dự án" hint="(để trống = ảnh hưởng cả workspace)" htmlFor="raid-project">
+            <Field label="Dự án" hint="(để trống = ảnh hưởng cả tổ chức)" htmlFor="raid-project">
               <SearchSelect
                 id="raid-project"
                 value={projectId}
                 onChange={setProjectId}
                 options={projectOptions}
                 ariaLabel="Dự án"
-                placeholder="Toàn workspace"
+                placeholder="Toàn tổ chức"
                 searchPlaceholder="Tìm dự án…"
               />
             </Field>

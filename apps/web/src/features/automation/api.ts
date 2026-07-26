@@ -55,7 +55,7 @@ export const recurringKey = ['automation', 'recurring'] as const;
 
 /**
  * Guard quyền của API đọc `projectId` từ params/body/query. Gửi kèm dự án của bản ghi để
- * quản trị DỰ ÁN (không phải quản trị workspace) cũng thao tác được; máy chủ vẫn kiểm tra
+ * quản trị DỰ ÁN (không phải quản trị chung) cũng thao tác được; máy chủ vẫn kiểm tra
  * lại theo dự án thật của bản ghi.
  */
 const scopeParams = (projectId?: string | null) => (projectId ? { projectId } : undefined);

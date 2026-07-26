@@ -16,7 +16,7 @@ export function useMyIssues() {
   });
 }
 
-/** Số liệu tổng hợp một dự án (hoặc toàn workspace) cho Tổng quan admin. */
+/** Số liệu tổng hợp một dự án (hoặc toàn tổ chức) cho Tổng quan admin. */
 export interface OverviewTotals {
   total: number;
   todo: number;
@@ -84,7 +84,7 @@ export interface WorkspaceOverview {
 }
 
 /**
- * Tổng quan toàn workspace (mọi dự án) cho admin — `GET /reports/overview`.
+ * Tổng quan toàn tổ chức (mọi dự án) cho admin — `GET /reports/overview`.
  * Chỉ gọi khi người dùng là admin (`enabled`) để tránh 403 với người dùng thường.
  */
 export function useWorkspaceOverview(enabled: boolean) {

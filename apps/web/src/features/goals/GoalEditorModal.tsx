@@ -108,7 +108,7 @@ export function GoalEditorModal({
 
   const projectOptions = useMemo(
     () => [
-      { value: '', label: 'Toàn workspace' },
+      { value: '', label: 'Toàn tổ chức' },
       ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
     ],
     [projects],
@@ -238,14 +238,14 @@ export function GoalEditorModal({
                 ariaLabel="Trạng thái mục tiêu"
               />
             </Field>
-            <Field label="Dự án" hint="(để trống = mục tiêu chung của cả workspace)" htmlFor="goal-project">
+            <Field label="Dự án" hint="(để trống = mục tiêu chung của cả tổ chức)" htmlFor="goal-project">
               <SearchSelect
                 id="goal-project"
                 value={projectId}
                 onChange={setProjectId}
                 options={projectOptions}
                 ariaLabel="Dự án"
-                placeholder="Toàn workspace"
+                placeholder="Toàn tổ chức"
                 searchPlaceholder="Tìm dự án…"
               />
             </Field>

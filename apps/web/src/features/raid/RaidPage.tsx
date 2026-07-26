@@ -293,7 +293,7 @@ export function RaidPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Rủi ro &amp; vướng mắc</h1>
           <p className="mt-1 text-sm text-muted">
-            Nơi ghi lại mọi thứ có thể cản tiến độ của workspace: rủi ro có thể xảy ra, giả định đang tin là đúng,
+            Nơi ghi lại mọi thứ có thể cản tiến độ của cả tổ chức: rủi ro có thể xảy ra, giả định đang tin là đúng,
             vấn đề đang xảy ra và việc phải chờ bên khác (quốc tế gọi là sổ RAID). Điểm rủi ro = xác suất × mức ảnh hưởng,
             mục đáng lo nhất luôn nằm trên cùng.
           </p>

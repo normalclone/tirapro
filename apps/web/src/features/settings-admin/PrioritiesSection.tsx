@@ -120,7 +120,7 @@ export function PrioritiesSection() {
           description={
             canManage
               ? 'Thêm độ ưu tiên đầu tiên để bắt đầu sắp xếp issue.'
-              : 'Chưa có độ ưu tiên nào. Liên hệ quản trị workspace để thêm.'
+              : 'Chưa có độ ưu tiên nào. Liên hệ quản trị chung để thêm.'
           }
           action={
             canManage ? (
@@ -201,7 +201,7 @@ export function PrioritiesSection() {
         </ul>
       )}
 
-      {/* Form thêm độ ưu tiên — chỉ quản trị workspace */}
+      {/* Form thêm độ ưu tiên — chỉ quản trị chung */}
       {canManage && adding ? (
         <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
           <div className="flex flex-wrap items-end gap-3">

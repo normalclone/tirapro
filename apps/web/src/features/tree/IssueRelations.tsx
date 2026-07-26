@@ -9,7 +9,7 @@ import { categoryColor } from '@/lib/statusColor';
 import { useProjectIssues } from '@/features/backlog/api';
 
 /**
- * Task con của 1 issue (con trực tiếp) + tiến độ subtree. Việc đặt task cha nằm ở
+ * Việc con trực tiếp của một công việc + tiến độ cả nhánh. Việc đặt việc cha nằm ở
  * dải thuộc tính; breadcrumb hiển thị task cha — panel này chỉ hiển thị task con.
  */
 export function IssueRelations({ issue }: { issue: IssueDto }) {
@@ -22,14 +22,14 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
   );
   const progress = useMemo(() => subtreeProgress(issues, issue.id), [issues, issue.id]);
 
-  // Chỉ hiển thị mục Task con khi thực sự có task con.
+  // Chỉ hiển thị mục Việc con khi thực sự có việc con.
   if (children.length === 0) return null;
 
   return (
     <section className="rounded-lg border border-border bg-surface">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
         <ListTree className="h-4 w-4 text-muted" aria-hidden />
-        <h2 className="text-sm font-medium text-ink-strong">Task con ({children.length})</h2>
+        <h2 className="text-sm font-medium text-ink-strong" title="Những việc nhỏ được tách ra từ việc này. Xong hết việc con thì việc cha mới coi là xong.">Việc con ({children.length})</h2>
         {progress.total > 0 && (
           <span className="ml-auto tabular text-xs text-muted">{progress.pct}% hoàn thành</span>
         )}

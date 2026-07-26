@@ -3,7 +3,7 @@ import type { CommentDto, IssueDto, UserDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { commentsKey, issueKey } from '@/features/issues/api';
 
-/** Thành viên workspace — dùng cho dropdown người làm (assignee). */
+/** Thành viên của không gian làm việc — dùng cho dropdown người làm (assignee). */
 export function useWorkspaceUsers() {
   return useQuery({
     queryKey: ['workspace-users'],

@@ -38,7 +38,7 @@ const PAGE_SIZE = 25;
 
 const VISIBILITY_LABEL: Record<FilterVisibility, string> = {
   PRIVATE: 'Riêng tư',
-  WORKSPACE: 'Workspace',
+  WORKSPACE: 'Cả tổ chức',
   PROJECT: 'Dự án',
 };
 

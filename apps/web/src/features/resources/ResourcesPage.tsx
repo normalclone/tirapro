@@ -52,13 +52,20 @@ function levelOf(cell: WorkloadCell): Level {
   return r < 0.7 ? 'under' : 'balanced';
 }
 
-/** Nền ô: đậm dần theo tỉ lệ tải, luôn pha với `--surface` nên hợp cả sáng lẫn tối. */
+/**
+ * Nền ô: đậm dần theo tỉ lệ tải, luôn pha với `--surface` nên hợp cả sáng lẫn tối.
+ *
+ * PHẢI pha trong `oklab`, KHÔNG dùng `oklch`: `--surface` là màu trung tính có ám
+ * nhẹ (hue 250). Pha trong oklch sẽ nội suy theo cung tròn sắc độ, kéo đỏ (hue 25)
+ * vòng qua tím thành hue ~300 — ô "Quá tải" mất hẳn tín hiệu cảnh báo. oklab nội
+ * suy theo toạ độ vuông góc nên giữ nguyên sắc.
+ */
 function cellStyle(cell: WorkloadCell, level: Level) {
   const tint = LEVEL_META[level].tint;
   if (!tint) return undefined;
   const r = cell.ratio ?? 1;
   const pct = level === 'over' ? Math.min(46, 28 + (r - 1) * 30) : Math.round(12 + Math.min(1, r) * 22);
-  return { backgroundColor: `color-mix(in oklch, ${tint} ${pct}%, var(--surface))` };
+  return { backgroundColor: `color-mix(in oklab, ${tint} ${pct}%, var(--surface))` };
 }
 
 /**
@@ -185,7 +192,7 @@ export function ResourcesPage() {
             <EmptyState
               icon={<Users className="h-6 w-6" />}
               title="Chưa có ai để tính khối lượng việc"
-              description="Bảng này cho biết mỗi tuần một người gánh bao nhiêu giờ. Hãy mời người vào workspace, rồi phân bổ họ vào dự án."
+              description="Bảng này cho biết mỗi tuần một người gánh bao nhiêu giờ. Hãy mời người vào không gian làm việc, rồi phân bổ họ vào dự án."
             />
           ) : (
             <HeatMap rows={workload.data.rows} weeks={workload.data.weeks} hoursPerDay={workload.data.hoursPerDay} />
@@ -210,7 +217,7 @@ function Legend() {
         <li key={lv} className="flex items-center gap-1.5" title={LEVEL_META[lv].hint}>
           <span
             className="h-3 w-3 rounded-sm border border-border"
-            style={LEVEL_META[lv].tint ? { backgroundColor: `color-mix(in oklch, ${LEVEL_META[lv].tint} 30%, var(--surface))` } : { backgroundColor: 'var(--surface-2)' }}
+            style={LEVEL_META[lv].tint ? { backgroundColor: `color-mix(in oklab, ${LEVEL_META[lv].tint} 30%, var(--surface))` } : { backgroundColor: 'var(--surface-2)' }}
             aria-hidden
           />
           {LEVEL_META[lv].label}

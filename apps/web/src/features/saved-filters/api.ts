@@ -41,7 +41,7 @@ export interface FilterFields {
 export const filtersKey = ['filters'] as const;
 export const filterFieldsKey = ['filter-fields'] as const;
 
-/** Danh mục giá trị cho bộ dựng truy vấn trực quan (gom theo workspace). */
+/** Danh mục giá trị cho bộ dựng truy vấn trực quan (gom theo không gian làm việc). */
 export function useFilterFields() {
   return useQuery({
     queryKey: filterFieldsKey,
