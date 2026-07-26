@@ -187,7 +187,7 @@ const NAV: { group: string; items: [string, string][] }[] = [
   { group: 'Bắt đầu', items: [['gioi-thieu', 'Giới thiệu'], ['khai-niem', 'Khái niệm cơ bản'], ['dang-nhap', 'Đăng nhập & tài khoản'], ['vai-tro', 'Hiểu về vai trò']] },
   { group: 'Ai cũng dùng', items: [['dieu-huong', 'Điều hướng & Cmd+K'], ['lam-viec-issue', 'Làm việc với issue'], ['thong-bao', 'Thông báo & theo dõi'], ['tim-kiem', 'Tìm kiếm & bộ lọc'], ['ca-nhan', 'Cá nhân hoá']] },
   { group: 'Theo vai trò', items: [['vt-reporter', 'Người báo cáo'], ['vt-developer', 'Lập trình viên'], ['vt-lead', 'Quản trị dự án'], ['vt-ws-admin', 'Quản trị workspace'], ['vt-viewer', 'Người xem'], ['vt-sys-admin', 'Quản trị hệ thống']] },
-  { group: 'Nâng cao', items: [['ai', 'AI hỗ trợ'], ['bao-cao', 'Báo cáo & phân tích'], ['tich-hop', 'Tích hợp'], ['phim-tat', 'Phím tắt'], ['faq', 'Câu hỏi thường gặp']] },
+  { group: 'Nâng cao', items: [['quan-ly-nang-cao', 'Quản lý nâng cao'], ['ai', 'AI hỗ trợ'], ['bao-cao', 'Báo cáo & phân tích'], ['tich-hop', 'Tích hợp'], ['phim-tat', 'Phím tắt'], ['faq', 'Câu hỏi thường gặp']] },
 ];
 const ALL_IDS = NAV.flatMap((g) => g.items.map((i) => i[0]));
 const LABEL = (id: string) => NAV.flatMap((g) => g.items).find((i) => i[0] === id)?.[1];
@@ -521,6 +521,25 @@ export function DocumentationPage() {
             </section>
 
             {/* ============== NÂNG CAO ============== */}
+            <section className="mb-14">
+              <H2 id="quan-ly-nang-cao">Quản lý nâng cao</H2>
+              <P>Ngoài Scrum/Kanban, Tirapro hỗ trợ các mô hình quản lý sau — mỗi mục là một mục riêng trên thanh bên trái.</P>
+              <div className="border-t border-border">
+                <Feature icon={<GitBranch className="h-4 w-4" />} title="Lịch trình nâng cao (Gantt)">Phụ thuộc FS/SS/FF/SF giữa công việc, <strong>đường găng</strong> tự tính, cột mốc, và <strong>kế hoạch gốc</strong> để so sánh kế hoạch với thực tế. Ở dự án → tab <Mono>Lịch trình</Mono>.</Feature>
+                <Feature icon={<Users className="h-4 w-4" />} title="Nguồn lực & tải">Phân bổ %thời gian theo người/dự án, nghỉ phép & ngày lễ; bảng nhiệt tải theo tuần cảnh báo quá tải.</Feature>
+                <Feature icon={<History className="h-4 w-4" />} title="Chấm công">Lưới công việc × ngày, nhập nhanh (“1h30”, “1.5”), tổng theo ngày/tuần, xuất CSV.</Feature>
+                <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Danh mục & chương trình">Gom nhiều dự án thành chương trình, xem tiến độ tổng hợp và roadmap theo thời gian.</Feature>
+                <Feature icon={<Sparkles className="h-4 w-4" />} title="Mục tiêu (OKR)">Mục tiêu theo quý + Key Result có chỉ số, gắn issue/epic để tự tính tiến độ.</Feature>
+                <Feature icon={<TriangleAlert className="h-4 w-4" />} title="Sổ rủi ro (RAID)">Rủi ro · Giả định · Vấn đề · Phụ thuộc, chấm điểm xác suất × ảnh hưởng và ma trận nhiệt 5×5.</Feature>
+                <Feature icon={<Bell className="h-4 w-4" />} title="SLA / Service desk">Cam kết thời gian phản hồi &amp; giải quyết; hạn tự gắn khi tạo issue, badge đếm ngược trên issue, bảng theo dõi vi phạm.</Feature>
+                <Feature icon={<ClipboardList className="h-4 w-4" />} title="Quản lý kiểm thử">Ca kiểm thử (bước, kết quả mong đợi), đợt chạy, ghi kết quả Đạt/Không đạt, tạo bug ngay từ ca lỗi, truy vết ca ↔ issue.</Feature>
+                <Feature icon={<BookOpen className="h-4 w-4" />} title="Tài liệu nội bộ (wiki)">Trang markdown phân cấp theo workspace hoặc dự án, tìm kiếm toàn văn.</Feature>
+                <Feature icon={<Plug className="h-4 w-4" />} title="Tự động hoá">Mẫu issue dùng lại và việc lặp lại theo lịch (ngày/tuần/tháng) tự sinh issue.</Feature>
+                <Feature icon={<Building2 className="h-4 w-4" />} title="Khách hàng & hợp đồng">Quản lý khách hàng, hợp đồng (giá trị, thời hạn) và gắn dự án theo khách hàng.</Feature>
+                <Feature icon={<Check className="h-4 w-4" />} title="Trong mỗi issue">Thêm <strong>người tham gia</strong> (nhiều người cùng theo việc) và <strong>checklist</strong> đầu việc nhỏ có tiến độ.</Feature>
+              </div>
+            </section>
+
             <section className="mb-14">
               <H2 id="ai">AI hỗ trợ</H2>
               <P>AI giúp giảm thao tác gõ tay. Cần quyền <Mono>ai:use</Mono> (Member trở lên); thiếu khoá AI thì tự giảm về heuristic — vẫn dùng được, chỉ kém “thông minh” hơn.</P>
