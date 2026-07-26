@@ -1,1 +1,0 @@
-import{ac as D,v as d,b6 as n,b7 as u}from"./index-BTDEEic0.js";function c(t,e){const a=D(t,e==null?void 0:e.in);return a.setHours(0,0,0,0),a}function O(t,e,a){const[l,f]=d(a==null?void 0:a.in,t,e),r=c(l),s=c(f),i=+r-n(r),m=+s-n(s);return Math.round((i-m)/u)}export{O as d,c as s};

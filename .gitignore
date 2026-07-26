@@ -42,6 +42,8 @@ apps/api/uploads/
 
 # PWA / Vite
 apps/web/dev-dist/
+# Bản build tạm để soi thử (trỏ API khác) — không đưa vào repo.
+apps/web/dist-live/
 
 # Screenshot tool output (apps/web/scripts/shot.mjs)
 .shots/
