@@ -50,6 +50,16 @@ import { MembersModule } from './modules/members/members.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { IssueExtrasModule } from './modules/issue-extras/issue-extras.module';
 import { SlaModule } from './modules/sla/sla.module';
+import { TestingModule } from './modules/testing/testing.module';
+import { PlanningModule } from './modules/planning/planning.module';
+import { AutomationModule } from './modules/automation/automation.module';
+import { WikiModule } from './modules/wiki/wiki.module';
+import { TimesheetModule } from './modules/timesheet/timesheet.module';
+import { ResourcesModule } from './modules/resources/resources.module';
+import { ClientsModule } from './modules/clients/clients.module';
+import { ProgramsModule } from './modules/programs/programs.module';
+import { RaidModule } from './modules/raid/raid.module';
+import { GoalsModule } from './modules/goals/goals.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
 import { ApiKeyModule } from './modules/api-keys/api-key.module';
@@ -118,6 +128,16 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     TeamsModule,
     IssueExtrasModule,
     SlaModule,
+    TestingModule,
+    PlanningModule,
+    AutomationModule,
+    WikiModule,
+    TimesheetModule,
+    ResourcesModule,
+    ClientsModule,
+    ProgramsModule,
+    RaidModule,
+    GoalsModule,
     AdminModule,
   ],
   providers: [

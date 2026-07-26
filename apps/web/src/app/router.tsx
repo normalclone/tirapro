@@ -41,6 +41,16 @@ const AdminWorkspacesPage = lazy(() => import('@/features/admin/AdminWorkspacesP
 const AdminUsersPage = lazy(() => import('@/features/admin/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })));
 const AdminConfigPage = lazy(() => import('@/features/admin/AdminConfigPage').then((m) => ({ default: m.AdminConfigPage })));
 const AdminSystemPage = lazy(() => import('@/features/admin/AdminSystemPage').then((m) => ({ default: m.AdminSystemPage })));
+const PortfolioPage = lazy(() => import('@/features/portfolio/PortfolioPage').then((m) => ({ default: m.PortfolioPage })));
+const ClientsPage = lazy(() => import('@/features/clients/ClientsPage').then((m) => ({ default: m.ClientsPage })));
+const GoalsPage = lazy(() => import('@/features/goals/GoalsPage').then((m) => ({ default: m.GoalsPage })));
+const RaidPage = lazy(() => import('@/features/raid/RaidPage').then((m) => ({ default: m.RaidPage })));
+const ResourcesPage = lazy(() => import('@/features/resources/ResourcesPage').then((m) => ({ default: m.ResourcesPage })));
+const TimesheetPage = lazy(() => import('@/features/timesheet/TimesheetPage').then((m) => ({ default: m.TimesheetPage })));
+const SlaPage = lazy(() => import('@/features/sla/SlaPage').then((m) => ({ default: m.SlaPage })));
+const WikiPage = lazy(() => import('@/features/wiki/WikiPage').then((m) => ({ default: m.WikiPage })));
+const AutomationPage = lazy(() => import('@/features/automation/AutomationPage').then((m) => ({ default: m.AutomationPage })));
+const TestingPage = lazy(() => import('@/features/testing/TestingPage').then((m) => ({ default: m.TestingPage })));
 // Overlay luôn mount trong shell nhưng không cần cho first paint → lazy (fallback null, mở mới tải).
 const CommandPalette = lazy(() => import('@/features/command/CommandPalette').then((m) => ({ default: m.CommandPalette })));
 const CreateIssueModal = lazy(() => import('@/features/issues/CreateIssueModal').then((m) => ({ default: m.CreateIssueModal })));
@@ -117,6 +127,15 @@ export const router = createBrowserRouter([
           { path: 'api', element: <ApiKeysPage /> },
         ],
       },
+      { path: 'portfolio', element: <PortfolioPage /> },
+      { path: 'clients', element: <ClientsPage /> },
+      { path: 'goals', element: <GoalsPage /> },
+      { path: 'raid', element: <RaidPage /> },
+      { path: 'resources', element: <ResourcesPage /> },
+      { path: 'timesheet', element: <TimesheetPage /> },
+      { path: 'sla', element: <SlaPage /> },
+      { path: 'wiki', element: <WikiPage /> },
+      { path: 'automation', element: <AutomationPage /> },
       { path: 'integrations', element: <IntegrationsPage /> },
       { path: 'filters', element: <FiltersPage /> },
       { path: 'issue/:key', element: <IssueDetailPage /> },
@@ -132,6 +151,7 @@ export const router = createBrowserRouter([
           { path: 'reports', element: <ReportsPage /> },
           { path: 'gantt', element: <GanttPage /> },
           { path: 'tree', element: <TreePage /> },
+          { path: 'testing', element: <TestingPage /> },
           { path: 'config', element: <ProjectConfigPage /> },
         ],
       },

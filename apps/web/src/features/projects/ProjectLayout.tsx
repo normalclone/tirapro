@@ -3,7 +3,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } 
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   Activity, BarChart3, ChevronDown, GanttChartSquare, Inbox, LayoutGrid,
-  ListTodo, ListTree, Plus, Settings, Sparkles,
+  ListTodo, ListTree, Plus, Settings, Sparkles, ClipboardList,
 } from 'lucide-react';
 import { useProject, useProjects } from './api';
 import { CreateProjectModal } from './CreateProjectModal';
@@ -26,6 +26,7 @@ const VIEWS = [
 ] as const;
 
 const MORE = [
+  { seg: 'testing', label: 'Kiểm thử', icon: ClipboardList },
   { seg: 'triage', label: 'Triage', icon: Inbox },
   { seg: 'activity', label: 'Hoạt động', icon: Activity },
   { seg: 'config', label: 'Cấu hình', icon: Settings },
@@ -49,7 +50,7 @@ export function ProjectLayout() {
 
   const seg = loc.pathname.split('/')[3] || 'board';
   // Segment thực sự là "view" (bỏ qua create/issue…) để rail link đúng + không ghi đè lastView.
-  const KNOWN_VIEWS = new Set(['board', 'backlog', 'gantt', 'tree', 'reports', 'triage', 'activity', 'config']);
+  const KNOWN_VIEWS = new Set(['board', 'backlog', 'gantt', 'tree', 'reports', 'triage', 'activity', 'config', 'testing']);
   const view = KNOWN_VIEWS.has(seg) ? seg : 'board';
   useEffect(() => {
     if (key && KNOWN_VIEWS.has(seg)) {

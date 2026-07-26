@@ -1,32 +1,46 @@
 import type { Config } from 'tailwindcss';
 import animate from 'tailwindcss-animate';
 
+/**
+ * Token màu là biến CSS chứa giá trị OKLCH nguyên khối (không phải kênh rời), nên
+ * cú pháp `rgb(var(--x) / <alpha-value>)` KHÔNG dùng được. Dạng hàm dưới đây cho
+ * Tailwind sinh đúng CSS khi có opacity modifier (vd `bg-danger/10`) bằng color-mix;
+ * nếu không có modifier thì trả về biến như cũ.
+ * Thiếu hàm này, các class như `bg-success/10` sẽ bị BỎ QUA (không sinh CSS).
+ */
+const token =
+  (name: string) =>
+  ({ opacityValue }: { opacityValue?: string }) =>
+    opacityValue === undefined
+      ? `var(${name})`
+      : `color-mix(in oklch, var(${name}) calc(${opacityValue} * 100%), transparent)`;
+
 export default {
   darkMode: 'class',
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        bg: 'var(--bg)',
-        surface: 'var(--surface)',
-        'surface-2': 'var(--surface-2)',
-        'surface-3': 'var(--surface-3)',
-        border: 'var(--border)',
-        'border-strong': 'var(--border-strong)',
-        ink: 'var(--ink)',
-        'ink-strong': 'var(--ink-strong)',
-        muted: 'var(--muted)',
-        faint: 'var(--faint)',
-        primary: 'var(--primary)',
-        'primary-hover': 'var(--primary-hover)',
-        'primary-fg': 'var(--primary-fg)',
-        'primary-subtle': 'var(--primary-subtle)',
-        success: 'var(--success)',
-        warning: 'var(--warning)',
-        danger: 'var(--danger)',
-        'status-todo': 'var(--status-todo)',
-        'status-progress': 'var(--status-progress)',
-        'status-done': 'var(--status-done)',
+        bg: token('--bg'),
+        surface: token('--surface'),
+        'surface-2': token('--surface-2'),
+        'surface-3': token('--surface-3'),
+        border: token('--border'),
+        'border-strong': token('--border-strong'),
+        ink: token('--ink'),
+        'ink-strong': token('--ink-strong'),
+        muted: token('--muted'),
+        faint: token('--faint'),
+        primary: token('--primary'),
+        'primary-hover': token('--primary-hover'),
+        'primary-fg': token('--primary-fg'),
+        'primary-subtle': token('--primary-subtle'),
+        success: token('--success'),
+        warning: token('--warning'),
+        danger: token('--danger'),
+        'status-todo': token('--status-todo'),
+        'status-progress': token('--status-progress'),
+        'status-done': token('--status-done'),
       },
       fontFamily: {
         sans: ['Geist Variable', 'Geist', 'system-ui', 'sans-serif'],
