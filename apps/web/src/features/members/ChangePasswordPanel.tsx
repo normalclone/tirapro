@@ -9,10 +9,10 @@ import { useChangePassword } from './api';
 
 /** Quy tắc mật khẩu — khớp với passwordSchema ở backend. */
 const RULES: { test: (v: string) => boolean; label: string }[] = [
-  { test: (v) => v.length >= 8, label: 'Tối thiểu 8 ký tự' },
-  { test: (v) => /[a-z]/.test(v), label: '1 chữ thường' },
-  { test: (v) => /[A-Z]/.test(v), label: '1 chữ hoa' },
-  { test: (v) => /[0-9]/.test(v), label: '1 chữ số' },
+  { test: (v) => v.length >= 8, label: 'Ít nhất 8 ký tự' },
+  { test: (v) => /[a-z]/.test(v), label: 'Có chữ thường' },
+  { test: (v) => /[A-Z]/.test(v), label: 'Có chữ hoa' },
+  { test: (v) => /[0-9]/.test(v), label: 'Có chữ số' },
 ];
 
 export function ChangePasswordPanel() {
@@ -44,7 +44,7 @@ export function ChangePasswordPanel() {
       { currentPassword: current, newPassword: next },
       {
         onSuccess: () => {
-          toast.success('Đã đổi mật khẩu');
+          toast.success('Đã đổi mật khẩu. Lần đăng nhập sau hãy dùng mật khẩu mới.');
           reset();
         },
         onError: (err) => toast.error(apiErrorMessage(err)),
@@ -61,7 +61,7 @@ export function ChangePasswordPanel() {
         <div>
           <h2 className="text-base font-semibold text-ink-strong">Đổi mật khẩu</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Cần nhập mật khẩu hiện tại để xác minh.
+            Nhập mật khẩu hiện tại để xác minh đúng là bạn, rồi đặt mật khẩu mới.
           </p>
         </div>
       </div>
@@ -133,7 +133,7 @@ export function ChangePasswordPanel() {
         )}
 
         {confirmMismatch && (
-          <p className="text-xs text-danger">Mật khẩu xác nhận chưa khớp.</p>
+          <p className="text-xs text-danger">Hai ô mật khẩu mới chưa giống nhau — nhập lại cho khớp.</p>
         )}
 
         <div className="flex items-center justify-between">

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { IssueDto } from '@tirapro/types';
 
-/** Bộ lọc nhanh có thể bật/tắt độc lập; nhiều bộ bật cùng lúc = AND. */
+/** Bộ lọc nhanh có thể bật/tắt độc lập; bật nhiều bộ cùng lúc thì việc phải khớp TẤT CẢ. */
 export type QuickFilterId = 'mine' | 'overdue' | 'unassigned';
 
-export const QUICK_FILTERS: { id: QuickFilterId; label: string }[] = [
-  { id: 'mine', label: 'Của tôi' },
-  { id: 'overdue', label: 'Quá hạn' },
-  { id: 'unassigned', label: 'Chưa gán' },
+/** `hint` hiện trong tooltip của chip — nói rõ bộ lọc giữ lại những việc nào. */
+export const QUICK_FILTERS: { id: QuickFilterId; label: string; hint: string }[] = [
+  { id: 'mine', label: 'Của tôi', hint: 'Chỉ hiện việc bạn đang phụ trách' },
+  { id: 'overdue', label: 'Quá hạn', hint: 'Chỉ hiện việc đã qua hạn mà chưa xong' },
+  { id: 'unassigned', label: 'Chưa gán', hint: 'Chỉ hiện việc chưa có ai nhận' },
 ];
 
 const LS_KEY = 'tirapro:quickFilters';
@@ -52,7 +53,7 @@ export function useQuickFilters() {
   return { active, toggle, clear };
 }
 
-/** Một issue có "quá hạn" không: có hạn, hạn đã qua, và chưa DONE. */
+/** Một công việc có "quá hạn" không: có đặt hạn, hạn đã qua, và việc chưa xong. */
 function isOverdue(issue: IssueDto, now: number): boolean {
   if (!issue.dueDate) return false;
   if (issue.status.category === 'DONE') return false;
@@ -61,8 +62,8 @@ function isOverdue(issue: IssueDto, now: number): boolean {
 }
 
 /**
- * Lọc client-side theo các bộ lọc đang bật (AND). `userId` = người dùng hiện tại
- * cho bộ "Của tôi". Trả về mảng mới (không đột biến đầu vào).
+ * Lọc phía trình duyệt theo các bộ lọc đang bật (việc phải khớp tất cả). `userId` = người dùng
+ * hiện tại, dùng cho bộ "Của tôi". Trả về mảng mới (không đột biến đầu vào).
  */
 export function applyQuickFilters(
   issues: IssueDto[],

@@ -12,7 +12,8 @@ import { cn } from '@/lib/utils';
 // Token inline: ảnh, liên kết, đậm, mã, nghiêng (* hoặc _).
 const INLINE = /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|`([^`]+)`|\*([^*]+)\*|_([^_]+)_/g;
 
-// Chống XSS lưu trữ: chỉ cho phép scheme an toàn. Link chặn javascript:/data:; ảnh cho thêm data:image (an toàn trong <img>).
+// Chống XSS lưu trữ: chỉ cho phép scheme an toàn. Liên kết chặn javascript:/data:;
+// riêng ảnh cho thêm data:image vì thẻ ảnh không chạy được mã từ nguồn này.
 const SAFE_HREF = /^(https?:\/\/|mailto:|\/)/i;
 const SAFE_IMG = /^(https?:\/\/|data:image\/|\/)/i;
 const safeHref = (u: string): string | null => (SAFE_HREF.test(u.trim()) ? u : null);
@@ -29,8 +30,8 @@ function renderInline(text: string): ReactNode[] {
     if (m[1] !== undefined && m[2] !== undefined) {
       const src = safeImg(m[2]);
       out.push(src
-        ? <img key={k++} src={src} alt={m[1]} loading="lazy" className="my-2 block max-h-96 max-w-full rounded-md border border-border" />
-        : <span key={k++} className="text-faint">{m[1] || '[ảnh không hợp lệ]'}</span>);
+        ? <img key={k++} src={src} alt={m[1] || 'Ảnh trong mô tả'} loading="lazy" className="my-2 block max-h-96 max-w-full rounded-md border border-border" />
+        : <span key={k++} className="text-faint">{m[1] || '[Đường dẫn ảnh không hợp lệ]'}</span>);
     } else if (m[3] !== undefined && m[4] !== undefined) {
       const href = safeHref(m[4]);
       out.push(href
@@ -113,7 +114,7 @@ export function MarkdownEditor({
   onCancel,
   autoFocus,
   rows = 6,
-  placeholder = 'Mô tả (Markdown cơ bản, ảnh: ![](url))…',
+  placeholder = 'Nhập nội dung… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))',
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -156,7 +157,7 @@ export function MarkdownEditor({
     });
 
   function insertLink() {
-    const url = window.prompt('Dán URL liên kết:');
+    const url = window.prompt('Dán đường dẫn (URL) muốn liên kết tới:');
     if (!url) return;
     apply((val, s, e) => {
       const md = `[${val.slice(s, e) || 'liên kết'}](${url})`;
@@ -165,22 +166,22 @@ export function MarkdownEditor({
   }
 
   function insertImage() {
-    const url = window.prompt('Dán URL ảnh:');
+    const url = window.prompt('Dán đường dẫn (URL) của ảnh muốn chèn:');
     if (url) insert(`\n![](${url})\n`);
   }
 
   return (
     <div className="overflow-hidden rounded-md border border-border bg-surface focus-within:border-primary">
       <div className="flex flex-wrap items-center gap-0.5 border-b border-border p-1">
-        <ToolBtn title="Đậm" onClick={() => wrap('**', 'văn bản')}><Bold className="h-4 w-4" /></ToolBtn>
-        <ToolBtn title="Nghiêng" onClick={() => wrap('*', 'văn bản')}><Italic className="h-4 w-4" /></ToolBtn>
-        <ToolBtn title="Mã" onClick={() => wrap('`', 'code')}><Code className="h-4 w-4" /></ToolBtn>
+        <ToolBtn title="Bôi đậm chữ đang chọn" onClick={() => wrap('**', 'văn bản')}><Bold className="h-4 w-4" /></ToolBtn>
+        <ToolBtn title="In nghiêng chữ đang chọn" onClick={() => wrap('*', 'văn bản')}><Italic className="h-4 w-4" /></ToolBtn>
+        <ToolBtn title="Định dạng chữ đang chọn thành đoạn mã" onClick={() => wrap('`', 'code')}><Code className="h-4 w-4" /></ToolBtn>
         <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-        <ToolBtn title="Tiêu đề" onClick={() => linePrefix('## ')}><Heading2 className="h-4 w-4" /></ToolBtn>
-        <ToolBtn title="Danh sách" onClick={() => linePrefix('- ')}><List className="h-4 w-4" /></ToolBtn>
+        <ToolBtn title="Biến dòng hiện tại thành tiêu đề mục" onClick={() => linePrefix('## ')}><Heading2 className="h-4 w-4" /></ToolBtn>
+        <ToolBtn title="Biến dòng hiện tại thành gạch đầu dòng" onClick={() => linePrefix('- ')}><List className="h-4 w-4" /></ToolBtn>
         <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-        <ToolBtn title="Chèn liên kết" onClick={insertLink}><Link2 className="h-4 w-4" /></ToolBtn>
-        <ToolBtn title="Chèn ảnh" onClick={insertImage}><ImageIcon className="h-4 w-4" /></ToolBtn>
+        <ToolBtn title="Chèn liên kết tới một đường dẫn" onClick={insertLink}><Link2 className="h-4 w-4" /></ToolBtn>
+        <ToolBtn title="Chèn ảnh từ một đường dẫn" onClick={insertImage}><ImageIcon className="h-4 w-4" /></ToolBtn>
       </div>
       <textarea
         ref={ref}
@@ -200,7 +201,7 @@ export function MarkdownEditor({
 }
 
 /**
- * Mô tả issue: xem (render Markdown, dạng label) → bấm để sửa bằng MarkdownEditor.
+ * Mô tả công việc: xem (render Markdown, dạng label) → bấm để sửa bằng MarkdownEditor.
  * Lưu bằng nút hoặc ⌘/Ctrl+Enter, Esc để huỷ.
  */
 export function IssueDescription({ issue }: { issue: IssueDto }) {
@@ -227,7 +228,7 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
       <div className="space-y-2">
         <MarkdownEditor value={draft} onChange={setDraft} onSubmit={save} onCancel={cancel} autoFocus rows={8} />
         <div className="flex items-center gap-2">
-          <span className="mr-auto text-xs text-faint">Markdown cơ bản · ⌘/Ctrl+Enter để lưu · Esc huỷ</span>
+          <span className="mr-auto text-xs text-faint">Viết được Markdown · ⌘/Ctrl+Enter để lưu · Esc để huỷ</span>
           <Button size="sm" variant="ghost" onClick={cancel}>Huỷ</Button>
           <Button size="sm" onClick={save} loading={patch.isPending}>Lưu</Button>
         </div>
@@ -242,7 +243,7 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
         onClick={start}
         className="w-full rounded-md border border-dashed border-border px-3 py-2.5 text-left text-sm text-faint transition-colors hover:border-primary hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
       >
-        Thêm mô tả…
+        Chưa có mô tả — bấm để viết rõ việc cần làm.
       </button>
     );
   }
@@ -253,7 +254,7 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); start(); } }}
-      title="Bấm để sửa"
+      title="Bấm để sửa mô tả"
       className="cursor-text rounded-md border border-border bg-surface p-3 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
     >
       <MarkdownView text={issue.description} />

@@ -20,7 +20,7 @@ const DEMO_PASSWORD = 'Password123';
  */
 const DEMO_ACCOUNTS: { email: string; name: string; role: string; admin?: boolean }[] = [
   { email: 'admin@projira.dev', name: 'An Quản Trị', role: 'Admin hệ thống', admin: true },
-  { email: 'ba@tirapro.dev', name: 'Bình (BA)', role: 'Business Analyst' },
+  { email: 'ba@tirapro.dev', name: 'Bình (BA)', role: 'Phân tích nghiệp vụ' },
   { email: 'dev@tirapro.dev', name: 'Dũng (Dev)', role: 'Developer' },
   { email: 'tester@tirapro.dev', name: 'Trang (Tester)', role: 'Tester' },
 ];

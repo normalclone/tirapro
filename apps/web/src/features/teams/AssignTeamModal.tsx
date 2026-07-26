@@ -10,7 +10,7 @@ import { useProjects } from '@/features/projects/api';
 import { useRoles } from '@/features/roles/api';
 import { useAssignTeamToProject } from './api';
 
-/** Thêm cả nhóm vào một dự án: mỗi thành viên nhận (các) vai trò dự án đã chọn. */
+/** Giao vai trò dự án cho cả nhóm: mỗi thành viên nhận (các) vai trò riêng đã chọn trong dự án đó. */
 export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: TeamDto | null; onClose: () => void }) {
   const { data: projects } = useProjects();
   const { data: roles } = useRoles('PROJECT');
@@ -38,7 +38,7 @@ export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: 
     if (!canSave || !team) return;
     try {
       const res = await assign.mutateAsync({ id: team.id, projectId, roleIds });
-      toast.success(`Đã thêm ${res.added} thành viên nhóm “${team.name}” vào dự án`);
+      toast.success(`Đã đặt vai trò riêng trong dự án cho ${res.added} thành viên của nhóm “${team.name}”`);
       onClose();
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -56,10 +56,12 @@ export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: 
 
         <div className="space-y-4 px-5 py-4">
           <p className="text-sm text-muted">
-            Mọi thành viên workspace đều đã tham gia dự án. Thao tác này đặt <strong>vai trò riêng</strong> trong dự án cho {team.memberCount} thành viên của nhóm (ghi đè vai trò mặc định).
+            Mọi thành viên workspace vốn đã có mặt trong dự án với <strong>vai trò mặc định</strong>. Thao tác này đặt{' '}
+            <strong>vai trò riêng</strong> cho {team.memberCount} thành viên của nhóm trong dự án bạn chọn — vai trò riêng
+            được dùng thay cho vai trò mặc định.
           </p>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-muted">Dự án</label>
+            <label className="mb-1.5 block text-sm font-medium text-muted" title="Vai trò riêng chỉ áp dụng trong dự án này, không ảnh hưởng các dự án khác">Dự án</label>
             <SearchSelect
               value={projectId}
               onChange={setProjectId}
@@ -69,7 +71,9 @@ export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: 
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-muted">Vai trò trong dự án</label>
+            <label className="mb-1.5 block text-sm font-medium text-muted" title="Vai trò quyết định các thành viên nhóm được xem và làm gì trong dự án này. Chọn được nhiều vai trò.">
+              Vai trò trong dự án
+            </label>
             <RoleMultiSelect options={roleOptions} value={roleIds} onChange={setRoleIds} placeholder="Chọn vai trò…" />
           </div>
         </div>

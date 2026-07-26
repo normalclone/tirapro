@@ -9,8 +9,8 @@ import { cn } from '@/lib/utils';
 import { useAttachGoalIssues, useIssueSearch, type GoalDto } from './api';
 
 /**
- * Chọn issue/epic để gắn vào mục tiêu. Tìm theo mã hoặc tiêu đề, chọn nhiều rồi gắn
- * một lượt. Issue đã gắn hiện dấu tích và không chọn lại được.
+ * Chọn công việc (issue/epic) để gắn vào mục tiêu. Tìm theo mã hoặc tiêu đề, chọn nhiều
+ * rồi gắn một lượt. Công việc đã gắn hiện dấu tích và không chọn lại được.
  */
 export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal: GoalDto | null; onClose: () => void }) {
   const [term, setTerm] = useState('');
@@ -44,7 +44,7 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
     if (picked.length === 0 || !goal) return;
     try {
       await attach.mutateAsync({ goalId: goal.id, issueIds: picked });
-      toast.success(`Đã gắn ${picked.length} issue vào mục tiêu`);
+      toast.success(`Đã gắn ${picked.length} công việc vào mục tiêu`);
       onClose();
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -57,12 +57,12 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Gắn issue vào mục tiêu"
+        aria-label="Gắn công việc vào mục tiêu"
         className="relative flex max-h-[76vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200"
         onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
       >
         <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <span className="min-w-0 truncate text-sm font-medium text-ink">Gắn issue · {goal.name}</span>
+          <span className="min-w-0 truncate text-sm font-medium text-ink">Gắn công việc · {goal.name}</span>
           <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng">
             <X className="h-4 w-4" />
           </Button>
@@ -74,14 +74,16 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
             <Input
               value={term}
               onChange={(e) => setTerm(e.target.value)}
-              placeholder="Tìm theo mã hoặc tiêu đề…"
+              placeholder="Nhập mã công việc hoặc vài chữ trong tiêu đề…"
               className="pl-8"
               autoFocus
-              aria-label="Tìm issue"
+              aria-label="Tìm công việc để gắn"
             />
           </div>
           {goal.project && (
-            <p className="mt-1.5 text-xs text-faint">Chỉ tìm trong dự án {goal.project.name}.</p>
+            <p className="mt-1.5 text-xs text-faint">
+              Mục tiêu này thuộc dự án {goal.project.name} nên chỉ tìm công việc trong dự án đó.
+            </p>
           )}
         </div>
 
@@ -91,9 +93,11 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
               {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
             </div>
           ) : !results || results.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-muted">Không tìm thấy issue phù hợp.</p>
+            <p className="px-3 py-8 text-center text-sm text-muted">
+              Không có công việc nào khớp. Thử từ khoá ngắn hơn, hoặc nhập đúng mã công việc.
+            </p>
           ) : (
-            <ul role="listbox" aria-label="Kết quả tìm issue" aria-multiselectable="true">
+            <ul role="listbox" aria-label="Kết quả tìm công việc" aria-multiselectable="true">
               {results.map((r) => {
                 const already = attached.has(r.id);
                 const selected = picked.includes(r.id);
@@ -104,6 +108,7 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
                       role="option"
                       aria-selected={selected || already}
                       disabled={already}
+                      title={already ? 'Công việc này đã nằm trong mục tiêu' : undefined}
                       onClick={() => toggle(r.id)}
                       className={cn(
                         'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left transition-colors',
@@ -125,7 +130,7 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
 
         <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
           <span className="mr-auto text-xs text-faint">
-            {picked.length > 0 ? `Đã chọn ${picked.length}` : 'Chọn một hoặc nhiều issue'}
+            {picked.length > 0 ? `Đã chọn ${picked.length} công việc` : 'Chọn một hoặc nhiều công việc'}
           </span>
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
           <Button onClick={() => void submit()} loading={attach.isPending} disabled={picked.length === 0}>

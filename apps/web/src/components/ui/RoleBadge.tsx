@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { roleLabel, roleHint } from '@/lib/roleLabels';
 
 /** Màu dự phòng khi vai trò chưa đặt màu (token faint, trung tính). */
 const FALLBACK_COLOR = 'var(--faint)';
@@ -16,18 +17,21 @@ export function RoleBadge({
   title,
   trailing,
 }: {
+  /** Tên vai trò như lưu trong CSDL — tự dịch sang tiếng Việt khi hiển thị. */
   name: string;
   color?: string | null;
   className?: string;
-  /** Tooltip (mặc định = tên vai trò). */
+  /** Tooltip (mặc định = câu giải nghĩa vai trò, nếu có). */
   title?: string;
   /** Nội dung phụ bên phải pill (vd nút gỡ). */
   trailing?: ReactNode;
 }) {
   const c = color || FALLBACK_COLOR;
+  const label = roleLabel(name);
+  const hint = roleHint(name);
   return (
     <span
-      title={title ?? name}
+      title={title ?? (hint ? `${label} — ${hint}` : label)}
       className={cn(
         'inline-flex max-w-full items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium',
         className,
@@ -43,7 +47,7 @@ export function RoleBadge({
         style={{ backgroundColor: c }}
         aria-hidden
       />
-      <span className="min-w-0 truncate">{name}</span>
+      <span className="min-w-0 truncate">{label}</span>
       {trailing}
     </span>
   );

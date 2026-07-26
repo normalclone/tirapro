@@ -13,43 +13,37 @@ import { useProjects } from '@/features/projects/api';
 import { cn } from '@/lib/utils';
 import {
   useSlaBoard, useSlaPolicies, useCreateSlaPolicy, useUpdateSlaPolicy, useDeleteSlaPolicy, fmtMins,
-  type SlaPolicyDto,
-} from './api';
+  type SlaPolicyDto, SLA_SOON_MINS, SLA_SOON_LABEL } from './api';
 
-type Tab = 'board' | 'policies';
-
-/** Service desk: theo dõi ticket theo SLA + cấu hình chính sách. */
-export function SlaPage() {
-  const canManage = useAuth((s) => s.can('sla:manage'));
-  const [tab, setTab] = useState<Tab>('board');
-
+/** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Quản trị). */
+export function SlaBoardPage() {
   return (
     <div className={pageContainer('sm')}>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">SLA &amp; Service desk</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Thời gian xử lý</h1>
         <p className="mt-1 text-sm text-muted">
-          Cam kết thời gian phản hồi và giải quyết cho từng loại yêu cầu. Hạn được gắn tự động khi tạo issue.
+          Các công việc đang chạy đồng hồ đếm ngược theo cam kết thời gian xử lý.
+          Việc sắp tới hạn tô vàng, việc đã quá hạn tô đỏ — hãy xử lý từ trên xuống.
         </p>
       </header>
+      <SlaBoard />
+    </div>
+  );
+}
 
-      <div className="mb-6 flex gap-1 border-b border-border" role="tablist" aria-label="SLA">
-        {([['board', 'Đang theo dõi'], ['policies', 'Chính sách']] as [Tab, string][]).map(([id, label]) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              tab === id ? 'border-primary text-ink-strong' : 'border-transparent text-muted hover:text-ink',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'board' ? <SlaBoard /> : <SlaPolicies canManage={canManage} />}
+/** Cấu hình cam kết thời gian xử lý (dùng trong Cài đặt). */
+export function SlaPoliciesPage() {
+  const canManage = useAuth((s) => s.can('sla:manage'));
+  return (
+    <div className={pageContainer('sm')}>
+      <header className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Cam kết thời gian xử lý</h1>
+        <p className="mt-1 text-sm text-muted">
+          Đặt thời hạn phải phản hồi và phải xử lý xong cho từng nhóm công việc.
+          Hệ thống bấm giờ ngay khi công việc được tạo và cảnh báo khi sắp trễ.
+        </p>
+      </header>
+      <SlaPolicies canManage={canManage} />
     </div>
   );
 }
@@ -65,27 +59,29 @@ function SlaBoard() {
     return (
       <EmptyState
         icon={<AlarmClock className="h-6 w-6" />}
-        title="Không có ticket nào đang chạy SLA"
-        description="Issue mới tạo sẽ tự gắn SLA nếu khớp một chính sách đang bật."
+        title="Chưa có công việc nào đang tính giờ"
+        description="Đồng hồ chỉ chạy với công việc khớp một cam kết đang bật. Hãy đặt cam kết thời gian xử lý trong Cài đặt để bắt đầu theo dõi."
       />
     );
   }
 
   const breached = rows.filter((r) => r.resolveBreached).length;
-  const soon = rows.filter((r) => !r.resolveBreached && r.remainingMins <= 120).length;
+  const soon = rows.filter((r) => !r.resolveBreached && r.remainingMins <= SLA_SOON_MINS).length;
 
   return (
     <section className="rounded-lg border border-border bg-surface">
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
-        <h2 className="text-base font-semibold text-ink-strong">Đang theo dõi</h2>
-        <span className="text-sm text-muted">{rows.length} ticket</span>
-        {breached > 0 && <Badge className="bg-danger/10 text-danger">{breached} vi phạm</Badge>}
-        {soon > 0 && <Badge className="bg-warning/15 text-warning">{soon} sắp trễ</Badge>}
+        <h2 className="text-base font-semibold text-ink-strong" title="Đồng hồ chạy từ lúc công việc được tạo cho tới khi xử lý xong.">
+          Đang chạy đồng hồ
+        </h2>
+        <span className="text-sm text-muted">{rows.length} công việc</span>
+        {breached > 0 && <Badge className="bg-danger/10 text-danger">{breached} đã quá hạn</Badge>}
+        {soon > 0 && <Badge className="bg-warning/15 text-warning">{soon} {SLA_SOON_LABEL}</Badge>}
       </div>
       <ul className="divide-y divide-border">
         {rows.map((r) => {
           const late = r.resolveBreached;
-          const soonRow = !late && r.remainingMins <= 120;
+          const soonRow = !late && r.remainingMins <= SLA_SOON_MINS;
           return (
             <li key={r.issueId} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-3">
               <Link to={`/issue/${r.key}`} className="shrink-0 font-mono text-xs text-primary hover:underline">{r.key}</Link>
@@ -96,23 +92,31 @@ function SlaBoard() {
                   {r.priority.name}
                 </span>
               )}
-              <span className="hidden shrink-0 text-xs text-faint md:inline">{r.policyName}</span>
+              <span className="hidden shrink-0 text-xs text-faint md:inline" title="Cam kết thời gian xử lý đang áp dụng cho công việc này.">
+                {r.policyName}
+              </span>
               {!r.responded && <Badge className="bg-surface-2 text-muted">chưa phản hồi</Badge>}
               <span
                 className={cn(
                   'shrink-0 rounded px-1.5 py-0.5 text-xs font-medium',
                   late ? 'bg-danger/10 text-danger' : soonRow ? 'bg-warning/15 text-warning' : 'bg-surface-2 text-muted',
                 )}
-                title={`Hạn: ${new Date(r.resolveDueAt).toLocaleString('vi-VN')}`}
+                title={
+                  late
+                    ? `Đã quá hạn xử lý. Hạn là ${new Date(r.resolveDueAt).toLocaleString('vi-VN')}.`
+                    : `Thời gian còn lại trước khi phải xử lý xong, hạn là ${new Date(r.resolveDueAt).toLocaleString('vi-VN')}.`
+                }
               >
-                {late ? <span className="inline-flex items-center gap-1"><TriangleAlert className="h-3 w-3" /> trễ {fmtMins(r.remainingMins)}</span> : `còn ${fmtMins(r.remainingMins)}`}
+                {late ? <span className="inline-flex items-center gap-1"><TriangleAlert className="h-3 w-3" /> quá hạn {fmtMins(r.remainingMins)}</span> : `còn ${fmtMins(r.remainingMins)}`}
               </span>
               {r.assignee ? (
-                <span className="flex shrink-0 items-center gap-1.5" title={r.assignee.displayName}>
+                <span className="flex shrink-0 items-center gap-1.5" title={`Người xử lý: ${r.assignee.displayName}`}>
                   <Avatar name={r.assignee.displayName} src={r.assignee.avatarUrl} size={20} />
                 </span>
               ) : (
-                <span className="shrink-0 text-[11px] text-faint">Chưa gán</span>
+                <span className="shrink-0 text-[11px] text-faint" title="Chưa ai nhận việc này — hãy giao người để đồng hồ có chủ.">
+                  Chưa giao
+                </span>
               )}
             </li>
           );
@@ -138,7 +142,7 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
 
   function submit() {
     const n = name.trim();
-    if (!n) return toast.error('Nhập tên chính sách');
+    if (!n) return toast.error('Hãy nhập tên cam kết để dễ nhận ra sau này');
     create.mutate(
       {
         name: n,
@@ -147,7 +151,7 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
         resolveMins: Math.max(1, Math.round(Number(resolveH) * 60)),
       },
       {
-        onSuccess: () => { toast.success('Đã tạo chính sách'); setOpen(false); setName(''); setProjectId(''); },
+        onSuccess: () => { toast.success('Đã tạo cam kết'); setOpen(false); setName(''); setProjectId(''); },
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
     );
@@ -157,10 +161,10 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
     <section className="rounded-lg border border-border bg-surface">
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
         <div>
-          <h2 className="text-base font-semibold text-ink-strong">Chính sách SLA</h2>
-          <p className="mt-0.5 text-sm text-muted">Áp theo dự án; để trống dự án nghĩa là áp cho toàn workspace.</p>
+          <h2 className="text-base font-semibold text-ink-strong">Danh sách cam kết</h2>
+          <p className="mt-0.5 text-sm text-muted">Mỗi cam kết áp cho một dự án cụ thể, hoặc cho mọi dự án nếu bạn không chọn dự án nào.</p>
         </div>
-        {canManage && <Button size="sm" onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Thêm chính sách</Button>}
+        {canManage && <Button size="sm" onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Thêm cam kết</Button>}
       </div>
 
       <div className="p-5">
@@ -169,8 +173,12 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
         ) : list.length === 0 ? (
           <EmptyState
             icon={<AlarmClock className="h-6 w-6" />}
-            title="Chưa có chính sách SLA"
-            description={canManage ? 'Tạo chính sách đầu tiên để bắt đầu đo thời gian phản hồi/giải quyết.' : 'Quản trị chưa cấu hình SLA.'}
+            title="Chưa đặt cam kết nào"
+            description={
+              canManage
+                ? 'Cam kết là thời hạn bạn tự đặt cho việc phản hồi và xử lý xong. Tạo cam kết đầu tiên để hệ thống bắt đầu bấm giờ.'
+                : 'Cam kết là thời hạn cho việc phản hồi và xử lý xong. Quản trị viên chưa đặt cam kết nào.'
+            }
           />
         ) : (
           <ul className="divide-y divide-border">
@@ -183,14 +191,20 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
                     {p.priority ? ` · ${p.priority.name}` : ''}
                   </span>
                 </span>
-                <span className="shrink-0 text-xs text-muted">Phản hồi <b className="text-ink">{fmtMins(p.responseMins)}</b></span>
-                <span className="shrink-0 text-xs text-muted">Giải quyết <b className="text-ink">{fmtMins(p.resolveMins)}</b></span>
-                <Badge className={p.active ? 'bg-success/10 text-success' : 'bg-surface-2 text-muted'}>{p.active ? 'Đang bật' : 'Tắt'}</Badge>
+                <span className="shrink-0 text-xs text-muted" title="Tính từ lúc công việc được tạo, phải có phản hồi đầu tiên trong khoảng này.">
+                  Phản hồi trong <b className="text-ink">{fmtMins(p.responseMins)}</b>
+                </span>
+                <span className="shrink-0 text-xs text-muted" title="Tính từ lúc công việc được tạo, phải xử lý xong trong khoảng này.">
+                  Xử lý xong trong <b className="text-ink">{fmtMins(p.resolveMins)}</b>
+                </span>
+                <Badge className={p.active ? 'bg-success/10 text-success' : 'bg-surface-2 text-muted'}>{p.active ? 'Đang áp dụng' : 'Đang tắt'}</Badge>
                 {canManage && (
                   <div className="flex shrink-0 items-center gap-1">
                     <Button
                       size="sm"
                       variant="ghost"
+                      title={p.active ? 'Ngừng bấm giờ cho công việc mới khớp cam kết này' : 'Bấm giờ trở lại cho công việc mới khớp cam kết này'}
+                      aria-label={p.active ? `Tắt cam kết ${p.name}` : `Bật cam kết ${p.name}`}
                       onClick={() => update.mutate({ id: p.id, active: !p.active }, { onError: (e) => toast.error(apiErrorMessage(e)) })}
                     >
                       {p.active ? 'Tắt' : 'Bật'}
@@ -199,8 +213,9 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
                       variant="ghost"
                       size="icon"
                       className="text-muted hover:text-danger"
-                      aria-label={`Xoá ${p.name}`}
-                      onClick={() => { if (window.confirm(`Xoá chính sách “${p.name}”?`)) remove.mutate(p.id, { onError: (e) => toast.error(apiErrorMessage(e)) }); }}
+                      title="Xoá cam kết"
+                      aria-label={`Xoá cam kết ${p.name}`}
+                      onClick={() => { if (window.confirm(`Xoá cam kết “${p.name}”? Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.`)) remove.mutate(p.id, { onError: (e) => toast.error(apiErrorMessage(e)) }); }}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -217,16 +232,22 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
           <button className="absolute inset-0 bg-black/30 animate-in fade-in duration-200" onClick={() => setOpen(false)} aria-label="Đóng" />
           <div className="relative w-full max-w-md overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
             <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-              <span className="text-sm font-medium text-ink">Thêm chính sách SLA</span>
+              <span className="text-sm font-medium text-ink">Thêm cam kết thời gian</span>
               <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setOpen(false)} aria-label="Đóng"><X className="h-4 w-4" /></Button>
             </header>
             <div className="space-y-4 px-5 py-4">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-muted">Tên chính sách</label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Hỗ trợ tiêu chuẩn" autoFocus />
+                <label className="mb-1.5 block text-sm font-medium text-muted">Tên cam kết</label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Ví dụ: Hỗ trợ tiêu chuẩn"
+                  title="Tên hiện trên bảng theo dõi để bạn biết công việc đang chạy theo cam kết nào."
+                  autoFocus
+                />
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-muted">Dự án <span className="font-normal text-faint">(trống = mọi dự án)</span></label>
+                <label className="mb-1.5 block text-sm font-medium text-muted">Dự án <span className="font-normal text-faint">(để trống = áp cho mọi dự án)</span></label>
                 <SearchSelect
                   value={projectId}
                   onChange={setProjectId}
@@ -237,18 +258,32 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-muted">Hạn phản hồi (giờ)</label>
-                  <Input type="number" min={0.5} step={0.5} value={responseH} onChange={(e) => setResponseH(e.target.value)} />
+                  <label className="mb-1.5 block text-sm font-medium text-muted">Phải phản hồi trong (giờ)</label>
+                  <Input
+                    type="number"
+                    min={0.5}
+                    step={0.5}
+                    value={responseH}
+                    onChange={(e) => setResponseH(e.target.value)}
+                    title="Tính từ lúc công việc được tạo cho tới phản hồi đầu tiên."
+                  />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-muted">Hạn giải quyết (giờ)</label>
-                  <Input type="number" min={1} step={1} value={resolveH} onChange={(e) => setResolveH(e.target.value)} />
+                  <label className="mb-1.5 block text-sm font-medium text-muted">Phải xử lý xong trong (giờ)</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={resolveH}
+                    onChange={(e) => setResolveH(e.target.value)}
+                    title="Tính từ lúc công việc được tạo cho tới khi chuyển sang trạng thái đã xong."
+                  />
                 </div>
               </div>
             </div>
             <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-              <Button variant="ghost" onClick={() => setOpen(false)}>Hủy</Button>
-              <Button onClick={submit} loading={create.isPending} disabled={!name.trim()}>Tạo</Button>
+              <Button variant="ghost" onClick={() => setOpen(false)}>Huỷ</Button>
+              <Button onClick={submit} loading={create.isPending} disabled={!name.trim()}>Tạo cam kết</Button>
             </footer>
           </div>
         </div>

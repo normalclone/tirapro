@@ -37,7 +37,7 @@ export function ProgramProjectsModal({
     if (!program) return;
     try {
       await setProjects.mutateAsync({ id: program.id, projectIds: ids });
-      toast.success('Đã cập nhật dự án của chương trình');
+      toast.success('Đã cập nhật danh sách dự án của chương trình');
       onClose();
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -61,7 +61,8 @@ export function ProgramProjectsModal({
 
         <div className="px-5 py-4">
           <p className="mb-2 text-sm text-muted">
-            Dự án bỏ khỏi danh sách sẽ chuyển về nhóm “Chưa thuộc chương trình”. Mỗi dự án chỉ thuộc một chương trình.
+            Mỗi dự án chỉ thuộc một chương trình. Dự án bạn bỏ chọn sẽ chuyển về nhóm “Chưa thuộc chương trình”,
+            dữ liệu của dự án không bị ảnh hưởng.
           </p>
           <RoleMultiSelect
             options={options}
@@ -75,7 +76,7 @@ export function ProgramProjectsModal({
 
         <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void save()} loading={setProjects.isPending}>Lưu</Button>
+          <Button onClick={() => void save()} loading={setProjects.isPending}>Lưu thay đổi</Button>
         </footer>
       </div>
     </div>

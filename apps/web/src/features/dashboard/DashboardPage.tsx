@@ -124,7 +124,7 @@ function AdminOverview() {
   return (
     <section className="mb-12">
       <div className="mb-3 flex items-baseline justify-between gap-4">
-        <h2 className="text-base font-semibold text-ink-strong">Tổng quan workspace</h2>
+        <h2 className="text-base font-semibold text-ink-strong">Tổng quan chung</h2>
         {data && (
           <span className="text-xs text-faint tabular">{data.projectCount} dự án</span>
         )}
@@ -151,7 +151,7 @@ function AdminOverview() {
         <EmptyState
           icon={<FolderKanban className="h-8 w-8" />}
           title="Chưa có dự án nào để tổng hợp"
-          description="Tạo dự án đầu tiên để bắt đầu theo dõi tiến độ toàn workspace."
+          description="Tạo dự án đầu tiên để bắt đầu theo dõi tiến độ."
         />
       )}
 

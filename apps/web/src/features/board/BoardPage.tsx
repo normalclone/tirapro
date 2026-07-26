@@ -28,7 +28,7 @@ import { applyQuickFilters, useQuickFilters } from '@/features/quick-filters/use
 import { AssigneeFilter, applyAssigneeFilter } from '@/features/quick-filters/AssigneeFilter';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 
-/** Phân bổ 1 tập issue vào các cột của board (đã sort trong cột). */
+/** Phân bổ 1 tập công việc vào các cột của bảng (đã sort trong cột). */
 function distribute(board: { columns: BoardColumnDto[] }, list: IssueDto[]): Map<string, IssueDto[]> {
   const map = new Map<string, IssueDto[]>();
   for (const col of board.columns) map.set(col.id, []);
@@ -47,7 +47,7 @@ function focusCard(lane: number, col: number, row: number): boolean {
   return false;
 }
 
-/** Nội dung board (cột kéo-thả). Header/nav dự án + modal tạo issue nằm ở ProjectLayout. */
+/** Nội dung bảng công việc (cột kéo-thả). Header/nav dự án + popup tạo việc nằm ở ProjectLayout. */
 export function BoardPage() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
@@ -110,7 +110,7 @@ export function BoardPage() {
       byUser.get(k)!.issues.push(i);
     }
     const arr = [...byUser.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
-    if (unassigned.length) arr.push({ key: '__unassigned__', name: 'Chưa gán', avatarUrl: null, issues: unassigned });
+    if (unassigned.length) arr.push({ key: '__unassigned__', name: 'Chưa có người phụ trách', avatarUrl: null, issues: unassigned });
     return arr;
   }, [groupBy, filteredIssues]);
 
@@ -145,7 +145,7 @@ export function BoardPage() {
         {
           onError: (err) => toast.error(apiErrorMessage(err)),
           onSuccess: () =>
-            toast.success(`${issue.key} → ${col.name}`, {
+            toast.success(`Đã chuyển ${issue.key} sang “${col.name}”`, {
               duration: 4000,
               action: {
                 label: 'Hoàn tác',
@@ -161,7 +161,8 @@ export function BoardPage() {
       return;
     }
 
-    // Swimlane: thả sang làn khác → đổi người phụ trách ("Chưa gán" = bỏ gán); có thể kèm đổi trạng thái.
+    // Hàng theo người: thả sang hàng khác → đổi người phụ trách (hàng "Chưa có người phụ trách" = bỏ gán);
+    // có thể kèm đổi trạng thái nếu thả sang cột khác.
     const targetAssignee: string | null = laneKey === '__unassigned__' ? null : laneKey;
     const assigneeChanged = canAssign && targetAssignee !== (issue.assigneeId ?? null);
     if (!statusChanged && !assigneeChanged) return;
@@ -174,9 +175,9 @@ export function BoardPage() {
       if (statusChanged) {
         await transition.mutateAsync({ id: issue.id, toStatusId: col.statusIds[0], version, statusName: col.name } as never);
       }
-      const who = targetAssignee == null ? 'Chưa gán' : assigneeOptions.find((o) => o.id === targetAssignee)?.name ?? 'người khác';
-      const parts = [statusChanged ? `→ ${col.name}` : '', assigneeChanged ? `· ${who}` : ''].filter(Boolean).join(' ');
-      toast.success(`${issue.key} ${parts}`.trim(), { duration: 3000 });
+      const who = targetAssignee == null ? 'bỏ người phụ trách' : `giao cho ${assigneeOptions.find((o) => o.id === targetAssignee)?.name ?? 'người khác'}`;
+      const parts = [statusChanged ? `sang “${col.name}”` : '', assigneeChanged ? `· ${who}` : ''].filter(Boolean).join(' ');
+      toast.success(`Đã cập nhật ${issue.key} ${parts}`.trim(), { duration: 3000 });
     } catch (err) {
       toast.error(apiErrorMessage(err));
     }
@@ -204,7 +205,14 @@ export function BoardPage() {
   }
 
   if (!board) {
-    return <div className="p-6"><EmptyState title="Chưa có board" description="Dự án này chưa có board nào." /></div>;
+    return (
+      <div className="p-6">
+        <EmptyState
+          title="Chưa có bảng công việc"
+          description="Bảng là nơi xem việc theo cột trạng thái và kéo thả để đổi trạng thái. Dự án này chưa có bảng nào — nhờ quản trị dự án tạo giúp trong phần Cấu hình."
+        />
+      </div>
+    );
   }
 
   const openIssue = (k: string) => navigate(`/issue/${k}`);
@@ -219,7 +227,7 @@ export function BoardPage() {
             type="button"
             aria-pressed={groupBy}
             onClick={toggleGroupBy}
-            title="Nhóm board theo người phụ trách"
+            title="Xếp bảng thành từng hàng theo người phụ trách. Kéo việc sang hàng khác để giao cho người đó."
             className={cn(
               'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
@@ -233,7 +241,7 @@ export function BoardPage() {
         {groupBy && lanes ? (
           <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4">
             {lanes.length === 0 ? (
-              <p className="py-10 text-center text-sm text-faint">Không có việc khớp bộ lọc.</p>
+              <p className="py-10 text-center text-sm text-faint">Không có việc nào khớp bộ lọc. Tắt bớt bộ lọc phía trên để xem thêm.</p>
             ) : (
               lanes.map((lane, laneIdx) => {
                 const laneCols = distribute(board, lane.issues);
@@ -246,7 +254,12 @@ export function BoardPage() {
                         <Avatar name={lane.name} src={lane.avatarUrl} size={24} />
                       )}
                       <span className="text-sm font-semibold text-ink-strong">{lane.name}</span>
-                      <span className="tabular rounded-full bg-surface-2 px-1.5 text-xs text-muted">{lane.issues.length}</span>
+                      <span
+                        className="tabular rounded-full bg-surface-2 px-1.5 text-xs text-muted"
+                        title={`${lane.issues.length} việc đang hiển thị của ${lane.name}`}
+                      >
+                        {lane.issues.length}
+                      </span>
                     </div>
                     <div className="flex gap-3 overflow-x-auto pb-1">
                       {board.columns.map((col, colIdx) => (
@@ -325,13 +338,20 @@ function Column({
       <div className="sticky top-0 flex items-center gap-2 px-3 py-2.5">
         <span className="h-2 w-2 rounded-full" style={{ background: dot }} />
         <span className="text-sm font-medium text-ink">{col.name}</span>
-        <span className="tabular ml-auto text-xs text-muted">{issues.length}{col.wipLimit ? `/${col.wipLimit}` : ''}</span>
+        <span
+          className="tabular ml-auto text-xs text-muted"
+          title={col.wipLimit
+            ? `${issues.length} việc đang ở cột này · tối đa nên có ${col.wipLimit} việc cùng lúc`
+            : `${issues.length} việc đang ở cột này`}
+        >
+          {issues.length}{col.wipLimit ? `/${col.wipLimit}` : ''}
+        </span>
       </div>
       <div className={cn('flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2', grouped && 'min-h-[3rem]')}>
         {issues.map((issue, rowIdx) => (
           <Card key={issue.id} issue={issue} progress={progressMap.get(issue.id)} onOpen={onOpen} laneIdx={laneIdx} colIdx={colIdx} rowIdx={rowIdx} />
         ))}
-        {issues.length === 0 && <p className="px-2 py-6 text-center text-xs text-faint">Trống</p>}
+        {issues.length === 0 && <p className="px-2 py-6 text-center text-xs text-faint">Chưa có việc nào. Kéo việc vào đây hoặc thêm mới bên dưới.</p>}
       </div>
       {canCreate && columnStatusId && projectId && (
         <QuickAddRow projectKey={projectKey} projectId={projectId} extra={{ statusId: columnStatusId }} placeholder="+ Thêm việc…" compact />
@@ -347,6 +367,7 @@ function LabelChip({ name, color }: { name: string; color: string | null }) {
     <span
       className="max-w-[8rem] truncate rounded px-1.5 py-px text-[10px] font-medium"
       style={{ backgroundColor: `color-mix(in oklch, ${c} 16%, transparent)`, color: c }}
+      title={`Nhãn: ${name}`}
     >
       {name}
     </span>
@@ -400,7 +421,12 @@ function Card({
         <div className="ml-auto flex items-center gap-2">
           <DueBadge issue={issue} warnOnly />
           {issue.storyPoints != null && (
-            <span className="tabular grid h-5 min-w-5 place-items-center rounded-full bg-surface-2 px-1 text-[10px] font-medium text-muted">{issue.storyPoints}</span>
+            <span
+              className="tabular grid h-5 min-w-5 place-items-center rounded-full bg-surface-2 px-1 text-[10px] font-medium text-muted"
+              title={`${issue.storyPoints} điểm ước lượng — mức độ lớn của việc này`}
+            >
+              {issue.storyPoints}
+            </span>
           )}
         </div>
       </div>
@@ -415,22 +441,22 @@ function Card({
       )}
 
       <div className="flex items-center gap-2">
-        <span className="shrink-0 whitespace-nowrap font-mono text-xs text-muted">{issue.key}</span>
-        {issue.priority && <span className="h-1.5 w-1.5 rounded-full" style={{ background: issue.priority.color ?? 'var(--faint)' }} title={issue.priority.name} />}
+        <span className="shrink-0 whitespace-nowrap font-mono text-xs text-muted" title={`Mã công việc ${issue.key}`}>{issue.key}</span>
+        {issue.priority && <span className="h-1.5 w-1.5 rounded-full" style={{ background: issue.priority.color ?? 'var(--faint)' }} title={`Mức ưu tiên: ${issue.priority.name}`} />}
         <div className="ml-auto flex min-w-0 items-center">
           {issue.assignee ? (
-            <span className="flex min-w-0 items-center gap-1" title={`Người làm: ${issue.assignee.displayName}`}>
+            <span className="flex min-w-0 items-center gap-1" title={`Người phụ trách: ${issue.assignee.displayName}`}>
               <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={18} />
               <span className="max-w-[6.5rem] truncate text-xs text-muted">{issue.assignee.displayName}</span>
             </span>
           ) : (
-            <span className="whitespace-nowrap text-[11px] text-faint">Chưa gán</span>
+            <span className="whitespace-nowrap text-[11px] text-faint" title="Chưa có ai nhận việc này">Chưa gán</span>
           )}
         </div>
       </div>
 
       {progress && progress.total > 0 && (
-        <div className="mt-2 flex items-center gap-1.5">
+        <div className="mt-2 flex items-center gap-1.5" title={`Việc con: đã xong ${progress.done}/${progress.total}`}>
           <TaskProgress progress={progress} compact className="flex-1" />
           <span className="tabular shrink-0 text-[10px] text-faint">{progress.done}/{progress.total}</span>
         </div>

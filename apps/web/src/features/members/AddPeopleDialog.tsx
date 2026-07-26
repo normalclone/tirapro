@@ -30,9 +30,9 @@ const STATUS_LABEL: Record<string, string> = {
 
 /**
  * Thêm NHIỀU người một lúc vào workspace hoặc dự án, có bộ lọc.
- * - workspace: ứng viên = user hệ thống CHƯA thuộc workspace (lọc: tìm kiếm + trạng thái tài khoản;
- *   họ chưa có vai trò/nhóm trong workspace nên 2 lọc đó tự ẩn).
- * - project: ứng viên = thành viên workspace CHƯA ở dự án (lọc: tìm kiếm + nhóm + vai trò workspace).
+ * - workspace: danh sách chọn = người có tài khoản CHƯA thuộc workspace (lọc: tìm kiếm + trạng thái
+ *   tài khoản; họ chưa có vai trò/nhóm trong workspace nên 2 bộ lọc đó tự ẩn).
+ * - project: danh sách chọn = thành viên workspace CHƯA ở dự án (lọc: tìm kiếm + nhóm + vai trò).
  * Bộ lọc hiển thị theo DỮ LIỆU: chỉ hiện khi có giá trị để lọc.
  */
 export function AddPeopleDialog({
@@ -137,7 +137,7 @@ export function AddPeopleDialog({
     const userIds = [...selected];
     try {
       const res = isProject ? await addProj.mutateAsync({ userIds, roleIds }) : await addWs.mutateAsync({ userIds, roleIds });
-      toast.success(`Đã thêm ${res.added} người${res.skipped ? ` · bỏ qua ${res.skipped} (đã có)` : ''}`);
+      toast.success(`Đã thêm ${res.added} người${res.skipped ? ` · bỏ qua ${res.skipped} người vì đã có sẵn` : ''}`);
       onClose();
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -160,7 +160,7 @@ export function AddPeopleDialog({
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
           <div className="relative min-w-[12rem] flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tên hoặc email…" className="h-9 pl-8 text-sm" autoFocus />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm theo tên hoặc email…" aria-label="Tìm người để thêm" className="h-9 pl-8 text-sm" autoFocus />
           </div>
           {teamOpts.length > 0 && (
             <SearchSelect
@@ -197,12 +197,18 @@ export function AddPeopleDialog({
           )}
         </div>
 
-        {/* Danh sách ứng viên (multi-select) */}
+        {/* Danh sách người có thể thêm (chọn nhiều) */}
         <div className="flex items-center justify-between px-5 py-2 text-xs text-muted">
-          <button type="button" onClick={toggleAll} disabled={filtered.length === 0} className="font-medium text-primary hover:underline disabled:opacity-40">
+          <button
+            type="button"
+            onClick={toggleAll}
+            disabled={filtered.length === 0}
+            title="Chọn hoặc bỏ chọn tất cả những người đang hiện trong danh sách"
+            className="font-medium text-primary hover:underline disabled:opacity-40"
+          >
             {allFilteredSelected ? 'Bỏ chọn tất cả' : `Chọn tất cả (${filtered.length})`}
           </button>
-          <span>Đã chọn <span className="tabular font-semibold text-ink">{selected.size}</span></span>
+          <span title="Số người sẽ được thêm khi bạn bấm nút xác nhận">Đã chọn <span className="tabular font-semibold text-ink">{selected.size}</span> người</span>
         </div>
         <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" role="listbox" aria-multiselectable>
           {filtered.map((c) => {
@@ -236,11 +242,19 @@ export function AddPeopleDialog({
               </li>
             );
           })}
-          {filtered.length === 0 && <li className="px-3 py-10 text-center text-sm text-muted">Không còn ai để thêm (khớp bộ lọc).</li>}
+          {filtered.length === 0 && (
+            <li className="px-3 py-10 text-center text-sm text-muted">
+              {isProject
+                ? 'Không còn ai khớp bộ lọc. Xoá bớt bộ lọc, hoặc thêm người vào workspace trước.'
+                : 'Không còn ai khớp bộ lọc. Xoá bớt bộ lọc, hoặc mời người mới bằng email ở trang Thành viên.'}
+            </li>
+          )}
         </ul>
 
         <footer className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-3">
-          <label className="mr-1 text-sm text-muted">Vai trò:</label>
+          <label className="mr-1 text-sm text-muted" title={`Vai trò quyết định những người này được xem và làm gì trong ${isProject ? 'dự án' : 'workspace'}. Chọn được nhiều vai trò.`}>
+            Vai trò khi thêm:
+          </label>
           <div className="min-w-[14rem] flex-1"><RoleMultiSelect options={roleOptions} value={roleIds} onChange={setRoleIds} /></div>
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
           <Button onClick={() => void submit()} loading={busy} disabled={!canSubmit}>Thêm {selected.size > 0 ? `${selected.size} người` : ''}</Button>

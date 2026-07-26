@@ -31,7 +31,7 @@ function isOverdue(target: string | null, pct: number): boolean {
 
 /** Thanh tiến độ 3 đoạn (xong / đang làm / cần làm) — cùng ngôn ngữ với tiến trình task. */
 function ProgressBar({ stats, className }: { stats: RollupStats; className?: string }) {
-  const title = `Hoàn thành ${stats.doneCount}/${stats.issueCount} (${stats.progressPct}%) · Đang làm ${stats.inProgressCount} · Cần làm ${stats.todoCount}`;
+  const title = `Công việc: đã xong ${stats.doneCount}/${stats.issueCount} (${stats.progressPct}%) · đang làm ${stats.inProgressCount} · chưa bắt đầu ${stats.todoCount}`;
   return (
     <div
       className={cn('flex h-1.5 w-full overflow-hidden rounded-full bg-surface-3', className)}
@@ -53,13 +53,17 @@ function ProgressBar({ stats, className }: { stats: RollupStats; className?: str
 function StatLine({ stats, className }: { stats: RollupStats; className?: string }) {
   return (
     <p className={cn('tabular flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted', className)}>
-      <span><span className="font-medium text-ink">{stats.progressPct}%</span> hoàn thành</span>
+      <span title="Phần trăm công việc đã xong trên tổng số công việc của các dự án trong nhóm này">
+        <span className="font-medium text-ink">{stats.progressPct}%</span> hoàn thành
+      </span>
       <span aria-hidden className="text-faint">·</span>
-      <span>{stats.doneCount}/{stats.issueCount} công việc</span>
+      <span title="Số công việc đã xong / tổng số công việc">{stats.doneCount}/{stats.issueCount} công việc</span>
       {stats.overdueCount > 0 && (
         <>
           <span aria-hidden className="text-faint">·</span>
-          <span className="font-medium text-danger">{stats.overdueCount} quá hạn</span>
+          <span className="font-medium text-danger" title="Công việc chưa xong mà đã qua hạn hoàn thành">
+            {stats.overdueCount} quá hạn
+          </span>
         </>
       )}
     </p>
@@ -72,13 +76,22 @@ function ProjectRow({ project }: { project: RollupProject }) {
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted">{project.key}</span>
         <span className="truncate text-sm text-ink">{project.name}</span>
-        {project.isArchived && <span className="shrink-0 text-[11px] text-faint">đã lưu trữ</span>}
+        {project.isArchived && (
+          <span className="shrink-0 text-[11px] text-faint" title="Dự án đã lưu trữ — không còn hoạt động nhưng vẫn tính vào tiến độ">
+            đã lưu trữ
+          </span>
+        )}
       </div>
       <div className="w-full min-w-[8rem] max-w-[14rem] sm:w-40">
         <ProgressBar stats={project} />
       </div>
-      <span className="tabular w-16 shrink-0 text-right text-xs text-muted">{project.doneCount}/{project.issueCount}</span>
-      <span className={cn('tabular w-20 shrink-0 text-right text-xs', project.overdueCount > 0 ? 'text-danger' : 'text-faint')}>
+      <span className="tabular w-16 shrink-0 text-right text-xs text-muted" title="Số công việc đã xong / tổng số công việc của dự án">
+        {project.doneCount}/{project.issueCount}
+      </span>
+      <span
+        className={cn('tabular w-20 shrink-0 text-right text-xs', project.overdueCount > 0 ? 'text-danger' : 'text-faint')}
+        title={project.overdueCount > 0 ? 'Số công việc chưa xong mà đã qua hạn hoàn thành' : 'Không có công việc nào quá hạn'}
+      >
         {project.overdueCount > 0 ? `${project.overdueCount} quá hạn` : 'đúng hạn'}
       </span>
     </li>
@@ -118,11 +131,12 @@ function GroupCard({
           <span className="min-w-0">
             <span className="flex flex-wrap items-center gap-2">
               <span className="truncate text-sm font-medium text-ink-strong">{group.name}</span>
-              <span className="shrink-0 text-xs text-faint">{group.projectCount} dự án</span>
+              <span className="shrink-0 text-xs text-faint" title="Số dự án đang thuộc chương trình này">{group.projectCount} dự án</span>
               {late && (
                 <span
                   className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium text-danger"
                   style={{ backgroundColor: 'color-mix(in oklch, var(--danger) 12%, transparent)' }}
+                  title="Đã qua ngày mục tiêu mà chương trình chưa hoàn thành 100%"
                 >
                   Trễ hạn
                 </span>
@@ -130,8 +144,8 @@ function GroupCard({
             </span>
             {group.description && <span className="mt-0.5 block truncate text-xs text-muted">{group.description}</span>}
             <span className="mt-0.5 block text-xs text-faint">
-              {group.ownerName ? `Phụ trách: ${group.ownerName}` : 'Chưa có người phụ trách'}
-              {!unassigned && ` · Mục tiêu: ${fmtDate(group.plannedTargetDate)}`}
+              {group.ownerName ? `Người phụ trách: ${group.ownerName}` : 'Chưa có người phụ trách'}
+              {!unassigned && ` · Hạn mục tiêu: ${fmtDate(group.plannedTargetDate)}`}
             </span>
           </span>
         </button>
@@ -143,17 +157,29 @@ function GroupCard({
 
         {canManage && !unassigned && (
           <div className="flex shrink-0 items-center gap-1">
-            <Button variant="ghost" size="icon" title="Gán dự án" aria-label={`Gán dự án cho chương trình ${group.name}`} onClick={onAssign}>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Chọn dự án thuộc chương trình này"
+              aria-label={`Gán dự án cho chương trình ${group.name}`}
+              onClick={onAssign}
+            >
               <FolderPlus className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" title="Sửa chương trình" aria-label={`Sửa chương trình ${group.name}`} onClick={onEdit}>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Sửa tên, người phụ trách và mốc thời gian"
+              aria-label={`Sửa chương trình ${group.name}`}
+              onClick={onEdit}
+            >
               <Pencil className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
               className="text-muted hover:text-danger"
-              title="Xoá chương trình"
+              title="Xoá chương trình — các dự án bên trong vẫn được giữ lại"
               aria-label={`Xoá chương trình ${group.name}`}
               onClick={onDelete}
             >
@@ -166,7 +192,11 @@ function GroupCard({
       {open && (
         <div id={listId} className="border-t border-border px-4 py-2 sm:px-5">
           {group.projects.length === 0 ? (
-            <p className="py-3 text-sm text-muted">Chưa có dự án nào trong chương trình này.</p>
+            <p className="py-3 text-sm text-muted">
+              {canManage
+                ? 'Chương trình này chưa có dự án nào. Bấm “Gán dự án” ở trên để thêm, tiến độ sẽ tự tính từ các dự án đó.'
+                : 'Chương trình này chưa có dự án nào.'}
+            </p>
           ) : (
             <ul className="divide-y divide-border">
               {group.projects.map((p) => <ProjectRow key={p.id} project={p} />)}
@@ -179,8 +209,8 @@ function GroupCard({
 }
 
 /**
- * Danh mục & chương trình — gom nhiều dự án thành chương trình, xem rollup tiến độ
- * và roadmap thời gian ở một chỗ.
+ * Danh mục dự án — gom nhiều dự án thành chương trình, xem tiến độ tổng hợp
+ * và dòng thời gian ở một chỗ.
  */
 export function PortfolioPage() {
   const canManage = useAuth((s) => s.can('program:manage'));
@@ -197,9 +227,9 @@ export function PortfolioPage() {
   const groups = rollup?.groups ?? [];
   const totals = rollup?.totals;
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'programs', label: 'Chương trình' },
-    { id: 'roadmap', label: 'Roadmap' },
+  const tabs: { id: Tab; label: string; hint: string }[] = [
+    { id: 'programs', label: 'Chương trình', hint: 'Danh sách chương trình và tiến độ từng dự án bên trong' },
+    { id: 'roadmap', label: 'Dòng thời gian', hint: 'Xem chương trình và dự án trải trên trục tháng để thấy chỗ chồng lấn' },
   ];
 
   function openCreate() { setEditing(null); setEditorOpen(true); }
@@ -216,7 +246,7 @@ export function PortfolioPage() {
   }
   function handleDelete(group: RollupGroup) {
     if (!group.id) return;
-    if (!window.confirm(`Xoá chương trình “${group.name}”? Các dự án vẫn giữ nguyên, chỉ tách khỏi chương trình.`)) return;
+    if (!window.confirm(`Xoá chương trình “${group.name}”? Các dự án bên trong vẫn được giữ nguyên, chỉ tách ra khỏi chương trình.`)) return;
     remove.mutate(group.id, {
       onError: (e) => toast.error(apiErrorMessage(e)),
       onSuccess: () => toast.success('Đã xoá chương trình'),
@@ -227,9 +257,10 @@ export function PortfolioPage() {
     <div className={pageContainer('xl')}>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Danh mục & chương trình</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Danh mục dự án</h1>
           <p className="mt-1 text-sm text-muted">
-            Gom nhiều dự án vào một chương trình để theo dõi tiến độ tổng, việc quá hạn và mốc thời gian ở cấp danh mục.
+            Gom các dự án liên quan vào một chương trình để xem tiến độ chung, việc quá hạn và mốc thời gian
+            ở một chỗ, thay vì mở từng dự án.
           </p>
         </div>
         {canManage && (
@@ -241,18 +272,27 @@ export function PortfolioPage() {
         <p className="tabular mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border pb-4 text-sm text-muted">
           <span><span className="font-medium text-ink-strong">{totals.programCount}</span> chương trình</span>
           <span><span className="font-medium text-ink-strong">{totals.projectCount}</span> dự án</span>
-          <span><span className="font-medium text-ink-strong">{totals.doneCount}/{totals.issueCount}</span> công việc hoàn thành</span>
-          <span><span className="font-medium text-ink-strong">{totals.progressPct}%</span> tiến độ chung</span>
-          {totals.overdueCount > 0 && <span className="font-medium text-danger">{totals.overdueCount} việc quá hạn</span>}
+          <span title="Số công việc đã xong / tổng số công việc của mọi dự án trong danh mục">
+            <span className="font-medium text-ink-strong">{totals.doneCount}/{totals.issueCount}</span> công việc hoàn thành
+          </span>
+          <span title="Phần trăm công việc đã xong trên toàn danh mục">
+            <span className="font-medium text-ink-strong">{totals.progressPct}%</span> tiến độ chung
+          </span>
+          {totals.overdueCount > 0 && (
+            <span className="font-medium text-danger" title="Công việc chưa xong mà đã qua hạn hoàn thành">
+              {totals.overdueCount} việc quá hạn
+            </span>
+          )}
         </p>
       )}
 
-      <div className="mb-5 flex gap-1 border-b border-border" role="tablist" aria-label="Danh mục & chương trình">
+      <div className="mb-5 flex gap-1 border-b border-border" role="tablist" aria-label="Cách xem danh mục dự án">
         {tabs.map((t) => (
           <button
             key={t.id}
             role="tab"
             aria-selected={tab === t.id}
+            title={t.hint}
             onClick={() => setTab(t.id)}
             className={cn(
               '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
@@ -274,8 +314,8 @@ export function PortfolioPage() {
           title="Chưa có chương trình nào"
           description={
             canManage
-              ? 'Tạo chương trình đầu tiên rồi gán các dự án liên quan để xem tiến độ tổng hợp.'
-              : 'Quản trị workspace chưa tạo chương trình nào.'
+              ? 'Chương trình là một nhóm dự án cùng phục vụ một mục đích. Tạo chương trình đầu tiên rồi gán vài dự án vào để xem tiến độ chung.'
+              : 'Chương trình là một nhóm dự án cùng phục vụ một mục đích. Khi quản trị viên tạo chương trình, bạn sẽ thấy ở đây.'
           }
           action={canManage ? <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4" /> Tạo chương trình</Button> : undefined}
         />

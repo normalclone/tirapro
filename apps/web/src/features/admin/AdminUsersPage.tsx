@@ -41,7 +41,7 @@ export function AdminUsersPage() {
             <ShieldCheck className="h-6 w-6 text-primary" /> Tài khoản
           </h1>
           <p className="mt-1 text-sm text-muted">
-            Tạo tài khoản người dùng và cấp quyền tạo workspace, quản trị toàn hệ thống.
+            Tạo tài khoản và cấp quyền: được lập không gian làm việc mới, hoặc quản trị toàn hệ thống.
           </p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -65,11 +65,11 @@ export function AdminUsersPage() {
                   {u.displayName}
                   {u.isSystemAdmin && <Badge className="bg-primary-subtle text-primary">Admin hệ thống</Badge>}
                 </p>
-                <p className="truncate text-xs text-faint">{u.email} · {u.workspaceCount} workspace</p>
+                <p className="truncate text-xs text-faint">{u.email} · {u.workspaceCount} không gian làm việc</p>
               </div>
               <div className="flex shrink-0 items-center gap-4">
                 <Toggle
-                  label="Tạo workspace"
+                  label="Được lập không gian làm việc"
                   on={u.canCreateWorkspace}
                   disabled={update.isPending}
                   onChange={() => toggle(u, 'canCreateWorkspace')}
@@ -188,7 +188,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
             <div className="flex items-center gap-6">
               <label className="flex items-center gap-2 text-sm text-ink">
                 <input type="checkbox" checked={canCreateWorkspace} onChange={(e) => setCanCreate(e.target.checked)} className="h-4 w-4 rounded border-border" />
-                Quyền tạo workspace
+                Được lập không gian làm việc mới
               </label>
               <label className="flex items-center gap-2 text-sm text-ink">
                 <input type="checkbox" checked={isSystemAdmin} onChange={(e) => setIsAdmin(e.target.checked)} className="h-4 w-4 rounded border-border" />

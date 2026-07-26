@@ -42,7 +42,7 @@ function emptyForm(from: string, to: string): FormState {
   return { id: null, scope: 'person', userId: '', kind: 'LEAVE', startDate: from, endDate: from <= to ? from : to, note: '' };
 }
 
-/** Nghỉ phép cá nhân và ngày lễ chung — trừ thẳng vào năng lực khả dụng. */
+/** Nghỉ phép cá nhân và ngày lễ chung — trừ thẳng vào số giờ làm được của mỗi người. */
 export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from: string; to: string }) {
   const list = useTimeOffs({ from, to });
   const { data: users } = useWorkspaceUsers();
@@ -81,9 +81,9 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
 
   function submit() {
     if (!form) return;
-    if (form.scope === 'person' && !form.userId) return toast.error('Chọn thành viên, hoặc đổi phạm vi sang toàn workspace');
-    if (!form.startDate || !form.endDate) return toast.error('Chọn khoảng thời gian');
-    if (form.endDate < form.startDate) return toast.error('Ngày kết thúc phải sau ngày bắt đầu');
+    if (form.scope === 'person' && !form.userId) return toast.error('Hãy chọn người nghỉ, hoặc đổi phạm vi sang “Cả workspace”');
+    if (!form.startDate || !form.endDate) return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
+    if (form.endDate < form.startDate) return toast.error('Ngày kết thúc phải bằng hoặc sau ngày bắt đầu');
 
     const payload = {
       userId: form.scope === 'workspace' ? null : form.userId,
@@ -93,7 +93,7 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
       note: form.note.trim() || null,
     };
     const done = {
-      onSuccess: () => { setForm(null); toast.success(form.id ? 'Đã cập nhật' : 'Đã thêm ngày nghỉ'); },
+      onSuccess: () => { setForm(null); toast.success(form.id ? 'Đã cập nhật ngày nghỉ' : 'Đã thêm ngày nghỉ'); },
       onError: (e: unknown) => toast.error(apiErrorMessage(e)),
     };
     if (form.id) update.mutate({ id: form.id, ...payload }, done);
@@ -103,7 +103,7 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
   function confirmDelete() {
     if (!pendingDelete) return;
     remove.mutate(pendingDelete.id, {
-      onSuccess: () => { setPendingDelete(null); toast.success('Đã xoá'); },
+      onSuccess: () => { setPendingDelete(null); toast.success('Đã xoá ngày nghỉ'); },
       onError: (e) => toast.error(apiErrorMessage(e)),
     });
   }
@@ -114,7 +114,8 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
         <div>
           <h2 className="text-base font-semibold text-ink-strong">Nghỉ phép & ngày lễ</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Bỏ trống người nhận là ngày lễ áp dụng cho toàn workspace. Khoảng {shortDay(from)} – {shortDay(to)}.
+            Ngày nghỉ được trừ thẳng khỏi số giờ làm được, nên bảng khối lượng không tính nhầm.
+            Đang hiện khoảng {shortDay(from)} – {shortDay(to)}.
           </p>
         </div>
         {canManage && !form && (
@@ -133,8 +134,8 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
                 value={form.scope}
                 onChange={(v) => setForm({ ...form, scope: v as FormState['scope'], kind: v === 'workspace' ? 'HOLIDAY' : form.kind })}
                 options={[
-                  { value: 'person', label: 'Một thành viên' },
-                  { value: 'workspace', label: 'Toàn workspace (ngày lễ)' },
+                  { value: 'person', label: 'Một thành viên nghỉ' },
+                  { value: 'workspace', label: 'Cả workspace nghỉ — ngày lễ chung' },
                 ]}
                 ariaLabel="Phạm vi áp dụng"
               />
@@ -168,7 +169,7 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
               <Input id="off-end" type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} className="text-sm" />
             </Field>
             <Field label="Ghi chú" htmlFor="off-note">
-              <Input id="off-note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Không bắt buộc" className="text-sm" />
+              <Input id="off-note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Ví dụ: nghỉ cưới" className="text-sm" />
             </Field>
           </div>
           <div className="mt-3 flex items-center gap-2">
@@ -189,7 +190,7 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
           <EmptyState
             icon={<CalendarOff className="h-6 w-6" />}
             title="Không có ngày nghỉ nào trong khoảng này"
-            description="Khai báo nghỉ phép và ngày lễ để năng lực khả dụng phản ánh đúng thực tế."
+            description="Nghỉ phép và ngày lễ được trừ khỏi số giờ làm được. Khai báo ngay để bảng khối lượng không tính nhầm."
             action={canManage && !form ? <Button size="sm" onClick={() => setForm(emptyForm(from, to))}><Plus className="h-4 w-4" aria-hidden /> Thêm ngày nghỉ</Button> : undefined}
           />
         ) : (
@@ -202,7 +203,9 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
                     <span className="truncate text-sm text-ink">{t.user.displayName}</span>
                   </span>
                 ) : (
-                  <span className="min-w-0 flex-1 text-sm text-ink">Toàn workspace</span>
+                  <span className="min-w-0 flex-1 text-sm text-ink" title="Ngày lễ chung — trừ số giờ làm được của tất cả thành viên.">
+                    Cả workspace
+                  </span>
                 )}
 
                 <Badge className={KIND_META[t.kind].className}>{KIND_META[t.kind].label}</Badge>
@@ -241,7 +244,7 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
         title="Xoá ngày nghỉ?"
         description={
           pendingDelete
-            ? `${pendingDelete.user?.displayName ?? 'Toàn workspace'} · ${shortDay(pendingDelete.startDate)} – ${shortDay(pendingDelete.endDate)}. Năng lực sẽ được tính lại.`
+            ? `${pendingDelete.user?.displayName ?? 'Cả workspace'} · ${shortDay(pendingDelete.startDate)} – ${shortDay(pendingDelete.endDate)}. Số giờ làm được sẽ được tính lại ngay.`
             : undefined
         }
         loading={remove.isPending}

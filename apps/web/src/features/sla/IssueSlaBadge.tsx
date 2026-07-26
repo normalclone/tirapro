@@ -1,8 +1,8 @@
 import { AlarmClock, CheckCircle2, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useIssueSla, fmtMins } from './api';
+import { useIssueSla, fmtMins, SLA_SOON_MINS } from './api';
 
-/** Badge SLA trên trang chi tiết issue: còn bao lâu / đã trễ / đã xong. */
+/** Nhãn cam kết thời gian xử lý trên trang chi tiết công việc: còn bao lâu / đã trễ / đã xong. */
 export function IssueSlaBadge({ issueId }: { issueId: string }) {
   const { data } = useIssueSla(issueId);
   if (!data) return null;
@@ -10,27 +10,34 @@ export function IssueSlaBadge({ issueId }: { issueId: string }) {
   const resolved = !!data.resolvedAt;
   const breached = data.resolveBreached;
   const mins = data.resolveRemainingMins ?? 0;
-  const soon = !resolved && !breached && mins <= 120;
+  // Xong nhưng vẫn quá hạn: KHÔNG được hiện xanh như đạt cam kết.
+  const lateDone = resolved && breached;
+  const soon = !resolved && !breached && mins <= SLA_SOON_MINS;
 
-  const tone = resolved
-    ? 'border-success/40 bg-success/10 text-success'
-    : breached
-      ? 'border-danger/40 bg-danger/10 text-danger'
-      : soon
-        ? 'border-warning/40 bg-warning/15 text-warning'
-        : 'border-border bg-surface-2 text-muted';
+  const tone = lateDone
+    ? 'border-warning/40 bg-warning/15 text-warning'
+    : resolved
+      ? 'border-success/40 bg-success/10 text-success'
+      : breached
+        ? 'border-danger/40 bg-danger/10 text-danger'
+        : soon
+          ? 'border-warning/40 bg-warning/15 text-warning'
+          : 'border-border bg-surface-2 text-muted';
 
-  const Icon = resolved ? CheckCircle2 : breached ? TriangleAlert : AlarmClock;
-  const label = resolved
-    ? 'SLA: đã giải quyết'
-    : breached
-      ? `SLA: trễ ${fmtMins(mins)}`
-      : `SLA: còn ${fmtMins(mins)}`;
+  const Icon = lateDone ? TriangleAlert : resolved ? CheckCircle2 : breached ? TriangleAlert : AlarmClock;
+  const label = lateDone
+    ? `Xong nhưng trễ hạn ${fmtMins(mins)}`
+    : resolved
+      ? 'Đã xử lý xong'
+      : breached
+        ? `Trễ hạn ${fmtMins(mins)}`
+        : `Còn ${fmtMins(mins)} tới hạn xử lý`;
 
   const title = [
-    `Chính sách: ${data.policyName}`,
-    `Hạn phản hồi: ${new Date(data.responseDueAt).toLocaleString('vi-VN')}${data.firstRespondedAt ? ' (đã phản hồi)' : ''}`,
-    `Hạn giải quyết: ${new Date(data.resolveDueAt).toLocaleString('vi-VN')}`,
+    'Cam kết thời gian xử lý — hệ thống bấm giờ từ lúc công việc được tạo.',
+    `Cam kết áp dụng: ${data.policyName}`,
+    `Phải phản hồi trước: ${new Date(data.responseDueAt).toLocaleString('vi-VN')}${data.firstRespondedAt ? ' (đã phản hồi)' : ' (chưa phản hồi)'}`,
+    `Phải xử lý xong trước: ${new Date(data.resolveDueAt).toLocaleString('vi-VN')}`,
   ].join('\n');
 
   return (

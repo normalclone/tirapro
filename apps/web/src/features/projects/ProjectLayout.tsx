@@ -18,17 +18,17 @@ import { cn } from '@/lib/utils';
 export const LAST_VIEW_KEY = 'tirapro:lastProjectView';
 
 const VIEWS = [
-  { seg: 'board', label: 'Board', icon: LayoutGrid },
-  { seg: 'backlog', label: 'Backlog', icon: ListTodo },
-  { seg: 'gantt', label: 'Lịch trình', icon: GanttChartSquare },
-  { seg: 'tree', label: 'Cây', icon: ListTree },
-  { seg: 'reports', label: 'Báo cáo', icon: BarChart3 },
+  { seg: 'board', label: 'Bảng việc', icon: LayoutGrid, hint: 'Kéo thả việc giữa các cột theo trạng thái' },
+  { seg: 'backlog', label: 'Việc chờ', icon: ListTodo, hint: 'Danh sách việc chưa xếp vào đợt làm nào, và các đợt (sprint) đang có' },
+  { seg: 'gantt', label: 'Lịch trình', icon: GanttChartSquare, hint: 'Biểu đồ thời gian: việc nào chạy khi nào, việc nào phụ thuộc việc nào' },
+  { seg: 'tree', label: 'Cây việc', icon: ListTree, hint: 'Xem việc lớn và các việc con lồng bên trong' },
+  { seg: 'reports', label: 'Báo cáo', icon: BarChart3, hint: 'Biểu đồ tiến độ, hiệu suất và thời gian xử lý' },
 ] as const;
 
 const MORE = [
-  { seg: 'triage', label: 'Triage', icon: Inbox },
-  { seg: 'activity', label: 'Hoạt động', icon: Activity },
-  { seg: 'config', label: 'Cấu hình', icon: Settings },
+  { seg: 'triage', label: 'Việc mới vào', icon: Inbox, hint: 'Việc vừa được tạo, chưa phân loại và chưa giao cho ai' },
+  { seg: 'activity', label: 'Hoạt động', icon: Activity, hint: 'Nhật ký ai đã làm gì trong dự án' },
+  { seg: 'config', label: 'Cấu hình', icon: Settings, hint: 'Quy trình, loại việc, trường tuỳ chỉnh và thành viên của dự án' },
 ] as const;
 
 /**
@@ -105,7 +105,7 @@ export function ProjectLayout() {
 
           <div className="ml-auto flex items-center gap-1">
             {VIEWS.map((v) => (
-              <NavLink key={v.seg} to={`/p/${key}/${v.seg}`} className={({ isActive }) => tabCls(isActive)} data-tour={v.seg === 'backlog' ? 'board-backlog' : undefined}>
+              <NavLink key={v.seg} to={`/p/${key}/${v.seg}`} title={v.hint} className={({ isActive }) => tabCls(isActive)} data-tour={v.seg === 'backlog' ? 'board-backlog' : undefined}>
                 <v.icon className="h-4 w-4" />
                 {v.label}
               </NavLink>
@@ -130,6 +130,7 @@ export function ProjectLayout() {
                     <DropdownMenu.Item key={m.seg} asChild>
                       <Link
                         to={`/p/${key}/${m.seg}`}
+                        title={m.hint}
                         className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
                       >
                         <m.icon className="h-4 w-4 text-muted" />

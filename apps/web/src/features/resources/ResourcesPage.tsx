@@ -11,7 +11,7 @@ import { useAuth } from '@/stores/auth';
 import { useProjects } from '@/features/projects/api';
 import { AllocationsPanel } from './AllocationsPanel';
 import { TimeOffPanel } from './TimeOffPanel';
-import { addDays, formatHours, isoDay, mondayOf, useWorkload, type WorkloadCell, type WorkloadRow } from './api';
+import { addDays, formatHours, isoDay, mondayOf, shortDay, useWorkload, type WorkloadCell, type WorkloadRow } from './api';
 
 type Tab = 'load' | 'allocations' | 'time-off';
 
@@ -24,11 +24,24 @@ const WEEK_OPTIONS = [
 
 type Level = 'none' | 'under' | 'balanced' | 'over';
 
-const LEVEL_META: Record<Level, { label: string; tint: string | null }> = {
-  none: { label: 'Chưa có việc', tint: null },
-  under: { label: 'Dưới tải', tint: 'var(--success)' },
-  balanced: { label: 'Vừa tải', tint: 'var(--primary)' },
-  over: { label: 'Quá tải', tint: 'var(--danger)' },
+/** Nhãn ngắn hiện trên bảng + câu giải nghĩa dùng cho tooltip. */
+const LEVEL_META: Record<Level, { label: string; hint: string; tint: string | null }> = {
+  none: { label: 'Chưa giao việc', hint: 'Tuần này người đó chưa được giao việc nào.', tint: null },
+  under: {
+    label: 'Nhẹ tải',
+    hint: 'Việc được giao chiếm chưa tới 70% số giờ người đó làm được — còn nhận thêm được.',
+    tint: 'var(--success)',
+  },
+  balanced: {
+    label: 'Vừa tải',
+    hint: 'Việc được giao chiếm 70–100% số giờ người đó làm được.',
+    tint: 'var(--primary)',
+  },
+  over: {
+    label: 'Quá tải',
+    hint: 'Việc được giao nhiều hơn số giờ người đó làm được — nên giãn hạn hoặc chia bớt cho người khác.',
+    tint: 'var(--danger)',
+  },
 };
 
 function levelOf(cell: WorkloadCell): Level {
@@ -49,7 +62,7 @@ function cellStyle(cell: WorkloadCell, level: Level) {
 }
 
 /**
- * Năng lực & tải nguồn lực — bảng nhiệt NGƯỜI × TUẦN, phân bổ theo dự án,
+ * Nhân lực & khối lượng việc — bảng nhiệt NGƯỜI × TUẦN, phân bổ theo dự án,
  * nghỉ phép & ngày lễ chung.
  */
 export function ResourcesPage() {
@@ -79,24 +92,27 @@ export function ResourcesPage() {
   const overloadedCount = workload.data?.rows.filter((r) => r.totals.overloaded).length ?? 0;
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'load', label: 'Tải theo tuần' },
+    { id: 'load', label: 'Khối lượng theo tuần' },
     { id: 'allocations', label: 'Phân bổ' },
-    { id: 'time-off', label: 'Nghỉ & ngày lễ' },
+    { id: 'time-off', label: 'Nghỉ phép & ngày lễ' },
   ];
 
   return (
     <div className={pageContainer('xl')}>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Năng lực & tải nguồn lực</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Nhân lực & khối lượng việc</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Năng lực mỗi tuần tính từ ngày làm việc (trừ nghỉ phép và ngày lễ) nhân tỉ lệ phân bổ.
-          Khối lượng lấy từ ước lượng của công việc được giao, trải đều theo khoảng ngày của việc đó.
+          Xem mỗi người đang gánh bao nhiêu giờ so với số giờ họ thật sự làm được.
+          Số giờ làm được (năng lực) = ngày làm việc trong tuần, đã trừ nghỉ phép và ngày lễ, nhân tỉ lệ phân bổ;
+          khối lượng việc = ước lượng giờ của các việc được giao, chia đều cho những ngày việc đó kéo dài.
         </p>
       </header>
 
       <div className="mb-5 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted">Từ tuần của ngày</span>
+          <span className="text-xs font-medium text-muted" title="Bảng luôn bắt đầu từ thứ Hai của tuần chứa ngày bạn chọn.">
+            Xem từ tuần chứa ngày
+          </span>
           <Input
             type="date"
             value={startWeek}
@@ -105,7 +121,7 @@ export function ResourcesPage() {
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted">Độ dài</span>
+          <span className="text-xs font-medium text-muted">Số tuần hiển thị</span>
           <SearchSelect
             value={weeks}
             onChange={setWeeks}
@@ -115,7 +131,9 @@ export function ResourcesPage() {
           />
         </label>
         <label className="flex min-w-[12rem] flex-1 flex-col gap-1.5 sm:max-w-[18rem]">
-          <span className="text-xs font-medium text-muted">Dự án</span>
+          <span className="text-xs font-medium text-muted" title="Chỉ tính khối lượng việc thuộc dự án này. Để “Tất cả dự án” nếu muốn xem tổng.">
+            Dự án
+          </span>
           <SearchSelect
             value={projectId}
             onChange={setProjectId}
@@ -125,14 +143,17 @@ export function ResourcesPage() {
           />
         </label>
         {tab === 'load' && workload.data && workload.data.rows.length > 0 && (
-          <p className="pb-2 text-sm text-muted">
+          <p
+            className="pb-2 text-sm text-muted"
+            title="Tổng số người trong bảng, kèm số người có ít nhất một tuần bị giao nhiều giờ hơn số giờ họ làm được."
+          >
             {workload.data.rows.length} người
             {overloadedCount > 0 && <span className="text-danger"> · {overloadedCount} đang quá tải</span>}
           </p>
         )}
       </div>
 
-      <div className="mb-5 flex gap-1 border-b border-border" role="tablist" aria-label="Năng lực & tải">
+      <div className="mb-5 flex gap-1 border-b border-border" role="tablist" aria-label="Xem theo">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -150,7 +171,7 @@ export function ResourcesPage() {
       </div>
 
       {tab === 'load' && (
-        <section aria-label="Bảng tải theo tuần">
+        <section aria-label="Bảng khối lượng việc theo tuần">
           <Legend />
           {workload.isError ? (
             <QueryError onRetry={() => void workload.refetch()} />
@@ -163,8 +184,8 @@ export function ResourcesPage() {
           ) : !workload.data || workload.data.rows.length === 0 ? (
             <EmptyState
               icon={<Users className="h-6 w-6" />}
-              title="Chưa có thành viên để tính tải"
-              description="Thêm người vào workspace, sau đó phân bổ họ vào dự án để theo dõi năng lực theo tuần."
+              title="Chưa có ai để tính khối lượng việc"
+              description="Bảng này cho biết mỗi tuần một người gánh bao nhiêu giờ. Hãy mời người vào workspace, rồi phân bổ họ vào dự án."
             />
           ) : (
             <HeatMap rows={workload.data.rows} weeks={workload.data.weeks} hoursPerDay={workload.data.hoursPerDay} />
@@ -186,7 +207,7 @@ function Legend() {
   return (
     <ul className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
       {items.map((lv) => (
-        <li key={lv} className="flex items-center gap-1.5">
+        <li key={lv} className="flex items-center gap-1.5" title={LEVEL_META[lv].hint}>
           <span
             className="h-3 w-3 rounded-sm border border-border"
             style={LEVEL_META[lv].tint ? { backgroundColor: `color-mix(in oklch, ${LEVEL_META[lv].tint} 30%, var(--surface))` } : { backgroundColor: 'var(--surface-2)' }}
@@ -195,7 +216,9 @@ function Legend() {
           {LEVEL_META[lv].label}
         </li>
       ))}
-      <li className="text-faint">Tỉ lệ = khối lượng được giao / năng lực khả dụng</li>
+      <li className="text-faint" title="Ví dụ: được giao 52h trong tuần mà chỉ làm được 40h thì hiện 130% và tô đỏ.">
+        Phần trăm = số giờ được giao ÷ số giờ làm được trong tuần
+      </li>
     </ul>
   );
 }
@@ -213,7 +236,7 @@ function HeatMap({
     <Tooltip.Provider delayDuration={0} skipDelayDuration={0}>
       <div className="overflow-x-auto rounded-lg border border-border bg-surface">
         <table className="w-full border-collapse text-sm">
-          <caption className="sr-only">Tải công việc theo người và theo tuần</caption>
+          <caption className="sr-only">Khối lượng việc theo từng người và từng tuần</caption>
           <thead>
             <tr className="border-b border-border">
               <th
@@ -223,11 +246,20 @@ function HeatMap({
                 Thành viên
               </th>
               {weeks.map((w) => (
-                <th key={w.start} scope="col" className="min-w-[5.5rem] px-2 py-2.5 text-center text-xs font-medium text-muted">
+                <th
+                  key={w.start}
+                  scope="col"
+                  className="min-w-[5.5rem] px-2 py-2.5 text-center text-xs font-medium text-muted"
+                  title={`Tuần ${shortDay(w.start)} – ${shortDay(w.end)}`}
+                >
                   {w.label}
                 </th>
               ))}
-              <th scope="col" className="min-w-[6rem] px-3 py-2.5 text-right text-xs font-medium text-muted">
+              <th
+                scope="col"
+                className="min-w-[6rem] px-3 py-2.5 text-right text-xs font-medium text-muted"
+                title="Cộng dồn toàn bộ khoảng đang xem: số giờ được giao trên số giờ làm được."
+              >
                 Cả kỳ
               </th>
             </tr>
@@ -244,7 +276,12 @@ function HeatMap({
                     <span className="min-w-0">
                       <span className="block truncate text-sm text-ink">{row.user.displayName}</span>
                       {row.usesDefaultCapacity && (
-                        <span className="block truncate text-[11px] text-faint">Chưa phân bổ · tính 100%</span>
+                        <span
+                          className="block truncate text-[11px] text-faint"
+                          title="Người này chưa được phân bổ vào dự án nào trong khoảng đang xem, nên tạm tính là làm toàn thời gian (100%)."
+                        >
+                          Chưa phân bổ · tạm tính 100%
+                        </span>
                       )}
                     </span>
                   </span>
@@ -254,7 +291,10 @@ function HeatMap({
                   <LoadCell key={cell.weekStart} cell={cell} name={row.user.displayName} hoursPerDay={hoursPerDay} />
                 ))}
 
-                <td className="px-3 py-2 text-right tabular-nums">
+                <td
+                  className="px-3 py-2 text-right tabular-nums"
+                  title={`Cả kỳ: được giao ${formatHours(row.totals.assignedHours)} trên ${formatHours(row.totals.capacityHours)} giờ làm được.${row.totals.overloaded ? ' Tổng đã vượt số giờ làm được.' : ''}`}
+                >
                   <span className={cn('text-sm', row.totals.overloaded ? 'font-medium text-danger' : 'text-ink')}>
                     {formatHours(row.totals.assignedHours)}
                   </span>
@@ -273,7 +313,7 @@ function LoadCell({ cell, name, hoursPerDay }: { cell: WorkloadCell; name: strin
   const level = levelOf(cell);
   const meta = LEVEL_META[level];
   const percent = cell.ratio != null ? Math.round(cell.ratio * 100) : null;
-  const label =`${name}, tuần ${cell.weekStart}: ${meta.label}, được giao ${formatHours(cell.assignedHours)} trên năng lực ${formatHours(cell.capacityHours)}`;
+  const label = `${name}, tuần bắt đầu ${shortDay(cell.weekStart)}: ${meta.label}, được giao ${formatHours(cell.assignedHours)} trên ${formatHours(cell.capacityHours)} giờ làm được`;
 
   return (
     <td className="p-1 text-center align-middle">
@@ -294,7 +334,7 @@ function LoadCell({ cell, name, hoursPerDay }: { cell: WorkloadCell; name: strin
               {cell.assignedHours > 0 ? formatHours(cell.assignedHours) : '—'}
             </span>
             <span className="text-[11px] tabular-nums text-ink/70">
-              {cell.workingDays === 0 ? 'Nghỉ' : percent != null ? `${percent}%` : 'Chưa phân bổ'}
+              {cell.workingDays === 0 ? 'Nghỉ cả tuần' : percent != null ? `${percent}%` : 'Chưa phân bổ'}
             </span>
           </span>
         </Tooltip.Trigger>
@@ -304,16 +344,17 @@ function LoadCell({ cell, name, hoursPerDay }: { cell: WorkloadCell; name: strin
             sideOffset={6}
             className="z-tooltip w-56 rounded-lg border border-border bg-surface p-3 text-xs shadow-lg animate-in fade-in zoom-in-95 duration-150"
           >
-            <p className="mb-2 font-medium text-ink-strong">Tuần {cell.weekStart}</p>
+            <p className="mb-2 font-medium text-ink-strong">Tuần bắt đầu {shortDay(cell.weekStart)}</p>
             <dl className="space-y-1 text-muted">
-              <Line label="Năng lực" value={formatHours(cell.capacityHours)} />
+              <Line label="Làm được" value={formatHours(cell.capacityHours)} />
               <Line label="Được giao" value={formatHours(cell.assignedHours)} strong={cell.overloaded} />
               <Line label="Đã chấm công" value={formatHours(cell.loggedHours)} />
               <Line label="Ngày làm việc" value={`${cell.workingDays} ngày${cell.offDays ? ` · nghỉ ${cell.offDays}` : ''}`} />
-              <Line label="Phân bổ" value={`${cell.allocationPercent}% · ${hoursPerDay}h/ngày`} />
-              <Line label="Số việc" value={`${cell.issueCount}`} />
+              <Line label="Tỉ lệ phân bổ" value={`${cell.allocationPercent}% · ${hoursPerDay}h/ngày`} />
+              <Line label="Số việc đang giao" value={`${cell.issueCount}`} />
             </dl>
             <p className={cn('mt-2 font-medium', cell.overloaded ? 'text-danger' : 'text-ink')}>{meta.label}</p>
+            <p className="mt-0.5 text-[11px] leading-snug text-muted">{meta.hint}</p>
             <Tooltip.Arrow className="fill-[var(--border)]" />
           </Tooltip.Content>
         </Tooltip.Portal>

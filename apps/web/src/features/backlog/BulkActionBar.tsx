@@ -46,7 +46,7 @@ export function BulkActionBar({
   }, [onClear]);
 
   const sprintOptions = [
-    { value: BACKLOG_OPTION, label: 'Backlog' },
+    { value: BACKLOG_OPTION, label: 'Backlog (việc chờ)' },
     ...sprints.map((s) => ({ value: s.id, label: s.name })),
   ];
 
@@ -60,14 +60,14 @@ export function BulkActionBar({
         'animate-in fade-in slide-in-from-bottom-2 duration-200',
       )}
     >
-      <span className="text-sm font-medium text-ink-strong" aria-live="polite">
+      <span className="text-sm font-medium text-ink-strong" aria-live="polite" title="Các thao tác bên phải sẽ áp cho tất cả việc đang chọn. Nhấn Esc để bỏ chọn.">
         Đã chọn <span className="tabular">{count}</span> việc
       </span>
 
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {canAssign && (
           <>
-            <Button size="sm" variant="secondary" loading={busy} onClick={onAssignToMe}>
+            <Button size="sm" variant="secondary" title="Đặt bạn làm người phụ trách các việc đang chọn" loading={busy} onClick={onAssignToMe}>
               <UserCheck className="h-4 w-4" />
               Gán cho tôi
             </Button>
@@ -77,7 +77,7 @@ export function BulkActionBar({
               onChange={(v) => { if (v) onAssignTo(v); }}
               options={assigneeOptions}
               includeEmpty={false}
-              ariaLabel="Đổi người phụ trách cho các việc đã chọn"
+              ariaLabel="Chọn người phụ trách mới cho các việc đang chọn"
               disabled={busy || assigneeOptions.length === 0}
               align="end"
               className="h-8 w-52"
@@ -98,7 +98,7 @@ export function BulkActionBar({
             options={sprintOptions}
             placeholder="Chuyển sprint"
             searchPlaceholder="Tìm sprint…"
-            ariaLabel="Chuyển các việc đã chọn sang sprint"
+            ariaLabel="Chuyển các việc đang chọn sang một sprint khác hoặc về Backlog"
             disabled={busy}
             align="end"
             className="h-8 w-48"
@@ -111,7 +111,7 @@ export function BulkActionBar({
           />
         )}
 
-        <Button size="sm" variant="ghost" onClick={onClear} disabled={busy}>
+        <Button size="sm" variant="ghost" title="Bỏ chọn tất cả · phím Esc" onClick={onClear} disabled={busy}>
           <X className="h-4 w-4" />
           Bỏ chọn
         </Button>

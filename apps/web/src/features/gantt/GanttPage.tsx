@@ -82,10 +82,10 @@ function dependencyPath(dep: DependencyDto, from: BarBox, to: BarBox) {
   return { d, head };
 }
 
-/** Ô chú thích nhỏ ở thanh công cụ. */
-function LegendItem({ swatch, label }: { swatch: React.ReactNode; label: string }) {
+/** Ô chú thích nhỏ ở thanh công cụ. `hint` là câu giải nghĩa hiện khi rê chuột. */
+function LegendItem({ swatch, label, hint }: { swatch: React.ReactNode; label: string; hint?: string }) {
   return (
-    <span className="flex items-center gap-1.5 whitespace-nowrap">
+    <span className="flex items-center gap-1.5 whitespace-nowrap" title={hint}>
       {swatch}
       {label}
     </span>
@@ -249,7 +249,7 @@ export function GanttPage() {
     try {
       const created = await createBaseline.mutateAsync({ name });
       setBaselineId(created.id);
-      toast.success(`Đã chụp “${name}” — đang so sánh với kế hoạch hiện tại`);
+      toast.success(`Đã lưu “${name}” — biểu đồ đang đối chiếu với lịch hiện tại`);
     } catch (e) {
       toast.error(apiErrorMessage(e));
     }
@@ -257,16 +257,19 @@ export function GanttPage() {
 
   function barTitle(s: Span): string {
     const parts = [`${s.issue.key} · ${format(s.start, 'dd/MM')} → ${format(s.end, 'dd/MM')}`];
-    if (s.inferred) parts.push('Ngày dự kiến (suy từ phụ thuộc)');
-    if (s.overdue) parts.push('Quá hạn');
-    if (highlightCritical && s.critical) parts.push('Đường găng · dự trữ 0 ngày');
-    else if (s.slackDays !== null && s.slackDays > 0) parts.push(`Dự trữ ${s.slackDays} ngày`);
+    if (s.inferred) parts.push('Chưa đặt ngày — hệ thống suy ra từ phụ thuộc');
+    if (s.overdue) parts.push('Đã quá hạn');
+    if (highlightCritical && s.critical) {
+      parts.push('Nằm trên đường găng: trễ việc này là trễ cả dự án (không có ngày dự trữ)');
+    } else if (s.slackDays !== null && s.slackDays > 0) {
+      parts.push(`Được phép trễ tối đa ${s.slackDays} ngày mà không đổi ngày kết thúc dự án`);
+    }
     if (compareOn && s.baseStart && s.baseEnd) {
       const delta = differenceInCalendarDays(s.end, s.baseEnd);
-      const drift = delta === 0 ? 'đúng kế hoạch' : `lệch ${delta > 0 ? '+' : ''}${delta} ngày`;
+      const drift = delta === 0 ? 'đúng kế hoạch' : delta > 0 ? `chậm ${delta} ngày so với kế hoạch` : `sớm ${-delta} ngày so với kế hoạch`;
       parts.push(`Kế hoạch gốc: ${format(s.baseStart, 'dd/MM')} → ${format(s.baseEnd, 'dd/MM')} (${drift})`);
     }
-    return parts.join(' · ');
+    return parts.join('\n');
   }
 
   return (
@@ -277,20 +280,36 @@ export function GanttPage() {
           size="sm"
           aria-pressed={highlightCritical}
           disabled={deps.length === 0}
-          title={deps.length === 0 ? 'Cần ít nhất một phụ thuộc để tính đường găng' : 'Bật/tắt tô đường găng'}
+          title={
+            deps.length === 0
+              ? 'Chưa có phụ thuộc nào nên chưa tính được đường găng. Hãy nối hai việc trong “Phụ thuộc & cột mốc”.'
+              : `Đường găng là chuỗi việc quyết định ngày kết thúc dự án — trễ một việc là trễ cả dự án. Bấm để bật/tắt tô đỏ. Hiện có ${criticalCount} việc trên đường găng.`
+          }
           onClick={() => setShowCritical((v) => !v)}
         >
           <Zap className="h-4 w-4" aria-hidden /> Đường găng
           {deps.length > 0 && <span className="tabular text-muted">{criticalCount}</span>}
         </Button>
 
-        <Button variant="ghost" size="sm" disabled={!projectId} onClick={() => setPanelOpen(true)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!projectId}
+          title={`Mở bảng khai báo việc nào phải xong trước và các ngày phải chốt. Hiện có ${deps.length} phụ thuộc và ${milestones.length} cột mốc.`}
+          onClick={() => setPanelOpen(true)}
+        >
           <Link2 className="h-4 w-4" aria-hidden /> Phụ thuộc &amp; cột mốc
           <span className="tabular text-muted">{deps.length + milestones.length}</span>
         </Button>
 
         <div className="flex items-center gap-1.5">
-          <label className="text-xs text-muted" htmlFor="gantt-baseline">Kế hoạch gốc</label>
+          <label
+            className="text-xs text-muted"
+            htmlFor="gantt-baseline"
+            title="Kế hoạch gốc là bản chụp ngày bắt đầu và hạn của mọi việc tại một thời điểm. Chọn một bản để xem lịch đã trôi bao nhiêu so với dự tính ban đầu."
+          >
+            Kế hoạch gốc
+          </label>
           <SearchSelect
             id="gantt-baseline"
             disabled={!projectId || (baselinesQ.data?.length ?? 0) === 0}
@@ -311,9 +330,9 @@ export function GanttPage() {
             onClick={() => void captureBaseline()}
             loading={createBaseline.isPending}
             disabled={!projectId || createBaseline.isPending}
-            title="Lưu ảnh chụp ngày bắt đầu/hạn hiện tại của mọi issue"
+            title="Lưu lại ngày bắt đầu và hạn hiện tại của mọi công việc, để sau này đối chiếu xem lịch đã trôi bao nhiêu."
           >
-            <Camera className="h-4 w-4" aria-hidden /> Chụp kế hoạch gốc
+            <Camera className="h-4 w-4" aria-hidden /> Lưu kế hoạch gốc
           </Button>
         )}
 
@@ -321,6 +340,7 @@ export function GanttPage() {
           {highlightCritical && (
             <LegendItem
               label="Đường găng"
+              hint="Viền đỏ = việc nằm trên chuỗi quyết định ngày kết thúc dự án. Trễ một việc là trễ cả dự án."
               swatch={
                 <span
                   className="h-2.5 w-5 rounded-sm bg-surface-3"
@@ -333,18 +353,21 @@ export function GanttPage() {
           {compareOn && (
             <LegendItem
               label="Kế hoạch gốc"
+              hint="Thanh mờ viền đứt = ngày đã chốt trong kế hoạch gốc. Thanh đặc lệch sang phải nghĩa là việc đang chậm hơn kế hoạch."
               swatch={<span className="h-2.5 w-5 rounded-sm border border-dashed border-[var(--border-strong)]" aria-hidden />}
             />
           )}
           {hasInferred && (
             <LegendItem
               label="Ngày dự kiến"
+              hint="Việc chưa được đặt ngày. Hệ thống tạm suy ra ngày từ các phụ thuộc đã khai báo."
               swatch={<span className="h-2.5 w-5 rounded-sm border border-dashed border-[var(--faint)] opacity-70" aria-hidden />}
             />
           )}
           {milestones.length > 0 && (
             <LegendItem
               label="Cột mốc"
+              hint="Hình thoi = ngày quan trọng phải chốt, ví dụ bàn giao hay nghiệm thu."
               swatch={<span className="h-2 w-2 rotate-45 bg-primary" aria-hidden />}
             />
           )}
@@ -352,8 +375,11 @@ export function GanttPage() {
       </div>
 
       {model.noDate > 0 && (
-        <div className="border-b border-border px-6 py-2 text-xs text-faint">
-          {model.noDate} issue chưa có ngày bắt đầu/hạn và không nằm trong chuỗi phụ thuộc nào
+        <div
+          className="border-b border-border px-6 py-2 text-xs text-faint"
+          title="Đặt ngày bắt đầu hoặc hạn cho những việc này, hoặc nối chúng vào một việc khác, thì chúng sẽ hiện trên biểu đồ."
+        >
+          {model.noDate} công việc chưa hiện ở đây vì chưa có ngày bắt đầu/hạn và cũng không nối với việc nào
         </div>
       )}
 
@@ -373,8 +399,8 @@ export function GanttPage() {
         ) : model.spans.length === 0 ? (
           <EmptyState
             icon={<CalendarRange className="h-8 w-8" aria-hidden />}
-            title="Chưa có issue nào có ngày"
-            description="Đặt ngày bắt đầu hoặc hạn chót cho issue để chúng xuất hiện trên lịch trình."
+            title="Chưa có công việc nào có ngày"
+            description="Biểu đồ này vẽ theo ngày bắt đầu và hạn chót. Hãy đặt ngày cho công việc để chúng hiện ở đây."
           />
         ) : (
           <div className="inline-block min-w-full overflow-hidden rounded-lg border border-border bg-surface">
@@ -385,7 +411,7 @@ export function GanttPage() {
                   className="sticky left-0 z-10 shrink-0 border-r border-border bg-surface px-3 py-2 text-xs font-semibold uppercase tracking-wide text-faint"
                   style={{ width: LABEL_W }}
                 >
-                  Issue
+                  Công việc
                 </div>
                 <div style={{ width: trackW }}>
                   <div className="flex">
@@ -438,7 +464,7 @@ export function GanttPage() {
                           key={m.id}
                           className="absolute top-1/2 flex -translate-y-1/2 items-center gap-1.5"
                           style={{ left: x }}
-                          title={`${m.name} · ${format(new Date(m.dueDate), 'dd/MM/yyyy')}${m.completedAt ? ' · Đã hoàn thành' : ''}`}
+                          title={`Cột mốc: ${m.name}\nNgày phải đạt: ${format(new Date(m.dueDate), 'dd/MM/yyyy')}${m.completedAt ? '\nĐã đạt' : '\nChưa đạt'}`}
                         >
                           <span
                             className={cn('-ml-[5px] h-2.5 w-2.5 shrink-0 rotate-45 border', m.completedAt && 'opacity-60')}
@@ -529,7 +555,11 @@ export function GanttPage() {
                         style={{ width: LABEL_W, height: ROW_H }}
                       >
                         {isCritical && (
-                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger" title="Trên đường găng" aria-hidden />
+                          <span
+                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger"
+                            title="Việc này nằm trên đường găng — trễ nó là trễ ngày kết thúc cả dự án."
+                            aria-hidden
+                          />
                         )}
                         <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
                         <span className="min-w-0 flex-1 truncate text-sm text-ink">{issue.summary}</span>
@@ -538,6 +568,7 @@ export function GanttPage() {
                         {compareOn && baseWidth > 0 && (
                           <div
                             className="absolute top-1/2 -translate-y-1/2 rounded-md border border-dashed"
+                            title={`Kế hoạch gốc của ${issue.key}: ${format(s.baseStart!, 'dd/MM')} → ${format(s.baseEnd!, 'dd/MM')}. Thanh đặc là lịch hiện tại.`}
                             style={{
                               left: baseLeft,
                               width: baseWidth,

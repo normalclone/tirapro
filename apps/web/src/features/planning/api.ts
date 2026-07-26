@@ -4,12 +4,20 @@ import { api } from '@/lib/api';
 /** Loại phụ thuộc giữa hai công việc (mirror `DependencyType` của Prisma). */
 export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF';
 
-/** Nhãn tiếng Việt cho từng loại phụ thuộc, dùng chung ở form + tooltip. */
+/** Nhãn tiếng Việt gọn cho từng loại phụ thuộc, dùng ở danh sách + ô chọn. */
 export const DEPENDENCY_TYPE_LABELS: Record<DependencyType, string> = {
-  FS: 'Kết thúc → Bắt đầu',
-  SS: 'Bắt đầu → Bắt đầu',
-  FF: 'Kết thúc → Kết thúc',
-  SF: 'Bắt đầu → Kết thúc',
+  FS: 'Xong mới bắt đầu',
+  SS: 'Cùng bắt đầu',
+  FF: 'Cùng kết thúc',
+  SF: 'Bắt đầu mới được kết thúc',
+};
+
+/** Câu giải nghĩa đầy đủ cho tooltip — người mới đọc là hiểu ngay. */
+export const DEPENDENCY_TYPE_HINTS: Record<DependencyType, string> = {
+  FS: 'Việc trước phải xong thì việc sau mới được bắt đầu. Đây là kiểu hay dùng nhất.',
+  SS: 'Hai việc bắt đầu cùng lúc: việc trước bắt đầu thì việc sau mới được bắt đầu.',
+  FF: 'Hai việc kết thúc cùng lúc: việc trước xong thì việc sau mới được xong.',
+  SF: 'Việc trước phải bắt đầu thì việc sau mới được kết thúc. Kiểu này hiếm dùng.',
 };
 
 export const DEPENDENCY_TYPES: DependencyType[] = ['FS', 'SS', 'FF', 'SF'];
@@ -108,7 +116,7 @@ export function useDependencies(projectId: string | undefined) {
   });
 }
 
-/** Sau khi đổi phụ thuộc thì đường găng cũng đổi → nạp lại luôn lịch trình. */
+/** Đổi phụ thuộc là đường găng đổi theo → nạp lại luôn lịch trình. */
 function useInvalidateSchedule(projectId: string) {
   const qc = useQueryClient();
   return () => {

@@ -95,6 +95,15 @@ export function useDeleteSlaPolicy() {
 }
 
 /** "2 giờ 30 phút" / "3 ngày" — hiển thị phút thành chuỗi tiếng Việt gọn. */
+/**
+ * Ngưỡng cảnh báo "sắp tới hạn" (phút). Đổi số ở ĐÂY thì câu chữ trên badge và
+ * bảng theo dõi tự đổi theo — đừng ghi cứng "2 giờ" ở nơi khác.
+ */
+export const SLA_SOON_MINS = 120;
+
+/** Câu mô tả ngưỡng trên, dùng cho nhãn/tooltip. VD: "còn dưới 2 giờ". */
+export const SLA_SOON_LABEL = `còn dưới ${SLA_SOON_MINS / 60} giờ`;
+
 export function fmtMins(mins: number): string {
   const abs = Math.abs(mins);
   if (abs < 60) return `${abs} phút`;

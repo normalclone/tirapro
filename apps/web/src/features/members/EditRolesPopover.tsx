@@ -38,12 +38,12 @@ export function EditRolesPopover({
 
   async function save() {
     if (selected.length === 0) {
-      toast.error('Cần ít nhất một vai trò.');
+      toast.error('Hãy chọn ít nhất một vai trò cho người này');
       return;
     }
     try {
       await onSave(selected);
-      toast.success('Đã cập nhật vai trò');
+      toast.success('Đã cập nhật vai trò. Quyền mới có hiệu lực ngay.');
       setOpen(false);
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -59,7 +59,9 @@ export function EditRolesPopover({
           sideOffset={6}
           className="z-dropdown w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface p-3 shadow-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
         >
-          <p className="mb-2 text-sm font-medium text-ink-strong">Vai trò</p>
+          <p className="mb-2 text-sm font-medium text-ink-strong" title="Vai trò quyết định người này được xem và làm gì. Chọn được nhiều vai trò — quyền là gộp của tất cả.">
+            Vai trò
+          </p>
           <RoleMultiSelect options={options} value={selected} onChange={setSelected} />
           <div className="mt-3 flex items-center justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>

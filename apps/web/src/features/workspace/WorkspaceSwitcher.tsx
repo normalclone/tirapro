@@ -38,7 +38,7 @@ export function WorkspaceSwitcher() {
           <button
             type="button"
             disabled={switchWs.isPending}
-            aria-label={`Workspace hiện tại: ${label}. Bấm để đổi hoặc tạo mới.`}
+            aria-label={`Không gian làm việc hiện tại: ${label}. Bấm để đổi sang nơi khác hoặc lập nơi mới.`}
             className={cn(
               'flex h-9 max-w-[220px] items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-surface-2',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] data-[state=open]:bg-surface-2',
@@ -56,7 +56,7 @@ export function WorkspaceSwitcher() {
             sideOffset={6}
             className="z-dropdown w-[min(20rem,calc(100vw-1rem))] overflow-hidden rounded-lg border border-border bg-surface shadow-lg outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
           >
-            <ul className="max-h-80 overflow-y-auto py-1" role="listbox" aria-label="Danh sách workspace">
+            <ul className="max-h-80 overflow-y-auto py-1" role="listbox" aria-label="Danh sách không gian làm việc">
               {workspaces.map((ws) => {
                 const isActive = ws.id === active?.id;
                 return (
@@ -94,7 +94,7 @@ export function WorkspaceSwitcher() {
               className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-surface-2"
             >
               <Plus className="h-4 w-4" />
-              Tạo workspace
+              Tạo không gian làm việc
             </button>
           </Popover.Content>
         </Popover.Portal>

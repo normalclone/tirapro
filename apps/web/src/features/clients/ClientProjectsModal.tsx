@@ -37,7 +37,7 @@ export function ClientProjectsModal({
     if (!client) return;
     try {
       await setProjects.mutateAsync({ id: client.id, projectIds: ids });
-      toast.success('Đã cập nhật dự án của khách hàng');
+      toast.success('Đã cập nhật danh sách dự án của khách hàng');
       onClose();
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -60,7 +60,8 @@ export function ClientProjectsModal({
 
         <div className="px-5 py-4">
           <p className="mb-2 text-sm text-muted">
-            Mỗi dự án chỉ thuộc một khách hàng. Dự án bỏ khỏi danh sách sẽ không còn gắn với khách hàng này.
+            Mỗi dự án chỉ thuộc một khách hàng. Dự án bạn bỏ chọn sẽ không còn gắn với khách hàng này,
+            dữ liệu của dự án không bị ảnh hưởng.
           </p>
           <RoleMultiSelect
             options={options}
@@ -74,7 +75,7 @@ export function ClientProjectsModal({
 
         <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void save()} loading={setProjects.isPending}>Lưu</Button>
+          <Button onClick={() => void save()} loading={setProjects.isPending}>Lưu thay đổi</Button>
         </footer>
       </div>
     </div>

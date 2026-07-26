@@ -13,15 +13,16 @@ import { useProjects } from '@/features/projects/api';
 import { RaidEditorModal } from './RaidEditorModal';
 import { useDeleteRaidItem, useRaidItems, type RaidItemDto, type RaidKind, type RaidStatus } from './api';
 import {
-  IMPACT_LABELS, PROBABILITY_LABELS, RAID_KINDS, RAID_LEVEL_META, RAID_STATUS_META, SCALE, raidLevelOf,
+  IMPACT_LABELS, PROBABILITY_LABELS, RAID_KINDS, RAID_LEVEL_LEGEND, RAID_LEVEL_META, RAID_STATUS_META,
+  SCALE, raidLevelOf,
 } from './constants';
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'Mọi trạng thái' },
-  { value: 'OPEN', label: 'Đang mở' },
+  { value: 'OPEN', label: 'Chưa xử lý' },
   { value: 'MITIGATING', label: 'Đang xử lý' },
-  { value: 'CLOSED', label: 'Đã đóng' },
-  { value: 'ACCEPTED', label: 'Chấp nhận' },
+  { value: 'CLOSED', label: 'Đã xong' },
+  { value: 'ACCEPTED', label: 'Chấp nhận, không xử lý' },
 ];
 
 /** Ô ma trận đang chọn: {probability, impact}. */
@@ -53,14 +54,22 @@ function HeatMatrix({
   return (
     <section className="rounded-lg border border-border bg-surface p-4 sm:p-5">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-base font-semibold text-ink-strong">Ma trận rủi ro</h2>
-        <p className="text-xs text-faint">Bấm một ô để lọc danh sách bên dưới</p>
+        <h2
+          className="text-base font-semibold text-ink-strong"
+          title="Mỗi mục được xếp vào một ô theo xác suất xảy ra (cột) và mức ảnh hưởng (hàng). Ô càng đỏ càng cần ưu tiên."
+        >
+          Ma trận rủi ro
+        </h2>
+        <p className="text-xs text-faint">Bấm một ô để chỉ xem các mục trong ô đó</p>
       </div>
 
       <div className="overflow-x-auto">
         <div className="flex min-w-[26rem] gap-2">
           <div className="flex shrink-0 items-center">
-            <span className="whitespace-nowrap text-xs font-medium text-muted [writing-mode:vertical-rl] rotate-180">
+            <span
+              className="whitespace-nowrap text-xs font-medium text-muted [writing-mode:vertical-rl] rotate-180"
+              title="Mức thiệt hại nếu điều này xảy ra: 1 là không đáng kể, 5 là nghiêm trọng"
+            >
               Ảnh hưởng
             </span>
           </div>
@@ -68,12 +77,16 @@ function HeatMatrix({
           <div className="flex-1">
             <table className="w-full border-separate border-spacing-1">
               <caption className="sr-only">
-                Ma trận rủi ro 5×5: hàng là mức ảnh hưởng, cột là xác suất, ô là số mục RAID
+                Ma trận rủi ro 5×5: hàng là mức ảnh hưởng, cột là xác suất xảy ra, mỗi ô là số mục đang nằm ở đó
               </caption>
               <tbody>
                 {[...SCALE].reverse().map((impact) => (
                   <tr key={impact}>
-                    <th scope="row" className="w-6 pr-1 text-right text-xs font-medium tabular-nums text-faint">
+                    <th
+                      scope="row"
+                      className="w-6 pr-1 text-right text-xs font-medium tabular-nums text-faint"
+                      title={`Ảnh hưởng ${impact}: ${IMPACT_LABELS[impact]}`}
+                    >
                       {impact}
                     </th>
                     {SCALE.map((prob) => {
@@ -87,7 +100,10 @@ function HeatMatrix({
                             type="button"
                             onClick={() => onSelect(active ? null : { p: prob, i: impact })}
                             aria-pressed={active}
-                            title={`${PROBABILITY_LABELS[prob]} × ${IMPACT_LABELS[impact]} — điểm ${score} (${meta.label}) · ${count} mục`}
+                            title={
+                              `Xác suất: ${PROBABILITY_LABELS[prob]} · Ảnh hưởng: ${IMPACT_LABELS[impact]}\n`
+                              + `Điểm rủi ro ${score} — mức ${meta.label.toLowerCase()} · ${count} mục`
+                            }
                             className={cn(
                               'flex h-11 w-full items-center justify-center rounded-md text-sm font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
                               count === 0 ? 'bg-surface-2 text-faint' : meta.cell,
@@ -106,24 +122,39 @@ function HeatMatrix({
                 <tr>
                   <td />
                   {SCALE.map((prob) => (
-                    <td key={prob} className="pt-0.5 text-center text-xs font-medium tabular-nums text-faint">
+                    <td
+                      key={prob}
+                      className="pt-0.5 text-center text-xs font-medium tabular-nums text-faint"
+                      title={`Xác suất ${prob}: ${PROBABILITY_LABELS[prob]}`}
+                    >
                       {prob}
                     </td>
                   ))}
                 </tr>
               </tfoot>
             </table>
-            <p className="mt-1 text-center text-xs font-medium text-muted">Xác suất</p>
+            <p
+              className="mt-1 text-center text-xs font-medium text-muted"
+              title="Khả năng điều này thực sự xảy ra: 1 là rất khó, 5 là gần như chắc chắn"
+            >
+              Xác suất
+            </p>
           </div>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2" title={RAID_LEVEL_LEGEND}>
         {(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const).map((lv) => (
           <Badge key={lv} className={RAID_LEVEL_META[lv].badge}>{RAID_LEVEL_META[lv].label}</Badge>
         ))}
         {selected && (
-          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => onSelect(null)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            title="Xem lại toàn bộ danh sách, không lọc theo ô nữa"
+            onClick={() => onSelect(null)}
+          >
             Bỏ lọc ô {selected.p}×{selected.i}
           </Button>
         )}
@@ -145,10 +176,10 @@ function RaidRow({
   const closed = item.status === 'CLOSED' || item.status === 'ACCEPTED';
 
   async function handleRemove() {
-    if (!window.confirm(`Xoá "${item.title}" khỏi sổ RAID?`)) return;
+    if (!window.confirm(`Xoá “${item.title}” khỏi danh sách theo dõi? Thao tác này không khôi phục được.`)) return;
     try {
       await remove.mutateAsync(item.id);
-      toast.success('Đã xoá');
+      toast.success('Đã xoá khỏi danh sách');
     } catch (e) {
       toast.error(apiErrorMessage(e));
     }
@@ -158,27 +189,30 @@ function RaidRow({
     <tr className="border-t border-border align-top">
       <td className="px-3 py-2.5">
         <p className="text-sm font-medium text-ink">{item.title}</p>
-        {item.mitigation && <p className="mt-0.5 text-xs text-muted">Xử lý: {item.mitigation}</p>}
-        {item.project && <p className="mt-0.5 text-xs text-faint">{item.project.name}</p>}
+        {item.mitigation && <p className="mt-0.5 text-xs text-muted">Cách xử lý: {item.mitigation}</p>}
+        {item.project && <p className="mt-0.5 text-xs text-faint" title="Dự án liên quan">{item.project.name}</p>}
       </td>
       <td className="px-3 py-2.5">
         {item.owner ? (
-          <span className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1.5" title={`Người phụ trách: ${item.owner.displayName}`}>
             <Avatar name={item.owner.displayName} src={item.owner.avatarUrl} size={22} />
             <span className="truncate text-sm text-muted">{item.owner.displayName}</span>
           </span>
         ) : (
-          <span className="text-xs text-faint">Chưa gán</span>
+          <span className="text-xs text-faint" title="Chưa ai nhận theo dõi mục này">Chưa gán</span>
         )}
       </td>
-      <td className="whitespace-nowrap px-3 py-2.5">
+      <td
+        className="whitespace-nowrap px-3 py-2.5"
+        title={`Xác suất ${item.probability} (${PROBABILITY_LABELS[item.probability] ?? '—'}) × ảnh hưởng ${item.impact} (${IMPACT_LABELS[item.impact] ?? '—'}) = ${item.score} điểm`}
+      >
         <span className="flex items-center gap-1.5">
           <span className="text-xs tabular-nums text-faint">{item.probability}×{item.impact}</span>
           <Badge className={cn('tabular-nums', level.badge)}>{item.score}</Badge>
           <span className="hidden text-xs text-muted sm:inline">{item.levelLabel}</span>
         </span>
       </td>
-      <td className="whitespace-nowrap px-3 py-2.5">
+      <td className="whitespace-nowrap px-3 py-2.5" title={status.hint}>
         <Badge className={status.className}>{status.label}</Badge>
       </td>
       <td className="whitespace-nowrap px-3 py-2.5">
@@ -191,14 +225,14 @@ function RaidRow({
       {canManage && (
         <td className="whitespace-nowrap px-3 py-2.5 text-right">
           <div className="flex items-center justify-end gap-1">
-            <Button variant="ghost" size="icon" onClick={() => onEdit(item)} title="Sửa" aria-label={`Sửa ${item.title}`}>
+            <Button variant="ghost" size="icon" onClick={() => onEdit(item)} title="Sửa mục này" aria-label={`Sửa ${item.title}`}>
               <Pencil className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
               className="text-muted hover:text-danger"
-              title="Xoá"
+              title="Xoá khỏi danh sách theo dõi"
               aria-label={`Xoá ${item.title}`}
               loading={remove.isPending}
               onClick={() => void handleRemove()}
@@ -212,7 +246,7 @@ function RaidRow({
   );
 }
 
-/** SỔ RỦI RO RAID — tab theo loại, bảng danh sách và ma trận nhiệt 5×5. */
+/** RỦI RO & VƯỚNG MẮC (RAID) — tab theo loại, bảng danh sách và ma trận nhiệt 5×5. */
 export function RaidPage() {
   const can = useAuth((s) => s.can);
   const canManage = can('risk:manage');
@@ -257,25 +291,31 @@ export function RaidPage() {
     <div className={pageContainer('lg')}>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Sổ rủi ro RAID</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Rủi ro &amp; vướng mắc</h1>
           <p className="mt-1 text-sm text-muted">
-            Rủi ro, giả định, vấn đề và phụ thuộc của cả workspace. Điểm rủi ro = xác suất × ảnh hưởng,
-            mục nguy hiểm nhất luôn nằm trên cùng.
+            Nơi ghi lại mọi thứ có thể cản tiến độ của workspace: rủi ro có thể xảy ra, giả định đang tin là đúng,
+            vấn đề đang xảy ra và việc phải chờ bên khác (quốc tế gọi là sổ RAID). Điểm rủi ro = xác suất × mức ảnh hưởng,
+            mục đáng lo nhất luôn nằm trên cùng.
           </p>
         </div>
         {canManage && (
           <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Thêm mục
+            <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
           </Button>
         )}
       </header>
 
-      <div className="mb-5 flex gap-1 overflow-x-auto border-b border-border" role="tablist" aria-label="Loại mục RAID">
+      <div
+        className="mb-5 flex gap-1 overflow-x-auto border-b border-border"
+        role="tablist"
+        aria-label="Loại rủi ro và vướng mắc"
+      >
         {RAID_KINDS.map((k) => (
           <button
             key={k.value}
             role="tab"
             aria-selected={kind === k.value}
+            title={k.description}
             onClick={() => { setKind(k.value); setCell(null); }}
             className={cn(
               '-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
@@ -324,10 +364,10 @@ export function RaidPage() {
 
           <section className="rounded-lg border border-border bg-surface">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
-              <h2 className="text-base font-semibold text-ink-strong">Danh sách</h2>
+              <h2 className="text-base font-semibold text-ink-strong">Danh sách chi tiết</h2>
               <span className="text-sm text-muted">
                 {cell
-                  ? `${rows.length} mục ở ô ${cell.p}×${cell.i}`
+                  ? `${rows.length} mục ở ô xác suất ${cell.p} × ảnh hưởng ${cell.i}`
                   : `${rows.length} mục`}
               </span>
             </div>
@@ -341,12 +381,16 @@ export function RaidPage() {
                     cell
                       ? 'Bấm lại vào ô đang chọn trong ma trận để xem toàn bộ danh sách.'
                       : canManage
-                        ? 'Ghi lại điều bạn đang lo, chấm xác suất và mức ảnh hưởng — cả nhóm sẽ thấy ngay trên ma trận.'
-                        : 'Khi nhóm ghi nhận mục mới, chúng sẽ hiện ở đây.'
+                        ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — cả nhóm sẽ thấy ngay trên ma trận và biết việc nào cần lo trước.'
+                        : 'Khi nhóm ghi nhận mục mới, bạn sẽ thấy ở đây.'
                   }
                   action={
                     canManage && !cell
-                      ? <Button onClick={openCreate}><Plus className="h-4 w-4" /> Thêm mục</Button>
+                      ? (
+                        <Button onClick={openCreate}>
+                          <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
+                        </Button>
+                      )
                       : undefined
                   }
                 />
@@ -356,11 +400,15 @@ export function RaidPage() {
                 <table className="w-full min-w-[46rem] text-left">
                   <thead>
                     <tr className="text-xs font-medium text-faint">
-                      <th scope="col" className="px-3 py-2">Tiêu đề</th>
-                      <th scope="col" className="px-3 py-2">Chủ sở hữu</th>
-                      <th scope="col" className="px-3 py-2">Xác suất × ảnh hưởng</th>
+                      <th scope="col" className="px-3 py-2">Nội dung</th>
+                      <th scope="col" className="px-3 py-2" title="Người chịu trách nhiệm theo dõi và xử lý">
+                        Người phụ trách
+                      </th>
+                      <th scope="col" className="px-3 py-2" title={RAID_LEVEL_LEGEND}>
+                        Xác suất × ảnh hưởng
+                      </th>
                       <th scope="col" className="px-3 py-2">Trạng thái</th>
-                      <th scope="col" className="px-3 py-2">Hạn</th>
+                      <th scope="col" className="px-3 py-2" title="Ngày cần xử lý xong">Hạn xử lý</th>
                       {canManage && <th scope="col" className="px-3 py-2 text-right">Thao tác</th>}
                     </tr>
                   </thead>

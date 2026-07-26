@@ -8,10 +8,10 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Avatar } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
-/** Giá trị đặc biệt cho bộ lọc: '' = mọi người, dưới đây = chưa gán. */
+/** Giá trị đặc biệt cho bộ lọc: '' = mọi người, dưới đây = việc chưa có người phụ trách. */
 export const ASSIGNEE_UNASSIGNED = '__unassigned__';
 
-/** Lọc issue theo người phụ trách (client-side). */
+/** Lọc công việc theo người phụ trách (ngay tại trình duyệt). */
 export function applyAssigneeFilter<T extends Pick<IssueDto, 'assigneeId'>>(issues: T[], value: string): T[] {
   if (!value) return issues;
   if (value === ASSIGNEE_UNASSIGNED) return issues.filter((i) => !i.assigneeId);
@@ -22,7 +22,7 @@ export function applyAssigneeFilter<T extends Pick<IssueDto, 'assigneeId'>>(issu
 export function AssigneeFilter({ options, value, onChange }: { options: PersonOption[]; value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
-  // Lọc phụ TRONG danh sách người: theo vai trò và theo nhóm.
+  // Thu hẹp danh sách người: theo vai trò và theo nhóm.
   const [roleF, setRoleF] = useState('');
   const [teamF, setTeamF] = useState('');
 
@@ -61,6 +61,7 @@ export function AssigneeFilter({ options, value, onChange }: { options: PersonOp
         <button
           type="button"
           aria-label="Lọc theo người phụ trách"
+          title={active ? `Đang chỉ hiện việc của: ${label}. Bấm để đổi hoặc bỏ lọc.` : 'Chỉ hiện việc của một người. Bấm để chọn.'}
           className={cn(
             'inline-flex h-7 items-center gap-1.5 rounded-full border pl-1.5 pr-2 text-xs font-medium transition-colors',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
@@ -79,7 +80,7 @@ export function AssigneeFilter({ options, value, onChange }: { options: PersonOp
           className="z-dropdown w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-border bg-surface shadow-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
         >
           <div className="space-y-2 border-b border-border p-2">
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm người…" autoFocus className="h-8 text-sm" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm theo tên, vị trí hoặc nhóm…" aria-label="Tìm người phụ trách" autoFocus className="h-8 text-sm" />
             {(allRoles.length > 0 || allTeams.length > 0) && (
               <div className="flex gap-2">
                 {allRoles.length > 0 && (
@@ -110,8 +111,8 @@ export function AssigneeFilter({ options, value, onChange }: { options: PersonOp
           <ul className="max-h-72 overflow-y-auto p-1" role="listbox" aria-label="Người phụ trách">
             {query === '' && (
               <>
-                <li>{optRow(value === '', () => pick(''), <><Users className="h-5 w-5 rounded-full bg-surface-2 p-0.5 text-muted" aria-hidden /><span>Mọi người</span></>)}</li>
-                <li>{optRow(value === ASSIGNEE_UNASSIGNED, () => pick(ASSIGNEE_UNASSIGNED), <><UserRound className="h-5 w-5 rounded-full bg-surface-2 p-0.5 text-faint" aria-hidden /><span>Chưa gán</span></>)}</li>
+                <li>{optRow(value === '', () => pick(''), <><Users className="h-5 w-5 rounded-full bg-surface-2 p-0.5 text-muted" aria-hidden /><span title="Bỏ lọc — hiện việc của tất cả mọi người">Mọi người</span></>)}</li>
+                <li>{optRow(value === ASSIGNEE_UNASSIGNED, () => pick(ASSIGNEE_UNASSIGNED), <><UserRound className="h-5 w-5 rounded-full bg-surface-2 p-0.5 text-faint" aria-hidden /><span title="Chỉ hiện việc chưa có ai nhận">Chưa gán</span></>)}</li>
                 <li className="my-1 h-px bg-border" aria-hidden />
               </>
             )}
@@ -141,7 +142,7 @@ export function AssigneeFilter({ options, value, onChange }: { options: PersonOp
                 ))}
               </li>
             ))}
-            {filtered.length === 0 && <li className="px-2 py-3 text-center text-sm text-muted">Không tìm thấy</li>}
+            {filtered.length === 0 && <li className="px-2 py-3 text-center text-sm text-muted">Không có ai khớp. Thử từ khoá khác hoặc bỏ bớt bộ lọc vai trò/nhóm.</li>}
           </ul>
         </Popover.Content>
       </Popover.Portal>

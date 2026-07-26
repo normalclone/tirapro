@@ -11,7 +11,7 @@ import { useCreateTemplate, useUpdateTemplate, type IssuePayload, type IssueTemp
 
 const SHARED = '__shared__';
 
-/** Tạo / sửa mẫu issue. `template = null` là tạo mới. */
+/** Tạo / sửa mẫu công việc. `template = null` là tạo mới. */
 export function TemplateModal({
   open, template, onClose,
 }: {
@@ -36,7 +36,7 @@ export function TemplateModal({
     setPayload(template?.payload ?? {});
   }, [open, template]);
 
-  // Loại/độ ưu tiên là cấu hình cấp workspace — cần một mã dự án bất kỳ để nạp.
+  // Loại công việc / độ ưu tiên là cấu hình cấp workspace — cần một mã dự án bất kỳ để nạp.
   const metaKey = useMemo(() => {
     const list = projects ?? [];
     const chosen = projectId !== SHARED ? list.find((p) => p.id === projectId) : undefined;
@@ -59,7 +59,7 @@ export function TemplateModal({
     try {
       if (template) await update.mutateAsync({ id: template.id, ...input });
       else await create.mutateAsync(input);
-      toast.success(template ? 'Đã cập nhật mẫu issue' : 'Đã tạo mẫu issue');
+      toast.success(template ? 'Đã cập nhật mẫu công việc' : 'Đã tạo mẫu công việc');
       onClose();
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -72,11 +72,11 @@ export function TemplateModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={template ? 'Sửa mẫu issue' : 'Mẫu issue mới'}
+        aria-label={template ? 'Sửa mẫu công việc' : 'Mẫu công việc mới'}
         className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200"
       >
         <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <span className="text-sm font-medium text-ink">{template ? 'Sửa mẫu issue' : 'Mẫu issue mới'}</span>
+          <span className="text-sm font-medium text-ink">{template ? 'Sửa mẫu công việc' : 'Mẫu công việc mới'}</span>
           <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng"><X className="h-4 w-4" /></Button>
         </header>
 
@@ -85,11 +85,17 @@ export function TemplateModal({
             <Input id="tpl-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ví dụ: Báo lỗi sản xuất" autoFocus maxLength={120} />
           </Field>
 
-          <Field label="Mô tả ngắn" htmlFor="tpl-desc" hint="Hiện trong danh sách để người dùng biết khi nào nên chọn mẫu này.">
-            <Input id="tpl-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Dùng khi nào?" maxLength={500} />
+          <Field label="Mô tả ngắn" htmlFor="tpl-desc" hint="Hiện trong danh sách để mọi người biết khi nào nên dùng mẫu này.">
+            <Input
+              id="tpl-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Ví dụ: dùng khi khách báo lỗi trên bản chạy thật"
+              maxLength={500}
+            />
           </Field>
 
-          <Field label="Phạm vi" htmlFor="tpl-project" hint="Dùng chung: mọi dự án trong workspace đều thấy mẫu này.">
+          <Field label="Phạm vi" htmlFor="tpl-project" hint="Chọn “Dùng chung” thì mọi dự án trong workspace đều thấy mẫu này.">
             <SearchSelect
               id="tpl-project"
               value={projectId}
@@ -108,13 +114,13 @@ export function TemplateModal({
             value={payload}
             onChange={setPayload}
             summaryPlaceholder="Ví dụ: [Lỗi] "
-            summaryHint="Để trống nếu muốn người tạo tự nhập tiêu đề."
+            summaryHint="Để trống nếu muốn người tạo việc tự nhập tiêu đề."
           />
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
           <Button variant="ghost" onClick={onClose}>Huỷ</Button>
-          <Button onClick={() => void submit()} loading={busy} disabled={!canSave}>{template ? 'Lưu' : 'Tạo mẫu'}</Button>
+          <Button onClick={() => void submit()} loading={busy} disabled={!canSave}>{template ? 'Lưu thay đổi' : 'Tạo mẫu'}</Button>
         </footer>
       </div>
     </div>

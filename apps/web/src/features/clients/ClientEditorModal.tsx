@@ -108,8 +108,8 @@ export function ClientEditorModal({
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Người liên hệ" hint="(tùy chọn)" htmlFor="client-contact">
-              <Input id="client-contact" value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Họ tên đầu mối" maxLength={120} />
+            <Field label="Người liên hệ" hint="(tùy chọn — đầu mối bên khách hàng)" htmlFor="client-contact">
+              <Input id="client-contact" value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="VD: Trần Thu Hà" maxLength={120} />
             </Field>
             <Field label="Điện thoại" hint="(tùy chọn)" htmlFor="client-phone">
               <Input id="client-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="09xx xxx xxx" maxLength={40} />
@@ -126,14 +126,18 @@ export function ClientEditorModal({
               maxLength={160}
               aria-invalid={emailInvalid}
             />
-            {emailInvalid && <p className="mt-1 text-xs text-danger" role="alert">Email không hợp lệ.</p>}
+            {emailInvalid && (
+              <p className="mt-1 text-xs text-danger" role="alert">
+                Email chưa đúng dạng — cần có @ và tên miền, ví dụ lienhe@congty.vn.
+              </p>
+            )}
           </Field>
 
           <Field label="Ghi chú" hint="(tùy chọn)" htmlFor="client-note">
-            <Input id="client-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Điều khoản, lưu ý khi làm việc…" maxLength={1000} />
+            <Input id="client-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Lưu ý khi làm việc, thói quen phản hồi…" maxLength={1000} />
           </Field>
 
-          <Field label="Dự án của khách hàng" hint="(gỡ khỏi danh sách = bỏ liên kết)">
+          <Field label="Dự án của khách hàng" hint="(bỏ chọn một dự án = gỡ liên kết với khách hàng này)">
             <RoleMultiSelect
               options={projectOptions}
               value={projectIds}
@@ -147,7 +151,9 @@ export function ClientEditorModal({
 
         <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void save()} loading={busy} disabled={!canSave}>{editing ? 'Lưu' : 'Thêm khách hàng'}</Button>
+          <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
+            {editing ? 'Lưu thay đổi' : 'Thêm khách hàng'}
+          </Button>
         </footer>
       </div>
     </div>

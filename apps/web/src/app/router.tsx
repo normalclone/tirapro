@@ -30,7 +30,6 @@ const RolesPage = lazy(() => import('@/features/settings/RolesPage').then((m) =>
 const DocumentationPage = lazy(() => import('@/features/docs/DocumentationPage').then((m) => ({ default: m.DocumentationPage })));
 const SettingsLayout = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsLayout })));
 const SettingsGeneralPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsGeneralPage })));
-const SettingsMembersPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsMembersPage })));
 const SettingsNotificationsPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsNotificationsPage })));
 const SettingsSeveritiesPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsSeveritiesPage })));
 const SettingsPrioritiesPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsPrioritiesPage })));
@@ -46,7 +45,10 @@ const ClientsPage = lazy(() => import('@/features/clients/ClientsPage').then((m)
 const GoalsPage = lazy(() => import('@/features/goals/GoalsPage').then((m) => ({ default: m.GoalsPage })));
 const RaidPage = lazy(() => import('@/features/raid/RaidPage').then((m) => ({ default: m.RaidPage })));
 const ResourcesPage = lazy(() => import('@/features/resources/ResourcesPage').then((m) => ({ default: m.ResourcesPage })));
-const SlaPage = lazy(() => import('@/features/sla/SlaPage').then((m) => ({ default: m.SlaPage })));
+const SlaBoardPage = lazy(() => import('@/features/sla/SlaPage').then((m) => ({ default: m.SlaBoardPage })));
+const SlaPoliciesPage = lazy(() => import('@/features/sla/SlaPage').then((m) => ({ default: m.SlaPoliciesPage })));
+const ManageLayout = lazy(() => import('@/features/manage/ManageLayout').then((m) => ({ default: m.ManageLayout })));
+const ConnectLayout = lazy(() => import('@/features/connect/ConnectLayout').then((m) => ({ default: m.ConnectLayout })));
 const WikiPage = lazy(() => import('@/features/wiki/WikiPage').then((m) => ({ default: m.WikiPage })));
 const AutomationPage = lazy(() => import('@/features/automation/AutomationPage').then((m) => ({ default: m.AutomationPage })));
 // Overlay luôn mount trong shell nhưng không cần cho first paint → lazy (fallback null, mở mới tải).
@@ -115,7 +117,8 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/settings/general" replace /> },
           { path: 'general', element: <SettingsGeneralPage /> },
-          { path: 'members', element: <SettingsMembersPage /> },
+          // Tab 'Mời thành viên' đã gộp vào trang Thành viên — giữ link cũ hoạt động.
+          { path: 'members', element: <Navigate to="/members" replace /> },
           { path: 'roles', element: <RolesPage /> },
           { path: 'notifications', element: <SettingsNotificationsPage /> },
           { path: 'severities', element: <SettingsSeveritiesPage /> },
@@ -123,17 +126,43 @@ export const router = createBrowserRouter([
           { path: 'fields', element: <SettingsFieldsPage /> },
           { path: 'workflows', element: <WorkflowSettingsPage /> },
           { path: 'api', element: <ApiKeysPage /> },
+          { path: 'response-time', element: <SlaPoliciesPage /> },
         ],
       },
-      { path: 'portfolio', element: <PortfolioPage /> },
-      { path: 'clients', element: <ClientsPage /> },
-      { path: 'goals', element: <GoalsPage /> },
-      { path: 'raid', element: <RaidPage /> },
-      { path: 'resources', element: <ResourcesPage /> },
-      { path: 'sla', element: <SlaPage /> },
+      // Quản trị — gom các màn theo dõi cấp công ty vào một mục.
+      {
+        path: 'manage',
+        element: <ManageLayout />,
+        children: [
+          { index: true, element: <Navigate to="/manage/portfolio" replace /> },
+          { path: 'portfolio', element: <PortfolioPage /> },
+          { path: 'goals', element: <GoalsPage /> },
+          { path: 'risks', element: <RaidPage /> },
+          { path: 'resources', element: <ResourcesPage /> },
+          { path: 'response-time', element: <SlaBoardPage /> },
+          { path: 'clients', element: <ClientsPage /> },
+        ],
+      },
+      // Kết nối & tự động hoá.
+      {
+        path: 'connect',
+        element: <ConnectLayout />,
+        children: [
+          { index: true, element: <Navigate to="/connect/integrations" replace /> },
+          { path: 'integrations', element: <IntegrationsPage /> },
+          { path: 'automation', element: <AutomationPage /> },
+        ],
+      },
       { path: 'wiki', element: <WikiPage /> },
-      { path: 'automation', element: <AutomationPage /> },
-      { path: 'integrations', element: <IntegrationsPage /> },
+      // Giữ liên kết cũ hoạt động sau khi gộp menu.
+      { path: 'portfolio', element: <Navigate to="/manage/portfolio" replace /> },
+      { path: 'goals', element: <Navigate to="/manage/goals" replace /> },
+      { path: 'raid', element: <Navigate to="/manage/risks" replace /> },
+      { path: 'resources', element: <Navigate to="/manage/resources" replace /> },
+      { path: 'sla', element: <Navigate to="/manage/response-time" replace /> },
+      { path: 'clients', element: <Navigate to="/manage/clients" replace /> },
+      { path: 'integrations', element: <Navigate to="/connect/integrations" replace /> },
+      { path: 'automation', element: <Navigate to="/connect/automation" replace /> },
       { path: 'filters', element: <FiltersPage /> },
       { path: 'issue/:key', element: <IssueDetailPage /> },
       {

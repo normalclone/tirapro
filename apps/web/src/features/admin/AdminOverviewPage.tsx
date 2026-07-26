@@ -61,9 +61,9 @@ export function AdminOverviewPage() {
             <h2 className="mb-3 text-sm font-semibold text-ink">Quy mô</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               <StatTile
-                label="Workspace"
+                label="Không gian làm việc"
                 value={fmtInt(data.workspaces.active)}
-                sub={data.workspaces.archived > 0 ? `${fmtInt(data.workspaces.archived)} đã lưu trữ` : 'không có lưu trữ'}
+                sub={data.workspaces.archived > 0 ? `${fmtInt(data.workspaces.archived)} đã lưu trữ` : 'chưa có nơi nào lưu trữ'}
               />
               <StatTile
                 label="Người dùng"

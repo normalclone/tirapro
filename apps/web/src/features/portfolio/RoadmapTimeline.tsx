@@ -43,9 +43,9 @@ function fmtDate(t: number): string {
 }
 
 /**
- * Roadmap ngang tự vẽ bằng div (không thư viện): mỗi chương trình một thanh đậm,
+ * Dòng thời gian ngang tự vẽ bằng div (không thư viện): mỗi chương trình một thanh đậm,
  * dự án con thanh mảnh hơn. Trục thời gian chia theo tháng, có vạch "hôm nay".
- * Mốc thời gian của dự án suy ra từ issue (ngày bắt đầu sớm nhất → hạn muộn nhất).
+ * Mốc thời gian của dự án suy ra từ công việc (ngày bắt đầu sớm nhất → hạn muộn nhất).
  */
 export function RoadmapTimeline({ groups }: { groups: RollupGroup[] }) {
   const model = useMemo(() => {
@@ -104,8 +104,8 @@ export function RoadmapTimeline({ groups }: { groups: RollupGroup[] }) {
     return (
       <EmptyState
         icon={<CalendarRange className="h-6 w-6" />}
-        title="Chưa có mốc thời gian"
-        description="Đặt ngày bắt đầu / ngày mục tiêu cho chương trình, hoặc đặt ngày bắt đầu và hạn hoàn thành cho issue trong dự án."
+        title="Chưa có mốc thời gian để vẽ"
+        description="Dòng thời gian chỉ hiện khi biết ngày bắt đầu và ngày kết thúc. Hãy đặt ngày bắt đầu và ngày mục tiêu cho chương trình, hoặc đặt ngày bắt đầu và hạn hoàn thành cho công việc trong dự án."
       />
     );
   }
@@ -118,7 +118,9 @@ export function RoadmapTimeline({ groups }: { groups: RollupGroup[] }) {
       <div className="min-w-[36rem]" style={{ minWidth: `${trackWidth + 208}px` }}>
         {/* Trục tháng */}
         <div className="flex items-end">
-          <div className="w-52 shrink-0 pr-3 text-xs font-medium text-faint">Hạng mục</div>
+          <div className="w-52 shrink-0 pr-3 text-xs font-medium text-faint" title="Dòng chữ đậm là chương trình, dòng thụt vào là dự án bên trong">
+            Hạng mục
+          </div>
           <div className="relative h-6 flex-1">
             {months.map((m) => (
               <span
@@ -136,7 +138,7 @@ export function RoadmapTimeline({ groups }: { groups: RollupGroup[] }) {
           {bars.map((b) => {
             const left = ((b.start - domainStart) / span) * 100;
             const width = Math.max(((b.end - b.start) / span) * 100, 0.8);
-            const title = `${b.label}: ${fmtDate(b.start)} → ${fmtDate(b.end)} · hoàn thành ${b.pct}%`;
+            const title = `${b.label}\nTừ ${fmtDate(b.start)} đến ${fmtDate(b.end)} · đã hoàn thành ${b.pct}%`;
             return (
               <li key={b.key} className="flex items-center">
                 <div className={cn('w-52 shrink-0 pr-3', b.level === 1 && 'pl-4')}>
@@ -174,7 +176,10 @@ export function RoadmapTimeline({ groups }: { groups: RollupGroup[] }) {
         </ul>
 
         {todayLeft !== null && (
-          <p className="mt-3 flex items-center gap-1.5 pl-52 text-[11px] text-faint">
+          <p
+            className="mt-3 flex items-center gap-1.5 pl-52 text-[11px] text-faint"
+            title="Vạch đỏ dọc trên biểu đồ là mốc ngày hôm nay"
+          >
             <span className="inline-block h-3 w-px bg-danger" aria-hidden /> Hôm nay
           </p>
         )}

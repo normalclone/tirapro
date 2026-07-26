@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 
 export type RecurrenceFreq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
-/** Các trường mặc định của issue lưu trong `payload` của mẫu / việc lặp lại. */
+/** Nội dung mặc định của công việc, lưu trong `payload` của mẫu / lịch lặp. */
 export interface IssuePayload {
   typeId?: string | null;
   priorityId?: string | null;
@@ -60,7 +60,7 @@ export const recurringKey = ['automation', 'recurring'] as const;
  */
 const scopeParams = (projectId?: string | null) => (projectId ? { projectId } : undefined);
 
-/* ------------------------------ Mẫu issue ------------------------------ */
+/* ---------------------------- Mẫu công việc ---------------------------- */
 
 export function useIssueTemplates() {
   return useQuery({
@@ -103,7 +103,7 @@ export function useDeleteTemplate() {
   });
 }
 
-/* ---------------------------- Việc lặp lại ----------------------------- */
+/* ------------------------- Công việc lặp lại --------------------------- */
 
 export function useRecurringIssues() {
   return useQuery({
@@ -151,7 +151,7 @@ export function useDeleteRecurring() {
   });
 }
 
-/** Tạo issue ngay từ việc lặp lại (không dời lịch chạy kế tiếp). */
+/** Tạo ngay một công việc từ lịch lặp (không dời lần tạo kế tiếp). */
 export function useRunRecurringNow() {
   const qc = useQueryClient();
   return useMutation({

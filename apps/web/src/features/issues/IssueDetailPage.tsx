@@ -48,7 +48,7 @@ const CATEGORY_COLOR: Record<string, string> = {
   DONE: 'var(--status-done)',
 };
 
-/** Trang chi tiết issue (URL /issue/:key) — bố cục kiểu Jira: rail dự án + nội dung + panel chi tiết. */
+/** Trang chi tiết công việc (URL /issue/:key) — rail dự án + nội dung + panel thông tin bên phải. */
 export function IssueDetailPage() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
@@ -99,9 +99,13 @@ export function IssueDetailPage() {
 
   function changeStatus(toStatusId: string) {
     if (!issue || toStatusId === issue.status.id) return;
+    const toName = nextStatuses.find((s) => s.id === toStatusId)?.name;
     transition.mutate(
       { id: issue.id, toStatusId, version: issue.version },
-      { onSuccess: () => toast.success('Đã đổi trạng thái', { duration: 2000 }), onError: (e) => toast.error(apiErrorMessage(e)) },
+      {
+        onSuccess: () => toast.success(toName ? `Đã chuyển sang “${toName}”` : 'Đã đổi trạng thái', { duration: 2000 }),
+        onError: (e) => toast.error(apiErrorMessage(e)),
+      },
     );
   }
 
@@ -118,7 +122,7 @@ export function IssueDetailPage() {
         storyPoints: issue.storyPoints ?? undefined,
         sprintId: issue.sprintId || undefined,
       });
-      toast.success(`Đã tạo bản sao ${created.key}`);
+      toast.success(`Đã tạo bản sao: ${created.key}`);
       navigate(`/issue/${created.key}`);
     } catch (e) { toast.error(apiErrorMessage(e)); }
   }
@@ -150,14 +154,14 @@ export function IssueDetailPage() {
 
   function copyLink() {
     navigator.clipboard?.writeText(window.location.href)
-      .then(() => toast.success('Đã sao chép liên kết'))
-      .catch(() => toast.error('Không sao chép được liên kết'));
+      .then(() => toast.success('Đã sao chép liên kết. Dán vào chat hoặc email để chia sẻ.'))
+      .catch(() => toast.error('Trình duyệt chặn sao chép — hãy chép thủ công đường dẫn trên thanh địa chỉ.'));
   }
 
   function copyKey() {
     navigator.clipboard?.writeText(key)
-      .then(() => toast.success(`Đã sao chép ${key}`))
-      .catch(() => toast.error('Không sao chép được'));
+      .then(() => toast.success(`Đã sao chép mã ${key}`))
+      .catch(() => toast.error('Trình duyệt chặn sao chép — hãy chép thủ công mã hiển thị trên thanh điều hướng.'));
   }
 
   const isMine = !!issue && !!me && issue.assigneeId === me.id;
@@ -165,7 +169,7 @@ export function IssueDetailPage() {
     if (!issue || !me || issue.assigneeId === me.id) return;
     updateIssue.mutate(
       { id: issue.id, key: issue.key, patch: { assigneeId: me.id }, version: issue.version },
-      { onSuccess: () => toast.success('Đã gán cho bạn', { duration: 2000 }), onError: (e) => toast.error(apiErrorMessage(e)) },
+      { onSuccess: () => toast.success('Đã giao việc này cho bạn', { duration: 2000 }), onError: (e) => toast.error(apiErrorMessage(e)) },
     );
   }
 
@@ -202,7 +206,7 @@ export function IssueDetailPage() {
     try {
       await removeIssue.mutateAsync(issue.id);
       setConfirmDelete(false);
-      toast.success(`Đã xoá ${issue.key}`);
+      toast.success(`Đã xoá công việc ${issue.key}`);
       navigate(projectKey ? `/p/${projectKey}/board` : '/');
     } catch (e) { toast.error(apiErrorMessage(e)); }
   }
@@ -231,7 +235,7 @@ export function IssueDetailPage() {
               {parent && (
                 <>
                   <span className="text-faint">/</span>
-                  <Link to={`/issue/${parent.key}`} className="truncate font-mono hover:text-ink" title={parent.summary}>{parent.key}</Link>
+                  <Link to={`/issue/${parent.key}`} className="truncate font-mono hover:text-ink" title={`Việc cha: ${parent.summary}`}>{parent.key}</Link>
                 </>
               )}
               <span className="text-faint">/</span>
@@ -239,8 +243,8 @@ export function IssueDetailPage() {
               <button
                 type="button"
                 onClick={copyKey}
-                title="Sao chép mã issue"
-                aria-label="Sao chép mã issue"
+                title={`Sao chép mã công việc (${key}) để dán vào chat, commit…`}
+                aria-label="Sao chép mã công việc"
                 className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink"
               >
                 <Hash className="h-3.5 w-3.5" />
@@ -248,13 +252,18 @@ export function IssueDetailPage() {
             </nav>
           </div>
 
-          {isError && <EmptyState title="Không tìm thấy issue" description={`Không có issue ${key} hoặc bạn không có quyền xem.`} />}
+          {isError && (
+            <EmptyState
+              title="Không tìm thấy công việc này"
+              description={`Không có công việc mã ${key}, hoặc bạn chưa được cấp quyền xem. Kiểm tra lại mã, hoặc nhờ quản trị dự án cấp quyền.`}
+            />
+          )}
 
           {isLoading || !issue ? (
             <DelayedSpinner />
           ) : (
             <>
-              {/* Tiêu đề: [Loại][Ưu tiên] tên — dòng phụ: Sprint · Story points · Nhãn */}
+              {/* Tiêu đề: [Loại][Ưu tiên] tên — dòng phụ: Sprint · Điểm ước lượng · Nhãn */}
               <div className="mb-4">
                 <div className="flex items-start gap-2">
                   <div className="mt-1.5 flex shrink-0 items-center gap-1.5">
@@ -271,7 +280,7 @@ export function IssueDetailPage() {
                     <h1
                       className="-mx-1 min-w-0 flex-1 cursor-text rounded px-1 text-2xl font-semibold tracking-tight hover:bg-surface-2"
                       onClick={() => setEditingSummary(true)}
-                      title="Bấm để sửa"
+                      title="Bấm để sửa tiêu đề"
                     >
                       {issue.summary}
                     </h1>
@@ -290,27 +299,38 @@ export function IssueDetailPage() {
                 </div>
               </div>
 
-              {/* Thanh nút thao tác dưới tiêu đề (giống Jira) */}
+              {/* Thanh nút thao tác dưới tiêu đề */}
               <div className="mb-6 flex flex-wrap items-center gap-2">
-                <button type="button" className={TOOLBAR_BTN} onClick={jumpToComments}>
+                <button type="button" className={TOOLBAR_BTN} title="Xuống khu bình luận để trao đổi về việc này" onClick={jumpToComments}>
                   <MessageSquare className="h-4 w-4" /> Bình luận
                 </button>
 
-                <button type="button" className={TOOLBAR_BTN} onClick={() => openCreate({ projectKey, parentId: issue.id, subtask: true })}>
-                  <ListTree className="h-4 w-4" /> Tạo sub-task
+                <button
+                  type="button"
+                  className={TOOLBAR_BTN}
+                  title="Tách một phần việc nhỏ nằm bên trong công việc này"
+                  onClick={() => openCreate({ projectKey, parentId: issue.id, subtask: true })}
+                >
+                  <ListTree className="h-4 w-4" /> Tạo việc con
                 </button>
-                <button type="button" className={TOOLBAR_BTN} onClick={() => void cloneIssue()} disabled={createIssue.isPending}>
+                <button
+                  type="button"
+                  className={TOOLBAR_BTN}
+                  title="Tạo một công việc mới giống hệt việc này để sửa lại cho nhanh"
+                  onClick={() => void cloneIssue()}
+                  disabled={createIssue.isPending}
+                >
                   <Copy className="h-4 w-4" /> Tạo bản sao
                 </button>
                 {me && !isMine && (
-                  <button type="button" className={TOOLBAR_BTN} onClick={assignToMe} disabled={updateIssue.isPending} title="Gán cho tôi · phím i">
+                  <button type="button" className={TOOLBAR_BTN} onClick={assignToMe} disabled={updateIssue.isPending} title="Đặt bạn làm người phụ trách · phím i">
                     <UserPlus className="h-4 w-4" /> Gán cho tôi
                   </button>
                 )}
 
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger asChild>
-                    <button type="button" className={TOOLBAR_BTN}>
+                    <button type="button" className={TOOLBAR_BTN} title="Thao tác khác với công việc này">
                       <MoreHorizontal className="h-4 w-4" /> Thêm
                     </button>
                   </DropdownMenu.Trigger>
@@ -331,7 +351,7 @@ export function IssueDetailPage() {
                         disabled={removeIssue.isPending}
                         className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-danger outline-none transition-colors data-[highlighted]:bg-danger/10"
                       >
-                        <Trash2 className="h-4 w-4" /> Xoá issue
+                        <Trash2 className="h-4 w-4" /> Xoá công việc
                       </DropdownMenu.Item>
                     </DropdownMenu.Content>
                   </DropdownMenu.Portal>
@@ -339,7 +359,10 @@ export function IssueDetailPage() {
 
                 {/* Trạng thái hiện tại + xem quy trình, rồi các bước chuyển kế tiếp (theo workflow) */}
                 <div className="ml-auto flex flex-wrap items-center gap-1.5">
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm font-medium text-ink">
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm font-medium text-ink"
+                    title="Trạng thái hiện tại của công việc"
+                  >
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: CATEGORY_COLOR[issue.status.category] ?? 'var(--faint)' }} aria-hidden />
                     {issue.status.name}
                   </span>
@@ -347,7 +370,7 @@ export function IssueDetailPage() {
                     type="button"
                     onClick={() => setWfOpen(true)}
                     aria-label="Xem quy trình"
-                    title="Xem quy trình"
+                    title="Xem quy trình: các trạng thái có thể có và bước chuyển hợp lệ"
                     className="grid h-8 w-8 place-items-center rounded-md text-faint transition-colors hover:bg-surface-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                   >
                     <Workflow className="h-4 w-4" />
@@ -381,7 +404,7 @@ export function IssueDetailPage() {
                 </div>
               </div>
 
-              {/* Thân (kiểu Jira Server): trái = Chi tiết + thuộc tính + mô tả + hoạt động; phải = Con người + Ngày */}
+              {/* Thân: trái = mô tả + nội dung + hoạt động; phải = người liên quan + mốc thời gian */}
               <div className="grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-[minmax(0,1fr)_300px]">
                 <div className="min-w-0 space-y-5">
                   <div>
@@ -389,18 +412,20 @@ export function IssueDetailPage() {
                     <IssueDescription issue={issue} />
                   </div>
 
-                  {/* Checklist — đầu việc nhỏ, nhẹ hơn sub-task */}
+                  {/* Danh sách bước nhỏ — nhẹ hơn việc con, chỉ để tick cho xong */}
                   <ChecklistPanel issueId={issue.id} />
 
                   <IssueRelations issue={issue} />
 
-                  {/* Thành phần & phiên bản + trường tuỳ chỉnh */}
+                  {/* Thành phần & phiên bản + các trường do dự án tự thêm */}
                   <IssueComponentsPicker issue={issue} />
                   <CustomFieldsPanel issueId={issue.id} />
 
                   {devLinks && devLinks.length > 0 && (
                     <div>
-                      <p className="mb-2 text-sm font-medium text-muted">Liên kết code ({devLinks.length})</p>
+                      <p className="mb-2 text-sm font-medium text-muted" title="Nhánh, commit và pull request trên kho mã có nhắc tới mã công việc này">
+                        Liên kết code ({devLinks.length})
+                      </p>
                       <div className="space-y-1.5">
                         {devLinks.map((d) => {
                           const Icon = d.type === 'PULL_REQUEST' ? GitPullRequest : d.type === 'BRANCH' ? GitBranch : GitCommit;
@@ -426,7 +451,7 @@ export function IssueDetailPage() {
                   </div>
                 </div>
 
-                {/* Cột phải: Con người + Ngày (kiểu Jira Server) */}
+                {/* Cột phải: Người liên quan + Mốc thời gian */}
                 <aside className="min-w-0">
                   <div className="space-y-5 lg:sticky lg:top-4">
                     <IssuePeoplePanel issue={issue} />
@@ -444,9 +469,9 @@ export function IssueDetailPage() {
 
               <ConfirmDialog
                 open={confirmDelete}
-                title={`Xoá issue ${issue.key}?`}
-                description="Issue sẽ được xoá mềm và gỡ khỏi bảng. Liên hệ quản trị nếu cần khôi phục."
-                confirmLabel="Xoá issue"
+                title={`Xoá công việc ${issue.key}?`}
+                description="Công việc sẽ biến mất khỏi bảng và mọi danh sách. Dữ liệu vẫn được giữ lại phía hệ thống — nhờ quản trị khôi phục nếu bạn xoá nhầm."
+                confirmLabel="Xoá công việc"
                 loading={removeIssue.isPending}
                 onConfirm={() => void onDelete()}
                 onCancel={() => setConfirmDelete(false)}

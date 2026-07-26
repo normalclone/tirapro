@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import {
   DEPENDENCY_TYPES,
+  DEPENDENCY_TYPE_HINTS,
   DEPENDENCY_TYPE_LABELS,
   useCreateDependency,
   useCreateMilestone,
@@ -24,6 +25,8 @@ import {
 } from './api';
 
 const MILESTONE_COLORS = ['#7c3aed', '#2563eb', '#0d9488', '#16a34a', '#f59e0b', '#dc2626'];
+/** Tên màu đọc được, dùng cho nhãn trợ năng thay vì mã hex. */
+const MILESTONE_COLOR_NAMES = ['Tím', 'Xanh dương', 'Xanh ngọc', 'Xanh lá', 'Cam', 'Đỏ'];
 
 /** 'YYYY-MM-DD' (input date) → ISO UTC nửa đêm, để BE lưu đúng ngày lịch. */
 function dateInputToIso(v: string): string {
@@ -91,26 +94,30 @@ function DependencySection({ projectId, issues, canManage }: {
   const canAdd = !!predecessorId && !!successorId && !sameIssue && !create.isPending;
 
   return (
-    <Section title="Phụ thuộc" icon={<Link2 className="h-4 w-4" />} count={deps?.length ?? 0}>
+    <Section title="Phụ thuộc giữa các việc" icon={<Link2 className="h-4 w-4" />} count={deps?.length ?? 0}>
       {isLoading ? (
         <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
       ) : !deps || deps.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted">
-          Chưa có phụ thuộc nào. Nối hai công việc để tính đường găng.
+        <p
+          className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted"
+          title="Đường găng là chuỗi việc quyết định ngày kết thúc dự án — trễ một việc trong chuỗi là trễ cả dự án."
+        >
+          Chưa khai báo phụ thuộc nào. Nối hai việc để hệ thống biết việc nào phải xong trước, và tính được đường găng.
         </p>
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {deps.map((d) => (
             <li key={d.id} className="flex items-center gap-2 px-3 py-2">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-ink">
+                <p className="truncate text-sm text-ink" title={`${d.predecessor.summary} → ${d.successor.summary}`}>
                   <span className="font-mono text-xs text-muted">{d.predecessor.key}</span>
                   <span className="mx-1.5 text-faint" aria-hidden>&rarr;</span>
                   <span className="font-mono text-xs text-muted">{d.successor.key}</span>
                 </p>
-                <p className="truncate text-xs text-faint">
+                <p className="truncate text-xs text-faint" title={DEPENDENCY_TYPE_HINTS[d.type]}>
                   {DEPENDENCY_TYPE_LABELS[d.type]}
-                  {d.lagDays !== 0 && ` · trễ ${d.lagDays > 0 ? '+' : ''}${d.lagDays} ngày`}
+                  {d.lagDays > 0 && ` · chờ thêm ${d.lagDays} ngày`}
+                  {d.lagDays < 0 && ` · được làm chồng ${-d.lagDays} ngày`}
                 </p>
               </div>
               {canManage && (
@@ -133,52 +140,65 @@ function DependencySection({ projectId, issues, canManage }: {
       {canManage && (
         <div className="mt-3 space-y-2 rounded-md border border-border bg-surface-2 p-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted" htmlFor="dep-pred">Công việc trước</label>
+            <label className="mb-1 block text-xs font-medium text-muted" htmlFor="dep-pred" title="Việc phải làm xong (hoặc bắt đầu) trước.">
+              Việc làm trước
+            </label>
             <SearchSelect
               id="dep-pred"
               value={predecessorId}
               onChange={setPredecessorId}
               options={issueOptions}
-              placeholder="Chọn issue…"
+              placeholder="Chọn công việc…"
               searchPlaceholder="Tìm theo tên hoặc mã…"
-              ariaLabel="Công việc trước"
+              ariaLabel="Việc làm trước"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted" htmlFor="dep-succ">Công việc sau</label>
+            <label className="mb-1 block text-xs font-medium text-muted" htmlFor="dep-succ" title="Việc phải chờ việc ở trên.">
+              Việc làm sau
+            </label>
             <SearchSelect
               id="dep-succ"
               value={successorId}
               onChange={setSuccessorId}
               options={issueOptions}
-              placeholder="Chọn issue…"
+              placeholder="Chọn công việc…"
               searchPlaceholder="Tìm theo tên hoặc mã…"
-              ariaLabel="Công việc sau"
+              ariaLabel="Việc làm sau"
             />
           </div>
           <div className="flex gap-2">
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs font-medium text-muted" htmlFor="dep-type">Loại</label>
+              <label className="mb-1 block text-xs font-medium text-muted" htmlFor="dep-type" title={DEPENDENCY_TYPE_HINTS[type]}>
+                Kiểu ràng buộc
+              </label>
               <SearchSelect
                 id="dep-type"
                 value={type}
                 onChange={(v) => setType(v as DependencyType)}
                 options={DEPENDENCY_TYPES.map((t) => ({ value: t, label: DEPENDENCY_TYPE_LABELS[t], hint: t }))}
-                ariaLabel="Loại phụ thuộc"
+                ariaLabel="Kiểu ràng buộc giữa hai việc"
               />
             </div>
             <div className="w-24 shrink-0">
-              <label className="mb-1 block text-xs font-medium text-muted" htmlFor="dep-lag">Trễ (ngày)</label>
+              <label
+                className="mb-1 block text-xs font-medium text-muted"
+                htmlFor="dep-lag"
+                title="Số ngày chờ thêm sau khi ràng buộc đã thoả. Nhập số âm nếu hai việc được làm chồng lên nhau."
+              >
+                Chờ (ngày)
+              </label>
               <Input
                 id="dep-lag"
                 type="number"
                 value={lag}
                 onChange={(e) => setLag(e.target.value)}
+                title="Số ngày chờ thêm sau khi ràng buộc đã thoả. Nhập số âm nếu hai việc được làm chồng lên nhau."
                 className="text-sm"
               />
             </div>
           </div>
-          {sameIssue && <p className="text-xs text-danger">Một issue không thể phụ thuộc chính nó.</p>}
+          {sameIssue && <p className="text-xs text-danger">Một công việc không thể phụ thuộc vào chính nó — hãy chọn hai việc khác nhau.</p>}
           <Button size="sm" className="w-full" onClick={() => void add()} loading={create.isPending} disabled={!canAdd}>
             <Plus className="h-4 w-4" /> Thêm phụ thuộc
           </Button>
@@ -214,7 +234,7 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
     update.mutate(
       { id: m.id, completedAt: m.completedAt ? null : new Date().toISOString() },
       {
-        onSuccess: () => toast.success(m.completedAt ? 'Đã bỏ đánh dấu hoàn thành' : 'Đã đánh dấu hoàn thành'),
+        onSuccess: () => toast.success(m.completedAt ? 'Đã bỏ đánh dấu đã đạt' : 'Đã đánh dấu cột mốc đã đạt'),
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
     );
@@ -233,7 +253,7 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
         <div className="space-y-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
       ) : !milestones || milestones.length === 0 ? (
         <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted">
-          Chưa có cột mốc nào. Cột mốc hiện thành hình thoi trên trục thời gian.
+          Chưa có cột mốc nào. Cột mốc là ngày quan trọng phải chốt — bàn giao, nghiệm thu; thêm vào để nó hiện thành hình thoi trên biểu đồ lịch trình.
         </p>
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
@@ -246,9 +266,9 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
               />
               <div className="min-w-0 flex-1">
                 <p className={cn('truncate text-sm text-ink', m.completedAt && 'line-through text-muted')}>{m.name}</p>
-                <p className="text-xs text-faint">
+                <p className="text-xs text-faint" title={m.completedAt ? 'Cột mốc này đã đạt.' : 'Ngày phải đạt cột mốc này.'}>
                   {format(new Date(m.dueDate), 'dd/MM/yyyy')}
-                  {m.completedAt && ' · Đã hoàn thành'}
+                  {m.completedAt && ' · Đã đạt'}
                 </p>
               </div>
               {canManage && (
@@ -257,8 +277,8 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
                     variant="ghost"
                     size="icon"
                     className={cn('shrink-0 text-muted hover:text-success', m.completedAt && 'text-success')}
-                    title={m.completedAt ? 'Bỏ đánh dấu hoàn thành' : 'Đánh dấu hoàn thành'}
-                    aria-label={`${m.completedAt ? 'Bỏ đánh dấu hoàn thành' : 'Đánh dấu hoàn thành'} cột mốc ${m.name}`}
+                    title={m.completedAt ? 'Bỏ đánh dấu đã đạt' : 'Đánh dấu cột mốc đã đạt'}
+                    aria-label={`${m.completedAt ? 'Bỏ đánh dấu đã đạt' : 'Đánh dấu đã đạt'} cột mốc ${m.name}`}
                     aria-pressed={!!m.completedAt}
                     onClick={() => toggleDone(m)}
                   >
@@ -290,23 +310,24 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') void add(); }}
-              placeholder="VD: Bàn giao bản beta"
+              placeholder="Ví dụ: Bàn giao bản beta"
               maxLength={120}
               className="text-sm"
             />
           </div>
           <div className="flex items-end gap-2">
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs font-medium text-muted" htmlFor="ms-date">Ngày</label>
+              <label className="mb-1 block text-xs font-medium text-muted" htmlFor="ms-date">Ngày phải đạt</label>
               <Input id="ms-date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="text-sm" />
             </div>
             <div className="flex shrink-0 gap-1.5 pb-1.5">
-              {MILESTONE_COLORS.map((c) => (
+              {MILESTONE_COLORS.map((c, i) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setColor(c)}
-                  aria-label={`Màu ${c}`}
+                  title={`Màu ${MILESTONE_COLOR_NAMES[i]} cho hình thoi cột mốc trên biểu đồ`}
+                  aria-label={`Màu ${MILESTONE_COLOR_NAMES[i]}`}
                   aria-pressed={color === c}
                   className={cn(
                     'h-5 w-5 rotate-45 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
@@ -333,7 +354,7 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
 }
 
 /**
- * Ngăn kéo quản lý lịch trình: phụ thuộc công việc + cột mốc.
+ * Ngăn kéo quản lý lịch trình: phụ thuộc giữa các việc + cột mốc.
  * Chỉ hiện form thêm/xoá khi người dùng có quyền `plan:manage`.
  */
 export function PlanningPanel({ open, projectId, issues, canManage, onClose }: {

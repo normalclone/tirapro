@@ -125,7 +125,7 @@ function AddExistingUser() {
       { userId, roleIds: effectiveRoleIds },
       {
         onSuccess: (m) => {
-          toast.success(`Đã thêm ${m.user.displayName} vào workspace`);
+          toast.success(`Đã thêm ${m.user.displayName} vào không gian làm việc`);
           reset();
         },
         onError: (e) => toast.error(apiErrorMessage(e)),
@@ -144,11 +144,11 @@ function AddExistingUser() {
             options={userSelectOptions}
             placeholder="Chọn người dùng…"
             searchPlaceholder="Tìm theo tên hoặc email…"
-            ariaLabel="Chọn người dùng để thêm vào workspace"
+            ariaLabel="Chọn người để thêm vào không gian làm việc"
           />
           {!usersLoading && addableUsers.length === 0 && (
             <p className="text-xs text-faint">
-              Mọi người dùng trong hệ thống đã là thành viên workspace.
+              Mọi người trong hệ thống đều đã là thành viên ở đây.
             </p>
           )}
         </div>
@@ -161,7 +161,7 @@ function AddExistingUser() {
             onChange={setRoleIds}
             requireOne={false}
             disabled={addMember.isPending}
-            placeholder="Mặc định (Workspace Member)"
+            placeholder="Mặc định — Thành viên"
             ariaLabel="Vai trò cho thành viên mới"
           />
         </div>
@@ -195,7 +195,7 @@ function AddExistingUser() {
         disabled={!userId || effectiveRoleIds.length === 0}
       >
         <UserPlus className="h-4 w-4" />
-        Thêm vào workspace
+        Thêm vào không gian làm việc
       </Button>
     </div>
   );
@@ -290,7 +290,7 @@ function InviteByEmail() {
             onChange={setRoleIds}
             requireOne={false}
             disabled={invite.isPending}
-            placeholder="Mặc định (Workspace Member)"
+            placeholder="Mặc định — Thành viên"
             ariaLabel="Vai trò cho người được mời"
           />
         </div>

@@ -4,6 +4,7 @@ import { Check, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { cn } from '@/lib/utils';
+import { roleLabel, roleHint } from '@/lib/roleLabels';
 
 export interface RoleOption {
   id: string;
@@ -41,7 +42,7 @@ export function RoleMultiSelect({
   const selected = options.filter((o) => value.includes(o.id));
   const query = q.trim().toLowerCase();
   const filtered = query
-    ? options.filter((o) => o.name.toLowerCase().includes(query))
+    ? options.filter((o) => `${o.name} ${roleLabel(o.name)}`.toLowerCase().includes(query))
     : options;
 
   function toggle(id: string) {
@@ -132,7 +133,7 @@ export function RoleMultiSelect({
                       style={{ backgroundColor: o.color || 'var(--faint)' }}
                       aria-hidden
                     />
-                    <span className="min-w-0 flex-1 truncate">{o.name}</span>
+                    <span className="min-w-0 flex-1 truncate" title={roleHint(o.name)}>{roleLabel(o.name)}</span>
                   </button>
                 </li>
               );

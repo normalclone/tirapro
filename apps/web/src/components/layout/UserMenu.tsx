@@ -57,7 +57,7 @@ export function UserMenu() {
             className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
           >
             <BookOpen className="h-4 w-4 text-muted" />
-            Tài liệu
+            Hướng dẫn sử dụng
           </DropdownMenu.Item>
 
           {user.isSystemAdmin && (

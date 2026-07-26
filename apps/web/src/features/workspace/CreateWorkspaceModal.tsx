@@ -57,7 +57,7 @@ export function CreateWorkspaceModal({
     if (!canSubmit) return;
     try {
       const created = await create.mutateAsync(trimmedName);
-      toast.success(`Đã tạo workspace ${created.name}`);
+      toast.success(`Đã tạo không gian làm việc ${created.name}`);
       onClose();
       // Chuyển sang workspace mới: cấp token mới + reload (xử lý trong useSwitchWorkspace).
       switchWs.mutate(created.id, {
@@ -78,7 +78,7 @@ export function CreateWorkspaceModal({
       <div className="relative flex max-h-[84vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
         <header className="flex items-center gap-2 border-b border-border px-5 py-3">
           <Building2 className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-ink">Tạo workspace</span>
+          <span className="text-sm font-medium text-ink">Tạo không gian làm việc</span>
           <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng">
             <X className="h-4 w-4" />
           </Button>
@@ -88,7 +88,7 @@ export function CreateWorkspaceModal({
           <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
             <div>
               <label htmlFor="cw-name" className="mb-1.5 block text-sm font-medium text-muted">
-                Tên workspace
+                Tên không gian làm việc
               </label>
               <Input
                 id="cw-name"
@@ -99,7 +99,7 @@ export function CreateWorkspaceModal({
                 className="text-sm"
               />
               <p className="mt-1.5 text-xs text-faint">
-                Sau khi tạo, bạn sẽ được chuyển sang workspace mới.
+                Đây là nơi riêng để chứa dự án và thành viên — thường ứng với một công ty hoặc một phòng ban. Tạo xong, bạn sẽ được chuyển sang ngay.
               </p>
             </div>
           </div>
@@ -109,7 +109,7 @@ export function CreateWorkspaceModal({
               Hủy
             </Button>
             <Button type="submit" loading={busy} disabled={!canSubmit}>
-              Tạo workspace
+              Tạo không gian làm việc
             </Button>
           </footer>
         </form>

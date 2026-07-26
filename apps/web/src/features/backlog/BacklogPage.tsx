@@ -38,9 +38,13 @@ const BACKLOG_ID = 'backlog';
 
 const STATE_BADGE: Record<SprintDto['state'], { label: string; className: string }> = {
   ACTIVE: { label: 'Đang chạy', className: 'bg-primary-subtle text-primary' },
-  FUTURE: { label: 'Sắp tới', className: 'bg-surface-2 text-muted' },
-  CLOSED: { label: 'Đã đóng', className: 'bg-surface-2 text-faint' },
+  FUTURE: { label: 'Chưa bắt đầu', className: 'bg-surface-2 text-muted' },
+  CLOSED: { label: 'Đã kết thúc', className: 'bg-surface-2 text-faint' },
 };
+
+/** Giải nghĩa cho người mới: backlog và sprint là gì (hiện trong tooltip tiêu đề mỗi khu). */
+const BACKLOG_TIP = 'Backlog: danh sách việc chờ, chưa xếp vào đợt làm nào.';
+const SPRINT_TIP = 'Sprint: đợt làm việc ngắn, thường 1–2 tuần.';
 
 function pointsSum(issues: IssueDto[]): number {
   return issues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
@@ -111,7 +115,7 @@ export function BacklogPage() {
     [sprints],
   );
 
-  // Issue sau khi áp bộ lọc nhanh + người phụ trách — chia vào từng section (đếm phản ánh tập đã lọc).
+  // Công việc sau khi áp bộ lọc nhanh + người phụ trách — chia vào từng khu (số đếm phản ánh tập đã lọc).
   const filteredIssues = useMemo(
     () => applyAssigneeFilter(applyQuickFilters(issues ?? [], quickFilters, currentUserId), assignee),
     [issues, quickFilters, currentUserId, assignee],
@@ -124,7 +128,7 @@ export function BacklogPage() {
     for (const s of closedSprints) map.set(s.id, []);
     for (const issue of filteredIssues) {
       const bucket = issue.sprintId && map.has(issue.sprintId) ? issue.sprintId : BACKLOG_ID;
-      // Issue thuộc sprint không nằm trong danh sách → về backlog (an toàn).
+      // Việc thuộc sprint không nằm trong danh sách → về Backlog (an toàn).
       if (issue.sprintId && !map.has(issue.sprintId)) continue;
       map.get(bucket)!.push(issue);
     }
@@ -140,7 +144,7 @@ export function BacklogPage() {
 
   function labelForSprint(id: string | null): string {
     if (id === null) return 'Backlog';
-    return (sprints ?? []).find((s) => s.id === id)?.name ?? 'sprint';
+    return (sprints ?? []).find((s) => s.id === id)?.name ?? 'sprint khác';
   }
 
   function onDragEnd(e: DragEndEvent) {
@@ -158,7 +162,7 @@ export function BacklogPage() {
       {
         onError: (err) => toast.error(apiErrorMessage(err)),
         onSuccess: () =>
-          toast.success(`${issue.key} → ${labelForSprint(targetSprintId)}`, {
+          toast.success(`Đã chuyển ${issue.key} sang ${labelForSprint(targetSprintId)}`, {
             duration: 4000,
             action: {
               label: 'Hoàn tác',
@@ -183,7 +187,7 @@ export function BacklogPage() {
         onSuccess: () => {
           setNewName('');
           setCreating(false);
-          toast.success(`Đã tạo sprint “${name}”`);
+          toast.success(`Đã tạo sprint “${name}”. Kéo việc từ Backlog vào để xếp lịch.`);
         },
         onError: (err) => toast.error(apiErrorMessage(err)),
       },
@@ -246,7 +250,7 @@ export function BacklogPage() {
     invalidateBacklog();
 
     if (fail === 0) {
-      toast.success(`Đã ${verb} ${ok} việc`, {
+      toast.success(`Đã ${verb} ${ok} việc.`, {
         duration: 6000,
         action: {
           label: 'Hoàn tác',
@@ -259,8 +263,8 @@ export function BacklogPage() {
         },
       });
     } else {
-      toast.warning(`${ok} thành công, ${fail} lỗi`, {
-        description: fail > 0 ? 'Một số việc có thể đã bị người khác thay đổi. Hãy thử lại.' : undefined,
+      toast.warning(`Đã ${verb} ${ok} việc, còn ${fail} việc chưa xong`, {
+        description: 'Người khác vừa sửa những việc đó — hãy tải lại trang để xem bản mới nhất rồi thử lại.',
       });
     }
   }
@@ -328,7 +332,7 @@ export function BacklogPage() {
   // (dùng toast thường; sẽ bổ sung nút Hoàn tác khi có API đảo ngược).
   function handleStartSprint(id: string, name: string) {
     startSprint.mutate(id, {
-      onSuccess: () => toast.success(`Đã bắt đầu “${name}”`),
+      onSuccess: () => toast.success(`Đã bắt đầu sprint “${name}”`),
       onError: (err) => toast.error(apiErrorMessage(err)),
     });
   }
@@ -339,7 +343,7 @@ export function BacklogPage() {
     const { id, name } = completing;
     setCompleting(null);
     completeSprint.mutate(id, {
-      onSuccess: () => toast.success(`Đã hoàn thành “${name}”`),
+      onSuccess: () => toast.success(`Đã kết thúc sprint “${name}”. Việc chưa xong đã quay về Backlog.`),
       onError: (err) => toast.error(apiErrorMessage(err)),
     });
   }
@@ -360,9 +364,10 @@ export function BacklogPage() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Escape') { setCreating(false); setNewName(''); } }}
-                placeholder="Tên sprint…"
+                placeholder="VD: Sprint 1 — tuần 1 và 2"
                 className="h-8 w-56"
                 aria-label="Tên sprint mới"
+                title={SPRINT_TIP}
               />
               <Button type="submit" size="sm" loading={createSprint.isPending} disabled={!newName.trim()}>
                 Tạo
@@ -377,7 +382,7 @@ export function BacklogPage() {
               </Button>
             </form>
           ) : (
-            <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setCreating(true)}>
+            <Button size="sm" variant="secondary" className="ml-auto" title={`Tạo một đợt làm việc mới. ${SPRINT_TIP}`} onClick={() => setCreating(true)}>
               <Plus className="h-4 w-4" />
               Tạo sprint
             </Button>
@@ -413,29 +418,31 @@ export function BacklogPage() {
                     sprint.state === 'FUTURE' ? (
                       <Button
                         size="sm"
+                        title={`Bắt đầu đợt làm việc này. ${SPRINT_TIP}`}
                         loading={startSprint.isPending && startSprint.variables === sprint.id}
                         onClick={() => handleStartSprint(sprint.id, sprint.name)}
                       >
                         <Play className="h-4 w-4" />
-                        Bắt đầu
+                        Bắt đầu sprint
                       </Button>
                     ) : (
                       <Button
                         size="sm"
                         variant="secondary"
+                        title="Kết thúc đợt làm việc này. Việc chưa xong sẽ quay về Backlog."
                         loading={completeSprint.isPending && completeSprint.variables === sprint.id}
                         onClick={() =>
-                          // Còn việc chưa xong → hỏi xác nhận; xong hết → hoàn thành luôn.
+                          // Còn việc chưa xong → hỏi xác nhận; xong hết → kết thúc luôn.
                           notDone > 0
                             ? setCompleting({ id: sprint.id, name: sprint.name, notDone })
                             : completeSprint.mutate(sprint.id, {
-                                onSuccess: () => toast.success(`Đã hoàn thành “${sprint.name}”`),
+                                onSuccess: () => toast.success(`Đã kết thúc sprint “${sprint.name}”`),
                                 onError: (err) => toast.error(apiErrorMessage(err)),
                               })
                         }
                       >
                         <CheckCircle2 className="h-4 w-4" />
-                        Hoàn thành
+                        Kết thúc sprint
                       </Button>
                     )
                   ) : undefined
@@ -443,10 +450,10 @@ export function BacklogPage() {
                 hint={
                   sprint.state === 'FUTURE'
                     ? (hasActive
-                      ? 'Đã có sprint đang chạy — hoàn thành sprint đó trước khi bắt đầu sprint này.'
+                      ? 'Đang có một sprint chạy dở — kết thúc sprint đó trước rồi mới bắt đầu sprint này.'
                       : sprint.goal)
                     : (notDone > 0
-                      ? `Còn ${notDone} việc chưa hoàn thành — hoàn thành sprint sẽ chuyển các việc này về Backlog.`
+                      ? `Còn ${notDone} việc chưa xong. Khi bạn kết thúc sprint, những việc này sẽ quay về Backlog để xếp lại sau.`
                       : sprint.goal)
                 }
               />
@@ -469,21 +476,22 @@ export function BacklogPage() {
             selected={selected}
             onToggleSelect={toggleSelect}
             onToggleSection={toggleSelectSection}
-            emptyTitle="Backlog trống"
-            emptyDescription="Tạo issue mới hoặc kéo issue từ sprint về đây."
+            emptyTitle="Backlog đang trống"
+            emptyDescription="Đây là nơi chứa việc chưa xếp vào sprint nào. Thêm việc ở ô bên dưới, hoặc kéo việc từ sprint về đây."
           />
 
-          {/* Sprint đã đóng — xem lại (chỉ đọc) */}
+          {/* Sprint đã kết thúc — xem lại (chỉ đọc) */}
           {closedSprints.length > 0 && (
             <div className="pt-1">
               <button
                 type="button"
                 onClick={() => setShowClosed((v) => !v)}
                 aria-expanded={showClosed}
+                title="Các đợt làm việc đã kết thúc — chỉ xem lại, không sửa được."
                 className="flex items-center gap-1.5 rounded-md px-1 py-1 text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
                 <ChevronRight className={cn('h-4 w-4 transition-transform', showClosed && 'rotate-90')} />
-                Sprint đã đóng ({closedSprints.length})
+                Sprint đã kết thúc ({closedSprints.length})
               </button>
               {showClosed && (
                 <div className="mt-3 space-y-4">
@@ -577,6 +585,7 @@ function Section({
   const selectedInSection = canSelect && selected ? ids.filter((i) => selected.has(i)).length : 0;
   const allSelected = ids.length > 0 && selectedInSection === ids.length;
   const someSelected = selectedInSection > 0 && !allSelected;
+  const titleTip = id === BACKLOG_ID ? BACKLOG_TIP : SPRINT_TIP;
   return (
     <section
       ref={setNodeRef}
@@ -596,12 +605,12 @@ function Section({
             aria-label={`Chọn tất cả việc trong ${title}`}
           />
         )}
-        <h2 className="text-sm font-semibold text-ink-strong">{title}</h2>
+        <h2 className="text-sm font-semibold text-ink-strong" title={titleTip}>{title}</h2>
         {badge && (
           <Badge className={badge.className}>{badge.label}</Badge>
         )}
-        <span className="tabular text-xs text-muted">
-          {count} issue · Σ {points} điểm
+        <span className="tabular text-xs text-muted" title={`${count} việc đang hiển thị · tổng ${points} điểm ước lượng (mức độ lớn của việc)`}>
+          {count} việc · {points} điểm
         </span>
         {action && <div className="ml-auto">{action}</div>}
       </div>
@@ -627,7 +636,7 @@ function Section({
             </div>
           ) : (
             <p className="px-2 py-5 text-center text-xs text-faint">
-              {readOnly ? 'Không có issue' : 'Kéo issue vào đây'}
+              {readOnly ? 'Sprint này không có việc nào.' : 'Chưa có việc nào. Kéo việc từ Backlog vào đây hoặc thêm mới bên dưới.'}
             </p>
           )
         )}
@@ -636,7 +645,7 @@ function Section({
             projectKey={projectKey}
             projectId={projectId}
             extra={{ sprintId: quickAddSprintId }}
-            placeholder={quickAddSprintId === null ? '+ Thêm việc vào backlog…' : '+ Thêm việc vào sprint…'}
+            placeholder={quickAddSprintId === null ? '+ Thêm việc vào Backlog…' : '+ Thêm việc vào sprint này…'}
             compact
           />
         )}
@@ -646,7 +655,7 @@ function Section({
 }
 
 /* ------------------------------------------------------------------ */
-/* Dialog xác nhận hoàn thành sprint còn việc chưa xong                */
+/* Dialog xác nhận kết thúc sprint khi còn việc chưa xong              */
 /* ------------------------------------------------------------------ */
 
 function CompleteSprintDialog({
@@ -671,15 +680,16 @@ function CompleteSprintDialog({
     <div className="fixed inset-0 z-modal flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="complete-sprint-title">
       <button className="absolute inset-0 bg-black/30 animate-in fade-in duration-200" onClick={onCancel} aria-label="Đóng" />
       <div className="relative w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-lg animate-in fade-in zoom-in-95 duration-200">
-        <h2 id="complete-sprint-title" className="text-base font-semibold text-ink-strong">Hoàn thành “{name}”?</h2>
+        <h2 id="complete-sprint-title" className="text-base font-semibold text-ink-strong">Kết thúc sprint “{name}”?</h2>
         <p className="mt-2 text-sm text-muted">
-          Còn <span className="font-medium text-ink">{notDone}</span> việc chưa xong. Các việc này sẽ được chuyển về <span className="font-medium text-ink">Backlog</span>.
+          Còn <span className="font-medium text-ink">{notDone}</span> việc chưa xong. Những việc này sẽ quay về{' '}
+          <span className="font-medium text-ink" title={BACKLOG_TIP}>Backlog</span> để bạn xếp vào sprint sau.
         </p>
         <div className="mt-5 flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={loading}>Hủy</Button>
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={loading}>Để sau</Button>
           <Button size="sm" loading={loading} onClick={onConfirm}>
             <CheckCircle2 className="h-4 w-4" />
-            Hoàn thành sprint
+            Kết thúc sprint
           </Button>
         </div>
       </div>
@@ -727,15 +737,15 @@ function IssueRow({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           onChange={() => onToggleSelect?.(issue.id)}
-          aria-label={`Chọn ${issue.key}`}
+          aria-label={`Chọn việc ${issue.key} để thao tác hàng loạt`}
         />
       )}
       <span
         className="h-1.5 w-1.5 shrink-0 rounded-full"
         style={{ background: issue.priority?.color ?? 'var(--faint)' }}
-        title={issue.priority?.name ?? 'Không ưu tiên'}
+        title={issue.priority ? `Mức ưu tiên: ${issue.priority.name}` : 'Chưa đặt mức ưu tiên'}
       />
-      <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
+      <span className="shrink-0 font-mono text-xs text-muted" title={`Mã công việc ${issue.key}`}>{issue.key}</span>
       <span className="min-w-0 flex-1 truncate text-sm text-ink">{issue.summary}</span>
       {issue.labels && issue.labels.length > 0 && (
         <span className="hidden shrink-0 items-center gap-1 lg:flex">
@@ -744,6 +754,7 @@ function IssueRow({
               key={l.id}
               className="max-w-[7rem] truncate rounded px-1.5 py-px text-[10px] font-medium"
               style={{ backgroundColor: `color-mix(in oklch, ${l.color || 'var(--faint)'} 16%, transparent)`, color: l.color || 'var(--faint)' }}
+              title={`Nhãn: ${l.name}`}
             >
               {l.name}
             </span>
@@ -752,24 +763,27 @@ function IssueRow({
         </span>
       )}
       {progress && progress.total > 0 && (
-        <span className="hidden shrink-0 items-center gap-1.5 sm:flex" title={`Tiến trình task con: ${progress.pct}%`}>
+        <span className="hidden shrink-0 items-center gap-1.5 sm:flex" title={`Việc con: đã xong ${progress.done}/${progress.total} (${progress.pct}%)`}>
           <TaskProgress progress={progress} compact className="w-16" />
           <span className="tabular text-[10px] text-faint">{progress.done}/{progress.total}</span>
         </span>
       )}
       <DueBadge issue={issue} warnOnly className="shrink-0" />
       {issue.storyPoints != null && (
-        <span className="tabular grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-surface-2 px-1 text-[10px] font-medium text-muted">
+        <span
+          className="tabular grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-surface-2 px-1 text-[10px] font-medium text-muted"
+          title={`${issue.storyPoints} điểm ước lượng — mức độ lớn của việc này`}
+        >
           {issue.storyPoints}
         </span>
       )}
       {issue.assignee ? (
-        <span className="flex shrink-0 items-center gap-1.5" title={`Người làm: ${issue.assignee.displayName}`}>
+        <span className="flex shrink-0 items-center gap-1.5" title={`Người phụ trách: ${issue.assignee.displayName}`}>
           <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={20} />
           <span className="hidden max-w-[9rem] truncate text-xs text-muted md:inline">{issue.assignee.displayName}</span>
         </span>
       ) : (
-        <span className="hidden shrink-0 text-[11px] text-faint sm:inline">Chưa gán</span>
+        <span className="hidden shrink-0 text-[11px] text-faint sm:inline" title="Chưa có ai nhận việc này">Chưa gán</span>
       )}
     </div>
   );

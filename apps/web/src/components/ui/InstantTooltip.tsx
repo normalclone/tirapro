@@ -24,16 +24,21 @@ interface TipState {
   placement: 'top' | 'bottom';
 }
 
-/** Lấy text tooltip: ưu tiên data-tip đã chuyển, nếu còn title thì chuyển sang data-tip. */
+/**
+ * Lấy text tooltip. `title` LUÔN được ưu tiên vì nó là bản mới nhất: khi React
+ * render lại với nội dung tooltip khác, nó ghi lại thuộc tính `title` trên DOM —
+ * nếu đọc `data-tip` trước thì tooltip động (đếm số, đổi trạng thái) sẽ đứng im ở
+ * chữ của lần rê chuột đầu tiên.
+ */
 function readTip(el: HTMLElement): string {
-  const moved = el.getAttribute('data-tip');
-  if (moved !== null) return moved;
   const title = el.getAttribute('title');
-  if (title === null) return '';
-  // Chuyển hẳn sang data-tip để trình duyệt không hiện tooltip gốc (trễ + xấu).
-  el.setAttribute('data-tip', title);
-  el.removeAttribute('title');
-  return title;
+  if (title !== null) {
+    // Chuyển hẳn sang data-tip để trình duyệt không hiện tooltip gốc (trễ + xấu).
+    el.setAttribute('data-tip', title);
+    el.removeAttribute('title');
+    return title;
+  }
+  return el.getAttribute('data-tip') ?? '';
 }
 
 export function InstantTooltip() {

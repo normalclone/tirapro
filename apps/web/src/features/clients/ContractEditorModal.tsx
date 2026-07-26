@@ -149,10 +149,10 @@ export function ContractEditorModal({
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Mã hợp đồng" hint="(tùy chọn)" htmlFor="contract-code">
+            <Field label="Mã hợp đồng" hint="(tùy chọn — mã trên giấy tờ)" htmlFor="contract-code">
               <Input id="contract-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="HD-2026-001" maxLength={60} className="font-mono" />
             </Field>
-            <Field label="Dự án liên quan" hint="(tùy chọn)">
+            <Field label="Dự án liên quan" hint="(tùy chọn — dự án thực hiện hợp đồng)">
               <SearchSelect
                 value={projectId}
                 onChange={setProjectId}
@@ -165,7 +165,7 @@ export function ContractEditorModal({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Giá trị" hint="(tùy chọn)" htmlFor="contract-value">
+            <Field label="Giá trị hợp đồng" hint="(tùy chọn — chỉ nhập số)" htmlFor="contract-value">
               <Input
                 id="contract-value"
                 inputMode="numeric"
@@ -173,19 +173,22 @@ export function ContractEditorModal({
                 onChange={(e) => setValue(e.target.value)}
                 placeholder="1500000000"
                 className="tabular"
+                title="Gõ liền số, không cần dấu chấm — hệ thống tự định dạng bên dưới"
               />
               {parsedValue !== null && (
-                <p className="mt-1 text-xs text-faint">{formatMoney(parsedValue, currency)}</p>
+                <p className="mt-1 text-xs text-faint" title="Số bạn vừa nhập, hiển thị theo định dạng tiền tệ">
+                  {formatMoney(parsedValue, currency)}
+                </p>
               )}
             </Field>
-            <Field label="Tiền tệ">
+            <Field label="Loại tiền">
               <SearchSelect
                 value={currency}
                 onChange={setCurrency}
                 options={CURRENCIES}
                 placeholder="VND"
-                searchPlaceholder="Tìm tiền tệ…"
-                ariaLabel="Tiền tệ hợp đồng"
+                searchPlaceholder="Tìm loại tiền…"
+                ariaLabel="Loại tiền của hợp đồng"
               />
             </Field>
           </div>
@@ -198,16 +201,22 @@ export function ContractEditorModal({
               <Input id="contract-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </Field>
           </div>
-          {dateOrderInvalid && <p className="text-xs text-danger" role="alert">Ngày kết thúc phải sau ngày bắt đầu.</p>}
+          {dateOrderInvalid && (
+            <p className="text-xs text-danger" role="alert">
+              Ngày kết thúc đang sớm hơn ngày bắt đầu — hãy sửa lại một trong hai ngày.
+            </p>
+          )}
 
           <Field label="Ghi chú" hint="(tùy chọn)" htmlFor="contract-note">
-            <Input id="contract-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Điều khoản thanh toán, phạm vi…" maxLength={1000} />
+            <Input id="contract-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Điều khoản thanh toán, phạm vi công việc…" maxLength={1000} />
           </Field>
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void save()} loading={busy} disabled={!canSave}>{editing ? 'Lưu' : 'Thêm hợp đồng'}</Button>
+          <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
+            {editing ? 'Lưu thay đổi' : 'Thêm hợp đồng'}
+          </Button>
         </footer>
       </div>
     </div>

@@ -19,8 +19,8 @@ const GROUPS: { title: string; items: { keys: string[]; label: string }[] }[] = 
   {
     title: 'Đi tới (trong dự án)',
     items: [
-      { keys: ['g', 'b'], label: 'Board' },
-      { keys: ['g', 'l'], label: 'Backlog' },
+      { keys: ['g', 'b'], label: 'Bảng việc' },
+      { keys: ['g', 'l'], label: 'Việc chờ (backlog)' },
       { keys: ['g', 'd'], label: 'Tổng quan' },
     ],
   },

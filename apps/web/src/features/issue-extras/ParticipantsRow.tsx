@@ -11,8 +11,8 @@ import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { useParticipants, useSetParticipants } from './api';
 
 /**
- * Hàng "Người tham gia" trong panel Con người của issue — nhiều người, ngoài
- * người phụ trách & người báo cáo. Bấm để mở danh sách chọn (tìm theo tên/vị trí/nhóm).
+ * Hàng "Người tham gia" trong panel Người liên quan của công việc — nhiều người, ngoài
+ * người phụ trách & người tạo. Bấm để mở danh sách chọn (tìm theo tên/vị trí/nhóm).
  */
 export function ParticipantsRow({ issueId, projectId }: { issueId: string; projectId: string }) {
   const canEdit = useAuth((s) => s.can('issue:edit'));
@@ -36,7 +36,9 @@ export function ParticipantsRow({ issueId, projectId }: { issueId: string; proje
 
   return (
     <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
-      <span className="shrink-0 text-muted">Người tham gia</span>
+      <span className="shrink-0 text-muted" title="Những người cùng làm hoặc cần theo dõi việc này, ngoài người phụ trách và người tạo">
+        Người tham gia
+      </span>
 
       {canEdit ? (
         <Popover.Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(''); }}>
@@ -44,15 +46,16 @@ export function ParticipantsRow({ issueId, projectId }: { issueId: string; proje
             <button
               type="button"
               aria-label="Chọn người tham gia"
+              title="Bấm để thêm hoặc bớt người tham gia"
               className="inline-flex max-w-[70%] items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               {list.length === 0 ? (
-                <span className="flex items-center gap-1 text-faint"><UserPlus className="h-3.5 w-3.5" /> Thêm</span>
+                <span className="flex items-center gap-1 text-faint"><UserPlus className="h-3.5 w-3.5" /> Thêm người</span>
               ) : (
                 <>
                   <span className="flex -space-x-1.5">
                     {list.slice(0, 4).map((u) => (
-                      <span key={u.id} className="rounded-full ring-2 ring-surface" title={u.displayName}>
+                      <span key={u.id} className="rounded-full ring-2 ring-surface" title={`Người tham gia: ${u.displayName}`}>
                         <Avatar name={u.displayName} src={u.avatarUrl} size={20} />
                       </span>
                     ))}
@@ -69,7 +72,7 @@ export function ParticipantsRow({ issueId, projectId }: { issueId: string; proje
               className="z-dropdown w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-border bg-surface shadow-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
             >
               <div className="border-b border-border p-2">
-                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tên, vị trí, nhóm…" autoFocus className="h-8 text-sm" />
+                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm theo tên, vị trí hoặc nhóm…" aria-label="Tìm người tham gia" autoFocus className="h-8 text-sm" />
               </div>
               <ul className="max-h-72 overflow-y-auto p-1" role="listbox" aria-multiselectable aria-label="Người tham gia">
                 {filtered.map((o) => {
@@ -93,13 +96,13 @@ export function ParticipantsRow({ issueId, projectId }: { issueId: string; proje
                     </li>
                   );
                 })}
-                {filtered.length === 0 && <li className="px-2 py-3 text-center text-sm text-muted">Không tìm thấy</li>}
+                {filtered.length === 0 && <li className="px-2 py-3 text-center text-sm text-muted">Không có ai khớp. Thử từ khoá khác.</li>}
               </ul>
             </Popover.Content>
           </Popover.Portal>
         </Popover.Root>
       ) : list.length === 0 ? (
-        <span className="text-faint">—</span>
+        <span className="text-faint" title="Chưa có ai tham gia thêm ngoài người phụ trách và người tạo">—</span>
       ) : (
         <span className="flex -space-x-1.5">
           {list.slice(0, 5).map((u) => (

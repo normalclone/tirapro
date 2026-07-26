@@ -5,7 +5,7 @@ import { MarkdownEditor } from '@/features/issue-edit/DescriptionEditor';
 import { useProjectMeta } from '@/features/ai/api';
 import type { IssuePayload } from './api';
 
-/** Nhãn + trường nhập, dùng chung cho các modal của trang Tự động hoá. */
+/** Nhãn + trường nhập + câu gợi ý, dùng chung cho các hộp thoại của trang Tự động hoá. */
 export function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: ReactNode }) {
   return (
     <div>
@@ -17,15 +17,15 @@ export function Field({ label, hint, htmlFor, children }: { label: string; hint?
 }
 
 /**
- * Các trường mặc định của issue (loại, độ ưu tiên, tiêu đề, mô tả) — dùng chung cho
- * mẫu issue và việc lặp lại. Loại & độ ưu tiên lấy theo cấu hình workspace qua
+ * Nội dung điền sẵn của công việc (loại, độ ưu tiên, tiêu đề, mô tả) — dùng chung cho
+ * mẫu công việc và công việc lặp lại. Loại & độ ưu tiên lấy theo cấu hình workspace qua
  * `/projects/:key/meta`; cần một mã dự án bất kỳ để nạp.
  */
 export function IssueDefaultsFields({
   projectKey,
   value,
   onChange,
-  summaryPlaceholder = 'Tiêu đề issue sẽ được điền sẵn…',
+  summaryPlaceholder = 'Tiêu đề sẽ được điền sẵn…',
   summaryHint,
 }: {
   projectKey: string | undefined;
@@ -47,7 +47,7 @@ export function IssueDefaultsFields({
   return (
     <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Loại issue" htmlFor={`${uid}-type`}>
+        <Field label="Loại công việc" htmlFor={`${uid}-type`}>
           <SearchSelect
             id={`${uid}-type`}
             value={value.typeId ?? ''}
@@ -55,7 +55,7 @@ export function IssueDefaultsFields({
             options={typeOptions}
             placeholder={isLoading ? 'Đang tải…' : 'Chọn loại…'}
             searchPlaceholder="Tìm loại…"
-            ariaLabel="Loại issue"
+            ariaLabel="Loại công việc"
             disabled={!projectKey}
           />
         </Field>
@@ -73,7 +73,7 @@ export function IssueDefaultsFields({
         </Field>
       </div>
 
-      <Field label="Tiêu đề mặc định" htmlFor={`${uid}-summary`} hint={summaryHint}>
+      <Field label="Tiêu đề điền sẵn" htmlFor={`${uid}-summary`} hint={summaryHint}>
         <Input
           id={`${uid}-summary`}
           value={value.summary ?? ''}
@@ -83,12 +83,12 @@ export function IssueDefaultsFields({
         />
       </Field>
 
-      <Field label="Mô tả mặc định">
+      <Field label="Mô tả điền sẵn" hint="Ví dụ: các bước cần làm, thông tin phải thu thập. Người tạo việc vẫn sửa được.">
         <MarkdownEditor
           value={value.description ?? ''}
           onChange={(v) => set({ description: v })}
           rows={6}
-          placeholder="Nội dung điền sẵn cho issue (Markdown cơ bản)…"
+          placeholder="Nội dung điền sẵn — hỗ trợ Markdown cơ bản (# tiêu đề, **đậm**, - gạch đầu dòng)…"
         />
       </Field>
     </>

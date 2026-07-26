@@ -384,7 +384,7 @@ export class IssuesService {
 
   private assertVersion(currentVersion: number, inputVersion: number) {
     if (currentVersion !== inputVersion) {
-      throw new VersionConflictException('Issue đã được người khác cập nhật, hãy tải lại', { version: currentVersion });
+      throw new VersionConflictException('Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại', { version: currentVersion });
     }
   }
 

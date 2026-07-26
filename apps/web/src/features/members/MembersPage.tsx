@@ -45,7 +45,8 @@ export function MembersPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Thành viên & nhóm</h1>
         <p className="mt-1 text-sm text-muted">
-          Thành viên tính trên workspace — ai ở đây đều tham gia mọi dự án trong workspace. Nhóm dùng để tổ chức họ.
+          Thành viên thuộc về cả workspace (không gian làm việc chung), nên ai có tên ở đây đều tham gia mọi dự án.
+          Nhóm dùng để sắp xếp họ theo chức năng và giao vai trò hàng loạt.
         </p>
       </header>
 
@@ -76,9 +77,11 @@ export function MembersPage() {
           <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
             <h2 className="text-base font-semibold text-ink-strong">Danh sách thành viên</h2>
             <div className="flex items-center gap-3">
-              {members && members.length > 0 && <span className="text-sm text-muted">{members.length} người</span>}
+              {members && members.length > 0 && (
+                <span className="text-sm text-muted" title={`Workspace hiện có ${members.length} người`}>{members.length} người</span>
+              )}
               {canManage && (
-                <Button size="sm" variant="secondary" onClick={() => setBulkOpen(true)}>
+                <Button size="sm" variant="secondary" title="Chọn nhiều người có sẵn trong hệ thống và thêm cùng lúc" onClick={() => setBulkOpen(true)}>
                   <UserPlus className="h-4 w-4" /> Thêm nhiều người
                 </Button>
               )}
@@ -95,8 +98,8 @@ export function MembersPage() {
             ) : !members || members.length === 0 ? (
               <EmptyState
                 icon={<Users className="h-6 w-6" />}
-                title="Chưa có thành viên"
-                description="Mời người đầu tiên vào workspace bằng biểu mẫu phía trên."
+                title="Chưa có thành viên nào"
+                description="Đây là danh sách người được vào workspace. Mời người đầu tiên bằng ô nhập email phía trên."
               />
             ) : (
               <ul className="divide-y divide-border">
@@ -138,7 +141,7 @@ function MemberRow({
   const remove = useRemoveMember();
 
   function handleRemove() {
-    if (!window.confirm(`Gỡ ${user.displayName} khỏi workspace?`)) return;
+    if (!window.confirm(`Gỡ ${user.displayName} khỏi workspace?\n\nHọ sẽ mất quyền vào mọi dự án ở đây. Việc đã giao cho họ vẫn giữ nguyên. Bạn có thể mời lại sau.`)) return;
     remove.mutate(user.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -153,7 +156,7 @@ function MemberRow({
         <p className="truncate text-xs text-faint">{user.email}</p>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-1.5">
+      <div className="flex flex-wrap items-center justify-end gap-1.5" title="Vai trò quyết định người này được xem và làm gì trong workspace">
         {member.roles.length > 0 ? (
           member.roles.map((r) => <RoleBadge key={r.id} name={r.name} color={r.color} />)
         ) : (
@@ -171,7 +174,7 @@ function MemberRow({
             saving={setRoles.isPending}
             onSave={(roleIds) => setRoles.mutateAsync({ userId: user.id, roleIds })}
             trigger={
-              <Button variant="ghost" size="icon" title="Sửa vai trò" aria-label={`Sửa vai trò của ${user.displayName}`}>
+              <Button variant="ghost" size="icon" title={`Đổi vai trò của ${user.displayName} trong workspace`} aria-label={`Sửa vai trò của ${user.displayName}`}>
                 <Pencil className="h-4 w-4" />
               </Button>
             }
@@ -181,7 +184,7 @@ function MemberRow({
               variant="ghost"
               size="icon"
               className="text-muted hover:text-danger"
-              title="Gỡ khỏi workspace"
+              title={`Gỡ ${user.displayName} khỏi workspace — họ sẽ mất quyền vào mọi dự án`}
               aria-label={`Gỡ ${user.displayName} khỏi workspace`}
               loading={remove.isPending}
               onClick={handleRemove}

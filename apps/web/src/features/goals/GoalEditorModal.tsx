@@ -15,8 +15,8 @@ import {
 
 const STATUS_OPTIONS: { value: ObjectiveStatus; label: string }[] = [
   { value: 'DRAFT', label: 'Nháp' },
-  { value: 'ACTIVE', label: 'Đang chạy' },
-  { value: 'CLOSED', label: 'Đã đóng' },
+  { value: 'ACTIVE', label: 'Đang theo đuổi' },
+  { value: 'CLOSED', label: 'Đã chốt' },
 ];
 
 const UNIT_OPTIONS: { value: KeyResultUnit; label: string }[] = [
@@ -62,7 +62,7 @@ function suggestPeriods(): string[] {
   return out;
 }
 
-/** Modal tạo/sửa mục tiêu (OKR) — thông tin chung + danh sách Key Result. */
+/** Modal tạo/sửa mục tiêu (OKR) — thông tin chung + danh sách kết quả then chốt. */
 export function GoalEditorModal({
   open, goal, defaultPeriod, onClose,
 }: {
@@ -218,7 +218,7 @@ export function GoalEditorModal({
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Kỳ" htmlFor="goal-period">
+            <Field label="Kỳ" hint="(khoảng thời gian theo đuổi, vd 2026-Q3 là quý 3 năm 2026)" htmlFor="goal-period">
               <SearchSelect
                 id="goal-period"
                 value={period}
@@ -238,7 +238,7 @@ export function GoalEditorModal({
                 ariaLabel="Trạng thái mục tiêu"
               />
             </Field>
-            <Field label="Dự án" hint="(để trống = toàn workspace)" htmlFor="goal-project">
+            <Field label="Dự án" hint="(để trống = mục tiêu chung của cả workspace)" htmlFor="goal-project">
               <SearchSelect
                 id="goal-project"
                 value={projectId}
@@ -249,29 +249,34 @@ export function GoalEditorModal({
                 searchPlaceholder="Tìm dự án…"
               />
             </Field>
-            <Field label="Chủ sở hữu" hint="(tùy chọn)" htmlFor="goal-owner">
+            <Field label="Người phụ trách" hint="(tùy chọn — người chịu trách nhiệm chính)" htmlFor="goal-owner">
               <PeoplePicker
                 id="goal-owner"
                 value={ownerId}
                 onChange={setOwnerId}
                 options={people}
-                emptyLabel="Chưa gán"
-                ariaLabel="Chủ sở hữu mục tiêu"
+                emptyLabel="Chưa chọn"
+                ariaLabel="Người phụ trách mục tiêu"
               />
             </Field>
           </div>
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-medium text-muted">Kết quả then chốt</p>
+              <p
+                className="text-sm font-medium text-muted"
+                title="Thước đo bằng số cho biết mục tiêu đã đạt tới đâu. Nên có 2–4 kết quả cho mỗi mục tiêu."
+              >
+                Kết quả then chốt
+              </p>
               <Button variant="ghost" size="sm" onClick={() => setKrs((prev) => [...prev, newRow()])}>
-                <Plus className="h-4 w-4" /> Thêm
+                <Plus className="h-4 w-4" /> Thêm kết quả
               </Button>
             </div>
 
             {krs.length === 0 ? (
               <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-faint">
-                Chưa có kết quả then chốt. Không sao — có thể thêm sau.
+                Chưa có kết quả then chốt nào. Bấm “Thêm kết quả” để đặt thước đo bằng số, hoặc thêm sau cũng được.
               </p>
             ) : (
               <ul className="space-y-2">
@@ -281,7 +286,7 @@ export function GoalEditorModal({
                       <Input
                         value={kr.name}
                         onChange={(e) => setKr(kr.rowKey, { name: e.target.value })}
-                        placeholder="VD: Thời gian phản hồi trung bình"
+                        placeholder="VD: Thời gian phản hồi trung bình (phút)"
                         maxLength={160}
                         aria-label="Tên kết quả then chốt"
                       />
@@ -289,24 +294,25 @@ export function GoalEditorModal({
                         variant="ghost"
                         size="icon"
                         className="shrink-0 text-muted hover:text-danger"
-                        aria-label={`Xoá kết quả then chốt ${kr.name || ''}`}
+                        title="Xoá kết quả then chốt này khỏi mục tiêu"
+                        aria-label={`Xoá kết quả then chốt ${kr.name || 'chưa đặt tên'}`}
                         onClick={() => setKrs((prev) => prev.filter((x) => x.rowKey !== kr.rowKey))}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      <label className="text-xs text-faint">
+                      <label className="text-xs text-faint" title="Cách hiển thị số đo: số thường, phần trăm hay tiền">
                         Đơn vị
                         <SearchSelect
                           value={kr.unit ?? 'NUMBER'}
                           onChange={(v) => setKr(kr.rowKey, { unit: v as KeyResultUnit })}
                           options={UNIT_OPTIONS}
-                          ariaLabel="Đơn vị"
+                          ariaLabel="Đơn vị của số đo"
                           className="mt-1"
                         />
                       </label>
-                      <label className="text-xs text-faint">
+                      <label className="text-xs text-faint" title="Số đo lúc bắt đầu kỳ — mốc để tính tiến độ">
                         Bắt đầu
                         <Input
                           type="number"
@@ -315,7 +321,7 @@ export function GoalEditorModal({
                           onChange={(e) => setKr(kr.rowKey, { startValue: Number(e.target.value) })}
                         />
                       </label>
-                      <label className="text-xs text-faint">
+                      <label className="text-xs text-faint" title="Số đo mới nhất tính đến hôm nay">
                         Hiện tại
                         <Input
                           type="number"
@@ -324,8 +330,8 @@ export function GoalEditorModal({
                           onChange={(e) => setKr(kr.rowKey, { currentValue: Number(e.target.value) })}
                         />
                       </label>
-                      <label className="text-xs text-faint">
-                        Mục tiêu
+                      <label className="text-xs text-faint" title="Số cần đạt để coi kết quả này là hoàn thành 100%">
+                        Cần đạt
                         <Input
                           type="number"
                           className="mt-1 tabular-nums"
@@ -345,7 +351,7 @@ export function GoalEditorModal({
           <span className="mr-auto text-xs text-faint">Ctrl/Cmd + Enter để lưu</span>
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
-            {editing ? 'Lưu' : 'Tạo mục tiêu'}
+            {editing ? 'Lưu thay đổi' : 'Tạo mục tiêu'}
           </Button>
         </footer>
       </div>

@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils';
 import { QUICK_FILTERS, type QuickFilterId } from './useQuickFilters';
 
 /**
- * Hàng chip lọc nhanh. Bấm để bật/tắt; nhiều chip bật cùng lúc (AND).
+ * Hàng chip lọc nhanh. Bấm để bật/tắt; bật nhiều chip cùng lúc thì việc phải khớp tất cả.
  * Trạng thái bật = nền primary-subtle + chữ primary; tắt = viền.
  */
 export function QuickFilterChips({
@@ -23,6 +23,7 @@ export function QuickFilterChips({
             key={f.id}
             type="button"
             aria-pressed={isOn}
+            title={isOn ? `${f.hint} · bấm để tắt bộ lọc` : f.hint}
             onClick={() => onToggle(f.id)}
             className={cn(
               'inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-medium transition-colors',

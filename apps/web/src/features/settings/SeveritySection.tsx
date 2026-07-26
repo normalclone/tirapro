@@ -83,7 +83,7 @@ export function SeveritySection() {
           description={
             canManage
               ? 'Thêm mức độ đầu tiên để bắt đầu phân loại issue.'
-              : 'Chưa có mức độ nào. Liên hệ quản trị workspace để thêm.'
+              : 'Chưa có mức độ nào. Liên hệ quản trị viên để thêm.'
           }
           action={
             canManage ? (

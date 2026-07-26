@@ -304,7 +304,7 @@ export function DocumentationPage() {
               <P>Bản demo có sẵn các tài khoản dưới đây (mật khẩu chung <Mono>Password123</Mono>), mỗi tài khoản đại diện một vai trò để bạn trải nghiệm nhanh:</P>
               <div className="mb-3 rounded-lg border border-border bg-surface px-4">
                 {[['A', 'var(--primary)', 'admin@projira.dev', 'Quản trị hệ thống + Quản trị workspace'],
-                  ['B', '#7048b6', 'ba@tirapro.dev', 'Business Analyst (báo cáo / phân tích)'],
+                  ['B', '#7048b6', 'ba@tirapro.dev', 'Phân tích nghiệp vụ (làm rõ yêu cầu, xem báo cáo)'],
                   ['D', 'var(--success)', 'dev@tirapro.dev', 'Lập trình viên'],
                   ['T', 'var(--warning)', 'tester@tirapro.dev', 'Tester (báo & kiểm thử)']].map(([av, bg, em, ro]) => (
                   <div key={em} className="flex items-center gap-3 border-b border-border py-2.5 last:border-none">
@@ -454,7 +454,7 @@ export function DocumentationPage() {
             </section>
 
             <section className="mb-14">
-              <RoleHead id="vt-lead" icon={<ClipboardList className="h-5 w-5" />} title="Quản trị dự án" persona="Project Admin / Lead / Scrum Master — chịu trách nhiệm cấu hình và vận hành một dự án." />
+              <RoleHead id="vt-lead" icon={<ClipboardList className="h-5 w-5" />} title="Quản trị dự án" persona="Trưởng dự án / điều phối — chịu trách nhiệm cấu hình và vận hành một dự án." />
               <CanDo
                 can={[
                   'Toàn bộ quyền của Lập trình viên, cộng thêm:',
@@ -474,7 +474,7 @@ export function DocumentationPage() {
             </section>
 
             <section className="mb-14">
-              <RoleHead id="vt-ws-admin" icon={<Building2 className="h-5 w-5" />} title="Quản trị workspace" persona="Workspace Admin — trưởng phòng / quản trị tổ chức, đứng trên các dự án trong một workspace." />
+              <RoleHead id="vt-ws-admin" icon={<Building2 className="h-5 w-5" />} title="Quản trị chung" persona="Trưởng phòng / quản trị tổ chức — đứng trên tất cả dự án trong một không gian làm việc." />
               <CanDo
                 can={[
                   'Tạo / sửa / lưu trữ / xoá dự án trong workspace.',
@@ -510,7 +510,7 @@ export function DocumentationPage() {
             </section>
 
             <section className="mb-14">
-              <RoleHead id="vt-sys-admin" icon={<ShieldCheck className="h-5 w-5" />} title="Quản trị hệ thống" persona="System Admin — chủ hệ thống, đứng trên tất cả workspace. Truy cập Console quản trị tại /admin." />
+              <RoleHead id="vt-sys-admin" icon={<ShieldCheck className="h-5 w-5" />} title="Quản trị hệ thống" persona="Chủ hệ thống — đứng trên mọi không gian làm việc. Vào trang quản trị tại /admin." />
               <P>Console quản trị có giao diện riêng, không gắn với workspace nào. Đăng nhập tài khoản có cờ quản trị hệ thống (vd <Mono>admin@projira.dev</Mono>) rồi mở menu người dùng → <strong>Admin hệ thống</strong>.</P>
               <div className="border-t border-border">
                 <Feature icon={<ShieldCheck className="h-4 w-4" />} title="Tổng quan & sức khoẻ">Số liệu toàn hệ thống và trạng thái degrade từng dịch vụ (DB · Redis · AI · Embedding · Lưu trữ).</Feature>
@@ -525,16 +525,16 @@ export function DocumentationPage() {
               <H2 id="quan-ly-nang-cao">Quản lý nâng cao</H2>
               <P>Ngoài Scrum/Kanban, Tirapro hỗ trợ các mô hình quản lý sau — mỗi mục là một mục riêng trên thanh bên trái.</P>
               <div className="border-t border-border">
-                <Feature icon={<GitBranch className="h-4 w-4" />} title="Lịch trình nâng cao (Gantt)">Phụ thuộc FS/SS/FF/SF giữa công việc, <strong>đường găng</strong> tự tính, cột mốc, và <strong>kế hoạch gốc</strong> để so sánh kế hoạch với thực tế. Ở dự án → tab <Mono>Lịch trình</Mono>.</Feature>
-                <Feature icon={<Users className="h-4 w-4" />} title="Nguồn lực & tải">Phân bổ %thời gian theo người/dự án, nghỉ phép & ngày lễ; bảng nhiệt tải theo tuần cảnh báo quá tải.</Feature>
-                <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Danh mục & chương trình">Gom nhiều dự án thành chương trình, xem tiến độ tổng hợp và roadmap theo thời gian.</Feature>
-                <Feature icon={<Sparkles className="h-4 w-4" />} title="Mục tiêu (OKR)">Mục tiêu theo quý + Key Result có chỉ số, gắn issue/epic để tự tính tiến độ.</Feature>
-                <Feature icon={<TriangleAlert className="h-4 w-4" />} title="Sổ rủi ro (RAID)">Rủi ro · Giả định · Vấn đề · Phụ thuộc, chấm điểm xác suất × ảnh hưởng và ma trận nhiệt 5×5.</Feature>
-                <Feature icon={<Bell className="h-4 w-4" />} title="SLA / Service desk">Cam kết thời gian phản hồi &amp; giải quyết; hạn tự gắn khi tạo issue, badge đếm ngược trên issue, bảng theo dõi vi phạm.</Feature>
-                <Feature icon={<BookOpen className="h-4 w-4" />} title="Tài liệu nội bộ (wiki)">Trang markdown phân cấp theo workspace hoặc dự án, tìm kiếm toàn văn.</Feature>
-                <Feature icon={<Plug className="h-4 w-4" />} title="Tự động hoá">Mẫu issue dùng lại và việc lặp lại theo lịch (ngày/tuần/tháng) tự sinh issue.</Feature>
+                <Feature icon={<GitBranch className="h-4 w-4" />} title="Lịch trình dự án">Khai báo việc nào phải xong trước việc nào, hệ thống tự tìm <strong>đường găng</strong> (chuỗi việc quyết định ngày kết thúc — trễ một việc là trễ cả dự án). Có cột mốc và <strong>kế hoạch gốc</strong> để đối chiếu kế hoạch với thực tế. Vào dự án → tab <Mono>Lịch trình</Mono>.</Feature>
+                <Feature icon={<Users className="h-4 w-4" />} title="Nhân lực">Khai báo mỗi người dành bao nhiêu phần trăm thời gian cho dự án nào, cùng ngày nghỉ và ngày lễ. Bảng theo tuần tô màu cảnh báo ai đang quá tải.</Feature>
+                <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Danh mục dự án">Gom nhiều dự án thành một chương trình để xem tiến độ chung và lịch trình tổng theo thời gian.</Feature>
+                <Feature icon={<Sparkles className="h-4 w-4" />} title="Mục tiêu & kết quả then chốt">Đặt mục tiêu theo quý kèm các kết quả then chốt đo được bằng số; gắn công việc vào mục tiêu để tiến độ tự cập nhật.</Feature>
+                <Feature icon={<TriangleAlert className="h-4 w-4" />} title="Rủi ro & vướng mắc">Ghi nhận bốn nhóm: rủi ro (có thể xảy ra), giả định (đang tin là đúng), vấn đề (đang xảy ra), phụ thuộc (chờ bên khác). Mỗi mục chấm điểm khả năng xảy ra × mức ảnh hưởng để biết cái nào đáng lo nhất.</Feature>
+                <Feature icon={<Bell className="h-4 w-4" />} title="Cam kết thời gian xử lý">Đặt hạn phải phản hồi và phải xử lý xong. Hệ thống tự bấm giờ khi công việc được tạo, hiện đếm ngược ngay trên công việc và cảnh báo khi sắp trễ.</Feature>
+                <Feature icon={<BookOpen className="h-4 w-4" />} title="Wiki nội bộ">Trang tài liệu dạng cây cho cả công ty hoặc riêng từng dự án, có tìm kiếm theo nội dung.</Feature>
+                <Feature icon={<Plug className="h-4 w-4" />} title="Tự động hoá">Lưu mẫu công việc để tạo nhanh, và đặt lịch tự tạo công việc lặp lại theo ngày/tuần/tháng.</Feature>
                 <Feature icon={<Building2 className="h-4 w-4" />} title="Khách hàng & hợp đồng">Quản lý khách hàng, hợp đồng (giá trị, thời hạn) và gắn dự án theo khách hàng.</Feature>
-                <Feature icon={<Check className="h-4 w-4" />} title="Trong mỗi issue">Thêm <strong>người tham gia</strong> (nhiều người cùng theo việc) và <strong>checklist</strong> đầu việc nhỏ có tiến độ.</Feature>
+                <Feature icon={<Check className="h-4 w-4" />} title="Trong mỗi issue">Thêm <strong>người tham gia</strong> (nhiều người cùng theo dõi một việc) và <strong>danh sách việc nhỏ</strong> để tích dần theo tiến độ.</Feature>
               </div>
             </section>
 

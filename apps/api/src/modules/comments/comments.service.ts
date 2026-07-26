@@ -50,7 +50,7 @@ export class CommentsService {
   async update(workspaceId: string, userId: string, commentId: string, body: string, version: number): Promise<CommentDto> {
     const current = await this.requireComment(workspaceId, commentId);
     if (current.authorId !== userId) throw new ForbiddenAppException('Chỉ tác giả mới sửa được bình luận');
-    if (current.version !== version) throw new VersionConflictException('Bình luận đã thay đổi, hãy tải lại');
+    if (current.version !== version) throw new VersionConflictException('Người khác vừa sửa bình luận này — hãy tải lại để xem bản mới nhất');
     const updated = await this.prisma.comment.update({
       where: { id: commentId },
       data: { body, isEdited: true, version: { increment: 1 } },

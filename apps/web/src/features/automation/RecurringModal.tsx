@@ -16,7 +16,7 @@ const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => ({ value: String(h), l
 const FREQ_OPTIONS = (Object.keys(FREQ_LABELS) as RecurrenceFreq[]).map((f) => ({ value: f, label: FREQ_LABELS[f] }));
 const WEEKDAY_OPTIONS = WEEKDAY_LABELS.map((label, i) => ({ value: String(i), label }));
 
-/** Tạo / sửa việc lặp lại. `item = null` là tạo mới. */
+/** Tạo / sửa lịch lặp của công việc lặp lại. `item = null` là tạo mới. */
 export function RecurringModal({
   open, item, onClose,
 }: {
@@ -77,7 +77,7 @@ export function RecurringModal({
     try {
       if (item) await update.mutateAsync({ id: item.id, projectId: item.projectId, ...base });
       else await create.mutateAsync({ projectId, ...base });
-      toast.success(item ? 'Đã cập nhật việc lặp lại' : 'Đã tạo việc lặp lại');
+      toast.success(item ? 'Đã cập nhật lịch lặp' : 'Đã tạo lịch lặp');
       onClose();
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -90,20 +90,20 @@ export function RecurringModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={item ? 'Sửa việc lặp lại' : 'Việc lặp lại mới'}
+        aria-label={item ? 'Sửa lịch lặp' : 'Lịch lặp mới'}
         className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200"
       >
         <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <span className="text-sm font-medium text-ink">{item ? 'Sửa việc lặp lại' : 'Việc lặp lại mới'}</span>
+          <span className="text-sm font-medium text-ink">{item ? 'Sửa lịch lặp' : 'Lịch lặp mới'}</span>
           <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng"><X className="h-4 w-4" /></Button>
         </header>
 
         <div className="space-y-4 px-5 py-4">
-          <Field label="Tên việc lặp lại" htmlFor="rec-name">
+          <Field label="Tên lịch lặp" htmlFor="rec-name" hint="Tên này chỉ hiện trong danh sách lịch, giúp bạn nhận ra nhanh.">
             <Input id="rec-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ví dụ: Họp đầu tuần" autoFocus maxLength={120} />
           </Field>
 
-          <Field label="Dự án" htmlFor="rec-project">
+          <Field label="Dự án" htmlFor="rec-project" hint={item ? 'Không đổi được dự án của lịch đã tạo — hãy tạo lịch mới nếu cần.' : 'Công việc sinh ra sẽ nằm trong dự án này.'}>
             <SearchSelect
               id="rec-project"
               value={projectId}
@@ -127,7 +127,7 @@ export function RecurringModal({
                 searchPlaceholder="Tìm…"
               />
             </Field>
-            <Field label="Lặp mỗi" htmlFor="rec-interval">
+            <Field label="Cách mỗi" htmlFor="rec-interval" hint="1 = mỗi kỳ, 2 = cách một kỳ.">
               <Input
                 id="rec-interval"
                 type="number"
@@ -135,23 +135,24 @@ export function RecurringModal({
                 max={52}
                 value={interval}
                 onChange={(e) => setInterval(Math.min(52, Math.max(1, Number(e.target.value) || 1)))}
-                aria-label="Số kỳ giữa hai lần chạy"
+                aria-label="Số kỳ giữa hai lần tạo việc"
+                title="Số kỳ giữa hai lần tạo việc. Ví dụ tần suất Hằng tuần và giá trị 2 nghĩa là hai tuần một lần."
               />
             </Field>
-            <Field label="Giờ chạy" htmlFor="rec-hour">
+            <Field label="Giờ tạo việc" htmlFor="rec-hour">
               <SearchSelect
                 id="rec-hour"
                 value={String(hour)}
                 onChange={(v) => setHour(Number(v))}
                 options={HOUR_OPTIONS}
-                ariaLabel="Giờ chạy"
+                ariaLabel="Giờ tạo việc"
                 searchPlaceholder="Tìm giờ…"
               />
             </Field>
           </div>
 
           {freq === 'WEEKLY' && (
-            <Field label="Vào thứ" htmlFor="rec-weekday">
+            <Field label="Vào thứ mấy" htmlFor="rec-weekday">
               <SearchSelect
                 id="rec-weekday"
                 value={String(weekday)}
@@ -164,7 +165,7 @@ export function RecurringModal({
           )}
 
           {freq === 'MONTHLY' && (
-            <Field label="Vào ngày" htmlFor="rec-monthday" hint="Tháng ngắn hơn sẽ tự lùi về ngày cuối tháng.">
+            <Field label="Vào ngày mấy" htmlFor="rec-monthday" hint="Nếu tháng không có ngày này, hệ thống lùi về ngày cuối tháng.">
               <Input
                 id="rec-monthday"
                 type="number"
@@ -178,7 +179,7 @@ export function RecurringModal({
           )}
 
           <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-ink">
-            Lịch: <span className="font-medium text-ink-strong">{preview}</span>
+            Hệ thống sẽ tạo công việc: <span className="font-medium text-ink-strong">{preview}</span>
           </p>
 
           <label className="flex items-center gap-2 text-sm text-ink">
@@ -188,7 +189,7 @@ export function RecurringModal({
               onChange={(e) => setActive(e.target.checked)}
               className="h-4 w-4 rounded border-border accent-[var(--primary)]"
             />
-            Đang bật (tự tạo issue theo lịch)
+            Bật lịch này — hệ thống tự tạo công việc theo lịch trên
           </label>
 
           <IssueDefaultsFields
@@ -196,14 +197,14 @@ export function RecurringModal({
             value={payload}
             onChange={setPayload}
             summaryPlaceholder="Ví dụ: Họp đầu tuần {{ngay}}"
-            summaryHint="Bắt buộc chọn loại issue. Dùng {{ngay}} hoặc {{thang}} để chèn ngày/tháng lúc tạo. Bỏ trống tiêu đề thì lấy tên việc lặp lại."
+            summaryHint="Dùng {{ngay}} hoặc {{thang}} để chèn ngày/tháng lúc tạo. Bỏ trống thì lấy tên lịch lặp làm tiêu đề."
           />
         </div>
 
         <footer className="flex items-center justify-end gap-3 border-t border-border px-5 py-3">
-          {!payload.typeId && <span className="mr-auto text-xs text-faint">Cần chọn loại issue trước khi lưu.</span>}
+          {!payload.typeId && <span className="mr-auto text-xs text-faint">Hãy chọn loại công việc trước khi lưu.</span>}
           <Button variant="ghost" onClick={onClose}>Huỷ</Button>
-          <Button onClick={() => void submit()} loading={busy} disabled={!canSave}>{item ? 'Lưu' : 'Tạo lịch'}</Button>
+          <Button onClick={() => void submit()} loading={busy} disabled={!canSave}>{item ? 'Lưu thay đổi' : 'Tạo lịch lặp'}</Button>
         </footer>
       </div>
     </div>

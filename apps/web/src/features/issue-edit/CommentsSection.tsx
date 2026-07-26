@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { vi } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { CommentDto, IssueDto } from '@tirapro/types';
 import { useAddComment, useComments } from '@/features/issues/api';
@@ -12,8 +13,8 @@ import { MarkdownEditor, MarkdownView } from './DescriptionEditor';
 import { useDeleteComment, useUpdateComment } from './api';
 
 /**
- * Danh sách + soạn bình luận cho issue. Bình luận lưu dạng Markdown → soạn/sửa bằng MarkdownEditor
- * (nhiều dòng, ⌘/Ctrl+Enter để gửi). Tác giả của bình luận có thể Sửa / Xoá.
+ * Danh sách + soạn bình luận cho một công việc. Bình luận lưu dạng Markdown → soạn/sửa bằng
+ * MarkdownEditor (nhiều dòng, ⌘/Ctrl+Enter để gửi). Người viết có thể Sửa / Xoá bình luận của mình.
  */
 export function CommentsSection({ issue }: { issue: IssueDto }) {
   const currentUser = useAuth((s) => s.user);
@@ -47,7 +48,9 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             canEdit={!!currentUser && c.author?.id === currentUser.id}
           />
         ))}
-        {comments?.length === 0 && <p className="text-sm text-faint">Chưa có bình luận.</p>}
+        {comments?.length === 0 && (
+          <p className="text-sm text-faint">Chưa có bình luận nào. Viết vài dòng bên dưới để trao đổi với cả nhóm về việc này.</p>
+        )}
       </div>
 
       <div className="mt-3 space-y-2">
@@ -56,7 +59,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
           onChange={setDraft}
           onSubmit={() => void submit()}
           rows={3}
-          placeholder="Viết bình luận… (Markdown · ⌘/Ctrl+Enter để gửi)"
+          placeholder="Viết bình luận… (viết được Markdown · ⌘/Ctrl+Enter để gửi)"
         />
         <div className="flex items-center gap-2">
           <span className="mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
@@ -66,7 +69,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             disabled={!draft.trim()}
             onClick={() => void submit()}
           >
-            Gửi
+            Gửi bình luận
           </Button>
         </div>
       </div>
@@ -108,7 +111,7 @@ function CommentRow({
     try {
       await remove.mutateAsync(comment.id);
       setConfirmDelete(false);
-      toast.success('Đã xoá bình luận');
+      toast.success('Đã xoá bình luận của bạn');
     } catch (e) {
       toast.error(apiErrorMessage(e));
     }
@@ -121,7 +124,7 @@ function CommentRow({
         <p className="text-sm">
           <span className="font-medium text-ink-strong">{comment.author?.displayName}</span>{' '}
           <span className="text-xs text-faint">
-            {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+            {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true, locale: vi })}
             {comment.isEdited ? ' · đã sửa' : ''}
           </span>
         </p>
@@ -160,6 +163,7 @@ function CommentRow({
                 <button
                   type="button"
                   className="text-muted transition-colors hover:text-ink"
+                  title="Sửa lại bình luận này"
                   onClick={() => {
                     setBody(comment.body);
                     setEditing(true);
@@ -170,6 +174,7 @@ function CommentRow({
                 <button
                   type="button"
                   className="text-muted transition-colors hover:text-danger disabled:opacity-50"
+                  title="Xoá bình luận này"
                   disabled={remove.isPending}
                   onClick={() => setConfirmDelete(true)}
                 >
@@ -184,7 +189,7 @@ function CommentRow({
       <ConfirmDialog
         open={confirmDelete}
         title="Xoá bình luận này?"
-        description="Bình luận sẽ bị gỡ khỏi issue."
+        description="Bình luận sẽ biến mất khỏi công việc và không khôi phục lại được."
         confirmLabel="Xoá bình luận"
         loading={remove.isPending}
         onConfirm={() => void onDelete()}

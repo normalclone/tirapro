@@ -74,7 +74,7 @@ export function SignupPage() {
             <p className="text-xs text-faint">Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và chữ số.</p>
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="workspaceName" className="text-sm font-medium text-ink">Tên workspace</label>
+            <label htmlFor="workspaceName" className="text-sm font-medium text-ink">Tên không gian làm việc</label>
             <Input id="workspaceName" type="text" autoComplete="organization" placeholder="Công ty của tôi" value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)} />
           </div>
           <Button type="submit" loading={loading} className="w-full">Đăng ký</Button>

@@ -15,9 +15,10 @@ export function Avatar({ name, src, size = 24 }: { name: string; src?: string | 
   );
 }
 
-export function Badge({ children, className, dotColor }: { children: ReactNode; className?: string; dotColor?: string }) {
+/** `title` = câu giải nghĩa hiện tức thì khi rê chuột (xem InstantTooltip). */
+export function Badge({ children, className, dotColor, title }: { children: ReactNode; className?: string; dotColor?: string; title?: string }) {
   return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium', className)}>
+    <span title={title} className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium', className)}>
       {dotColor && <span className="h-1.5 w-1.5 rounded-full" style={{ background: dotColor }} />}
       {children}
     </span>

@@ -40,7 +40,9 @@ export function AdminWorkspacesPage() {
 
   function toggleArchive(w: AdminWorkspace) {
     const next = !w.archived;
-    if (next && !window.confirm(`Lưu trữ workspace “${w.name}”? Thành viên sẽ không truy cập được cho đến khi khôi phục.`)) return;
+    if (next && !window.confirm(`Lưu trữ không gian làm việc “${w.name}”?
+
+Thành viên sẽ không vào được cho tới khi bạn khôi phục. Dữ liệu vẫn được giữ nguyên.`)) return;
     patch.mutate({ id: w.id, patch: { archived: next } }, {
       onSuccess: () => toast.success(next ? `Đã lưu trữ ${w.name}` : `Đã khôi phục ${w.name}`),
       onError: (e) => toast.error(apiErrorMessage(e)),
@@ -50,8 +52,8 @@ export function AdminWorkspacesPage() {
   return (
     <div className={pageContainer('lg')}>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Workspaces</h1>
-        <p className="mt-1 text-sm text-muted">Mọi workspace trong hệ thống — đổi gói, lưu trữ/khôi phục.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Không gian làm việc</h1>
+        <p className="mt-1 text-sm text-muted">Mọi không gian làm việc trong hệ thống — đổi gói dịch vụ, lưu trữ hoặc khôi phục.</p>
       </header>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -70,13 +72,13 @@ export function AdminWorkspacesPage() {
       ) : isLoading ? (
         <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
       ) : rows.length === 0 ? (
-        <EmptyState title="Không có workspace" description={q ? 'Không khớp bộ lọc.' : 'Chưa có workspace nào.'} />
+        <EmptyState title="Không có không gian làm việc nào" description={q ? 'Không có tên nào khớp từ khoá. Thử từ khoá ngắn hơn.' : 'Chưa có không gian làm việc nào được lập.'} />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-2 text-left text-xs text-faint">
-                <th className="px-4 py-2.5 font-medium">Workspace</th>
+                <th className="px-4 py-2.5 font-medium">Không gian làm việc</th>
                 <th className="px-4 py-2.5 font-medium">Chủ sở hữu</th>
                 <th className="px-4 py-2.5 font-medium">Gói</th>
                 <th className="px-4 py-2.5 text-right font-medium">TV · Dự án · Issue</th>

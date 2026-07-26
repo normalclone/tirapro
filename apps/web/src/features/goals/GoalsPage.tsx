@@ -17,18 +17,24 @@ import {
   type GoalDto, type KeyResultDto, type ObjectiveStatus,
 } from './api';
 
-const STATUS_META: Record<ObjectiveStatus, { label: string; className: string }> = {
-  DRAFT: { label: 'Nháp', className: 'bg-surface-2 text-muted' },
-  ACTIVE: { label: 'Đang chạy', className: 'bg-primary-subtle text-primary' },
-  CLOSED: { label: 'Đã đóng', className: 'bg-success/10 text-success' },
+const STATUS_META: Record<ObjectiveStatus, { label: string; className: string; hint: string }> = {
+  DRAFT: { label: 'Nháp', className: 'bg-surface-2 text-muted', hint: 'Đang soạn, chưa công bố cho cả nhóm' },
+  ACTIVE: { label: 'Đang theo đuổi', className: 'bg-primary-subtle text-primary', hint: 'Cả nhóm đang làm để đạt mục tiêu này' },
+  CLOSED: { label: 'Đã chốt', className: 'bg-success/10 text-success', hint: 'Kỳ đã kết thúc, kết quả không thay đổi nữa' },
 };
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'Mọi trạng thái' },
-  { value: 'ACTIVE', label: 'Đang chạy' },
+  { value: 'ACTIVE', label: 'Đang theo đuổi' },
   { value: 'DRAFT', label: 'Nháp' },
-  { value: 'CLOSED', label: 'Đã đóng' },
+  { value: 'CLOSED', label: 'Đã chốt' },
 ];
+
+/** '2026-Q3' → 'Quý 3 năm 2026' để giải nghĩa mã kỳ trong tooltip. */
+function periodHint(period: string): string {
+  const m = /^(\d{4})-Q([1-4])$/.exec(period.trim());
+  return m ? `Quý ${m[2]} năm ${m[1]}` : `Kỳ ${period}`;
+}
 
 /** Định dạng giá trị KR theo đơn vị (số / phần trăm / tiền). */
 function formatValue(value: number, unit: KeyResultDto['unit']): string {
@@ -56,7 +62,7 @@ function ProgressBar({ value, label, size = 'md' }: { value: number; label: stri
   );
 }
 
-/** Một Key Result: thanh tiến độ + ô sửa giá trị hiện tại ngay tại chỗ. */
+/** Một kết quả then chốt: thanh tiến độ + ô sửa giá trị hiện tại ngay tại chỗ. */
 function KeyResultRow({ goal, kr, canManage }: { goal: GoalDto; kr: KeyResultDto; canManage: boolean }) {
   const updateKr = useUpdateKeyResult();
   const [draft, setDraft] = useState(String(kr.currentValue));
@@ -93,15 +99,21 @@ function KeyResultRow({ goal, kr, canManage }: { goal: GoalDto; kr: KeyResultDto
                 if (e.key === 'Escape') { setDraft(String(kr.currentValue)); (e.target as HTMLInputElement).blur(); }
               }}
               className="h-8 w-24 tabular-nums text-sm"
+              title="Số đo hiện tại. Sửa rồi nhấn Enter là lưu ngay."
               aria-label={`Giá trị hiện tại của ${kr.name}`}
             />
           ) : (
-            <span className="tabular-nums text-sm text-ink">{formatValue(kr.currentValue, kr.unit)}</span>
+            <span className="tabular-nums text-sm text-ink" title="Số đo hiện tại">{formatValue(kr.currentValue, kr.unit)}</span>
           )}
-          <span className="whitespace-nowrap text-xs text-faint">
+          <span className="whitespace-nowrap text-xs text-faint" title="Số cần đạt để coi là hoàn thành">
             / {formatValue(kr.targetValue, kr.unit)}
           </span>
-          <span className="w-10 shrink-0 text-right text-xs font-medium tabular-nums text-muted">{kr.progress}%</span>
+          <span
+            className="w-10 shrink-0 text-right text-xs font-medium tabular-nums text-muted"
+            title="Đã đi được bao nhiêu phần đường từ giá trị bắt đầu tới giá trị cần đạt"
+          >
+            {kr.progress}%
+          </span>
         </div>
       </div>
       <div className="mt-1.5">
@@ -124,7 +136,7 @@ function GoalCard({
   const status = STATUS_META[goal.status];
 
   async function handleRemove() {
-    if (!window.confirm(`Xoá mục tiêu "${goal.name}"? Các kết quả then chốt cũng bị xoá.`)) return;
+    if (!window.confirm(`Xoá mục tiêu “${goal.name}”? Toàn bộ kết quả then chốt của mục tiêu này cũng bị xoá và không khôi phục được.`)) return;
     try {
       await remove.mutateAsync(goal.id);
       toast.success('Đã xoá mục tiêu');
@@ -148,31 +160,41 @@ function GoalCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-semibold text-ink-strong">{goal.name}</h3>
-            <Badge className={status.className}>{status.label}</Badge>
-            {goal.project && <span className="text-xs text-faint">{goal.project.name}</span>}
+            <Badge className={status.className}><span title={status.hint}>{status.label}</span></Badge>
+            {goal.project && (
+              <span className="text-xs text-faint" title="Mục tiêu này chỉ áp dụng cho dự án đó">{goal.project.name}</span>
+            )}
           </div>
           {goal.description && <p className="mt-1 text-sm text-muted">{goal.description}</p>}
         </div>
 
         <div className="flex items-center gap-2">
           {goal.owner ? (
-            <span className="flex items-center gap-1.5" title={`Chủ sở hữu: ${goal.owner.displayName}`}>
+            <span className="flex items-center gap-1.5" title={`Người phụ trách mục tiêu: ${goal.owner.displayName}`}>
               <Avatar name={goal.owner.displayName} src={goal.owner.avatarUrl} size={26} />
               <span className="hidden text-sm text-muted sm:inline">{goal.owner.displayName}</span>
             </span>
           ) : (
-            <span className="text-xs text-faint">Chưa có chủ sở hữu</span>
+            <span className="text-xs text-faint" title="Chưa ai nhận trách nhiệm chính cho mục tiêu này">
+              Chưa có người phụ trách
+            </span>
           )}
           {canManage && (
             <div className="flex shrink-0 items-center gap-1">
-              <Button variant="ghost" size="icon" onClick={() => onEdit(goal)} title="Sửa mục tiêu" aria-label={`Sửa mục tiêu ${goal.name}`}>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onEdit(goal)}
+                title="Sửa mục tiêu và các kết quả then chốt"
+                aria-label={`Sửa mục tiêu ${goal.name}`}
+              >
                 <Pencil className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 className="text-muted hover:text-danger"
-                title="Xoá mục tiêu"
+                title="Xoá mục tiêu cùng toàn bộ kết quả then chốt"
                 aria-label={`Xoá mục tiêu ${goal.name}`}
                 loading={remove.isPending}
                 onClick={() => void handleRemove()}
@@ -189,13 +211,18 @@ function GoalCard({
           <div className="min-w-0 flex-1">
             <ProgressBar value={goal.progress} label={`Tiến độ tổng của ${goal.name}`} />
           </div>
-          <span className="shrink-0 text-sm font-semibold tabular-nums text-ink-strong">{goal.progress}%</span>
+          <span
+            className="shrink-0 text-sm font-semibold tabular-nums text-ink-strong"
+            title="Tiến độ chung của mục tiêu, lấy trung bình tiến độ các kết quả then chốt"
+          >
+            {goal.progress}%
+          </span>
         </div>
         <p className="mt-1.5 text-xs text-faint">
           {goal.keyResults.length > 0
-            ? `Trung bình ${goal.keyResults.length} kết quả then chốt`
-            : 'Chưa có kết quả then chốt'}
-          {goal.issueCount > 0 && ` · ${goal.issueDoneCount}/${goal.issueCount} issue đã xong (${goal.issueProgress}%)`}
+            ? `Tính trung bình từ ${goal.keyResults.length} kết quả then chốt`
+            : 'Chưa có kết quả then chốt nào để đo tiến độ'}
+          {goal.issueCount > 0 && ` · ${goal.issueDoneCount}/${goal.issueCount} công việc đã xong (${goal.issueProgress}%)`}
         </p>
       </div>
 
@@ -215,11 +242,12 @@ function GoalCard({
           >
             <span className="font-mono">{issue.key}</span>
             <span className="max-w-[14rem] truncate">{issue.summary}</span>
-            {issue.statusCategory === 'DONE' && <span className="text-success">xong</span>}
+            {issue.statusCategory === 'DONE' && <span className="text-success" title="Công việc này đã hoàn thành">xong</span>}
             {canManage && (
               <button
                 type="button"
                 onClick={() => void handleDetach(issue.id, issue.key)}
+                title="Gỡ công việc này khỏi mục tiêu (công việc vẫn còn trong dự án)"
                 aria-label={`Gỡ ${issue.key} khỏi mục tiêu`}
                 className="rounded-full p-0.5 text-faint transition-colors hover:bg-surface-3 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
@@ -229,17 +257,22 @@ function GoalCard({
           </span>
         ))}
         {canManage && (
-          <Button variant="ghost" size="sm" onClick={() => onAttach(goal)}>
-            <Link2 className="h-4 w-4" /> Gắn issue
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onAttach(goal)}
+            title="Gắn công việc để thấy phần trăm việc đã xong cho mục tiêu này"
+          >
+            <Link2 className="h-4 w-4" /> Gắn công việc
           </Button>
         )}
-        {!canManage && goal.issues.length === 0 && <span className="text-xs text-faint">Chưa gắn issue nào</span>}
+        {!canManage && goal.issues.length === 0 && <span className="text-xs text-faint">Chưa gắn công việc nào</span>}
       </div>
     </article>
   );
 }
 
-/** MỤC TIÊU / OKR — nhóm theo kỳ, mỗi mục tiêu là một khối có tiến độ & Key Result. */
+/** MỤC TIÊU & KẾT QUẢ THEN CHỐT (OKR) — nhóm theo kỳ, mỗi mục tiêu là một khối có tiến độ riêng. */
 export function GoalsPage() {
   const can = useAuth((s) => s.can);
   const canManage = can('goal:manage');
@@ -256,7 +289,10 @@ export function GoalsPage() {
   const { data: projects } = useProjects();
 
   const periodOptions = useMemo(
-    () => [{ value: '', label: 'Tất cả kỳ' }, ...(periods ?? []).map((p) => ({ value: p, label: p }))],
+    () => [
+      { value: '', label: 'Tất cả các kỳ' },
+      ...(periods ?? []).map((p) => ({ value: p, label: p })),
+    ],
     [periods],
   );
   const projectOptions = useMemo(
@@ -295,10 +331,10 @@ export function GoalsPage() {
     <div className={pageContainer('lg')}>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Mục tiêu</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Mục tiêu &amp; kết quả then chốt</h1>
           <p className="mt-1 text-sm text-muted">
-            Mục tiêu và kết quả then chốt (OKR) theo kỳ. Tiến độ tính từ giá trị hiện tại của từng kết quả then chốt,
-            kèm phần trăm issue đã hoàn thành nếu có gắn công việc.
+            Mỗi kỳ (thường là một quý) đặt vài mục tiêu, mỗi mục tiêu kèm những kết quả then chốt đo được bằng số.
+            Tiến độ tính từ số đo hiện tại của các kết quả đó. Cách làm này quốc tế gọi là OKR.
           </p>
         </div>
         {canManage && (
@@ -313,8 +349,8 @@ export function GoalsPage() {
           value={period}
           onChange={setPeriod}
           options={periodOptions}
-          ariaLabel="Lọc theo kỳ"
-          placeholder="Tất cả kỳ"
+          ariaLabel="Lọc theo kỳ, ví dụ 2026-Q3 là quý 3 năm 2026"
+          placeholder="Tất cả các kỳ"
           searchPlaceholder="Tìm kỳ…"
           className="w-40"
         />
@@ -355,8 +391,8 @@ export function GoalsPage() {
           title="Chưa có mục tiêu nào"
           description={
             canManage
-              ? 'Tạo mục tiêu đầu tiên cho kỳ này, thêm vài kết quả then chốt đo được rồi gắn issue để theo dõi.'
-              : 'Khi nhóm của bạn đặt mục tiêu cho kỳ, chúng sẽ hiện ở đây.'
+              ? 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Tạo mục tiêu đầu tiên, thêm vài kết quả then chốt đo được bằng số rồi gắn công việc để theo dõi.'
+              : 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Khi nhóm của bạn đặt mục tiêu, chúng sẽ hiện ở đây.'
           }
           action={canManage ? <Button onClick={openCreate}><Plus className="h-4 w-4" /> Tạo mục tiêu</Button> : undefined}
         />
@@ -365,7 +401,7 @@ export function GoalsPage() {
           {groups.map(([groupPeriod, items]) => (
             <section key={groupPeriod}>
               <div className="mb-3 flex items-baseline gap-2">
-                <h2 className="text-base font-semibold text-ink-strong">{groupPeriod}</h2>
+                <h2 className="text-base font-semibold text-ink-strong" title={periodHint(groupPeriod)}>{groupPeriod}</h2>
                 <span className="text-sm text-faint">{items.length} mục tiêu</span>
               </div>
               <div className="space-y-4">

@@ -52,11 +52,29 @@ api.interceptors.response.use(
   },
 );
 
-/** Bóc lỗi envelope { error: { code, message } } thành message thân thiện. */
+/**
+ * Câu tiếng Việt cho các mã lỗi hay gặp — phải nói được NGƯỜI DÙNG CẦN LÀM GÌ,
+ * không chỉ báo có lỗi. Mã nào không có ở đây thì dùng message của máy chủ.
+ */
+const ERROR_MESSAGES: Record<string, string> = {
+  VERSION_CONFLICT: 'Người khác vừa sửa mục này — hãy tải lại trang để xem bản mới nhất rồi thao tác lại.',
+  FORBIDDEN: 'Bạn không có quyền làm việc này. Liên hệ quản trị viên nếu cần được cấp quyền.',
+  UNAUTHORIZED: 'Phiên đăng nhập đã hết hạn — hãy đăng nhập lại.',
+  NOT_FOUND: 'Không tìm thấy dữ liệu. Có thể nó vừa bị xoá hoặc đường dẫn không đúng.',
+  VALIDATION_ERROR: 'Thông tin nhập chưa hợp lệ — kiểm tra lại các ô được đánh dấu.',
+  RATE_LIMITED: 'Bạn thao tác hơi nhanh. Chờ vài giây rồi thử lại.',
+  WORKFLOW_TRANSITION_INVALID: 'Quy trình không cho chuyển thẳng sang trạng thái này. Hãy chọn một trạng thái trong danh sách gợi ý.',
+};
+
+/** Bóc lỗi envelope { error: { code, message } } thành câu người dùng đọc hiểu. */
 export function apiErrorMessage(e: unknown): string {
   if (axios.isAxiosError(e)) {
-    const data = e.response?.data as { error?: { message?: string } } | undefined;
-    return data?.error?.message ?? e.message;
+    const err = (e.response?.data as { error?: { code?: string; message?: string } } | undefined)?.error;
+    if (err?.code && ERROR_MESSAGES[err.code]) return ERROR_MESSAGES[err.code];
+    if (err?.message) return err.message;
+    // Không có phản hồi = mất mạng hoặc máy chủ chưa sẵn sàng.
+    if (!e.response) return 'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.';
+    return e.message;
   }
-  return e instanceof Error ? e.message : 'Đã có lỗi xảy ra';
+  return e instanceof Error ? e.message : 'Có lỗi xảy ra. Hãy thử lại; nếu vẫn lỗi, tải lại trang.';
 }

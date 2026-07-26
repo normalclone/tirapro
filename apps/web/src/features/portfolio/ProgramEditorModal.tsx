@@ -11,8 +11,20 @@ import { useProjects } from '@/features/projects/api';
 import { cn } from '@/lib/utils';
 import { useCreateProgram, useUpdateProgram, type ProgramDto } from './api';
 
-/** Bảng màu nhãn chương trình — cùng hệ với nhãn nhóm để đọc nhanh trên roadmap. */
+/** Bảng màu nhãn chương trình — cùng hệ với nhãn nhóm để đọc nhanh trên dòng thời gian. */
 const PROGRAM_COLORS = ['#2563eb', '#16a34a', '#a855f7', '#f59e0b', '#dc2626', '#0d9488', '#db2777', '#6366f1'];
+
+/** Tên tiếng Việt của từng màu — để tooltip và trình đọc màn hình không đọc mã hex. */
+const COLOR_NAMES: Record<string, string> = {
+  '#2563eb': 'Xanh dương',
+  '#16a34a': 'Xanh lá',
+  '#a855f7': 'Tím',
+  '#f59e0b': 'Cam',
+  '#dc2626': 'Đỏ',
+  '#0d9488': 'Xanh ngọc',
+  '#db2777': 'Hồng',
+  '#6366f1': 'Chàm',
+};
 
 /** ISO → 'YYYY-MM-DD' cho input type=date (rỗng nếu không có). */
 function toDateInput(iso: string | null | undefined): string {
@@ -131,14 +143,15 @@ export function ProgramEditorModal({
             <Input id="program-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Chuyển đổi số 2026" autoFocus maxLength={120} />
           </Field>
 
-          <Field label="Màu">
+          <Field label="Màu nhãn" hint="(để nhận ra chương trình trên dòng thời gian)">
             <div className="flex flex-wrap gap-2">
               {PROGRAM_COLORS.map((c) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setColor(c)}
-                  aria-label={`Màu ${c}`}
+                  title={COLOR_NAMES[c] ?? 'Màu nhãn'}
+                  aria-label={`Màu nhãn ${COLOR_NAMES[c] ?? c}`}
                   aria-pressed={color === c}
                   className={cn(
                     'h-7 w-7 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
@@ -169,15 +182,17 @@ export function ProgramEditorModal({
             <Field label="Ngày bắt đầu" hint="(tùy chọn)" htmlFor="program-start">
               <Input id="program-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </Field>
-            <Field label="Ngày mục tiêu" hint="(tùy chọn)" htmlFor="program-target">
+            <Field label="Ngày mục tiêu" hint="(tùy chọn — ngày muốn xong)" htmlFor="program-target">
               <Input id="program-target" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
             </Field>
           </div>
           {dateOrderInvalid && (
-            <p className="text-xs text-danger" role="alert">Ngày mục tiêu phải sau ngày bắt đầu.</p>
+            <p className="text-xs text-danger" role="alert">
+              Ngày mục tiêu đang sớm hơn ngày bắt đầu — hãy sửa lại một trong hai ngày.
+            </p>
           )}
 
-          <Field label="Dự án thuộc chương trình" hint="(gỡ khỏi danh sách = tách khỏi chương trình)">
+          <Field label="Dự án thuộc chương trình" hint="(bỏ chọn một dự án = tách dự án đó khỏi chương trình)">
             <RoleMultiSelect
               options={projectOptions}
               value={projectIds}
@@ -191,7 +206,9 @@ export function ProgramEditorModal({
 
         <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void save()} loading={busy} disabled={!canSave}>{editing ? 'Lưu' : 'Tạo chương trình'}</Button>
+          <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
+            {editing ? 'Lưu thay đổi' : 'Tạo chương trình'}
+          </Button>
         </footer>
       </div>
     </div>

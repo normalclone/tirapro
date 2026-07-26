@@ -92,7 +92,7 @@ export function WikiPage() {
   const scopeOptions = useMemo(
     () => [
       { value: '', label: 'Tất cả tài liệu' },
-      { value: WIKI_SCOPE_SHARED, label: 'Chung (workspace)' },
+      { value: WIKI_SCOPE_SHARED, label: 'Dùng chung cả workspace' },
       ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
     ],
     [projects],
@@ -136,7 +136,7 @@ export function WikiPage() {
     if (!page.data) return;
     const title = draftTitle.trim();
     if (!title) {
-      toast.error('Tiêu đề bắt buộc');
+      toast.error('Hãy nhập tiêu đề cho trang trước khi lưu');
       return;
     }
     try {
@@ -161,7 +161,7 @@ export function WikiPage() {
   }
 
   async function destroy(id: string, title: string) {
-    if (!window.confirm(`Xoá trang “${title}”? Các trang con sẽ được chuyển lên cấp trên.`)) return;
+    if (!window.confirm(`Xoá trang “${title}”? Các trang con không bị xoá theo, chúng sẽ được đưa lên cấp trên.`)) return;
     try {
       await remove.mutateAsync(id);
       if (selectedId === id) setSelectedId(null);
@@ -209,7 +209,9 @@ export function WikiPage() {
           search.isLoading ? (
             <TreeSkeleton />
           ) : !search.data?.length ? (
-            <p className="px-2 py-6 text-center text-sm text-muted">Không có trang nào khớp “{q.trim()}”.</p>
+            <p className="px-2 py-6 text-center text-sm text-muted">
+              Không có trang nào khớp “{q.trim()}”. Thử từ khoá ngắn hơn, hoặc đổi phạm vi sang “Tất cả tài liệu”.
+            </p>
           ) : (
             <ul className="space-y-0.5">
               {search.data.map((hit) => (
@@ -232,7 +234,9 @@ export function WikiPage() {
         ) : tree.isLoading ? (
           <TreeSkeleton />
         ) : !tree.data?.length ? (
-          <p className="px-2 py-6 text-center text-sm text-muted">Chưa có trang nào trong phạm vi này.</p>
+          <p className="px-2 py-6 text-center text-sm text-muted">
+            Chưa có trang nào ở phạm vi này. {canManage ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.' : 'Hãy đổi phạm vi hoặc chờ người phụ trách thêm tài liệu.'}
+          </p>
         ) : (
           <ul className="space-y-0.5">
             {tree.data.map((node) => (
@@ -257,7 +261,7 @@ export function WikiPage() {
       {canManage && (
         <div className="border-t border-border p-2">
           <Button size="sm" variant="secondary" className="w-full" loading={create.isPending} onClick={() => void addPage(null)}>
-            <Plus className="h-4 w-4" /> Trang mới
+            <Plus className="h-4 w-4" /> Tạo trang mới
           </Button>
         </div>
       )}
@@ -269,13 +273,13 @@ export function WikiPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Tài liệu nội bộ</h1>
         <p className="mt-1 text-sm text-muted">
-          Quy trình, hướng dẫn, ghi chú họp — viết bằng Markdown, sắp xếp theo cây trang, dùng chung cho cả workspace hoặc riêng từng dự án.
+          Nơi lưu quy trình, hướng dẫn và biên bản họp. Viết bằng Markdown, xếp thành cây trang, dùng chung cả workspace hoặc riêng từng dự án.
         </p>
       </header>
 
       <div className="mb-3 lg:hidden">
         <Button size="sm" variant="secondary" onClick={() => setTreeOpen((v) => !v)} aria-expanded={treeOpen}>
-          <PanelLeft className="h-4 w-4" /> {treeOpen ? 'Ẩn danh sách trang' : 'Danh sách trang'}
+          <PanelLeft className="h-4 w-4" /> {treeOpen ? 'Ẩn danh sách trang' : 'Hiện danh sách trang'}
         </Button>
       </div>
 
@@ -302,8 +306,8 @@ export function WikiPage() {
               <EmptyState
                 icon={<BookOpen className="h-6 w-6" />}
                 title="Chưa chọn trang nào"
-                description={canManage ? 'Chọn một trang ở danh sách bên trái, hoặc tạo trang mới để bắt đầu.' : 'Chọn một trang ở danh sách bên trái để đọc.'}
-                action={canManage ? <Button size="sm" onClick={() => void addPage(null)}><Plus className="h-4 w-4" /> Trang mới</Button> : undefined}
+                description={canManage ? 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái, hoặc tạo trang mới để bắt đầu.' : 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái để đọc.'}
+                action={canManage ? <Button size="sm" onClick={() => void addPage(null)}><Plus className="h-4 w-4" /> Tạo trang mới</Button> : undefined}
               />
             </div>
           ) : (
@@ -342,12 +346,14 @@ export function WikiPage() {
                     onSubmit={() => void save()}
                     onCancel={() => setEditing(false)}
                     rows={18}
-                    placeholder="Nội dung trang (Markdown cơ bản)…"
+                    placeholder="Viết nội dung ở đây. Hỗ trợ Markdown cơ bản: # tiêu đề, **đậm**, - gạch đầu dòng…"
                   />
                   <div className="flex items-center gap-2">
-                    <span className="mr-auto text-xs text-faint">Markdown cơ bản · Ctrl/⌘+Enter để lưu · Esc huỷ</span>
+                    <span className="mr-auto text-xs text-faint" title="Markdown là cách viết chữ đậm, tiêu đề, danh sách bằng ký hiệu — ví dụ **đậm** hoặc # Tiêu đề.">
+                      Hỗ trợ Markdown cơ bản · Ctrl/⌘+Enter để lưu · Esc để huỷ
+                    </span>
                     <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Huỷ</Button>
-                    <Button size="sm" loading={update.isPending} onClick={() => void save()}>Lưu</Button>
+                    <Button size="sm" loading={update.isPending} onClick={() => void save()}>Lưu trang</Button>
                   </div>
                 </div>
               ) : (
@@ -356,17 +362,22 @@ export function WikiPage() {
                     <div className="min-w-0">
                       <h2 className="truncate text-xl font-semibold tracking-tight text-ink-strong">{page.data.title}</h2>
                       <p className="mt-1 text-xs text-faint">
-                        Cập nhật {dateTime(page.data.updatedAt)}
+                        Sửa lần cuối {dateTime(page.data.updatedAt)}
                         {page.data.updatedBy ? ` · ${page.data.updatedBy.displayName}` : ''}
                       </p>
                     </div>
                     {canManage && (
                       <div className="flex shrink-0 flex-wrap items-center gap-2">
                         <Button size="sm" variant="secondary" onClick={() => { setDraftTitle(page.data!.title); setDraftBody(page.data!.body); setEditing(true); }}>
-                          <Pencil className="h-4 w-4" /> Sửa
+                          <Pencil className="h-4 w-4" /> Sửa trang
                         </Button>
-                        <Button size="sm" variant="secondary" onClick={() => void addPage(page.data!.id)}>
-                          <Plus className="h-4 w-4" /> Trang con
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          title="Tạo một trang nằm bên dưới trang này trong cây tài liệu."
+                          onClick={() => void addPage(page.data!.id)}
+                        >
+                          <Plus className="h-4 w-4" /> Thêm trang con
                         </Button>
                         <Button
                           size="sm"
@@ -386,7 +397,7 @@ export function WikiPage() {
                     <MarkdownView text={page.data.body} />
                   ) : (
                     <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-faint">
-                      Trang này chưa có nội dung.{canManage ? ' Bấm “Sửa” để viết.' : ''}
+                      Trang này chưa có nội dung.{canManage ? ' Bấm “Sửa trang” để bắt đầu viết.' : ''}
                     </p>
                   )}
                 </>
@@ -473,7 +484,7 @@ function TreeRow({
               disabled={!canUp}
               onClick={() => onShift(node.id, -1)}
               aria-label={`Đưa ${node.title} lên trên`}
-              title="Lên trên"
+              title="Đổi chỗ với trang liền trên"
               className="grid h-6 w-6 place-items-center rounded text-faint transition-colors hover:text-ink disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <ArrowUp className="h-3.5 w-3.5" />
@@ -483,7 +494,7 @@ function TreeRow({
               disabled={!canDown}
               onClick={() => onShift(node.id, 1)}
               aria-label={`Đưa ${node.title} xuống dưới`}
-              title="Xuống dưới"
+              title="Đổi chỗ với trang liền dưới"
               className="grid h-6 w-6 place-items-center rounded text-faint transition-colors hover:text-ink disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <ArrowDown className="h-3.5 w-3.5" />
@@ -492,7 +503,7 @@ function TreeRow({
               type="button"
               onClick={() => onAddChild(node.id)}
               aria-label={`Thêm trang con cho ${node.title}`}
-              title="Thêm trang con"
+              title="Thêm một trang nằm bên dưới trang này"
               className="grid h-6 w-6 place-items-center rounded text-faint transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <Plus className="h-3.5 w-3.5" />

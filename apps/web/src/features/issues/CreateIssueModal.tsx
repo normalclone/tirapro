@@ -51,7 +51,7 @@ function clearDraft(projectKey: string) {
   try { localStorage.removeItem(DRAFT_KEY(projectKey)); } catch { /* ignore */ }
 }
 
-/* --------- Mẫu mô tả theo loại issue --------- */
+/* --------- Mẫu mô tả gợi sẵn theo loại công việc --------- */
 const TEMPLATES: Record<string, string> = {
   BUG: 'Các bước tái hiện:\n1. \n2. \n\nKết quả hiện tại:\n\nKết quả mong muốn:\n',
   STORY: 'Bối cảnh:\n\nTiêu chí hoàn thành:\n- \n- ',
@@ -60,10 +60,11 @@ const TEMPLATES: Record<string, string> = {
 const TEMPLATE_VALUES = Object.values(TEMPLATES);
 const isTemplate = (s: string) => TEMPLATE_VALUES.includes(s);
 
-function Field({ label, hint, className, children }: { label: string; hint?: string; className?: string; children: React.ReactNode }) {
+/** Nhãn + gợi ý ngắn cho một ô nhập. `title` = giải nghĩa thuật ngữ (hiện khi rê chuột vào nhãn). */
+function Field({ label, hint, title, className, children }: { label: string; hint?: string; title?: string; className?: string; children: React.ReactNode }) {
   return (
     <div className={className}>
-      <label className="mb-1.5 block text-sm font-medium text-muted">
+      <label className="mb-1.5 block text-sm font-medium text-muted" title={title}>
         {label}
         {hint && <span className="font-normal text-faint"> {hint}</span>}
       </label>
@@ -73,8 +74,8 @@ function Field({ label, hint, className, children }: { label: string; hint?: str
 }
 
 /**
- * Popup "Tạo issue" toàn cục — mở ở bất kỳ đâu qua store `useCreateIssueModal`.
- * 2 cột gọn, mô tả dùng editor Markdown, có Người phụ trách & Hạn. Hỗ trợ tạo sub-task.
+ * Popup "Tạo công việc" toàn cục — mở ở bất kỳ đâu qua store `useCreateIssueModal`.
+ * 2 cột gọn, mô tả dùng editor Markdown, có Người phụ trách & Hạn. Hỗ trợ tạo việc con.
  */
 export function CreateIssueModal() {
   const navigate = useNavigate();
@@ -114,7 +115,7 @@ export function CreateIssueModal() {
     setTypeId(''); setSummary(draft.summary ?? ''); setDescription(draft.description ?? ''); setPriorityId('');
     setAssigneeId(''); setSprintId(''); setPoints(''); setDue(''); setFiles([]); setBusy(false);
     prevTypeRef.current = '';
-    if (draft.summary || draft.description) toast.info('Đã khôi phục bản nháp chưa tạo');
+    if (draft.summary || draft.description) toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -140,7 +141,7 @@ export function CreateIssueModal() {
 
   const sprintOptions = useMemo(
     () => [
-      { value: '', label: 'Backlog (không sprint)' },
+      { value: '', label: 'Backlog — chưa xếp vào sprint' },
       ...(sprints ?? [])
         .filter((s) => s.state !== 'CLOSED')
         .map((s) => ({ value: s.id, label: s.state === 'ACTIVE' ? `${s.name} · đang chạy` : s.name })),
@@ -185,14 +186,14 @@ export function CreateIssueModal() {
 
   const trimmed = summary.trim();
   const canSubmit = !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
-  const title = preset.subtask ? 'Tạo sub-task' : 'Tạo issue';
+  const title = preset.subtask ? 'Tạo việc con' : 'Tạo công việc';
 
   async function doCreate() {
     if (!canSubmit) return null;
     // Áp token gõ nhanh còn sót (nếu chưa blur) — token thắng giá trị đang chọn. Chỉ lược token khi TẠO.
     const tk = parseTitleTokens(summary, tokenCtx);
     const finalSummary = tk.clean.trim();
-    if (!finalSummary) { toast.error('Cần nhập tiêu đề'); return null; }
+    if (!finalSummary) { toast.error('Hãy nhập tiêu đề mô tả việc cần làm'); return null; }
     setBusy(true);
     try {
       const created = await create.mutateAsync({
@@ -214,8 +215,8 @@ export function CreateIssueModal() {
         const failed = results.filter((r) => r.status === 'rejected').length;
         if (failed > 0) {
           const failedNames = files.filter((_, i) => results[i]!.status === 'rejected').map((f) => f.name);
-          toast.error(`${failed}/${files.length} tệp không tải lên được`, {
-            description: failedNames.join(', '),
+          toast.error(`${failed}/${files.length} tệp chưa tải lên được`, {
+            description: `${failedNames.join(', ')} — công việc đã được tạo, hãy mở nó ra và đính kèm lại các tệp này.`,
             duration: 6000,
           });
         }
@@ -235,16 +236,16 @@ export function CreateIssueModal() {
   async function submitCreate() {
     const created = await doCreate();
     if (!created) return;
-    toast.success(`Đã tạo ${created.key}`);
+    toast.success(`Đã tạo công việc ${created.key}`);
     close();
     navigate(`/issue/${created.key}`);
   }
 
-  // Tạo xong → GIỮ popup mở, xoá phần riêng của issue để nhập tiếp (giữ dự án/loại/sprint…).
+  // Tạo xong → GIỮ popup mở, xoá phần riêng của việc vừa tạo để nhập tiếp (giữ dự án/loại/sprint…).
   async function createAnother() {
     const created = await doCreate();
     if (!created) return;
-    toast.success(`Đã tạo ${created.key} · nhập tiếp`);
+    toast.success(`Đã tạo ${created.key} — mời bạn nhập việc tiếp theo`);
     setSummary(''); setDescription(''); setFiles([]); setPoints(''); setDue('');
     requestAnimationFrame(() => document.getElementById('ci-summary')?.focus());
   }
@@ -283,12 +284,13 @@ export function CreateIssueModal() {
                 options={(projects ?? []).map((p) => ({ value: p.key, label: p.name, hint: p.key }))}
               />
             </Field>
-            <Field label="Loại">
+            <Field label="Loại việc">
               <SearchSelect
                 value={typeId}
                 onChange={setTypeId}
                 disabled={!meta}
                 className={selectClass}
+                ariaLabel="Loại việc"
                 options={(meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name, color: t.color }))}
               />
             </Field>
@@ -301,10 +303,10 @@ export function CreateIssueModal() {
                 onChange={setSummary}
                 onBlur={applyTokens}
                 ctx={tokenCtx}
-                placeholder="Tóm tắt ngắn gọn issue…"
+                placeholder="Việc cần làm là gì? VD: Sửa lỗi không đăng nhập được trên Safari"
               />
-              <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-faint">
-                <span>Gõ nhanh:</span>
+              <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-faint" title="Gõ thẳng các ký hiệu này trong tiêu đề để điền nhanh các trường bên dưới — không cần bấm chuột.">
+                <span>Gõ nhanh ngay trong tiêu đề:</span>
                 <span><code className="rounded bg-surface-2 px-1 text-ink">!ưu-tiên</code></span>
                 <span><code className="rounded bg-surface-2 px-1 text-ink">@người</code></span>
                 <span><code className="rounded bg-surface-2 px-1 text-ink">#sprint</code></span>
@@ -313,7 +315,7 @@ export function CreateIssueModal() {
               </p>
             </Field>
 
-            <Field label="Người phụ trách" hint="(tùy chọn)">
+            <Field label="Người phụ trách" hint="(tùy chọn)" title="Người chịu trách nhiệm làm việc này. Để trống nếu chưa biết giao cho ai.">
               <PeoplePicker
                 value={assigneeId}
                 onChange={setAssigneeId}
@@ -322,7 +324,7 @@ export function CreateIssueModal() {
                 options={assignees}
               />
             </Field>
-            <Field label="Ưu tiên" hint="(tùy chọn)">
+            <Field label="Ưu tiên" hint="(tùy chọn)" title="Việc này gấp đến mức nào so với các việc khác">
               <SearchSelect
                 value={priorityId}
                 onChange={setPriorityId}
@@ -332,20 +334,20 @@ export function CreateIssueModal() {
               />
             </Field>
 
-            <Field label="Sprint" hint="(tùy chọn)">
-              <SearchSelect value={sprintId} onChange={setSprintId} disabled={!selId} className={selectClass} options={sprintOptions} />
+            <Field label="Sprint" hint="(tùy chọn)" title="Sprint là đợt làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Backlog — danh sách chờ.">
+              <SearchSelect value={sprintId} onChange={setSprintId} disabled={!selId} className={selectClass} ariaLabel="Sprint" options={sprintOptions} />
             </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Story points" hint="(tùy chọn)">
-                <Input type="number" min={0} inputMode="numeric" value={points} onChange={(e) => setPoints(e.target.value)} placeholder="VD: 3" className="text-sm" />
+              <Field label="Điểm ước lượng" hint="(tùy chọn)" title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint.">
+                <Input type="number" min={0} inputMode="numeric" value={points} onChange={(e) => setPoints(e.target.value)} placeholder="VD: 3" className="text-sm" aria-label="Điểm ước lượng" />
               </Field>
-              <Field label="Hạn" hint="(tùy chọn)">
-                <Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} className="text-sm" />
+              <Field label="Hạn hoàn thành" hint="(tùy chọn)" title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng.">
+                <Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} className="text-sm" aria-label="Hạn hoàn thành" />
               </Field>
             </div>
 
-            <Field label="Mô tả" hint="(tùy chọn)" className="sm:col-span-2">
-              <MarkdownEditor value={description} onChange={setDescription} onSubmit={() => void submitCreate()} rows={10} placeholder="Thêm chi tiết, bối cảnh, tiêu chí hoàn thành… (Markdown, ảnh ![](url))" />
+            <Field label="Mô tả" hint="(tùy chọn)" className="sm:col-span-2" title="Viết đủ để người khác làm được mà không cần hỏi lại bạn.">
+              <MarkdownEditor value={description} onChange={setDescription} onSubmit={() => void submitCreate()} rows={10} placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))" />
             </Field>
 
             <Field label="Tệp đính kèm" hint="(tùy chọn)" className="sm:col-span-2">
@@ -360,7 +362,16 @@ export function CreateIssueModal() {
           <footer className="flex items-center gap-2 border-t border-border px-5 py-3">
             <span className="mr-auto hidden text-xs text-faint sm:block">⌘/Ctrl + Enter để tạo nhanh</span>
             <Button type="button" variant="ghost" onClick={close}>Hủy</Button>
-            <Button type="button" variant="secondary" onClick={() => void createAnother()} loading={busy} disabled={!canSubmit}>Tạo &amp; thêm tiếp</Button>
+            <Button
+              type="button"
+              variant="secondary"
+              title="Tạo việc này rồi giữ nguyên cửa sổ để nhập việc tiếp theo"
+              onClick={() => void createAnother()}
+              loading={busy}
+              disabled={!canSubmit}
+            >
+              Tạo &amp; nhập tiếp
+            </Button>
             <Button type="submit" loading={create.isPending || busy} disabled={!canSubmit}>{title}</Button>
           </footer>
         </form>
@@ -375,7 +386,7 @@ function fmtSize(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** Vùng chọn/kéo-thả tệp (giữ cục bộ tới khi tạo issue rồi mới upload). */
+/** Vùng chọn/kéo-thả tệp (giữ cục bộ tới khi công việc được tạo rồi mới tải lên). */
 function FileDrop({ files, onAdd, onRemove }: { files: File[]; onAdd: (f: File[]) => void; onRemove: (i: number) => void }) {
   const [over, setOver] = useState(false);
   return (
@@ -390,7 +401,7 @@ function FileDrop({ files, onAdd, onRemove }: { files: File[]; onAdd: (f: File[]
         )}
       >
         <Paperclip className="h-4 w-4" aria-hidden />
-        <span>Kéo thả tệp vào đây hoặc <span className="font-medium text-primary">bấm để chọn</span></span>
+        <span>Kéo thả tệp vào đây hoặc <span className="font-medium text-primary">bấm để chọn tệp</span></span>
         <input
           type="file"
           multiple
@@ -408,7 +419,8 @@ function FileDrop({ files, onAdd, onRemove }: { files: File[]; onAdd: (f: File[]
               <button
                 type="button"
                 onClick={() => onRemove(i)}
-                aria-label={`Bỏ ${f.name}`}
+                aria-label={`Bỏ tệp ${f.name} khỏi danh sách đính kèm`}
+                title="Bỏ tệp này"
                 className="grid h-5 w-5 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-3 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
                 <X className="h-3.5 w-3.5" />

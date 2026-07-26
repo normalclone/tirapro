@@ -1,11 +1,11 @@
 import type { RaidKind, RaidLevel, RaidStatus } from './api';
 
-/** Bốn loại của sổ RAID — nhãn tiếng Việt dùng chung cho tab, bảng và modal. */
+/** Bốn loại mục theo dõi (quốc tế gọi là RAID) — nhãn tiếng Việt dùng chung cho tab, bảng và modal. */
 export const RAID_KINDS: { value: RaidKind; label: string; description: string }[] = [
-  { value: 'RISK', label: 'Rủi ro', description: 'Điều có thể xảy ra và gây hại — cần phòng ngừa trước.' },
-  { value: 'ASSUMPTION', label: 'Giả định', description: 'Điều đang cho là đúng — sai thì kế hoạch lệch.' },
-  { value: 'ISSUE', label: 'Vấn đề', description: 'Điều đã xảy ra và đang cản trở — cần xử lý ngay.' },
-  { value: 'DEPENDENCY', label: 'Phụ thuộc', description: 'Việc chờ bên khác — trễ thì kéo theo cả tiến độ.' },
+  { value: 'RISK', label: 'Rủi ro', description: 'Điều chưa xảy ra nhưng có thể xảy ra và gây hại — ghi lại để phòng trước.' },
+  { value: 'ASSUMPTION', label: 'Giả định', description: 'Điều bạn đang tin là đúng mà chưa kiểm chứng — nếu sai thì kế hoạch lệch.' },
+  { value: 'ISSUE', label: 'Vấn đề', description: 'Điều đang xảy ra và đang cản trở công việc — cần xử lý ngay.' },
+  { value: 'DEPENDENCY', label: 'Phụ thuộc', description: 'Việc phải chờ bên khác làm xong — bên đó trễ thì mình trễ theo.' },
 ];
 
 export const RAID_KIND_LABEL: Record<RaidKind, string> = {
@@ -15,18 +15,18 @@ export const RAID_KIND_LABEL: Record<RaidKind, string> = {
   DEPENDENCY: 'Phụ thuộc',
 };
 
-export const RAID_STATUS_META: Record<RaidStatus, { label: string; className: string }> = {
-  OPEN: { label: 'Đang mở', className: 'bg-warning/12 text-warning' },
-  MITIGATING: { label: 'Đang xử lý', className: 'bg-primary-subtle text-primary' },
-  CLOSED: { label: 'Đã đóng', className: 'bg-success/12 text-success' },
-  ACCEPTED: { label: 'Chấp nhận', className: 'bg-surface-2 text-muted' },
+export const RAID_STATUS_META: Record<RaidStatus, { label: string; className: string; hint: string }> = {
+  OPEN: { label: 'Chưa xử lý', className: 'bg-warning/12 text-warning', hint: 'Đã ghi nhận nhưng chưa ai bắt tay vào làm gì' },
+  MITIGATING: { label: 'Đang xử lý', className: 'bg-primary-subtle text-primary', hint: 'Đang làm để giảm xác suất hoặc giảm thiệt hại' },
+  CLOSED: { label: 'Đã xong', className: 'bg-success/12 text-success', hint: 'Đã xử lý xong hoặc không còn đáng lo nữa' },
+  ACCEPTED: { label: 'Chấp nhận', className: 'bg-surface-2 text-muted', hint: 'Cả nhóm quyết định sống chung, không tốn công xử lý' },
 };
 
 export const RAID_STATUS_OPTIONS: { value: RaidStatus; label: string }[] = [
-  { value: 'OPEN', label: 'Đang mở' },
+  { value: 'OPEN', label: 'Chưa xử lý' },
   { value: 'MITIGATING', label: 'Đang xử lý' },
-  { value: 'CLOSED', label: 'Đã đóng' },
-  { value: 'ACCEPTED', label: 'Chấp nhận' },
+  { value: 'CLOSED', label: 'Đã xong' },
+  { value: 'ACCEPTED', label: 'Chấp nhận, không xử lý' },
 ];
 
 /**
@@ -39,6 +39,10 @@ export const RAID_LEVEL_META: Record<RaidLevel, { label: string; badge: string; 
   HIGH: { label: 'Cao', badge: 'bg-danger/12 text-danger', cell: 'bg-danger/18 text-danger' },
   CRITICAL: { label: 'Nghiêm trọng', badge: 'bg-danger text-white', cell: 'bg-danger text-white' },
 };
+
+/** Giải nghĩa thang điểm cho tooltip — người mới không phải đoán con số nghĩa là gì. */
+export const RAID_LEVEL_LEGEND =
+  'Điểm rủi ro = xác suất × mức ảnh hưởng (1–25). Thấp 1–6 · Trung bình 7–12 · Cao 13–19 · Nghiêm trọng 20–25.';
 
 export function raidLevelOf(score: number): RaidLevel {
   if (score >= 20) return 'CRITICAL';

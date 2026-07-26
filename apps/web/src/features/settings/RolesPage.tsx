@@ -35,7 +35,7 @@ const PRESET_COLORS = [
 ];
 
 const SCOPE_LABEL: Record<RoleScope, string> = {
-  WORKSPACE: 'Cấp workspace',
+  WORKSPACE: 'Cấp không gian làm việc',
   PROJECT: 'Cấp dự án',
 };
 
@@ -216,7 +216,7 @@ const PERMS_BY_SCOPE: Record<PermissionScope, typeof PERMISSION_CATALOG> = {
 };
 
 const PERM_SCOPE_LABEL: Record<PermissionScope, string> = {
-  WORKSPACE: 'Quyền cấp workspace',
+  WORKSPACE: 'Quyền ở cấp không gian làm việc',
   PROJECT: 'Quyền cấp dự án',
 };
 
@@ -385,7 +385,7 @@ function RoleDialog({
                         'focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
                       )}
                     >
-                      <option value="WORKSPACE">Workspace</option>
+                      <option value="WORKSPACE">Không gian làm việc</option>
                       <option value="PROJECT">Dự án</option>
                     </select>
                   </div>

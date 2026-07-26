@@ -138,7 +138,7 @@ export function AdminConfigPage() {
             <InfoRow label="ANTHROPIC_API_KEY"><YesNo v={data.ai.hasKey} yes="đã cấu hình" no="thiếu" /></InfoRow>
             <InfoRow label="Model chính">{data.ai.modelPrimary ?? '—'}</InfoRow>
             <InfoRow label="Model nhanh">{data.ai.modelFast ?? '—'}</InfoRow>
-            <InfoRow label="Quota token / ws / tháng">{data.ai.monthlyQuotaPerWorkspace?.toLocaleString('vi-VN') ?? '—'}</InfoRow>
+            <InfoRow label="Giới hạn token mỗi không gian làm việc / tháng">{data.ai.monthlyQuotaPerWorkspace?.toLocaleString('vi-VN') ?? '—'}</InfoRow>
           </Panel>
           <Panel title="Embedding / Tìm kiếm ngữ nghĩa">
             <InfoRow label="Nhà cung cấp">{data.embedding.provider}</InfoRow>

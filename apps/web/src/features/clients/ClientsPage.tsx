@@ -57,23 +57,32 @@ function ContractRow({
           <span className="shrink-0 truncate text-[11px] text-faint">· {contract.project.key}</span>
         )}
       </div>
-      <span className="tabular shrink-0 text-sm font-medium text-ink-strong">
+      <span className="tabular shrink-0 text-sm font-medium text-ink-strong" title="Giá trị hợp đồng">
         {formatMoney(contract.value, contract.currency)}
       </span>
-      <span className={cn('tabular shrink-0 text-xs', expired ? 'text-danger' : 'text-muted')}>
+      <span
+        className={cn('tabular shrink-0 text-xs', expired ? 'text-danger' : 'text-muted')}
+        title={expired ? 'Đã qua ngày kết thúc — cân nhắc gia hạn hoặc ký phụ lục' : 'Thời hạn hợp đồng: từ ngày đến ngày'}
+      >
         {term(contract)}
         {expired && ' · hết hạn'}
       </span>
       {canManage && (
         <span className="flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="icon" title="Sửa hợp đồng" aria-label={`Sửa hợp đồng ${contract.name}`} onClick={onEdit}>
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Sửa giá trị, thời hạn và dự án của hợp đồng"
+            aria-label={`Sửa hợp đồng ${contract.name}`}
+            onClick={onEdit}
+          >
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
             className="text-muted hover:text-danger"
-            title="Xoá hợp đồng"
+            title="Xoá hợp đồng khỏi khách hàng này"
             aria-label={`Xoá hợp đồng ${contract.name}`}
             onClick={onDelete}
           >
@@ -134,33 +143,55 @@ function ClientCard({
                   {client.phone}
                 </span>
               )}
-              {!client.contactName && !client.email && !client.phone && <span className="text-faint">Chưa có thông tin liên hệ</span>}
+              {!client.contactName && !client.email && !client.phone && (
+                <span className="text-faint" title="Chưa lưu người liên hệ, email hay số điện thoại nào">
+                  Chưa có thông tin liên hệ
+                </span>
+              )}
             </span>
           </span>
         </button>
 
         <p className="tabular flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-          <span><span className="font-medium text-ink">{client.projectCount}</span> dự án</span>
+          <span title="Số dự án đang gắn với khách hàng này"><span className="font-medium text-ink">{client.projectCount}</span> dự án</span>
           <span aria-hidden className="text-faint">·</span>
-          <span><span className="font-medium text-ink">{client.contractCount}</span> hợp đồng</span>
+          <span title="Số hợp đồng đã ký với khách hàng này"><span className="font-medium text-ink">{client.contractCount}</span> hợp đồng</span>
           {client.contractTotals.map((t) => (
-            <span key={t.currency} className="font-medium text-ink-strong">{formatMoney(t.value, t.currency)}</span>
+            <span
+              key={t.currency}
+              className="font-medium text-ink-strong"
+              title={`Tổng giá trị các hợp đồng tính bằng ${t.currency}`}
+            >
+              {formatMoney(t.value, t.currency)}
+            </span>
           ))}
         </p>
 
         {canManage && (
           <div className="flex shrink-0 items-center gap-1">
-            <Button variant="ghost" size="icon" title="Gán dự án" aria-label={`Gán dự án cho ${client.name}`} onClick={onAssign}>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Chọn dự án đang làm cho khách hàng này"
+              aria-label={`Gán dự án cho ${client.name}`}
+              onClick={onAssign}
+            >
               <FolderPlus className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" title="Sửa khách hàng" aria-label={`Sửa khách hàng ${client.name}`} onClick={onEdit}>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Sửa tên và thông tin liên hệ"
+              aria-label={`Sửa khách hàng ${client.name}`}
+              onClick={onEdit}
+            >
               <Pencil className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
               className="text-muted hover:text-danger"
-              title="Xoá khách hàng"
+              title="Xoá khách hàng cùng các hợp đồng của họ"
               aria-label={`Xoá khách hàng ${client.name}`}
               onClick={onDelete}
             >
@@ -175,7 +206,11 @@ function ClientCard({
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted">Dự án</p>
             {client.projects.length === 0 ? (
-              <p className="text-sm text-faint">Chưa gán dự án nào.</p>
+              <p className="text-sm text-faint">
+                {canManage
+                  ? 'Chưa gán dự án nào. Dùng nút “Gán dự án” ở trên để nối dự án với khách hàng này.'
+                  : 'Chưa gán dự án nào cho khách hàng này.'}
+              </p>
             ) : (
               <ul className="flex flex-wrap gap-1.5">
                 {client.projects.map((p) => (
@@ -198,7 +233,11 @@ function ClientCard({
               )}
             </div>
             {client.contracts.length === 0 ? (
-              <p className="text-sm text-faint">Chưa có hợp đồng nào.</p>
+              <p className="text-sm text-faint">
+                {canManage
+                  ? 'Chưa có hợp đồng nào. Thêm hợp đồng để theo dõi giá trị và thời hạn đã cam kết.'
+                  : 'Chưa có hợp đồng nào với khách hàng này.'}
+              </p>
             ) : (
               <ul className="divide-y divide-border">
                 {client.contracts.map((c) => (
@@ -226,7 +265,7 @@ function ClientCard({
   );
 }
 
-/** Khách hàng & hợp đồng — phía cầu của danh mục dự án. */
+/** Khách hàng & hợp đồng — ai đặt hàng, dự án nào phục vụ họ, cam kết những gì. */
 export function ClientsPage() {
   const canManage = useAuth((s) => s.can('client:manage'));
   const { data: clients, isLoading } = useClients();
@@ -250,8 +289,8 @@ export function ClientsPage() {
   function openCreate() { setEditing(null); setEditorOpen(true); }
 
   function handleDeleteClient(c: ClientDto) {
-    const warn = c.contractCount > 0 ? ` ${c.contractCount} hợp đồng sẽ bị xoá theo.` : '';
-    if (!window.confirm(`Xoá khách hàng “${c.name}”?${warn} Dự án vẫn giữ nguyên, chỉ bỏ liên kết.`)) return;
+    const warn = c.contractCount > 0 ? ` ${c.contractCount} hợp đồng của khách hàng này sẽ bị xoá theo.` : '';
+    if (!window.confirm(`Xoá khách hàng “${c.name}”?${warn} Các dự án vẫn giữ nguyên, chỉ bỏ liên kết với khách hàng.`)) return;
     removeClient.mutate(c.id, {
       onError: (e) => toast.error(apiErrorMessage(e)),
       onSuccess: () => toast.success('Đã xoá khách hàng'),
@@ -259,7 +298,7 @@ export function ClientsPage() {
   }
 
   function handleDeleteContract(client: ClientDto, contract: ContractDto) {
-    if (!window.confirm(`Xoá hợp đồng “${contract.name}”?`)) return;
+    if (!window.confirm(`Xoá hợp đồng “${contract.name}”? Thao tác này không khôi phục được.`)) return;
     removeContract.mutate(
       { clientId: client.id, id: contract.id },
       { onError: (e) => toast.error(apiErrorMessage(e)), onSuccess: () => toast.success('Đã xoá hợp đồng') },
@@ -272,9 +311,10 @@ export function ClientsPage() {
     <div className={pageContainer('lg')}>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Khách hàng & hợp đồng</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Khách hàng &amp; hợp đồng</h1>
           <p className="mt-1 text-sm text-muted">
-            Theo dõi khách hàng, dự án họ đặt hàng và các hợp đồng kèm giá trị, thời hạn.
+            Lưu thông tin liên hệ của khách hàng, nối họ với dự án đang làm và ghi lại giá trị, thời hạn
+            của từng hợp đồng để không bỏ sót cam kết.
           </p>
         </div>
         {canManage && (
@@ -289,7 +329,7 @@ export function ClientsPage() {
             id="client-search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Tìm theo tên, người liên hệ, email, điện thoại…"
+            placeholder="Tìm theo tên khách hàng, người liên hệ, email hoặc số điện thoại…"
             className="max-w-sm"
           />
         </div>
@@ -302,11 +342,11 @@ export function ClientsPage() {
       ) : !hasClients ? (
         <EmptyState
           icon={<Building2 className="h-6 w-6" />}
-          title="Chưa có khách hàng"
+          title="Chưa có khách hàng nào"
           description={
             canManage
-              ? 'Thêm khách hàng đầu tiên rồi gắn dự án và hợp đồng để theo dõi cam kết với họ.'
-              : 'Bạn chưa được cấp quyền quản lý khách hàng; danh sách hiện đang trống.'
+              ? 'Đây là nơi lưu khách hàng cùng hợp đồng của họ. Thêm khách hàng đầu tiên rồi gắn dự án và hợp đồng để theo dõi cam kết.'
+              : 'Đây là nơi lưu khách hàng cùng hợp đồng của họ. Khi có khách hàng được thêm, bạn sẽ thấy ở đây.'
           }
           action={canManage ? <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4" /> Thêm khách hàng</Button> : undefined}
         />
@@ -314,8 +354,8 @@ export function ClientsPage() {
         <EmptyState
           icon={<Building2 className="h-6 w-6" />}
           title="Không tìm thấy khách hàng"
-          description={`Không có khách hàng nào khớp “${q.trim()}”.`}
-          action={<Button size="sm" variant="secondary" onClick={() => setQ('')}>Xoá bộ lọc</Button>}
+          description={`Không có khách hàng nào khớp “${q.trim()}”. Thử từ khoá ngắn hơn, hoặc xoá ô tìm kiếm để xem lại tất cả.`}
+          action={<Button size="sm" variant="secondary" onClick={() => setQ('')}>Xoá từ khoá tìm</Button>}
         />
       ) : (
         <div className="space-y-3">

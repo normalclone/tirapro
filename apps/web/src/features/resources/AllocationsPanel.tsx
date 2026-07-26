@@ -35,7 +35,7 @@ function emptyForm(projectId: string, from: string, to: string): FormState {
   return { id: null, userId: '', projectId, percent: '100', startDate: from, endDate: to, note: '' };
 }
 
-/** Quản lý phân bổ: ai dành bao nhiêu % thời gian cho dự án nào, trong khoảng nào. */
+/** Phân bổ: ai dành bao nhiêu phần trăm thời gian cho dự án nào, trong khoảng nào. */
 export function AllocationsPanel({
   canManage,
   projectId,
@@ -94,11 +94,11 @@ export function AllocationsPanel({
   function submit() {
     if (!form) return;
     const percent = Number(form.percent);
-    if (!form.userId) return toast.error('Chọn thành viên');
-    if (!form.projectId) return toast.error('Chọn dự án');
-    if (!Number.isFinite(percent) || percent < 1 || percent > 200) return toast.error('Tỉ lệ phải trong khoảng 1–200%');
-    if (!form.startDate || !form.endDate) return toast.error('Chọn khoảng thời gian');
-    if (form.endDate < form.startDate) return toast.error('Ngày kết thúc phải sau ngày bắt đầu');
+    if (!form.userId) return toast.error('Hãy chọn người được phân bổ');
+    if (!form.projectId) return toast.error('Hãy chọn dự án');
+    if (!Number.isFinite(percent) || percent < 1 || percent > 200) return toast.error('Tỉ lệ thời gian phải từ 1% đến 200%');
+    if (!form.startDate || !form.endDate) return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
+    if (form.endDate < form.startDate) return toast.error('Ngày kết thúc phải bằng hoặc sau ngày bắt đầu');
 
     const payload = {
       userId: form.userId,
@@ -127,9 +127,10 @@ export function AllocationsPanel({
     <section className="rounded-lg border border-border bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
         <div>
-          <h2 className="text-base font-semibold text-ink-strong">Phân bổ nguồn lực</h2>
+          <h2 className="text-base font-semibold text-ink-strong">Phân bổ người vào dự án</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Hiển thị các phân bổ giao nhau với khoảng {shortDay(from)} – {shortDay(to)}.
+            Ai dành bao nhiêu phần trăm thời gian cho dự án nào. Đang hiện các phân bổ có ngày rơi vào khoảng{' '}
+            {shortDay(from)} – {shortDay(to)}.
           </p>
         </div>
         {canManage && !form && (
@@ -163,7 +164,7 @@ export function AllocationsPanel({
                 ariaLabel="Chọn dự án"
               />
             </Field>
-            <Field label="Tỉ lệ (%)" htmlFor="alloc-percent">
+            <Field label="Tỉ lệ thời gian (%)" htmlFor="alloc-percent">
               <Input
                 id="alloc-percent"
                 type="number"
@@ -171,6 +172,7 @@ export function AllocationsPanel({
                 max={200}
                 value={form.percent}
                 onChange={(e) => setForm({ ...form, percent: e.target.value })}
+                title="Phần thời gian làm việc mà người này dành cho dự án. 100% = toàn thời gian, 50% = nửa thời gian."
                 className="text-sm tabular-nums"
               />
             </Field>
@@ -197,7 +199,7 @@ export function AllocationsPanel({
                 id="alloc-note"
                 value={form.note}
                 onChange={(e) => setForm({ ...form, note: e.target.value })}
-                placeholder="Không bắt buộc"
+                placeholder="Ví dụ: chỉ hỗ trợ giai đoạn kiểm thử"
                 className="text-sm"
               />
             </Field>
@@ -224,8 +226,8 @@ export function AllocationsPanel({
             title="Chưa có phân bổ nào trong khoảng này"
             description={
               canManage
-                ? 'Thêm phân bổ để tính đúng năng lực khả dụng. Người chưa phân bổ được tính mặc định 100%.'
-                : 'Người chưa có phân bổ được tính mặc định 100% năng lực.'
+                ? 'Phân bổ ghi lại một người dành bao nhiêu phần trăm thời gian cho dự án nào. Thêm phân bổ để bảng khối lượng tính đúng; ai chưa phân bổ thì tạm tính 100%.'
+                : 'Phân bổ ghi lại một người dành bao nhiêu phần trăm thời gian cho dự án nào. Ai chưa được phân bổ thì tạm tính 100%.'
             }
             action={canManage && !form ? <Button size="sm" onClick={startCreate}><Plus className="h-4 w-4" aria-hidden /> Thêm phân bổ</Button> : undefined}
           />
@@ -236,8 +238,12 @@ export function AllocationsPanel({
                 <tr className="border-b border-border text-left text-xs font-medium text-muted">
                   <th scope="col" className="py-2 pr-3">Thành viên</th>
                   <th scope="col" className="py-2 pr-3">Dự án</th>
-                  <th scope="col" className="py-2 pr-3 text-right">Tỉ lệ</th>
-                  <th scope="col" className="py-2 pr-3">Khoảng thời gian</th>
+                  <th scope="col" className="py-2 pr-3 text-right" title="Phần thời gian làm việc dành cho dự án này.">
+                    Tỉ lệ thời gian
+                  </th>
+                  <th scope="col" className="py-2 pr-3" title="Phân bổ chỉ có hiệu lực trong khoảng ngày này.">
+                    Hiệu lực
+                  </th>
                   <th scope="col" className="py-2 pr-3">Ghi chú</th>
                   {canManage && <th scope="col" className="py-2 text-right">Thao tác</th>}
                 </tr>
@@ -255,7 +261,14 @@ export function AllocationsPanel({
                       <span className="text-ink">{a.project.name}</span>
                       <span className="ml-1.5 font-mono text-xs text-faint">{a.project.key}</span>
                     </td>
-                    <td className={cn('py-2.5 pr-3 text-right tabular-nums', a.percent > 100 ? 'font-medium text-warning' : 'text-ink')}>
+                    <td
+                      className={cn('py-2.5 pr-3 text-right tabular-nums', a.percent > 100 ? 'font-medium text-warning' : 'text-ink')}
+                      title={
+                        a.percent > 100
+                          ? 'Trên 100% nghĩa là người này được kỳ vọng làm thêm ngoài giờ cho dự án.'
+                          : `${a.user.displayName} dành ${a.percent}% thời gian làm việc cho dự án này.`
+                      }
+                    >
                       {a.percent}%
                     </td>
                     <td className="whitespace-nowrap py-2.5 pr-3 tabular-nums text-muted">
@@ -294,7 +307,7 @@ export function AllocationsPanel({
         title="Xoá phân bổ?"
         description={
           pendingDelete
-            ? `${pendingDelete.user.displayName} · ${pendingDelete.project.name} · ${pendingDelete.percent}%. Năng lực của người này sẽ được tính lại.`
+            ? `${pendingDelete.user.displayName} · ${pendingDelete.project.name} · ${pendingDelete.percent}%. Số giờ làm được của người này sẽ được tính lại ngay.`
             : undefined
         }
         loading={remove.isPending}

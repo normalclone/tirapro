@@ -35,13 +35,13 @@ export function ProfilePanel() {
     if (!user || update.isPending) return;
     const trimmed = displayName.trim();
     if (!trimmed) {
-      toast.error('Tên hiển thị không được để trống.');
+      toast.error('Hãy nhập tên hiển thị — đây là tên đồng nghiệp nhìn thấy');
       return;
     }
     update.mutate(
       { displayName: trimmed, timezone: timezone.trim(), locale },
       {
-        onSuccess: () => toast.success('Đã lưu hồ sơ'),
+        onSuccess: () => toast.success('Đã lưu hồ sơ của bạn'),
         onError: (err) => toast.error(apiErrorMessage(err)),
       },
     );
@@ -56,7 +56,7 @@ export function ProfilePanel() {
         <div>
           <h2 className="text-base font-semibold text-ink-strong">Hồ sơ của tôi</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Thông tin cá nhân hiển thị với các thành viên khác.
+            Những thông tin này hiện với mọi thành viên khác, ở mọi workspace bạn tham gia.
           </p>
         </div>
       </div>
@@ -72,7 +72,7 @@ export function ProfilePanel() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-ink">Tên hiển thị</span>
+            <span className="text-sm font-medium text-ink" title="Tên đồng nghiệp nhìn thấy khi bạn được giao việc hoặc bình luận">Tên hiển thị</span>
             <Input
               value={displayName}
               required
@@ -84,10 +84,10 @@ export function ProfilePanel() {
           </label>
 
           <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-ink">Múi giờ</span>
+            <span className="text-sm font-medium text-ink" title="Dùng để hiện đúng giờ hạn chót và lịch theo nơi bạn ngồi">Múi giờ</span>
             <Input
               value={timezone}
-              placeholder="Asia/Ho_Chi_Minh"
+              placeholder="VD: Asia/Ho_Chi_Minh"
               autoComplete="off"
               onChange={(e) => setTimezone(e.target.value)}
               disabled={update.isPending}
@@ -112,8 +112,8 @@ export function ProfilePanel() {
         </div>
 
         <div className="flex justify-end">
-          <Button type="submit" loading={update.isPending} disabled={!dirty}>
-            Lưu
+          <Button type="submit" loading={update.isPending} disabled={!dirty} title={dirty ? 'Lưu thay đổi hồ sơ' : 'Chưa có gì thay đổi để lưu'}>
+            Lưu hồ sơ
           </Button>
         </div>
       </form>
