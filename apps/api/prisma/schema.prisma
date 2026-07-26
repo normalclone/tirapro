@@ -242,6 +242,13 @@ model User {
   apiKeys              ApiKey[]
   teamMemberships      TeamMember[]
   ledTeams             Team[]                @relation("TeamLead")
+  issueParticipations  IssueParticipant[]
+  allocations          Allocation[]
+  timeOffs             TimeOff[]
+  ownedPrograms        Program[]             @relation("ProgramOwner")
+  ownedObjectives      Objective[]           @relation("ObjectiveOwner")
+  ownedRaidItems       RaidItem[]            @relation("RaidOwner")
+  ownedTestCases       TestCase[]            @relation("TestCaseOwner")
 
   @@index([status])
 }
@@ -284,6 +291,14 @@ model Workspace {
   guides              Guide[]
   apiKeys             ApiKey[]
   teams               Team[]
+  timeOffs            TimeOff[]
+  programs            Program[]
+  objectives          Objective[]
+  raidItems           RaidItem[]
+  slaPolicies         SlaPolicy[]
+  issueTemplates      IssueTemplate[]
+  wikiPages           WikiPage[]
+  clients             Client[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -457,6 +472,8 @@ model Project {
   defaultWorkflowId   String?
   defaultAssigneeMode DefaultAssigneeMode @default(UNASSIGNED)
   isArchived          Boolean  @default(false)
+  programId           String?
+  clientId            String?
   settings            Json     @default("{}")
   deletedAt           DateTime?
   createdById         String?
@@ -478,6 +495,21 @@ model Project {
   savedFilters SavedFilter[]
   dashboards   Dashboard[]
   activities   ActivityLog[]
+  program      Program?    @relation(fields: [programId], references: [id], onDelete: SetNull)
+  client       Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  dependencies IssueDependency[]
+  milestones   Milestone[]
+  baselines    PlanBaseline[]
+  allocations  Allocation[]
+  objectives   Objective[]
+  raidItems    RaidItem[]
+  slaPolicies  SlaPolicy[]
+  testCases    TestCase[]
+  testRuns     TestRun[]
+  issueTemplates  IssueTemplate[]
+  recurringIssues RecurringIssue[]
+  wikiPages    WikiPage[]
+  contracts    Contract[]
 
   @@unique([workspaceId, key])
   @@unique([workspaceId, name])
@@ -534,6 +566,7 @@ model Priority {
   issues      Issue[]
   @@unique([workspaceId, name])
   @@index([workspaceId])
+  slaPolicies SlaPolicy[]
 }
 
 model Resolution {
@@ -732,6 +765,14 @@ model Issue {
   notifications     Notification[]
   activities        ActivityLog[]
   devLinks          IssueDevLink[]
+  participants      IssueParticipant[]
+  depsAsPredecessor IssueDependency[] @relation("DepPredecessor")
+  depsAsSuccessor   IssueDependency[] @relation("DepSuccessor")
+  baselineItems     PlanBaselineItem[]
+  objectives        ObjectiveIssue[]
+  sla               IssueSla?
+  testCases         TestCaseIssue[]
+  checklist         ChecklistItem[]
 
   @@unique([projectId, number])
   @@unique([workspaceId, key])
@@ -1487,4 +1528,498 @@ model UserGuideState {
 
   @@unique([userId, guideKey])
   @@index([userId])
+}
+
+// ============================================================================
+// MỞ RỘNG MÔ HÌNH QUẢN LÝ (Waterfall/PPM/OKR/RAID/SLA/Test/Wiki/CRM…)
+// ============================================================================
+
+enum DependencyType {
+  FS // finish-to-start (mặc định)
+  SS // start-to-start
+  FF // finish-to-finish
+  SF // start-to-finish
+}
+
+enum RaidKind {
+  RISK
+  ASSUMPTION
+  ISSUE
+  DEPENDENCY
+}
+
+enum RaidStatus {
+  OPEN
+  MITIGATING
+  CLOSED
+  ACCEPTED
+}
+
+enum TestResult {
+  UNTESTED
+  PASSED
+  FAILED
+  BLOCKED
+  SKIPPED
+}
+
+enum ObjectiveStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum KeyResultUnit {
+  NUMBER
+  PERCENT
+  CURRENCY
+}
+
+enum RecurrenceFreq {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum TimeOffKind {
+  LEAVE
+  HOLIDAY
+  OTHER
+}
+
+/// Người THAM GIA issue (ngoài người phụ trách & người báo cáo).
+model IssueParticipant {
+  issueId   String
+  userId    String
+  note      String?
+  createdAt DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([issueId, userId])
+  @@index([userId])
+}
+
+/// Phụ thuộc giữa 2 issue để lập lịch Gantt (đường găng).
+model IssueDependency {
+  id            String         @id @default(cuid())
+  projectId     String
+  predecessorId String
+  successorId   String
+  type          DependencyType @default(FS)
+  lagDays       Int            @default(0)
+  createdAt     DateTime       @default(now())
+
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  predecessor Issue   @relation("DepPredecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor   Issue   @relation("DepSuccessor", fields: [successorId], references: [id], onDelete: Cascade)
+
+  @@unique([predecessorId, successorId])
+  @@index([projectId])
+  @@index([successorId])
+}
+
+/// Cột mốc dự án (khác Version/release: mốc thời gian thuần).
+model Milestone {
+  id          String    @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  dueDate     DateTime
+  completedAt DateTime?
+  color       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, dueDate])
+}
+
+/// Ảnh chụp KẾ HOẠCH GỐC để so sánh kế hoạch vs thực tế.
+model PlanBaseline {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  capturedAt  DateTime @default(now())
+  createdById String?
+
+  project Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items   PlanBaselineItem[]
+
+  @@index([projectId, capturedAt])
+}
+
+model PlanBaselineItem {
+  baselineId String
+  issueId    String
+  startDate  DateTime?
+  dueDate    DateTime?
+
+  baseline PlanBaseline @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+  issue    Issue        @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@id([baselineId, issueId])
+  @@index([issueId])
+}
+
+/// Phân bổ nguồn lực: % thời gian của 1 người cho 1 dự án trong khoảng thời gian.
+model Allocation {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  percent   Int      @default(100)
+  startDate DateTime
+  endDate   DateTime
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([userId, startDate])
+}
+
+/// Nghỉ phép / ngày lễ — trừ vào năng lực khả dụng.
+model TimeOff {
+  id          String      @id @default(cuid())
+  workspaceId String
+  userId      String?
+  kind        TimeOffKind @default(LEAVE)
+  startDate   DateTime
+  endDate     DateTime
+  note        String?
+  createdAt   DateTime    @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, startDate])
+  @@index([userId])
+}
+
+/// Chương trình / danh mục — gom nhiều dự án để theo dõi cấp cao.
+model Program {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  color       String?
+  ownerId     String?
+  startDate   DateTime?
+  targetDate  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner     User?     @relation("ProgramOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  projects  Project[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+/// Mục tiêu (OKR). Cấp workspace hoặc gắn 1 dự án.
+model Objective {
+  id          String          @id @default(cuid())
+  workspaceId String
+  projectId   String?
+  name        String
+  description String?
+  period      String
+  status      ObjectiveStatus @default(ACTIVE)
+  ownerId     String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  workspace  Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project    Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner      User?            @relation("ObjectiveOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  keyResults KeyResult[]
+  issues     ObjectiveIssue[]
+
+  @@index([workspaceId, period])
+}
+
+model KeyResult {
+  id           String        @id @default(cuid())
+  objectiveId  String
+  name         String
+  unit         KeyResultUnit @default(NUMBER)
+  startValue   Float         @default(0)
+  targetValue  Float
+  currentValue Float         @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  objective Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+
+  @@index([objectiveId])
+}
+
+/// Gắn issue/epic vào mục tiêu để tính tiến độ theo công việc thực tế.
+model ObjectiveIssue {
+  objectiveId String
+  issueId     String
+
+  objective Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  issue     Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@id([objectiveId, issueId])
+  @@index([issueId])
+}
+
+/// Sổ RAID: Risk / Assumption / Issue / Dependency.
+model RaidItem {
+  id          String     @id @default(cuid())
+  workspaceId String
+  projectId   String?
+  kind        RaidKind   @default(RISK)
+  title       String
+  description String?
+  probability Int        @default(3)
+  impact      Int        @default(3)
+  status      RaidStatus @default(OPEN)
+  ownerId     String?
+  mitigation  String?
+  dueDate     DateTime?
+  createdById String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner     User?     @relation("RaidOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, kind])
+  @@index([projectId, status])
+}
+
+/// Chính sách SLA theo mức ưu tiên.
+model SlaPolicy {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  projectId    String?
+  name         String
+  priorityId   String?
+  responseMins Int
+  resolveMins  Int
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  priority  Priority?  @relation(fields: [priorityId], references: [id], onDelete: SetNull)
+  tickets   IssueSla[]
+
+  @@index([workspaceId])
+}
+
+/// Trạng thái SLA của một issue.
+model IssueSla {
+  issueId          String    @id
+  policyId         String
+  responseDueAt    DateTime
+  resolveDueAt     DateTime
+  firstRespondedAt DateTime?
+  resolvedAt       DateTime?
+  responseBreached Boolean   @default(false)
+  resolveBreached  Boolean   @default(false)
+
+  issue  Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  policy SlaPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@index([policyId])
+  @@index([resolveDueAt])
+}
+
+/// Ca kiểm thử.
+model TestCase {
+  id           String   @id @default(cuid())
+  projectId    String
+  key          String
+  title        String
+  precondition String?
+  steps        String?  @db.Text
+  expected     String?  @db.Text
+  folder       String?
+  ownerId      String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner      User?           @relation("TestCaseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  executions TestExecution[]
+  issues     TestCaseIssue[]
+
+  @@unique([projectId, key])
+  @@index([projectId, folder])
+}
+
+/// Liên kết ca kiểm thử ↔ issue (traceability).
+model TestCaseIssue {
+  testCaseId String
+  issueId    String
+
+  testCase TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  issue    Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@id([testCaseId, issueId])
+  @@index([issueId])
+}
+
+/// Đợt chạy kiểm thử.
+model TestRun {
+  id          String    @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  createdById String?
+
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  executions TestExecution[]
+
+  @@index([projectId, startedAt])
+}
+
+model TestExecution {
+  id           String     @id @default(cuid())
+  runId        String
+  testCaseId   String
+  result       TestResult @default(UNTESTED)
+  note         String?
+  bugIssueId   String?
+  executedById String?
+  executedAt   DateTime?
+
+  run      TestRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  testCase TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, testCaseId])
+  @@index([testCaseId])
+}
+
+/// Mẫu tạo issue nhanh.
+model IssueTemplate {
+  id          String   @id @default(cuid())
+  workspaceId String
+  projectId   String?
+  name        String
+  description String?
+  payload     Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+/// Việc lặp lại: định kỳ sinh issue mới từ payload.
+model RecurringIssue {
+  id          String         @id @default(cuid())
+  projectId   String
+  name        String
+  freq        RecurrenceFreq @default(WEEKLY)
+  interval    Int            @default(1)
+  weekday     Int?
+  monthDay    Int?
+  hour        Int            @default(8)
+  payload     Json           @default("{}")
+  active      Boolean        @default(true)
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([active, nextRunAt])
+  @@index([projectId])
+}
+
+/// Checklist trong issue (nhẹ hơn sub-task).
+model ChecklistItem {
+  id        String   @id @default(cuid())
+  issueId   String
+  text      String
+  done      Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId, order])
+}
+
+/// Trang wiki / tài liệu nội bộ (markdown, phân cấp cây).
+model WikiPage {
+  id          String   @id @default(cuid())
+  workspaceId String
+  projectId   String?
+  parentId    String?
+  title       String
+  body        String   @db.Text
+  order       Int      @default(0)
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent    WikiPage?  @relation("WikiTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  WikiPage[] @relation("WikiTree")
+
+  @@index([workspaceId, projectId])
+  @@index([parentId])
+}
+
+/// Khách hàng và hợp đồng.
+model Client {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  contactName String?
+  email       String?
+  phone       String?
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contracts Contract[]
+  projects  Project[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model Contract {
+  id        String    @id @default(cuid())
+  clientId  String
+  projectId String?
+  name      String
+  code      String?
+  value     Float?
+  currency  String    @default("VND")
+  startDate DateTime?
+  endDate   DateTime?
+  note      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  client  Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
 }
