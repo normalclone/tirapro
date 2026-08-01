@@ -2,18 +2,19 @@ import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { AlarmClock, Briefcase, CalendarClock, Handshake, ShieldAlert, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 
 /**
  * Khung "Quản trị" — gom các màn theo dõi cấp công ty (không thuộc riêng dự án nào)
  * vào một chỗ, thay vì mỗi thứ một mục ngoài thanh bên.
  */
-const MANAGE_NAV: { to: string; label: string; hint: string; icon: ReactNode }[] = [
-  { to: '/manage/portfolio', label: 'Danh mục dự án', hint: 'Gom dự án thành chương trình, xem tiến độ tổng', icon: <Briefcase className="h-4 w-4" /> },
-  { to: '/manage/goals', label: 'Mục tiêu', hint: 'Mục tiêu theo quý và kết quả then chốt', icon: <Target className="h-4 w-4" /> },
-  { to: '/manage/risks', label: 'Rủi ro & vướng mắc', hint: 'Ghi nhận và theo dõi việc có thể cản tiến độ', icon: <ShieldAlert className="h-4 w-4" /> },
-  { to: '/manage/resources', label: 'Nhân lực', hint: 'Ai đang làm bao nhiêu, ai quá tải', icon: <CalendarClock className="h-4 w-4" /> },
-  { to: '/manage/response-time', label: 'Thời gian xử lý', hint: 'Yêu cầu sắp trễ hoặc đã trễ hạn cam kết', icon: <AlarmClock className="h-4 w-4" /> },
-  { to: '/manage/clients', label: 'Khách hàng', hint: 'Khách hàng và hợp đồng gắn với dự án', icon: <Handshake className="h-4 w-4" /> },
+const MANAGE_NAV: { to: string; label: string; icon: ReactNode }[] = [
+  { to: '/manage/portfolio', label: 'Danh mục dự án', icon: <Briefcase className="h-4 w-4" /> },
+  { to: '/manage/goals', label: 'Mục tiêu', icon: <Target className="h-4 w-4" /> },
+  { to: '/manage/risks', label: 'Rủi ro & vướng mắc', icon: <ShieldAlert className="h-4 w-4" /> },
+  { to: '/manage/resources', label: 'Nhân lực', icon: <CalendarClock className="h-4 w-4" /> },
+  { to: '/manage/response-time', label: 'Thời gian xử lý', icon: <AlarmClock className="h-4 w-4" /> },
+  { to: '/manage/clients', label: 'Khách hàng', icon: <Handshake className="h-4 w-4" /> },
 ];
 
 export function ManageLayout() {
@@ -32,7 +33,6 @@ export function ManageLayout() {
           <NavLink
             key={item.to}
             to={item.to}
-            title={item.hint}
             className={({ isActive }) =>
               cn(
                 'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
@@ -40,8 +40,8 @@ export function ManageLayout() {
               )
             }
           >
-            {item.icon}
-            {item.label}
+            <span className="shrink-0">{item.icon}</span>
+            <TruncatedLabel text={item.label} />
           </NavLink>
         ))}
       </nav>

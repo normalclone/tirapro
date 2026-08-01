@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { useAi } from '@/stores/ai';
 import { useGlobalHotkeys } from '@/lib/useGlobalHotkeys';
 import { cn } from '@/lib/utils';
+import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 
 const NAV_ITEMS: { to: string; label: string; icon: ReactNode; match: (p: string) => boolean }[] = [
   { to: '/', label: 'Tổng quan', icon: <LayoutDashboard className="h-4 w-4" />, match: (p) => p === '/' },
@@ -111,14 +112,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
           {admin && (
             <>
-              <NavItem to="/" active={false} icon={<ArrowLeft className="h-4 w-4" />}>Về ứng dụng</NavItem>
+              <NavItem to="/" active={false} icon={<ArrowLeft className="h-4 w-4" />} label="Về ứng dụng" />
               <div className="my-1.5 border-t border-border" />
             </>
           )}
           {navItems.map((item) => (
-            <NavItem key={item.to} to={item.to} active={item.match(loc.pathname)} icon={item.icon}>
-              {item.label}
-            </NavItem>
+            <NavItem key={item.to} to={item.to} active={item.match(loc.pathname)} icon={item.icon} label={item.label} />
           ))}
         </nav>
         <div className="border-t border-border p-2 text-xs text-faint">
@@ -175,7 +174,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function NavItem({ to, active, icon, children }: { to: string; active: boolean; icon: ReactNode; children: ReactNode }) {
+function NavItem({ to, active, icon, label }: { to: string; active: boolean; icon: ReactNode; label: string }) {
   return (
     <Link
       to={to}
@@ -184,8 +183,8 @@ function NavItem({ to, active, icon, children }: { to: string; active: boolean; 
         active ? 'bg-primary-subtle text-primary' : 'text-muted hover:bg-surface-2 hover:text-ink',
       )}
     >
-      {icon}
-      {children}
+      <span className="shrink-0">{icon}</span>
+      <TruncatedLabel text={label} />
     </Link>
   );
 }

@@ -2,14 +2,15 @@ import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { Plug, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 
 /**
  * Khung "Kết nối & tự động hoá" — gom hai việc cùng bản chất "để hệ thống tự chạy":
  * nối với công cụ bên ngoài, và tự sinh công việc theo lịch/mẫu.
  */
-const CONNECT_NAV: { to: string; label: string; hint: string; icon: ReactNode }[] = [
-  { to: '/connect/integrations', label: 'Ứng dụng bên ngoài', hint: 'Telegram, nhập dữ liệu từ Jira, kho mã nguồn', icon: <Plug className="h-4 w-4" /> },
-  { to: '/connect/automation', label: 'Tự động hoá', hint: 'Mẫu công việc và công việc lặp lại theo lịch', icon: <Repeat className="h-4 w-4" /> },
+const CONNECT_NAV: { to: string; label: string; icon: ReactNode }[] = [
+  { to: '/connect/integrations', label: 'Ứng dụng bên ngoài', icon: <Plug className="h-4 w-4" /> },
+  { to: '/connect/automation', label: 'Tự động hoá', icon: <Repeat className="h-4 w-4" /> },
 ];
 
 export function ConnectLayout() {
@@ -28,7 +29,6 @@ export function ConnectLayout() {
           <NavLink
             key={item.to}
             to={item.to}
-            title={item.hint}
             className={({ isActive }) =>
               cn(
                 'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
@@ -36,8 +36,8 @@ export function ConnectLayout() {
               )
             }
           >
-            {item.icon}
-            {item.label}
+            <span className="shrink-0">{item.icon}</span>
+            <TruncatedLabel text={item.label} />
           </NavLink>
         ))}
       </nav>
