@@ -106,10 +106,10 @@ type WorkflowRow = Prisma.WorkflowGetPayload<{ include: typeof workflowInclude }
 type StatusRow = Prisma.StatusGetPayload<true>;
 type TransitionRow = Prisma.WorkflowTransitionGetPayload<true>;
 
-const WORKFLOW_DUPLICATE = 'Tên workflow đã tồn tại';
+const WORKFLOW_DUPLICATE = 'Đã có quy trình trùng tên — hãy đặt tên khác';
 const STATUS_DUPLICATE = 'Tên trạng thái đã tồn tại trong workflow';
-const WORKFLOW_IN_USE = 'Workflow đang được dùng';
-const STATUS_IN_USE = 'Trạng thái đang được issue sử dụng';
+const WORKFLOW_IN_USE = 'Quy trình này đang được dự án sử dụng — hãy gỡ khỏi các dự án đó trước khi xoá';
+const STATUS_IN_USE = 'Vẫn còn công việc đang ở trạng thái này — hãy chuyển chúng sang trạng thái khác trước khi xoá';
 
 @Injectable()
 export class WorkflowAdminService {
@@ -137,7 +137,7 @@ export class WorkflowAdminService {
       where: { id, workspaceId },
       include: workflowInclude,
     });
-    if (!row) throw new NotFoundAppException('Workflow');
+    if (!row) throw new NotFoundAppException('Quy trình');
     return this.toWorkflowDto(row);
   }
 
@@ -424,7 +424,7 @@ export class WorkflowAdminService {
       where: { id, workspaceId },
       select: { id: true, workspaceId: true, projectId: true },
     });
-    if (!wf) throw new NotFoundAppException('Workflow');
+    if (!wf) throw new NotFoundAppException('Quy trình');
     return wf;
   }
 

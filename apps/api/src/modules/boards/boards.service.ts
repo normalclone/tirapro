@@ -26,7 +26,7 @@ export class BoardsService {
       where: { id: boardId, deletedAt: null, project: { workspaceId } },
       include: boardInclude,
     });
-    if (!board) throw new NotFoundAppException('Board');
+    if (!board) throw new NotFoundAppException('Bảng việc');
     return this.toDto(board);
   }
 

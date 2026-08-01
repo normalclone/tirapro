@@ -33,7 +33,7 @@ export function IssueComponentsPicker({ issue }: { issue: IssueDto }) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-faint">
-        Chưa thể chỉnh sửa thành phần &amp; phiên bản của issue tại đây — chỉ xem danh mục của dự án.
+        Chưa thể chỉnh sửa thành phần &amp; phiên bản của công việc tại đây — chỉ xem danh mục của dự án.
       </p>
 
       {hasComponents && (

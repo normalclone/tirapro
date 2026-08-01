@@ -30,7 +30,7 @@ export class AuthService {
     if (existing) throw new ConflictException({ code: 'EMAIL_TAKEN', message: 'Email đã được đăng ký' });
 
     const passwordHash = await argon2.hash(input.password);
-    const wsName = input.workspaceName?.trim() || `${input.displayName} Workspace`;
+    const wsName = input.workspaceName?.trim() || `Không gian của ${input.displayName}`;
 
     const { user, workspaceId } = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -157,7 +157,7 @@ export class AuthService {
       select: { id: true },
     });
     if (!membership) {
-      throw new ForbiddenAppException('Bạn không phải thành viên của workspace này');
+      throw new ForbiddenAppException('Bạn không phải thành viên của không gian làm việc này — hãy liên hệ quản trị viên để được mời vào');
     }
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     return this.issueSession(user, workspaceId, meta);
@@ -171,7 +171,7 @@ export class AuthService {
     currentWorkspaceId: string | null,
     input: InviteMemberInput,
   ): Promise<{ userId: string; email: string; invited: true; tempPassword?: string }> {
-    if (!currentWorkspaceId) throw new ForbiddenAppException('Chưa chọn workspace');
+    if (!currentWorkspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
 
     const email = input.email.toLowerCase();
     const requested = input.roleIds ?? (input.roleId ? [input.roleId] : []);

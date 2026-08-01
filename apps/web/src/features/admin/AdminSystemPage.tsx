@@ -95,7 +95,7 @@ export function AdminSystemPage() {
         ) : aLoading ? (
           <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
         ) : !audit || audit.length === 0 ? (
-          <EmptyState icon={<ScrollText className="h-6 w-6" />} title="Chưa có nhật ký" description="Các hành động (tạo/sửa issue, chuyển trạng thái…) sẽ xuất hiện ở đây." />
+          <EmptyState icon={<ScrollText className="h-6 w-6" />} title="Chưa có nhật ký" description="Nhật ký ghi lại ai đã làm gì trên hệ thống. Khi có người tạo/sửa công việc hay chuyển trạng thái, các thao tác đó sẽ hiện ở đây." />
         ) : (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
             {audit.map((e) => (

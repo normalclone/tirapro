@@ -81,7 +81,7 @@ export function WorkflowSettingsPage() {
   function submitAdd() {
     const trimmed = name.trim();
     if (!trimmed) {
-      toast.error('Vui lòng nhập tên workflow.');
+      toast.error('Vui lòng nhập tên quy trình.');
       return;
     }
     createWorkflow.mutate(
@@ -103,7 +103,7 @@ export function WorkflowSettingsPage() {
   function handleDeleteWorkflow(wf: Workflow) {
     if (
       !window.confirm(
-        `Xoá workflow "${wf.name}"? Hành động này không thể hoàn tác.`,
+        `Xoá quy trình "${wf.name}"? Hành động này không thể hoàn tác.`,
       )
     )
       return;
@@ -119,10 +119,10 @@ export function WorkflowSettingsPage() {
     <div className={pageContainer('lg')}>
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          Cấu hình Workflow
+          Cấu hình quy trình
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Quản lý quy trình làm việc: trạng thái và các bước chuyển trạng thái của issue.
+          Quản lý các bước một công việc đi qua: có những trạng thái nào và được chuyển từ trạng thái nào sang trạng thái nào.
         </p>
       </header>
 
@@ -133,16 +133,16 @@ export function WorkflowSettingsPage() {
               <GitBranch className="h-4 w-4" />
             </span>
             <div>
-              <h2 className="text-base font-semibold text-ink-strong">Workflow</h2>
+              <h2 className="text-base font-semibold text-ink-strong">Quy trình</h2>
               <p className="mt-0.5 text-sm text-muted">
-                Chọn một workflow để xem và chỉnh sửa chi tiết.
+                Chọn một quy trình để xem và chỉnh sửa chi tiết.
               </p>
             </div>
           </div>
           {!adding && (
             <Button size="sm" onClick={() => setAdding(true)}>
               <Plus className="h-4 w-4" />
-              Tạo workflow
+              Tạo quy trình
             </Button>
           )}
         </div>
@@ -157,12 +157,12 @@ export function WorkflowSettingsPage() {
           ) : workflows.length === 0 && !adding ? (
             <EmptyState
               icon={<GitBranch className="h-6 w-6" />}
-              title="Chưa có workflow nào"
-              description="Tạo workflow đầu tiên để định nghĩa quy trình cho issue."
+              title="Chưa có quy trình nào"
+              description="Quy trình là chuỗi trạng thái mà mỗi công việc đi qua, từ lúc mở đến lúc xong. Tạo quy trình đầu tiên để bắt đầu."
               action={
                 <Button size="sm" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4" />
-                  Tạo workflow
+                  Tạo quy trình
                 </Button>
               }
             />
@@ -192,7 +192,7 @@ export function WorkflowSettingsPage() {
                     htmlFor="wf-name"
                     className="mb-1 block text-xs font-medium text-muted"
                   >
-                    Tên workflow
+                    Tên quy trình
                   </label>
                   <Input
                     id="wf-name"
@@ -310,11 +310,11 @@ function WorkflowRow({
         size="icon"
         onClick={onDelete}
         loading={deleting}
-        title="Xoá workflow"
+        title="Xoá quy trình"
         className="text-muted hover:text-danger"
       >
         <Trash2 className="h-4 w-4" />
-        <span className="sr-only">Xoá workflow {workflow.name}</span>
+        <span className="sr-only">Xoá quy trình {workflow.name}</span>
       </Button>
     </li>
   );
@@ -330,7 +330,7 @@ function WorkflowDetail({ workflow }: { workflow: Workflow }) {
     <div className="mt-6 space-y-4">
       <div
         role="tablist"
-        aria-label="Kiểu xem workflow"
+        aria-label="Kiểu xem quy trình"
         className="inline-flex rounded-md border border-border bg-surface-2 p-0.5"
       >
         {(
@@ -434,7 +434,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
         <div>
           <h2 className="text-base font-semibold text-ink-strong">Trạng thái</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Các trạng thái issue có thể có trong workflow này.
+            Các trạng thái mà công việc có thể ở, trong quy trình này.
           </p>
         </div>
       </div>
@@ -444,7 +444,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
           <EmptyState
             icon={<CircleDot className="h-6 w-6" />}
             title="Chưa có trạng thái nào"
-            description="Thêm trạng thái đầu tiên cho workflow này."
+            description="Trạng thái cho biết công việc đang ở bước nào (vd Cần làm, Đang làm, Xong). Thêm trạng thái đầu tiên cho quy trình này."
             action={
               <Button size="sm" onClick={() => setAdding(true)}>
                 <Plus className="h-4 w-4" />
@@ -681,7 +681,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
         <div>
           <h2 className="text-base font-semibold text-ink-strong">Chuyển trạng thái</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Các bước cho phép issue chuyển từ trạng thái này sang trạng thái khác.
+            Các bước cho phép công việc chuyển từ trạng thái này sang trạng thái khác.
           </p>
         </div>
       </div>
@@ -694,7 +694,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
             description={
               noStatuses
                 ? 'Hãy thêm trạng thái trước khi tạo bước chuyển.'
-                : 'Thêm bước chuyển đầu tiên cho workflow này.'
+                : 'Bước chuyển quy định công việc được đi từ trạng thái nào sang trạng thái nào. Thêm bước chuyển đầu tiên cho quy trình này.'
             }
             action={
               !noStatuses && (

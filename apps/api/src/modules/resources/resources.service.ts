@@ -501,7 +501,7 @@ export class ResourcesService {
       where: { workspaceId_userId: { workspaceId, userId } },
       select: { id: true },
     });
-    if (!m) throw new BusinessRuleException('Người dùng không thuộc workspace này');
+    if (!m) throw new BusinessRuleException('Người dùng không thuộc không gian làm việc này — hãy chọn một thành viên khác');
     return m;
   }
 

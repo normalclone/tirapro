@@ -123,7 +123,7 @@ export class DigestsService {
 
     const openTotal = openByCategory.todo + openByCategory.inProgress;
     const lines = [
-      '📊 <b>Digest tuần</b>',
+      '📊 <b>Tổng kết tuần</b>',
       `• Tạo mới (7 ngày): ${created}`,
       `• Đã xong (7 ngày): ${resolved}`,
       `• Đang mở: ${openTotal} (Cần làm: ${openByCategory.todo} · Đang làm: ${openByCategory.inProgress})`,

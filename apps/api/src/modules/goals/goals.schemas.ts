@@ -37,7 +37,7 @@ export const createKeyResultSchema = keyResultUpsertSchema.omit({ id: true });
 export const updateKeyResultSchema = createKeyResultSchema.partial();
 
 export const goalIssuesSchema = z.object({
-  issueIds: z.array(z.string().min(1)).min(1, 'Cần ít nhất 1 issue').max(200),
+  issueIds: z.array(z.string().min(1)).min(1, 'Hãy chọn ít nhất một công việc').max(200),
 });
 
 export type KeyResultUpsertInput = z.infer<typeof keyResultUpsertSchema>;

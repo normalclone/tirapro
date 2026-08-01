@@ -79,7 +79,7 @@ export class ApiKeyService {
 
   async revoke(id: string, workspaceId: string) {
     const found = await this.prisma.apiKey.findFirst({ where: { id, workspaceId }, select: { id: true } });
-    if (!found) throw new NotFoundAppException('API key');
+    if (!found) throw new NotFoundAppException('Khoá API');
     await this.prisma.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
     return { ok: true as const };
   }

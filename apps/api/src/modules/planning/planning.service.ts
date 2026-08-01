@@ -90,7 +90,7 @@ export class PlanningService {
   async createDependency(workspaceId: string, projectId: string, dto: CreateDependencyInput) {
     await this.requireProject(workspaceId, projectId);
     if (dto.predecessorId === dto.successorId) {
-      throw new BusinessRuleException('Một issue không thể phụ thuộc chính nó');
+      throw new BusinessRuleException('Một công việc không thể phụ thuộc vào chính nó — hãy chọn công việc khác');
     }
     await this.requireIssues(projectId, [dto.predecessorId, dto.successorId]);
 
@@ -473,7 +473,7 @@ export class PlanningService {
       where: { id: { in: unique }, projectId, deletedAt: null },
       select: { id: true },
     });
-    if (rows.length !== unique.length) throw new NotFoundAppException('Issue');
+    if (rows.length !== unique.length) throw new NotFoundAppException('Công việc');
   }
 
   /**

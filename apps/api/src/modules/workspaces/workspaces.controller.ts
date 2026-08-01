@@ -37,7 +37,7 @@ export class WorkspacesController {
   /** Chỉ cho phép sửa workspace đang hoạt động (perm gắn với workspace hiện tại). */
   private assertCurrent(user: AuthUser, id: string): string {
     if (!user.workspaceId || user.workspaceId !== id) {
-      throw new ForbiddenAppException('Chỉ có thể sửa workspace đang hoạt động');
+      throw new ForbiddenAppException('Chỉ sửa được không gian làm việc bạn đang mở — hãy chuyển sang không gian đó rồi thử lại');
     }
     return id;
   }

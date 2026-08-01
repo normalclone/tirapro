@@ -78,7 +78,7 @@ export class IssuesService {
     if (m.parentId) jobs.push(this.prisma.issue.findFirst({ where: { id: m.parentId, workspaceId, deletedAt: null }, select: { id: true } }));
     if (m.epicId) jobs.push(this.prisma.issue.findFirst({ where: { id: m.epicId, workspaceId, deletedAt: null }, select: { id: true } }));
     if (jobs.length && (await Promise.all(jobs)).some((r) => r == null)) {
-      throw new NotFoundAppException('Thuộc tính/liên kết issue (loại/ưu tiên/sprint/resolution/cha/epic) không thuộc workspace này');
+      throw new NotFoundAppException('Loại công việc, độ ưu tiên, sprint, kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý');
     }
   }
 
@@ -87,7 +87,7 @@ export class IssuesService {
       where: { id: input.projectId, workspaceId, deletedAt: null },
       select: { id: true, key: true, defaultWorkflowId: true, leadId: true, defaultAssigneeMode: true },
     });
-    if (!project) throw new NotFoundAppException('Project');
+    if (!project) throw new NotFoundAppException('Dự án');
     await this.assertMetaInWorkspace(workspaceId, {
       typeId: input.typeId, priorityId: input.priorityId, sprintId: input.sprintId,
       parentId: input.parentId, epicId: input.epicId,
@@ -232,7 +232,7 @@ export class IssuesService {
 
   async getByKey(workspaceId: string, key: string): Promise<IssueDto> {
     const issue = await this.prisma.issue.findFirst({ where: { workspaceId, key, deletedAt: null }, include: issueInclude });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     return this.toDto(issue);
   }
 
@@ -261,7 +261,7 @@ export class IssuesService {
     if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
     if (input.startDate !== undefined) data.startDate = input.startDate ? new Date(input.startDate) : null;
     if (input.parentId !== undefined) {
-      if (input.parentId === id) throw new BusinessRuleException('Issue không thể là cha của chính nó');
+      if (input.parentId === id) throw new BusinessRuleException('Một công việc không thể là việc cha của chính nó — hãy chọn một công việc khác làm việc cha');
       if (input.parentId) {
         await this.assertNoParentCycle(workspaceId, id, input.parentId);
         data.parent = { connect: { id: input.parentId } };
@@ -361,7 +361,7 @@ export class IssuesService {
   // ---------- helpers ----------
   private async requireIssue(workspaceId: string, id: string): Promise<IssueRow> {
     const issue = await this.prisma.issue.findFirst({ where: { id, workspaceId, deletedAt: null }, include: issueInclude });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 
@@ -371,7 +371,7 @@ export class IssuesService {
     let depth = 0;
     while (cur && depth < 200) {
       if (cur === childId) {
-        throw new BusinessRuleException('Không thể đặt một issue con/cháu làm cha (sẽ tạo vòng lặp)');
+        throw new BusinessRuleException('Không thể chọn việc con (hoặc việc cháu) làm việc cha vì sẽ tạo vòng lặp — hãy chọn một công việc ngoài nhánh này');
       }
       const p: { parentId: string | null } | null = await this.prisma.issue.findFirst({
         where: { id: cur, workspaceId, deletedAt: null },

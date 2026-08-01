@@ -162,7 +162,7 @@ function AdminOverview() {
 
           <StatRow
             stats={[
-              { label: 'Tổng issue', value: data.totals.total },
+              { label: 'Tổng công việc', value: data.totals.total },
               { label: 'Bug', value: data.totals.bug, tone: 'bug' },
               { label: 'Đang làm', value: data.totals.inProgress, tone: 'progress' },
               { label: 'Hoàn thành', value: data.totals.done, tone: 'done' },
@@ -175,10 +175,10 @@ function AdminOverview() {
             <ChartCard title="Phân bố trạng thái">
               <StatusDonut totals={data.totals} />
             </ChartCard>
-            <ChartCard title="Issue theo loại">
+            <ChartCard title="Công việc theo loại">
               <SliceBar slices={data.byType} />
             </ChartCard>
-            <ChartCard title="Issue theo độ ưu tiên">
+            <ChartCard title="Công việc theo mức ưu tiên">
               <SliceBar slices={data.byPriority} />
             </ChartCard>
             <ChartCard title="Tạo mới vs Đã xử lý (8 tuần)">
@@ -348,7 +348,8 @@ function SliceBar({ slices }: { slices: OverviewSlice[] }) {
         <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted)' }} stroke="var(--border)" interval={0} tickLine={false} />
         <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted)' }} stroke="var(--border)" width={32} tickLine={false} axisLine={false} />
         <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={TOOLTIP_STYLE} />
-        <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={48}>
+        {/* `name` bắt buộc: thiếu nó thì tooltip hiện tên khoá dữ liệu ("count") thay vì tiếng Việt. */}
+        <Bar dataKey="count" name="Số công việc" radius={[4, 4, 0, 0]} maxBarSize={48}>
           {slices.map((s) => <Cell key={s.name} fill={s.color ?? 'var(--primary)'} />)}
         </Bar>
       </BarChart>

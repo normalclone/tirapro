@@ -45,20 +45,20 @@ export class AdminWorkspacesService {
       this.prisma.workspace.findUnique({ where: { id }, select: WS_SELECT }),
       this.prisma.activityLog.aggregate({ where: { workspaceId: id }, _max: { createdAt: true } }),
     ]);
-    if (!w) throw new NotFoundAppException('Workspace');
+    if (!w) throw new NotFoundAppException('Không gian làm việc');
     return this.toDto(w, act._max.createdAt ?? null);
   }
 
   async patch(id: string, input: PatchWorkspaceInput) {
     const ws = await this.prisma.workspace.findUnique({ where: { id }, select: { id: true } });
-    if (!ws) throw new NotFoundAppException('Workspace');
+    if (!ws) throw new NotFoundAppException('Không gian làm việc');
 
     if (input.ownerId) {
       const member = await this.prisma.workspaceMembership.findFirst({
         where: { workspaceId: id, userId: input.ownerId },
         select: { id: true },
       });
-      if (!member) throw new BusinessRuleException('Chủ sở hữu mới phải là thành viên của workspace');
+      if (!member) throw new BusinessRuleException('Chủ sở hữu mới phải là thành viên của không gian làm việc này — hãy thêm họ vào danh sách thành viên trước');
     }
 
     await this.prisma.workspace.update({

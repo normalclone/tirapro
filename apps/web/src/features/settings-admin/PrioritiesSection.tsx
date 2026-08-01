@@ -105,7 +105,7 @@ export function PrioritiesSection() {
     <SectionCard
       icon={<SignalHigh className="h-4 w-4" />}
       title="Độ ưu tiên"
-      description="Định nghĩa các mức độ ưu tiên (priority) dùng để sắp xếp issue. Rank nhỏ = ưu tiên cao hơn."
+      description="Đặt các mức ưu tiên để sắp xếp thứ tự làm công việc. Số thứ tự càng nhỏ thì càng ưu tiên."
     >
       {isLoading ? (
         <div className="space-y-2">
@@ -119,7 +119,7 @@ export function PrioritiesSection() {
           title="Chưa có độ ưu tiên nào"
           description={
             canManage
-              ? 'Thêm độ ưu tiên đầu tiên để bắt đầu sắp xếp issue.'
+              ? 'Mức ưu tiên cho biết việc nào cần làm trước. Thêm mức đầu tiên để bắt đầu sắp xếp công việc.'
               : 'Chưa có độ ưu tiên nào. Liên hệ quản trị chung để thêm.'
           }
           action={

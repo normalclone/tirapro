@@ -155,7 +155,7 @@ export class ProgramsService {
         where: { id: { in: ids }, workspaceId, deletedAt: null },
         select: { id: true },
       });
-      if (found.length !== ids.length) throw new BusinessRuleException('Một số dự án không thuộc workspace này');
+      if (found.length !== ids.length) throw new BusinessRuleException('Một số dự án không thuộc không gian làm việc này — hãy bỏ chọn những dự án đó');
     }
     await this.prisma.$transaction([
       this.prisma.project.updateMany({
@@ -330,7 +330,7 @@ export class ProgramsService {
       where: { workspaceId, userId: ownerId },
       select: { userId: true },
     });
-    if (!m) throw new ForbiddenAppException('Người phụ trách không thuộc workspace này');
+    if (!m) throw new ForbiddenAppException('Người phụ trách không thuộc không gian làm việc này — hãy chọn một thành viên khác');
     return ownerId;
   }
 

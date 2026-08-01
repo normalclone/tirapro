@@ -11,7 +11,7 @@ export class ActivityController {
   constructor(private readonly activity: ActivityService) {}
 
   private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Chưa chọn workspace');
+    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
     return user.workspaceId;
   }
 

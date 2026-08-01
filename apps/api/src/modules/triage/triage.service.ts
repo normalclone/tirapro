@@ -164,7 +164,7 @@ export class TriageService {
       where: { id: issueId, workspaceId, deletedAt: null },
       include: triageInclude,
     });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 

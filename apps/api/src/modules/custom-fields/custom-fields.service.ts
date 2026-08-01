@@ -325,7 +325,7 @@ export class CustomFieldsService {
       where: { id: projectId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!p) throw new NotFoundAppException('Project');
+    if (!p) throw new NotFoundAppException('Dự án');
     return p;
   }
 
@@ -334,7 +334,7 @@ export class CustomFieldsService {
       where: { id, workspaceId, deletedAt: null },
       include: fieldInclude,
     });
-    if (!f) throw new NotFoundAppException('Custom field');
+    if (!f) throw new NotFoundAppException('Trường thông tin thêm');
     return f;
   }
 
@@ -343,7 +343,7 @@ export class CustomFieldsService {
       where: { id: issueId, workspaceId, deletedAt: null },
       select: { id: true, projectId: true },
     });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 }

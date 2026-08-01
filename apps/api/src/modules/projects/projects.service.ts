@@ -26,7 +26,7 @@ export class ProjectsService {
       where: { workspaceId, key: input.key, deletedAt: null },
       select: { id: true },
     });
-    if (dup) throw new BusinessRuleException(`Project key "${input.key}" đã tồn tại trong workspace`);
+    if (dup) throw new BusinessRuleException(`Mã dự án "${input.key}" đã tồn tại trong không gian làm việc này — hãy chọn mã khác`);
 
     const tpl =
       DEFAULT_WORKFLOW_TEMPLATES.find((t) => t.boardType === input.type) ??
@@ -117,7 +117,7 @@ export class ProjectsService {
       where: { workspaceId, key, deletedAt: null },
       include: { _count: { select: { issues: true } }, lead: true },
     });
-    if (!p) throw new NotFoundAppException('Project');
+    if (!p) throw new NotFoundAppException('Dự án');
     return this.toDto(p, p._count.issues, p.lead);
   }
 
@@ -127,7 +127,7 @@ export class ProjectsService {
       where: { workspaceId, key, deletedAt: null },
       select: { id: true, avatarUrl: true },
     });
-    if (!prev) throw new NotFoundAppException('Project');
+    if (!prev) throw new NotFoundAppException('Dự án');
     const avatarUrl = await this.media.saveAvatar(file, 'proj', req);
     await this.prisma.project.update({ where: { id: prev.id }, data: { avatarUrl } });
     await this.media.removeByUrl(prev.avatarUrl);
@@ -140,7 +140,7 @@ export class ProjectsService {
       where: { workspaceId, key, deletedAt: null },
       select: { id: true, avatarUrl: true },
     });
-    if (!prev) throw new NotFoundAppException('Project');
+    if (!prev) throw new NotFoundAppException('Dự án');
     await this.prisma.project.update({ where: { id: prev.id }, data: { avatarUrl: null } });
     await this.media.removeByUrl(prev.avatarUrl);
     return this.getByKey(workspaceId, key);
@@ -152,7 +152,7 @@ export class ProjectsService {
       where: { workspaceId, key, deletedAt: null },
       select: { id: true, key: true },
     });
-    if (!project) throw new NotFoundAppException('Project');
+    if (!project) throw new NotFoundAppException('Dự án');
     const [issueTypes, priorities] = await Promise.all([
       this.prisma.issueType.findMany({
         where: { workspaceId },

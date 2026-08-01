@@ -81,7 +81,7 @@ Thành viên sẽ không vào được cho tới khi bạn khôi phục. Dữ li
                 <th className="px-4 py-2.5 font-medium">Không gian làm việc</th>
                 <th className="px-4 py-2.5 font-medium">Chủ sở hữu</th>
                 <th className="px-4 py-2.5 font-medium">Gói</th>
-                <th className="px-4 py-2.5 text-right font-medium">TV · Dự án · Issue</th>
+                <th className="px-4 py-2.5 text-right font-medium">Thành viên · Dự án · Công việc</th>
                 <th className="px-4 py-2.5 font-medium">Hoạt động</th>
                 <th className="px-4 py-2.5" />
               </tr>

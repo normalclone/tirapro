@@ -70,7 +70,7 @@ export class CommentsService {
 
   private async requireIssue(workspaceId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({ where: { id: issueId, workspaceId, deletedAt: null }, select: { id: true, projectId: true } });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 

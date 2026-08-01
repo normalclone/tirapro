@@ -111,13 +111,13 @@ export function ReportsPage() {
             {report.isLoading ? (
               <ChartSkeleton />
             ) : !report.data || report.data.byStatus.length === 0 ? (
-              <EmptyState title="Chưa có dữ liệu" description="Dự án chưa có issue nào." />
+              <EmptyState title="Chưa có dữ liệu" description="Biểu đồ sẽ hiện khi dự án có công việc. Hãy tạo công việc đầu tiên ở Bảng hoặc Danh sách chờ." />
             ) : (
               <StatusDonut slices={report.data.byStatus} />
             )}
           </Card>
 
-          <Card title="Issue theo loại">
+          <Card title="Công việc theo loại">
             {report.isLoading ? (
               <ChartSkeleton />
             ) : !report.data || report.data.byType.length === 0 ? (
@@ -127,7 +127,7 @@ export function ReportsPage() {
             )}
           </Card>
 
-          <Card title="Issue theo độ ưu tiên">
+          <Card title="Công việc theo mức ưu tiên">
             {report.isLoading ? (
               <ChartSkeleton />
             ) : !report.data || report.data.byPriority.length === 0 ? (
@@ -140,11 +140,11 @@ export function ReportsPage() {
 
         {/* Khối lượng theo người phụ trách: biểu đồ + bảng chi tiết */}
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <Card title="Khối lượng theo người phụ trách" caption="Số issue được giao">
+          <Card title="Khối lượng theo người phụ trách" caption="Số công việc được giao">
             {report.isLoading ? (
               <ChartSkeleton />
             ) : !report.data || report.data.byAssignee.length === 0 ? (
-              <EmptyState title="Chưa có dữ liệu" description="Chưa có issue nào được giao." />
+              <EmptyState title="Chưa có dữ liệu" description="Chưa công việc nào được giao cho ai. Hãy gán người phụ trách để xem khối lượng chia đều tới đâu." />
             ) : (
               <AssigneeBar rows={report.data.byAssignee} />
             )}
@@ -326,7 +326,7 @@ function SummaryStats({
   completionRate: number;
 }) {
   const stats: { label: string; value: number | string; tone?: StatTone }[] = [
-    { label: 'Tổng issue', value: totals.total },
+    { label: 'Tổng công việc', value: totals.total },
     { label: 'Cần làm', value: totals.todo },
     { label: 'Đang làm', value: totals.inProgress, tone: 'progress' },
     { label: 'Hoàn thành', value: totals.done, tone: 'done' },
@@ -387,7 +387,7 @@ function SliceBar({ slices }: { slices: ReportSlice[] }) {
         <XAxis dataKey="name" {...AXIS_PROPS} interval={0} />
         <YAxis allowDecimals={false} {...AXIS_PROPS} width={32} axisLine={false} />
         <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={TOOLTIP_STYLE} />
-        <Bar dataKey="count" name="Số issue" radius={[4, 4, 0, 0]} maxBarSize={56}>
+        <Bar dataKey="count" name="Số công việc" radius={[4, 4, 0, 0]} maxBarSize={56}>
           {slices.map((s) => (
             <Cell key={s.name} fill={s.color ?? 'var(--primary)'} />
           ))}

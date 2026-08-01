@@ -7,14 +7,14 @@ import { useNotificationPrefs, useUpdateNotificationPrefs } from './api';
 
 /** Thứ tự + nhãn tiếng Việt cho từng loại thông báo. */
 const NOTIFICATION_TYPES: { key: string; label: string; hint: string }[] = [
-  { key: 'ISSUE_ASSIGNED', label: 'Được giao việc', hint: 'Khi bạn được gán vào một issue' },
+  { key: 'ISSUE_ASSIGNED', label: 'Được giao việc', hint: 'Khi bạn được gán vào một công việc' },
   { key: 'MENTIONED', label: 'Được nhắc đến (@)', hint: 'Khi ai đó @ bạn trong bình luận' },
-  { key: 'COMMENT_ADDED', label: 'Bình luận mới', hint: 'Bình luận mới trên issue liên quan' },
-  { key: 'STATUS_CHANGED', label: 'Đổi trạng thái', hint: 'Issue chuyển sang trạng thái khác' },
-  { key: 'ISSUE_UPDATED', label: 'Issue cập nhật', hint: 'Thông tin issue được chỉnh sửa' },
+  { key: 'COMMENT_ADDED', label: 'Bình luận mới', hint: 'Bình luận mới trên công việc liên quan' },
+  { key: 'STATUS_CHANGED', label: 'Đổi trạng thái', hint: 'Công việc chuyển sang trạng thái khác' },
+  { key: 'ISSUE_UPDATED', label: 'Công việc được cập nhật', hint: 'Thông tin công việc được chỉnh sửa' },
   { key: 'SPRINT_STARTED', label: 'Sprint bắt đầu', hint: 'Khi một sprint được khởi động' },
   { key: 'SPRINT_COMPLETED', label: 'Sprint hoàn thành', hint: 'Khi một sprint kết thúc' },
-  { key: 'WATCHING_UPDATE', label: 'Theo dõi cập nhật', hint: 'Cập nhật trên issue bạn theo dõi' },
+  { key: 'WATCHING_UPDATE', label: 'Theo dõi cập nhật', hint: 'Cập nhật trên công việc bạn đang theo dõi' },
 ];
 
 export function NotificationSection() {

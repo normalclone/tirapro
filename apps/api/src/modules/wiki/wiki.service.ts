@@ -204,7 +204,7 @@ export class WikiService {
     if (nextParentId) {
       const parent = await this.requirePage(workspaceId, nextParentId);
       if (parent.projectId !== page.projectId) {
-        throw new BusinessRuleException('Chỉ chuyển được trong cùng phạm vi (workspace hoặc cùng dự án)');
+        throw new BusinessRuleException('Chỉ chuyển được trong cùng phạm vi — trang chung của không gian làm việc, hoặc trong cùng một dự án');
       }
       if (await this.isDescendant(workspaceId, nextParentId, id)) {
         throw new BusinessRuleException('Không thể chuyển trang vào trang con của chính nó');

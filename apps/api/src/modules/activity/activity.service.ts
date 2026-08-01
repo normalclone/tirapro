@@ -75,7 +75,7 @@ export class ActivityService {
       where: { id: issueId, workspaceId },
       select: { id: true },
     });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
 
     const rows = await this.prisma.issueHistory.findMany({
       where: { issueId },
@@ -102,7 +102,7 @@ export class ActivityService {
       where: { id: projectId, workspaceId },
       select: { id: true },
     });
-    if (!project) throw new NotFoundAppException('Project');
+    if (!project) throw new NotFoundAppException('Dự án');
 
     const where: Prisma.IssueHistoryWhereInput = { projectId };
     if (cursor) {

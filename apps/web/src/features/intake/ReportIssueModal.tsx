@@ -55,9 +55,9 @@ export function ReportIssueModal({
         description: description.trim() || undefined,
       });
       if (res.deduped) {
-        toast.success(`Đã gộp vào issue trùng (lần thứ ${res.occurrenceCount ?? '?'})`);
+        toast.success(`Đã gộp vào công việc trùng (lần thứ ${res.occurrenceCount ?? '?'})`);
       } else {
-        toast.success(`Đã tạo ${res.key ?? 'issue'}`);
+        toast.success(`Đã tạo ${res.key ?? 'công việc'}`);
       }
       onClose();
     } catch (err) {
@@ -112,7 +112,7 @@ export function ReportIssueModal({
                         <button
                           type="button"
                           onClick={onClose}
-                          title="Đã có issue tương tự — bấm để đóng"
+                          title="Đã có công việc tương tự — bấm để đóng"
                           className="flex w-full items-baseline gap-2 rounded px-1.5 py-1 text-left text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                         >
                           <span className="font-mono text-xs font-medium text-primary">{m.key}</span>

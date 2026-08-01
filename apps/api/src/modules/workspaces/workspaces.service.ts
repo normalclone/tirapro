@@ -25,7 +25,7 @@ export class WorkspacesService {
       select: { isSystemAdmin: true, canCreateWorkspace: true },
     });
     if (!actor?.isSystemAdmin && !actor?.canCreateWorkspace) {
-      throw new ForbiddenAppException('Bạn không có quyền tạo workspace — liên hệ admin hệ thống để được cấp quyền');
+      throw new ForbiddenAppException('Bạn không có quyền tạo không gian làm việc — hãy liên hệ quản trị hệ thống để được cấp quyền');
     }
     return this.prisma.$transaction(async (tx) => {
       const slug = await this.uniqueSlug(tx, input.name);
@@ -49,7 +49,7 @@ export class WorkspacesService {
       where: { id: workspaceId, deletedAt: null },
       select: { avatarUrl: true },
     });
-    if (!prev) throw new NotFoundAppException('Workspace');
+    if (!prev) throw new NotFoundAppException('Không gian làm việc');
     const avatarUrl = await this.media.saveAvatar(file, 'ws', req);
     const ws = await this.prisma.workspace.update({ where: { id: workspaceId }, data: { avatarUrl } });
     await this.media.removeByUrl(prev.avatarUrl);
@@ -62,7 +62,7 @@ export class WorkspacesService {
       where: { id: workspaceId, deletedAt: null },
       select: { avatarUrl: true },
     });
-    if (!prev) throw new NotFoundAppException('Workspace');
+    if (!prev) throw new NotFoundAppException('Không gian làm việc');
     const ws = await this.prisma.workspace.update({ where: { id: workspaceId }, data: { avatarUrl: null } });
     await this.media.removeByUrl(prev.avatarUrl);
     return { id: ws.id, name: ws.name, slug: ws.slug, avatarUrl: ws.avatarUrl };

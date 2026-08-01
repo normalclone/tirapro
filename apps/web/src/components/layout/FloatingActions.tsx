@@ -38,7 +38,7 @@ const ACTION_META: { key: QuickActionKey; label: string; hint?: string }[] = [
   { key: 'issue', label: 'Tạo công việc' },
   { key: 'ai', label: 'Tạo bằng AI', hint: 'trong dự án' },
   { key: 'report', label: 'Báo lỗi', hint: 'trong dự án' },
-  { key: 'watch', label: 'Theo dõi', hint: 'trong trang issue' },
+  { key: 'watch', label: 'Theo dõi', hint: 'trong trang công việc' },
   { key: 'project', label: 'Tạo dự án' },
   { key: 'command', label: 'Lệnh nhanh' },
 ];

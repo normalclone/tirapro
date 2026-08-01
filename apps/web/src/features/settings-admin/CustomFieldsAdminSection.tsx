@@ -128,7 +128,7 @@ export function CustomFieldsAdminSection() {
   }
 
   function handleDelete(f: CustomField) {
-    if (!window.confirm(`Xoá trường "${f.name}"? Trường sẽ bị ẩn khỏi các issue.`)) return;
+    if (!window.confirm(`Xoá trường "${f.name}"? Trường sẽ bị ẩn khỏi mọi công việc.`)) return;
     remove.mutate(f.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -148,7 +148,7 @@ export function CustomFieldsAdminSection() {
     <SectionCard
       icon={<LayoutList className="h-4 w-4" />}
       title="Trường tuỳ chỉnh"
-      description="Định nghĩa các trường bổ sung gắn vào issue. Không thể đổi loại trường sau khi tạo."
+      description="Thêm các ô thông tin riêng của bạn vào mỗi công việc. Không thể đổi kiểu dữ liệu của trường sau khi tạo."
     >
       {isLoading ? (
         <div className="space-y-2">
@@ -162,7 +162,7 @@ export function CustomFieldsAdminSection() {
           title="Chưa có trường tuỳ chỉnh nào"
           description={
             canManage
-              ? 'Thêm trường đầu tiên để thu thập thêm thông tin trên issue.'
+              ? 'Trường tuỳ chỉnh là ô thông tin riêng của bạn trên mỗi công việc. Thêm trường đầu tiên để bắt đầu thu thập.'
               : 'Chưa có trường tuỳ chỉnh nào. Liên hệ quản trị để thêm.'
           }
           action={

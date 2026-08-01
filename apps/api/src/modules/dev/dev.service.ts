@@ -148,7 +148,7 @@ export class DevService {
         where: { id: input.projectId, workspaceId, deletedAt: null },
         select: { id: true },
       });
-      if (!project) throw new NotFoundAppException('Project');
+      if (!project) throw new NotFoundAppException('Dự án');
     }
 
     try {
@@ -187,7 +187,7 @@ export class DevService {
       where: { id, workspaceId },
       select: { id: true },
     });
-    if (!repo) throw new NotFoundAppException('Repository');
+    if (!repo) throw new NotFoundAppException('Kho mã nguồn');
     await this.prisma.codeRepository.delete({ where: { id } });
     return { success: true };
   }
@@ -199,7 +199,7 @@ export class DevService {
       where: { id: issueId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
 
     const rows = await this.prisma.issueDevLink.findMany({
       where: { issueId },
@@ -225,7 +225,7 @@ export class DevService {
       where: { id: repositoryId },
       select: { id: true, workspaceId: true, webhookSecret: true, isEnabled: true },
     });
-    if (!repo) throw new NotFoundAppException('Repository');
+    if (!repo) throw new NotFoundAppException('Kho mã nguồn');
 
     // Xác thực shared secret nếu repo có cấu hình.
     // TODO: real HMAC X-Hub-Signature-256 verification requires rawBody in main.ts

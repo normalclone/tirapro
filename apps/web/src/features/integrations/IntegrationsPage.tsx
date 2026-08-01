@@ -217,7 +217,7 @@ function TelegramSection() {
     <SectionCard
       icon={<PlatformLogo platform="TELEGRAM" size={18} />}
       title="Telegram"
-      description="Gửi thông báo issue tới nhóm hoặc kênh Telegram. Không nhập token = dùng bot chung của hệ thống."
+      description="Gửi thông báo công việc tới nhóm hoặc kênh Telegram. Bỏ trống token thì dùng bot chung của hệ thống."
     >
       {isLoading ? (
         <div className="space-y-2">
@@ -229,7 +229,7 @@ function TelegramSection() {
         <EmptyState
           icon={<Send className="h-6 w-6" />}
           title="Chưa có kết nối Telegram"
-          description="Kết nối Telegram để bắt đầu nhận thông báo về issue và sprint."
+          description="Nối Tirapro với Telegram để cập nhật về công việc và sprint được đẩy thẳng vào nhóm chat. Bấm Kết nối Telegram để bắt đầu."
           action={
             <Button size="sm" onClick={() => setAdding(true)}>
               <Plus className="h-4 w-4" />
@@ -582,7 +582,7 @@ function RepositorySection() {
     <SectionCard
       icon={<RepoStackIcon />}
       title="Kho mã (GitHub / GitLab)"
-      description="Liên kết repo để gắn commit và pull request với issue, theo dõi hoạt động phát triển."
+      description="Liên kết kho mã để gắn commit và pull request vào đúng công việc, tiện theo dõi tiến độ lập trình."
     >
       {isLoading ? (
         <div className="space-y-2">

@@ -133,8 +133,8 @@ export class AnalyticsService {
 
     // Cảnh báo (bằng chữ, có mức độ)
     const warnings: { level: 'danger' | 'warning' | 'info'; text: string }[] = [];
-    if (totals.overdue > 0) warnings.push({ level: 'danger', text: `${totals.overdue} issue đã quá hạn cần xử lý ngay.` });
-    if (highPriUnassigned > 0) warnings.push({ level: 'warning', text: `${highPriUnassigned} issue ưu tiên cao chưa có người làm.` });
+    if (totals.overdue > 0) warnings.push({ level: 'danger', text: `${totals.overdue} công việc đã quá hạn cần xử lý ngay.` });
+    if (highPriUnassigned > 0) warnings.push({ level: 'warning', text: `${highPriUnassigned} công việc ưu tiên cao chưa có người làm.` });
     if (dueSoon > 0) warnings.push({ level: 'warning', text: `${dueSoon} việc sắp đến hạn trong 3 ngày tới.` });
     if (unassignedNotDone > 0) warnings.push({ level: 'info', text: `${unassignedNotDone} việc chưa gán người thực hiện.` });
     if (warnings.length === 0) warnings.push({ level: 'info', text: 'Không có cảnh báo — tiến độ đang trong tầm kiểm soát.' });
@@ -313,7 +313,7 @@ export class AnalyticsService {
       where: { id: sprintId, deletedAt: null, project: { workspaceId } },
       include: { issues: { where: { deletedAt: null }, select: { id: true, storyPoints: true } } },
     });
-    if (!sprint) throw new NotFoundAppException('Sprint');
+    if (!sprint) throw new NotFoundAppException('Đợt làm việc (sprint)');
 
     const points = new Map<string, number>();
     let committed = 0;
@@ -460,7 +460,7 @@ export class AnalyticsService {
       where: { id: projectId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!p) throw new NotFoundAppException('Project');
+    if (!p) throw new NotFoundAppException('Dự án');
     return p;
   }
 }

@@ -83,7 +83,7 @@ export class IssueLinksService {
     input: CreateIssueLinkInput,
   ): Promise<CreatedLinkView> {
     if (input.targetIssueId === issueId) {
-      throw new BusinessRuleException('Không thể liên kết issue với chính nó');
+      throw new BusinessRuleException('Không thể liên kết một công việc với chính nó — hãy chọn công việc khác');
     }
 
     // Cả hai issue phải thuộc workspace của người dùng.
@@ -148,7 +148,7 @@ export class IssueLinksService {
       where: { id: issueId, workspaceId, deletedAt: null },
       select: linkEndSelect,
     });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 

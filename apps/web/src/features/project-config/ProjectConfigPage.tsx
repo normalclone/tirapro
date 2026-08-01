@@ -93,9 +93,9 @@ function formatDateTime(iso?: string | null): string {
 function importResultToast(result: ImportResult) {
   const { created, failed, total } = result;
   if (failed > 0) {
-    toast.warning(`Đã nhập ${created}/${total} issue · ${failed} lỗi.`);
+    toast.warning(`Đã nhập ${created}/${total} công việc · ${failed} việc lỗi.`);
   } else {
-    toast.success(`Đã nhập thành công ${created}/${total} issue.`);
+    toast.success(`Đã nhập thành công ${created}/${total} công việc.`);
   }
 }
 
@@ -457,7 +457,7 @@ function ComponentsSection({ projectId, canAdmin }: { projectId?: string; canAdm
     <SectionCard
       icon={<Boxes className="h-4 w-4" />}
       title="Thành phần"
-      description="Nhóm issue theo phần chức năng hoặc module của dự án."
+      description="Chia công việc theo từng phần chức năng hoặc từng khối của dự án."
     >
       {isLoading ? (
         <div className="space-y-2">
@@ -469,7 +469,7 @@ function ComponentsSection({ projectId, canAdmin }: { projectId?: string; canAdm
         <EmptyState
           icon={<Boxes className="h-6 w-6" />}
           title="Chưa có thành phần nào"
-          description="Thêm thành phần đầu tiên để phân loại issue theo module."
+          description="Thành phần là một phần chức năng của dự án (vd Đăng nhập, Thanh toán). Thêm thành phần đầu tiên để chia công việc cho gọn."
           action={
             canAdmin ? (
               <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
@@ -1036,7 +1036,7 @@ function LabelsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: 
     <SectionCard
       icon={<Tags className="h-4 w-4" />}
       title="Nhãn"
-      description="Gắn nhãn (label) để phân loại và lọc issue linh hoạt."
+      description="Gắn nhãn cho công việc để nhóm và lọc theo cách của riêng bạn."
     >
       {isLoading ? (
         <div className="space-y-2">
@@ -1048,7 +1048,7 @@ function LabelsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: 
         <EmptyState
           icon={<Tags className="h-6 w-6" />}
           title="Chưa có nhãn nào"
-          description="Thêm nhãn đầu tiên để gắn thẻ cho issue."
+          description="Nhãn là từ khoá tự đặt để nhóm và lọc công việc. Thêm nhãn đầu tiên để bắt đầu gắn."
           action={
             canAdmin ? (
               <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
@@ -1306,7 +1306,7 @@ function DataSection({ projectId, canImport }: { projectId?: string; canImport: 
     <SectionCard
       icon={<Download className="h-4 w-4" />}
       title="Xuất / Nhập dữ liệu"
-      description="Sao lưu dự án ra JSON hoặc nhập issue hàng loạt từ CSV / JSON."
+      description="Sao lưu dự án ra tệp JSON, hoặc nhập công việc hàng loạt từ tệp CSV / JSON."
     >
       <div className="space-y-6">
         {!canImport && (
@@ -1321,7 +1321,7 @@ function DataSection({ projectId, canImport }: { projectId?: string; canImport: 
         <div>
           <h3 className="text-sm font-medium text-ink-strong">Xuất dữ liệu</h3>
           <p className="mt-0.5 text-sm text-muted">
-            Tải toàn bộ issue và cấu hình dự án dưới dạng tệp JSON.
+            Tải toàn bộ công việc và cấu hình dự án về dưới dạng tệp JSON.
           </p>
           <Button
             variant="secondary"

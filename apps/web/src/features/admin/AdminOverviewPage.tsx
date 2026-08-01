@@ -71,7 +71,7 @@ export function AdminOverviewPage() {
                 sub={`${fmtInt(data.users.systemAdmins)} admin · ${fmtInt(data.users.deactivated)} vô hiệu`}
               />
               <StatTile label="Dự án" value={fmtInt(data.projects)} />
-              <StatTile label="Issue" value={fmtInt(data.issues.total)} sub={`${fmtInt(data.issues.open)} mở · ${fmtInt(data.issues.done)} xong`} />
+              <StatTile label="Công việc" value={fmtInt(data.issues.total)} sub={`${fmtInt(data.issues.open)} đang mở · ${fmtInt(data.issues.done)} đã xong`} />
               <StatTile label="Tệp đính kèm" value={fmtInt(data.attachments.count)} sub={fmtBytes(data.attachments.totalBytes)} />
               <StatTile label="Hoạt động 24h" value={fmtInt(data.activity.last24h)} sub={`${fmtInt(data.activity.last7d)} trong 7 ngày`} />
             </div>

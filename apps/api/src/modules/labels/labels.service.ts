@@ -141,7 +141,7 @@ export class LabelsService {
       where: { id: issueId, workspaceId, deletedAt: null },
       select: { id: true, projectId: true },
     });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 

@@ -18,7 +18,7 @@ export class IssuesController {
   constructor(private readonly issues: IssuesService) {}
 
   private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Chưa chọn workspace');
+    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
     return user.workspaceId;
   }
 

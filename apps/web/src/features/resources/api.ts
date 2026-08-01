@@ -44,6 +44,7 @@ export interface WorkloadCell {
   weekStart: string;
   capacityHours: number;
   assignedHours: number;
+  /** Luôn bằng 0: chức năng chấm công đã gỡ khỏi sản phẩm, không còn đường ghi WorkLog. */
   loggedHours: number;
   workingDays: number;
   offDays: number;
@@ -59,6 +60,7 @@ export interface WorkloadRow {
   totals: {
     capacityHours: number;
     assignedHours: number;
+    /** Luôn bằng 0: chức năng chấm công đã gỡ khỏi sản phẩm, không còn đường ghi WorkLog. */
     loggedHours: number;
     ratio: number | null;
     overloaded: boolean;

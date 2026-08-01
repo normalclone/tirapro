@@ -166,7 +166,7 @@ export class AttachmentsService {
       where: { id: issueId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 

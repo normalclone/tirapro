@@ -150,8 +150,8 @@ export function CreateProjectModal({
               />
               <p className={cn('mt-1.5 text-xs', showKeyHint ? 'text-danger' : 'text-faint')}>
                 {showKeyHint
-                  ? 'Key gồm 2–10 ký tự, chữ in hoa/số, bắt đầu bằng chữ cái.'
-                  : 'Dùng làm tiền tố mã issue (vd WM-1). Có thể sửa.'}
+                  ? 'Mã gồm 2–10 ký tự, chữ in hoa/số, bắt đầu bằng chữ cái.'
+                  : 'Dùng làm tiền tố cho mã công việc (vd WM-1). Có thể sửa.'}
               </p>
             </div>
 

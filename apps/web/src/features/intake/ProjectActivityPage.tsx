@@ -244,7 +244,7 @@ export function ProjectActivityPage() {
           <History className="h-4 w-4 text-primary" />
           Hoạt động
         </h1>
-        <p className="mt-1 text-sm text-muted">Ai đã thao tác gì, trên issue nào.</p>
+        <p className="mt-1 text-sm text-muted">Ai đã làm gì, trên công việc nào.</p>
       </header>
 
       {isLoading ? (
@@ -263,7 +263,7 @@ export function ProjectActivityPage() {
         <EmptyState
           icon={<History className="h-8 w-8" />}
           title="Chưa có hoạt động"
-          description="Các thay đổi trên issue của dự án — đổi trạng thái, giao việc, chuyển sprint… — sẽ xuất hiện ở đây theo dòng thời gian."
+          description="Đây là dòng thời gian của cả dự án. Khi có người đổi trạng thái, giao việc hay chuyển sprint, các thay đổi trên công việc sẽ hiện ở đây."
         />
       ) : (
         <>

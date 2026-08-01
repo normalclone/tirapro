@@ -103,7 +103,7 @@ export function TriagePage() {
             <EmptyState
               icon={<Inbox className="h-8 w-8" />}
               title="Hộp phân loại trống — tất cả đã được xử lý 🎉"
-              description="Không còn issue nào chờ phân loại trong dự án này."
+              description="Đây là nơi tiếp nhận công việc do người ngoài dự án báo lên. Hiện không còn việc nào chờ bạn duyệt."
             />
           </div>
         ) : (
@@ -174,7 +174,7 @@ export function TriagePage() {
                         size="sm"
                         onClick={() => onAccept(issue)}
                         disabled={pending}
-                        title="Nhận issue vào dự án"
+                        title="Nhận công việc này vào dự án"
                       >
                         <Check className="h-4 w-4" />
                         Nhận
@@ -227,7 +227,7 @@ export function TriagePage() {
                         onClick={() => onDecline(issue)}
                         disabled={pending}
                         className="text-muted hover:text-ink"
-                        title="Từ chối issue"
+                        title="Từ chối công việc này"
                       >
                         <X className="h-4 w-4" />
                         Từ chối

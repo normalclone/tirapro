@@ -82,7 +82,7 @@ export class ExportService {
       where: { id: projectId, workspaceId, deletedAt: null },
       select: { id: true, key: true, name: true, description: true, type: true },
     });
-    if (!project) throw new NotFoundAppException('Project');
+    if (!project) throw new NotFoundAppException('Dự án');
 
     const [sprints, labels, issues] = await Promise.all([
       this.prisma.sprint.findMany({

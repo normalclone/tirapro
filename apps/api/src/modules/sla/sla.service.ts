@@ -54,7 +54,7 @@ export class SlaService {
 
   async update(workspaceId: string, id: string, dto: UpdateSlaPolicyInput) {
     const found = await this.prisma.slaPolicy.findFirst({ where: { id, workspaceId }, select: { id: true } });
-    if (!found) throw new NotFoundAppException('Chính sách SLA');
+    if (!found) throw new NotFoundAppException('Cam kết thời gian xử lý');
     await this.prisma.slaPolicy.update({
       where: { id },
       data: {
@@ -78,7 +78,7 @@ export class SlaService {
 
   async getForIssue(workspaceId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({ where: { id: issueId, workspaceId }, select: { id: true } });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     const row = await this.prisma.issueSla.findUnique({
       where: { issueId },
       include: { policy: { select: { name: true, responseMins: true, resolveMins: true } } },

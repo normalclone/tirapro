@@ -587,8 +587,8 @@ function Results({
     return (
       <EmptyState
         icon={<SearchX className="h-8 w-8" aria-hidden />}
-        title="Không có issue nào khớp"
-        description="Thử nới lỏng điều kiện truy vấn của bạn."
+        title="Không có công việc nào khớp"
+        description="Bộ lọc hiện tại quá hẹp. Thử bớt điều kiện hoặc nới rộng khoảng giá trị rồi tìm lại."
       />
     );
   }

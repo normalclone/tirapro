@@ -67,7 +67,7 @@ export class AiService {
       where: { id: input.projectId, workspaceId, deletedAt: null },
       select: { id: true, key: true, name: true },
     });
-    if (!project) throw new NotFoundAppException('Project');
+    if (!project) throw new NotFoundAppException('Dự án');
 
     const result = await this.claude.extract<{ issues: AiGeneratedIssue[] }>({
       toolName: 'propose_issues',
@@ -185,7 +185,7 @@ export class AiService {
       where: { id: issueId, workspaceId, deletedAt: null },
       include: { status: true, assignee: true, priority: true, type: true },
     });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 }

@@ -93,7 +93,7 @@ export class MembersService {
   async removeWorkspace(workspaceId: string, userId: string, actingUserId: string) {
     if (userId === actingUserId) throw new ForbiddenAppException('Không thể tự gỡ chính mình');
     const ws = await this.prisma.workspace.findUnique({ where: { id: workspaceId }, select: { ownerId: true } });
-    if (ws?.ownerId === userId) throw new ForbiddenAppException('Không thể gỡ chủ sở hữu workspace');
+    if (ws?.ownerId === userId) throw new ForbiddenAppException('Không thể gỡ chủ sở hữu của không gian làm việc — hãy chuyển quyền sở hữu cho người khác trước');
     await this.prisma.workspaceMembership.delete({ where: { workspaceId_userId: { workspaceId, userId } } });
     await this.rbac.invalidate(userId, workspaceId);
     return { success: true };
@@ -172,7 +172,7 @@ export class MembersService {
       where: { workspaceId_userId: { workspaceId, userId } },
       select: { id: true },
     });
-    if (!isMember) throw new ForbiddenAppException('Người dùng chưa thuộc workspace này');
+    if (!isMember) throw new ForbiddenAppException('Người dùng chưa thuộc không gian làm việc này — hãy mời họ vào trước');
 
     const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
     const existing = await this.prisma.projectMembership.findUnique({
@@ -254,7 +254,7 @@ export class MembersService {
       select: { id: true },
     });
     if (found.length !== unique.length) {
-      throw new ForbiddenAppException(`Một số vai trò không hợp lệ cho cấp ${scope === 'PROJECT' ? 'dự án' : 'workspace'}`);
+      throw new ForbiddenAppException(`Một số vai trò không hợp lệ cho cấp ${scope === 'PROJECT' ? 'dự án' : 'không gian làm việc'}`);
     }
     // Giữ thứ tự gốc (roleIds[0] = vai trò chính).
     const set = new Set(found.map((r) => r.id));

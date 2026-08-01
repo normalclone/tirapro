@@ -233,7 +233,7 @@ export function QueryBuilder({
 
       {query.conditions.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
-          Chưa có điều kiện. Thêm một dòng để lọc, hoặc để trống để xem tất cả issue.
+          Chưa có điều kiện. Thêm một dòng để lọc, hoặc để trống để xem tất cả công việc.
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -728,7 +728,7 @@ function JqlPreview({ jql }: { jql: string }) {
         </button>
       </div>
       <code className="block break-all font-mono text-xs text-ink">
-        {jql || 'Tất cả issue (không có điều kiện lọc)'}
+        {jql || 'Tất cả công việc (không có điều kiện lọc)'}
       </code>
     </div>
   );

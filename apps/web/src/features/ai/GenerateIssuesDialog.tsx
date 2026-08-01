@@ -80,7 +80,7 @@ export function GenerateIssuesDialog({
     if (!rows) return;
     const chosen = rows.filter((r) => r.selected && r.summary.trim());
     if (!chosen.length) {
-      toast.error('Chưa chọn issue nào');
+      toast.error('Chưa chọn công việc nào');
       return;
     }
     setCreating(true);
@@ -100,11 +100,11 @@ export function GenerateIssuesDialog({
     const ok = results.filter((x) => x.status === 'fulfilled').length;
     const failed = results.length - ok;
     if (ok) {
-      toast.success(`Đã tạo ${ok} issue${failed ? `, ${failed} lỗi` : ''}`);
+      toast.success(`Đã tạo ${ok} công việc${failed ? `, ${failed} việc lỗi` : ''}`);
       void qc.invalidateQueries({ queryKey: boardIssuesKey(projectId) });
       onClose();
     } else {
-      toast.error('Không tạo được issue nào');
+      toast.error('Không tạo được công việc nào');
     }
   }
 
@@ -124,7 +124,7 @@ export function GenerateIssuesDialog({
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
           <div>
-            <p className="mb-1.5 text-sm text-muted">Mô tả yêu cầu — AI sẽ phân rã thành các issue.</p>
+            <p className="mb-1.5 text-sm text-muted">Mô tả yêu cầu — AI sẽ tách thành các công việc nhỏ.</p>
             <textarea
               autoFocus
               value={text}
@@ -170,7 +170,7 @@ export function GenerateIssuesDialog({
                           patch(idx, { type: name });
                         }}
                         options={(meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name }))}
-                        ariaLabel="Loại issue"
+                        ariaLabel="Loại công việc"
                         className="w-40"
                       />
                       {typeof row.storyPoints === 'number' && (
@@ -191,7 +191,7 @@ export function GenerateIssuesDialog({
           <footer className="flex items-center gap-2 border-t border-border px-5 py-3">
             <span className="text-xs text-muted">{selectedCount} đã chọn</span>
             <Button className="ml-auto" loading={creating} onClick={() => void createSelected()} disabled={!selectedCount || !meta}>
-              Tạo {selectedCount} issue
+              Tạo {selectedCount} công việc
             </Button>
           </footer>
         )}

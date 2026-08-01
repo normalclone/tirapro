@@ -277,7 +277,7 @@ export class GoalsService {
       where: { workspaceId, userId: ownerId },
       select: { userId: true },
     });
-    if (!m) throw new ForbiddenAppException('Chủ sở hữu không thuộc workspace này');
+    if (!m) throw new ForbiddenAppException('Chủ sở hữu không thuộc không gian làm việc này — hãy chọn một thành viên khác');
     return m.userId;
   }
 
@@ -291,7 +291,7 @@ export class GoalsService {
     });
     if (rows.length !== unique.length) {
       throw new ForbiddenAppException(
-        projectId ? 'Một số issue không thuộc dự án của mục tiêu này' : 'Một số issue không thuộc workspace này',
+        projectId ? 'Một số công việc không thuộc dự án của mục tiêu này — hãy bỏ chọn những công việc đó' : 'Một số công việc không thuộc không gian làm việc này — hãy bỏ chọn những công việc đó',
       );
     }
     return unique;

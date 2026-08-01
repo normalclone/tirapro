@@ -94,7 +94,7 @@ export class ImportService {
       where: { id: projectId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!project) throw new NotFoundAppException('Project');
+    if (!project) throw new NotFoundAppException('Dự án');
 
     // 2. Tạo bản ghi ImportJob (RUNNING).
     const job = await this.prisma.importJob.create({
@@ -150,7 +150,7 @@ export class ImportService {
           const typeId =
             this.lookup(typeByName, get('type', 'issue type')) ?? defaultTypeId;
           if (!typeId) {
-            throw new Error('Không tìm thấy loại issue (issue type) phù hợp');
+            throw new Error('Không tìm thấy loại công việc phù hợp — hãy kiểm tra cột loại trong tệp hoặc thêm loại công việc đó vào cấu hình');
           }
 
           const description = get('description');
@@ -237,7 +237,7 @@ export class ImportService {
       where: { id: projectId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!project) throw new NotFoundAppException('Project');
+    if (!project) throw new NotFoundAppException('Dự án');
 
     const issues = Array.isArray(data?.issues) ? data.issues : [];
     const total = issues.length;
@@ -305,7 +305,7 @@ export class ImportService {
         try {
           const typeId = this.lookup(typeByName, issue.type ?? '') ?? defaultTypeId;
           if (!typeId) {
-            throw new Error('Không tìm thấy loại issue (issue type) phù hợp');
+            throw new Error('Không tìm thấy loại công việc phù hợp — hãy kiểm tra cột loại trong tệp hoặc thêm loại công việc đó vào cấu hình');
           }
 
           const priorityId = this.lookup(priorityByName, issue.priority ?? '');

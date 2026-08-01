@@ -49,7 +49,7 @@ export class IntakeService {
       where: { id: input.projectId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!project) throw new NotFoundAppException('Project');
+    if (!project) throw new NotFoundAppException('Dự án');
 
     // 2. Dedupe: tìm issue chưa xóa cùng project có tiêu đề chuẩn hóa trùng và còn "sống".
     const target = normalizeSummary(input.summary);
@@ -114,7 +114,7 @@ export class IntakeService {
       where: { id: projectId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!project) throw new NotFoundAppException('Project');
+    if (!project) throw new NotFoundAppException('Dự án');
 
     const query = normalizeSummary(summary);
     if (!query) return [];
@@ -149,7 +149,7 @@ export class IntakeService {
       orderBy: { hierarchyLevel: 'asc' },
       select: { id: true },
     });
-    if (!first) throw new BusinessRuleException('Workspace chưa cấu hình loại issue nào');
+    if (!first) throw new BusinessRuleException('Không gian làm việc chưa có loại công việc nào — hãy vào Cấu hình để thêm ít nhất một loại công việc');
     return first.id;
   }
 }

@@ -68,7 +68,7 @@ export function SeveritySection() {
     <SectionCard
       icon={<Flag className="h-4 w-4" />}
       title="Mức độ nghiêm trọng"
-      description="Định nghĩa các mức độ (severity) dùng để phân loại issue. Rank nhỏ = ưu tiên cao hơn."
+      description="Đặt các mức nghiêm trọng để phân loại công việc theo tác động. Số thứ tự càng nhỏ thì mức càng nặng và càng được xử lý trước."
     >
       {isLoading ? (
         <div className="space-y-2">
@@ -82,7 +82,7 @@ export function SeveritySection() {
           title="Chưa có mức độ nào"
           description={
             canManage
-              ? 'Thêm mức độ đầu tiên để bắt đầu phân loại issue.'
+              ? 'Mức nghiêm trọng cho biết một công việc gây tác động lớn tới đâu. Thêm mức đầu tiên để bắt đầu phân loại.'
               : 'Chưa có mức độ nào. Liên hệ quản trị viên để thêm.'
           }
           action={

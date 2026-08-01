@@ -22,7 +22,7 @@ export class IssueExtrasService {
       where: { id: issueId, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 
@@ -56,7 +56,7 @@ export class IssueExtrasService {
         select: { userId: true },
       });
       if (members.length !== unique.length) {
-        throw new ForbiddenAppException('Một số người dùng không thuộc workspace này');
+        throw new ForbiddenAppException('Một số người dùng không thuộc không gian làm việc này — hãy chọn lại từ danh sách thành viên');
       }
     }
     await this.prisma.$transaction([

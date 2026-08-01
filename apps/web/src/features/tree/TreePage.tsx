@@ -91,7 +91,7 @@ export function TreePage() {
           <div className={pageContainer('lg')}>
             <EmptyState
               icon={<ListTree className="h-8 w-8" aria-hidden />}
-              title="Chưa có issue nào"
+              title="Chưa có công việc nào"
               description="Mở một công việc, đặt trường “Việc cha” cho nó — cây phân cấp sẽ tự hiện ở đây."
             />
           </div>

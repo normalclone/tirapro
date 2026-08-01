@@ -202,7 +202,7 @@ export class ClientsService {
       where: { id: { in: ids }, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (found.length !== ids.length) throw new BusinessRuleException('Một số dự án không thuộc workspace này');
+    if (found.length !== ids.length) throw new BusinessRuleException('Một số dự án không thuộc không gian làm việc này — hãy bỏ chọn những dự án đó');
     return ids;
   }
 

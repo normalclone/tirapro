@@ -88,7 +88,7 @@ export function CommandPalette() {
         <Command.Input
           value={q}
           onValueChange={setQ}
-          placeholder="Tìm issue, điều hướng… (gõ để tìm)"
+          placeholder="Tìm công việc, điều hướng… (gõ để tìm)"
           className="w-full bg-transparent py-3 text-sm text-ink outline-none placeholder:text-faint"
         />
       </div>
@@ -101,17 +101,17 @@ export function CommandPalette() {
         {/* Nhảy thẳng tới issue khi gõ đúng mã (vd DEMO-BUG-1) */}
         {issueKeyGuess && (
           <Command.Group
-            heading="Đi tới issue"
+            heading="Đi tới công việc"
             className="text-faint [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-faint"
           >
             <Command.Item
-              value={`di toi issue ${issueKeyGuess}`}
+              value={`di toi cong viec issue ${issueKeyGuess}`}
               onSelect={() => runAction(() => navigate(`/issue/${issueKeyGuess}`))}
               className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink data-[selected=true]:bg-surface-2"
             >
               <ArrowRight className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
               <span>
-                Mở issue <span className="font-mono text-xs text-muted">{issueKeyGuess}</span>
+                Mở công việc <span className="font-mono text-xs text-muted">{issueKeyGuess}</span>
               </span>
             </Command.Item>
           </Command.Group>
@@ -142,7 +142,7 @@ export function CommandPalette() {
           className="text-faint [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-faint"
         >
           <ActionItem
-            value="tao issue create"
+            value="tao cong viec issue create"
             icon={<Plus className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
             label="Tạo công việc"
             onSelect={() => runAction(() => openCreate({ projectKey: currentProjectKey(projects) ?? undefined }))}
@@ -225,7 +225,7 @@ export function CommandPalette() {
 
         {showIssues && (
           <Command.Group
-            heading="Issue"
+            heading="Công việc"
             className="text-faint [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-faint"
           >
             {issueResults.map((issue) => (

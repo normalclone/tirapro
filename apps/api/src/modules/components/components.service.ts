@@ -138,7 +138,7 @@ export class ComponentsService {
       where: { id: componentId, projectId: issue.projectId },
       select: { id: true },
     });
-    if (!component) throw new NotFoundAppException('Component');
+    if (!component) throw new NotFoundAppException('Hạng mục');
     try {
       await this.prisma.issueComponent.create({ data: { issueId, componentId } });
     } catch (e) {
@@ -304,7 +304,7 @@ export class ComponentsService {
       where: { id: componentId, project: { workspaceId } },
       select: { id: true },
     });
-    if (!component) throw new NotFoundAppException('Component');
+    if (!component) throw new NotFoundAppException('Hạng mục');
     return component;
   }
 
@@ -322,7 +322,7 @@ export class ComponentsService {
       where: { id: issueId, workspaceId, deletedAt: null },
       select: { id: true, projectId: true },
     });
-    if (!issue) throw new NotFoundAppException('Issue');
+    if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 

@@ -121,7 +121,7 @@ export class AutomationService {
       where: { id, workspaceId },
       include: { project: PROJECT_BRIEF },
     });
-    if (!row) throw new NotFoundAppException('Mẫu issue');
+    if (!row) throw new NotFoundAppException('Mẫu công việc');
     return this.toTemplateDto(row);
   }
 
@@ -352,7 +352,7 @@ export class AutomationService {
         const payload = this.parsePayload(rec.payload);
         this.assertRunnable(payload);
         const actorId = await this.resolveActor(rec.createdById, rec.project.workspaceId, rec.project.leadId);
-        if (!actorId) throw new Error('Không xác định được người tạo issue');
+        if (!actorId) throw new Error('Không xác định được người tạo công việc — hãy thêm ít nhất một thành viên vào không gian làm việc');
         await this.createIssueFrom(rec.project.workspaceId, rec.projectId, actorId, rec.name, payload);
         ranOk = true;
       } catch (err) {
@@ -431,7 +431,7 @@ export class AutomationService {
   }
 
   private assertRunnable(payload: IssuePayload): void {
-    if (!payload.typeId) throw new BusinessRuleException('Cần chọn loại issue mặc định cho việc lặp lại');
+    if (!payload.typeId) throw new BusinessRuleException('Hãy chọn loại công việc mặc định cho việc lặp lại');
   }
 
   /** Người "tạo" issue tự động: người lập lịch → trưởng dự án → thành viên workspace bất kỳ. */

@@ -355,7 +355,6 @@ function LoadCell({ cell, name, hoursPerDay }: { cell: WorkloadCell; name: strin
             <dl className="space-y-1 text-muted">
               <Line label="Làm được" value={formatHours(cell.capacityHours)} />
               <Line label="Được giao" value={formatHours(cell.assignedHours)} strong={cell.overloaded} />
-              <Line label="Đã chấm công" value={formatHours(cell.loggedHours)} />
               <Line label="Ngày làm việc" value={`${cell.workingDays} ngày${cell.offDays ? ` · nghỉ ${cell.offDays}` : ''}`} />
               <Line label="Tỉ lệ phân bổ" value={`${cell.allocationPercent}% · ${hoursPerDay}h/ngày`} />
               <Line label="Số việc đang giao" value={`${cell.issueCount}`} />

@@ -71,7 +71,7 @@ export class RaidService {
 
   async get(workspaceId: string, id: string) {
     const row = await this.prisma.raidItem.findFirst({ where: { id, workspaceId }, select: RAID_SELECT });
-    if (!row) throw new NotFoundAppException('Mục RAID');
+    if (!row) throw new NotFoundAppException('Mục rủi ro');
     return this.toDto(row);
   }
 
@@ -138,7 +138,7 @@ export class RaidService {
 
   private async requireItem(workspaceId: string, id: string) {
     const row = await this.prisma.raidItem.findFirst({ where: { id, workspaceId }, select: { id: true } });
-    if (!row) throw new NotFoundAppException('Mục RAID');
+    if (!row) throw new NotFoundAppException('Mục rủi ro');
     return row;
   }
 
@@ -165,7 +165,7 @@ export class RaidService {
       where: { workspaceId, userId: ownerId },
       select: { userId: true },
     });
-    if (!m) throw new ForbiddenAppException('Chủ sở hữu không thuộc workspace này');
+    if (!m) throw new ForbiddenAppException('Chủ sở hữu không thuộc không gian làm việc này — hãy chọn một thành viên khác');
     return m.userId;
   }
 
