@@ -1,14 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
-export const triageInboxKey = (projectId: string) => ['triage-inbox', projectId] as const;
-export const triageCountKey = (projectId: string) => ['triage-count', projectId] as const;
 
 /** Hộp phân loại: issue đang chờ triage của dự án. */
 export function useTriageInbox(projectId: string | undefined) {
   return useQuery({
-    queryKey: triageInboxKey(projectId ?? ''),
+    queryKey: keys.triage.inbox(projectId ?? ''),
     queryFn: async () =>
       (await api.get<ListResponse<IssueDto>>(`/triage?projectId=${projectId}&limit=100`)).data.data,
     enabled: !!projectId,
@@ -18,7 +17,7 @@ export function useTriageInbox(projectId: string | undefined) {
 /** Số lượng issue đang chờ phân loại (cho badge). */
 export function useTriageCount(projectId: string | undefined) {
   return useQuery({
-    queryKey: triageCountKey(projectId ?? ''),
+    queryKey: keys.triage.count(projectId ?? ''),
     queryFn: async () => (await api.get<{ count: number }>(`/triage/count?projectId=${projectId}`)).data,
     enabled: !!projectId,
   });
@@ -34,7 +33,7 @@ function useTriageMutation<TVars>(
   mutationFn: (vars: TVars & { issueId: string }) => Promise<unknown>,
 ) {
   const qc = useQueryClient();
-  const inboxKey = triageInboxKey(projectId);
+  const inboxKey = keys.triage.inbox(projectId);
   return useMutation({
     mutationFn,
     onMutate: async (vars: TVars & { issueId: string }) => {
@@ -48,7 +47,7 @@ function useTriageMutation<TVars>(
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: inboxKey });
-      void qc.invalidateQueries({ queryKey: triageCountKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.triage.count(projectId) });
     },
   });
 }

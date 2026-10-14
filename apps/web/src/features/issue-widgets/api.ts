@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 // ---- Types (local, no `any`) ----
 export interface WatchState {
@@ -35,15 +36,11 @@ export interface IssueLink {
 }
 
 // ---- Query keys ----
-export const watchKey = (issueId: string) => ['issue-watch', issueId] as const;
-export const watchersKey = (issueId: string) => ['issue-watchers', issueId] as const;
-export const issueLinksKey = (issueId: string) => ['issue-links', issueId] as const;
-export const linkTypesKey = () => ['link-types'] as const;
 
 // ---- Watch ----
 export function useWatchState(issueId: string) {
   return useQuery({
-    queryKey: watchKey(issueId),
+    queryKey: keys.issues.watch(issueId),
     queryFn: async () => (await api.get<WatchState>(`/issues/${issueId}/watch`)).data,
     enabled: !!issueId,
   });
@@ -60,8 +57,8 @@ export function useToggleWatch(issueId: string) {
       return res.data;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: watchKey(issueId) });
-      void qc.invalidateQueries({ queryKey: watchersKey(issueId) });
+      void qc.invalidateQueries({ queryKey: keys.issues.watch(issueId) });
+      void qc.invalidateQueries({ queryKey: keys.issues.watchers(issueId) });
     },
   });
 }
@@ -69,7 +66,7 @@ export function useToggleWatch(issueId: string) {
 // ---- Links ----
 export function useIssueLinks(issueId: string) {
   return useQuery({
-    queryKey: issueLinksKey(issueId),
+    queryKey: keys.issues.links(issueId),
     queryFn: async () => (await api.get<IssueLink[]>(`/issues/${issueId}/links`)).data,
     enabled: !!issueId,
   });
@@ -77,7 +74,7 @@ export function useIssueLinks(issueId: string) {
 
 export function useLinkTypes() {
   return useQuery({
-    queryKey: linkTypesKey(),
+    queryKey: keys.issues.linkTypes,
     queryFn: async () => (await api.get<LinkType[]>('/link-types')).data,
   });
 }
@@ -88,7 +85,7 @@ export function useCreateLink(issueId: string) {
     mutationFn: async (v: { targetIssueId: string; linkTypeId: string }) =>
       (await api.post<IssueLink>(`/issues/${issueId}/links`, v)).data,
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: issueLinksKey(issueId) });
+      void qc.invalidateQueries({ queryKey: keys.issues.links(issueId) });
     },
   });
 }
@@ -100,7 +97,7 @@ export function useDeleteLink(issueId: string) {
       await api.delete(`/links/${linkId}`);
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: issueLinksKey(issueId) });
+      void qc.invalidateQueries({ queryKey: keys.issues.links(issueId) });
     },
   });
 }

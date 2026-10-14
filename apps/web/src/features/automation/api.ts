@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RecurrenceFreq } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 // Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Tự động hoá import một chỗ.
 export type { RecurrenceFreq };
@@ -52,8 +53,6 @@ export interface RecurringIssue {
   updatedAt: string;
 }
 
-export const templatesKey = ['automation', 'templates'] as const;
-export const recurringKey = ['automation', 'recurring'] as const;
 
 /**
  * Guard quyền của API đọc `projectId` từ params/body/query. Gửi kèm dự án của bản ghi để
@@ -66,7 +65,7 @@ const scopeParams = (projectId?: string | null) => (projectId ? { projectId } : 
 
 export function useIssueTemplates() {
   return useQuery({
-    queryKey: templatesKey,
+    queryKey: keys.automation.templates,
     queryFn: async () => (await api.get<IssueTemplate[]>('/automation/templates')).data,
   });
 }
@@ -83,7 +82,7 @@ export function useCreateTemplate() {
   return useMutation({
     mutationFn: (input: TemplateInput) =>
       api.post<IssueTemplate>('/automation/templates', input).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: templatesKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.templates }),
   });
 }
 
@@ -92,7 +91,7 @@ export function useUpdateTemplate() {
   return useMutation({
     mutationFn: ({ id, ...input }: TemplateInput & { id: string }) =>
       api.put<IssueTemplate>(`/automation/templates/${id}`, input, { params: scopeParams(input.projectId) }).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: templatesKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.templates }),
   });
 }
 
@@ -101,7 +100,7 @@ export function useDeleteTemplate() {
   return useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId?: string | null }) =>
       api.delete(`/automation/templates/${id}`, { params: scopeParams(projectId) }).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: templatesKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.templates }),
   });
 }
 
@@ -109,7 +108,7 @@ export function useDeleteTemplate() {
 
 export function useRecurringIssues() {
   return useQuery({
-    queryKey: recurringKey,
+    queryKey: keys.automation.recurring,
     queryFn: async () => (await api.get<RecurringIssue[]>('/automation/recurring')).data,
   });
 }
@@ -131,7 +130,7 @@ export function useCreateRecurring() {
   return useMutation({
     mutationFn: (input: RecurringInput) =>
       api.post<RecurringIssue>('/automation/recurring', input).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: recurringKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.recurring }),
   });
 }
 
@@ -140,7 +139,7 @@ export function useUpdateRecurring() {
   return useMutation({
     mutationFn: ({ id, projectId, ...input }: RecurringInput & { id: string }) =>
       api.put<RecurringIssue>(`/automation/recurring/${id}`, input, { params: scopeParams(projectId) }).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: recurringKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.recurring }),
   });
 }
 
@@ -149,7 +148,7 @@ export function useDeleteRecurring() {
   return useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId: string }) =>
       api.delete(`/automation/recurring/${id}`, { params: scopeParams(projectId) }).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: recurringKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.recurring }),
   });
 }
 
@@ -164,8 +163,8 @@ export function useRunRecurringNow() {
         )
         .then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: recurringKey });
-      void qc.invalidateQueries({ queryKey: ['issues'] });
+      void qc.invalidateQueries({ queryKey: keys.automation.recurring });
+      void qc.invalidateQueries({ queryKey: keys.issues.all });
     },
   });
 }

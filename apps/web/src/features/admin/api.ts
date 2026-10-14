@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /** Envelope list backend trả về cho danh sách: { success, data, pageInfo, meta }. */
 interface ListEnvelope<T> {
@@ -35,11 +36,10 @@ export type UpdateAdminUserInput = Partial<{
   status: 'ACTIVE' | 'DEACTIVATED';
 }>;
 
-const adminUsersKey = ['admin-users'] as const;
 
 export function useAdminUsers() {
   return useQuery({
-    queryKey: adminUsersKey,
+    queryKey: keys.admin.users,
     queryFn: async () => (await api.get<ListEnvelope<AdminUser>>('/admin/users')).data.data,
   });
 }
@@ -49,7 +49,7 @@ export function useCreateAdminUser() {
   return useMutation({
     mutationFn: async (input: CreateAdminUserInput) =>
       (await api.post<AdminUser & { tempPassword?: string }>('/admin/users', input)).data,
-    onSuccess: () => void qc.invalidateQueries({ queryKey: adminUsersKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.admin.users }),
   });
 }
 
@@ -58,7 +58,7 @@ export function useUpdateAdminUser() {
   return useMutation({
     mutationFn: async (v: { id: string; patch: UpdateAdminUserInput }) =>
       (await api.patch<AdminUser>(`/admin/users/${v.id}`, v.patch)).data,
-    onSuccess: () => void qc.invalidateQueries({ queryKey: adminUsersKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.admin.users }),
   });
 }
 
@@ -116,11 +116,11 @@ export interface AuditEntry {
 }
 
 export function useAdminOverview() {
-  return useQuery({ queryKey: ['admin-overview'], queryFn: async () => (await api.get<AdminOverview>('/admin/overview')).data });
+  return useQuery({ queryKey: keys.admin.overview, queryFn: async () => (await api.get<AdminOverview>('/admin/overview')).data });
 }
 
 export function useAdminWorkspaces() {
-  return useQuery({ queryKey: ['admin-workspaces'], queryFn: async () => (await api.get<ListEnvelope<AdminWorkspace>>('/admin/workspaces')).data.data });
+  return useQuery({ queryKey: keys.admin.workspaces, queryFn: async () => (await api.get<ListEnvelope<AdminWorkspace>>('/admin/workspaces')).data.data });
 }
 
 export interface PatchWorkspacePayload {
@@ -134,27 +134,27 @@ export function usePatchWorkspace() {
     mutationFn: async (v: { id: string; patch: PatchWorkspacePayload }) =>
       (await api.patch<AdminWorkspace>(`/admin/workspaces/${v.id}`, v.patch)).data,
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['admin-workspaces'] });
-      void qc.invalidateQueries({ queryKey: ['admin-overview'] });
+      void qc.invalidateQueries({ queryKey: keys.admin.workspaces });
+      void qc.invalidateQueries({ queryKey: keys.admin.overview });
     },
   });
 }
 
 export function useAdminConfig() {
-  return useQuery({ queryKey: ['admin-config'], queryFn: async () => (await api.get<AdminConfig>('/admin/config')).data });
+  return useQuery({ queryKey: keys.admin.config, queryFn: async () => (await api.get<AdminConfig>('/admin/config')).data });
 }
 
 export function useUpdateFlags() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (patch: Partial<SystemFlags>) => (await api.put<SystemFlags>('/admin/config/flags', patch)).data,
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-config'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.admin.config }),
   });
 }
 
 export function useAdminHealth() {
   return useQuery({
-    queryKey: ['admin-health'],
+    queryKey: keys.admin.health,
     queryFn: async () => (await api.get<AdminHealth>('/admin/system/health')).data,
     refetchInterval: 15_000,
   });
@@ -162,7 +162,7 @@ export function useAdminHealth() {
 
 export function useAdminAudit(limit = 50, action?: string) {
   return useQuery({
-    queryKey: ['admin-audit', limit, action ?? ''],
+    queryKey: keys.admin.audit(limit, action ?? ''),
     queryFn: async () => {
       const qs = new URLSearchParams({ limit: String(limit) });
       if (action) qs.set('action', action);

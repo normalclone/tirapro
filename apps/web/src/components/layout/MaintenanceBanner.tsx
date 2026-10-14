@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /** Banner bảo trì toàn hệ thống — admin bật ở /admin/config. Ẩn khi rỗng. */
 export function MaintenanceBanner() {
   const { data } = useQuery({
-    queryKey: ['system-announcement'],
+    queryKey: keys.system.announcement,
     queryFn: async () => (await api.get<{ maintenanceBanner: string; signupEnabled: boolean }>('/health/announcement')).data,
     refetchInterval: 60_000,
     staleTime: 30_000,

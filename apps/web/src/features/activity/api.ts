@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
-export const activityKey = (issueId: string) => ['activity', issueId] as const;
 
 /** Một mục lịch sử thay đổi của issue. */
 export interface ActivityItem {
@@ -19,7 +19,7 @@ export interface ActivityItem {
 /** Lịch sử hoạt động của issue (mới nhất trước — API trả desc). */
 export function useIssueActivity(issueId?: string) {
   return useQuery({
-    queryKey: activityKey(issueId ?? ''),
+    queryKey: keys.issues.activity(issueId ?? ''),
     queryFn: async () => (await api.get<ActivityItem[]>(`/issues/${issueId}/activity`)).data,
     enabled: !!issueId,
   });

@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { boardIssuesKey } from '@/features/board/api';
+import { keys } from '@/lib/queryKeys';
 
 /** Gợi ý issue có thể trùng với tiêu đề đang gõ. */
 export interface DuplicateSuggestion {
@@ -52,7 +52,6 @@ interface ReportIssueInput {
   typeId?: string;
 }
 
-export const triageKey = ['triage'] as const;
 
 /**
  * Kiểm tra trùng lặp theo tiêu đề. Chỉ chạy khi đã gõ ≥4 ký tự.
@@ -61,7 +60,7 @@ export const triageKey = ['triage'] as const;
 export function useDuplicateCheck(projectId: string | undefined, summary: string) {
   const q = summary.trim();
   return useQuery({
-    queryKey: ['intake-duplicates', projectId ?? '', q],
+    queryKey: keys.triage.duplicates(projectId ?? '', q),
     queryFn: async () =>
       (
         await api.get<DuplicateSuggestion[]>('/intake/duplicates', {
@@ -80,13 +79,12 @@ export function useReportIssue(projectId: string) {
     mutationFn: async (input: ReportIssueInput) =>
       (await api.post<ReportIssueResult>('/intake/report', input)).data,
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: boardIssuesKey(projectId) });
-      void qc.invalidateQueries({ queryKey: triageKey });
+      void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.triage.all });
     },
   });
 }
 
-export const projectActivityKey = (projectId: string) => ['project-activity', projectId] as const;
 
 const ACTIVITY_PAGE_SIZE = 40;
 
@@ -96,7 +94,7 @@ const ACTIVITY_PAGE_SIZE = 40;
  */
 export function useProjectActivity(projectId: string | undefined) {
   return useInfiniteQuery({
-    queryKey: projectActivityKey(projectId ?? ''),
+    queryKey: keys.projects.activity(projectId ?? ''),
     queryFn: async ({ pageParam }) =>
       (
         await api.get<ProjectActivityResponse>(`/projects/${projectId}/activity`, {

@@ -6,7 +6,7 @@ import { byPriorityThenStatus } from '@/lib/issueOrder';
 import { subtreeProgress } from '@/lib/issueTree';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { categoryColor } from '@/lib/statusColor';
-import { useProjectIssues } from '@/features/backlog/api';
+import { useProjectIssues } from '@/features/issues/api';
 
 /**
  * Việc con trực tiếp của một công việc + tiến độ cả nhánh. Việc đặt việc cha nằm ở

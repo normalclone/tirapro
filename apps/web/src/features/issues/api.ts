@@ -1,11 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CommentDto, IssueDto } from '@tirapro/types';
+import type { CommentDto, IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
-import { boardIssuesKey } from '@/features/board/api';
-
-export const issueKey = (key: string) => ['issue', key] as const;
-export const commentsKey = (issueId: string) => ['comments', issueId] as const;
-export const devLinksKey = (issueId: string) => ['dev-links', issueId] as const;
+import { keys } from '@/lib/queryKeys';
 
 export interface DevLinkItem {
   id: string;
@@ -24,15 +20,28 @@ export interface DevLinkItem {
 /** Liên kết code (commit/PR/branch) của issue — cho dev panel. */
 export function useDevLinks(issueId: string | undefined) {
   return useQuery({
-    queryKey: devLinksKey(issueId ?? ''),
+    queryKey: keys.issues.devLinks(issueId ?? ''),
     queryFn: async () => (await api.get<DevLinkItem[]>(`/issues/${issueId}/dev-links`)).data,
     enabled: !!issueId,
   });
 }
 
+/**
+ * Danh sách issue của MỘT project — cache duy nhất `keys.issues.byProject(pid)`,
+ * Board / Backlog / Gantt / Tree / chi tiết issue đều đọc chung và `useProjectRealtime` vá vào đây.
+ */
+export function useProjectIssues(projectId: string | undefined) {
+  return useQuery({
+    queryKey: keys.issues.byProject(projectId ?? ''),
+    queryFn: async () =>
+      (await api.get<ListResponse<IssueDto>>(`/issues?projectId=${projectId}&limit=200`)).data.data,
+    enabled: !!projectId,
+  });
+}
+
 export function useIssue(key: string | null) {
   return useQuery({
-    queryKey: issueKey(key ?? ''),
+    queryKey: keys.issues.byKey(key ?? ''),
     queryFn: async () => (await api.get<IssueDto>(`/issues/${key}`)).data,
     enabled: !!key,
   });
@@ -40,7 +49,7 @@ export function useIssue(key: string | null) {
 
 export function useComments(issueId: string | undefined) {
   return useQuery({
-    queryKey: commentsKey(issueId ?? ''),
+    queryKey: keys.issues.comments(issueId ?? ''),
     queryFn: async () => (await api.get<CommentDto[]>(`/issues/${issueId}/comments`)).data,
     enabled: !!issueId,
   });
@@ -50,7 +59,7 @@ export function useAddComment(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: string) => api.post<CommentDto>(`/issues/${issueId}/comments`, { body, bodyFormat: 'MARKDOWN' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: commentsKey(issueId) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.issues.comments(issueId) }),
   });
 }
 
@@ -61,8 +70,8 @@ export function useUpdateIssue(projectId: string | undefined) {
       api.patch<IssueDto>(`/issues/${v.id}`, { ...v.patch, version: v.version }),
     onSuccess: (res, v) => {
       // Ghi lại object trả về (version mới) → sửa inline liên tiếp không bị 409 OCC.
-      qc.setQueryData(issueKey(v.key), res.data);
-      if (projectId) void qc.invalidateQueries({ queryKey: boardIssuesKey(projectId) });
+      qc.setQueryData(keys.issues.byKey(v.key), res.data);
+      if (projectId) void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
     },
   });
 }
@@ -70,11 +79,11 @@ export function useUpdateIssue(projectId: string | undefined) {
 export function useTransitionDetail(projectId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; toStatusId: string; version: number }) =>
+    mutationFn: (v: { id: string; key: string; toStatusId: string; version: number }) =>
       api.post(`/issues/${v.id}/transition`, { toStatusId: v.toStatusId, version: v.version }),
     onSuccess: (_res, _v) => {
-      void qc.invalidateQueries({ queryKey: ['issue'] });
-      if (projectId) void qc.invalidateQueries({ queryKey: boardIssuesKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.issues.byKey(_v.key) });
+      if (projectId) void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
     },
   });
 }

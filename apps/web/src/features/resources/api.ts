@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TimeOffKind } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /* ─────────────────────────── Kiểu dữ liệu ─────────────────────────── */
 
@@ -98,14 +99,11 @@ export interface TimeOffInput {
 
 /* ─────────────────────────── Khoá cache ─────────────────────────── */
 
-export const workloadKey = (p: Record<string, string | undefined>) => ['workload', p] as const;
-export const allocationsKey = (p: Record<string, string | undefined>) => ['allocations', p] as const;
-export const timeOffKey = (p: Record<string, string | undefined>) => ['time-off', p] as const;
 
 function invalidateResources(qc: ReturnType<typeof useQueryClient>) {
-  void qc.invalidateQueries({ queryKey: ['workload'] });
-  void qc.invalidateQueries({ queryKey: ['allocations'] });
-  void qc.invalidateQueries({ queryKey: ['time-off'] });
+  void qc.invalidateQueries({ queryKey: keys.resources.workloadRoot });
+  void qc.invalidateQueries({ queryKey: keys.resources.allocationsRoot });
+  void qc.invalidateQueries({ queryKey: keys.resources.timeOffRoot });
 }
 
 /* ─────────────────────────── Hooks ─────────────────────────── */
@@ -114,7 +112,7 @@ function invalidateResources(qc: ReturnType<typeof useQueryClient>) {
 export function useWorkload(params: { from: string; to: string; projectId?: string }) {
   const p = { from: params.from, to: params.to, projectId: params.projectId || undefined };
   return useQuery({
-    queryKey: workloadKey(p),
+    queryKey: keys.resources.workload(p),
     queryFn: async () => (await api.get<WorkloadReport>('/resources/workload', { params: p })).data,
   });
 }
@@ -127,7 +125,7 @@ export function useAllocations(params: { projectId?: string; userId?: string; fr
     to: params.to || undefined,
   };
   return useQuery({
-    queryKey: allocationsKey(p),
+    queryKey: keys.resources.allocations(p),
     queryFn: async () => (await api.get<AllocationDto[]>('/resources/allocations', { params: p })).data,
   });
 }
@@ -164,7 +162,7 @@ export function useTimeOffs(params: { userId?: string; from?: string; to?: strin
     to: params.to || undefined,
   };
   return useQuery({
-    queryKey: timeOffKey(p),
+    queryKey: keys.resources.timeOff(p),
     queryFn: async () => (await api.get<TimeOffDto[]>('/resources/time-off', { params: p })).data,
   });
 }

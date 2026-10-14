@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /* ------------------------------------------------------------------ */
 /* Kiểu dữ liệu                                                       */
@@ -73,10 +74,6 @@ export interface TestResult {
 /* Query keys                                                         */
 /* ------------------------------------------------------------------ */
 
-export const integrationsKey = (type: IntegrationType) => ['integrations', type] as const;
-export const channelsKey = (integrationId: string) =>
-  ['integration-channels', integrationId] as const;
-export const repositoriesKey = ['repositories'] as const;
 
 /* ------------------------------------------------------------------ */
 /* Telegram integrations                                              */
@@ -84,7 +81,7 @@ export const repositoriesKey = ['repositories'] as const;
 
 export function useIntegrations() {
   return useQuery({
-    queryKey: integrationsKey('TELEGRAM'),
+    queryKey: keys.integrations.byType('TELEGRAM'),
     queryFn: async () =>
       (await api.get<Integration[]>('/integrations', { params: { type: 'TELEGRAM' } })).data,
   });
@@ -96,7 +93,7 @@ export function useCreateTelegram() {
     mutationFn: (input: CreateTelegramInput) =>
       api.post<Integration>('/integrations/telegram', input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: integrationsKey('TELEGRAM') });
+      void qc.invalidateQueries({ queryKey: keys.integrations.byType('TELEGRAM') });
     },
   });
 }
@@ -106,7 +103,7 @@ export function useDeleteIntegration() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/integrations/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: integrationsKey('TELEGRAM') });
+      void qc.invalidateQueries({ queryKey: keys.integrations.byType('TELEGRAM') });
     },
   });
 }
@@ -124,7 +121,7 @@ export function useTestIntegration() {
 
 export function useChannels(integrationId: string) {
   return useQuery({
-    queryKey: channelsKey(integrationId),
+    queryKey: keys.integrations.channels(integrationId),
     queryFn: async () =>
       (await api.get<Channel[]>(`/integrations/${integrationId}/channels`)).data,
     enabled: !!integrationId,
@@ -137,7 +134,7 @@ export function useAddChannel(integrationId: string) {
     mutationFn: (input: AddChannelInput) =>
       api.post<Channel>(`/integrations/${integrationId}/channels`, input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: channelsKey(integrationId) });
+      void qc.invalidateQueries({ queryKey: keys.integrations.channels(integrationId) });
     },
   });
 }
@@ -148,7 +145,7 @@ export function useDeleteChannel(integrationId: string) {
     mutationFn: (channelId: string) =>
       api.delete(`/integrations/channels/${channelId}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: channelsKey(integrationId) });
+      void qc.invalidateQueries({ queryKey: keys.integrations.channels(integrationId) });
     },
   });
 }
@@ -159,7 +156,7 @@ export function useDeleteChannel(integrationId: string) {
 
 export function useRepositories() {
   return useQuery({
-    queryKey: repositoriesKey,
+    queryKey: keys.integrations.repositories,
     queryFn: async () => (await api.get<Repository[]>('/dev/repositories')).data,
   });
 }
@@ -170,7 +167,7 @@ export function useCreateRepository() {
     mutationFn: (input: CreateRepositoryInput) =>
       api.post<Repository>('/dev/repositories', input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: repositoriesKey });
+      void qc.invalidateQueries({ queryKey: keys.integrations.repositories });
     },
   });
 }
@@ -180,7 +177,7 @@ export function useDeleteRepository() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/dev/repositories/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: repositoriesKey });
+      void qc.invalidateQueries({ queryKey: keys.integrations.repositories });
     },
   });
 }

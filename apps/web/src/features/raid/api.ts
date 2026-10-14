@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RaidKind, RaidStatus } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 // Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Rủi ro import một chỗ.
 export type { RaidKind, RaidStatus };
@@ -54,8 +55,6 @@ export interface RaidFilter {
   projectId?: string;
 }
 
-export const raidRootKey = ['raid'] as const;
-export const raidKey = (filter: RaidFilter) => ['raid', filter] as const;
 
 function cleanParams(filter: RaidFilter): Record<string, string> {
   const p: Record<string, string> = {};
@@ -68,14 +67,14 @@ function cleanParams(filter: RaidFilter): Record<string, string> {
 /** Sổ RAID của cả không gian làm việc (đã sắp theo điểm rủi ro giảm dần). */
 export function useRaidItems(filter: RaidFilter) {
   return useQuery({
-    queryKey: raidKey(filter),
+    queryKey: keys.raid.list(filter),
     queryFn: async () => (await api.get<RaidItemDto[]>('/raid', { params: cleanParams(filter) })).data,
   });
 }
 
 function useInvalidateRaid() {
   const qc = useQueryClient();
-  return () => void qc.invalidateQueries({ queryKey: raidRootKey });
+  return () => void qc.invalidateQueries({ queryKey: keys.raid.all });
 }
 
 export function useCreateRaidItem() {

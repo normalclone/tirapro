@@ -14,11 +14,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { IssueDto, SprintDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
 import {
-  useProjectSprints, useProjectIssues, useCreateSprint,
+  useProjectSprints, useCreateSprint,
   useStartSprint, useCompleteSprint, useMoveToSprint,
-  backlogIssuesKey, sprintsKey,
 } from './api';
-import { useUpdateIssue } from '@/features/issues/api';
+import { useUpdateIssue, useProjectIssues } from '@/features/issues/api';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -32,6 +31,7 @@ import { BulkActionBar } from './BulkActionBar';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
 import { applyQuickFilters, useQuickFilters } from '@/features/quick-filters/useQuickFilters';
 import { AssigneeFilter, applyAssigneeFilter } from '@/features/quick-filters/AssigneeFilter';
+import { keys } from '@/lib/queryKeys';
 
 /** id của droppable backlog (không phải sprint). */
 const BACKLOG_ID = 'backlog';
@@ -222,8 +222,8 @@ export function BacklogPage() {
   // Sau batch: làm mới danh sách issue + sprint của project.
   function invalidateBacklog() {
     if (!projectId) return;
-    void qc.invalidateQueries({ queryKey: backlogIssuesKey(projectId) });
-    void qc.invalidateQueries({ queryKey: sprintsKey(projectId) });
+    void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
+    void qc.invalidateQueries({ queryKey: keys.sprints.byProject(projectId) });
   }
 
   /**

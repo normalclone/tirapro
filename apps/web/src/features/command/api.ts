@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import type { IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
-export const quickSearchKey = (q: string) => ['quick-search', q] as const;
 
 /**
  * Tìm nhanh issue bằng JQL `text ~ "..."`. Kết quả đã do server lọc, FE không lọc lại.
@@ -10,7 +10,7 @@ export const quickSearchKey = (q: string) => ['quick-search', q] as const;
  */
 export function useQuickSearch(q: string) {
   return useQuery({
-    queryKey: quickSearchKey(q),
+    queryKey: keys.search.quick(q),
     queryFn: async () => {
       const sanitized = q.replace(/"/g, '');
       const jql = `text ~ "${sanitized}"`;

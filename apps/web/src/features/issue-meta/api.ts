@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { issueKey } from '@/features/issues/api';
-import { boardIssuesKey } from '@/features/board/api';
+import { keys } from '@/lib/queryKeys';
 
 /** Nhãn / thành phần / phiên bản ở cấp dự án — cho picker trong chi tiết issue. */
 export interface ProjectLabel {
@@ -22,15 +21,12 @@ export interface ProjectVersion {
 /** Loại liên kết phiên bản với issue. */
 export type VersionType = 'FIX' | 'AFFECTS';
 
-export const projectLabelsKey = (projectId: string) => ['project-labels', projectId] as const;
-export const projectComponentsKey = (projectId: string) => ['project-components', projectId] as const;
-export const projectVersionsKey = (projectId: string) => ['project-versions', projectId] as const;
 
 /* ------------------------------- Queries -------------------------------- */
 
 export function useProjectLabels(projectId: string | undefined) {
   return useQuery({
-    queryKey: projectLabelsKey(projectId ?? ''),
+    queryKey: keys.projectMeta.labels(projectId ?? ''),
     queryFn: async () => (await api.get<ProjectLabel[]>(`/projects/${projectId}/labels`)).data,
     enabled: !!projectId,
   });
@@ -38,7 +34,7 @@ export function useProjectLabels(projectId: string | undefined) {
 
 export function useProjectComponents(projectId: string | undefined) {
   return useQuery({
-    queryKey: projectComponentsKey(projectId ?? ''),
+    queryKey: keys.projectMeta.components(projectId ?? ''),
     queryFn: async () => (await api.get<ProjectComponent[]>(`/projects/${projectId}/components`)).data,
     enabled: !!projectId,
   });
@@ -46,7 +42,7 @@ export function useProjectComponents(projectId: string | undefined) {
 
 export function useProjectVersions(projectId: string | undefined) {
   return useQuery({
-    queryKey: projectVersionsKey(projectId ?? ''),
+    queryKey: keys.projectMeta.versions(projectId ?? ''),
     queryFn: async () => (await api.get<ProjectVersion[]>(`/projects/${projectId}/versions`)).data,
     enabled: !!projectId,
   });
@@ -61,8 +57,8 @@ export function useProjectVersions(projectId: string | undefined) {
 export function useToggleLabel(issueId: string, issueKeyStr: string, projectId: string | undefined) {
   const qc = useQueryClient();
   const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: issueKey(issueKeyStr) });
-    if (projectId) void qc.invalidateQueries({ queryKey: boardIssuesKey(projectId) });
+    void qc.invalidateQueries({ queryKey: keys.issues.byKey(issueKeyStr) });
+    if (projectId) void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
   };
   const attach = useMutation({
     mutationFn: (labelId: string) => api.post(`/issues/${issueId}/labels`, { labelId }),

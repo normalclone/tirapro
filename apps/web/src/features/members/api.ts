@@ -1,15 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MemberDto, UserDto } from '@tirapro/types';
 import { api } from '@/lib/api';
-import { queryClient, qk } from '@/lib/queryClient';
+import { queryClient } from '@/lib/queryClient';
 import { useAuth } from '@/stores/auth';
+import { keys } from '@/lib/queryKeys';
 
-/** Khoá cache cho danh sách thành viên của không gian làm việc hiện tại. */
-export const workspaceUsersKey = ['workspace-users'] as const;
-/** Khoá cache cho thành viên chung kèm vai trò (GET /members). */
-export const workspaceMembersKey = ['workspace-members'] as const;
-/** Khoá cache cho thành viên của một dự án. */
-export const projectMembersKey = (projectId: string) => ['project-members', projectId] as const;
 
 /** Thân request cập nhật hồ sơ cá nhân (PATCH /users/me). */
 export interface UpdateProfileInput {
@@ -28,13 +23,11 @@ export interface ChangePasswordInput {
 /** Danh sách thành viên (user) trong không gian làm việc hiện tại. */
 export function useWorkspaceUsers() {
   return useQuery({
-    queryKey: workspaceUsersKey,
+    queryKey: keys.users.workspace,
     queryFn: async () => (await api.get<UserDto[]>('/users')).data,
   });
 }
 
-/** Khoá cache cho toàn bộ user trong hệ thống (pool để chọn thêm vào không gian làm việc). */
-export const allUsersKey = (search?: string) => ['all-users', search ?? ''] as const;
 
 /**
  * Toàn bộ user trong hệ thống (pool do system admin quản lý ở nơi khác) — để chọn
@@ -43,7 +36,7 @@ export const allUsersKey = (search?: string) => ['all-users', search ?? ''] as c
 export function useAllUsers(search?: string, enabled = true) {
   const q = search?.trim() ?? '';
   return useQuery({
-    queryKey: allUsersKey(q),
+    queryKey: keys.users.all(q),
     queryFn: async () =>
       (await api.get<UserDto[]>('/users/all', { params: q ? { search: q } : undefined })).data,
     enabled,
@@ -60,8 +53,8 @@ export function useUpdateProfile() {
     mutationFn: async (input: UpdateProfileInput) =>
       (await api.patch<UserDto>('/users/me', input)).data,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: qk.me });
-      void queryClient.invalidateQueries({ queryKey: workspaceUsersKey });
+      void queryClient.invalidateQueries({ queryKey: keys.me });
+      void queryClient.invalidateQueries({ queryKey: keys.users.workspace });
       // Làm mới user/quyền trong auth store (cập nhật tên & avatar ở mọi nơi).
       void bootstrap();
     },
@@ -81,8 +74,8 @@ export function useChangePassword() {
 
 /** Refresh user ở mọi nơi (header, danh sách thành viên, avatar trên issue). */
 function refreshUserEverywhere(bootstrap: () => Promise<void>) {
-  void queryClient.invalidateQueries({ queryKey: qk.me });
-  void queryClient.invalidateQueries({ queryKey: workspaceUsersKey });
+  void queryClient.invalidateQueries({ queryKey: keys.me });
+  void queryClient.invalidateQueries({ queryKey: keys.users.workspace });
   void bootstrap();
 }
 
@@ -115,7 +108,7 @@ export function useRemoveUserAvatar() {
 /** Danh sách thành viên của không gian làm việc hiện tại kèm vai trò (GET /members). */
 export function useWorkspaceMembers() {
   return useQuery({
-    queryKey: workspaceMembersKey,
+    queryKey: keys.members.workspace,
     queryFn: async () => (await api.get<MemberDto[]>('/members')).data,
   });
 }
@@ -130,8 +123,8 @@ export function useAddMember() {
     mutationFn: ({ userId, roleIds }: { userId: string; roleIds: string[] }) =>
       api.post<MemberDto>('/members', { userId, roleIds }).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workspaceMembersKey });
-      void qc.invalidateQueries({ queryKey: workspaceUsersKey });
+      void qc.invalidateQueries({ queryKey: keys.members.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.workspace });
     },
   });
 }
@@ -143,9 +136,9 @@ export function useAddMembersBulk() {
     mutationFn: ({ userIds, roleIds }: { userIds: string[]; roleIds: string[] }) =>
       api.post<{ added: number; skipped: number }>('/members/bulk', { userIds, roleIds }).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workspaceMembersKey });
-      void qc.invalidateQueries({ queryKey: workspaceUsersKey });
-      void qc.invalidateQueries({ queryKey: ['all-users'] });
+      void qc.invalidateQueries({ queryKey: keys.members.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.allRoot });
     },
   });
 }
@@ -157,8 +150,8 @@ export function useSetMemberRoles() {
     mutationFn: ({ userId, roleIds }: { userId: string; roleIds: string[] }) =>
       api.put<MemberDto>(`/members/${userId}/roles`, { roleIds }).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workspaceMembersKey });
-      void qc.invalidateQueries({ queryKey: workspaceUsersKey });
+      void qc.invalidateQueries({ queryKey: keys.members.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.workspace });
     },
   });
 }
@@ -169,8 +162,8 @@ export function useRemoveMember() {
   return useMutation({
     mutationFn: (userId: string) => api.delete(`/members/${userId}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workspaceMembersKey });
-      void qc.invalidateQueries({ queryKey: workspaceUsersKey });
+      void qc.invalidateQueries({ queryKey: keys.members.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.workspace });
     },
   });
 }
@@ -182,7 +175,7 @@ export function useRemoveMember() {
 /** Danh sách thành viên của một dự án. */
 export function useProjectMembers(projectId?: string) {
   return useQuery({
-    queryKey: projectMembersKey(projectId ?? ''),
+    queryKey: keys.members.project(projectId ?? ''),
     queryFn: async () =>
       (await api.get<MemberDto[]>(`/projects/${projectId}/members`)).data,
     enabled: !!projectId,
@@ -198,7 +191,7 @@ export function useAddProjectMember(projectId: string) {
         .post<MemberDto>(`/projects/${projectId}/members`, { userId, roleIds })
         .then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: projectMembersKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
     },
   });
 }
@@ -209,7 +202,7 @@ export function useAddProjectMembersBulk(projectId: string) {
   return useMutation({
     mutationFn: ({ userIds, roleIds }: { userIds: string[]; roleIds: string[] }) =>
       api.post<{ added: number; skipped: number }>(`/projects/${projectId}/members/bulk`, { userIds, roleIds }).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: projectMembersKey(projectId) }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.members.project(projectId) }),
   });
 }
 
@@ -222,7 +215,7 @@ export function useSetProjectMemberRoles(projectId: string) {
         .put<MemberDto>(`/projects/${projectId}/members/${userId}/roles`, { roleIds })
         .then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: projectMembersKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
     },
   });
 }
@@ -234,7 +227,7 @@ export function useRemoveProjectMember(projectId: string) {
     mutationFn: (userId: string) =>
       api.delete(`/projects/${projectId}/members/${userId}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: projectMembersKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
     },
   });
 }

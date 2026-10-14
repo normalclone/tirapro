@@ -9,7 +9,6 @@ import { useProjects } from '@/features/projects/api';
 import { ProjectRail } from '@/features/projects/ProjectRail';
 import { useMyWorkspaces } from '@/features/workspace/api';
 import { useWorkflows } from '@/features/workflow-settings/api';
-import { useProjectIssues } from '@/features/backlog/api';
 import { useDeleteIssue } from '@/features/issue-edit/api';
 import { IssueRelations } from '@/features/tree/IssueRelations';
 import { CustomFieldsPanel } from '@/features/issue-fields/CustomFieldsPanel';
@@ -33,7 +32,7 @@ import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/stores/auth';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { useRecents } from '@/stores/recentIssues';
-import { useUpdateIssue, useTransitionDetail } from './api';
+import { useProjectIssues, useUpdateIssue, useTransitionDetail } from './api';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { IssueDto } from '@tirapro/types';
@@ -101,7 +100,7 @@ export function IssueDetailPage() {
     if (!issue || toStatusId === issue.status.id) return;
     const toName = nextStatuses.find((s) => s.id === toStatusId)?.name;
     transition.mutate(
-      { id: issue.id, toStatusId, version: issue.version },
+      { id: issue.id, key: issue.key, toStatusId, version: issue.version },
       {
         onSuccess: () => toast.success(toName ? `Đã chuyển sang “${toName}”` : 'Đã đổi trạng thái', { duration: 2000 }),
         onError: (e) => toast.error(apiErrorMessage(e)),

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ProjectDto, ProjectType } from '@tirapro/types';
 import { api } from '@/lib/api';
-import { qk } from '@/lib/queryClient';
+import { keys } from '@/lib/queryKeys';
 
 export interface CreateProjectInput {
   name: string;
@@ -17,7 +17,7 @@ export function useCreateProject() {
     mutationFn: (v: CreateProjectInput) =>
       api.post<ProjectDto>('/projects', v).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: qk.projects });
+      void qc.invalidateQueries({ queryKey: keys.projects.all });
     },
   });
 }

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /** Các loại field tùy chỉnh (mirror Prisma `CustomFieldType`). */
 export type CustomFieldType =
@@ -38,12 +39,11 @@ export interface IssueCustomField {
   value: CustomFieldValue;
 }
 
-export const issueCustomFieldsKey = (issueId: string) => ['issue-custom-fields', issueId] as const;
 
 /** Field tùy chỉnh + giá trị hiện tại của một issue. */
 export function useIssueCustomFields(issueId?: string) {
   return useQuery({
-    queryKey: issueCustomFieldsKey(issueId ?? ''),
+    queryKey: keys.issues.customFields(issueId ?? ''),
     queryFn: async () =>
       (await api.get<IssueCustomField[]>(`/issues/${issueId}/custom-fields`)).data,
     enabled: !!issueId,
@@ -57,7 +57,7 @@ export function useSetCustomField(issueId: string) {
     mutationFn: (v: { fieldId: string; value: unknown }) =>
       api.put(`/issues/${issueId}/custom-fields/${v.fieldId}`, { value: v.value }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: issueCustomFieldsKey(issueId) });
+      void qc.invalidateQueries({ queryKey: keys.issues.customFields(issueId) });
     },
   });
 }

@@ -7,6 +7,7 @@ import type {
   CreatedResolvedReport,
 } from '@tirapro/shared';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /** Số liệu tổng hợp một dự án cho màn Reports — `GET /reports/project`. */
 export interface ProjectReportTotals {
@@ -48,17 +49,10 @@ export interface ProjectReport {
   byAssignee: ReportAssignee[];
 }
 
-export const projectReportKey = (projectId: string) => ['report', 'project', projectId] as const;
-export const projectSprintsKey = (projectId: string) => ['report', 'sprints', projectId] as const;
-export const burndownKey = (sprintId: string) => ['report', 'burndown', sprintId] as const;
-export const velocityKey = (projectId: string) => ['report', 'velocity', projectId] as const;
-export const cfdKey = (projectId: string) => ['report', 'cfd', projectId] as const;
-export const createdResolvedKey = (projectId: string) =>
-  ['report', 'created-resolved', projectId] as const;
 
 export function useProjectReport(projectId?: string) {
   return useQuery({
-    queryKey: projectReportKey(projectId ?? ''),
+    queryKey: keys.reports.project(projectId ?? ''),
     queryFn: async () =>
       (await api.get<ProjectReport>(`/reports/project?projectId=${projectId}`)).data,
     enabled: !!projectId,
@@ -68,7 +62,7 @@ export function useProjectReport(projectId?: string) {
 
 export function useProjectSprints(projectId?: string) {
   return useQuery({
-    queryKey: projectSprintsKey(projectId ?? ''),
+    queryKey: keys.reports.sprints(projectId ?? ''),
     queryFn: async () => (await api.get<SprintDto[]>(`/sprints?projectId=${projectId}`)).data,
     enabled: !!projectId,
   });
@@ -76,7 +70,7 @@ export function useProjectSprints(projectId?: string) {
 
 export function useBurndown(sprintId?: string) {
   return useQuery({
-    queryKey: burndownKey(sprintId ?? ''),
+    queryKey: keys.reports.burndown(sprintId ?? ''),
     queryFn: async () =>
       (await api.get<BurndownReport>(`/reports/burndown?sprintId=${sprintId}`)).data,
     enabled: !!sprintId,
@@ -85,7 +79,7 @@ export function useBurndown(sprintId?: string) {
 
 export function useVelocity(projectId?: string) {
   return useQuery({
-    queryKey: velocityKey(projectId ?? ''),
+    queryKey: keys.reports.velocity(projectId ?? ''),
     queryFn: async () =>
       (await api.get<VelocityReport>(`/reports/velocity?projectId=${projectId}&limit=8`)).data,
     enabled: !!projectId,
@@ -94,7 +88,7 @@ export function useVelocity(projectId?: string) {
 
 export function useCfd(projectId?: string) {
   return useQuery({
-    queryKey: cfdKey(projectId ?? ''),
+    queryKey: keys.reports.cfd(projectId ?? ''),
     queryFn: async () => (await api.get<CfdReport>(`/reports/cfd?projectId=${projectId}`)).data,
     enabled: !!projectId,
   });
@@ -102,7 +96,7 @@ export function useCfd(projectId?: string) {
 
 export function useCreatedResolved(projectId?: string) {
   return useQuery({
-    queryKey: createdResolvedKey(projectId ?? ''),
+    queryKey: keys.reports.createdResolved(projectId ?? ''),
     queryFn: async () =>
       (await api.get<CreatedResolvedReport>(`/reports/created-resolved?projectId=${projectId}`))
         .data,

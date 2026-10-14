@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /* ------------------------------------------------------------------ */
 /* Kiểu dữ liệu                                                       */
@@ -45,8 +46,6 @@ export interface RunDigestResult {
 /* Query keys                                                         */
 /* ------------------------------------------------------------------ */
 
-export const digestsKey = (projectId?: string) =>
-  projectId ? (['digests', projectId] as const) : (['digests'] as const);
 
 /* ------------------------------------------------------------------ */
 /* Hooks                                                              */
@@ -54,7 +53,7 @@ export const digestsKey = (projectId?: string) =>
 
 export function useDigests(projectId?: string) {
   return useQuery({
-    queryKey: digestsKey(projectId),
+    queryKey: keys.digests.byProject(projectId),
     queryFn: async () =>
       (
         await api.get<Digest[]>('/digests', {
@@ -70,7 +69,7 @@ export function useCreateDigest() {
     mutationFn: (input: CreateDigestInput) =>
       api.post<Digest>('/digests', input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['digests'] });
+      void qc.invalidateQueries({ queryKey: keys.digests.all });
     },
   });
 }
@@ -81,7 +80,7 @@ export function useUpdateDigest() {
     mutationFn: ({ id, ...patch }: UpdateDigestInput) =>
       api.patch<Digest>(`/digests/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['digests'] });
+      void qc.invalidateQueries({ queryKey: keys.digests.all });
     },
   });
 }
@@ -91,7 +90,7 @@ export function useDeleteDigest() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/digests/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['digests'] });
+      void qc.invalidateQueries({ queryKey: keys.digests.all });
     },
   });
 }
@@ -102,7 +101,7 @@ export function useRunDigest() {
     mutationFn: (id: string) =>
       api.post<RunDigestResult>(`/digests/${id}/run`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['digests'] });
+      void qc.invalidateQueries({ queryKey: keys.digests.all });
     },
   });
 }

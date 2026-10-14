@@ -1,23 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BoardDto, IssueDto } from '@tirapro/types';
-import type { ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
-
-export const boardsKey = (projectId: string) => ['boards', projectId] as const;
-export const boardIssuesKey = (projectId: string) => ['board-issues', projectId] as const;
+import { keys } from '@/lib/queryKeys';
 
 export function useBoards(projectId: string | undefined) {
   return useQuery({
-    queryKey: boardsKey(projectId ?? ''),
+    queryKey: keys.boards.byProject(projectId ?? ''),
     queryFn: async () => (await api.get<BoardDto[]>(`/boards?projectId=${projectId}`)).data,
-    enabled: !!projectId,
-  });
-}
-
-export function useBoardIssues(projectId: string | undefined) {
-  return useQuery({
-    queryKey: boardIssuesKey(projectId ?? ''),
-    queryFn: async () => (await api.get<ListResponse<IssueDto>>(`/issues?projectId=${projectId}&limit=200`)).data.data,
     enabled: !!projectId,
   });
 }
@@ -25,7 +14,7 @@ export function useBoardIssues(projectId: string | undefined) {
 /** Optimistic transition: di chuyển card sang cột mới NGAY, rollback nếu lỗi. */
 export function useTransitionIssue(projectId: string) {
   const qc = useQueryClient();
-  const key = boardIssuesKey(projectId);
+  const key = keys.issues.byProject(projectId);
   return useMutation({
     mutationFn: (v: { id: string; toStatusId: string; version: number }) =>
       api.post(`/issues/${v.id}/transition`, { toStatusId: v.toStatusId, version: v.version }),

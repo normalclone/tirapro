@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import type { GuideContent } from '@tirapro/shared';
 import type { GuideType } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /**
  * Guide như API trả về cho FE. Tái dùng `GuideContent` (union TourContent | HelpContent
@@ -23,12 +24,11 @@ export interface ScreenGuide {
   state: string | null;
 }
 
-export const screenGuidesKey = (screen: string) => ['guides', screen] as const;
 
 /** Lấy guides cho 1 màn (screen pattern, vd `/p/:key/board`). */
 export function useScreenGuides(screen: string) {
   return useQuery({
-    queryKey: screenGuidesKey(screen),
+    queryKey: keys.guides.screen(screen),
     queryFn: async () =>
       (await api.get<ScreenGuide[]>(`/guides?screen=${encodeURIComponent(screen)}`)).data,
     staleTime: 5 * 60_000,

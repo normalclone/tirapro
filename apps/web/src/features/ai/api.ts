@@ -6,6 +6,7 @@ import type {
   AiSummaryResult,
 } from '@tirapro/shared';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 export interface ProjectMeta {
   projectId: string;
@@ -13,24 +14,22 @@ export interface ProjectMeta {
   priorities: { id: string; name: string; color: string | null; rank: number; isDefault: boolean }[];
 }
 
-export const projectMetaKey = (key: string) => ['project-meta', key] as const;
 
 /** Config tạo issue (issue types + priorities) cho quick-add / AI generate. */
 export function useProjectMeta(key: string | undefined) {
   return useQuery({
-    queryKey: projectMetaKey(key ?? ''),
+    queryKey: keys.ai.projectMeta(key ?? ''),
     queryFn: async () => (await api.get<ProjectMeta>(`/projects/${key}/meta`)).data,
     enabled: !!key,
     staleTime: 5 * 60_000,
   });
 }
 
-export const aiCapabilitiesKey = ['ai', 'capabilities'] as const;
 
 /** Khả năng AI hiện tại (Claude hay heuristic). Ít đổi → staleTime dài. */
 export function useAiCapabilities() {
   return useQuery({
-    queryKey: aiCapabilitiesKey,
+    queryKey: keys.ai.capabilities,
     queryFn: async () => (await api.get<AiCapabilities>('/ai/capabilities')).data,
     staleTime: 5 * 60_000,
   });

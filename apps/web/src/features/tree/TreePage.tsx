@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronRight, ChevronsDownUp, ChevronsUpDown, ListTree } from 'lucide-react';
 import { useProject } from '@/features/projects/api';
-import { useProjectIssues } from '@/features/backlog/api';
+import { useProjectIssues } from '@/features/issues/api';
 import { DueBadge } from '@/components/ui/DueBadge';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
