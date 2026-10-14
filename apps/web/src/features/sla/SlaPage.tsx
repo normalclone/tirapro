@@ -13,9 +13,11 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useAuth } from '@/stores/auth';
 import { useProjects } from '@/features/projects/api';
 import { cn } from '@/lib/utils';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { LOCALE } from '@/lib/locale';
 import {
   useSlaBoard, useSlaPolicies, useCreateSlaPolicy, useUpdateSlaPolicy, useDeleteSlaPolicy, fmtMins,
-  type SlaPolicyDto, SLA_SOON_MINS, SLA_SOON_LABEL } from './api';
+  type SlaPolicyDto, type SlaBoardRow, SLA_SOON_MINS, SLA_SOON_LABEL } from './api';
 
 /** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Quản trị). */
 export function SlaBoardPage() {
@@ -51,22 +53,28 @@ export function SlaPoliciesPage() {
 }
 
 function SlaBoard() {
-  const { data, isLoading } = useSlaBoard();
-  const rows = data ?? [];
+  const boardQuery = useSlaBoard();
+  return (
+    <QueryBoundary
+      query={boardQuery}
+      skeleton={
+        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+      }
+      empty={(d) => d.length === 0}
+      emptyState={
+        <EmptyState
+          icon={<AlarmClock className="h-6 w-6" />}
+          title="Chưa có công việc nào đang tính giờ"
+          description="Đồng hồ chỉ chạy với công việc khớp một cam kết đang bật. Hãy đặt cam kết thời gian xử lý trong Cài đặt để bắt đầu theo dõi."
+        />
+      }
+    >
+      {(rows) => <SlaBoardTable rows={rows} />}
+    </QueryBoundary>
+  );
+}
 
-  if (isLoading) {
-    return <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>;
-  }
-  if (rows.length === 0) {
-    return (
-      <EmptyState
-        icon={<AlarmClock className="h-6 w-6" />}
-        title="Chưa có công việc nào đang tính giờ"
-        description="Đồng hồ chỉ chạy với công việc khớp một cam kết đang bật. Hãy đặt cam kết thời gian xử lý trong Cài đặt để bắt đầu theo dõi."
-      />
-    );
-  }
-
+function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
   const breached = rows.filter((r) => r.resolveBreached).length;
   const soon = rows.filter((r) => !r.resolveBreached && r.remainingMins <= SLA_SOON_MINS).length;
 
@@ -105,8 +113,8 @@ function SlaBoard() {
                 )}
                 title={
                   late
-                    ? `Đã quá hạn xử lý. Hạn là ${new Date(r.resolveDueAt).toLocaleString('vi-VN')}.`
-                    : `Thời gian còn lại trước khi phải xử lý xong, hạn là ${new Date(r.resolveDueAt).toLocaleString('vi-VN')}.`
+                    ? `Đã quá hạn xử lý. Hạn là ${new Date(r.resolveDueAt).toLocaleString(LOCALE)}.`
+                    : `Thời gian còn lại trước khi phải xử lý xong, hạn là ${new Date(r.resolveDueAt).toLocaleString(LOCALE)}.`
                 }
               >
                 {late ? <span className="inline-flex items-center gap-1"><TriangleAlert className="h-3 w-3" /> quá hạn {fmtMins(r.remainingMins)}</span> : `còn ${fmtMins(r.remainingMins)}`}
@@ -129,7 +137,8 @@ function SlaBoard() {
 }
 
 function SlaPolicies({ canManage }: { canManage: boolean }) {
-  const { data, isLoading } = useSlaPolicies();
+  const policiesQuery = useSlaPolicies();
+  const { data } = policiesQuery;
   const { data: projects } = useProjects();
   const create = useCreateSlaPolicy();
   const update = useUpdateSlaPolicy();
@@ -171,66 +180,73 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
       </div>
 
       <div className="p-5">
-        {isLoading ? (
-          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
-        ) : list.length === 0 ? (
-          <EmptyState
-            icon={<AlarmClock className="h-6 w-6" />}
-            title="Chưa đặt cam kết nào"
-            description={
-              canManage
-                ? 'Cam kết là thời hạn bạn tự đặt cho việc phản hồi và xử lý xong. Tạo cam kết đầu tiên để hệ thống bắt đầu bấm giờ.'
-                : 'Cam kết là thời hạn cho việc phản hồi và xử lý xong. Quản trị viên chưa đặt cam kết nào.'
-            }
-          />
-        ) : (
-          <ul className="divide-y divide-border">
-            {list.map((p: SlaPolicyDto) => (
-              <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-3 first:pt-0 last:pb-0">
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-ink-strong">{p.name}</span>
-                  <span className="block truncate text-xs text-muted">
-                    {p.project ? `Dự án ${p.project.key}` : 'Mọi dự án'}
-                    {p.priority ? ` · ${p.priority.name}` : ''}
+        <QueryBoundary
+          query={policiesQuery}
+          skeleton={
+            <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          }
+          empty={() => list.length === 0}
+          emptyState={
+            <EmptyState
+              icon={<AlarmClock className="h-6 w-6" />}
+              title="Chưa đặt cam kết nào"
+              description={
+                canManage
+                  ? 'Cam kết là thời hạn bạn tự đặt cho việc phản hồi và xử lý xong. Tạo cam kết đầu tiên để hệ thống bắt đầu bấm giờ.'
+                  : 'Cam kết là thời hạn cho việc phản hồi và xử lý xong. Quản trị viên chưa đặt cam kết nào.'
+              }
+            />
+          }
+        >
+          {() => (
+            <ul className="divide-y divide-border">
+              {list.map((p: SlaPolicyDto) => (
+                <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-3 first:pt-0 last:pb-0">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-ink-strong">{p.name}</span>
+                    <span className="block truncate text-xs text-muted">
+                      {p.project ? `Dự án ${p.project.key}` : 'Mọi dự án'}
+                      {p.priority ? ` · ${p.priority.name}` : ''}
+                    </span>
                   </span>
-                </span>
-                <span className="shrink-0 text-xs text-muted" title="Tính từ lúc công việc được tạo, phải có phản hồi đầu tiên trong khoảng này.">
-                  Phản hồi trong <b className="text-ink">{fmtMins(p.responseMins)}</b>
-                </span>
-                <span className="shrink-0 text-xs text-muted" title="Tính từ lúc công việc được tạo, phải xử lý xong trong khoảng này.">
-                  Xử lý xong trong <b className="text-ink">{fmtMins(p.resolveMins)}</b>
-                </span>
-                <Badge className={p.active ? 'bg-success/10 text-success' : 'bg-surface-2 text-muted'}>{p.active ? 'Đang áp dụng' : 'Đang tắt'}</Badge>
-                {canManage && (
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      title={p.active ? 'Ngừng bấm giờ cho công việc mới khớp cam kết này' : 'Bấm giờ trở lại cho công việc mới khớp cam kết này'}
-                      aria-label={p.active ? `Tắt cam kết ${p.name}` : `Bật cam kết ${p.name}`}
-                      onClick={() => update.mutate({ id: p.id, active: !p.active }, { onError: (e) => toast.error(apiErrorMessage(e)) })}
-                    >
-                      {p.active ? 'Tắt' : 'Bật'}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-muted hover:text-danger"
-                      title="Xoá cam kết"
-                      aria-label={`Xoá cam kết ${p.name}`}
-                      onClick={async () => {
-                        if (!(await confirm({ title: `Xoá cam kết “${p.name}”? Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.`, destructive: true }))) return;
-                        remove.mutate(p.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+                  <span className="shrink-0 text-xs text-muted" title="Tính từ lúc công việc được tạo, phải có phản hồi đầu tiên trong khoảng này.">
+                    Phản hồi trong <b className="text-ink">{fmtMins(p.responseMins)}</b>
+                  </span>
+                  <span className="shrink-0 text-xs text-muted" title="Tính từ lúc công việc được tạo, phải xử lý xong trong khoảng này.">
+                    Xử lý xong trong <b className="text-ink">{fmtMins(p.resolveMins)}</b>
+                  </span>
+                  <Badge className={p.active ? 'bg-success/10 text-success' : 'bg-surface-2 text-muted'}>{p.active ? 'Đang áp dụng' : 'Đang tắt'}</Badge>
+                  {canManage && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        title={p.active ? 'Ngừng bấm giờ cho công việc mới khớp cam kết này' : 'Bấm giờ trở lại cho công việc mới khớp cam kết này'}
+                        aria-label={p.active ? `Tắt cam kết ${p.name}` : `Bật cam kết ${p.name}`}
+                        onClick={() => update.mutate({ id: p.id, active: !p.active }, { onError: (e) => toast.error(apiErrorMessage(e)) })}
+                      >
+                        {p.active ? 'Tắt' : 'Bật'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-muted hover:text-danger"
+                        title="Xoá cam kết"
+                        aria-label={`Xoá cam kết ${p.name}`}
+                        onClick={async () => {
+                          if (!(await confirm({ title: `Xoá cam kết “${p.name}”? Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.`, destructive: true }))) return;
+                          remove.mutate(p.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </QueryBoundary>
       </div>
 
       <Dialog

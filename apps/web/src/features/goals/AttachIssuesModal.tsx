@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAttachGoalIssues, useIssueSearch, type GoalDto } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 /**
  * Chọn công việc (issue/epic) để gắn vào mục tiêu. Tìm theo mã hoặc tiêu đề, chọn nhiều
@@ -31,7 +32,7 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
     return () => clearTimeout(t);
   }, [term]);
 
-  const { data: results, isLoading } = useIssueSearch(debounced, goal?.projectId ?? null, open && !!goal);
+  const resultsQuery = useIssueSearch(debounced, goal?.projectId ?? null, open && !!goal);
 
   if (!open || !goal) return null;
 
@@ -93,44 +94,51 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-        {isLoading ? (
-          <div className="space-y-2 p-3">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
-          </div>
-        ) : !results || results.length === 0 ? (
-          <p className="px-3 py-8 text-center text-sm text-muted">
-            Không có công việc nào khớp. Thử từ khoá ngắn hơn, hoặc nhập đúng mã công việc.
-          </p>
-        ) : (
-          <ul role="listbox" aria-label="Kết quả tìm công việc" aria-multiselectable="true">
-            {results.map((r) => {
-              const already = attached.has(r.id);
-              const selected = picked.includes(r.id);
-              return (
-                <li key={r.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={selected || already}
-                    disabled={already}
-                    title={already ? 'Công việc này đã nằm trong mục tiêu' : undefined}
-                    onClick={() => toggle(r.id)}
-                    className={cn(
-                      'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left transition-colors',
-                      already ? 'cursor-default opacity-60' : 'hover:bg-surface-2',
-                      selected && 'bg-primary-subtle',
-                    )}
-                  >
-                    <Check className={cn('h-4 w-4 shrink-0 text-primary', selected || already ? 'opacity-100' : 'opacity-0')} aria-hidden />
-                    <span className="shrink-0 font-mono text-xs text-muted">{r.key}</span>
-                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{r.summary}</span>
-                    {already && <span className="shrink-0 text-xs text-faint">Đã gắn</span>}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <QueryBoundary
+          query={resultsQuery}
+          skeleton={
+            <div className="space-y-2 p-3">
+              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+            </div>
+          }
+          empty={(d) => d.length === 0}
+          emptyState={
+            <p className="px-3 py-8 text-center text-sm text-muted">
+              Không có công việc nào khớp. Thử từ khoá ngắn hơn, hoặc nhập đúng mã công việc.
+            </p>
+          }
+        >
+          {(results) => (
+            <ul role="listbox" aria-label="Kết quả tìm công việc" aria-multiselectable="true">
+              {results.map((r) => {
+                const already = attached.has(r.id);
+                const selected = picked.includes(r.id);
+                return (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={selected || already}
+                      disabled={already}
+                      title={already ? 'Công việc này đã nằm trong mục tiêu' : undefined}
+                      onClick={() => toggle(r.id)}
+                      className={cn(
+                        'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left transition-colors',
+                        already ? 'cursor-default opacity-60' : 'hover:bg-surface-2',
+                        selected && 'bg-primary-subtle',
+                      )}
+                    >
+                      <Check className={cn('h-4 w-4 shrink-0 text-primary', selected || already ? 'opacity-100' : 'opacity-0')} aria-hidden />
+                      <span className="shrink-0 font-mono text-xs text-muted">{r.key}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-ink">{r.summary}</span>
+                      {already && <span className="shrink-0 text-xs text-faint">Đã gắn</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </QueryBoundary>
       </div>
     </Dialog>
   );

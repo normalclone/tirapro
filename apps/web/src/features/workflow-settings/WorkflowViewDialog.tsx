@@ -8,6 +8,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { DelayedSpinner } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import { useWorkflows, type StatusCategory, type Workflow } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 const ANY_ID = '__any__';
 const CATEGORY_VAR: Record<StatusCategory, string> = {
@@ -119,7 +120,8 @@ export function WorkflowViewDialog({
   currentStatusId: string;
   currentStatusName?: string;
 }) {
-  const { data: workflows, isLoading } = useWorkflows();
+  const workflowsQuery = useWorkflows();
+  const { data: workflows } = workflowsQuery;
 
   const workflow = useMemo(
     () => (workflows ?? []).find((wf) => wf.statuses.some((s) => s.id === currentStatusId)) ?? null,
@@ -142,28 +144,33 @@ export function WorkflowViewDialog({
       bodyClassName="relative p-0"
     >
       <div className="absolute inset-0 bg-surface-2">
-        {isLoading ? (
-          <div className="grid h-full place-items-center"><DelayedSpinner /></div>
-        ) : !workflow ? (
-          <div className="grid h-full place-items-center px-6 text-center text-sm text-muted">
-            Không tìm thấy quy trình cho trạng thái này.
-          </div>
-        ) : (
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            fitView
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            proOptions={{ hideAttribution: true }}
-          >
-            <FitView dep={workflow.id} />
-            <Background gap={16} color="var(--border)" />
-            <Controls showInteractive={false} className="!border-border !bg-surface !shadow-md" />
-          </ReactFlow>
-        )}
+        <QueryBoundary
+          query={workflowsQuery}
+          skeleton={
+            <div className="grid h-full place-items-center"><DelayedSpinner /></div>
+          }
+        >
+          {() => workflow ? (
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              fitView
+              nodesDraggable={false}
+              nodesConnectable={false}
+              elementsSelectable={false}
+              proOptions={{ hideAttribution: true }}
+            >
+              <FitView dep={workflow.id} />
+              <Background gap={16} color="var(--border)" />
+              <Controls showInteractive={false} className="!border-border !bg-surface !shadow-md" />
+            </ReactFlow>
+          ) : (
+            <div className="grid h-full place-items-center px-6 text-center text-sm text-muted">
+              Không tìm thấy quy trình cho trạng thái này.
+            </div>
+          )}
+        </QueryBoundary>
       </div>
     </Dialog>
   );

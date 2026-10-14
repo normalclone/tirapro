@@ -3,6 +3,7 @@ import { CalendarRange } from 'lucide-react';
 import { EmptyState } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import type { RollupGroup } from './api';
+import { LOCALE } from '@/lib/locale';
 
 const DAY = 86_400_000;
 
@@ -39,7 +40,7 @@ function monthLabel(t: number): string {
 }
 
 function fmtDate(t: number): string {
-  return new Date(t).toLocaleDateString('vi-VN');
+  return new Date(t).toLocaleDateString(LOCALE);
 }
 
 /**

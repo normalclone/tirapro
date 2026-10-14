@@ -17,6 +17,7 @@ import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { pageContainer } from '@/components/layout/page';
 import { useProjectActivity, type ProjectActivityItem } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 /** Màu chấm theo status category (dùng CSS var giống IssueProperties). */
 function categoryColor(cat: string | null): string {
@@ -230,9 +231,8 @@ function TimelineEvent({ a }: { a: ProjectActivityItem }) {
 export function ProjectActivityPage() {
   const { key = '' } = useParams();
   const { data: project } = useProject(key);
-  const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = useProjectActivity(
-    project?.id,
-  );
+  const activityQuery = useProjectActivity(project?.id);
+  const { data, hasNextPage, isFetchingNextPage, fetchNextPage } = activityQuery;
 
   const items = data?.pages.flatMap((p) => p.data) ?? [];
   const groups = groupByDay(items);
@@ -247,58 +247,65 @@ export function ProjectActivityPage() {
         <p className="mt-1 text-sm text-muted">Ai đã làm gì, trên công việc nào.</p>
       </header>
 
-      {isLoading ? (
-        <ol className="space-y-5" aria-busy>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <li key={i} className="flex gap-3">
-              <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
-              <div className="flex-1 space-y-1.5 pt-0.5">
-                <Skeleton className="h-4 w-4/5" />
-                <Skeleton className="h-3 w-24" />
-              </div>
-            </li>
-          ))}
-        </ol>
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon={<History className="h-8 w-8" />}
-          title="Chưa có hoạt động"
-          description="Đây là dòng thời gian của cả dự án. Khi có người đổi trạng thái, giao việc hay chuyển sprint, các thay đổi trên công việc sẽ hiện ở đây."
-        />
-      ) : (
-        <>
-          {groups.map((g) => (
-            <section key={g.key}>
-              <h2 className="sticky top-0 z-[1] -mx-2 mb-3 bg-bg/85 px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted backdrop-blur">
-                {g.label}
-              </h2>
-              {/* Rail dọc liên tục + các chấm; rail canh giữa cột avatar (14px = nửa của 28px) */}
-              <ol className="relative">
-                <span
-                  className="pointer-events-none absolute bottom-2 left-[13.5px] top-2 w-px bg-border"
-                  aria-hidden
-                />
-                {g.items.map((a) => (
-                  <TimelineEvent key={a.id} a={a} />
-                ))}
-              </ol>
-            </section>
-          ))}
+      <QueryBoundary
+        query={activityQuery}
+        skeleton={
+          <ol className="space-y-5" aria-busy>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <li key={i} className="flex gap-3">
+                <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
+                <div className="flex-1 space-y-1.5 pt-0.5">
+                  <Skeleton className="h-4 w-4/5" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </li>
+            ))}
+          </ol>
+        }
+        empty={() => items.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<History className="h-8 w-8" />}
+            title="Chưa có hoạt động"
+            description="Đây là dòng thời gian của cả dự án. Khi có người đổi trạng thái, giao việc hay chuyển sprint, các thay đổi trên công việc sẽ hiện ở đây."
+          />
+        }
+      >
+        {() => (
+          <>
+            {groups.map((g) => (
+              <section key={g.key}>
+                <h2 className="sticky top-0 z-[1] -mx-2 mb-3 bg-bg/85 px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted backdrop-blur">
+                  {g.label}
+                </h2>
+                {/* Rail dọc liên tục + các chấm; rail canh giữa cột avatar (14px = nửa của 28px) */}
+                <ol className="relative">
+                  <span
+                    className="pointer-events-none absolute bottom-2 left-[13.5px] top-2 w-px bg-border"
+                    aria-hidden
+                  />
+                  {g.items.map((a) => (
+                    <TimelineEvent key={a.id} a={a} />
+                  ))}
+                </ol>
+              </section>
+            ))}
 
-          {hasNextPage && (
-            <div className="flex justify-center pt-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={isFetchingNextPage}
-                onClick={() => void fetchNextPage()}
-              >
-                Tải thêm
-              </Button>
-            </div>
-          )}
-        </>
-      )}
+            {hasNextPage && (
+              <div className="flex justify-center pt-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={isFetchingNextPage}
+                  onClick={() => void fetchNextPage()}
+                >
+                  Tải thêm
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </QueryBoundary>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { useAdminAudit, useAdminHealth } from './api';
 import { StatTile, StatusPill, relTime } from './_ui';
+import { LOCALE } from '@/lib/locale';
 
 /** Bậc số lượng nhật ký tải mỗi lần. */
 const AUDIT_STEPS = [50, 100, 200] as const;
@@ -108,7 +109,7 @@ export function AdminSystemPage() {
                   {e.field && <span className="ml-1 text-faint">· {e.field}</span>}
                 </div>
                 {e.workspace && <span className="hidden shrink-0 text-xs text-faint sm:block">{e.workspace.name}</span>}
-                <time className="shrink-0 text-xs text-faint" title={new Date(e.createdAt).toLocaleString('vi-VN')}>{relTime(e.createdAt)}</time>
+                <time className="shrink-0 text-xs text-faint" title={new Date(e.createdAt).toLocaleString(LOCALE)}>{relTime(e.createdAt)}</time>
               </li>
             ))}
           </ul>

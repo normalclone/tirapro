@@ -16,11 +16,13 @@ import {
   useClients, useDeleteClient, useDeleteContract, formatMoney,
   type ClientDto, type ContractDto,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { LOCALE } from '@/lib/locale';
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('vi-VN');
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(LOCALE);
 }
 
 function term(contract: ContractDto): string {
@@ -269,7 +271,8 @@ function ClientCard({
 /** Khách hàng & hợp đồng — ai đặt hàng, dự án nào phục vụ họ, cam kết những gì. */
 export function ClientsPage() {
   const canManage = useAuth((s) => s.can('client:manage'));
-  const { data: clients, isLoading } = useClients();
+  const clientsQuery = useClients();
+  const { data: clients } = clientsQuery;
   const confirm = useConfirm();
   const removeClient = useDeleteClient();
   const removeContract = useDeleteContract();
@@ -345,45 +348,52 @@ export function ClientsPage() {
         </div>
       )}
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
-        </div>
-      ) : !hasClients ? (
-        <EmptyState
-          icon={<Building2 className="h-6 w-6" />}
-          title="Chưa có khách hàng nào"
-          description={
-            canManage
-              ? 'Đây là nơi lưu khách hàng cùng hợp đồng của họ. Thêm khách hàng đầu tiên rồi gắn dự án và hợp đồng để theo dõi cam kết.'
-              : 'Đây là nơi lưu khách hàng cùng hợp đồng của họ. Khi có khách hàng được thêm, bạn sẽ thấy ở đây.'
-          }
-          action={canManage ? <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4" /> Thêm khách hàng</Button> : undefined}
-        />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={<Building2 className="h-6 w-6" />}
-          title="Không tìm thấy khách hàng"
-          description={`Không có khách hàng nào khớp “${q.trim()}”. Thử từ khoá ngắn hơn, hoặc xoá ô tìm kiếm để xem lại tất cả.`}
-          action={<Button size="sm" variant="secondary" onClick={() => setQ('')}>Xoá từ khoá tìm</Button>}
-        />
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((c) => (
-            <ClientCard
-              key={c.id}
-              client={c}
-              canManage={canManage}
-              onEdit={() => { setEditing(c); setEditorOpen(true); }}
-              onAssign={() => setAssigning(c)}
-              onDelete={() => void handleDeleteClient(c)}
-              onAddContract={() => setContractCtx({ client: c, contract: null })}
-              onEditContract={(contract) => setContractCtx({ client: c, contract })}
-              onDeleteContract={(contract) => void handleDeleteContract(c, contract)}
-            />
-          ))}
-        </div>
-      )}
+      <QueryBoundary
+        query={clientsQuery}
+        skeleton={
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
+          </div>
+        }
+        empty={(d) => d.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<Building2 className="h-6 w-6" />}
+            title="Chưa có khách hàng nào"
+            description={
+              canManage
+                ? 'Đây là nơi lưu khách hàng cùng hợp đồng của họ. Thêm khách hàng đầu tiên rồi gắn dự án và hợp đồng để theo dõi cam kết.'
+                : 'Đây là nơi lưu khách hàng cùng hợp đồng của họ. Khi có khách hàng được thêm, bạn sẽ thấy ở đây.'
+            }
+            action={canManage ? <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4" /> Thêm khách hàng</Button> : undefined}
+          />
+        }
+      >
+        {() => filtered.length === 0 ? (
+          <EmptyState
+            icon={<Building2 className="h-6 w-6" />}
+            title="Không tìm thấy khách hàng"
+            description={`Không có khách hàng nào khớp “${q.trim()}”. Thử từ khoá ngắn hơn, hoặc xoá ô tìm kiếm để xem lại tất cả.`}
+            action={<Button size="sm" variant="secondary" onClick={() => setQ('')}>Xoá từ khoá tìm</Button>}
+          />
+        ) : (
+          <div className="space-y-3">
+            {filtered.map((c) => (
+              <ClientCard
+                key={c.id}
+                client={c}
+                canManage={canManage}
+                onEdit={() => { setEditing(c); setEditorOpen(true); }}
+                onAssign={() => setAssigning(c)}
+                onDelete={() => void handleDeleteClient(c)}
+                onAddContract={() => setContractCtx({ client: c, contract: null })}
+                onEditContract={(contract) => setContractCtx({ client: c, contract })}
+                onDeleteContract={(contract) => void handleDeleteContract(c, contract)}
+              />
+            ))}
+          </div>
+        )}
+      </QueryBoundary>
 
       <ClientEditorModal open={editorOpen} client={editing} onClose={() => setEditorOpen(false)} />
       <ClientProjectsModal open={!!assigning} client={assigning} onClose={() => setAssigning(null)} />

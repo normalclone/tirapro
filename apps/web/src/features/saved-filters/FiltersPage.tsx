@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { UseQueryResult } from '@tanstack/react-query';
 import {
   Bookmark,
   ChevronLeft,
@@ -32,6 +33,7 @@ import {
   type FilterVisibility,
   type SavedFilter,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 type BuilderMode = 'simple' | 'jql';
 
@@ -161,8 +163,7 @@ export function FiltersPage() {
         </Button>
 
         <SavedFilterList
-          filters={savedFilters.data}
-          loading={savedFilters.isLoading}
+          query={savedFilters}
           activeId={activeFilterId}
           onSelect={loadAndRunSaved}
           onDelete={handleDelete}
@@ -296,87 +297,86 @@ function AdhocBar({
 /* ------------------------------------------------------------------ */
 
 function SavedFilterList({
-  filters,
-  loading,
+  query,
   activeId,
   onSelect,
   onDelete,
   deleting,
 }: {
-  filters: SavedFilter[] | undefined;
-  loading: boolean;
+  query: UseQueryResult<SavedFilter[]>;
   activeId: string | null;
   onSelect: (f: SavedFilter) => void;
   onDelete: (f: SavedFilter) => void;
   deleting: string | undefined;
 }) {
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-1.5">
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-11 w-full" />
-        ))}
-      </div>
-    );
-  }
-
-  if (!filters || filters.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
-        Chưa có bộ lọc nào. Bấm “Tạo bộ lọc” để lưu một truy vấn.
-      </p>
-    );
-  }
-
   return (
-    <ul className="flex flex-col gap-1">
-      {filters.map((f) => {
-        const isActive = activeId === f.id;
-        return (
-          <li key={f.id}>
-            <div
-              className={cn(
-                'group flex items-center gap-2 rounded-md px-2 py-2 transition-colors',
-                isActive ? 'bg-primary-subtle' : 'hover:bg-surface-2',
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => onSelect(f)}
-                aria-current={isActive ? 'true' : undefined}
-                className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-              >
-                <span
+    <QueryBoundary
+      query={query}
+      skeleton={
+        <div className="flex flex-col gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-11 w-full" />
+          ))}
+        </div>
+      }
+      empty={(d) => d.length === 0}
+      emptyState={
+        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
+          Chưa có bộ lọc nào. Bấm “Tạo bộ lọc” để lưu một truy vấn.
+        </p>
+      }
+    >
+      {(filters) => (
+        <ul className="flex flex-col gap-1">
+          {filters.map((f) => {
+            const isActive = activeId === f.id;
+            return (
+              <li key={f.id}>
+                <div
                   className={cn(
-                    'block truncate text-sm font-medium',
-                    isActive ? 'text-primary' : 'text-ink-strong',
+                    'group flex items-center gap-2 rounded-md px-2 py-2 transition-colors',
+                    isActive ? 'bg-primary-subtle' : 'hover:bg-surface-2',
                   )}
                 >
-                  {f.name}
-                </span>
-                <span className="mt-1 flex items-center gap-2">
-                  <Badge className="bg-surface-2 text-muted">
-                    {VISIBILITY_LABEL[f.visibility]}
-                  </Badge>
-                </span>
-              </button>
-              {f.isOwner && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => onDelete(f)}
-                  loading={deleting === f.id}
-                  aria-label={`Xoá bộ lọc ${f.name}`}
-                  className="h-7 w-7 shrink-0 text-muted opacity-0 transition-opacity hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
-                >
-                  {deleting !== f.id && <Trash2 className="h-4 w-4" aria-hidden />}
-                </Button>
-              )}
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(f)}
+                    aria-current={isActive ? 'true' : undefined}
+                    className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                  >
+                    <span
+                      className={cn(
+                        'block truncate text-sm font-medium',
+                        isActive ? 'text-primary' : 'text-ink-strong',
+                      )}
+                    >
+                      {f.name}
+                    </span>
+                    <span className="mt-1 flex items-center gap-2">
+                      <Badge className="bg-surface-2 text-muted">
+                        {VISIBILITY_LABEL[f.visibility]}
+                      </Badge>
+                    </span>
+                  </button>
+                  {f.isOwner && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDelete(f)}
+                      loading={deleting === f.id}
+                      aria-label={`Xoá bộ lọc ${f.name}`}
+                      className="h-7 w-7 shrink-0 text-muted opacity-0 transition-opacity hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      {deleting !== f.id && <Trash2 className="h-4 w-4" aria-hidden />}
+                    </Button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </QueryBoundary>
   );
 }
 

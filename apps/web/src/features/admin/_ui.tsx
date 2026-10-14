@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { LOCALE } from '@/lib/locale';
 
 /** Định dạng số nguyên kiểu VN (1.234). */
-export const fmtInt = (n: number) => new Intl.NumberFormat('vi-VN').format(n);
+export const fmtInt = (n: number) => new Intl.NumberFormat(LOCALE).format(n);
 
 /** Dung lượng người-đọc-được. */
 export function fmtBytes(n: number): string {
@@ -24,7 +25,7 @@ export function relTime(iso: string | null): string {
   if (h < 24) return `${h} giờ trước`;
   const d = Math.round(h / 24);
   if (d < 30) return `${d} ngày trước`;
-  return new Date(iso).toLocaleDateString('vi-VN');
+  return new Date(iso).toLocaleDateString(LOCALE);
 }
 
 type Tone = 'ok' | 'warn' | 'down' | 'muted';

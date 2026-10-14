@@ -17,6 +17,8 @@ import {
   useDeleteGoal, useDetachGoalIssues, useGoalPeriods, useGoals, useUpdateKeyResult,
   type GoalDto, type KeyResultDto, type ObjectiveStatus,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { LOCALE } from '@/lib/locale';
 
 const STATUS_META: Record<ObjectiveStatus, { label: string; className: string; hint: string }> = {
   DRAFT: { label: 'Nháp', className: 'bg-surface-2 text-muted', hint: 'Đang soạn, chưa công bố cho cả nhóm' },
@@ -40,7 +42,7 @@ function periodHint(period: string): string {
 /** Định dạng giá trị KR theo đơn vị (số / phần trăm / tiền). */
 function formatValue(value: number, unit: KeyResultDto['unit']): string {
   if (unit === 'PERCENT') return `${Math.round(value * 10) / 10}%`;
-  if (unit === 'CURRENCY') return new Intl.NumberFormat('vi-VN').format(value);
+  if (unit === 'CURRENCY') return new Intl.NumberFormat(LOCALE).format(value);
   return String(Math.round(value * 100) / 100);
 }
 
@@ -278,6 +280,14 @@ function GoalCard({
   );
 }
 
+function GoalsSkeleton() {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 w-full" />)}
+    </div>
+  );
+}
+
 /** MỤC TIÊU & KẾT QUẢ THEN CHỐT (OKR) — nhóm theo kỳ, mỗi mục tiêu là một khối có tiến độ riêng. */
 export function GoalsPage() {
   const can = useAuth((s) => s.can);
@@ -290,7 +300,8 @@ export function GoalsPage() {
   const [editing, setEditing] = useState<GoalDto | null>(null);
   const [attaching, setAttaching] = useState<GoalDto | null>(null);
 
-  const { data: goals, isLoading } = useGoals({ period, projectId, status });
+  const goalsQuery = useGoals({ period, projectId, status });
+  const { data: goals } = goalsQuery;
   const { data: periods } = useGoalPeriods();
   const { data: projects } = useProjects();
 
@@ -387,44 +398,47 @@ export function GoalsPage() {
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 w-full" />)}
-        </div>
-      ) : groups.length === 0 ? (
-        <EmptyState
-          icon={<Target className="h-6 w-6" />}
-          title="Chưa có mục tiêu nào"
-          description={
-            canManage
-              ? 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Tạo mục tiêu đầu tiên, thêm vài kết quả then chốt đo được bằng số rồi gắn công việc để theo dõi.'
-              : 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Khi nhóm của bạn đặt mục tiêu, chúng sẽ hiện ở đây.'
-          }
-          action={canManage ? <Button onClick={openCreate}><Plus className="h-4 w-4" /> Tạo mục tiêu</Button> : undefined}
-        />
-      ) : (
-        <div className="space-y-8">
-          {groups.map(([groupPeriod, items]) => (
-            <section key={groupPeriod}>
-              <div className="mb-3 flex items-baseline gap-2">
-                <h2 className="text-base font-semibold text-ink-strong" title={periodHint(groupPeriod)}>{groupPeriod}</h2>
-                <span className="text-sm text-faint">{items.length} mục tiêu</span>
-              </div>
-              <div className="space-y-4">
-                {items.map((goal) => (
-                  <GoalCard
-                    key={goal.id}
-                    goal={goal}
-                    canManage={canManage}
-                    onEdit={openEdit}
-                    onAttach={setAttaching}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
+      <QueryBoundary
+        query={goalsQuery}
+        skeleton={<GoalsSkeleton />}
+        empty={() => groups.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<Target className="h-6 w-6" />}
+            title="Chưa có mục tiêu nào"
+            description={
+              canManage
+                ? 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Tạo mục tiêu đầu tiên, thêm vài kết quả then chốt đo được bằng số rồi gắn công việc để theo dõi.'
+                : 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Khi nhóm của bạn đặt mục tiêu, chúng sẽ hiện ở đây.'
+            }
+            action={canManage ? <Button onClick={openCreate}><Plus className="h-4 w-4" /> Tạo mục tiêu</Button> : undefined}
+          />
+        }
+      >
+        {() => (
+          <div className="space-y-8">
+            {groups.map(([groupPeriod, items]) => (
+              <section key={groupPeriod}>
+                <div className="mb-3 flex items-baseline gap-2">
+                  <h2 className="text-base font-semibold text-ink-strong" title={periodHint(groupPeriod)}>{groupPeriod}</h2>
+                  <span className="text-sm text-faint">{items.length} mục tiêu</span>
+                </div>
+                <div className="space-y-4">
+                  {items.map((goal) => (
+                    <GoalCard
+                      key={goal.id}
+                      goal={goal}
+                      canManage={canManage}
+                      onEdit={openEdit}
+                      onAttach={setAttaching}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+      </QueryBoundary>
 
       <GoalEditorModal
         open={editorOpen}

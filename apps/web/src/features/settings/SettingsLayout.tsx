@@ -1,14 +1,8 @@
 import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { Building2, Shield, Bell, Flag, SignalHigh, ListChecks, GitBranch, KeyRound, AlarmClock, FileUp } from 'lucide-react';
-import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
-import { WorkspaceBrandingPanel } from '@/features/workspace/WorkspaceBrandingPanel';
-import { PrioritiesSection } from '@/features/settings-admin/PrioritiesSection';
-import { CustomFieldsAdminSection } from '@/features/settings-admin/CustomFieldsAdminSection';
-import { NotificationSection } from './NotificationSection';
-import { SeveritySection } from './SeveritySection';
 
 /** Cài đặt được chia nhóm để dễ tìm: chung → con người → cách làm việc → nâng cao. */
 const SETTINGS_GROUPS: { group: string; items: { to: string; label: string; icon: ReactNode }[] }[] = [
@@ -87,34 +81,3 @@ export function SettingsLayout() {
     </div>
   );
 }
-
-/** Container chuẩn cho một trang con của cài đặt. */
-function PageShell({ children }: { children: ReactNode }) {
-  return <div className={pageContainer('sm')}>{children}</div>;
-}
-
-export const SettingsGeneralPage = () => (
-  <PageShell>
-    <WorkspaceBrandingPanel />
-  </PageShell>
-);
-export const SettingsNotificationsPage = () => (
-  <PageShell>
-    <NotificationSection />
-  </PageShell>
-);
-export const SettingsSeveritiesPage = () => (
-  <PageShell>
-    <SeveritySection />
-  </PageShell>
-);
-export const SettingsPrioritiesPage = () => (
-  <PageShell>
-    <PrioritiesSection />
-  </PageShell>
-);
-export const SettingsFieldsPage = () => (
-  <PageShell>
-    <CustomFieldsAdminSection />
-  </PageShell>
-);

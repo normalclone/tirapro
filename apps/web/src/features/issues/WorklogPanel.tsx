@@ -12,6 +12,8 @@ import { useAuth } from '@/stores/auth';
 import { useUpdateIssue } from './api';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useAddWorklog, useDeleteWorklog, useUpdateWorklog, useWorklogs } from './worklog-api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { LOCALE } from '@/lib/locale';
 
 const QUICK = ['30m', '1h', '2h', '1d'];
 
@@ -22,7 +24,7 @@ function toLocalInput(date: Date): string {
 }
 
 const when = (iso: string) =>
-  new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  new Date(iso).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** "2.5" nghĩa là 2,5 giờ → "2h 30m"; chuỗi có đơn vị giữ nguyên. Dùng cho gợi ý ngay khi gõ. */
 function previewOf(text: string): { ok: boolean; label: string } {
@@ -39,7 +41,8 @@ function previewOf(text: string): { ok: boolean; label: string } {
 export function WorklogPanel({ issue }: { issue: IssueDto }) {
   const me = useAuth((s) => s.user);
   const can = useAuth((s) => s.can);
-  const { data, isLoading } = useWorklogs(issue.id);
+  const worklogsQuery = useWorklogs(issue.id);
+  const { data } = worklogsQuery;
   const add = useAddWorklog(issue.id, issue.key);
   const update = useUpdateWorklog(issue.id, issue.key);
   const remove = useDeleteWorklog(issue.id, issue.key);
@@ -145,37 +148,40 @@ export function WorklogPanel({ issue }: { issue: IssueDto }) {
       )}
 
       <div className="mt-4">
-        {isLoading ? (
-          <Skeleton className="h-10 w-full" />
-        ) : !data?.items.length ? (
-          <p className="text-sm text-muted">Chưa ai ghi thời gian cho việc này.{canLog ? ' Bấm “Ghi thời gian” hoặc phím w.' : ''}</p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {data.items.map((w) => (
-              <li key={w.id} className="group flex items-start gap-2.5 py-2.5 first:pt-0 last:pb-0">
-                <Avatar name={w.author.displayName} src={w.author.avatarUrl} size={22} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-ink">
-                    <span className="font-medium">{w.author.displayName}</span>{' '}
-                    <span className="font-semibold tabular-nums text-ink-strong">{formatDuration(w.timeSpentSec)}</span>
-                  </p>
-                  <p className="text-xs text-faint">{when(w.startedAt)}</p>
-                  {w.comment && <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted">{w.comment}</p>}
-                </div>
-                {canModify(w) && (
-                  <div className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Sửa worklog" aria-label="Sửa worklog" onClick={() => { setEditing(w); setFormOpen(true); }}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted hover:text-danger" title="Xoá worklog" aria-label="Xoá worklog" onClick={() => setDeleting(w)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+        <QueryBoundary
+          query={worklogsQuery}
+          skeleton={<Skeleton className="h-10 w-full" />}
+          empty={(d) => !d.items.length}
+          emptyState={<p className="text-sm text-muted">Chưa ai ghi thời gian cho việc này.{canLog ? ' Bấm “Ghi thời gian” hoặc phím w.' : ''}</p>}
+        >
+          {(worklogs) => (
+            <ul className="divide-y divide-border">
+              {worklogs.items.map((w) => (
+                <li key={w.id} className="group flex items-start gap-2.5 py-2.5 first:pt-0 last:pb-0">
+                  <Avatar name={w.author.displayName} src={w.author.avatarUrl} size={22} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-ink">
+                      <span className="font-medium">{w.author.displayName}</span>{' '}
+                      <span className="font-semibold tabular-nums text-ink-strong">{formatDuration(w.timeSpentSec)}</span>
+                    </p>
+                    <p className="text-xs text-faint">{when(w.startedAt)}</p>
+                    {w.comment && <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted">{w.comment}</p>}
                   </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+                  {canModify(w) && (
+                    <div className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Sửa worklog" aria-label="Sửa worklog" onClick={() => { setEditing(w); setFormOpen(true); }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted hover:text-danger" title="Xoá worklog" aria-label="Xoá worklog" onClick={() => setDeleting(w)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </QueryBoundary>
       </div>
 
       <ConfirmDialog

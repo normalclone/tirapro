@@ -21,6 +21,8 @@ import { WatchButton } from '@/features/issue-widgets/WatchButton';
 import { IssuePeoplePanel, IssueDatesPanel, IssueSprintSubtitle, IssueStoryPointsInline, IssueTypeSelect, IssuePrioritySelect } from '@/features/issue-edit/IssueProperties';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { CommentsSection } from '@/features/issue-edit/CommentsSection';
+import { computeNextStatuses } from './nextStatuses';
+import { FOCUS_COMMENT_EVENT } from '@/features/command/events';
 import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
 import { IssueLabelsPicker } from '@/features/issue-meta/IssueLabelsPicker';
@@ -104,24 +106,7 @@ export function IssueDetailPage() {
 
   // Chỉ các trạng thái ở BƯỚC KẾ TIẾP — chuyển tiếp hợp lệ từ trạng thái hiện tại theo workflow.
   const currentStatusId = issue?.status.id;
-  const nextStatuses = useMemo(() => {
-    const empty: { id: string; name: string; category: string }[] = [];
-    if (!currentStatusId) return empty;
-    const wf = (workflows ?? []).find((w) => w.statuses.some((s) => s.id === currentStatusId));
-    if (!wf) return empty;
-    const byId = new Map(wf.statuses.map((s) => [s.id, s]));
-    const seen = new Set<string>();
-    const out: { id: string; name: string; category: string }[] = [];
-    for (const t of wf.transitions) {
-      const applies = t.fromStatusId === currentStatusId || t.fromStatusId == null; // null = "bất kỳ"
-      if (!applies || t.toStatusId === currentStatusId || seen.has(t.toStatusId)) continue;
-      const s = byId.get(t.toStatusId);
-      if (!s) continue;
-      seen.add(t.toStatusId);
-      out.push({ id: s.id, name: s.name, category: s.category });
-    }
-    return out;
-  }, [workflows, currentStatusId]);
+  const nextStatuses = useMemo(() => computeNextStatuses(workflows, currentStatusId), [workflows, currentStatusId]);
 
   const [editingSummary, setEditingSummary] = useState(false);
   const [summary, setSummary] = useState('');
@@ -218,6 +203,30 @@ export function IssueDetailPage() {
       document.getElementById('issue-activity')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
     );
   }
+
+  // Cmd+K "Thêm bình luận": mở tab bình luận, cuộn tới khu hoạt động rồi đưa con trỏ vào ô viết bình luận.
+  // Khu này dựng lười (chỉ khi cuộn tới gần) nên thử lại ngắn cho tới khi ô nhập xuất hiện.
+  useEffect(() => {
+    let timer: number | undefined;
+    function onFocusComment() {
+      setActivityTab('comments');
+      requestAnimationFrame(() =>
+        document.getElementById('issue-activity')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      );
+      let tries = 0;
+      const attempt = () => {
+        const box = document.querySelector<HTMLTextAreaElement>('#issue-activity textarea[placeholder^="Viết bình luận"]');
+        if (box) { box.focus({ preventScroll: true }); return; }
+        if (++tries < 25) timer = window.setTimeout(attempt, 80);
+      };
+      attempt();
+    }
+    window.addEventListener(FOCUS_COMMENT_EVENT, onFocusComment);
+    return () => {
+      window.removeEventListener(FOCUS_COMMENT_EVENT, onFocusComment);
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   const canEditRestricted =
     !!issue &&

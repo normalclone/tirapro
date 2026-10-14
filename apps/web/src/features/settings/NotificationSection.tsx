@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { SectionCard } from './SectionCard';
 import { useNotificationPrefs, useUpdateNotificationPrefs } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 /** Thứ tự + nhãn tiếng Việt cho từng loại thông báo. */
 const NOTIFICATION_TYPES: { key: string; label: string; hint: string }[] = [
@@ -27,7 +28,8 @@ const EMAIL_TYPES: { key: keyof NotificationEmailPrefs; label: string; hint: str
 ];
 
 export function NotificationSection() {
-  const { data, isLoading } = useNotificationPrefs();
+  const prefsQuery = useNotificationPrefs();
+  const { data } = prefsQuery;
   const update = useUpdateNotificationPrefs();
 
   const effective = data?.preferences ?? {};
@@ -40,8 +42,6 @@ export function NotificationSection() {
     update.mutate({ email: { [key]: next } }, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
-  const emailPrefs = data?.email;
-
   return (
     <div className="space-y-6">
     <SectionCard
@@ -49,37 +49,42 @@ export function NotificationSection() {
       title="Thông báo"
       description="Mặc định yên tĩnh — chỉ bật thông báo quan trọng."
     >
-      {isLoading ? (
-        <div className="space-y-2.5">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      ) : (
-        <ul className="divide-y divide-border">
-          {NOTIFICATION_TYPES.map(({ key, label, hint }) => {
-            const checked = effective[key] ?? false;
-            return (
-              <li key={key} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
-                <div className="min-w-0">
-                  <label htmlFor={`notif-${key}`} className="block text-sm font-medium text-ink">
-                    {label}
-                  </label>
-                  <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
-                </div>
-                <input
-                  id={`notif-${key}`}
-                  type="checkbox"
-                  checked={checked}
-                  disabled={update.isPending}
-                  onChange={(e) => toggle(key, e.target.checked)}
-                  className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
-                />
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <QueryBoundary
+        query={prefsQuery}
+        skeleton={
+          <div className="space-y-2.5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        }
+      >
+        {() => (
+          <ul className="divide-y divide-border">
+            {NOTIFICATION_TYPES.map(({ key, label, hint }) => {
+              const checked = effective[key] ?? false;
+              return (
+                <li key={key} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <label htmlFor={`notif-${key}`} className="block text-sm font-medium text-ink">
+                      {label}
+                    </label>
+                    <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
+                  </div>
+                  <input
+                    id={`notif-${key}`}
+                    type="checkbox"
+                    checked={checked}
+                    disabled={update.isPending}
+                    onChange={(e) => toggle(key, e.target.checked)}
+                    className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </QueryBoundary>
     </SectionCard>
 
     <SectionCard
@@ -87,34 +92,39 @@ export function NotificationSection() {
       title="Thông báo qua email"
       description="Các thông báo trong vòng 5 phút được gộp thành một email để hộp thư không bị ngập."
     >
-      {isLoading || !emailPrefs ? (
-        <div className="space-y-2.5">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      ) : (
-        <ul className="divide-y divide-border">
-          {EMAIL_TYPES.map(({ key, label, hint }) => (
-            <li key={key} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
-              <div className="min-w-0">
-                <label htmlFor={`notif-email-${key}`} className="block text-sm font-medium text-ink">
-                  {label}
-                </label>
-                <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
-              </div>
-              <input
-                id={`notif-email-${key}`}
-                type="checkbox"
-                checked={emailPrefs[key]}
-                disabled={update.isPending}
-                onChange={(e) => toggleEmail(key, e.target.checked)}
-                className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+      <QueryBoundary
+        query={prefsQuery}
+        skeleton={
+          <div className="space-y-2.5">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        }
+      >
+        {(prefs) => (
+          <ul className="divide-y divide-border">
+            {EMAIL_TYPES.map(({ key, label, hint }) => (
+              <li key={key} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                <div className="min-w-0">
+                  <label htmlFor={`notif-email-${key}`} className="block text-sm font-medium text-ink">
+                    {label}
+                  </label>
+                  <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
+                </div>
+                <input
+                  id={`notif-email-${key}`}
+                  type="checkbox"
+                  checked={prefs.email[key]}
+                  disabled={update.isPending}
+                  onChange={(e) => toggleEmail(key, e.target.checked)}
+                  className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </QueryBoundary>
     </SectionCard>
     </div>
   );

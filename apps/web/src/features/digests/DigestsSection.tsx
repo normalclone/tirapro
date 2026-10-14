@@ -19,6 +19,7 @@ import {
   type Digest,
   type DigestSchedule,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 /* ------------------------------------------------------------------ */
 /* Hằng số                                                            */
@@ -51,7 +52,8 @@ function truncate(text: string, max = 140): string {
 
 export function DigestsSection() {
   const confirm = useConfirm();
-  const { data, isLoading } = useDigests();
+  const digestsQuery = useDigests();
+  const { data } = digestsQuery;
   const { data: projectsData } = useProjects();
   const create = useCreateDigest();
   const remove = useDeleteDigest();
@@ -117,36 +119,43 @@ export function DigestsSection() {
       </div>
 
       <div className="p-5">
-        {isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 2 }).map((_, i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </div>
-        ) : digests.length === 0 && !adding ? (
-          <EmptyState
-            icon={<CalendarClock className="h-6 w-6" />}
-            title="Chưa có digest nào"
-            description="Tạo báo cáo định kỳ để tự động tổng hợp tiến độ dự án theo lịch."
-            action={
-              <Button size="sm" onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4" />
-                Tạo báo cáo
-              </Button>
-            }
-          />
-        ) : (
-          <ul className="space-y-2.5">
-            {digests.map((digest) => (
-              <DigestRow
-                key={digest.id}
-                digest={digest}
-                onDelete={() => handleDelete(digest)}
-                deleting={remove.isPending}
-              />
-            ))}
-          </ul>
-        )}
+        <QueryBoundary
+          query={digestsQuery}
+          skeleton={
+            <div className="space-y-2">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          }
+          empty={() => digests.length === 0 && !adding}
+          emptyState={
+            <EmptyState
+              icon={<CalendarClock className="h-6 w-6" />}
+              title="Chưa có digest nào"
+              description="Tạo báo cáo định kỳ để tự động tổng hợp tiến độ dự án theo lịch."
+              action={
+                <Button size="sm" onClick={() => setAdding(true)}>
+                  <Plus className="h-4 w-4" />
+                  Tạo báo cáo
+                </Button>
+              }
+            />
+          }
+        >
+          {() => (
+            <ul className="space-y-2.5">
+              {digests.map((digest) => (
+                <DigestRow
+                  key={digest.id}
+                  digest={digest}
+                  onDelete={() => handleDelete(digest)}
+                  deleting={remove.isPending}
+                />
+              ))}
+            </ul>
+          )}
+        </QueryBoundary>
 
         {/* Form tạo báo cáo */}
         {adding ? (

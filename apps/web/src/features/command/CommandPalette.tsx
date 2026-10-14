@@ -1,5 +1,5 @@
-import { useDeferredValue, useEffect, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useDeferredValue, useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import { ArrowRight, BookOpen, History, LayoutDashboard, LayoutGrid, ListTodo, Moon, Plus, Search, Sparkles, Sun } from 'lucide-react';
 import { useProjects } from '@/features/projects/api';
@@ -8,9 +8,23 @@ import { useTheme } from '@/stores/theme';
 import { useRecents } from '@/stores/recentIssues';
 import { LAST_VIEW_KEY } from '@/features/projects/ProjectLayout';
 import { QUICK_SEARCH_MIN_LENGTH, useQuickSearch } from './api';
+import { ActionItem } from './ActionItem';
+import { IssueContextGroup } from './IssueContextGroup';
 
 /** Nhận dạng mã issue người dùng gõ (vd `DEMO-BUG-1`) để nhảy thẳng tới issue. */
 const ISSUE_KEY_RE = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/;
+
+/** Đang xem trang chi tiết công việc `/issue/:key` → trả về key để hiện nhóm hành động theo ngữ cảnh. */
+const ISSUE_ROUTE_RE = /^\/issue\/([^/]+)/;
+
+/** decodeURIComponent không ném lỗi với đường dẫn hỏng (vd `%E0%A4%A`) — lỗi thì dùng nguyên chuỗi. */
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
 
 /** Dự án hiện tại cho các hành động điều hướng: URL `/p/:key` → view gần nhất → dự án đầu. */
 function currentProjectKey(projects: { key: string }[] | undefined): string | null {
@@ -29,6 +43,8 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const issueRouteKey = ISSUE_ROUTE_RE.exec(pathname)?.[1];
   const openCreate = useCreateIssueModal((s) => s.openCreate);
   const theme = useTheme((s) => s.theme);
   const toggleTheme = useTheme((s) => s.toggle);
@@ -138,6 +154,8 @@ export function CommandPalette() {
             ))}
           </Command.Group>
         )}
+
+        {issueRouteKey && <IssueContextGroup issueKey={safeDecode(issueRouteKey)} runAction={runAction} />}
 
         <Command.Group
           heading="Hành động"
@@ -253,29 +271,5 @@ export function CommandPalette() {
         <kbd className="rounded bg-surface-2 px-1.5 py-0.5 font-mono">esc</kbd> đóng
       </div>
     </Command.Dialog>
-  );
-}
-
-/** Một dòng hành động/điều hướng trong bảng lệnh (icon + nhãn), style dùng chung. */
-function ActionItem({
-  value,
-  icon,
-  label,
-  onSelect,
-}: {
-  value: string;
-  icon: ReactNode;
-  label: string;
-  onSelect: () => void;
-}) {
-  return (
-    <Command.Item
-      value={value}
-      onSelect={onSelect}
-      className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink data-[selected=true]:bg-surface-2"
-    >
-      {icon}
-      <span className="truncate">{label}</span>
-    </Command.Item>
   );
 }

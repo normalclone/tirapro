@@ -1,6 +1,6 @@
 # Nợ lint (ESLint 9, `pnpm lint`)
 
-Cập nhật: 2026-10-15 (Task A1). `pnpm lint` thoát 0 với **0 lỗi, 277 cảnh báo** (cập nhật sau tích hợp #3; root `eslint . --max-warnings 277`).
+Cập nhật: 2026-10-15 (Task A1). `pnpm lint` thoát 0 với **0 lỗi, 275 cảnh báo** (cập nhật sau Task D4; root `eslint . --max-warnings 275`).
 `eslint .` ở root hiện KHÔNG có `--max-warnings 0` — đó là "ngân sách cảnh báo" tạm: số
 cảnh báo không được tăng. Khi trả hết nợ dưới đây, đổi script thành `eslint . --max-warnings 0`
 (cả `lint-staged` ở root và `lint` trong `apps/api`, `apps/web`).
@@ -26,7 +26,7 @@ file thuộc `features/goals|raid|resources|planning` đang do Task A2 sửa, kh
 
 | Rule | Cảnh báo | Ghi chú |
 |---|---|---|
-| `max-lines-per-function` (150 dòng) | 42 (web 40, api 2) | Component React dài; tách dần khi chạm vào file |
+| `max-lines-per-function` (150 dòng) | 41 (web 39, api 2) | Component React dài; tách dần khi chạm vào file. D4 đã tách ProjectConfigPage/IntegrationsPage/SettingsLayout thành file theo mục (cảnh báo chuyển sang từng section, chưa giảm) |
 | `react-hooks/exhaustive-deps` | 3 (web 3) | `IssueDetailPage.tsx` (2 `useEffect` thiếu dep `issue`), 1 `useMemo` thừa dep `open`; cần xem từng hook, không sửa máy móc |
 
 ## Đã sửa trong Task A1

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { LOCALE } from '@/lib/locale';
 
 
 export interface ClientProjectRef {
@@ -142,8 +143,8 @@ export function useDeleteContract() {
 export function formatMoney(value: number | null, currency: string): string {
   if (value === null || Number.isNaN(value)) return '—';
   try {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat(LOCALE, { style: 'currency', currency, maximumFractionDigits: 0 }).format(value);
   } catch {
-    return `${new Intl.NumberFormat('vi-VN').format(value)} ${currency}`;
+    return `${new Intl.NumberFormat(LOCALE).format(value)} ${currency}`;
   }
 }
