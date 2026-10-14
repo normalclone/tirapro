@@ -7,6 +7,7 @@ export * from './schemas/issue';
 export * from './schemas/common';
 export * from './schemas/ai';
 export * from './schemas/analytics';
+export * from './schemas/import';
 
 // Realtime + JQL + utils
 export * from './ws';

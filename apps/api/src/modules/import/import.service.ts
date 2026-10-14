@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { parse } from 'csv-parse/sync';
 import { Prisma } from '@prisma/client';
-import type { IssueDto } from '@tirapro/types';
+import type { ImportJobDto, IssueDto } from '@tirapro/types';
 import type { CreateIssueInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
@@ -11,7 +11,7 @@ import { IssuesService } from '../issues/issues.service';
 type CsvRow = Record<string, string>;
 
 /** Lỗi của một dòng khi import. */
-interface RowError {
+export interface RowError {
   row: number;
   error: string;
 }
@@ -76,7 +76,7 @@ export interface ImportJsonResult {
 const IMPORT_CHUNK_SIZE = 100;
 
 /** Một dòng đã chuẩn bị xong, sẵn sàng ghi. `after` chạy trong cùng transaction với việc tạo issue. */
-interface PreparedItem {
+export interface PreparedItem {
   row: number;
   input: CreateIssueInput;
   after?: (
@@ -84,6 +84,14 @@ interface PreparedItem {
     issue: IssueDto,
     labelCache: Map<string, string>,
   ) => Promise<{ labels: number; comments: number }>;
+  /** Chạy SAU khi transaction của lô commit (vd ghi map `mã nguồn → id` để dòng sau tham chiếu cha/epic). */
+  onCreated?: (issue: IssueDto) => void;
+}
+
+/** Móc theo dõi tiến độ khi ghi theo lô. */
+export interface ChunkHooks {
+  /** Gọi sau mỗi lô (kể cả lô phải chạy lại từng dòng) với số dòng vừa xử lý xong (thành công + lỗi). */
+  onChunk?: (rowsProcessed: number) => Promise<void> | void;
 }
 
 @Injectable()
@@ -190,7 +198,7 @@ export class ImportService {
         }
       }
 
-      const written = await this.createInChunks(workspaceId, userId, items, new Map());
+      const written = await this.createIssuesInChunks(workspaceId, userId, items, new Map());
       errors.push(...written.errors);
       errors.sort((x, y) => x.row - y.row);
       const created = written.created;
@@ -379,7 +387,7 @@ export class ImportService {
         }
       }
 
-      const written = await this.createInChunks(workspaceId, userId, items, labelByName);
+      const written = await this.createIssuesInChunks(workspaceId, userId, items, labelByName);
       errors.push(...written.errors);
       errors.sort((x, y) => x.row - y.row);
       const created = written.created;
@@ -464,6 +472,24 @@ export class ImportService {
     }));
   }
 
+  /** Một ImportJob của workspace (để web poll tiến độ). */
+  async getJob(workspaceId: string, id: string): Promise<ImportJobDto> {
+    const j = await this.prisma.importJob.findFirst({ where: { id, workspaceId } });
+    if (!j) throw new NotFoundAppException('Lần nhập dữ liệu');
+    return {
+      id: j.id,
+      source: j.source,
+      status: j.status,
+      progress: j.progress,
+      totalItems: j.totalItems,
+      processedItems: j.processedItems,
+      result: (j.result as Record<string, unknown> | null) ?? null,
+      errorLog: j.errorLog,
+      createdAt: j.createdAt.toISOString(),
+      completedAt: j.completedAt?.toISOString() ?? null,
+    };
+  }
+
   // ---------- helpers ----------
 
   /**
@@ -503,7 +529,7 @@ export class ImportService {
    * Resolve-or-create label trong project (label phạm vi project, unique [projectId,name]).
    * Chỉ chạm DB khi cache chưa có; upsert để chống đua/trùng theo unique [projectId,name].
    */
-  private async resolveOrCreateLabel(
+  async resolveOrCreateLabel(
     db: Prisma.TransactionClient,
     projectId: string,
     name: string,
@@ -529,11 +555,12 @@ export class ImportService {
    * Sự kiện ISSUE_CREATED chỉ phát sau khi transaction commit. `labelCache` chỉ được cập nhật
    * khi transaction commit, tránh trỏ tới label đã bị rollback.
    */
-  private async createInChunks(
+  async createIssuesInChunks(
     workspaceId: string,
     userId: string,
     items: PreparedItem[],
     labelCache: Map<string, string>,
+    hooks: ChunkHooks = {},
   ): Promise<{ created: number; labels: number; comments: number; errors: RowError[] }> {
     const result = { created: 0, labels: 0, comments: 0, errors: [] as RowError[] };
 
@@ -561,6 +588,7 @@ export class ImportService {
       for (const [k, v] of local) labelCache.set(k, v);
       for (const fn of deferred) fn(); // sự kiện đánh số lại rank (nếu có) — sau commit
       for (const dto of out.dtos) this.issues.emitCreated(dto, userId);
+      batch.forEach((it, i) => it.onCreated?.(out.dtos[i]!));
       result.created += out.dtos.length;
       result.labels += out.labels;
       result.comments += out.comments;
@@ -573,6 +601,7 @@ export class ImportService {
       } catch (chunkErr) {
         if (chunk.length === 1) {
           result.errors.push({ row: chunk[0]!.row, error: this.errMessage(chunkErr) });
+          await hooks.onChunk?.(1);
           continue;
         }
         this.logger.warn(`Lô import ${start}-${start + chunk.length - 1} lỗi, chạy lại từng dòng: ${this.errMessage(chunkErr)}`);
@@ -584,6 +613,7 @@ export class ImportService {
           }
         }
       }
+      await hooks.onChunk?.(chunk.length);
     }
     return result;
   }
