@@ -31,6 +31,8 @@ Repo đã có sẵn [`render.yaml`](../render.yaml) mô tả 4 thành phần: Po
 
 Hợp khi bạn có sẵn 1 server (Ubuntu…). `docker-compose.yml` đã có Postgres(pgvector)+Redis.
 
+**Yêu cầu Node `>=22.19`** (undici@8); image Docker dùng `node:22-alpine` nên đã đáp ứng.
+
 ```bash
 git clone https://github.com/normalclone/tirapro.git && cd tirapro
 cp .env.example .env            # sửa secret JWT, CORS_ORIGIN = domain web, DATABASE_URL/REDIS_URL
