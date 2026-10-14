@@ -185,6 +185,7 @@ export const HistoryField = {
   RESOLUTION: 'RESOLUTION',
   SCOPE: 'SCOPE',
   PRIORITY: 'PRIORITY',
+  TIME_SPENT: 'TIME_SPENT',
 } as const;
 export type HistoryField = (typeof HistoryField)[keyof typeof HistoryField];
 
@@ -219,6 +220,22 @@ export const TriageState = {
   SNOOZED: 'SNOOZED',
 } as const;
 export type TriageState = (typeof TriageState)[keyof typeof TriageState];
+
+export const RuleTrigger = {
+  ISSUE_CREATED: 'ISSUE_CREATED',
+  ISSUE_TRANSITIONED: 'ISSUE_TRANSITIONED',
+  ISSUE_UPDATED: 'ISSUE_UPDATED',
+  COMMENT_ADDED: 'COMMENT_ADDED',
+  SCHEDULED: 'SCHEDULED',
+} as const;
+export type RuleTrigger = (typeof RuleTrigger)[keyof typeof RuleTrigger];
+
+export const RuleRunStatus = {
+  SUCCESS: 'SUCCESS',
+  SKIPPED: 'SKIPPED',
+  FAILED: 'FAILED',
+} as const;
+export type RuleRunStatus = (typeof RuleRunStatus)[keyof typeof RuleRunStatus];
 
 export const IntegrationType = {
   TELEGRAM: 'TELEGRAM',

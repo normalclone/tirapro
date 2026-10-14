@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DOMAIN_EVENTS, ERROR_CODES, PERMISSIONS, type BulkUpdateIssuesResult, type IssueDto } from '@tirapro/types';
+import { DOMAIN_EVENTS, ERROR_CODES, PERMISSIONS, type AutomationEventMeta, type BulkUpdateIssuesResult, type IssueDto } from '@tirapro/types';
 import { rankBetween, initialRanks, RankGapError, issueTypePrefix, type BulkUpdateIssuesInput, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -29,6 +29,20 @@ const issueInclude = {
 } satisfies Prisma.IssueInclude;
 
 type IssueRow = Prisma.IssueGetPayload<{ include: typeof issueInclude }>;
+
+/** Trường issue mà `update()` có thể đổi — dùng để báo `changedFields` cho automation (trigger ISSUE_UPDATED). */
+const TRACKED_FIELDS = [
+  'summary', 'description', 'priorityId', 'assigneeId', 'storyPoints', 'sprintId', 'resolutionId',
+  'typeId', 'dueDate', 'startDate', 'parentId', 'epicId',
+] as const;
+
+function changedFieldsOf(before: IssueRow, after: IssueRow): string[] {
+  const same = (a: unknown, b: unknown) => (a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b);
+  return TRACKED_FIELDS.filter((f) => !same(before[f], after[f]));
+}
+
+/** `meta` chỉ gắn vào payload khi do automation gây ra — sự kiện của người dùng thật giữ nguyên hình dạng cũ. */
+const withMeta = (meta: AutomationEventMeta | undefined) => (meta ? { meta } : {});
 
 export interface IssueListFilter {
   projectId?: string;
@@ -94,9 +108,9 @@ export class IssuesService {
     }
   }
 
-  async create(workspaceId: string, userId: string, input: CreateIssueInput): Promise<IssueDto> {
+  async create(workspaceId: string, userId: string, input: CreateIssueInput, opts?: AutomationEventMeta): Promise<IssueDto> {
     const dto = await this.createCore(null, workspaceId, userId, input);
-    this.emitCreated(dto, userId, input.clientId);
+    this.emitCreated(dto, userId, input.clientId, opts);
     return dto;
   }
 
@@ -115,8 +129,8 @@ export class IssuesService {
     return this.createCore(tx, workspaceId, userId, input, deferred);
   }
 
-  emitCreated(dto: IssueDto, actorId: string, clientId?: string): void {
-    this.events.emit(DOMAIN_EVENTS.ISSUE_CREATED, { issue: dto, actorId, clientId });
+  emitCreated(dto: IssueDto, actorId: string, clientId?: string, meta?: AutomationEventMeta): void {
+    this.events.emit(DOMAIN_EVENTS.ISSUE_CREATED, { issue: dto, actorId, clientId, ...withMeta(meta) });
   }
 
   private async createCore(
@@ -311,7 +325,12 @@ export class IssuesService {
     return this.toDto(issue);
   }
 
-  async update(workspaceId: string, userId: string, id: string, input: UpdateIssueInput): Promise<IssueDto> {
+  /**
+   * `opts` do automation truyền vào (tầng/chuỗi quy tắc): gắn vào `meta` của sự kiện để engine chặn vòng lặp,
+   * và bỏ qua kiểm tra "chỉ người tạo/quản trị sửa Story points/Hạn" (người dùng hệ thống không phải thành viên —
+   * quy tắc đã do quản trị tạo).
+   */
+  async update(workspaceId: string, userId: string, id: string, input: UpdateIssueInput, opts?: AutomationEventMeta): Promise<IssueDto> {
     const current = await this.requireIssue(workspaceId, id);
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, {
@@ -320,7 +339,7 @@ export class IssuesService {
     });
 
     // Field-level: Story points / Hạn chỉ người tạo hoặc admin sửa được.
-    if (input.storyPoints !== undefined || input.dueDate !== undefined) {
+    if ((input.storyPoints !== undefined || input.dueDate !== undefined) && opts?.automationDepth === undefined) {
       await this.assertCanEditRestrictedFields(userId, workspaceId, current);
     }
 
@@ -347,7 +366,9 @@ export class IssuesService {
       return row;
     });
     const dto = this.toDto(updated);
-    this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId: userId });
+    this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+      issue: dto, actorId: userId, changedFields: changedFieldsOf(current, updated), ...withMeta(opts),
+    });
     return dto;
   }
 
@@ -429,7 +450,7 @@ export class IssuesService {
     return { updated: result.map((r) => this.toDto(r)), conflicts };
   }
 
-  async transition(workspaceId: string, userId: string, id: string, input: TransitionIssueInput): Promise<IssueDto> {
+  async transition(workspaceId: string, userId: string, id: string, input: TransitionIssueInput, opts?: AutomationEventMeta): Promise<IssueDto> {
     const current = await this.requireIssue(workspaceId, id);
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, { resolutionId: input.resolutionId });
@@ -452,7 +473,7 @@ export class IssuesService {
       return row;
     });
     const dto = this.toDto(updated);
-    this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, { issue: dto, actorId: userId, fromStatusId: current.statusId });
+    this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, { issue: dto, actorId: userId, fromStatusId: current.statusId, ...withMeta(opts) });
     return dto;
   }
 

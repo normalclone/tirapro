@@ -14,6 +14,8 @@ import type {
   ProjectType,
   RichTextFormat,
   RoleScope,
+  RuleRunStatus,
+  RuleTrigger,
   SprintState,
   StatusCategory,
   TriageState,
@@ -377,4 +379,65 @@ export interface SavedFilterDto {
   jql: string;
   visibility: FilterVisibility;
   ownerId: ID;
+}
+
+/** Một lần ghi nhận thời gian trên issue. `timeSpentSec` tính bằng giây. */
+export interface WorklogDto {
+  id: ID;
+  issueId: ID;
+  author: Pick<UserDto, 'id' | 'displayName' | 'avatarUrl'>;
+  timeSpentSec: number;
+  startedAt: ISODate;
+  comment: string | null;
+  createdAt: ISODate;
+  updatedAt: ISODate;
+}
+
+/** Danh sách worklog kèm tổng và ước lượng hiện tại của issue (giây). */
+export interface WorklogListDto {
+  items: WorklogDto[];
+  totalSec: number;
+  originalEstimate: number | null;
+  remainingEstimate: number | null;
+}
+
+/** Quy tắc tự động hoá (khi… nếu… thì…). `conditions`/`actions` là JSON đã qua zod ở `@tirapro/shared`. */
+export interface AutomationRuleDto {
+  id: ID;
+  workspaceId: ID;
+  projectId: ID | null;
+  name: string;
+  enabled: boolean;
+  trigger: RuleTrigger;
+  triggerConfig: Record<string, unknown>;
+  conditions: Array<Record<string, unknown>>;
+  actions: Array<Record<string, unknown>>;
+  createdById: ID;
+  lastRunAt: ISODate | null;
+  runCount: number;
+  createdAt: ISODate;
+  updatedAt: ISODate;
+}
+
+export interface AutomationRunStepDto {
+  step: string;
+  ok: boolean;
+  message: string;
+}
+
+export interface AutomationRunDto {
+  id: ID;
+  ruleId: ID;
+  issueId: ID | null;
+  issueKey: string | null;
+  status: RuleRunStatus;
+  log: AutomationRunStepDto[];
+  durationMs: number;
+  createdAt: ISODate;
+}
+
+/** Kết quả chạy thử (dry-run): không ghi gì, chỉ trả log. */
+export interface AutomationRuleTestResultDto {
+  status: RuleRunStatus;
+  log: AutomationRunStepDto[];
 }
