@@ -21,6 +21,7 @@
     "@radix-ui/react-popover": "^1.1.4",
     "@radix-ui/react-tooltip": "^1.1.6",
     "@tanstack/react-query": "^5.62.7",
+    "@tanstack/react-virtual": "^3.14.19",
     "@tirapro/shared": "workspace:*",
     "@tirapro/types": "workspace:*",
     "axios": "^1.7.9",

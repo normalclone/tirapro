@@ -119,3 +119,10 @@ export function descendantIdsWithSelf(issues: IssueDto[], rootId: string): Set<s
   }
   return out;
 }
+
+/** So sánh tiến độ theo giá trị (bản đồ tiến độ được dựng lại mỗi lần cache đổi nên tham chiếu không dùng được cho `memo`). */
+export function sameProgress(a: SubtreeProgress | undefined, b: SubtreeProgress | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.total === b.total && a.done === b.done && a.inProgress === b.inProgress && a.todo === b.todo && a.pct === b.pct;
+}

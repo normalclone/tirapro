@@ -1,13 +1,12 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { Plus, Play, CheckCircle2, ChevronRight, Inbox, Sparkles, Pencil } from 'lucide-react';
-import { DueBadge, dueBorderClass } from '@/components/ui/DueBadge';
-import { TaskProgress } from '@/components/ui/TaskProgress';
+import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
 import { byPriorityThenStatus } from '@/lib/issueOrder';
 import { buildProgressMap, type SubtreeProgress } from '@/lib/issueTree';
 import {
   DndContext, DragOverlay, PointerSensor, KeyboardSensor, useSensor, useSensors,
-  useDraggable, useDroppable, type DragEndEvent, type DragStartEvent,
+  useDndContext, useDroppable, type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core';
 import { toast } from 'sonner';
 import type { IssueDto, SprintDto } from '@tirapro/types';
@@ -23,12 +22,13 @@ import { useProjectIssues } from '@/features/issues/api';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Avatar, Badge, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
+import { Badge, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { cn } from '@/lib/utils';
+import { IssueRow, IssueRowBody } from './IssueRow';
 import { BulkActionBar } from './BulkActionBar';
 import { SprintAssistantDialog } from '@/features/ai/SprintAssistantDialog';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
@@ -85,6 +85,8 @@ export function BacklogPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const [dragging, setDragging] = useState<IssueDto | null>(null);
+  // Phần tử cuộn của trang (dùng cho danh sách ảo hoá). Giữ bằng state để Section dài nhận được nó sau khi gắn DOM.
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [showClosed, setShowClosed] = useState(false);
@@ -385,7 +387,7 @@ export function BacklogPage() {
       </div>
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="flex-1 space-y-4 overflow-y-auto p-6">
+        <div ref={setScrollEl} className="flex-1 space-y-4 overflow-y-auto p-6">
           {visibleSprints.map((sprint) => {
             const sprintIssues = bySprint.get(sprint.id) ?? [];
             const notDone = sprintIssues.filter((i) => i.status.category !== 'DONE').length;
@@ -399,6 +401,7 @@ export function BacklogPage() {
                 count={sprintIssues.length}
                 issues={sprintIssues}
                 progressMap={progressMap}
+                scrollEl={scrollEl}
                 projectKey={key}
                 projectId={projectId}
                 canCreate={canCreate}
@@ -485,6 +488,7 @@ export function BacklogPage() {
             count={backlogIssues.length}
             issues={backlogIssues}
             progressMap={progressMap}
+            scrollEl={scrollEl}
             projectKey={key}
             projectId={projectId}
             canCreate={canCreate}
@@ -524,6 +528,7 @@ export function BacklogPage() {
                         count={sprintIssues.length}
                         issues={sprintIssues}
                         progressMap={progressMap}
+                        scrollEl={scrollEl}
                         readOnly
                         hint={sprint.goal}
                       />
@@ -550,7 +555,7 @@ export function BacklogPage() {
           )}
         </div>
 
-        <DragOverlay>{dragging ? <IssueRow issue={dragging} overlay /> : null}</DragOverlay>
+        <DragOverlay>{dragging ? <IssueRowBody issue={dragging} overlay /> : null}</DragOverlay>
       </DndContext>
 
       {assistantFor && projectId && (
@@ -580,8 +585,86 @@ export function BacklogPage() {
   );
 }
 
+/** Danh sách dài hơn ngưỡng này thì chỉ vẽ các dòng đang trong khung nhìn. */
+const VIRTUALIZE_AFTER = 50;
+const ROW_ESTIMATE = 40;
+const ROW_GAP = 6;
+
+/**
+ * Danh sách ảo hoá cuộn theo phần tử cuộn của TRANG (không tạo thanh cuộn lồng nhau). Dòng đang kéo và dòng đang
+ * giữ focus luôn được giữ trong DOM để kéo-thả và bàn phím không bị ngắt khi cuộn.
+ */
+function VirtualRows({
+  issues, scrollEl, renderRow,
+}: {
+  issues: IssueDto[];
+  scrollEl: HTMLDivElement | null;
+  renderRow: (issue: IssueDto) => ReactNode;
+}) {
+  const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
+  const [margin, setMargin] = useState(0);
+  const { active } = useDndContext();
+  const activeIndex = active ? issues.findIndex((i) => i.id === active.id) : -1;
+
+  // Khoảng cách từ đỉnh nội dung cuộn tới đầu danh sách (các khu phía trên đổi chiều cao thì đo lại ở lần vẽ sau).
+  const measureMargin = useCallback(() => {
+    if (!listEl || !scrollEl) return;
+    const m = Math.round(listEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop);
+    setMargin((prev) => (prev === m ? prev : m));
+  }, [listEl, scrollEl]);
+  useLayoutEffect(() => { measureMargin(); });
+  useLayoutEffect(() => {
+    if (!scrollEl) return;
+    const ro = new ResizeObserver(measureMargin);
+    ro.observe(scrollEl);
+    return () => ro.disconnect();
+  }, [scrollEl, measureMargin]);
+
+  const rangeExtractor = useCallback((range: Range) => {
+    const indexes = defaultRangeExtractor(range);
+    const keep = [activeIndex];
+    const focused = listEl?.contains(document.activeElement) ? (document.activeElement as HTMLElement).closest<HTMLElement>('[data-index]') : null;
+    if (focused) keep.push(Number(focused.dataset.index));
+    for (const k of keep) if (k >= 0 && k < range.count && !indexes.includes(k)) indexes.push(k);
+    return indexes.sort((a, b) => a - b);
+  }, [activeIndex, listEl]);
+
+  const virtualizer = useVirtualizer({
+    count: issues.length,
+    getScrollElement: () => scrollEl,
+    estimateSize: () => ROW_ESTIMATE,
+    gap: ROW_GAP,
+    overscan: 10,
+    scrollMargin: margin,
+    getItemKey: (i) => issues[i]?.id ?? i,
+    rangeExtractor,
+  });
+
+  return (
+    <div ref={setListEl} role="list" style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+      {virtualizer.getVirtualItems().map((v) => {
+        const issue = issues[v.index];
+        if (!issue) return null;
+        return (
+          <div
+            key={issue.id}
+            role="listitem"
+            aria-posinset={v.index + 1}
+            aria-setsize={issues.length}
+            data-index={v.index}
+            ref={virtualizer.measureElement}
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start - margin}px)` }}
+          >
+            {renderRow(issue)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Section({
-  id, title, badge, points, count, issues, progressMap, action, hint, emptyTitle, emptyDescription, readOnly,
+  id, title, badge, points, count, issues, progressMap, scrollEl, action, hint, emptyTitle, emptyDescription, readOnly,
   projectKey, projectId, canCreate, quickAddSprintId,
   selectable, selected, onToggleSelect, onToggleSection,
 }: {
@@ -592,6 +675,8 @@ function Section({
   count: number;
   issues: IssueDto[];
   progressMap: Map<string, SubtreeProgress>;
+  /** Phần tử cuộn của trang — cần để ảo hoá danh sách dài. */
+  scrollEl: HTMLDivElement | null;
   action?: React.ReactNode;
   hint?: string | null;
   emptyTitle?: string;
@@ -617,6 +702,17 @@ function Section({
   const allSelected = ids.length > 0 && selectedInSection === ids.length;
   const someSelected = selectedInSection > 0 && !allSelected;
   const titleTip = id === BACKLOG_ID ? BACKLOG_TIP : SPRINT_TIP;
+  const renderRow = (issue: IssueDto) => (
+    <IssueRow
+      key={issue.id}
+      issue={issue}
+      progress={progressMap.get(issue.id)}
+      readOnly={readOnly}
+      selectable={canSelect}
+      checked={selected?.has(issue.id) ?? false}
+      onToggleSelect={onToggleSelect}
+    />
+  );
   return (
     <section
       ref={setNodeRef}
@@ -649,17 +745,11 @@ function Section({
       {hint && <p className="px-4 pb-2 text-xs text-muted">{hint}</p>}
 
       <div className="space-y-1.5 border-t border-border px-2 py-2">
-        {issues.map((issue) => (
-          <IssueRow
-            key={issue.id}
-            issue={issue}
-            progress={progressMap.get(issue.id)}
-            readOnly={readOnly}
-            selectable={canSelect}
-            checked={selected?.has(issue.id) ?? false}
-            onToggleSelect={onToggleSelect}
-          />
-        ))}
+        {issues.length > VIRTUALIZE_AFTER ? (
+          <VirtualRows issues={issues} scrollEl={scrollEl} renderRow={renderRow} />
+        ) : (
+          issues.map((issue) => renderRow(issue))
+        )}
         {issues.length === 0 && (
           emptyTitle ? (
             <div className="p-2">
@@ -682,97 +772,5 @@ function Section({
         )}
       </div>
     </section>
-  );
-}
-
-function IssueRow({
-  issue, overlay, progress, readOnly, selectable, checked, onToggleSelect,
-}: {
-  issue: IssueDto;
-  overlay?: boolean;
-  progress?: SubtreeProgress;
-  readOnly?: boolean;
-  selectable?: boolean;
-  checked?: boolean;
-  onToggleSelect?: (id: string) => void;
-}) {
-  const disabled = overlay || readOnly;
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: issue.id, disabled });
-  const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
-  const warn = dueBorderClass(issue);
-  return (
-    <div
-      ref={disabled ? undefined : setNodeRef}
-      style={style}
-      {...(disabled ? {} : listeners)}
-      {...(disabled ? {} : attributes)}
-      className={cn(
-        'flex items-center gap-3 rounded-md border bg-surface px-2.5 py-2 transition-colors',
-        readOnly ? 'cursor-default' : 'cursor-grab touch-none active:cursor-grabbing',
-        warn || 'border-transparent hover:border-border',
-        'hover:bg-surface-2',
-        checked && 'border-primary bg-primary-subtle',
-        isDragging && 'opacity-40',
-        overlay && 'rotate-1 border-border bg-surface shadow-lg',
-      )}
-    >
-      {selectable && !overlay && (
-        <input
-          type="checkbox"
-          className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-          checked={checked}
-          // Không cho pointer-down/click lan sang draggable của hàng.
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          onChange={() => onToggleSelect?.(issue.id)}
-          aria-label={`Chọn việc ${issue.key} để thao tác hàng loạt`}
-        />
-      )}
-      <span
-        className="h-1.5 w-1.5 shrink-0 rounded-full"
-        style={{ background: issue.priority?.color ?? 'var(--faint)' }}
-        title={issue.priority ? `Mức ưu tiên: ${issue.priority.name}` : 'Chưa đặt mức ưu tiên'}
-      />
-      <span className="shrink-0 font-mono text-xs text-muted" title={`Mã công việc ${issue.key}`}>{issue.key}</span>
-      <span className="min-w-0 flex-1 truncate text-sm text-ink">{issue.summary}</span>
-      {issue.labels && issue.labels.length > 0 && (
-        <span className="hidden shrink-0 items-center gap-1 lg:flex">
-          {issue.labels.slice(0, 2).map((l) => (
-            <span
-              key={l.id}
-              className="max-w-[7rem] truncate rounded px-1.5 py-px text-[10px] font-medium"
-              style={{ backgroundColor: `color-mix(in oklch, ${l.color || 'var(--faint)'} 16%, transparent)`, color: l.color || 'var(--faint)' }}
-              title={`Nhãn: ${l.name}`}
-            >
-              {l.name}
-            </span>
-          ))}
-          {issue.labels.length > 2 && <span className="text-[10px] text-faint">+{issue.labels.length - 2}</span>}
-        </span>
-      )}
-      {progress && progress.total > 0 && (
-        <span className="hidden shrink-0 items-center gap-1.5 sm:flex" title={`Việc con: đã xong ${progress.done}/${progress.total} (${progress.pct}%)`}>
-          <TaskProgress progress={progress} compact className="w-16" />
-          <span className="tabular text-[10px] text-faint">{progress.done}/{progress.total}</span>
-        </span>
-      )}
-      <DueBadge issue={issue} warnOnly className="shrink-0" />
-      {issue.storyPoints != null && (
-        <span
-          className="tabular grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-surface-2 px-1 text-[10px] font-medium text-muted"
-          title={`${issue.storyPoints} điểm ước lượng — mức độ lớn của việc này`}
-        >
-          {issue.storyPoints}
-        </span>
-      )}
-      {issue.assignee ? (
-        <span className="flex shrink-0 items-center gap-1.5" title={`Người phụ trách: ${issue.assignee.displayName}`}>
-          <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={20} />
-          <span className="hidden max-w-[9rem] truncate text-xs text-muted md:inline">{issue.assignee.displayName}</span>
-        </span>
-      ) : (
-        <span className="hidden shrink-0 text-[11px] text-faint sm:inline" title="Chưa có ai nhận việc này">Chưa gán</span>
-      )}
-    </div>
   );
 }

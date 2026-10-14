@@ -259,6 +259,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.62.7
         version: 5.101.1(react@18.3.1)
+      '@tanstack/react-virtual':
+        specifier: ^3.14.19
+        version: 3.14.19(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@tirapro/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -2663,6 +2666,15 @@ packages:
     resolution: {integrity: sha512-ZnONUuQKJe1bJMStXUL1s5uKN9FcfC28j5cK+iDZcdSHtUv1wtin1cGc/Oewhf2Oc4eKY7lggtpvT/AbMmhHew==}
     peerDependencies:
       react: ^18 || ^19
+
+  '@tanstack/react-virtual@3.14.19':
+    resolution: {integrity: sha512-zmVdJO8DDqHphZ2H6SnTmgpVXcUy5DprB+clZF0ik679/d0MQ1UPEb2jtaX6F5VTAX4o3ozSLQaRCnybS2KYLA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  '@tanstack/virtual-core@3.19.4':
+    resolution: {integrity: sha512-ygZ3O99Il18dl0gG0q7sH78iSkb96F07G+xK9V83eCgV8NQbcNd7R+cgcJJMFO7llBoebd0A82sCCstQq2Vp6Q==}
 
   '@telegraf/types@7.1.0':
     resolution: {integrity: sha512-kGevOIbpMcIlCDeorKGpwZmdH7kHbqlk/Yj6dEpJMKEQw5lk0KVQY0OLXaCswy8GqlIVLd5625OB+rAntP9xVw==}
@@ -8804,6 +8816,14 @@ snapshots:
     dependencies:
       '@tanstack/query-core': 5.101.1
       react: 18.3.1
+
+  '@tanstack/react-virtual@3.14.19(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@tanstack/virtual-core': 3.19.4
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@tanstack/virtual-core@3.19.4': {}
 
   '@telegraf/types@7.1.0': {}
 

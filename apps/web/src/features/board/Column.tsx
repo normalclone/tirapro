@@ -4,8 +4,8 @@ import type { BoardColumnDto, IssueDto } from '@tirapro/types';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
 import { categoryColor } from '@/lib/statusColor';
 import { cn } from '@/lib/utils';
-import type { SubtreeProgress } from '@/lib/issueTree';
-import { Card, sameProgress } from './Card';
+import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
+import { Card } from './Card';
 
 export interface ColumnProps {
   col: BoardColumnDto;

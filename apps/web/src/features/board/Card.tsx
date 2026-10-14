@@ -6,7 +6,7 @@ import { TaskProgress } from '@/components/ui/TaskProgress';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { Avatar } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
-import type { SubtreeProgress } from '@/lib/issueTree';
+import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
 
 /** Roving focus giữa các card bằng phím mũi tên (theo data-lane/col/row). */
 function focusCard(lane: number, col: number, row: number): boolean {
@@ -103,12 +103,6 @@ export function CardBody({
       )}
     </div>
   );
-}
-
-export function sameProgress(a: SubtreeProgress | undefined, b: SubtreeProgress | undefined): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return a.total === b.total && a.done === b.done && a.inProgress === b.inProgress && a.todo === b.todo && a.pct === b.pct;
 }
 
 interface CardProps {
