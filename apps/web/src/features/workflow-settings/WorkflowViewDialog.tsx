@@ -4,7 +4,7 @@ import ReactFlow, {
   useNodesInitialized, useReactFlow, type Edge, type Node, type NodeProps,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { X } from 'lucide-react';
+import { Dialog } from '@/components/ui/Dialog';
 import { DelayedSpinner } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import { useWorkflows, type StatusCategory, type Workflow } from './api';
@@ -129,60 +129,42 @@ export function WorkflowViewDialog({
   const nodes = useMemo(() => (workflow ? buildNodes(workflow, currentStatusId) : []), [workflow, currentStatusId]);
   const edges = useMemo(() => (workflow ? buildEdges(workflow) : []), [workflow]);
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
-    if (open) window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-modal flex items-center justify-center p-4">
-      <button className="absolute inset-0 bg-black/30 animate-in fade-in duration-200" onClick={onClose} aria-label="Đóng" />
-      <div className="relative flex h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <span className="text-sm font-medium text-ink">
-            Quy trình{workflow ? `: ${workflow.name}` : ''}
-          </span>
-          {currentStatusName && (
-            <span className="rounded bg-primary-subtle px-2 py-0.5 text-xs font-medium text-primary">Hiện tại: {currentStatusName}</span>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Đóng"
-            className="ml-auto grid h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+    <Dialog
+      open
+      onOpenChange={(o) => { if (!o) onClose(); }}
+      title={`Quy trình${workflow ? `: ${workflow.name}` : ''}`}
+      description={currentStatusName ? `Hiện tại: ${currentStatusName}` : undefined}
+      size="xl"
+      className="h-[80vh]"
+      bodyClassName="relative p-0"
+    >
+      <div className="absolute inset-0 bg-surface-2">
+        {isLoading ? (
+          <div className="grid h-full place-items-center"><DelayedSpinner /></div>
+        ) : !workflow ? (
+          <div className="grid h-full place-items-center px-6 text-center text-sm text-muted">
+            Không tìm thấy quy trình cho trạng thái này.
+          </div>
+        ) : (
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            fitView
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            proOptions={{ hideAttribution: true }}
           >
-            <X className="h-4 w-4" />
-          </button>
-        </header>
-
-        <div className="min-h-0 flex-1 bg-surface-2">
-          {isLoading ? (
-            <div className="grid h-full place-items-center"><DelayedSpinner /></div>
-          ) : !workflow ? (
-            <div className="grid h-full place-items-center px-6 text-center text-sm text-muted">
-              Không tìm thấy quy trình cho trạng thái này.
-            </div>
-          ) : (
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              fitView
-              nodesDraggable={false}
-              nodesConnectable={false}
-              elementsSelectable={false}
-              proOptions={{ hideAttribution: true }}
-            >
-              <FitView dep={workflow.id} />
-              <Background gap={16} color="var(--border)" />
-              <Controls showInteractive={false} className="!border-border !bg-surface !shadow-md" />
-            </ReactFlow>
-          )}
-        </div>
+            <FitView dep={workflow.id} />
+            <Background gap={16} color="var(--border)" />
+            <Controls showInteractive={false} className="!border-border !bg-surface !shadow-md" />
+          </ReactFlow>
+        )}
       </div>
-    </div>
+    </Dialog>
   );
 }
