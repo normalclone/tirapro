@@ -5,6 +5,9 @@ import { AppShell } from '@/components/layout/AppShell';
 // Vào ngay từ đầu (unauth first paint + shell) → giữ eager, không tách chunk.
 import { LoginPage } from '@/features/auth/LoginPage';
 import { SignupPage } from '@/features/auth/SignupPage';
+import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
+import { AcceptInvitePage } from '@/features/auth/AcceptInvitePage';
 // ProjectLayout dùng nhiều (board/backlog/reports…) → eager để đổi tab không nháy toàn trang;
 // nội dung con của nó lazy, có Suspense riêng bên trong ProjectLayout.
 import { ProjectLayout, ProjectsIndexRedirect } from '@/features/projects/ProjectLayout';
@@ -90,6 +93,10 @@ function RequireAuth() {
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/signup', element: <SignupPage /> },
+  // Công khai: quên / đặt lại mật khẩu và nhận lời mời qua liên kết trong email.
+  { path: '/forgot-password', element: <ForgotPasswordPage /> },
+  { path: '/reset-password', element: <ResetPasswordPage /> },
+  { path: '/invite/accept', element: <AcceptInvitePage /> },
   // Trang tài liệu — công khai, độc lập, KHÔNG cần đăng nhập, có sidebar riêng.
   { path: '/documentation', element: <Suspense fallback={<PageLoading />}><DocumentationPage /></Suspense> },
   {
