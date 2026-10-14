@@ -41,9 +41,15 @@ export class MailOutboxService implements OnApplicationShutdown {
 
   /** Xử lý một lô; trả số thư gửi thành công (phục vụ test). */
   async processBatch(now: Date = new Date()): Promise<number> {
+    // Hàng SENDING treo = một lần gửi đã thất bại không rõ kết quả: tính là một lần thử, đủ 5 lần thì FAILED.
+    const stuck = { status: 'SENDING' as const, scheduledAt: { lt: new Date(now.getTime() - STUCK_SENDING_MS) } };
     await this.prisma.emailOutbox.updateMany({
-      where: { status: 'SENDING', scheduledAt: { lt: new Date(now.getTime() - STUCK_SENDING_MS) } },
-      data: { status: 'PENDING' },
+      where: { ...stuck, attempts: { gte: MAX_ATTEMPTS - 1 } },
+      data: { status: 'FAILED', attempts: { increment: 1 }, lastError: 'Treo ở trạng thái đang gửi quá lâu' },
+    });
+    await this.prisma.emailOutbox.updateMany({
+      where: stuck,
+      data: { status: 'PENDING', attempts: { increment: 1 } },
     });
 
     const rows = await this.prisma.emailOutbox.findMany({

@@ -15,6 +15,7 @@ export function ResetPasswordPage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const reset = useResetPassword();
+  const [error, setError] = useState<string | null>(null);
 
   if (!token) {
     return (
@@ -32,6 +33,7 @@ export function ResetPasswordPage() {
     e.preventDefault();
     if (reset.isPending) return;
     const check = passwordSchema.safeParse(password);
+    setError(null);
     if (!check.success) {
       toast.error(check.error.issues[0]?.message ?? 'Mật khẩu chưa hợp lệ');
       return;
@@ -47,13 +49,19 @@ export function ResetPasswordPage() {
           toast.success('Đã đặt lại mật khẩu — hãy đăng nhập bằng mật khẩu mới.');
           navigate('/login', { replace: true });
         },
-        onError: (err) => toast.error(apiErrorMessage(err)),
+        onError: (err) => setError(apiErrorMessage(err)),
       },
     );
   }
 
   return (
     <AuthPageShell title="Đặt lại mật khẩu" subtitle="Chọn mật khẩu mới cho tài khoản của bạn.">
+      {error && (
+        <div role="alert" className="mb-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-ink">
+          <p>{error}</p>
+          <Link to="/forgot-password" className="mt-1 inline-block font-medium text-primary hover:underline">Yêu cầu liên kết mới</Link>
+        </div>
+      )}
       <form onSubmit={onSubmit} className="space-y-3">
         <div className="space-y-1.5">
           <label htmlFor="password" className="text-sm font-medium text-ink">Mật khẩu mới</label>

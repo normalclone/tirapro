@@ -51,9 +51,19 @@ describe('MailOutboxService.processBatch', () => {
     expect(upd.data.status).toBe('FAILED');
   });
 
+  it('hàng SENDING treo → tăng attempts (đủ 5 lần thì FAILED)', async () => {
+    const { service, emailOutbox } = setup([]);
+    await service.processBatch();
+    const [failed, retry] = emailOutbox.updateMany.mock.calls.map((c) => c[0] as { where: Record<string, unknown>; data: Record<string, unknown> });
+    expect(failed!.where).toMatchObject({ status: 'SENDING', attempts: { gte: 4 } });
+    expect(failed!.data).toMatchObject({ status: 'FAILED', attempts: { increment: 1 } });
+    expect(retry!.data).toMatchObject({ status: 'PENDING', attempts: { increment: 1 } });
+  });
+
   it('node khác đã giành hàng (updateMany count=0) → bỏ qua, không gửi', async () => {
     const { service, emailOutbox, provider } = setup([row()]);
-    emailOutbox.updateMany.mockResolvedValueOnce({ count: 0 }); // bước khôi phục SENDING treo
+    emailOutbox.updateMany.mockResolvedValueOnce({ count: 0 }); // khôi phục SENDING treo → FAILED
+    emailOutbox.updateMany.mockResolvedValueOnce({ count: 0 }); // khôi phục SENDING treo → PENDING
     emailOutbox.updateMany.mockResolvedValueOnce({ count: 0 }); // giành hàng
     expect(await service.processBatch()).toBe(0);
     expect(provider.send).not.toHaveBeenCalled();

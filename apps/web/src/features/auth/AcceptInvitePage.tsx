@@ -15,6 +15,7 @@ export function AcceptInvitePage() {
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const accept = useAcceptInvite();
+  const [error, setError] = useState<string | null>(null);
 
   if (!token) {
     return (
@@ -32,6 +33,7 @@ export function AcceptInvitePage() {
     e.preventDefault();
     if (accept.isPending) return;
     const check = passwordSchema.safeParse(password);
+    setError(null);
     if (!check.success) {
       toast.error(check.error.issues[0]?.message ?? 'Mật khẩu chưa hợp lệ');
       return;
@@ -47,13 +49,19 @@ export function AcceptInvitePage() {
           );
           navigate('/login', { replace: true });
         },
-        onError: (err) => toast.error(apiErrorMessage(err)),
+        onError: (err) => setError(apiErrorMessage(err)),
       },
     );
   }
 
   return (
     <AuthPageShell title="Nhận lời mời" subtitle="Đặt tên và mật khẩu để vào không gian làm việc.">
+      {error && (
+        <div role="alert" className="mb-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-ink">
+          <p>{error}</p>
+          <p className="mt-1 text-muted">Hãy nhờ quản trị viên gửi lại lời mời cho bạn.</p>
+        </div>
+      )}
       <form onSubmit={onSubmit} className="space-y-3">
         <div className="space-y-1.5">
           <label htmlFor="displayName" className="text-sm font-medium text-ink">Tên hiển thị</label>
