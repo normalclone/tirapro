@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { generateIssuesSchema, type GenerateIssuesInput } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -11,6 +12,8 @@ import { AiService } from './ai.service';
 
 @ApiTags('ai')
 @Controller('ai')
+// Mỗi lời gọi AI tốn tiền → giới hạn chặt hơn mặc định toàn cục: 20 lần/phút.
+@Throttle({ default: { limit: 20, ttl: 60_000 } })
 export class AiController {
   constructor(private readonly ai: AiService) {}
 
@@ -31,18 +34,18 @@ export class AiController {
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(generateIssuesSchema)) dto: GenerateIssuesInput,
   ) {
-    return this.ai.generateIssues(this.ws(user), dto);
+    return this.ai.generateIssues(this.ws(user), user.id, dto);
   }
 
   @Post('issues/:id/summary')
   @Permissions(PERMISSIONS.AI_USE)
   async summarize(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.ai.summarizeIssue(this.ws(user), id);
+    return this.ai.summarizeIssue(this.ws(user), user.id, id);
   }
 
   @Post('issues/:id/suggest')
   @Permissions(PERMISSIONS.AI_USE)
   async suggest(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.ai.suggest(this.ws(user), id);
+    return this.ai.suggest(this.ws(user), user.id, id);
   }
 }
