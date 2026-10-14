@@ -15,7 +15,18 @@ const updatePreferencesSchema = z.object({
         Object.values(NotificationType).map((type) => [type, z.boolean().optional()]),
       ) as Record<NotificationType, z.ZodOptional<z.ZodBoolean>>,
     )
-    .strict(),
+    .strict()
+    .optional(),
+  /** Tuỳ chọn nhận thông báo qua email. */
+  email: z
+    .object({
+      mention: z.boolean().optional(),
+      assigned: z.boolean().optional(),
+      comment: z.boolean().optional(),
+      transition: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
 });
 type UpdatePreferencesBody = z.infer<typeof updatePreferencesSchema>;
 
@@ -47,14 +58,13 @@ export class NotificationsController {
     return this.notifications.getPreferences(user.id);
   }
 
-  /** Cập nhật tùy chọn nhận thông báo của tôi; trả về map hiệu lực sau cập nhật. */
+  /** Cập nhật tùy chọn nhận thông báo (in-app và email) của tôi; trả về map hiệu lực sau cập nhật. */
   @Put('preferences')
   async updatePreferences(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(updatePreferencesSchema)) dto: UpdatePreferencesBody,
   ) {
-    const preferences = await this.notifications.updatePreferences(user.id, dto.preferences);
-    return { preferences };
+    return this.notifications.updatePreferences(user.id, dto.preferences ?? {}, dto.email ?? {});
   }
 
   /** Đánh dấu một thông báo là đã đọc. */
