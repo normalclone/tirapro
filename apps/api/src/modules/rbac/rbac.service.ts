@@ -205,7 +205,7 @@ export class RbacService {
   /** Dự án phải thuộc workspace hiện tại, nếu không coi như không tồn tại. */
   async assertProjectInWorkspace(projectId: string, workspaceId: string): Promise<void> {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId },
+      where: { id: projectId, workspaceId, deletedAt: null },
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');

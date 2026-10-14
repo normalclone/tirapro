@@ -188,6 +188,7 @@ export class TeamsService {
     let n = 1;
     // Unique index (workspaceId,key) không lọc deletedAt; nhưng ta hard-delete nên chỉ cần né các nhóm còn sống.
     for (;;) {
+      // allow-deleted: unique (workspaceId,key) không lọc deletedAt nên phải né cả nhóm đã xoá mềm
       const clash = await this.prisma.team.findFirst({
         where: { workspaceId, key, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
         select: { id: true },

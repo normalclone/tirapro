@@ -75,7 +75,7 @@ export class IssuesService {
     if (m.typeId) jobs.push(this.prisma.issueType.findFirst({ where: { id: m.typeId, workspaceId }, select: { id: true } }));
     if (m.priorityId) jobs.push(this.prisma.priority.findFirst({ where: { id: m.priorityId, workspaceId }, select: { id: true } }));
     if (m.resolutionId) jobs.push(this.prisma.resolution.findFirst({ where: { id: m.resolutionId, workspaceId }, select: { id: true } }));
-    if (m.sprintId) jobs.push(this.prisma.sprint.findFirst({ where: { id: m.sprintId, project: { workspaceId } }, select: { id: true } }));
+    if (m.sprintId) jobs.push(this.prisma.sprint.findFirst({ where: { id: m.sprintId, deletedAt: null, project: { workspaceId } }, select: { id: true } }));
     if (m.parentId) jobs.push(this.prisma.issue.findFirst({ where: { id: m.parentId, workspaceId, deletedAt: null }, select: { id: true } }));
     if (m.epicId) jobs.push(this.prisma.issue.findFirst({ where: { id: m.epicId, workspaceId, deletedAt: null }, select: { id: true } }));
     if (jobs.length && (await Promise.all(jobs)).some((r) => r == null)) {
@@ -136,6 +136,7 @@ export class IssuesService {
         where: { id: input.typeId },
         select: { key: true, name: true },
       });
+      // allow-deleted: đếm cả issue đã xoá để số thứ tự theo loại không sinh trùng key
       const typeSeq = (await tx.issue.count({ where: { projectId: project.id, typeId: input.typeId } })) + 1;
       const key = `${project.key}-${issueTypePrefix(type?.key ?? null, type?.name ?? '')}-${typeSeq}`;
       const created = await tx.issue.create({

@@ -145,7 +145,7 @@ export class DigestsService implements OnApplicationShutdown {
   private async countCreated(scope: Prisma.IssueWhereInput, since: Date): Promise<number> {
     try {
       return await this.prisma.issue.count({
-        where: { ...scope, createdAt: { gte: since } },
+        where: { ...scope, deletedAt: null, createdAt: { gte: since } },
       });
     } catch (err) {
       this.warn('countCreated', err);
@@ -187,7 +187,7 @@ export class DigestsService implements OnApplicationShutdown {
     try {
       const grouped = await this.prisma.issue.groupBy({
         by: ['statusId'],
-        where: { ...scope, status: { category: { not: StatusCategory.DONE } } },
+        where: { ...scope, deletedAt: null, status: { category: { not: StatusCategory.DONE } } },
         _count: { _all: true },
       });
       if (grouped.length === 0) return { todo: 0, inProgress: 0 };

@@ -25,6 +25,7 @@ export class SprintsService {
   async create(workspaceId: string, projectId: string, input: CreateSprintInput): Promise<SprintDto> {
     const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, deletedAt: null }, select: { id: true } });
     if (!project) throw new NotFoundAppException('Dự án');
+    // allow-deleted: sequence phải tính cả sprint đã xoá để không trùng số thứ tự
     const last = await this.prisma.sprint.findFirst({ where: { projectId }, orderBy: { sequence: 'desc' }, select: { sequence: true } });
     const sprint = await this.prisma.sprint.create({
       data: {

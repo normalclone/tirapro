@@ -210,6 +210,7 @@ export class WorkflowAdminService {
     await this.requireWorkflow(workspaceId, id);
     // Project.defaultWorkflowId là String? (không phải FK) nên xóa sẽ không tự
     // báo P2003 — phải tự kiểm tra tham chiếu.
+    // allow-deleted: dự án đã xoá mềm vẫn giữ tham chiếu defaultWorkflowId
     const usedByProject = await this.prisma.project.count({
       where: { workspaceId, defaultWorkflowId: id },
     });
@@ -312,6 +313,7 @@ export class WorkflowAdminService {
     statusId: string,
   ): Promise<{ success: true }> {
     await this.requireStatus(workspaceId, statusId);
+    // allow-deleted: issue đã xoá mềm vẫn giữ FK statusId nên vẫn chặn xoá trạng thái
     const usedByIssues = await this.prisma.issue.count({
       where: { statusId },
     });
