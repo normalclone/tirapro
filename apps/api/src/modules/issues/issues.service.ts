@@ -69,21 +69,41 @@ export class IssuesService {
       typeId?: string | null; priorityId?: string | null; sprintId?: string | null;
       resolutionId?: string | null; parentId?: string | null; epicId?: string | null;
     },
+    db: Prisma.TransactionClient = this.prisma,
   ): Promise<void> {
     const jobs: Array<Promise<{ id: string } | null>> = [];
-    if (m.typeId) jobs.push(this.prisma.issueType.findFirst({ where: { id: m.typeId, workspaceId }, select: { id: true } }));
-    if (m.priorityId) jobs.push(this.prisma.priority.findFirst({ where: { id: m.priorityId, workspaceId }, select: { id: true } }));
-    if (m.resolutionId) jobs.push(this.prisma.resolution.findFirst({ where: { id: m.resolutionId, workspaceId }, select: { id: true } }));
-    if (m.sprintId) jobs.push(this.prisma.sprint.findFirst({ where: { id: m.sprintId, project: { workspaceId } }, select: { id: true } }));
-    if (m.parentId) jobs.push(this.prisma.issue.findFirst({ where: { id: m.parentId, workspaceId, deletedAt: null }, select: { id: true } }));
-    if (m.epicId) jobs.push(this.prisma.issue.findFirst({ where: { id: m.epicId, workspaceId, deletedAt: null }, select: { id: true } }));
+    if (m.typeId) jobs.push(db.issueType.findFirst({ where: { id: m.typeId, workspaceId }, select: { id: true } }));
+    if (m.priorityId) jobs.push(db.priority.findFirst({ where: { id: m.priorityId, workspaceId }, select: { id: true } }));
+    if (m.resolutionId) jobs.push(db.resolution.findFirst({ where: { id: m.resolutionId, workspaceId }, select: { id: true } }));
+    if (m.sprintId) jobs.push(db.sprint.findFirst({ where: { id: m.sprintId, project: { workspaceId } }, select: { id: true } }));
+    if (m.parentId) jobs.push(db.issue.findFirst({ where: { id: m.parentId, workspaceId, deletedAt: null }, select: { id: true } }));
+    if (m.epicId) jobs.push(db.issue.findFirst({ where: { id: m.epicId, workspaceId, deletedAt: null }, select: { id: true } }));
     if (jobs.length && (await Promise.all(jobs)).some((r) => r == null)) {
       throw new NotFoundAppException('Loại công việc, độ ưu tiên, sprint, kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý');
     }
   }
 
   async create(workspaceId: string, userId: string, input: CreateIssueInput): Promise<IssueDto> {
-    const project = await this.prisma.project.findFirst({
+    const dto = await this.createCore(null, workspaceId, userId, input);
+    this.emitCreated(dto, userId, input.clientId);
+    return dto;
+  }
+
+  /**
+   * Tạo issue bên trong transaction của bên gọi (vd import theo lô). KHÔNG emit sự kiện —
+   * bên gọi phải gọi `emitCreated` cho từng issue SAU KHI transaction commit.
+   */
+  createWithin(tx: Prisma.TransactionClient, workspaceId: string, userId: string, input: CreateIssueInput): Promise<IssueDto> {
+    return this.createCore(tx, workspaceId, userId, input);
+  }
+
+  emitCreated(dto: IssueDto, actorId: string, clientId?: string): void {
+    this.events.emit(DOMAIN_EVENTS.ISSUE_CREATED, { issue: dto, actorId, clientId });
+  }
+
+  private async createCore(outerTx: Prisma.TransactionClient | null, workspaceId: string, userId: string, input: CreateIssueInput): Promise<IssueDto> {
+    const db: Prisma.TransactionClient = outerTx ?? this.prisma;
+    const project = await db.project.findFirst({
       where: { id: input.projectId, workspaceId, deletedAt: null },
       select: { id: true, key: true, defaultWorkflowId: true, leadId: true, defaultAssigneeMode: true },
     });
@@ -91,12 +111,12 @@ export class IssuesService {
     await this.assertMetaInWorkspace(workspaceId, {
       typeId: input.typeId, priorityId: input.priorityId, sprintId: input.sprintId,
       parentId: input.parentId, epicId: input.epicId,
-    });
+    }, db);
 
     // Status: input hoặc trạng thái initial của workflow project
     let statusId = input.statusId;
     if (!statusId) {
-      const initial = await this.prisma.status.findFirst({
+      const initial = await db.status.findFirst({
         where: { workflowId: project.defaultWorkflowId ?? '', isInitial: true },
         select: { id: true },
       });
@@ -107,7 +127,7 @@ export class IssuesService {
     // Priority mặc định của workspace nếu không truyền
     let priorityId = input.priorityId ?? undefined;
     if (!priorityId) {
-      const def = await this.prisma.priority.findFirst({ where: { workspaceId, isDefault: true }, select: { id: true } });
+      const def = await db.priority.findFirst({ where: { workspaceId, isDefault: true }, select: { id: true } });
       priorityId = def?.id;
     }
 
@@ -115,8 +135,8 @@ export class IssuesService {
       input.assigneeId ?? (project.defaultAssigneeMode === 'PROJECT_LEAD' ? project.leadId : null);
 
     // Rank: cuối danh sách trong project
-    const rank = await this.resolveRank(project.id, async () => {
-      const last = await this.prisma.issue.findFirst({
+    const rank = await this.resolveRank(project.id, db, async () => {
+      const last = await db.issue.findFirst({
         where: { projectId: project.id, deletedAt: null },
         orderBy: [{ rank: 'desc' }, { id: 'desc' }],
         select: { rank: true },
@@ -124,7 +144,7 @@ export class IssuesService {
       return { prev: last?.rank ?? null, next: null };
     });
 
-    const issue = await this.prisma.$transaction(async (tx) => {
+    const body = async (tx: Prisma.TransactionClient) => {
       const updated = await tx.project.update({
         where: { id: project.id },
         data: { issueSequence: { increment: 1 } },
@@ -183,11 +203,9 @@ export class IssuesService {
         },
       });
       return created;
-    });
-
-    const dto = this.toDto(issue);
-    this.events.emit(DOMAIN_EVENTS.ISSUE_CREATED, { issue: dto, actorId: userId, clientId: input.clientId });
-    return dto;
+    };
+    const issue = outerTx ? await body(outerTx) : await this.prisma.$transaction(body);
+    return this.toDto(issue);
   }
 
   async list(workspaceId: string, filter: IssueListFilter, cursor: string | undefined, limit: number): Promise<PageResult<IssueDto>> {
@@ -326,7 +344,7 @@ export class IssuesService {
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, { sprintId: input.sprintId });
 
-    const rank = await this.resolveRank(current.projectId, async () => ({
+    const rank = await this.resolveRank(current.projectId, this.prisma, async () => ({
       prev: input.afterId ? await this.rankOf(workspaceId, current.projectId, input.afterId) : null,
       next: input.beforeId ? await this.rankOf(workspaceId, current.projectId, input.beforeId) : null,
     }));
@@ -421,14 +439,14 @@ export class IssuesService {
    * Tính rank mới. Hết chỗ chèn (RankGapError) thì đánh số lại cả project rồi đọc lại
    * hai mốc và tính lại đúng 1 lần.
    */
-  private async resolveRank(projectId: string, read: () => Promise<{ prev: string | null; next: string | null }>): Promise<string> {
+  private async resolveRank(projectId: string, db: Prisma.TransactionClient, read: () => Promise<{ prev: string | null; next: string | null }>): Promise<string> {
     const first = await read();
     try {
       return rankBetween(first.prev, first.next);
     } catch (e) {
       if (!(e instanceof RankGapError)) throw e;
     }
-    await this.rebalanceProject(projectId);
+    await this.rebalanceProject(projectId, db);
     const again = await read();
     try {
       return rankBetween(again.prev, again.next);
@@ -439,13 +457,16 @@ export class IssuesService {
   }
 
   /** Đánh số lại rank toàn bộ issue của project (khi hết chỗ chèn). Khoá project bằng update để tuần tự hoá. */
-  private async rebalanceProject(projectId: string): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+  private async rebalanceProject(projectId: string, db: Prisma.TransactionClient): Promise<void> {
+    const body = async (tx: Prisma.TransactionClient) => {
       await tx.project.update({ where: { id: projectId }, data: { updatedAt: new Date() }, select: { id: true } });
       const rows = await tx.issue.findMany({ where: { projectId }, orderBy: [{ rank: 'asc' }, { id: 'asc' }], select: { id: true } });
       const ranks = initialRanks(rows.length);
       for (let i = 0; i < rows.length; i++) await tx.issue.update({ where: { id: rows[i]!.id }, data: { rank: ranks[i]! } });
-    });
+    };
+    // Đang trong transaction của bên gọi (import) thì chạy thẳng trong đó; không thì tự mở transaction riêng.
+    if (db === (this.prisma as Prisma.TransactionClient)) await this.prisma.$transaction(body);
+    else await body(db);
   }
 
   private async recordChanges(tx: Prisma.TransactionClient, userId: string, before: IssueRow, after: IssueRow) {
