@@ -1,9 +1,11 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DOMAIN_EVENTS, ERROR_CODES, PERMISSIONS, type BulkUpdateIssuesResult, type IssueDto, type UserStatus } from '@tirapro/types';
+import { DOMAIN_EVENTS, ERROR_CODES, PERMISSIONS, type BulkUpdateIssuesResult, type IssueDto } from '@tirapro/types';
 import { rankBetween, initialRanks, RankGapError, issueTypePrefix, type BulkUpdateIssuesInput, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { toUserDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
+import { iso } from '../../common/mappers/date';
 import { RbacService } from '../rbac/rbac.service';
 import {
   AppException,
@@ -15,20 +17,14 @@ import {
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 
-/** Chỉ các cột `userDto` dùng — không kéo passwordHash/mfa/... của user vào mọi truy vấn issue. */
-const userSelect = {
-  id: true, email: true, displayName: true, avatarUrl: true, timezone: true,
-  locale: true, status: true, isSystemAdmin: true, lastSeenAt: true, createdAt: true,
-} satisfies Prisma.UserSelect;
-
 const issueInclude = {
   type: true,
   status: true,
   priority: true,
   severity: true,
   resolution: true,
-  assignee: { select: userSelect },
-  reporter: { select: userSelect },
+  assignee: { select: USER_DTO_SELECT },
+  reporter: { select: USER_DTO_SELECT },
   labels: { include: { label: true } },
 } satisfies Prisma.IssueInclude;
 
@@ -90,7 +86,7 @@ export class IssuesService {
     if (m.typeId) jobs.push(db.issueType.findFirst({ where: { id: m.typeId, workspaceId }, select: { id: true } }));
     if (m.priorityId) jobs.push(db.priority.findFirst({ where: { id: m.priorityId, workspaceId }, select: { id: true } }));
     if (m.resolutionId) jobs.push(db.resolution.findFirst({ where: { id: m.resolutionId, workspaceId }, select: { id: true } }));
-    if (m.sprintId) jobs.push(db.sprint.findFirst({ where: { id: m.sprintId, project: { workspaceId } }, select: { id: true } }));
+    if (m.sprintId) jobs.push(db.sprint.findFirst({ where: { id: m.sprintId, deletedAt: null, project: { workspaceId } }, select: { id: true } }));
     if (m.parentId) jobs.push(db.issue.findFirst({ where: { id: m.parentId, workspaceId, deletedAt: null }, select: { id: true } }));
     if (m.epicId) jobs.push(db.issue.findFirst({ where: { id: m.epicId, workspaceId, deletedAt: null }, select: { id: true } }));
     if (jobs.length && (await Promise.all(jobs)).some((r) => r == null)) {
@@ -185,6 +181,7 @@ export class IssuesService {
         where: { id: input.typeId },
         select: { key: true, name: true },
       });
+      // allow-deleted: đếm cả issue đã xoá để số thứ tự theo loại không sinh trùng key
       const typeSeq = (await tx.issue.count({ where: { projectId: project.id, typeId: input.typeId } })) + 1;
       const key = `${project.key}-${issueTypePrefix(type?.key ?? null, type?.name ?? '')}-${typeSeq}`;
       const created = await tx.issue.create({
@@ -297,6 +294,7 @@ export class IssuesService {
     const finalOrder: Prisma.IssueOrderByWithRelationInput[] = orderBy.length
       ? [...orderBy, { id: 'asc' }]
       : [{ updatedAt: 'desc' }, { id: 'asc' }];
+// allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`); queryOrdered chỉ nhận scope đó
     const rows = await this.prisma.issue.findMany({
       where,
       include: issueInclude,
@@ -567,6 +565,7 @@ export class IssuesService {
       if (!cur) throw new NotFoundAppException('Công việc');
       throw new VersionConflictException('Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại', { version: cur.version });
     }
+// allow-deleted: dòng vừa được updateMany (có deletedAt: null) trong cùng transaction — đọc lại chính nó
     return tx.issue.findFirstOrThrow({ where: { id }, include: issueInclude });
   }
 
@@ -625,6 +624,7 @@ export class IssuesService {
   ): Promise<void> {
     const body = async (tx: Prisma.TransactionClient) => {
       await tx.project.update({ where: { id: projectId }, data: { updatedAt: new Date() }, select: { id: true } });
+// allow-deleted: đánh lại rank cho mọi issue của dự án kể cả đã xoá mềm để thứ tự không trùng khi khôi phục
       const rows = await tx.issue.findMany({ where: { projectId }, orderBy: [{ rank: 'asc' }, { id: 'asc' }], select: { id: true } });
       if (!rows.length) return;
       const ids = rows.map((r) => r.id);
@@ -669,13 +669,13 @@ export class IssuesService {
       type: { id: i.type.id, name: i.type.name, key: i.type.key, iconUrl: i.type.iconUrl, color: i.type.color, hierarchyLevel: i.type.hierarchyLevel, isSubtask: i.type.isSubtask },
       status: { id: i.status.id, workflowId: i.status.workflowId, name: i.status.name, category: i.status.category, color: i.status.color, order: i.status.order, isInitial: i.status.isInitial },
       priority: i.priority ? { id: i.priority.id, name: i.priority.name, iconKey: i.priority.iconKey, color: i.priority.color, rank: i.priority.rank, isDefault: i.priority.isDefault } : null,
-      assignee: i.assignee ? this.userDto(i.assignee) : null,
+      assignee: i.assignee ? toUserDto(i.assignee) : null,
       workspaceId: i.workspaceId,
       projectId: i.projectId,
       number: i.number,
       description: i.description,
       descriptionFormat: i.descriptionFormat,
-      reporter: i.reporter ? this.userDto(i.reporter) : null,
+      reporter: i.reporter ? toUserDto(i.reporter) : null,
       reporterId: i.reporterId,
       assigneeId: i.assigneeId,
       parentId: i.parentId,
@@ -685,13 +685,13 @@ export class IssuesService {
       originalEstimate: i.originalEstimate,
       remainingEstimate: i.remainingEstimate,
       timeSpent: i.timeSpent,
-      dueDate: i.dueDate?.toISOString() ?? null,
-      startDate: i.startDate?.toISOString() ?? null,
+      dueDate: iso(i.dueDate),
+      startDate: iso(i.startDate),
       resolution: i.resolution ? { id: i.resolution.id, name: i.resolution.name, description: i.resolution.description, rank: i.resolution.rank } : null,
-      resolvedAt: i.resolvedAt?.toISOString() ?? null,
+      resolvedAt: iso(i.resolvedAt),
       severity: i.severity ? { id: i.severity.id, name: i.severity.name, description: i.severity.description, color: i.severity.color, rank: i.severity.rank, isDefault: i.severity.isDefault } : null,
       triageState: i.triageState,
-      triageSnoozeUntil: i.triageSnoozeUntil?.toISOString() ?? null,
+      triageSnoozeUntil: iso(i.triageSnoozeUntil),
       occurrenceCount: i.occurrenceCount,
       rank: i.rank,
       version: i.version,
@@ -699,9 +699,5 @@ export class IssuesService {
       createdAt: i.createdAt.toISOString(),
       updatedAt: i.updatedAt.toISOString(),
     };
-  }
-
-  private userDto(u: { id: string; email: string; displayName: string; avatarUrl: string | null; timezone: string; locale: string; status: UserStatus; isSystemAdmin: boolean; lastSeenAt: Date | null; createdAt: Date }) {
-    return { id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl, timezone: u.timezone, locale: u.locale, status: u.status, isSystemAdmin: u.isSystemAdmin, lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString() };
   }
 }

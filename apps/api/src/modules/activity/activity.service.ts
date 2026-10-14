@@ -72,7 +72,7 @@ export class ActivityService {
   /** Hoạt động của một issue — mới nhất trước, tối đa 100 dòng. Trả mảng phẳng. */
   async listForIssue(workspaceId: string, issueId: string): Promise<IssueActivityDto[]> {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId },
+      where: { id: issueId, workspaceId, deletedAt: null },
       select: { id: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');
@@ -99,7 +99,7 @@ export class ActivityService {
     limit: number,
   ): Promise<PageResult<ProjectActivityDto>> {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId },
+      where: { id: projectId, workspaceId, deletedAt: null },
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
@@ -167,6 +167,7 @@ export class ActivityService {
           })
         : Promise.resolve([]),
       sprintIds.size
+        // allow-deleted: chỉ tra tên để hiển thị lịch sử — sprint đã xoá vẫn phải hiện đúng tên
         ? this.prisma.sprint.findMany({
             where: { id: { in: [...sprintIds] } },
             select: { id: true, name: true },

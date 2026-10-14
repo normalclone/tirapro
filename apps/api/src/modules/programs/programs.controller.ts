@@ -1,11 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import type { AuthUser } from '../../common/types/request';
 import { ProgramsService } from './programs.service';
 import {
   createProgramSchema, updateProgramSchema, setProgramProjectsSchema,
@@ -17,64 +15,59 @@ import {
 export class ProgramsController {
   constructor(private readonly programs: ProgramsService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   /** Danh sách chương trình (mọi thành viên xem được — dùng cho bộ lọc & gán dự án). */
   @Get()
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async list(@CurrentUser() user: AuthUser) {
-    return this.programs.list(this.ws(user));
+  async list(@WorkspaceId() workspaceId: string) {
+    return this.programs.list(workspaceId);
   }
 
   /** Rollup tiến độ toàn danh mục — phải khai báo TRƯỚC ':id' để không bị nuốt route. */
   @Get('rollup')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async rollup(@CurrentUser() user: AuthUser) {
-    return this.programs.rollup(this.ws(user));
+  async rollup(@WorkspaceId() workspaceId: string) {
+    return this.programs.rollup(workspaceId);
   }
 
   @Get(':id')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.programs.get(this.ws(user), id);
+  async get(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.programs.get(workspaceId, id);
   }
 
   @Post()
   @Permissions(PERMISSIONS.PROGRAM_MANAGE)
   async create(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(createProgramSchema)) dto: CreateProgramInput,
   ) {
-    return this.programs.create(this.ws(user), dto);
+    return this.programs.create(workspaceId, dto);
   }
 
   @Put(':id')
   @Permissions(PERMISSIONS.PROGRAM_MANAGE)
   async update(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateProgramSchema)) dto: UpdateProgramInput,
   ) {
-    return this.programs.update(this.ws(user), id, dto);
+    return this.programs.update(workspaceId, id, dto);
   }
 
   /** Đặt lại toàn bộ tập dự án của chương trình. */
   @Put(':id/projects')
   @Permissions(PERMISSIONS.PROGRAM_MANAGE)
   async setProjects(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(setProgramProjectsSchema)) dto: SetProgramProjectsInput,
   ) {
-    return this.programs.setProjects(this.ws(user), id, dto.projectIds);
+    return this.programs.setProjects(workspaceId, id, dto.projectIds);
   }
 
   @Delete(':id')
   @Permissions(PERMISSIONS.PROGRAM_MANAGE)
-  async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.programs.remove(this.ws(user), id);
+  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.programs.remove(workspaceId, id);
   }
 }

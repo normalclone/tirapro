@@ -14,9 +14,9 @@ import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { AttachmentsService } from './attachments.service';
 
@@ -25,39 +25,36 @@ import { AttachmentsService } from './attachments.service';
 export class AttachmentsController {
   constructor(private readonly attachments: AttachmentsService) {}
 
-  /** Workspace hiện tại của user (bắt buộc đã chọn). */
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/attachments')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async upload(
+    @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.attachments.upload(this.ws(user), user.id, issueId, file);
+    return this.attachments.upload(workspaceId, user.id, issueId, file);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/attachments')
-  async list(@CurrentUser() user: AuthUser, @Param('issueId') issueId: string) {
-    return this.attachments.list(this.ws(user), issueId);
+  async list(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
+    return this.attachments.list(workspaceId, issueId);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('attachment', 'id')
   @Get('attachments/:id/download')
   async download(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { stream, fileName, mimeType } = await this.attachments.download(this.ws(user), id);
+    const { stream, fileName, mimeType } = await this.attachments.download(workspaceId, id);
     res.setHeader('Content-Type', mimeType);
     res.setHeader(
       'Content-Disposition',
@@ -69,7 +66,7 @@ export class AttachmentsController {
   @ProjectRef('attachment', 'id')
   @Delete('attachments/:id')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
-  async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.attachments.remove(this.ws(user), id);
+  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.attachments.remove(workspaceId, id);
   }
 }

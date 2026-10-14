@@ -77,7 +77,7 @@ export class SlaService {
   // ───────────── Trạng thái SLA của issue ─────────────
 
   async getForIssue(workspaceId: string, issueId: string) {
-    const issue = await this.prisma.issue.findFirst({ where: { id: issueId, workspaceId }, select: { id: true } });
+    const issue = await this.prisma.issue.findFirst({ where: { id: issueId, workspaceId, deletedAt: null }, select: { id: true } });
     if (!issue) throw new NotFoundAppException('Công việc');
     const row = await this.prisma.issueSla.findUnique({
       where: { issueId },

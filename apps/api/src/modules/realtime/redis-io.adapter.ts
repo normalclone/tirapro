@@ -1,4 +1,5 @@
-import { INestApplicationContext, Logger } from '@nestjs/common';
+import type { INestApplicationContext} from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';

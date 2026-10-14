@@ -32,6 +32,7 @@ export class AdminWorkspacesService {
 
   async list() {
     const [rows, activity] = await Promise.all([
+      // allow-deleted: console admin liệt kê cả workspace đã lưu trữ (cờ `archived`)
       this.prisma.workspace.findMany({ orderBy: { createdAt: 'asc' }, select: WS_SELECT }),
       this.prisma.activityLog.groupBy({ by: ['workspaceId'], _max: { createdAt: true } }),
     ]);

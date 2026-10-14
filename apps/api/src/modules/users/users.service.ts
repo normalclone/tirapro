@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import type { Request } from 'express';
+import type { UpdateProfileInput } from '@tirapro/shared';
 import { ERROR_CODES } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AppException, NotFoundAppException } from '../../common/exceptions/app.exception';
@@ -53,13 +54,17 @@ export class UsersService {
     return users.map((u) => this.toDto(u));
   }
 
-  async getById(id: string) {
-    const u = await this.prisma.user.findUnique({ where: { id } });
-    if (!u) throw new NotFoundAppException('Người dùng');
-    return this.toDto(u);
+  /** Chỉ tra được người dùng cùng workspace — không lộ email/hồ sơ của user ngoài workspace. */
+  async getById(workspaceId: string, id: string) {
+    const m = await this.prisma.workspaceMembership.findUnique({
+      where: { workspaceId_userId: { workspaceId, userId: id } },
+      select: { user: true },
+    });
+    if (!m) throw new NotFoundAppException('Người dùng');
+    return this.toDto(m.user);
   }
 
-  async updateProfile(id: string, data: { displayName?: string; avatarUrl?: string; timezone?: string; locale?: string }) {
+  async updateProfile(id: string, data: UpdateProfileInput) {
     const u = await this.prisma.user.update({ where: { id }, data });
     return this.toDto(u);
   }

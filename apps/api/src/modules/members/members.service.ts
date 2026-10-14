@@ -1,18 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { DEFAULT_PROJECT_ROLE_BY_WS_ROLE, type RoleScope } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { toUserDto, USER_DTO_SELECT, type UserDtoSource } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { RbacService } from '../rbac/rbac.service';
 
-const USER_SELECT = {
-  id: true, email: true, displayName: true, avatarUrl: true, timezone: true,
-  locale: true, status: true, isSystemAdmin: true, lastSeenAt: true, createdAt: true,
-} as const;
-
-type UserRow = {
-  id: string; email: string; displayName: string; avatarUrl: string | null; timezone: string;
-  locale: string; status: string; isSystemAdmin: boolean; lastSeenAt: Date | null; createdAt: Date;
-};
 type RoleRefRow = { role: { id: string; name: string; color: string | null } };
 
 /**
@@ -32,7 +24,7 @@ export class MembersService {
     const rows = await this.prisma.workspaceMembership.findMany({
       where: { workspaceId },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, joinedAt: true, user: { select: USER_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+      select: { id: true, joinedAt: true, user: { select: USER_DTO_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
     });
     return rows.map((m) => this.toMemberDto(m));
   }
@@ -134,7 +126,7 @@ export class MembersService {
       this.prisma.workspaceMembership.findMany({
         where: { workspaceId },
         orderBy: { createdAt: 'asc' },
-        select: { id: true, joinedAt: true, user: { select: USER_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+        select: { id: true, joinedAt: true, user: { select: USER_DTO_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
       }),
       this.prisma.projectMembership.findMany({
         where: { projectId },
@@ -162,7 +154,7 @@ export class MembersService {
       }
       return {
         membershipId: m.id,
-        user: this.toUserDto(m.user),
+        user: toUserDto(m.user),
         roles: defaults,
         joinedAt: m.joinedAt ? m.joinedAt.toISOString() : null,
         isOverride: false,
@@ -261,13 +253,12 @@ export class MembersService {
     return { added: toAdd.length, skipped: unique.length - toAdd.length };
   }
 
-
   // ───────────────────────── helpers ─────────────────────────
 
   private async getWorkspaceMember(workspaceId: string, userId: string) {
     const m = await this.prisma.workspaceMembership.findUniqueOrThrow({
       where: { workspaceId_userId: { workspaceId, userId } },
-      select: { id: true, joinedAt: true, user: { select: USER_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+      select: { id: true, joinedAt: true, user: { select: USER_DTO_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
     });
     return this.toMemberDto(m);
   }
@@ -275,7 +266,7 @@ export class MembersService {
   private async getProjectMember(projectId: string, userId: string) {
     const m = await this.prisma.projectMembership.findUniqueOrThrow({
       where: { projectId_userId: { projectId, userId } },
-      select: { id: true, user: { select: USER_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+      select: { id: true, user: { select: USER_DTO_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
     });
     return this.toMemberDto(m);
   }
@@ -295,18 +286,10 @@ export class MembersService {
     return unique.filter((id) => set.has(id));
   }
 
-  private toUserDto(u: UserRow) {
-    return {
-      id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl, timezone: u.timezone,
-      locale: u.locale, status: u.status, isSystemAdmin: u.isSystemAdmin,
-      lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString(),
-    };
-  }
-
-  private toMemberDto(m: { id: string; joinedAt?: Date | null; user: UserRow; roles: RoleRefRow[] }) {
+  private toMemberDto(m: { id: string; joinedAt?: Date | null; user: UserDtoSource; roles: RoleRefRow[] }) {
     return {
       membershipId: m.id,
-      user: this.toUserDto(m.user),
+      user: toUserDto(m.user),
       roles: m.roles.map((r) => ({ id: r.role.id, name: r.role.name, color: r.role.color })),
       joinedAt: m.joinedAt ? m.joinedAt.toISOString() : null,
     };

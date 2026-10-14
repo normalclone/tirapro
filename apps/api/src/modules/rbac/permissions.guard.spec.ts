@@ -1,3 +1,4 @@
+ 
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { describe, expect, it, vi } from 'vitest';
 import { PERMISSIONS_KEY } from '../../common/decorators/permissions.decorator';

@@ -3,11 +3,12 @@ import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { DigestsService } from './digests.service';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 
 const scheduleEnum = z.enum(['DAILY', 'WEEKLY', 'SPRINT_END', 'MANUAL']);
 
@@ -35,44 +36,42 @@ type UpdateDigestBody = z.infer<typeof updateDigestSchema>;
 export class DigestsController {
   constructor(private readonly digests: DigestsService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get()
-  async list(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
-    return this.digests.list(this.ws(user), projectId);
+  async list(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
+    return this.digests.list(workspaceId, projectId);
   }
 
   @Post()
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async create(
+    @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createDigestSchema)) dto: CreateDigestBody,
   ) {
-    return this.digests.create(this.ws(user), user.id, dto);
+    return this.digests.create(workspaceId, user.id, dto);
   }
 
   @Patch(':id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async update(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateDigestSchema)) dto: UpdateDigestBody,
   ) {
-    return this.digests.update(this.ws(user), id, dto);
+    return this.digests.update(workspaceId, id, dto);
   }
 
   @Delete(':id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.digests.remove(this.ws(user), id);
+  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.digests.remove(workspaceId, id);
   }
 
   @Post(':id/run')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async run(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.digests.run(this.ws(user), id);
+  async run(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.digests.run(workspaceId, id);
   }
 }

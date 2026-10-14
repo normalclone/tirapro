@@ -1,3 +1,4 @@
+ 
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { describe, expect, it, vi } from 'vitest';
 import { RbacService } from './rbac.service';
@@ -209,7 +210,7 @@ describe('RbacService.assertProjectInWorkspace', () => {
     prisma.project.findFirst.mockResolvedValue(null);
     await expect(svc.assertProjectInWorkspace('P1', 'W1')).rejects.toBeInstanceOf(NotFoundAppException);
     expect(prisma.project.findFirst).toHaveBeenCalledWith({
-      where: { id: 'P1', workspaceId: 'W1' },
+      where: { id: 'P1', workspaceId: 'W1', deletedAt: null },
       select: { id: true },
     });
   });

@@ -6,8 +6,11 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AdminService } from './admin.service';
 import { createUserSchema, updateUserSchema, type CreateUserInput, type UpdateUserInput } from './admin.schemas';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 /** Quản trị tài khoản hệ thống — CHỈ admin hệ thống (isSystemAdmin). */
+// Chỉ admin hệ thống: từng handler tự kiểm tra isSystemAdmin (assertSysAdmin), không thuộc quyền RBAC của workspace.
+@AuthOnly()
 @ApiTags('admin')
 @Controller('admin/users')
 export class AdminController {

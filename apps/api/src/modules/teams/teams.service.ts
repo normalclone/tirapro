@@ -1,24 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { toUserDto, USER_DTO_SELECT, type UserDtoSource } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { MembersService } from '../members/members.service';
 import type { CreateTeamInput, UpdateTeamInput } from './teams.schemas';
 
-const USER_SELECT = {
-  id: true, email: true, displayName: true, avatarUrl: true, timezone: true,
-  locale: true, status: true, isSystemAdmin: true, lastSeenAt: true, createdAt: true,
-} as const;
-
-type UserRow = {
-  id: string; email: string; displayName: string; avatarUrl: string | null; timezone: string;
-  locale: string; status: string; isSystemAdmin: boolean; lastSeenAt: Date | null; createdAt: Date;
-};
-
 const TEAM_SELECT = {
   id: true, workspaceId: true, name: true, key: true, description: true, color: true, createdAt: true,
-  lead: { select: USER_SELECT },
-  members: { orderBy: { createdAt: 'asc' as const }, select: { user: { select: USER_SELECT } } },
+  lead: { select: USER_DTO_SELECT },
+  members: { orderBy: { createdAt: 'asc' as const }, select: { user: { select: USER_DTO_SELECT } } },
   _count: { select: { members: true } },
 } satisfies Prisma.TeamSelect;
 
@@ -197,6 +188,7 @@ export class TeamsService {
     let n = 1;
     // Unique index (workspaceId,key) không lọc deletedAt; nhưng ta hard-delete nên chỉ cần né các nhóm còn sống.
     for (;;) {
+      // allow-deleted: unique (workspaceId,key) không lọc deletedAt nên phải né cả nhóm đã xoá mềm
       const clash = await this.prisma.team.findFirst({
         where: { workspaceId, key, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
         select: { id: true },
@@ -208,17 +200,9 @@ export class TeamsService {
     }
   }
 
-  private toUserDto(u: UserRow) {
-    return {
-      id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl, timezone: u.timezone,
-      locale: u.locale, status: u.status, isSystemAdmin: u.isSystemAdmin,
-      lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString(),
-    };
-  }
-
   private toTeamDto(t: {
     id: string; workspaceId: string; name: string; key: string; description: string | null; color: string | null;
-    createdAt: Date; lead: UserRow | null; members: { user: UserRow }[]; _count: { members: number };
+    createdAt: Date; lead: UserDtoSource | null; members: { user: UserDtoSource }[]; _count: { members: number };
   }) {
     return {
       id: t.id,
@@ -227,8 +211,8 @@ export class TeamsService {
       key: t.key,
       description: t.description,
       color: t.color,
-      lead: t.lead ? this.toUserDto(t.lead) : null,
-      members: t.members.map((m) => this.toUserDto(m.user)),
+      lead: t.lead ? toUserDto(t.lead) : null,
+      members: t.members.map((m) => toUserDto(m.user)),
       memberCount: t._count.members,
       createdAt: t.createdAt.toISOString(),
     };

@@ -4,6 +4,7 @@ import { DOMAIN_EVENTS, type CommentDto } from '@tirapro/types';
 import type { CreateCommentInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { toUserDto } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException, VersionConflictException } from '../../common/exceptions/app.exception';
 
 const commentInclude = { author: true } satisfies Prisma.CommentInclude;
@@ -61,8 +62,11 @@ export class CommentsService {
     return dto;
   }
 
-  async softDelete(workspaceId: string, userId: string, commentId: string): Promise<{ success: true }> {
+  async softDelete(workspaceId: string, userId: string, commentId: string, canDeleteAny = false): Promise<{ success: true }> {
     const current = await this.requireComment(workspaceId, commentId);
+    if (current.authorId !== userId && !canDeleteAny) {
+      throw new ForbiddenAppException('Chỉ tác giả hoặc người có quyền xoá bình luận mới xoá được bình luận này');
+    }
     await this.prisma.comment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
     this.events.emit(DOMAIN_EVENTS.COMMENT_DELETED, { commentId, issueId: current.issueId, actorId: userId });
     return { success: true };
@@ -86,7 +90,7 @@ export class CommentsService {
       issueId: c.issueId,
       authorId: c.authorId,
       author: c.author
-        ? { id: c.author.id, email: c.author.email, displayName: c.author.displayName, avatarUrl: c.author.avatarUrl, timezone: c.author.timezone, locale: c.author.locale, status: c.author.status, isSystemAdmin: c.author.isSystemAdmin, lastSeenAt: c.author.lastSeenAt?.toISOString() ?? null, createdAt: c.author.createdAt.toISOString() }
+        ? toUserDto(c.author)
         : null,
       body: c.body,
       bodyFormat: c.bodyFormat,

@@ -4,6 +4,7 @@ import { DOMAIN_EVENTS, type SprintDto } from '@tirapro/types';
 import type { CreateSprintInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { iso } from '../../common/mappers/date';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 
 /** Số lần thử lại khi hai request tạo sprint tính trùng sequence. */
@@ -44,6 +45,7 @@ export class SprintsService {
     // sequence = lớn nhất + 1; hai request đồng thời có thể tính trùng → unique [projectId, sequence]
     // chặn bản ghi trùng (P2002) và ta tính lại, tối đa 3 lần.
     for (let attempt = 1; ; attempt++) {
+      // allow-deleted: sequence phải tính cả sprint đã xoá để không trùng số thứ tự
       const last = await this.prisma.sprint.findFirst({ where: { projectId }, orderBy: { sequence: 'desc' }, select: { sequence: true } });
       try {
         const sprint = await this.prisma.sprint.create({
@@ -158,9 +160,9 @@ export class SprintsService {
     return {
       id: s.id, projectId: s.projectId, boardId: s.boardId, name: s.name, goal: s.goal,
       state: s.state as SprintDto['state'],
-      startDate: s.startDate?.toISOString() ?? null,
-      endDate: s.endDate?.toISOString() ?? null,
-      completeDate: s.completeDate?.toISOString() ?? null,
+      startDate: iso(s.startDate),
+      endDate: iso(s.endDate),
+      completeDate: iso(s.completeDate),
       sequence: s.sequence, issueCount, totalPoints,
     };
   }

@@ -3,12 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { CustomFieldType } from '@prisma/client';
 import { PERMISSIONS } from '@tirapro/types';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
-import type { AuthUser } from '../../common/types/request';
 import {
   CustomFieldsService,
 } from './custom-fields.service';
@@ -42,62 +40,60 @@ export const setCustomFieldValueSchema = z.object({ value: z.unknown() });
 export class CustomFieldsController {
   constructor(private readonly customFields: CustomFieldsService) {}
 
-  /** Workspace hiện tại của user (bắt buộc đã chọn). */
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   // ============================ DEFINITIONS ============================
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get('custom-fields')
-  async list(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
-    return this.customFields.listDefinitions(this.ws(user), projectId || undefined);
+  async list(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
+    return this.customFields.listDefinitions(workspaceId, projectId || undefined);
   }
 
   @Post('custom-fields')
   @Permissions(PERMISSIONS.CUSTOM_FIELD_MANAGE)
   async create(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(createCustomFieldSchema)) dto: CreateCustomFieldBody,
   ) {
-    return this.customFields.createDefinition(this.ws(user), dto);
+    return this.customFields.createDefinition(workspaceId, dto);
   }
 
   @ProjectRef('customField', 'id')
   @Patch('custom-fields/:id')
   @Permissions(PERMISSIONS.CUSTOM_FIELD_MANAGE)
   async update(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateCustomFieldSchema)) dto: UpdateCustomFieldBody,
   ) {
-    return this.customFields.updateDefinition(this.ws(user), id, dto);
+    return this.customFields.updateDefinition(workspaceId, id, dto);
   }
 
   @ProjectRef('customField', 'id')
   @Delete('custom-fields/:id')
   @Permissions(PERMISSIONS.CUSTOM_FIELD_MANAGE)
-  async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.customFields.softDeleteDefinition(this.ws(user), id);
+  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.customFields.softDeleteDefinition(workspaceId, id);
   }
 
   // ============================ VALUES (per issue) ============================
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/custom-fields')
-  async listIssueValues(@CurrentUser() user: AuthUser, @Param('issueId') issueId: string) {
-    return this.customFields.listIssueValues(this.ws(user), issueId);
+  async listIssueValues(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
+    return this.customFields.listIssueValues(workspaceId, issueId);
   }
 
   @ProjectRef('issue', 'issueId')
   @Put('issues/:issueId/custom-fields/:fieldId')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   async setIssueValue(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('issueId') issueId: string,
     @Param('fieldId') fieldId: string,
     @Body(new ZodValidationPipe(setCustomFieldValueSchema)) body: { value: unknown },
   ) {
-    return this.customFields.setIssueValue(this.ws(user), issueId, fieldId, body.value);
+    return this.customFields.setIssueValue(workspaceId, issueId, fieldId, body.value);
   }
 }

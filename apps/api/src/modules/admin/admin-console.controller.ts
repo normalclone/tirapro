@@ -15,8 +15,11 @@ import {
   type PatchWorkspaceInput,
   type UpdateFlagsInput,
 } from './admin-console.schemas';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 /** Console quản trị hệ thống (tổng quan, workspaces, cấu hình, health/audit) — CHỈ admin hệ thống. */
+// Chỉ admin hệ thống: từng handler tự kiểm tra isSystemAdmin (assertSysAdmin), không thuộc quyền RBAC của workspace.
+@AuthOnly()
 @ApiTags('admin')
 @Controller('admin')
 export class AdminConsoleController {
