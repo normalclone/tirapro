@@ -2,17 +2,24 @@ import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ActivityService } from './activity.service';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
+import { PERMISSIONS } from '@tirapro/types';
 
 @ApiTags('activity')
 @Controller()
 export class ActivityController {
   constructor(private readonly activity: ActivityService) {}
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/activity')
   async forIssue(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
     return this.activity.listForIssue(workspaceId, issueId);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/activity')
   async forProject(
     @WorkspaceId() workspaceId: string,

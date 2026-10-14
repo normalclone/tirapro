@@ -33,6 +33,8 @@ type SnoozeInput = z.infer<typeof snoozeSchema>;
 export class TriageController {
   constructor(private readonly triage: TriageService) {}
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get()
   async inbox(
     @WorkspaceId() workspaceId: string,
@@ -48,6 +50,8 @@ export class TriageController {
     );
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get('count')
   async count(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
     return this.triage.count(workspaceId, projectId);
@@ -57,7 +61,8 @@ export class TriageController {
   @ProjectRef('issue', 'issueId')
   @Post(':issueId/accept')
   async accept(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(acceptSchema)) dto: AcceptInput,
   ) {
@@ -68,7 +73,8 @@ export class TriageController {
   @ProjectRef('issue', 'issueId')
   @Post(':issueId/decline')
   async decline(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(declineSchema)) dto: DeclineInput,
   ) {
@@ -79,7 +85,8 @@ export class TriageController {
   @ProjectRef('issue', 'issueId')
   @Post(':issueId/snooze')
   async snooze(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(snoozeSchema)) dto: SnoozeInput,
   ) {

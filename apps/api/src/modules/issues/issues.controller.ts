@@ -18,6 +18,8 @@ import { IssuesService } from './issues.service';
 export class IssuesController {
   constructor(private readonly issues: IssuesService) {}
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get()
   async list(
     @WorkspaceId() workspaceId: string,
@@ -38,6 +40,7 @@ export class IssuesController {
     );
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get(':key')
   async getByKey(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
     return this.issues.getByKey(workspaceId, key.toUpperCase());
@@ -47,7 +50,8 @@ export class IssuesController {
   @ProjectRef('body', 'projectId')
   @Post()
   async create(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createIssueSchema)) dto: CreateIssueInput,
   ) {
     return this.issues.create(workspaceId, user.id, dto);
@@ -57,7 +61,8 @@ export class IssuesController {
   @ProjectRef('issue', 'id')
   @Patch(':id')
   async update(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateIssueSchema)) dto: UpdateIssueInput,
   ) {
@@ -68,7 +73,8 @@ export class IssuesController {
   @ProjectRef('issue', 'id')
   @Post(':id/transition')
   async transition(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(transitionIssueSchema)) dto: TransitionIssueInput,
   ) {
@@ -79,7 +85,8 @@ export class IssuesController {
   @ProjectRef('issue', 'id')
   @Post(':id/move')
   async move(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(moveIssueSchema)) dto: MoveIssueInput,
   ) {

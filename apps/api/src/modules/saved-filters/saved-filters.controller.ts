@@ -7,6 +7,8 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { SavedFiltersService } from './saved-filters.service';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+import { PERMISSIONS } from '@tirapro/types';
 
 const visibilitySchema = z.nativeEnum(FilterVisibility);
 
@@ -34,36 +36,44 @@ export type UpdateSavedFilterBody = z.infer<typeof updateSavedFilterSchema>;
 export class SavedFiltersController {
   constructor(private readonly filters: SavedFiltersService) {}
 
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get()
   async list(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string) {
     return this.filters.list(workspaceId, user.id);
   }
 
+  @Permissions(PERMISSIONS.FILTER_MANAGE)
   @Post()
   async create(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createSavedFilterSchema)) body: CreateSavedFilterBody,
   ) {
     return this.filters.create(workspaceId, user.id, body);
   }
 
+  @Permissions(PERMISSIONS.FILTER_MANAGE)
   @Patch(':id')
   async update(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateSavedFilterSchema)) body: UpdateSavedFilterBody,
   ) {
     return this.filters.update(workspaceId, user.id, id, body);
   }
 
+  @Permissions(PERMISSIONS.FILTER_MANAGE)
   @Delete(':id')
   async remove(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
     return this.filters.softDelete(workspaceId, user.id, id);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get(':id/run')
   async run(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,

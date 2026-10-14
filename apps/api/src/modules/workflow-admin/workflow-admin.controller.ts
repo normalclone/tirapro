@@ -15,6 +15,7 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { WorkflowAdminService } from './workflow-admin.service';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 
 // ---------------------------------------------------------------------------
 // Schemas (zod) — dùng ZodValidationPipe, message tiếng Việt
@@ -117,6 +118,8 @@ export class WorkflowAdminController {
 
   // ----- Workflows -----
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get('workflows')
   async list(
     @WorkspaceId() workspaceId: string,
@@ -132,6 +135,7 @@ export class WorkflowAdminController {
     });
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get('workflows/:id')
   async getOne(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
     return this.workflows.getWorkflow(workspaceId, id);

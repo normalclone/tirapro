@@ -33,7 +33,8 @@ export class TeamsController {
   @Post()
   @Permissions(PERMISSIONS.TEAM_MANAGE)
   async create(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createTeamSchema)) dto: CreateTeamInput,
   ) {
     return this.teams.create(workspaceId, dto, user.id);
@@ -42,7 +43,8 @@ export class TeamsController {
   @Put(':id')
   @Permissions(PERMISSIONS.TEAM_MANAGE)
   async update(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateTeamSchema)) dto: UpdateTeamInput,
   ) {

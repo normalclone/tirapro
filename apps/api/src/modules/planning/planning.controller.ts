@@ -99,7 +99,8 @@ export class PlanningController {
   @Post(':projectId/baselines')
   @Permissions(PERMISSIONS.PLAN_MANAGE)
   async createBaseline(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(createBaselineSchema)) dto: CreateBaselineInput,
   ) {

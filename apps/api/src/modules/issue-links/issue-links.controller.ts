@@ -14,12 +14,14 @@ export class IssueLinksController {
   constructor(private readonly links: IssueLinksService) {}
 
   /** Danh sách loại liên kết của workspace (chỉ cần xác thực). */
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get('link-types')
   async listTypes(@WorkspaceId() workspaceId: string) {
     return this.links.listTypes(workspaceId);
   }
 
   /** Liên kết của một issue, chuẩn hóa theo góc nhìn issue (chỉ cần xác thực). */
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/links')
   async listForIssue(

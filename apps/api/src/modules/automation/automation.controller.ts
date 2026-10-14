@@ -37,7 +37,8 @@ export class AutomationController {
   @Post('templates')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async createTemplate(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createTemplateSchema)) dto: CreateTemplateInput,
   ) {
     return this.automation.createTemplate(workspaceId, dto, user.id);
@@ -47,7 +48,8 @@ export class AutomationController {
   @Put('templates/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async updateTemplate(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateTemplateSchema)) dto: UpdateTemplateInput,
   ) {
@@ -80,7 +82,8 @@ export class AutomationController {
   @Post('recurring')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async createRecurring(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createRecurringSchema)) dto: CreateRecurringInput,
   ) {
     return this.automation.createRecurring(workspaceId, dto, user.id);
@@ -90,7 +93,8 @@ export class AutomationController {
   @Put('recurring/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async updateRecurring(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateRecurringSchema)) dto: UpdateRecurringInput,
   ) {

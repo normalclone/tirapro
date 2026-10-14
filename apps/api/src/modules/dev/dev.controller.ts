@@ -39,6 +39,8 @@ export class DevController {
   }
 
   /** Liệt kê repository của workspace (lọc theo project nếu truyền). */
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get('dev/repositories')
   async listRepositories(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
     return this.dev.listRepositories(workspaceId, projectId);
@@ -53,6 +55,8 @@ export class DevController {
   }
 
   /** Danh sách dev-link (commit/PR/branch) của một issue — dùng cho dev panel. */
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/dev-links')
   async listIssueDevLinks(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
     return this.dev.listIssueDevLinks(workspaceId, issueId);

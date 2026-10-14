@@ -44,7 +44,8 @@ export class WikiController {
   @Post()
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async create(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createWikiPageSchema)) dto: CreateWikiPageInput,
   ) {
     return this.wiki.create(workspaceId, dto, user.id);
@@ -53,7 +54,8 @@ export class WikiController {
   @Put(':id')
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async update(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateWikiPageSchema)) dto: UpdateWikiPageInput,
   ) {
@@ -64,7 +66,8 @@ export class WikiController {
   @Put(':id/move')
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async move(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(moveWikiPageSchema)) dto: MoveWikiPageInput,
   ) {

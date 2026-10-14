@@ -42,7 +42,8 @@ export class RaidController {
   @Post()
   @Permissions(PERMISSIONS.RISK_MANAGE)
   async create(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createRaidSchema)) dto: CreateRaidInput,
   ) {
     return this.raid.create(workspaceId, dto, user.id);

@@ -15,7 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { changePasswordSchema, type ChangePasswordInput } from '@tirapro/shared';
+import { changePasswordSchema, updateProfileSchema, type ChangePasswordInput, type UpdateProfileInput } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -23,6 +23,7 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { UsersService } from './users.service';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 @ApiTags('users')
 @Controller('users')
@@ -30,6 +31,7 @@ export class UsersController {
   constructor(private readonly users: UsersService) {}
 
   /** Danh sách thành viên workspace hiện tại (picker assignee/@mention). */
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get()
   async list(@WorkspaceId() workspaceId: string, @Query('search') search?: string) {
     return this.users.listWorkspaceMembers(workspaceId, search);
@@ -42,15 +44,19 @@ export class UsersController {
     return this.users.listAllUsers(search);
   }
 
+  // Hồ sơ của chính người dùng (luôn dùng user.id từ token) — chỉ cần xác thực.
+  @AuthOnly()
   @Patch('me')
   async updateMe(
     @CurrentUser() user: AuthUser,
-    @Body() body: { displayName?: string; avatarUrl?: string; timezone?: string; locale?: string },
+    @Body(new ZodValidationPipe(updateProfileSchema)) body: UpdateProfileInput,
   ) {
     return this.users.updateProfile(user.id, body);
   }
 
   /** Đổi mật khẩu của chính mình (xác minh mật khẩu hiện tại). */
+  // Hồ sơ của chính người dùng (luôn dùng user.id từ token) — chỉ cần xác thực.
+  @AuthOnly()
   @Post('me/change-password')
   @HttpCode(200)
   async changePassword(
@@ -61,6 +67,8 @@ export class UsersController {
   }
 
   /** Tải ảnh đại diện của chính mình (multipart `file`). */
+  // Hồ sơ của chính người dùng (luôn dùng user.id từ token) — chỉ cần xác thực.
+  @AuthOnly()
   @Post('me/avatar')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
@@ -73,13 +81,16 @@ export class UsersController {
   }
 
   /** Gỡ ảnh đại diện của chính mình. */
+  // Hồ sơ của chính người dùng (luôn dùng user.id từ token) — chỉ cần xác thực.
+  @AuthOnly()
   @Delete('me/avatar')
   async removeAvatar(@CurrentUser() user: AuthUser) {
     return this.users.clearAvatar(user.id);
   }
 
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get(':id')
-  async getOne(@Param('id') id: string) {
-    return this.users.getById(id);
+  async getOne(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.users.getById(workspaceId, id);
   }
 }

@@ -6,6 +6,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { NotificationsService } from './notifications.service';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 /** Body của PUT /notifications/preferences — object boolean tùy chọn, khóa theo enum loại thông báo. */
 const updatePreferencesSchema = z.object({
@@ -19,6 +20,8 @@ const updatePreferencesSchema = z.object({
 });
 type UpdatePreferencesBody = z.infer<typeof updatePreferencesSchema>;
 
+// Thông báo & tuỳ chọn của chính người dùng — service luôn lọc theo user.id.
+@AuthOnly()
 @ApiTags('notifications')
 @Controller('notifications')
 export class NotificationsController {

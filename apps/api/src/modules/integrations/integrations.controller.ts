@@ -32,6 +32,7 @@ export class IntegrationsController {
   constructor(private readonly integrations: IntegrationsService) {}
 
   /** Liệt kê integration (đã ẩn token). Không cần quyền quản lý — chỉ đọc. */
+  @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   @Get()
   async list(@WorkspaceId() workspaceId: string, @Query('type') type?: string) {
     const parsed = type && type in IntegrationType ? (type as IntegrationType) : undefined;
@@ -42,7 +43,8 @@ export class IntegrationsController {
   @Post('telegram')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async createTelegram(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createTelegramSchema)) body: CreateTelegramBody,
   ) {
     return this.integrations.createTelegram(workspaceId, user.id, body);

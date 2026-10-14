@@ -10,6 +10,7 @@ import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AiService } from './ai.service';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 @ApiTags('ai')
 @Controller('ai')
@@ -19,6 +20,8 @@ export class AiController {
   constructor(private readonly ai: AiService) {}
 
   /** Trạng thái khả dụng của AI (không cần quyền — chỉ báo bật/tắt). */
+  // Chỉ báo AI bật/tắt cho mọi người dùng đã đăng nhập, không lộ dữ liệu workspace.
+  @AuthOnly()
   @Get('capabilities')
   capabilities() {
     return this.ai.capabilities();
@@ -27,7 +30,8 @@ export class AiController {
   @Post('generate-issues')
   @Permissions(PERMISSIONS.AI_USE)
   async generateIssues(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(generateIssuesSchema)) dto: GenerateIssuesInput,
   ) {
     return this.ai.generateIssues(workspaceId, user.id, dto);

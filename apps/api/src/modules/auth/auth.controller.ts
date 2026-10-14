@@ -16,6 +16,7 @@ import {
   type InviteMemberInput,
   type SwitchWorkspaceInput,
 } from './auth.schemas';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 const REFRESH_COOKIE = 'tirapro_rt';
 
@@ -92,18 +93,24 @@ export class AuthController {
     return { success: true };
   }
 
+  // Tài khoản & danh sách workspace của chính người dùng; switchWorkspace tự kiểm tra thành viên trong service.
+  @AuthOnly()
   @Get('me')
   async me(@CurrentUser() user: AuthUser) {
     return this.auth.me(user.id, user.workspaceId);
   }
 
   /** Danh sách workspace user là thành viên. */
+  // Tài khoản & danh sách workspace của chính người dùng; switchWorkspace tự kiểm tra thành viên trong service.
+  @AuthOnly()
   @Get('workspaces')
   async workspaces(@CurrentUser() user: AuthUser) {
     return this.auth.listWorkspaces(user.id);
   }
 
   /** Chuyển workspace: cấp access token mới + xoay refresh cookie (giống login). */
+  // Tài khoản & danh sách workspace của chính người dùng; switchWorkspace tự kiểm tra thành viên trong service.
+  @AuthOnly()
   @HttpCode(200)
   @Post('switch-workspace')
   async switchWorkspace(

@@ -19,6 +19,7 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { WorkspacesService } from './workspaces.service';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 @ApiTags('workspaces')
 @Controller('workspaces')
@@ -26,6 +27,8 @@ export class WorkspacesController {
   constructor(private readonly workspaces: WorkspacesService) {}
 
   /** Bất kỳ người dùng đã đăng nhập đều có thể tạo workspace mới (trở thành admin của nó). */
+  // Bất kỳ người dùng đã đăng nhập đều được tạo workspace mới (trở thành admin của nó); chưa thuộc workspace nào để cấp quyền.
+  @AuthOnly()
   @Post()
   async create(
     @CurrentUser() user: AuthUser,

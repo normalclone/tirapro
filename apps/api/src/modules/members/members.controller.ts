@@ -15,6 +15,7 @@ export class WorkspaceMembersController {
   constructor(private readonly members: MembersService) {}
 
   /** Thành viên workspace + vai trò (cho trang Thành viên). */
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get()
   async list(@WorkspaceId() workspaceId: string) {
     return this.members.listWorkspace(workspaceId);

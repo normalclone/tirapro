@@ -27,6 +27,7 @@ import { ProjectsService } from './projects.service';
 export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get()
   async list(@WorkspaceId() workspaceId: string) {
     return this.projects.list(workspaceId);
@@ -42,11 +43,15 @@ export class ProjectsController {
     return this.projects.create(workspaceId, user.id, dto);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('projectKey', 'key')
   @Get(':key')
   async getByKey(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
     return this.projects.getByKey(workspaceId, key.toUpperCase());
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('projectKey', 'key')
   @Get(':key/meta')
   async meta(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
     return this.projects.meta(workspaceId, key.toUpperCase());

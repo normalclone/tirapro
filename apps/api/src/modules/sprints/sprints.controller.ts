@@ -13,6 +13,8 @@ import { SprintsService } from './sprints.service';
 export class SprintsController {
   constructor(private readonly sprints: SprintsService) {}
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get()
   async list(@WorkspaceId() workspaceId: string, @Query('projectId') projectId: string) {
     return this.sprints.listForProject(workspaceId, projectId);

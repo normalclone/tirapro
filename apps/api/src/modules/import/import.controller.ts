@@ -38,7 +38,8 @@ export class ImportController {
   @Post('csv')
   @Permissions(PERMISSIONS.IMPORT_RUN)
   async importCsv(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(importCsvSchema)) body: ImportCsvBody,
   ) {
     return this.importService.importCsv(workspaceId, user.id, body);
@@ -48,7 +49,8 @@ export class ImportController {
   @Post('json')
   @Permissions(PERMISSIONS.IMPORT_RUN)
   async importJson(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(importJsonSchema)) body: ImportJsonBody,
   ) {
     return this.importService.importJson(workspaceId, user.id, body);

@@ -6,6 +6,8 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ComponentsService } from './components.service';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+import { PERMISSIONS } from '@tirapro/types';
 
 // ============================ SCHEMAS — COMPONENTS ==========================
 const nameSchema = z
@@ -78,6 +80,7 @@ export class ComponentsController {
 
   // ============================ COMPONENTS ==================================
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/components')
   async listComponents(
@@ -87,6 +90,7 @@ export class ComponentsController {
     return this.components.listComponents(workspaceId, projectId);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/components')
   async createComponent(
@@ -97,6 +101,7 @@ export class ComponentsController {
     return this.components.createComponent(workspaceId, projectId, dto);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('component', 'id')
   @Patch('components/:id')
   async updateComponent(
@@ -111,12 +116,14 @@ export class ComponentsController {
     });
   }
 
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('component', 'id')
   @Delete('components/:id')
   async removeComponent(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
     return this.components.removeComponent(workspaceId, id);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/components')
   async attachComponent(
@@ -127,6 +134,7 @@ export class ComponentsController {
     return this.components.attachComponent(workspaceId, issueId, dto.componentId);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/components/:componentId')
   async detachComponent(
@@ -139,6 +147,7 @@ export class ComponentsController {
 
   // ============================ VERSIONS ====================================
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/versions')
   async listVersions(
@@ -148,6 +157,7 @@ export class ComponentsController {
     return this.components.listVersions(workspaceId, projectId);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/versions')
   async createVersion(
@@ -158,6 +168,7 @@ export class ComponentsController {
     return this.components.createVersion(workspaceId, projectId, dto);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('version', 'id')
   @Patch('versions/:id')
   async updateVersion(
@@ -168,12 +179,14 @@ export class ComponentsController {
     return this.components.updateVersion(workspaceId, id, dto);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('version', 'id')
   @Delete('versions/:id')
   async removeVersion(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
     return this.components.removeVersion(workspaceId, id);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/versions')
   async attachVersion(
@@ -184,6 +197,7 @@ export class ComponentsController {
     return this.components.attachVersion(workspaceId, issueId, dto.versionId, dto.type);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/versions/:versionId/:type')
   async detachVersion(

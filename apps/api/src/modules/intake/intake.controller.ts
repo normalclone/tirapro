@@ -8,6 +8,7 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { IntakeService } from './intake.service';
 import { reportIssueSchema, type ReportIssueInput } from './intake.schema';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 
 @ApiTags('intake')
 @Controller('intake')
@@ -17,12 +18,15 @@ export class IntakeController {
   @Permissions(PERMISSIONS.ISSUE_CREATE)
   @Post('report')
   async report(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(reportIssueSchema)) dto: ReportIssueInput,
   ) {
     return this.intake.report(workspaceId, user.id, dto);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_CREATE)
+  @ProjectRef('query', 'projectId')
   @Get('duplicates')
   async duplicates(
     @WorkspaceId() workspaceId: string,

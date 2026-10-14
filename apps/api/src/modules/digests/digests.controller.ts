@@ -8,6 +8,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { DigestsService } from './digests.service';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 
 const scheduleEnum = z.enum(['DAILY', 'WEEKLY', 'SPRINT_END', 'MANUAL']);
 
@@ -35,6 +36,8 @@ type UpdateDigestBody = z.infer<typeof updateDigestSchema>;
 export class DigestsController {
   constructor(private readonly digests: DigestsService) {}
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get()
   async list(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
     return this.digests.list(workspaceId, projectId);
@@ -43,7 +46,8 @@ export class DigestsController {
   @Post()
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async create(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createDigestSchema)) dto: CreateDigestBody,
   ) {
     return this.digests.create(workspaceId, user.id, dto);

@@ -5,6 +5,8 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { LabelsService } from './labels.service';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+import { PERMISSIONS } from '@tirapro/types';
 
 const hexColor = z
   .string()
@@ -36,12 +38,14 @@ type AttachLabelDto = z.infer<typeof attachLabelSchema>;
 export class LabelsController {
   constructor(private readonly labels: LabelsService) {}
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/labels')
   async list(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
     return this.labels.list(workspaceId, projectId);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/labels')
   async create(
@@ -52,6 +56,7 @@ export class LabelsController {
     return this.labels.create(workspaceId, projectId, dto);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('label', 'id')
   @Patch('labels/:id')
   async update(
@@ -62,12 +67,14 @@ export class LabelsController {
     return this.labels.update(workspaceId, id, dto);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('label', 'id')
   @Delete('labels/:id')
   async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
     return this.labels.remove(workspaceId, id);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/labels')
   async attach(
@@ -78,6 +85,7 @@ export class LabelsController {
     return this.labels.attach(workspaceId, issueId, dto.labelId);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/labels/:labelId')
   async detach(

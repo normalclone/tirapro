@@ -70,6 +70,7 @@ export class ConfigCatalogController {
 
   // ----- Severities -----
 
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get('severities')
   async listSeverities(@WorkspaceId() workspaceId: string) {
     return this.catalog.listSeverities(workspaceId);
@@ -102,6 +103,7 @@ export class ConfigCatalogController {
 
   // ----- Priorities -----
 
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get('priorities')
   async listPriorities(@WorkspaceId() workspaceId: string) {
     return this.catalog.listPriorities(workspaceId);

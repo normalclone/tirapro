@@ -13,6 +13,7 @@ export class RolesController {
   constructor(private readonly roles: RolesService) {}
 
   /** Danh mục vai trò (hệ thống + custom của workspace). Mọi thành viên xem được. */
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get()
   async list(@WorkspaceId() workspaceId: string, @Query('scope') scope?: RoleScope) {
     return this.roles.list(workspaceId, scope);

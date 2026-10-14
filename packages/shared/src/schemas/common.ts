@@ -35,6 +35,17 @@ export const createCommentSchema = z.object({
   mentionUserIds: z.array(z.string()).optional(),
 });
 
+/** Sửa bình luận: `version` để phát hiện sửa đồng thời (409). Giới hạn độ dài khớp lúc tạo. */
+export const updateCommentSchema = z.object({
+  body: z.string().min(1, 'Nội dung bắt buộc').max(50_000, 'Nội dung quá dài'),
+  version: z.number().int('Phiên bản không hợp lệ'),
+});
+
+/** Kiểm tra cú pháp JQL — chỉ nhận chuỗi, không đọc dữ liệu. */
+export const validateJqlSchema = z.object({
+  jql: z.string().max(5_000, 'JQL quá dài').optional(),
+});
+
 export const createSprintSchema = z.object({
   name: z.string().min(1).max(120),
   goal: z.string().max(1000).optional().nullable(),
@@ -47,4 +58,6 @@ export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;
 export type CreateCommentInput = z.infer<typeof createCommentSchema>;
+export type UpdateCommentInput = z.infer<typeof updateCommentSchema>;
+export type ValidateJqlInput = z.infer<typeof validateJqlSchema>;
 export type CreateSprintInput = z.infer<typeof createSprintSchema>;

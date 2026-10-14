@@ -40,9 +40,10 @@ export const setCustomFieldValueSchema = z.object({ value: z.unknown() });
 export class CustomFieldsController {
   constructor(private readonly customFields: CustomFieldsService) {}
 
-  /** Workspace hiện tại của user (bắt buộc đã chọn). */
   // ============================ DEFINITIONS ============================
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get('custom-fields')
   async list(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
     return this.customFields.listDefinitions(workspaceId, projectId || undefined);
@@ -77,6 +78,8 @@ export class CustomFieldsController {
 
   // ============================ VALUES (per issue) ============================
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/custom-fields')
   async listIssueValues(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
     return this.customFields.listIssueValues(workspaceId, issueId);

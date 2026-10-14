@@ -4,15 +4,24 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import type { AuthUser } from '../../common/types/request';
 import { SearchService } from './search.service';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
+import { validateJqlSchema, type ValidateJqlInput } from '@tirapro/shared';
+import { PERMISSIONS } from '@tirapro/types';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 
 @ApiTags('search')
 @Controller('search')
 export class SearchController {
   constructor(private readonly search: SearchService) {}
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get()
   async run(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query('jql') jql?: string,
     @Query('projectId') projectId?: string,
     @Query('cursor') cursor?: string,
@@ -23,13 +32,16 @@ export class SearchController {
   }
 
   /** Danh mục giá trị cho bộ dựng truy vấn trực quan (type/status/priority/sprint/label/resolution). */
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get('fields')
   async fields(@WorkspaceId() workspaceId: string) {
     return this.search.fields(workspaceId);
   }
 
+  // Chỉ phân tích cú pháp JQL, không đọc dữ liệu workspace.
+  @AuthOnly()
   @Post('validate')
-  validate(@Body() body: { jql?: string }) {
-    return this.search.validate(body?.jql ?? '');
+  validate(@Body(new ZodValidationPipe(validateJqlSchema)) body: ValidateJqlInput) {
+    return this.search.validate(body.jql ?? '');
   }
 }

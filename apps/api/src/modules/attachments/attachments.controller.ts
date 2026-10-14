@@ -25,26 +25,28 @@ import { AttachmentsService } from './attachments.service';
 export class AttachmentsController {
   constructor(private readonly attachments: AttachmentsService) {}
 
-  /** Workspace hiện tại của user (bắt buộc đã chọn). */
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/attachments')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async upload(
-    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.attachments.upload(workspaceId, user.id, issueId, file);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/attachments')
   async list(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
     return this.attachments.list(workspaceId, issueId);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('attachment', 'id')
   @Get('attachments/:id/download')
   async download(
