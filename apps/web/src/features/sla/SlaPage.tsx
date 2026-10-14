@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlarmClock, Plus, Trash2, TriangleAlert, X } from 'lucide-react';
+import { AlarmClock, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { pageContainer } from '@/components/layout/page';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useAuth } from '@/stores/auth';
@@ -132,6 +134,7 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
   const create = useCreateSlaPolicy();
   const update = useUpdateSlaPolicy();
   const remove = useDeleteSlaPolicy();
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [projectId, setProjectId] = useState('');
@@ -215,7 +218,10 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
                       className="text-muted hover:text-danger"
                       title="Xoá cam kết"
                       aria-label={`Xoá cam kết ${p.name}`}
-                      onClick={() => { if (window.confirm(`Xoá cam kết “${p.name}”? Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.`)) remove.mutate(p.id, { onError: (e) => toast.error(apiErrorMessage(e)) }); }}
+                      onClick={async () => {
+                        if (!(await confirm({ title: `Xoá cam kết “${p.name}”? Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.`, destructive: true }))) return;
+                        remove.mutate(p.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
+                      }}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -227,67 +233,65 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
         )}
       </div>
 
-      {open && (
-        <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-[10vh]">
-          <button className="absolute inset-0 bg-black/30 animate-in fade-in duration-200" onClick={() => setOpen(false)} aria-label="Đóng" />
-          <div className="relative w-full max-w-md overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
-            <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-              <span className="text-sm font-medium text-ink">Thêm cam kết thời gian</span>
-              <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setOpen(false)} aria-label="Đóng"><X className="h-4 w-4" /></Button>
-            </header>
-            <div className="space-y-4 px-5 py-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-muted">Tên cam kết</label>
-                <Input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ví dụ: Hỗ trợ tiêu chuẩn"
-                  title="Tên hiện trên bảng theo dõi để bạn biết công việc đang chạy theo cam kết nào."
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-muted">Dự án <span className="font-normal text-faint">(để trống = áp cho mọi dự án)</span></label>
-                <SearchSelect
-                  value={projectId}
-                  onChange={setProjectId}
-                  options={[{ value: '', label: 'Mọi dự án' }, ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key }))]}
-                  placeholder="Mọi dự án"
-                  searchPlaceholder="Tìm dự án…"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-muted">Phải phản hồi trong (giờ)</label>
-                  <Input
-                    type="number"
-                    min={0.5}
-                    step={0.5}
-                    value={responseH}
-                    onChange={(e) => setResponseH(e.target.value)}
-                    title="Tính từ lúc công việc được tạo cho tới phản hồi đầu tiên."
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-muted">Phải xử lý xong trong (giờ)</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={resolveH}
-                    onChange={(e) => setResolveH(e.target.value)}
-                    title="Tính từ lúc công việc được tạo cho tới khi chuyển sang trạng thái đã xong."
-                  />
-                </div>
-              </div>
+      <Dialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Thêm cam kết thời gian"
+        onSubmit={submit}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setOpen(false)}>Huỷ</Button>
+            <Button onClick={submit} loading={create.isPending} disabled={!name.trim()}>Tạo cam kết</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-muted">Tên cam kết</label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ví dụ: Hỗ trợ tiêu chuẩn"
+              title="Tên hiện trên bảng theo dõi để bạn biết công việc đang chạy theo cam kết nào."
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-muted">Dự án <span className="font-normal text-faint">(để trống = áp cho mọi dự án)</span></label>
+            <SearchSelect
+              value={projectId}
+              onChange={setProjectId}
+              options={[{ value: '', label: 'Mọi dự án' }, ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key }))]}
+              placeholder="Mọi dự án"
+              searchPlaceholder="Tìm dự án…"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-muted">Phải phản hồi trong (giờ)</label>
+              <Input
+                type="number"
+                min={0.5}
+                step={0.5}
+                value={responseH}
+                onChange={(e) => setResponseH(e.target.value)}
+                title="Tính từ lúc công việc được tạo cho tới phản hồi đầu tiên."
+              />
             </div>
-            <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-              <Button variant="ghost" onClick={() => setOpen(false)}>Huỷ</Button>
-              <Button onClick={submit} loading={create.isPending} disabled={!name.trim()}>Tạo cam kết</Button>
-            </footer>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-muted">Phải xử lý xong trong (giờ)</label>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={resolveH}
+                onChange={(e) => setResolveH(e.target.value)}
+                title="Tính từ lúc công việc được tạo cho tới khi chuyển sang trạng thái đã xong."
+              />
+            </div>
           </div>
         </div>
-      )}
+      </Dialog>
     </section>
   );
 }
