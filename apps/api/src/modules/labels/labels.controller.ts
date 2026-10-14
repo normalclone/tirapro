@@ -45,7 +45,7 @@ export class LabelsController {
     return this.labels.list(workspaceId, projectId);
   }
 
-  @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/labels')
   async create(
@@ -56,7 +56,7 @@ export class LabelsController {
     return this.labels.create(workspaceId, projectId, dto);
   }
 
-  @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('label', 'id')
   @Patch('labels/:id')
   async update(
@@ -67,7 +67,7 @@ export class LabelsController {
     return this.labels.update(workspaceId, id, dto);
   }
 
-  @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('label', 'id')
   @Delete('labels/:id')
   async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {

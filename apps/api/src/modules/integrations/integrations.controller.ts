@@ -31,8 +31,8 @@ export type AddChannelBody = z.infer<typeof addChannelSchema>;
 export class IntegrationsController {
   constructor(private readonly integrations: IntegrationsService) {}
 
-  /** Liệt kê integration (đã ẩn token). Không cần quyền quản lý — chỉ đọc. */
-  @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
+  /** Liệt kê integration (đã ẩn token). Mọi thành viên workspace xem được; tạo/xoá cần INTEGRATION_MANAGE. */
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get()
   async list(@WorkspaceId() workspaceId: string, @Query('type') type?: string) {
     const parsed = type && type in IntegrationType ? (type as IntegrationType) : undefined;
