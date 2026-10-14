@@ -60,6 +60,9 @@ export class SprintsService {
     const updated = await this.prisma.$transaction(async (tx) => {
       // Khoá dòng project để hai request start đồng thời trong cùng project phải xếp hàng.
       await tx.project.update({ where: { id: sprint.projectId }, data: { updatedAt: new Date() }, select: { id: true } });
+      // Đọc lại trạng thái SAU khi khoá: sprint đang ACTIVE/CLOSED thì báo đúng lý do thay vì "đã có sprint ACTIVE".
+      const cur = await tx.sprint.findFirst({ where: { id: sprintId, deletedAt: null }, select: { state: true } });
+      if (cur?.state !== 'FUTURE') throw new BusinessRuleException('Chỉ sprint FUTURE mới start được');
       const active = await tx.sprint.findFirst({ where: { projectId: sprint.projectId, state: 'ACTIVE', deletedAt: null }, select: { id: true } });
       if (active) throw new BusinessRuleException('Đã có sprint đang ACTIVE; hoàn thành nó trước');
       // Chuyển trạng thái có điều kiện: chỉ thắng khi sprint vẫn còn FUTURE.
@@ -93,7 +96,10 @@ export class SprintsService {
       });
       if (pushed.length) {
         const ids = pushed.map((i) => i.id);
-        await tx.issue.updateMany({ where: { id: { in: ids }, sprintId }, data: { sprintId: null } });
+        await tx.issue.updateMany({
+          where: { id: { in: ids }, sprintId, status: { category: { not: 'DONE' } } },
+          data: { sprintId: null },
+        });
         const occurredAt = new Date();
         await tx.issueHistory.createMany({
           data: ids.map((issueId) => ({

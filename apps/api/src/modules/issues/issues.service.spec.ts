@@ -34,7 +34,7 @@ describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
   it('rank hai mốc sát nhau => đánh số lại project rồi tính lại 1 lần', async () => {
     let rebalanced = false;
     const ranks: Record<string, [string, string]> = { a: ['n', 'i'], b: ['n0', 'r'] }; // [trước, sau rebalance]
-    const issueUpdate = vi.fn(async () => ({}));
+    const executeRaw = vi.fn(async () => 3);
     let movedRank: unknown;
     const updateMany = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
       movedRank = data.rank;
@@ -48,11 +48,11 @@ describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
           return r ? { rank: rebalanced ? r[1] : r[0] } : null;
         }),
         findMany: vi.fn(async () => [{ id: 'a' }, { id: 'i1' }, { id: 'b' }]),
-        update: issueUpdate,
         updateMany,
         findFirstOrThrow: vi.fn(async () => issueRow({ rank: movedRank, version: 4 })),
       },
       project: { update: vi.fn(async () => { rebalanced = true; return { id: 'p1' }; }) },
+      $executeRaw: executeRaw,
     };
     const { service, events } = makeService(tx);
 
@@ -60,10 +60,16 @@ describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
 
     expect(tx.project.update).toHaveBeenCalledTimes(1);
     expect(dto.rank > 'i' && dto.rank < 'r').toBe(true);
-    // 3 lần update rebalance; issue được kéo ghi qua updateMany có điều kiện version
-    expect(issueUpdate).toHaveBeenCalledTimes(3);
+    // Rebalance = ĐÚNG MỘT câu raw cho cả project, hai mảng (id, rank) cùng độ dài
+    expect(executeRaw).toHaveBeenCalledTimes(1);
+    const [, ids, newRanks] = executeRaw.mock.calls[0] as unknown as [unknown, string[], string[]];
+    expect(ids).toEqual(['a', 'i1', 'b']);
+    expect(newRanks).toHaveLength(ids.length);
+    expect(new Set(newRanks).size).toBe(newRanks.length);
+    // issue được kéo ghi qua updateMany có điều kiện version
     expect(updateMany).toHaveBeenCalledTimes(1);
-    expect(events.emit).toHaveBeenCalledTimes(1);
+    expect(events.emit).toHaveBeenCalledWith('project.ranks_rebalanced', { projectId: 'p1' });
+    expect(events.emit).toHaveBeenCalledTimes(2); // rebalance + ISSUE_MOVED
   });
 
   it('mốc không còn tồn tại => 404 thay vì lặng lẽ xếp xuống cuối', async () => {

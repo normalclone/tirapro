@@ -18,6 +18,9 @@ export interface RefreshMeta {
   ipAddress?: string;
 }
 
+/** Thời gian cho phép hai request refresh gần như đồng thời dùng cùng một token (hai tab cùng khởi động). */
+const REFRESH_GRACE_MS = 10_000;
+
 /** Quản lý access JWT + refresh token rotation theo family (reuse detection). */
 @Injectable()
 export class TokenService {
@@ -61,9 +64,14 @@ export class TokenService {
   /**
    * Xoay refresh: revoke cũ, cấp mới cùng family. Việc "giành" token là MỘT câu updateMany có điều kiện
    * (chưa revoke, chưa hết hạn) nên hai request đồng thời cùng một token chỉ một request thắng.
-   * Token đã revoke mà vẫn được dùng lại (reuse) hoặc hết hạn => revoke cả family.
+   *
+   * Người thua:
+   * - Token vừa bị revoke trong vòng REFRESH_GRACE_MS VÀ family đã có token kế nhiệm còn sống => hai tab
+   *   refresh cùng lúc (lành tính): không revoke family, trả `newToken: null` (giữ nguyên cookie của người
+   *   thắng) — bên gọi vẫn cấp access token mới.
+   * - Còn lại (token revoke từ lâu, đăng xuất, hết hạn, hoặc không có kế nhiệm) => reuse: revoke cả family.
    */
-  async rotateRefresh(token: string, meta: RefreshMeta): Promise<{ userId: string; newToken: string }> {
+  async rotateRefresh(token: string, meta: RefreshMeta): Promise<{ userId: string; newToken: string | null }> {
     const [, raw] = token.split('.', 2);
     if (!raw) throw new UnauthorizedException({ code: ERROR_CODES.UNAUTHENTICATED, message: 'Refresh token không hợp lệ' });
     const tokenHash = this.hashToken(raw);
@@ -76,12 +84,21 @@ export class TokenService {
     if (count === 0) {
       const row = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
       if (!row) throw new UnauthorizedException({ code: ERROR_CODES.UNAUTHENTICATED, message: 'Refresh token không tồn tại' });
-      // Reuse detection: token đã bị thu hồi (hoặc hết hạn) nhưng vẫn được dùng => revoke toàn family.
+
+      if (row.revokedAt && now.getTime() - row.revokedAt.getTime() <= REFRESH_GRACE_MS) {
+        // Kế nhiệm = token mới hơn trong family còn sống (đăng xuất revoke cả family nên không bao giờ có kế nhiệm sống).
+        const successor = await this.prisma.refreshToken.findFirst({
+          where: { family: row.family, id: { not: row.id }, createdAt: { gt: row.createdAt }, revokedAt: null, expiresAt: { gt: now } },
+          select: { id: true },
+        });
+        if (successor) return { userId: row.userId, newToken: null };
+      }
+
       await this.prisma.refreshToken.updateMany({
         where: { family: row.family, revokedAt: null },
         data: { revokedAt: now },
       });
-      throw new UnauthorizedException({ code: ERROR_CODES.UNAUTHENTICATED, message: 'Phiên đăng nhập đã hết hạn' });
+      throw new UnauthorizedException({ code: ERROR_CODES.UNAUTHENTICATED, message: 'Phiên đăng nhập đã hết hạn — hãy đăng nhập lại' });
     }
 
     const row = await this.prisma.refreshToken.findUniqueOrThrow({ where: { tokenHash } });

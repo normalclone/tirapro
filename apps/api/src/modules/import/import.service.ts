@@ -539,13 +539,14 @@ export class ImportService {
 
     const runBatch = async (batch: PreparedItem[]): Promise<void> => {
       const local = new Map(labelCache);
+      const deferred: Array<() => void> = [];
       const out = await this.prisma.$transaction(
         async (tx) => {
           const dtos: IssueDto[] = [];
           let labels = 0;
           let comments = 0;
           for (const it of batch) {
-            const dto = await this.issues.createWithin(tx, workspaceId, userId, it.input);
+            const dto = await this.issues.createWithin(tx, workspaceId, userId, it.input, deferred);
             if (it.after) {
               const r = await it.after(tx, dto, local);
               labels += r.labels;
@@ -558,6 +559,7 @@ export class ImportService {
         { timeout: 120_000, maxWait: 10_000 },
       );
       for (const [k, v] of local) labelCache.set(k, v);
+      for (const fn of deferred) fn(); // sự kiện đánh số lại rank (nếu có) — sau commit
       for (const dto of out.dtos) this.issues.emitCreated(dto, userId);
       result.created += out.dtos.length;
       result.labels += out.labels;

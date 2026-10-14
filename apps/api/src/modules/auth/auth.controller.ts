@@ -81,7 +81,8 @@ export class AuthController {
     // Access token cũ (có thể đã hết hạn) cho biết workspace đang làm việc — refresh phải giữ nguyên nó.
     const preferredWorkspaceId = this.tokens.workspaceFromExpiredAccess(req.headers.authorization);
     const { refreshToken, ...rest } = await this.auth.refresh(token, this.meta(req), preferredWorkspaceId);
-    this.setRefreshCookie(res, refreshToken);
+    // refreshToken = null khi đây là lượt refresh đồng thời (tab khác đã xoay) — giữ nguyên cookie hiện có.
+    if (refreshToken) this.setRefreshCookie(res, refreshToken);
     return rest;
   }
 
