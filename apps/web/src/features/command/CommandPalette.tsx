@@ -17,6 +17,15 @@ const ISSUE_KEY_RE = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/;
 /** Đang xem trang chi tiết công việc `/issue/:key` → trả về key để hiện nhóm hành động theo ngữ cảnh. */
 const ISSUE_ROUTE_RE = /^\/issue\/([^/]+)/;
 
+/** decodeURIComponent không ném lỗi với đường dẫn hỏng (vd `%E0%A4%A`) — lỗi thì dùng nguyên chuỗi. */
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
 /** Dự án hiện tại cho các hành động điều hướng: URL `/p/:key` → view gần nhất → dự án đầu. */
 function currentProjectKey(projects: { key: string }[] | undefined): string | null {
   const m = /^\/p\/([^/]+)/.exec(window.location.pathname);
@@ -146,7 +155,7 @@ export function CommandPalette() {
           </Command.Group>
         )}
 
-        {issueRouteKey && <IssueContextGroup issueKey={decodeURIComponent(issueRouteKey)} runAction={runAction} />}
+        {issueRouteKey && <IssueContextGroup issueKey={safeDecode(issueRouteKey)} runAction={runAction} />}
 
         <Command.Group
           heading="Hành động"

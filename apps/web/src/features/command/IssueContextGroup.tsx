@@ -34,23 +34,26 @@ export function IssueContextGroup({ issueKey, runAction }: { issueKey: string; r
   if (!issue) return null;
   const nextStatuses = computeNextStatuses(workflows, issue.status.id);
 
-  function assignToMe() {
+  // Bảng lệnh đóng ngay sau khi chọn nên component này bị gỡ (observer của mutation mất) → callback của `mutate`
+  // sẽ không chạy. Dùng mutateAsync + try/catch: promise vẫn chạy tiếp sau khi unmount nên toast vẫn hiện.
+  async function assignToMe() {
     if (!issue || !me || issue.assigneeId === me.id) return;
-    updateIssue.mutate(
-      { id: issue.id, key: issue.key, patch: { assigneeId: me.id }, version: issue.version },
-      { onSuccess: () => toast.success('Đã giao việc này cho bạn', { duration: 2000 }), onError: (e) => toast.error(apiErrorMessage(e)) },
-    );
+    try {
+      await updateIssue.mutateAsync({ id: issue.id, key: issue.key, patch: { assigneeId: me.id }, version: issue.version });
+      toast.success('Đã giao việc này cho bạn', { duration: 2000 });
+    } catch (e) {
+      toast.error(apiErrorMessage(e));
+    }
   }
 
-  function changeStatus(toStatusId: string, toName: string) {
+  async function changeStatus(toStatusId: string, toName: string) {
     if (!issue) return;
-    transition.mutate(
-      { id: issue.id, key: issue.key, toStatusId, version: issue.version, statusName: toName },
-      {
-        onSuccess: () => toast.success(`Đã chuyển sang “${toName}”`, { duration: 2000 }),
-        onError: (e) => toast.error(apiErrorMessage(e)),
-      },
-    );
+    try {
+      await transition.mutateAsync({ id: issue.id, key: issue.key, toStatusId, version: issue.version, statusName: toName });
+      toast.success(`Đã chuyển sang “${toName}”`, { duration: 2000 });
+    } catch (e) {
+      toast.error(apiErrorMessage(e));
+    }
   }
 
   async function toggleWatching(watching: boolean) {
@@ -72,7 +75,7 @@ export function IssueContextGroup({ issueKey, runAction }: { issueKey: string; r
           value={`giao cho toi assign me ${issue.key}`}
           icon={<UserCheck className={ICON} aria-hidden="true" />}
           label="Giao cho tôi"
-          onSelect={() => runAction(assignToMe)}
+          onSelect={() => runAction(() => void assignToMe())}
         />
       )}
       {nextStatuses.map((s) => (
@@ -81,7 +84,7 @@ export function IssueContextGroup({ issueKey, runAction }: { issueKey: string; r
           value={`doi trang thai chuyen ${s.name} ${issue.key}`}
           icon={<ArrowRightLeft className={ICON} aria-hidden="true" />}
           label={`Đổi trạng thái → ${s.name}`}
-          onSelect={() => runAction(() => changeStatus(s.id, s.name))}
+          onSelect={() => runAction(() => void changeStatus(s.id, s.name))}
         />
       ))}
       {watch && (

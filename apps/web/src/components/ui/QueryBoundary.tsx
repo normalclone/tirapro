@@ -16,6 +16,8 @@ interface BoundaryQuery<T> {
  *
  * Chỉ coi là lỗi khi CHƯA có dữ liệu: nếu làm mới nền thất bại mà vẫn còn dữ liệu cũ thì
  * giữ nguyên danh sách thay vì thay bằng màn lỗi.
+ *
+ * Không dùng với query cố ý disabled (skipToken) — sẽ hiện skeleton mãi vì data luôn undefined.
  */
 export function QueryBoundary<T>({
   query,
