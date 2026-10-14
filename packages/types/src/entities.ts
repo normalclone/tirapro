@@ -166,6 +166,8 @@ export interface ProjectDto {
   avatarUrl: string | null;
   defaultAssigneeMode: DefaultAssigneeMode;
   isArchived: boolean;
+  /** Thời điểm lưu trữ; null = đang hoạt động. Dự án đã lưu trữ chỉ đọc. */
+  archivedAt: ISODate | null;
   issueCount?: number;
   createdAt: ISODate;
 }
@@ -323,12 +325,17 @@ export interface BoardColumnDto {
   statusIds: ID[];
 }
 
+/** Cách nhóm thẻ thành swimlane trên board. */
+export const SWIMLANE_BY = ['none', 'assignee', 'epic', 'priority', 'parent'] as const;
+export type SwimlaneBy = (typeof SWIMLANE_BY)[number];
+
 export interface BoardDto {
   id: ID;
   projectId: ID;
   name: string;
   type: BoardType;
   filterJql: string | null;
+  swimlaneBy: SwimlaneBy;
   columns: BoardColumnDto[];
 }
 

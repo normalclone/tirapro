@@ -18,6 +18,7 @@ function issueRow(over: Record<string, unknown> = {}) {
     originalEstimate: null, remainingEstimate: null, timeSpent: null,
     dueDate: null, startDate: null, resolvedAt: null, triageState: null, triageSnoozeUntil: null, occurrenceCount: 0,
     rank: 'n', version: 3, labels: [], createdAt: now, updatedAt: now,
+    project: { archivedAt: null },
     ...over,
   };
 }
@@ -341,5 +342,145 @@ describe('IssuesService.query — rawIds (full-text)', () => {
     const args = (findMany.mock.calls[0] as unknown as [{ where: unknown; orderBy: unknown }])[0];
     expect(JSON.stringify(args.where)).toContain('"in":["a","b"]');
     expect(args.orderBy).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
+  });
+});
+
+describe('IssuesService — giới hạn WIP của cột board', () => {
+  /** Cột "Doing" (statusIds s2, s4) có giới hạn `limit`, đang có `count` việc; issue đang ở s1 (ngoài cột). */
+  function wipTx(opts: { limit?: number | null; count?: number; boardType?: 'SCRUM' | 'KANBAN'; activeSprint?: boolean; issue?: Record<string, unknown>; column?: boolean } = {}) {
+    const limit = opts.limit === undefined ? 2 : opts.limit;
+    const issue = issueRow(opts.issue ?? {});
+    return {
+      boardColumn: {
+        findFirst: vi.fn(() =>
+          Promise.resolve(opts.column === false ? null : {
+            id: 'c2', name: 'Doing', wipLimit: limit, board: { type: opts.boardType ?? 'KANBAN' },
+            statuses: [{ statusId: 's2' }, { statusId: 's4' }],
+          })),
+      },
+      sprint: { findFirst: vi.fn(() => Promise.resolve(opts.activeSprint === false ? null : { id: 'sp1' })) },
+      $queryRaw: vi.fn(() => Promise.resolve([])),
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issue)),
+        findMany: vi.fn(() => Promise.resolve([issue])),
+        count: vi.fn((_args: { where: Record<string, unknown> }) => Promise.resolve(opts.count ?? 2)),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 4, statusId: 's2' }))),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+      project: { findUnique: vi.fn(() => Promise.resolve({ defaultWorkflowId: 'wf', archivedAt: null })) },
+      workflowTransition: { findFirst: vi.fn(() => Promise.resolve({ id: 'tr' })) },
+      status: { findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })) },
+    };
+  }
+  const input = { version: 3, toStatusId: 's2', boardId: 'b1' };
+
+  it('transition vào cột đã đầy, không force => WIP_LIMIT_REACHED (422), không ghi, không emit', async () => {
+    const tx = wipTx({ count: 2 });
+    const { service, events } = makeService(tx);
+    await expect(service.transition('w1', 'u1', 'i1', input)).rejects.toMatchObject({
+      status: 422,
+      response: { code: 'WIP_LIMIT_REACHED', message: 'Cột "Doing" đã đạt giới hạn 2 việc đang làm — hãy hoàn thành bớt hoặc chọn "Vẫn chuyển"' },
+    });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('kiểm WIP chạy TRONG transaction, sau khi khoá dòng cột (FOR UPDATE) để hai request đồng thời không cùng lọt', async () => {
+    const order: string[] = [];
+    const tx = wipTx({ count: 1 });
+    tx.$queryRaw = vi.fn(() => { order.push('lock'); return Promise.resolve([]); });
+    tx.issue.count = vi.fn(() => { order.push('count'); return Promise.resolve(1); });
+    tx.issue.updateMany = vi.fn(() => { order.push('write'); return Promise.resolve({ count: 1 }); });
+    const { service } = makeService(tx);
+    await service.transition('w1', 'u1', 'i1', input);
+    expect(order).toEqual(['lock', 'count', 'write']);
+  });
+
+  it('còn chỗ (count < giới hạn) => chuyển bình thường, đếm đúng project + trạng thái của cột + chưa xoá', async () => {
+    const tx = wipTx({ count: 1 });
+    const { service, events } = makeService(tx);
+    await service.transition('w1', 'u1', 'i1', input);
+    expect(tx.issue.count.mock.calls[0]![0].where).toMatchObject({ projectId: 'p1', deletedAt: null, statusId: { in: ['s2', 's4'] } });
+    expect(events.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('board SCRUM chỉ đếm việc của sprint đang ACTIVE; không có sprint ACTIVE => không chặn', async () => {
+    const tx = wipTx({ count: 2, boardType: 'SCRUM' });
+    const { service } = makeService(tx);
+    await expect(service.transition('w1', 'u1', 'i1', input)).rejects.toMatchObject({ response: { code: 'WIP_LIMIT_REACHED' } });
+    expect(tx.issue.count.mock.calls[0]![0].where).toMatchObject({ sprintId: 'sp1' });
+
+    const none = wipTx({ count: 99, boardType: 'SCRUM', activeSprint: false });
+    await makeService(none).service.transition('w1', 'u1', 'i1', input);
+    expect(none.issue.count).not.toHaveBeenCalled();
+  });
+
+  it('force + có project:admin => qua dù cột đầy', async () => {
+    const tx = wipTx({ count: 5 });
+    const { service, rbac, events } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['project:admin']));
+    await service.transition('w1', 'u1', 'i1', { ...input, force: true });
+    expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', 'p1');
+    expect(events.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('force nhưng không phải quản trị dự án => 403, không ghi', async () => {
+    const tx = wipTx({ count: 5 });
+    const { service, rbac } = makeService(tx, { user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) } });
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition']));
+    await expect(service.transition('w1', 'u1', 'i1', { ...input, force: true })).rejects.toMatchObject({ status: 403 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('không gửi boardId / cột không có wipLimit / cột không chứa trạng thái đích => không đếm', async () => {
+    for (const [tx, inp] of [
+      [wipTx({ count: 9 }), { version: 3, toStatusId: 's2' }],
+      [wipTx({ count: 9, limit: null }), input],
+      [wipTx({ count: 9, column: false }), input],
+    ] as const) {
+      await makeService(tx).service.transition('w1', 'u1', 'i1', inp);
+      expect(tx.issue.count).not.toHaveBeenCalled();
+    }
+  });
+
+  it('issue đã nằm trong cột đích (đổi giữa hai trạng thái cùng cột) => không tính là vào thêm', async () => {
+    const tx = wipTx({ count: 2, issue: { statusId: 's4' } });
+    const { service } = makeService(tx);
+    await service.transition('w1', 'u1', 'i1', input);
+    expect(tx.issue.count).not.toHaveBeenCalled();
+  });
+
+  it('move sang trạng thái của cột đã đầy => WIP_LIMIT_REACHED; move trong cùng cột (không đổi trạng thái) thì không kiểm', async () => {
+    const tx = wipTx({ count: 2 });
+    const { service } = makeService(tx);
+    await expect(service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2', boardId: 'b1' })).rejects.toMatchObject({
+      response: { code: 'WIP_LIMIT_REACHED' },
+    });
+    const same = wipTx({ count: 2 });
+    await makeService(same).service.move('w1', 'u1', 'i1', { version: 3, boardId: 'b1' });
+    expect(same.issue.count).not.toHaveBeenCalled();
+  });
+
+  it('bulkUpdate: chuyển nhiều việc vào cột chỉ còn 1 chỗ => chặn cả lô, nêu số chỗ còn lại', async () => {
+    const tx = wipTx({ count: 1 });
+    tx.issue.findMany = vi.fn(() => Promise.resolve([issueRow({ id: 'a' }), issueRow({ id: 'b' })]));
+    const { service, rbac } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition']));
+    await expect(
+      service.bulkUpdate('w1', 'u1', {
+        projectId: 'p1', boardId: 'b1', patch: { statusId: 's2' },
+        items: [{ id: 'a', version: 3 }, { id: 'b', version: 3 }],
+      }),
+    ).rejects.toMatchObject({ status: 422, response: { code: 'WIP_LIMIT_REACHED', message: expect.stringContaining('chỉ còn chỗ cho 1') } });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('dự án đã lưu trữ => transition/move bị chặn trước khi đụng DB ghi', async () => {
+    const tx = wipTx({ issue: { project: { archivedAt: new Date() } } });
+    const { service } = makeService(tx);
+    await expect(service.transition('w1', 'u1', 'i1', input)).rejects.toMatchObject({ status: 422, message: expect.stringContaining('lưu trữ') });
+    await expect(service.move('w1', 'u1', 'i1', { version: 3 })).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
   });
 });

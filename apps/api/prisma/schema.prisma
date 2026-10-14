@@ -473,6 +473,7 @@ model Project {
   defaultWorkflowId   String?
   defaultAssigneeMode DefaultAssigneeMode @default(UNASSIGNED)
   isArchived          Boolean  @default(false)
+  archivedAt          DateTime?
   programId           String?
   clientId            String?
   settings            Json     @default("{}")
@@ -513,6 +514,7 @@ model Project {
   @@unique([workspaceId, key])
   @@unique([workspaceId, name])
   @@index([workspaceId])
+  @@index([workspaceId, archivedAt])
   @@index([leadId])
   @@index([deletedAt])
 }
