@@ -92,6 +92,13 @@ export class ImportController {
     return this.jira.analyze(this.ws(user), user.id, file);
   }
 
+  /** Jira bước 2: giá trị Tirapro (project, loại, ưu tiên, trạng thái, thành viên) để ghép. */
+  @Get('jira/targets')
+  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  async jiraTargets(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
+    return this.jira.targets(this.ws(user), projectId || undefined);
+  }
+
   /** Jira bước 3: kiểm tra mapping, chạy thử (dryRun) hoặc chạy nền và trả `{ jobId }`. */
   @Post('jira/run')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)

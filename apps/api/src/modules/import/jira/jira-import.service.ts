@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import type { Prisma } from '@prisma/client';
 import { JIRA_CREATE, type JiraImportOptions, type JiraImportRunInput } from '@tirapro/shared';
 import type { CreateIssueInput } from '@tirapro/shared';
-import type { JiraAnalyzeResult, JiraDryRunResult } from '@tirapro/types';
+import type { JiraAnalyzeResult, JiraDryRunResult, JiraImportTargets } from '@tirapro/types';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../../common/exceptions/app.exception';
 import { ProjectsService } from '../../projects/projects.service';
@@ -122,6 +122,47 @@ export class JiraImportService {
     await fs.writeFile(path.join(dir, `${analyzeId}.json`), JSON.stringify(meta));
 
     return { analyzeId, ...analyzeJira(parsed) };
+  }
+
+  /** Giá trị Tirapro để chọn trong bảng mapping (bước 2). */
+  async targets(workspaceId: string, projectId?: string): Promise<JiraImportTargets> {
+    const [projects, issueTypes, priorities, members] = await Promise.all([
+      this.prisma.project.findMany({
+        where: { workspaceId, deletedAt: null, isArchived: false },
+        orderBy: { name: 'asc' },
+        select: { id: true, key: true, name: true },
+      }),
+      this.prisma.issueType.findMany({
+        where: { workspaceId },
+        orderBy: { hierarchyLevel: 'asc' },
+        select: { id: true, name: true, isSubtask: true },
+      }),
+      this.prisma.priority.findMany({ where: { workspaceId }, orderBy: { rank: 'desc' }, select: { id: true, name: true } }),
+      this.prisma.workspaceMembership.findMany({
+        where: { workspaceId },
+        select: { user: { select: { id: true, displayName: true, email: true } } },
+      }),
+    ]);
+    let statuses: JiraImportTargets['statuses'] = [];
+    if (projectId) {
+      const project = projects.find((p) => p.id === projectId);
+      if (!project) throw new NotFoundAppException('Dự án');
+      const full = await this.prisma.project.findUnique({ where: { id: projectId }, select: { defaultWorkflowId: true } });
+      if (full?.defaultWorkflowId) {
+        statuses = await this.prisma.status.findMany({
+          where: { workflowId: full.defaultWorkflowId },
+          orderBy: { order: 'asc' },
+          select: { id: true, name: true },
+        });
+      }
+    }
+    return {
+      projects,
+      issueTypes,
+      priorities,
+      statuses,
+      members: members.map((m) => m.user).sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    };
   }
 
   // ---------------------------------------------------------------- bước 3: run

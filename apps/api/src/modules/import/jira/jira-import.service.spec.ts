@@ -142,6 +142,26 @@ describe('JiraImportService.analyze', () => {
   });
 });
 
+describe('JiraImportService.targets', () => {
+  it('trả project/loại/ưu tiên/thành viên và trạng thái của project được chọn', async () => {
+    const { service, prisma } = setup();
+    Object.assign(prisma.project, {
+      findMany: vi.fn(() => Promise.resolve([{ id: 'p1', key: 'PROJ', name: 'Dự án' }])),
+    });
+    Object.assign(prisma.workspaceMembership, {
+      findMany: vi.fn(() => Promise.resolve([
+        { user: { id: 'u2', displayName: 'Bình', email: 'b@x.vn' } },
+        { user: { id: 'u1', displayName: 'An', email: 'a@x.vn' } },
+      ])),
+    });
+    const res = await service.targets('w1', 'p1');
+    expect(res.projects).toEqual([{ id: 'p1', key: 'PROJ', name: 'Dự án' }]);
+    expect(res.members.map((m) => m.displayName)).toEqual(['An', 'Bình']);
+    expect(res.statuses.map((s) => s.name)).toEqual(['To Do', 'In Progress', 'Done']);
+    await expect(service.targets('w1', 'khác')).rejects.toBeInstanceOf(NotFoundAppException);
+  });
+});
+
 describe('JiraImportService.run — kiểm tra mapping', () => {
   it('thiếu mapping trạng thái → lỗi liệt kê đủ giá trị thiếu, chưa tạo ImportJob', async () => {
     const { service, prisma } = setup();

@@ -377,3 +377,13 @@ export interface JiraDryRunResult {
   comments: number;
   warnings: string[];
 }
+
+/** Dữ liệu đích để dựng bảng mapping của wizard nhập Jira. */
+export interface JiraImportTargets {
+  projects: Array<{ id: ID; key: string; name: string }>;
+  issueTypes: Array<{ id: ID; name: string; isSubtask: boolean }>;
+  priorities: Array<{ id: ID; name: string }>;
+  /** Trạng thái trong workflow của project được chọn; rỗng khi chưa chọn hoặc tạo project mới. */
+  statuses: Array<{ id: ID; name: string }>;
+  members: Array<{ id: ID; displayName: string; email: string }>;
+}
