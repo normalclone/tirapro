@@ -128,7 +128,9 @@ export function BoardPage() {
     const laneKey = grouped ? overId.split('::')[0]! : null;
     const colId = grouped ? overId.split('::')[1]! : overId;
     const col = board?.columns.find((c) => c.id === colId);
-    if (!col) return;
+    // Cột chưa gắn trạng thái nào thì không có đích để chuyển tới.
+    const targetStatusId = col?.statusIds[0];
+    if (!col || !targetStatusId) return;
 
     const statusChanged = canTransition && !col.statusIds.includes(issue.status.id);
 
@@ -139,7 +141,7 @@ export function BoardPage() {
       const fromStatusName = issue.status.name;
       const fromVersion = issue.version;
       transition.mutate(
-        { id: issue.id, toStatusId: col.statusIds[0], version: fromVersion, statusName: col.name } as never,
+        { id: issue.id, toStatusId: targetStatusId, version: fromVersion, statusName: col.name },
         {
           onError: (err) => toast.error(apiErrorMessage(err)),
           onSuccess: () =>
@@ -149,7 +151,7 @@ export function BoardPage() {
                 label: 'Hoàn tác',
                 onClick: () =>
                   transition.mutate(
-                    { id: issue.id, toStatusId: fromStatusId, version: fromVersion + 1, statusName: fromStatusName } as never,
+                    { id: issue.id, toStatusId: fromStatusId, version: fromVersion + 1, statusName: fromStatusName },
                     { onError: (err) => toast.error(apiErrorMessage(err)) },
                   ),
               },
@@ -171,7 +173,7 @@ export function BoardPage() {
         version = updated.data.version;
       }
       if (statusChanged) {
-        await transition.mutateAsync({ id: issue.id, toStatusId: col.statusIds[0], version, statusName: col.name } as never);
+        await transition.mutateAsync({ id: issue.id, toStatusId: targetStatusId, version, statusName: col.name });
       }
       const who = targetAssignee == null ? 'bỏ người phụ trách' : `giao cho ${assigneeOptions.find((o) => o.id === targetAssignee)?.name ?? 'người khác'}`;
       const parts = [statusChanged ? `sang “${col.name}”` : '', assigneeChanged ? `· ${who}` : ''].filter(Boolean).join(' ');

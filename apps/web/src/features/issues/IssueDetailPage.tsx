@@ -103,7 +103,7 @@ export function IssueDetailPage() {
     if (!issue || toStatusId === issue.status.id) return;
     const toName = nextStatuses.find((s) => s.id === toStatusId)?.name;
     transition.mutate(
-      { id: issue.id, key: issue.key, toStatusId, version: issue.version },
+      { id: issue.id, key: issue.key, toStatusId, version: issue.version, statusName: toName },
       {
         onSuccess: () => toast.success(toName ? `Đã chuyển sang “${toName}”` : 'Đã đổi trạng thái', { duration: 2000 }),
         onError: (e) => toast.error(apiErrorMessage(e)),

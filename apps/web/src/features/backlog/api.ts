@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IssueDto, SprintDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { invalidateIssue, optimisticPatchIssue, rollbackIssue, writeIssue } from '@/lib/optimistic';
 
 export function useProjectSprints(projectId: string | undefined) {
   return useQuery({
@@ -53,27 +54,19 @@ export function useCompleteSprint(projectId: string) {
  */
 export function useMoveToSprint(projectId: string) {
   const qc = useQueryClient();
-  const issuesKey = keys.issues.byProject(projectId);
   return useMutation({
     mutationFn: (v: { id: string; sprintId: string | null; version: number }) =>
       api
         .patch<IssueDto>(`/issues/${v.id}`, { sprintId: v.sprintId, version: v.version })
         .then((r) => r.data),
-    onMutate: async (v: { id: string; sprintId: string | null; version: number }) => {
-      await qc.cancelQueries({ queryKey: issuesKey });
-      const prev = qc.getQueryData<IssueDto[]>(issuesKey);
-      qc.setQueryData<IssueDto[]>(issuesKey, (old) =>
-        (old ?? []).map((i) =>
-          i.id === v.id ? { ...i, sprintId: v.sprintId, version: i.version + 1 } : i,
-        ),
-      );
-      return { prev };
+    onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, { sprintId: v.sprintId }),
+    onSuccess: (issue) => writeIssue(qc, projectId, issue),
+    onError: (_e, _v, snap) => {
+      rollbackIssue(qc, snap);
+      invalidateIssue(qc, projectId, snap?.issueKey);
     },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(issuesKey, ctx.prev);
-    },
+    // Số issue/điểm của sprint đổi theo → luôn nạp lại danh sách sprint.
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: issuesKey });
       void qc.invalidateQueries({ queryKey: keys.sprints.byProject(projectId) });
     },
   });

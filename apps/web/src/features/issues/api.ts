@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CommentDto, IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { invalidateIssue, optimisticPatchIssue, rollbackIssue, scalarIssuePatch, writeIssue } from '@/lib/optimistic';
+import { statusPatch, type TransitionVars } from '@/features/board/api';
 
 export interface DevLinkItem {
   id: string;
@@ -68,10 +70,14 @@ export function useUpdateIssue(projectId: string | undefined) {
   return useMutation({
     mutationFn: (v: { id: string; key: string; patch: Record<string, unknown>; version: number }) =>
       api.patch<IssueDto>(`/issues/${v.id}`, { ...v.patch, version: v.version }),
-    onSuccess: (res, v) => {
-      // Ghi lại object trả về (version mới) → sửa inline liên tiếp không bị 409 OCC.
-      qc.setQueryData(keys.issues.byKey(v.key), res.data);
-      if (projectId) void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
+    onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, scalarIssuePatch(v.patch), v.key),
+    onSuccess: (res) => {
+      // Ghi bản THẬT (version mới) vào cả chi tiết lẫn danh sách → sửa inline liên tiếp không bị 409 OCC.
+      writeIssue(qc, projectId, res.data);
+    },
+    onError: (_e, v, snap) => {
+      rollbackIssue(qc, snap);
+      invalidateIssue(qc, projectId, v.key);
     },
   });
 }
@@ -79,11 +85,11 @@ export function useUpdateIssue(projectId: string | undefined) {
 export function useTransitionDetail(projectId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; key: string; toStatusId: string; version: number }) =>
+    mutationFn: (v: TransitionVars) =>
       api.post(`/issues/${v.id}/transition`, { toStatusId: v.toStatusId, version: v.version }),
-    onSuccess: (_res, _v) => {
-      void qc.invalidateQueries({ queryKey: keys.issues.byKey(_v.key) });
-      if (projectId) void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
-    },
+    onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, statusPatch(v), v.key),
+    onError: (_e, _v, snap) => rollbackIssue(qc, snap),
+    // Chuyển trạng thái có thể đổi resolution/resolvedAt → luôn nạp lại bản thật (hẹp: issue này + danh sách project).
+    onSettled: (_r, _e, v, snap) => invalidateIssue(qc, projectId, snap?.issueKey ?? v.key),
   });
 }
