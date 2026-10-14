@@ -1,7 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma, DevLinkType, DevLinkState, IntegrationType } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { verifyGithubSignature, verifyGitlabToken } from './webhook-signature';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+
+/** Thông tin xác thực kèm webhook (header + body gốc để tính HMAC). */
+export interface WebhookAuth {
+  githubSignature?: string;
+  gitlabToken?: string;
+  rawBody?: Buffer;
+}
 
 /** Regex bắt issue key kiểu "DEMO-1", "PROJ2-123" trong message commit / tiêu đề PR. */
 const ISSUE_KEY_RE = /\b[A-Z][A-Z0-9]+-\d+\b/g;
@@ -218,18 +226,24 @@ export class DevService {
    */
   async handleWebhook(
     repositoryId: string,
-    secret: string | undefined,
+    auth: WebhookAuth,
     payload: WebhookPayload,
   ): Promise<{ linked: number; matched: string[] }> {
     const repo = await this.prisma.codeRepository.findUnique({
       where: { id: repositoryId },
-      select: { id: true, workspaceId: true, webhookSecret: true, isEnabled: true },
+      select: { id: true, workspaceId: true, webhookSecret: true, isEnabled: true, provider: true },
     });
     if (!repo) throw new NotFoundAppException('Kho mã nguồn');
 
-    // Xác thực shared secret nếu repo có cấu hình.
-    // TODO: real HMAC X-Hub-Signature-256 verification requires rawBody in main.ts
-    if (repo.webhookSecret && repo.webhookSecret !== secret) {
+    // Bắt buộc có secret: webhook công khai mà không xác thực thì ai cũng gắn được dev-link.
+    if (!repo.webhookSecret) {
+      throw new BadRequestException('Repo chưa cấu hình secret — hãy đặt webhook secret cho repo rồi gửi lại');
+    }
+    const valid =
+      repo.provider === IntegrationType.GITLAB
+        ? verifyGitlabToken(repo.webhookSecret, auth.gitlabToken)
+        : verifyGithubSignature(auth.rawBody, repo.webhookSecret, auth.githubSignature);
+    if (!valid) {
       throw new BusinessRuleException('Chữ ký webhook không hợp lệ');
     }
 

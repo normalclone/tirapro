@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, Headers, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Post, Query, Req, type RawBodyRequest } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -64,15 +65,21 @@ export class DevController {
 
   /**
    * Webhook provider (GitHub/GitLab) — PUBLIC, không qua JWT.
-   * Xác thực bằng shared secret ở header `x-webhook-secret`.
+   * GitHub: ký HMAC-SHA256 trên body gốc (`X-Hub-Signature-256`). GitLab: so `X-Gitlab-Token`.
    */
   @Public()
   @Post('dev/webhook/:repositoryId')
   async webhook(
     @Param('repositoryId') repositoryId: string,
-    @Headers('x-webhook-secret') secret: string | undefined,
+    @Headers('x-hub-signature-256') githubSignature: string | undefined,
+    @Headers('x-gitlab-token') gitlabToken: string | undefined,
+    @Req() req: RawBodyRequest<Request>,
     @Body() body: unknown,
   ) {
-    return this.dev.handleWebhook(repositoryId, secret, (body ?? {}) as never);
+    return this.dev.handleWebhook(
+      repositoryId,
+      { githubSignature, gitlabToken, rawBody: req.rawBody },
+      (body ?? {}) as never,
+    );
   }
 }

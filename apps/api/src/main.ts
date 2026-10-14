@@ -13,14 +13,21 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false, rawBody: true });
   const config = app.get(ConfigService);
 
   const globalPrefix = config.get<string>('api.globalPrefix') ?? 'api';
   const version = config.get<string>('api.version') ?? 'v1';
   app.setGlobalPrefix(`${globalPrefix}/${version}`);
 
-  app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
+  // Prod: bật CSP mặc định của helmet. Dev: tắt vì Swagger UI cần inline script/style.
+  // CORP toàn cục same-site; route media tự đặt `cross-origin` để nhúng ảnh đại diện.
+  app.use(
+    helmet({
+      contentSecurityPolicy: config.get<boolean>('isProd') ? undefined : false,
+      crossOriginResourcePolicy: { policy: 'same-site' },
+    }),
+  );
   app.use(cookieParser());
   app.enableCors({
     origin: config.get<string[]>('api.corsOrigin') ?? true,

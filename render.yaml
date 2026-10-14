@@ -55,6 +55,9 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      # Khoá mã hoá secret tích hợp — ở production bắt buộc đặt riêng (API fail-fast nếu thiếu/mặc định).
+      - key: INTEGRATION_ENCRYPTION_KEY
+        generateValue: true
       - key: EMBEDDING_PROVIDER
         value: none
       - key: STORAGE_DRIVER

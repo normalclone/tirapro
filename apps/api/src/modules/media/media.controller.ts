@@ -19,6 +19,8 @@ export class MediaController {
     const { stream, mimeType } = await this.media.serve(file);
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
+    // Toàn cục là same-site; ảnh đại diện được nhúng từ web khác origin nên mở riêng cho route này.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     return new StreamableFile(stream);
   }
 }

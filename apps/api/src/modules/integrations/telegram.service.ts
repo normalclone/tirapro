@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'node:crypto';
 import { Telegraf } from 'telegraf';
@@ -9,7 +9,7 @@ import { SystemSettingsService } from '../system-settings/system-settings.servic
  * - KHÔNG launch polling; chỉ tạo Telegraf lazily theo token (cache theo token).
  * - Token cấu hình toàn cục (TELEGRAM_BOT_TOKEN) hoặc BYO (bring-your-own) theo integration.
  * - Thiếu token → mọi thao tác gửi trả về false (tính năng tắt), KHÔNG ném lỗi.
- * - Mã hóa botToken bằng AES-256-GCM nếu có INTEGRATION_ENCRYPTION_KEY (>=32 ký tự).
+ * - Mã hóa botToken bằng AES-256-GCM; thiếu INTEGRATION_ENCRYPTION_KEY (>=32 ký tự) → encrypt() ném lỗi.
  */
 @Injectable()
 export class TelegramService {
@@ -73,10 +73,13 @@ export class TelegramService {
     return crypto.createHash('sha256').update(this.encryptionKey).digest();
   }
 
-  /** Mã hóa bot token (aes-256-gcm) → "iv:tag:ciphertext" hex. Không có key → plaintext. */
+  /** Mã hóa bot token (aes-256-gcm) → "iv:tag:ciphertext" hex. Không có key → ném lỗi (không bao giờ lưu plaintext). */
   encrypt(plain: string): string {
-    // TODO encrypt: thiếu INTEGRATION_ENCRYPTION_KEY (>=32 ký tự) → lưu plaintext.
-    if (!this.hasKey()) return plain;
+    if (!this.hasKey()) {
+      throw new InternalServerErrorException(
+        'Chưa cấu hình INTEGRATION_ENCRYPTION_KEY (tối thiểu 32 ký tự) — hãy đặt biến này rồi khởi động lại API',
+      );
+    }
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', this.deriveKey(), iv);
     const ciphertext = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
@@ -86,7 +89,7 @@ export class TelegramService {
 
   /** Giải mã token. Không có key hoặc không đúng định dạng → trả nguyên (giả định plaintext). */
   decrypt(enc: string): string {
-    // TODO encrypt: thiếu key → coi như plaintext.
+    // Không có key → không giải mã được; trả nguyên (dữ liệu cũ có thể là plaintext).
     if (!this.hasKey()) return enc;
     const parts = enc.split(':');
     if (parts.length !== 3) return enc;
