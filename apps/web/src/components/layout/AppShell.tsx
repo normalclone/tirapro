@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { LayoutGrid, LayoutDashboard, Settings, Plug, Filter, Users, Menu, X, Sparkles, ShieldCheck, Building2, SlidersHorizontal, Activity, ArrowLeft, Briefcase, BookOpen } from 'lucide-react';
 import { WorkspaceSwitcher } from '@/features/workspace/WorkspaceSwitcher';
 import { GuideLauncher } from '@/features/guides/GuideLauncher';
+import { useNotificationRealtime } from '@/lib/realtime';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { FloatingActions } from '@/components/layout/FloatingActions';
@@ -38,6 +39,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const loc = useLocation();
   const admin = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/');
   const navItems = admin ? ADMIN_NAV : NAV_ITEMS;
+  useNotificationRealtime();
   const [navOpen, setNavOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);

@@ -15,7 +15,6 @@ import { byPriorityThenStatus } from '@/lib/issueOrder';
 import { buildProgressMap, type SubtreeProgress } from '@/lib/issueTree';
 import { useBoards, useTransitionIssue } from './api';
 import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
-import { useProjectRealtime } from '@/lib/realtime';
 import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
@@ -67,7 +66,6 @@ export function BoardPage() {
   const [groupBy, setGroupBy] = useState(false);
   const assigneeOptions = useAssigneeOptions(project?.id);
   const [dragging, setDragging] = useState<IssueDto | null>(null);
-  useProjectRealtime(project?.id);
 
   // Nhớ lọc người + nhóm THEO DỰ ÁN (localStorage). Nạp khi đổi dự án.
   useEffect(() => {

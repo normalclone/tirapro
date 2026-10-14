@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/stores/auth';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { useRecents } from '@/stores/recentIssues';
+import { useProjectRealtime } from '@/lib/realtime';
 import { useProjectIssues, useUpdateIssue, useTransitionDetail } from './api';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -61,6 +62,8 @@ export function IssueDetailPage() {
   const { data: projects } = useProjects();
   const project = projects?.find((p) => p.id === issue?.projectId) ?? null;
   const projectKey = project?.key ?? '';
+  // Trang chi tiết nằm ngoài ProjectLayout → tự nhận realtime của project chứa issue này.
+  useProjectRealtime(issue?.projectId);
   const { data: projIssues = [] } = useProjectIssues(issue?.projectId);
   const { data: workflows } = useWorkflows();
   const updateIssue = useUpdateIssue(issue?.projectId);

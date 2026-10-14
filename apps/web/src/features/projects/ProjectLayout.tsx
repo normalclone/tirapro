@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { useAi } from '@/stores/ai';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
+import { useProjectRealtime } from '@/lib/realtime';
 
 /** localStorage: view cơ bản người dùng mở gần nhất (để /projects mở lại đúng view). */
 export const LAST_VIEW_KEY = 'tirapro:lastProjectView';
@@ -44,6 +45,8 @@ export function ProjectLayout() {
   const openCreate = useCreateIssueModal((s) => s.openCreate);
   const { data: project } = useProject(key);
   const { data: projects } = useProjects();
+  // Một lần cho mọi tab của project: vá cache issue/sprint khi người khác thao tác.
+  useProjectRealtime(project?.id);
 
   const [genOpen, setGenOpen] = useState(false);
 

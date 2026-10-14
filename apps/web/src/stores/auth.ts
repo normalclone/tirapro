@@ -3,6 +3,7 @@ import type { AuthMeDto, PermissionKey, UserDto } from '@tirapro/types';
 import { api, refreshAccessToken } from '@/lib/api';
 import { setAccessToken } from '@/lib/auth-token';
 import { queryClient } from '@/lib/queryClient';
+import { disconnectSocket } from '@/lib/socket';
 
 interface AuthState {
   status: 'loading' | 'authed' | 'guest';
@@ -37,6 +38,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   async logout() {
     try { await api.post('/auth/logout'); } catch { /* ignore */ }
     setAccessToken(null);
+    disconnectSocket(); // ngắt socket của phiên cũ → không giữ room/quyền của tài khoản trước
     queryClient.clear(); // xoá cache theo phiên → không rò dữ liệu sang tài khoản khác
     set({ status: 'guest', user: null, workspaceId: null, permissions: [] });
   },

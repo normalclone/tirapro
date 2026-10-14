@@ -28,11 +28,11 @@ export interface NotificationItem {
 const listKey = ['notifications', 'list'] as const;
 const unreadKey = ['notifications', 'unread'] as const;
 
-// Poll 30s. refetchIntervalInBackground=false → KHÔNG fetch khi tab nền, nhưng timer vẫn sống
-// và tự chạy lại khi quay lại tab (tránh bug refetchInterval=false xoá timer vĩnh viễn).
-const POLL_MS = 30_000;
+// Thông báo mới đến qua WebSocket (`notification:new` → useNotificationRealtime ở AppShell).
+// Poll 5 phút chỉ là lưới an toàn khi WS đứt. refetchIntervalInBackground=false → KHÔNG fetch khi tab nền.
+const POLL_MS = 5 * 60_000;
 
-/** Danh sách thông báo gần đây (bọc envelope → `.data.data`), poll 30s (chỉ khi tab hiển thị). */
+/** Danh sách thông báo gần đây (bọc envelope → `.data.data`), lưới an toàn 5 phút (chỉ khi tab hiển thị). */
 export function useNotifications() {
   return useQuery({
     queryKey: listKey,
@@ -43,7 +43,7 @@ export function useNotifications() {
   });
 }
 
-/** Số thông báo chưa đọc (raw `{ count }`), poll 30s (chỉ khi tab hiển thị). */
+/** Số thông báo chưa đọc (raw `{ count }`), lưới an toàn 5 phút (chỉ khi tab hiển thị). */
 export function useUnreadCount() {
   return useQuery({
     queryKey: unreadKey,
