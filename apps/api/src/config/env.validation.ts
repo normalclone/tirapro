@@ -46,7 +46,8 @@ export const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional().default(''),
   AI_FEATURES_ENABLED: boolEnv(true),
   AI_MODEL_PRIMARY: z.string().default('claude-opus-4-8'),
-  AI_MODEL_FAST: z.string().default('claude-sonnet-4-6'),
+  // Model rẻ/nhanh cho tác vụ ngắn (tóm tắt, gợi ý). Giá trị này đi qua configuration.ts → ClaudeService, không còn default thứ hai.
+  AI_MODEL_FAST: z.string().default('claude-haiku-4-5'),
   AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE: z.coerce.number().int().default(5_000_000),
 
   EMBEDDING_PROVIDER: z.enum(['voyage', 'openai', 'none']).default('none'),
