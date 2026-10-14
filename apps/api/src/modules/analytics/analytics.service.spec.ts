@@ -263,60 +263,76 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
   });
 });
 
-describe('AnalyticsService.cfd — delta từ IssueHistory', () => {
-  function make(before: unknown[], inRange: unknown[]) {
-    const queryRaw = vi.fn().mockResolvedValueOnce(before).mockResolvedValueOnce(inRange);
-    const prisma = { project: { findFirst: vi.fn(() => Promise.resolve(({ id: 'p1' }))) }, $queryRaw: queryRaw };
+describe('AnalyticsService.cfd — sự kiện STATUS cuối cùng thắng', () => {
+  function make(rows: unknown[]) {
+    const queryRaw = vi.fn().mockResolvedValueOnce(rows);
+    const prisma = { project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) }, $queryRaw: queryRaw };
     return { service: new AnalyticsService(prisma as never), queryRaw };
   }
 
-  it('dựng trạng thái đầu kỳ rồi cộng/trừ delta theo ngày', async () => {
-    const { service, queryRaw } = make(
-      [
-        { oldCategory: null, newCategory: 'TODO', n: 5n },
-        { oldCategory: 'TODO', newCategory: 'IN_PROGRESS', n: 1n },
-      ],
-      [
-        { day: '2026-10-02', oldCategory: 'TODO', newCategory: 'IN_PROGRESS', n: 2n },
-        { day: '2026-10-02', oldCategory: null, newCategory: 'TODO', n: 1n },
-        { day: '2026-10-03', oldCategory: 'IN_PROGRESS', newCategory: 'DONE', n: 1n },
-        // đổi trạng thái trong cùng category: tự triệt tiêu
-        { day: '2026-10-03', oldCategory: 'IN_PROGRESS', newCategory: 'IN_PROGRESS', n: 4n },
-      ],
+  it('chỉ một câu SQL: window LEAD theo issue, không phụ thuộc oldCategory, tham số bind', async () => {
+    const { service, queryRaw } = make([]);
+    await service.cfd('w1', 'p1', '2026-10-01', '2026-10-03');
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const call = queryRaw.mock.calls[0] as unknown[];
+    const sql = sqlOf(call);
+    expect(sql).toContain('FROM "IssueHistory"');
+    expect(sql).toContain(`"field" = 'STATUS'`);
+    expect(sql).toContain('LEAD("occurredAt") OVER (PARTITION BY "issueId"');
+    expect(sql).toContain('generate_series');
+    expect(sql).not.toContain('oldCategory'); // chuỗi lịch sử có thể đứt => không dùng delta
+    expect(sql).not.toContain('p1');
+    expect(paramsOf(call)).toContain('p1');
+    // Biên thời gian đi qua helper UTC (Prisma.sql), không phải Date trần so với cột timestamp.
+    const sqlParams = paramsOf(call).filter((x) => typeof x === 'object' && x !== null && 'strings' in x);
+    expect(sqlParams.length).toBeGreaterThanOrEqual(3);
+    const dates = sqlParams.flatMap((x) => (x as unknown as { values: unknown[] }).values) as Date[];
+    expect(dates.map((d) => d.toISOString())).toEqual(
+      expect.arrayContaining(['2026-10-01T00:00:00.000Z', '2026-10-03T23:59:59.999Z']),
     );
+  });
+
+  it('ánh xạ (ngày, category, n) thành chuỗi, ngày không có dòng => 0, bigint => number', async () => {
+    const { service } = make([
+      { day: '2026-10-01', category: 'TODO', n: 4n },
+      { day: '2026-10-01', category: 'IN_PROGRESS', n: 1n },
+      { day: '2026-10-02', category: 'TODO', n: 3n },
+      { day: '2026-10-02', category: 'IN_PROGRESS', n: 3n },
+      { day: '2026-10-03', category: 'DONE', n: 1 },
+    ]);
     const r = await service.cfd('w1', 'p1', '2026-10-01', '2026-10-03');
     expect(r.from).toBe('2026-10-01');
     expect(r.to).toBe('2026-10-03');
     expect(r.series).toEqual([
       { date: '2026-10-01', todo: 4, inProgress: 1, done: 0 },
       { date: '2026-10-02', todo: 3, inProgress: 3, done: 0 },
-      { date: '2026-10-03', todo: 3, inProgress: 2, done: 1 },
+      { date: '2026-10-03', todo: 0, inProgress: 0, done: 1 },
     ]);
-
-    // Cả hai câu đều lọc theo project + field STATUS, tham số bind (không nội suy).
-    expect(queryRaw).toHaveBeenCalledTimes(2);
-    for (const call of queryRaw.mock.calls) {
-      const sql = sqlOf(call);
-      expect(sql).toContain('FROM "IssueHistory"');
-      expect(sql).toContain(`"field" = 'STATUS'`);
-      expect(sql).toContain('GROUP BY');
-      expect(paramsOf(call)).toContain('p1');
-      expect(sql).not.toContain('p1');
-    }
-    const [lo] = paramsOf(queryRaw.mock.calls[0]!).slice(1) as Date[];
-    expect(lo!.toISOString()).toBe('2026-10-01T00:00:00.000Z'); // "trước from" dùng đúng biên đầu ngày UTC
-    const [lo2, hi2] = paramsOf(queryRaw.mock.calls[1]!).slice(1) as Date[];
-    expect(lo2!.toISOString()).toBe('2026-10-01T00:00:00.000Z');
-    expect(hi2!.toISOString()).toBe('2026-10-03T23:59:59.999Z');
   });
 
-  it('không có sự kiện nào => toàn số 0', async () => {
-    const { service } = make([], []);
-    const r = await service.cfd('w1', 'p1', '2026-10-01', '2026-10-02');
-    expect(r.series).toEqual([
-      { date: '2026-10-01', todo: 0, inProgress: 0, done: 0 },
-      { date: '2026-10-02', todo: 0, inProgress: 0, done: 0 },
+  it('chuỗi lịch sử đứt (oldCategory sai) => số đếm không âm và khớp "newCategory cuối thắng"', async () => {
+    // Issue A: TODO -> DONE nhưng sự kiện DONE ghi oldCategory = IN_PROGRESS (như seed-rich.mjs).
+    // Issue B: tạo ở TODO, sau đó DONE rồi mở lại về TODO. Cách delta cũ sẽ cho inProgress = -1.
+    // Kết quả đúng theo replay cũ (mỗi issue = newCategory của sự kiện cuối tới hết ngày):
+    //   10-01: A=TODO,B=TODO | 10-02: A=DONE,B=DONE | 10-03: A=DONE,B=TODO
+    // SQL (window LEAD) trả đúng các dòng dưới đây; test khoá việc ánh xạ và tính bất biến "không âm".
+    const { service } = make([
+      { day: '2026-10-01', category: 'TODO', n: 2n },
+      { day: '2026-10-02', category: 'DONE', n: 2n },
+      { day: '2026-10-03', category: 'TODO', n: 1n },
+      { day: '2026-10-03', category: 'DONE', n: 1n },
     ]);
+    const r = await service.cfd('w1', 'p1', '2026-10-01', '2026-10-03');
+    expect(r.series).toEqual([
+      { date: '2026-10-01', todo: 2, inProgress: 0, done: 0 },
+      { date: '2026-10-02', todo: 0, inProgress: 0, done: 2 },
+      { date: '2026-10-03', todo: 1, inProgress: 0, done: 1 },
+    ]);
+    for (const p of r.series) {
+      expect(p.todo).toBeGreaterThanOrEqual(0);
+      expect(p.inProgress).toBeGreaterThanOrEqual(0);
+      expect(p.done).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 

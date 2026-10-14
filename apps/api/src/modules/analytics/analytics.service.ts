@@ -13,7 +13,7 @@ import { NotFoundAppException } from '../../common/exceptions/app.exception';
 type Category = 'TODO' | 'IN_PROGRESS' | 'DONE';
 
 /** Dòng kết quả $queryRaw — count(*) của Postgres trả về bigint, nên `n` phải qua Number(). */
-interface StatusDeltaRow { day?: string; oldCategory: Category | null; newCategory: Category | null; n: bigint | number }
+interface CfdRow { day: string; category: Category; n: bigint | number }
 interface DayCountRow { day: string; n: bigint | number }
 interface WeekRow { idx: number; n: bigint | number }
 
@@ -431,14 +431,15 @@ export class AnalyticsService {
 
   // ---------- Cumulative Flow Diagram ----------
   /**
-   * Ngữ nghĩa: số issue ở mỗi category vào cuối mỗi ngày (UTC), dựng từ IssueHistory field STATUS.
-   * Mỗi sự kiện đổi trạng thái là một "delta": old category -1, new category +1 (sự kiện tạo issue có
-   * oldCategory = NULL nên chỉ +1; đổi trạng thái trong cùng category tự triệt tiêu). Nhờ vậy chỉ cần
-   * đếm sự kiện bằng SQL — không phải replay từng issue:
-   *   - trạng thái đầu kỳ = tổng delta của mọi sự kiện TRƯỚC `from`;
-   *   - mỗi ngày = trạng thái ngày trước + delta của các sự kiện trong ngày.
-   * Chỉ issue có lịch sử STATUS mới được tính (issue tạo trước khi có lịch sử không xuất hiện — giống bản
-   * replay cũ); issue đã xoá mềm vẫn nằm trong dòng chảy lịch sử.
+   * Ngữ nghĩa (đúng bằng bản replay cũ): vào cuối mỗi ngày (UTC), mỗi issue thuộc category của sự kiện
+   * STATUS CUỐI CÙNG có occurredAt <= cuối ngày đó ("newCategory của sự kiện cuối thắng").
+   * Cố ý KHÔNG dùng oldCategory/delta: chuỗi sự kiện có thể đứt (đổi trạng thái không ghi lịch sử, admin
+   * đổi category của Status, dữ liệu seed backdate…) — cách "cuối thắng" tự lành, số đếm không bao giờ âm.
+   *
+   * Một câu SQL: window `LEAD` trên từng issue cho ra khoảng hiệu lực [occurredAt, sự kiện kế tiếp) của
+   * mỗi sự kiện; join với dãy ngày (generate_series) rồi đếm theo (ngày, category). Chỉ giữ sự kiện còn
+   * hiệu lực tại/sau đầu kỳ nên phần lịch sử cũ đã bị thay thế không phải join. Issue chưa từng có sự kiện
+   * STATUS không xuất hiện; issue xoá mềm vẫn được tính (giống bản cũ).
    */
   async cfd(workspaceId: string, projectId: string, fromStr?: string, toStr?: string): Promise<CfdReport> {
     await this.requireProject(workspaceId, projectId);
@@ -447,37 +448,34 @@ export class AnalyticsService {
     const lo = new Date(`${days[0]}T00:00:00.000Z`);
     const hi = new Date(`${days[days.length - 1]}T23:59:59.999Z`);
 
-    const [before, inRange] = await Promise.all([
-      this.prisma.$queryRaw<StatusDeltaRow[]>`
-        SELECT "oldCategory"::text AS "oldCategory", "newCategory"::text AS "newCategory", count(*) AS n
+    const rows = await this.prisma.$queryRaw<CfdRow[]>`
+      WITH ev AS (
+        SELECT "newCategory", "occurredAt",
+               LEAD("occurredAt") OVER (PARTITION BY "issueId" ORDER BY "occurredAt", "id") AS "nextAt"
         FROM "IssueHistory"
-        WHERE "projectId" = ${projectId} AND "field" = 'STATUS' AND "occurredAt" < ${lo}
-        GROUP BY 1, 2`,
-      this.prisma.$queryRaw<StatusDeltaRow[]>`
-        SELECT to_char(date_trunc('day', "occurredAt"), 'YYYY-MM-DD') AS day,
-               "oldCategory"::text AS "oldCategory", "newCategory"::text AS "newCategory", count(*) AS n
-        FROM "IssueHistory"
-        WHERE "projectId" = ${projectId} AND "field" = 'STATUS' AND "occurredAt" >= ${lo} AND "occurredAt" <= ${hi}
-        GROUP BY 1, 2, 3`,
-    ]);
+        WHERE "projectId" = ${projectId} AND "field" = 'STATUS' AND "newCategory" IS NOT NULL
+          AND "occurredAt" <= ${utc(hi)}
+      ), live AS (
+        SELECT "newCategory", "occurredAt", "nextAt" FROM ev WHERE "nextAt" IS NULL OR "nextAt" > ${utc(lo)}
+      ), d AS (
+        SELECT g::timestamp AS "dayStart",
+               g::timestamp + interval '1 day' - interval '1 millisecond' AS "dayEnd"
+        FROM generate_series(${utc(lo)}, ${utc(hi)}, interval '1 day') AS g
+      )
+      SELECT to_char(d."dayStart", 'YYYY-MM-DD') AS day, live."newCategory"::text AS category, count(*) AS n
+      FROM d
+      JOIN live ON live."occurredAt" <= d."dayEnd" AND (live."nextAt" IS NULL OR live."nextAt" > d."dayEnd")
+      GROUP BY 1, 2`;
 
-    const level: Record<Category, number> = { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
-    const apply = (r: StatusDeltaRow) => {
-      const n = Number(r.n);
-      if (r.oldCategory) level[r.oldCategory] -= n;
-      if (r.newCategory) level[r.newCategory] += n;
-    };
-    before.forEach(apply);
-    const byDay = new Map<string, StatusDeltaRow[]>();
-    for (const r of inRange) {
-      const list = byDay.get(r.day!) ?? [];
-      list.push(r);
-      byDay.set(r.day!, list);
+    const byDay = new Map<string, Record<Category, number>>();
+    for (const r of rows) {
+      const cur = byDay.get(r.day) ?? { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
+      cur[r.category] += Number(r.n);
+      byDay.set(r.day, cur);
     }
-
     const series: CfdPoint[] = days.map((date) => {
-      (byDay.get(date) ?? []).forEach(apply);
-      return { date, todo: level.TODO, inProgress: level.IN_PROGRESS, done: level.DONE };
+      const c = byDay.get(date);
+      return { date, todo: c?.TODO ?? 0, inProgress: c?.IN_PROGRESS ?? 0, done: c?.DONE ?? 0 };
     });
 
     return { from: days[0]!, to: days[days.length - 1]!, series };
@@ -500,13 +498,13 @@ export class AnalyticsService {
       this.prisma.$queryRaw<DayCountRow[]>`
         SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day, count(*) AS n
         FROM "Issue"
-        WHERE "projectId" = ${projectId} AND "deletedAt" IS NULL AND "createdAt" >= ${lo} AND "createdAt" <= ${hi}
+        WHERE "projectId" = ${projectId} AND "deletedAt" IS NULL AND "createdAt" >= ${utc(lo)} AND "createdAt" <= ${utc(hi)}
         GROUP BY 1`,
       this.prisma.$queryRaw<DayCountRow[]>`
         SELECT to_char(date_trunc('day', "occurredAt"), 'YYYY-MM-DD') AS day, count(*) AS n
         FROM "IssueHistory"
         WHERE "projectId" = ${projectId} AND "field" = 'STATUS' AND "newCategory" = 'DONE'
-          AND "occurredAt" >= ${lo} AND "occurredAt" <= ${hi}
+          AND "occurredAt" >= ${utc(lo)} AND "occurredAt" <= ${utc(hi)}
         GROUP BY 1`,
     ]);
 
@@ -535,18 +533,18 @@ export class AnalyticsService {
     const rows =
       column === 'createdAt'
         ? await this.prisma.$queryRaw<WeekRow[]>`
-            SELECT floor(extract(epoch FROM (${now}::timestamp - "createdAt")) / 604800) AS idx,
+            SELECT floor(extract(epoch FROM (${utc(now)} - "createdAt")) / 604800) AS idx,
                    count(*) AS n
             FROM "Issue"
             WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
-              AND "createdAt" > ${low} AND "createdAt" <= ${now}
+              AND "createdAt" > ${utc(low)} AND "createdAt" <= ${utc(now)}
             GROUP BY 1`
         : await this.prisma.$queryRaw<WeekRow[]>`
-            SELECT floor(extract(epoch FROM (${now}::timestamp - "resolvedAt")) / 604800) AS idx,
+            SELECT floor(extract(epoch FROM (${utc(now)} - "resolvedAt")) / 604800) AS idx,
                    count(*) AS n
             FROM "Issue"
             WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
-              AND "resolvedAt" > ${low} AND "resolvedAt" <= ${now}
+              AND "resolvedAt" > ${utc(low)} AND "resolvedAt" <= ${utc(now)}
             GROUP BY 1`;
     return rows
       .map((r) => ({ idx: Number(r.idx), n: Number(r.n) }))
@@ -564,6 +562,13 @@ export class AnalyticsService {
 }
 
 // ---------- helpers ----------
+/**
+ * Tham số Date trong $queryRaw được Prisma gửi dưới dạng timestamptz, còn cột của schema là timestamp(3)
+ * không múi giờ (lưu giờ UTC). So sánh trực tiếp sẽ bị lệch theo múi giờ của session Postgres, nên đổi
+ * tham số về "timestamp UTC" tường minh — kết quả không phụ thuộc cấu hình DB.
+ */
+const utc = (d: Date) => Prisma.sql`(${d}::timestamptz AT TIME ZONE 'UTC')`;
+
 type AttentionIssue = { key: string; summary: string; projectId: string; dueDate: Date | null };
 
 /** Gộp 3 nhóm "cần chú ý" thành danh sách đã sắp (quá hạn > ưu tiên cao chưa gán > sắp đến hạn), tối đa 8 dòng. */
