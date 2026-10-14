@@ -81,11 +81,24 @@ export class MembersService {
     const already = await this.prisma.workspaceMembership.findMany({ where: { workspaceId, userId: { in: [...valid] } }, select: { userId: true } });
     const alreadySet = new Set(already.map((a) => a.userId));
     const toAdd = [...valid].filter((u) => !alreadySet.has(u));
-    for (const userId of toAdd) {
-      await this.prisma.workspaceMembership.create({
-        data: { workspaceId, userId, roleId: ids[0]!, joinedAt: new Date(), roles: { create: ids.map((roleId) => ({ roleId })) } },
+    if (toAdd.length) {
+      // Một transaction cho cả lô: hoặc thêm đủ, hoặc không thêm ai. skipDuplicates để hai request đồng thời
+      // thêm cùng một người không làm cả lô thất bại; vai trò chỉ gán cho membership chưa có vai trò nào.
+      await this.prisma.$transaction(async (tx) => {
+        await tx.workspaceMembership.createMany({
+          data: toAdd.map((userId) => ({ workspaceId, userId, roleId: ids[0]!, joinedAt: new Date() })),
+          skipDuplicates: true,
+        });
+        const fresh = await tx.workspaceMembership.findMany({
+          where: { workspaceId, userId: { in: toAdd }, roles: { none: {} } },
+          select: { id: true },
+        });
+        await tx.workspaceMembershipRole.createMany({
+          data: fresh.flatMap((m) => ids.map((roleId) => ({ membershipId: m.id, roleId }))),
+          skipDuplicates: true,
+        });
       });
-      await this.rbac.invalidate(userId, workspaceId);
+      await this.rbac.invalidateWorkspace(workspaceId);
     }
     return { added: toAdd.length, skipped: unique.length - toAdd.length };
   }
@@ -228,11 +241,22 @@ export class MembersService {
     const already = await this.prisma.projectMembership.findMany({ where: { projectId, userId: { in: valid } }, select: { userId: true } });
     const alreadySet = new Set(already.map((a) => a.userId));
     const toAdd = valid.filter((u) => !alreadySet.has(u));
-    for (const userId of toAdd) {
-      await this.prisma.projectMembership.create({
-        data: { projectId, userId, roleId: ids[0]!, roles: { create: ids.map((roleId) => ({ roleId })) } },
+    if (toAdd.length) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.projectMembership.createMany({
+          data: toAdd.map((userId) => ({ projectId, userId, roleId: ids[0]! })),
+          skipDuplicates: true,
+        });
+        const fresh = await tx.projectMembership.findMany({
+          where: { projectId, userId: { in: toAdd }, roles: { none: {} } },
+          select: { id: true },
+        });
+        await tx.projectMembershipRole.createMany({
+          data: fresh.flatMap((m) => ids.map((roleId) => ({ membershipId: m.id, roleId }))),
+          skipDuplicates: true,
+        });
       });
-      await this.rbac.invalidate(userId, workspaceId);
+      await this.rbac.invalidateWorkspace(workspaceId);
     }
     return { added: toAdd.length, skipped: unique.length - toAdd.length };
   }

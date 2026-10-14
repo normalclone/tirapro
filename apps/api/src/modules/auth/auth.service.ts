@@ -73,15 +73,30 @@ export class AuthService {
     return this.issueSession(user, membership?.workspaceId ?? null, meta);
   }
 
-  async refresh(refreshToken: string, meta: RefreshMeta) {
+  /**
+   * Xoay refresh + cấp access mới. `preferredWorkspaceId` (lấy từ access token cũ) được giữ nếu user
+   * vẫn còn là thành viên của workspace đó; ngược lại rơi về membership đầu tiên.
+   */
+  async refresh(refreshToken: string, meta: RefreshMeta, preferredWorkspaceId?: string | null) {
     const { userId, newToken } = await this.tokens.rotateRefresh(refreshToken, meta);
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    const membership = await this.prisma.workspaceMembership.findFirst({
-      where: { userId },
-      orderBy: { createdAt: 'asc' },
-      select: { workspaceId: true },
-    });
-    const access = this.tokens.signAccess(user, membership?.workspaceId ?? null);
+    let workspaceId: string | null = null;
+    if (preferredWorkspaceId) {
+      const kept = await this.prisma.workspaceMembership.findUnique({
+        where: { workspaceId_userId: { workspaceId: preferredWorkspaceId, userId } },
+        select: { workspaceId: true },
+      });
+      workspaceId = kept?.workspaceId ?? null;
+    }
+    if (!workspaceId) {
+      const first = await this.prisma.workspaceMembership.findFirst({
+        where: { userId },
+        orderBy: { createdAt: 'asc' },
+        select: { workspaceId: true },
+      });
+      workspaceId = first?.workspaceId ?? null;
+    }
+    const access = this.tokens.signAccess(user, workspaceId);
     return { ...access, refreshToken: newToken, user: this.publicUser(user) };
   }
 

@@ -47,6 +47,6 @@ export class SprintsController {
   @ProjectRef('sprint', 'id')
   @Post(':id/complete')
   async complete(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.sprints.complete(this.ws(user), id);
+    return this.sprints.complete(this.ws(user), id, user.id);
   }
 }

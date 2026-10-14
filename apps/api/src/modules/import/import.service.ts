@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { parse } from 'csv-parse/sync';
 import { Prisma } from '@prisma/client';
+import type { IssueDto } from '@tirapro/types';
 import type { CreateIssueInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
@@ -71,6 +72,20 @@ export interface ImportJsonResult {
   errors: RowError[];
 }
 
+/** Số dòng ghi trong mỗi transaction khi import. */
+const IMPORT_CHUNK_SIZE = 100;
+
+/** Một dòng đã chuẩn bị xong, sẵn sàng ghi. `after` chạy trong cùng transaction với việc tạo issue. */
+interface PreparedItem {
+  row: number;
+  input: CreateIssueInput;
+  after?: (
+    tx: Prisma.TransactionClient,
+    issue: IssueDto,
+    labelCache: Map<string, string>,
+  ) => Promise<{ labels: number; comments: number }>;
+}
+
 @Injectable()
 export class ImportService {
   private readonly logger = new Logger(ImportService.name);
@@ -135,9 +150,10 @@ export class ImportService {
       );
       const defaultTypeId = typeByName.get('task') ?? types[0]?.id;
 
-      // 5. Tạo issue cho từng dòng; lỗi từng dòng không làm hỏng cả lần import.
+      // 5. Chuẩn bị input cho từng dòng (lỗi dữ liệu của dòng không làm hỏng cả lần import),
+      // rồi ghi theo lô 100 dòng / transaction.
       const errors: RowError[] = [];
-      let created = 0;
+      const items: PreparedItem[] = [];
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i]!;
@@ -157,22 +173,27 @@ export class ImportService {
           const priorityId = this.lookup(priorityByName, get('priority'));
           const storyPoints = this.parseNumber(get('story points', 'points'));
 
-          const input: CreateIssueInput = {
-            projectId,
-            typeId,
-            summary,
-            description: description || null,
-            descriptionFormat: 'MARKDOWN',
-            priorityId: priorityId ?? undefined,
-            storyPoints: storyPoints ?? undefined,
-          };
-
-          await this.issues.create(workspaceId, userId, input);
-          created++;
+          items.push({
+            row: i,
+            input: {
+              projectId,
+              typeId,
+              summary,
+              description: description || null,
+              descriptionFormat: 'MARKDOWN',
+              priorityId: priorityId ?? undefined,
+              storyPoints: storyPoints ?? undefined,
+            },
+          });
         } catch (err) {
           errors.push({ row: i, error: this.errMessage(err) });
         }
       }
+
+      const written = await this.createInChunks(workspaceId, userId, items, new Map());
+      errors.push(...written.errors);
+      errors.sort((x, y) => x.row - y.row);
+      const created = written.created;
 
       // 6. Cập nhật ImportJob.
       const total = rows.length;
@@ -288,11 +309,9 @@ export class ImportService {
       const userByEmail = new Map(users.map((u) => [u.email.toLowerCase(), u.id]));
       const defaultTypeId = typeByName.get('task') ?? types[0]?.id;
 
-      // 4. Tái tạo từng issue.
+      // 4. Chuẩn bị từng issue (kèm bước gắn label + comment chạy trong CÙNG transaction của lô).
       const errors: RowError[] = [];
-      let created = 0;
-      let commentsCreated = 0;
-      let labelsLinked = 0;
+      const items: PreparedItem[] = [];
 
       for (let i = 0; i < issues.length; i++) {
         const issue = issues[i]!;
@@ -311,61 +330,61 @@ export class ImportService {
           const priorityId = this.lookup(priorityByName, issue.priority ?? '');
           const assigneeId = this.lookupUser(userByEmail, issue.assignee);
 
-          const input: CreateIssueInput = {
-            projectId,
-            typeId,
-            summary,
-            description: issue.description ?? null,
-            descriptionFormat: 'MARKDOWN',
-            priorityId: priorityId ?? undefined,
-            assigneeId: assigneeId ?? undefined,
-            storyPoints:
-              typeof issue.storyPoints === 'number' ? issue.storyPoints : undefined,
-          };
-
-          const createdIssue = await this.issues.create(workspaceId, userId, input);
-
-          // 4a. Gắn label: resolve-or-create theo project, chống trùng.
-          const labelNames = Array.isArray(issue.labels) ? issue.labels : [];
-          for (const rawName of labelNames) {
-            const name = typeof rawName === 'string' ? rawName.trim() : '';
-            if (!name) continue;
-            const labelId = await this.resolveOrCreateLabel(
+          items.push({
+            row: i,
+            input: {
               projectId,
-              name,
-              labelByName,
-            );
-            try {
-              await this.prisma.issueLabel.create({
-                data: { issueId: createdIssue.id, labelId },
-              });
-              labelsLinked++;
-            } catch {
-              // Trùng [issueId,labelId] (label lặp trong export) → bỏ qua.
-            }
-          }
+              typeId,
+              summary,
+              description: issue.description ?? null,
+              descriptionFormat: 'MARKDOWN',
+              priorityId: priorityId ?? undefined,
+              assigneeId: assigneeId ?? undefined,
+              storyPoints:
+                typeof issue.storyPoints === 'number' ? issue.storyPoints : undefined,
+            },
+            after: async (tx, createdIssue, labelCache) => {
+              // 4a. Gắn label: resolve-or-create theo project (cache), chống trùng.
+              const labelIds = new Set<string>();
+              for (const rawName of Array.isArray(issue.labels) ? issue.labels : []) {
+                const name = typeof rawName === 'string' ? rawName.trim() : '';
+                if (!name) continue;
+                labelIds.add(await this.resolveOrCreateLabel(tx, projectId, name, labelCache));
+              }
+              if (labelIds.size) {
+                await tx.issueLabel.createMany({
+                  data: [...labelIds].map((labelId) => ({ issueId: createdIssue.id, labelId })),
+                  skipDuplicates: true,
+                });
+              }
 
-          // 4b. Tái tạo comment theo thứ tự trong export.
-          const comments = Array.isArray(issue.comments) ? issue.comments : [];
-          for (const c of comments) {
-            const body = typeof c?.body === 'string' ? c.body : '';
-            if (!body) continue;
-            await this.prisma.comment.create({
-              data: {
-                issueId: createdIssue.id,
-                authorId: this.lookupUser(userByEmail, c.author),
-                body,
-                bodyFormat: 'MARKDOWN',
-              },
-            });
-            commentsCreated++;
-          }
-
-          created++;
+              // 4b. Tái tạo comment theo thứ tự trong export.
+              const commentRows: Prisma.CommentCreateManyInput[] = [];
+              for (const c of Array.isArray(issue.comments) ? issue.comments : []) {
+                const body = typeof c?.body === 'string' ? c.body : '';
+                if (!body) continue;
+                commentRows.push({
+                  issueId: createdIssue.id,
+                  authorId: this.lookupUser(userByEmail, c.author) ?? null,
+                  body,
+                  bodyFormat: 'MARKDOWN',
+                });
+              }
+              if (commentRows.length) await tx.comment.createMany({ data: commentRows });
+              return { labels: labelIds.size, comments: commentRows.length };
+            },
+          });
         } catch (err) {
           errors.push({ row: i, error: this.errMessage(err) });
         }
       }
+
+      const written = await this.createInChunks(workspaceId, userId, items, labelByName);
+      errors.push(...written.errors);
+      errors.sort((x, y) => x.row - y.row);
+      const created = written.created;
+      const commentsCreated = written.comments;
+      const labelsLinked = written.labels;
 
       // 5. Cập nhật ImportJob.
       const failed = total - created;
@@ -482,9 +501,10 @@ export class ImportService {
 
   /**
    * Resolve-or-create label trong project (label phạm vi project, unique [projectId,name]).
-   * Cập nhật cache để các issue sau tái dùng id, tránh tạo trùng.
+   * Chỉ chạm DB khi cache chưa có; upsert để chống đua/trùng theo unique [projectId,name].
    */
   private async resolveOrCreateLabel(
+    db: Prisma.TransactionClient,
     projectId: string,
     name: string,
     cache: Map<string, string>,
@@ -493,8 +513,7 @@ export class ImportService {
     const existing = cache.get(key);
     if (existing) return existing;
 
-    // upsert chống đua/trùng theo unique [projectId,name].
-    const label = await this.prisma.label.upsert({
+    const label = await db.label.upsert({
       where: { projectId_name: { projectId, name } },
       update: {},
       create: { projectId, name },
@@ -502,6 +521,71 @@ export class ImportService {
     });
     cache.set(key, label.id);
     return label.id;
+  }
+
+  /**
+   * Ghi issue theo lô (IMPORT_CHUNK_SIZE dòng / transaction). Một dòng lỗi DB làm cả lô rollback
+   * (Postgres huỷ transaction sau lỗi) → chạy lại từng dòng của lô đó để cô lập dòng lỗi.
+   * Sự kiện ISSUE_CREATED chỉ phát sau khi transaction commit. `labelCache` chỉ được cập nhật
+   * khi transaction commit, tránh trỏ tới label đã bị rollback.
+   */
+  private async createInChunks(
+    workspaceId: string,
+    userId: string,
+    items: PreparedItem[],
+    labelCache: Map<string, string>,
+  ): Promise<{ created: number; labels: number; comments: number; errors: RowError[] }> {
+    const result = { created: 0, labels: 0, comments: 0, errors: [] as RowError[] };
+
+    const runBatch = async (batch: PreparedItem[]): Promise<void> => {
+      const local = new Map(labelCache);
+      const deferred: Array<() => void> = [];
+      const out = await this.prisma.$transaction(
+        async (tx) => {
+          const dtos: IssueDto[] = [];
+          let labels = 0;
+          let comments = 0;
+          for (const it of batch) {
+            const dto = await this.issues.createWithin(tx, workspaceId, userId, it.input, deferred);
+            if (it.after) {
+              const r = await it.after(tx, dto, local);
+              labels += r.labels;
+              comments += r.comments;
+            }
+            dtos.push(dto);
+          }
+          return { dtos, labels, comments };
+        },
+        { timeout: 120_000, maxWait: 10_000 },
+      );
+      for (const [k, v] of local) labelCache.set(k, v);
+      for (const fn of deferred) fn(); // sự kiện đánh số lại rank (nếu có) — sau commit
+      for (const dto of out.dtos) this.issues.emitCreated(dto, userId);
+      result.created += out.dtos.length;
+      result.labels += out.labels;
+      result.comments += out.comments;
+    };
+
+    for (let start = 0; start < items.length; start += IMPORT_CHUNK_SIZE) {
+      const chunk = items.slice(start, start + IMPORT_CHUNK_SIZE);
+      try {
+        await runBatch(chunk);
+      } catch (chunkErr) {
+        if (chunk.length === 1) {
+          result.errors.push({ row: chunk[0]!.row, error: this.errMessage(chunkErr) });
+          continue;
+        }
+        this.logger.warn(`Lô import ${start}-${start + chunk.length - 1} lỗi, chạy lại từng dòng: ${this.errMessage(chunkErr)}`);
+        for (const it of chunk) {
+          try {
+            await runBatch([it]);
+          } catch (err) {
+            result.errors.push({ row: it.row, error: this.errMessage(err) });
+          }
+        }
+      }
+    }
+    return result;
   }
 
   /** Parse số (story points). undefined nếu rỗng/không hợp lệ. */

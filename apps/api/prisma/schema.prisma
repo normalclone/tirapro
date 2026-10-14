@@ -910,6 +910,7 @@ model Sprint {
   issues    Issue[]
   snapshots SprintSnapshot[]
 
+  @@unique([projectId, sequence])
   @@index([projectId, state])
   @@index([boardId])
 }
