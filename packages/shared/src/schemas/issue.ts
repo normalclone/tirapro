@@ -38,6 +38,27 @@ export const transitionIssueSchema = z.object({
   version: z.number().int().nonnegative(),
 });
 
+/**
+ * Sửa hàng loạt: cùng một `patch` áp cho nhiều issue của MỘT dự án, mỗi item kèm version đang giữ (OCC).
+ * Item nào bị người khác sửa trước sẽ nằm trong `conflicts`, không làm hỏng cả lô.
+ */
+export const bulkUpdateIssuesSchema = z.object({
+  projectId: z.string().min(1),
+  items: z
+    .array(z.object({ id: z.string().min(1), version: z.number().int().nonnegative() }))
+    .min(1, 'Hãy chọn ít nhất một công việc')
+    .max(100, 'Mỗi lần chỉ sửa tối đa 100 công việc')
+    .refine((items) => new Set(items.map((i) => i.id)).size === items.length, 'Có công việc bị chọn trùng'),
+  patch: z
+    .object({
+      statusId: z.string().min(1).optional(),
+      assigneeId: z.string().min(1).nullable().optional(),
+      priorityId: z.string().min(1).nullable().optional(),
+      sprintId: z.string().min(1).nullable().optional(),
+    })
+    .refine((p) => Object.values(p).some((v) => v !== undefined), 'Hãy chọn ít nhất một thay đổi'),
+});
+
 export const linkIssueSchema = z.object({
   targetIssueId: z.string().min(1),
   linkTypeId: z.string().min(1),
@@ -56,4 +77,5 @@ export type CreateIssueInput = z.infer<typeof createIssueSchema>;
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>;
 export type TransitionIssueInput = z.infer<typeof transitionIssueSchema>;
 export type MoveIssueInput = z.infer<typeof moveIssueSchema>;
+export type BulkUpdateIssuesInput = z.infer<typeof bulkUpdateIssuesSchema>;
 export type LinkIssueInput = z.infer<typeof linkIssueSchema>;

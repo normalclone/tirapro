@@ -10,15 +10,13 @@ import {
   useDraggable, useDroppable, type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
 import type { IssueDto, SprintDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
 import {
   useProjectSprints, useProjectIssues, useCreateSprint,
-  useStartSprint, useCompleteSprint, useMoveToSprint,
-  backlogIssuesKey, sprintsKey,
+  useStartSprint, useCompleteSprint, useMoveToSprint, useBulkUpdateIssues,
+  type BulkIssuePatch,
 } from './api';
-import { useUpdateIssue } from '@/features/issues/api';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -70,9 +68,8 @@ export function BacklogPage() {
   const startSprint = useStartSprint(projectId ?? '');
   const completeSprint = useCompleteSprint(projectId ?? '');
   const moveToSprint = useMoveToSprint(projectId ?? '');
-  const updateIssue = useUpdateIssue(projectId);
+  const bulkUpdate = useBulkUpdateIssues(projectId ?? '');
   const assigneeOptions = useAssigneeOptions(projectId);
-  const qc = useQueryClient();
 
   // Bộ lọc nhanh (dùng chung với board) — áp client-side trong mỗi section.
   const { active: quickFilters, toggle: toggleQuickFilter } = useQuickFilters();
@@ -156,20 +153,19 @@ export function BacklogPage() {
     const targetSprintId = overId === BACKLOG_ID ? null : String(overId);
     const currentSprintId = issue.sprintId ?? null;
     if (currentSprintId === targetSprintId) return;
-    const fromVersion = issue.version;
     moveToSprint.mutate(
-      { id: issue.id, sprintId: targetSprintId, version: fromVersion },
+      { id: issue.id, sprintId: targetSprintId, version: issue.version },
       {
         onError: (err) => toast.error(apiErrorMessage(err)),
-        onSuccess: () =>
+        onSuccess: (updated) =>
           toast.success(`Đã chuyển ${issue.key} sang ${labelForSprint(targetSprintId)}`, {
             duration: 4000,
             action: {
               label: 'Hoàn tác',
-              // Chuyển ngược về sprint cũ; version +1 sau lần chuyển thành công.
+              // Chuyển ngược về sprint cũ, dùng version máy chủ vừa trả về.
               onClick: () =>
                 moveToSprint.mutate(
-                  { id: issue.id, sprintId: currentSprintId, version: fromVersion + 1 },
+                  { id: issue.id, sprintId: currentSprintId, version: updated.version },
                   { onError: (err) => toast.error(apiErrorMessage(err)) },
                 ),
             },
@@ -219,86 +215,73 @@ export function BacklogPage() {
 
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 
-  // Sau batch: làm mới danh sách issue + sprint của project.
-  function invalidateBacklog() {
-    if (!projectId) return;
-    void qc.invalidateQueries({ queryKey: backlogIssuesKey(projectId) });
-    void qc.invalidateQueries({ queryKey: sprintsKey(projectId) });
-  }
-
   /**
-   * Chạy một mutation cho từng issue đã chọn (Promise.allSettled) rồi báo kết quả.
-   * `run` nhận issue hiện tại (đọc version/giá trị cũ từ list). Trả về giá trị cũ để "Hoàn tác".
-   * 409/lỗi lẻ không làm hỏng cả batch — đếm thành công/lỗi.
+   * Áp `patch` cho các issue đã chọn bằng MỘT request. `field` là trường bị đổi — giá trị cũ của nó được giữ
+   * để "Hoàn tác". Việc bị người khác sửa trước (conflicts) không làm hỏng cả lô, chỉ được đếm là chưa xong.
+   * Hoàn tác dùng version máy chủ trả về trong `updated`, gom theo giá trị cũ (mỗi giá trị cũ một request).
    */
-  async function runBulk<T>(
-    run: (issue: IssueDto) => Promise<unknown>,
-    capture: (issue: IssueDto) => T,
-    undo: (prev: T[]) => Promise<void>,
-    verb: string,
-  ) {
+  async function runBulk(field: 'assigneeId' | 'sprintId', patch: BulkIssuePatch, verb: string) {
     const targets = (issues ?? []).filter((i) => selected.has(i.id));
     if (targets.length === 0) return;
-    const prevValues = targets.map(capture);
+    const prevValue = new Map(targets.map((i) => [i.id, i[field] ?? null]));
     setBulkBusy(true);
-    const results = await Promise.allSettled(targets.map(run));
-    setBulkBusy(false);
+    try {
+      const { updated, conflicts } = await bulkUpdate.mutateAsync({
+        items: targets.map((i) => ({ id: i.id, version: i.version })),
+        patch,
+      });
+      clearSelection();
 
-    const ok = results.filter((r) => r.status === 'fulfilled').length;
-    const fail = results.length - ok;
-    clearSelection();
-    invalidateBacklog();
-
-    if (fail === 0) {
-      toast.success(`Đã ${verb} ${ok} việc.`, {
-        duration: 6000,
-        action: {
-          label: 'Hoàn tác',
-          onClick: () => {
-            void (async () => {
-              await undo(prevValues);
-              invalidateBacklog();
-            })();
+      if (conflicts.length === 0) {
+        toast.success(`Đã ${verb} ${updated.length} việc.`, {
+          duration: 6000,
+          action: {
+            label: 'Hoàn tác',
+            onClick: () => {
+              void (async () => {
+                const groups = new Map<string | null, Array<{ id: string; version: number }>>();
+                for (const u of updated) {
+                  const value = prevValue.get(u.id) ?? null;
+                  groups.set(value, [...(groups.get(value) ?? []), { id: u.id, version: u.version }]);
+                }
+                try {
+                  let stuck = 0;
+                  for (const [value, items] of groups) {
+                    const r = await bulkUpdate.mutateAsync({ items, patch: { [field]: value } });
+                    stuck += r.conflicts.length;
+                  }
+                  if (stuck > 0) {
+                    toast.warning(`Chưa hoàn tác được ${stuck} việc`, {
+                      description: 'Người khác vừa sửa những việc đó — hãy tải lại trang để xem bản mới nhất rồi thử lại.',
+                    });
+                  }
+                } catch (err) {
+                  toast.error(apiErrorMessage(err));
+                }
+              })();
+            },
           },
-        },
-      });
-    } else {
-      toast.warning(`Đã ${verb} ${ok} việc, còn ${fail} việc chưa xong`, {
-        description: 'Người khác vừa sửa những việc đó — hãy tải lại trang để xem bản mới nhất rồi thử lại.',
-      });
+        });
+      } else {
+        toast.warning(`Đã ${verb} ${updated.length} việc, còn ${conflicts.length} việc chưa xong`, {
+          description: 'Người khác vừa sửa những việc đó — hãy tải lại trang để xem bản mới nhất rồi thử lại.',
+        });
+      }
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setBulkBusy(false);
     }
   }
 
   // Gán người phụ trách (dùng cho "Gán cho tôi" và "Đổi người phụ trách").
   function bulkAssign(assigneeId: string | null) {
-    void runBulk<{ id: string; key: string; assigneeId: string | null; version: number }>(
-      (issue) =>
-        updateIssue.mutateAsync({ id: issue.id, key: issue.key, patch: { assigneeId }, version: issue.version }),
-      (issue) => ({ id: issue.id, key: issue.key, assigneeId: issue.assigneeId, version: issue.version }),
-      async (prev) => {
-        await Promise.allSettled(
-          prev.map((p) =>
-            // version +1 sau lần cập nhật thành công trước đó.
-            updateIssue.mutateAsync({ id: p.id, key: p.key, patch: { assigneeId: p.assigneeId }, version: p.version + 1 }),
-          ),
-        );
-      },
-      'cập nhật',
-    );
+    void runBulk('assigneeId', { assigneeId }, 'cập nhật');
   }
 
   // Chuyển sprint (sprintId = null → Backlog).
   function bulkMoveToSprint(sprintId: string | null) {
-    void runBulk<{ id: string; sprintId: string | null; version: number }>(
-      (issue) => moveToSprint.mutateAsync({ id: issue.id, sprintId, version: issue.version }),
-      (issue) => ({ id: issue.id, sprintId: issue.sprintId ?? null, version: issue.version }),
-      async (prev) => {
-        await Promise.allSettled(
-          prev.map((p) => moveToSprint.mutateAsync({ id: p.id, sprintId: p.sprintId, version: p.version + 1 })),
-        );
-      },
-      'chuyển',
-    );
+    void runBulk('sprintId', { sprintId }, 'chuyển');
   }
 
   if (pe) {

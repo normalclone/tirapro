@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DOMAIN_EVENTS, ERROR_CODES, PERMISSIONS, type IssueDto, type UserStatus } from '@tirapro/types';
-import { rankBetween, initialRanks, RankGapError, issueTypePrefix, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput } from '@tirapro/shared';
+import { DOMAIN_EVENTS, ERROR_CODES, PERMISSIONS, type BulkUpdateIssuesResult, type IssueDto, type UserStatus } from '@tirapro/types';
+import { rankBetween, initialRanks, RankGapError, issueTypePrefix, type BulkUpdateIssuesInput, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
@@ -60,6 +60,15 @@ export class IssuesService {
     const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isSystemAdmin: true } });
     if (u?.isSystemAdmin) return;
     throw new ForbiddenAppException('Chỉ người tạo hoặc quản trị mới được sửa Story points/Hạn');
+  }
+
+  /** Cùng quy ước với PermissionsGuard: system admin, hoặc có `issue:transition` / `issue:transition:own`. */
+  private async assertCanTransition(userId: string, workspaceId: string, projectId: string): Promise<void> {
+    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
+    if (perms.has(PERMISSIONS.ISSUE_TRANSITION) || perms.has(`${PERMISSIONS.ISSUE_TRANSITION}:own`)) return;
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isSystemAdmin: true } });
+    if (u?.isSystemAdmin) return;
+    throw new ForbiddenAppException('Bạn không có quyền chuyển trạng thái công việc — hãy bỏ phần đổi trạng thái hoặc nhờ quản trị cấp quyền');
   }
 
   /** Đảm bảo metadata/quan hệ (nếu truyền) thuộc đúng workspace — chống gán/liên kết chéo tenant. */
@@ -309,6 +318,84 @@ export class IssuesService {
     return dto;
   }
 
+  /**
+   * Sửa hàng loạt MỘT lô issue của cùng dự án trong một transaction. Item bị người khác sửa trước
+   * (version lệch) không làm hỏng cả lô: được thu vào `conflicts` kèm version hiện tại.
+   * Item không thuộc dự án/không gian làm việc, hoặc chuyển trạng thái sai workflow → lỗi cho cả yêu cầu, chưa ghi gì.
+   * Sự kiện chỉ phát sau khi commit.
+   */
+  async bulkUpdate(workspaceId: string, userId: string, input: BulkUpdateIssuesInput): Promise<BulkUpdateIssuesResult> {
+    const { projectId, items, patch } = input;
+    // Đổi trạng thái chỉ đi qua quyền chuyển trạng thái (giống POST :id/transition), không đi chung quyền sửa.
+    if (patch.statusId) await this.assertCanTransition(userId, workspaceId, projectId);
+    const rows = await this.prisma.issue.findMany({
+      where: { id: { in: items.map((i) => i.id) }, workspaceId, projectId, deletedAt: null },
+      include: issueInclude,
+    });
+    if (rows.length !== items.length) throw new NotFoundAppException('Công việc');
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    await this.assertMetaInWorkspace(workspaceId, { priorityId: patch.priorityId, sprintId: patch.sprintId });
+
+    // Chuyển trạng thái: kiểm tra workflow đúng như transition() trước khi ghi bất cứ thứ gì.
+    let toDone = false;
+    if (patch.statusId) {
+      const workflowId = await this.workflowIdOf(projectId);
+      for (const r of rows) {
+        if (r.statusId !== patch.statusId) await this.assertTransitionAllowed(workflowId, r.statusId, patch.statusId);
+      }
+      toDone = (await this.statusCategory(patch.statusId)) === 'DONE';
+    }
+
+    const conflicts: BulkUpdateIssuesResult['conflicts'] = [];
+    const changed: Array<{ before: IssueRow; after: IssueRow }> = [];
+    const result: IssueRow[] = [];
+    await this.prisma.$transaction(async (tx) => {
+      for (const item of items) {
+        const before = byId.get(item.id)!;
+        // Version đã lệch ngay từ lúc đọc: không cần ghi. Nếu khớp lúc đọc mà ghi thất bại thì updateWithVersion báo conflict.
+        if (before.version !== item.version) {
+          conflicts.push({ id: item.id, version: before.version });
+          continue;
+        }
+        const statusChanged = patch.statusId !== undefined && patch.statusId !== before.statusId;
+        const data: Prisma.IssueUncheckedUpdateManyInput = {};
+        if (statusChanged) {
+          data.statusId = patch.statusId;
+          data.resolutionId = toDone ? undefined : null;
+          data.resolvedAt = toDone ? new Date() : null;
+        }
+        if (patch.assigneeId !== undefined && patch.assigneeId !== before.assigneeId) data.assigneeId = patch.assigneeId;
+        if (patch.priorityId !== undefined && patch.priorityId !== before.priorityId) data.priorityId = patch.priorityId;
+        if (patch.sprintId !== undefined && patch.sprintId !== before.sprintId) data.sprintId = patch.sprintId;
+        if (Object.keys(data).length === 0) {
+          result.push(before); // không có gì khác đi — coi như đã đạt, không tăng version
+          continue;
+        }
+        data.updatedById = userId;
+        try {
+          const after = await this.updateWithVersion(tx, item.id, workspaceId, item.version, data);
+          await this.recordChanges(tx, userId, before, after);
+          if (statusChanged) await this.recordStatusChange(tx, userId, before, after);
+          changed.push({ before, after });
+          result.push(after);
+        } catch (e) {
+          if (!(e instanceof VersionConflictException)) throw e;
+          conflicts.push({ id: item.id, version: (e.current as { version: number }).version });
+        }
+      }
+    });
+
+    for (const { before, after } of changed) {
+      const dto = this.toDto(after);
+      if (before.statusId !== after.statusId) {
+        this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, { issue: dto, actorId: userId, fromStatusId: before.statusId });
+      } else {
+        this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId: userId });
+      }
+    }
+    return { updated: result.map((r) => this.toDto(r)), conflicts };
+  }
+
   async transition(workspaceId: string, userId: string, id: string, input: TransitionIssueInput): Promise<IssueDto> {
     const current = await this.requireIssue(workspaceId, id);
     this.assertVersion(current.version, input.version);
@@ -316,19 +403,10 @@ export class IssuesService {
     if (current.statusId === input.toStatusId) return this.toDto(current);
 
     // Validate transition theo workflow của project
-    const project = await this.prisma.project.findUnique({ where: { id: current.projectId }, select: { defaultWorkflowId: true } });
-    const allowed = await this.prisma.workflowTransition.findFirst({
-      where: {
-        workflowId: project?.defaultWorkflowId ?? '',
-        toStatusId: input.toStatusId,
-        OR: [{ fromStatusId: current.statusId }, { fromStatusId: null }],
-      },
-      select: { id: true },
-    });
-    if (!allowed) throw new InvalidTransitionException();
+    const workflowId = await this.workflowIdOf(current.projectId);
+    await this.assertTransitionAllowed(workflowId, current.statusId, input.toStatusId);
 
-    const toStatus = await this.prisma.status.findUnique({ where: { id: input.toStatusId }, select: { category: true } });
-    const isDone = toStatus?.category === 'DONE';
+    const isDone = (await this.statusCategory(input.toStatusId)) === 'DONE';
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
@@ -337,14 +415,7 @@ export class IssuesService {
         resolutionId: isDone ? (input.resolutionId ?? undefined) : null,
         resolvedAt: isDone ? new Date() : null,
       });
-      await tx.issueHistory.create({
-        data: {
-          issueId: id, projectId: row.projectId, sprintId: row.sprintId,
-          field: 'STATUS', oldValue: current.status.name, newValue: row.status.name,
-          oldCategory: current.status.category, newCategory: row.status.category,
-          actorId: userId, occurredAt: new Date(),
-        },
-      });
+      await this.recordStatusChange(tx, userId, current, row);
       return row;
     });
     const dto = this.toDto(updated);
@@ -413,6 +484,35 @@ export class IssuesService {
       cur = p?.parentId ?? null;
       depth += 1;
     }
+  }
+
+  private async workflowIdOf(projectId: string): Promise<string> {
+    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { defaultWorkflowId: true } });
+    return project?.defaultWorkflowId ?? '';
+  }
+
+  /** Chỉ cho chuyển sang `toStatusId` nếu workflow có transition từ trạng thái hiện tại (hoặc từ "bất kỳ"). */
+  private async assertTransitionAllowed(workflowId: string, fromStatusId: string, toStatusId: string): Promise<void> {
+    const allowed = await this.prisma.workflowTransition.findFirst({
+      where: { workflowId, toStatusId, OR: [{ fromStatusId }, { fromStatusId: null }] },
+      select: { id: true },
+    });
+    if (!allowed) throw new InvalidTransitionException();
+  }
+
+  private async statusCategory(statusId: string) {
+    return (await this.prisma.status.findUnique({ where: { id: statusId }, select: { category: true } }))?.category;
+  }
+
+  private async recordStatusChange(tx: Prisma.TransactionClient, userId: string, before: IssueRow, after: IssueRow) {
+    await tx.issueHistory.create({
+      data: {
+        issueId: after.id, projectId: after.projectId, sprintId: after.sprintId,
+        field: 'STATUS', oldValue: before.status.name, newValue: after.status.name,
+        oldCategory: before.status.category, newCategory: after.status.category,
+        actorId: userId, occurredAt: new Date(),
+      },
+    });
   }
 
   /** Ghi có điều kiện version (OCC atomic). Trả row mới; ném VersionConflict nếu version đã đổi. */

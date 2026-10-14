@@ -28,7 +28,7 @@ export function useTransitionIssue(projectId: string) {
   const key = boardIssuesKey(projectId);
   return useMutation({
     mutationFn: (v: { id: string; toStatusId: string; version: number }) =>
-      api.post(`/issues/${v.id}/transition`, { toStatusId: v.toStatusId, version: v.version }),
+      api.post<IssueDto>(`/issues/${v.id}/transition`, { toStatusId: v.toStatusId, version: v.version }).then((r) => r.data),
     onMutate: async (v: { id: string; toStatusId: string; version: number; statusName?: string }) => {
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<IssueDto[]>(key);

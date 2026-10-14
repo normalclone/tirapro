@@ -139,19 +139,18 @@ export function BoardPage() {
       if (!statusChanged) return;
       const fromStatusId = issue.status.id;
       const fromStatusName = issue.status.name;
-      const fromVersion = issue.version;
       transition.mutate(
-        { id: issue.id, toStatusId: col.statusIds[0], version: fromVersion, statusName: col.name } as never,
+        { id: issue.id, toStatusId: col.statusIds[0], version: issue.version, statusName: col.name } as never,
         {
           onError: (err) => toast.error(apiErrorMessage(err)),
-          onSuccess: () =>
+          onSuccess: (updated) =>
             toast.success(`Đã chuyển ${issue.key} sang “${col.name}”`, {
               duration: 4000,
               action: {
                 label: 'Hoàn tác',
                 onClick: () =>
                   transition.mutate(
-                    { id: issue.id, toStatusId: fromStatusId, version: fromVersion + 1, statusName: fromStatusName } as never,
+                    { id: issue.id, toStatusId: fromStatusId, version: updated.version, statusName: fromStatusName } as never,
                     { onError: (err) => toast.error(apiErrorMessage(err)) },
                   ),
               },
