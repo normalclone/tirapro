@@ -68,3 +68,11 @@ describe('mapping helpers', () => {
     expect(inferPriorityRank('Lowest')).toBeLessThan(inferPriorityRank('Low'));
   });
 });
+
+describe('findMissingMapping — khoá prototype', () => {
+  it('tên Jira "constructor"/"__proto__" không được coi là đã ghép', () => {
+    const analysis = { issueTypes: ['constructor'], statuses: ['__proto__'], priorities: ['toString'] };
+    const miss = findMissingMapping(analysis, { issueTypes: {}, statuses: {}, priorities: {}, users: {} });
+    expect(miss).toEqual({ issueTypes: ['constructor'], statuses: ['__proto__'], priorities: ['toString'] });
+  });
+});

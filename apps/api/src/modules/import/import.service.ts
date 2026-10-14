@@ -604,7 +604,7 @@ export class ImportService {
       } catch (chunkErr) {
         if (chunk.length === 1) {
           result.errors.push({ row: chunk[0]!.row, error: this.errMessage(chunkErr) });
-          await hooks.onChunk?.(1);
+          await this.reportProgress(hooks, 1);
           continue;
         }
         this.logger.warn(`Lô import ${start}-${start + chunk.length - 1} lỗi, chạy lại từng dòng: ${this.errMessage(chunkErr)}`);
@@ -616,9 +616,21 @@ export class ImportService {
           }
         }
       }
-      await hooks.onChunk?.(chunk.length);
+      await this.reportProgress(hooks, chunk.length);
     }
     return result;
+  }
+
+  /**
+   * Báo tiến độ: lỗi ghi tiến độ chỉ log, KHÔNG ném — lô đã commit rồi, ném lên sẽ hoặc huỷ cả job
+   * giữa chừng hoặc (nếu bắt chung với lỗi ghi lô) chạy lại các dòng đã tạo và sinh trùng.
+   */
+  private async reportProgress(hooks: ChunkHooks, rows: number): Promise<void> {
+    try {
+      await hooks.onChunk?.(rows);
+    } catch (err) {
+      this.logger.warn(`Không cập nhật được tiến độ import: ${this.errMessage(err)}`);
+    }
   }
 
   /** Parse số (story points). undefined nếu rỗng/không hợp lệ. */

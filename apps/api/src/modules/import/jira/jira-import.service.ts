@@ -4,7 +4,7 @@ import { createId } from '@paralleldrive/cuid2';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import type { Prisma } from '@prisma/client';
-import { JIRA_CREATE, type JiraImportOptions, type JiraImportRunInput } from '@tirapro/shared';
+import { JIRA_CREATE, jiraAnalyzeIdSchema, type JiraImportOptions, type JiraImportRunInput } from '@tirapro/shared';
 import type { CreateIssueInput } from '@tirapro/shared';
 import type { JiraAnalyzeResult, JiraDryRunResult, JiraImportTargets } from '@tirapro/types';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
@@ -27,6 +27,7 @@ import {
   isEpicTypeName,
   isSubtaskTypeName,
   layerIssues,
+  ownValue,
   resolveLinks,
   type IssueLinks,
 } from './jira-mapping';
@@ -295,7 +296,7 @@ export class JiraImportService {
       const labelRows = await this.prisma.label.findMany({ where: { projectId }, select: { id: true, name: true } });
       const labelCache = new Map(labelRows.map((l) => [l.name.toLowerCase(), l.id]));
       const resolutionByName = new Map(ctx.catalog.resolutions.map((r) => [r.name.toLowerCase(), r.id]));
-      const userFor = (name: string): string | undefined => input.mapping.users[name] ?? undefined;
+      const userFor = (name: string): string | undefined => ownValue(input.mapping.users, name) || undefined; // '' = để trống như null
 
       // 5. Ghi theo tầng; mỗi tầng chia lô 100 dòng/transaction trong ImportService.
       const idByRow = new Map<JiraIssueRow, string>();
@@ -655,7 +656,7 @@ export class JiraImportService {
       else if (!statusIds.has(id)) bad.push(`trạng thái "${name}" → ${id} không thuộc workflow của dự án`);
     }
     for (const [name, id] of Object.entries(input.mapping.users)) {
-      if (id && !catalog.memberIds.has(id)) bad.push(`người dùng "${name}" → ${id} không phải thành viên workspace`);
+      if (id !== null && id !== '' && !catalog.memberIds.has(id)) bad.push(`người dùng "${name}" → ${id} không phải thành viên workspace`);
     }
     if (bad.length) throw new BusinessRuleException(`Mapping có giá trị không hợp lệ — hãy chọn lại: ${bad.join('; ')}`);
   }
@@ -664,7 +665,7 @@ export class JiraImportService {
   private plan(parsed: JiraParseResult, input: JiraImportRunInput, catalog: Pick<Catalog, 'types'>): Plan {
     const typeById = new Map(catalog.types.map((t) => [t.id, t]));
     const mapped = (r: JiraIssueRow) => {
-      const target = input.mapping.issueTypes[r.issueType];
+      const target = ownValue(input.mapping.issueTypes, r.issueType);
       return target && target !== JIRA_CREATE ? typeById.get(target) : undefined;
     };
     const isEpic = (r: JiraIssueRow): boolean => isEpicTypeName(r.issueType) || mapped(r)?.key === 'EPIC';
@@ -692,6 +693,7 @@ export class JiraImportService {
 
   /** Đọc + parse tệp đã analyze; kiểm tra thuộc workspace và chưa hết hạn. */
   private async load(workspaceId: string, analyzeId: string): Promise<JiraParseResult> {
+    if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success) throw new BusinessRuleException(EXPIRED_MESSAGE);
     const csvPath = path.join(this.dir(), `${analyzeId}.csv`);
     try {
       const [stat, metaRaw] = await Promise.all([
@@ -731,6 +733,7 @@ export class JiraImportService {
   }
 
   private async removeFiles(analyzeId: string): Promise<void> {
+    if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success) return; // không bao giờ unlink theo id lạ (path traversal)
     for (const ext of ['csv', 'json']) {
       await fs.unlink(path.join(this.dir(), `${analyzeId}.${ext}`)).catch(() => undefined);
     }

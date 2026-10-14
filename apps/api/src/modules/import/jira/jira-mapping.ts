@@ -13,9 +13,14 @@ export interface MissingMapping {
   priorities: string[];
 }
 
+/** Tra mapping chỉ theo khoá sở hữu (tên Jira như `constructor`/`__proto__` không được chạm prototype). */
+export function ownValue<T>(m: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(m, key) ? m[key] : undefined;
+}
+
 /** Giá trị Jira còn chưa được ghép (loại/trạng thái/ưu tiên bắt buộc ghép; user thì có thể bỏ trống). */
 export function findMissingMapping(analysis: AnalysisLike, mapping: JiraMappingInput): MissingMapping {
-  const miss = (values: string[], m: Record<string, string>): string[] => values.filter((v) => !m[v]);
+  const miss = (values: string[], m: Record<string, string>): string[] => values.filter((v) => !ownValue(m, v));
   return {
     issueTypes: miss(analysis.issueTypes, mapping.issueTypes),
     statuses: miss(analysis.statuses, mapping.statuses),
