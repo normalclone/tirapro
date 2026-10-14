@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
+import { jiraImportRunSchema, type JiraImportRunInput } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
@@ -8,6 +10,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { ImportService } from './import.service';
+import { JIRA_MAX_UPLOAD_BYTES, JiraImportService } from './jira/jira-import.service';
 
 /** Body cho import CSV (validate qua ZodValidationPipe). */
 export const importCsvSchema = z.object({
@@ -32,7 +35,10 @@ export type ImportJsonBody = z.infer<typeof importJsonSchema>;
 @ApiTags('import')
 @Controller('import')
 export class ImportController {
-  constructor(private readonly importService: ImportService) {}
+  constructor(
+    private readonly importService: ImportService,
+    private readonly jira: JiraImportService,
+  ) {}
 
   /** Import issue từ CSV vào một project sẵn có. */
   @Post('csv')
@@ -65,5 +71,38 @@ export class ImportController {
     @Query('limit') limit?: string,
   ) {
     return this.importService.listJobs(workspaceId, cursor, Number(limit) || 20);
+  }
+
+  /** Tiến độ / kết quả một lần import (web poll mỗi 2 giây). */
+  @Get('jobs/:id')
+  @Permissions(PERMISSIONS.IMPORT_RUN)
+  async getJob(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.importService.getJob(this.ws(user), id);
+  }
+
+  /** Jira bước 1: tải CSV export (≤ 25MB), trả tóm tắt để dựng bảng mapping. */
+  @Post('jira/analyze')
+  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: JIRA_MAX_UPLOAD_BYTES } }))
+  async jiraAnalyze(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File | undefined) {
+    return this.jira.analyze(this.ws(user), user.id, file);
+  }
+
+  /** Jira bước 2: giá trị Tirapro (project, loại, ưu tiên, trạng thái, thành viên) để ghép. */
+  @Get('jira/targets')
+  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  async jiraTargets(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
+    return this.jira.targets(this.ws(user), projectId || undefined);
+  }
+
+  /** Jira bước 3: kiểm tra mapping, chạy thử (dryRun) hoặc chạy nền và trả `{ jobId }`. */
+  @Post('jira/run')
+  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  async jiraRun(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(jiraImportRunSchema)) body: JiraImportRunInput,
+  ) {
+    return this.jira.run(this.ws(user), user.id, body);
   }
 }

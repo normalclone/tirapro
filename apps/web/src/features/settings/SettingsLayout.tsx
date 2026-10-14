@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Building2, Shield, Bell, Flag, SignalHigh, ListChecks, GitBranch, KeyRound, AlarmClock } from 'lucide-react';
+import { Building2, Shield, Bell, Flag, SignalHigh, ListChecks, GitBranch, KeyRound, AlarmClock, FileUp } from 'lucide-react';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
@@ -38,6 +38,7 @@ const SETTINGS_GROUPS: { group: string; items: { to: string; label: string; icon
     group: 'Nâng cao',
     items: [
       { to: '/settings/response-time', label: 'Cam kết thời gian', icon: <AlarmClock className="h-4 w-4" /> },
+      { to: '/settings/import', label: 'Nhập dữ liệu', icon: <FileUp className="h-4 w-4" /> },
       { to: '/settings/api', label: 'API & kết nối lập trình', icon: <KeyRound className="h-4 w-4" /> },
     ],
   },

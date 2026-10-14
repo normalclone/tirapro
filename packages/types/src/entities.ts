@@ -378,3 +378,54 @@ export interface SavedFilterDto {
   visibility: FilterVisibility;
   ownerId: ID;
 }
+
+// ---------- Import từ Jira ----------
+
+/** Kết quả phân tích file CSV Jira (bước 1 của wizard). */
+export interface JiraAnalyzeResult {
+  analyzeId: string;
+  rows: number;
+  projectKeys: string[];
+  issueTypes: string[];
+  statuses: string[];
+  priorities: string[];
+  users: Array<{ name: string; email?: string }>;
+  unknownColumns: string[];
+}
+
+/** Tiến độ / kết quả một lần import (poll `GET /import/jobs/:id`). */
+export interface ImportJobDto {
+  id: ID;
+  source: 'JIRA_CLOUD' | 'JIRA_SERVER' | 'CSV';
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  progress: number;
+  totalItems: number | null;
+  processedItems: number;
+  result: Record<string, unknown> | null;
+  /** Mỗi dòng một lỗi/cảnh báo: "Dòng 5 (ABC-12): lý do". */
+  errorLog: string | null;
+  createdAt: ISODate;
+  completedAt: ISODate | null;
+}
+
+/** Tóm tắt chạy thử (dry-run) — không ghi gì vào DB. */
+export interface JiraDryRunResult {
+  dryRun: true;
+  total: number;
+  epics: number;
+  subtasks: number;
+  sprints: number;
+  labels: number;
+  comments: number;
+  warnings: string[];
+}
+
+/** Dữ liệu đích để dựng bảng mapping của wizard nhập Jira. */
+export interface JiraImportTargets {
+  projects: Array<{ id: ID; key: string; name: string }>;
+  issueTypes: Array<{ id: ID; name: string; isSubtask: boolean }>;
+  priorities: Array<{ id: ID; name: string }>;
+  /** Trạng thái trong workflow của project được chọn; rỗng khi chưa chọn hoặc tạo project mới. */
+  statuses: Array<{ id: ID; name: string }>;
+  members: Array<{ id: ID; displayName: string; email: string }>;
+}
