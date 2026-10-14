@@ -16,7 +16,13 @@ let refreshing: Promise<string | null> | null = null;
 
 async function doRefresh(): Promise<string | null> {
   try {
-    const res = await axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+    // Gửi kèm access token cũ (có thể đã hết hạn) để server giữ nguyên workspace đang làm việc.
+    const old = getAccessToken();
+    const res = await axios.post(
+      `${BASE_URL}/auth/refresh`,
+      {},
+      { withCredentials: true, headers: old ? { Authorization: `Bearer ${old}` } : undefined },
+    );
     const token = res.data?.accessToken ?? null;
     setAccessToken(token);
     return token;

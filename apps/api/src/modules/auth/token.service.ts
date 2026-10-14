@@ -58,25 +58,53 @@ export class TokenService {
     return `${fam}.${raw}`;
   }
 
-  /** Xoay refresh: revoke cũ, cấp mới cùng family. Reuse (token đã revoke) => revoke cả family. */
+  /**
+   * Xoay refresh: revoke cũ, cấp mới cùng family. Việc "giành" token là MỘT câu updateMany có điều kiện
+   * (chưa revoke, chưa hết hạn) nên hai request đồng thời cùng một token chỉ một request thắng.
+   * Token đã revoke mà vẫn được dùng lại (reuse) hoặc hết hạn => revoke cả family.
+   */
   async rotateRefresh(token: string, meta: RefreshMeta): Promise<{ userId: string; newToken: string }> {
     const [, raw] = token.split('.', 2);
     if (!raw) throw new UnauthorizedException({ code: ERROR_CODES.UNAUTHENTICATED, message: 'Refresh token không hợp lệ' });
-    const row = await this.prisma.refreshToken.findUnique({ where: { tokenHash: this.hashToken(raw) } });
-    if (!row) throw new UnauthorizedException({ code: ERROR_CODES.UNAUTHENTICATED, message: 'Refresh token không tồn tại' });
+    const tokenHash = this.hashToken(raw);
+    const now = new Date();
 
-    if (row.revokedAt || row.expiresAt < new Date()) {
-      // Reuse detection: token đã bị thu hồi nhưng vẫn được dùng => revoke toàn family.
+    const { count } = await this.prisma.refreshToken.updateMany({
+      where: { tokenHash, revokedAt: null, expiresAt: { gt: now } },
+      data: { revokedAt: now },
+    });
+    if (count === 0) {
+      const row = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
+      if (!row) throw new UnauthorizedException({ code: ERROR_CODES.UNAUTHENTICATED, message: 'Refresh token không tồn tại' });
+      // Reuse detection: token đã bị thu hồi (hoặc hết hạn) nhưng vẫn được dùng => revoke toàn family.
       await this.prisma.refreshToken.updateMany({
         where: { family: row.family, revokedAt: null },
-        data: { revokedAt: new Date() },
+        data: { revokedAt: now },
       });
       throw new UnauthorizedException({ code: ERROR_CODES.UNAUTHENTICATED, message: 'Phiên đăng nhập đã hết hạn' });
     }
 
-    await this.prisma.refreshToken.update({ where: { id: row.id }, data: { revokedAt: new Date() } });
+    const row = await this.prisma.refreshToken.findUniqueOrThrow({ where: { tokenHash } });
     const newToken = await this.issueRefresh(row.userId, row.family, meta);
     return { userId: row.userId, newToken };
+  }
+
+  /**
+   * Đọc workspaceId từ access token ĐÃ HẾT HẠN (chữ ký vẫn phải đúng) để lúc refresh giữ nguyên
+   * workspace người dùng đang làm việc. Header thiếu/sai chữ ký => null (rơi về workspace đầu tiên).
+   */
+  workspaceFromExpiredAccess(authorization: string | undefined): string | null {
+    const m = /^Bearer\s+(.+)$/i.exec(authorization ?? '');
+    if (!m) return null;
+    try {
+      const payload = this.jwt.verify<AccessTokenPayload>(m[1]!, {
+        secret: this.config.get<string>('jwt.accessSecret'),
+        ignoreExpiration: true,
+      });
+      return payload.workspaceId ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async revokeFamilyByToken(token: string): Promise<void> {

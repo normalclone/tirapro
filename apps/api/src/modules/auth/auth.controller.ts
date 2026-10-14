@@ -10,6 +10,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AuthService } from './auth.service';
+import { TokenService } from './token.service';
 import {
   inviteMemberSchema,
   switchWorkspaceSchema,
@@ -24,6 +25,7 @@ const REFRESH_COOKIE = 'tirapro_rt';
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly tokens: TokenService,
     private readonly config: ConfigService,
   ) {}
 
@@ -76,7 +78,9 @@ export class AuthController {
   @Post('refresh')
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = (req.cookies?.[REFRESH_COOKIE] as string) ?? '';
-    const { refreshToken, ...rest } = await this.auth.refresh(token, this.meta(req));
+    // Access token cũ (có thể đã hết hạn) cho biết workspace đang làm việc — refresh phải giữ nguyên nó.
+    const preferredWorkspaceId = this.tokens.workspaceFromExpiredAccess(req.headers.authorization);
+    const { refreshToken, ...rest } = await this.auth.refresh(token, this.meta(req), preferredWorkspaceId);
     this.setRefreshCookie(res, refreshToken);
     return rest;
   }
