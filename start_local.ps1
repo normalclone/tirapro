@@ -89,13 +89,13 @@ Info "Chờ Postgres sẵn sàng…"
 $health = ''
 $deadline = (Get-Date).AddSeconds(60)
 while ((Get-Date) -lt $deadline) {
-  $health = (docker inspect -f '{{.State.Health.Status}}' projira-postgres 2>$null)
+  $health = (docker inspect -f '{{.State.Health.Status}}' tirapro-postgres 2>$null)
   if ($null -ne $health) { $health = $health.Trim() }
   if ($health -eq 'healthy') { break }
   Start-Sleep -Seconds 2
 }
 if ($health -eq 'healthy') { Ok "Postgres healthy." } else { Warn "Postgres chưa healthy sau 60s (status=$health) — vẫn tiếp tục." }
-$rh = (docker inspect -f '{{.State.Health.Status}}' projira-redis 2>$null)
+$rh = (docker inspect -f '{{.State.Health.Status}}' tirapro-redis 2>$null)
 if ($null -ne $rh) { Ok ("Redis: " + $rh.Trim()) }
 
 # 3) Build package dùng chung (API/Web phụ thuộc dist của @tirapro/types + @tirapro/shared)

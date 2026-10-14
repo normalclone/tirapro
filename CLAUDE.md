@@ -4,9 +4,9 @@ Jira clone + nâng cấp (AI, realtime, analytics). Monorepo pnpm + Turborepo.
 
 ## Stack
 - **apps/api** — NestJS 10 + Prisma + PostgreSQL (pgvector) + Redis + Socket.io. Port 4000, prefix `/api/v1`.
-- **apps/web** — React 18 + Vite + TS + Tailwind + shadcn/ui + TanStack Query + Zustand. Port 5173.
+- **apps/web** — React 18 + Vite + TS + Tailwind + primitives tự viết trên Radix + TanStack Query + Zustand. Port 5173.
 - **packages/types** — `@tirapro/types`: enums (mirror Prisma), permission catalog, event names, DTO interfaces. Zero-dep.
-- **packages/shared** — `@tirapro/shared`: zod schemas, WS typed contracts, JQL grammar, LexoRank. Re-export types.
+- **packages/shared** — `@tirapro/shared`: zod schemas, WS typed contracts, JQL grammar, LexoRank (`rankBetween` — chỉ API gọi, FE không tự tính rank). Re-export types.
 
 ## Tài liệu nền (đọc trước khi làm)
 - `docs/MASTER_PLAN.md` — kiến trúc tích hợp, Prisma schema, build order 34 chunk, cross-cutting decisions, `.env`.
@@ -25,15 +25,20 @@ Jira clone + nâng cấp (AI, realtime, analytics). Monorepo pnpm + Turborepo.
 - Auth: JWT access (in-memory FE) + refresh rotation (httpOnly cookie). RBAC = permission string `resource:action`.
 - Response: list bọc envelope `{success,data,pageInfo,meta}`; single trả raw object. Error `{success:false,error:{code,...}}`.
 - Naming: REST `api/v1/<plural>`; domain event `domain.action`; WS event `domain:action`; error code `SCREAMING_SNAKE`.
-- Degrade gracefully: thiếu `ANTHROPIC_API_KEY` → AI heuristic; Redis down → REST vẫn chạy; thiếu embedding key → semantic→full-text.
+- Degrade gracefully: thiếu `ANTHROPIC_API_KEY` → AI heuristic; Redis down → REST vẫn chạy; search hiện = JQL → Prisma `where` (ILIKE); FTS/pgvector trong `apps/api/prisma/sql/01_pgvector_fts.sql` là chuẩn bị, **chưa dùng**.
 
 ## Thiết kế UI — impeccable + ease-of-use
 Dự án dùng skill **impeccable** cho frontend. **Ưu tiên cao nhất: thật thuận tiện, dễ dùng** (`docs/UX_CONVENTIONS.md` — keyboard-first/Cmd+K, optimistic UI, inline edit, quick-add, undo, empty states, AI giảm gõ tay). Khi build/sửa UI:
 - Bám `DESIGN.md` (token, type, spacing, motion) + `UX_CONVENTIONS.md` (Definition of Done UX). Tránh **Absolute Bans** (side-stripe border, gradient text, glassmorphism mặc định, hero-metric, lưới card lặp, eyebrow chữ hoa, nền cream, gradient tím AI-slop).
 - Font: Geist Sans + Geist Mono (KHÔNG Inter). Màu OKLCH. WCAG AA.
-- Gate chất lượng: `node C:/Users/Admin/.claude/skills/impeccable/scripts/detect.mjs --json apps/web/src` rồi sửa findings. Có thể dùng `/impeccable critique|polish|audit <surface>`.
+- Gate chất lượng: `node ~/.claude/skills/impeccable/scripts/detect.mjs --json apps/web/src` rồi sửa findings. Có thể dùng `/impeccable critique|polish|audit <surface>`.
 
 ## Lệnh
-- `pnpm setup` — install + docker up + build shared + migrate + seed.
+- `pnpm setup` — install + docker up + build types/shared + migrate + db:raw + seed.
 - `pnpm dev` — chạy api + web song song (turbo).
 - `pnpm --filter @tirapro/api db:migrate|db:raw|db:seed`.
+- `pnpm lint` — eslint toàn repo (phải 0 lỗi). `pnpm test` — vitest qua turbo. `pnpm -r typecheck` — tsc mọi package.
+- `pnpm gen:enums` — sinh `packages/types/src/enums.ts` từ Prisma schema (file sinh tự động, không sửa tay).
+- `pnpm knip` — liệt kê dependency/file/export không dùng (chỉ báo cáo; xoá thì `grep -r` xác nhận 0 import trước).
+- `pnpm --filter @tirapro/api db:seed:rich` — nạp demo giàu dữ liệu (cần API chạy ở :4000).
+- Docker API: `docker build -f apps/api/Dockerfile -t tirapro-api .` (build từ gốc repo).
