@@ -23,6 +23,7 @@ import {
   useUpdateRole,
   type CreateRoleInput,
 } from '@/features/roles/api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 /** Bộ màu OKLCH gợi ý cho vai trò tuỳ chỉnh (đồng bộ tông với system role). */
 const PRESET_COLORS = [
@@ -52,7 +53,8 @@ function sortRoles(roles: RoleDto[]): RoleDto[] {
 export function RolesPage() {
   const can = useAuth((s) => s.can);
   const canManage = can('member:manage');
-  const { data: roles, isLoading } = useRoles();
+  const rolesQuery = useRoles();
+  const { data: roles } = rolesQuery;
 
   const [editing, setEditing] = useState<RoleDto | null>(null);
   const [creatingScope, setCreatingScope] = useState<RoleScope | null>(null);
@@ -83,40 +85,47 @@ export function RolesPage() {
         )}
       </header>
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full" />
-          ))}
-        </div>
-      ) : !roles || roles.length === 0 ? (
-        <EmptyState
-          icon={<Shield className="h-6 w-6" />}
-          title="Chưa có vai trò"
-          description="Tạo vai trò đầu tiên để phân quyền cho thành viên."
-          action={
-            canManage ? (
-              <Button size="sm" onClick={() => setCreatingScope('WORKSPACE')}>
-                <Plus className="h-4 w-4" />
-                Tạo vai trò
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <div className="space-y-8">
-          {(['WORKSPACE', 'PROJECT'] as const).map((scope) => (
-            <RoleGroup
-              key={scope}
-              scope={scope}
-              roles={grouped[scope]}
-              canManage={canManage}
-              onOpen={(r) => setEditing(r)}
-              onCreate={() => setCreatingScope(scope)}
-            />
-          ))}
-        </div>
-      )}
+      <QueryBoundary
+        query={rolesQuery}
+        skeleton={
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        }
+        empty={(d) => d.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<Shield className="h-6 w-6" />}
+            title="Chưa có vai trò"
+            description="Tạo vai trò đầu tiên để phân quyền cho thành viên."
+            action={
+              canManage ? (
+                <Button size="sm" onClick={() => setCreatingScope('WORKSPACE')}>
+                  <Plus className="h-4 w-4" />
+                  Tạo vai trò
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      >
+        {() => (
+          <div className="space-y-8">
+            {(['WORKSPACE', 'PROJECT'] as const).map((scope) => (
+              <RoleGroup
+                key={scope}
+                scope={scope}
+                roles={grouped[scope]}
+                canManage={canManage}
+                onOpen={(r) => setEditing(r)}
+                onCreate={() => setCreatingScope(scope)}
+              />
+            ))}
+          </div>
+        )}
+      </QueryBoundary>
 
       {(editing || creatingScope) && (
         <RoleDialog

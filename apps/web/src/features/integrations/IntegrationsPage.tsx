@@ -37,6 +37,7 @@ import {
   type Repository,
   type RepositoryProvider,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 /* ------------------------------------------------------------------ */
 /* Submenu — rail dọc trên desktop, hàng pill cuộn ngang trên mobile  */
@@ -172,7 +173,8 @@ function StatusBadge({ status }: { status: IntegrationStatus }) {
 
 function TelegramSection() {
   const confirm = useConfirm();
-  const { data, isLoading } = useIntegrations();
+  const integrationsQuery = useIntegrations();
+  const { data } = integrationsQuery;
   const create = useCreateTelegram();
   const remove = useDeleteIntegration();
 
@@ -221,36 +223,43 @@ function TelegramSection() {
       title="Telegram"
       description="Gửi thông báo công việc tới nhóm hoặc kênh Telegram. Bỏ trống token thì dùng bot chung của hệ thống."
     >
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <Skeleton key={i} className="h-14 w-full" />
-          ))}
-        </div>
-      ) : integrations.length === 0 && !adding ? (
-        <EmptyState
-          icon={<Send className="h-6 w-6" />}
-          title="Chưa có kết nối Telegram"
-          description="Nối Tirapro với Telegram để cập nhật về công việc và sprint được đẩy thẳng vào nhóm chat. Bấm Kết nối Telegram để bắt đầu."
-          action={
-            <Button size="sm" onClick={() => setAdding(true)}>
-              <Plus className="h-4 w-4" />
-              Kết nối Telegram
-            </Button>
-          }
-        />
-      ) : (
-        <ul className="space-y-2.5">
-          {integrations.map((it) => (
-            <TelegramRow
-              key={it.id}
-              integration={it}
-              onDelete={() => handleDelete(it)}
-              deleting={remove.isPending}
-            />
-          ))}
-        </ul>
-      )}
+      <QueryBoundary
+        query={integrationsQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 w-full" />
+            ))}
+          </div>
+        }
+        empty={() => integrations.length === 0 && !adding}
+        emptyState={
+          <EmptyState
+            icon={<Send className="h-6 w-6" />}
+            title="Chưa có kết nối Telegram"
+            description="Nối Tirapro với Telegram để cập nhật về công việc và sprint được đẩy thẳng vào nhóm chat. Bấm Kết nối Telegram để bắt đầu."
+            action={
+              <Button size="sm" onClick={() => setAdding(true)}>
+                <Plus className="h-4 w-4" />
+                Kết nối Telegram
+              </Button>
+            }
+          />
+        }
+      >
+        {() => (
+          <ul className="space-y-2.5">
+            {integrations.map((it) => (
+              <TelegramRow
+                key={it.id}
+                integration={it}
+                onDelete={() => handleDelete(it)}
+                deleting={remove.isPending}
+              />
+            ))}
+          </ul>
+        )}
+      </QueryBoundary>
 
       {/* Form kết nối */}
       {adding ? (
@@ -391,7 +400,8 @@ function TelegramRow({
 
 function ChannelList({ integrationId }: { integrationId: string }) {
   const confirm = useConfirm();
-  const { data, isLoading } = useChannels(integrationId);
+  const channelsQuery = useChannels(integrationId);
+  const { data } = channelsQuery;
   const add = useAddChannel(integrationId);
   const remove = useDeleteChannel(integrationId);
 
@@ -431,44 +441,51 @@ function ChannelList({ integrationId }: { integrationId: string }) {
     <div>
       <p className="mb-2 text-xs font-medium text-faint">Kênh nhận thông báo</p>
 
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <Skeleton key={i} className="h-9 w-full" />
-          ))}
-        </div>
-      ) : channels.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border px-3 py-3 text-center text-xs text-muted">
-          Chưa có kênh nào. Thêm chat_id của nhóm hoặc kênh Telegram bên dưới.
-        </p>
-      ) : (
-        <ul className="divide-y divide-border rounded-md border border-border bg-surface">
-          {channels.map((ch) => {
-            const label = ch.title || ch.externalId;
-            return (
-              <li key={ch.id} className="flex items-center gap-2 px-3 py-2">
-                <Hash className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden />
-                <span className="truncate text-sm text-ink">{label}</span>
-                <span className="truncate font-mono text-xs text-faint">{ch.externalId}</span>
-                <Badge className="bg-surface-2 text-muted">
-                  {ch.events.length === 0 ? 'Tất cả sự kiện' : `${ch.events.length} sự kiện`}
-                </Badge>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="ml-auto h-7 w-7 text-muted hover:text-danger"
-                  onClick={() => handleDelete(ch.id, label)}
-                  disabled={remove.isPending}
-                  title="Xoá kênh"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  <span className="sr-only">Xoá {label}</span>
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <QueryBoundary
+        query={channelsQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
+          </div>
+        }
+        empty={() => channels.length === 0}
+        emptyState={
+          <p className="rounded-md border border-dashed border-border px-3 py-3 text-center text-xs text-muted">
+            Chưa có kênh nào. Thêm chat_id của nhóm hoặc kênh Telegram bên dưới.
+          </p>
+        }
+      >
+        {() => (
+          <ul className="divide-y divide-border rounded-md border border-border bg-surface">
+            {channels.map((ch) => {
+              const label = ch.title || ch.externalId;
+              return (
+                <li key={ch.id} className="flex items-center gap-2 px-3 py-2">
+                  <Hash className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden />
+                  <span className="truncate text-sm text-ink">{label}</span>
+                  <span className="truncate font-mono text-xs text-faint">{ch.externalId}</span>
+                  <Badge className="bg-surface-2 text-muted">
+                    {ch.events.length === 0 ? 'Tất cả sự kiện' : `${ch.events.length} sự kiện`}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="ml-auto h-7 w-7 text-muted hover:text-danger"
+                    onClick={() => handleDelete(ch.id, label)}
+                    disabled={remove.isPending}
+                    title="Xoá kênh"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span className="sr-only">Xoá {label}</span>
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </QueryBoundary>
 
       {/* Form thêm kênh */}
       <div className="mt-3 flex flex-wrap items-end gap-2">
@@ -523,7 +540,8 @@ const PROVIDER_LABEL: Record<RepositoryProvider, string> = {
 
 function RepositorySection() {
   const confirm = useConfirm();
-  const { data, isLoading } = useRepositories();
+  const reposQuery = useRepositories();
+  const { data } = reposQuery;
   const create = useCreateRepository();
   const remove = useDeleteRepository();
 
@@ -588,36 +606,43 @@ function RepositorySection() {
       title="Kho mã (GitHub / GitLab)"
       description="Liên kết kho mã để gắn commit và pull request vào đúng công việc, tiện theo dõi tiến độ lập trình."
     >
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full" />
-          ))}
-        </div>
-      ) : repos.length === 0 && !adding ? (
-        <EmptyState
-          icon={<PlatformLogo platform="GITHUB" size={24} />}
-          title="Chưa có repo nào"
-          description="Thêm repo GitHub hoặc GitLab để liên kết hoạt động code với dự án."
-          action={
-            <Button size="sm" onClick={() => setAdding(true)}>
-              <Plus className="h-4 w-4" />
-              Thêm repo
-            </Button>
-          }
-        />
-      ) : (
-        <ul className="space-y-2.5">
-          {repos.map((repo) => (
-            <RepositoryRow
-              key={repo.id}
-              repo={repo}
-              onDelete={() => handleDelete(repo)}
-              deleting={remove.isPending}
-            />
-          ))}
-        </ul>
-      )}
+      <QueryBoundary
+        query={reposQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        }
+        empty={() => repos.length === 0 && !adding}
+        emptyState={
+          <EmptyState
+            icon={<PlatformLogo platform="GITHUB" size={24} />}
+            title="Chưa có repo nào"
+            description="Thêm repo GitHub hoặc GitLab để liên kết hoạt động code với dự án."
+            action={
+              <Button size="sm" onClick={() => setAdding(true)}>
+                <Plus className="h-4 w-4" />
+                Thêm repo
+              </Button>
+            }
+          />
+        }
+      >
+        {() => (
+          <ul className="space-y-2.5">
+            {repos.map((repo) => (
+              <RepositoryRow
+                key={repo.id}
+                repo={repo}
+                onDelete={() => handleDelete(repo)}
+                deleting={remove.isPending}
+              />
+            ))}
+          </ul>
+        )}
+      </QueryBoundary>
 
       {/* Form thêm repo */}
       {adding ? (

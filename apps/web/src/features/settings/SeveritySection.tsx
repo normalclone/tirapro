@@ -16,13 +16,15 @@ import {
   type Severity,
   type SeverityUpdateInput,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 const DEFAULT_COLOR = '#64748b';
 
 export function SeveritySection() {
   const confirm = useConfirm();
   const canManage = useAuth((s) => s.can('workspace:admin'));
-  const { data, isLoading } = useSeverities();
+  const severitiesQuery = useSeverities();
+  const { data } = severitiesQuery;
   const create = useCreateSeverity();
   const update = useUpdateSeverity();
   const remove = useDeleteSeverity();
@@ -72,92 +74,99 @@ export function SeveritySection() {
       title="Mức độ nghiêm trọng"
       description="Đặt các mức nghiêm trọng để phân loại công việc theo tác động. Số thứ tự càng nhỏ thì mức càng nặng và càng được xử lý trước."
     >
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-11 w-full" />
-          ))}
-        </div>
-      ) : severities.length === 0 && !adding ? (
-        <EmptyState
-          icon={<Flag className="h-6 w-6" />}
-          title="Chưa có mức độ nào"
-          description={
-            canManage
-              ? 'Mức nghiêm trọng cho biết một công việc gây tác động lớn tới đâu. Thêm mức đầu tiên để bắt đầu phân loại.'
-              : 'Chưa có mức độ nào. Liên hệ quản trị viên để thêm.'
-          }
-          action={
-            canManage ? (
-              <Button size="sm" onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4" />
-                Thêm mức độ
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <ul className="divide-y divide-border">
-          {severities.map((s) =>
-            editingId === s.id ? (
-              <SeverityEditRow
-                key={s.id}
-                severity={s}
-                saving={update.isPending}
-                onCancel={() => setEditingId(null)}
-                onSave={(body) => patch(s.id, body, () => setEditingId(null))}
-              />
-            ) : (
-              <li key={s.id} className="flex items-center gap-3 py-2.5 first:pt-0">
-                <span
-                  className="h-3.5 w-3.5 shrink-0 rounded-full border border-border"
-                  style={{ background: s.color }}
-                  aria-hidden
+      <QueryBoundary
+        query={severitiesQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-11 w-full" />
+            ))}
+          </div>
+        }
+        empty={() => severities.length === 0 && !adding}
+        emptyState={
+          <EmptyState
+            icon={<Flag className="h-6 w-6" />}
+            title="Chưa có mức độ nào"
+            description={
+              canManage
+                ? 'Mức nghiêm trọng cho biết một công việc gây tác động lớn tới đâu. Thêm mức đầu tiên để bắt đầu phân loại.'
+                : 'Chưa có mức độ nào. Liên hệ quản trị viên để thêm.'
+            }
+            action={
+              canManage ? (
+                <Button size="sm" onClick={() => setAdding(true)}>
+                  <Plus className="h-4 w-4" />
+                  Thêm mức độ
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      >
+        {() => (
+          <ul className="divide-y divide-border">
+            {severities.map((s) =>
+              editingId === s.id ? (
+                <SeverityEditRow
+                  key={s.id}
+                  severity={s}
+                  saving={update.isPending}
+                  onCancel={() => setEditingId(null)}
+                  onSave={(body) => patch(s.id, body, () => setEditingId(null))}
                 />
-                <span className="truncate text-sm font-medium text-ink">{s.name}</span>
-                <span className="font-mono text-xs text-faint">#{s.rank}</span>
-                {s.isDefault && <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>}
-                {s.isSystem && <Badge className="bg-surface-2 text-muted">Hệ thống</Badge>}
+              ) : (
+                <li key={s.id} className="flex items-center gap-3 py-2.5 first:pt-0">
+                  <span
+                    className="h-3.5 w-3.5 shrink-0 rounded-full border border-border"
+                    style={{ background: s.color }}
+                    aria-hidden
+                  />
+                  <span className="truncate text-sm font-medium text-ink">{s.name}</span>
+                  <span className="font-mono text-xs text-faint">#{s.rank}</span>
+                  {s.isDefault && <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>}
+                  {s.isSystem && <Badge className="bg-surface-2 text-muted">Hệ thống</Badge>}
 
-                {canManage && (
-                  <div className="ml-auto flex items-center gap-1">
-                    {!s.isDefault && !s.isSystem && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => patch(s.id, { isDefault: true })}
-                        loading={update.isPending}
-                        title="Đặt làm mặc định"
-                      >
-                        <Star className="h-4 w-4" />
-                        <span className="sr-only">Đặt mặc định</span>
-                      </Button>
-                    )}
-                    {!s.isSystem && (
-                      <>
-                        <Button variant="ghost" size="icon" onClick={() => setEditingId(s.id)} title="Chỉnh sửa">
-                          <Pencil className="h-4 w-4" />
-                          <span className="sr-only">Chỉnh sửa {s.name}</span>
-                        </Button>
+                  {canManage && (
+                    <div className="ml-auto flex items-center gap-1">
+                      {!s.isDefault && !s.isSystem && (
                         <Button
                           variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(s)}
-                          title="Xoá"
-                          className="text-muted hover:text-danger"
+                          size="sm"
+                          onClick={() => patch(s.id, { isDefault: true })}
+                          loading={update.isPending}
+                          title="Đặt làm mặc định"
                         >
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Xoá {s.name}</span>
+                          <Star className="h-4 w-4" />
+                          <span className="sr-only">Đặt mặc định</span>
                         </Button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </li>
-            ),
-          )}
-        </ul>
-      )}
+                      )}
+                      {!s.isSystem && (
+                        <>
+                          <Button variant="ghost" size="icon" onClick={() => setEditingId(s.id)} title="Chỉnh sửa">
+                            <Pencil className="h-4 w-4" />
+                            <span className="sr-only">Chỉnh sửa {s.name}</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(s)}
+                            title="Xoá"
+                            className="text-muted hover:text-danger"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Xoá {s.name}</span>
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ),
+            )}
+          </ul>
+        )}
+      </QueryBoundary>
 
       {/* Form thêm mức độ — chỉ quản trị chung */}
       {canManage && adding ? (

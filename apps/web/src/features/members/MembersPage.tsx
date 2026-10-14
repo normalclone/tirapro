@@ -16,6 +16,7 @@ import { useAuth } from '@/stores/auth';
 import { useRoles } from '@/features/roles/api';
 import { EditRolesPopover } from './EditRolesPopover';
 import { useRemoveMember, useSetMemberRoles, useWorkspaceMembers } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 /** Nhãn + màu badge tiếng Việt cho từng trạng thái tài khoản. */
 const STATUS_META: Record<UserStatus, { label: string; className: string }> = {
@@ -33,7 +34,8 @@ export function MembersPage() {
   const [tab, setTab] = useState<Tab>('members');
   const [bulkOpen, setBulkOpen] = useState(false);
 
-  const { data: members, isLoading } = useWorkspaceMembers();
+  const membersQuery = useWorkspaceMembers();
+  const { data: members } = membersQuery;
   const { data: wsRoles } = useRoles('WORKSPACE');
 
   const tabs: { id: Tab; label: string }[] = [
@@ -90,31 +92,38 @@ export function MembersPage() {
           </div>
 
           <div className="p-5">
-            {isLoading ? (
-              <div className="space-y-2.5">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : !members || members.length === 0 ? (
-              <EmptyState
-                icon={<Users className="h-6 w-6" />}
-                title="Chưa có thành viên nào"
-                description="Đây là danh sách người được vào không gian làm việc này. Mời người đầu tiên bằng ô nhập email phía trên."
-              />
-            ) : (
-              <ul className="divide-y divide-border">
-                {members.map((m) => (
-                  <MemberRow
-                    key={m.membershipId}
-                    member={m}
-                    canManage={canManage}
-                    isSelf={m.user.id === currentUserId}
-                    roleOptions={wsRoles ?? []}
-                  />
-                ))}
-              </ul>
-            )}
+            <QueryBoundary
+              query={membersQuery}
+              skeleton={
+                <div className="space-y-2.5">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              }
+              empty={(d) => d.length === 0}
+              emptyState={
+                <EmptyState
+                  icon={<Users className="h-6 w-6" />}
+                  title="Chưa có thành viên nào"
+                  description="Đây là danh sách người được vào không gian làm việc này. Mời người đầu tiên bằng ô nhập email phía trên."
+                />
+              }
+            >
+              {(members) => (
+                <ul className="divide-y divide-border">
+                  {members.map((m) => (
+                    <MemberRow
+                      key={m.membershipId}
+                      member={m}
+                      canManage={canManage}
+                      isSelf={m.user.id === currentUserId}
+                      roleOptions={wsRoles ?? []}
+                    />
+                  ))}
+                </ul>
+              )}
+            </QueryBoundary>
           </div>
         </section>
       </div>

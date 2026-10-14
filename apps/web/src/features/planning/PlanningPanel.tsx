@@ -23,6 +23,7 @@ import {
   type DependencyType,
   type MilestoneDto,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 const MILESTONE_COLORS = ['#7c3aed', '#2563eb', '#0d9488', '#16a34a', '#f59e0b', '#dc2626'];
 /** Tên màu đọc được, dùng cho nhãn trợ năng thay vì mã hex. */
@@ -51,7 +52,8 @@ function Section({ title, icon, count, children }: {
 function DependencySection({ projectId, issues, canManage }: {
   projectId: string; issues: IssueDto[]; canManage: boolean;
 }) {
-  const { data: deps, isLoading } = useDependencies(projectId);
+  const depsQuery = useDependencies(projectId);
+  const { data: deps } = depsQuery;
   const create = useCreateDependency(projectId);
   const remove = useDeleteDependency(projectId);
 
@@ -95,47 +97,54 @@ function DependencySection({ projectId, issues, canManage }: {
 
   return (
     <Section title="Phụ thuộc giữa các việc" icon={<Link2 className="h-4 w-4" />} count={deps?.length ?? 0}>
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
-      ) : !deps || deps.length === 0 ? (
-        <p
-          className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted"
-          title="Đường găng là chuỗi việc quyết định ngày kết thúc dự án — trễ một việc trong chuỗi là trễ cả dự án."
-        >
-          Chưa khai báo phụ thuộc nào. Nối hai việc để hệ thống biết việc nào phải xong trước, và tính được đường găng.
-        </p>
-      ) : (
-        <ul className="divide-y divide-border rounded-md border border-border">
-          {deps.map((d) => (
-            <li key={d.id} className="flex items-center gap-2 px-3 py-2">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-ink" title={`${d.predecessor.summary} → ${d.successor.summary}`}>
-                  <span className="font-mono text-xs text-muted">{d.predecessor.key}</span>
-                  <span className="mx-1.5 text-faint" aria-hidden>&rarr;</span>
-                  <span className="font-mono text-xs text-muted">{d.successor.key}</span>
-                </p>
-                <p className="truncate text-xs text-faint" title={DEPENDENCY_TYPE_HINTS[d.type]}>
-                  {DEPENDENCY_TYPE_LABELS[d.type]}
-                  {d.lagDays > 0 && ` · chờ thêm ${d.lagDays} ngày`}
-                  {d.lagDays < 0 && ` · được làm chồng ${-d.lagDays} ngày`}
-                </p>
-              </div>
-              {canManage && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0 text-muted hover:text-danger"
-                  title="Xoá phụ thuộc"
-                  aria-label={`Xoá phụ thuộc ${d.predecessor.key} tới ${d.successor.key}`}
-                  onClick={() => del(d.id, `${d.predecessor.key} → ${d.successor.key}`)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <QueryBoundary
+        query={depsQuery}
+        skeleton={
+          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
+        }
+        empty={(d) => d.length === 0}
+        emptyState={
+          <p
+            className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted"
+            title="Đường găng là chuỗi việc quyết định ngày kết thúc dự án — trễ một việc trong chuỗi là trễ cả dự án."
+          >
+            Chưa khai báo phụ thuộc nào. Nối hai việc để hệ thống biết việc nào phải xong trước, và tính được đường găng.
+          </p>
+        }
+      >
+        {(deps) => (
+          <ul className="divide-y divide-border rounded-md border border-border">
+            {deps.map((d) => (
+              <li key={d.id} className="flex items-center gap-2 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-ink" title={`${d.predecessor.summary} → ${d.successor.summary}`}>
+                    <span className="font-mono text-xs text-muted">{d.predecessor.key}</span>
+                    <span className="mx-1.5 text-faint" aria-hidden>&rarr;</span>
+                    <span className="font-mono text-xs text-muted">{d.successor.key}</span>
+                  </p>
+                  <p className="truncate text-xs text-faint" title={DEPENDENCY_TYPE_HINTS[d.type]}>
+                    {DEPENDENCY_TYPE_LABELS[d.type]}
+                    {d.lagDays > 0 && ` · chờ thêm ${d.lagDays} ngày`}
+                    {d.lagDays < 0 && ` · được làm chồng ${-d.lagDays} ngày`}
+                  </p>
+                </div>
+                {canManage && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 text-muted hover:text-danger"
+                    title="Xoá phụ thuộc"
+                    aria-label={`Xoá phụ thuộc ${d.predecessor.key} tới ${d.successor.key}`}
+                    onClick={() => del(d.id, `${d.predecessor.key} → ${d.successor.key}`)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </QueryBoundary>
 
       {canManage && (
         <div className="mt-3 space-y-2 rounded-md border border-border bg-surface-2 p-3">
@@ -209,7 +218,8 @@ function DependencySection({ projectId, issues, canManage }: {
 }
 
 function MilestoneSection({ projectId, canManage }: { projectId: string; canManage: boolean }) {
-  const { data: milestones, isLoading } = useMilestones(projectId);
+  const milestonesQuery = useMilestones(projectId);
+  const { data: milestones } = milestonesQuery;
   const create = useCreateMilestone(projectId);
   const update = useUpdateMilestone(projectId);
   const remove = useDeleteMilestone(projectId);
@@ -249,57 +259,64 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
 
   return (
     <Section title="Cột mốc" icon={<Flag className="h-4 w-4" />} count={milestones?.length ?? 0}>
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
-      ) : !milestones || milestones.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted">
-          Chưa có cột mốc nào. Cột mốc là ngày quan trọng phải chốt — bàn giao, nghiệm thu; thêm vào để nó hiện thành hình thoi trên biểu đồ lịch trình.
-        </p>
-      ) : (
-        <ul className="divide-y divide-border rounded-md border border-border">
-          {milestones.map((m) => (
-            <li key={m.id} className="flex items-center gap-2 px-3 py-2">
-              <span
-                className="h-2.5 w-2.5 shrink-0 rotate-45"
-                style={{ background: m.color ?? 'var(--primary)' }}
-                aria-hidden
-              />
-              <div className="min-w-0 flex-1">
-                <p className={cn('truncate text-sm text-ink', m.completedAt && 'line-through text-muted')}>{m.name}</p>
-                <p className="text-xs text-faint" title={m.completedAt ? 'Cột mốc này đã đạt.' : 'Ngày phải đạt cột mốc này.'}>
-                  {format(new Date(m.dueDate), 'dd/MM/yyyy')}
-                  {m.completedAt && ' · Đã đạt'}
-                </p>
-              </div>
-              {canManage && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn('shrink-0 text-muted hover:text-success', m.completedAt && 'text-success')}
-                    title={m.completedAt ? 'Bỏ đánh dấu đã đạt' : 'Đánh dấu cột mốc đã đạt'}
-                    aria-label={`${m.completedAt ? 'Bỏ đánh dấu đã đạt' : 'Đánh dấu đã đạt'} cột mốc ${m.name}`}
-                    aria-pressed={!!m.completedAt}
-                    onClick={() => toggleDone(m)}
-                  >
-                    <Check className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="shrink-0 text-muted hover:text-danger"
-                    title="Xoá cột mốc"
-                    aria-label={`Xoá cột mốc ${m.name}`}
-                    onClick={() => del(m)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <QueryBoundary
+        query={milestonesQuery}
+        skeleton={
+          <div className="space-y-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
+        }
+        empty={(d) => d.length === 0}
+        emptyState={
+          <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted">
+            Chưa có cột mốc nào. Cột mốc là ngày quan trọng phải chốt — bàn giao, nghiệm thu; thêm vào để nó hiện thành hình thoi trên biểu đồ lịch trình.
+          </p>
+        }
+      >
+        {(milestones) => (
+          <ul className="divide-y divide-border rounded-md border border-border">
+            {milestones.map((m) => (
+              <li key={m.id} className="flex items-center gap-2 px-3 py-2">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rotate-45"
+                  style={{ background: m.color ?? 'var(--primary)' }}
+                  aria-hidden
+                />
+                <div className="min-w-0 flex-1">
+                  <p className={cn('truncate text-sm text-ink', m.completedAt && 'line-through text-muted')}>{m.name}</p>
+                  <p className="text-xs text-faint" title={m.completedAt ? 'Cột mốc này đã đạt.' : 'Ngày phải đạt cột mốc này.'}>
+                    {format(new Date(m.dueDate), 'dd/MM/yyyy')}
+                    {m.completedAt && ' · Đã đạt'}
+                  </p>
+                </div>
+                {canManage && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn('shrink-0 text-muted hover:text-success', m.completedAt && 'text-success')}
+                      title={m.completedAt ? 'Bỏ đánh dấu đã đạt' : 'Đánh dấu cột mốc đã đạt'}
+                      aria-label={`${m.completedAt ? 'Bỏ đánh dấu đã đạt' : 'Đánh dấu đã đạt'} cột mốc ${m.name}`}
+                      aria-pressed={!!m.completedAt}
+                      onClick={() => toggleDone(m)}
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 text-muted hover:text-danger"
+                      title="Xoá cột mốc"
+                      aria-label={`Xoá cột mốc ${m.name}`}
+                      onClick={() => del(m)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </QueryBoundary>
 
       {canManage && (
         <div className="mt-3 space-y-2 rounded-md border border-border bg-surface-2 p-3">

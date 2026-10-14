@@ -19,6 +19,7 @@ import {
   WIKI_SCOPE_SHARED, useCreateWikiPage, useDeleteWikiPage, useMoveWikiPage, useUpdateWikiPage,
   useWikiPage, useWikiSearch, useWikiTree, type WikiNode,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 /** Vị trí của một trang trong cây: danh sách anh em + chỉ số, để đổi thứ tự bằng nút lên/xuống. */
 interface Slot {
@@ -208,55 +209,71 @@ export function WikiPage() {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {searching ? (
-          search.isLoading ? (
-            <TreeSkeleton />
-          ) : !search.data?.length ? (
-            <p className="px-2 py-6 text-center text-sm text-muted">
-              Không có trang nào khớp “{q.trim()}”. Thử từ khoá ngắn hơn, hoặc đổi phạm vi sang “Tất cả tài liệu”.
-            </p>
-          ) : (
-            <ul className="space-y-0.5">
-              {search.data.map((hit) => (
-                <li key={hit.id}>
-                  <button
-                    type="button"
-                    onClick={() => open(hit.id)}
-                    className={cn(
-                      'w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                      selectedId === hit.id && 'bg-surface-2',
-                    )}
-                  >
-                    <span className="block truncate text-sm text-ink">{hit.title}</span>
-                    {hit.snippet && <span className="mt-0.5 block truncate text-xs text-faint">{hit.snippet}</span>}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )
-        ) : tree.isLoading ? (
-          <TreeSkeleton />
-        ) : !tree.data?.length ? (
-          <p className="px-2 py-6 text-center text-sm text-muted">
-            Chưa có trang nào ở phạm vi này. {canManage ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.' : 'Hãy đổi phạm vi hoặc chờ người phụ trách thêm tài liệu.'}
-          </p>
+          <QueryBoundary
+            query={search}
+            skeleton={
+              <TreeSkeleton />
+            }
+            empty={(d) => !d.length}
+            emptyState={
+              <p className="px-2 py-6 text-center text-sm text-muted">
+                Không có trang nào khớp “{q.trim()}”. Thử từ khoá ngắn hơn, hoặc đổi phạm vi sang “Tất cả tài liệu”.
+              </p>
+            }
+          >
+            {(hits) => (
+              <ul className="space-y-0.5">
+                {hits.map((hit) => (
+                  <li key={hit.id}>
+                    <button
+                      type="button"
+                      onClick={() => open(hit.id)}
+                      className={cn(
+                        'w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                        selectedId === hit.id && 'bg-surface-2',
+                      )}
+                    >
+                      <span className="block truncate text-sm text-ink">{hit.title}</span>
+                      {hit.snippet && <span className="mt-0.5 block truncate text-xs text-faint">{hit.snippet}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </QueryBoundary>
         ) : (
-          <ul className="space-y-0.5">
-            {tree.data.map((node) => (
-              <TreeRow
-                key={node.id}
-                node={node}
-                depth={0}
-                selectedId={selectedId}
-                expanded={expanded}
-                canManage={canManage}
-                onOpen={open}
-                onToggle={toggle}
-                onAddChild={(id) => void addPage(id)}
-                onShift={(id, d) => void shift(id, d)}
-                slots={slots}
-              />
-            ))}
-          </ul>
+          <QueryBoundary
+            query={tree}
+            skeleton={
+              <TreeSkeleton />
+            }
+            empty={(d) => !d.length}
+            emptyState={
+              <p className="px-2 py-6 text-center text-sm text-muted">
+                Chưa có trang nào ở phạm vi này. {canManage ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.' : 'Hãy đổi phạm vi hoặc chờ người phụ trách thêm tài liệu.'}
+              </p>
+            }
+          >
+            {(nodes) => (
+              <ul className="space-y-0.5">
+                {nodes.map((node) => (
+                  <TreeRow
+                    key={node.id}
+                    node={node}
+                    depth={0}
+                    selectedId={selectedId}
+                    expanded={expanded}
+                    canManage={canManage}
+                    onOpen={open}
+                    onToggle={toggle}
+                    onAddChild={(id) => void addPage(id)}
+                    onShift={(id, d) => void shift(id, d)}
+                    slots={slots}
+                  />
+                ))}
+              </ul>
+            )}
+          </QueryBoundary>
         )}
       </div>
 
@@ -296,14 +313,7 @@ export function WikiPage() {
         </aside>
 
         <section className="min-w-0 rounded-lg border border-border bg-surface">
-          {page.isLoading && selectedId ? (
-            <div className="space-y-3 p-6">
-              <Skeleton className="h-6 w-2/5" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-11/12" />
-              <Skeleton className="h-4 w-3/4" />
-            </div>
-          ) : !page.data ? (
+          {!selectedId ? (
             <div className="p-6">
               <EmptyState
                 icon={<BookOpen className="h-6 w-6" />}
@@ -313,98 +323,112 @@ export function WikiPage() {
               />
             </div>
           ) : (
-            <article className="p-6">
-              {page.data.breadcrumb.length > 0 && (
-                <nav aria-label="Đường dẫn trang" className="mb-2 flex flex-wrap items-center gap-1 text-xs text-faint">
-                  {page.data.breadcrumb.map((b) => (
-                    <span key={b.id} className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => open(b.id)}
-                        className="rounded transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                      >
-                        {b.title}
-                      </button>
-                      <ChevronRight className="h-3 w-3" aria-hidden />
-                    </span>
-                  ))}
-                  <span className="text-muted">{page.data.title}</span>
-                </nav>
-              )}
-
-              {editing ? (
-                <div className="space-y-3">
-                  <Input
-                    value={draftTitle}
-                    onChange={(e) => setDraftTitle(e.target.value)}
-                    placeholder="Tiêu đề trang"
-                    aria-label="Tiêu đề trang"
-                    autoFocus
-                    className="h-10 text-lg font-semibold"
-                  />
-                  <MarkdownEditor
-                    value={draftBody}
-                    onChange={setDraftBody}
-                    onSubmit={() => void save()}
-                    onCancel={() => setEditing(false)}
-                    rows={18}
-                    placeholder="Viết nội dung ở đây. Hỗ trợ Markdown cơ bản: # tiêu đề, **đậm**, - gạch đầu dòng…"
-                  />
-                  <div className="flex items-center gap-2">
-                    <span className="mr-auto text-xs text-faint" title="Markdown là cách viết chữ đậm, tiêu đề, danh sách bằng ký hiệu — ví dụ **đậm** hoặc # Tiêu đề.">
-                      Hỗ trợ Markdown cơ bản · Ctrl/⌘+Enter để lưu · Esc để huỷ
-                    </span>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Huỷ</Button>
-                    <Button size="sm" loading={update.isPending} onClick={() => void save()}>Lưu trang</Button>
-                  </div>
+            <QueryBoundary
+              query={page}
+              skeleton={
+                <div className="space-y-3 p-6">
+                  <Skeleton className="h-6 w-2/5" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-11/12" />
+                  <Skeleton className="h-4 w-3/4" />
                 </div>
-              ) : (
-                <>
-                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h2 className="truncate text-xl font-semibold tracking-tight text-ink-strong">{page.data.title}</h2>
-                      <p className="mt-1 text-xs text-faint">
-                        Sửa lần cuối {dateTime(page.data.updatedAt)}
-                        {page.data.updatedBy ? ` · ${page.data.updatedBy.displayName}` : ''}
-                      </p>
-                    </div>
-                    {canManage && (
-                      <div className="flex shrink-0 flex-wrap items-center gap-2">
-                        <Button size="sm" variant="secondary" onClick={() => { setDraftTitle(page.data.title); setDraftBody(page.data.body); setEditing(true); }}>
-                          <Pencil className="h-4 w-4" /> Sửa trang
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          title="Tạo một trang nằm bên dưới trang này trong cây tài liệu."
-                          onClick={() => void addPage(page.data.id)}
-                        >
-                          <Plus className="h-4 w-4" /> Thêm trang con
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-muted hover:text-danger"
-                          title="Xoá trang"
-                          aria-label={`Xoá trang ${page.data.title}`}
-                          onClick={() => void destroy(page.data.id, page.data.title)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {page.data.body.trim() ? (
-                    <MarkdownView text={page.data.body} />
-                  ) : (
-                    <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-faint">
-                      Trang này chưa có nội dung.{canManage ? ' Bấm “Sửa trang” để bắt đầu viết.' : ''}
-                    </p>
+              }
+            >
+              {(pg) => (
+                <article className="p-6">
+                  {pg.breadcrumb.length > 0 && (
+                    <nav aria-label="Đường dẫn trang" className="mb-2 flex flex-wrap items-center gap-1 text-xs text-faint">
+                      {pg.breadcrumb.map((b) => (
+                        <span key={b.id} className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => open(b.id)}
+                            className="rounded transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                          >
+                            {b.title}
+                          </button>
+                          <ChevronRight className="h-3 w-3" aria-hidden />
+                        </span>
+                      ))}
+                      <span className="text-muted">{pg.title}</span>
+                    </nav>
                   )}
-                </>
+
+                  {editing ? (
+                    <div className="space-y-3">
+                      <Input
+                        value={draftTitle}
+                        onChange={(e) => setDraftTitle(e.target.value)}
+                        placeholder="Tiêu đề trang"
+                        aria-label="Tiêu đề trang"
+                        autoFocus
+                        className="h-10 text-lg font-semibold"
+                      />
+                      <MarkdownEditor
+                        value={draftBody}
+                        onChange={setDraftBody}
+                        onSubmit={() => void save()}
+                        onCancel={() => setEditing(false)}
+                        rows={18}
+                        placeholder="Viết nội dung ở đây. Hỗ trợ Markdown cơ bản: # tiêu đề, **đậm**, - gạch đầu dòng…"
+                      />
+                      <div className="flex items-center gap-2">
+                        <span className="mr-auto text-xs text-faint" title="Markdown là cách viết chữ đậm, tiêu đề, danh sách bằng ký hiệu — ví dụ **đậm** hoặc # Tiêu đề.">
+                          Hỗ trợ Markdown cơ bản · Ctrl/⌘+Enter để lưu · Esc để huỷ
+                        </span>
+                        <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Huỷ</Button>
+                        <Button size="sm" loading={update.isPending} onClick={() => void save()}>Lưu trang</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h2 className="truncate text-xl font-semibold tracking-tight text-ink-strong">{pg.title}</h2>
+                          <p className="mt-1 text-xs text-faint">
+                            Sửa lần cuối {dateTime(pg.updatedAt)}
+                            {pg.updatedBy ? ` · ${pg.updatedBy.displayName}` : ''}
+                          </p>
+                        </div>
+                        {canManage && (
+                          <div className="flex shrink-0 flex-wrap items-center gap-2">
+                            <Button size="sm" variant="secondary" onClick={() => { setDraftTitle(pg.title); setDraftBody(pg.body); setEditing(true); }}>
+                              <Pencil className="h-4 w-4" /> Sửa trang
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              title="Tạo một trang nằm bên dưới trang này trong cây tài liệu."
+                              onClick={() => void addPage(pg.id)}
+                            >
+                              <Plus className="h-4 w-4" /> Thêm trang con
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-muted hover:text-danger"
+                              title="Xoá trang"
+                              aria-label={`Xoá trang ${pg.title}`}
+                              onClick={() => void destroy(pg.id, pg.title)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      {pg.body.trim() ? (
+                        <MarkdownView text={pg.body} />
+                      ) : (
+                        <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-faint">
+                          Trang này chưa có nội dung.{canManage ? ' Bấm “Sửa trang” để bắt đầu viết.' : ''}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </article>
               )}
-            </article>
+            </QueryBoundary>
           )}
         </section>
       </div>

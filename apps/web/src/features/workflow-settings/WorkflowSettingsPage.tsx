@@ -33,6 +33,7 @@ import {
   type WorkflowTransition,
   type StatusCategory,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 /* ------------------------------------------------------------------ */
 /* Hằng số phân loại trạng thái                                       */
@@ -59,7 +60,8 @@ const DEFAULT_STATUS_COLOR = '#64748b';
 /* ------------------------------------------------------------------ */
 
 export function WorkflowSettingsPage() {
-  const { data, isLoading } = useWorkflows();
+  const workflowsQuery = useWorkflows();
+  const { data } = workflowsQuery;
   const createWorkflow = useCreateWorkflow();
   const deleteWorkflow = useDeleteWorkflow();
   const confirm = useConfirm();
@@ -150,40 +152,47 @@ export function WorkflowSettingsPage() {
         </div>
 
         <div className="p-5">
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : workflows.length === 0 && !adding ? (
-            <EmptyState
-              icon={<GitBranch className="h-6 w-6" />}
-              title="Chưa có quy trình nào"
-              description="Quy trình là chuỗi trạng thái mà mỗi công việc đi qua, từ lúc mở đến lúc xong. Tạo quy trình đầu tiên để bắt đầu."
-              action={
-                <Button size="sm" onClick={() => setAdding(true)}>
-                  <Plus className="h-4 w-4" />
-                  Tạo quy trình
-                </Button>
-              }
-            />
-          ) : (
-            <ul className="space-y-2">
-              {workflows.map((wf) => (
-                <WorkflowRow
-                  key={wf.id}
-                  workflow={wf}
-                  expanded={wf.id === selectedId}
-                  onToggle={() =>
-                    setSelectedId((cur) => (cur === wf.id ? null : wf.id))
-                  }
-                  onDelete={() => void handleDeleteWorkflow(wf)}
-                  deleting={deleteWorkflow.isPending}
-                />
-              ))}
-            </ul>
-          )}
+          <QueryBoundary
+            query={workflowsQuery}
+            skeleton={
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            }
+            empty={() => workflows.length === 0 && !adding}
+            emptyState={
+              <EmptyState
+                icon={<GitBranch className="h-6 w-6" />}
+                title="Chưa có quy trình nào"
+                description="Quy trình là chuỗi trạng thái mà mỗi công việc đi qua, từ lúc mở đến lúc xong. Tạo quy trình đầu tiên để bắt đầu."
+                action={
+                  <Button size="sm" onClick={() => setAdding(true)}>
+                    <Plus className="h-4 w-4" />
+                    Tạo quy trình
+                  </Button>
+                }
+              />
+            }
+          >
+            {() => (
+              <ul className="space-y-2">
+                {workflows.map((wf) => (
+                  <WorkflowRow
+                    key={wf.id}
+                    workflow={wf}
+                    expanded={wf.id === selectedId}
+                    onToggle={() =>
+                      setSelectedId((cur) => (cur === wf.id ? null : wf.id))
+                    }
+                    onDelete={() => void handleDeleteWorkflow(wf)}
+                    deleting={deleteWorkflow.isPending}
+                  />
+                ))}
+              </ul>
+            )}
+          </QueryBoundary>
 
           {/* Form tạo workflow */}
           {adding && (

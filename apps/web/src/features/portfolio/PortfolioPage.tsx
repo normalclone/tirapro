@@ -15,6 +15,7 @@ import {
   usePrograms, useProgramRollup, useDeleteProgram,
   type ProgramDto, type RollupGroup, type RollupProject, type RollupStats,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 type Tab = 'programs' | 'roadmap';
 
@@ -215,7 +216,8 @@ function GroupCard({
  */
 export function PortfolioPage() {
   const canManage = useAuth((s) => s.can('program:manage'));
-  const { data: rollup, isLoading } = useProgramRollup();
+  const rollupQuery = useProgramRollup();
+  const { data: rollup } = rollupQuery;
   const { data: programs } = usePrograms();
   const confirm = useConfirm();
   const remove = useDeleteProgram();
@@ -310,39 +312,46 @@ export function PortfolioPage() {
         ))}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
-        </div>
-      ) : groups.length === 0 ? (
-        <EmptyState
-          icon={<LayoutGrid className="h-6 w-6" />}
-          title="Chưa có chương trình nào"
-          description={
-            canManage
-              ? 'Chương trình là một nhóm dự án cùng phục vụ một mục đích. Tạo chương trình đầu tiên rồi gán vài dự án vào để xem tiến độ chung.'
-              : 'Chương trình là một nhóm dự án cùng phục vụ một mục đích. Khi quản trị viên tạo chương trình, bạn sẽ thấy ở đây.'
-          }
-          action={canManage ? <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4" /> Tạo chương trình</Button> : undefined}
-        />
-      ) : tab === 'roadmap' ? (
-        <section className="rounded-lg border border-border bg-surface p-4 sm:p-5">
-          <RoadmapTimeline groups={groups} />
-        </section>
-      ) : (
-        <div className="space-y-3">
-          {groups.map((g) => (
-            <GroupCard
-              key={g.id ?? '__unassigned__'}
-              group={g}
-              canManage={canManage}
-              onEdit={() => openEdit(g.id)}
-              onAssign={() => openAssign(g.id)}
-              onDelete={() => void handleDelete(g)}
-            />
-          ))}
-        </div>
-      )}
+      <QueryBoundary
+        query={rollupQuery}
+        skeleton={
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
+          </div>
+        }
+        empty={() => groups.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<LayoutGrid className="h-6 w-6" />}
+            title="Chưa có chương trình nào"
+            description={
+              canManage
+                ? 'Chương trình là một nhóm dự án cùng phục vụ một mục đích. Tạo chương trình đầu tiên rồi gán vài dự án vào để xem tiến độ chung.'
+                : 'Chương trình là một nhóm dự án cùng phục vụ một mục đích. Khi quản trị viên tạo chương trình, bạn sẽ thấy ở đây.'
+            }
+            action={canManage ? <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4" /> Tạo chương trình</Button> : undefined}
+          />
+        }
+      >
+        {() => tab === 'roadmap' ? (
+          <section className="rounded-lg border border-border bg-surface p-4 sm:p-5">
+            <RoadmapTimeline groups={groups} />
+          </section>
+        ) : (
+          <div className="space-y-3">
+            {groups.map((g) => (
+              <GroupCard
+                key={g.id ?? '__unassigned__'}
+                group={g}
+                canManage={canManage}
+                onEdit={() => openEdit(g.id)}
+                onAssign={() => openAssign(g.id)}
+                onDelete={() => void handleDelete(g)}
+              />
+            ))}
+          </div>
+        )}
+      </QueryBoundary>
 
       <ProgramEditorModal open={editorOpen} program={editing} onClose={() => setEditorOpen(false)} />
       <ProgramProjectsModal open={!!assigning} program={assigning} onClose={() => setAssigning(null)} />

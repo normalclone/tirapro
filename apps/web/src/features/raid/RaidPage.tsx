@@ -17,6 +17,7 @@ import {
   IMPACT_LABELS, PROBABILITY_LABELS, RAID_KINDS, RAID_LEVEL_LEGEND, RAID_LEVEL_META, RAID_STATUS_META,
   SCALE, raidLevelOf,
 } from './constants';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'Mọi trạng thái' },
@@ -264,7 +265,8 @@ export function RaidPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<RaidItemDto | null>(null);
 
-  const { data: items, isLoading } = useRaidItems({ kind, status, projectId });
+  const raidQuery = useRaidItems({ kind, status, projectId });
+  const { data: items } = raidQuery;
   const { data: projects } = useProjects();
 
   const projectOptions = useMemo(
@@ -359,76 +361,81 @@ export function RaidPage() {
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-4">
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-48 w-full" />
-        </div>
-      ) : (
-        <div className="space-y-5">
-          <HeatMatrix items={items ?? []} selected={cell} onSelect={setCell} />
+      <QueryBoundary
+        query={raidQuery}
+        skeleton={
+          <div className="space-y-4">
+            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </div>
+        }
+      >
+        {() => (
+          <div className="space-y-5">
+            <HeatMatrix items={items ?? []} selected={cell} onSelect={setCell} />
 
-          <section className="rounded-lg border border-border bg-surface">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
-              <h2 className="text-base font-semibold text-ink-strong">Danh sách chi tiết</h2>
-              <span className="text-sm text-muted">
-                {cell
-                  ? `${rows.length} mục ở ô xác suất ${cell.p} × ảnh hưởng ${cell.i}`
-                  : `${rows.length} mục`}
-              </span>
-            </div>
+            <section className="rounded-lg border border-border bg-surface">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
+                <h2 className="text-base font-semibold text-ink-strong">Danh sách chi tiết</h2>
+                <span className="text-sm text-muted">
+                  {cell
+                    ? `${rows.length} mục ở ô xác suất ${cell.p} × ảnh hưởng ${cell.i}`
+                    : `${rows.length} mục`}
+                </span>
+              </div>
 
-            {rows.length === 0 ? (
-              <div className="p-5">
-                <EmptyState
-                  icon={<ShieldAlert className="h-6 w-6" />}
-                  title={cell ? 'Không có mục nào trong ô này' : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`}
-                  description={
-                    cell
-                      ? 'Bấm lại vào ô đang chọn trong ma trận để xem toàn bộ danh sách.'
-                      : canManage
-                        ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — cả nhóm sẽ thấy ngay trên ma trận và biết việc nào cần lo trước.'
-                        : 'Khi nhóm ghi nhận mục mới, bạn sẽ thấy ở đây.'
-                  }
-                  action={
-                    canManage && !cell
-                      ? (
-                        <Button onClick={openCreate}>
-                          <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
-                        </Button>
-                      )
-                      : undefined
-                  }
-                />
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[46rem] text-left">
-                  <thead>
-                    <tr className="text-xs font-medium text-faint">
-                      <th scope="col" className="px-3 py-2">Nội dung</th>
-                      <th scope="col" className="px-3 py-2" title="Người chịu trách nhiệm theo dõi và xử lý">
-                        Người phụ trách
-                      </th>
-                      <th scope="col" className="px-3 py-2" title={RAID_LEVEL_LEGEND}>
-                        Xác suất × ảnh hưởng
-                      </th>
-                      <th scope="col" className="px-3 py-2">Trạng thái</th>
-                      <th scope="col" className="px-3 py-2" title="Ngày cần xử lý xong">Hạn xử lý</th>
-                      {canManage && <th scope="col" className="px-3 py-2 text-right">Thao tác</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((item) => (
-                      <RaidRow key={item.id} item={item} canManage={canManage} onEdit={openEdit} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </div>
-      )}
+              {rows.length === 0 ? (
+                <div className="p-5">
+                  <EmptyState
+                    icon={<ShieldAlert className="h-6 w-6" />}
+                    title={cell ? 'Không có mục nào trong ô này' : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`}
+                    description={
+                      cell
+                        ? 'Bấm lại vào ô đang chọn trong ma trận để xem toàn bộ danh sách.'
+                        : canManage
+                          ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — cả nhóm sẽ thấy ngay trên ma trận và biết việc nào cần lo trước.'
+                          : 'Khi nhóm ghi nhận mục mới, bạn sẽ thấy ở đây.'
+                    }
+                    action={
+                      canManage && !cell
+                        ? (
+                          <Button onClick={openCreate}>
+                            <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
+                          </Button>
+                        )
+                        : undefined
+                    }
+                  />
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[46rem] text-left">
+                    <thead>
+                      <tr className="text-xs font-medium text-faint">
+                        <th scope="col" className="px-3 py-2">Nội dung</th>
+                        <th scope="col" className="px-3 py-2" title="Người chịu trách nhiệm theo dõi và xử lý">
+                          Người phụ trách
+                        </th>
+                        <th scope="col" className="px-3 py-2" title={RAID_LEVEL_LEGEND}>
+                          Xác suất × ảnh hưởng
+                        </th>
+                        <th scope="col" className="px-3 py-2">Trạng thái</th>
+                        <th scope="col" className="px-3 py-2" title="Ngày cần xử lý xong">Hạn xử lý</th>
+                        {canManage && <th scope="col" className="px-3 py-2 text-right">Thao tác</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((item) => (
+                        <RaidRow key={item.id} item={item} canManage={canManage} onEdit={openEdit} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+      </QueryBoundary>
 
       <RaidEditorModal
         open={editorOpen}

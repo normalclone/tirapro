@@ -65,6 +65,7 @@ import {
   type ImportStatus,
   type ImportResult,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 /** Màu mặc định cho nhãn mới (token primary). */
 const DEFAULT_LABEL_COLOR = '#6366f1';
@@ -296,7 +297,8 @@ function MembersSection({ projectId }: { projectId?: string }) {
 
   // Thành viên dự án = TOÀN BỘ thành viên của không gian làm việc (dự án dùng chung tập người dùng).
   // `isOverride` cho biết vai trò đang là ĐẶT RIÊNG hay MẶC ĐỊNH theo vai trò chung.
-  const { data: members, isLoading } = useProjectMembers(projectId);
+  const membersQuery = useProjectMembers(projectId);
+  const { data: members } = membersQuery;
   const { data: projectRoles } = useRoles('PROJECT');
 
   const setRoles = useSetProjectMemberRoles(projectId ?? '');
@@ -325,88 +327,95 @@ function MembersSection({ projectId }: { projectId?: string }) {
       title="Thành viên"
       description="Mọi thành viên của không gian làm việc đều tham gia dự án này. Có thể đặt vai trò riêng cho từng người khi cần."
     >
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      ) : list.length === 0 ? (
-        <EmptyState
-          icon={<Users className="h-6 w-6" />}
-          title="Chưa có thành viên nào"
-          description="Thêm người vào không gian làm việc ở trang Thành viên — họ sẽ tự động tham gia mọi dự án."
-        />
-      ) : (
-        <>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Tìm thành viên…"
-              className="h-9 max-w-xs text-sm"
-            />
-            <span className="shrink-0 text-sm text-muted">{list.length} người</span>
-          </div>
-          <ul className="divide-y divide-border">
-            {shown.map((m) => (
-              <li key={m.user.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                <Avatar name={m.user.displayName} src={m.user.avatarUrl} size={32} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink">{m.user.displayName}</p>
-                  <p className="truncate text-xs text-faint">{m.user.email}</p>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-1.5">
-                  {m.roles.length > 0 ? (
-                    m.roles.map((r) => <RoleBadge key={r.id} name={r.name} color={r.color} />)
-                  ) : (
-                    <span className="text-xs text-faint">Chỉ xem</span>
-                  )}
-                  <span
-                    className={cn(
-                      'rounded px-1.5 py-0.5 text-[10px] font-medium',
-                      m.isOverride ? 'bg-primary-subtle text-primary' : 'bg-surface-2 text-faint',
-                    )}
-                    title={m.isOverride ? 'Vai trò đặt riêng cho dự án này' : 'Vai trò mặc định suy từ vai trò chung'}
-                  >
-                    {m.isOverride ? 'riêng' : 'mặc định'}
-                  </span>
-                </div>
-                {canAdmin && (
-                  <div className="flex shrink-0 items-center gap-1">
-                    <EditRolesPopover
-                      roles={roleOptions}
-                      current={m.roles}
-                      saving={setRoles.isPending}
-                      onSave={(ids) => setRoles.mutateAsync({ userId: m.user.id, roleIds: ids })}
-                      trigger={
-                        <Button variant="ghost" size="icon" title="Đặt vai trò riêng cho dự án" aria-label={`Đặt vai trò riêng cho ${m.user.displayName}`}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      }
-                    />
-                    {m.isOverride && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-muted hover:text-ink"
-                        title="Về vai trò mặc định"
-                        aria-label={`Đưa ${m.user.displayName} về vai trò mặc định`}
-                        onClick={() => handleReset(m.user.displayName, m.user.id)}
-                      >
-                        <History className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </li>
+      <QueryBoundary
+        query={membersQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
             ))}
-            {shown.length === 0 && (
-              <li className="py-6 text-center text-sm text-muted">Không tìm thấy ai khớp “{q}”.</li>
-            )}
-          </ul>
-        </>
-      )}
+          </div>
+        }
+        empty={() => list.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<Users className="h-6 w-6" />}
+            title="Chưa có thành viên nào"
+            description="Thêm người vào không gian làm việc ở trang Thành viên — họ sẽ tự động tham gia mọi dự án."
+          />
+        }
+      >
+        {() => (
+          <>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Tìm thành viên…"
+                className="h-9 max-w-xs text-sm"
+              />
+              <span className="shrink-0 text-sm text-muted">{list.length} người</span>
+            </div>
+            <ul className="divide-y divide-border">
+              {shown.map((m) => (
+                <li key={m.user.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <Avatar name={m.user.displayName} src={m.user.avatarUrl} size={32} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink">{m.user.displayName}</p>
+                    <p className="truncate text-xs text-faint">{m.user.email}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    {m.roles.length > 0 ? (
+                      m.roles.map((r) => <RoleBadge key={r.id} name={r.name} color={r.color} />)
+                    ) : (
+                      <span className="text-xs text-faint">Chỉ xem</span>
+                    )}
+                    <span
+                      className={cn(
+                        'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                        m.isOverride ? 'bg-primary-subtle text-primary' : 'bg-surface-2 text-faint',
+                      )}
+                      title={m.isOverride ? 'Vai trò đặt riêng cho dự án này' : 'Vai trò mặc định suy từ vai trò chung'}
+                    >
+                      {m.isOverride ? 'riêng' : 'mặc định'}
+                    </span>
+                  </div>
+                  {canAdmin && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <EditRolesPopover
+                        roles={roleOptions}
+                        current={m.roles}
+                        saving={setRoles.isPending}
+                        onSave={(ids) => setRoles.mutateAsync({ userId: m.user.id, roleIds: ids })}
+                        trigger={
+                          <Button variant="ghost" size="icon" title="Đặt vai trò riêng cho dự án" aria-label={`Đặt vai trò riêng cho ${m.user.displayName}`}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        }
+                      />
+                      {m.isOverride && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted hover:text-ink"
+                          title="Về vai trò mặc định"
+                          aria-label={`Đưa ${m.user.displayName} về vai trò mặc định`}
+                          onClick={() => handleReset(m.user.displayName, m.user.id)}
+                        >
+                          <History className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+              {shown.length === 0 && (
+                <li className="py-6 text-center text-sm text-muted">Không tìm thấy ai khớp “{q}”.</li>
+              )}
+            </ul>
+          </>
+        )}
+      </QueryBoundary>
     </SectionCard>
   );
 }
@@ -417,7 +426,8 @@ function MembersSection({ projectId }: { projectId?: string }) {
 
 function ComponentsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: boolean }) {
   const confirm = useConfirm();
-  const { data, isLoading } = useComponents(projectId);
+  const componentsQuery = useComponents(projectId);
+  const { data } = componentsQuery;
   const create = useCreateComponent(projectId ?? '');
   const update = useUpdateComponent(projectId ?? '');
   const remove = useDeleteComponent(projectId ?? '');
@@ -466,75 +476,82 @@ function ComponentsSection({ projectId, canAdmin }: { projectId?: string; canAdm
       title="Thành phần"
       description="Chia công việc theo từng phần chức năng hoặc từng khối của dự án."
     >
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-11 w-full" />
-          ))}
-        </div>
-      ) : components.length === 0 && !adding ? (
-        <EmptyState
-          icon={<Boxes className="h-6 w-6" />}
-          title="Chưa có thành phần nào"
-          description="Thành phần là một phần chức năng của dự án (vd Đăng nhập, Thanh toán). Thêm thành phần đầu tiên để chia công việc cho gọn."
-          action={
-            canAdmin ? (
-              <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
-                <Plus className="h-4 w-4" />
-                Thêm thành phần
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <ul className="divide-y divide-border">
-          {components.map((c) =>
-            editingId === c.id ? (
-              <ComponentEditRow
-                key={c.id}
-                component={c}
-                saving={update.isPending}
-                onCancel={() => setEditingId(null)}
-                onSave={(body) => patch(c.id, body, () => setEditingId(null))}
-              />
-            ) : (
-              <li key={c.id} className="flex items-center gap-3 py-2.5 first:pt-0">
-                <div className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-ink">{c.name}</span>
-                  {c.description && (
-                    <span className="mt-0.5 block truncate text-xs text-faint">
-                      {c.description}
-                    </span>
-                  )}
-                </div>
-                {canAdmin && (
-                  <div className="ml-auto flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setEditingId(c.id)}
-                      title="Chỉnh sửa"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      <span className="sr-only">Chỉnh sửa {c.name}</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(c)}
-                      title="Xoá"
-                      className="text-muted hover:text-danger"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Xoá {c.name}</span>
-                    </Button>
+      <QueryBoundary
+        query={componentsQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-11 w-full" />
+            ))}
+          </div>
+        }
+        empty={() => components.length === 0 && !adding}
+        emptyState={
+          <EmptyState
+            icon={<Boxes className="h-6 w-6" />}
+            title="Chưa có thành phần nào"
+            description="Thành phần là một phần chức năng của dự án (vd Đăng nhập, Thanh toán). Thêm thành phần đầu tiên để chia công việc cho gọn."
+            action={
+              canAdmin ? (
+                <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
+                  <Plus className="h-4 w-4" />
+                  Thêm thành phần
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      >
+        {() => (
+          <ul className="divide-y divide-border">
+            {components.map((c) =>
+              editingId === c.id ? (
+                <ComponentEditRow
+                  key={c.id}
+                  component={c}
+                  saving={update.isPending}
+                  onCancel={() => setEditingId(null)}
+                  onSave={(body) => patch(c.id, body, () => setEditingId(null))}
+                />
+              ) : (
+                <li key={c.id} className="flex items-center gap-3 py-2.5 first:pt-0">
+                  <div className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-ink">{c.name}</span>
+                    {c.description && (
+                      <span className="mt-0.5 block truncate text-xs text-faint">
+                        {c.description}
+                      </span>
+                    )}
                   </div>
-                )}
-              </li>
-            ),
-          )}
-        </ul>
-      )}
+                  {canAdmin && (
+                    <div className="ml-auto flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setEditingId(c.id)}
+                        title="Chỉnh sửa"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Chỉnh sửa {c.name}</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(c)}
+                        title="Xoá"
+                        className="text-muted hover:text-danger"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Xoá {c.name}</span>
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              ),
+            )}
+          </ul>
+        )}
+      </QueryBoundary>
 
       {canAdmin && (adding ? (
         <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
@@ -667,7 +684,8 @@ function ComponentEditRow({
 
 function VersionsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: boolean }) {
   const confirm = useConfirm();
-  const { data, isLoading } = useVersions(projectId);
+  const versionsQuery = useVersions(projectId);
+  const { data } = versionsQuery;
   const create = useCreateVersion(projectId ?? '');
   const update = useUpdateVersion(projectId ?? '');
   const remove = useDeleteVersion(projectId ?? '');
@@ -722,89 +740,96 @@ function VersionsSection({ projectId, canAdmin }: { projectId?: string; canAdmin
       title="Phiên bản"
       description="Theo dõi các mốc phát hành (release) của dự án."
     >
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-11 w-full" />
-          ))}
-        </div>
-      ) : versions.length === 0 && !adding ? (
-        <EmptyState
-          icon={<Tag className="h-6 w-6" />}
-          title="Chưa có phiên bản nào"
-          description="Thêm phiên bản đầu tiên để lập kế hoạch phát hành."
-          action={
-            canAdmin ? (
-              <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
-                <Plus className="h-4 w-4" />
-                Thêm phiên bản
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <ul className="divide-y divide-border">
-          {versions.map((v) =>
-            editingId === v.id ? (
-              <VersionEditRow
-                key={v.id}
-                version={v}
-                saving={update.isPending}
-                onCancel={() => setEditingId(null)}
-                onSave={(body) => patch(v.id, body, () => setEditingId(null))}
-              />
-            ) : (
-              <li key={v.id} className="flex flex-wrap items-center gap-3 py-2.5 first:pt-0">
-                <span className="truncate text-sm font-medium text-ink">{v.name}</span>
-                <Badge className={VERSION_STATUS[v.status].className}>
-                  {VERSION_STATUS[v.status].label}
-                </Badge>
-                {v.releaseDate && (
-                  <span className="font-mono text-xs text-faint">
-                    {toDateInput(v.releaseDate)}
-                  </span>
-                )}
+      <QueryBoundary
+        query={versionsQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-11 w-full" />
+            ))}
+          </div>
+        }
+        empty={() => versions.length === 0 && !adding}
+        emptyState={
+          <EmptyState
+            icon={<Tag className="h-6 w-6" />}
+            title="Chưa có phiên bản nào"
+            description="Thêm phiên bản đầu tiên để lập kế hoạch phát hành."
+            action={
+              canAdmin ? (
+                <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
+                  <Plus className="h-4 w-4" />
+                  Thêm phiên bản
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      >
+        {() => (
+          <ul className="divide-y divide-border">
+            {versions.map((v) =>
+              editingId === v.id ? (
+                <VersionEditRow
+                  key={v.id}
+                  version={v}
+                  saving={update.isPending}
+                  onCancel={() => setEditingId(null)}
+                  onSave={(body) => patch(v.id, body, () => setEditingId(null))}
+                />
+              ) : (
+                <li key={v.id} className="flex flex-wrap items-center gap-3 py-2.5 first:pt-0">
+                  <span className="truncate text-sm font-medium text-ink">{v.name}</span>
+                  <Badge className={VERSION_STATUS[v.status].className}>
+                    {VERSION_STATUS[v.status].label}
+                  </Badge>
+                  {v.releaseDate && (
+                    <span className="font-mono text-xs text-faint">
+                      {toDateInput(v.releaseDate)}
+                    </span>
+                  )}
 
-                {canAdmin && (
-                  <div className="ml-auto flex items-center gap-1">
-                    {v.status !== 'RELEASED' && (
+                  {canAdmin && (
+                    <div className="ml-auto flex items-center gap-1">
+                      {v.status !== 'RELEASED' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRelease(v)}
+                          loading={update.isPending}
+                          title="Đánh dấu đã phát hành"
+                        >
+                          <Rocket className="h-4 w-4" />
+                          Phát hành
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
-                        size="sm"
-                        onClick={() => handleRelease(v)}
-                        loading={update.isPending}
-                        title="Đánh dấu đã phát hành"
+                        size="icon"
+                        onClick={() => setEditingId(v.id)}
+                        title="Chỉnh sửa"
                       >
-                        <Rocket className="h-4 w-4" />
-                        Phát hành
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Chỉnh sửa {v.name}</span>
                       </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setEditingId(v.id)}
-                      title="Chỉnh sửa"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      <span className="sr-only">Chỉnh sửa {v.name}</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(v)}
-                      title="Xoá"
-                      className="text-muted hover:text-danger"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Xoá {v.name}</span>
-                    </Button>
-                  </div>
-                )}
-              </li>
-            ),
-          )}
-        </ul>
-      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(v)}
+                        title="Xoá"
+                        className="text-muted hover:text-danger"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Xoá {v.name}</span>
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              ),
+            )}
+          </ul>
+        )}
+      </QueryBoundary>
 
       {canAdmin && (adding ? (
         <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
@@ -999,7 +1024,8 @@ function StatusSelect({
 
 function LabelsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: boolean }) {
   const confirm = useConfirm();
-  const { data, isLoading } = useLabels(projectId);
+  const labelsQuery = useLabels(projectId);
+  const { data } = labelsQuery;
   const create = useCreateLabel(projectId ?? '');
   const update = useUpdateLabel(projectId ?? '');
   const remove = useDeleteLabel(projectId ?? '');
@@ -1047,73 +1073,80 @@ function LabelsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: 
       title="Nhãn"
       description="Gắn nhãn cho công việc để nhóm và lọc theo cách của riêng bạn."
     >
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-11 w-full" />
-          ))}
-        </div>
-      ) : labels.length === 0 && !adding ? (
-        <EmptyState
-          icon={<Tags className="h-6 w-6" />}
-          title="Chưa có nhãn nào"
-          description="Nhãn là từ khoá tự đặt để nhóm và lọc công việc. Thêm nhãn đầu tiên để bắt đầu gắn."
-          action={
-            canAdmin ? (
-              <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
-                <Plus className="h-4 w-4" />
-                Thêm nhãn
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <ul className="divide-y divide-border">
-          {labels.map((l) =>
-            editingId === l.id ? (
-              <LabelEditRow
-                key={l.id}
-                label={l}
-                saving={update.isPending}
-                onCancel={() => setEditingId(null)}
-                onSave={(body) => patch(l.id, body, () => setEditingId(null))}
-              />
-            ) : (
-              <li key={l.id} className="flex items-center gap-3 py-2.5 first:pt-0">
-                <span
-                  className="h-3 w-3 shrink-0 rounded-full border border-border"
-                  style={{ background: l.color ?? DEFAULT_LABEL_COLOR }}
-                  aria-hidden
+      <QueryBoundary
+        query={labelsQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-11 w-full" />
+            ))}
+          </div>
+        }
+        empty={() => labels.length === 0 && !adding}
+        emptyState={
+          <EmptyState
+            icon={<Tags className="h-6 w-6" />}
+            title="Chưa có nhãn nào"
+            description="Nhãn là từ khoá tự đặt để nhóm và lọc công việc. Thêm nhãn đầu tiên để bắt đầu gắn."
+            action={
+              canAdmin ? (
+                <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
+                  <Plus className="h-4 w-4" />
+                  Thêm nhãn
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      >
+        {() => (
+          <ul className="divide-y divide-border">
+            {labels.map((l) =>
+              editingId === l.id ? (
+                <LabelEditRow
+                  key={l.id}
+                  label={l}
+                  saving={update.isPending}
+                  onCancel={() => setEditingId(null)}
+                  onSave={(body) => patch(l.id, body, () => setEditingId(null))}
                 />
-                <span className="min-w-0 truncate text-sm font-medium text-ink">{l.name}</span>
-                {canAdmin && (
-                  <div className="ml-auto flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setEditingId(l.id)}
-                      title="Chỉnh sửa"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      <span className="sr-only">Chỉnh sửa {l.name}</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(l)}
-                      title="Xoá"
-                      className="text-muted hover:text-danger"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Xoá {l.name}</span>
-                    </Button>
-                  </div>
-                )}
-              </li>
-            ),
-          )}
-        </ul>
-      )}
+              ) : (
+                <li key={l.id} className="flex items-center gap-3 py-2.5 first:pt-0">
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-full border border-border"
+                    style={{ background: l.color ?? DEFAULT_LABEL_COLOR }}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 truncate text-sm font-medium text-ink">{l.name}</span>
+                  {canAdmin && (
+                    <div className="ml-auto flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setEditingId(l.id)}
+                        title="Chỉnh sửa"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Chỉnh sửa {l.name}</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(l)}
+                        title="Xoá"
+                        className="text-muted hover:text-danger"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Xoá {l.name}</span>
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              ),
+            )}
+          </ul>
+        )}
+      </QueryBoundary>
 
       {canAdmin && (adding ? (
         <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
@@ -1242,7 +1275,8 @@ function LabelEditRow({
 const CSV_HEADER_HINT = 'Summary, Type, Description, Priority, Story Points';
 
 function DataSection({ projectId, canImport }: { projectId?: string; canImport: boolean }) {
-  const { data: jobsData, isLoading: jobsLoading } = useImportJobs();
+  const jobsQuery = useImportJobs();
+  const { data: jobsData } = jobsQuery;
   const canAdminImport = useAuth((s) => s.can('workspace:admin'));
   const importCsv = useImportCsv();
   const importJson = useImportJson();
@@ -1429,21 +1463,28 @@ function DataSection({ projectId, canImport }: { projectId?: string; canImport: 
             Lịch sử nhập
           </h3>
 
-          {jobsLoading ? (
-            <div className="mt-3 space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : jobs.length === 0 ? (
-            <p className="mt-3 text-sm text-muted">Chưa có lần nhập nào.</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-border">
-              {jobs.map((job) => (
-                <ImportJobRow key={job.id} job={job} />
-              ))}
-            </ul>
-          )}
+          <QueryBoundary
+            query={jobsQuery}
+            skeleton={
+              <div className="mt-3 space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            }
+            empty={() => jobs.length === 0}
+            emptyState={
+              <p className="mt-3 text-sm text-muted">Chưa có lần nhập nào.</p>
+            }
+          >
+            {(jobList) => (
+              <ul className="mt-3 divide-y divide-border">
+                {jobList.map((job) => (
+                  <ImportJobRow key={job.id} job={job} />
+                ))}
+              </ul>
+            )}
+          </QueryBoundary>
         </div>
       </div>
     </SectionCard>
