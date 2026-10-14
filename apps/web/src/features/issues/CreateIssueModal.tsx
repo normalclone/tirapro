@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Paperclip, Plus, X } from 'lucide-react';
+import { Paperclip, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { useProjectMeta } from '@/features/ai/api';
@@ -10,6 +10,7 @@ import { useWorkspaceUsers } from '@/features/issue-edit/api';
 import { uploadAttachmentFile } from '@/features/attachments/api';
 import { MarkdownEditor } from '@/features/issue-edit/DescriptionEditor';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
@@ -176,12 +177,6 @@ export function CreateIssueModal() {
     setDescription((d) => (d === '' || isTemplate(d) ? tmpl : d));
   }, [typeId, meta]);
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') close(); }
-    if (open) window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, close]);
-
   if (!open) return null;
 
   const trimmed = summary.trim();
@@ -251,132 +246,127 @@ export function CreateIssueModal() {
   }
 
   return (
-    <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-[7vh]">
-      <button className="absolute inset-0 bg-black/30 animate-in fade-in duration-200" onClick={close} aria-label="Đóng" />
-      <div className="relative flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <Plus className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-ink">{title}</span>
-          <Button variant="ghost" size="icon" className="ml-auto" onClick={close} aria-label="Đóng">
-            <X className="h-4 w-4" />
+    <Dialog
+      open
+      onOpenChange={(o) => { if (!o) close(); }}
+      title={title}
+      size="xl"
+      onSubmit={() => void submitCreate()}
+      footer={
+        <>
+          <span className="mr-auto hidden text-xs text-faint sm:block">⌘/Ctrl + Enter để tạo nhanh</span>
+          <Button type="button" variant="ghost" onClick={close}>Hủy</Button>
+          <Button
+            type="button"
+            variant="secondary"
+            title="Tạo việc này rồi giữ nguyên cửa sổ để nhập việc tiếp theo"
+            onClick={() => void createAnother()}
+            loading={busy}
+            disabled={!canSubmit}
+          >
+            Tạo &amp; nhập tiếp
           </Button>
-        </header>
+          <Button type="submit" form="create-issue-form" loading={create.isPending || busy} disabled={!canSubmit}>{title}</Button>
+        </>
+      }
+    >
+      <form
+        id="create-issue-form"
+        onSubmit={(e) => { e.preventDefault(); void submitCreate(); }}
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Dự án">
+            <SearchSelect
+              value={selKey}
+              onChange={(v) => {
+                // Đổi dự án → nạp bản nháp của DỰ ÁN MỚI (không mang chữ dự án cũ sang, không đè nháp dự án mới).
+                const d = loadDraft(v);
+                setSelKey(v);
+                setTypeId(''); setPriorityId(''); setSprintId(''); setAssigneeId('');
+                setSummary(d.summary ?? ''); setDescription(d.description ?? '');
+              }}
+              placeholder="Chọn dự án…"
+              searchPlaceholder="Tìm dự án…"
+              className={selectClass}
+              options={(projects ?? []).map((p) => ({ value: p.key, label: p.name, hint: p.key }))}
+            />
+          </Field>
+          <Field label="Loại việc">
+            <SearchSelect
+              value={typeId}
+              onChange={setTypeId}
+              disabled={!meta}
+              className={selectClass}
+              ariaLabel="Loại việc"
+              options={(meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name, color: t.color }))}
+            />
+          </Field>
 
-        <form
-          onSubmit={(e) => { e.preventDefault(); void submitCreate(); }}
-          onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void submitCreate(); } }}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto px-5 py-4 sm:grid-cols-2">
-            <Field label="Dự án">
-              <SearchSelect
-                value={selKey}
-                onChange={(v) => {
-                  // Đổi dự án → nạp bản nháp của DỰ ÁN MỚI (không mang chữ dự án cũ sang, không đè nháp dự án mới).
-                  const d = loadDraft(v);
-                  setSelKey(v);
-                  setTypeId(''); setPriorityId(''); setSprintId(''); setAssigneeId('');
-                  setSummary(d.summary ?? ''); setDescription(d.description ?? '');
-                }}
-                placeholder="Chọn dự án…"
-                searchPlaceholder="Tìm dự án…"
-                className={selectClass}
-                options={(projects ?? []).map((p) => ({ value: p.key, label: p.name, hint: p.key }))}
-              />
-            </Field>
-            <Field label="Loại việc">
-              <SearchSelect
-                value={typeId}
-                onChange={setTypeId}
-                disabled={!meta}
-                className={selectClass}
-                ariaLabel="Loại việc"
-                options={(meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name, color: t.color }))}
-              />
-            </Field>
+          <Field label="Tiêu đề" className="relative z-20 sm:col-span-2">
+            <TokenTitleInput
+              id="ci-summary"
+              autoFocus
+              value={summary}
+              onChange={setSummary}
+              onBlur={applyTokens}
+              ctx={tokenCtx}
+              placeholder="Việc cần làm là gì? VD: Sửa lỗi không đăng nhập được trên Safari"
+            />
+            <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-faint" title="Gõ thẳng các ký hiệu này trong tiêu đề để điền nhanh các trường bên dưới — không cần bấm chuột.">
+              <span>Gõ nhanh ngay trong tiêu đề:</span>
+              <span><code className="rounded bg-surface-2 px-1 text-ink">!ưu-tiên</code></span>
+              <span><code className="rounded bg-surface-2 px-1 text-ink">@người</code></span>
+              <span><code className="rounded bg-surface-2 px-1 text-ink">#sprint</code></span>
+              <span><code className="rounded bg-surface-2 px-1 text-ink">~điểm</code></span>
+              <span><code className="rounded bg-surface-2 px-1 text-ink">^hạn</code> (mai · t6 · 3d · 2w · 15/8)</span>
+            </p>
+          </Field>
 
-            <Field label="Tiêu đề" className="relative z-20 sm:col-span-2">
-              <TokenTitleInput
-                id="ci-summary"
-                autoFocus
-                value={summary}
-                onChange={setSummary}
-                onBlur={applyTokens}
-                ctx={tokenCtx}
-                placeholder="Việc cần làm là gì? VD: Sửa lỗi không đăng nhập được trên Safari"
-              />
-              <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-faint" title="Gõ thẳng các ký hiệu này trong tiêu đề để điền nhanh các trường bên dưới — không cần bấm chuột.">
-                <span>Gõ nhanh ngay trong tiêu đề:</span>
-                <span><code className="rounded bg-surface-2 px-1 text-ink">!ưu-tiên</code></span>
-                <span><code className="rounded bg-surface-2 px-1 text-ink">@người</code></span>
-                <span><code className="rounded bg-surface-2 px-1 text-ink">#sprint</code></span>
-                <span><code className="rounded bg-surface-2 px-1 text-ink">~điểm</code></span>
-                <span><code className="rounded bg-surface-2 px-1 text-ink">^hạn</code> (mai · t6 · 3d · 2w · 15/8)</span>
-              </p>
-            </Field>
+          <Field label="Người phụ trách" hint="(tùy chọn)" title="Người chịu trách nhiệm làm việc này. Để trống nếu chưa biết giao cho ai.">
+            <PeoplePicker
+              value={assigneeId}
+              onChange={setAssigneeId}
+              emptyLabel="Chưa gán"
+              className={selectClass}
+              options={assignees}
+            />
+          </Field>
+          <Field label="Ưu tiên" hint="(tùy chọn)" title="Việc này gấp đến mức nào so với các việc khác">
+            <SearchSelect
+              value={priorityId}
+              onChange={setPriorityId}
+              disabled={!meta}
+              className={selectClass}
+              options={[{ value: '', label: '—' }, ...(meta?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, color: p.color }))]}
+            />
+          </Field>
 
-            <Field label="Người phụ trách" hint="(tùy chọn)" title="Người chịu trách nhiệm làm việc này. Để trống nếu chưa biết giao cho ai.">
-              <PeoplePicker
-                value={assigneeId}
-                onChange={setAssigneeId}
-                emptyLabel="Chưa gán"
-                className={selectClass}
-                options={assignees}
-              />
+          <Field label="Sprint" hint="(tùy chọn)" title="Sprint là đợt làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Backlog — danh sách chờ.">
+            <SearchSelect value={sprintId} onChange={setSprintId} disabled={!selId} className={selectClass} ariaLabel="Sprint" options={sprintOptions} />
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Điểm ước lượng" hint="(tùy chọn)" title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint.">
+              <Input type="number" min={0} inputMode="numeric" value={points} onChange={(e) => setPoints(e.target.value)} placeholder="VD: 3" className="text-sm" aria-label="Điểm ước lượng" />
             </Field>
-            <Field label="Ưu tiên" hint="(tùy chọn)" title="Việc này gấp đến mức nào so với các việc khác">
-              <SearchSelect
-                value={priorityId}
-                onChange={setPriorityId}
-                disabled={!meta}
-                className={selectClass}
-                options={[{ value: '', label: '—' }, ...(meta?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, color: p.color }))]}
-              />
-            </Field>
-
-            <Field label="Sprint" hint="(tùy chọn)" title="Sprint là đợt làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Backlog — danh sách chờ.">
-              <SearchSelect value={sprintId} onChange={setSprintId} disabled={!selId} className={selectClass} ariaLabel="Sprint" options={sprintOptions} />
-            </Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Điểm ước lượng" hint="(tùy chọn)" title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint.">
-                <Input type="number" min={0} inputMode="numeric" value={points} onChange={(e) => setPoints(e.target.value)} placeholder="VD: 3" className="text-sm" aria-label="Điểm ước lượng" />
-              </Field>
-              <Field label="Hạn hoàn thành" hint="(tùy chọn)" title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng.">
-                <Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} className="text-sm" aria-label="Hạn hoàn thành" />
-              </Field>
-            </div>
-
-            <Field label="Mô tả" hint="(tùy chọn)" className="sm:col-span-2" title="Viết đủ để người khác làm được mà không cần hỏi lại bạn.">
-              <MarkdownEditor value={description} onChange={setDescription} onSubmit={() => void submitCreate()} rows={10} placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))" />
-            </Field>
-
-            <Field label="Tệp đính kèm" hint="(tùy chọn)" className="sm:col-span-2">
-              <FileDrop
-                files={files}
-                onAdd={(fs) => setFiles((prev) => [...prev, ...fs])}
-                onRemove={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
-              />
+            <Field label="Hạn hoàn thành" hint="(tùy chọn)" title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng.">
+              <Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} className="text-sm" aria-label="Hạn hoàn thành" />
             </Field>
           </div>
 
-          <footer className="flex items-center gap-2 border-t border-border px-5 py-3">
-            <span className="mr-auto hidden text-xs text-faint sm:block">⌘/Ctrl + Enter để tạo nhanh</span>
-            <Button type="button" variant="ghost" onClick={close}>Hủy</Button>
-            <Button
-              type="button"
-              variant="secondary"
-              title="Tạo việc này rồi giữ nguyên cửa sổ để nhập việc tiếp theo"
-              onClick={() => void createAnother()}
-              loading={busy}
-              disabled={!canSubmit}
-            >
-              Tạo &amp; nhập tiếp
-            </Button>
-            <Button type="submit" loading={create.isPending || busy} disabled={!canSubmit}>{title}</Button>
-          </footer>
-        </form>
-      </div>
-    </div>
+          <Field label="Mô tả" hint="(tùy chọn)" className="sm:col-span-2" title="Viết đủ để người khác làm được mà không cần hỏi lại bạn.">
+            <MarkdownEditor value={description} onChange={setDescription} onSubmit={() => void submitCreate()} rows={10} placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))" />
+          </Field>
+
+          <Field label="Tệp đính kèm" hint="(tùy chọn)" className="sm:col-span-2">
+            <FileDrop
+              files={files}
+              onAdd={(fs) => setFiles((prev) => [...prev, ...fs])}
+              onRemove={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
+            />
+          </Field>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
