@@ -2,35 +2,43 @@ import { SetMetadata } from '@nestjs/common';
 
 export const PROJECT_REF_KEY = 'projectRef';
 
-/**
- * Nguồn để PermissionsGuard biết route này thuộc dự án nào:
- * - `issue | sprint | board | label | component | version | comment | attachment | issueLink`: id tài nguyên nằm ở `req.params[param]`;
- *   guard tra DB (có giới hạn theo workspace) để lấy projectId THẬT của tài nguyên (comment/attachment/issueLink đi qua issue cha).
- * - `param | body | query`: projectId nằm thẳng ở `req.params | req.body | req.query[param]`;
- *   guard kiểm dự án đó thuộc workspace hiện tại.
- */
-export type ProjectRefKind =
+/** Loại tài nguyên mà guard tra DB để suy ra dự án (id nằm ở `req.params[param]`). */
+export type ProjectResourceKind =
   | 'issue'
   | 'sprint'
   | 'board'
   | 'label'
   | 'component'
+  | 'version'
   | 'comment'
   | 'attachment'
   | 'issueLink'
-  | 'version'
-  | 'param'
-  | 'body'
-  | 'query';
+  | 'raid'
+  | 'automationTemplate'
+  | 'recurringIssue'
+  | 'customField'
+  | 'repository'
+  | 'projectKey';
+
+/**
+ * Nguồn để PermissionsGuard biết route này thuộc dự án nào:
+ * - `ProjectResourceKind`: giá trị ở `req.params[param]` là id tài nguyên (riêng `projectKey` là key dự án);
+ *   guard tra DB (giới hạn theo workspace) để lấy projectId THẬT. comment/attachment/issueLink đi qua
+ *   issue cha; raid/automationTemplate/customField/repository có thể thuộc workspace (không gắn dự án).
+ * - `param | body | query`: projectId nằm thẳng ở `req.params | req.body | req.query[param]`;
+ *   guard kiểm dự án đó thuộc workspace hiện tại.
+ */
+export type ProjectRefKind = ProjectResourceKind | 'param' | 'body' | 'query';
 
 export interface ProjectRefMeta {
   kind: ProjectRefKind;
   param: string;
 }
 
-/** Tên tham số mặc định theo loại: tài nguyên → `id`, còn lại → `projectId`. */
+/** Tên tham số mặc định theo loại: tài nguyên → `id` (projectKey → `key`), còn lại → `projectId`. */
 export function defaultProjectRefParam(kind: ProjectRefKind): string {
-  return kind === 'param' || kind === 'body' || kind === 'query' ? 'projectId' : 'id';
+  if (kind === 'param' || kind === 'body' || kind === 'query') return 'projectId';
+  return kind === 'projectKey' ? 'key' : 'id';
 }
 
 /**

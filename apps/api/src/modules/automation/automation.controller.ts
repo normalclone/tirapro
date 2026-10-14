@@ -32,6 +32,7 @@ export class AutomationController {
     return this.automation.listTemplates(this.ws(user), projectId);
   }
 
+  @ProjectRef('automationTemplate', 'id')
   @Get('templates/:id')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async getTemplate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -47,6 +48,7 @@ export class AutomationController {
     return this.automation.createTemplate(this.ws(user), dto, user.id);
   }
 
+  @ProjectRef('automationTemplate', 'id')
   @Put('templates/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async updateTemplate(
@@ -57,6 +59,7 @@ export class AutomationController {
     return this.automation.updateTemplate(this.ws(user), id, dto, user.id);
   }
 
+  @ProjectRef('automationTemplate', 'id')
   @Delete('templates/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async removeTemplate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -72,6 +75,7 @@ export class AutomationController {
     return this.automation.listRecurring(this.ws(user), projectId);
   }
 
+  @ProjectRef('recurringIssue', 'id')
   @Get('recurring/:id')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async getRecurring(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -87,6 +91,7 @@ export class AutomationController {
     return this.automation.createRecurring(this.ws(user), dto, user.id);
   }
 
+  @ProjectRef('recurringIssue', 'id')
   @Put('recurring/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async updateRecurring(
@@ -98,12 +103,14 @@ export class AutomationController {
   }
 
   /** Tạo issue ngay lập tức từ việc lặp lại (không dời lịch chạy kế tiếp). */
+  @ProjectRef('recurringIssue', 'id')
   @Post('recurring/:id/run-now')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async runNow(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.automation.runNow(this.ws(user), id, user.id);
   }
 
+  @ProjectRef('recurringIssue', 'id')
   @Delete('recurring/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async removeRecurring(@CurrentUser() user: AuthUser, @Param('id') id: string) {

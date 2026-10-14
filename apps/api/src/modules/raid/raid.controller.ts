@@ -37,6 +37,7 @@ export class RaidController {
     return this.raid.list(this.ws(user), { kind, status, projectId, ownerId });
   }
 
+  @ProjectRef('raid', 'id')
   @Get(':id')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   async get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -52,6 +53,7 @@ export class RaidController {
     return this.raid.create(this.ws(user), dto, user.id);
   }
 
+  @ProjectRef('raid', 'id')
   @Put(':id')
   @Permissions(PERMISSIONS.RISK_MANAGE)
   async update(
@@ -62,6 +64,7 @@ export class RaidController {
     return this.raid.update(this.ws(user), id, dto);
   }
 
+  @ProjectRef('raid', 'id')
   @Delete(':id')
   @Permissions(PERMISSIONS.RISK_MANAGE)
   async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {

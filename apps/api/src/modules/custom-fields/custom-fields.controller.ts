@@ -5,6 +5,7 @@ import { CustomFieldType } from '@prisma/client';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
@@ -65,6 +66,7 @@ export class CustomFieldsController {
     return this.customFields.createDefinition(this.ws(user), dto as CreateCustomFieldInput);
   }
 
+  @ProjectRef('customField', 'id')
   @Patch('custom-fields/:id')
   @Permissions(PERMISSIONS.CUSTOM_FIELD_MANAGE)
   async update(
@@ -75,6 +77,7 @@ export class CustomFieldsController {
     return this.customFields.updateDefinition(this.ws(user), id, dto as UpdateCustomFieldInput);
   }
 
+  @ProjectRef('customField', 'id')
   @Delete('custom-fields/:id')
   @Permissions(PERMISSIONS.CUSTOM_FIELD_MANAGE)
   async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -88,6 +91,7 @@ export class CustomFieldsController {
     return this.customFields.listIssueValues(this.ws(user), issueId);
   }
 
+  @ProjectRef('issue', 'issueId')
   @Put('issues/:issueId/custom-fields/:fieldId')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   async setIssueValue(

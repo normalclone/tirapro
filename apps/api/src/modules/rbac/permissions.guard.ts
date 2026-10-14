@@ -60,17 +60,24 @@ export class PermissionsGuard implements CanActivate {
       }
       const value = req.params?.[param];
       if (typeof value !== 'string' || !value) throw new NotFoundAppException('Tài nguyên');
-      const projectId = await this.rbac.resolveProjectId(workspaceId, kind, value);
-      if (!projectId) throw new NotFoundAppException('Tài nguyên');
-      return projectId;
+      const resolved = await this.rbac.resolveProjectId(workspaceId, kind, value);
+      if (!resolved) throw new NotFoundAppException('Tài nguyên');
+      return resolved.projectId; // null = tài nguyên cấp workspace
     }
 
-    // Không khai báo @ProjectRef: chỉ chấp nhận params/body (không đọc query).
-    return this.checkedProjectId(req.params?.projectId ?? req.body?.projectId, workspaceId);
+    // Không khai báo @ProjectRef: dùng params.projectId. body.projectId CHỈ được tin khi route
+    // không có tham số định danh nào khác (vd POST tạo mới) — nếu có `:id`, client không được
+    // lái dự án bằng body (PUT /x/:id với body.projectId của dự án mình có quyền).
+    if (req.params?.projectId !== undefined) return this.checkedProjectId(req.params.projectId, workspaceId);
+    const hasOtherParams = Object.keys(req.params ?? {}).length > 0;
+    if (hasOtherParams) return null;
+    return this.checkedProjectId(req.body?.projectId, workspaceId);
   }
 
   private async checkedProjectId(raw: unknown, workspaceId: string): Promise<string | null> {
-    if (typeof raw !== 'string' || !raw) return null;
+    if (raw === undefined || raw === null || raw === '') return null;
+    // Mảng/đối tượng (vd ?projectId=a&projectId=b) là đầu vào không hợp lệ → coi như không tồn tại.
+    if (typeof raw !== 'string') throw new NotFoundAppException('Dự án');
     await this.rbac.assertProjectInWorkspace(raw, workspaceId);
     return raw;
   }

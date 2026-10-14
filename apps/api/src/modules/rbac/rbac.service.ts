@@ -1,9 +1,83 @@
 import { Injectable } from '@nestjs/common';
 import { DEFAULT_PROJECT_ROLE_BY_WS_ROLE } from '@tirapro/types';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
-import type { ProjectRefKind } from '../../common/decorators/project-ref.decorator';
+import type { ProjectResourceKind } from '../../common/decorators/project-ref.decorator';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
+
+type ResolverDelegate = { findFirst(args: { where: object; select: object }): Promise<unknown> };
+
+const projectIdOnly = { projectId: true } as const;
+const viaProject = (value: string, workspaceId: string) => ({ id: value, project: { workspaceId } });
+const inWorkspace = (value: string, workspaceId: string) => ({ id: value, workspaceId });
+const ownProjectId = (row: { projectId: string | null }) => row.projectId;
+
+/**
+ * Bảng tra: loại tài nguyên → model Prisma, điều kiện (luôn giới hạn theo workspace), cột select,
+ * và cách lấy projectId từ hàng tìm được.
+ */
+const RESOURCE_RESOLVERS: Record<
+  ProjectResourceKind,
+  {
+    model: string;
+    where: (value: string, workspaceId: string) => object;
+    select: object;
+    project: (row: never, workspaceId: string) => string | null;
+  }
+> = {
+  issue: { model: 'issue', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  sprint: { model: 'sprint', where: viaProject, select: projectIdOnly, project: ownProjectId },
+  board: { model: 'board', where: viaProject, select: projectIdOnly, project: ownProjectId },
+  label: { model: 'label', where: viaProject, select: projectIdOnly, project: ownProjectId },
+  component: { model: 'component', where: viaProject, select: projectIdOnly, project: ownProjectId },
+  version: { model: 'version', where: viaProject, select: projectIdOnly, project: ownProjectId },
+  recurringIssue: { model: 'recurringIssue', where: viaProject, select: projectIdOnly, project: ownProjectId },
+  // Tài nguyên cấp workspace, dự án là tuỳ chọn (null = áp quyền workspace).
+  raid: { model: 'raidItem', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  automationTemplate: { model: 'issueTemplate', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  customField: { model: 'customField', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  repository: { model: 'codeRepository', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  comment: {
+    model: 'comment',
+    where: (value, workspaceId) => ({ id: value, issue: { workspaceId } }),
+    select: { issue: { select: projectIdOnly } },
+    project: (row: { issue: { projectId: string } }) => row.issue.projectId,
+  },
+  // Đính kèm gắn thẳng vào issue hoặc vào comment của issue; mồ côi (không issue) → không tìm thấy.
+  attachment: {
+    model: 'attachment',
+    where: (value, workspaceId) => ({
+      id: value,
+      OR: [{ issue: { workspaceId } }, { comment: { issue: { workspaceId } } }],
+    }),
+    select: { issue: { select: projectIdOnly }, comment: { select: { issue: { select: projectIdOnly } } } },
+    project: (row: { issue: { projectId: string } | null; comment: { issue: { projectId: string } } | null }) =>
+      row.issue?.projectId ?? row.comment?.issue.projectId ?? null,
+  },
+  // Hai đầu có thể khác dự án: lấy đầu thuộc workspace hiện tại (ưu tiên đầu nguồn).
+  issueLink: {
+    model: 'issueLink',
+    where: (value, workspaceId) => ({
+      id: value,
+      OR: [{ source: { workspaceId } }, { target: { workspaceId } }],
+    }),
+    select: {
+      source: { select: { projectId: true, workspaceId: true } },
+      target: { select: { projectId: true, workspaceId: true } },
+    },
+    project: (
+      row: { source: { projectId: string; workspaceId: string }; target: { projectId: string } },
+      workspaceId,
+    ) => (row.source.workspaceId === workspaceId ? row.source.projectId : row.target.projectId),
+  },
+  // Giá trị là KEY dự án (vd "ABC"), không phải id.
+  projectKey: {
+    model: 'project',
+    where: (value, workspaceId) => ({ key: value.toUpperCase(), workspaceId }),
+    select: { id: true },
+    project: (row: { id: string }) => row.id,
+  },
+};
 
 /**
  * Resolve quyền hiệu lực = union(vai trò workspace, vai trò project). Cache Redis 60s
@@ -111,75 +185,21 @@ export class RbacService {
   }
 
   /**
-   * Lấy projectId THẬT của tài nguyên, chỉ khi tài nguyên thuộc workspace hiện tại
-   * (issue có workspaceId riêng; sprint/board/label/component lọc qua project.workspaceId).
+   * Tra DB để suy ra dự án THẬT của tài nguyên, chỉ khi tài nguyên thuộc workspace hiện tại.
+   * - `null`: không tìm thấy (hoặc thuộc workspace khác) → guard trả NotFound.
+   * - `{ projectId: null }`: tài nguyên cấp workspace (raid/mẫu/custom field/repo không gắn dự án)
+   *   → chỉ tính quyền cấp workspace.
    */
   async resolveProjectId(
     workspaceId: string,
-    kind: Exclude<ProjectRefKind, 'param' | 'body' | 'query'>,
+    kind: ProjectResourceKind,
     value: string,
-  ): Promise<string | null> {
-    const select = { projectId: true } as const;
-    const viaProject = { id: value, project: { workspaceId } };
-    let row: { projectId: string } | null;
-    switch (kind) {
-      case 'issue':
-        row = await this.prisma.issue.findFirst({ where: { id: value, workspaceId }, select });
-        break;
-      case 'sprint':
-        row = await this.prisma.sprint.findFirst({ where: viaProject, select });
-        break;
-      case 'board':
-        row = await this.prisma.board.findFirst({ where: viaProject, select });
-        break;
-      case 'label':
-        row = await this.prisma.label.findFirst({ where: viaProject, select });
-        break;
-      case 'component':
-        row = await this.prisma.component.findFirst({ where: viaProject, select });
-        break;
-      case 'version':
-        row = await this.prisma.version.findFirst({ where: viaProject, select });
-        break;
-      case 'comment': {
-        const c = await this.prisma.comment.findFirst({
-          where: { id: value, issue: { workspaceId } },
-          select: { issue: { select: { projectId: true } } },
-        });
-        row = c ? { projectId: c.issue.projectId } : null;
-        break;
-      }
-      case 'attachment': {
-        // Đính kèm gắn thẳng vào issue hoặc vào comment của issue; mồ côi (không issue) → không tìm thấy.
-        const a = await this.prisma.attachment.findFirst({
-          where: {
-            id: value,
-            OR: [{ issue: { workspaceId } }, { comment: { issue: { workspaceId } } }],
-          },
-          select: {
-            issue: { select: { projectId: true } },
-            comment: { select: { issue: { select: { projectId: true } } } },
-          },
-        });
-        const projectId = a?.issue?.projectId ?? a?.comment?.issue.projectId;
-        row = projectId ? { projectId } : null;
-        break;
-      }
-      case 'issueLink': {
-        // Hai đầu có thể khác dự án: lấy đầu thuộc workspace hiện tại (ưu tiên đầu nguồn).
-        const l = await this.prisma.issueLink.findFirst({
-          where: { id: value, OR: [{ source: { workspaceId } }, { target: { workspaceId } }] },
-          select: {
-            source: { select: { projectId: true, workspaceId: true } },
-            target: { select: { projectId: true, workspaceId: true } },
-          },
-        });
-        const end = !l ? null : l.source.workspaceId === workspaceId ? l.source : l.target;
-        row = end ? { projectId: end.projectId } : null;
-        break;
-      }
-    }
-    return row?.projectId ?? null;
+  ): Promise<{ projectId: string | null } | null> {
+    const r = RESOURCE_RESOLVERS[kind];
+    const delegate = (this.prisma as unknown as Record<string, ResolverDelegate>)[r.model];
+    const row = await delegate.findFirst({ where: r.where(value, workspaceId), select: r.select });
+    if (!row) return null;
+    return { projectId: r.project(row as never, workspaceId) };
   }
 
   /** Dự án phải thuộc workspace hiện tại, nếu không coi như không tồn tại. */

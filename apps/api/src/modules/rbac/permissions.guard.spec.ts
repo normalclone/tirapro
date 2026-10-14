@@ -8,14 +8,14 @@ type Req = {
   user?: unknown;
   params?: Record<string, string>;
   body?: Record<string, unknown>;
-  query?: Record<string, string>;
+  query?: Record<string, string | string[]>;
 };
 
 function setup(opts: {
   required?: string[];
   ref?: ProjectRefMeta;
   req: Req;
-  resolved?: string | null;
+  resolved?: { projectId: string | null } | null;
   projectInWorkspace?: boolean;
   effective?: string[];
 }) {
@@ -28,7 +28,7 @@ function setup(opts: {
   };
   const rbac = {
     getEffectivePermissions: vi.fn(async () => new Set(opts.effective ?? ['issue:update'])),
-    resolveProjectId: vi.fn(async () => (opts.resolved === undefined ? 'P-cua-I1' : opts.resolved)),
+    resolveProjectId: vi.fn(async () => (opts.resolved === undefined ? { projectId: 'P-cua-I1' } : opts.resolved)),
     assertProjectInWorkspace: vi.fn(async () => {
       if (opts.projectInWorkspace === false) throw new NotFoundAppException('Dự án');
     }),
@@ -80,6 +80,46 @@ describe('PermissionsGuard', () => {
     });
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(NotFoundAppException);
     expect(rbac.resolveProjectId).toHaveBeenCalledWith('W1', 'comment', 'C-ws-khac');
+  });
+
+  it('tài nguyên cấp workspace (projectId null) -> tính quyền ở cấp workspace, KHÔNG NotFound', async () => {
+    const { guard, rbac, ctx } = setup({
+      ref: { kind: 'raid', param: 'id' },
+      resolved: { projectId: null },
+      req: { user: { ...user }, params: { id: 'R1' }, body: { projectId: 'P-khac' } },
+    });
+    await guard.canActivate(ctx);
+    expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('U1', 'W1', null);
+  });
+
+  it('route có :id nhưng không @ProjectRef: bỏ qua body.projectId (không cho client lái dự án)', async () => {
+    const { guard, rbac, ctx } = setup({
+      req: { user: { ...user }, params: { id: 'R-o-P2' }, body: { projectId: 'P1' } },
+    });
+    await guard.canActivate(ctx);
+    expect(rbac.assertProjectInWorkspace).not.toHaveBeenCalled();
+    expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('U1', 'W1', null);
+  });
+
+  it('route có tham số khác ngoài projectId: params.projectId vẫn được dùng, body bị bỏ qua', async () => {
+    const { guard, rbac, ctx } = setup({
+      req: { user: { ...user }, params: { projectId: 'P1', id: 'X' }, body: { projectId: 'P-khac' } },
+    });
+    await guard.canActivate(ctx);
+    expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('U1', 'W1', 'P1');
+  });
+
+  it('projectId dạng mảng (query ?projectId=a&projectId=b / body) -> NotFound, không tính quyền', async () => {
+    const q = setup({
+      ref: { kind: 'query', param: 'projectId' },
+      req: { user: { ...user }, query: { projectId: ['P1', 'P2'] } },
+    });
+    await expect(q.guard.canActivate(q.ctx)).rejects.toBeInstanceOf(NotFoundAppException);
+    expect(q.rbac.getEffectivePermissions).not.toHaveBeenCalled();
+
+    const b = setup({ req: { user: { ...user }, params: {}, body: { projectId: ['P1'] } } });
+    await expect(b.guard.canActivate(b.ctx)).rejects.toBeInstanceOf(NotFoundAppException);
+    expect(b.rbac.getEffectivePermissions).not.toHaveBeenCalled();
   });
 
   it("@ProjectRef('param','projectId') đọc req.params và kiểm dự án thuộc workspace", async () => {
