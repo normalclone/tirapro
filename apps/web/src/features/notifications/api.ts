@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /** Loại thông báo trả về từ API. */
 export type NotificationType =
@@ -25,9 +26,6 @@ export interface NotificationItem {
   createdAt: string;
 }
 
-const listKey = ['notifications', 'list'] as const;
-const unreadKey = ['notifications', 'unread'] as const;
-
 // Thông báo mới đến qua WebSocket (`notification:new` → useNotificationRealtime ở AppShell).
 // Poll 5 phút chỉ là lưới an toàn khi WS đứt. refetchIntervalInBackground=false → KHÔNG fetch khi tab nền.
 const POLL_MS = 5 * 60_000;
@@ -35,7 +33,7 @@ const POLL_MS = 5 * 60_000;
 /** Danh sách thông báo gần đây (bọc envelope → `.data.data`), lưới an toàn 5 phút (chỉ khi tab hiển thị). */
 export function useNotifications() {
   return useQuery({
-    queryKey: listKey,
+    queryKey: keys.notifications.list,
     queryFn: async () =>
       (await api.get<ListResponse<NotificationItem>>('/notifications?limit=20')).data.data,
     refetchInterval: POLL_MS,
@@ -46,7 +44,7 @@ export function useNotifications() {
 /** Số thông báo chưa đọc (raw `{ count }`), lưới an toàn 5 phút (chỉ khi tab hiển thị). */
 export function useUnreadCount() {
   return useQuery({
-    queryKey: unreadKey,
+    queryKey: keys.notifications.unread,
     queryFn: async () => (await api.get<{ count: number }>('/notifications/unread-count')).data.count,
     refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
@@ -60,29 +58,29 @@ export function useMarkRead() {
     mutationFn: (id: string) => api.post(`/notifications/${id}/read`),
     onMutate: async (id: string) => {
       await Promise.all([
-        qc.cancelQueries({ queryKey: listKey }),
-        qc.cancelQueries({ queryKey: unreadKey }),
+        qc.cancelQueries({ queryKey: keys.notifications.list }),
+        qc.cancelQueries({ queryKey: keys.notifications.unread }),
       ]);
-      const prevList = qc.getQueryData<NotificationItem[]>(listKey);
-      const prevUnread = qc.getQueryData<number>(unreadKey);
+      const prevList = qc.getQueryData<NotificationItem[]>(keys.notifications.list);
+      const prevUnread = qc.getQueryData<number>(keys.notifications.unread);
       const now = new Date().toISOString();
       // Chỉ giảm số chưa đọc nếu item này trước đó thực sự chưa đọc.
       const wasUnread = prevList?.some((n) => n.id === id && n.readAt === null) ?? false;
-      qc.setQueryData<NotificationItem[]>(listKey, (old) =>
+      qc.setQueryData<NotificationItem[]>(keys.notifications.list, (old) =>
         old?.map((n) => (n.id === id && n.readAt === null ? { ...n, readAt: now } : n)),
       );
       if (wasUnread) {
-        qc.setQueryData<number>(unreadKey, (c) => Math.max(0, (c ?? 0) - 1));
+        qc.setQueryData<number>(keys.notifications.unread, (c) => Math.max(0, (c ?? 0) - 1));
       }
       return { prevList, prevUnread };
     },
     onError: (_err, _id, ctx) => {
-      if (ctx?.prevList !== undefined) qc.setQueryData(listKey, ctx.prevList);
-      if (ctx?.prevUnread !== undefined) qc.setQueryData(unreadKey, ctx.prevUnread);
+      if (ctx?.prevList !== undefined) qc.setQueryData(keys.notifications.list, ctx.prevList);
+      if (ctx?.prevUnread !== undefined) qc.setQueryData(keys.notifications.unread, ctx.prevUnread);
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: listKey });
-      void qc.invalidateQueries({ queryKey: unreadKey });
+      void qc.invalidateQueries({ queryKey: keys.notifications.list });
+      void qc.invalidateQueries({ queryKey: keys.notifications.unread });
     },
   });
 }
@@ -94,25 +92,25 @@ export function useMarkAllRead() {
     mutationFn: () => api.post('/notifications/read-all'),
     onMutate: async () => {
       await Promise.all([
-        qc.cancelQueries({ queryKey: listKey }),
-        qc.cancelQueries({ queryKey: unreadKey }),
+        qc.cancelQueries({ queryKey: keys.notifications.list }),
+        qc.cancelQueries({ queryKey: keys.notifications.unread }),
       ]);
-      const prevList = qc.getQueryData<NotificationItem[]>(listKey);
-      const prevUnread = qc.getQueryData<number>(unreadKey);
+      const prevList = qc.getQueryData<NotificationItem[]>(keys.notifications.list);
+      const prevUnread = qc.getQueryData<number>(keys.notifications.unread);
       const now = new Date().toISOString();
-      qc.setQueryData<NotificationItem[]>(listKey, (old) =>
+      qc.setQueryData<NotificationItem[]>(keys.notifications.list, (old) =>
         old?.map((n) => (n.readAt === null ? { ...n, readAt: now } : n)),
       );
-      qc.setQueryData<number>(unreadKey, 0);
+      qc.setQueryData<number>(keys.notifications.unread, 0);
       return { prevList, prevUnread };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prevList !== undefined) qc.setQueryData(listKey, ctx.prevList);
-      if (ctx?.prevUnread !== undefined) qc.setQueryData(unreadKey, ctx.prevUnread);
+      if (ctx?.prevList !== undefined) qc.setQueryData(keys.notifications.list, ctx.prevList);
+      if (ctx?.prevUnread !== undefined) qc.setQueryData(keys.notifications.unread, ctx.prevUnread);
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: listKey });
-      void qc.invalidateQueries({ queryKey: unreadKey });
+      void qc.invalidateQueries({ queryKey: keys.notifications.list });
+      void qc.invalidateQueries({ queryKey: keys.notifications.unread });
     },
   });
 }

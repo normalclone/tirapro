@@ -61,9 +61,14 @@ export function useAddComment(issueId: string) {
   });
 }
 
-export function useUpdateIssue(projectId: string | undefined) {
+/**
+ * `opts.silent`: tắt toast lỗi chung của MutationCache — dùng khi gọi hàng loạt (Promise.allSettled)
+ * và tự gom lỗi thành MỘT thông báo tổng kết.
+ */
+export function useUpdateIssue(projectId: string | undefined, opts?: { silent?: boolean }) {
   const qc = useQueryClient();
   return useMutation({
+    meta: { silent: opts?.silent },
     mutationFn: (v: { id: string; key: string; patch: Record<string, unknown>; version: number }) =>
       api.patch<IssueDto>(`/issues/${v.id}`, { ...v.patch, version: v.version }),
     onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, scalarIssuePatch(v.patch), v.key),

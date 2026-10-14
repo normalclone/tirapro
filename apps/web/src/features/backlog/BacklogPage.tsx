@@ -70,7 +70,9 @@ export function BacklogPage() {
   const startSprint = useStartSprint(projectId ?? '');
   const completeSprint = useCompleteSprint(projectId ?? '');
   const moveToSprint = useMoveToSprint(projectId ?? '');
-  const updateIssue = useUpdateIssue(projectId);
+  // Bản im lặng cho thao tác hàng loạt: runBulk tự gom lỗi thành một toast tổng kết.
+  const bulkUpdateIssue = useUpdateIssue(projectId, { silent: true });
+  const bulkMoveToSprintMut = useMoveToSprint(projectId ?? '', { silent: true });
   const assigneeOptions = useAssigneeOptions(projectId);
   const qc = useQueryClient();
 
@@ -273,13 +275,13 @@ export function BacklogPage() {
   function bulkAssign(assigneeId: string | null) {
     void runBulk<{ id: string; key: string; assigneeId: string | null; version: number }>(
       (issue) =>
-        updateIssue.mutateAsync({ id: issue.id, key: issue.key, patch: { assigneeId }, version: issue.version }),
+        bulkUpdateIssue.mutateAsync({ id: issue.id, key: issue.key, patch: { assigneeId }, version: issue.version }),
       (issue) => ({ id: issue.id, key: issue.key, assigneeId: issue.assigneeId, version: issue.version }),
       async (prev) => {
         await Promise.allSettled(
           prev.map((p) =>
             // version +1 sau lần cập nhật thành công trước đó.
-            updateIssue.mutateAsync({ id: p.id, key: p.key, patch: { assigneeId: p.assigneeId }, version: p.version + 1 }),
+            bulkUpdateIssue.mutateAsync({ id: p.id, key: p.key, patch: { assigneeId: p.assigneeId }, version: p.version + 1 }),
           ),
         );
       },
@@ -290,11 +292,11 @@ export function BacklogPage() {
   // Chuyển sprint (sprintId = null → Backlog).
   function bulkMoveToSprint(sprintId: string | null) {
     void runBulk<{ id: string; sprintId: string | null; version: number }>(
-      (issue) => moveToSprint.mutateAsync({ id: issue.id, sprintId, version: issue.version }),
+      (issue) => bulkMoveToSprintMut.mutateAsync({ id: issue.id, sprintId, version: issue.version }),
       (issue) => ({ id: issue.id, sprintId: issue.sprintId ?? null, version: issue.version }),
       async (prev) => {
         await Promise.allSettled(
-          prev.map((p) => moveToSprint.mutateAsync({ id: p.id, sprintId: p.sprintId, version: p.version + 1 })),
+          prev.map((p) => bulkMoveToSprintMut.mutateAsync({ id: p.id, sprintId: p.sprintId, version: p.version + 1 })),
         );
       },
       'chuyển',

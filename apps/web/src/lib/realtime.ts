@@ -67,7 +67,7 @@ function patchDetail(qc: QueryClient, issueKey: string, fn: (old: IssueDto) => I
 const getList = (qc: QueryClient, projectId: string) =>
   qc.getQueryData<IssueDto[]>(keys.issues.byProject(projectId));
 
-/** issue:created — thêm vào đầu danh sách nếu chưa có (event dội về sau khi mình tự tạo thì bỏ qua). */
+/** issue:created — thêm vào CUỐI danh sách nếu chưa có (event dội về sau khi mình tự tạo thì bỏ qua). */
 export function applyIssueCreated(qc: QueryClient, issue: IssueDto) {
   patchList(qc, issue.projectId, (list) => (list.some((i) => i.id === issue.id) ? list : [...list, issue]));
 }
@@ -103,7 +103,15 @@ export function applyIssueMoved(qc: QueryClient, p: IssueMovedPayload) {
   const list = getList(qc, p.projectId);
   const cur = list?.find((i) => i.id === p.issueId);
   if (!list || !cur) {
+    // Không có trong danh sách (vd nằm ngoài 200 issue đầu) → chi tiết đang mở cũng có thể đã cũ.
     void qc.invalidateQueries({ queryKey: keys.issues.byProject(p.projectId) });
+    // Payload chỉ có issueId (không có mã) → tìm cache chi tiết theo id của dữ liệu đang giữ.
+    void qc.invalidateQueries({
+      predicate: (q) =>
+        q.queryKey[0] === keys.issues.all[0] &&
+        q.queryKey[1] === 'key' &&
+        (q.state.data as IssueDto | undefined)?.id === p.issueId,
+    });
     return;
   }
   if (p.version <= cur.version) return;

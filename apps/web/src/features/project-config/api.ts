@@ -110,7 +110,7 @@ export function useCreateComponent(projectId: string) {
     mutationFn: (input: ComponentCreateInput) =>
       api.post<Component>(`/projects/${projectId}/components`, input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.projectConfig.components(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -121,7 +121,7 @@ export function useUpdateComponent(projectId: string) {
     mutationFn: ({ id, patch }: { id: string; patch: ComponentUpdateInput }) =>
       api.patch<Component>(`/components/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.projectConfig.components(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -131,7 +131,7 @@ export function useDeleteComponent(projectId: string) {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/components/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.projectConfig.components(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -154,7 +154,7 @@ export function useCreateVersion(projectId: string) {
     mutationFn: (input: VersionCreateInput) =>
       api.post<Version>(`/projects/${projectId}/versions`, input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.projectConfig.versions(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -165,7 +165,7 @@ export function useUpdateVersion(projectId: string) {
     mutationFn: ({ id, patch }: { id: string; patch: VersionUpdateInput }) =>
       api.patch<Version>(`/versions/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.projectConfig.versions(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -175,7 +175,7 @@ export function useDeleteVersion(projectId: string) {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/versions/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.projectConfig.versions(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -197,7 +197,7 @@ export function useCreateLabel(projectId: string) {
     mutationFn: (input: LabelCreateInput) =>
       api.post<Label>(`/projects/${projectId}/labels`, input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.projectConfig.labels(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -208,7 +208,7 @@ export function useUpdateLabel(projectId: string) {
     mutationFn: ({ id, patch }: { id: string; patch: LabelUpdateInput }) =>
       api.patch<Label>(`/labels/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.projectConfig.labels(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -218,7 +218,7 @@ export function useDeleteLabel(projectId: string) {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/labels/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.projectConfig.labels(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -238,8 +238,8 @@ export function useImportJobs() {
 function invalidateAfterImport(qc: ReturnType<typeof useQueryClient>, projectId: string) {
   void qc.invalidateQueries({ queryKey: keys.projectConfig.importJobs });
   void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
-  void qc.invalidateQueries({ queryKey: keys.projectConfig.components(projectId) });
-  void qc.invalidateQueries({ queryKey: keys.projectConfig.labels(projectId) });
+  void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
+  void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
 }
 
 export function useImportCsv() {

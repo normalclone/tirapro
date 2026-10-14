@@ -51,9 +51,11 @@ export function useCompleteSprint(projectId: string) {
  * Di chuyển issue sang sprint khác (hoặc backlog khi sprintId === null).
  * Optimistic: cập nhật danh sách issues ngay, rollback nếu lỗi (vd OCC conflict).
  */
-export function useMoveToSprint(projectId: string) {
+/** `opts.silent`: tắt toast lỗi chung (gọi hàng loạt tự tổng kết lỗi). */
+export function useMoveToSprint(projectId: string, opts?: { silent?: boolean }) {
   const qc = useQueryClient();
   return useMutation({
+    meta: { silent: opts?.silent },
     mutationFn: (v: { id: string; sprintId: string | null; version: number }) =>
       api
         .patch<IssueDto>(`/issues/${v.id}`, { sprintId: v.sprintId, version: v.version })

@@ -145,9 +145,9 @@ export const keys = {
 
   triage: {
     all: ['triage'] as const,
-    inbox: (projectId: string) => ['triage-inbox', projectId] as const,
-    count: (projectId: string) => ['triage-count', projectId] as const,
-    duplicates: (projectId: string, q: string) => ['intake-duplicates', projectId, q] as const,
+    inbox: (projectId: string) => ['triage', 'inbox', projectId] as const,
+    count: (projectId: string) => ['triage', 'count', projectId] as const,
+    duplicates: (projectId: string, q: string) => ['triage', 'duplicates', projectId, q] as const,
   },
 
   dashboard: {
@@ -161,19 +161,23 @@ export const keys = {
     repositories: ['repositories'] as const,
   },
 
-  /** Cấu hình project (trang Cài đặt project). */
+  /**
+   * Nhãn/component/phiên bản của project có HAI cache (trang Cài đặt project và dropdown khi tạo/sửa issue).
+   * Cả hai chung tiền tố ['project-lookups', pid] → `projectMeta.all(pid)` làm mới cả hai sau khi sửa.
+   */
   projectConfig: {
-    components: (projectId: string) => ['components', projectId] as const,
-    versions: (projectId: string) => ['versions', projectId] as const,
-    labels: (projectId: string) => ['labels', projectId] as const,
+    components: (projectId: string) => ['project-lookups', projectId, 'config', 'components'] as const,
+    versions: (projectId: string) => ['project-lookups', projectId, 'config', 'versions'] as const,
+    labels: (projectId: string) => ['project-lookups', projectId, 'config', 'labels'] as const,
     importJobs: ['import-jobs'] as const,
   },
 
   /** Metadata dùng khi tạo/sửa issue (dropdown nhãn, component, phiên bản). */
   projectMeta: {
-    labels: (projectId: string) => ['project-labels', projectId] as const,
-    components: (projectId: string) => ['project-components', projectId] as const,
-    versions: (projectId: string) => ['project-versions', projectId] as const,
+    all: (projectId: string) => ['project-lookups', projectId] as const,
+    labels: (projectId: string) => ['project-lookups', projectId, 'labels'] as const,
+    components: (projectId: string) => ['project-lookups', projectId, 'components'] as const,
+    versions: (projectId: string) => ['project-lookups', projectId, 'versions'] as const,
   },
 
   guides: { screen: (screen: string) => ['guides', screen] as const },

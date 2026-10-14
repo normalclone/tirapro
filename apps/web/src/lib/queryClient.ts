@@ -19,6 +19,9 @@ declare module '@tanstack/react-query' {
  * hoặc try/catch quanh `mutateAsync`) thì bản chung bỏ qua. MutationCache chạy TRƯỚC các callback đó
  * nên phải chờ một tick (setTimeout 0) rồi mới kiểm tra. Mutation muốn hoàn toàn không toast thì
  * đặt `meta: { silent: true }`.
+ *
+ * CẢNH BÁO: một tick chỉ đủ cho callback đồng bộ/microtask. `onError`/`onSettled` nào làm I/O bất đồng bộ
+ * thật (await mạng, timer) rồi mới gọi `apiErrorMessage` sẽ bị toast đôi — hãy đặt `meta: { silent: true }`.
  */
 export const mutationCache = new MutationCache({
   onError: (error, _variables, _context, mutation) => {
