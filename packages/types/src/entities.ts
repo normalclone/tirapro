@@ -9,6 +9,7 @@ import type {
   DefaultAssigneeMode,
   FilterVisibility,
   IssueTypeKey,
+  MailStatus,
   NotificationType,
   ProjectType,
   RichTextFormat,
@@ -116,6 +117,41 @@ export interface AuthMeDto {
 export interface AuthTokensDto {
   accessToken: string;
   expiresIn: number;
+}
+
+/** Kết quả tạo lời mời; `acceptUrl` chỉ có khi MAIL_DRIVER=console (dev, chưa gửi thư thật). */
+export interface InviteCreatedDto {
+  inviteId: ID;
+  acceptUrl?: string;
+}
+
+/** Kết quả chấp nhận lời mời; `existingUser` = email đã có tài khoản (giữ mật khẩu cũ, chỉ gắn vào workspace). */
+export interface InviteAcceptedDto {
+  userId: ID;
+  workspaceId: ID;
+  existingUser: boolean;
+}
+
+/** Tuỳ chọn nhận thông báo qua email (lưu ở `User.settings.notifications.email`). */
+export interface NotificationEmailPrefs {
+  mention: boolean;
+  assigned: boolean;
+  comment: boolean;
+  transition: boolean;
+}
+
+/** Một dòng trong hộp thư đi (admin xem thư lỗi). Không kèm nội dung thư vì có thể chứa liên kết còn hiệu lực. */
+export interface MailOutboxItemDto {
+  id: ID;
+  to: string;
+  subject: string;
+  template: string;
+  status: MailStatus;
+  attempts: number;
+  lastError: string | null;
+  scheduledAt: ISODate;
+  sentAt: ISODate | null;
+  createdAt: ISODate;
 }
 
 export interface ProjectDto {

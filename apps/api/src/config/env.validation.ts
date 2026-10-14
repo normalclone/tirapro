@@ -60,6 +60,17 @@ export const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional().default(''),
   OPENAI_EMBEDDINGS_MODEL: z.string().default('text-embedding-3-small'),
 
+  // ---- Email ----
+  // console = ghi thư ra log (dev, chưa gửi thật); smtp = khung, chưa gửi được (chưa cài nodemailer).
+  MAIL_DRIVER: z.enum(['console', 'smtp']).default('console'),
+  MAIL_FROM: z.string().default('Tirapro <no-reply@tirapro.local>'),
+  // Gốc URL của web — dùng dựng liên kết trong thư (mời, đặt lại mật khẩu). Không có dấu "/" cuối.
+  APP_WEB_URL: z.string().url('APP_WEB_URL phải là URL hợp lệ, vd http://localhost:5173').default('http://localhost:5173'),
+  SMTP_HOST: z.string().optional().default(''),
+  SMTP_PORT: z.coerce.number().int().default(587),
+  SMTP_USER: z.string().optional().default(''),
+  SMTP_PASS: z.string().optional().default(''),
+
   THROTTLE_TTL: z.coerce.number().int().default(60),
   THROTTLE_LIMIT: z.coerce.number().int().default(100),
 

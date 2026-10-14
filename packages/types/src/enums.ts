@@ -344,3 +344,11 @@ export const TimeOffKind = {
   OTHER: 'OTHER',
 } as const;
 export type TimeOffKind = (typeof TimeOffKind)[keyof typeof TimeOffKind];
+
+export const MailStatus = {
+  PENDING: 'PENDING',
+  SENDING: 'SENDING',
+  SENT: 'SENT',
+  FAILED: 'FAILED',
+} as const;
+export type MailStatus = (typeof MailStatus)[keyof typeof MailStatus];
