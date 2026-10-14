@@ -19,7 +19,7 @@ import { changePasswordSchema, type ChangePasswordInput } from '@tirapro/shared'
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { UsersService } from './users.service';
@@ -31,9 +31,8 @@ export class UsersController {
 
   /** Danh sách thành viên workspace hiện tại (picker assignee/@mention). */
   @Get()
-  async list(@CurrentUser() user: AuthUser, @Query('search') search?: string) {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return this.users.listWorkspaceMembers(user.workspaceId, search);
+  async list(@WorkspaceId() workspaceId: string, @Query('search') search?: string) {
+    return this.users.listWorkspaceMembers(workspaceId, search);
   }
 
   /** Toàn bộ user trong hệ thống (pool do admin hệ thống quản trị) — để thêm thành viên. */

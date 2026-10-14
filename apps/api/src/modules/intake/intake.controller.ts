@@ -2,9 +2,9 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { IntakeService } from './intake.service';
 import { reportIssueSchema, type ReportIssueInput } from './intake.schema';
@@ -14,26 +14,21 @@ import { reportIssueSchema, type ReportIssueInput } from './intake.schema';
 export class IntakeController {
   constructor(private readonly intake: IntakeService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   @Permissions(PERMISSIONS.ISSUE_CREATE)
   @Post('report')
   async report(
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(reportIssueSchema)) dto: ReportIssueInput,
   ) {
-    return this.intake.report(this.ws(user), user.id, dto);
+    return this.intake.report(workspaceId, user.id, dto);
   }
 
   @Get('duplicates')
   async duplicates(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Query('projectId') projectId: string,
     @Query('summary') summary: string,
   ) {
-    return this.intake.findDuplicates(this.ws(user), projectId ?? '', summary ?? '');
+    return this.intake.findDuplicates(workspaceId, projectId ?? '', summary ?? '');
   }
 }

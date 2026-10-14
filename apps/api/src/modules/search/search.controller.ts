@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import type { AuthUser } from '../../common/types/request';
 import { SearchService } from './search.service';
 
@@ -10,27 +10,22 @@ import { SearchService } from './search.service';
 export class SearchController {
   constructor(private readonly search: SearchService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   @Get()
   async run(
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
     @Query('jql') jql?: string,
     @Query('projectId') projectId?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
     const lim = Math.min(Math.max(Number(limit) || 50, 1), 200);
-    return this.search.search(this.ws(user), user.id, { jql, projectId, cursor, limit: lim });
+    return this.search.search(workspaceId, user.id, { jql, projectId, cursor, limit: lim });
   }
 
   /** Danh mục giá trị cho bộ dựng truy vấn trực quan (type/status/priority/sprint/label/resolution). */
   @Get('fields')
-  async fields(@CurrentUser() user: AuthUser) {
-    return this.search.fields(this.ws(user));
+  async fields(@WorkspaceId() workspaceId: string) {
+    return this.search.fields(workspaceId);
   }
 
   @Post('validate')

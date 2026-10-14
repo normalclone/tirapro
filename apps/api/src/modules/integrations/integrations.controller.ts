@@ -4,9 +4,9 @@ import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
 import { IntegrationType } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { IntegrationsService } from './integrations.service';
 
@@ -31,64 +31,59 @@ export type AddChannelBody = z.infer<typeof addChannelSchema>;
 export class IntegrationsController {
   constructor(private readonly integrations: IntegrationsService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   /** Liệt kê integration (đã ẩn token). Không cần quyền quản lý — chỉ đọc. */
   @Get()
-  async list(@CurrentUser() user: AuthUser, @Query('type') type?: string) {
+  async list(@WorkspaceId() workspaceId: string, @Query('type') type?: string) {
     const parsed = type && type in IntegrationType ? (type as IntegrationType) : undefined;
-    return this.integrations.list(this.ws(user), parsed);
+    return this.integrations.list(workspaceId, parsed);
   }
 
   /** Tạo integration Telegram. */
   @Post('telegram')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async createTelegram(
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(createTelegramSchema)) body: CreateTelegramBody,
   ) {
-    return this.integrations.createTelegram(this.ws(user), user.id, body);
+    return this.integrations.createTelegram(workspaceId, user.id, body);
   }
 
   /** Xóa integration (cascade kênh). */
   @Delete(':id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.integrations.remove(this.ws(user), id);
+  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.integrations.remove(workspaceId, id);
   }
 
   /** Liệt kê kênh của một integration. */
   @Get(':id/channels')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async listChannels(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.integrations.listChannels(this.ws(user), id);
+  async listChannels(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.integrations.listChannels(workspaceId, id);
   }
 
   /** Thêm kênh vào integration. */
   @Post(':id/channels')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async addChannel(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(addChannelSchema)) body: AddChannelBody,
   ) {
-    return this.integrations.addChannel(this.ws(user), id, body);
+    return this.integrations.addChannel(workspaceId, id, body);
   }
 
   /** Xóa một kênh. */
   @Delete('channels/:channelId')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async removeChannel(@CurrentUser() user: AuthUser, @Param('channelId') channelId: string) {
-    return this.integrations.removeChannel(this.ws(user), channelId);
+  async removeChannel(@WorkspaceId() workspaceId: string, @Param('channelId') channelId: string) {
+    return this.integrations.removeChannel(workspaceId, channelId);
   }
 
   /** Gửi tin nhắn kiểm tra tới mọi kênh đang bật. */
   @Post(':id/test')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async test(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.integrations.test(this.ws(user), id);
+  async test(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.integrations.test(workspaceId, id);
   }
 }

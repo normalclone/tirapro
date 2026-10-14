@@ -4,6 +4,7 @@ export * from './decorators/current-user.decorator';
 export * from './decorators/public.decorator';
 export * from './decorators/optional-auth.decorator';
 export * from './decorators/permissions.decorator';
+export * from './decorators/workspace-id.decorator';
 export * from './dto/page-result';
 export * from './dto/pagination.dto';
 export * from './interceptors/response.interceptor';

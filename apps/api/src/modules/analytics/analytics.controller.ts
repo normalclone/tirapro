@@ -1,11 +1,10 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
-import { ForbiddenAppException, BusinessRuleException } from '../../common/exceptions/app.exception';
-import type { AuthUser } from '../../common/types/request';
+import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { AnalyticsService } from './analytics.service';
 
 @ApiTags('reports')
@@ -13,69 +12,64 @@ import { AnalyticsService } from './analytics.service';
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   /** Tổng hợp toàn workspace cho Tổng quan của admin (mọi dự án). */
   @Get('overview')
   @Permissions(PERMISSIONS.REPORT_VIEW)
-  async overview(@CurrentUser() user: AuthUser) {
-    return this.analytics.workspaceOverview(this.ws(user));
+  async overview(@WorkspaceId() workspaceId: string) {
+    return this.analytics.workspaceOverview(workspaceId);
   }
 
   /** Báo cáo tổng hợp một dự án (phân bố trạng thái/loại/ưu tiên/người phụ trách). */
   @ProjectRef('query', 'projectId')
   @Get('project')
   @Permissions(PERMISSIONS.REPORT_VIEW)
-  async projectReport(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
+  async projectReport(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
-    return this.analytics.projectReport(this.ws(user), projectId);
+    return this.analytics.projectReport(workspaceId, projectId);
   }
 
   @Get('burndown')
   @Permissions(PERMISSIONS.REPORT_VIEW)
-  async burndown(@CurrentUser() user: AuthUser, @Query('sprintId') sprintId?: string) {
+  async burndown(@WorkspaceId() workspaceId: string, @Query('sprintId') sprintId?: string) {
     if (!sprintId) throw new BusinessRuleException('Thiếu sprintId');
-    return this.analytics.burndown(this.ws(user), sprintId);
+    return this.analytics.burndown(workspaceId, sprintId);
   }
 
   @ProjectRef('query', 'projectId')
   @Get('velocity')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async velocity(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Query('projectId') projectId?: string,
     @Query('limit') limit?: string,
   ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
-    return this.analytics.velocity(this.ws(user), projectId, Number(limit) || 8);
+    return this.analytics.velocity(workspaceId, projectId, Number(limit) || 8);
   }
 
   @ProjectRef('query', 'projectId')
   @Get('cfd')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async cfd(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Query('projectId') projectId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
-    return this.analytics.cfd(this.ws(user), projectId, from, to);
+    return this.analytics.cfd(workspaceId, projectId, from, to);
   }
 
   @ProjectRef('query', 'projectId')
   @Get('created-resolved')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async createdResolved(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Query('projectId') projectId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
-    return this.analytics.createdResolved(this.ws(user), projectId, from, to);
+    return this.analytics.createdResolved(workspaceId, projectId, from, to);
   }
 }

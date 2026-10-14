@@ -1,9 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
-import type { AuthUser } from '../../common/types/request';
 import { BoardsService } from './boards.service';
 
 @ApiTags('boards')
@@ -11,19 +9,14 @@ import { BoardsService } from './boards.service';
 export class BoardsController {
   constructor(private readonly boards: BoardsService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   @Get()
-  async list(@CurrentUser() user: AuthUser, @Query('projectId') projectId: string) {
-    return this.boards.listForProject(this.ws(user), projectId);
+  async list(@WorkspaceId() workspaceId: string, @Query('projectId') projectId: string) {
+    return this.boards.listForProject(workspaceId, projectId);
   }
 
   @ProjectRef('board', 'id')
   @Get(':id')
-  async get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.boards.get(this.ws(user), id);
+  async get(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.boards.get(workspaceId, id);
   }
 }

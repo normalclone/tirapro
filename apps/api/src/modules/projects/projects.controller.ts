@@ -16,9 +16,9 @@ import { createProjectSchema, type CreateProjectInput } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { ProjectsService } from './projects.service';
 
@@ -28,31 +28,28 @@ export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
 
   @Get()
-  async list(@CurrentUser() user: AuthUser) {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return this.projects.list(user.workspaceId);
+  async list(@WorkspaceId() workspaceId: string) {
+    return this.projects.list(workspaceId);
   }
 
   @Permissions(PERMISSIONS.PROJECT_CREATE)
   @Post()
   async create(
+    @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createProjectSchema)) dto: CreateProjectInput,
   ) {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return this.projects.create(user.workspaceId, user.id, dto);
+    return this.projects.create(workspaceId, user.id, dto);
   }
 
   @Get(':key')
-  async getByKey(@CurrentUser() user: AuthUser, @Param('key') key: string) {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return this.projects.getByKey(user.workspaceId, key.toUpperCase());
+  async getByKey(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
+    return this.projects.getByKey(workspaceId, key.toUpperCase());
   }
 
   @Get(':key/meta')
-  async meta(@CurrentUser() user: AuthUser, @Param('key') key: string) {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return this.projects.meta(user.workspaceId, key.toUpperCase());
+  async meta(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
+    return this.projects.meta(workspaceId, key.toUpperCase());
   }
 
   /** Tải ảnh đại diện project (cần quyền quản trị project). */
@@ -62,21 +59,19 @@ export class ProjectsController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async uploadAvatar(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('key') key: string,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request,
   ) {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return this.projects.setAvatar(user.workspaceId, key.toUpperCase(), file, req);
+    return this.projects.setAvatar(workspaceId, key.toUpperCase(), file, req);
   }
 
   /** Gỡ ảnh đại diện project. */
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('projectKey', 'key')
   @Delete(':key/avatar')
-  async removeAvatar(@CurrentUser() user: AuthUser, @Param('key') key: string) {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return this.projects.clearAvatar(user.workspaceId, key.toUpperCase());
+  async removeAvatar(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
+    return this.projects.clearAvatar(workspaceId, key.toUpperCase());
   }
 }

@@ -3,10 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { z } from 'zod';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { TriageService } from './triage.service';
 
@@ -33,20 +33,15 @@ type SnoozeInput = z.infer<typeof snoozeSchema>;
 export class TriageController {
   constructor(private readonly triage: TriageService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   @Get()
   async inbox(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Query('projectId') projectId?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
     return this.triage.inbox(
-      this.ws(user),
+      workspaceId,
       projectId,
       cursor,
       Math.min(Math.max(Number(limit) || 50, 1), 100),
@@ -54,40 +49,40 @@ export class TriageController {
   }
 
   @Get('count')
-  async count(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
-    return this.triage.count(this.ws(user), projectId);
+  async count(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
+    return this.triage.count(workspaceId, projectId);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Post(':issueId/accept')
   async accept(
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(acceptSchema)) dto: AcceptInput,
   ) {
-    return this.triage.accept(this.ws(user), user.id, issueId, dto);
+    return this.triage.accept(workspaceId, user.id, issueId, dto);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Post(':issueId/decline')
   async decline(
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(declineSchema)) dto: DeclineInput,
   ) {
-    return this.triage.decline(this.ws(user), user.id, issueId, dto);
+    return this.triage.decline(workspaceId, user.id, issueId, dto);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Post(':issueId/snooze')
   async snooze(
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(snoozeSchema)) dto: SnoozeInput,
   ) {
-    return this.triage.snooze(this.ws(user), user.id, issueId, dto);
+    return this.triage.snooze(workspaceId, user.id, issueId, dto);
   }
 }

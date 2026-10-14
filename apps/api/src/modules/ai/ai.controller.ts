@@ -4,10 +4,10 @@ import { Throttle } from '@nestjs/throttler';
 import { generateIssuesSchema, type GenerateIssuesInput } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { AiService } from './ai.service';
 
@@ -18,11 +18,6 @@ import { AiService } from './ai.service';
 export class AiController {
   constructor(private readonly ai: AiService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   /** Trạng thái khả dụng của AI (không cần quyền — chỉ báo bật/tắt). */
   @Get('capabilities')
   capabilities() {
@@ -32,23 +27,23 @@ export class AiController {
   @Post('generate-issues')
   @Permissions(PERMISSIONS.AI_USE)
   async generateIssues(
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(generateIssuesSchema)) dto: GenerateIssuesInput,
   ) {
-    return this.ai.generateIssues(this.ws(user), user.id, dto);
+    return this.ai.generateIssues(workspaceId, user.id, dto);
   }
 
   @ProjectRef('issue', 'id')
   @Post('issues/:id/summary')
   @Permissions(PERMISSIONS.AI_USE)
-  async summarize(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.ai.summarizeIssue(this.ws(user), user.id, id);
+  async summarize(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.ai.summarizeIssue(workspaceId, user.id, id);
   }
 
   @ProjectRef('issue', 'id')
   @Post('issues/:id/suggest')
   @Permissions(PERMISSIONS.AI_USE)
-  async suggest(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.ai.suggest(this.ws(user), user.id, id);
+  async suggest(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.ai.suggest(workspaceId, user.id, id);
   }
 }

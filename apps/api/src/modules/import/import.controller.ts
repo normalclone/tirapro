@@ -3,9 +3,9 @@ import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { ImportService } from './import.service';
 
@@ -34,39 +34,34 @@ export type ImportJsonBody = z.infer<typeof importJsonSchema>;
 export class ImportController {
   constructor(private readonly importService: ImportService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   /** Import issue từ CSV vào một project sẵn có. */
   @Post('csv')
   @Permissions(PERMISSIONS.IMPORT_RUN)
   async importCsv(
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(importCsvSchema)) body: ImportCsvBody,
   ) {
-    return this.importService.importCsv(this.ws(user), user.id, body);
+    return this.importService.importCsv(workspaceId, user.id, body);
   }
 
   /** Import từ bản export JSON (round-trip với Export module) vào một project sẵn có. */
   @Post('json')
   @Permissions(PERMISSIONS.IMPORT_RUN)
   async importJson(
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(importJsonSchema)) body: ImportJsonBody,
   ) {
-    return this.importService.importJson(this.ws(user), user.id, body);
+    return this.importService.importJson(workspaceId, user.id, body);
   }
 
   /** Lịch sử các lần import của workspace (mới nhất trước). */
   @Get('jobs')
   @Permissions(PERMISSIONS.IMPORT_RUN)
   async listJobs(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.importService.listJobs(this.ws(user), cursor, Number(limit) || 20);
+    return this.importService.listJobs(workspaceId, cursor, Number(limit) || 20);
   }
 }

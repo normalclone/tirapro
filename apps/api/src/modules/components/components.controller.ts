@@ -2,11 +2,9 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { ApiTags } from '@nestjs/swagger';
 import { FixVersionType, VersionStatus } from '@tirapro/types';
 import { z } from 'zod';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
-import type { AuthUser } from '../../common/types/request';
 import { ComponentsService } from './components.service';
 
 // ============================ SCHEMAS — COMPONENTS ==========================
@@ -78,40 +76,35 @@ type AttachVersionDto = z.infer<typeof attachVersionSchema>;
 export class ComponentsController {
   constructor(private readonly components: ComponentsService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   // ============================ COMPONENTS ==================================
 
   @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/components')
   async listComponents(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('projectId') projectId: string,
   ) {
-    return this.components.listComponents(this.ws(user), projectId);
+    return this.components.listComponents(workspaceId, projectId);
   }
 
   @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/components')
   async createComponent(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(createComponentSchema)) dto: CreateComponentDto,
   ) {
-    return this.components.createComponent(this.ws(user), projectId, dto);
+    return this.components.createComponent(workspaceId, projectId, dto);
   }
 
   @ProjectRef('component', 'id')
   @Patch('components/:id')
   async updateComponent(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateComponentSchema)) dto: UpdateComponentDto,
   ) {
-    return this.components.updateComponent(this.ws(user), id, {
+    return this.components.updateComponent(workspaceId, id, {
       name: dto.name,
       description: dto.description,
       leadId: dto.leadId ?? undefined,
@@ -120,28 +113,28 @@ export class ComponentsController {
 
   @ProjectRef('component', 'id')
   @Delete('components/:id')
-  async removeComponent(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.components.removeComponent(this.ws(user), id);
+  async removeComponent(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.components.removeComponent(workspaceId, id);
   }
 
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/components')
   async attachComponent(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(attachComponentSchema)) dto: AttachComponentDto,
   ) {
-    return this.components.attachComponent(this.ws(user), issueId, dto.componentId);
+    return this.components.attachComponent(workspaceId, issueId, dto.componentId);
   }
 
   @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/components/:componentId')
   async detachComponent(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('issueId') issueId: string,
     @Param('componentId') componentId: string,
   ) {
-    return this.components.detachComponent(this.ws(user), issueId, componentId);
+    return this.components.detachComponent(workspaceId, issueId, componentId);
   }
 
   // ============================ VERSIONS ====================================
@@ -149,56 +142,56 @@ export class ComponentsController {
   @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/versions')
   async listVersions(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('projectId') projectId: string,
   ) {
-    return this.components.listVersions(this.ws(user), projectId);
+    return this.components.listVersions(workspaceId, projectId);
   }
 
   @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/versions')
   async createVersion(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(createVersionSchema)) dto: CreateVersionDto,
   ) {
-    return this.components.createVersion(this.ws(user), projectId, dto);
+    return this.components.createVersion(workspaceId, projectId, dto);
   }
 
   @ProjectRef('version', 'id')
   @Patch('versions/:id')
   async updateVersion(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateVersionSchema)) dto: UpdateVersionDto,
   ) {
-    return this.components.updateVersion(this.ws(user), id, dto);
+    return this.components.updateVersion(workspaceId, id, dto);
   }
 
   @ProjectRef('version', 'id')
   @Delete('versions/:id')
-  async removeVersion(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.components.removeVersion(this.ws(user), id);
+  async removeVersion(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.components.removeVersion(workspaceId, id);
   }
 
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/versions')
   async attachVersion(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(attachVersionSchema)) dto: AttachVersionDto,
   ) {
-    return this.components.attachVersion(this.ws(user), issueId, dto.versionId, dto.type);
+    return this.components.attachVersion(workspaceId, issueId, dto.versionId, dto.type);
   }
 
   @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/versions/:versionId/:type')
   async detachVersion(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('issueId') issueId: string,
     @Param('versionId') versionId: string,
     @Param('type', new ZodValidationPipe(fixVersionTypeSchema)) type: FixVersionType,
   ) {
-    return this.components.detachVersion(this.ws(user), issueId, versionId, type);
+    return this.components.detachVersion(workspaceId, issueId, versionId, type);
   }
 }
