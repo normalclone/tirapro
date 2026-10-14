@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -59,6 +60,7 @@ export class SlaController {
   }
 
   /** Trạng thái SLA của 1 issue (hiển thị badge trên trang chi tiết). */
+  @ProjectRef('issue', 'issueId')
   @Get('issue/:issueId')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   async forIssue(@CurrentUser() user: AuthUser, @Param('issueId') issueId: string) {

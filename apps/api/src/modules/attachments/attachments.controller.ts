@@ -14,6 +14,7 @@ import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
@@ -30,6 +31,7 @@ export class AttachmentsController {
     return user.workspaceId;
   }
 
+  @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/attachments')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ApiConsumes('multipart/form-data')
@@ -42,11 +44,13 @@ export class AttachmentsController {
     return this.attachments.upload(this.ws(user), user.id, issueId, file);
   }
 
+  @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/attachments')
   async list(@CurrentUser() user: AuthUser, @Param('issueId') issueId: string) {
     return this.attachments.list(this.ws(user), issueId);
   }
 
+  @ProjectRef('attachment', 'id')
   @Get('attachments/:id/download')
   async download(
     @CurrentUser() user: AuthUser,
@@ -62,6 +66,7 @@ export class AttachmentsController {
     return new StreamableFile(stream);
   }
 
+  @ProjectRef('attachment', 'id')
   @Delete('attachments/:id')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {

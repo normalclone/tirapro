@@ -5,6 +5,7 @@ import { generateIssuesSchema, type GenerateIssuesInput } from '@tirapro/shared'
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
@@ -37,12 +38,14 @@ export class AiController {
     return this.ai.generateIssues(this.ws(user), user.id, dto);
   }
 
+  @ProjectRef('issue', 'id')
   @Post('issues/:id/summary')
   @Permissions(PERMISSIONS.AI_USE)
   async summarize(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.ai.summarizeIssue(this.ws(user), user.id, id);
   }
 
+  @ProjectRef('issue', 'id')
   @Post('issues/:id/suggest')
   @Permissions(PERMISSIONS.AI_USE)
   async suggest(@CurrentUser() user: AuthUser, @Param('id') id: string) {

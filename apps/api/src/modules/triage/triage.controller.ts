@@ -4,6 +4,7 @@ import { PERMISSIONS } from '@tirapro/types';
 import { z } from 'zod';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
@@ -58,6 +59,7 @@ export class TriageController {
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @ProjectRef('issue', 'issueId')
   @Post(':issueId/accept')
   async accept(
     @CurrentUser() user: AuthUser,
@@ -68,6 +70,7 @@ export class TriageController {
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @ProjectRef('issue', 'issueId')
   @Post(':issueId/decline')
   async decline(
     @CurrentUser() user: AuthUser,
@@ -78,6 +81,7 @@ export class TriageController {
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @ProjectRef('issue', 'issueId')
   @Post(':issueId/snooze')
   async snooze(
     @CurrentUser() user: AuthUser,

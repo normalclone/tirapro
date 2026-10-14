@@ -16,6 +16,7 @@ import { createProjectSchema, type CreateProjectInput } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
@@ -56,6 +57,7 @@ export class ProjectsController {
 
   /** Tải ảnh đại diện project (cần quyền quản trị project). */
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  @ProjectRef('projectKey', 'key')
   @Post(':key/avatar')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
@@ -71,6 +73,7 @@ export class ProjectsController {
 
   /** Gỡ ảnh đại diện project. */
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  @ProjectRef('projectKey', 'key')
   @Delete(':key/avatar')
   async removeAvatar(@CurrentUser() user: AuthUser, @Param('key') key: string) {
     if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');

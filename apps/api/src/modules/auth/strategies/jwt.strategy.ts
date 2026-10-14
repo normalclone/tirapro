@@ -28,6 +28,19 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (!user || user.status === 'DEACTIVATED') {
       throw new UnauthorizedException('Tài khoản không hợp lệ');
     }
+    // Kiểm tra membership MỖI request (PK lookup rẻ): token còn hạn nhưng đã bị gỡ khỏi
+    // workspace thì không được tiếp tục dùng. System admin được miễn.
+    if (payload.workspaceId && !user.isSystemAdmin) {
+      const membership = await this.prisma.workspaceMembership.findUnique({
+        where: { workspaceId_userId: { workspaceId: payload.workspaceId, userId: user.id } },
+        select: { id: true },
+      });
+      if (!membership) {
+        throw new UnauthorizedException(
+          'Bạn không còn là thành viên của không gian làm việc này — hãy đăng nhập lại để chọn không gian khác',
+        );
+      }
+    }
     return {
       id: user.id,
       email: user.email,

@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -24,12 +25,14 @@ export class AutomationController {
 
   /* ------------------------------ Mẫu issue ------------------------------ */
 
+  @ProjectRef('query', 'projectId')
   @Get('templates')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async listTemplates(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
     return this.automation.listTemplates(this.ws(user), projectId);
   }
 
+  @ProjectRef('automationTemplate', 'id')
   @Get('templates/:id')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async getTemplate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -45,6 +48,7 @@ export class AutomationController {
     return this.automation.createTemplate(this.ws(user), dto, user.id);
   }
 
+  @ProjectRef('automationTemplate', 'id')
   @Put('templates/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async updateTemplate(
@@ -55,6 +59,7 @@ export class AutomationController {
     return this.automation.updateTemplate(this.ws(user), id, dto, user.id);
   }
 
+  @ProjectRef('automationTemplate', 'id')
   @Delete('templates/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async removeTemplate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -63,12 +68,14 @@ export class AutomationController {
 
   /* ---------------------------- Việc lặp lại ----------------------------- */
 
+  @ProjectRef('query', 'projectId')
   @Get('recurring')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async listRecurring(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
     return this.automation.listRecurring(this.ws(user), projectId);
   }
 
+  @ProjectRef('recurringIssue', 'id')
   @Get('recurring/:id')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async getRecurring(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -84,6 +91,7 @@ export class AutomationController {
     return this.automation.createRecurring(this.ws(user), dto, user.id);
   }
 
+  @ProjectRef('recurringIssue', 'id')
   @Put('recurring/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async updateRecurring(
@@ -95,12 +103,14 @@ export class AutomationController {
   }
 
   /** Tạo issue ngay lập tức từ việc lặp lại (không dời lịch chạy kế tiếp). */
+  @ProjectRef('recurringIssue', 'id')
   @Post('recurring/:id/run-now')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async runNow(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.automation.runNow(this.ws(user), id, user.id);
   }
 
+  @ProjectRef('recurringIssue', 'id')
   @Delete('recurring/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async removeRecurring(@CurrentUser() user: AuthUser, @Param('id') id: string) {

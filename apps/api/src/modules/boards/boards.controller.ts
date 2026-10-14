@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { BoardsService } from './boards.service';
@@ -20,6 +21,7 @@ export class BoardsController {
     return this.boards.listForProject(this.ws(user), projectId);
   }
 
+  @ProjectRef('board', 'id')
   @Get(':id')
   async get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.boards.get(this.ws(user), id);

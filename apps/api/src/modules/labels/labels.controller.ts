@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
@@ -42,11 +43,13 @@ export class LabelsController {
     return user.workspaceId;
   }
 
+  @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/labels')
   async list(@CurrentUser() user: AuthUser, @Param('projectId') projectId: string) {
     return this.labels.list(this.ws(user), projectId);
   }
 
+  @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/labels')
   async create(
     @CurrentUser() user: AuthUser,
@@ -56,6 +59,7 @@ export class LabelsController {
     return this.labels.create(this.ws(user), projectId, dto);
   }
 
+  @ProjectRef('label', 'id')
   @Patch('labels/:id')
   async update(
     @CurrentUser() user: AuthUser,
@@ -65,11 +69,13 @@ export class LabelsController {
     return this.labels.update(this.ws(user), id, dto);
   }
 
+  @ProjectRef('label', 'id')
   @Delete('labels/:id')
   async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.labels.remove(this.ws(user), id);
   }
 
+  @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/labels')
   async attach(
     @CurrentUser() user: AuthUser,
@@ -79,6 +85,7 @@ export class LabelsController {
     return this.labels.attach(this.ws(user), issueId, dto.labelId);
   }
 
+  @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/labels/:labelId')
   async detach(
     @CurrentUser() user: AuthUser,

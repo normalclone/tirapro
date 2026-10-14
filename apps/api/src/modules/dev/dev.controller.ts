@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
@@ -51,6 +52,7 @@ export class DevController {
   }
 
   /** Gỡ kết nối một repository. */
+  @ProjectRef('repository', 'id')
   @Delete('dev/repositories/:id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async removeRepository(@CurrentUser() user: AuthUser, @Param('id') id: string) {

@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { FixVersionType, VersionStatus } from '@tirapro/types';
 import { z } from 'zod';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
@@ -84,6 +85,7 @@ export class ComponentsController {
 
   // ============================ COMPONENTS ==================================
 
+  @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/components')
   async listComponents(
     @CurrentUser() user: AuthUser,
@@ -92,6 +94,7 @@ export class ComponentsController {
     return this.components.listComponents(this.ws(user), projectId);
   }
 
+  @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/components')
   async createComponent(
     @CurrentUser() user: AuthUser,
@@ -101,6 +104,7 @@ export class ComponentsController {
     return this.components.createComponent(this.ws(user), projectId, dto);
   }
 
+  @ProjectRef('component', 'id')
   @Patch('components/:id')
   async updateComponent(
     @CurrentUser() user: AuthUser,
@@ -114,11 +118,13 @@ export class ComponentsController {
     });
   }
 
+  @ProjectRef('component', 'id')
   @Delete('components/:id')
   async removeComponent(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.components.removeComponent(this.ws(user), id);
   }
 
+  @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/components')
   async attachComponent(
     @CurrentUser() user: AuthUser,
@@ -128,6 +134,7 @@ export class ComponentsController {
     return this.components.attachComponent(this.ws(user), issueId, dto.componentId);
   }
 
+  @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/components/:componentId')
   async detachComponent(
     @CurrentUser() user: AuthUser,
@@ -139,6 +146,7 @@ export class ComponentsController {
 
   // ============================ VERSIONS ====================================
 
+  @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/versions')
   async listVersions(
     @CurrentUser() user: AuthUser,
@@ -147,6 +155,7 @@ export class ComponentsController {
     return this.components.listVersions(this.ws(user), projectId);
   }
 
+  @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/versions')
   async createVersion(
     @CurrentUser() user: AuthUser,
@@ -156,6 +165,7 @@ export class ComponentsController {
     return this.components.createVersion(this.ws(user), projectId, dto);
   }
 
+  @ProjectRef('version', 'id')
   @Patch('versions/:id')
   async updateVersion(
     @CurrentUser() user: AuthUser,
@@ -165,11 +175,13 @@ export class ComponentsController {
     return this.components.updateVersion(this.ws(user), id, dto);
   }
 
+  @ProjectRef('version', 'id')
   @Delete('versions/:id')
   async removeVersion(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.components.removeVersion(this.ws(user), id);
   }
 
+  @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/versions')
   async attachVersion(
     @CurrentUser() user: AuthUser,
@@ -179,6 +191,7 @@ export class ComponentsController {
     return this.components.attachVersion(this.ws(user), issueId, dto.versionId, dto.type);
   }
 
+  @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/versions/:versionId/:type')
   async detachVersion(
     @CurrentUser() user: AuthUser,

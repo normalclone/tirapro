@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -23,6 +24,7 @@ export class RaidController {
     return user.workspaceId;
   }
 
+  @ProjectRef('query', 'projectId')
   @Get()
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   async list(
@@ -35,6 +37,7 @@ export class RaidController {
     return this.raid.list(this.ws(user), { kind, status, projectId, ownerId });
   }
 
+  @ProjectRef('raid', 'id')
   @Get(':id')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   async get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -50,6 +53,7 @@ export class RaidController {
     return this.raid.create(this.ws(user), dto, user.id);
   }
 
+  @ProjectRef('raid', 'id')
   @Put(':id')
   @Permissions(PERMISSIONS.RISK_MANAGE)
   async update(
@@ -60,6 +64,7 @@ export class RaidController {
     return this.raid.update(this.ws(user), id, dto);
   }
 
+  @ProjectRef('raid', 'id')
   @Delete(':id')
   @Permissions(PERMISSIONS.RISK_MANAGE)
   async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
