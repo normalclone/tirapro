@@ -3,6 +3,7 @@ import { Building2, ChevronDown, ChevronRight, FolderPlus, Mail, Pencil, Phone, 
 import { toast } from 'sonner';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
@@ -269,6 +270,7 @@ function ClientCard({
 export function ClientsPage() {
   const canManage = useAuth((s) => s.can('client:manage'));
   const { data: clients, isLoading } = useClients();
+  const confirm = useConfirm();
   const removeClient = useDeleteClient();
   const removeContract = useDeleteContract();
 
@@ -288,17 +290,25 @@ export function ClientsPage() {
 
   function openCreate() { setEditing(null); setEditorOpen(true); }
 
-  function handleDeleteClient(c: ClientDto) {
+  async function handleDeleteClient(c: ClientDto) {
     const warn = c.contractCount > 0 ? ` ${c.contractCount} hợp đồng của khách hàng này sẽ bị xoá theo.` : '';
-    if (!window.confirm(`Xoá khách hàng “${c.name}”?${warn} Các dự án vẫn giữ nguyên, chỉ bỏ liên kết với khách hàng.`)) return;
+    if (!(await confirm({
+      title: `Xoá khách hàng “${c.name}”?`,
+      description: `${warn} Các dự án vẫn giữ nguyên, chỉ bỏ liên kết với khách hàng.`.trim(),
+      destructive: true,
+    }))) return;
     removeClient.mutate(c.id, {
       onError: (e) => toast.error(apiErrorMessage(e)),
       onSuccess: () => toast.success('Đã xoá khách hàng'),
     });
   }
 
-  function handleDeleteContract(client: ClientDto, contract: ContractDto) {
-    if (!window.confirm(`Xoá hợp đồng “${contract.name}”? Thao tác này không khôi phục được.`)) return;
+  async function handleDeleteContract(client: ClientDto, contract: ContractDto) {
+    if (!(await confirm({
+      title: `Xoá hợp đồng “${contract.name}”?`,
+      description: 'Thao tác này không khôi phục được.',
+      destructive: true,
+    }))) return;
     removeContract.mutate(
       { clientId: client.id, id: contract.id },
       { onError: (e) => toast.error(apiErrorMessage(e)), onSuccess: () => toast.success('Đã xoá hợp đồng') },
@@ -366,10 +376,10 @@ export function ClientsPage() {
               canManage={canManage}
               onEdit={() => { setEditing(c); setEditorOpen(true); }}
               onAssign={() => setAssigning(c)}
-              onDelete={() => handleDeleteClient(c)}
+              onDelete={() => void handleDeleteClient(c)}
               onAddContract={() => setContractCtx({ client: c, contract: null })}
               onEditContract={(contract) => setContractCtx({ client: c, contract })}
-              onDeleteContract={(contract) => handleDeleteContract(c, contract)}
+              onDeleteContract={(contract) => void handleDeleteContract(c, contract)}
             />
           ))}
         </div>
