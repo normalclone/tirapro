@@ -9,11 +9,12 @@ import {
   Plus,
   SearchX,
   Trash2,
-  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto, UserDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { pageContainer } from '@/components/layout/page';
@@ -67,6 +68,7 @@ export function FiltersPage() {
   const savedFilters = useSavedFilters();
   const createFilter = useCreateFilter();
   const deleteFilter = useDeleteFilter();
+  const confirm = useConfirm();
   const runFilter = useRunFilter();
 
   // Bản đồ projectId -> projectKey để điều hướng về bảng của issue.
@@ -110,7 +112,7 @@ export function FiltersPage() {
   }
 
   async function handleDelete(f: SavedFilter) {
-    if (!window.confirm(`Xoá bộ lọc "${f.name}"?`)) return;
+    if (!(await confirm({ title: `Xoá bộ lọc "${f.name}"?`, destructive: true }))) return;
     try {
       await deleteFilter.mutateAsync(f.id);
       toast.success('Đã xoá bộ lọc.');
@@ -399,14 +401,6 @@ function CreateFilterModal({
   const [visibility, setVisibility] = useState<FilterVisibility>('PRIVATE');
 
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    if (open) window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  useEffect(() => {
     if (!open) {
       setMode('simple');
       setJql('');
@@ -414,8 +408,6 @@ function CreateFilterModal({
       setVisibility('PRIVATE');
     }
   }, [open]);
-
-  if (!open) return null;
 
   const trimmedName = name.trim();
   const trimmedJql = jql.trim();
@@ -429,116 +421,99 @@ function CreateFilterModal({
   }
 
   return (
-    <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-[8vh]">
-      <button
-        className="absolute inset-0 bg-black/30 animate-in fade-in duration-200"
-        onClick={onClose}
-        aria-label="Đóng"
-      />
-      <div className="relative flex max-h-[84vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <FilterIcon className="h-4 w-4 text-primary" aria-hidden />
-          <span className="text-sm font-medium text-ink">Tạo bộ lọc</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="ml-auto"
-            onClick={onClose}
-            aria-label="Đóng"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </Button>
-        </header>
-
-        <form onSubmit={(e) => void submit(e)} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            <div className="flex items-center justify-between gap-2">
-              <Segmented
-                value={mode}
-                onChange={(v) => setMode(v as BuilderMode)}
-                options={[
-                  { value: 'simple', label: 'Đơn giản' },
-                  { value: 'jql', label: 'JQL' },
-                ]}
-              />
-              <span className="text-xs text-faint">
-                {mode === 'simple'
-                  ? 'Cho người mới — sinh JQL tự động'
-                  : 'Cho người thạo cú pháp'}
-              </span>
-            </div>
-
-            {mode === 'simple' ? (
-              <QueryBuilder value={jql} onChange={setJql} onEditAsJql={() => setMode('jql')} />
-            ) : (
-              <div className="flex flex-col gap-2">
-                <label htmlFor="create-jql" className="text-sm font-medium text-muted">
-                  Truy vấn JQL
-                </label>
-                <textarea
-                  id="create-jql"
-                  value={jql}
-                  onChange={(e) => setJql(e.target.value)}
-                  rows={3}
-                  placeholder={PLACEHOLDER}
-                  spellCheck={false}
-                  className={cn(
-                    'w-full resize-y rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-ink',
-                    'placeholder:text-faint transition-colors duration-150',
-                    'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                  )}
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-3 border-t border-border pt-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="create-name" className="mb-1.5 block text-sm font-medium text-muted">
-                  Tên bộ lọc
-                </label>
-                <Input
-                  id="create-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="VD: Việc của tôi tuần này"
-                  className="text-sm"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="create-visibility"
-                  className="mb-1.5 block text-sm font-medium text-muted"
-                >
-                  Phạm vi chia sẻ
-                </label>
-                <select
-                  id="create-visibility"
-                  value={visibility}
-                  onChange={(e) => setVisibility(e.target.value as FilterVisibility)}
-                  className={cn(
-                    'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
-                    'transition-colors focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                  )}
-                >
-                  <option value="PRIVATE">{VISIBILITY_LABEL.PRIVATE}</option>
-                  <option value="WORKSPACE">{VISIBILITY_LABEL.WORKSPACE}</option>
-                  <option value="PROJECT">{VISIBILITY_LABEL.PROJECT}</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+    <Dialog
+      open={open}
+      onOpenChange={(o) => { if (!o) onClose(); }}
+      title="Tạo bộ lọc"
+      size="lg"
+      footer={
+        <>
             <Button type="button" variant="ghost" onClick={onClose}>
               Hủy
             </Button>
-            <Button type="submit" loading={saving} disabled={!canSubmit}>
+            <Button type="submit" form="create-filter-form" loading={saving} disabled={!canSubmit}>
               Lưu bộ lọc
             </Button>
-          </footer>
-        </form>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <form id="create-filter-form" onSubmit={(e) => void submit(e)} className="space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <Segmented
+            value={mode}
+            onChange={(v) => setMode(v as BuilderMode)}
+            options={[
+              { value: 'simple', label: 'Đơn giản' },
+              { value: 'jql', label: 'JQL' },
+            ]}
+          />
+          <span className="text-xs text-faint">
+            {mode === 'simple'
+              ? 'Cho người mới — sinh JQL tự động'
+              : 'Cho người thạo cú pháp'}
+          </span>
+        </div>
+
+        {mode === 'simple' ? (
+          <QueryBuilder value={jql} onChange={setJql} onEditAsJql={() => setMode('jql')} />
+        ) : (
+          <div className="flex flex-col gap-2">
+            <label htmlFor="create-jql" className="text-sm font-medium text-muted">
+              Truy vấn JQL
+            </label>
+            <textarea
+              id="create-jql"
+              value={jql}
+              onChange={(e) => setJql(e.target.value)}
+              rows={3}
+              placeholder={PLACEHOLDER}
+              spellCheck={false}
+              className={cn(
+                'w-full resize-y rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-ink',
+                'placeholder:text-faint transition-colors duration-150',
+                'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+              )}
+            />
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-3 border-t border-border pt-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="create-name" className="mb-1.5 block text-sm font-medium text-muted">
+              Tên bộ lọc
+            </label>
+            <Input
+              id="create-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="VD: Việc của tôi tuần này"
+              className="text-sm"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="create-visibility"
+              className="mb-1.5 block text-sm font-medium text-muted"
+            >
+              Phạm vi chia sẻ
+            </label>
+            <select
+              id="create-visibility"
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value as FilterVisibility)}
+              className={cn(
+                'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
+                'transition-colors focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+              )}
+            >
+              <option value="PRIVATE">{VISIBILITY_LABEL.PRIVATE}</option>
+              <option value="WORKSPACE">{VISIBILITY_LABEL.WORKSPACE}</option>
+              <option value="PROJECT">{VISIBILITY_LABEL.PROJECT}</option>
+            </select>
+          </div>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

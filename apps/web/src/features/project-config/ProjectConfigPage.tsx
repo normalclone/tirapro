@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AvatarUploader } from '@/components/ui/AvatarUploader';
@@ -289,6 +290,7 @@ function ProjectAvatarSection({
 /* ------------------------------------------------------------------ */
 
 function MembersSection({ projectId }: { projectId?: string }) {
+  const confirm = useConfirm();
   const can = useAuth((s) => s.can);
   const canAdmin = can('project:admin');
 
@@ -309,8 +311,8 @@ function MembersSection({ projectId }: { projectId?: string }) {
     ? list.filter((m) => `${m.user.displayName} ${m.user.email}`.toLowerCase().includes(query))
     : list;
 
-  function handleReset(name: string, uid: string) {
-    if (!window.confirm(`Đưa ${name} về vai trò mặc định chung?`)) return;
+  async function handleReset(name: string, uid: string) {
+    if (!(await confirm({ title: `Đưa ${name} về vai trò mặc định chung?` }))) return;
     clearOverride.mutate(uid, {
       onSuccess: () => toast.success('Đã về vai trò mặc định'),
       onError: (e) => toast.error(apiErrorMessage(e)),
@@ -414,6 +416,7 @@ function MembersSection({ projectId }: { projectId?: string }) {
 /* ------------------------------------------------------------------ */
 
 function ComponentsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: boolean }) {
+  const confirm = useConfirm();
   const { data, isLoading } = useComponents(projectId);
   const create = useCreateComponent(projectId ?? '');
   const update = useUpdateComponent(projectId ?? '');
@@ -452,8 +455,8 @@ function ComponentsSection({ projectId, canAdmin }: { projectId?: string; canAdm
     );
   }
 
-  function handleDelete(c: Component) {
-    if (!window.confirm(`Xoá thành phần "${c.name}"? Hành động này không thể hoàn tác.`)) return;
+  async function handleDelete(c: Component) {
+    if (!(await confirm({ title: `Xoá thành phần "${c.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
     remove.mutate(c.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -663,6 +666,7 @@ function ComponentEditRow({
 /* ------------------------------------------------------------------ */
 
 function VersionsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: boolean }) {
+  const confirm = useConfirm();
   const { data, isLoading } = useVersions(projectId);
   const create = useCreateVersion(projectId ?? '');
   const update = useUpdateVersion(projectId ?? '');
@@ -707,8 +711,8 @@ function VersionsSection({ projectId, canAdmin }: { projectId?: string; canAdmin
     patch(v.id, { status: 'RELEASED', releaseDate: new Date().toISOString() });
   }
 
-  function handleDelete(v: Version) {
-    if (!window.confirm(`Xoá phiên bản "${v.name}"? Hành động này không thể hoàn tác.`)) return;
+  async function handleDelete(v: Version) {
+    if (!(await confirm({ title: `Xoá phiên bản "${v.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
     remove.mutate(v.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -994,6 +998,7 @@ function StatusSelect({
 /* ------------------------------------------------------------------ */
 
 function LabelsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: boolean }) {
+  const confirm = useConfirm();
   const { data, isLoading } = useLabels(projectId);
   const create = useCreateLabel(projectId ?? '');
   const update = useUpdateLabel(projectId ?? '');
@@ -1031,8 +1036,8 @@ function LabelsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: 
     );
   }
 
-  function handleDelete(l: Label) {
-    if (!window.confirm(`Xoá nhãn "${l.name}"? Hành động này không thể hoàn tác.`)) return;
+  async function handleDelete(l: Label) {
+    if (!(await confirm({ title: `Xoá nhãn "${l.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
     remove.mutate(l.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 

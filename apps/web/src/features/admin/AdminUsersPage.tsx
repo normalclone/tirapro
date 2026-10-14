@@ -1,10 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Check, Copy, Plus, ShieldCheck, X } from 'lucide-react';
+import { Check, Copy, Plus, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/stores/auth';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { QueryError } from '@/components/ui/QueryError';
 import { pageContainer } from '@/components/layout/page';
@@ -124,12 +125,6 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   function submit(e: FormEvent) {
     e.preventDefault();
     if (!email.trim() || !displayName.trim() || create.isPending) return;
@@ -152,56 +147,48 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-modal grid place-items-center p-4">
-      <button type="button" aria-label="Đóng" onClick={onClose} className="absolute inset-0 bg-ink/40 backdrop-blur-[1px]" />
-      <div className="relative w-full max-w-md overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-          <h2 className="text-base font-semibold text-ink-strong">Tạo tài khoản</h2>
-          <button type="button" onClick={onClose} aria-label="Đóng" className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-ink"><X className="h-4 w-4" /></button>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Tạo tài khoản" size="md">
+    {tempPassword ? (
+      <div className="space-y-3">
+        <p className="text-sm text-ink">Đã tạo tài khoản. Gửi mật khẩu tạm này cho người dùng:</p>
+        <div className="flex items-center gap-2">
+          <Input readOnly value={tempPassword} className="font-mono" onFocus={(e) => e.currentTarget.select()} />
+          <Button type="button" variant="secondary" size="icon" onClick={() => void copyTemp()} aria-label="Sao chép">
+            {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+          </Button>
         </div>
-
-        {tempPassword ? (
-          <div className="space-y-3 p-5">
-            <p className="text-sm text-ink">Đã tạo tài khoản. Gửi mật khẩu tạm này cho người dùng:</p>
-            <div className="flex items-center gap-2">
-              <Input readOnly value={tempPassword} className="font-mono" onFocus={(e) => e.currentTarget.select()} />
-              <Button type="button" variant="secondary" size="icon" onClick={() => void copyTemp()} aria-label="Sao chép">
-                {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-              </Button>
-            </div>
-            <div className="flex justify-end"><Button size="sm" onClick={onClose}>Xong</Button></div>
-          </div>
-        ) : (
-          <form onSubmit={submit} className="space-y-4 p-5">
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-ink">Email</span>
-              <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ten@congty.com" />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-ink">Tên hiển thị</span>
-              <Input required value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Nguyễn Văn A" />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-ink">Mật khẩu <span className="font-normal text-faint">(bỏ trống = sinh tạm)</span></span>
-              <Input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Tối thiểu 6 ký tự" />
-            </label>
-            <div className="flex items-center gap-6">
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input type="checkbox" checked={canCreateWorkspace} onChange={(e) => setCanCreate(e.target.checked)} className="h-4 w-4 rounded border-border" />
-                Được lập không gian làm việc mới
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input type="checkbox" checked={isSystemAdmin} onChange={(e) => setIsAdmin(e.target.checked)} className="h-4 w-4 rounded border-border" />
-                Admin hệ thống
-              </label>
-            </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" variant="ghost" size="sm" onClick={onClose}>Huỷ</Button>
-              <Button type="submit" size="sm" loading={create.isPending} disabled={!email.trim() || !displayName.trim()}>Tạo tài khoản</Button>
-            </div>
-          </form>
-        )}
+        <div className="flex justify-end"><Button size="sm" onClick={onClose}>Xong</Button></div>
       </div>
-    </div>
+    ) : (
+      <form onSubmit={submit} className="space-y-4">
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium text-ink">Email</span>
+          <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ten@congty.com" />
+        </label>
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium text-ink">Tên hiển thị</span>
+          <Input required value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Nguyễn Văn A" />
+        </label>
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium text-ink">Mật khẩu <span className="font-normal text-faint">(bỏ trống = sinh tạm)</span></span>
+          <Input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Tối thiểu 6 ký tự" />
+        </label>
+        <div className="flex items-center gap-6">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={canCreateWorkspace} onChange={(e) => setCanCreate(e.target.checked)} className="h-4 w-4 rounded border-border" />
+            Được lập không gian làm việc mới
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={isSystemAdmin} onChange={(e) => setIsAdmin(e.target.checked)} className="h-4 w-4 rounded border-border" />
+            Admin hệ thống
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>Huỷ</Button>
+          <Button type="submit" size="sm" loading={create.isPending} disabled={!email.trim() || !displayName.trim()}>Tạo tài khoản</Button>
+        </div>
+      </form>
+    )}
+    </Dialog>
   );
 }

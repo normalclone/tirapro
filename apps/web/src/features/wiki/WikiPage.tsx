@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -42,6 +43,7 @@ const dateTime = (iso: string) =>
  * Tạo trang / trang con bằng một cú bấm rồi sửa tại chỗ; đổi thứ tự bằng nút lên/xuống.
  */
 export function WikiPage() {
+  const confirm = useConfirm();
   const canManage = useAuth((s) => s.can('wiki:manage'));
   const { data: projects } = useProjects();
 
@@ -161,7 +163,7 @@ export function WikiPage() {
   }
 
   async function destroy(id: string, title: string) {
-    if (!window.confirm(`Xoá trang “${title}”? Các trang con không bị xoá theo, chúng sẽ được đưa lên cấp trên.`)) return;
+    if (!(await confirm({ title: `Xoá trang “${title}”? Các trang con không bị xoá theo, chúng sẽ được đưa lên cấp trên.`, destructive: true }))) return;
     try {
       await remove.mutateAsync(id);
       if (selectedId === id) setSelectedId(null);
