@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type SelectHTMLAttributes } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
 import { Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { SYSTEM_ROLES, type RuleTrigger } from '@tirapro/types';
@@ -8,6 +7,7 @@ import {
   type CreateRuleInput, type RuleAction, type RuleCondition,
 } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
 import { useProjectMeta } from '@/features/ai/api';
@@ -432,7 +432,7 @@ function ActionCard({ a, opts, scoped, onChange }: { a: ActionDraft; opts: Optio
 
 /**
  * Tạo / sửa quy tắc theo ba bước: Khi… (sự kiện) → Nếu… (điều kiện, tuỳ chọn) → Thì… (hành động).
- * `rule = null` là tạo mới. Dialog dựng trực tiếp trên Radix (tự chứa, không phụ thuộc Dialog dùng chung).
+ * `rule = null` là tạo mới. Dựng trên `Dialog` dùng chung (size xl).
  */
 export function RuleEditor({
   open, rule, defaultProjectId, onClose,
@@ -465,7 +465,7 @@ export function RuleEditor({
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       setError(issue ? `${issue.message}${issue.path.length ? ` (${issue.path.join(' › ')})` : ''}` : 'Quy tắc chưa hợp lệ');
-      bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      bodyRef.current?.parentElement?.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     setError(null);
@@ -482,109 +482,105 @@ export function RuleEditor({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-modal bg-black/30 animate-in fade-in duration-200" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          className="fixed left-1/2 top-1/2 z-modal flex max-h-[90vh] w-[min(94vw,44rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200"
-        >
-          <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-            <Dialog.Title className="text-sm font-medium text-ink">{rule ? 'Sửa quy tắc' : 'Quy tắc mới'}</Dialog.Title>
-            <Dialog.Close asChild>
-              <Button variant="ghost" size="icon" className="ml-auto" aria-label="Đóng"><X className="h-4 w-4" /></Button>
-            </Dialog.Close>
-          </header>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o && !busy) onClose();
+      }}
+      title={rule ? 'Sửa quy tắc' : 'Quy tắc mới'}
+      size="xl"
+      onSubmit={() => {
+        if (!busy) submit();
+      }}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Huỷ</Button>
+          <Button onClick={submit} loading={busy}>{rule ? 'Lưu thay đổi' : 'Tạo quy tắc'}</Button>
+        </>
+      }
+    >
+      <div ref={bodyRef} className="space-y-6">
+        {error && <p role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
 
-          <div ref={bodyRef} className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-4">
-            {error && <p role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Tên quy tắc" htmlFor="rule-name">
+            <Input id="rule-name" value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="Ví dụ: Việc khẩn giao cho lead" maxLength={120} autoFocus />
+          </Field>
+          <Field label="Phạm vi" htmlFor="rule-scope" hint={rule ? 'Không đổi được phạm vi sau khi tạo.' : 'Chọn dự án để dùng nhãn/sprint của dự án đó.'}>
+            <SearchSelect
+              id="rule-scope"
+              value={draft.projectId}
+              onChange={(projectId) => set({ projectId })}
+              disabled={!!rule}
+              options={[{ value: '', label: 'Toàn bộ không gian làm việc' }, ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key }))]}
+              searchPlaceholder="Tìm dự án…"
+              ariaLabel="Phạm vi quy tắc"
+            />
+          </Field>
+        </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Tên quy tắc" htmlFor="rule-name">
-                <Input id="rule-name" value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="Ví dụ: Việc khẩn giao cho lead" maxLength={120} autoFocus />
+        <section aria-label="Khi">
+          <StepHeader n={1} title="Khi…" hint="Sự kiện làm quy tắc chạy." />
+          <div className="space-y-3">
+            <Select aria-label="Sự kiện kích hoạt" value={draft.trigger} onChange={(e) => set({ trigger: e.target.value as RuleTrigger })}>
+              {RULE_TRIGGERS.map((t) => <option key={t} value={t}>{TRIGGER_LABELS[t]}</option>)}
+            </Select>
+            {draft.trigger === 'ISSUE_TRANSITIONED' && (
+              <Field label="Chỉ khi chuyển đến trạng thái" hint="Bỏ trống để chạy ở mọi lần đổi trạng thái.">
+                <SearchSelect value={draft.toStatusId} onChange={(toStatusId) => set({ toStatusId })} options={[{ value: '', label: 'Bất kỳ trạng thái nào' }, ...opts.statuses]} searchPlaceholder="Tìm trạng thái…" ariaLabel="Trạng thái đích" />
               </Field>
-              <Field label="Phạm vi" htmlFor="rule-scope" hint={rule ? 'Không đổi được phạm vi sau khi tạo.' : 'Chọn dự án để dùng nhãn/sprint của dự án đó.'}>
-                <SearchSelect
-                  id="rule-scope"
-                  value={draft.projectId}
-                  onChange={(projectId) => set({ projectId })}
-                  disabled={!!rule}
-                  options={[{ value: '', label: 'Toàn bộ không gian làm việc' }, ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key }))]}
-                  searchPlaceholder="Tìm dự án…"
-                  ariaLabel="Phạm vi quy tắc"
-                />
+            )}
+            {draft.trigger === 'ISSUE_UPDATED' && (
+              <Field label="Chỉ khi các trường này vừa đổi" hint="Không chọn gì = chạy ở mọi lần sửa.">
+                <MultiPick options={UPDATE_FIELD_CHOICES.map(([value, label]) => ({ value, label }))} value={draft.fields} onChange={(fields) => set({ fields })} empty="" ariaLabel="Các trường theo dõi" />
               </Field>
-            </div>
-
-            <section aria-label="Khi">
-              <StepHeader n={1} title="Khi…" hint="Sự kiện làm quy tắc chạy." />
-              <div className="space-y-3">
-                <Select aria-label="Sự kiện kích hoạt" value={draft.trigger} onChange={(e) => set({ trigger: e.target.value as RuleTrigger })}>
-                  {RULE_TRIGGERS.map((t) => <option key={t} value={t}>{TRIGGER_LABELS[t]}</option>)}
-                </Select>
-                {draft.trigger === 'ISSUE_TRANSITIONED' && (
-                  <Field label="Chỉ khi chuyển đến trạng thái" hint="Bỏ trống để chạy ở mọi lần đổi trạng thái.">
-                    <SearchSelect value={draft.toStatusId} onChange={(toStatusId) => set({ toStatusId })} options={[{ value: '', label: 'Bất kỳ trạng thái nào' }, ...opts.statuses]} searchPlaceholder="Tìm trạng thái…" ariaLabel="Trạng thái đích" />
-                  </Field>
-                )}
-                {draft.trigger === 'ISSUE_UPDATED' && (
-                  <Field label="Chỉ khi các trường này vừa đổi" hint="Không chọn gì = chạy ở mọi lần sửa.">
-                    <MultiPick options={UPDATE_FIELD_CHOICES.map(([value, label]) => ({ value, label }))} value={draft.fields} onChange={(fields) => set({ fields })} empty="" ariaLabel="Các trường theo dõi" />
-                  </Field>
-                )}
-                {draft.trigger === 'SCHEDULED' && (
-                  <Field label="Lịch chạy (cron, giờ UTC)" htmlFor="rule-cron" hint="5 trường: phút giờ ngày tháng thứ. Cần thêm một điều kiện JQL ở bước 2 để chọn công việc (tối đa 500 việc mỗi lần).">
-                    <Input id="rule-cron" className="font-mono" value={draft.cron} onChange={(e) => set({ cron: e.target.value })} placeholder="0 9 * * 1-5" />
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {CRON_PRESETS.map(([cron, label]) => (
-                        <button key={cron} type="button" onClick={() => set({ cron })} className="rounded-full border border-border px-2 py-0.5 text-xs text-muted hover:bg-surface-2 hover:text-ink">{label}</button>
-                      ))}
-                    </div>
-                  </Field>
-                )}
-              </div>
-            </section>
-
-            <section aria-label="Nếu">
-              <StepHeader n={2} title="Nếu… (không bắt buộc)" hint="Mọi điều kiện đều phải đúng thì hành động mới chạy." />
-              <div className="space-y-2">
-                {draft.conditions.map((c, i) => (
-                  <Card key={c.id} label={`điều kiện ${i + 1}`} onRemove={() => set({ conditions: draft.conditions.filter((x) => x.id !== c.id) })}>
-                    <ConditionCard c={c} opts={opts} onChange={(next) => set({ conditions: draft.conditions.map((x) => (x.id === c.id ? next : x)) })} />
-                  </Card>
-                ))}
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" size="sm" variant="secondary" onClick={() => set({ conditions: [...draft.conditions, newCondition()] })}>
-                    <Plus className="h-4 w-4" /> Thêm điều kiện
-                  </Button>
-                  <Button type="button" size="sm" variant="secondary" onClick={() => set({ conditions: [...draft.conditions, { id: uid(), kind: 'jql', jql: '', raw: false }] })}>
-                    <Plus className="h-4 w-4" /> Thêm điều kiện JQL
-                  </Button>
+            )}
+            {draft.trigger === 'SCHEDULED' && (
+              <Field label="Lịch chạy (cron, giờ UTC)" htmlFor="rule-cron" hint="5 trường: phút giờ ngày tháng thứ. Cần thêm một điều kiện JQL ở bước 2 để chọn công việc (tối đa 500 việc mỗi lần).">
+                <Input id="rule-cron" className="font-mono" value={draft.cron} onChange={(e) => set({ cron: e.target.value })} placeholder="0 9 * * 1-5" />
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {CRON_PRESETS.map(([cron, label]) => (
+                    <button key={cron} type="button" onClick={() => set({ cron })} className="rounded-full border border-border px-2 py-0.5 text-xs text-muted hover:bg-surface-2 hover:text-ink">{label}</button>
+                  ))}
                 </div>
-              </div>
-            </section>
-
-            <section aria-label="Thì">
-              <StepHeader n={3} title="Thì…" hint="Các hành động chạy lần lượt từ trên xuống; gặp lỗi thì dừng." />
-              <div className="space-y-2">
-                {draft.actions.map((a, i) => (
-                  <Card key={a.id} label={`hành động ${i + 1}`} onRemove={draft.actions.length > 1 ? () => set({ actions: draft.actions.filter((x) => x.id !== a.id) }) : undefined}>
-                    <ActionCard a={a} opts={opts} scoped={scoped} onChange={(next) => set({ actions: draft.actions.map((x) => (x.id === a.id ? next : x)) })} />
-                  </Card>
-                ))}
-                <Button type="button" size="sm" variant="secondary" onClick={() => set({ actions: [...draft.actions, newAction('addComment')] })}>
-                  <Plus className="h-4 w-4" /> Thêm hành động
-                </Button>
-              </div>
-            </section>
+              </Field>
+            )}
           </div>
+        </section>
 
-          <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-            <Button variant="ghost" onClick={onClose} disabled={busy}>Huỷ</Button>
-            <Button onClick={submit} loading={busy}>{rule ? 'Lưu thay đổi' : 'Tạo quy tắc'}</Button>
-          </footer>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        <section aria-label="Nếu">
+          <StepHeader n={2} title="Nếu… (không bắt buộc)" hint="Mọi điều kiện đều phải đúng thì hành động mới chạy." />
+          <div className="space-y-2">
+            {draft.conditions.map((c, i) => (
+              <Card key={c.id} label={`điều kiện ${i + 1}`} onRemove={() => set({ conditions: draft.conditions.filter((x) => x.id !== c.id) })}>
+                <ConditionCard c={c} opts={opts} onChange={(next) => set({ conditions: draft.conditions.map((x) => (x.id === c.id ? next : x)) })} />
+              </Card>
+            ))}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={() => set({ conditions: [...draft.conditions, newCondition()] })}>
+                <Plus className="h-4 w-4" /> Thêm điều kiện
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={() => set({ conditions: [...draft.conditions, { id: uid(), kind: 'jql', jql: '', raw: false }] })}>
+                <Plus className="h-4 w-4" /> Thêm điều kiện JQL
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <section aria-label="Thì">
+          <StepHeader n={3} title="Thì…" hint="Các hành động chạy lần lượt từ trên xuống; gặp lỗi thì dừng." />
+          <div className="space-y-2">
+            {draft.actions.map((a, i) => (
+              <Card key={a.id} label={`hành động ${i + 1}`} onRemove={draft.actions.length > 1 ? () => set({ actions: draft.actions.filter((x) => x.id !== a.id) }) : undefined}>
+                <ActionCard a={a} opts={opts} scoped={scoped} onChange={(next) => set({ actions: draft.actions.map((x) => (x.id === a.id ? next : x)) })} />
+              </Card>
+            ))}
+            <Button type="button" size="sm" variant="secondary" onClick={() => set({ actions: [...draft.actions, newAction('addComment')] })}>
+              <Plus className="h-4 w-4" /> Thêm hành động
+            </Button>
+          </div>
+        </section>
+      </div>
+    </Dialog>
   );
 }
