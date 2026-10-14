@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DOMAIN_EVENTS, PERMISSIONS, type IssueDto } from '@tirapro/types';
+import { DOMAIN_EVENTS, PERMISSIONS, type IssueDto, type UserStatus } from '@tirapro/types';
 import { rankBetween, issueTypePrefix, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -442,7 +442,7 @@ export class IssuesService {
     };
   }
 
-  private userDto(u: { id: string; email: string; displayName: string; avatarUrl: string | null; timezone: string; locale: string; status: string; isSystemAdmin: boolean; lastSeenAt: Date | null; createdAt: Date }) {
-    return { id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl, timezone: u.timezone, locale: u.locale, status: u.status as never, isSystemAdmin: u.isSystemAdmin, lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString() };
+  private userDto(u: { id: string; email: string; displayName: string; avatarUrl: string | null; timezone: string; locale: string; status: UserStatus; isSystemAdmin: boolean; lastSeenAt: Date | null; createdAt: Date }) {
+    return { id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl, timezone: u.timezone, locale: u.locale, status: u.status, isSystemAdmin: u.isSystemAdmin, lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString() };
   }
 }

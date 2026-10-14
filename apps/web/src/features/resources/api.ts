@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { TimeOffKind } from '@tirapro/types';
 import { api } from '@/lib/api';
 
 /* ─────────────────────────── Kiểu dữ liệu ─────────────────────────── */
@@ -25,7 +26,8 @@ export interface AllocationDto {
   user: ResourceUser;
 }
 
-export type TimeOffKind = 'LEAVE' | 'HOLIDAY' | 'OTHER';
+// Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Nguồn lực import một chỗ.
+export type { TimeOffKind };
 
 export interface TimeOffDto {
   id: string;

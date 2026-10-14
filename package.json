@@ -8,6 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "gen:enums": "node scripts/gen-enums.mjs",
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
     "lint": "eslint .",

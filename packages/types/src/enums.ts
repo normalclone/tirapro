@@ -1,7 +1,12 @@
+// FILE SINH TỰ ĐỘNG từ schema.prisma — chạy pnpm gen:enums, KHÔNG sửa tay
 /**
- * Enums dùng chung FE/BE. Giá trị PHẢI khớp 1:1 với Prisma enums trong
+ * Enums dùng chung FE/BE. Giá trị khớp 1:1 với Prisma enums trong
  * apps/api/prisma/schema.prisma. Mỗi enum là const-object + type cùng tên
  * => dùng được cả như value (UserStatus.ACTIVE) lẫn như type (: UserStatus).
+ *
+ * LƯU Ý: IssuePriority / IssueResolution / IssueLinkType KHÔNG phải enum —
+ * chúng là bảng config (Priority/Resolution/LinkType). Xem catalogs.ts cho
+ * danh sách default seed + DTO ở entities.ts.
  */
 
 export const UserStatus = {
@@ -78,10 +83,6 @@ export const IssueTypeKey = {
   SUBTASK: 'SUBTASK',
 } as const;
 export type IssueTypeKey = (typeof IssueTypeKey)[keyof typeof IssueTypeKey];
-
-// LƯU Ý: IssuePriority / IssueResolution / IssueLinkType KHÔNG còn là enum —
-// đã chuyển sang bảng config (Priority/Resolution/LinkType). Xem catalogs.ts cho
-// danh sách default seed + DTO ở entities.ts.
 
 export const FixVersionType = {
   FIX: 'FIX',
@@ -211,7 +212,14 @@ export const EmbeddingEntityType = {
 } as const;
 export type EmbeddingEntityType = (typeof EmbeddingEntityType)[keyof typeof EmbeddingEntityType];
 
-// ---- Integrations ----
+export const TriageState = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  DECLINED: 'DECLINED',
+  SNOOZED: 'SNOOZED',
+} as const;
+export type TriageState = (typeof TriageState)[keyof typeof TriageState];
+
 export const IntegrationType = {
   TELEGRAM: 'TELEGRAM',
   JIRA: 'JIRA',
@@ -270,7 +278,6 @@ export const DigestSchedule = {
 } as const;
 export type DigestSchedule = (typeof DigestSchedule)[keyof typeof DigestSchedule];
 
-// ---- Guides / onboarding tours ----
 export const GuideType = {
   TOUR: 'TOUR',
   HELP: 'HELP',
@@ -286,11 +293,54 @@ export const GuideProgressState = {
 } as const;
 export type GuideProgressState = (typeof GuideProgressState)[keyof typeof GuideProgressState];
 
-// Triage inbox (issue từ nguồn ngoài). null = issue bình thường ở backlog.
-export const TriageState = {
-  PENDING: 'PENDING',
-  ACCEPTED: 'ACCEPTED',
-  DECLINED: 'DECLINED',
-  SNOOZED: 'SNOOZED',
+export const DependencyType = {
+  FS: 'FS',
+  SS: 'SS',
+  FF: 'FF',
+  SF: 'SF',
 } as const;
-export type TriageState = (typeof TriageState)[keyof typeof TriageState];
+export type DependencyType = (typeof DependencyType)[keyof typeof DependencyType];
+
+export const RaidKind = {
+  RISK: 'RISK',
+  ASSUMPTION: 'ASSUMPTION',
+  ISSUE: 'ISSUE',
+  DEPENDENCY: 'DEPENDENCY',
+} as const;
+export type RaidKind = (typeof RaidKind)[keyof typeof RaidKind];
+
+export const RaidStatus = {
+  OPEN: 'OPEN',
+  MITIGATING: 'MITIGATING',
+  CLOSED: 'CLOSED',
+  ACCEPTED: 'ACCEPTED',
+} as const;
+export type RaidStatus = (typeof RaidStatus)[keyof typeof RaidStatus];
+
+export const ObjectiveStatus = {
+  DRAFT: 'DRAFT',
+  ACTIVE: 'ACTIVE',
+  CLOSED: 'CLOSED',
+} as const;
+export type ObjectiveStatus = (typeof ObjectiveStatus)[keyof typeof ObjectiveStatus];
+
+export const KeyResultUnit = {
+  NUMBER: 'NUMBER',
+  PERCENT: 'PERCENT',
+  CURRENCY: 'CURRENCY',
+} as const;
+export type KeyResultUnit = (typeof KeyResultUnit)[keyof typeof KeyResultUnit];
+
+export const RecurrenceFreq = {
+  DAILY: 'DAILY',
+  WEEKLY: 'WEEKLY',
+  MONTHLY: 'MONTHLY',
+} as const;
+export type RecurrenceFreq = (typeof RecurrenceFreq)[keyof typeof RecurrenceFreq];
+
+export const TimeOffKind = {
+  LEAVE: 'LEAVE',
+  HOLIDAY: 'HOLIDAY',
+  OTHER: 'OTHER',
+} as const;
+export type TimeOffKind = (typeof TimeOffKind)[keyof typeof TimeOffKind];
