@@ -2,10 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SearchService } from './search.service';
 
 function makeService(rows: Array<{ id: string; rank: number }> | Error) {
-  const queryRaw = vi.fn(async () => {
-    if (rows instanceof Error) throw rows;
-    return rows;
-  });
+  const queryRaw = vi.fn(() => (rows instanceof Error ? Promise.reject(rows) : Promise.resolve(rows)));
   const issues = { query: vi.fn().mockResolvedValue({ data: [], meta: {} }) };
   const prisma = { $queryRaw: queryRaw };
   return { service: new SearchService(issues as never, prisma as never), issues, queryRaw };

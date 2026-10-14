@@ -129,7 +129,7 @@ export class PresenceService {
       }
     }
     let hash = this.memory.get(room);
-    if (!hash) this.memory.set(room, (hash = new Map()));
+    if (!hash) this.memory.set(room, (hash = new Map<string, StoredEntry>()));
     hash.set(userId, entry);
   }
 

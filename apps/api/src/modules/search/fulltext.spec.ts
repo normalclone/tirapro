@@ -61,10 +61,10 @@ describe('isMissingColumnError', () => {
 
 describe('FulltextSearcher.search', () => {
   it('truy vấn tham số hoá (không nối chuỗi) và trả ids theo thứ tự rank', async () => {
-    const prisma = makePrisma(async () => [
+    const prisma = makePrisma(() => Promise.resolve([
       { id: 'I2', rank: 0.9 },
       { id: 'I1', rank: 0.1 },
-    ]);
+    ]));
     const res = await new FulltextSearcher(prisma as never).search('W1', "đăng nhập'; DROP TABLE x;--");
     expect(res).toEqual({ ids: ['I2', 'I1'] });
     const { sql, values } = renderCall(prisma.$queryRaw.mock.calls[0]!);
@@ -77,7 +77,7 @@ describe('FulltextSearcher.search', () => {
   });
 
   it('thêm điều kiện projectId (bind) khi có', async () => {
-    const prisma = makePrisma(async () => []);
+    const prisma = makePrisma(() => Promise.resolve([]));
     await new FulltextSearcher(prisma as never).search('W1', 'abc', { projectId: 'P1' });
     const { sql, values } = renderCall(prisma.$queryRaw.mock.calls[0]!);
     expect(sql).toContain('"projectId"');
@@ -85,17 +85,17 @@ describe('FulltextSearcher.search', () => {
   });
 
   it('chuỗi rỗng -> ids [] và không chạm DB', async () => {
-    const prisma = makePrisma(async () => []);
+    const prisma = makePrisma(() => Promise.resolve([]));
     expect(await new FulltextSearcher(prisma as never).search('W1', '  ')).toEqual({ ids: [] });
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 
   it('thiếu cột searchVector (42703) -> null để gọi dùng contains, chỉ cảnh báo một lần', async () => {
-    const prisma = makePrisma(async () => {
-      throw Object.assign(new Error('Raw query failed'), { code: 'P2010', meta: { code: '42703' } });
-    });
+    const prisma = makePrisma(() =>
+      Promise.reject(Object.assign(new Error('Raw query failed'), { code: 'P2010', meta: { code: '42703' } })),
+    );
     const logger = { warn: vi.fn() };
-    const searcher = new FulltextSearcher(prisma as never, logger as never);
+    const searcher = new FulltextSearcher(prisma as never, logger);
     expect(await searcher.search('W1', 'abc')).toBeNull();
     expect(await searcher.search('W1', 'def')).toBeNull();
     expect(logger.warn).toHaveBeenCalledTimes(1);
@@ -103,9 +103,7 @@ describe('FulltextSearcher.search', () => {
   });
 
   it('lỗi DB khác được ném lại (không nuốt)', async () => {
-    const prisma = makePrisma(async () => {
-      throw new Error('connection lost');
-    });
+    const prisma = makePrisma(() => Promise.reject(new Error('connection lost')));
     await expect(new FulltextSearcher(prisma as never).search('W1', 'abc')).rejects.toThrow('connection lost');
   });
 });

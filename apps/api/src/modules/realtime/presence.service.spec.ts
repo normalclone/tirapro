@@ -6,23 +6,23 @@ function fakeRedisClient() {
   const store = new Map<string, Map<string, string>>();
   const hash = (k: string) => {
     let h = store.get(k);
-    if (!h) store.set(k, (h = new Map()));
+    if (!h) store.set(k, (h = new Map<string, string>()));
     return h;
   };
   return {
     store,
-    hset: vi.fn(async (k: string, f: string, v: string) => {
+    hset: vi.fn((k: string, f: string, v: string) => {
       hash(k).set(f, v);
-      return 1;
+      return Promise.resolve(1);
     }),
-    hget: vi.fn(async (k: string, f: string) => store.get(k)?.get(f) ?? null),
-    hgetall: vi.fn(async (k: string) => Object.fromEntries(store.get(k) ?? [])),
-    hdel: vi.fn(async (k: string, ...fs: string[]) => {
+    hget: vi.fn((k: string, f: string) => Promise.resolve(store.get(k)?.get(f) ?? null)),
+    hgetall: vi.fn((k: string) => Promise.resolve(Object.fromEntries(store.get(k) ?? []))),
+    hdel: vi.fn((k: string, ...fs: string[]) => {
       let n = 0;
       for (const f of fs) if (store.get(k)?.delete(f)) n++;
-      return n;
+      return Promise.resolve(n);
     }),
-    expire: vi.fn(async () => 1),
+    expire: vi.fn(() => Promise.resolve(1)),
   };
 }
 
@@ -118,7 +118,7 @@ describe('PresenceService — Redis', () => {
     await service.join('project:P1', alice);
     const raw = client.store.get('presence:project:P1')?.get('U1');
     expect(JSON.parse(raw ?? '{}')).toMatchObject({ displayName: 'An', avatarUrl: null, viewing: null });
-    expect(typeof JSON.parse(raw ?? '{}').ts).toBe('number');
+    expect(typeof (JSON.parse(raw ?? '{}') as { ts?: unknown }).ts).toBe('number');
     expect(client.expire).toHaveBeenCalledWith('presence:project:P1', expect.any(Number));
   });
 

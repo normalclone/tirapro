@@ -173,7 +173,7 @@ describe('RealtimeGateway — presence', () => {
     expect(client.to).toHaveBeenCalledWith('project:P1');
     expect(client.toEmit).toHaveBeenCalledWith(WS_EVENTS.PRESENCE_JOIN, {
       room: 'project:P1',
-      user: expect.objectContaining({ userId: 'U1' }),
+      user: expect.objectContaining({ userId: 'U1' }) as unknown,
     });
     expect(client.emit).toHaveBeenCalledWith(WS_EVENTS.PRESENCE_STATE, {
       room: 'project:P1',
@@ -254,7 +254,7 @@ describe('RealtimeGateway — presence', () => {
     await gateway.onPresenceView({ room: 'issue:I1' }, client as never);
     expect(presence.setViewing).toHaveBeenCalledWith('project:P1', 'U1', 'issue:I1');
     expect(to).toHaveBeenCalledWith('project:P1');
-    expect(emit).toHaveBeenCalledWith(WS_EVENTS.PRESENCE_STATE, { room: 'project:P1', users: expect.any(Array) });
+    expect(emit).toHaveBeenCalledWith(WS_EVENTS.PRESENCE_STATE, { room: 'project:P1', users: expect.any(Array) as unknown });
   });
 
   it('presence:view heartbeat (không đổi) không phát lại state; room lạ coi như null', async () => {

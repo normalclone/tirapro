@@ -14,7 +14,6 @@ export interface FulltextQuery {
 
 /** Chuẩn hoá chuỗi tìm kiếm của người dùng; null nếu rỗng. Mọi giá trị đều được bind, không nối vào SQL. */
 export function buildFulltextQuery(raw: string): FulltextQuery | null {
-  // eslint-disable-next-line no-control-regex
   const q = raw.replace(/\u0000/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_QUERY_LENGTH).trim();
   if (!q) return null;
   const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`);
