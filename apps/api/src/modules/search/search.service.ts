@@ -5,9 +5,13 @@ import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import type { PageResult } from '../../common/dto/page-result';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { IssuesService } from '../issues/issues.service';
-import { compileJql } from './jql-compiler';
+import { FulltextSearcher } from './fulltext';
+import { collectFulltextTerms, compileJql, primaryFulltextTerm } from './jql-compiler';
 
 export interface SearchOptions {
+  /** `jql` (mặc định, dùng `jql`) hoặc `text` (full-text trên `q`, xếp theo độ liên quan). */
+  mode?: 'jql' | 'text';
+  q?: string;
   jql?: string;
   projectId?: string;
   cursor?: string;
@@ -33,10 +37,14 @@ export interface FilterFieldsDto {
 
 @Injectable()
 export class SearchService {
+  private readonly fulltext: FulltextSearcher;
+
   constructor(
     private readonly issues: IssuesService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) {
+    this.fulltext = new FulltextSearcher(prisma);
+  }
 
   /**
    * Danh mục giá trị cho bộ dựng truy vấn trực quan: issue type, status, priority,
@@ -89,21 +97,48 @@ export class SearchService {
     };
   }
 
-  /** Tìm issue bằng JQL (parse → compile → Prisma). Workspace scope ghép trong IssuesService.query. */
+  /**
+   * Tìm issue. `mode=text`: full-text trên `q`; mặc định: JQL (parse → compile → Prisma). `text ~ "..."`
+   * trong JQL cũng đi qua full-text. Workspace scope ghép trong IssuesService.query.
+   */
   async search(workspaceId: string, currentUserId: string, opts: SearchOptions): Promise<PageResult<IssueDto>> {
+    if (opts.mode === 'text') return this.searchText(workspaceId, opts);
+
     let where: Prisma.IssueWhereInput = {};
     let orderBy: Prisma.IssueOrderByWithRelationInput[] = [];
+    let rawIds: string[] | undefined;
 
     if (opts.jql && opts.jql.trim()) {
       const ast = this.parse(opts.jql);
-      const compiled = compileJql(ast, { currentUserId });
+      const fulltext = new Map<string, readonly string[]>();
+      for (const term of collectFulltextTerms(ast.where)) {
+        const res = await this.fulltext.search(workspaceId, term);
+        if (res) fulltext.set(term, res.ids); // null = chưa có searchVector → compiler dùng contains
+      }
+      const compiled = compileJql(ast, { currentUserId, fulltext });
       where = compiled.where;
       orderBy = compiled.orderBy;
+      const primary = primaryFulltextTerm(ast.where);
+      const ids = primary ? fulltext.get(primary) : undefined;
+      if (ids && !orderBy.length) rawIds = [...ids]; // không ORDER BY tường minh → xếp theo rank
     }
     if (opts.projectId) {
       where = Object.keys(where).length ? { AND: [where, { projectId: opts.projectId }] } : { projectId: opts.projectId };
     }
-    return this.issues.query(workspaceId, where, orderBy, opts.cursor, opts.limit);
+    return this.issues.query(workspaceId, where, orderBy, opts.cursor, opts.limit, rawIds);
+  }
+
+  private async searchText(workspaceId: string, opts: SearchOptions): Promise<PageResult<IssueDto>> {
+    const q = (opts.q ?? '').trim();
+    if (!q) return this.issues.query(workspaceId, {}, [], opts.cursor, opts.limit, []);
+    const res = await this.fulltext.search(workspaceId, q, { projectId: opts.projectId });
+    if (res) return this.issues.query(workspaceId, {}, [], opts.cursor, opts.limit, res.ids);
+
+    // Chưa có searchVector → rơi về contains (không xếp rank).
+    const like = { contains: q, mode: 'insensitive' as const };
+    const match: Prisma.IssueWhereInput = { OR: [{ summary: like }, { description: like }, { key: like }] };
+    const where: Prisma.IssueWhereInput = opts.projectId ? { AND: [match, { projectId: opts.projectId }] } : match;
+    return this.issues.query(workspaceId, where, [], opts.cursor, opts.limit);
   }
 
   /** Kiểm tra cú pháp JQL (cho FE highlight lỗi inline). */

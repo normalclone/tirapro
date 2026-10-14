@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
+import { BusinessRuleException, ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { SearchService } from './search.service';
 
@@ -19,12 +19,17 @@ export class SearchController {
   async run(
     @CurrentUser() user: AuthUser,
     @Query('jql') jql?: string,
+    @Query('q') q?: string,
+    @Query('mode') mode?: string,
     @Query('projectId') projectId?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
     const lim = Math.min(Math.max(Number(limit) || 50, 1), 200);
-    return this.search.search(this.ws(user), user.id, { jql, projectId, cursor, limit: lim });
+    if (mode !== undefined && mode !== 'jql' && mode !== 'text') {
+      throw new BusinessRuleException('mode chỉ nhận "jql" hoặc "text" — hãy chọn một trong hai');
+    }
+    return this.search.search(this.ws(user), user.id, { mode, q, jql, projectId, cursor, limit: lim });
   }
 
   /** Danh mục giá trị cho bộ dựng truy vấn trực quan (type/status/priority/sprint/label/resolution). */
