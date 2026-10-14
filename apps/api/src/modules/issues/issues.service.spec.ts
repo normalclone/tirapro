@@ -34,29 +34,29 @@ describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
   it('rank hai mốc sát nhau => đánh số lại project rồi tính lại 1 lần', async () => {
     let rebalanced = false;
     const ranks: Record<string, [string, string]> = { a: ['n', 'i'], b: ['n0', 'r'] }; // [trước, sau rebalance]
-    const executeRaw = vi.fn(async () => 3);
+    const executeRaw = vi.fn(() => Promise.resolve(3));
     let movedRank: unknown;
-    const updateMany = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+    const updateMany = vi.fn(async ({ data }: { data: Record<string, unknown> }) => { await Promise.resolve();
       movedRank = data.rank;
       return { count: 1 };
     });
     const tx = {
       issue: {
-        findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
+        findFirst: vi.fn(async ({ where }: { where: { id: string } }) => { await Promise.resolve();
           if (where.id === 'i1') return issueRow();
           const r = ranks[where.id];
           return r ? { rank: rebalanced ? r[1] : r[0] } : null;
         }),
-        findMany: vi.fn(async () => [{ id: 'a' }, { id: 'i1' }, { id: 'b' }]),
+        findMany: vi.fn(() => Promise.resolve([{ id: 'a' }, { id: 'i1' }, { id: 'b' }])),
         updateMany,
-        findFirstOrThrow: vi.fn(async () => issueRow({ rank: movedRank, version: 4 })),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ rank: movedRank, version: 4 }))),
       },
-      project: { update: vi.fn(async () => { rebalanced = true; return { id: 'p1' }; }) },
+      project: { update: vi.fn(async () => { await Promise.resolve(); rebalanced = true; return { id: 'p1' }; }) },
       $executeRaw: executeRaw,
     };
     const { service, events } = makeService(tx);
 
-    const dto = await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' } as never);
+    const dto = await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' });
 
     expect(tx.project.update).toHaveBeenCalledTimes(1);
     expect(dto.rank > 'i' && dto.rank < 'r').toBe(true);
@@ -81,29 +81,29 @@ describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
     let movedRank: unknown;
     const tx = {
       issue: {
-        findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
+        findFirst: vi.fn(async ({ where }: { where: { id: string } }) => { await Promise.resolve();
           if (where.id === 'i1') return issueRow({ version: versions.i1 });
           const r = ranks[where.id];
           return r ? { rank: rebalanced ? r[1] : r[0] } : null;
         }),
-        findMany: vi.fn(async () => [{ id: 'a' }, { id: 'i1' }, { id: 'b' }]),
-        updateMany: vi.fn(async ({ where, data }: { where: { id: string; version: number }; data: Record<string, unknown> }) => {
+        findMany: vi.fn(() => Promise.resolve([{ id: 'a' }, { id: 'i1' }, { id: 'b' }])),
+        updateMany: vi.fn(async ({ where, data }: { where: { id: string; version: number }; data: Record<string, unknown> }) => { await Promise.resolve();
           if (where.version !== versions[where.id]) return { count: 0 };
           versions[where.id]!++;
           movedRank = data.rank;
           return { count: 1 };
         }),
-        findFirstOrThrow: vi.fn(async () => issueRow({ rank: movedRank, version: versions.i1 })),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ rank: movedRank, version: versions.i1 }))),
       },
-      project: { update: vi.fn(async () => ({ id: 'p1' })) },
-      $executeRaw: vi.fn(async (_s: unknown, moved: string, ids: string[]) => {
+      project: { update: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      $executeRaw: vi.fn(async (_s: unknown, moved: string, ids: string[]) => { await Promise.resolve();
         rebalanced = true;
         for (const id of ids) if (id !== moved) versions[id]!++;
         return ids.length;
       }),
     };
     const { service } = makeService(tx);
-    const dto = await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' } as never);
+    const dto = await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' });
     expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
     expect(versions).toEqual({ a: 2, i1: 4, b: 2 });
     expect(dto.version).toBe(4);
@@ -111,10 +111,10 @@ describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
 
   it('mốc không còn tồn tại => 404 thay vì lặng lẽ xếp xuống cuối', async () => {
     const tx = {
-      issue: { findFirst: vi.fn(async ({ where }: { where: { id: string } }) => (where.id === 'i1' ? issueRow() : null)) },
+      issue: { findFirst: vi.fn(({ where }: { where: { id: string } }) => Promise.resolve(where.id === 'i1' ? issueRow() : null)) },
     };
     const { service } = makeService(tx);
-    await expect(service.move('w1', 'u1', 'i1', { version: 3, afterId: 'gone' } as never)).rejects.toMatchObject({ status: 404 });
+    await expect(service.move('w1', 'u1', 'i1', { version: 3, afterId: 'gone' })).rejects.toMatchObject({ status: 404 });
   });
 });
 
@@ -123,12 +123,12 @@ describe('IssuesService — OCC atomic', () => {
   function occTx(count: number, curVersion: number | null) {
     return {
       issue: {
-        findFirst: vi.fn(async ({ select }: { select?: unknown }) => {
+        findFirst: vi.fn(async ({ select }: { select?: unknown }) => { await Promise.resolve();
           if (select) return curVersion === null ? null : { version: curVersion };
           return issueRow();
         }),
-        findFirstOrThrow: vi.fn(async () => issueRow({ version: 4, summary: 'mới' })),
-        updateMany: vi.fn(async () => ({ count })),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 4, summary: 'mới' }))),
+        updateMany: vi.fn((_args: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise.resolve({ count })),
       },
       issueHistory: { createMany: vi.fn(), create: vi.fn() },
     };
@@ -137,7 +137,7 @@ describe('IssuesService — OCC atomic', () => {
   it('update(): updateMany count=0 => VersionConflictException mang version hiện tại, không ghi history, không emit', async () => {
     const tx = occTx(0, 7);
     const { service, events } = makeService(tx);
-    await expect(service.update('w1', 'u1', 'i1', { version: 3, assigneeId: 'u2' } as never)).rejects.toMatchObject({
+    await expect(service.update('w1', 'u1', 'i1', { version: 3, assigneeId: 'u2' })).rejects.toMatchObject({
       status: 409,
       current: { version: 7 },
     });
@@ -148,8 +148,8 @@ describe('IssuesService — OCC atomic', () => {
   it('update(): ghi có điều kiện đúng version client gửi và tăng version', async () => {
     const tx = occTx(1, null);
     const { service, events } = makeService(tx);
-    const dto = await service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới', assigneeId: 'u2' } as never);
-    const call = tx.issue.updateMany.mock.calls[0]![0] as { where: Record<string, unknown>; data: Record<string, unknown> };
+    const dto = await service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới', assigneeId: 'u2' });
+    const call = tx.issue.updateMany.mock.calls[0]![0];
     expect(call.where).toMatchObject({ id: 'i1', workspaceId: 'w1', deletedAt: null, version: 3 });
     expect(call.data).toMatchObject({ summary: 'mới', assigneeId: 'u2', version: { increment: 1 } });
     expect(dto.version).toBe(4);
@@ -159,25 +159,25 @@ describe('IssuesService — OCC atomic', () => {
   it('update(): issue bị xoá giữa chừng => 404 thay vì 409', async () => {
     const tx = occTx(0, null);
     const { service } = makeService(tx);
-    await expect(service.update('w1', 'u1', 'i1', { version: 3, summary: 'x' } as never)).rejects.toMatchObject({ status: 404 });
+    await expect(service.update('w1', 'u1', 'i1', { version: 3, summary: 'x' })).rejects.toMatchObject({ status: 404 });
   });
 
   it('move(): thua OCC => 409 và không emit ISSUE_MOVED', async () => {
     const tx = occTx(0, 5);
     const { service, events } = makeService(tx);
-    await expect(service.move('w1', 'u1', 'i1', { version: 3 } as never)).rejects.toMatchObject({ status: 409 });
+    await expect(service.move('w1', 'u1', 'i1', { version: 3 })).rejects.toMatchObject({ status: 409 });
     expect(events.emit).not.toHaveBeenCalled();
   });
 
   it('transition(): thua OCC => 409, không ghi history', async () => {
     const tx = {
       ...occTx(0, 5),
-      project: { findUnique: vi.fn(async () => ({ defaultWorkflowId: 'wf' })) },
-      workflowTransition: { findFirst: vi.fn(async () => ({ id: 'x' })) },
-      status: { findUnique: vi.fn(async () => ({ category: 'DONE' })) },
+      project: { findUnique: vi.fn(() => Promise.resolve({ defaultWorkflowId: 'wf' })) },
+      workflowTransition: { findFirst: vi.fn(() => Promise.resolve({ id: 'x' })) },
+      status: { findUnique: vi.fn(() => Promise.resolve({ category: 'DONE' })) },
     };
     const { service, events } = makeService(tx);
-    await expect(service.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 's2' } as never)).rejects.toMatchObject({ status: 409 });
+    await expect(service.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 's2' })).rejects.toMatchObject({ status: 409 });
     expect(tx.issueHistory.create).not.toHaveBeenCalled();
     expect(events.emit).not.toHaveBeenCalled();
   });

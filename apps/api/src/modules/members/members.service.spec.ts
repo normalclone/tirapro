@@ -5,16 +5,16 @@ describe('MembersService.addWorkspaceMany', () => {
   function setup() {
     const tx = {
       workspaceMembership: {
-        createMany: vi.fn(async () => ({ count: 2 })),
-        findMany: vi.fn(async (args: { where: { userId?: unknown; roles?: unknown } }) =>
-          args.where.roles ? [{ id: 'm1' }, { id: 'm2' }] : [{ userId: 'u3' }]), // u3 đã là thành viên
+        createMany: vi.fn(() => Promise.resolve({ count: 2 })),
+        findMany: vi.fn((args: { where: { userId?: unknown; roles?: unknown } }) =>
+          Promise.resolve(args.where.roles ? [{ id: 'm1' }, { id: 'm2' }] : [{ userId: 'u3' }])), // u3 đã là thành viên
       },
-      workspaceMembershipRole: { createMany: vi.fn(async () => ({ count: 4 })) },
+      workspaceMembershipRole: { createMany: vi.fn((_args: { data: unknown[] }) => Promise.resolve({ count: 4 })) },
     };
     const prisma = {
-      $transaction: vi.fn(async (fn: (t: unknown) => unknown) => fn(tx)),
-      role: { findMany: vi.fn(async () => [{ id: 'r1' }, { id: 'r2' }]) },
-      user: { findMany: vi.fn(async () => [{ id: 'u1' }, { id: 'u2' }, { id: 'u3' }]) },
+      $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+      role: { findMany: vi.fn(() => Promise.resolve([{ id: 'r1' }, { id: 'r2' }])) },
+      user: { findMany: vi.fn(() => Promise.resolve([{ id: 'u1' }, { id: 'u2' }, { id: 'u3' }])) },
       workspaceMembership: tx.workspaceMembership,
     };
     const rbac = { invalidate: vi.fn(), invalidateWorkspace: vi.fn() };

@@ -17,13 +17,14 @@ function make(tx: Record<string, unknown>, extra: Record<string, unknown> = {}) 
 
 describe('SprintsService.create — sequence unique', () => {
   it('trùng sequence (P2002) => tính lại và thử lại, thành công ở lần 2', async () => {
-    const create = vi.fn().mockRejectedValueOnce(dupError()).mockResolvedValueOnce(sprintRow({ sequence: 3 }));
+    const create = vi.fn((_args: { data: { sequence: number } }) => Promise.resolve(sprintRow()));
+    create.mockRejectedValueOnce(dupError()).mockResolvedValueOnce(sprintRow({ sequence: 3 }));
     const findFirst = vi.fn().mockResolvedValueOnce({ sequence: 1 }).mockResolvedValueOnce({ sequence: 2 });
     const { service } = make({
-      project: { findFirst: vi.fn(async () => ({ id: 'p1' })) },
+      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
       sprint: { findFirst, create },
     });
-    const dto = await service.create('w1', 'p1', { name: 'S' } as never);
+    const dto = await service.create('w1', 'p1', { name: 'S' });
     expect(create).toHaveBeenCalledTimes(2);
     expect(create.mock.calls[0]![0].data.sequence).toBe(2);
     expect(create.mock.calls[1]![0].data.sequence).toBe(3);
@@ -33,20 +34,20 @@ describe('SprintsService.create — sequence unique', () => {
   it('trùng 3 lần liền => báo lỗi nghiệp vụ, không thử vô hạn', async () => {
     const create = vi.fn().mockRejectedValue(dupError());
     const { service } = make({
-      project: { findFirst: vi.fn(async () => ({ id: 'p1' })) },
-      sprint: { findFirst: vi.fn(async () => ({ sequence: 1 })), create },
+      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      sprint: { findFirst: vi.fn(() => Promise.resolve({ sequence: 1 })), create },
     });
-    await expect(service.create('w1', 'p1', { name: 'S' } as never)).rejects.toMatchObject({ status: 422 });
+    await expect(service.create('w1', 'p1', { name: 'S' })).rejects.toMatchObject({ status: 422 });
     expect(create).toHaveBeenCalledTimes(3);
   });
 
   it('lỗi khác P2002 được ném nguyên, không thử lại', async () => {
     const create = vi.fn().mockRejectedValue(new Error('boom'));
     const { service } = make({
-      project: { findFirst: vi.fn(async () => ({ id: 'p1' })) },
-      sprint: { findFirst: vi.fn(async () => null), create },
+      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      sprint: { findFirst: vi.fn(() => Promise.resolve(null)), create },
     });
-    await expect(service.create('w1', 'p1', { name: 'S' } as never)).rejects.toThrow('boom');
+    await expect(service.create('w1', 'p1', { name: 'S' })).rejects.toThrow('boom');
     expect(create).toHaveBeenCalledTimes(1);
   });
 });
@@ -55,16 +56,16 @@ describe('SprintsService.complete / start — transaction', () => {
   function completeTx(count: number) {
     return {
       sprint: {
-        findFirst: vi.fn(async () => sprintRow()),
-        updateMany: vi.fn(async () => ({ count })),
-        findUniqueOrThrow: vi.fn(async () => sprintRow({ state: 'CLOSED' })),
+        findFirst: vi.fn(() => Promise.resolve(sprintRow())),
+        updateMany: vi.fn(() => Promise.resolve({ count })),
+        findUniqueOrThrow: vi.fn(() => Promise.resolve(sprintRow({ state: 'CLOSED' }))),
       },
       issue: {
-        findMany: vi.fn(async (args: { select: { id?: boolean } }) =>
-          args.select.id ? [{ id: 'i1' }, { id: 'i2' }] : []),
-        updateMany: vi.fn(async () => ({ count: 2 })),
+        findMany: vi.fn((args: { select: { id?: boolean } }) =>
+          Promise.resolve(args.select.id ? [{ id: 'i1' }, { id: 'i2' }] : [])),
+        updateMany: vi.fn(() => Promise.resolve({ count: 2 })),
       },
-      issueHistory: { createMany: vi.fn() },
+      issueHistory: { createMany: vi.fn((_args: { data: unknown[] }) => Promise.resolve({ count: 0 })) },
       sprintSnapshot: { create: vi.fn() },
     };
   }
@@ -89,11 +90,11 @@ describe('SprintsService.complete / start — transaction', () => {
 
   it('start(): đã có sprint ACTIVE trong project => lỗi, không chuyển trạng thái', async () => {
     const tx = {
-      project: { update: vi.fn(async () => ({ id: 'p1' })) },
+      project: { update: vi.fn(() => Promise.resolve({ id: 'p1' })) },
       sprint: {
-        findFirst: vi.fn(async (args: { where: { id?: string; state?: string } }) =>
-          args.where.state === 'ACTIVE' ? { id: 'other' } : sprintRow({ state: 'FUTURE' })),
-        updateMany: vi.fn(async () => ({ count: 1 })),
+        findFirst: vi.fn((args: { where: { id?: string; state?: string } }) =>
+          Promise.resolve(args.where.state === 'ACTIVE' ? { id: 'other' } : sprintRow({ state: 'FUTURE' }))),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
       },
     };
     const { service, events } = make(tx);

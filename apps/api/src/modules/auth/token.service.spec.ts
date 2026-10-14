@@ -3,15 +3,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { TokenService } from './token.service';
 
 function setup(updateManyCounts: number[], row: Record<string, unknown> | null, successor: Record<string, unknown> | null = null) {
-  const updateMany = vi.fn();
+  const updateMany = vi.fn((_args: { where: Record<string, unknown> }) => Promise.resolve({ count: 0 }));
   for (const count of updateManyCounts) updateMany.mockResolvedValueOnce({ count });
   const prisma = {
     refreshToken: {
       updateMany,
-      findUnique: vi.fn(async () => row),
-      findFirst: vi.fn(async () => successor),
-      findUniqueOrThrow: vi.fn(async () => row),
-      create: vi.fn(async () => ({})),
+      findUnique: vi.fn(() => Promise.resolve(row)),
+      findFirst: vi.fn((_args: { where: Record<string, unknown> }) => Promise.resolve(successor)),
+      findUniqueOrThrow: vi.fn(() => Promise.resolve(row)),
+      create: vi.fn(() => Promise.resolve({})),
     },
   };
   const config = { get: (k: string) => (k === 'jwt.accessSecret' ? 'secret' : k === 'jwt.refreshExpiresIn' ? '7d' : undefined) };
@@ -26,9 +26,9 @@ describe('TokenService.rotateRefresh — atomic', () => {
     const { service, prisma } = setup([1], live);
     const res = await service.rotateRefresh('fam1.rawtoken', {});
     expect(res.userId).toBe('u1');
-    expect(res.newToken.startsWith('fam1.')).toBe(true);
+    expect(res.newToken!.startsWith('fam1.')).toBe(true);
     const claim = prisma.refreshToken.updateMany.mock.calls[0]![0];
-    expect(claim.where).toMatchObject({ revokedAt: null, expiresAt: { gt: expect.any(Date) } });
+    expect(claim.where).toMatchObject({ revokedAt: null, expiresAt: { gt: expect.any(Date) as Date } });
     expect(prisma.refreshToken.create).toHaveBeenCalledTimes(1);
   });
 

@@ -4,14 +4,14 @@ import { ImportService } from './import.service';
 function setup(failSummary?: string) {
   const tx = {};
   const prisma = {
-    $transaction: vi.fn(async (fn: (t: unknown) => unknown) => fn(tx)),
-    project: { findFirst: vi.fn(async () => ({ id: 'p1' })) },
-    importJob: { create: vi.fn(async () => ({ id: 'job1' })), update: vi.fn(async () => ({})) },
-    issueType: { findMany: vi.fn(async () => [{ id: 't1', name: 'Task' }]) },
-    priority: { findMany: vi.fn(async () => []) },
+    $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+    project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+    importJob: { create: vi.fn(() => Promise.resolve({ id: 'job1' })), update: vi.fn(() => Promise.resolve({})) },
+    issueType: { findMany: vi.fn(() => Promise.resolve([{ id: 't1', name: 'Task' }])) },
+    priority: { findMany: vi.fn(() => Promise.resolve([])) },
   };
   const issues = {
-    createWithin: vi.fn(async (_tx: unknown, _w: string, _u: string, input: { summary: string }) => {
+    createWithin: vi.fn(async (_tx: unknown, _w: string, _u: string, input: { summary: string }) => { await Promise.resolve();
       if (input.summary === failSummary) throw new Error('lỗi DB giả lập');
       return { id: `id-${input.summary}` };
     }),
