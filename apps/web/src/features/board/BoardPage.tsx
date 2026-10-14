@@ -16,6 +16,7 @@ import { buildProgressMap, type SubtreeProgress } from '@/lib/issueTree';
 import { useBoardIssues, useBoards, useTransitionIssue } from './api';
 import { useUpdateIssue } from '@/features/issues/api';
 import { useProjectRealtime } from './useRealtime';
+import { PresenceAvatars } from '@/features/presence/PresenceAvatars';
 import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
@@ -236,6 +237,7 @@ export function BoardPage() {
           >
             <Users className="h-3.5 w-3.5" /> Nhóm theo người
           </button>
+          <div className="ml-auto"><PresenceAvatars room="project" projectId={project?.id} /></div>
         </div>
 
         {groupBy && lanes ? (

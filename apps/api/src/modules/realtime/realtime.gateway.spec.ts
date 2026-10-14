@@ -282,6 +282,18 @@ describe('RealtimeGateway — presence', () => {
   });
 });
 
+describe('RealtimeGateway — presence:view tới trước subscribe', () => {
+  it('viewing nhận trước khi join presence được áp dụng ngay sau khi join', async () => {
+    const { gateway, presence } = makeGateway({ id: 'P1' });
+    const client = makeClient();
+    await gateway.onPresenceView({ room: 'issue:I1' }, client as never); // chưa vào room nào
+    expect(presence.setViewing).not.toHaveBeenCalled();
+    presence.setViewing.mockResolvedValue({ changed: true, user: { userId: 'U1', viewing: 'issue:I1' } });
+    await gateway.onSubscribe({ kind: 'project', id: 'P1' }, client as never);
+    expect(presence.setViewing).toHaveBeenCalledWith('project:P1', 'U1', 'issue:I1');
+  });
+});
+
 describe('RealtimeGateway — typing', () => {
   it('relay typing tới room issue trừ người gửi (client.to)', async () => {
     const { gateway } = makeGateway();

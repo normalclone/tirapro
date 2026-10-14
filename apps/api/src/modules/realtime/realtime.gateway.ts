@@ -91,8 +91,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage(WS_EVENTS.PRESENCE_VIEW)
   async onPresenceView(@MessageBody() body: { room?: string | null }, @ConnectedSocket() client: Socket): Promise<void> {
     const viewing = typeof body?.room === 'string' && ISSUE_ROOM_RE.test(body.room) ? body.room : null;
-    const userId = (client.data as { userId?: string }).userId;
+    const data = client.data as { userId?: string; viewing?: string | null };
+    const userId = data.userId;
     if (!userId) return;
+    // Nhớ lại để áp dụng ngay khi join presence xong (client có thể gửi view trước khi subscribe kịp xong).
+    data.viewing = viewing;
     for (const room of this.presenceRooms(client)) {
       try {
         let res = await this.presence.setViewing(room, userId, viewing);
@@ -158,10 +161,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     try {
       const profile = await this.profileOf(client);
       if (!profile) return;
-      const data = client.data as { rooms?: string[] };
+      const data = client.data as { rooms?: string[]; viewing?: string | null };
       const already = Array.isArray(data.rooms) && data.rooms.includes(room);
       if (!already) data.rooms = [...(data.rooms ?? []), room];
-      const user = await this.presence.join(room, profile);
+      let user = await this.presence.join(room, profile);
+      if (data.viewing) user = (await this.presence.setViewing(room, profile.userId, data.viewing))?.user ?? user;
       if (!already) client.to(room).emit(WS_EVENTS.PRESENCE_JOIN, { room, user });
       client.emit(WS_EVENTS.PRESENCE_STATE, { room, users: await this.presence.state(room) });
     } catch (err) {
