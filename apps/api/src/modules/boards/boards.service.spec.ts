@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BoardsService } from './boards.service';
 
+/** expect.stringContaining có kiểu any — bọc lại để không phát sinh cảnh báo lint. */
+const has = (text: string): unknown => expect.stringContaining(text);
+
 const STATUSES = [
   { id: 's1', name: 'Todo' },
   { id: 's2', name: 'Doing' },
@@ -48,7 +51,7 @@ describe('BoardsService.setColumns', () => {
     const { service, prisma } = make();
     await expect(
       service.setColumns('w1', 'b1', { columns: [col('Việc cần làm', ['s1']), col('Đang làm', ['s2'])] }),
-    ).rejects.toMatchObject({ status: 422, message: expect.stringContaining('Done') });
+    ).rejects.toMatchObject({ status: 422, message: has('Done') });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -56,7 +59,7 @@ describe('BoardsService.setColumns', () => {
     const { service, prisma } = make();
     await expect(
       service.setColumns('w1', 'b1', { columns: [col('A', ['s1', 's2']), col('B', ['s2', 's3'])] }),
-    ).rejects.toMatchObject({ status: 422, message: expect.stringContaining('Doing') });
+    ).rejects.toMatchObject({ status: 422, message: has('Doing') });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -71,7 +74,7 @@ describe('BoardsService.setColumns', () => {
     const { service } = make();
     await expect(
       service.setColumns('w1', 'b1', { columns: [col('A', ['s1']), col('a', ['s2', 's3'])] }),
-    ).rejects.toMatchObject({ status: 422, message: expect.stringContaining('trùng') });
+    ).rejects.toMatchObject({ status: 422, message: has('trùng') });
   });
 
   it('id cột không thuộc board này => 404', async () => {
@@ -85,7 +88,7 @@ describe('BoardsService.setColumns', () => {
     const { service, prisma } = make(boardRow({ project: { archivedAt: new Date(), defaultWorkflowId: 'wf' } }));
     await expect(
       service.setColumns('w1', 'b1', { columns: [col('A', ['s1', 's2', 's3'])] }),
-    ).rejects.toMatchObject({ status: 422, message: expect.stringContaining('lưu trữ') });
+    ).rejects.toMatchObject({ status: 422, message: has('lưu trữ') });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -140,7 +143,7 @@ describe('BoardsService.update', () => {
     const { service, prisma } = make();
     await expect(service.update('w1', 'b1', { filterJql: 'status = = x' })).rejects.toMatchObject({
       status: 422,
-      message: expect.stringContaining('Bộ lọc JQL không hợp lệ'),
+      message: has('Bộ lọc JQL không hợp lệ'),
     });
     expect(prisma.board.update).not.toHaveBeenCalled();
   });

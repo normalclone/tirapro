@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { IssuesService } from './issues.service';
 
+/** expect.stringContaining có kiểu any — bọc lại để không phát sinh cảnh báo lint. */
+const has = (text: string): unknown => expect.stringContaining(text);
+
 const now = new Date('2026-10-15T00:00:00Z');
 
 /** Dòng issue đủ trường để toDto() không văng lỗi. */
@@ -472,14 +475,14 @@ describe('IssuesService — giới hạn WIP của cột board', () => {
         projectId: 'p1', boardId: 'b1', patch: { statusId: 's2' },
         items: [{ id: 'a', version: 3 }, { id: 'b', version: 3 }],
       }),
-    ).rejects.toMatchObject({ status: 422, response: { code: 'WIP_LIMIT_REACHED', message: expect.stringContaining('chỉ còn chỗ cho 1') } });
+    ).rejects.toMatchObject({ status: 422, response: { code: 'WIP_LIMIT_REACHED', message: has('chỉ còn chỗ cho 1') } });
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
   });
 
   it('dự án đã lưu trữ => transition/move bị chặn trước khi đụng DB ghi', async () => {
     const tx = wipTx({ issue: { project: { archivedAt: new Date() } } });
     const { service } = makeService(tx);
-    await expect(service.transition('w1', 'u1', 'i1', input)).rejects.toMatchObject({ status: 422, message: expect.stringContaining('lưu trữ') });
+    await expect(service.transition('w1', 'u1', 'i1', input)).rejects.toMatchObject({ status: 422, message: has('lưu trữ') });
     await expect(service.move('w1', 'u1', 'i1', { version: 3 })).rejects.toMatchObject({ status: 422 });
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
   });

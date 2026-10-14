@@ -2,6 +2,10 @@ import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { SprintsService } from './sprints.service';
 
+/** expect.stringContaining có kiểu any — bọc lại để không phát sinh cảnh báo lint. */
+const has = (text: string): unknown => expect.stringContaining(text);
+const anyDate: unknown = expect.any(Date);
+
 const sprintRow = (over: Record<string, unknown> = {}) => ({
   id: 's1', projectId: 'p1', boardId: null, name: 'Sprint 1', goal: null, state: 'ACTIVE',
   startDate: null, endDate: null, completeDate: null, sequence: 1,
@@ -211,7 +215,7 @@ describe('SprintsService.complete — chọn đích cho việc chưa xong', () =
     const t = tx();
     t.sprint.findFirst = vi.fn(() => Promise.resolve(sprintRow({ project: { archivedAt: new Date() } })));
     const { service } = make(t);
-    await expect(service.complete('w1', 's1', 'u1')).rejects.toMatchObject({ status: 422, message: expect.stringContaining('lưu trữ') });
+    await expect(service.complete('w1', 's1', 'u1')).rejects.toMatchObject({ status: 422, message: has('lưu trữ') });
     expect(t.sprint.updateMany).not.toHaveBeenCalled();
   });
 });
@@ -240,7 +244,7 @@ describe('SprintsService.remove / update', () => {
     const spy = vi.spyOn(prisma, '$transaction');
     await expect(service.remove('w1', 's1', 'u1')).resolves.toEqual({ success: true });
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(t.sprint.updateMany.mock.calls[0]![0]).toMatchObject({ where: { id: 's1', state: 'FUTURE', deletedAt: null }, data: { deletedAt: expect.any(Date) } });
+    expect(t.sprint.updateMany.mock.calls[0]![0]).toMatchObject({ where: { id: 's1', state: 'FUTURE', deletedAt: null }, data: { deletedAt: anyDate } });
     expect(t.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ sprintId: null, version: { increment: 1 } });
     const rows = t.issueHistory.createMany.mock.calls[0]![0].data;
     expect(rows).toHaveLength(3);
