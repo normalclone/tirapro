@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { TeamDto } from '@tirapro/types';
 import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
@@ -99,70 +99,69 @@ export function TeamEditorModal({ open, team, onClose }: { open: boolean; team?:
   }
 
   return (
-    <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-[8vh]">
-      <button className="absolute inset-0 bg-black/30 animate-in fade-in duration-200" onClick={onClose} aria-label="Đóng" />
-      <div className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
-          <span className="text-sm font-medium text-ink">{editing ? 'Sửa nhóm' : 'Tạo nhóm'}</span>
-          <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng"><X className="h-4 w-4" /></Button>
-        </header>
-
-        <div className="space-y-4 px-5 py-4">
-          <Field label="Tên nhóm" title="Đặt theo chức năng để ai cũng đoán được nhóm làm gì">
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Frontend, QA…" aria-label="Tên nhóm" autoFocus maxLength={60} />
-          </Field>
-
-          <Field label="Màu nhãn" title="Màu này giúp nhận ra nhóm trong các danh sách và bộ lọc">
-            <div className="flex flex-wrap gap-2">
-              {TEAM_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  aria-label={`Màu ${TEAM_COLOR_NAMES[c] ?? c}`}
-                  title={`Màu ${TEAM_COLOR_NAMES[c] ?? c}`}
-                  aria-pressed={color === c}
-                  className={cn('h-7 w-7 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                    color === c ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink-strong' : 'hover:scale-110')}
-                  style={{ background: c }}
-                />
-              ))}
-            </div>
-          </Field>
-
-          <Field label="Mô tả" hint="(tùy chọn)" title="Một câu để người khác biết nhóm này lo phần nào">
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="VD: Lo giao diện web và ứng dụng di động" aria-label="Mô tả nhóm" maxLength={500} />
-          </Field>
-
-          <Field label="Thành viên" hint="(tùy chọn)" title="Chọn những người thuộc nhóm này. Thêm hay bớt lúc nào cũng được.">
-            <RoleMultiSelect
-              options={userOptions}
-              value={memberIds}
-              onChange={setMemberIds}
-              requireOne={false}
-              placeholder="Chọn thành viên…"
-              ariaLabel="Chọn thành viên nhóm"
-            />
-          </Field>
-
-          <Field label="Trưởng nhóm" hint="(chọn trong thành viên)" title="Người đứng đầu nhóm. Chỉ chọn được trong số thành viên đã thêm ở trên.">
-            <SearchSelect
-              value={leadId}
-              onChange={setLeadId}
-              options={leadOptions}
-              placeholder="Chưa có trưởng nhóm"
-              searchPlaceholder="Tìm thành viên…"
-              ariaLabel="Trưởng nhóm"
-            />
-          </Field>
-        </div>
-
-        <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title={editing ? 'Sửa nhóm' : 'Tạo nhóm'}
+      size="md"
+      footer={
+        <>
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>{editing ? 'Lưu' : 'Tạo nhóm'}</Button>
-        </footer>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Tên nhóm" title="Đặt theo chức năng để ai cũng đoán được nhóm làm gì">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Frontend, QA…" aria-label="Tên nhóm" autoFocus maxLength={60} />
+        </Field>
+
+        <Field label="Màu nhãn" title="Màu này giúp nhận ra nhóm trong các danh sách và bộ lọc">
+          <div className="flex flex-wrap gap-2">
+            {TEAM_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                aria-label={`Màu ${TEAM_COLOR_NAMES[c] ?? c}`}
+                title={`Màu ${TEAM_COLOR_NAMES[c] ?? c}`}
+                aria-pressed={color === c}
+                className={cn('h-7 w-7 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                  color === c ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink-strong' : 'hover:scale-110')}
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Mô tả" hint="(tùy chọn)" title="Một câu để người khác biết nhóm này lo phần nào">
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="VD: Lo giao diện web và ứng dụng di động" aria-label="Mô tả nhóm" maxLength={500} />
+        </Field>
+
+        <Field label="Thành viên" hint="(tùy chọn)" title="Chọn những người thuộc nhóm này. Thêm hay bớt lúc nào cũng được.">
+          <RoleMultiSelect
+            options={userOptions}
+            value={memberIds}
+            onChange={setMemberIds}
+            requireOne={false}
+            placeholder="Chọn thành viên…"
+            ariaLabel="Chọn thành viên nhóm"
+          />
+        </Field>
+
+        <Field label="Trưởng nhóm" hint="(chọn trong thành viên)" title="Người đứng đầu nhóm. Chỉ chọn được trong số thành viên đã thêm ở trên.">
+          <SearchSelect
+            value={leadId}
+            onChange={setLeadId}
+            options={leadOptions}
+            placeholder="Chưa có trưởng nhóm"
+            searchPlaceholder="Tìm thành viên…"
+            ariaLabel="Trưởng nhóm"
+          />
+        </Field>
       </div>
-    </div>
+    </Dialog>
   );
 }

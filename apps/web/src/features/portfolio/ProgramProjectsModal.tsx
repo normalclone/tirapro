@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
 import { useProjects } from '@/features/projects/api';
 import { useSetProgramProjects, type ProgramDto } from './api';
@@ -45,40 +45,32 @@ export function ProgramProjectsModal({
   }
 
   return (
-    <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-[8vh]">
-      <button className="absolute inset-0 bg-black/30 animate-in fade-in duration-200" onClick={onClose} aria-label="Đóng" />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Gán dự án cho ${program.name}`}
-        className="relative flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200"
-      >
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: program.color ?? 'var(--faint)' }} aria-hidden />
-          <span className="min-w-0 truncate text-sm font-medium text-ink">Gán dự án · {program.name}</span>
-          <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng"><X className="h-4 w-4" /></Button>
-        </header>
-
-        <div className="px-5 py-4">
-          <p className="mb-2 text-sm text-muted">
-            Mỗi dự án chỉ thuộc một chương trình. Dự án bạn bỏ chọn sẽ chuyển về nhóm “Chưa thuộc chương trình”,
-            dữ liệu của dự án không bị ảnh hưởng.
-          </p>
-          <RoleMultiSelect
-            options={options}
-            value={ids}
-            onChange={setIds}
-            requireOne={false}
-            placeholder="Chọn dự án…"
-            ariaLabel="Chọn dự án thuộc chương trình"
-          />
-        </div>
-
-        <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title={`Gán dự án · ${program.name}`}
+      size="md"
+      footer={
+        <>
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
           <Button onClick={() => void save()} loading={setProjects.isPending}>Lưu thay đổi</Button>
-        </footer>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p className="mb-2 text-sm text-muted">
+        Mỗi dự án chỉ thuộc một chương trình. Dự án bạn bỏ chọn sẽ chuyển về nhóm “Chưa thuộc chương trình”,
+        dữ liệu của dự án không bị ảnh hưởng.
+      </p>
+      <RoleMultiSelect
+        options={options}
+        value={ids}
+        onChange={setIds}
+        requireOne={false}
+        placeholder="Chọn dự án…"
+        ariaLabel="Chọn dự án thuộc chương trình"
+      />
+    </Dialog>
   );
 }
