@@ -62,7 +62,8 @@ describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
     expect(dto.rank > 'i' && dto.rank < 'r').toBe(true);
     // Rebalance = ĐÚNG MỘT câu raw cho cả project, hai mảng (id, rank) cùng độ dài
     expect(executeRaw).toHaveBeenCalledTimes(1);
-    const [, ids, newRanks] = executeRaw.mock.calls[0] as unknown as [unknown, string[], string[]];
+    const [, movedId, ids, newRanks] = executeRaw.mock.calls[0] as unknown as [unknown, string, string[], string[]];
+    expect(movedId).toBe('i1'); // issue đang kéo không bị tăng version bởi rebalance
     expect(ids).toEqual(['a', 'i1', 'b']);
     expect(newRanks).toHaveLength(ids.length);
     expect(new Set(newRanks).size).toBe(newRanks.length);
@@ -70,6 +71,42 @@ describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
     expect(updateMany).toHaveBeenCalledTimes(1);
     expect(events.emit).toHaveBeenCalledWith('project.ranks_rebalanced', { projectId: 'p1' });
     expect(events.emit).toHaveBeenCalledTimes(2); // rebalance + ISSUE_MOVED
+  });
+
+  it('rebalance bump version cả project nhưng KHÔNG bump issue đang kéo => move vẫn thành công với version client', async () => {
+    // Mô phỏng DB thật: updateMany chỉ khớp khi where.version === version hiện tại; raw UPDATE bump version trừ movedId.
+    const versions: Record<string, number> = { a: 1, i1: 3, b: 1 };
+    const ranks: Record<string, [string, string]> = { a: ['n', 'i'], b: ['n0', 'r'] };
+    let rebalanced = false;
+    let movedRank: unknown;
+    const tx = {
+      issue: {
+        findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
+          if (where.id === 'i1') return issueRow({ version: versions.i1 });
+          const r = ranks[where.id];
+          return r ? { rank: rebalanced ? r[1] : r[0] } : null;
+        }),
+        findMany: vi.fn(async () => [{ id: 'a' }, { id: 'i1' }, { id: 'b' }]),
+        updateMany: vi.fn(async ({ where, data }: { where: { id: string; version: number }; data: Record<string, unknown> }) => {
+          if (where.version !== versions[where.id]) return { count: 0 };
+          versions[where.id]!++;
+          movedRank = data.rank;
+          return { count: 1 };
+        }),
+        findFirstOrThrow: vi.fn(async () => issueRow({ rank: movedRank, version: versions.i1 })),
+      },
+      project: { update: vi.fn(async () => ({ id: 'p1' })) },
+      $executeRaw: vi.fn(async (_s: unknown, moved: string, ids: string[]) => {
+        rebalanced = true;
+        for (const id of ids) if (id !== moved) versions[id]!++;
+        return ids.length;
+      }),
+    };
+    const { service } = makeService(tx);
+    const dto = await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' } as never);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(versions).toEqual({ a: 2, i1: 4, b: 2 });
+    expect(dto.version).toBe(4);
   });
 
   it('mốc không còn tồn tại => 404 thay vì lặng lẽ xếp xuống cuối', async () => {

@@ -149,7 +149,7 @@ export class IssuesService {
       input.assigneeId ?? (project.defaultAssigneeMode === 'PROJECT_LEAD' ? project.leadId : null);
 
     // Rank: cuối danh sách trong project
-    const rank = await this.resolveRank(project.id, db, deferred, async () => {
+    const rank = await this.resolveRank(project.id, db, deferred, null, async () => {
       const last = await db.issue.findFirst({
         where: { projectId: project.id, deletedAt: null },
         orderBy: [{ rank: 'desc' }, { id: 'desc' }],
@@ -358,7 +358,7 @@ export class IssuesService {
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, { sprintId: input.sprintId });
 
-    const rank = await this.resolveRank(current.projectId, this.prisma, null, async () => ({
+    const rank = await this.resolveRank(current.projectId, this.prisma, null, id, async () => ({
       prev: input.afterId ? await this.rankOf(workspaceId, current.projectId, input.afterId) : null,
       next: input.beforeId ? await this.rankOf(workspaceId, current.projectId, input.beforeId) : null,
     }));
@@ -457,6 +457,7 @@ export class IssuesService {
     projectId: string,
     db: Prisma.TransactionClient,
     deferred: Array<() => void> | null,
+    movedId: string | null,
     read: () => Promise<{ prev: string | null; next: string | null }>,
   ): Promise<string> {
     const first = await read();
@@ -465,7 +466,7 @@ export class IssuesService {
     } catch (e) {
       if (!(e instanceof RankGapError)) throw e;
     }
-    await this.rebalanceProject(projectId, db, deferred);
+    await this.rebalanceProject(projectId, db, deferred, movedId);
     const again = await read();
     try {
       return rankBetween(again.prev, again.next);
@@ -478,19 +479,29 @@ export class IssuesService {
   /**
    * Đánh số lại rank toàn bộ issue của project (khi hết chỗ chèn). Khoá project bằng update để tuần tự hoá,
    * rồi ghi MỘT câu UPDATE cho cả project (không update từng dòng — tránh vượt timeout transaction).
-   * `version` của các dòng được tăng để client đang giữ bản cũ bị OCC chặn thay vì ghi đè rank mới.
+   * `version` của các dòng (trừ issue đang kéo) được tăng để client đang giữ bản cũ bị OCC chặn thay vì ghi đè rank mới.
    * Sự kiện PROJECT_RANKS_REBALANCED chỉ phát sau khi commit: ngay khi tự mở transaction, hoặc chạy qua
    * `deferred` khi đang nằm trong transaction của bên gọi.
    */
-  private async rebalanceProject(projectId: string, db: Prisma.TransactionClient, deferred: Array<() => void> | null): Promise<void> {
+  private async rebalanceProject(
+    projectId: string,
+    db: Prisma.TransactionClient,
+    deferred: Array<() => void> | null,
+    movedId: string | null,
+  ): Promise<void> {
     const body = async (tx: Prisma.TransactionClient) => {
       await tx.project.update({ where: { id: projectId }, data: { updatedAt: new Date() }, select: { id: true } });
       const rows = await tx.issue.findMany({ where: { projectId }, orderBy: [{ rank: 'asc' }, { id: 'asc' }], select: { id: true } });
       if (!rows.length) return;
       const ids = rows.map((r) => r.id);
       const ranks = initialRanks(rows.length);
+      // Issue đang được kéo (movedId) KHÔNG tăng version ở đây: updateWithVersion của chính thao tác kéo sẽ tăng,
+      // và nó phải còn khớp version client gửi lên. updatedAt cập nhật tay vì @updatedAt của Prisma chỉ chạy phía client.
       await tx.$executeRaw`
-        UPDATE "Issue" AS i SET "rank" = v.rank, "version" = i."version" + 1
+        UPDATE "Issue" AS i
+        SET "rank" = v.rank,
+            "version" = i."version" + CASE WHEN i."id" = ${movedId}::text THEN 0 ELSE 1 END,
+            "updatedAt" = now()
         FROM (SELECT unnest(${ids}::text[]) AS id, unnest(${ranks}::text[]) AS rank) AS v
         WHERE i."id" = v.id`;
     };
