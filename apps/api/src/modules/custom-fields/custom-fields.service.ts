@@ -3,6 +3,7 @@ import { CustomFieldType, Prisma } from '@prisma/client';
 import { ERROR_CODES } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertIssueWritable } from '../../common/project-writable';
 
 /** Field định nghĩa kèm options (cho dropdown / hiển thị). */
 const fieldInclude = {
@@ -156,6 +157,7 @@ export class CustomFieldsService {
     value: unknown,
   ): Promise<IssueFieldValueView> {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const field = await this.requireField(workspaceId, fieldId);
 
     const columns = this.toColumns(field, value);

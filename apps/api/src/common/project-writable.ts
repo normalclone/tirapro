@@ -16,3 +16,9 @@ export async function assertProjectWritable(db: Pick<Prisma.TransactionClient, '
   const p = await db.project.findUnique({ where: { id: projectId }, select: { archivedAt: true } });
   assertNotArchived(p?.archivedAt);
 }
+
+/** Như `assertProjectWritable` nhưng từ issue — dùng cho comment/liên kết/đính kèm/checklist… gắn với issue. */
+export async function assertIssueWritable(db: Pick<Prisma.TransactionClient, 'issue'>, issueId: string): Promise<void> {
+  const i = await db.issue.findUnique({ where: { id: issueId }, select: { project: { select: { archivedAt: true } } } });
+  assertNotArchived(i?.project.archivedAt);
+}

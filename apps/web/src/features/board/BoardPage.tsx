@@ -390,7 +390,7 @@ export function BoardPage() {
                           droppableId={`${lane.key}::${col.id}`}
                           laneIdx={laneIdx}
                           colIdx={colIdx}
-                          wipUsed={wipCount(col, issues ?? [], board, activeSprintId)}
+                          wipUsed={wipCount(col, projectIssues ?? [], board, activeSprintId)}
                           grouped
                         />
                       ))}
@@ -414,7 +414,7 @@ export function BoardPage() {
                 canCreate={canCreate}
                 laneIdx={0}
                 colIdx={colIdx}
-                wipUsed={wipCount(col, issues ?? [], board, activeSprintId)}
+                wipUsed={wipCount(col, projectIssues ?? [], board, activeSprintId)}
               />
             ))}
           </div>

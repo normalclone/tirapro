@@ -5,6 +5,7 @@ import {
   BusinessRuleException,
   NotFoundAppException,
 } from '../../common/exceptions/app.exception';
+import { assertIssueWritable } from '../../common/project-writable';
 
 /** Loại liên kết khả dụng trong workspace. */
 export interface LinkTypeView {
@@ -89,6 +90,9 @@ export class IssueLinksService {
     // Cả hai issue phải thuộc workspace của người dùng.
     await this.requireIssue(workspaceId, issueId);
     const target = await this.requireIssue(workspaceId, input.targetIssueId);
+    // Hai đầu có thể thuộc hai dự án khác nhau — dự án nào đã lưu trữ cũng chặn.
+    await assertIssueWritable(this.prisma, issueId);
+    await assertIssueWritable(this.prisma, input.targetIssueId);
 
     // Loại liên kết phải thuộc workspace.
     const linkType = await this.prisma.linkType.findFirst({
@@ -123,9 +127,11 @@ export class IssueLinksService {
   async remove(workspaceId: string, linkId: string): Promise<{ success: true }> {
     const link = await this.prisma.issueLink.findFirst({
       where: { id: linkId, source: { workspaceId, deletedAt: null } },
-      select: { id: true },
+      select: { id: true, sourceIssueId: true, targetIssueId: true },
     });
     if (!link) throw new NotFoundAppException('Liên kết');
+    await assertIssueWritable(this.prisma, link.sourceIssueId);
+    await assertIssueWritable(this.prisma, link.targetIssueId);
     await this.prisma.issueLink.delete({ where: { id: link.id } });
     return { success: true };
   }

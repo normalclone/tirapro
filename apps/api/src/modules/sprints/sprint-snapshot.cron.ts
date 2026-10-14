@@ -13,7 +13,7 @@ export function endOfUtcDay(d: Date): Date {
 /**
  * Chụp snapshot DAILY cho mọi sprint ACTIVE (mọi workspace) để burndown không phải suy ngược từ lịch sử.
  *
- * Cron chạy 00:05 nên chụp ĐÚNG trạng thái cuối ngày hôm qua; snapshot được đóng dấu `snapshotAt` = 23:59:59.999 UTC
+ * Cron chạy 00:05 UTC (cố định múi giờ, không phụ thuộc TZ máy chủ) nên chụp ĐÚNG trạng thái cuối ngày hôm qua; snapshot được đóng dấu `snapshotAt` = 23:59:59.999 UTC
  * của ngày vừa qua ("trạng thái cuối ngày D") để burndown ghép theo ngày không bị lệch một ngày.
  * Idempotent: chạy lại (hoặc hai node) không ghi trùng vì đã có snapshot DAILY của ngày đó.
  */
@@ -27,7 +27,7 @@ export class SprintSnapshotCron {
     private readonly sprints: SprintsService,
   ) {}
 
-  @Cron('5 0 * * *')
+  @Cron('5 0 * * *', { timeZone: 'UTC' })
   async runDaily(): Promise<void> {
     // Khoá Redis để nhiều node API không chụp trùng.
     await withCronLock(this.redis, 'sprint-daily', 600, async () => {

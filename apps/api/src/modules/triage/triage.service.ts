@@ -6,6 +6,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto } from '../../common/mappers/user.mapper';
 import { NotFoundAppException, VersionConflictException } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
+import { assertIssueWritable } from '../../common/project-writable';
 
 /**
  * Include gọn cho hàng đợi triage — đủ render thẻ inbox (type/status/priority/severity/assignee)
@@ -105,6 +106,7 @@ export class TriageService {
   /** Chấp nhận issue vào backlog: ACCEPTED, xóa snooze, tùy chọn gán người thực hiện. */
   async accept(workspaceId: string, userId: string, issueId: string, input: AcceptTriageInput): Promise<TriageItemDto> {
     const current = await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     this.assertVersion(current.version, input.version);
 
     const data: Prisma.IssueUpdateInput = {
@@ -122,6 +124,7 @@ export class TriageService {
   /** Từ chối issue: DECLINED (không vào backlog). */
   async decline(workspaceId: string, userId: string, issueId: string, input: DeclineTriageInput): Promise<TriageItemDto> {
     const current = await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     this.assertVersion(current.version, input.version);
 
     return this.applyAndEmit(
@@ -138,6 +141,7 @@ export class TriageService {
   /** Tạm hoãn issue tới mốc thời gian: SNOOZED + triageSnoozeUntil. */
   async snooze(workspaceId: string, userId: string, issueId: string, input: SnoozeTriageInput): Promise<TriageItemDto> {
     const current = await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     this.assertVersion(current.version, input.version);
 
     return this.applyAndEmit(

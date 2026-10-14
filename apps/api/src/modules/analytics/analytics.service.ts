@@ -376,7 +376,7 @@ export class AnalyticsService {
       select: { issueId: true, oldCategory: true, newCategory: true, occurredAt: true },
     });
 
-    // Snapshot START/DAILY/CLOSE: nguồn chính cho "còn lại" mỗi ngày; ngày chưa có snapshot (trước khi có cron,
+    // Snapshot DAILY/CLOSE (+ START làm mốc): nguồn chính cho "còn lại" mỗi ngày; ngày chưa có snapshot (trước khi có cron,
     // hoặc hôm nay) mới tính lại từ lịch sử. Mỗi ngày lấy snapshot MUỘN NHẤT trong ngày đó (DAILY đóng dấu cuối ngày).
     const snaps = await this.prisma.sprintSnapshot.findMany({
       where: { sprintId, kind: { in: ['START', 'DAILY', 'CLOSE'] } },
@@ -384,7 +384,9 @@ export class AnalyticsService {
       select: { kind: true, snapshotAt: true, committedPoints: true, remainingPoints: true },
     });
     const snapByDay = new Map<string, number>();
-    for (const sn of snaps) snapByDay.set(dayKey(sn.snapshotAt), sn.remainingPoints);
+    // START chỉ làm mốc cam kết (bên dưới), KHÔNG làm điểm "còn lại" của ngày: ngày đầu/hôm nay chưa có DAILY thì
+    // lịch sử mới phản ánh tiến độ đã làm trong ngày (START luôn = toàn bộ cam kết, che mất tiến độ).
+    for (const sn of snaps) if (sn.kind !== 'START') snapByDay.set(dayKey(sn.snapshotAt), sn.remainingPoints);
     // Mốc "cam kết" của đường lý tưởng = điểm lúc START (nếu có), không bị lệch khi việc bị đẩy ra sau này.
     const startSnap = snaps.find((x) => x.kind === 'START' && x.committedPoints > 0);
     const baseline = startSnap ? startSnap.committedPoints : committed;

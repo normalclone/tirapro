@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertIssueWritable } from '../../common/project-writable';
 
 /** Người tham gia + checklist của issue. Luôn kiểm tra issue thuộc workspace người gọi. */
 @Injectable()
@@ -32,6 +33,7 @@ export class IssueExtrasService {
   /** Đặt lại toàn bộ danh sách người tham gia (chỉ nhận thành viên workspace). */
   async setParticipants(workspaceId: string, issueId: string, userIds: string[]) {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const unique = [...new Set(userIds)];
     if (unique.length > 0) {
       const members = await this.prisma.workspaceMembership.findMany({
@@ -63,6 +65,7 @@ export class IssueExtrasService {
 
   async addChecklistItem(workspaceId: string, issueId: string, text: string) {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const last = await this.prisma.checklistItem.findFirst({
       where: { issueId },
       orderBy: { order: 'desc' },
@@ -80,6 +83,7 @@ export class IssueExtrasService {
     patch: { text?: string; done?: boolean; order?: number },
   ) {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const item = await this.prisma.checklistItem.findFirst({ where: { id: itemId, issueId }, select: { id: true } });
     if (!item) throw new NotFoundAppException('Mục checklist');
     return this.prisma.checklistItem.update({
@@ -94,6 +98,7 @@ export class IssueExtrasService {
 
   async removeChecklistItem(workspaceId: string, issueId: string, itemId: string) {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     await this.prisma.checklistItem.deleteMany({ where: { id: itemId, issueId } });
     return { success: true };
   }

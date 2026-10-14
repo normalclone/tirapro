@@ -8,6 +8,7 @@ import type {
   DependencyTypeInput,
   UpdateMilestoneInput,
 } from './planning.schemas';
+import { assertProjectWritable } from '../../common/project-writable';
 
 const MS_PER_DAY = 86_400_000;
 
@@ -89,6 +90,7 @@ export class PlanningService {
 
   async createDependency(workspaceId: string, projectId: string, dto: CreateDependencyInput) {
     await this.requireProject(workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     if (dto.predecessorId === dto.successorId) {
       throw new BusinessRuleException('Một công việc không thể phụ thuộc vào chính nó — hãy chọn công việc khác');
     }
@@ -118,6 +120,7 @@ export class PlanningService {
 
   async removeDependency(workspaceId: string, projectId: string, id: string) {
     await this.requireProject(workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     const dep = await this.prisma.issueDependency.findFirst({ where: { id, projectId }, select: { id: true } });
     if (!dep) throw new NotFoundAppException('Phụ thuộc');
     await this.prisma.issueDependency.delete({ where: { id } });

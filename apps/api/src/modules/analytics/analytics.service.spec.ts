@@ -405,6 +405,15 @@ describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính t
     expect(r.series[3]!.ideal).toBe(0);
   });
 
+  it('ngày chưa có DAILY (vd hôm nay) dùng lịch sử, không bị START che tiến độ', async () => {
+    const { service } = make([
+      { kind: 'START', snapshotAt: at('2026-10-01T09:00:00Z'), committedPoints: 10, remainingPoints: 10 },
+    ]);
+    const r = await service.burndown('w1', 'sp1');
+    // a (6 điểm) xong ngày 02 theo lịch sử; ngày 01 cũng từ lịch sử (=10), không phải START
+    expect(r.series.map((x) => x.remaining)).toEqual([10, 4, 4, 4]);
+  });
+
   it('CLOSE trong ngày thắng DAILY cũ hơn cùng ngày', async () => {
     const { service } = make([
       { kind: 'START', snapshotAt: at('2026-10-01T09:00:00Z'), committedPoints: 10, remainingPoints: 10 },
