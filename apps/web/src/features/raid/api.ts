@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { RaidKind, RaidStatus } from '@tirapro/types';
 import { api } from '@/lib/api';
 
-export type RaidKind = 'RISK' | 'ASSUMPTION' | 'ISSUE' | 'DEPENDENCY';
-export type RaidStatus = 'OPEN' | 'MITIGATING' | 'CLOSED' | 'ACCEPTED';
+// Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Rủi ro import một chỗ.
+export type { RaidKind, RaidStatus };
 export type RaidLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 export interface RaidOwner {

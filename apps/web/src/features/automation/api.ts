@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { RecurrenceFreq } from '@tirapro/types';
 import { api } from '@/lib/api';
 
-export type RecurrenceFreq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
+// Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Tự động hoá import một chỗ.
+export type { RecurrenceFreq };
 
 /** Nội dung mặc định của công việc, lưu trong `payload` của mẫu / lịch lặp. */
 export interface IssuePayload {

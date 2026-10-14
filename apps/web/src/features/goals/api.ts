@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ListResponse, StatusCategory } from '@tirapro/types';
+import type { KeyResultUnit, ListResponse, ObjectiveStatus, StatusCategory } from '@tirapro/types';
 import { api } from '@/lib/api';
 
-export type ObjectiveStatus = 'DRAFT' | 'ACTIVE' | 'CLOSED';
-export type KeyResultUnit = 'NUMBER' | 'PERCENT' | 'CURRENCY';
+// Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Mục tiêu import một chỗ.
+export type { KeyResultUnit, ObjectiveStatus };
 
 export interface GoalOwner {
   id: string;

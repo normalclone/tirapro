@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { DependencyType } from '@tirapro/types';
 import { api } from '@/lib/api';
 
-/** Loại phụ thuộc giữa hai công việc (mirror `DependencyType` của Prisma). */
-export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF';
+// Loại phụ thuộc giữa hai công việc — enum lấy từ @tirapro/types (sinh từ Prisma).
+export { DependencyType };
 
 /** Nhãn tiếng Việt gọn cho từng loại phụ thuộc, dùng ở danh sách + ô chọn. */
 export const DEPENDENCY_TYPE_LABELS: Record<DependencyType, string> = {
@@ -20,7 +21,12 @@ export const DEPENDENCY_TYPE_HINTS: Record<DependencyType, string> = {
   SF: 'Việc trước phải bắt đầu thì việc sau mới được kết thúc. Kiểu này hiếm dùng.',
 };
 
-export const DEPENDENCY_TYPES: DependencyType[] = ['FS', 'SS', 'FF', 'SF'];
+export const DEPENDENCY_TYPES: DependencyType[] = [
+  DependencyType.FS,
+  DependencyType.SS,
+  DependencyType.FF,
+  DependencyType.SF,
+];
 
 export interface IssueRef {
   id: string;
