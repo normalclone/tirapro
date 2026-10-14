@@ -257,9 +257,38 @@ export class IssuesService {
     return cursorPage(rows.map((r) => this.toDto(r)), limit, (i) => i.id);
   }
 
-  /** Truy vấn theo where đã biên dịch (vd từ JQL/Search). Tự ghép workspace + soft-delete. */
+  /**
+   * Truy vấn theo where đã biên dịch (vd từ JQL/Search). Tự ghép workspace + soft-delete.
+   * `rawIds` (kết quả full-text, đã xếp theo rank): chỉ lấy các id đó và — khi không có `orderBy` —
+   * giữ đúng thứ tự rank (tối đa vài trăm id nên sắp xếp/phân trang trong bộ nhớ).
+   */
   async query(
     workspaceId: string,
+    where: Prisma.IssueWhereInput,
+    orderBy: Prisma.IssueOrderByWithRelationInput[],
+    cursor: string | undefined,
+    limit: number,
+    rawIds?: string[],
+  ): Promise<PageResult<IssueDto>> {
+    const scope: Prisma.IssueWhereInput = { AND: [{ workspaceId, deletedAt: null }, where] };
+    if (rawIds) {
+      if (rawIds.length === 0) return cursorPage<IssueDto>([], limit, (i) => i.id);
+      const idScope: Prisma.IssueWhereInput = { AND: [scope, { id: { in: rawIds } }] };
+      if (!orderBy.length) {
+        const rows = await this.prisma.issue.findMany({ where: idScope, include: issueInclude });
+        const position = new Map(rawIds.map((id, i) => [id, i]));
+        const sorted = rows
+          .sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0))
+          .map((r) => this.toDto(r));
+        const start = cursor ? sorted.findIndex((i) => i.id === cursor) + 1 : 0;
+        return cursorPage(sorted.slice(start, start + limit + 1), limit, (i) => i.id);
+      }
+      return this.queryOrdered(idScope, orderBy, cursor, limit);
+    }
+    return this.queryOrdered(scope, orderBy, cursor, limit);
+  }
+
+  private async queryOrdered(
     where: Prisma.IssueWhereInput,
     orderBy: Prisma.IssueOrderByWithRelationInput[],
     cursor: string | undefined,
@@ -269,7 +298,7 @@ export class IssuesService {
       ? [...orderBy, { id: 'asc' }]
       : [{ updatedAt: 'desc' }, { id: 'asc' }];
     const rows = await this.prisma.issue.findMany({
-      where: { AND: [{ workspaceId, deletedAt: null }, where] },
+      where,
       include: issueInclude,
       orderBy: finalOrder,
       take: limit + 1,

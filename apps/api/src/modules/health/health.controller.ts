@@ -31,13 +31,20 @@ export class HealthController {
   /**
    * Readiness: sẵn sàng nhận traffic? DB phải trả lời `SELECT 1` trong 2 giây, Redis (nếu có) phải ping được.
    * DB lỗi → 503 để LB rút node khỏi vòng. Redis là tuỳ chọn (app chạy giảm cấp) nên chỉ báo trạng thái.
+   * `warnings` là cảnh báo KHÔNG chặn traffic (vd chưa bật full-text) — luôn là mảng, có thể rỗng.
    */
   @Public()
   @Get('ready')
   async ready(@Res({ passthrough: true }) res: Response) {
     const [db, redis] = await Promise.all([this.pingDb(), this.pingRedis()]);
     if (!db) res.status(HttpStatus.SERVICE_UNAVAILABLE);
-    return { status: db ? 'ok' : 'unavailable', db, redis };
+    const warnings: string[] = [];
+    if (db && (await this.hasSearchVector()) === false) {
+      warnings.push(
+        'Issue.searchVector chưa có — tìm kiếm văn bản đang dùng "contains". Hãy chạy `pnpm --filter @tirapro/api db:raw` để bật full-text.',
+      );
+    }
+    return { status: db ? 'ok' : 'unavailable', db, redis, warnings };
   }
 
   /**
@@ -69,6 +76,23 @@ export class HealthController {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /** Cột full-text đã được tạo (db:raw)? `null` nếu không kiểm tra được (không coi là thiếu). */
+  private async hasSearchVector(): Promise<boolean | null> {
+    try {
+      const rows = await Promise.race([
+        this.prisma.$queryRaw<{ ok: boolean }[]>`
+          SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = 'Issue' AND column_name = 'searchVector'
+          ) AS ok`,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('DB timeout')), READY_TIMEOUT_MS).unref()),
+      ]);
+      return rows[0]?.ok ?? null;
+    } catch {
+      return null;
     }
   }
 

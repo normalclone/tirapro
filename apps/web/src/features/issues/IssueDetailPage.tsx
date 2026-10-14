@@ -30,6 +30,7 @@ import { pageContainer } from '@/components/layout/page';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/stores/auth';
+import { PresenceAvatars } from '@/features/presence/PresenceAvatars';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { useRecents } from '@/stores/recentIssues';
 import { useProjectRealtime } from '@/lib/realtime';
@@ -288,6 +289,7 @@ export function IssueDetailPage() {
                     </h1>
                   )}
                   <div className="mt-1 flex shrink-0 items-center gap-2">
+                    <PresenceAvatars room="issue" projectId={issue.projectId} issueId={issue.id} />
                     <IssueSlaBadge issueId={issue.id} />
                     <WatchButton issueId={issue.id} />
                   </div>

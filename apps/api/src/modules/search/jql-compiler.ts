@@ -3,6 +3,43 @@ import type { JqlFieldName, JqlNode, JqlOperator, JqlOrderBy, JqlQueryAst, JqlVa
 
 export interface JqlCompileContext {
   currentUserId: string;
+  /**
+   * Kết quả full-text đã tra sẵn cho từng giá trị của `text ~ "..."` (giá trị → danh sách id theo rank).
+   * Không có entry (vd cột searchVector chưa tồn tại) → rơi về `contains` trên summary/description.
+   */
+  fulltext?: ReadonlyMap<string, readonly string[]>;
+}
+
+/** Các giá trị `text ~ "..."` (toán tử `~`, không rỗng) trong cây điều kiện — để tra full-text trước khi compile. */
+export function collectFulltextTerms(node: JqlNode | null): string[] {
+  const out = new Set<string>();
+  const walk = (n: JqlNode): void => {
+    if (n.type === 'logical') {
+      walk(n.left);
+      walk(n.right);
+    } else if (n.type === 'not') {
+      walk(n.node);
+    } else if (n.field === 'text' && n.operator === '~' && n.value.kind === 'string' && n.value.value.trim()) {
+      out.add(n.value.value);
+    }
+  };
+  if (node) walk(node);
+  return [...out];
+}
+
+/**
+ * Giá trị `text ~ "..."` nằm trên chuỗi AND thuần của điều kiện (không qua OR/NOT) — khi đó mọi kết quả
+ * đều thuộc tập id full-text nên có thể xếp theo rank. null nếu không có.
+ */
+export function primaryFulltextTerm(node: JqlNode | null): string | null {
+  const walk = (n: JqlNode): string | null => {
+    if (n.type === 'logical') return n.op === 'AND' ? (walk(n.left) ?? walk(n.right)) : null;
+    if (n.type === 'not') return null;
+    return n.field === 'text' && n.operator === '~' && n.value.kind === 'string' && n.value.value.trim()
+      ? n.value.value
+      : null;
+  };
+  return node ? walk(node) : null;
 }
 
 interface FieldCfg {
@@ -95,6 +132,8 @@ function compileComparison(field: JqlFieldName, op: JqlOperator, value: JqlValue
     }
     case 'fulltext': {
       const v = scalarString(value, ctx);
+      const ranked = op === '~' ? ctx.fulltext?.get(v) : undefined;
+      if (ranked) return { id: { in: [...ranked] } };
       const like = { contains: v, mode: 'insensitive' as const };
       const match: Where = { OR: [{ summary: like }, { description: like }] };
       return op === '!~' ? { NOT: match } : match;

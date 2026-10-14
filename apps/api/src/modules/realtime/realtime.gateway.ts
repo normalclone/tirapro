@@ -6,6 +6,7 @@ import {
   ConnectedSocket,
   MessageBody,
   OnGatewayConnection,
+  OnGatewayDisconnect,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
@@ -14,6 +15,10 @@ import type { Server, Socket } from 'socket.io';
 import { DOMAIN_EVENTS, WS_EVENTS, rooms } from '@tirapro/types';
 import type { RoomTarget, SubscribeAck } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { PresenceService, type PresenceProfile } from './presence.service';
+
+/** Room issue hợp lệ cho `presence:view` / `typing:*` (tên do client gửi nên phải kiểm dạng). */
+const ISSUE_ROOM_RE = /^issue:[A-Za-z0-9_-]+$/;
 
 /**
  * Socket.io gateway: xác thực JWT ở handshake, kiểm quyền khi subscribe room, và RealtimeBridge
@@ -21,7 +26,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
  * ở RedisIoAdapter (main.ts) vì decorator này không đọc được config lúc chạy.
  */
 @WebSocketGateway({ path: '/realtime' })
-export class RealtimeGateway implements OnGatewayConnection {
+export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server!: Server;
   private readonly logger = new Logger(RealtimeGateway.name);
 
@@ -29,6 +34,7 @@ export class RealtimeGateway implements OnGatewayConnection {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly presence: PresenceService,
   ) {}
 
   handleConnection(client: Socket): void {
@@ -60,13 +66,137 @@ export class RealtimeGateway implements OnGatewayConnection {
     const room = await this.authorizeRoom(target, client);
     if (!room) return { ok: false, error: 'FORBIDDEN' };
     await client.join(room);
+    // Presence chỉ bắt đầu SAU khi subscribe project đã được kiểm quyền.
+    if (target.kind === 'project') await this.joinPresence(client, room);
     return { ok: true };
   }
 
   @SubscribeMessage(WS_EVENTS.UNSUBSCRIBE)
   async onUnsubscribe(@MessageBody() target: RoomTarget, @ConnectedSocket() client: Socket): Promise<void> {
     const room = this.roomName(target);
-    if (room) await client.leave(room);
+    if (!room) return;
+    await client.leave(room);
+    if (target.kind === 'project') await this.leavePresence(client, room);
+  }
+
+  handleDisconnect(client: Socket): void {
+    // Rời mọi room presence socket này đã vào (data.rooms) — không chặn việc ngắt kết nối.
+    for (const room of this.presenceRooms(client)) void this.leavePresence(client, room, true);
+  }
+
+  /**
+   * Heartbeat + báo đang xem gì (`issue:<id>` hoặc null). Client gửi lại mỗi 25s nên cũng làm mới `ts`.
+   * Chỉ phát lại `presence:state` cho room project khi `viewing` đổi thật.
+   */
+  @SubscribeMessage(WS_EVENTS.PRESENCE_VIEW)
+  async onPresenceView(@MessageBody() body: { room?: string | null }, @ConnectedSocket() client: Socket): Promise<void> {
+    const viewing = typeof body?.room === 'string' && ISSUE_ROOM_RE.test(body.room) ? body.room : null;
+    const data = client.data as { userId?: string; viewing?: string | null };
+    const userId = data.userId;
+    if (!userId) return;
+    // Nhớ lại để áp dụng ngay khi join presence xong (client có thể gửi view trước khi subscribe kịp xong).
+    data.viewing = viewing;
+    for (const room of this.presenceRooms(client)) {
+      try {
+        let res = await this.presence.setViewing(room, userId, viewing);
+        if (!res) {
+          // Entry đã hết hạn (mất mạng lâu / Redis khởi động lại) → vào lại rồi đặt viewing.
+          await this.joinPresence(client, room);
+          res = await this.presence.setViewing(room, userId, viewing);
+        }
+        if (res?.changed) {
+          this.server.to(room).emit(WS_EVENTS.PRESENCE_STATE, { room, users: await this.presence.state(room) });
+        }
+      } catch (err) {
+        this.logger.warn(`presence:view thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  @SubscribeMessage(WS_EVENTS.TYPING_START)
+  async onTypingStart(@MessageBody() body: { room?: string }, @ConnectedSocket() client: Socket): Promise<void> {
+    await this.relayTyping(client, body?.room, true);
+  }
+
+  @SubscribeMessage(WS_EVENTS.TYPING_STOP)
+  async onTypingStop(@MessageBody() body: { room?: string }, @ConnectedSocket() client: Socket): Promise<void> {
+    await this.relayTyping(client, body?.room, false);
+  }
+
+  /** Relay `typing` tới room issue trừ người gửi; chỉ khi socket đã subscribe (đã kiểm quyền) room đó. */
+  private async relayTyping(client: Socket, room: string | undefined, typing: boolean): Promise<void> {
+    if (typeof room !== 'string' || !ISSUE_ROOM_RE.test(room) || !client.rooms?.has(room)) return;
+    const profile = await this.profileOf(client);
+    if (!profile) return;
+    client.to(room).emit(WS_EVENTS.TYPING, { room, userId: profile.userId, displayName: profile.displayName, typing });
+  }
+
+  // ---------- Presence ----------
+  /** Các room project mà socket đang tham gia presence (theo dõi trong client.data.rooms). */
+  private presenceRooms(client: Socket): string[] {
+    const rooms = (client.data as { rooms?: string[] }).rooms;
+    return Array.isArray(rooms) ? [...rooms] : [];
+  }
+
+  /** Thông tin hiển thị của user (cache ở client.data.profile); null nếu không đọc được. */
+  private async profileOf(client: Socket): Promise<PresenceProfile | null> {
+    const data = client.data as { userId?: string; profile?: PresenceProfile };
+    if (data.profile) return data.profile;
+    if (!data.userId) return null;
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: data.userId },
+        select: { displayName: true, avatarUrl: true },
+      });
+      if (!user) return null;
+      data.profile = { userId: data.userId, displayName: user.displayName, avatarUrl: user.avatarUrl ?? null };
+      return data.profile;
+    } catch (err) {
+      this.logger.warn(`Đọc hồ sơ cho presence thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  private async joinPresence(client: Socket, room: string): Promise<void> {
+    try {
+      const profile = await this.profileOf(client);
+      if (!profile) return;
+      const data = client.data as { rooms?: string[]; viewing?: string | null };
+      const already = Array.isArray(data.rooms) && data.rooms.includes(room);
+      if (!already) data.rooms = [...(data.rooms ?? []), room];
+      let user = await this.presence.join(room, profile);
+      if (data.viewing) user = (await this.presence.setViewing(room, profile.userId, data.viewing))?.user ?? user;
+      if (!already) client.to(room).emit(WS_EVENTS.PRESENCE_JOIN, { room, user });
+      client.emit(WS_EVENTS.PRESENCE_STATE, { room, users: await this.presence.state(room) });
+    } catch (err) {
+      this.logger.warn(`Presence join thất bại: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Rời presence. Nếu cùng user còn socket khác (tab khác) trong room thì GIỮ entry để không làm
+   * họ biến mất khỏi danh sách; `fromDisconnect` chỉ để bỏ qua việc kiểm tra thất bại.
+   */
+  private async leavePresence(client: Socket, room: string, fromDisconnect = false): Promise<void> {
+    const data = client.data as { userId?: string; rooms?: string[] };
+    if (!Array.isArray(data.rooms) || !data.rooms.includes(room) || !data.userId) return;
+    data.rooms = data.rooms.filter((r) => r !== room);
+    try {
+      if (await this.hasOtherSocketOfUser(room, data.userId, client.id)) return;
+      await this.presence.leave(room, data.userId);
+      this.server?.to(room).emit(WS_EVENTS.PRESENCE_LEAVE, { room, userId: data.userId });
+    } catch (err) {
+      if (!fromDisconnect) this.logger.warn(`Presence leave thất bại: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private async hasOtherSocketOfUser(room: string, userId: string, selfId: string): Promise<boolean> {
+    try {
+      const sockets = await this.server.in(room).fetchSockets();
+      return sockets.some((s) => s.id !== selfId && (s.data as { userId?: string }).userId === userId);
+    } catch {
+      return false;
+    }
   }
 
   /** Tên room theo loại; null nếu loại không được hỗ trợ. */
@@ -79,6 +209,8 @@ export class RealtimeGateway implements OnGatewayConnection {
         return rooms.workspace(target.id);
       case 'project':
         return rooms.project(target.id);
+      case 'issue':
+        return rooms.issue(target.id);
       default:
         return null;
     }
@@ -104,6 +236,19 @@ export class RealtimeGateway implements OnGatewayConnection {
           return project ? room : null;
         } catch (err) {
           this.logger.warn(`Kiểm quyền subscribe project thất bại: ${err instanceof Error ? err.message : String(err)}`);
+          return null;
+        }
+      }
+      case 'issue': {
+        if (!workspaceId) return null;
+        try {
+          const issue = await this.prisma.issue.findFirst({
+            where: { id: target.id, workspaceId, deletedAt: null },
+            select: { id: true },
+          });
+          return issue ? room : null;
+        } catch (err) {
+          this.logger.warn(`Kiểm quyền subscribe issue thất bại: ${err instanceof Error ? err.message : String(err)}`);
           return null;
         }
       }

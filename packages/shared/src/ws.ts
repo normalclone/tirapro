@@ -5,7 +5,9 @@ import type { CommentDto, ID, IssueDto, NotificationDto } from '@tirapro/types';
 export type RoomTarget =
   | { kind: 'user'; id: string }
   | { kind: 'workspace'; id: string }
-  | { kind: 'project'; id: string };
+  | { kind: 'project'; id: string }
+  /** Room của một issue (nhận `typing`) — chỉ vào được khi issue thuộc workspace của token. */
+  | { kind: 'issue'; id: string };
 
 /** Kết quả ack của `subscribe`: FORBIDDEN khi không có quyền vào room đó. */
 export type SubscribeAck = { ok: true } | { ok: false; error: 'FORBIDDEN' };

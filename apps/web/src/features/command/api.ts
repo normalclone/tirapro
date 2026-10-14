@@ -7,7 +7,7 @@ import { keys } from '@/lib/queryKeys';
 export const QUICK_SEARCH_MIN_LENGTH = 2;
 
 /**
- * Tìm nhanh issue bằng JQL `text ~ "..."`. Kết quả đã do server lọc, FE không lọc lại.
+ * Tìm nhanh issue bằng full-text (`mode=text`, xếp theo độ liên quan). Kết quả đã do server lọc, FE không lọc lại.
  * Chỉ chạy khi q (đã trim) đủ `QUICK_SEARCH_MIN_LENGTH` ký tự; request cũ bị huỷ khi người dùng gõ tiếp.
  */
 export function useQuickSearch(q: string) {
@@ -17,8 +17,7 @@ export function useQuickSearch(q: string) {
     queryFn:
       term.length >= QUICK_SEARCH_MIN_LENGTH
         ? async ({ signal }) => {
-            const jql = `text ~ "${term.replace(/"/g, '')}"`;
-            const url = `/search?jql=${encodeURIComponent(jql)}&limit=8`;
+            const url = `/search?q=${encodeURIComponent(term)}&mode=text&limit=8`;
             return (await api.get<ListResponse<IssueDto>>(url, { signal })).data.data;
           }
         : skipToken,

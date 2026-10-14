@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/Button';
 import { apiErrorMessage } from '@/lib/api';
 import { MarkdownEditor, MarkdownView } from './DescriptionEditor';
 import { useDeleteComment, useUpdateComment } from './api';
+import { TypingIndicator } from '@/features/presence/TypingIndicator';
+import { useTypingEmitter } from '@/features/presence/usePresence';
 
 /**
  * Danh sách + soạn bình luận cho một công việc. Bình luận lưu dạng Markdown → soạn/sửa bằng
@@ -21,10 +23,18 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   const { data: comments } = useComments(issue.id);
   const addComment = useAddComment(issue.id);
   const [draft, setDraft] = useState('');
+  const { notifyTyping, stopTyping } = useTypingEmitter(issue.id);
+
+  function onDraftChange(value: string) {
+    setDraft(value);
+    if (value.trim()) notifyTyping();
+    else stopTyping();
+  }
 
   async function submit() {
     const body = draft.trim();
     if (!body) return;
+    stopTyping();
     try {
       await addComment.mutateAsync(body);
       setDraft('');
@@ -56,11 +66,12 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
       <div className="mt-3 space-y-2">
         <MarkdownEditor
           value={draft}
-          onChange={setDraft}
+          onChange={onDraftChange}
           onSubmit={() => void submit()}
           rows={3}
           placeholder="Viết bình luận… (viết được Markdown · ⌘/Ctrl+Enter để gửi)"
         />
+        <TypingIndicator issueId={issue.id} />
         <div className="flex items-center gap-2">
           <span className="mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
           <Button

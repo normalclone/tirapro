@@ -309,3 +309,37 @@ describe('IssuesService.bulkUpdate', () => {
     expect(events.emit).not.toHaveBeenCalled();
   });
 });
+
+describe('IssuesService.query — rawIds (full-text)', () => {
+  function setup(rows: ReturnType<typeof issueRow>[]) {
+    const findMany = vi.fn(() => Promise.resolve(rows));
+    const { service } = makeService({ issue: { findMany } });
+    return { service, findMany };
+  }
+
+  it('giữ thứ tự rank của rawIds và phân trang theo con trỏ', async () => {
+    const rows = ['c', 'a', 'b'].map((id) => issueRow({ id }));
+    const { service } = setup(rows);
+    const first = await service.query('w1', {}, [], undefined, 2, ['a', 'b', 'c']);
+    expect(first.data.map((i) => i.id)).toEqual(['a', 'b']);
+    expect(first.pageInfo).toMatchObject({ hasNextPage: true });
+    const second = await service.query('w1', {}, [], 'b', 2, ['a', 'b', 'c']);
+    expect(second.data.map((i) => i.id)).toEqual(['c']);
+    expect(second.pageInfo).toMatchObject({ hasNextPage: false });
+  });
+
+  it('rawIds rỗng -> trang rỗng, không truy vấn DB', async () => {
+    const { service, findMany } = setup([]);
+    const res = await service.query('w1', {}, [], undefined, 10, []);
+    expect(res.data).toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('có orderBy tường minh -> lọc theo id nhưng để DB sắp xếp', async () => {
+    const { service, findMany } = setup([issueRow({ id: 'a' })]);
+    await service.query('w1', {}, [{ createdAt: 'asc' }], undefined, 10, ['a', 'b']);
+    const args = (findMany.mock.calls[0] as unknown as [{ where: unknown; orderBy: unknown }])[0];
+    expect(JSON.stringify(args.where)).toContain('"in":["a","b"]');
+    expect(args.orderBy).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
+  });
+});
