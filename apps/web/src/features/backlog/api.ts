@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { IssueDto, ListResponse, SprintDto } from '@tirapro/types';
+import type { BulkUpdateIssuesResult, IssueDto, ListResponse, SprintDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 
 export const backlogKey = (projectId: string) => ['backlog', projectId] as const;
@@ -56,6 +56,27 @@ export function useCompleteSprint(projectId: string) {
     mutationFn: (sprintId: string) =>
       api.post<SprintDto>(`/sprints/${sprintId}/complete`).then((r) => r.data),
     onSuccess: invalidate,
+  });
+}
+
+/** Phần thay đổi áp cho cả lô issue (khớp `bulkUpdateIssuesSchema` ở máy chủ). */
+export interface BulkIssuePatch {
+  statusId?: string;
+  assigneeId?: string | null;
+  priorityId?: string | null;
+  sprintId?: string | null;
+}
+
+/**
+ * Sửa hàng loạt trong MỘT request. Kết quả: `updated` (kèm version mới của máy chủ — dùng cho "Hoàn tác")
+ * và `conflicts` (việc bị người khác sửa trước, không làm hỏng cả lô).
+ */
+export function useBulkUpdateIssues(projectId: string) {
+  const invalidate = useInvalidateBacklog(projectId);
+  return useMutation({
+    mutationFn: (v: { items: Array<{ id: string; version: number }>; patch: BulkIssuePatch }) =>
+      api.patch<BulkUpdateIssuesResult>('/issues/bulk', { projectId, ...v }).then((r) => r.data),
+    onSettled: invalidate,
   });
 }
 
