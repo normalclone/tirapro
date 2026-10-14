@@ -3,6 +3,7 @@ import { Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { DueBadge } from '@/components/ui/DueBadge';
 import { pageContainer } from '@/components/layout/page';
@@ -170,13 +171,18 @@ function RaidRow({
   canManage: boolean;
   onEdit: (item: RaidItemDto) => void;
 }) {
+  const confirm = useConfirm();
   const remove = useDeleteRaidItem();
   const level = RAID_LEVEL_META[item.level];
   const status = RAID_STATUS_META[item.status];
   const closed = item.status === 'CLOSED' || item.status === 'ACCEPTED';
 
   async function handleRemove() {
-    if (!window.confirm(`Xoá “${item.title}” khỏi danh sách theo dõi? Thao tác này không khôi phục được.`)) return;
+    if (!(await confirm({
+      title: `Xoá “${item.title}” khỏi danh sách theo dõi?`,
+      description: 'Thao tác này không khôi phục được.',
+      destructive: true,
+    }))) return;
     try {
       await remove.mutateAsync(item.id);
       toast.success('Đã xoá khỏi danh sách');

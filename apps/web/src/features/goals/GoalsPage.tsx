@@ -3,6 +3,7 @@ import { Link2, Pencil, Plus, Target, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { pageContainer } from '@/components/layout/page';
@@ -131,12 +132,17 @@ function GoalCard({
   onEdit: (goal: GoalDto) => void;
   onAttach: (goal: GoalDto) => void;
 }) {
+  const confirm = useConfirm();
   const remove = useDeleteGoal();
   const detach = useDetachGoalIssues();
   const status = STATUS_META[goal.status];
 
   async function handleRemove() {
-    if (!window.confirm(`Xoá mục tiêu “${goal.name}”? Toàn bộ kết quả then chốt của mục tiêu này cũng bị xoá và không khôi phục được.`)) return;
+    if (!(await confirm({
+      title: `Xoá mục tiêu “${goal.name}”?`,
+      description: 'Toàn bộ kết quả then chốt của mục tiêu này cũng bị xoá và không khôi phục được.',
+      destructive: true,
+    }))) return;
     try {
       await remove.mutateAsync(goal.id);
       toast.success('Đã xoá mục tiêu');

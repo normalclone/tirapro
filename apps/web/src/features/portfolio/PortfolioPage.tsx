@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, FolderPlus, LayoutGrid, Pencil, Plus, Trash2
 import { toast } from 'sonner';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -216,6 +217,7 @@ export function PortfolioPage() {
   const canManage = useAuth((s) => s.can('program:manage'));
   const { data: rollup, isLoading } = useProgramRollup();
   const { data: programs } = usePrograms();
+  const confirm = useConfirm();
   const remove = useDeleteProgram();
 
   const [tab, setTab] = useState<Tab>('programs');
@@ -244,9 +246,13 @@ export function PortfolioPage() {
     if (!id) return;
     setAssigning(programById.get(id) ?? null);
   }
-  function handleDelete(group: RollupGroup) {
+  async function handleDelete(group: RollupGroup) {
     if (!group.id) return;
-    if (!window.confirm(`Xoá chương trình “${group.name}”? Các dự án bên trong vẫn được giữ nguyên, chỉ tách ra khỏi chương trình.`)) return;
+    if (!(await confirm({
+      title: `Xoá chương trình “${group.name}”?`,
+      description: 'Các dự án bên trong vẫn được giữ nguyên, chỉ tách ra khỏi chương trình.',
+      destructive: true,
+    }))) return;
     remove.mutate(group.id, {
       onError: (e) => toast.error(apiErrorMessage(e)),
       onSuccess: () => toast.success('Đã xoá chương trình'),
@@ -332,7 +338,7 @@ export function PortfolioPage() {
               canManage={canManage}
               onEdit={() => openEdit(g.id)}
               onAssign={() => openAssign(g.id)}
-              onDelete={() => handleDelete(g)}
+              onDelete={() => void handleDelete(g)}
             />
           ))}
         </div>

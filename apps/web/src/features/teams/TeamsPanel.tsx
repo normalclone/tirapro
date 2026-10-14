@@ -5,6 +5,7 @@ import type { TeamDto } from '@tirapro/types';
 import { apiErrorMessage } from '@/lib/api';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { useAuth } from '@/stores/auth';
 import { useTeams, useDeleteTeam } from './api';
 import { TeamEditorModal } from './TeamEditorModal';
@@ -34,6 +35,7 @@ function MemberStack({ team }: { team: TeamDto }) {
 export function TeamsPanel() {
   const canManage = useAuth((s) => s.can('team:manage'));
   const { data: teams, isLoading } = useTeams();
+  const confirm = useConfirm();
   const remove = useDeleteTeam();
 
   const [editorOpen, setEditorOpen] = useState(false);
@@ -42,8 +44,12 @@ export function TeamsPanel() {
 
   function openCreate() { setEditing(null); setEditorOpen(true); }
   function openEdit(t: TeamDto) { setEditing(t); setEditorOpen(true); }
-  function handleDelete(t: TeamDto) {
-    if (!window.confirm(`Xoá nhóm “${t.name}”?\n\nChỉ nhóm bị xoá — các thành viên vẫn ở lại không gian làm việc và giữ nguyên vai trò.`)) return;
+  async function handleDelete(t: TeamDto) {
+    if (!(await confirm({
+      title: `Xoá nhóm “${t.name}”?`,
+      description: 'Chỉ nhóm bị xoá — các thành viên vẫn ở lại không gian làm việc và giữ nguyên vai trò.',
+      destructive: true,
+    }))) return;
     remove.mutate(t.id, { onError: (e) => toast.error(apiErrorMessage(e)), onSuccess: () => toast.success(`Đã xoá nhóm “${t.name}”`) });
   }
 
@@ -101,7 +107,7 @@ export function TeamsPanel() {
                     <Button variant="ghost" size="icon" title="Đổi tên, màu, mô tả và thành viên của nhóm" aria-label={`Sửa nhóm ${t.name}`} onClick={() => openEdit(t)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="text-muted hover:text-danger" title="Xoá nhóm — thành viên vẫn ở lại không gian làm việc" aria-label={`Xoá nhóm ${t.name}`} onClick={() => handleDelete(t)}>
+                    <Button variant="ghost" size="icon" className="text-muted hover:text-danger" title="Xoá nhóm — thành viên vẫn ở lại không gian làm việc" aria-label={`Xoá nhóm ${t.name}`} onClick={() => void handleDelete(t)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
