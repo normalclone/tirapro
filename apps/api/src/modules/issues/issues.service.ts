@@ -15,14 +15,20 @@ import {
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 
+/** Chỉ các cột `userDto` dùng — không kéo passwordHash/mfa/... của user vào mọi truy vấn issue. */
+const userSelect = {
+  id: true, email: true, displayName: true, avatarUrl: true, timezone: true,
+  locale: true, status: true, isSystemAdmin: true, lastSeenAt: true, createdAt: true,
+} satisfies Prisma.UserSelect;
+
 const issueInclude = {
   type: true,
   status: true,
   priority: true,
   severity: true,
   resolution: true,
-  assignee: true,
-  reporter: true,
+  assignee: { select: userSelect },
+  reporter: { select: userSelect },
   labels: { include: { label: true } },
 } satisfies Prisma.IssueInclude;
 

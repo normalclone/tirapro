@@ -778,6 +778,9 @@ model Issue {
   @@index([projectId, deletedAt])
   @@index([projectId, triageState])
   @@index([sprintId])
+  @@index([projectId, sprintId, rank]) // backlog/board theo sprint, sắp theo rank
+  @@index([workspaceId, assigneeId])  // dashboard/báo cáo theo người làm
+  @@index([workspaceId, dueDate])     // quá hạn/sắp đến hạn toàn workspace
   @@index([assigneeId])
   @@index([reporterId])
   @@index([parentId])
@@ -1239,7 +1242,6 @@ model RefreshToken {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
-  @@index([tokenHash])
 }
 
 // ============================ INTEGRATIONS (config-driven) ==================
