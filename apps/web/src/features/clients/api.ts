@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
-/** Khoá cache danh sách khách hàng của không gian làm việc hiện tại. */
-export const clientsKey = ['clients'] as const;
 
 export interface ClientProjectRef {
   id: string;
@@ -64,7 +63,7 @@ export interface ContractInput {
 /** Danh sách khách hàng kèm dự án, hợp đồng và số đếm. */
 export function useClients() {
   return useQuery({
-    queryKey: clientsKey,
+    queryKey: keys.clients.all,
     queryFn: async () => (await api.get<ClientDto[]>('/clients')).data,
   });
 }
@@ -72,8 +71,8 @@ export function useClients() {
 function useInvalidateClients() {
   const qc = useQueryClient();
   return () => {
-    void qc.invalidateQueries({ queryKey: clientsKey });
-    void qc.invalidateQueries({ queryKey: ['projects'] });
+    void qc.invalidateQueries({ queryKey: keys.clients.all });
+    void qc.invalidateQueries({ queryKey: keys.projects.all });
   };
 }
 

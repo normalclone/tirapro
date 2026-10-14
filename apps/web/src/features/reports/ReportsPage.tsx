@@ -73,7 +73,7 @@ export function ReportsPage() {
         <div className="p-6">
           <QueryError
             error={pErr ?? report.error}
-            onRetry={() => { void refetchProject(); void report.refetch(); }}
+            onRetry={() => { void refetchProject(); if (!pe) void report.refetch(); }}
           />
         </div>
       </div>

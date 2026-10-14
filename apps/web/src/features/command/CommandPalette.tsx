@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useDeferredValue, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import { ArrowRight, BookOpen, History, LayoutDashboard, LayoutGrid, ListTodo, Moon, Plus, Search, Sparkles, Sun } from 'lucide-react';
@@ -7,7 +7,7 @@ import { useCreateIssueModal } from '@/stores/createIssue';
 import { useTheme } from '@/stores/theme';
 import { useRecents } from '@/stores/recentIssues';
 import { LAST_VIEW_KEY } from '@/features/projects/ProjectLayout';
-import { useQuickSearch } from './api';
+import { QUICK_SEARCH_MIN_LENGTH, useQuickSearch } from './api';
 
 /** Nhận dạng mã issue người dùng gõ (vd `DEMO-BUG-1`) để nhảy thẳng tới issue. */
 const ISSUE_KEY_RE = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/;
@@ -36,7 +36,9 @@ export function CommandPalette() {
 
   const { data: projects } = useProjects();
   const trimmed = q.trim();
-  const { data: issues, isFetching } = useQuickSearch(q);
+  // Hoãn giá trị gõ cho truy vấn: ô nhập luôn mượt, chỉ query khi đủ ký tự tối thiểu.
+  const deferredQ = useDeferredValue(q);
+  const { data: issues, isFetching } = useQuickSearch(deferredQ);
 
   // Chạy một hành động rồi đóng bảng lệnh.
   const runAction = (fn: () => void) => {
@@ -71,7 +73,7 @@ export function CommandPalette() {
     if (!open) setQ('');
   }, [open]);
 
-  const showIssues = trimmed.length >= 2;
+  const showIssues = trimmed.length >= QUICK_SEARCH_MIN_LENGTH;
   const issueResults = issues ?? [];
 
   return (

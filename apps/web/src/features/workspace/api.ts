@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { setAccessToken } from '@/lib/auth-token';
 import { queryClient } from '@/lib/queryClient';
+import { keys } from '@/lib/queryKeys';
 
 /** Không gian làm việc mà người dùng hiện tại là thành viên (kèm vai trò). */
 export interface MyWorkspace {
@@ -32,12 +33,11 @@ interface InviteResponse {
   tempPassword?: string;
 }
 
-export const myWorkspacesKey = ['my-workspaces'] as const;
 
 /** Danh sách không gian làm việc của người dùng hiện tại. */
 export function useMyWorkspaces() {
   return useQuery({
-    queryKey: myWorkspacesKey,
+    queryKey: keys.workspaces.mine,
     queryFn: async () => (await api.get<MyWorkspace[]>('/auth/workspaces')).data,
   });
 }
@@ -78,7 +78,7 @@ export function useUploadWorkspaceAvatar(workspaceId: string) {
       return (await api.post(`/workspaces/${workspaceId}/avatar`, fd)).data;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: myWorkspacesKey });
+      void queryClient.invalidateQueries({ queryKey: keys.workspaces.mine });
     },
   });
 }
@@ -88,7 +88,7 @@ export function useRemoveWorkspaceAvatar(workspaceId: string) {
   return useMutation({
     mutationFn: async () => (await api.delete(`/workspaces/${workspaceId}/avatar`)).data,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: myWorkspacesKey });
+      void queryClient.invalidateQueries({ queryKey: keys.workspaces.mine });
     },
   });
 }

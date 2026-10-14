@@ -4,12 +4,12 @@ import { Sparkles, X, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AiGeneratedIssue } from '@tirapro/shared';
 import { api, apiErrorMessage } from '@/lib/api';
-import { boardIssuesKey } from '@/features/board/api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { DelayedSpinner } from '@/components/ui/primitives';
 import { useGenerateIssues, useProjectMeta } from './api';
+import { keys } from '@/lib/queryKeys';
 
 interface Row extends AiGeneratedIssue {
   selected: boolean;
@@ -101,7 +101,7 @@ export function GenerateIssuesDialog({
     const failed = results.length - ok;
     if (ok) {
       toast.success(`Đã tạo ${ok} công việc${failed ? `, ${failed} việc lỗi` : ''}`);
-      void qc.invalidateQueries({ queryKey: boardIssuesKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
       onClose();
     } else {
       toast.error('Không tạo được công việc nào');

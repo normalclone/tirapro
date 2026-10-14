@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth-token';
+import { keys } from '@/lib/queryKeys';
 
 /** ---- Components ---- */
 
@@ -90,10 +91,6 @@ export interface ImportJob {
   completedAt?: string | null;
 }
 
-export const componentsKey = (projectId: string) => ['components', projectId] as const;
-export const versionsKey = (projectId: string) => ['versions', projectId] as const;
-export const labelsKey = (projectId: string) => ['labels', projectId] as const;
-export const importJobsKey = () => ['import-jobs'] as const;
 
 /* ------------------------------------------------------------------ */
 /* Components                                                          */
@@ -101,10 +98,9 @@ export const importJobsKey = () => ['import-jobs'] as const;
 
 export function useComponents(projectId?: string) {
   return useQuery({
-    queryKey: componentsKey(projectId ?? ''),
-    queryFn: async () =>
-      (await api.get<Component[]>(`/projects/${projectId}/components`)).data,
-    enabled: !!projectId,
+    queryKey: keys.projectConfig.components(projectId ?? ''),
+    queryFn: projectId ? async () =>
+      (await api.get<Component[]>(`/projects/${projectId}/components`)).data : skipToken,
   });
 }
 
@@ -114,7 +110,7 @@ export function useCreateComponent(projectId: string) {
     mutationFn: (input: ComponentCreateInput) =>
       api.post<Component>(`/projects/${projectId}/components`, input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: componentsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -125,7 +121,7 @@ export function useUpdateComponent(projectId: string) {
     mutationFn: ({ id, patch }: { id: string; patch: ComponentUpdateInput }) =>
       api.patch<Component>(`/components/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: componentsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -135,7 +131,7 @@ export function useDeleteComponent(projectId: string) {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/components/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: componentsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -146,10 +142,9 @@ export function useDeleteComponent(projectId: string) {
 
 export function useVersions(projectId?: string) {
   return useQuery({
-    queryKey: versionsKey(projectId ?? ''),
-    queryFn: async () =>
-      (await api.get<Version[]>(`/projects/${projectId}/versions`)).data,
-    enabled: !!projectId,
+    queryKey: keys.projectConfig.versions(projectId ?? ''),
+    queryFn: projectId ? async () =>
+      (await api.get<Version[]>(`/projects/${projectId}/versions`)).data : skipToken,
   });
 }
 
@@ -159,7 +154,7 @@ export function useCreateVersion(projectId: string) {
     mutationFn: (input: VersionCreateInput) =>
       api.post<Version>(`/projects/${projectId}/versions`, input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: versionsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -170,7 +165,7 @@ export function useUpdateVersion(projectId: string) {
     mutationFn: ({ id, patch }: { id: string; patch: VersionUpdateInput }) =>
       api.patch<Version>(`/versions/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: versionsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -180,7 +175,7 @@ export function useDeleteVersion(projectId: string) {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/versions/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: versionsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -191,9 +186,8 @@ export function useDeleteVersion(projectId: string) {
 
 export function useLabels(projectId?: string) {
   return useQuery({
-    queryKey: labelsKey(projectId ?? ''),
-    queryFn: async () => (await api.get<Label[]>(`/projects/${projectId}/labels`)).data,
-    enabled: !!projectId,
+    queryKey: keys.projectConfig.labels(projectId ?? ''),
+    queryFn: projectId ? async () => (await api.get<Label[]>(`/projects/${projectId}/labels`)).data : skipToken,
   });
 }
 
@@ -203,7 +197,7 @@ export function useCreateLabel(projectId: string) {
     mutationFn: (input: LabelCreateInput) =>
       api.post<Label>(`/projects/${projectId}/labels`, input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: labelsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -214,7 +208,7 @@ export function useUpdateLabel(projectId: string) {
     mutationFn: ({ id, patch }: { id: string; patch: LabelUpdateInput }) =>
       api.patch<Label>(`/labels/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: labelsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -224,7 +218,7 @@ export function useDeleteLabel(projectId: string) {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/labels/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: labelsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
   });
 }
@@ -235,17 +229,17 @@ export function useDeleteLabel(projectId: string) {
 
 export function useImportJobs() {
   return useQuery({
-    queryKey: importJobsKey(),
+    queryKey: keys.projectConfig.importJobs,
     queryFn: async () => (await api.get<ImportJob[]>(`/import/jobs`)).data,
   });
 }
 
 /** Sau khi import xong: làm mới jobs + issue trên board + components/labels. */
 function invalidateAfterImport(qc: ReturnType<typeof useQueryClient>, projectId: string) {
-  void qc.invalidateQueries({ queryKey: importJobsKey() });
-  void qc.invalidateQueries({ queryKey: ['board-issues', projectId] });
-  void qc.invalidateQueries({ queryKey: componentsKey(projectId) });
-  void qc.invalidateQueries({ queryKey: labelsKey(projectId) });
+  void qc.invalidateQueries({ queryKey: keys.projectConfig.importJobs });
+  void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
+  void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
+  void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
 }
 
 export function useImportCsv() {

@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /** Một nút trong cây tài liệu (không kèm nội dung — nội dung lấy ở trang chi tiết). */
 export interface WikiNode {
@@ -39,14 +40,11 @@ export interface WikiSearchHit {
 /** `projectId` truyền lên API: rỗng = mọi phạm vi, `none` = tài liệu dùng chung cho cả tổ chức. */
 export const WIKI_SCOPE_SHARED = 'none';
 
-export const wikiTreeKey = (scope: string) => ['wiki', 'tree', scope] as const;
-export const wikiSearchKey = (scope: string, q: string) => ['wiki', 'search', scope, q] as const;
-export const wikiPageKey = (id: string) => ['wiki', 'page', id] as const;
 
 /** Cây trang theo phạm vi (`scope` rỗng = tất cả). */
 export function useWikiTree(scope: string) {
   return useQuery({
-    queryKey: wikiTreeKey(scope),
+    queryKey: keys.wiki.tree(scope),
     queryFn: async () =>
       (await api.get<WikiNode[]>('/wiki', { params: scope ? { projectId: scope } : {} })).data,
   });
@@ -56,31 +54,32 @@ export function useWikiTree(scope: string) {
 export function useWikiSearch(scope: string, q: string) {
   const term = q.trim();
   return useQuery({
-    queryKey: wikiSearchKey(scope, term),
-    queryFn: async () =>
-      (
-        await api.get<WikiSearchHit[]>('/wiki', {
-          params: { q: term, ...(scope ? { projectId: scope } : {}) },
-        })
-      ).data,
-    enabled: term.length >= 2,
+    queryKey: keys.wiki.search(scope, term),
+    queryFn:
+      term.length >= 2
+        ? async () =>
+            (
+              await api.get<WikiSearchHit[]>('/wiki', {
+                params: { q: term, ...(scope ? { projectId: scope } : {}) },
+              })
+            ).data
+        : skipToken,
   });
 }
 
 export function useWikiPage(id: string | null) {
   return useQuery({
-    queryKey: wikiPageKey(id ?? ''),
-    queryFn: async () => (await api.get<WikiPageDetail>(`/wiki/${id}`)).data,
-    enabled: !!id,
+    queryKey: keys.wiki.page(id ?? ''),
+    queryFn: id ? async () => (await api.get<WikiPageDetail>(`/wiki/${id}`)).data : skipToken,
   });
 }
 
 function useInvalidateWiki() {
   const qc = useQueryClient();
   return (pageId?: string) => {
-    void qc.invalidateQueries({ queryKey: ['wiki', 'tree'] });
-    void qc.invalidateQueries({ queryKey: ['wiki', 'search'] });
-    if (pageId) void qc.invalidateQueries({ queryKey: wikiPageKey(pageId) });
+    void qc.invalidateQueries({ queryKey: keys.wiki.treeRoot });
+    void qc.invalidateQueries({ queryKey: keys.wiki.searchRoot });
+    if (pageId) void qc.invalidateQueries({ queryKey: keys.wiki.page(pageId) });
   };
 }
 

@@ -73,8 +73,16 @@ const ERROR_MESSAGES: Record<string, string> = {
   WORKFLOW_TRANSITION_INVALID: 'Quy trình không cho chuyển thẳng sang trạng thái này. Hãy chọn một trạng thái trong danh sách gợi ý.',
 };
 
+/**
+ * Các lỗi đã được `apiErrorMessage` dịch (tức là một chỗ nào đó đã hiển thị cho người dùng) —
+ * MutationCache dựa vào đây để không toast lần hai.
+ */
+const describedErrors = new WeakSet<object>();
+export const wasErrorDescribed = (e: unknown): boolean => typeof e === 'object' && e !== null && describedErrors.has(e);
+
 /** Bóc lỗi envelope { error: { code, message } } thành câu người dùng đọc hiểu. */
 export function apiErrorMessage(e: unknown): string {
+  if (typeof e === 'object' && e !== null) describedErrors.add(e);
   if (axios.isAxiosError(e)) {
     const err = (e.response?.data as { error?: { code?: string; message?: string } } | undefined)?.error;
     if (err?.code && ERROR_MESSAGES[err.code]) return ERROR_MESSAGES[err.code]!;

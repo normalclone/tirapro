@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /** ---- Độ ưu tiên (priorities) ---- */
 
-export const prioritiesKey = ['priorities'] as const;
 
 export interface Priority {
   id: string;
@@ -31,7 +31,7 @@ export interface PriorityUpdateInput {
 
 export function usePriorities() {
   return useQuery({
-    queryKey: prioritiesKey,
+    queryKey: keys.priorities,
     queryFn: async () => (await api.get<Priority[]>('/priorities')).data,
   });
 }
@@ -42,7 +42,7 @@ export function useCreatePriority() {
     mutationFn: (input: PriorityCreateInput) =>
       api.post<Priority>('/priorities', input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: prioritiesKey });
+      void qc.invalidateQueries({ queryKey: keys.priorities });
     },
   });
 }
@@ -53,7 +53,7 @@ export function useUpdatePriority() {
     mutationFn: ({ id, patch }: { id: string; patch: PriorityUpdateInput }) =>
       api.patch<Priority>(`/priorities/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: prioritiesKey });
+      void qc.invalidateQueries({ queryKey: keys.priorities });
     },
   });
 }
@@ -63,14 +63,13 @@ export function useDeletePriority() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/priorities/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: prioritiesKey });
+      void qc.invalidateQueries({ queryKey: keys.priorities });
     },
   });
 }
 
 /** ---- Trường tuỳ chỉnh (custom field definitions) ---- */
 
-export const customFieldsKey = ['custom-fields'] as const;
 
 export type CustomFieldType =
   | 'TEXT'
@@ -114,7 +113,7 @@ export interface CustomFieldUpdateInput {
 
 export function useCustomFields() {
   return useQuery({
-    queryKey: customFieldsKey,
+    queryKey: keys.customFields,
     queryFn: async () => (await api.get<CustomField[]>('/custom-fields')).data,
   });
 }
@@ -125,7 +124,7 @@ export function useCreateCustomField() {
     mutationFn: (input: CustomFieldCreateInput) =>
       api.post<CustomField>('/custom-fields', input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: customFieldsKey });
+      void qc.invalidateQueries({ queryKey: keys.customFields });
     },
   });
 }
@@ -136,7 +135,7 @@ export function useUpdateCustomField() {
     mutationFn: ({ id, patch }: { id: string; patch: CustomFieldUpdateInput }) =>
       api.patch<CustomField>(`/custom-fields/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: customFieldsKey });
+      void qc.invalidateQueries({ queryKey: keys.customFields });
     },
   });
 }
@@ -146,7 +145,7 @@ export function useDeleteCustomField() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/custom-fields/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: customFieldsKey });
+      void qc.invalidateQueries({ queryKey: keys.customFields });
     },
   });
 }

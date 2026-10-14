@@ -13,10 +13,11 @@ import { toast } from 'sonner';
 import type { IssueDto, SprintDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
 import {
-  useProjectSprints, useProjectIssues, useCreateSprint,
+  useProjectSprints, useCreateSprint,
   useStartSprint, useCompleteSprint, useMoveToSprint, useBulkUpdateIssues,
   type BulkIssuePatch,
 } from './api';
+import { useProjectIssues } from '@/features/issues/api';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';

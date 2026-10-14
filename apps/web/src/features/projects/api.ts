@@ -1,26 +1,26 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery } from '@tanstack/react-query';
 import type { ProjectDto } from '@tirapro/types';
 import { api } from '@/lib/api';
-import { qk, queryClient } from '@/lib/queryClient';
+import { queryClient } from '@/lib/queryClient';
+import { keys } from '@/lib/queryKeys';
 
 export function useProjects() {
   return useQuery({
-    queryKey: qk.projects,
+    queryKey: keys.projects.all,
     queryFn: async () => (await api.get<ProjectDto[]>('/projects')).data,
   });
 }
 
 export function useProject(key: string) {
   return useQuery({
-    queryKey: qk.project(key),
-    queryFn: async () => (await api.get<ProjectDto>(`/projects/${key}`)).data,
-    enabled: !!key,
+    queryKey: keys.projects.byKey(key),
+    queryFn: key ? async () => (await api.get<ProjectDto>(`/projects/${key}`)).data : skipToken,
   });
 }
 
 function invalidateProject(key: string) {
-  void queryClient.invalidateQueries({ queryKey: qk.project(key) });
-  void queryClient.invalidateQueries({ queryKey: qk.projects });
+  void queryClient.invalidateQueries({ queryKey: keys.projects.byKey(key) });
+  void queryClient.invalidateQueries({ queryKey: keys.projects.all });
 }
 
 /** Tải ảnh đại diện project (cần quyền quản trị project). */

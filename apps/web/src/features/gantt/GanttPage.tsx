@@ -5,7 +5,7 @@ import { CalendarRange, Camera, Link2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
-import { useProjectIssues } from '@/features/backlog/api';
+import { useProjectIssues } from '@/features/issues/api';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -387,7 +387,7 @@ export function GanttPage() {
         {pe || issuesQ.isError ? (
           <QueryError
             error={pErr ?? issuesQ.error}
-            onRetry={() => { void refetchProject(); void issuesQ.refetch(); }}
+            onRetry={() => { void refetchProject(); if (!pe) void issuesQ.refetch(); }}
           />
         ) : isLoading ? (
           <div className="space-y-2">

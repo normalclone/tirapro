@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /** ---- Thông báo (notification preferences) ---- */
 
-export const notificationPrefsKey = ['notification-preferences'] as const;
 
 export interface NotificationPrefsResponse {
   preferences: Record<string, boolean>;
@@ -12,7 +12,7 @@ export interface NotificationPrefsResponse {
 
 export function useNotificationPrefs() {
   return useQuery({
-    queryKey: notificationPrefsKey,
+    queryKey: keys.notificationPrefs,
     queryFn: async () =>
       (await api.get<NotificationPrefsResponse>('/notifications/preferences')).data,
   });
@@ -26,14 +26,13 @@ export function useUpdateNotificationPrefs() {
         .put<Record<string, boolean>>('/notifications/preferences', { preferences })
         .then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: notificationPrefsKey });
+      void qc.invalidateQueries({ queryKey: keys.notificationPrefs });
     },
   });
 }
 
 /** ---- Mức độ nghiêm trọng (severities) ---- */
 
-export const severitiesKey = ['severities'] as const;
 
 export interface Severity {
   id: string;
@@ -62,7 +61,7 @@ export interface SeverityUpdateInput {
 
 export function useSeverities() {
   return useQuery({
-    queryKey: severitiesKey,
+    queryKey: keys.severities,
     queryFn: async () => (await api.get<Severity[]>('/severities')).data,
   });
 }
@@ -73,7 +72,7 @@ export function useCreateSeverity() {
     mutationFn: (input: SeverityCreateInput) =>
       api.post<Severity>('/severities', input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: severitiesKey });
+      void qc.invalidateQueries({ queryKey: keys.severities });
     },
   });
 }
@@ -84,7 +83,7 @@ export function useUpdateSeverity() {
     mutationFn: ({ id, patch }: { id: string; patch: SeverityUpdateInput }) =>
       api.patch<Severity>(`/severities/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: severitiesKey });
+      void qc.invalidateQueries({ queryKey: keys.severities });
     },
   });
 }
@@ -94,7 +93,7 @@ export function useDeleteSeverity() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/severities/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: severitiesKey });
+      void qc.invalidateQueries({ queryKey: keys.severities });
     },
   });
 }

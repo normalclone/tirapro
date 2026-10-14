@@ -1,25 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BulkUpdateIssuesResult, IssueDto, ListResponse, SprintDto } from '@tirapro/types';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { BulkUpdateIssuesResult, IssueDto, SprintDto } from '@tirapro/types';
 import { api } from '@/lib/api';
-
-export const backlogKey = (projectId: string) => ['backlog', projectId] as const;
-export const sprintsKey = (projectId: string) => ['sprints', projectId] as const;
-export const backlogIssuesKey = (projectId: string) => ['backlog-issues', projectId] as const;
+import { keys } from '@/lib/queryKeys';
+import { invalidateIssue, optimisticPatchIssue, rollbackIssue, writeIssue } from '@/lib/optimistic';
 
 export function useProjectSprints(projectId: string | undefined) {
   return useQuery({
-    queryKey: sprintsKey(projectId ?? ''),
-    queryFn: async () => (await api.get<SprintDto[]>(`/sprints?projectId=${projectId}`)).data,
-    enabled: !!projectId,
-  });
-}
-
-export function useProjectIssues(projectId: string | undefined) {
-  return useQuery({
-    queryKey: backlogIssuesKey(projectId ?? ''),
-    queryFn: async () =>
-      (await api.get<ListResponse<IssueDto>>(`/issues?projectId=${projectId}&limit=200`)).data.data,
-    enabled: !!projectId,
+    queryKey: keys.sprints.byProject(projectId ?? ''),
+    queryFn: projectId ? async () => (await api.get<SprintDto[]>(`/sprints?projectId=${projectId}`)).data : skipToken,
   });
 }
 
@@ -27,8 +15,8 @@ export function useProjectIssues(projectId: string | undefined) {
 function useInvalidateBacklog(projectId: string) {
   const qc = useQueryClient();
   return () => {
-    void qc.invalidateQueries({ queryKey: sprintsKey(projectId) });
-    void qc.invalidateQueries({ queryKey: backlogIssuesKey(projectId) });
+    void qc.invalidateQueries({ queryKey: keys.sprints.byProject(projectId) });
+    void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
   };
 }
 
@@ -74,6 +62,8 @@ export interface BulkIssuePatch {
 export function useBulkUpdateIssues(projectId: string) {
   const invalidate = useInvalidateBacklog(projectId);
   return useMutation({
+    // Im lặng: trang tự gom lỗi/conflict thành một toast tổng kết (khớp cơ chế `meta.silent` của MutationCache).
+    meta: { silent: true },
     mutationFn: (v: { items: Array<{ id: string; version: number }>; patch: BulkIssuePatch }) =>
       api.patch<BulkUpdateIssuesResult>('/issues/bulk', { projectId, ...v }).then((r) => r.data),
     onSettled: invalidate,
@@ -84,30 +74,24 @@ export function useBulkUpdateIssues(projectId: string) {
  * Di chuyển issue sang sprint khác (hoặc backlog khi sprintId === null).
  * Optimistic: cập nhật danh sách issues ngay, rollback nếu lỗi (vd OCC conflict).
  */
-export function useMoveToSprint(projectId: string) {
+/** `opts.silent`: tắt toast lỗi chung (gọi hàng loạt tự tổng kết lỗi). */
+export function useMoveToSprint(projectId: string, opts?: { silent?: boolean }) {
   const qc = useQueryClient();
-  const issuesKey = backlogIssuesKey(projectId);
   return useMutation({
+    meta: { silent: opts?.silent },
     mutationFn: (v: { id: string; sprintId: string | null; version: number }) =>
       api
         .patch<IssueDto>(`/issues/${v.id}`, { sprintId: v.sprintId, version: v.version })
         .then((r) => r.data),
-    onMutate: async (v: { id: string; sprintId: string | null; version: number }) => {
-      await qc.cancelQueries({ queryKey: issuesKey });
-      const prev = qc.getQueryData<IssueDto[]>(issuesKey);
-      qc.setQueryData<IssueDto[]>(issuesKey, (old) =>
-        (old ?? []).map((i) =>
-          i.id === v.id ? { ...i, sprintId: v.sprintId, version: i.version + 1 } : i,
-        ),
-      );
-      return { prev };
+    onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, { sprintId: v.sprintId }),
+    onSuccess: (issue) => writeIssue(qc, projectId, issue),
+    onError: (_e, _v, snap) => {
+      rollbackIssue(qc, snap);
+      invalidateIssue(qc, projectId, snap?.issueKey);
     },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(issuesKey, ctx.prev);
-    },
+    // Số issue/điểm của sprint đổi theo → luôn nạp lại danh sách sprint.
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: issuesKey });
-      void qc.invalidateQueries({ queryKey: sprintsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.sprints.byProject(projectId) });
     },
   });
 }

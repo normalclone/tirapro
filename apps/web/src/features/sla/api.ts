@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 export interface SlaPolicyDto {
   id: string;
@@ -40,23 +41,19 @@ export interface SlaBoardRow {
   resolveBreached: boolean;
 }
 
-export const slaPoliciesKey = ['sla-policies'] as const;
-export const slaBoardKey = ['sla-board'] as const;
-export const issueSlaKey = (issueId: string) => ['issue-sla', issueId] as const;
 
 export function useSlaPolicies() {
-  return useQuery({ queryKey: slaPoliciesKey, queryFn: async () => (await api.get<SlaPolicyDto[]>('/sla/policies')).data });
+  return useQuery({ queryKey: keys.sla.policies, queryFn: async () => (await api.get<SlaPolicyDto[]>('/sla/policies')).data });
 }
 
 export function useSlaBoard() {
-  return useQuery({ queryKey: slaBoardKey, queryFn: async () => (await api.get<SlaBoardRow[]>('/sla/board')).data });
+  return useQuery({ queryKey: keys.sla.board, queryFn: async () => (await api.get<SlaBoardRow[]>('/sla/board')).data });
 }
 
 export function useIssueSla(issueId?: string) {
   return useQuery({
-    queryKey: issueSlaKey(issueId ?? ''),
-    queryFn: async () => (await api.get<IssueSlaDto | null>(`/sla/issue/${issueId}`)).data,
-    enabled: !!issueId,
+    queryKey: keys.issues.sla(issueId ?? ''),
+    queryFn: issueId ? async () => (await api.get<IssueSlaDto | null>(`/sla/issue/${issueId}`)).data : skipToken,
   });
 }
 
@@ -73,7 +70,7 @@ export function useCreateSlaPolicy() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: SlaPolicyInput) => api.post<SlaPolicyDto[]>('/sla/policies', input).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: slaPoliciesKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policies }),
   });
 }
 
@@ -82,7 +79,7 @@ export function useUpdateSlaPolicy() {
   return useMutation({
     mutationFn: ({ id, ...input }: Partial<SlaPolicyInput> & { id: string }) =>
       api.put<SlaPolicyDto[]>(`/sla/policies/${id}`, input).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: slaPoliciesKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policies }),
   });
 }
 
@@ -90,7 +87,7 @@ export function useDeleteSlaPolicy() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete(`/sla/policies/${id}`).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: slaPoliciesKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policies }),
   });
 }
 

@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { KeyResultUnit, ListResponse, ObjectiveStatus, StatusCategory } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 // Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Mục tiêu import một chỗ.
 export type { KeyResultUnit, ObjectiveStatus };
@@ -80,10 +81,6 @@ export interface GoalFilter {
   status?: ObjectiveStatus | '';
 }
 
-/** Khoá cache: mọi truy vấn mục tiêu bắt đầu bằng ['goals'] → invalidate 1 lần là đủ. */
-export const goalsRootKey = ['goals'] as const;
-export const goalsKey = (filter: GoalFilter) => ['goals', filter] as const;
-export const goalPeriodsKey = ['goal-periods'] as const;
 
 function cleanParams(filter: GoalFilter): Record<string, string> {
   const p: Record<string, string> = {};
@@ -96,7 +93,7 @@ function cleanParams(filter: GoalFilter): Record<string, string> {
 /** Danh sách mục tiêu (kèm Key Result, issue gắn kèm và tiến độ đã tính sẵn). */
 export function useGoals(filter: GoalFilter) {
   return useQuery({
-    queryKey: goalsKey(filter),
+    queryKey: keys.goals.list(filter),
     queryFn: async () => (await api.get<GoalDto[]>('/goals', { params: cleanParams(filter) })).data,
   });
 }
@@ -104,7 +101,7 @@ export function useGoals(filter: GoalFilter) {
 /** Các kỳ đã có mục tiêu (mới nhất trước) — dựng bộ chọn kỳ. */
 export function useGoalPeriods() {
   return useQuery({
-    queryKey: goalPeriodsKey,
+    queryKey: keys.goals.periods,
     queryFn: async () => (await api.get<string[]>('/goals/periods')).data,
   });
 }
@@ -112,8 +109,8 @@ export function useGoalPeriods() {
 function useInvalidateGoals() {
   const qc = useQueryClient();
   return () => {
-    void qc.invalidateQueries({ queryKey: goalsRootKey });
-    void qc.invalidateQueries({ queryKey: goalPeriodsKey });
+    void qc.invalidateQueries({ queryKey: keys.goals.all });
+    void qc.invalidateQueries({ queryKey: keys.goals.periods });
   };
 }
 
@@ -148,7 +145,7 @@ function patchGoalCaches(
   goalId: string,
   patch: (goal: GoalDto) => GoalDto,
 ) {
-  qc.setQueriesData<GoalDto[]>({ queryKey: goalsRootKey }, (old) =>
+  qc.setQueriesData<GoalDto[]>({ queryKey: keys.goals.all }, (old) =>
     old?.map((g) => (g.id === goalId ? patch(g) : g)),
   );
 }
@@ -173,8 +170,8 @@ export function useUpdateKeyResult() {
       (await api.put<GoalDto>(`/goals/${goalId}/key-results/${keyResultId}`, input)).data,
     onMutate: async ({ goalId, keyResultId, currentValue }) => {
       if (currentValue === undefined) return { previous: undefined };
-      await qc.cancelQueries({ queryKey: goalsRootKey });
-      const previous = qc.getQueriesData<GoalDto[]>({ queryKey: goalsRootKey });
+      await qc.cancelQueries({ queryKey: keys.goals.all });
+      const previous = qc.getQueriesData<GoalDto[]>({ queryKey: keys.goals.all });
       patchGoalCaches(qc, goalId, (g) =>
         recalcProgress({
           ...g,
@@ -193,7 +190,7 @@ export function useUpdateKeyResult() {
     onError: (_e, _v, ctx) => {
       for (const [key, data] of ctx?.previous ?? []) qc.setQueryData(key, data);
     },
-    onSettled: () => void qc.invalidateQueries({ queryKey: goalsRootKey }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: keys.goals.all }),
   });
 }
 
@@ -245,14 +242,15 @@ export interface IssueSearchItem {
 export function useIssueSearch(term: string, projectId?: string | null, enabled = true) {
   const q = term.trim();
   return useQuery({
-    queryKey: ['goal-issue-search', q, projectId ?? ''] as const,
-    queryFn: async () => {
-      const params: Record<string, string> = { limit: '20' };
-      if (q) params.search = q;
-      if (projectId) params.projectId = projectId;
-      const res = await api.get<ListResponse<IssueSearchItem>>('/issues', { params });
-      return res.data.data;
-    },
-    enabled,
+    queryKey: keys.goals.issueSearch(q, projectId ?? ''),
+    queryFn: enabled
+      ? async () => {
+          const params: Record<string, string> = { limit: '20' };
+          if (q) params.search = q;
+          if (projectId) params.projectId = projectId;
+          const res = await api.get<ListResponse<IssueSearchItem>>('/issues', { params });
+          return res.data.data;
+        }
+      : skipToken,
   });
 }

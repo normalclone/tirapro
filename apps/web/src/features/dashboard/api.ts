@@ -1,13 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import type { IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 const MY_ISSUES_JQL = 'assignee = currentUser() ORDER BY updated DESC';
 
 /** "Việc của tôi" — các issue được giao cho người dùng hiện tại, mới cập nhật trước. */
 export function useMyIssues() {
   return useQuery({
-    queryKey: ['my-issues'],
+    queryKey: keys.dashboard.myIssues,
     queryFn: async () => {
       const url = `/search?jql=${encodeURIComponent(MY_ISSUES_JQL)}&limit=15`;
       return (await api.get<ListResponse<IssueDto>>(url)).data.data;
@@ -89,9 +90,8 @@ export interface WorkspaceOverview {
  */
 export function useWorkspaceOverview(enabled: boolean) {
   return useQuery({
-    queryKey: ['workspace-overview'],
-    queryFn: async () => (await api.get<WorkspaceOverview>('/reports/overview')).data,
-    enabled,
+    queryKey: keys.dashboard.workspaceOverview,
+    queryFn: enabled ? async () => (await api.get<WorkspaceOverview>('/reports/overview')).data : skipToken,
     staleTime: 30_000,
   });
 }

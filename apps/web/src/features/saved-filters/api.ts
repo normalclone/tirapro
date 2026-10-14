@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 export type FilterVisibility = 'PRIVATE' | 'WORKSPACE' | 'PROJECT';
 
@@ -38,13 +39,11 @@ export interface FilterFields {
   resolutions: FieldOption[];
 }
 
-export const filtersKey = ['filters'] as const;
-export const filterFieldsKey = ['filter-fields'] as const;
 
 /** Danh mục giá trị cho bộ dựng truy vấn trực quan (gom theo không gian làm việc). */
 export function useFilterFields() {
   return useQuery({
-    queryKey: filterFieldsKey,
+    queryKey: keys.filters.fields,
     queryFn: async () => (await api.get<FilterFields>('/search/fields')).data,
     staleTime: 5 * 60_000,
   });
@@ -56,18 +55,20 @@ export function useFilterFields() {
  */
 export function useRunJql(jql: string, enabled: boolean) {
   return useQuery({
-    queryKey: ['search', jql],
-    queryFn: async () =>
-      (await api.get<ListResponse<IssueDto>>(`/search?jql=${encodeURIComponent(jql)}&limit=100`)).data
-        .data,
-    enabled: enabled && jql.trim().length > 0,
+    queryKey: keys.search.jql(jql),
+    queryFn:
+      enabled && jql.trim().length > 0
+        ? async () =>
+            (await api.get<ListResponse<IssueDto>>(`/search?jql=${encodeURIComponent(jql)}&limit=100`)).data
+              .data
+        : skipToken,
     retry: false,
   });
 }
 
 export function useSavedFilters() {
   return useQuery({
-    queryKey: filtersKey,
+    queryKey: keys.filters.all,
     queryFn: async () => (await api.get<SavedFilter[]>('/filters')).data,
   });
 }
@@ -84,7 +85,7 @@ export function useCreateFilter() {
     mutationFn: async (input: CreateFilterInput) =>
       (await api.post<SavedFilter>('/filters', input)).data,
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: filtersKey });
+      void qc.invalidateQueries({ queryKey: keys.filters.all });
     },
   });
 }
@@ -96,7 +97,7 @@ export function useDeleteFilter() {
       await api.delete(`/filters/${id}`);
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: filtersKey });
+      void qc.invalidateQueries({ queryKey: keys.filters.all });
     },
   });
 }

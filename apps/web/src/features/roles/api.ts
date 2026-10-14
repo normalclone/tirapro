@@ -2,9 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { PermissionKey, RoleDto, RoleScope } from '@tirapro/types';
 import { api, apiErrorMessage } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
-/** Khoá cache danh sách vai trò (theo scope để tách cache chung/dự án/tất cả). */
-export const rolesKey = (scope?: RoleScope) => ['roles', scope ?? 'ALL'] as const;
 
 /** Thân request tạo vai trò tuỳ chỉnh. */
 export interface CreateRoleInput {
@@ -26,7 +25,7 @@ export interface UpdateRoleInput {
 /** Danh sách vai trò. Bỏ `scope` để lấy tất cả (cấp chung + cấp dự án). */
 export function useRoles(scope?: RoleScope) {
   return useQuery({
-    queryKey: rolesKey(scope),
+    queryKey: keys.roles.byScope(scope),
     queryFn: async () => {
       const qs = scope ? `?scope=${scope}` : '';
       return (await api.get<RoleDto[]>(`/roles${qs}`)).data;
@@ -36,7 +35,7 @@ export function useRoles(scope?: RoleScope) {
 
 /** Làm mới mọi biến thể cache vai trò (ALL/WORKSPACE/PROJECT). */
 function invalidateAllRoles(qc: ReturnType<typeof useQueryClient>) {
-  void qc.invalidateQueries({ queryKey: ['roles'] });
+  void qc.invalidateQueries({ queryKey: keys.roles.all });
 }
 
 /** Tạo vai trò tuỳ chỉnh. */

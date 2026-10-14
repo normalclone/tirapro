@@ -1,9 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
-/** Khoá cache danh mục chương trình của không gian làm việc hiện tại. */
-export const programsKey = ['programs'] as const;
-export const programRollupKey = ['programs', 'rollup'] as const;
 
 export interface ProgramProjectRef {
   id: string;
@@ -77,7 +75,7 @@ export interface PortfolioRollup {
 /** Danh sách chương trình (thô — dùng cho modal sửa & bộ lọc). */
 export function usePrograms() {
   return useQuery({
-    queryKey: programsKey,
+    queryKey: keys.programs.all,
     queryFn: async () => (await api.get<ProgramDto[]>('/programs')).data,
   });
 }
@@ -85,7 +83,7 @@ export function usePrograms() {
 /** Rollup tiến độ toàn danh mục: chương trình → dự án con, kèm số liệu issue. */
 export function useProgramRollup() {
   return useQuery({
-    queryKey: programRollupKey,
+    queryKey: keys.programs.rollup,
     queryFn: async () => (await api.get<PortfolioRollup>('/programs/rollup')).data,
   });
 }
@@ -93,8 +91,8 @@ export function useProgramRollup() {
 function useInvalidatePortfolio() {
   const qc = useQueryClient();
   return () => {
-    void qc.invalidateQueries({ queryKey: programsKey });
-    void qc.invalidateQueries({ queryKey: ['projects'] });
+    void qc.invalidateQueries({ queryKey: keys.programs.all });
+    void qc.invalidateQueries({ queryKey: keys.projects.all });
   };
 }
 

@@ -1,47 +1,40 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BoardDto, IssueDto } from '@tirapro/types';
-import type { ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
-
-export const boardsKey = (projectId: string) => ['boards', projectId] as const;
-export const boardIssuesKey = (projectId: string) => ['board-issues', projectId] as const;
+import { keys } from '@/lib/queryKeys';
+import { invalidateIssue, optimisticPatchIssue, rollbackIssue } from '@/lib/optimistic';
 
 export function useBoards(projectId: string | undefined) {
   return useQuery({
-    queryKey: boardsKey(projectId ?? ''),
-    queryFn: async () => (await api.get<BoardDto[]>(`/boards?projectId=${projectId}`)).data,
-    enabled: !!projectId,
+    queryKey: keys.boards.byProject(projectId ?? ''),
+    queryFn: projectId ? async () => (await api.get<BoardDto[]>(`/boards?projectId=${projectId}`)).data : skipToken,
   });
 }
 
-export function useBoardIssues(projectId: string | undefined) {
-  return useQuery({
-    queryKey: boardIssuesKey(projectId ?? ''),
-    queryFn: async () => (await api.get<ListResponse<IssueDto>>(`/issues?projectId=${projectId}&limit=200`)).data.data,
-    enabled: !!projectId,
-  });
+/** Biến của mutation chuyển trạng thái (dùng chung board + trang chi tiết). */
+export interface TransitionVars {
+  id: string;
+  toStatusId: string;
+  version: number;
+  /** Tên cột/trạng thái đích — để card hiện đúng tên ngay khi vá lạc quan. */
+  statusName?: string;
+  /** Mã issue — không bắt buộc, thiếu thì lấy từ cache danh sách. */
+  key?: string;
 }
+
+/** Vá lạc quan trạng thái của issue (giữ category cũ; bản thật về sau sẽ thay). */
+export const statusPatch = (v: TransitionVars) => (i: IssueDto): Partial<IssueDto> => ({
+  status: { ...i.status, id: v.toStatusId, name: v.statusName ?? i.status.name },
+});
 
 /** Optimistic transition: di chuyển card sang cột mới NGAY, rollback nếu lỗi. */
 export function useTransitionIssue(projectId: string) {
   const qc = useQueryClient();
-  const key = boardIssuesKey(projectId);
   return useMutation({
-    mutationFn: (v: { id: string; toStatusId: string; version: number }) =>
+    mutationFn: (v: TransitionVars) =>
       api.post<IssueDto>(`/issues/${v.id}/transition`, { toStatusId: v.toStatusId, version: v.version }).then((r) => r.data),
-    onMutate: async (v: { id: string; toStatusId: string; version: number; statusName?: string }) => {
-      await qc.cancelQueries({ queryKey: key });
-      const prev = qc.getQueryData<IssueDto[]>(key);
-      qc.setQueryData<IssueDto[]>(key, (old) =>
-        (old ?? []).map((i) =>
-          i.id === v.id
-            ? { ...i, status: { ...i.status, id: v.toStatusId, name: v.statusName ?? i.status.name }, version: i.version + 1 }
-            : i,
-        ),
-      );
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(key, ctx.prev); },
-    onSettled: () => { void qc.invalidateQueries({ queryKey: key }); },
+    onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, statusPatch(v), v.key),
+    onError: (_e, _v, snap) => rollbackIssue(qc, snap),
+    onSettled: (_r, _e, v, snap) => invalidateIssue(qc, projectId, snap?.issueKey ?? v.key),
   });
 }

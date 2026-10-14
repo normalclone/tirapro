@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth-token';
+import { keys } from '@/lib/queryKeys';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1';
 
@@ -15,14 +16,12 @@ export interface Attachment {
   createdAt: string;
 }
 
-export const attachmentsKey = (issueId: string) => ['attachments', issueId] as const;
 
 /** Danh sách tệp đính kèm của issue. */
 export function useAttachments(issueId: string | undefined) {
   return useQuery({
-    queryKey: attachmentsKey(issueId ?? ''),
-    queryFn: async () => (await api.get<Attachment[]>(`/issues/${issueId}/attachments`)).data,
-    enabled: !!issueId,
+    queryKey: keys.issues.attachments(issueId ?? ''),
+    queryFn: issueId ? async () => (await api.get<Attachment[]>(`/issues/${issueId}/attachments`)).data : skipToken,
   });
 }
 
@@ -51,7 +50,7 @@ export function useUploadAttachment(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (file: File) => uploadAttachmentFile(issueId, file),
-    onSuccess: () => qc.invalidateQueries({ queryKey: attachmentsKey(issueId) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.issues.attachments(issueId) }),
   });
 }
 
@@ -60,7 +59,7 @@ export function useDeleteAttachment(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete<{ ok: true }>(`/attachments/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: attachmentsKey(issueId) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.issues.attachments(issueId) }),
   });
 }
 

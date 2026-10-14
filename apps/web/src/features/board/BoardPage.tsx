@@ -13,9 +13,8 @@ import { TaskProgress } from '@/components/ui/TaskProgress';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { byPriorityThenStatus } from '@/lib/issueOrder';
 import { buildProgressMap, type SubtreeProgress } from '@/lib/issueTree';
-import { useBoardIssues, useBoards, useTransitionIssue } from './api';
-import { useUpdateIssue } from '@/features/issues/api';
-import { useProjectRealtime } from './useRealtime';
+import { useBoards, useTransitionIssue } from './api';
+import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
 import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
@@ -53,7 +52,7 @@ export function BoardPage() {
   const navigate = useNavigate();
   const { data: project, isLoading: lp, isError: pe, error: pErr, refetch: refetchProject } = useProject(key);
   const boardsQ = useBoards(project?.id);
-  const issuesQ = useBoardIssues(project?.id);
+  const issuesQ = useProjectIssues(project?.id);
   const { data: boards, isLoading: lb } = boardsQ;
   const { data: issues, isLoading: li } = issuesQ;
   const transition = useTransitionIssue(project?.id ?? '');
@@ -67,7 +66,6 @@ export function BoardPage() {
   const [groupBy, setGroupBy] = useState(false);
   const assigneeOptions = useAssigneeOptions(project?.id);
   const [dragging, setDragging] = useState<IssueDto | null>(null);
-  useProjectRealtime(project?.id);
 
   // Nhớ lọc người + nhóm THEO DỰ ÁN (localStorage). Nạp khi đổi dự án.
   useEffect(() => {
@@ -130,7 +128,9 @@ export function BoardPage() {
     const laneKey = grouped ? overId.split('::')[0]! : null;
     const colId = grouped ? overId.split('::')[1]! : overId;
     const col = board?.columns.find((c) => c.id === colId);
-    if (!col) return;
+    // Cột chưa gắn trạng thái nào thì không có đích để chuyển tới.
+    const targetStatusId = col?.statusIds[0];
+    if (!col || !targetStatusId) return;
 
     const statusChanged = canTransition && !col.statusIds.includes(issue.status.id);
 
@@ -139,8 +139,9 @@ export function BoardPage() {
       if (!statusChanged) return;
       const fromStatusId = issue.status.id;
       const fromStatusName = issue.status.name;
+      const fromVersion = issue.version;
       transition.mutate(
-        { id: issue.id, toStatusId: col.statusIds[0], version: issue.version, statusName: col.name } as never,
+        { id: issue.id, toStatusId: targetStatusId, version: fromVersion, statusName: col.name },
         {
           onError: (err) => toast.error(apiErrorMessage(err)),
           onSuccess: (updated) =>
@@ -150,7 +151,7 @@ export function BoardPage() {
                 label: 'Hoàn tác',
                 onClick: () =>
                   transition.mutate(
-                    { id: issue.id, toStatusId: fromStatusId, version: updated.version, statusName: fromStatusName } as never,
+                    { id: issue.id, toStatusId: fromStatusId, version: updated.version, statusName: fromStatusName },
                     { onError: (err) => toast.error(apiErrorMessage(err)) },
                   ),
               },
@@ -172,7 +173,7 @@ export function BoardPage() {
         version = updated.data.version;
       }
       if (statusChanged) {
-        await transition.mutateAsync({ id: issue.id, toStatusId: col.statusIds[0], version, statusName: col.name } as never);
+        await transition.mutateAsync({ id: issue.id, toStatusId: targetStatusId, version, statusName: col.name });
       }
       const who = targetAssignee == null ? 'bỏ người phụ trách' : `giao cho ${assigneeOptions.find((o) => o.id === targetAssignee)?.name ?? 'người khác'}`;
       const parts = [statusChanged ? `sang “${col.name}”` : '', assigneeChanged ? `· ${who}` : ''].filter(Boolean).join(' ');
