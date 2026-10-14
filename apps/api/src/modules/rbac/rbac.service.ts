@@ -35,6 +35,14 @@ const RESOURCE_RESOLVERS: Record<
   // Tài nguyên cấp workspace, dự án là tuỳ chọn (null = áp quyền workspace).
   raid: { model: 'raidItem', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
   automationTemplate: { model: 'issueTemplate', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  automationRule: { model: 'automationRule', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  // Worklog đi qua issue cha.
+  worklog: {
+    model: 'workLog',
+    where: (value, workspaceId) => ({ id: value, issue: { workspaceId } }),
+    select: { issue: { select: projectIdOnly } },
+    project: (row: { issue: { projectId: string } }) => row.issue.projectId,
+  },
   customField: { model: 'customField', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
   repository: { model: 'codeRepository', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
   comment: {

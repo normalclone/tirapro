@@ -22,7 +22,20 @@ export const DOMAIN_EVENTS = {
   MEMBER_ROLE_CHANGED: 'member.role_changed',
   NOTIFICATION_CREATED: 'notification.created',
   MENTION_CREATED: 'mention.created',
+  WORKLOG_CREATED: 'worklog.created',
+  WORKLOG_UPDATED: 'worklog.updated',
+  WORKLOG_DELETED: 'worklog.deleted',
 } as const;
+/**
+ * Metadata chống vòng lặp của automation, nằm ở `payload.meta` của sự kiện issue/comment.
+ * - `automationDepth`: số tầng automation đã nối nhau (sự kiện do người dùng thật gây ra → không có/0).
+ * - `automationChain`: id các quy tắc đã chạy trong chuỗi này — một quy tắc không chạy lại trong chính chuỗi của nó.
+ */
+export interface AutomationEventMeta {
+  automationDepth?: number;
+  automationChain?: string[];
+}
+
 export type DomainEvent = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];
 
 export const WS_EVENTS = {

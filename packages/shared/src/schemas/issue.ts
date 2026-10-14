@@ -30,6 +30,9 @@ export const updateIssueSchema = createIssueSchema
     // OCC: bắt buộc gửi version hiện tại khi update
     version: z.number().int().nonnegative(),
     resolutionId: z.string().optional().nullable(),
+    // Ước lượng thời gian (giây). Ước lượng còn lại do worklog tự trừ; sửa tay khi cần.
+    originalEstimate: z.number().int().min(0).max(100_000_000).optional().nullable(),
+    remainingEstimate: z.number().int().min(0).max(100_000_000).optional().nullable(),
   });
 
 export const transitionIssueSchema = z.object({

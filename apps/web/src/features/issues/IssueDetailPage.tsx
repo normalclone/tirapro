@@ -23,6 +23,7 @@ import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { WorkflowViewDialog } from '@/features/workflow-settings/WorkflowViewDialog';
 import { CommentsSection } from '@/features/issue-edit/CommentsSection';
 import { ConfirmDialog } from './ConfirmDialog';
+import { WorklogPanel } from './WorklogPanel';
 import { IssueLabelsPicker } from '@/features/issue-meta/IssueLabelsPicker';
 import { IssueComponentsPicker } from '@/features/issue-meta/IssueComponentsPicker';
 import { DelayedSpinner, EmptyState } from '@/components/ui/primitives';
@@ -460,6 +461,7 @@ export function IssueDetailPage() {
                   <div className="space-y-5 lg:sticky lg:top-4">
                     <IssuePeoplePanel issue={issue} />
                     <IssueDatesPanel issue={issue} canEditRestricted={canEditRestricted} />
+                    <WorklogPanel issue={issue} />
                   </div>
                 </aside>
               </div>

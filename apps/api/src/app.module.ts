@@ -58,6 +58,7 @@ import { IssueExtrasModule } from './modules/issue-extras/issue-extras.module';
 import { SlaModule } from './modules/sla/sla.module';
 import { PlanningModule } from './modules/planning/planning.module';
 import { AutomationModule } from './modules/automation/automation.module';
+import { WorklogsModule } from './modules/worklogs/worklogs.module';
 import { WikiModule } from './modules/wiki/wiki.module';
 import { ResourcesModule } from './modules/resources/resources.module';
 import { ClientsModule } from './modules/clients/clients.module';
@@ -166,6 +167,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     SlaModule,
     PlanningModule,
     AutomationModule,
+    WorklogsModule,
     WikiModule,
     ResourcesModule,
     ClientsModule,

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DOMAIN_EVENTS, type CommentDto } from '@tirapro/types';
+import { DOMAIN_EVENTS, type AutomationEventMeta, type CommentDto } from '@tirapro/types';
 import type { CreateCommentInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -28,7 +28,7 @@ export class CommentsService {
     return rows.map((r) => this.toDto(r));
   }
 
-  async create(workspaceId: string, userId: string, issueId: string, input: CreateCommentInput): Promise<CommentDto> {
+  async create(workspaceId: string, userId: string, issueId: string, input: CreateCommentInput, meta?: AutomationEventMeta): Promise<CommentDto> {
     const issue = await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     const comment = await this.prisma.$transaction(async (tx) => {
@@ -46,7 +46,7 @@ export class CommentsService {
       return { c, mentionIds };
     });
     const dto = this.toDto(comment.c);
-    this.events.emit(DOMAIN_EVENTS.COMMENT_ADDED, { comment: dto, issueId, projectId: issue.projectId, actorId: userId, mentionIds: comment.mentionIds });
+    this.events.emit(DOMAIN_EVENTS.COMMENT_ADDED, { comment: dto, issueId, projectId: issue.projectId, actorId: userId, mentionIds: comment.mentionIds, ...(meta ? { meta } : {}) });
     return dto;
   }
 

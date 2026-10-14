@@ -11,6 +11,8 @@ export * from './schemas/import';
 export * from './schemas/board';
 export * from './schemas/sprint';
 export * from './schemas/project';
+export * from './schemas/worklog.schema';
+export * from './schemas/automation-rule.schema';
 
 // Realtime + JQL + utils
 export * from './ws';
@@ -18,5 +20,6 @@ export * from './jql';
 export * from './jql-parser';
 export * from './jql-builder';
 export * from './issue-key';
+export * from './duration';
 export * from './lexorank';
 export * from './guides';

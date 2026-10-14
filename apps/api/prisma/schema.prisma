@@ -176,6 +176,7 @@ enum HistoryField {
   RESOLUTION
   SCOPE
   PRIORITY
+  TIME_SPENT
 }
 
 enum AiSuggestionKind {
@@ -300,6 +301,7 @@ model Workspace {
   wikiPages           WikiPage[]
   clients             Client[]
   inviteTokens        InviteToken[]
+  automationRules     AutomationRule[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -854,7 +856,58 @@ model WorkLog {
   updatedAt DateTime @updatedAt
   issue     Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
   author    User     @relation(fields: [authorId], references: [id])
-  @@index([issueId])
+  @@index([issueId, startedAt])
+  @@index([authorId, startedAt])
+}
+
+// ============================ AUTOMATION RULES ==============================
+enum RuleTrigger {
+  ISSUE_CREATED
+  ISSUE_TRANSITIONED
+  ISSUE_UPDATED
+  COMMENT_ADDED
+  SCHEDULED
+}
+
+enum RuleRunStatus {
+  SUCCESS
+  SKIPPED
+  FAILED
+}
+
+/// Quy tắc "khi… nếu… thì…". projectId null = áp cho cả workspace.
+model AutomationRule {
+  id            String      @id @default(cuid())
+  workspaceId   String
+  projectId     String?
+  name          String
+  enabled       Boolean     @default(true)
+  trigger       RuleTrigger
+  triggerConfig Json        @default("{}") // { fields?: string[], cron?: string, toStatusId?: string }
+  conditions    Json        @default("[]") // Array<{ field, op, value? } | { jql }>
+  actions       Json        @default("[]") // Array<Action> — xem @tirapro/shared automation-rule.schema
+  createdById   String
+  lastRunAt     DateTime?
+  runCount      Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runs      AutomationRun[]
+  @@index([workspaceId, enabled, trigger])
+}
+
+model AutomationRun {
+  id         String        @id @default(cuid())
+  ruleId     String
+  issueId    String?
+  status     RuleRunStatus
+  log        Json          @default("[]") // [{ step, ok, message }]
+  durationMs Int           @default(0)
+  createdAt  DateTime      @default(now())
+
+  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  @@index([ruleId, createdAt])
 }
 
 // ============================ BOARD / SPRINT ================================
