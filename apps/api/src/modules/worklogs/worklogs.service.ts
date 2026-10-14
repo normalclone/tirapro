@@ -12,6 +12,9 @@ const AUTHOR_SELECT = { select: { id: true, displayName: true, avatarUrl: true }
 const worklogInclude = { author: AUTHOR_SELECT } satisfies Prisma.WorkLogInclude;
 type WorklogRow = Prisma.WorkLogGetPayload<{ include: typeof worklogInclude }>;
 
+/** Cột `timeSpent` là Int32 — vượt ngưỡng này thì từ chối thay vì để DB báo lỗi 500. */
+const MAX_ISSUE_TIME_SEC = 2_147_483_647;
+
 /** Giới hạn số dòng trả về một lần (issue bình thường có vài chục worklog). */
 const LIST_LIMIT = 500;
 
@@ -154,6 +157,7 @@ export class WorklogsService {
   ): Promise<void> {
     const agg = await tx.workLog.aggregate({ where: { issueId }, _sum: { timeSpent: true } });
     const total = agg._sum.timeSpent ?? 0;
+    if (total > MAX_ISSUE_TIME_SEC) throw new BusinessRuleException('Tổng thời gian ghi nhận của công việc vượt giới hạn cho phép — hãy kiểm tra lại các bản ghi');
     const remaining = this.nextRemaining(adjust ?? 'auto', state, total);
     const before = state.timeSpent ?? 0;
     await tx.issue.update({ where: { id: issueId }, data: { timeSpent: total, remainingEstimate: remaining } });

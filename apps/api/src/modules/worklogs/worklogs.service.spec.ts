@@ -138,3 +138,22 @@ describe('WorklogsService.update/remove — chỉ tác giả hoặc quản trị
     expect(issue.remainingEstimate).toBe(28800);
   });
 });
+
+describe('WorklogsService — giới hạn', () => {
+  it('thời gian phi lý (> 10 năm) bị từ chối', async () => {
+    const { service, tx } = setup();
+    await expect(service.create('w1', 'u1', 'i1', { timeSpent: '100000d' })).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+    expect(tx.workLog.create).not.toHaveBeenCalled();
+  });
+
+  it('adjustRemaining.set tràn => lỗi nghiệp vụ', async () => {
+    const { service } = setup();
+    await expect(service.create('w1', 'u1', 'i1', { timeSpent: '1h', adjustRemaining: { set: '100000d' } })).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+  });
+
+  it('tổng vượt Int32 => lỗi nghiệp vụ (transaction được rollback bởi Prisma)', async () => {
+    const { service, tx } = setup();
+    tx.workLog.aggregate.mockResolvedValueOnce({ _sum: { timeSpent: 3_000_000_000 } });
+    await expect(service.create('w1', 'u1', 'i1', { timeSpent: '1h' })).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+  });
+});

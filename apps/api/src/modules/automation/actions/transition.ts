@@ -4,7 +4,7 @@ import type { ActionContext, ActionResult } from './types';
 import { withFreshIssue } from './util';
 
 export async function runTransition(ctx: ActionContext, a: Extract<RuleAction, { type: 'transition' }>): Promise<ActionResult> {
-  const status = await ctx.deps.prisma.status.findUnique({ where: { id: a.toStatusId }, select: { name: true } });
+  const status = await ctx.deps.prisma.status.findFirst({ where: { id: a.toStatusId, workflow: { workspaceId: ctx.workspaceId } }, select: { name: true } });
   if (!status) throw new BusinessRuleException('Trạng thái đích không tồn tại — hãy chọn lại trong quy tắc');
   if (ctx.issue.status.id === a.toStatusId) return `Đã ở trạng thái "${status.name}" — bỏ qua`;
   if (ctx.dryRun) return `Sẽ chuyển sang "${status.name}"`;

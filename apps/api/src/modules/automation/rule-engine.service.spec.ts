@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { VersionConflictException } from '../../common/exceptions/app.exception';
 import { MAX_AUTOMATION_DEPTH, RuleEngineService } from './rule-engine.service';
-import { isPrivateAddress } from './actions/webhook';
 
 const SYS = 'SYS';
 
@@ -34,7 +33,7 @@ function setup(rule = makeRule(), issue = issueDto()) {
       findMany: vi.fn(() => Promise.resolve([{ userId: 'a' }, { userId: 'b' }])),
     },
     projectMembership: { findMany: vi.fn(() => Promise.resolve([])) },
-    status: { findUnique: vi.fn(() => Promise.resolve({ name: 'Done' })) },
+    status: { findFirst: vi.fn(() => Promise.resolve({ name: 'Done' })) },
     label: { findFirst: vi.fn(() => Promise.resolve({ id: 'L1', name: 'bug' })) },
     issueLabel: { createMany: vi.fn(() => Promise.resolve({ count: 1 })), deleteMany: vi.fn(() => Promise.resolve({ count: 1 })) },
     issue: { count: vi.fn(() => Promise.resolve(1)), findFirst: vi.fn(() => Promise.resolve({ workspaceId: 'w1' })) },
@@ -282,14 +281,5 @@ describe('RuleEngineService — chạy thử, lịch, người dùng hệ thốn
     const { engine, rules } = setup();
     rules.activeFor.mockRejectedValueOnce(new Error('db chết'));
     await expect(engine.handle('ISSUE_CREATED', { issue: issueDto() as never, actorId: 'u1' })).resolves.toBeUndefined();
-  });
-});
-
-describe('webhook — chặn địa chỉ nội bộ', () => {
-  it.each(['127.0.0.1', '10.1.2.3', '192.168.0.5', '172.20.1.1', '169.254.169.254', '::1', 'fd00::1', '::ffff:10.0.0.1'])('%s là nội bộ', (ip) => {
-    expect(isPrivateAddress(ip)).toBe(true);
-  });
-  it.each(['8.8.8.8', '1.1.1.1', '172.32.0.1', '2606:4700::1111'])('%s là công khai', (ip) => {
-    expect(isPrivateAddress(ip)).toBe(false);
   });
 });

@@ -18,6 +18,9 @@ describe('parseDuration', () => {
     ['90', null],
     ['-1h', null],
     ['1h 1.5.2m', null],
+    ['3650d', 3650 * 28800],
+    ['99999999999h', null],
+    ['100000d', null],
   ];
   it.each(table)('"%s" → %s', (input, expected) => {
     expect(parseDuration(input)).toBe(expected);

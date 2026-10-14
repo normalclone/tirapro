@@ -7,6 +7,9 @@ export interface DurationOptions {
   daysPerWeek?: number;
 }
 
+/** Chặn giá trị phi lý (và tràn cột Int của DB): tối đa 10 năm. */
+export const MAX_DURATION_SEC = 10 * 365 * 86_400;
+
 const TOKEN = /(\d+(?:\.\d+)?)\s*([wdhms])/gy;
 
 /**
@@ -38,7 +41,7 @@ export function parseDuration(input: string, opts: DurationOptions = {}): number
     total += Number(m[1]) * (unitSec[m[2] as string] as number);
     pos = TOKEN.lastIndex;
   }
-  return Number.isFinite(total) ? Math.round(total) : null;
+  return Number.isFinite(total) && total <= MAX_DURATION_SEC ? Math.round(total) : null;
 }
 
 /** Số giây → "2h 30m" (làm tròn LÊN phút; 0 → "0m"). Không đổi sang ngày để khỏi lệ thuộc cấu hình. */
