@@ -232,6 +232,8 @@ Tirapro đã đúng (`@socket.io/redis-adapter`). Gap P0:
 
 ### 6.4 Async — Transactional Outbox + BullMQ (P1)
 
+> **Hiện trạng (2026-10):** dùng `@nestjs/schedule` cron + khoá Redis (`withCronLock`, `SET lock:cron:<tên> NX EX`) để nhiều node không chạy trùng; không Redis thì chạy một node. Dependency `bullmq` đã gỡ — **thêm BullMQ khi cần queue thật** (outbox, job nặng, rate-limit bên thứ 3). Phần dưới là thiết kế đích khi tới lúc đó.
+
 **Outbox (P1, cần trước khi integration ship):** notifications/Telegram/digest/Jira-sync là user-visible, không được drop. Ghi **outbox row trong CÙNG Prisma transaction** với domain mutation (hoặc tái dùng `IssueHistory` làm log) → **BullMQ repeatable polling-publisher** đọc row chưa publish → dispatch → mark sent. Consumer **idempotent** (dedupe theo event id, vì at-least-once); partial index trên row chưa publish. Dùng polling-publisher (không CDC/Debezium) cho stack này. **Direct emit fire-and-forget** chỉ cho ephemeral (typing/presence) — vạch rõ ranh giới lossy vs durable để tránh over-apply outbox.
 
 **BullMQ multi-queue (P1):** tách queue theo domain `{outbox, reindex, reports, notifications, jira-import}` (không 1 mega-queue). Concurrency 100–300 cho IO-bound (reindex/notifications/outbox); concurrency thấp + nhiều worker instance cho CPU-bound recompute (raising concurrency chỉ giúp IO-bound). **Global rate limiter** (`max/duration`, job bị limit nằm `waiting` không `failed`) trên queue `notifications`/`jira-import` để tôn trọng giới hạn API bên thứ 3.

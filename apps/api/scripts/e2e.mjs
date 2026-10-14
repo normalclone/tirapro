@@ -3,6 +3,7 @@
  * Chạy:  node apps/api/scripts/e2e.mjs   (API phải đang chạy ở :4000)
  * Thoát 0 nếu tất cả PASS, 1 nếu có FAIL. Dùng cho #11 (tích hợp e2e).
  */
+import { createHmac } from 'node:crypto';
 const BASE = process.env.E2E_BASE ?? 'http://127.0.0.1:4000/api/v1';
 const CREDS = { email: 'admin@projira.dev', password: 'Password123' };
 
@@ -133,7 +134,10 @@ async function main() {
     check('integrations/test (degrade no-token)', test.status === 201 && test.json?.enabled === false);
     const repo = await call('POST', '/dev/repositories', { integrationId: intg.json.id, provider: 'GITHUB', externalId: `e2e${Date.now()}`, name: 'acme/web', url: 'https://github.com/acme/web', webhookSecret: 's' });
     if (repo.json?.id) {
-      const wh = await call('POST', `/dev/webhook/${repo.json.id}`, { ref: 'refs/heads/main', commits: [{ id: 'sha1', message: `${issues[0].key} fix`, url: 'http://x', author: { name: 'A' } }] }, { 'x-webhook-secret': 's' });
+      const whBody = { ref: 'refs/heads/main', commits: [{ id: 'sha1', message: `${issues[0].key} fix`, url: 'http://x', author: { name: 'A' } }] };
+      // GitHub ký HMAC-SHA256 trên body gốc (secret 's' đặt lúc tạo repo ở trên).
+      const whSig = 'sha256=' + createHmac('sha256', 's').update(JSON.stringify(whBody)).digest('hex');
+      const wh = await call('POST', `/dev/webhook/${repo.json.id}`, whBody, { 'x-hub-signature-256': whSig });
       check('dev/webhook smart-commit', wh.status === 201 && wh.json?.linked >= 1, `matched=${JSON.stringify(wh.json?.matched)}`);
       await call('DELETE', `/dev/repositories/${repo.json.id}`);
     }

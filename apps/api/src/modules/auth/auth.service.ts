@@ -177,36 +177,44 @@ export class AuthService {
     const requested = input.roleIds ?? (input.roleId ? [input.roleId] : []);
     const roleIds = await this.resolveInviteRoleIds(currentWorkspaceId, requested);
 
-    let tempPassword: string | undefined;
-    let userId: string;
+    // TODO(email): hiện chưa có hạ tầng gửi email nên API trả `tempPassword` để admin chuyển tay cho
+    // thành viên. Khi có email (Pha E), gửi thư mời/đặt mật khẩu rồi BỎ `tempPassword` khỏi response.
+    // Hash argon2 tính trước, ngoài transaction, để không giữ kết nối DB trong lúc băm.
+    const generatedPassword = createId();
+    const generatedHash = await argon2.hash(generatedPassword);
 
-    const existing = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
-    if (existing) {
-      userId = existing.id;
-    } else {
-      // Mật khẩu tạm ngẫu nhiên để admin chuyển cho thành viên (TODO: gửi email thật).
-      tempPassword = createId();
-      const passwordHash = await argon2.hash(tempPassword);
-      const created = await this.prisma.user.create({
-        data: { email, displayName: input.displayName, passwordHash },
+    // User + membership cùng một transaction: lỗi giữa chừng không để lại user mồ côi.
+    const { userId, tempPassword } = await this.prisma.$transaction(async (tx) => {
+      let tempPassword: string | undefined;
+      let userId: string;
+
+      const existing = await tx.user.findUnique({ where: { email }, select: { id: true } });
+      if (existing) {
+        userId = existing.id;
+      } else {
+        tempPassword = generatedPassword;
+        const created = await tx.user.create({
+          data: { email, displayName: input.displayName, passwordHash: generatedHash },
+          select: { id: true },
+        });
+        userId = created.id;
+      }
+
+      // Idempotent: nếu đã là thành viên thì trả về membership hiện có, không báo lỗi.
+      const member = await tx.workspaceMembership.findUnique({
+        where: { workspaceId_userId: { workspaceId: currentWorkspaceId, userId } },
         select: { id: true },
       });
-      userId = created.id;
-    }
-
-    // Idempotent: nếu đã là thành viên thì trả về membership hiện có, không báo lỗi.
-    const member = await this.prisma.workspaceMembership.findUnique({
-      where: { workspaceId_userId: { workspaceId: currentWorkspaceId, userId } },
-      select: { id: true },
+      if (!member) {
+        await tx.workspaceMembership.create({
+          data: {
+            workspaceId: currentWorkspaceId, userId, roleId: roleIds[0]!, joinedAt: new Date(),
+            roles: { create: roleIds.map((rid) => ({ roleId: rid })) },
+          },
+        });
+      }
+      return { userId, tempPassword };
     });
-    if (!member) {
-      await this.prisma.workspaceMembership.create({
-        data: {
-          workspaceId: currentWorkspaceId, userId, roleId: roleIds[0]!, joinedAt: new Date(),
-          roles: { create: roleIds.map((rid) => ({ roleId: rid })) },
-        },
-      });
-    }
 
     return tempPassword
       ? { userId, email, invited: true, tempPassword }

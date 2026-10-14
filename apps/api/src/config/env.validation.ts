@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/** Giá trị mặc định của khoá mã hoá — chỉ để chạy dev, tuyệt đối không dùng ở production. */
+export const DEFAULT_INTEGRATION_ENCRYPTION_KEY = 'dev_integration_encryption_key_change_me_0001';
+
 /** Bool từ chuỗi env: "true"/"1" => true, còn lại false. */
 const boolEnv = (def: boolean) =>
   z
@@ -68,10 +71,23 @@ export const envSchema = z.object({
   INTEGRATION_ENCRYPTION_KEY: z
     .string()
     .min(32, 'INTEGRATION_ENCRYPTION_KEY tối thiểu 32 ký tự')
-    .default('dev_integration_encryption_key_change_me_0001'),
+    .default(DEFAULT_INTEGRATION_ENCRYPTION_KEY),
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/** Lỗi cấu hình chỉ áp dụng ở production (fail-fast khi khởi động). Trả danh sách thông báo. */
+export function productionConfigProblems(env: Pick<Env, 'NODE_ENV' | 'INTEGRATION_ENCRYPTION_KEY'>): string[] {
+  if (env.NODE_ENV !== 'production') return [];
+  const problems: string[] = [];
+  const key = env.INTEGRATION_ENCRYPTION_KEY;
+  if (key === DEFAULT_INTEGRATION_ENCRYPTION_KEY || key.length < 32) {
+    problems.push(
+      'INTEGRATION_ENCRYPTION_KEY: ở production phải đặt khoá riêng (tối thiểu 32 ký tự, khác giá trị mặc định) — ví dụ `openssl rand -hex 32`',
+    );
+  }
+  return problems;
+}
 
 export function validateEnv(config: Record<string, unknown>): Env {
   const parsed = envSchema.safeParse(config);
@@ -80,6 +96,10 @@ export function validateEnv(config: Record<string, unknown>): Env {
       .map((i) => ` - ${i.path.join('.') || '(root)'}: ${i.message}`)
       .join('\n');
     throw new Error(`❌ Biến môi trường không hợp lệ:\n${msg}`);
+  }
+  const problems = productionConfigProblems(parsed.data);
+  if (problems.length) {
+    throw new Error(`❌ Cấu hình production không an toàn:\n${problems.map((p) => ` - ${p}`).join('\n')}`);
   }
   return parsed.data;
 }

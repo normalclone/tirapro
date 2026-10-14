@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import * as argon2 from 'argon2';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { RedisService } from '../../infra/redis/redis.service';
+import { hashApiKeySecret, isLegacyArgon2Hash, verifyApiKeySecret } from './api-key-hash';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { offsetPage } from '../../common/dto/page-result';
 import type { CreateApiKeyInput } from './api-keys.schemas';
@@ -21,6 +22,15 @@ export interface ApiKeyContext {
 const KEY_PREFIX = 'tira';
 const KEY_RE = /^tira_([0-9a-f]{6,})_([0-9a-f]{16,})$/i;
 const TOUCH_INTERVAL_MS = 60_000;
+const CACHE_TTL_SEC = 60;
+const cacheKey = (prefix: string) => `apikey:ctx:${prefix}`;
+
+/** Bản ghi cache: hash secret đã xác thực + ngữ cảnh. Chỉ lưu sau khi verify thành công. */
+interface CachedCtx {
+  h: string;
+  exp: number | null;
+  ctx: ApiKeyContext;
+}
 
 type KeyRow = {
   id: string; name: string; prefix: string; scopes: string[];
@@ -29,11 +39,14 @@ type KeyRow = {
 
 /**
  * Quản lý API key (PAT) cho tích hợp ngoài & MCP.
- * Chỉ lưu HASH (argon2) của secret; plaintext trả về DUY NHẤT 1 lần lúc tạo.
+ * Chỉ lưu HASH (sha256; key cũ là argon2 vẫn dùng được) của secret; plaintext trả về DUY NHẤT 1 lần lúc tạo.
  */
 @Injectable()
 export class ApiKeyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
 
   private gen() {
     const prefix = randomBytes(5).toString('hex'); // 10 hex
@@ -66,7 +79,7 @@ export class ApiKeyService {
 
   async create(workspaceId: string, userId: string, input: CreateApiKeyInput) {
     const { prefix, secret, full } = this.gen();
-    const hash = await argon2.hash(secret);
+    const hash = hashApiKeySecret(secret);
     const scopes: ApiScope[] = input.write ? ['read', 'write'] : ['read'];
     const expiresAt = input.expiresInDays ? new Date(Date.now() + input.expiresInDays * 86_400_000) : null;
     const rec = await this.prisma.apiKey.create({
@@ -78,9 +91,10 @@ export class ApiKeyService {
   }
 
   async revoke(id: string, workspaceId: string) {
-    const found = await this.prisma.apiKey.findFirst({ where: { id, workspaceId }, select: { id: true } });
+    const found = await this.prisma.apiKey.findFirst({ where: { id, workspaceId }, select: { id: true, prefix: true } });
     if (!found) throw new NotFoundAppException('Khoá API');
     await this.prisma.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
+    await this.dropCache(found.prefix); // thu hồi có hiệu lực ngay, không đợi hết TTL
     return { ok: true as const };
   }
 
@@ -89,6 +103,14 @@ export class ApiKeyService {
     const m = KEY_RE.exec(raw.trim());
     if (!m) return null;
     const [, prefix, secret] = m;
+    const secretHash = hashApiKeySecret(secret!);
+
+    // Cache 60s (bỏ qua nếu không có Redis). Chỉ trúng khi đúng secret — so hash, không tin riêng prefix.
+    const cached = await this.readCache(prefix!);
+    if (cached && cached.h === secretHash && (cached.exp == null || cached.exp > Date.now())) {
+      return cached.ctx;
+    }
+
     const key = await this.prisma.apiKey.findUnique({
       where: { prefix: prefix! },
       select: {
@@ -99,10 +121,11 @@ export class ApiKeyService {
     if (!key || key.revokedAt) return null;
     if (key.expiresAt && key.expiresAt.getTime() < Date.now()) return null;
     if (key.user.status === 'DEACTIVATED') return null;
-    const ok = await argon2.verify(key.hash, secret!).catch(() => false);
+    const ok = await verifyApiKeySecret(key.hash, secret!);
     if (!ok) return null;
     void this.touch(key.id, key.expiresAt); // lastUsedAt (fire-and-forget)
-    return {
+    if (isLegacyArgon2Hash(key.hash)) void this.upgradeHash(key.id, secretHash); // key cũ → sha256, lần sau không tốn argon2
+    const ctx: ApiKeyContext = {
       keyId: key.id,
       userId: key.userId,
       workspaceId: key.workspaceId,
@@ -110,6 +133,35 @@ export class ApiKeyService {
       displayName: key.user.displayName,
       scopes: key.scopes as ApiScope[],
     };
+    await this.writeCache(prefix!, { h: secretHash, exp: key.expiresAt?.getTime() ?? null, ctx });
+    return ctx;
+  }
+
+  private async readCache(prefix: string): Promise<CachedCtx | null> {
+    const client = this.redis.isAvailable() ? this.redis.getClient() : null;
+    if (!client) return null;
+    try {
+      const raw = await client.get(cacheKey(prefix));
+      return raw ? (JSON.parse(raw) as CachedCtx) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async writeCache(prefix: string, value: CachedCtx): Promise<void> {
+    const client = this.redis.isAvailable() ? this.redis.getClient() : null;
+    if (!client) return;
+    await client.set(cacheKey(prefix), JSON.stringify(value), 'EX', CACHE_TTL_SEC).catch(() => undefined);
+  }
+
+  private async dropCache(prefix: string): Promise<void> {
+    const client = this.redis.isAvailable() ? this.redis.getClient() : null;
+    if (!client) return;
+    await client.del(cacheKey(prefix)).catch(() => undefined);
+  }
+
+  private async upgradeHash(id: string, hash: string): Promise<void> {
+    await this.prisma.apiKey.update({ where: { id }, data: { hash } }).catch(() => undefined);
   }
 
   private async touch(id: string, _expiresAt: Date | null) {
