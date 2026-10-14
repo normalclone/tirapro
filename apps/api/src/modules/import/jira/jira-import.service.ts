@@ -599,6 +599,7 @@ export class JiraImportService {
     if (!names.length) return out;
     const existing = await this.prisma.sprint.findMany({ where: { projectId, deletedAt: null }, select: { id: true, name: true } });
     const byName = new Map(existing.map((s) => [s.name.toLowerCase(), s.id]));
+    // allow-deleted: sequence phải tính cả sprint đã xoá để không trùng số thứ tự (unique projectId+sequence)
     const last = await this.prisma.sprint.findFirst({ where: { projectId }, orderBy: { sequence: 'desc' }, select: { sequence: true } });
     let sequence = last?.sequence ?? 0;
 

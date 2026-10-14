@@ -76,8 +76,8 @@ export class ImportController {
   /** Tiến độ / kết quả một lần import (web poll mỗi 2 giây). */
   @Get('jobs/:id')
   @Permissions(PERMISSIONS.IMPORT_RUN)
-  async getJob(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.importService.getJob(this.ws(user), id);
+  async getJob(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.importService.getJob(workspaceId, id);
   }
 
   /** Jira bước 1: tải CSV export (≤ 25MB), trả tóm tắt để dựng bảng mapping. */
@@ -85,24 +85,29 @@ export class ImportController {
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: JIRA_MAX_UPLOAD_BYTES } }))
-  async jiraAnalyze(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File | undefined) {
-    return this.jira.analyze(this.ws(user), user.id, file);
+  async jiraAnalyze(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    return this.jira.analyze(workspaceId, user.id, file);
   }
 
   /** Jira bước 2: giá trị Tirapro (project, loại, ưu tiên, trạng thái, thành viên) để ghép. */
   @Get('jira/targets')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  async jiraTargets(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
-    return this.jira.targets(this.ws(user), projectId || undefined);
+  async jiraTargets(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
+    return this.jira.targets(workspaceId, projectId || undefined);
   }
 
   /** Jira bước 3: kiểm tra mapping, chạy thử (dryRun) hoặc chạy nền và trả `{ jobId }`. */
   @Post('jira/run')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   async jiraRun(
+    @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(jiraImportRunSchema)) body: JiraImportRunInput,
   ) {
-    return this.jira.run(this.ws(user), user.id, body);
+    return this.jira.run(workspaceId, user.id, body);
   }
 }
