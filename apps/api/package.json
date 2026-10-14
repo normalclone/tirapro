@@ -10,7 +10,7 @@
     "build": "nest build",
     "lint": "eslint \"src/**/*.ts\" --max-warnings 0",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "jest --passWithNoTests",
+    "test": "vitest run",
     "test:e2e": "jest --config ./test/jest-e2e.json --passWithNoTests",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -40,9 +40,9 @@
     "@nestjs/websockets": "^10.4.15",
     "@paralleldrive/cuid2": "^2.2.2",
     "@prisma/client": "^6.1.0",
+    "@socket.io/redis-adapter": "^8.3.0",
     "@tirapro/shared": "workspace:*",
     "@tirapro/types": "workspace:*",
-    "@socket.io/redis-adapter": "^8.3.0",
     "argon2": "^0.41.1",
     "bullmq": "^5.34.0",
     "class-transformer": "^0.5.1",
@@ -63,6 +63,7 @@
     "@nestjs/cli": "^10.4.9",
     "@nestjs/schematics": "^10.2.3",
     "@nestjs/testing": "^10.4.15",
+    "@swc/core": "^1.16.18",
     "@types/cookie-parser": "^1.4.8",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
@@ -76,6 +77,8 @@
     "prisma": "^6.1.0",
     "ts-jest": "^29.2.5",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "unplugin-swc": "^1.6.0",
+    "vitest": "^3.2.7"
   }
 }

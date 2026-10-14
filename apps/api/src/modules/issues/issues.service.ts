@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createId } from '@paralleldrive/cuid2';
 import { DOMAIN_EVENTS, PERMISSIONS, type IssueDto } from '@tirapro/types';
-import { rankBetween, issueTypePrefix, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput } from '@tirapro/shared';
+import { rankBetween, initialRanks, RankGapError, issueTypePrefix, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RbacService } from '../rbac/rbac.service';
@@ -115,12 +115,14 @@ export class IssuesService {
       input.assigneeId ?? (project.defaultAssigneeMode === 'PROJECT_LEAD' ? project.leadId : null);
 
     // Rank: cuối danh sách trong project
-    const last = await this.prisma.issue.findFirst({
-      where: { projectId: project.id, deletedAt: null },
-      orderBy: { rank: 'desc' },
-      select: { rank: true },
+    const rank = await this.resolveRank(project.id, async () => {
+      const last = await this.prisma.issue.findFirst({
+        where: { projectId: project.id, deletedAt: null },
+        orderBy: [{ rank: 'desc' }, { id: 'desc' }],
+        select: { rank: true },
+      });
+      return { prev: last?.rank ?? null, next: null };
     });
-    const rank = rankBetween(last?.rank ?? null, null);
 
     const issue = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.project.update({
@@ -327,9 +329,10 @@ export class IssuesService {
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, { sprintId: input.sprintId });
 
-    const prevRank = input.afterId ? (await this.rankOf(input.afterId)) : null;
-    const nextRank = input.beforeId ? (await this.rankOf(input.beforeId)) : null;
-    const rank = rankBetween(prevRank, nextRank);
+    const rank = await this.resolveRank(current.projectId, async () => ({
+      prev: input.afterId ? await this.rankOf(workspaceId, current.projectId, input.afterId) : null,
+      next: input.beforeId ? await this.rankOf(workspaceId, current.projectId, input.beforeId) : null,
+    }));
 
     const updated = await this.prisma.issue.update({
       where: { id },
@@ -388,9 +391,42 @@ export class IssuesService {
     }
   }
 
-  private async rankOf(id: string): Promise<string | null> {
-    const r = await this.prisma.issue.findUnique({ where: { id }, select: { rank: true } });
-    return r?.rank ?? null;
+  /** Rank của issue làm mốc — phải còn sống và cùng workspace/project, nếu không thì báo lỗi thay vì lặng lẽ xếp xuống cuối. */
+  private async rankOf(workspaceId: string, projectId: string, id: string): Promise<string> {
+    const r = await this.prisma.issue.findFirst({ where: { id, workspaceId, projectId, deletedAt: null }, select: { rank: true } });
+    if (!r) throw new NotFoundAppException('Công việc làm mốc');
+    return r.rank;
+  }
+
+  /**
+   * Tính rank mới. Hết chỗ chèn (RankGapError) thì đánh số lại cả project rồi đọc lại
+   * hai mốc và tính lại đúng 1 lần.
+   */
+  private async resolveRank(projectId: string, read: () => Promise<{ prev: string | null; next: string | null }>): Promise<string> {
+    const first = await read();
+    try {
+      return rankBetween(first.prev, first.next);
+    } catch (e) {
+      if (!(e instanceof RankGapError)) throw e;
+    }
+    await this.rebalanceProject(projectId);
+    const again = await read();
+    try {
+      return rankBetween(again.prev, again.next);
+    } catch (e) {
+      if (!(e instanceof RankGapError)) throw e;
+      throw new BusinessRuleException('Không xác định được vị trí thả — hãy tải lại trang rồi thử kéo thả lại');
+    }
+  }
+
+  /** Đánh số lại rank toàn bộ issue của project (khi hết chỗ chèn). Khoá project bằng update để tuần tự hoá. */
+  private async rebalanceProject(projectId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.project.update({ where: { id: projectId }, data: { updatedAt: new Date() }, select: { id: true } });
+      const rows = await tx.issue.findMany({ where: { projectId }, orderBy: [{ rank: 'asc' }, { id: 'asc' }], select: { id: true } });
+      const ranks = initialRanks(rows.length);
+      for (let i = 0; i < rows.length; i++) await tx.issue.update({ where: { id: rows[i]!.id }, data: { rank: ranks[i]! } });
+    });
   }
 
   private async recordChanges(userId: string, before: IssueRow, after: IssueRow) {
