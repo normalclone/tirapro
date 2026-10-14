@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
   Boxes,
   Tag,
@@ -1234,6 +1234,7 @@ const CSV_HEADER_HINT = 'Summary, Type, Description, Priority, Story Points';
 
 function DataSection({ projectId, canImport }: { projectId?: string; canImport: boolean }) {
   const { data: jobsData, isLoading: jobsLoading } = useImportJobs();
+  const canAdminImport = useAuth((s) => s.can('workspace:admin'));
   const importCsv = useImportCsv();
   const importJson = useImportJson();
 
@@ -1398,6 +1399,15 @@ function DataSection({ projectId, canImport }: { projectId?: string; canImport: 
             </Button>
           </div>
         </div>
+
+        {canAdminImport && (
+          <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
+            Chuyển từ Jira sang?{' '}
+            <Link to="/settings/import" className="text-primary hover:underline">
+              Nhập từ Jira (CSV) với ghép loại, trạng thái, người dùng
+            </Link>
+          </p>
+        )}
         </>
         )}
 

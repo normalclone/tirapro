@@ -33,6 +33,7 @@ const SettingsGeneralPage = lazy(() => import('@/features/settings/SettingsLayou
 const SettingsNotificationsPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsNotificationsPage })));
 const SettingsSeveritiesPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsSeveritiesPage })));
 const SettingsPrioritiesPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsPrioritiesPage })));
+const ImportPage = lazy(() => import('@/features/import/ImportPage').then((m) => ({ default: m.ImportPage })));
 const SettingsFieldsPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsFieldsPage })));
 const AdminLayout = lazy(() => import('@/features/admin/AdminLayout').then((m) => ({ default: m.AdminLayout })));
 const AdminOverviewPage = lazy(() => import('@/features/admin/AdminOverviewPage').then((m) => ({ default: m.AdminOverviewPage })));
@@ -125,6 +126,7 @@ export const router = createBrowserRouter([
           { path: 'priorities', element: <SettingsPrioritiesPage /> },
           { path: 'fields', element: <SettingsFieldsPage /> },
           { path: 'workflows', element: <WorkflowSettingsPage /> },
+          { path: 'import', element: <ImportPage /> },
           { path: 'api', element: <ApiKeysPage /> },
           { path: 'response-time', element: <SlaPoliciesPage /> },
         ],
