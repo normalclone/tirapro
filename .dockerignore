@@ -1,0 +1,25 @@
+# Giữ build context nhỏ và không làm lộ bí mật vào image.
+.git
+.github
+.husky
+.vscode
+.claude
+.codex
+.superpowers
+node_modules
+**/node_modules
+**/dist
+**/build
+**/*.tsbuildinfo
+.turbo
+**/.turbo
+coverage
+**/coverage
+**/uploads
+.env
+.env.*
+!.env.example
+*.log
+docs
+apps/web/dist
+*.md

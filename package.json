@@ -9,6 +9,7 @@
   },
   "scripts": {
     "gen:enums": "node scripts/gen-enums.mjs",
+    "knip": "knip",
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
     "lint": "eslint .",
@@ -30,12 +31,12 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "concurrently": "^9.1.0",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.26",
     "globals": "^15.15.0",
     "husky": "^9.1.7",
+    "knip": "^6.41.0",
     "lint-staged": "^15.2.11",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",

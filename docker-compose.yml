@@ -1,7 +1,7 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: projira-postgres
+    container_name: tirapro-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-projira}
@@ -20,7 +20,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: projira-redis
+    container_name: tirapro-redis
     restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
@@ -34,7 +34,7 @@ services:
 
   adminer:
     image: adminer:4
-    container_name: projira-adminer
+    container_name: tirapro-adminer
     restart: unless-stopped
     profiles: ["tools"]
     ports:
@@ -43,6 +43,7 @@ services:
       postgres:
         condition: service_healthy
 
+# Giữ nguyên tên volume `projira_*` (cố ý) để không mất dữ liệu DB/Redis dev đang có; chỉ container đã đổi tên.
 volumes:
   projira_pgdata:
   projira_redisdata:
