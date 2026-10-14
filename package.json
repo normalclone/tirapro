@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
-    "lint": "turbo run lint",
+    "lint": "eslint .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
@@ -24,21 +24,32 @@
     "db:seed": "pnpm --filter @tirapro/api db:seed",
     "db:reset": "pnpm --filter @tirapro/api db:reset",
     "db:studio": "pnpm --filter @tirapro/api db:studio",
-    "setup": "pnpm install && pnpm docker:up && pnpm --filter @tirapro/shared build && pnpm db:migrate && pnpm db:seed",
+    "setup": "pnpm install && pnpm docker:up && pnpm --filter @tirapro/types build && pnpm --filter @tirapro/shared build && pnpm db:migrate && pnpm --filter @tirapro/api db:raw && pnpm db:seed",
     "prepare": "husky || true"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "concurrently": "^9.1.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "globals": "^15.15.0",
     "husky": "^9.1.7",
     "lint-staged": "^15.2.11",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^3.2.7"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,jsx}": ["prettier --write"],
-    "*.{json,md,yml,yaml}": ["prettier --write"]
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{js,jsx,json,md,yml,yaml}": [
+      "prettier --write"
+    ]
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -46,6 +57,7 @@
       "@prisma/client",
       "@prisma/engines",
       "@scarf/scarf",
+      "@swc/core",
       "argon2",
       "esbuild",
       "msgpackr-extract",

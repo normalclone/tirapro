@@ -1,0 +1,24 @@
+name: ci
+on: { push: { branches: [main] }, pull_request: {} }
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      # prisma validate/generate chỉ cần chuỗi hợp lệ, không kết nối DB thật.
+      DATABASE_URL: postgresql://tirapro:tirapro@localhost:5432/tirapro
+      DIRECT_URL: postgresql://tirapro:tirapro@localhost:5432/tirapro
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @tirapro/types build && pnpm --filter @tirapro/shared build
+      - run: pnpm --filter @tirapro/api exec prisma validate
+      - run: pnpm --filter @tirapro/api db:generate
+      - run: pnpm -r typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      # Task A2 thêm scripts/gen-enums.mjs; bỏ continue-on-error sau Task A2.
+      - run: node scripts/gen-enums.mjs --check
+        continue-on-error: true
