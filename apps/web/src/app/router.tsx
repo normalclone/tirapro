@@ -33,12 +33,12 @@ const ApiKeysPage = lazy(() => import('@/features/api-keys/ApiKeysPage').then((m
 const RolesPage = lazy(() => import('@/features/settings/RolesPage').then((m) => ({ default: m.RolesPage })));
 const DocumentationPage = lazy(() => import('@/features/docs/DocumentationPage').then((m) => ({ default: m.DocumentationPage })));
 const SettingsLayout = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsLayout })));
-const SettingsGeneralPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsGeneralPage })));
-const SettingsNotificationsPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsNotificationsPage })));
-const SettingsSeveritiesPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsSeveritiesPage })));
-const SettingsPrioritiesPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsPrioritiesPage })));
+const SettingsGeneralPage = lazy(() => import('@/features/settings/SettingsGeneralPage').then((m) => ({ default: m.SettingsGeneralPage })));
+const SettingsNotificationsPage = lazy(() => import('@/features/settings/SettingsNotificationsPage').then((m) => ({ default: m.SettingsNotificationsPage })));
+const SettingsSeveritiesPage = lazy(() => import('@/features/settings/SettingsSeveritiesPage').then((m) => ({ default: m.SettingsSeveritiesPage })));
+const SettingsPrioritiesPage = lazy(() => import('@/features/settings/SettingsPrioritiesPage').then((m) => ({ default: m.SettingsPrioritiesPage })));
 const ImportPage = lazy(() => import('@/features/import/ImportPage').then((m) => ({ default: m.ImportPage })));
-const SettingsFieldsPage = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsFieldsPage })));
+const SettingsFieldsPage = lazy(() => import('@/features/settings/SettingsFieldsPage').then((m) => ({ default: m.SettingsFieldsPage })));
 const AdminLayout = lazy(() => import('@/features/admin/AdminLayout').then((m) => ({ default: m.AdminLayout })));
 const AdminOverviewPage = lazy(() => import('@/features/admin/AdminOverviewPage').then((m) => ({ default: m.AdminOverviewPage })));
 const AdminWorkspacesPage = lazy(() => import('@/features/admin/AdminWorkspacesPage').then((m) => ({ default: m.AdminWorkspacesPage })));
