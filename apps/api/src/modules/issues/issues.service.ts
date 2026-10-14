@@ -33,7 +33,7 @@ type IssueRow = Prisma.IssueGetPayload<{ include: typeof issueInclude }>;
 /** Trường issue mà `update()` có thể đổi — dùng để báo `changedFields` cho automation (trigger ISSUE_UPDATED). */
 const TRACKED_FIELDS = [
   'summary', 'description', 'priorityId', 'assigneeId', 'storyPoints', 'sprintId', 'resolutionId',
-  'typeId', 'dueDate', 'startDate', 'parentId', 'epicId',
+  'typeId', 'dueDate', 'startDate', 'parentId', 'epicId', 'originalEstimate', 'remainingEstimate',
 ] as const;
 
 function changedFieldsOf(before: IssueRow, after: IssueRow): string[] {
@@ -354,6 +354,8 @@ export class IssuesService {
     if (input.typeId !== undefined && input.typeId) data.typeId = input.typeId;
     if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
     if (input.startDate !== undefined) data.startDate = input.startDate ? new Date(input.startDate) : null;
+    if (input.originalEstimate !== undefined) data.originalEstimate = input.originalEstimate ?? null;
+    if (input.remainingEstimate !== undefined) data.remainingEstimate = input.remainingEstimate ?? null;
     if (input.parentId !== undefined) {
       if (input.parentId === id) throw new BusinessRuleException('Một công việc không thể là việc cha của chính nó — hãy chọn một công việc khác làm việc cha');
       if (input.parentId) await this.assertNoParentCycle(workspaceId, id, input.parentId);

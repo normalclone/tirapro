@@ -8,13 +8,14 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { RecurringModal } from './RecurringModal';
+import { RulesPage } from './RulesPage';
 import { TemplateModal } from './TemplateModal';
 import {
   describeRecurrence, useDeleteRecurring, useDeleteTemplate, useIssueTemplates, useRecurringIssues,
   useRunRecurringNow, useUpdateRecurring, type IssueTemplate, type RecurringIssue,
 } from './api';
 
-type Tab = 'templates' | 'recurring';
+type Tab = 'rules' | 'templates' | 'recurring';
 
 const dateTime = (iso: string) =>
   new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -25,11 +26,12 @@ const dateTime = (iso: string) =>
  */
 export function AutomationPage() {
   const canManage = useAuth((s) => s.can('project:admin'));
-  const [tab, setTab] = useState<Tab>('templates');
+  const [tab, setTab] = useState<Tab>('rules');
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'templates', label: 'Mẫu công việc' },
-    { id: 'recurring', label: 'Công việc lặp lại' },
+    { id: 'rules', label: 'Quy tắc' },
+    { id: 'templates', label: 'Mẫu' },
+    { id: 'recurring', label: 'Lặp lại' },
   ];
 
   return (
@@ -37,7 +39,7 @@ export function AutomationPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Tự động hoá</h1>
         <p className="mt-1 text-sm text-muted">
-          Mẫu công việc giúp bạn khỏi gõ lại những trường quen thuộc. Công việc lặp lại để hệ thống tự tạo việc theo lịch — họp tuần, báo cáo tháng, kiểm tra định kỳ.
+          Quy tắc để hệ thống tự làm khi có sự kiện (khi… nếu… thì…). Mẫu công việc giúp bạn khỏi gõ lại những trường quen thuộc. Công việc lặp lại để hệ thống tự tạo việc theo lịch — họp tuần, báo cáo tháng, kiểm tra định kỳ.
         </p>
       </header>
 
@@ -58,7 +60,7 @@ export function AutomationPage() {
         ))}
       </div>
 
-      {tab === 'templates' ? <TemplatesPanel canManage={canManage} /> : <RecurringPanel canManage={canManage} />}
+      {tab === 'rules' ? <RulesPage /> : tab === 'templates' ? <TemplatesPanel canManage={canManage} /> : <RecurringPanel canManage={canManage} />}
     </div>
   );
 }

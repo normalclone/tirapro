@@ -37,6 +37,7 @@ export const keys = {
     customFields: (issueId: string) => ['issues', 'custom-fields', issueId] as const,
     sla: (issueId: string) => ['issues', 'sla', issueId] as const,
     attachments: (issueId: string) => ['issues', 'attachments', issueId] as const,
+    worklogs: (issueId: string) => ['issues', 'worklogs', issueId] as const,
     linkTypes: ['issues', 'link-types'] as const,
   },
 
@@ -206,6 +207,9 @@ export const keys = {
   automation: {
     templates: ['automation', 'templates'] as const,
     recurring: ['automation', 'recurring'] as const,
+    rulesRoot: ['automation', 'rules'] as const,
+    rules: (scope: string) => ['automation', 'rules', scope] as const,
+    ruleRuns: (ruleId: string) => ['automation', 'rule-runs', ruleId] as const,
   },
 
   reports: {
