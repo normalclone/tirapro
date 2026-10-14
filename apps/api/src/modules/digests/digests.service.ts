@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   DigestSchedule,
@@ -10,6 +10,8 @@ import {
   StatusCategory,
 } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { RedisService } from '../../infra/redis/redis.service';
+import { withCronLock } from '../../common/cron-lock';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { TelegramService } from '../integrations/telegram.service';
 
@@ -35,13 +37,20 @@ export interface UpdateDigestInput {
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 @Injectable()
-export class DigestsService {
+export class DigestsService implements OnApplicationShutdown {
   private readonly logger = new Logger(DigestsService.name);
+  /** Bật khi app tắt: vòng gửi digest dừng sớm. */
+  private stopping = false;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramService,
+    private readonly redis: RedisService,
   ) {}
+
+  onApplicationShutdown(): void {
+    this.stopping = true;
+  }
 
   // ------------------------------- CRUD -------------------------------
 
@@ -287,6 +296,14 @@ export class DigestsService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_8AM)
   async runScheduled(): Promise<void> {
+    // Khoá Redis để nhiều node API không gửi trùng digest.
+    await withCronLock(this.redis, 'digests:scheduled', 1800, () => this.sendScheduled()).catch((err) =>
+      this.warn('runScheduled.lock', err),
+    );
+  }
+
+  private async sendScheduled(): Promise<void> {
+    if (this.stopping) return;
     const isMonday = new Date().getDay() === 1;
     let subs: Array<{
       id: string;
@@ -317,6 +334,7 @@ export class DigestsService {
     }
 
     for (const sub of subs) {
+      if (this.stopping) break; // app đang tắt
       try {
         const text = await this.buildDigest(sub.workspaceId, sub.projectId ?? undefined);
         await this.send(sub.channelId, text);

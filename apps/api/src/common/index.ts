@@ -2,6 +2,7 @@ export * from './types/request';
 export * from './exceptions/app.exception';
 export * from './decorators/current-user.decorator';
 export * from './decorators/public.decorator';
+export * from './decorators/optional-auth.decorator';
 export * from './decorators/permissions.decorator';
 export * from './dto/page-result';
 export * from './dto/pagination.dto';

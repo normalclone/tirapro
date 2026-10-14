@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -13,8 +14,14 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false, rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true, rawBody: true });
   const config = app.get(ConfigService);
+
+  // ---- Ops: log pino + proxy ----
+  // Mọi Logger của Nest (kể cả `new Logger()` trong service) đi qua pino; log đệm từ lúc khởi động được xả ra ở đây.
+  app.useLogger(app.get(PinoLogger));
+  // Prod chạy sau reverse proxy / load balancer 1 tầng: lấy IP thật từ X-Forwarded-For (rate-limit theo IP đúng).
+  if (config.get<boolean>('isProd')) app.set('trust proxy', 1);
 
   const globalPrefix = config.get<string>('api.globalPrefix') ?? 'api';
   const version = config.get<string>('api.version') ?? 'v1';
@@ -79,4 +86,8 @@ async function bootstrap(): Promise<void> {
   }
 }
 
-void bootstrap();
+bootstrap().catch((err: unknown) => {
+  // Lỗi khởi động (vd: cấu hình production không hợp lệ) phải thấy rõ và thoát mã ≠ 0 để orchestrator biết.
+  console.error(err);
+  process.exit(1);
+});

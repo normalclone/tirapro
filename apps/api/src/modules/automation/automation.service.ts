@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import type { Prisma } from '@prisma/client';
 import { PERMISSIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { RedisService } from '../../infra/redis/redis.service';
+import { withCronLock } from '../../common/cron-lock';
 import {
   BusinessRuleException,
   ForbiddenAppException,
@@ -95,14 +97,21 @@ export interface RecurringIssueDto {
  * không làm hỏng lượt quét, cũng không bao giờ ném ra ngoài.
  */
 @Injectable()
-export class AutomationService {
+export class AutomationService implements OnApplicationShutdown {
   private readonly logger = new Logger(AutomationService.name);
+  /** Bật khi app tắt: vòng lặp cron dừng sớm thay vì chạy tiếp lúc đang đóng kết nối DB. */
+  private stopping = false;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly issues: IssuesService,
     private readonly rbac: RbacService,
+    private readonly redis: RedisService,
   ) {}
+
+  onApplicationShutdown(): void {
+    this.stopping = true;
+  }
 
   /* ============================== Mẫu issue ============================== */
 
@@ -308,6 +317,14 @@ export class AutomationService {
    */
   @Cron(EVERY_15_MINUTES)
   async runDueRecurring(): Promise<void> {
+    // Khoá Redis để nhiều node API không sinh trùng issue; TTL < chu kỳ 15 phút phòng node chết giữa chừng.
+    await withCronLock(this.redis, 'automation:recurring', 600, () => this.scanDueRecurring()).catch((err) =>
+      this.warn('cron.lock', err),
+    );
+  }
+
+  private async scanDueRecurring(): Promise<void> {
+    if (this.stopping) return;
     const now = new Date();
     let due: Array<{
       id: string;
@@ -338,6 +355,7 @@ export class AutomationService {
     }
 
     for (const rec of due) {
+      if (this.stopping) break; // app đang tắt — các bản ghi còn lại để lượt sau
       const cfg = this.configOf({
         freq: rec.freq as Freq, interval: rec.interval, weekday: rec.weekday,
         monthDay: rec.monthDay, hour: rec.hour,
