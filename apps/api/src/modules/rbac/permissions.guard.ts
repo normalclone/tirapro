@@ -56,7 +56,11 @@ export class PermissionsGuard implements CanActivate {
       const { kind, param } = ref;
       if (kind === 'param' || kind === 'body' || kind === 'query') {
         const source = kind === 'param' ? req.params : kind === 'body' ? req.body : req.query;
-        return this.checkedProjectId(source?.[param], workspaceId);
+        const raw: unknown = source?.[param];
+        // `?projectId=none` là sentinel "mục dùng chung" (vd /automation/templates) → không có dự án,
+        // chỉ tính quyền cấp workspace. Chuỗi rỗng đã được checkedProjectId coi là null.
+        if (kind === 'query' && raw === 'none') return null;
+        return this.checkedProjectId(raw, workspaceId);
       }
       const value = req.params?.[param];
       if (typeof value !== 'string' || !value) throw new NotFoundAppException('Tài nguyên');

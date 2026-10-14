@@ -19,6 +19,4 @@ jobs:
       - run: pnpm -r typecheck
       - run: pnpm lint
       - run: pnpm test
-      # Task A2 thêm scripts/gen-enums.mjs; bỏ continue-on-error sau Task A2.
       - run: node scripts/gen-enums.mjs --check
-        continue-on-error: true

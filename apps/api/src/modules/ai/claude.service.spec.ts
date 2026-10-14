@@ -8,7 +8,7 @@ const CTX = { workspaceId: 'ws1', userId: 'u1', feature: 'summarize' };
 function make(opts: { create?: ReturnType<typeof vi.fn>; killSwitch?: boolean; quotaError?: Error } = {}) {
   const create = opts.create ?? vi.fn();
   const logCreate = vi.fn().mockResolvedValue({});
-  const quota = { assertWithinQuota: vi.fn().mockImplementation(async () => { if (opts.quotaError) throw opts.quotaError; }) };
+  const quota = { assertWithinQuota: vi.fn().mockImplementation(() => (opts.quotaError ? Promise.reject(opts.quotaError) : Promise.resolve())) };
   const config = {
     getOrThrow: () => ({ enabled: true, anthropicApiKey: 'sk-test', modelPrimary: 'primary-m', modelFast: 'fast-m' }),
   };
@@ -31,8 +31,8 @@ describe('ClaudeService', () => {
     const { svc, create, logCreate } = make({ create: vi.fn().mockResolvedValue(okMessage(' xin chào ')) });
     const out = await svc.complete({ ctx: CTX, model: svc.modelFast, system: 's', prompt: 'p' });
     expect(out).toEqual({ data: 'xin chào' });
-    expect(create.mock.calls[0][0].model).toBe('fast-m');
-    const data = logCreate.mock.calls[0][0].data;
+    expect(create.mock.calls[0]![0].model).toBe('fast-m');
+    const data = logCreate.mock.calls[0]![0].data;
     expect(data).toMatchObject({
       workspaceId: 'ws1', userId: 'u1', feature: 'summarize', model: 'fast-m', inputTokens: 10, outputTokens: 5, success: true,
     });
@@ -44,7 +44,7 @@ describe('ClaudeService', () => {
       ctx: CTX, system: 's', prompt: 'p', schema: { type: 'object', properties: { a: { type: 'number' } } },
     });
     expect(out.data).toEqual({ a: 1 });
-    const params = create.mock.calls[0][0];
+    const params = create.mock.calls[0]![0];
     expect(params.tool_choice).toBeUndefined();
     expect(params.output_config.format.type).toBe('json_schema');
     expect(params.output_config.format.schema.additionalProperties).toBe(false);
@@ -99,12 +99,17 @@ describe('ClaudeService', () => {
   });
 });
 
+interface StrictShape {
+  additionalProperties: boolean;
+  properties: { xs: { items: { additionalProperties: boolean } }; y: { additionalProperties: boolean } };
+}
+
 describe('withStrictObjects', () => {
   it('thêm additionalProperties:false cho object lồng nhau, giữ nguyên nếu đã khai', () => {
     const out = withStrictObjects({
       type: 'object',
       properties: { xs: { type: 'array', items: { type: 'object', properties: {} } }, y: { type: 'object', additionalProperties: true } },
-    }) as any;
+    }) as unknown as StrictShape;
     expect(out.additionalProperties).toBe(false);
     expect(out.properties.xs.items.additionalProperties).toBe(false);
     expect(out.properties.y.additionalProperties).toBe(true);

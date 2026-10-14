@@ -103,7 +103,7 @@ export class RealtimeGateway implements OnGatewayConnection {
           });
           return project ? room : null;
         } catch (err) {
-          this.logger.warn(`Kiểm quyền subscribe project thất bại: ${err instanceof Error ? err.message : err}`);
+          this.logger.warn(`Kiểm quyền subscribe project thất bại: ${err instanceof Error ? err.message : String(err)}`);
           return null;
         }
       }

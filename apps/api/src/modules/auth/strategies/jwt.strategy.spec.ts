@@ -5,14 +5,16 @@ import { JwtStrategy } from './jwt.strategy';
 function setup(opts: { user?: Record<string, unknown> | null; membership?: unknown }) {
   const prisma = {
     user: {
-      findUnique: vi.fn(async () =>
-        opts.user === undefined
-          ? { id: 'U1', email: 'a@b.c', displayName: 'A', isSystemAdmin: false, status: 'ACTIVE' }
-          : opts.user,
+      findUnique: vi.fn(() =>
+        Promise.resolve(
+          opts.user === undefined
+            ? { id: 'U1', email: 'a@b.c', displayName: 'A', isSystemAdmin: false, status: 'ACTIVE' }
+            : opts.user,
+        ),
       ),
     },
     workspaceMembership: {
-      findUnique: vi.fn(async () => (opts.membership === undefined ? { id: 'M1' } : opts.membership)),
+      findUnique: vi.fn(() => Promise.resolve(opts.membership === undefined ? { id: 'M1' } : opts.membership)),
     },
   };
   const config = { get: vi.fn(() => 'secret-test') };

@@ -94,7 +94,7 @@ describe('RedisIoAdapter.connectToRedis', () => {
 describe('RedisIoAdapter.createIOServer', () => {
   it('ép CORS theo config và gắn Redis adapter khi đã bật', async () => {
     const server = { adapter: vi.fn() };
-    const base = vi.spyOn(IoAdapter.prototype, 'createIOServer').mockReturnValue(server as never);
+    const base = vi.spyOn(IoAdapter.prototype, 'createIOServer').mockReturnValue(server);
     const { adapter } = makeAdapter({ useRedisAdapter: true, available: true });
     await adapter.connectToRedis(0);
 
@@ -113,7 +113,7 @@ describe('RedisIoAdapter.createIOServer', () => {
 
   it('không gọi server.adapter khi chạy in-memory nhưng vẫn áp CORS', () => {
     const server = { adapter: vi.fn() };
-    const base = vi.spyOn(IoAdapter.prototype, 'createIOServer').mockReturnValue(server as never);
+    const base = vi.spyOn(IoAdapter.prototype, 'createIOServer').mockReturnValue(server);
     const { adapter } = makeAdapter({ useRedisAdapter: false, available: false });
 
     adapter.createIOServer(4000, { path: '/realtime' } as never);

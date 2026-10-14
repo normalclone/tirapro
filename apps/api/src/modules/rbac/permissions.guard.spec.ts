@@ -27,11 +27,11 @@ function setup(opts: {
     }),
   };
   const rbac = {
-    getEffectivePermissions: vi.fn(async () => new Set(opts.effective ?? ['issue:update'])),
-    resolveProjectId: vi.fn(async () => (opts.resolved === undefined ? { projectId: 'P-cua-I1' } : opts.resolved)),
-    assertProjectInWorkspace: vi.fn(async () => {
-      if (opts.projectInWorkspace === false) throw new NotFoundAppException('Dự án');
-    }),
+    getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(opts.effective ?? ['issue:update']))),
+    resolveProjectId: vi.fn(() => Promise.resolve(opts.resolved === undefined ? { projectId: 'P-cua-I1' } : opts.resolved)),
+    assertProjectInWorkspace: vi.fn(() =>
+      opts.projectInWorkspace === false ? Promise.reject(new NotFoundAppException('Dự án')) : Promise.resolve(),
+    ),
   };
   const ctx = {
     getHandler: () => ({}),
@@ -150,6 +150,17 @@ describe('PermissionsGuard', () => {
     });
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(NotFoundAppException);
     expect(rbac.assertProjectInWorkspace).toHaveBeenCalledWith('P-ws-khac', 'W1');
+  });
+
+  it("@ProjectRef('query','projectId') với ?projectId=none (sentinel mục dùng chung) -> quyền cấp workspace, không 404", async () => {
+    const { guard, rbac, ctx } = setup({
+      projectInWorkspace: false,
+      ref: { kind: 'query', param: 'projectId' },
+      req: { user: { ...user }, query: { projectId: 'none' } },
+    });
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(rbac.assertProjectInWorkspace).not.toHaveBeenCalled();
+    expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('U1', 'W1', null);
   });
 
   it('không có @ProjectRef: chỉ đọc params/body.projectId, bỏ qua query', async () => {

@@ -1,6 +1,6 @@
 # Nợ lint (ESLint 9, `pnpm lint`)
 
-Cập nhật: 2026-10-15 (Task A1). `pnpm lint` thoát 0 với **0 lỗi, 196 cảnh báo**.
+Cập nhật: 2026-10-15 (Task A1). `pnpm lint` thoát 0 với **0 lỗi, 280 cảnh báo** (cập nhật sau tích hợp đợt 1; root `eslint . --max-warnings 280`).
 `eslint .` ở root hiện KHÔNG có `--max-warnings 0` — đó là "ngân sách cảnh báo" tạm: số
 cảnh báo không được tăng. Khi trả hết nợ dưới đây, đổi script thành `eslint . --max-warnings 0`
 (cả `lint-staged` ở root và `lint` trong `apps/api`, `apps/web`).

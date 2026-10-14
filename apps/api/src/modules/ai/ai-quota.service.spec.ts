@@ -31,7 +31,7 @@ describe('AiQuotaService.assertWithinQuota', () => {
   it('chỉ cộng log của đúng workspace, từ đầu tháng (UTC), chỉ call thành công', async () => {
     const { svc, aggregate } = make({ inputTokens: 1, outputTokens: 1 });
     await svc.assertWithinQuota('ws1');
-    const arg = aggregate.mock.calls[0][0];
+    const arg = aggregate.mock.calls[0]![0];
     expect(arg.where.workspaceId).toBe('ws1');
     expect(arg.where.success).toBe(true);
     const since: Date = arg.where.createdAt.gte;

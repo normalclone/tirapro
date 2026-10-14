@@ -5,6 +5,7 @@ import { RbacService } from './rbac.service';
 function makeStream(batches: string[][]) {
   return {
     async *[Symbol.asyncIterator]() {
+      await Promise.resolve();
       for (const b of batches) yield b;
     },
   };
@@ -13,7 +14,7 @@ function makeStream(batches: string[][]) {
 function setup(redis: 'ok' | 'down' = 'ok') {
   const client = {
     scanStream: vi.fn((_opts: unknown) => makeStream([['rbac:W1:U1:-', 'rbac:W1:U1:P1'], [], ['rbac:W1:U1:P2']])),
-    unlink: vi.fn(async (..._keys: string[]) => 1),
+    unlink: vi.fn((..._keys: string[]) => Promise.resolve(1)),
     keys: vi.fn(),
     get: vi.fn(),
     set: vi.fn(),
@@ -38,10 +39,10 @@ function setup(redis: 'ok' | 'down' = 'ok') {
     attachment: { findFirst: vi.fn() },
     issueLink: { findFirst: vi.fn() },
     version: { findFirst: vi.fn() },
-    workspaceMembership: { findUnique: vi.fn(async () => null) },
-    projectMembership: { findUnique: vi.fn(async () => null) },
-    rolePermission: { findMany: vi.fn(async () => []) },
-    role: { findMany: vi.fn(async () => []) },
+    workspaceMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
+    projectMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
+    rolePermission: { findMany: vi.fn(() => Promise.resolve([])) },
+    role: { findMany: vi.fn(() => Promise.resolve([])) },
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const svc = new RbacService(prisma as any, redisSvc as any);

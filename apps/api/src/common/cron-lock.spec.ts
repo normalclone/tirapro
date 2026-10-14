@@ -17,19 +17,19 @@ class FakeRedis implements CronLockRedis, CronLockClient {
   getClient() {
     return this.available ? this : null;
   }
-  async set(key: string, value: string, _m: 'EX', ttlSec: number, _f: 'NX') {
-    if (this.failSet) throw new Error('boom');
-    if (this.store.has(key)) return null;
+  set(key: string, value: string, _m: 'EX', ttlSec: number, _f: 'NX') {
+    if (this.failSet) return Promise.reject(new Error('boom'));
+    if (this.store.has(key)) return Promise.resolve(null);
     this.store.set(key, value);
     this.ttl.set(key, ttlSec);
-    return 'OK' as const;
+    return Promise.resolve('OK' as const);
   }
-  async eval(_script: string, _n: number, key: string, token: string) {
+  eval(_script: string, _n: number, key: string, token: string) {
     if (this.store.get(key) === token) {
       this.store.delete(key);
-      return 1;
+      return Promise.resolve(1);
     }
-    return 0;
+    return Promise.resolve(0);
   }
 }
 
@@ -38,9 +38,10 @@ describe('withCronLock', () => {
 
   it('lấy được khoá → chạy fn rồi nhả khoá', async () => {
     const redis = new FakeRedis();
-    const fn = vi.fn(async () => {
+    const fn = vi.fn(() => {
       expect(redis.store.get('lock:cron:job')).toBeTruthy();
       expect(redis.ttl.get('lock:cron:job')).toBe(30);
+      return Promise.resolve();
     });
     expect(await withCronLock(redis, 'job', 30, fn)).toBe(true);
     expect(fn).toHaveBeenCalledOnce();
@@ -50,7 +51,7 @@ describe('withCronLock', () => {
   it('khoá đang bị giữ → bỏ qua, không chạy fn và không xoá khoá của node khác', async () => {
     const redis = new FakeRedis();
     redis.store.set('lock:cron:job', 'node-khac');
-    const fn = vi.fn(async () => undefined);
+    const fn = vi.fn(() => Promise.resolve());
     expect(await withCronLock(redis, 'job', 30, fn)).toBe(false);
     expect(fn).not.toHaveBeenCalled();
     expect(redis.store.get('lock:cron:job')).toBe('node-khac');
@@ -72,17 +73,16 @@ describe('withCronLock', () => {
   it('fn ném lỗi → vẫn nhả khoá và ném lại lỗi', async () => {
     const redis = new FakeRedis();
     await expect(
-      withCronLock(redis, 'job', 30, async () => {
-        throw new Error('hỏng');
-      }),
+      withCronLock(redis, 'job', 30, () => Promise.reject(new Error('hỏng'))),
     ).rejects.toThrow('hỏng');
     expect(redis.store.size).toBe(0);
   });
 
   it('không nhả khoá nếu khoá đã bị node khác chiếm (TTL hết hạn giữa chừng)', async () => {
     const redis = new FakeRedis();
-    await withCronLock(redis, 'job', 30, async () => {
+    await withCronLock(redis, 'job', 30, () => {
       redis.store.set('lock:cron:job', 'node-khac');
+      return Promise.resolve();
     });
     expect(redis.store.get('lock:cron:job')).toBe('node-khac');
   });
@@ -90,7 +90,7 @@ describe('withCronLock', () => {
   it('không có Redis → chạy fn trực tiếp', async () => {
     const redis = new FakeRedis();
     redis.available = false;
-    const fn = vi.fn(async () => undefined);
+    const fn = vi.fn(() => Promise.resolve());
     expect(await withCronLock(redis, 'job', 30, fn)).toBe(true);
     expect(fn).toHaveBeenCalledOnce();
   });
@@ -98,7 +98,7 @@ describe('withCronLock', () => {
   it('Redis lỗi lúc SET → chạy fn trực tiếp', async () => {
     const redis = new FakeRedis();
     redis.failSet = true;
-    const fn = vi.fn(async () => undefined);
+    const fn = vi.fn(() => Promise.resolve());
     expect(await withCronLock(redis, 'job', 30, fn)).toBe(true);
     expect(fn).toHaveBeenCalledOnce();
   });

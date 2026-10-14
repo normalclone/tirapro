@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
-import { ERROR_CODES, type ErrorCode } from '@tirapro/types';
+import { ERROR_CODES } from '@tirapro/types';
 import type { AiFallbackReason } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AppException } from '../../common/exceptions/app.exception';
@@ -168,7 +168,7 @@ export class ClaudeService {
     if (e instanceof Anthropic.AuthenticationError) {
       this.logger.error(`Anthropic từ chối khóa API: ${e.message}`);
       throw new AppException(
-        ERROR_CODES.AI_MISCONFIGURED as ErrorCode,
+        ERROR_CODES.AI_MISCONFIGURED,
         'Tính năng AI đang được cấu hình sai (khóa API không hợp lệ). Hãy báo quản trị viên kiểm tra lại ANTHROPIC_API_KEY.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
@@ -176,7 +176,7 @@ export class ClaudeService {
     if (e instanceof Anthropic.RateLimitError) {
       this.logger.warn(`Anthropic giới hạn tốc độ: ${e.message}`);
       throw new AppException(
-        ERROR_CODES.AI_RATE_LIMITED as ErrorCode,
+        ERROR_CODES.AI_RATE_LIMITED,
         'Dịch vụ AI đang quá tải. Hãy đợi một lát rồi thử lại.',
         HttpStatus.SERVICE_UNAVAILABLE,
       );
