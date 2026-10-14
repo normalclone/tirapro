@@ -43,7 +43,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center gap-2">
       <span className="w-28 shrink-0 text-xs text-muted">{label}</span>
       <code className="min-w-0 flex-1 truncate rounded-md bg-surface-2 px-2.5 py-1.5 font-mono text-xs text-ink">{value}</code>
-      <button type="button" onClick={copy} className="shrink-0 rounded-md border border-border p-1.5 text-muted transition-colors hover:bg-surface-2 hover:text-ink" title="Sao chép">
+      <button type="button" onClick={copy} className="shrink-0 rounded-md border border-border p-1.5 text-muted transition-colors hover:bg-surface-2 hover:text-ink" title="Sao chép" aria-label="Sao chép">
         {done ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
     </div>
@@ -130,7 +130,7 @@ export function ApiKeysPage() {
           <div className="flex items-center gap-1.5 text-sm font-semibold text-ink"><TriangleAlert className="h-4 w-4 text-warning" /> Sao chép khoá ngay — chỉ hiển thị một lần</div>
           <div className="mt-2 flex items-center gap-2">
             <code className="min-w-0 flex-1 break-all rounded-md bg-surface px-2.5 py-2 font-mono text-xs text-ink">{created.key}</code>
-            <button type="button" onClick={copyFullKey} className="shrink-0 rounded-md border border-border bg-surface p-2 text-muted transition-colors hover:bg-surface-2 hover:text-ink" title="Sao chép">
+            <button type="button" onClick={copyFullKey} className="shrink-0 rounded-md border border-border bg-surface p-2 text-muted transition-colors hover:bg-surface-2 hover:text-ink" title="Sao chép" aria-label="Sao chép">
               {copiedKey ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
             </button>
           </div>

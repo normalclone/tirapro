@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ArrowLeft, ChevronRight, Copy, GitCommit, GitPullRequest, GitBranch, Hash, History, Link2, ListTree, MessageSquare, MoreHorizontal, Trash2, UserPlus, Workflow } from 'lucide-react';
@@ -20,7 +20,6 @@ import { IssueSlaBadge } from '@/features/sla/IssueSlaBadge';
 import { WatchButton } from '@/features/issue-widgets/WatchButton';
 import { IssuePeoplePanel, IssueDatesPanel, IssueSprintSubtitle, IssueStoryPointsInline, IssueTypeSelect, IssuePrioritySelect } from '@/features/issue-edit/IssueProperties';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
-import { WorkflowViewDialog } from '@/features/workflow-settings/WorkflowViewDialog';
 import { CommentsSection } from '@/features/issue-edit/CommentsSection';
 import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
@@ -35,10 +34,35 @@ import { PresenceAvatars } from '@/features/presence/PresenceAvatars';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { useRecents } from '@/stores/recentIssues';
 import { useProjectRealtime } from '@/lib/realtime';
-import { useProjectIssues, useUpdateIssue, useTransitionDetail } from './api';
+import { useCachedProjectIssue, useUpdateIssue, useTransitionDetail } from './api';
+import { useInView } from '@/lib/useInView';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { IssueDto } from '@tirapro/types';
+
+/** Sơ đồ quy trình kéo theo reactflow (nặng) → chỉ tải khi người dùng bấm “Xem quy trình”. */
+const WorkflowViewDialog = lazy(() =>
+  import('@/features/workflow-settings/WorkflowViewDialog')
+    .then((m) => ({ default: m.WorkflowViewDialog }))
+    .catch(() => {
+      // Tải chunk lỗi (mất mạng / bản mới vừa phát hành): báo rõ thay vì ném lỗi lúc vẽ làm trắng trang.
+      toast.error('Không tải được sơ đồ quy trình. Kiểm tra mạng rồi tải lại trang để thử lại.');
+      return { default: () => null };
+    }),
+);
+
+/**
+ * Khu nằm dưới màn hình đầu tiên: chỉ dựng (và nhờ đó chỉ gọi API) khi cuộn tới gần. Khung giữ chỗ có chiều cao tối thiểu
+ * để trang không giật khi nội dung hiện ra. `id` giữ nguyên cho liên kết nhảy tới khu này.
+ */
+function LazyPanel({ children, id, minHeight = 80 }: { children: ReactNode; id?: string; minHeight?: number }) {
+  const { ref, inView } = useInView<HTMLDivElement>();
+  return (
+    <div ref={ref} id={id} style={inView ? undefined : { minHeight }}>
+      {inView ? children : null}
+    </div>
+  );
+}
 
 /** Nút trên thanh thao tác dưới tiêu đề (secondary, viền). */
 const TOOLBAR_BTN =
@@ -66,7 +90,12 @@ export function IssueDetailPage() {
   const projectKey = project?.key ?? '';
   // Trang chi tiết nằm ngoài ProjectLayout → tự nhận realtime của project chứa issue này.
   useProjectRealtime(issue?.projectId);
-  const { data: projIssues = [] } = useProjectIssues(issue?.projectId);
+  // Việc cha chỉ để hiện breadcrumb: đọc từ cache dự án (có sẵn khi đi từ board sang) mà KHÔNG tải cả danh sách việc.
+  const parentId = issue?.parentId ?? null;
+  const { data: parent = null } = useCachedProjectIssue(issue?.projectId, (list) => {
+    const p = parentId ? list.find((i) => i.id === parentId) : undefined;
+    return p ? { key: p.key, summary: p.summary } : null;
+  });
   const { data: workflows } = useWorkflows();
   const updateIssue = useUpdateIssue(issue?.projectId);
   const transition = useTransitionDetail(issue?.projectId ?? '');
@@ -98,6 +127,7 @@ export function IssueDetailPage() {
   const [summary, setSummary] = useState('');
   const [activityTab, setActivityTab] = useState<'comments' | 'history'>('comments');
   const [wfOpen, setWfOpen] = useState(false);
+  const [wfSeen, setWfSeen] = useState(false); // đã từng mở → giữ dialog trong cây để hiệu ứng đóng chạy được
   const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => { if (issue) setSummary(issue.summary); }, [issue?.id]);
 
@@ -189,7 +219,6 @@ export function IssueDetailPage() {
     );
   }
 
-  const parent = issue?.parentId ? projIssues.find((i) => i.id === issue.parentId) ?? null : null;
   const canEditRestricted =
     !!issue &&
     (issue.reporterId === me?.id ||
@@ -373,7 +402,7 @@ export function IssueDetailPage() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => setWfOpen(true)}
+                    onClick={() => { setWfSeen(true); setWfOpen(true); }}
                     aria-label="Xem quy trình"
                     title="Xem quy trình: các trạng thái có thể có và bước chuyển hợp lệ"
                     className="grid h-8 w-8 place-items-center rounded-md text-faint transition-colors hover:bg-surface-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
@@ -418,9 +447,9 @@ export function IssueDetailPage() {
                   </div>
 
                   {/* Danh sách bước nhỏ — nhẹ hơn việc con, chỉ để tick cho xong */}
-                  <ChecklistPanel issueId={issue.id} />
+                  <LazyPanel><ChecklistPanel issueId={issue.id} /></LazyPanel>
 
-                  <IssueRelations issue={issue} />
+                  <LazyPanel><IssueRelations issue={issue} /></LazyPanel>
 
                   {/* Thành phần & phiên bản + các trường do dự án tự thêm */}
                   <IssueComponentsPicker issue={issue} />
@@ -447,13 +476,13 @@ export function IssueDetailPage() {
                     </div>
                   )}
 
-                  <LinksPanel issueId={issue.id} />
-                  <AttachmentsPanel issueId={issue.id} />
+                  <LazyPanel minHeight={64}><LinksPanel issueId={issue.id} /></LazyPanel>
+                  <LazyPanel minHeight={64}><AttachmentsPanel issueId={issue.id} /></LazyPanel>
 
                   {/* Hoạt động: tab Bình luận / Lịch sử */}
-                  <div id="issue-activity">
+                  <LazyPanel id="issue-activity" minHeight={160}>
                     <ActivityTabs issue={issue} tab={activityTab} onTab={setActivityTab} />
-                  </div>
+                  </LazyPanel>
                 </div>
 
                 {/* Cột phải: Người liên quan + Mốc thời gian */}
@@ -461,17 +490,21 @@ export function IssueDetailPage() {
                   <div className="space-y-5 lg:sticky lg:top-4">
                     <IssuePeoplePanel issue={issue} />
                     <IssueDatesPanel issue={issue} canEditRestricted={canEditRestricted} />
-                    <WorklogPanel issue={issue} />
+                    <LazyPanel minHeight={96}><WorklogPanel issue={issue} /></LazyPanel>
                   </div>
                 </aside>
               </div>
 
-              <WorkflowViewDialog
-                open={wfOpen}
-                onClose={() => setWfOpen(false)}
-                currentStatusId={issue.status.id}
-                currentStatusName={issue.status.name}
-              />
+              {wfSeen && (
+                <Suspense fallback={null}>
+                  <WorkflowViewDialog
+                    open={wfOpen}
+                    onClose={() => setWfOpen(false)}
+                    currentStatusId={issue.status.id}
+                    currentStatusName={issue.status.name}
+                  />
+                </Suspense>
+              )}
 
               <ConfirmDialog
                 open={confirmDelete}

@@ -157,6 +157,7 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
         type="button"
         onClick={() => data.onDelete?.(id)}
         title="Xoá trạng thái"
+        aria-label="Xoá trạng thái"
         className="absolute -right-2 -top-2 hidden h-5 w-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-danger group-hover:grid"
       >
         <Trash2 className="h-3 w-3" aria-hidden />

@@ -31,11 +31,27 @@ export function useDevLinks(issueId: string | undefined) {
  * Danh sách issue của MỘT project — cache duy nhất `keys.issues.byProject(pid)`,
  * Board / Backlog / Gantt / Tree / chi tiết issue đều đọc chung và `useProjectRealtime` vá vào đây.
  */
+const fetchProjectIssues = (projectId: string) => async () =>
+  (await api.get<ListResponse<IssueDto>>(`/issues?projectId=${projectId}&limit=200`)).data.data;
+
 export function useProjectIssues(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.issues.byProject(projectId ?? ''),
-    queryFn: projectId ? async () =>
-      (await api.get<ListResponse<IssueDto>>(`/issues?projectId=${projectId}&limit=200`)).data.data : skipToken,
+    queryFn: projectId ? fetchProjectIssues(projectId) : skipToken,
+  });
+}
+
+/**
+ * Đọc MỘT việc (vd việc cha cho breadcrumb) từ cache dự án mà KHÔNG kích hoạt tải cả danh sách (`enabled: false`).
+ * Không dùng `skipToken` ở đây: nó sẽ ghi đè `queryFn` của query dùng chung và làm invalidate bỏ qua query này.
+ * `select` cắt đúng phần cần nên chỉ vẽ lại khi phần đó đổi, không phải mỗi lần realtime vá việc khác.
+ */
+export function useCachedProjectIssue<T>(projectId: string | undefined, pick: (list: IssueDto[]) => T) {
+  return useQuery({
+    queryKey: keys.issues.byProject(projectId ?? ''),
+    queryFn: fetchProjectIssues(projectId ?? ''),
+    enabled: false,
+    select: pick,
   });
 }
 
