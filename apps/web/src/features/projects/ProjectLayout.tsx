@@ -2,7 +2,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
-  Activity, BarChart3, ChevronDown, GanttChartSquare, Inbox, LayoutGrid,
+  Activity, Archive, BarChart3, ChevronDown, GanttChartSquare, Inbox, LayoutGrid,
   ListTodo, ListTree, Plus, Settings, Sparkles,
 } from 'lucide-react';
 import { useProject, useProjects } from './api';
@@ -11,6 +11,7 @@ import { ProjectRail } from './ProjectRail';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
 import { Button } from '@/components/ui/Button';
 import { useAi } from '@/stores/ai';
+import { useAuth } from '@/stores/auth';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
 import { useProjectRealtime } from '@/lib/realtime';
@@ -42,6 +43,7 @@ export function ProjectLayout() {
   const loc = useLocation();
   const navigate = useNavigate();
   const aiEnabled = useAi((s) => s.enabled);
+  const canAdminProject = useAuth((s) => s.can('project:admin'));
   const openCreate = useCreateIssueModal((s) => s.openCreate);
   const { data: project } = useProject(key);
   const { data: projects } = useProjects();
@@ -97,11 +99,11 @@ export function ProjectLayout() {
           <h1 className="text-lg font-semibold tracking-tight">{project?.name ?? key}</h1>
           <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-muted">{project?.key ?? key}</span>
 
-          <Button size="sm" className="ml-2" onClick={() => openCreate({ projectKey: key })} disabled={!project?.id}>
+          <Button size="sm" className="ml-2" onClick={() => openCreate({ projectKey: key })} disabled={!project?.id || !!project.archivedAt} title={project?.archivedAt ? 'Dự án đã lưu trữ — chỉ đọc' : undefined}>
             <Plus className="h-4 w-4" /> Tạo công việc
           </Button>
           {aiEnabled && (
-            <Button variant="secondary" size="sm" onClick={() => setGenOpen(true)} disabled={!project?.id} data-tour="board-ai">
+            <Button variant="secondary" size="sm" onClick={() => setGenOpen(true)} disabled={!project?.id || !!project.archivedAt} data-tour="board-ai">
               <Sparkles className="h-4 w-4 text-primary" /> Tạo bằng AI
             </Button>
           )}
@@ -145,6 +147,19 @@ export function ProjectLayout() {
             </DropdownMenu.Root>
           </div>
         </div>
+
+        {project?.archivedAt && (
+          <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border bg-warning/10 px-6 py-2 text-sm text-ink">
+            <Archive className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+            <span className="font-medium">Dự án đã lưu trữ — chỉ đọc.</span>
+            <span className="text-muted">
+              Không tạo hay sửa được việc, sprint và bảng.{' '}
+              {canAdminProject ? (
+                <Link to={`/p/${key}/config`} className="font-medium text-primary underline-offset-2 hover:underline">Khôi phục dự án trong Cấu hình</Link>
+              ) : 'Nhờ quản trị dự án khôi phục nếu cần làm việc tiếp.'}
+            </span>
+          </div>
+        )}
 
         <div className="min-h-0 flex-1 overflow-auto">
           <Suspense fallback={<div className="grid h-full min-h-[40vh] place-items-center py-20 text-sm text-muted"><span className="animate-pulse">Đang tải…</span></div>}>

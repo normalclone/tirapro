@@ -36,6 +36,10 @@ export const transitionIssueSchema = z.object({
   toStatusId: z.string().min(1),
   resolutionId: z.string().optional().nullable(),
   version: z.number().int().nonnegative(),
+  /** Board đang thao tác (web gửi kèm) — để kiểm giới hạn WIP của cột đích. */
+  boardId: z.string().min(1).optional(),
+  /** "Vẫn chuyển" khi cột đã đầy WIP — chỉ người có `project:admin` được dùng. */
+  force: z.boolean().optional(),
 });
 
 /**
@@ -44,6 +48,8 @@ export const transitionIssueSchema = z.object({
  */
 export const bulkUpdateIssuesSchema = z.object({
   projectId: z.string().min(1),
+  boardId: z.string().min(1).optional(),
+  force: z.boolean().optional(),
   items: z
     .array(z.object({ id: z.string().min(1), version: z.number().int().nonnegative() }))
     .min(1, 'Hãy chọn ít nhất một công việc')
@@ -71,6 +77,8 @@ export const moveIssueSchema = z.object({
   statusId: z.string().optional(),
   sprintId: z.string().optional().nullable(),
   version: z.number().int().nonnegative(),
+  boardId: z.string().min(1).optional(),
+  force: z.boolean().optional(),
 });
 
 export type CreateIssueInput = z.infer<typeof createIssueSchema>;

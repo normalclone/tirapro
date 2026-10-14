@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException, VersionConflictException } from '../../common/exceptions/app.exception';
+import { assertIssueWritable } from '../../common/project-writable';
 
 const commentInclude = { author: true } satisfies Prisma.CommentInclude;
 type CommentRow = Prisma.CommentGetPayload<{ include: typeof commentInclude }>;
@@ -29,6 +30,7 @@ export class CommentsService {
 
   async create(workspaceId: string, userId: string, issueId: string, input: CreateCommentInput): Promise<CommentDto> {
     const issue = await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const comment = await this.prisma.$transaction(async (tx) => {
       const c = await tx.comment.create({
         data: { issueId, authorId: userId, body: input.body, bodyFormat: input.bodyFormat, parentId: input.parentId ?? null },
@@ -50,6 +52,7 @@ export class CommentsService {
 
   async update(workspaceId: string, userId: string, commentId: string, body: string, version: number): Promise<CommentDto> {
     const current = await this.requireComment(workspaceId, commentId);
+    await assertIssueWritable(this.prisma, current.issueId);
     if (current.authorId !== userId) throw new ForbiddenAppException('Chỉ tác giả mới sửa được bình luận');
     if (current.version !== version) throw new VersionConflictException('Người khác vừa sửa bình luận này — hãy tải lại để xem bản mới nhất');
     const updated = await this.prisma.comment.update({
@@ -64,6 +67,7 @@ export class CommentsService {
 
   async softDelete(workspaceId: string, userId: string, commentId: string, canDeleteAny = false): Promise<{ success: true }> {
     const current = await this.requireComment(workspaceId, commentId);
+    await assertIssueWritable(this.prisma, current.issueId);
     if (current.authorId !== userId && !canDeleteAny) {
       throw new ForbiddenAppException('Chỉ tác giả hoặc người có quyền xoá bình luận mới xoá được bình luận này');
     }

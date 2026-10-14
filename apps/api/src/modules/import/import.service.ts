@@ -6,6 +6,7 @@ import type { CreateIssueInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { IssuesService } from '../issues/issues.service';
+import { assertNotArchived } from '../../common/project-writable';
 
 /** Một dòng CSV đã parse: key = header (giữ nguyên), value = chuỗi. */
 type CsvRow = Record<string, string>;
@@ -115,9 +116,10 @@ export class ImportService {
     // 1. Xác minh project thuộc workspace.
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
+    assertNotArchived(project.archivedAt); // chặn trước khi tạo ImportJob
 
     // 2. Tạo bản ghi ImportJob (RUNNING).
     const job = await this.prisma.importJob.create({
@@ -264,9 +266,10 @@ export class ImportService {
     // 1. Xác minh project thuộc workspace.
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
+    assertNotArchived(project.archivedAt); // chặn trước khi tạo ImportJob
 
     const issues = Array.isArray(data?.issues) ? data.issues : [];
     const total = issues.length;

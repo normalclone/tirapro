@@ -14,8 +14,10 @@ import {
   InvalidTransitionException,
   NotFoundAppException,
   VersionConflictException,
+  WipLimitReachedException,
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
+import { assertNotArchived, assertProjectWritable } from '../../common/project-writable';
 
 const issueInclude = {
   type: true,
@@ -29,6 +31,19 @@ const issueInclude = {
 } satisfies Prisma.IssueInclude;
 
 type IssueRow = Prisma.IssueGetPayload<{ include: typeof issueInclude }>;
+
+/** Dòng issue kèm `project.archivedAt` — dùng cho mọi thao tác ghi để chặn dự án đã lưu trữ. */
+const issueWriteInclude = { ...issueInclude, project: { select: { archivedAt: true } } } satisfies Prisma.IssueInclude;
+type IssueWriteRow = Prisma.IssueGetPayload<{ include: typeof issueWriteInclude }>;
+
+/** Cột board có giới hạn WIP đang được áp cho một lần chuyển trạng thái. */
+interface WipColumn {
+  id: string;
+  name: string;
+  wipLimit: number;
+  statusIds: string[];
+  boardType: string;
+}
 
 export interface IssueListFilter {
   projectId?: string;
@@ -129,9 +144,10 @@ export class IssuesService {
     const db: Prisma.TransactionClient = outerTx ?? this.prisma;
     const project = await db.project.findFirst({
       where: { id: input.projectId, workspaceId, deletedAt: null },
-      select: { id: true, key: true, defaultWorkflowId: true, leadId: true, defaultAssigneeMode: true },
+      select: { id: true, key: true, defaultWorkflowId: true, leadId: true, defaultAssigneeMode: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
+    assertNotArchived(project.archivedAt);
     await this.assertMetaInWorkspace(workspaceId, {
       typeId: input.typeId, priorityId: input.priorityId, sprintId: input.sprintId,
       parentId: input.parentId, epicId: input.epicId,
@@ -361,6 +377,7 @@ export class IssuesService {
     const { projectId, items, patch } = input;
     // Đổi trạng thái chỉ đi qua quyền chuyển trạng thái (giống POST :id/transition), không đi chung quyền sửa.
     if (patch.statusId) await this.assertCanTransition(userId, workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     const rows = await this.prisma.issue.findMany({
       where: { id: { in: items.map((i) => i.id) }, workspaceId, projectId, deletedAt: null },
       include: issueInclude,
@@ -378,11 +395,21 @@ export class IssuesService {
       }
       toDone = (await this.statusCategory(patch.statusId)) === 'DONE';
     }
+    // Giới hạn WIP của cột đích (nếu web gửi boardId); kiểm lại trong transaction sau khi khoá cột.
+    const wip = patch.statusId ? await this.resolveWipColumn(input.boardId, projectId, patch.statusId) : null;
 
     const conflicts: BulkUpdateIssuesResult['conflicts'] = [];
     const changed: Array<{ before: IssueRow; after: IssueRow }> = [];
     const result: IssueRow[] = [];
     await this.prisma.$transaction(async (tx) => {
+      if (wip) {
+        // Chỉ tính việc thật sự SẼ vào cột: version còn khớp và chưa nằm trong cột đích.
+        const incoming = items.filter((i) => {
+          const b = byId.get(i.id)!;
+          return b.version === i.version && !wip.statusIds.includes(b.statusId);
+        }).length;
+        if (incoming > 0) await this.enforceWip(tx, wip, { userId, workspaceId, projectId, incoming, force: input.force });
+      }
       for (const item of items) {
         const before = byId.get(item.id)!;
         // Version đã lệch ngay từ lúc đọc: không cần ghi. Nếu khớp lúc đọc mà ghi thất bại thì updateWithVersion báo conflict.
@@ -440,8 +467,10 @@ export class IssuesService {
     await this.assertTransitionAllowed(workflowId, current.statusId, input.toStatusId);
 
     const isDone = (await this.statusCategory(input.toStatusId)) === 'DONE';
+    const wip = await this.resolveWipColumn(input.boardId, current.projectId, input.toStatusId, current.statusId);
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      if (wip) await this.enforceWip(tx, wip, { userId, workspaceId, projectId: current.projectId, incoming: 1, force: input.force });
       const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
         statusId: input.toStatusId,
         updatedById: userId,
@@ -466,14 +495,20 @@ export class IssuesService {
       next: input.beforeId ? await this.rankOf(workspaceId, current.projectId, input.beforeId) : null,
     }));
 
-    const updated = await this.prisma.$transaction((tx) =>
-      this.updateWithVersion(tx, id, workspaceId, input.version, {
+    // Chỉ kiểm WIP khi thật sự đổi sang trạng thái khác (kéo trong cùng cột/xếp lại thứ tự thì không chiếm thêm chỗ).
+    const wip = input.statusId && input.statusId !== current.statusId
+      ? await this.resolveWipColumn(input.boardId, current.projectId, input.statusId, current.statusId)
+      : null;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (wip) await this.enforceWip(tx, wip, { userId, workspaceId, projectId: current.projectId, incoming: 1, force: input.force });
+      return this.updateWithVersion(tx, id, workspaceId, input.version, {
         rank,
         statusId: input.statusId ?? current.statusId,
         sprintId: input.sprintId !== undefined ? input.sprintId : current.sprintId,
         updatedById: userId,
-      }),
-    );
+      });
+    });
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.ISSUE_MOVED, {
       issueId: id, projectId: updated.projectId, fromStatusId: current.statusId,
@@ -496,10 +531,76 @@ export class IssuesService {
   }
 
   // ---------- helpers ----------
-  private async requireIssue(workspaceId: string, id: string): Promise<IssueRow> {
-    const issue = await this.prisma.issue.findFirst({ where: { id, workspaceId, deletedAt: null }, include: issueInclude });
+  /** Issue dùng cho thao tác GHI: dự án đã lưu trữ thì từ chối ngay. */
+  private async requireIssue(workspaceId: string, id: string): Promise<IssueWriteRow> {
+    const issue = await this.prisma.issue.findFirst({ where: { id, workspaceId, deletedAt: null }, include: issueWriteInclude });
     if (!issue) throw new NotFoundAppException('Công việc');
+    assertNotArchived(issue.project.archivedAt);
     return issue;
+  }
+
+  /**
+   * Cột của board chứa trạng thái đích và có giới hạn WIP. Trả null (không cần kiểm) khi: không có boardId,
+   * board không thuộc dự án, trạng thái đích không nằm trong cột nào, cột không đặt giới hạn, hoặc
+   * issue đã nằm sẵn trong cột đó (đổi giữa hai trạng thái cùng cột không chiếm thêm chỗ).
+   */
+  private async resolveWipColumn(
+    boardId: string | undefined,
+    projectId: string,
+    toStatusId: string,
+    fromStatusId?: string,
+  ): Promise<WipColumn | null> {
+    if (!boardId) return null;
+    const col = await this.prisma.boardColumn.findFirst({
+      where: { boardId, board: { projectId, deletedAt: null }, statuses: { some: { statusId: toStatusId } } },
+      select: { id: true, name: true, wipLimit: true, board: { select: { type: true } }, statuses: { select: { statusId: true } } },
+    });
+    if (!col || col.wipLimit == null) return null;
+    const statusIds = col.statuses.map((s) => s.statusId);
+    if (fromStatusId && statusIds.includes(fromStatusId)) return null;
+    return { id: col.id, name: col.name, wipLimit: col.wipLimit, statusIds, boardType: col.board.type };
+  }
+
+  /**
+   * Kiểm giới hạn WIP BÊN TRONG transaction của lần ghi: khoá dòng cột (FOR UPDATE) để hai request đồng thời
+   * vào cùng cột xếp hàng — request sau đếm lại sau khi request trước đã commit nên không cùng lọt qua.
+   * Board SCRUM chỉ đếm việc của sprint ACTIVE (không có sprint ACTIVE = board trống, không chặn).
+   * Vượt giới hạn: ném WIP_LIMIT_REACHED, trừ khi `force` và người dùng là quản trị dự án.
+   */
+  private async enforceWip(
+    tx: Prisma.TransactionClient,
+    wip: WipColumn,
+    ctx: { userId: string; workspaceId: string; projectId: string; incoming: number; force?: boolean },
+  ): Promise<void> {
+    await tx.$queryRaw`SELECT "id" FROM "BoardColumn" WHERE "id" = ${wip.id} FOR UPDATE`;
+    let sprintFilter: { sprintId: string } | Record<string, never> = {};
+    if (wip.boardType === 'SCRUM') {
+      const active = await tx.sprint.findFirst({ where: { projectId: ctx.projectId, state: 'ACTIVE', deletedAt: null }, select: { id: true } });
+      if (!active) return;
+      sprintFilter = { sprintId: active.id };
+    }
+    const current = await tx.issue.count({
+      where: { projectId: ctx.projectId, deletedAt: null, statusId: { in: wip.statusIds }, ...sprintFilter },
+    });
+    if (current + ctx.incoming <= wip.wipLimit) return;
+    if (!ctx.force) {
+      const room = wip.wipLimit - current;
+      throw new WipLimitReachedException(
+        ctx.incoming > 1 && room > 0
+          ? `Cột "${wip.name}" (giới hạn ${wip.wipLimit} việc) chỉ còn chỗ cho ${room} việc — hãy chuyển ít việc hơn hoặc chọn "Vẫn chuyển"`
+          : `Cột "${wip.name}" đã đạt giới hạn ${wip.wipLimit} việc đang làm — hãy hoàn thành bớt hoặc chọn "Vẫn chuyển"`,
+      );
+    }
+    await this.assertCanForceWip(ctx.userId, ctx.workspaceId, ctx.projectId);
+  }
+
+  /** "Vẫn chuyển" qua giới hạn WIP chỉ dành cho quản trị dự án (project/workspace admin, system admin). */
+  private async assertCanForceWip(userId: string, workspaceId: string, projectId: string): Promise<void> {
+    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
+    if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.WORKSPACE_ADMIN)) return;
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isSystemAdmin: true } });
+    if (u?.isSystemAdmin) return;
+    throw new ForbiddenAppException('Cột đã đạt giới hạn WIP — chỉ quản trị dự án mới được chọn "Vẫn chuyển"; hãy hoàn thành bớt việc trong cột trước');
   }
 
   /** Chặn vòng lặp cây: đi ngược từ parent mới lên gốc, không được gặp lại chính issue con. */

@@ -4,6 +4,7 @@ import { DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertIssueWritable } from '../../common/project-writable';
 
 /** User tối thiểu trả về cho client trong danh sách watcher. */
 export interface WatcherUser {
@@ -49,6 +50,7 @@ export class WatchersService {
   /** Theo dõi issue trên danh nghĩa của chính user. Idempotent (nuốt P2002). */
   async watch(workspaceId: string, userId: string, issueId: string): Promise<{ watching: true }> {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     try {
       await this.prisma.issueWatcher.create({ data: { issueId, userId } });
     } catch (err) {
@@ -61,6 +63,7 @@ export class WatchersService {
   /** Bỏ theo dõi issue. Idempotent (xóa không có cũng coi như thành công). */
   async unwatch(workspaceId: string, userId: string, issueId: string): Promise<{ watching: false }> {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     await this.prisma.issueWatcher.deleteMany({ where: { issueId, userId } });
     return { watching: false };
   }

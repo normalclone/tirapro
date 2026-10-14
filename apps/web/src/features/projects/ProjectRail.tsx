@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Archive, Plus } from 'lucide-react';
 import { useProjects } from './api';
 import { CreateProjectModal } from './CreateProjectModal';
 import { cn } from '@/lib/utils';
+
+const SHOW_ARCHIVED_KEY = 'tirapro:showArchivedProjects';
 
 /**
  * Rail dự án (submenu trái) — danh sách dự án + nút tạo dự án.
@@ -13,8 +15,16 @@ import { cn } from '@/lib/utils';
  *  view      — segment view để link sang (board/backlog/…); mặc định "board".
  */
 export function ProjectRail({ activeKey, view = 'board' }: { activeKey: string; view?: string }) {
-  const { data: projects } = useProjects();
+  // Chọn "Hiện đã lưu trữ" được nhớ theo trình duyệt (chỉ là tiện ích, không có cũng chạy).
+  const [showArchived, setShowArchived] = useState(() => {
+    try { return localStorage.getItem(SHOW_ARCHIVED_KEY) === '1'; } catch { return false; }
+  });
+  const { data: projects } = useProjects(showArchived);
   const [createProject, setCreateProject] = useState(false);
+  const toggleArchived = (v: boolean) => {
+    setShowArchived(v);
+    try { localStorage.setItem(SHOW_ARCHIVED_KEY, v ? '1' : '0'); } catch { /* ignore */ }
+  };
 
   return (
     <>
@@ -45,10 +55,20 @@ export function ProjectRail({ activeKey, view = 'board' }: { activeKey: string; 
                 {p.key.slice(0, 3)}
               </span>
               <span className="min-w-0 flex-1 truncate">{p.name}</span>
+              {p.archivedAt && <Archive className="h-3.5 w-3.5 shrink-0 text-faint" aria-label="Đã lưu trữ" />}
             </NavLink>
           ))}
           {projects && projects.length === 0 && <p className="px-2 py-4 text-xs text-faint">Chưa có dự án.</p>}
         </nav>
+        <label className="flex cursor-pointer items-center gap-2 border-t border-border px-3 py-2.5 text-xs text-muted">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => toggleArchived(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          />
+          Hiện đã lưu trữ
+        </label>
       </aside>
 
       <CreateProjectModal open={createProject} onClose={() => setCreateProject(false)} />

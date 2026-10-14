@@ -38,11 +38,33 @@ export function useStartSprint(projectId: string) {
   });
 }
 
+/** Nơi chuyển việc chưa xong khi hoàn thành sprint (khớp `completeSprintSchema` ở máy chủ). */
+export type MoveIncompleteTo = 'backlog' | 'new' | { sprintId: string };
+
 export function useCompleteSprint(projectId: string) {
   const invalidate = useInvalidateBacklog(projectId);
   return useMutation({
-    mutationFn: (sprintId: string) =>
-      api.post<SprintDto>(`/sprints/${sprintId}/complete`).then((r) => r.data),
+    mutationFn: (v: { sprintId: string; moveIncompleteTo?: MoveIncompleteTo }) =>
+      api.post<SprintDto>(`/sprints/${v.sprintId}/complete`, { moveIncompleteTo: v.moveIncompleteTo ?? 'backlog' }).then((r) => r.data),
+    onSuccess: invalidate,
+  });
+}
+
+/** Sửa sprint: FUTURE sửa được mọi trường; ACTIVE chỉ mục tiêu + ngày kết thúc (máy chủ kiểm). */
+export function useUpdateSprint(projectId: string) {
+  const invalidate = useInvalidateBacklog(projectId);
+  return useMutation({
+    mutationFn: (v: { id: string; patch: { name?: string; goal?: string | null; startDate?: string | null; endDate?: string | null } }) =>
+      api.patch<SprintDto>(`/sprints/${v.id}`, v.patch).then((r) => r.data),
+    onSuccess: invalidate,
+  });
+}
+
+/** Xoá sprint FUTURE — việc trong sprint về Backlog. */
+export function useDeleteSprint(projectId: string) {
+  const invalidate = useInvalidateBacklog(projectId);
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/sprints/${id}`).then(() => undefined),
     onSuccess: invalidate,
   });
 }

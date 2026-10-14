@@ -44,6 +44,13 @@ export class BusinessRuleException extends AppException {
   }
 }
 
+/** Cột board đã đầy giới hạn WIP; client bắt code này để hỏi "Vẫn chuyển?" (chỉ quản trị dự án được ép). */
+export class WipLimitReachedException extends AppException {
+  constructor(message: string) {
+    super(ERROR_CODES.WIP_LIMIT_REACHED, message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
 export class AiUnavailableException extends AppException {
   constructor(message = 'Tính năng AI hiện không khả dụng') {
     super(ERROR_CODES.AI_UNAVAILABLE, message, HttpStatus.SERVICE_UNAVAILABLE);

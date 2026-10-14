@@ -1,6 +1,9 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { createSprintSchema, type CreateSprintInput } from '@tirapro/shared';
+import {
+  completeSprintSchema, createSprintSchema, updateSprintSchema,
+  type CompleteSprintInput, type CreateSprintInput, type UpdateSprintInput,
+} from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/request';
@@ -40,10 +43,35 @@ export class SprintsController {
     return this.sprints.start(workspaceId, id);
   }
 
+  /** Hoàn thành sprint; body (tuỳ chọn) chọn nơi chuyển việc chưa xong, mặc định về backlog. */
   @Permissions(PERMISSIONS.SPRINT_MANAGE)
   @ProjectRef('sprint', 'id')
   @Post(':id/complete')
-  async complete(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.sprints.complete(workspaceId, id, user.id);
+  async complete(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(completeSprintSchema)) dto: CompleteSprintInput,
+  ) {
+    return this.sprints.complete(workspaceId, id, user.id, dto);
+  }
+
+  @Permissions(PERMISSIONS.SPRINT_MANAGE)
+  @ProjectRef('sprint', 'id')
+  @Patch(':id')
+  async update(
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateSprintSchema)) dto: UpdateSprintInput,
+  ) {
+    return this.sprints.update(workspaceId, id, dto);
+  }
+
+  /** Chỉ xoá được sprint FUTURE; việc trong sprint về backlog. */
+  @Permissions(PERMISSIONS.SPRINT_MANAGE)
+  @ProjectRef('sprint', 'id')
+  @Delete(':id')
+  async remove(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.sprints.remove(workspaceId, id, user.id);
   }
 }

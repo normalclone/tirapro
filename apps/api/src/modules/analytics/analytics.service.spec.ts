@@ -355,3 +355,71 @@ describe('AnalyticsService.createdResolved — đếm theo ngày bằng SQL', ()
     for (const call of queryRaw.mock.calls) expect(paramsOf(call)).toContain('p1');
   });
 });
+
+describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính từ lịch sử', () => {
+  const at = (iso: string) => new Date(iso);
+  function make(snaps: unknown[]) {
+    const prisma = {
+      sprint: {
+        findFirst: vi.fn(() => Promise.resolve({
+          id: 'sp1', name: 'Sprint 1', startDate: at('2026-10-01T09:00:00Z'), endDate: at('2026-10-04T09:00:00Z'),
+          completeDate: null, createdAt: at('2026-09-30T00:00:00Z'),
+          // hiện tại còn 2 issue (10 điểm) — 1 issue 5 điểm đã bị đẩy ra sprint khác sau này
+          issues: [{ id: 'a', storyPoints: 6 }, { id: 'b', storyPoints: 4 }],
+        })),
+      },
+      issueHistory: {
+        // a (6 điểm) xong ngày 02
+        findMany: vi.fn(() => Promise.resolve([
+          { issueId: 'a', oldCategory: 'IN_PROGRESS', newCategory: 'DONE', occurredAt: at('2026-10-02T10:00:00Z') },
+        ])),
+      },
+      sprintSnapshot: { findMany: vi.fn(() => Promise.resolve(snaps)) },
+    };
+    return { service: new AnalyticsService(prisma as never), prisma };
+  }
+
+  it('không có snapshot => giữ cách tính cũ từ lịch sử (không đổi hành vi trước khi deploy)', async () => {
+    const { service } = make([]);
+    const r = await service.burndown('w1', 'sp1');
+    expect(r.committedPoints).toBe(10);
+    expect(r.series.map((x) => [x.date, x.remaining])).toEqual([
+      ['2026-10-01', 10], ['2026-10-02', 4], ['2026-10-03', 4], ['2026-10-04', 4],
+    ]);
+  });
+
+  it('có START + DAILY => ngày có snapshot lấy remainingPoints, đường lý tưởng theo điểm lúc START; ngày thiếu rơi về lịch sử', async () => {
+    const { service } = make([
+      { kind: 'START', snapshotAt: at('2026-10-01T09:00:00Z'), committedPoints: 15, remainingPoints: 15 },
+      // DAILY đóng dấu cuối ngày: ngày 01 còn 15, ngày 02 còn 9 (có việc 5 điểm bị đẩy ra nên khác lịch sử)
+      { kind: 'DAILY', snapshotAt: at('2026-10-01T23:59:59.999Z'), committedPoints: 15, remainingPoints: 15 },
+      { kind: 'DAILY', snapshotAt: at('2026-10-02T23:59:59.999Z'), committedPoints: 15, remainingPoints: 9 },
+    ]);
+    const r = await service.burndown('w1', 'sp1');
+    expect(r.committedPoints).toBe(15);
+    expect(r.series.map((x) => [x.date, x.remaining])).toEqual([
+      ['2026-10-01', 15], ['2026-10-02', 9],
+      ['2026-10-03', 4], ['2026-10-04', 4], // chưa có snapshot => lịch sử
+    ]);
+    expect(r.series[0]!.ideal).toBe(15);
+    expect(r.series[3]!.ideal).toBe(0);
+  });
+
+  it('ngày chưa có DAILY (vd hôm nay) dùng lịch sử, không bị START che tiến độ', async () => {
+    const { service } = make([
+      { kind: 'START', snapshotAt: at('2026-10-01T09:00:00Z'), committedPoints: 10, remainingPoints: 10 },
+    ]);
+    const r = await service.burndown('w1', 'sp1');
+    // a (6 điểm) xong ngày 02 theo lịch sử; ngày 01 cũng từ lịch sử (=10), không phải START
+    expect(r.series.map((x) => x.remaining)).toEqual([10, 4, 4, 4]);
+  });
+
+  it('CLOSE trong ngày thắng DAILY cũ hơn cùng ngày', async () => {
+    const { service } = make([
+      { kind: 'START', snapshotAt: at('2026-10-01T09:00:00Z'), committedPoints: 10, remainingPoints: 10 },
+      { kind: 'CLOSE', snapshotAt: at('2026-10-03T12:00:00Z'), committedPoints: 10, remainingPoints: 3 },
+    ]);
+    const r = await service.burndown('w1', 'sp1');
+    expect(r.series.find((x) => x.date === '2026-10-03')!.remaining).toBe(3);
+  });
+});

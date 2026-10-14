@@ -376,6 +376,21 @@ export class AnalyticsService {
       select: { issueId: true, oldCategory: true, newCategory: true, occurredAt: true },
     });
 
+    // Snapshot DAILY/CLOSE (+ START làm mốc): nguồn chính cho "còn lại" mỗi ngày; ngày chưa có snapshot (trước khi có cron,
+    // hoặc hôm nay) mới tính lại từ lịch sử. Mỗi ngày lấy snapshot MUỘN NHẤT trong ngày đó (DAILY đóng dấu cuối ngày).
+    const snaps = await this.prisma.sprintSnapshot.findMany({
+      where: { sprintId, kind: { in: ['START', 'DAILY', 'CLOSE'] } },
+      orderBy: { snapshotAt: 'asc' },
+      select: { kind: true, snapshotAt: true, committedPoints: true, remainingPoints: true },
+    });
+    const snapByDay = new Map<string, number>();
+    // START chỉ làm mốc cam kết (bên dưới), KHÔNG làm điểm "còn lại" của ngày: ngày đầu/hôm nay chưa có DAILY thì
+    // lịch sử mới phản ánh tiến độ đã làm trong ngày (START luôn = toàn bộ cam kết, che mất tiến độ).
+    for (const sn of snaps) if (sn.kind !== 'START') snapByDay.set(dayKey(sn.snapshotAt), sn.remainingPoints);
+    // Mốc "cam kết" của đường lý tưởng = điểm lúc START (nếu có), không bị lệch khi việc bị đẩy ra sau này.
+    const startSnap = snaps.find((x) => x.kind === 'START' && x.committedPoints > 0);
+    const baseline = startSnap ? startSnap.committedPoints : committed;
+
     let done = 0;
     let h = 0;
     const series = days.map((date, idx) => {
@@ -386,14 +401,16 @@ export class AnalyticsService {
         if (ev.newCategory === 'DONE' && ev.oldCategory !== 'DONE') done += pts;
         else if (ev.oldCategory === 'DONE' && ev.newCategory !== 'DONE') done -= pts;
       }
-      const ideal = days.length > 1 ? committed * (1 - idx / (days.length - 1)) : 0;
-      return { date, ideal: round(ideal), remaining: round(Math.max(committed - done, 0)) };
+      const ideal = days.length > 1 ? baseline * (1 - idx / (days.length - 1)) : 0;
+      const snapped = snapByDay.get(date);
+      const remaining = snapped !== undefined ? Math.max(snapped, 0) : Math.max(committed - done, 0);
+      return { date, ideal: round(ideal), remaining: round(remaining) };
     });
 
     return {
       sprintId: sprint.id,
       sprintName: sprint.name,
-      committedPoints: round(committed),
+      committedPoints: round(baseline),
       start: start.toISOString(),
       end: end.toISOString(),
       series,

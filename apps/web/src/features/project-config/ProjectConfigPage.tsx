@@ -28,6 +28,7 @@ import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useProject, useUploadProjectAvatar, useRemoveProjectAvatar } from '@/features/projects/api';
+import { GeneralSection } from './GeneralSection';
 import { useRoles } from '@/features/roles/api';
 import { EditRolesPopover } from '@/features/members/EditRolesPopover';
 import {
@@ -197,12 +198,15 @@ export function ProjectConfigPage() {
           </header>
 
           <div className="space-y-8">
-            {active === 'general' && (
-              <ProjectAvatarSection
-                projectKey={key}
-                name={project?.name ?? key}
-                src={project?.avatarUrl}
-              />
+            {active === 'general' && project && (
+              <>
+                <GeneralSection key={project.id} project={project} canAdmin={canAdmin} />
+                <ProjectAvatarSection
+                  projectKey={key}
+                  name={project.name}
+                  src={project.avatarUrl}
+                />
+              </>
             )}
             {active === 'members' && <MembersSection projectId={projectId} />}
             {active === 'components' && <ComponentsSection projectId={projectId} canAdmin={canAdmin} />}

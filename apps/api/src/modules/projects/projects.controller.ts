@@ -4,7 +4,9 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseInterceptors,
@@ -12,7 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { createProjectSchema, type CreateProjectInput } from '@tirapro/shared';
+import { createProjectSchema, updateProjectSchema, type CreateProjectInput, type UpdateProjectInput } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -29,8 +31,8 @@ export class ProjectsController {
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get()
-  async list(@WorkspaceId() workspaceId: string) {
-    return this.projects.list(workspaceId);
+  async list(@WorkspaceId() workspaceId: string, @Query('includeArchived') includeArchived?: string) {
+    return this.projects.list(workspaceId, includeArchived === 'true');
   }
 
   @Permissions(PERMISSIONS.PROJECT_CREATE)
@@ -55,6 +57,41 @@ export class ProjectsController {
   @Get(':key/meta')
   async meta(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
     return this.projects.meta(workspaceId, key.toUpperCase());
+  }
+
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  @ProjectRef('param', 'id')
+  @Patch(':id')
+  async update(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateProjectSchema)) dto: UpdateProjectInput,
+  ) {
+    return this.projects.update(workspaceId, id, user.id, dto);
+  }
+
+  /** Lưu trữ dự án (chỉ đọc, ẩn khỏi danh sách mặc định). */
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  @ProjectRef('param', 'id')
+  @Post(':id/archive')
+  async archive(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.projects.archive(workspaceId, id, user.id);
+  }
+
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  @ProjectRef('param', 'id')
+  @Post(':id/unarchive')
+  async unarchive(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.projects.unarchive(workspaceId, id, user.id);
+  }
+
+  /** Xoá mềm dự án — chỉ quản trị workspace. */
+  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @ProjectRef('param', 'id')
+  @Delete(':id')
+  async remove(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.projects.remove(workspaceId, id, user.id);
   }
 
   /** Tải ảnh đại diện project (cần quyền quản trị project). */

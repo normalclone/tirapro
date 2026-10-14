@@ -19,12 +19,16 @@ export const keys = {
   projects: {
     all: ['projects'] as const,
     byKey: (key: string) => ['project', key] as const,
+    /** Cùng tiền tố `all` nên invalidate `all` làm mới cả hai. */
+    withArchived: ['projects', 'with-archived'] as const,
     activity: (projectId: string) => ['project-activity', projectId] as const,
   },
 
   issues: {
     all: ['issues'] as const,
     byProject: (projectId: string) => ['issues', 'project', projectId] as const,
+    /** Việc của MỘT board có bộ lọc JQL (board không lọc thì dùng `byProject`). */
+    byBoard: (boardId: string) => ['issues', 'board', boardId] as const,
     byKey: (key: string) => ['issues', 'key', key] as const,
     comments: (issueId: string) => ['issues', 'comments', issueId] as const,
     devLinks: (issueId: string) => ['issues', 'dev-links', issueId] as const,
@@ -69,6 +73,8 @@ export const keys = {
   priorities: ['priorities'] as const,
   customFields: ['custom-fields'] as const,
   workflows: ['workflows'] as const,
+  /** Quy trình (kèm trạng thái) của MỘT dự án — cùng tiền tố `workflows`. */
+  projectWorkflow: (projectId: string) => ['workflows', 'project', projectId] as const,
   teams: { all: ['teams'] as const },
   apiKeys: { all: ['api-keys'] as const },
 

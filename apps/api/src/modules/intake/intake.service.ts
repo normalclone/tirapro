@@ -4,6 +4,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException, BusinessRuleException } from '../../common/exceptions/app.exception';
 import { IssuesService } from '../issues/issues.service';
 import type { ReportIssueInput } from './intake.schema';
+import { assertNotArchived } from '../../common/project-writable';
 
 /** Chuẩn hóa tiêu đề để so khớp dedupe: bỏ khoảng trắng thừa + lowercase. */
 function normalizeSummary(summary: string): string {
@@ -47,9 +48,10 @@ export class IntakeService {
     // 1. Xác minh project thuộc workspace hiện tại.
     const project = await this.prisma.project.findFirst({
       where: { id: input.projectId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
+    assertNotArchived(project.archivedAt); // cả nhánh gộp trùng (tăng occurrenceCount) lẫn tạo mới
 
     // 2. Dedupe: tìm issue chưa xóa cùng project có tiêu đề chuẩn hóa trùng và còn "sống".
     const target = normalizeSummary(input.summary);
