@@ -251,29 +251,28 @@ export class IssuesService {
       await this.assertCanEditRestrictedFields(userId, workspaceId, current);
     }
 
-    const data: Prisma.IssueUpdateInput = { version: { increment: 1 }, updatedById: userId };
+    const data: Prisma.IssueUncheckedUpdateManyInput = { updatedById: userId };
     if (input.summary !== undefined) data.summary = input.summary;
     if (input.description !== undefined) data.description = input.description;
-    if (input.priorityId !== undefined) data.priority = input.priorityId ? { connect: { id: input.priorityId } } : { disconnect: true };
-    if (input.assigneeId !== undefined) data.assignee = input.assigneeId ? { connect: { id: input.assigneeId } } : { disconnect: true };
+    if (input.priorityId !== undefined) data.priorityId = input.priorityId ?? null;
+    if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId ?? null;
     if (input.storyPoints !== undefined) data.storyPoints = input.storyPoints;
-    if (input.sprintId !== undefined) data.sprint = input.sprintId ? { connect: { id: input.sprintId } } : { disconnect: true };
-    if (input.resolutionId !== undefined) data.resolution = input.resolutionId ? { connect: { id: input.resolutionId } } : { disconnect: true };
-    if (input.typeId !== undefined && input.typeId) data.type = { connect: { id: input.typeId } };
+    if (input.sprintId !== undefined) data.sprintId = input.sprintId ?? null;
+    if (input.resolutionId !== undefined) data.resolutionId = input.resolutionId ?? null;
+    if (input.typeId !== undefined && input.typeId) data.typeId = input.typeId;
     if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
     if (input.startDate !== undefined) data.startDate = input.startDate ? new Date(input.startDate) : null;
     if (input.parentId !== undefined) {
       if (input.parentId === id) throw new BusinessRuleException('Một công việc không thể là việc cha của chính nó — hãy chọn một công việc khác làm việc cha');
-      if (input.parentId) {
-        await this.assertNoParentCycle(workspaceId, id, input.parentId);
-        data.parent = { connect: { id: input.parentId } };
-      } else {
-        data.parent = { disconnect: true };
-      }
+      if (input.parentId) await this.assertNoParentCycle(workspaceId, id, input.parentId);
+      data.parentId = input.parentId ?? null;
     }
 
-    const updated = await this.prisma.issue.update({ where: { id }, data, include: issueInclude });
-    await this.recordChanges(userId, current, updated);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await this.updateWithVersion(tx, id, workspaceId, input.version, data);
+      await this.recordChanges(tx, userId, current, row);
+      return row;
+    });
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId: userId });
     return dto;
@@ -300,24 +299,22 @@ export class IssuesService {
     const toStatus = await this.prisma.status.findUnique({ where: { id: input.toStatusId }, select: { category: true } });
     const isDone = toStatus?.category === 'DONE';
 
-    const updated = await this.prisma.issue.update({
-      where: { id },
-      data: {
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
         statusId: input.toStatusId,
-        version: { increment: 1 },
         updatedById: userId,
         resolutionId: isDone ? (input.resolutionId ?? undefined) : null,
         resolvedAt: isDone ? new Date() : null,
-      },
-      include: issueInclude,
-    });
-    await this.prisma.issueHistory.create({
-      data: {
-        issueId: id, projectId: updated.projectId, sprintId: updated.sprintId,
-        field: 'STATUS', oldValue: current.status.name, newValue: updated.status.name,
-        oldCategory: current.status.category, newCategory: updated.status.category,
-        actorId: userId, occurredAt: new Date(),
-      },
+      });
+      await tx.issueHistory.create({
+        data: {
+          issueId: id, projectId: row.projectId, sprintId: row.sprintId,
+          field: 'STATUS', oldValue: current.status.name, newValue: row.status.name,
+          oldCategory: current.status.category, newCategory: row.status.category,
+          actorId: userId, occurredAt: new Date(),
+        },
+      });
+      return row;
     });
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, { issue: dto, actorId: userId, fromStatusId: current.statusId });
@@ -334,17 +331,14 @@ export class IssuesService {
       next: input.beforeId ? await this.rankOf(workspaceId, current.projectId, input.beforeId) : null,
     }));
 
-    const updated = await this.prisma.issue.update({
-      where: { id },
-      data: {
+    const updated = await this.prisma.$transaction((tx) =>
+      this.updateWithVersion(tx, id, workspaceId, input.version, {
         rank,
         statusId: input.statusId ?? current.statusId,
         sprintId: input.sprintId !== undefined ? input.sprintId : current.sprintId,
-        version: { increment: 1 },
         updatedById: userId,
-      },
-      include: issueInclude,
-    });
+      }),
+    );
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.ISSUE_MOVED, {
       issueId: id, projectId: updated.projectId, fromStatusId: current.statusId,
@@ -356,7 +350,12 @@ export class IssuesService {
   /** Soft-delete (vào Recycle Bin). */
   async softDelete(workspaceId: string, userId: string, id: string): Promise<{ success: true }> {
     await this.requireIssue(workspaceId, id);
-    await this.prisma.issue.update({ where: { id }, data: { deletedAt: new Date(), updatedById: userId } });
+    // updateMany + deletedAt:null để hai lần xoá đồng thời chỉ một lần thắng (và chỉ phát sự kiện một lần).
+    const { count } = await this.prisma.issue.updateMany({
+      where: { id, workspaceId, deletedAt: null },
+      data: { deletedAt: new Date(), updatedById: userId, version: { increment: 1 } },
+    });
+    if (count === 0) throw new NotFoundAppException('Công việc');
     this.events.emit(DOMAIN_EVENTS.ISSUE_DELETED, { issueId: id, actorId: userId });
     return { success: true };
   }
@@ -383,6 +382,26 @@ export class IssuesService {
       cur = p?.parentId ?? null;
       depth += 1;
     }
+  }
+
+  /** Ghi có điều kiện version (OCC atomic). Trả row mới; ném VersionConflict nếu version đã đổi. */
+  private async updateWithVersion(
+    tx: Prisma.TransactionClient,
+    id: string,
+    workspaceId: string,
+    version: number,
+    data: Prisma.IssueUncheckedUpdateManyInput,
+  ): Promise<IssueRow> {
+    const { count } = await tx.issue.updateMany({
+      where: { id, workspaceId, deletedAt: null, version },
+      data: { ...data, version: { increment: 1 } },
+    });
+    if (count === 0) {
+      const cur = await tx.issue.findFirst({ where: { id, workspaceId, deletedAt: null }, select: { version: true } });
+      if (!cur) throw new NotFoundAppException('Công việc');
+      throw new VersionConflictException('Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại', { version: cur.version });
+    }
+    return tx.issue.findFirstOrThrow({ where: { id }, include: issueInclude });
   }
 
   private assertVersion(currentVersion: number, inputVersion: number) {
@@ -429,14 +448,14 @@ export class IssuesService {
     });
   }
 
-  private async recordChanges(userId: string, before: IssueRow, after: IssueRow) {
+  private async recordChanges(tx: Prisma.TransactionClient, userId: string, before: IssueRow, after: IssueRow) {
     const rows: Prisma.IssueHistoryCreateManyInput[] = [];
     const base = { issueId: after.id, projectId: after.projectId, sprintId: after.sprintId, actorId: userId, occurredAt: new Date() };
     if (before.assigneeId !== after.assigneeId) rows.push({ ...base, field: 'ASSIGNEE', oldValue: before.assigneeId, newValue: after.assigneeId });
     if (before.priorityId !== after.priorityId) rows.push({ ...base, field: 'PRIORITY', oldValue: before.priority?.name, newValue: after.priority?.name });
     if (before.storyPoints !== after.storyPoints) rows.push({ ...base, field: 'STORY_POINTS', oldValue: String(before.storyPoints ?? ''), newValue: String(after.storyPoints ?? ''), pointsDelta: (after.storyPoints ?? 0) - (before.storyPoints ?? 0) });
     if (before.sprintId !== after.sprintId) rows.push({ ...base, field: 'SPRINT', oldValue: before.sprintId, newValue: after.sprintId });
-    if (rows.length) await this.prisma.issueHistory.createMany({ data: rows });
+    if (rows.length) await tx.issueHistory.createMany({ data: rows });
   }
 
   private toDto(i: IssueRow): IssueDto {
