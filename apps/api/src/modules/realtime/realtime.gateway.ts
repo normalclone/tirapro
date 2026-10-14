@@ -12,14 +12,8 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 import { DOMAIN_EVENTS, WS_EVENTS, rooms } from '@tirapro/types';
+import type { RoomTarget, SubscribeAck } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-
-interface RoomTarget {
-  kind: 'user' | 'workspace' | 'project';
-  id: string;
-}
-
-export type SubscribeResult = { ok: true } | { ok: false; error: 'FORBIDDEN' };
 
 /**
  * Socket.io gateway: xác thực JWT ở handshake, kiểm quyền khi subscribe room, và RealtimeBridge
@@ -62,7 +56,7 @@ export class RealtimeGateway implements OnGatewayConnection {
   async onSubscribe(
     @MessageBody() target: RoomTarget,
     @ConnectedSocket() client: Socket,
-  ): Promise<SubscribeResult> {
+  ): Promise<SubscribeAck> {
     const room = await this.authorizeRoom(target, client);
     if (!room) return { ok: false, error: 'FORBIDDEN' };
     await client.join(room);

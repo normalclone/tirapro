@@ -1,12 +1,14 @@
 /** Hợp đồng socket.io typed dùng chung gateway (BE) và client (FE). */
 import type { CommentDto, ID, IssueDto, NotificationDto } from '@tirapro/types';
 
+/** Room client được phép subscribe — khớp kiểm quyền ở RealtimeGateway.onSubscribe. */
 export type RoomTarget =
-  | { kind: 'project'; id: string }
-  | { kind: 'board'; id: string }
-  | { kind: 'backlog'; id: string }
-  | { kind: 'issue'; id: string }
-  | { kind: 'sprint'; id: string };
+  | { kind: 'user'; id: string }
+  | { kind: 'workspace'; id: string }
+  | { kind: 'project'; id: string };
+
+/** Kết quả ack của `subscribe`: FORBIDDEN khi không có quyền vào room đó. */
+export type SubscribeAck = { ok: true } | { ok: false; error: 'FORBIDDEN' };
 
 export interface IssueMovedPayload {
   issueId: ID;
@@ -59,7 +61,7 @@ export interface ServerToClientEvents {
 
 /** Sự kiện client -> server. */
 export interface ClientToServerEvents {
-  subscribe: (target: RoomTarget, ack?: (ok: boolean) => void) => void;
+  subscribe: (target: RoomTarget, ack?: (res: SubscribeAck) => void) => void;
   unsubscribe: (target: RoomTarget) => void;
   'presence:view': (p: { room: string | null }) => void;
   'typing:start': (p: { room: string }) => void;
