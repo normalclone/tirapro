@@ -10,6 +10,8 @@ import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { ParticipantsRow } from '@/features/issue-extras/ParticipantsRow';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
+import { AssigneeSuggestButton } from '@/features/ai/AssigneeSuggestButton';
+import { useAuth } from '@/stores/auth';
 import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/primitives';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
@@ -254,6 +256,7 @@ export function IssueStoryPointsInline({ issue, canEditRestricted }: { issue: Is
 export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
   const assignees = useAssigneeOptions(issue.projectId);
   const patch = useUpdateIssue(issue.projectId);
+  const canSuggest = useAuth((s) => s.can('ai:use') && s.can('issue:edit'));
 
   return (
     <PanelSection title="Người liên quan">
@@ -261,33 +264,49 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
         {/* Người phụ trách — inline, bấm để chọn */}
         <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
           <span className="shrink-0 text-muted" title="Người chịu trách nhiệm làm xong việc này">Người phụ trách</span>
-          <PeoplePicker
-            ariaLabel="Người phụ trách"
-            value={issue.assignee?.id ?? ''}
-            disabled={patch.isPending}
-            align="end"
-            options={assignees}
-            onChange={(v) => {
-              const next = v || null;
-              if (next !== (issue.assignee?.id ?? null)) {
-                patch.mutate(
-                  { id: issue.id, key: issue.key, patch: { assigneeId: next }, version: issue.version },
-                  { onError: (e) => toast.error(apiErrorMessage(e)) },
-                );
+          <div className="flex min-w-0 items-center gap-1">
+            {canSuggest && (
+              <AssigneeSuggestButton
+                projectId={issue.projectId}
+                issueId={issue.id}
+                disabled={patch.isPending}
+                onPick={(userId) => {
+                  if (userId === (issue.assignee?.id ?? null)) return;
+                  patch.mutate(
+                    { id: issue.id, key: issue.key, patch: { assigneeId: userId }, version: issue.version },
+                    { onError: (e) => toast.error(apiErrorMessage(e)) },
+                  );
+                }}
+              />
+            )}
+            <PeoplePicker
+              ariaLabel="Người phụ trách"
+              value={issue.assignee?.id ?? ''}
+              disabled={patch.isPending}
+              align="end"
+              options={assignees}
+              onChange={(v) => {
+                const next = v || null;
+                if (next !== (issue.assignee?.id ?? null)) {
+                  patch.mutate(
+                    { id: issue.id, key: issue.key, patch: { assigneeId: next }, version: issue.version },
+                    { onError: (e) => toast.error(apiErrorMessage(e)) },
+                  );
+                }
+              }}
+              className={`${INLINE_TRIGGER} justify-end`}
+              renderTrigger={() =>
+                issue.assignee ? (
+                  <span className="flex items-center gap-1.5">
+                    <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={18} />
+                    <span className="truncate">{issue.assignee.displayName}</span>
+                  </span>
+                ) : (
+                  <span className="text-faint" title="Chưa có ai nhận việc này. Bấm để chọn người phụ trách.">Chưa gán</span>
+                )
               }
-            }}
-            className={`${INLINE_TRIGGER} justify-end`}
-            renderTrigger={() =>
-              issue.assignee ? (
-                <span className="flex items-center gap-1.5">
-                  <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={18} />
-                  <span className="truncate">{issue.assignee.displayName}</span>
-                </span>
-              ) : (
-                <span className="text-faint" title="Chưa có ai nhận việc này. Bấm để chọn người phụ trách.">Chưa gán</span>
-              )
-            }
-          />
+            />
+          </div>
         </div>
 
         <InfoRow label="Người tạo" hint="Người đã tạo công việc này — thường là người cần kết quả">
