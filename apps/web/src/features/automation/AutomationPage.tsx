@@ -3,6 +3,7 @@ import { CalendarClock, FileStack, Pause, Pencil, Play, Plus, Trash2 } from 'luc
 import { toast } from 'sonner';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -70,6 +71,7 @@ export function AutomationPage() {
 function TemplatesPanel({ canManage }: { canManage: boolean }) {
   const { data, isLoading } = useIssueTemplates();
   const remove = useDeleteTemplate();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState<IssueTemplate | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -79,7 +81,12 @@ function TemplatesPanel({ canManage }: { canManage: boolean }) {
   }
 
   async function destroy(t: IssueTemplate) {
-    if (!window.confirm(`Xoá mẫu “${t.name}”? Các việc đã tạo từ mẫu này vẫn giữ nguyên.`)) return;
+    const ok = await confirm({
+      title: `Xoá mẫu “${t.name}”?`,
+      description: 'Các việc đã tạo từ mẫu này vẫn giữ nguyên.',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await remove.mutateAsync({ id: t.id, projectId: t.projectId });
       toast.success('Đã xoá mẫu công việc');
@@ -164,6 +171,7 @@ function RecurringPanel({ canManage }: { canManage: boolean }) {
   const { data, isLoading } = useRecurringIssues();
   const update = useUpdateRecurring();
   const remove = useDeleteRecurring();
+  const confirm = useConfirm();
   const runNow = useRunRecurringNow();
   const [editing, setEditing] = useState<RecurringIssue | null>(null);
   const [open, setOpen] = useState(false);
@@ -196,7 +204,12 @@ function RecurringPanel({ canManage }: { canManage: boolean }) {
   }
 
   async function destroy(r: RecurringIssue) {
-    if (!window.confirm(`Xoá lịch “${r.name}”? Các công việc đã tạo trước đó vẫn giữ nguyên.`)) return;
+    const ok = await confirm({
+      title: `Xoá lịch “${r.name}”?`,
+      description: 'Các công việc đã tạo trước đó vẫn giữ nguyên.',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await remove.mutateAsync({ id: r.id, projectId: r.projectId });
       toast.success('Đã xoá lịch lặp');
