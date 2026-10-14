@@ -27,7 +27,7 @@ const SCALAR_FIELDS = [
 export function scalarIssuePatch(body: Record<string, unknown>): Partial<IssueDto> {
   const out: Record<string, unknown> = {};
   for (const f of SCALAR_FIELDS) if (f in body) out[f] = body[f];
-  return out as Partial<IssueDto>;
+  return out;
 }
 
 function apply(issue: IssueDto, patch: IssuePatch): IssueDto {
