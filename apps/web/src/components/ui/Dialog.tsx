@@ -1,0 +1,102 @@
+import type { KeyboardEvent, ReactNode } from 'react';
+import * as RadixDialog from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+const SIZE: Record<'sm' | 'md' | 'lg' | 'xl', string> = {
+  sm: 'max-w-sm',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  xl: 'max-w-4xl',
+};
+
+export interface DialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Tiêu đề hiển thị (cũng là tên truy cập của hộp thoại cho trình đọc màn hình). */
+  title: string;
+  description?: string;
+  children?: ReactNode;
+  /** Hàng nút cố định ở đáy (Huỷ / Lưu…). Với form tự có nút submit, bọc cả form quanh children và bỏ footer. */
+  footer?: ReactNode;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Cmd/Ctrl+Enter gọi onSubmit nếu có (kể cả khi đang gõ trong textarea). */
+  onSubmit?: () => void;
+  /** Class thêm cho vùng nội dung cuộn (vd bỏ padding khi nội dung tự quản lý bố cục). */
+  bodyClassName?: string;
+  /** Ẩn tiêu đề khỏi mắt nhìn nhưng vẫn giữ cho trình đọc màn hình (vd bảng lệnh có ô tìm riêng). */
+  hideTitle?: boolean;
+  /** Class thêm cho khung nội dung (vd đặt chiều cao cố định). */
+  className?: string;
+}
+
+/**
+ * Hộp thoại dùng chung, bọc @radix-ui/react-dialog: Radix lo focus-trap, Esc, trả focus về nút mở,
+ * `role="dialog"` + `aria-modal`. Nút đóng (X) đặt CUỐI trong DOM để focus đầu tiên rơi vào ô nhập,
+ * không rơi vào nút đóng. Nền tối nhạt (không blur/kính mờ), chuyển động 150ms — tắt hẳn khi người
+ * dùng bật `prefers-reduced-motion` (quy tắc toàn cục ở globals.css).
+ */
+export function Dialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  children,
+  footer,
+  size = 'md',
+  onSubmit,
+  bodyClassName,
+  hideTitle = false,
+  className,
+}: DialogProps) {
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!onSubmit) return;
+    if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey) || e.defaultPrevented) return;
+    // Dialog lồng nhau: sự kiện React nổi lên qua portal — chỉ xử lý phím gõ bên trong chính hộp này.
+    if (!e.currentTarget.contains(e.target as Node)) return;
+    e.preventDefault();
+    onSubmit();
+  };
+
+  return (
+    <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
+      <RadixDialog.Portal>
+        <RadixDialog.Overlay className="fixed inset-0 z-modal bg-[oklch(0.2_0.014_256/0.45)] duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
+        <RadixDialog.Content
+          // Không có mô tả thì báo rõ cho Radix (tránh cảnh báo thiếu aria-describedby).
+          {...(description ? {} : { 'aria-describedby': undefined })}
+          onKeyDown={onKeyDown}
+          // `inset-0 m-auto h-fit` canh giữa mà không dùng transform → không xung đột với animation zoom.
+          className={cn(
+            'fixed inset-0 z-modal m-auto flex h-fit max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-lg duration-150',
+            'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[.98]',
+            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98]',
+            SIZE[size],
+            className,
+          )}
+        >
+          <div className={cn('shrink-0 px-5 pt-4 pr-14', children == null || children === false ? 'pb-3' : 'pb-1', hideTitle && 'sr-only')}>
+            <RadixDialog.Title className="text-base font-semibold text-ink-strong">{title}</RadixDialog.Title>
+            {description && (
+              <RadixDialog.Description className="mt-1 text-sm text-muted">{description}</RadixDialog.Description>
+            )}
+          </div>
+          {children != null && children !== false && (
+            <div className={cn('min-h-0 flex-1 overflow-y-auto px-5 py-3', bodyClassName)}>{children}</div>
+          )}
+          {footer && (
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3">
+              {footer}
+            </div>
+          )}
+          <RadixDialog.Close
+            aria-label="Đóng"
+            className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </RadixDialog.Close>
+        </RadixDialog.Content>
+      </RadixDialog.Portal>
+    </RadixDialog.Root>
+  );
+}
