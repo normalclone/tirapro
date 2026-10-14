@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS, type SprintDto } from '@tirapro/types';
 import type { CreateSprintInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { iso } from '../../common/mappers/date';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 
 @Injectable()
@@ -103,9 +104,9 @@ export class SprintsService {
     return {
       id: s.id, projectId: s.projectId, boardId: s.boardId, name: s.name, goal: s.goal,
       state: s.state as SprintDto['state'],
-      startDate: s.startDate?.toISOString() ?? null,
-      endDate: s.endDate?.toISOString() ?? null,
-      completeDate: s.completeDate?.toISOString() ?? null,
+      startDate: iso(s.startDate),
+      endDate: iso(s.endDate),
+      completeDate: iso(s.completeDate),
       sequence: s.sequence, issueCount, totalPoints,
     };
   }

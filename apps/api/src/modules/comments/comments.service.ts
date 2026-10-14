@@ -4,6 +4,7 @@ import { DOMAIN_EVENTS, type CommentDto } from '@tirapro/types';
 import type { CreateCommentInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { toUserDto } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException, VersionConflictException } from '../../common/exceptions/app.exception';
 
 const commentInclude = { author: true } satisfies Prisma.CommentInclude;
@@ -86,7 +87,7 @@ export class CommentsService {
       issueId: c.issueId,
       authorId: c.authorId,
       author: c.author
-        ? { id: c.author.id, email: c.author.email, displayName: c.author.displayName, avatarUrl: c.author.avatarUrl, timezone: c.author.timezone, locale: c.author.locale, status: c.author.status, isSystemAdmin: c.author.isSystemAdmin, lastSeenAt: c.author.lastSeenAt?.toISOString() ?? null, createdAt: c.author.createdAt.toISOString() }
+        ? toUserDto(c.author)
         : null,
       body: c.body,
       bodyFormat: c.bodyFormat,

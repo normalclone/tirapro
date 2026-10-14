@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DOMAIN_EVENTS, PERMISSIONS, type IssueDto, type UserStatus } from '@tirapro/types';
+import { DOMAIN_EVENTS, PERMISSIONS, type IssueDto } from '@tirapro/types';
 import { rankBetween, issueTypePrefix, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { toUserDto } from '../../common/mappers/user.mapper';
+import { iso } from '../../common/mappers/date';
 import { RbacService } from '../rbac/rbac.service';
 import {
   BusinessRuleException,
@@ -410,13 +412,13 @@ export class IssuesService {
       type: { id: i.type.id, name: i.type.name, key: i.type.key, iconUrl: i.type.iconUrl, color: i.type.color, hierarchyLevel: i.type.hierarchyLevel, isSubtask: i.type.isSubtask },
       status: { id: i.status.id, workflowId: i.status.workflowId, name: i.status.name, category: i.status.category, color: i.status.color, order: i.status.order, isInitial: i.status.isInitial },
       priority: i.priority ? { id: i.priority.id, name: i.priority.name, iconKey: i.priority.iconKey, color: i.priority.color, rank: i.priority.rank, isDefault: i.priority.isDefault } : null,
-      assignee: i.assignee ? this.userDto(i.assignee) : null,
+      assignee: i.assignee ? toUserDto(i.assignee) : null,
       workspaceId: i.workspaceId,
       projectId: i.projectId,
       number: i.number,
       description: i.description,
       descriptionFormat: i.descriptionFormat,
-      reporter: i.reporter ? this.userDto(i.reporter) : null,
+      reporter: i.reporter ? toUserDto(i.reporter) : null,
       reporterId: i.reporterId,
       assigneeId: i.assigneeId,
       parentId: i.parentId,
@@ -426,13 +428,13 @@ export class IssuesService {
       originalEstimate: i.originalEstimate,
       remainingEstimate: i.remainingEstimate,
       timeSpent: i.timeSpent,
-      dueDate: i.dueDate?.toISOString() ?? null,
-      startDate: i.startDate?.toISOString() ?? null,
+      dueDate: iso(i.dueDate),
+      startDate: iso(i.startDate),
       resolution: i.resolution ? { id: i.resolution.id, name: i.resolution.name, description: i.resolution.description, rank: i.resolution.rank } : null,
-      resolvedAt: i.resolvedAt?.toISOString() ?? null,
+      resolvedAt: iso(i.resolvedAt),
       severity: i.severity ? { id: i.severity.id, name: i.severity.name, description: i.severity.description, color: i.severity.color, rank: i.severity.rank, isDefault: i.severity.isDefault } : null,
       triageState: i.triageState,
-      triageSnoozeUntil: i.triageSnoozeUntil?.toISOString() ?? null,
+      triageSnoozeUntil: iso(i.triageSnoozeUntil),
       occurrenceCount: i.occurrenceCount,
       rank: i.rank,
       version: i.version,
@@ -440,9 +442,5 @@ export class IssuesService {
       createdAt: i.createdAt.toISOString(),
       updatedAt: i.updatedAt.toISOString(),
     };
-  }
-
-  private userDto(u: { id: string; email: string; displayName: string; avatarUrl: string | null; timezone: string; locale: string; status: UserStatus; isSystemAdmin: boolean; lastSeenAt: Date | null; createdAt: Date }) {
-    return { id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl, timezone: u.timezone, locale: u.locale, status: u.status, isSystemAdmin: u.isSystemAdmin, lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString() };
   }
 }

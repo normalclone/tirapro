@@ -1,16 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { toUserDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
-
-const USER_SELECT = {
-  id: true, email: true, displayName: true, avatarUrl: true, timezone: true,
-  locale: true, status: true, isSystemAdmin: true, lastSeenAt: true, createdAt: true,
-} as const;
-
-type UserRow = {
-  id: string; email: string; displayName: string; avatarUrl: string | null; timezone: string;
-  locale: string; status: string; isSystemAdmin: boolean; lastSeenAt: Date | null; createdAt: Date;
-};
 
 /** Người tham gia + checklist của issue. Luôn kiểm tra issue thuộc workspace người gọi. */
 @Injectable()
@@ -26,14 +17,6 @@ export class IssueExtrasService {
     return issue;
   }
 
-  private toUserDto(u: UserRow) {
-    return {
-      id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl, timezone: u.timezone,
-      locale: u.locale, status: u.status, isSystemAdmin: u.isSystemAdmin,
-      lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString(),
-    };
-  }
-
   // ───────────── Người tham gia ─────────────
 
   async listParticipants(workspaceId: string, issueId: string) {
@@ -41,9 +24,9 @@ export class IssueExtrasService {
     const rows = await this.prisma.issueParticipant.findMany({
       where: { issueId },
       orderBy: { createdAt: 'asc' },
-      select: { user: { select: USER_SELECT } },
+      select: { user: { select: USER_DTO_SELECT } },
     });
-    return rows.map((r) => this.toUserDto(r.user));
+    return rows.map((r) => toUserDto(r.user));
   }
 
   /** Đặt lại toàn bộ danh sách người tham gia (chỉ nhận thành viên workspace). */
