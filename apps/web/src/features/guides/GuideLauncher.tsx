@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { HelpCircle } from 'lucide-react';
-import { driver, type DriveStep } from 'driver.js';
+import type { DriveStep, Driver, Config } from 'driver.js';
 import type { TourContent, TourStepDef } from '@tirapro/shared';
 import { GuideType } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { useScreenGuides, useMarkGuide, type ScreenGuide } from './api';
-import 'driver.js/dist/driver.css';
 
 /**
  * Chuẩn hoá pathname cụ thể → screen pattern khớp với BE.
@@ -50,10 +49,17 @@ export function GuideLauncher() {
   const autoStarted = useRef<Set<string>>(new Set());
 
   const runTour = useCallback(
-    (guide: ScreenGuide, opts: { markSeen?: boolean }) => {
+    async (guide: ScreenGuide, opts: { markSeen?: boolean }) => {
       if (!isTour(guide.content)) return;
       const steps = toDriveSteps(guide.content.steps);
       if (steps.length === 0) return;
+      // driver.js + CSS chỉ tải khi thật sự chạy tour (không nằm trong bundle đầu).
+      let driver: (config?: Config) => Driver;
+      try {
+        [{ driver }] = await Promise.all([import('driver.js'), import('driver.js/dist/driver.css')]);
+      } catch {
+        return; // mất mạng khi tải thư viện: bỏ qua, người dùng bấm lại “Hướng dẫn màn này” sau
+      }
       if (opts.markSeen) markGuide.mutate({ key: guide.key, action: 'seen' });
       const d = driver({
         showProgress: true,
@@ -81,13 +87,13 @@ export function GuideLauncher() {
     if (autoStarted.current.has(screen)) return;
     autoStarted.current.add(screen);
     // Đợi 1 frame cho DOM (data-tour targets) render xong.
-    const t = window.setTimeout(() => runTour(primaryTour, { markSeen: true }), 350);
+    const t = window.setTimeout(() => { void runTour(primaryTour, { markSeen: true }); }, 350);
     return () => window.clearTimeout(t);
   }, [primaryTour, screen, runTour]);
 
   // Bảng lệnh có thể yêu cầu chạy tour màn hiện tại (sự kiện dùng chung).
   useEffect(() => {
-    const onTour = () => primaryTour && runTour(primaryTour, { markSeen: !primaryTour.seen });
+    const onTour = () => { if (primaryTour) void runTour(primaryTour, { markSeen: !primaryTour.seen }); };
     window.addEventListener('tirapro:tour', onTour);
     return () => window.removeEventListener('tirapro:tour', onTour);
   }, [primaryTour, runTour]);
@@ -101,7 +107,7 @@ export function GuideLauncher() {
         aria-label="Hướng dẫn màn này"
         title="Hướng dẫn màn này"
         disabled={!primaryTour}
-        onClick={() => primaryTour && runTour(primaryTour, { markSeen: !primaryTour.seen })}
+        onClick={() => { if (primaryTour) void runTour(primaryTour, { markSeen: !primaryTour.seen }); }}
       >
         <HelpCircle className="h-4 w-4" />
       </Button>
