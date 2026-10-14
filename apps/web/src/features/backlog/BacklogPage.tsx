@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Plus, Play, CheckCircle2, ChevronRight, Inbox } from 'lucide-react';
+import { Plus, Play, CheckCircle2, ChevronRight, Inbox, Pencil } from 'lucide-react';
 import { DueBadge, dueBorderClass } from '@/components/ui/DueBadge';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { byPriorityThenStatus } from '@/lib/issueOrder';
@@ -15,8 +15,10 @@ import { useProject } from '@/features/projects/api';
 import {
   useProjectSprints, useCreateSprint,
   useStartSprint, useCompleteSprint, useMoveToSprint, useBulkUpdateIssues,
-  type BulkIssuePatch,
+  type BulkIssuePatch, type MoveIncompleteTo,
 } from './api';
+import { CompleteSprintDialog } from './CompleteSprintDialog';
+import { SprintEditDialog } from './SprintEditDialog';
 import { useProjectIssues } from '@/features/issues/api';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
@@ -86,6 +88,8 @@ export function BacklogPage() {
   const [showClosed, setShowClosed] = useState(false);
   // Sprint đang chờ xác nhận hoàn thành khi còn việc chưa xong.
   const [completing, setCompleting] = useState<{ id: string; name: string; notDone: number } | null>(null);
+  // Sprint đang mở hộp thoại sửa/xoá.
+  const [editing, setEditing] = useState<SprintDto | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -321,13 +325,16 @@ export function BacklogPage() {
     });
   }
 
-  // Xác nhận hoàn thành sprint còn việc chưa xong (việc chưa xong sẽ về Backlog phía BE).
-  function confirmComplete() {
+  // Xác nhận hoàn thành sprint còn việc chưa xong; người dùng chọn việc chưa xong đi đâu.
+  function confirmComplete(moveIncompleteTo: MoveIncompleteTo) {
     if (!completing) return;
-    const { id, name } = completing;
+    const { id, name, notDone } = completing;
     setCompleting(null);
-    completeSprint.mutate(id, {
-      onSuccess: () => toast.success(`Đã kết thúc sprint “${name}”. Việc chưa xong đã quay về Backlog.`),
+    const where = moveIncompleteTo === 'backlog' ? 'quay về Backlog'
+      : moveIncompleteTo === 'new' ? 'đã chuyển sang sprint mới'
+      : `đã chuyển sang “${labelForSprint(moveIncompleteTo.sprintId)}”`;
+    completeSprint.mutate({ sprintId: id, moveIncompleteTo }, {
+      onSuccess: () => toast.success(notDone > 0 ? `Đã kết thúc sprint “${name}”. ${notDone} việc chưa xong ${where}.` : `Đã kết thúc sprint “${name}”`),
       onError: (err) => toast.error(apiErrorMessage(err)),
     });
   }
@@ -399,7 +406,18 @@ export function BacklogPage() {
                 onToggleSection={toggleSelectSection}
                 action={
                   canManageSprint ? (
-                    sprint.state === 'FUTURE' ? (
+                    <div className="flex items-center gap-1.5">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      aria-label={`Sửa sprint ${sprint.name}`}
+                      title={sprint.state === 'FUTURE' ? 'Sửa tên, mục tiêu, ngày — hoặc xoá sprint' : 'Sửa mục tiêu và ngày kết thúc'}
+                      onClick={() => setEditing(sprint)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    {sprint.state === 'FUTURE' ? (
                       <Button
                         size="sm"
                         title={`Bắt đầu đợt làm việc này. ${SPRINT_TIP}`}
@@ -413,13 +431,13 @@ export function BacklogPage() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        title="Kết thúc đợt làm việc này. Việc chưa xong sẽ quay về Backlog."
-                        loading={completeSprint.isPending && completeSprint.variables === sprint.id}
+                        title="Kết thúc đợt làm việc này. Bạn chọn việc chưa xong đi đâu: Backlog, sprint mới hoặc sprint có sẵn."
+                        loading={completeSprint.isPending && completeSprint.variables?.sprintId === sprint.id}
                         onClick={() =>
-                          // Còn việc chưa xong → hỏi xác nhận; xong hết → kết thúc luôn.
+                          // Còn việc chưa xong → hỏi chuyển đi đâu; xong hết → kết thúc luôn.
                           notDone > 0
                             ? setCompleting({ id: sprint.id, name: sprint.name, notDone })
-                            : completeSprint.mutate(sprint.id, {
+                            : completeSprint.mutate({ sprintId: sprint.id }, {
                                 onSuccess: () => toast.success(`Đã kết thúc sprint “${sprint.name}”`),
                                 onError: (err) => toast.error(apiErrorMessage(err)),
                               })
@@ -428,7 +446,8 @@ export function BacklogPage() {
                         <CheckCircle2 className="h-4 w-4" />
                         Kết thúc sprint
                       </Button>
-                    )
+                    )}
+                    </div>
                   ) : undefined
                 }
                 hint={
@@ -437,7 +456,7 @@ export function BacklogPage() {
                       ? 'Đang có một sprint chạy dở — kết thúc sprint đó trước rồi mới bắt đầu sprint này.'
                       : sprint.goal)
                     : (notDone > 0
-                      ? `Còn ${notDone} việc chưa xong. Khi bạn kết thúc sprint, những việc này sẽ quay về Backlog để xếp lại sau.`
+                      ? `Còn ${notDone} việc chưa xong. Khi kết thúc sprint, bạn chọn đưa chúng về Backlog hoặc sang sprint khác.`
                       : sprint.goal)
                 }
               />
@@ -522,12 +541,17 @@ export function BacklogPage() {
 
       {completing && (
         <CompleteSprintDialog
+          open
           name={completing.name}
           notDone={completing.notDone}
+          futureSprints={visibleSprints.filter((sp) => sp.state === 'FUTURE')}
           loading={completeSprint.isPending}
           onConfirm={confirmComplete}
           onCancel={() => setCompleting(null)}
         />
+      )}
+      {editing && projectId && (
+        <SprintEditDialog open sprint={editing} projectId={projectId} onClose={() => setEditing(null)} />
       )}
     </div>
   );
@@ -635,49 +659,6 @@ function Section({
         )}
       </div>
     </section>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Dialog xác nhận kết thúc sprint khi còn việc chưa xong              */
-/* ------------------------------------------------------------------ */
-
-function CompleteSprintDialog({
-  name, notDone, loading, onConfirm, onCancel,
-}: {
-  name: string;
-  notDone: number;
-  loading: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onCancel();
-      if (e.key === 'Enter') onConfirm();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel, onConfirm]);
-
-  return (
-    <div className="fixed inset-0 z-modal flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="complete-sprint-title">
-      <button className="absolute inset-0 bg-black/30 animate-in fade-in duration-200" onClick={onCancel} aria-label="Đóng" />
-      <div className="relative w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-lg animate-in fade-in zoom-in-95 duration-200">
-        <h2 id="complete-sprint-title" className="text-base font-semibold text-ink-strong">Kết thúc sprint “{name}”?</h2>
-        <p className="mt-2 text-sm text-muted">
-          Còn <span className="font-medium text-ink">{notDone}</span> việc chưa xong. Những việc này sẽ quay về{' '}
-          <span className="font-medium text-ink" title={BACKLOG_TIP}>Backlog</span> để bạn xếp vào sprint sau.
-        </p>
-        <div className="mt-5 flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={loading}>Để sau</Button>
-          <Button size="sm" loading={loading} onClick={onConfirm}>
-            <CheckCircle2 className="h-4 w-4" />
-            Kết thúc sprint
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }
 
