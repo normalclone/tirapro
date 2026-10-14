@@ -12,6 +12,11 @@ export function buildSocketCors(origins: string[] | undefined): ServerOptions['c
   return { origin: origins && origins.length > 0 ? origins : false, credentials: true };
 }
 
+/** Backoff tăng dần, trần 10 giây, không bao giờ trả null (không bỏ cuộc). */
+export function pubSubRetryStrategy(times: number): number {
+  return Math.min(times * 200, 10_000);
+}
+
 /** Chờ client ioredis vào trạng thái ready; false nếu quá hạn hoặc kết nối đã đóng. */
 function waitReady(client: Redis, timeoutMs: number): Promise<boolean> {
   if (client.status === 'ready') return Promise.resolve(true);
@@ -62,8 +67,10 @@ export class RedisIoAdapter extends IoAdapter {
     }
     // RedisService tắt offline queue; client pub/sub phải bật lại, nếu không lệnh (p)subscribe mà
     // createAdapter gửi ngay khi gắn adapter sẽ bị từ chối khi kết nối chưa xong → broadcast liên node im lặng hỏng.
-    const pub = this.redis.duplicate({ enableOfflineQueue: true });
-    const sub = this.redis.duplicate({ enableOfflineQueue: true });
+    // retryStrategy ghi đè: client gốc bỏ cuộc sau 5 lần thử, còn pub/sub phải tự nối lại dù Redis chết lâu.
+    const options = { enableOfflineQueue: true, retryStrategy: pubSubRetryStrategy };
+    const pub = this.redis.duplicate(options);
+    const sub = this.redis.duplicate(options);
     if (!pub || !sub) {
       pub?.disconnect();
       sub?.disconnect();

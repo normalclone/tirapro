@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfigService } from '@nestjs/config';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { RedisService } from '../../infra/redis/redis.service';
-import { RedisIoAdapter, buildSocketCors } from './redis-io.adapter';
+import { RedisIoAdapter, buildSocketCors, pubSubRetryStrategy } from './redis-io.adapter';
 
 type FakeClient = {
   status: string;
@@ -73,7 +73,14 @@ describe('RedisIoAdapter.connectToRedis', () => {
     const { adapter, redis } = makeAdapter({ useRedisAdapter: true, available: true });
     expect(await adapter.connectToRedis(0)).toBe(true);
     expect(redis.duplicate).toHaveBeenCalledTimes(2);
-    expect(redis.duplicate).toHaveBeenCalledWith({ enableOfflineQueue: true });
+    expect(redis.duplicate).toHaveBeenCalledWith({ enableOfflineQueue: true, retryStrategy: pubSubRetryStrategy });
+  });
+
+  it('retryStrategy của pub/sub không bao giờ trả null (backoff trần 10 giây)', () => {
+    expect(pubSubRetryStrategy(1)).toBe(200);
+    expect(pubSubRetryStrategy(5)).toBe(1000);
+    expect(pubSubRetryStrategy(6)).toBe(1200);
+    expect(pubSubRetryStrategy(1000)).toBe(10_000);
   });
 
   it('client pub/sub chưa kịp ready thì đóng chúng và giảm cấp về in-memory', async () => {

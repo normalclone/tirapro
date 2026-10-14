@@ -50,6 +50,6 @@ RUN mkdir -p /app/uploads && chown node:node /app/uploads
 USER node
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/api/v1/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 # migrate deploy + db:raw (extension pgvector/pg_trgm, idempotent) rồi mới chạy server — giống startCommand ở render.yaml.
-CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/prisma db execute --file ./prisma/sql/01_pgvector_fts.sql --schema ./prisma/schema.prisma && node dist/main.js"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/prisma db execute --file ./prisma/sql/01_pgvector_fts.sql --schema ./prisma/schema.prisma && exec node dist/main.js"]

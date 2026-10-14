@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { FixVersionType, VersionStatus } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { assertIssueWritable } from '../../common/project-writable';
 import {
   BusinessRuleException,
   NotFoundAppException,
@@ -134,6 +135,7 @@ export class ComponentsService {
     componentId: string,
   ): Promise<{ ok: true }> {
     const issue = await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const component = await this.prisma.component.findFirst({
       where: { id: componentId, projectId: issue.projectId },
       select: { id: true },
@@ -156,6 +158,7 @@ export class ComponentsService {
     componentId: string,
   ): Promise<{ ok: true }> {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     try {
       await this.prisma.issueComponent.delete({
         where: { issueId_componentId: { issueId, componentId } },
@@ -252,6 +255,7 @@ export class ComponentsService {
     type: FixVersionType,
   ): Promise<{ ok: true }> {
     const issue = await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const version = await this.prisma.version.findFirst({
       where: { id: versionId, projectId: issue.projectId },
       select: { id: true },
@@ -275,6 +279,7 @@ export class ComponentsService {
     type: FixVersionType,
   ): Promise<{ ok: true }> {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     try {
       await this.prisma.issueFixVersion.delete({
         where: { issueId_versionId_type: { issueId, versionId, type } },

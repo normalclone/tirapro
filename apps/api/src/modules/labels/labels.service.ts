@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { LabelDto } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { assertIssueWritable } from '../../common/project-writable';
 import {
   BusinessRuleException,
   NotFoundAppException,
@@ -83,6 +84,7 @@ export class LabelsService {
     labelId: string,
   ): Promise<{ ok: true }> {
     const issue = await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const label = await this.prisma.label.findFirst({
       where: { id: labelId, projectId: issue.projectId },
       select: { id: true },
@@ -105,6 +107,7 @@ export class LabelsService {
     labelId: string,
   ): Promise<{ ok: true }> {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     try {
       await this.prisma.issueLabel.delete({
         where: { issueId_labelId: { issueId, labelId } },

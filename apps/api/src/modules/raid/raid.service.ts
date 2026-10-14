@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma, RaidKind, RaidStatus } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertProjectWritable } from '../../common/project-writable';
 import type { CreateRaidInput, UpdateRaidInput } from './raid.schemas';
 
 const OWNER_SELECT = { id: true, displayName: true, email: true, avatarUrl: true } as const;
@@ -77,6 +78,7 @@ export class RaidService {
 
   async create(workspaceId: string, dto: CreateRaidInput, actingUserId: string) {
     const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
+    if (projectId) await assertProjectWritable(this.prisma, projectId);
     const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
 
     const created = await this.prisma.raidItem.create({
@@ -100,7 +102,8 @@ export class RaidService {
   }
 
   async update(workspaceId: string, id: string, dto: UpdateRaidInput) {
-    await this.requireItem(workspaceId, id);
+    const item = await this.requireItem(workspaceId, id);
+    if (item.projectId) await assertProjectWritable(this.prisma, item.projectId);
     const data: Prisma.RaidItemUpdateInput = {};
 
     if (dto.title !== undefined && dto.title !== null) {
@@ -117,6 +120,7 @@ export class RaidService {
     if (dto.dueDate !== undefined) data.dueDate = this.parseDate(dto.dueDate ?? null);
     if (dto.projectId !== undefined) {
       const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
+      if (projectId && projectId !== item.projectId) await assertProjectWritable(this.prisma, projectId);
       data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
     }
     if (dto.ownerId !== undefined) {
@@ -129,7 +133,8 @@ export class RaidService {
   }
 
   async remove(workspaceId: string, id: string) {
-    await this.requireItem(workspaceId, id);
+    const item = await this.requireItem(workspaceId, id);
+    if (item.projectId) await assertProjectWritable(this.prisma, item.projectId);
     await this.prisma.raidItem.delete({ where: { id } });
     return { success: true };
   }
@@ -137,7 +142,7 @@ export class RaidService {
   // ───────────────────────── helpers ─────────────────────────
 
   private async requireItem(workspaceId: string, id: string) {
-    const row = await this.prisma.raidItem.findFirst({ where: { id, workspaceId }, select: { id: true } });
+    const row = await this.prisma.raidItem.findFirst({ where: { id, workspaceId }, select: { id: true, projectId: true } });
     if (!row) throw new NotFoundAppException('Mục rủi ro');
     return row;
   }
