@@ -10,6 +10,7 @@ import { FloatingActions } from '@/components/layout/FloatingActions';
 import { MaintenanceBanner } from '@/components/layout/MaintenanceBanner';
 import { ShortcutsDialog, SHORTCUTS_EVENT } from '@/components/layout/ShortcutsDialog';
 import { Button } from '@/components/ui/Button';
+import { ConfirmHost } from '@/components/ui/useConfirm';
 import { useAi } from '@/stores/ai';
 import { useGlobalHotkeys } from '@/lib/useGlobalHotkeys';
 import { cn } from '@/lib/utils';
@@ -172,6 +173,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {!admin && <FloatingActions />}
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      {/* Hộp xác nhận dùng chung cho useConfirm() — chỉ mount một lần. */}
+      <ConfirmHost />
     </div>
   );
 }

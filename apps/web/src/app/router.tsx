@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/stores/auth';
 import { AppShell } from '@/components/layout/AppShell';
+import { RouteError } from '@/components/layout/RouteError';
 // Vào ngay từ đầu (unauth first paint + shell) → giữ eager, không tách chunk.
 import { LoginPage } from '@/features/auth/LoginPage';
 import { SignupPage } from '@/features/auth/SignupPage';
@@ -103,6 +104,7 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <RequireAuth />,
+    errorElement: <RouteError />,
     children: [
       { index: true, element: <DashboardPage /> },
       { path: 'projects', element: <ProjectsIndexRedirect /> },
@@ -177,6 +179,7 @@ export const router = createBrowserRouter([
       {
         path: 'p/:key',
         element: <ProjectLayout />,
+        errorElement: <RouteError />,
         children: [
           { index: true, element: <Navigate to="board" replace /> },
           { path: 'board', element: <BoardPage /> },

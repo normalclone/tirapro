@@ -19,9 +19,12 @@ function isTypingTarget(el: EventTarget | null): boolean {
   );
 }
 
-/** Có dialog/modal nào đang mở không (bảng lệnh, modal…) → bỏ qua hotkey. */
+/**
+ * Có dialog/modal nào đang MỞ không → bỏ qua hotkey. Radix gắn cả `role="dialog"` lẫn
+ * `data-state` ("closed" khi đang chạy hiệu ứng đóng, DOM chưa gỡ) nên phải kiểm `open`.
+ */
 function isDialogOpen(): boolean {
-  return !!document.querySelector('[role="dialog"], [aria-modal="true"], [cmdk-root]');
+  return !!document.querySelector('[role="dialog"][data-state="open"]');
 }
 
 /**
