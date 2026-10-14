@@ -26,25 +26,38 @@ describe('rankBetween', () => {
     const r = rankBetween('n', 'n1');
     expect(r > 'n' && r < 'n1').toBe(true);
   });
-  it('property: 10k cặp ngẫu nhiên', () => {
+  it('property: 10k cặp ngẫu nhiên (RNG có seed) — RankGapError chỉ khi next = prev + số 0 hoặc prev >= next', () => {
+    // LCG (Numerical Recipes) để lỗi tái hiện được: cùng seed → cùng dãy cặp.
+    let state = 20261016;
+    const rand = (n: number): number => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return Math.floor((state / 0x100000000) * n);
+    };
     const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
     const rnd = () =>
-      Array.from({ length: 1 + Math.floor(Math.random() * 6) }, () => chars[Math.floor(Math.random() * 36)])
+      Array.from({ length: 1 + rand(6) }, () => chars[rand(36)])
         .join('')
         .replace(/0+$/, '') || '1';
+    let gaps = 0;
     for (let i = 0; i < 10000; i++) {
-      let a = rnd();
-      let b = rnd();
-      if (a === b) continue;
-      if (a > b) [a, b] = [b, a];
-      try {
-        const r = rankBetween(a, b);
-        expect(r > a && r < b).toBe(true);
-        expect(r.endsWith('0')).toBe(false);
-      } catch (e) {
-        expect(e).toBeInstanceOf(RankGapError);
-      }
+      const x = rnd();
+      const y = rnd();
+      if (x === y) continue;
+      const [a, b] = x < y ? [x, y] : [y, x];
+
+      // a < b hợp lệ (không có số 0 đuôi): luôn phải có rank nằm giữa.
+      const r = rankBetween(a, b);
+      expect(r > a && r < b).toBe(true);
+      expect(r.endsWith('0')).toBe(false);
+
+      // prev >= next: luôn là RankGapError.
+      expect(() => rankBetween(b, a)).toThrow(RankGapError);
+
+      // next = prev + số 0 (cùng giá trị thập phân): luôn là RankGapError.
+      expect(() => rankBetween(a, a + '0'.repeat(1 + rand(3)))).toThrow(RankGapError);
+      gaps++;
     }
+    expect(gaps).toBeGreaterThan(9000);
   });
   it('initialRanks cách đều và tăng dần', () => {
     const rs = initialRanks(10);

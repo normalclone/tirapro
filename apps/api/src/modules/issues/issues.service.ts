@@ -525,12 +525,15 @@ export class IssuesService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (wip) await this.enforceWip(tx, wip, { userId, workspaceId, projectId: current.projectId, incoming: 1, force: input.force });
-      return this.updateWithVersion(tx, id, workspaceId, input.version, {
+      const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
         rank,
         statusId: input.statusId ?? current.statusId,
         sprintId: input.sprintId !== undefined ? input.sprintId : current.sprintId,
         updatedById: userId,
       });
+      // Kéo sang cột/trạng thái khác cũng là đổi trạng thái: ghi lịch sử để CFD/burndown không hụt.
+      if (row.statusId !== current.statusId) await this.recordStatusChange(tx, userId, current, row);
+      return row;
     });
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.ISSUE_MOVED, {

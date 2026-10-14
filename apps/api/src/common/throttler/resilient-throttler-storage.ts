@@ -29,7 +29,10 @@ export class ResilientThrottlerStorage implements ThrottlerStorage, OnApplicatio
   ): Promise<IncrementResult> {
     if (this.redisStorage && this.isRedisUp()) {
       try {
-        return await this.redisStorage.increment(key, ttl, limit, blockDuration, throttlerName);
+        const result = await this.redisStorage.increment(key, ttl, limit, blockDuration, throttlerName);
+        // Redis đã phục hồi → cho phép cảnh báo lại ở đợt sự cố kế tiếp.
+        this.warnedFallback = false;
+        return result;
       } catch (err) {
         if (!this.warnedFallback) {
           this.warnedFallback = true;

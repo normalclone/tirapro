@@ -57,6 +57,19 @@ describe('MailService.enqueue', () => {
     expect(data.payload.items).toHaveLength(1);
   });
 
+  it('thông báo: digest tối đa 50 mục — bỏ mục cũ nhất và ghi số đã bỏ', async () => {
+    const { service, emailOutbox } = setup();
+    const old = Array.from({ length: 50 }, (_, i) => ({ title: `T${i}`, body: '', url: 'http://x' }));
+    emailOutbox.findFirst.mockResolvedValue({ id: 'm1', payload: { items: old } });
+    await service.enqueue({ to: 'a@x.vn', template: 'notification', payload: { title: 'MOI', body: '', url: 'http://x' } });
+    const args = emailOutbox.updateMany.mock.calls[0]![0] as { data: { subject: string; payload: { items: Array<{ title: string }>; dropped?: number } } };
+    expect(args.data.payload.items).toHaveLength(50);
+    expect(args.data.payload.items[0]!.title).toBe('T1');
+    expect(args.data.payload.items[49]!.title).toBe('MOI');
+    expect(args.data.payload.dropped).toBe(1);
+    expect(args.data.subject).toContain('51');
+  });
+
   it('thông báo: đã có thư PENDING cho cùng người nhận → gộp vào payload.items, không tạo hàng mới', async () => {
     const { service, emailOutbox } = setup();
     emailOutbox.findFirst.mockResolvedValue({

@@ -5,7 +5,7 @@
   "description": "Tirapro — Jira clone + nâng cấp (NestJS + React + AI + Realtime)",
   "packageManager": "pnpm@10.21.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.19"
   },
   "scripts": {
     "gen:enums": "node scripts/gen-enums.mjs",

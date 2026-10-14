@@ -24,7 +24,7 @@ function setup(driver: 'console' | 'smtp' = 'console') {
   const prisma = {
     $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
     role: { findFirst: vi.fn((_a: unknown) => Promise.resolve({ id: 'r1' })) },
-    workspace: { findFirst: vi.fn((_a: unknown) => Promise.resolve({ name: 'Công ty A' })) },
+    workspace: { findFirst: vi.fn((_a: unknown) => Promise.resolve({ id: 'w1', name: 'Công ty A' } as unknown)) },
     user: { findUnique: vi.fn((_a: unknown) => Promise.resolve(null as unknown)) },
     workspaceMembership: { findUnique: vi.fn((_a: unknown) => Promise.resolve(null as unknown)) },
     inviteToken: { findUnique: vi.fn((_a: unknown) => Promise.resolve(null as unknown)) },
@@ -83,6 +83,16 @@ describe('InviteService.acceptInvite', () => {
     prisma.inviteToken.findUnique.mockResolvedValue({ ...valid(), expiresAt: new Date(Date.now() - 1) });
     const err = await service.acceptInvite({ token: 't'.repeat(30), displayName: 'A', password: 'Abcdef12' }).catch((e: unknown) => e);
     expect((err as BusinessRuleException).message).toContain('hết hạn');
+  });
+
+  it('workspace đã xoá mềm → từ chối, không giành token, không tạo user', async () => {
+    const { service, prisma, tx } = setup();
+    prisma.inviteToken.findUnique.mockResolvedValue(valid());
+    prisma.workspace.findFirst.mockResolvedValue(null);
+    await expect(service.acceptInvite({ token: 't'.repeat(30), displayName: 'An', password: 'Abcdef12' })).rejects.toBeInstanceOf(BusinessRuleException);
+    expect(prisma.workspace.findFirst).toHaveBeenCalledWith({ where: { id: 'w1', deletedAt: null }, select: { id: true } });
+    expect(tx.inviteToken.updateMany).not.toHaveBeenCalled();
+    expect(tx.user.create).not.toHaveBeenCalled();
   });
 
   it('user mới → tạo user + membership, đánh dấu acceptedAt', async () => {

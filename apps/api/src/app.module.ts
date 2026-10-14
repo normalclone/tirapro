@@ -69,6 +69,9 @@ import { AdminModule } from './modules/admin/admin.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
 import { ApiKeyModule } from './modules/api-keys/api-key.module';
 
+/** Đường dẫn probe sức khoẻ (khớp CHÍNH XÁC theo pathname) — không ghi log mỗi lần LB/k8s gọi. */
+const HEALTH_PATHS = new Set(['/api/v1/health', '/api/v1/health/live', '/api/v1/health/ready']);
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -97,7 +100,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
             // Không ghi token/cookie vào log.
             redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-api-key"]'],
             transport: isProd ? undefined : { target: 'pino-pretty' },
-            autoLogging: { ignore: (req) => (req.url ?? '').includes('/health') },
+            autoLogging: { ignore: (req) => HEALTH_PATHS.has((req.url ?? '').split('?')[0] ?? '') },
           },
         };
       },

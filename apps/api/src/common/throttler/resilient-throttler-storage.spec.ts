@@ -34,4 +34,25 @@ describe('ResilientThrottlerStorage', () => {
     s.onApplicationShutdown();
     none.onApplicationShutdown();
   });
+
+  it('cảnh báo một lần mỗi đợt sự cố: Redis phục hồi rồi lỗi lại thì log lại', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const redis = {
+      increment: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('down'))
+        .mockRejectedValueOnce(new Error('down'))
+        .mockResolvedValueOnce(record)
+        .mockRejectedValueOnce(new Error('down again')),
+    };
+    const s = new ResilientThrottlerStorage(redis, () => true);
+    await s.increment('k', 1000, 5, 0, 'default');
+    await s.increment('k', 1000, 5, 0, 'default');
+    expect(warn).toHaveBeenCalledTimes(1);
+    await s.increment('k', 1000, 5, 0, 'default'); // Redis phục hồi
+    await s.increment('k', 1000, 5, 0, 'default'); // đợt sự cố thứ hai
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+    s.onApplicationShutdown();
+  });
 });

@@ -65,6 +65,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       };
       req.apiKey = { id: ctx.keyId, scopes: ctx.scopes };
       if (!READ_METHODS.has(req.method) && !ctx.scopes.includes('write')) {
+        // Không để lại danh tính của key bị từ chối (route @OptionalAuth nuốt lỗi sẽ coi như đã xác thực).
+        req.user = undefined;
+        req.apiKey = undefined;
         throw new ForbiddenException('API key chỉ có quyền đọc (read-only)');
       }
       this.bindRequestContext(req);

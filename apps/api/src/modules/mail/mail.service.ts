@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { render as renderInvite } from './templates/invite';
-import { render as renderNotification, toItems } from './templates/notification';
+import { render as renderNotification, toDropped, toItems } from './templates/notification';
 import { render as renderPasswordReset } from './templates/password-reset';
 import type { RenderedMail } from './templates/layout';
 
@@ -25,6 +25,8 @@ export const SENSITIVE_TEMPLATES: readonly MailTemplate[] = ['invite', 'password
 
 /** Cửa sổ gộp (digest) cho thư thông báo. */
 export const NOTIFICATION_DIGEST_WINDOW_MS = 5 * 60_000;
+/** Số mục tối đa trong một thư digest; mục cũ hơn bị bỏ (đếm ở `payload.dropped`). */
+export const NOTIFICATION_DIGEST_MAX_ITEMS = 50;
 const DIGEST_CAS_RETRIES = 3;
 
 @Injectable()
@@ -66,7 +68,13 @@ export class MailService {
       });
       if (!pending) break;
 
-      const merged = { items: [...toItems((pending.payload ?? {}) as Record<string, unknown>), ...newItems] };
+      const oldPayload = (pending.payload ?? {}) as Record<string, unknown>;
+      const all = [...toItems(oldPayload), ...newItems];
+      // Chặn digest phình vô hạn: giữ NOTIFICATION_DIGEST_MAX_ITEMS mục mới nhất, ghi số mục cũ đã bỏ vào `dropped`.
+      const overflow = Math.max(0, all.length - NOTIFICATION_DIGEST_MAX_ITEMS);
+      const merged: { items: typeof all; dropped?: number } = { items: overflow ? all.slice(overflow) : all };
+      const dropped = toDropped(oldPayload) + overflow;
+      if (dropped > 0) merged.dropped = dropped;
       const rendered = renderNotification(merged);
       // So sánh-và-ghi: chỉ ghi nếu payload chưa bị ai đổi và cron chưa nhặt hàng này; thua thì đọc lại thử tiếp.
       const { count } = await db.emailOutbox.updateMany({
