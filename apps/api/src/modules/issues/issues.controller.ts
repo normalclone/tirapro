@@ -1,8 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
-  createIssueSchema, moveIssueSchema, transitionIssueSchema, updateIssueSchema,
-  type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput,
+  bulkUpdateIssuesSchema, createIssueSchema, moveIssueSchema, transitionIssueSchema, updateIssueSchema,
+  type BulkUpdateIssuesInput, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput,
 } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -56,6 +56,17 @@ export class IssuesController {
     @Body(new ZodValidationPipe(createIssueSchema)) dto: CreateIssueInput,
   ) {
     return this.issues.create(this.ws(user), user.id, dto);
+  }
+
+  // Khai báo TRƯỚC `PATCH :id` để "bulk" không bị coi là id.
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @ProjectRef('body', 'projectId')
+  @Patch('bulk')
+  async bulkUpdate(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(bulkUpdateIssuesSchema)) dto: BulkUpdateIssuesInput,
+  ) {
+    return this.issues.bulkUpdate(this.ws(user), user.id, dto);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)

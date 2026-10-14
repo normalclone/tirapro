@@ -195,3 +195,87 @@ describe('IssuesService — OCC atomic', () => {
     expect(b.events.emit).not.toHaveBeenCalled();
   });
 });
+
+// Mock Prisma dạng async không cần await.
+/* eslint-disable @typescript-eslint/require-await */
+describe('IssuesService.bulkUpdate', () => {
+  /** Hai issue a, b (version 3). `lose` = id bị thua OCC lúc ghi (version hiện tại trong DB = 5). */
+  function bulkTx(opts: { rows?: Array<Record<string, unknown>>; lose?: string; allowTransition?: boolean } = {}) {
+    const rows = opts.rows ?? [issueRow({ id: 'a' }), issueRow({ id: 'b' })];
+    const tx = {
+      issue: {
+        findMany: vi.fn((_args: { where: Record<string, unknown> }) => Promise.resolve(rows)),
+        updateMany: vi.fn(async ({ where }: { where: { id: string } }) => ({ count: where.id === opts.lose ? 0 : 1 })),
+        findFirst: vi.fn(async () => ({ version: 5 })),
+        findFirstOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => issueRow({ id: where.id, version: 4, assigneeId: 'u2' })),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+      project: { findUnique: vi.fn(async () => ({ defaultWorkflowId: 'wf' })) },
+      workflowTransition: { findFirst: vi.fn(async () => (opts.allowTransition === false ? null : { id: 'tr' })) },
+      status: { findUnique: vi.fn(async () => ({ category: 'IN_PROGRESS' })) },
+    };
+    return tx;
+  }
+  const items = [{ id: 'a', version: 3 }, { id: 'b', version: 3 }];
+
+  it('2 item, 1 thua OCC lúc ghi => updated 1, conflicts 1 (kèm version hiện tại), chỉ emit cho item đã ghi', async () => {
+    const tx = bulkTx({ lose: 'b' });
+    const { service, events } = makeService(tx);
+    const res = await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { assigneeId: 'u2' } });
+    expect(res.updated).toHaveLength(1);
+    expect(res.updated[0]).toMatchObject({ id: 'a', version: 4 });
+    expect(res.conflicts).toEqual([{ id: 'b', version: 5 }]);
+    expect(tx.issueHistory.createMany).toHaveBeenCalledTimes(1); // chỉ item a
+    expect(events.emit).toHaveBeenCalledTimes(1);
+    expect(events.emit).toHaveBeenCalledWith('issue.updated', expect.objectContaining({ actorId: 'u1' }));
+  });
+
+  it('version đã lệch từ lúc đọc => conflict ngay, không gọi updateMany cho item đó', async () => {
+    const tx = bulkTx({ rows: [issueRow({ id: 'a' }), issueRow({ id: 'b', version: 9 })] });
+    const { service } = makeService(tx);
+    const res = await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { assigneeId: 'u2' } });
+    expect(res.conflicts).toEqual([{ id: 'b', version: 9 }]);
+    expect(res.updated.map((i) => i.id)).toEqual(['a']);
+    expect(tx.issue.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('item không thuộc dự án/workspace => 404 cho cả yêu cầu, chưa mở transaction', async () => {
+    const tx = bulkTx({ rows: [issueRow({ id: 'a' })] });
+    const txSpy = vi.fn();
+    const { service } = makeService(tx, { $transaction: txSpy });
+    await expect(service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { assigneeId: 'u2' } })).rejects.toMatchObject({ status: 404 });
+    expect(txSpy).not.toHaveBeenCalled();
+    expect(tx.issue.findMany.mock.calls[0]?.[0]).toMatchObject({ where: { workspaceId: 'w1', projectId: 'p1', deletedAt: null } });
+  });
+
+  it('statusId sai workflow => 409 INVALID_TRANSITION, không ghi gì', async () => {
+    const tx = bulkTx({ allowTransition: false });
+    const { service, events } = makeService(tx);
+    await expect(
+      service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { statusId: 's2' } }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('statusId hợp lệ => ghi history STATUS và emit ISSUE_TRANSITIONED cho từng item', async () => {
+    const tx = bulkTx();
+    tx.issue.findFirstOrThrow = vi.fn(async ({ where }: { where: { id: string } }) =>
+      issueRow({ id: where.id, version: 4, statusId: 's2', status: { id: 's2', workflowId: 'wf', name: 'Doing', category: 'IN_PROGRESS', color: null, order: 1, isInitial: false } }));
+    const { service, events } = makeService(tx);
+    const res = await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { statusId: 's2' } });
+    expect(res.updated).toHaveLength(2);
+    expect(tx.issueHistory.create).toHaveBeenCalledTimes(2);
+    expect(events.emit).toHaveBeenCalledTimes(2);
+    expect(events.emit).toHaveBeenCalledWith('issue.transitioned', expect.objectContaining({ fromStatusId: 's1' }));
+  });
+
+  it('patch không đổi gì so với hiện tại => không ghi, không tăng version, không emit', async () => {
+    const tx = bulkTx();
+    const { service, events } = makeService(tx);
+    const res = await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { assigneeId: null } });
+    expect(res.updated.map((i) => i.version)).toEqual([3, 3]);
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+});

@@ -243,6 +243,12 @@ export interface IssueDto extends IssueSummaryDto {
   updatedAt: ISODate;
 }
 
+/** Kết quả sửa hàng loạt: issue đã sửa (kèm version mới để hoàn tác) và các item bị người khác sửa trước (kèm version hiện tại). */
+export interface BulkUpdateIssuesResult {
+  updated: IssueDto[];
+  conflicts: Array<{ id: ID; version: number }>;
+}
+
 export interface CommentDto {
   id: ID;
   issueId: ID;
