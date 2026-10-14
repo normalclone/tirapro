@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -26,6 +27,7 @@ export class WikiController {
    * Cây trang tài liệu. `projectId` bỏ trống = mọi trang; `none` = tài liệu chung workspace.
    * Có `q` thì trả danh sách phẳng các trang khớp tiêu đề/nội dung.
    */
+  @ProjectRef('query', 'projectId')
   @Get()
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async list(

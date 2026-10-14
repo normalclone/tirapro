@@ -34,6 +34,7 @@ export class CommentsController {
     return this.comments.create(this.ws(user), user.id, issueId, dto);
   }
 
+  @ProjectRef('comment', 'id')
   @Patch('comments/:id')
   async update(
     @CurrentUser() user: AuthUser,
@@ -43,6 +44,7 @@ export class CommentsController {
     return this.comments.update(this.ws(user), user.id, id, body.body, body.version);
   }
 
+  @ProjectRef('comment', 'id')
   @Delete('comments/:id')
   async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.comments.softDelete(this.ws(user), user.id, id);

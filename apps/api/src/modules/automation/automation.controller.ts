@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -24,6 +25,7 @@ export class AutomationController {
 
   /* ------------------------------ Mẫu issue ------------------------------ */
 
+  @ProjectRef('query', 'projectId')
   @Get('templates')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async listTemplates(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
@@ -63,6 +65,7 @@ export class AutomationController {
 
   /* ---------------------------- Việc lặp lại ----------------------------- */
 
+  @ProjectRef('query', 'projectId')
   @Get('recurring')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async listRecurring(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {

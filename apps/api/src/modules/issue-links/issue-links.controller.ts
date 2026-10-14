@@ -50,6 +50,7 @@ export class IssueLinksController {
 
   /** Xóa liên kết theo id. */
   @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @ProjectRef('issueLink', 'id')
   @Delete('links/:id')
   async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.links.remove(this.ws(user), id);

@@ -50,6 +50,7 @@ export class AttachmentsController {
     return this.attachments.list(this.ws(user), issueId);
   }
 
+  @ProjectRef('attachment', 'id')
   @Get('attachments/:id/download')
   async download(
     @CurrentUser() user: AuthUser,
@@ -65,6 +66,7 @@ export class AttachmentsController {
     return new StreamableFile(stream);
   }
 
+  @ProjectRef('attachment', 'id')
   @Delete('attachments/:id')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {

@@ -138,6 +138,46 @@ export class RbacService {
       case 'component':
         row = await this.prisma.component.findFirst({ where: viaProject, select });
         break;
+      case 'version':
+        row = await this.prisma.version.findFirst({ where: viaProject, select });
+        break;
+      case 'comment': {
+        const c = await this.prisma.comment.findFirst({
+          where: { id: value, issue: { workspaceId } },
+          select: { issue: { select: { projectId: true } } },
+        });
+        row = c ? { projectId: c.issue.projectId } : null;
+        break;
+      }
+      case 'attachment': {
+        // Đính kèm gắn thẳng vào issue hoặc vào comment của issue; mồ côi (không issue) → không tìm thấy.
+        const a = await this.prisma.attachment.findFirst({
+          where: {
+            id: value,
+            OR: [{ issue: { workspaceId } }, { comment: { issue: { workspaceId } } }],
+          },
+          select: {
+            issue: { select: { projectId: true } },
+            comment: { select: { issue: { select: { projectId: true } } } },
+          },
+        });
+        const projectId = a?.issue?.projectId ?? a?.comment?.issue.projectId;
+        row = projectId ? { projectId } : null;
+        break;
+      }
+      case 'issueLink': {
+        // Hai đầu có thể khác dự án: lấy đầu thuộc workspace hiện tại (ưu tiên đầu nguồn).
+        const l = await this.prisma.issueLink.findFirst({
+          where: { id: value, OR: [{ source: { workspaceId } }, { target: { workspaceId } }] },
+          select: {
+            source: { select: { projectId: true, workspaceId: true } },
+            target: { select: { projectId: true, workspaceId: true } },
+          },
+        });
+        const end = !l ? null : l.source.workspaceId === workspaceId ? l.source : l.target;
+        row = end ? { projectId: end.projectId } : null;
+        break;
+      }
     }
     return row?.projectId ?? null;
   }

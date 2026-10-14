@@ -165,6 +165,7 @@ export class ComponentsController {
     return this.components.createVersion(this.ws(user), projectId, dto);
   }
 
+  @ProjectRef('version', 'id')
   @Patch('versions/:id')
   async updateVersion(
     @CurrentUser() user: AuthUser,
@@ -174,6 +175,7 @@ export class ComponentsController {
     return this.components.updateVersion(this.ws(user), id, dto);
   }
 
+  @ProjectRef('version', 'id')
   @Delete('versions/:id')
   async removeVersion(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.components.removeVersion(this.ws(user), id);

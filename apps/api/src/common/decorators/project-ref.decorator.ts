@@ -4,8 +4,8 @@ export const PROJECT_REF_KEY = 'projectRef';
 
 /**
  * Nguồn để PermissionsGuard biết route này thuộc dự án nào:
- * - `issue | sprint | board | label | component`: id tài nguyên nằm ở `req.params[param]`;
- *   guard tra DB (có giới hạn theo workspace) để lấy projectId THẬT của tài nguyên.
+ * - `issue | sprint | board | label | component | version | comment | attachment | issueLink`: id tài nguyên nằm ở `req.params[param]`;
+ *   guard tra DB (có giới hạn theo workspace) để lấy projectId THẬT của tài nguyên (comment/attachment/issueLink đi qua issue cha).
  * - `param | body | query`: projectId nằm thẳng ở `req.params | req.body | req.query[param]`;
  *   guard kiểm dự án đó thuộc workspace hiện tại.
  */
@@ -15,6 +15,10 @@ export type ProjectRefKind =
   | 'board'
   | 'label'
   | 'component'
+  | 'comment'
+  | 'attachment'
+  | 'issueLink'
+  | 'version'
   | 'param'
   | 'body'
   | 'query';

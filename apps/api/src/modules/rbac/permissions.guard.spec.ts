@@ -72,6 +72,16 @@ describe('PermissionsGuard', () => {
     expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
   });
 
+  it("@ProjectRef('comment','id'): comment ngoài workspace -> NotFound", async () => {
+    const { guard, rbac, ctx } = setup({
+      ref: { kind: 'comment', param: 'id' },
+      resolved: null,
+      req: { user: { ...user }, params: { id: 'C-ws-khac' } },
+    });
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(NotFoundAppException);
+    expect(rbac.resolveProjectId).toHaveBeenCalledWith('W1', 'comment', 'C-ws-khac');
+  });
+
   it("@ProjectRef('param','projectId') đọc req.params và kiểm dự án thuộc workspace", async () => {
     const { guard, rbac, ctx } = setup({
       ref: { kind: 'param', param: 'projectId' },

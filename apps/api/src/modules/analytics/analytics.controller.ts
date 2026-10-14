@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ForbiddenAppException, BusinessRuleException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { AnalyticsService } from './analytics.service';
@@ -25,6 +26,7 @@ export class AnalyticsController {
   }
 
   /** Báo cáo tổng hợp một dự án (phân bố trạng thái/loại/ưu tiên/người phụ trách). */
+  @ProjectRef('query', 'projectId')
   @Get('project')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async projectReport(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
@@ -39,6 +41,7 @@ export class AnalyticsController {
     return this.analytics.burndown(this.ws(user), sprintId);
   }
 
+  @ProjectRef('query', 'projectId')
   @Get('velocity')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async velocity(
@@ -50,6 +53,7 @@ export class AnalyticsController {
     return this.analytics.velocity(this.ws(user), projectId, Number(limit) || 8);
   }
 
+  @ProjectRef('query', 'projectId')
   @Get('cfd')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async cfd(
@@ -62,6 +66,7 @@ export class AnalyticsController {
     return this.analytics.cfd(this.ws(user), projectId, from, to);
   }
 
+  @ProjectRef('query', 'projectId')
   @Get('created-resolved')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async createdResolved(

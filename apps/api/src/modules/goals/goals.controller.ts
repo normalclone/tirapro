@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -24,6 +25,7 @@ export class GoalsController {
     return user.workspaceId;
   }
 
+  @ProjectRef('query', 'projectId')
   @Get()
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async list(
