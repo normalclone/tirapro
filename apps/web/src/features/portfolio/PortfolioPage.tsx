@@ -16,13 +16,14 @@ import {
   type ProgramDto, type RollupGroup, type RollupProject, type RollupStats,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { LOCALE } from '@/lib/locale';
 
 type Tab = 'programs' | 'roadmap';
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('vi-VN');
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(LOCALE);
 }
 
 function isOverdue(target: string | null, pct: number): boolean {

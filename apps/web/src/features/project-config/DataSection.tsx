@@ -10,6 +10,7 @@ import { useAuth } from '@/stores/auth';
 import { useImportJobs, useImportCsv, useImportJson, downloadProjectExport, type ImportJob, type ImportStatus, type ImportResult } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
+import { LOCALE } from '@/lib/locale';
 
 /** Nhãn + style cho từng trạng thái job import. */
 const IMPORT_STATUS: Record<ImportStatus, { label: string; className: string }> = {
@@ -24,7 +25,7 @@ function formatDateTime(iso?: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('vi-VN', {
+  return d.toLocaleString(LOCALE, {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

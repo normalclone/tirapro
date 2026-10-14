@@ -8,6 +8,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAdminConfig, useUpdateFlags, type SystemFlags } from './api';
 import { InfoRow } from './_ui';
+import { LOCALE } from '@/lib/locale';
 
 /** Công tắc bật/tắt (accessible). */
 function Switch({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
@@ -138,7 +139,7 @@ export function AdminConfigPage() {
             <InfoRow label="ANTHROPIC_API_KEY"><YesNo v={data.ai.hasKey} yes="đã cấu hình" no="thiếu" /></InfoRow>
             <InfoRow label="Model chính">{data.ai.modelPrimary ?? '—'}</InfoRow>
             <InfoRow label="Model nhanh">{data.ai.modelFast ?? '—'}</InfoRow>
-            <InfoRow label="Giới hạn token mỗi không gian làm việc / tháng">{data.ai.monthlyQuotaPerWorkspace?.toLocaleString('vi-VN') ?? '—'}</InfoRow>
+            <InfoRow label="Giới hạn token mỗi không gian làm việc / tháng">{data.ai.monthlyQuotaPerWorkspace?.toLocaleString(LOCALE) ?? '—'}</InfoRow>
           </Panel>
           <Panel title="Embedding / Tìm kiếm ngữ nghĩa">
             <InfoRow label="Nhà cung cấp">{data.embedding.provider}</InfoRow>

@@ -11,9 +11,10 @@ import { useAuth } from '@/stores/auth';
 import { RuleEditor } from './RuleEditor';
 import { RuleRunLog } from './RuleRunLog';
 import { ALL_RULES, summarizeRule, useDeleteRule, useRules, useUpdateRule, type AutomationRule } from './rules-api';
+import { LOCALE } from '@/lib/locale';
 
 const dateTime = (iso: string) =>
-  new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  new Date(iso).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /**
  * Quy tắc tự động hoá "Khi… Nếu… Thì…": danh sách, bật/tắt, lần chạy cuối, sửa/xoá, chạy thử và xem lịch sử chạy.

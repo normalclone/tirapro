@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { QueryError } from '@/components/ui/QueryError';
 import { cn } from '@/lib/utils';
 import { useRuleRuns, useTestRule, type AutomationRule } from './rules-api';
+import { LOCALE } from '@/lib/locale';
 
 const STATUS: Record<RuleRunStatus, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
   SUCCESS: { label: 'Thành công', cls: 'text-success', Icon: CheckCircle2 },
@@ -15,7 +16,7 @@ const STATUS: Record<RuleRunStatus, { label: string; cls: string; Icon: typeof C
 };
 
 const time = (iso: string) =>
-  new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  new Date(iso).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 function Steps({ log }: { log: AutomationRunStepDto[] }) {
   if (!log.length) return <p className="text-xs text-faint">Không có chi tiết.</p>;

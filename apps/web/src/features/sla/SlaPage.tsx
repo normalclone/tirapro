@@ -14,6 +14,7 @@ import { useAuth } from '@/stores/auth';
 import { useProjects } from '@/features/projects/api';
 import { cn } from '@/lib/utils';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { LOCALE } from '@/lib/locale';
 import {
   useSlaBoard, useSlaPolicies, useCreateSlaPolicy, useUpdateSlaPolicy, useDeleteSlaPolicy, fmtMins,
   type SlaPolicyDto, type SlaBoardRow, SLA_SOON_MINS, SLA_SOON_LABEL } from './api';
@@ -112,8 +113,8 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
                 )}
                 title={
                   late
-                    ? `Đã quá hạn xử lý. Hạn là ${new Date(r.resolveDueAt).toLocaleString('vi-VN')}.`
-                    : `Thời gian còn lại trước khi phải xử lý xong, hạn là ${new Date(r.resolveDueAt).toLocaleString('vi-VN')}.`
+                    ? `Đã quá hạn xử lý. Hạn là ${new Date(r.resolveDueAt).toLocaleString(LOCALE)}.`
+                    : `Thời gian còn lại trước khi phải xử lý xong, hạn là ${new Date(r.resolveDueAt).toLocaleString(LOCALE)}.`
                 }
               >
                 {late ? <span className="inline-flex items-center gap-1"><TriangleAlert className="h-3 w-3" /> quá hạn {fmtMins(r.remainingMins)}</span> : `còn ${fmtMins(r.remainingMins)}`}

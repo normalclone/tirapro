@@ -13,6 +13,7 @@ import { useUpdateIssue } from './api';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useAddWorklog, useDeleteWorklog, useUpdateWorklog, useWorklogs } from './worklog-api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { LOCALE } from '@/lib/locale';
 
 const QUICK = ['30m', '1h', '2h', '1d'];
 
@@ -23,7 +24,7 @@ function toLocalInput(date: Date): string {
 }
 
 const when = (iso: string) =>
-  new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  new Date(iso).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** "2.5" nghĩa là 2,5 giờ → "2h 30m"; chuỗi có đơn vị giữ nguyên. Dùng cho gợi ý ngay khi gõ. */
 function previewOf(text: string): { ok: boolean; label: string } {

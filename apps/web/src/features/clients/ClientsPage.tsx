@@ -17,11 +17,12 @@ import {
   type ClientDto, type ContractDto,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { LOCALE } from '@/lib/locale';
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('vi-VN');
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(LOCALE);
 }
 
 function term(contract: ContractDto): string {

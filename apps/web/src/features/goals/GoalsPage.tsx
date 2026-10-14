@@ -18,6 +18,7 @@ import {
   type GoalDto, type KeyResultDto, type ObjectiveStatus,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { LOCALE } from '@/lib/locale';
 
 const STATUS_META: Record<ObjectiveStatus, { label: string; className: string; hint: string }> = {
   DRAFT: { label: 'Nháp', className: 'bg-surface-2 text-muted', hint: 'Đang soạn, chưa công bố cho cả nhóm' },
@@ -41,7 +42,7 @@ function periodHint(period: string): string {
 /** Định dạng giá trị KR theo đơn vị (số / phần trăm / tiền). */
 function formatValue(value: number, unit: KeyResultDto['unit']): string {
   if (unit === 'PERCENT') return `${Math.round(value * 10) / 10}%`;
-  if (unit === 'CURRENCY') return new Intl.NumberFormat('vi-VN').format(value);
+  if (unit === 'CURRENCY') return new Intl.NumberFormat(LOCALE).format(value);
   return String(Math.round(value * 100) / 100);
 }
 
