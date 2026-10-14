@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DEFAULT_PROJECT_ROLE_BY_WS_ROLE } from '@tirapro/types';
+import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import type { ProjectRefKind } from '../../common/decorators/project-ref.decorator';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 
@@ -65,7 +67,8 @@ export class RbacService {
 
     if (projectId) {
       const projMembership = await this.prisma.projectMembership.findUnique({
-        where: { projectId_userId: { projectId, userId } },
+        // Giới hạn theo workspace: membership dự án của workspace khác không được tính.
+        where: { projectId_userId: { projectId, userId }, project: { workspaceId } },
         select: { roleId: true, roles: { select: { roleId: true } } },
       });
       if (projMembership) {
@@ -107,27 +110,68 @@ export class RbacService {
     return rows.map((r) => r.id);
   }
 
+  /**
+   * Lấy projectId THẬT của tài nguyên, chỉ khi tài nguyên thuộc workspace hiện tại
+   * (issue có workspaceId riêng; sprint/board/label/component lọc qua project.workspaceId).
+   */
+  async resolveProjectId(
+    workspaceId: string,
+    kind: Exclude<ProjectRefKind, 'param' | 'body' | 'query'>,
+    value: string,
+  ): Promise<string | null> {
+    const select = { projectId: true } as const;
+    const viaProject = { id: value, project: { workspaceId } };
+    let row: { projectId: string } | null;
+    switch (kind) {
+      case 'issue':
+        row = await this.prisma.issue.findFirst({ where: { id: value, workspaceId }, select });
+        break;
+      case 'sprint':
+        row = await this.prisma.sprint.findFirst({ where: viaProject, select });
+        break;
+      case 'board':
+        row = await this.prisma.board.findFirst({ where: viaProject, select });
+        break;
+      case 'label':
+        row = await this.prisma.label.findFirst({ where: viaProject, select });
+        break;
+      case 'component':
+        row = await this.prisma.component.findFirst({ where: viaProject, select });
+        break;
+    }
+    return row?.projectId ?? null;
+  }
+
+  /** Dự án phải thuộc workspace hiện tại, nếu không coi như không tồn tại. */
+  async assertProjectInWorkspace(projectId: string, workspaceId: string): Promise<void> {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, workspaceId },
+      select: { id: true },
+    });
+    if (!project) throw new NotFoundAppException('Dự án');
+  }
+
   /** Invalidate cache khi đổi vai trò của 1 user (gọi từ MembersModule). */
   async invalidate(userId: string, workspaceId: string): Promise<void> {
-    const client = this.redis.getClient();
-    if (!client || !this.redis.isAvailable()) return;
-    try {
-      const keys = await client.keys(`rbac:${workspaceId}:${userId}:*`);
-      if (keys.length) await client.del(...keys);
-    } catch {
-      /* ignore */
-    }
+    await this.unlinkByPattern(`rbac:${workspaceId}:${userId}:*`);
   }
 
   /** Invalidate toàn bộ cache của workspace (khi sửa quyền của 1 role → ảnh hưởng nhiều user). */
   async invalidateWorkspace(workspaceId: string): Promise<void> {
+    await this.unlinkByPattern(`rbac:${workspaceId}:*`);
+  }
+
+  /** Xoá key theo pattern bằng SCAN + UNLINK (không dùng KEYS vì chặn Redis). Redis down → bỏ qua. */
+  private async unlinkByPattern(match: string): Promise<void> {
     const client = this.redis.getClient();
     if (!client || !this.redis.isAvailable()) return;
     try {
-      const keys = await client.keys(`rbac:${workspaceId}:*`);
-      if (keys.length) await client.del(...keys);
+      for await (const batch of client.scanStream({ match, count: 200 })) {
+        const keys = batch as string[];
+        if (keys.length) await client.unlink(...keys);
+      }
     } catch {
-      /* ignore */
+      /* ignore: cache còn lại tự hết hạn theo TTL */
     }
   }
 }

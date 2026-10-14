@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from '@nestjs/
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -13,6 +14,7 @@ import {
 } from './issue-extras.schemas';
 
 @ApiTags('issues')
+@ProjectRef('issue', 'issueId')
 @Controller('issues/:issueId')
 export class IssueExtrasController {
   constructor(private readonly extras: IssueExtrasService) {}

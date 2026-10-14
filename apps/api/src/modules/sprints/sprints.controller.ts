@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { createSprintSchema, type CreateSprintInput } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
@@ -25,6 +26,7 @@ export class SprintsController {
   }
 
   @Permissions(PERMISSIONS.SPRINT_MANAGE)
+  @ProjectRef('query', 'projectId')
   @Post()
   async create(
     @CurrentUser() user: AuthUser,
@@ -35,12 +37,14 @@ export class SprintsController {
   }
 
   @Permissions(PERMISSIONS.SPRINT_MANAGE)
+  @ProjectRef('sprint', 'id')
   @Post(':id/start')
   async start(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.sprints.start(this.ws(user), id);
   }
 
   @Permissions(PERMISSIONS.SPRINT_MANAGE)
+  @ProjectRef('sprint', 'id')
   @Post(':id/complete')
   async complete(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.sprints.complete(this.ws(user), id);

@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { linkIssueSchema, type LinkIssueInput } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
@@ -26,6 +27,7 @@ export class IssueLinksController {
   }
 
   /** Liên kết của một issue, chuẩn hóa theo góc nhìn issue (chỉ cần xác thực). */
+  @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/links')
   async listForIssue(
     @CurrentUser() user: AuthUser,
@@ -36,6 +38,7 @@ export class IssueLinksController {
 
   /** Tạo liên kết từ issue nguồn (:issueId) tới issue đích. */
   @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/links')
   async create(
     @CurrentUser() user: AuthUser,

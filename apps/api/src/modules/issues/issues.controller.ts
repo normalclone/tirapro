@@ -6,6 +6,7 @@ import {
 } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
@@ -48,6 +49,7 @@ export class IssuesController {
   }
 
   @Permissions(PERMISSIONS.ISSUE_CREATE)
+  @ProjectRef('body', 'projectId')
   @Post()
   async create(
     @CurrentUser() user: AuthUser,
@@ -57,6 +59,7 @@ export class IssuesController {
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @ProjectRef('issue', 'id')
   @Patch(':id')
   async update(
     @CurrentUser() user: AuthUser,
@@ -67,6 +70,7 @@ export class IssuesController {
   }
 
   @Permissions(PERMISSIONS.ISSUE_TRANSITION)
+  @ProjectRef('issue', 'id')
   @Post(':id/transition')
   async transition(
     @CurrentUser() user: AuthUser,
@@ -77,6 +81,7 @@ export class IssuesController {
   }
 
   @Permissions(PERMISSIONS.ISSUE_TRANSITION)
+  @ProjectRef('issue', 'id')
   @Post(':id/move')
   async move(
     @CurrentUser() user: AuthUser,
@@ -87,6 +92,7 @@ export class IssuesController {
   }
 
   @Permissions(PERMISSIONS.ISSUE_DELETE)
+  @ProjectRef('issue', 'id')
   @Delete(':id')
   async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.issues.softDelete(this.ws(user), user.id, id);

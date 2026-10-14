@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { ApiTags } from '@nestjs/swagger';
 import { createCommentSchema, type CreateCommentInput } from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
@@ -17,11 +18,13 @@ export class CommentsController {
     return user.workspaceId;
   }
 
+  @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/comments')
   async list(@CurrentUser() user: AuthUser, @Param('issueId') issueId: string) {
     return this.comments.list(this.ws(user), issueId);
   }
 
+  @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/comments')
   async create(
     @CurrentUser() user: AuthUser,
