@@ -1,7 +1,10 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { generateIssuesSchema, type GenerateIssuesInput } from '@tirapro/shared';
+import {
+  generateIssuesSchema, sprintPlanSchema, suggestAssigneeSchema,
+  type GenerateIssuesInput, type SprintPlanInput, type SuggestAssigneeInput,
+} from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
@@ -10,6 +13,8 @@ import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AiService } from './ai.service';
+import { AssigneeSuggestService } from './assignee-suggest.service';
+import { SprintAssistantService } from './sprint-assistant.service';
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 @ApiTags('ai')
@@ -17,7 +22,11 @@ import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 // Mỗi lời gọi AI tốn tiền → giới hạn chặt hơn mặc định toàn cục: 20 lần/phút.
 @Throttle({ default: { limit: 20, ttl: 60_000 } })
 export class AiController {
-  constructor(private readonly ai: AiService) {}
+  constructor(
+    private readonly ai: AiService,
+    private readonly assignees: AssigneeSuggestService,
+    private readonly sprintAssistant: SprintAssistantService,
+  ) {}
 
   /** Trạng thái khả dụng của AI (không cần quyền — chỉ báo bật/tắt). */
   // Chỉ báo AI bật/tắt cho mọi người dùng đã đăng nhập, không lộ dữ liệu workspace.
@@ -49,5 +58,29 @@ export class AiController {
   @Permissions(PERMISSIONS.AI_USE)
   async suggest(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
     return this.ai.suggest(workspaceId, user.id, id);
+  }
+
+  /** Gợi ý người nhận việc. projectId nằm trong body (guard kiểm quyền trên đó); service kiểm issue thuộc dự án. */
+  @ProjectRef('body', 'projectId')
+  @Post('suggest-assignee')
+  @Permissions(PERMISSIONS.AI_USE, PERMISSIONS.ISSUE_EDIT)
+  async suggestAssignee(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Body(new ZodValidationPipe(suggestAssigneeSchema)) dto: SuggestAssigneeInput,
+  ) {
+    return this.assignees.suggest(workspaceId, user.id, dto);
+  }
+
+  /** Trợ lý lập sprint: đề xuất issue từ backlog vào sprint theo năng lực. Không tự ghi — web áp dụng qua bulk update. */
+  @ProjectRef('body', 'projectId')
+  @Post('sprint-plan')
+  @Permissions(PERMISSIONS.AI_USE, PERMISSIONS.SPRINT_MANAGE)
+  async sprintPlan(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Body(new ZodValidationPipe(sprintPlanSchema)) dto: SprintPlanInput,
+  ) {
+    return this.sprintAssistant.plan(workspaceId, user.id, dto);
   }
 }
