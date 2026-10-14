@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Flag, Plus, Pencil, Trash2, Check, X, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
@@ -19,6 +20,7 @@ import {
 const DEFAULT_COLOR = '#64748b';
 
 export function SeveritySection() {
+  const confirm = useConfirm();
   const canManage = useAuth((s) => s.can('workspace:admin'));
   const { data, isLoading } = useSeverities();
   const create = useCreateSeverity();
@@ -59,8 +61,8 @@ export function SeveritySection() {
     );
   }
 
-  function handleDelete(s: Severity) {
-    if (!window.confirm(`Xoá mức độ "${s.name}"? Hành động này không thể hoàn tác.`)) return;
+  async function handleDelete(s: Severity) {
+    if (!(await confirm({ title: `Xoá mức độ "${s.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
     remove.mutate(s.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 

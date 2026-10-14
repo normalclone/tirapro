@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { LayoutList, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -71,6 +72,7 @@ function SectionCard({
 }
 
 export function CustomFieldsAdminSection() {
+  const confirm = useConfirm();
   const canManage = useAuth((s) => s.can('customfield:manage'));
   const { data, isLoading } = useCustomFields();
   const create = useCreateCustomField();
@@ -127,8 +129,8 @@ export function CustomFieldsAdminSection() {
     );
   }
 
-  function handleDelete(f: CustomField) {
-    if (!window.confirm(`Xoá trường "${f.name}"? Trường sẽ bị ẩn khỏi mọi công việc.`)) return;
+  async function handleDelete(f: CustomField) {
+    if (!(await confirm({ title: `Xoá trường "${f.name}"? Trường sẽ bị ẩn khỏi mọi công việc.`, destructive: true }))) return;
     remove.mutate(f.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 

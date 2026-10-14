@@ -3,6 +3,7 @@ import { CalendarClock, Play, Trash2, Plus, ChevronDown, ChevronRight } from 'lu
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -49,6 +50,7 @@ function truncate(text: string, max = 140): string {
 /* ------------------------------------------------------------------ */
 
 export function DigestsSection() {
+  const confirm = useConfirm();
   const { data, isLoading } = useDigests();
   const { data: projectsData } = useProjects();
   const create = useCreateDigest();
@@ -92,8 +94,8 @@ export function DigestsSection() {
     );
   }
 
-  function handleDelete(digest: Digest) {
-    if (!window.confirm(`Xoá báo cáo "${digest.name}"? Hành động này không thể hoàn tác.`)) return;
+  async function handleDelete(digest: Digest) {
+    if (!(await confirm({ title: `Xoá báo cáo "${digest.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
     remove.mutate(digest.id, {
       onSuccess: () => toast.success('Đã xoá báo cáo.'),
       onError: (e) => toast.error(apiErrorMessage(e)),

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
@@ -170,6 +171,7 @@ function StatusBadge({ status }: { status: IntegrationStatus }) {
 /* ------------------------------------------------------------------ */
 
 function TelegramSection() {
+  const confirm = useConfirm();
   const { data, isLoading } = useIntegrations();
   const create = useCreateTelegram();
   const remove = useDeleteIntegration();
@@ -205,8 +207,8 @@ function TelegramSection() {
     );
   }
 
-  function handleDelete(it: Integration) {
-    if (!window.confirm(`Xoá kết nối "${it.name}"? Hành động này không thể hoàn tác.`)) return;
+  async function handleDelete(it: Integration) {
+    if (!(await confirm({ title: `Xoá kết nối "${it.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
     remove.mutate(it.id, {
       onSuccess: () => toast.success('Đã xoá kết nối.'),
       onError: (e) => toast.error(apiErrorMessage(e)),
@@ -388,6 +390,7 @@ function TelegramRow({
 }
 
 function ChannelList({ integrationId }: { integrationId: string }) {
+  const confirm = useConfirm();
   const { data, isLoading } = useChannels(integrationId);
   const add = useAddChannel(integrationId);
   const remove = useDeleteChannel(integrationId);
@@ -416,8 +419,8 @@ function ChannelList({ integrationId }: { integrationId: string }) {
     );
   }
 
-  function handleDelete(channelId: string, label: string) {
-    if (!window.confirm(`Xoá kênh "${label}"?`)) return;
+  async function handleDelete(channelId: string, label: string) {
+    if (!(await confirm({ title: `Xoá kênh "${label}"?`, destructive: true }))) return;
     remove.mutate(channelId, {
       onSuccess: () => toast.success('Đã xoá kênh.'),
       onError: (e) => toast.error(apiErrorMessage(e)),
@@ -519,6 +522,7 @@ const PROVIDER_LABEL: Record<RepositoryProvider, string> = {
 };
 
 function RepositorySection() {
+  const confirm = useConfirm();
   const { data, isLoading } = useRepositories();
   const create = useCreateRepository();
   const remove = useDeleteRepository();
@@ -570,8 +574,8 @@ function RepositorySection() {
     );
   }
 
-  function handleDelete(repo: Repository) {
-    if (!window.confirm(`Xoá repo "${repo.name}"?`)) return;
+  async function handleDelete(repo: Repository) {
+    if (!(await confirm({ title: `Xoá repo "${repo.name}"?`, destructive: true }))) return;
     remove.mutate(repo.id, {
       onSuccess: () => toast.success('Đã xoá repo.'),
       onError: (e) => toast.error(apiErrorMessage(e)),

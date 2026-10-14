@@ -3,6 +3,7 @@ import { Archive, ArchiveRestore, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { pageContainer } from '@/components/layout/page';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
@@ -20,6 +21,7 @@ const PLAN_STYLE: Record<string, string> = {
 export function AdminWorkspacesPage() {
   const { data, isLoading, isError, error, refetch } = useAdminWorkspaces();
   const patch = usePatchWorkspace();
+  const confirm = useConfirm();
   const [q, setQ] = useState('');
   const [showArchived, setShowArchived] = useState(true);
 
@@ -38,11 +40,14 @@ export function AdminWorkspacesPage() {
     });
   }
 
-  function toggleArchive(w: AdminWorkspace) {
+  async function toggleArchive(w: AdminWorkspace) {
     const next = !w.archived;
-    if (next && !window.confirm(`Lưu trữ không gian làm việc “${w.name}”?
-
-Thành viên sẽ không vào được cho tới khi bạn khôi phục. Dữ liệu vẫn được giữ nguyên.`)) return;
+    if (next && !(await confirm({
+      title: `Lưu trữ không gian làm việc “${w.name}”?`,
+      description: 'Thành viên sẽ không vào được cho tới khi bạn khôi phục. Dữ liệu vẫn được giữ nguyên.',
+      confirmLabel: 'Lưu trữ',
+      destructive: true,
+    }))) return;
     patch.mutate({ id: w.id, patch: { archived: next } }, {
       onSuccess: () => toast.success(next ? `Đã lưu trữ ${w.name}` : `Đã khôi phục ${w.name}`),
       onError: (e) => toast.error(apiErrorMessage(e)),
