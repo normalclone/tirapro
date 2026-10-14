@@ -15,6 +15,7 @@ import { PrismaModule } from './infra/prisma/prisma.module';
 import { RedisModule } from './infra/redis/redis.module';
 import { RedisService } from './infra/redis/redis.service';
 import { HealthModule } from './modules/health/health.module';
+import { MailModule } from './modules/mail/mail.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RbacModule } from './modules/rbac/rbac.module';
@@ -124,6 +125,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     SystemSettingsModule,
     ApiKeyModule,
     RbacModule,
+    MailModule,
     HealthModule,
     AuthModule,
     WorkspacesModule,

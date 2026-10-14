@@ -57,6 +57,12 @@ export function configuration() {
       openaiApiKey: e.OPENAI_API_KEY,
       openaiModel: e.OPENAI_EMBEDDINGS_MODEL,
     },
+    mail: {
+      driver: e.MAIL_DRIVER,
+      from: e.MAIL_FROM,
+      appWebUrl: e.APP_WEB_URL.replace(/\/+$/, ''),
+      smtp: { host: e.SMTP_HOST, port: e.SMTP_PORT, user: e.SMTP_USER, pass: e.SMTP_PASS },
+    },
     throttle: { ttl: e.THROTTLE_TTL, limit: e.THROTTLE_LIMIT },
     integrations: {
       encryptionKey: e.INTEGRATION_ENCRYPTION_KEY,

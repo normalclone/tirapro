@@ -44,6 +44,7 @@ export class AdminService {
     const exists = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (exists) throw new BusinessRuleException('Email đã tồn tại');
 
+    // Tạo tài khoản bởi admin hệ thống có thể trả mật khẩu tạm; để thêm người vào workspace nên dùng luồng mời qua liên kết (POST /auth/invites).
     let tempPassword: string | undefined;
     // Mật khẩu tạm: ngẫu nhiên bằng crypto (không dùng cuid — cuid không phải bí mật an toàn).
     const plain = input.password ?? (tempPassword = randomBytes(18).toString('base64url'));

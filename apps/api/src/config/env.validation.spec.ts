@@ -32,3 +32,16 @@ describe('validateEnv — khoá mã hoá', () => {
     ).not.toThrow();
   });
 });
+
+describe('validateEnv — email', () => {
+  it('mặc định: driver console, web URL localhost', () => {
+    const env = validateEnv({ ...base, NODE_ENV: 'development' });
+    expect(env.MAIL_DRIVER).toBe('console');
+    expect(env.APP_WEB_URL).toBe('http://localhost:5173');
+  });
+
+  it('driver lạ hoặc APP_WEB_URL không phải URL → lỗi', () => {
+    expect(() => validateEnv({ ...base, MAIL_DRIVER: 'sendgrid' })).toThrow(/MAIL_DRIVER/);
+    expect(() => validateEnv({ ...base, APP_WEB_URL: 'không-phải-url' })).toThrow(/APP_WEB_URL/);
+  });
+});

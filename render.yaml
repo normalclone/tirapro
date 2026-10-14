@@ -65,6 +65,8 @@ services:
       # AI thật (tùy chọn): thêm ANTHROPIC_API_KEY ở Dashboard; bỏ trống → heuristic.
       - key: CORS_ORIGIN
         sync: false # điền URL web sau deploy đầu, vd: https://tirapro-web.onrender.com
+      - key: APP_WEB_URL
+        sync: false # URL web, dùng dựng liên kết trong email (mời, đặt lại mật khẩu)
 
   # ---- Web (React/Vite — static) ----
   - type: web

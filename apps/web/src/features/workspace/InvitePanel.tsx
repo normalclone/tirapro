@@ -17,7 +17,7 @@ import { useInvite } from './api';
 /**
  * Thẻ "Thêm thành viên": luồng CHÍNH là chọn một người dùng CÓ SẴN từ pool hệ thống
  * (do system admin quản lý ở nơi khác) rồi gán vai trò và thêm vào không gian làm việc. Luồng
- * phụ "Mời bằng email" (tạo tài khoản mới + mật khẩu tạm) nằm sau một nút gạt.
+ * phụ "Mời bằng email" (gửi liên kết nhận lời mời) nằm sau một nút gạt.
  * Gated bằng `member:manage` — trùng với cách MembersPage kiểm tra quyền.
  */
 export function InvitePanel() {
@@ -40,7 +40,7 @@ function InvitePanelInner() {
             <h2 className="text-base font-semibold text-ink-strong">Thêm thành viên</h2>
             <p className="mt-0.5 text-sm text-muted">
               {byEmail
-                ? 'Tạo tài khoản mới và cấp mật khẩu tạm để đăng nhập.'
+                ? 'Gửi liên kết mời qua email — người được mời tự đặt tên và mật khẩu.'
                 : 'Chọn người dùng có sẵn trong hệ thống và gán vai trò.'}
             </p>
           </div>
@@ -207,45 +207,43 @@ function AddExistingUser() {
 
 function InviteByEmail() {
   const [email, setEmail] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [roleIds, setRoleIds] = useState<string[]>([]);
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [roleId, setRoleId] = useState('');
+  // Chỉ có khi API trả `acceptUrl` (MAIL_DRIVER=console): chưa gửi thư thật nên admin chuyển liên kết bằng tay.
+  const [acceptUrl, setAcceptUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const invite = useInvite();
   const { data: wsRoles } = useRoles('WORKSPACE');
 
-  const roleOptions = (wsRoles ?? []).map((r) => ({ id: r.id, name: r.name, color: r.color }));
+  const roleOptions = [
+    { value: '', label: 'Mặc định — Thành viên' },
+    ...(wsRoles ?? []).map((r) => ({ value: r.id, label: r.name, color: r.color })),
+  ];
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!email.trim() || !displayName.trim() || invite.isPending) return;
-    setTempPassword(null);
+    if (!email.trim() || invite.isPending) return;
+    setAcceptUrl(null);
     invite.mutate(
-      {
-        email: email.trim(),
-        displayName: displayName.trim(),
-        roleIds: roleIds.length > 0 ? roleIds : undefined,
-      },
+      { email: email.trim(), roleId: roleId || undefined },
       {
         onSuccess: (data) => {
-          toast.success(`Đã mời ${data.email}`);
+          toast.success(data.acceptUrl ? `Đã tạo lời mời cho ${email.trim()}` : `Đã gửi thư mời tới ${email.trim()}`);
           setEmail('');
-          setDisplayName('');
-          setRoleIds([]);
+          setRoleId('');
           setCopied(false);
-          setTempPassword(data.tempPassword ?? null);
+          setAcceptUrl(data.acceptUrl ?? null);
         },
         onError: (err) => toast.error(apiErrorMessage(err)),
       },
     );
   }
 
-  async function copyPassword() {
-    if (!tempPassword) return;
+  async function copyLink() {
+    if (!acceptUrl) return;
     try {
-      await navigator.clipboard.writeText(tempPassword);
+      await navigator.clipboard.writeText(acceptUrl);
       setCopied(true);
-      toast.success('Đã sao chép mật khẩu tạm');
+      toast.success('Đã sao chép liên kết');
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
       toast.error('Không sao chép được, hãy chọn và sao chép thủ công');
@@ -268,71 +266,55 @@ function InviteByEmail() {
               disabled={invite.isPending}
             />
           </label>
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-ink">Tên hiển thị</span>
-            <Input
-              required
-              placeholder="Nguyễn Văn A"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+          <div className="space-y-1.5">
+            <span className="text-sm font-medium text-ink">
+              Vai trò <span className="font-normal text-faint">(tuỳ chọn)</span>
+            </span>
+            <SearchSelect
+              value={roleId}
+              onChange={setRoleId}
+              options={roleOptions}
               disabled={invite.isPending}
+              searchPlaceholder="Tìm vai trò…"
+              ariaLabel="Vai trò cho người được mời"
             />
-          </label>
+          </div>
         </div>
 
-        <div className="space-y-1.5">
-          <span className="text-sm font-medium text-ink">
-            Vai trò <span className="font-normal text-faint">(tuỳ chọn)</span>
-          </span>
-          <RoleMultiSelect
-            options={roleOptions}
-            value={roleIds}
-            onChange={setRoleIds}
-            requireOne={false}
-            disabled={invite.isPending}
-            placeholder="Mặc định — Thành viên"
-            ariaLabel="Vai trò cho người được mời"
-          />
-        </div>
-
-        <Button
-          type="submit"
-          size="sm"
-          loading={invite.isPending}
-          disabled={!email.trim() || !displayName.trim()}
-        >
+        <Button type="submit" size="sm" loading={invite.isPending} disabled={!email.trim()}>
           <UserPlus className="h-4 w-4" />
           Mời
         </Button>
       </form>
 
-      {tempPassword && (
+      {acceptUrl && (
         <div className="border-t border-border px-5 py-4">
-          <p className="text-sm font-medium text-ink-strong">Mật khẩu tạm</p>
+          <p className="text-sm font-medium text-ink-strong">Liên kết nhận lời mời</p>
           <p className="mt-0.5 text-sm text-muted">
-            Gửi mật khẩu tạm này cho người được mời để họ đăng nhập lần đầu.
+            Hệ thống chưa gửi email thật, nên hãy chuyển liên kết này cho người được mời. Liên kết dùng được một lần và
+            hết hạn sau 7 ngày.
           </p>
           <div className="mt-2 flex items-center gap-2">
             <Input
               readOnly
-              value={tempPassword}
-              aria-label="Mật khẩu tạm"
+              value={acceptUrl}
+              aria-label="Liên kết nhận lời mời"
               onFocus={(e) => e.currentTarget.select()}
               className="font-mono"
             />
             <Button
               type="button"
               variant="secondary"
-              size="icon"
-              onClick={() => void copyPassword()}
-              aria-label="Sao chép mật khẩu tạm"
-              title="Sao chép"
+              size="sm"
+              onClick={() => void copyLink()}
+              aria-label="Sao chép liên kết"
             >
               {copied ? (
                 <Check className={cn('h-4 w-4', 'text-success')} aria-hidden="true" />
               ) : (
                 <Copy className="h-4 w-4" aria-hidden="true" />
               )}
+              Sao chép liên kết
             </Button>
           </div>
         </div>

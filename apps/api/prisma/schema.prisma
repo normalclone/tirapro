@@ -248,6 +248,7 @@ model User {
   ownedPrograms        Program[]             @relation("ProgramOwner")
   ownedObjectives      Objective[]           @relation("ObjectiveOwner")
   ownedRaidItems       RaidItem[]            @relation("RaidOwner")
+  passwordResetTokens  PasswordResetToken[]
 
   @@index([status])
 }
@@ -298,6 +299,7 @@ model Workspace {
   issueTemplates      IssueTemplate[]
   wikiPages           WikiPage[]
   clients             Client[]
+  inviteTokens        InviteToken[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -1944,4 +1946,61 @@ model Contract {
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
+}
+
+enum MailStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
+/// Hộp thư đi: thư được ghi vào đây rồi cron gửi sau (không gửi đồng bộ trong request).
+model EmailOutbox {
+  id          String     @id @default(cuid())
+  to          String
+  subject     String
+  html        String     @db.Text
+  text        String     @db.Text
+  template    String // 'invite' | 'password-reset' | 'notification'
+  payload     Json       @default("{}")
+  status      MailStatus @default(PENDING)
+  attempts    Int        @default(0)
+  lastError   String?    @db.Text
+  scheduledAt DateTime   @default(now())
+  sentAt      DateTime?
+  createdAt   DateTime   @default(now())
+
+  @@index([status, scheduledAt])
+}
+
+/// Lời mời vào workspace qua liên kết. Chỉ lưu sha256 của token, không lưu token thô.
+model InviteToken {
+  id          String    @id @default(cuid())
+  workspaceId String
+  email       String
+  roleId      String
+  tokenHash   String    @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, email])
+}
+
+/// Token đặt lại mật khẩu (dùng một lần, hết hạn sau 1 giờ). Chỉ lưu sha256 của token.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

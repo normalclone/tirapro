@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { NotificationEmailPrefs } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -8,6 +9,9 @@ import { keys } from '@/lib/queryKeys';
 export interface NotificationPrefsResponse {
   preferences: Record<string, boolean>;
   defaults: Record<string, boolean>;
+  /** Tuỳ chọn nhận thông báo qua email (đã gộp mặc định). */
+  email: NotificationEmailPrefs;
+  emailDefaults: NotificationEmailPrefs;
 }
 
 export function useNotificationPrefs() {
@@ -21,10 +25,10 @@ export function useNotificationPrefs() {
 export function useUpdateNotificationPrefs() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (preferences: Partial<Record<string, boolean>>) =>
-      api
-        .put<Record<string, boolean>>('/notifications/preferences', { preferences })
-        .then((r) => r.data),
+    mutationFn: (patch: {
+      preferences?: Partial<Record<string, boolean>>;
+      email?: Partial<NotificationEmailPrefs>;
+    }) => api.put<unknown>('/notifications/preferences', patch).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.notificationPrefs });
     },

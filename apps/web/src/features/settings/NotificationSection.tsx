@@ -1,4 +1,5 @@
-import { Bell } from 'lucide-react';
+import { Bell, Mail } from 'lucide-react';
+import type { NotificationEmailPrefs } from '@tirapro/types';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
@@ -17,6 +18,14 @@ const NOTIFICATION_TYPES: { key: string; label: string; hint: string }[] = [
   { key: 'WATCHING_UPDATE', label: 'Theo dõi cập nhật', hint: 'Cập nhật trên công việc bạn đang theo dõi' },
 ];
 
+/** Các loại thông báo có thể gửi qua email (khoá trùng `NotificationEmailPrefs`). */
+const EMAIL_TYPES: { key: keyof NotificationEmailPrefs; label: string; hint: string }[] = [
+  { key: 'mention', label: 'Được nhắc đến (@)', hint: 'Gửi email khi ai đó @ bạn' },
+  { key: 'assigned', label: 'Được giao việc', hint: 'Gửi email khi bạn được gán vào công việc' },
+  { key: 'comment', label: 'Bình luận mới', hint: 'Gửi email khi công việc của bạn có bình luận mới' },
+  { key: 'transition', label: 'Đổi trạng thái', hint: 'Gửi email khi công việc của bạn chuyển trạng thái' },
+];
+
 export function NotificationSection() {
   const { data, isLoading } = useNotificationPrefs();
   const update = useUpdateNotificationPrefs();
@@ -24,10 +33,17 @@ export function NotificationSection() {
   const effective = data?.preferences ?? {};
 
   function toggle(key: string, next: boolean) {
-    update.mutate({ [key]: next }, { onError: (e) => toast.error(apiErrorMessage(e)) });
+    update.mutate({ preferences: { [key]: next } }, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
+  function toggleEmail(key: keyof NotificationEmailPrefs, next: boolean) {
+    update.mutate({ email: { [key]: next } }, { onError: (e) => toast.error(apiErrorMessage(e)) });
+  }
+
+  const emailPrefs = data?.email;
+
   return (
+    <div className="space-y-6">
     <SectionCard
       icon={<Bell className="h-4 w-4" />}
       title="Thông báo"
@@ -65,5 +81,41 @@ export function NotificationSection() {
         </ul>
       )}
     </SectionCard>
+
+    <SectionCard
+      icon={<Mail className="h-4 w-4" />}
+      title="Thông báo qua email"
+      description="Các thông báo trong vòng 5 phút được gộp thành một email để hộp thư không bị ngập."
+    >
+      {isLoading || !emailPrefs ? (
+        <div className="space-y-2.5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      ) : (
+        <ul className="divide-y divide-border">
+          {EMAIL_TYPES.map(({ key, label, hint }) => (
+            <li key={key} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+              <div className="min-w-0">
+                <label htmlFor={`notif-email-${key}`} className="block text-sm font-medium text-ink">
+                  {label}
+                </label>
+                <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
+              </div>
+              <input
+                id={`notif-email-${key}`}
+                type="checkbox"
+                checked={emailPrefs[key]}
+                disabled={update.isPending}
+                onChange={(e) => toggleEmail(key, e.target.checked)}
+                className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </SectionCard>
+    </div>
   );
 }

@@ -2,7 +2,21 @@ import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
-import { loginSchema, registerSchema, type LoginInput, type RegisterInput } from '@tirapro/shared';
+import { Throttle } from '@nestjs/throttler';
+import {
+  acceptInviteSchema,
+  createInviteSchema,
+  forgotPasswordSchema,
+  loginSchema,
+  registerSchema,
+  resetPasswordSchema,
+  type AcceptInviteInput,
+  type CreateInviteInput,
+  type ForgotPasswordInput,
+  type LoginInput,
+  type RegisterInput,
+  type ResetPasswordInput,
+} from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -11,12 +25,10 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
-import {
-  inviteMemberSchema,
-  switchWorkspaceSchema,
-  type InviteMemberInput,
-  type SwitchWorkspaceInput,
-} from './auth.schemas';
+import { InviteService } from './invite.service';
+import { PasswordResetService } from './password-reset.service';
+import { switchWorkspaceSchema, type SwitchWorkspaceInput } from './auth.schemas';
+import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 const REFRESH_COOKIE = 'tirapro_rt';
@@ -27,6 +39,8 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly tokens: TokenService,
+    private readonly invites: InviteService,
+    private readonly passwordReset: PasswordResetService,
     private readonly config: ConfigService,
   ) {}
 
@@ -133,14 +147,47 @@ export class AuthController {
     return rest;
   }
 
-  /** Mời thành viên vào workspace hiện tại. Cần quyền quản trị workspace. */
+  /**
+   * Mời thành viên vào workspace hiện tại bằng email + liên kết (hiệu lực 7 ngày). Cần quyền quản trị workspace.
+   * `acceptUrl` chỉ có trong response khi MAIL_DRIVER=console.
+   */
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   @HttpCode(200)
-  @Post('invite')
-  async invite(
+  @Post('invites')
+  async createInvite(
     @CurrentUser() user: AuthUser,
-    @Body(new ZodValidationPipe(inviteMemberSchema)) dto: InviteMemberInput,
+    @Body(new ZodValidationPipe(createInviteSchema)) dto: CreateInviteInput,
   ) {
-    return this.auth.invite(user.workspaceId, dto);
+    if (!user.workspaceId) {
+      throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
+    }
+    return this.invites.createInvite(user.workspaceId, user.id, dto);
+  }
+
+  /** Người được mời mở liên kết trong thư để đặt tên + mật khẩu và vào workspace. */
+  @Public()
+  @HttpCode(200)
+  @Post('invites/accept')
+  async acceptInvite(@Body(new ZodValidationPipe(acceptInviteSchema)) dto: AcceptInviteInput) {
+    return this.invites.acceptInvite(dto);
+  }
+
+  /** Luôn trả `{ success: true }` dù email có tồn tại hay không (không lộ tài khoản). 5 lần / 15 phút / IP. */
+  @Public()
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
+  @Post('forgot-password')
+  async forgotPassword(@Body(new ZodValidationPipe(forgotPasswordSchema)) dto: ForgotPasswordInput) {
+    await this.passwordReset.requestReset(dto.email);
+    return { success: true };
+  }
+
+  @Public()
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
+  @Post('reset-password')
+  async resetPassword(@Body(new ZodValidationPipe(resetPasswordSchema)) dto: ResetPasswordInput) {
+    await this.passwordReset.resetPassword(dto);
+    return { success: true };
   }
 }

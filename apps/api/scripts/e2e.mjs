@@ -181,8 +181,10 @@ async function main() {
   const wss = await call('GET', '/auth/workspaces');
   const sw = wss.json?.[0]?.id ? await call('POST', '/auth/switch-workspace', { workspaceId: wss.json[0].id }) : { status: 0, json: null };
   check('auth/workspaces + switch', wss.status === 200 && Array.isArray(wss.json) && sw.status < 400 && !!sw.json?.accessToken);
-  const inv = await call('POST', '/auth/invite', { email: `e2e-${Date.now()}@x.test`, displayName: 'E2E Invitee' });
-  check('auth/invite', inv.status < 400 && inv.json?.invited === true);
+  // Mời qua liên kết: không truyền roleId → mặc định "Workspace Member". `acceptUrl` chỉ có khi MAIL_DRIVER=console.
+  const inv = await call('POST', '/auth/invites', { email: `e2e-${Date.now()}@x.test` });
+  const mailDriver = process.env.MAIL_DRIVER ?? 'console';
+  check('auth/invites', inv.status < 400 && typeof inv.json?.inviteId === 'string' && (mailDriver !== 'console' || typeof inv.json?.acceptUrl === 'string'));
 
   console.log(`\n=== E2E: ${pass} PASS / ${fail} FAIL ===`);
   process.exit(fail === 0 ? 0 : 1);

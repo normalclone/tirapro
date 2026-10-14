@@ -4,12 +4,11 @@ import { createId } from '@paralleldrive/cuid2';
 import { SYSTEM_ROLES, type PermissionKey } from '@tirapro/types';
 import type { LoginInput, RegisterInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { RbacService } from '../rbac/rbac.service';
 import { WorkspaceBootstrapService } from '../workspaces/workspace-bootstrap.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { TokenService, type RefreshMeta } from './token.service';
-import type { InviteMemberInput } from './auth.schemas';
 
 @Injectable()
 export class AuthService {
@@ -176,86 +175,6 @@ export class AuthService {
     }
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     return this.issueSession(user, workspaceId, meta);
-  }
-
-  /**
-   * Mời thành viên vào workspace hiện tại. Tạo User mới nếu email chưa tồn tại
-   * (mật khẩu tạm ngẫu nhiên, hash argon2). Idempotent: đã là thành viên thì trả về luôn.
-   */
-  async invite(
-    currentWorkspaceId: string | null,
-    input: InviteMemberInput,
-  ): Promise<{ userId: string; email: string; invited: true; tempPassword?: string }> {
-    if (!currentWorkspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-
-    const email = input.email.toLowerCase();
-    const requested = input.roleIds ?? (input.roleId ? [input.roleId] : []);
-    const roleIds = await this.resolveInviteRoleIds(currentWorkspaceId, requested);
-
-    // TODO(email): hiện chưa có hạ tầng gửi email nên API trả `tempPassword` để admin chuyển tay cho
-    // thành viên. Khi có email (Pha E), gửi thư mời/đặt mật khẩu rồi BỎ `tempPassword` khỏi response.
-    // Hash argon2 tính trước, ngoài transaction, để không giữ kết nối DB trong lúc băm.
-    const generatedPassword = createId();
-    const generatedHash = await argon2.hash(generatedPassword);
-
-    // User + membership cùng một transaction: lỗi giữa chừng không để lại user mồ côi.
-    const { userId, tempPassword } = await this.prisma.$transaction(async (tx) => {
-      let tempPassword: string | undefined;
-      let userId: string;
-
-      const existing = await tx.user.findUnique({ where: { email }, select: { id: true } });
-      if (existing) {
-        userId = existing.id;
-      } else {
-        tempPassword = generatedPassword;
-        const created = await tx.user.create({
-          data: { email, displayName: input.displayName, passwordHash: generatedHash },
-          select: { id: true },
-        });
-        userId = created.id;
-      }
-
-      // Idempotent: nếu đã là thành viên thì trả về membership hiện có, không báo lỗi.
-      const member = await tx.workspaceMembership.findUnique({
-        where: { workspaceId_userId: { workspaceId: currentWorkspaceId, userId } },
-        select: { id: true },
-      });
-      if (!member) {
-        await tx.workspaceMembership.create({
-          data: {
-            workspaceId: currentWorkspaceId, userId, roleId: roleIds[0]!, joinedAt: new Date(),
-            roles: { create: roleIds.map((rid) => ({ roleId: rid })) },
-          },
-        });
-      }
-      return { userId, tempPassword };
-    });
-
-    return tempPassword
-      ? { userId, email, invited: true, tempPassword }
-      : { userId, email, invited: true };
-  }
-
-  /**
-   * Chuẩn hoá danh sách roleId cho lời mời: mỗi role phải hợp lệ (thuộc workspace
-   * hoặc system role). Rỗng → mặc định [Workspace Member]. Trả về mảng đã khử trùng.
-   */
-  private async resolveInviteRoleIds(workspaceId: string, roleIds: string[]): Promise<string[]> {
-    const unique = [...new Set(roleIds)];
-    if (unique.length) {
-      const found = await this.prisma.role.findMany({
-        where: { id: { in: unique }, OR: [{ workspaceId }, { workspaceId: null }] },
-        select: { id: true },
-      });
-      if (found.length !== unique.length) throw new NotFoundAppException('Vai trò');
-      return found.map((r) => r.id);
-    }
-    const memberRole = await this.prisma.role.findFirst({
-      where: { name: SYSTEM_ROLES.WORKSPACE_MEMBER, scope: 'WORKSPACE', workspaceId: null, isSystem: true },
-      select: { id: true },
-    });
-    if (!memberRole) throw new Error('System role chưa được seed (chạy pnpm db:seed)');
-    return [memberRole.id];
   }
 
   private async issueSession(
