@@ -67,20 +67,31 @@ export function InstantTooltip() {
       stash = null;
     }
 
-    function show(el: HTMLElement) {
+    /**
+     * Cất `title` sang `data-tip` để trình duyệt không hiện thêm tooltip gốc (trễ + xấu). CHỈ dùng khi rê chuột:
+     * focus bàn phím không bật tooltip gốc nên giữ nguyên `title` — nút chỉ có `title` luôn còn tên truy cập khi đang focus.
+     */
+    function suppressNative(el: HTMLElement) {
+      if (!stash || stash.el !== el || stash.title !== null) return;
+      const title = el.getAttribute('title');
+      if (title === null) return;
+      el.setAttribute('data-tip', title);
+      el.removeAttribute('title');
+      stash.title = title;
+    }
+
+    function show(el: HTMLElement, source: 'mouse' | 'focus') {
       if (el.hasAttribute('data-no-tip')) return;
-      const { text: raw, title } = readTip(el);
+      // THỨ TỰ QUAN TRỌNG: trả lại `title` đang cất (từ lần ẩn mềm trước, vd sau khi bấm/cuộn/Esc) TRƯỚC khi đọc,
+      // nếu không `readTip` thấy title = null và bỏ qua bước cất → tooltip gốc hiện chồng lên tooltip của ta.
+      restore();
+      const { text: raw } = readTip(el);
       const text = raw.trim();
       if (!text) return;
-      restore();
-      if (title !== null) {
-        // Cất tạm để trình duyệt không hiện tooltip gốc (trễ + xấu); `hide()` sẽ trả lại.
-        el.setAttribute('data-tip', title);
-        el.removeAttribute('title');
-      }
       const prev = el.getAttribute('aria-describedby');
       el.setAttribute('aria-describedby', prev ? `${prev} ${TIP_ID}` : TIP_ID);
-      stash = { el, title, describedBy: prev };
+      stash = { el, title: null, describedBy: prev };
+      if (source === 'mouse') suppressNative(el);
       targetRef.current = el;
       const r = el.getBoundingClientRect();
       // Mặc định đặt phía trên; nếu không đủ chỗ thì xuống dưới.
@@ -107,12 +118,17 @@ export function InstantTooltip() {
     function onOver(e: Event) {
       const t = e.target as HTMLElement | null;
       const el = t?.closest?.('[title],[data-tip]') as HTMLElement | null;
+      const source = e.type === 'focusin' ? 'focus' : 'mouse';
       if (!el) {
         if (targetRef.current) hide();
         return;
       }
-      if (el === targetRef.current) return;
-      show(el);
+      if (el === targetRef.current) {
+        // Đang hiện do focus mà chuột rê vào: từ giờ tooltip gốc có thể bật → cất title.
+        if (source === 'mouse') suppressNative(el);
+        return;
+      }
+      show(el, source);
     }
 
     function onOut(e: MouseEvent) {

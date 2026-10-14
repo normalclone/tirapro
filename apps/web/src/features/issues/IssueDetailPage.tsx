@@ -42,7 +42,13 @@ import type { IssueDto } from '@tirapro/types';
 
 /** Sơ đồ quy trình kéo theo reactflow (nặng) → chỉ tải khi người dùng bấm “Xem quy trình”. */
 const WorkflowViewDialog = lazy(() =>
-  import('@/features/workflow-settings/WorkflowViewDialog').then((m) => ({ default: m.WorkflowViewDialog })),
+  import('@/features/workflow-settings/WorkflowViewDialog')
+    .then((m) => ({ default: m.WorkflowViewDialog }))
+    .catch(() => {
+      // Tải chunk lỗi (mất mạng / bản mới vừa phát hành): báo rõ thay vì ném lỗi lúc vẽ làm trắng trang.
+      toast.error('Không tải được sơ đồ quy trình. Kiểm tra mạng rồi tải lại trang để thử lại.');
+      return { default: () => null };
+    }),
 );
 
 /**

@@ -47,6 +47,8 @@ export function GuideLauncher() {
   const markGuide = useMarkGuide();
   // Đảm bảo intro chỉ auto-start một lần / màn / phiên.
   const autoStarted = useRef<Set<string>>(new Set());
+  // Đang tải/đang chạy tour: chặn bấm đúp mở hai tour chồng nhau (mở khoá khi tour đóng).
+  const launching = useRef(false);
 
   const runTour = useCallback(
     async (guide: ScreenGuide, opts: { markSeen?: boolean }) => {
@@ -54,10 +56,13 @@ export function GuideLauncher() {
       const steps = toDriveSteps(guide.content.steps);
       if (steps.length === 0) return;
       // driver.js + CSS chỉ tải khi thật sự chạy tour (không nằm trong bundle đầu).
+      if (launching.current) return;
+      launching.current = true;
       let driver: (config?: Config) => Driver;
       try {
         [{ driver }] = await Promise.all([import('driver.js'), import('driver.js/dist/driver.css')]);
       } catch {
+        launching.current = false;
         return; // mất mạng khi tải thư viện: bỏ qua, người dùng bấm lại “Hướng dẫn màn này” sau
       }
       if (opts.markSeen) markGuide.mutate({ key: guide.key, action: 'seen' });
@@ -69,6 +74,7 @@ export function GuideLauncher() {
         progressText: '{{current}}/{{total}}',
         steps,
         onDestroyed: () => {
+          launching.current = false;
           markGuide.mutate({ key: guide.key, action: 'complete' });
         },
       });

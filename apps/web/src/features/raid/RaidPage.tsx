@@ -94,16 +94,16 @@ function HeatMatrix({
                       const score = prob * impact;
                       const meta = RAID_LEVEL_META[raidLevelOf(score)];
                       const active = selected?.p === prob && selected?.i === impact;
+                      const tip = `Xác suất: ${PROBABILITY_LABELS[prob]} · Ảnh hưởng: ${IMPACT_LABELS[impact]}\n`
+                        + `Điểm rủi ro ${score} — mức ${meta.label.toLowerCase()} · ${count} mục`;
                       return (
                         <td key={prob} className="p-0">
                           <button
                             type="button"
                             onClick={() => onSelect(active ? null : { p: prob, i: impact })}
                             aria-pressed={active}
-                            title={
-                              `Xác suất: ${PROBABILITY_LABELS[prob]} · Ảnh hưởng: ${IMPACT_LABELS[impact]}\n`
-                              + `Điểm rủi ro ${score} — mức ${meta.label.toLowerCase()} · ${count} mục`
-                            }
+                            title={tip}
+                            aria-label={tip.replace('\n', ' · ')}
                             className={cn(
                               'flex h-11 w-full items-center justify-center rounded-md text-sm font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
                               count === 0 ? 'bg-surface-2 text-faint' : meta.cell,

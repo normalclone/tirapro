@@ -583,6 +583,7 @@ export function GanttPage() {
                           type="button"
                           onClick={() => navigate(`/issue/${issue.key}`)}
                           title={barTitle(s)}
+                          aria-label={barTitle(s)}
                           className={cn(
                             'absolute top-1/2 flex -translate-y-1/2 items-center overflow-hidden rounded-md border px-2 text-left',
                             'transition-opacity hover:opacity-90',

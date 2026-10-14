@@ -8,7 +8,7 @@ import { CardBody } from './Card';
 
 const SCREEN_READER_INSTRUCTIONS: ScreenReaderInstructions = {
   draggable:
-    'Nhấn Space để nhấc việc này lên. Khi đang nhấc, dùng phím mũi tên để chọn cột đích, nhấn Space để thả, nhấn Esc để huỷ. Nhấn Enter để mở chi tiết việc.',
+    'Nhấn Space để nhấc việc này lên. Khi đang nhấc, dùng phím mũi tên để di chuyển thẻ từng bước tới cột đích, nhấn Space để thả, nhấn Esc để huỷ. Nhấn Enter để mở chi tiết việc.',
 };
 
 /**
@@ -38,7 +38,7 @@ export function BoardDnd({
       return columns.find((c) => c.id === colId)?.name ?? 'cột khác';
     };
     return {
-      onDragStart: ({ active }) => `Đã nhấc ${keyOf(active.id)}. Dùng phím mũi tên để chọn cột, Space để thả, Esc để huỷ.`,
+      onDragStart: ({ active }) => `Đã nhấc ${keyOf(active.id)}. Dùng phím mũi tên để di chuyển tới cột đích, Space để thả, Esc để huỷ.`,
       onDragOver: ({ active, over }) => (over ? `${keyOf(active.id)} đang ở trên cột “${colNameOf(over.id)}”.` : `${keyOf(active.id)} đang ở ngoài các cột.`),
       onDragEnd: ({ active, over }) => (over ? `Đã thả ${keyOf(active.id)} vào cột “${colNameOf(over.id)}”.` : `Đã thả ${keyOf(active.id)} ra ngoài các cột, giữ nguyên.`),
       onDragCancel: ({ active }) => `Đã huỷ kéo ${keyOf(active.id)}, giữ nguyên vị trí.`,
