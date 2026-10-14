@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await -- mock bất đồng bộ phải trả Promise dù không await */
 import { Logger } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetCronLockWarning, withCronLock, type CronLockClient, type CronLockRedis } from './cron-lock';

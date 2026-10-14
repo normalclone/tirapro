@@ -78,7 +78,7 @@ export class DevController {
     return this.dev.handleWebhook(
       repositoryId,
       { githubSignature, gitlabToken, rawBody: req.rawBody },
-      (body ?? {}) as never,
+      (body ?? {}),
     );
   }
 }

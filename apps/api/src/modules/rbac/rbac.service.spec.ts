@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await -- mock bất đồng bộ phải trả Promise dù không await */
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { describe, expect, it, vi } from 'vitest';
 import { RbacService } from './rbac.service';

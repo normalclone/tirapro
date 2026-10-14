@@ -98,14 +98,14 @@ describe('RealtimeGateway — bridge notification & sprint', () => {
   it('notification.created -> notification:new tới room user của người nhận', () => {
     const { gateway, to, emit } = makeGateway();
     const notification = { id: 'N1', type: 'MENTIONED' };
-    gateway.onNotificationCreated({ recipientId: 'U9', notification } as never);
+    gateway.onNotificationCreated({ recipientId: 'U9', notification });
     expect(to).toHaveBeenCalledWith('user:U9');
     expect(emit).toHaveBeenCalledWith(WS_EVENTS.NOTIFICATION_NEW, { notification });
   });
 
   it('bỏ qua notification.created thiếu recipientId', () => {
     const { gateway, to } = makeGateway();
-    gateway.onNotificationCreated({ notification: { id: 'N1' } } as never);
+    gateway.onNotificationCreated({ notification: { id: 'N1' } });
     expect(to).not.toHaveBeenCalled();
   });
 

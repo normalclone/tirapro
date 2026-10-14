@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await -- mock bất đồng bộ phải trả Promise dù không await */
 import { UnauthorizedException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { JwtStrategy } from './jwt.strategy';

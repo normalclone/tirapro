@@ -196,7 +196,8 @@ export class RbacService {
     value: string,
   ): Promise<{ projectId: string | null } | null> {
     const r = RESOURCE_RESOLVERS[kind];
-    const delegate = (this.prisma as unknown as Record<string, ResolverDelegate>)[r.model];
+    const delegate = (this.prisma as unknown as Record<string, ResolverDelegate | undefined>)[r.model];
+    if (!delegate) throw new NotFoundAppException('Tài nguyên');
     const row = await delegate.findFirst({ where: r.where(value, workspaceId), select: r.select });
     if (!row) return null;
     return { projectId: r.project(row as never, workspaceId) };

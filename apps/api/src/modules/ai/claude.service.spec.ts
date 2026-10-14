@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await -- mock bất đồng bộ phải trả Promise dù không await */
 import Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
@@ -31,8 +32,8 @@ describe('ClaudeService', () => {
     const { svc, create, logCreate } = make({ create: vi.fn().mockResolvedValue(okMessage(' xin chào ')) });
     const out = await svc.complete({ ctx: CTX, model: svc.modelFast, system: 's', prompt: 'p' });
     expect(out).toEqual({ data: 'xin chào' });
-    expect(create.mock.calls[0][0].model).toBe('fast-m');
-    const data = logCreate.mock.calls[0][0].data;
+    expect(create.mock.calls[0]![0]!.model).toBe('fast-m');
+    const data = logCreate.mock.calls[0]![0]!.data;
     expect(data).toMatchObject({
       workspaceId: 'ws1', userId: 'u1', feature: 'summarize', model: 'fast-m', inputTokens: 10, outputTokens: 5, success: true,
     });
@@ -44,7 +45,7 @@ describe('ClaudeService', () => {
       ctx: CTX, system: 's', prompt: 'p', schema: { type: 'object', properties: { a: { type: 'number' } } },
     });
     expect(out.data).toEqual({ a: 1 });
-    const params = create.mock.calls[0][0];
+    const params = create.mock.calls[0]![0]!;
     expect(params.tool_choice).toBeUndefined();
     expect(params.output_config.format.type).toBe('json_schema');
     expect(params.output_config.format.schema.additionalProperties).toBe(false);
@@ -104,7 +105,7 @@ describe('withStrictObjects', () => {
     const out = withStrictObjects({
       type: 'object',
       properties: { xs: { type: 'array', items: { type: 'object', properties: {} } }, y: { type: 'object', additionalProperties: true } },
-    }) as any;
+    }) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
     expect(out.additionalProperties).toBe(false);
     expect(out.properties.xs.items.additionalProperties).toBe(false);
     expect(out.properties.y.additionalProperties).toBe(true);

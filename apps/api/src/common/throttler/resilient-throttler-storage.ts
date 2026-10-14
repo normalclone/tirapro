@@ -1,5 +1,7 @@
-import { Logger, OnApplicationShutdown } from '@nestjs/common';
-import { ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler';
+import type { OnApplicationShutdown } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
+import type { ThrottlerStorage} from '@nestjs/throttler';
+import { ThrottlerStorageService } from '@nestjs/throttler';
 
 type Increment = ThrottlerStorage['increment'];
 type IncrementResult = Awaited<ReturnType<Increment>>;
