@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery } from '@tanstack/react-query';
 import type { ProjectDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { queryClient } from '@/lib/queryClient';
@@ -14,8 +14,7 @@ export function useProjects() {
 export function useProject(key: string) {
   return useQuery({
     queryKey: keys.projects.byKey(key),
-    queryFn: async () => (await api.get<ProjectDto>(`/projects/${key}`)).data,
-    enabled: !!key,
+    queryFn: key ? async () => (await api.get<ProjectDto>(`/projects/${key}`)).data : skipToken,
   });
 }
 

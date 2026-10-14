@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MemberDto, UserDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { queryClient } from '@/lib/queryClient';
@@ -37,9 +37,10 @@ export function useAllUsers(search?: string, enabled = true) {
   const q = search?.trim() ?? '';
   return useQuery({
     queryKey: keys.users.all(q),
-    queryFn: async () =>
-      (await api.get<UserDto[]>('/users/all', { params: q ? { search: q } : undefined })).data,
-    enabled,
+    queryFn: enabled
+      ? async () =>
+          (await api.get<UserDto[]>('/users/all', { params: q ? { search: q } : undefined })).data
+      : skipToken,
   });
 }
 
@@ -176,9 +177,8 @@ export function useRemoveMember() {
 export function useProjectMembers(projectId?: string) {
   return useQuery({
     queryKey: keys.members.project(projectId ?? ''),
-    queryFn: async () =>
-      (await api.get<MemberDto[]>(`/projects/${projectId}/members`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () =>
+      (await api.get<MemberDto[]>(`/projects/${projectId}/members`)).data : skipToken,
   });
 }
 

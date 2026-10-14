@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -8,9 +8,8 @@ import { keys } from '@/lib/queryKeys';
 export function useTriageInbox(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.triage.inbox(projectId ?? ''),
-    queryFn: async () =>
-      (await api.get<ListResponse<IssueDto>>(`/triage?projectId=${projectId}&limit=100`)).data.data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () =>
+      (await api.get<ListResponse<IssueDto>>(`/triage?projectId=${projectId}&limit=100`)).data.data : skipToken,
   });
 }
 
@@ -18,8 +17,7 @@ export function useTriageInbox(projectId: string | undefined) {
 export function useTriageCount(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.triage.count(projectId ?? ''),
-    queryFn: async () => (await api.get<{ count: number }>(`/triage/count?projectId=${projectId}`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<{ count: number }>(`/triage/count?projectId=${projectId}`)).data : skipToken,
   });
 }
 

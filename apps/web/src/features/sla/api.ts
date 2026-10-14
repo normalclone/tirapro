@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -53,8 +53,7 @@ export function useSlaBoard() {
 export function useIssueSla(issueId?: string) {
   return useQuery({
     queryKey: keys.issues.sla(issueId ?? ''),
-    queryFn: async () => (await api.get<IssueSlaDto | null>(`/sla/issue/${issueId}`)).data,
-    enabled: !!issueId,
+    queryFn: issueId ? async () => (await api.get<IssueSlaDto | null>(`/sla/issue/${issueId}`)).data : skipToken,
   });
 }
 

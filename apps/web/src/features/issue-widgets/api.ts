@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -41,8 +41,7 @@ export interface IssueLink {
 export function useWatchState(issueId: string) {
   return useQuery({
     queryKey: keys.issues.watch(issueId),
-    queryFn: async () => (await api.get<WatchState>(`/issues/${issueId}/watch`)).data,
-    enabled: !!issueId,
+    queryFn: issueId ? async () => (await api.get<WatchState>(`/issues/${issueId}/watch`)).data : skipToken,
   });
 }
 
@@ -67,8 +66,7 @@ export function useToggleWatch(issueId: string) {
 export function useIssueLinks(issueId: string) {
   return useQuery({
     queryKey: keys.issues.links(issueId),
-    queryFn: async () => (await api.get<IssueLink[]>(`/issues/${issueId}/links`)).data,
-    enabled: !!issueId,
+    queryFn: issueId ? async () => (await api.get<IssueLink[]>(`/issues/${issueId}/links`)).data : skipToken,
   });
 }
 

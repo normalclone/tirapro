@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -122,9 +122,8 @@ export function useTestIntegration() {
 export function useChannels(integrationId: string) {
   return useQuery({
     queryKey: keys.integrations.channels(integrationId),
-    queryFn: async () =>
-      (await api.get<Channel[]>(`/integrations/${integrationId}/channels`)).data,
-    enabled: !!integrationId,
+    queryFn: integrationId ? async () =>
+      (await api.get<Channel[]>(`/integrations/${integrationId}/channels`)).data : skipToken,
   });
 }
 

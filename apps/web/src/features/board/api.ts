@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BoardDto, IssueDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -7,8 +7,7 @@ import { invalidateIssue, optimisticPatchIssue, rollbackIssue } from '@/lib/opti
 export function useBoards(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.boards.byProject(projectId ?? ''),
-    queryFn: async () => (await api.get<BoardDto[]>(`/boards?projectId=${projectId}`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<BoardDto[]>(`/boards?projectId=${projectId}`)).data : skipToken,
   });
 }
 

@@ -387,7 +387,7 @@ export function GanttPage() {
         {pe || issuesQ.isError ? (
           <QueryError
             error={pErr ?? issuesQ.error}
-            onRetry={() => { void refetchProject(); void issuesQ.refetch(); }}
+            onRetry={() => { void refetchProject(); if (!pe) void issuesQ.refetch(); }}
           />
         ) : isLoading ? (
           <div className="space-y-2">

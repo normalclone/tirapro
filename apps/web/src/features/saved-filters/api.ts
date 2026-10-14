@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -56,10 +56,12 @@ export function useFilterFields() {
 export function useRunJql(jql: string, enabled: boolean) {
   return useQuery({
     queryKey: keys.search.jql(jql),
-    queryFn: async () =>
-      (await api.get<ListResponse<IssueDto>>(`/search?jql=${encodeURIComponent(jql)}&limit=100`)).data
-        .data,
-    enabled: enabled && jql.trim().length > 0,
+    queryFn:
+      enabled && jql.trim().length > 0
+        ? async () =>
+            (await api.get<ListResponse<IssueDto>>(`/search?jql=${encodeURIComponent(jql)}&limit=100`)).data
+              .data
+        : skipToken,
     retry: false,
   });
 }

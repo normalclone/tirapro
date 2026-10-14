@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth-token';
 import { keys } from '@/lib/queryKeys';
@@ -21,8 +21,7 @@ export interface Attachment {
 export function useAttachments(issueId: string | undefined) {
   return useQuery({
     queryKey: keys.issues.attachments(issueId ?? ''),
-    queryFn: async () => (await api.get<Attachment[]>(`/issues/${issueId}/attachments`)).data,
-    enabled: !!issueId,
+    queryFn: issueId ? async () => (await api.get<Attachment[]>(`/issues/${issueId}/attachments`)).data : skipToken,
   });
 }
 

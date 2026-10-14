@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -27,24 +27,21 @@ export type VersionType = 'FIX' | 'AFFECTS';
 export function useProjectLabels(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.projectMeta.labels(projectId ?? ''),
-    queryFn: async () => (await api.get<ProjectLabel[]>(`/projects/${projectId}/labels`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<ProjectLabel[]>(`/projects/${projectId}/labels`)).data : skipToken,
   });
 }
 
 export function useProjectComponents(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.projectMeta.components(projectId ?? ''),
-    queryFn: async () => (await api.get<ProjectComponent[]>(`/projects/${projectId}/components`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<ProjectComponent[]>(`/projects/${projectId}/components`)).data : skipToken,
   });
 }
 
 export function useProjectVersions(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.projectMeta.versions(projectId ?? ''),
-    queryFn: async () => (await api.get<ProjectVersion[]>(`/projects/${projectId}/versions`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<ProjectVersion[]>(`/projects/${projectId}/versions`)).data : skipToken,
   });
 }
 

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DependencyType } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -110,8 +110,7 @@ export interface ScheduleDto {
 export function useDependencies(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.planning.dependencies(projectId ?? ''),
-    queryFn: async () => (await api.get<DependencyDto[]>(`/planning/${projectId}/dependencies`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<DependencyDto[]>(`/planning/${projectId}/dependencies`)).data : skipToken,
   });
 }
 
@@ -146,8 +145,7 @@ export function useDeleteDependency(projectId: string) {
 export function useMilestones(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.planning.milestones(projectId ?? ''),
-    queryFn: async () => (await api.get<MilestoneDto[]>(`/planning/${projectId}/milestones`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<MilestoneDto[]>(`/planning/${projectId}/milestones`)).data : skipToken,
   });
 }
 
@@ -190,16 +188,17 @@ export function useDeleteMilestone(projectId: string) {
 export function useBaselines(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.planning.baselines(projectId ?? ''),
-    queryFn: async () => (await api.get<BaselineSummaryDto[]>(`/planning/${projectId}/baselines`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<BaselineSummaryDto[]>(`/planning/${projectId}/baselines`)).data : skipToken,
   });
 }
 
 export function useBaseline(projectId: string | undefined, baselineId: string | undefined) {
   return useQuery({
     queryKey: keys.planning.baseline(projectId ?? '', baselineId ?? ''),
-    queryFn: async () => (await api.get<BaselineDto>(`/planning/${projectId}/baselines/${baselineId}`)).data,
-    enabled: !!projectId && !!baselineId,
+    queryFn:
+      projectId && baselineId
+        ? async () => (await api.get<BaselineDto>(`/planning/${projectId}/baselines/${baselineId}`)).data
+        : skipToken,
   });
 }
 
@@ -217,7 +216,6 @@ export function useCreateBaseline(projectId: string) {
 export function useSchedule(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.planning.schedule(projectId ?? ''),
-    queryFn: async () => (await api.get<ScheduleDto>(`/planning/${projectId}/schedule`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<ScheduleDto>(`/planning/${projectId}/schedule`)).data : skipToken,
   });
 }

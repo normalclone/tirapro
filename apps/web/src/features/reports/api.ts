@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import type { SprintDto } from '@tirapro/types';
 import type {
   BurndownReport,
@@ -53,9 +53,8 @@ export interface ProjectReport {
 export function useProjectReport(projectId?: string) {
   return useQuery({
     queryKey: keys.reports.project(projectId ?? ''),
-    queryFn: async () =>
-      (await api.get<ProjectReport>(`/reports/project?projectId=${projectId}`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () =>
+      (await api.get<ProjectReport>(`/reports/project?projectId=${projectId}`)).data : skipToken,
     staleTime: 30_000,
   });
 }
@@ -63,43 +62,38 @@ export function useProjectReport(projectId?: string) {
 export function useProjectSprints(projectId?: string) {
   return useQuery({
     queryKey: keys.reports.sprints(projectId ?? ''),
-    queryFn: async () => (await api.get<SprintDto[]>(`/sprints?projectId=${projectId}`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<SprintDto[]>(`/sprints?projectId=${projectId}`)).data : skipToken,
   });
 }
 
 export function useBurndown(sprintId?: string) {
   return useQuery({
     queryKey: keys.reports.burndown(sprintId ?? ''),
-    queryFn: async () =>
-      (await api.get<BurndownReport>(`/reports/burndown?sprintId=${sprintId}`)).data,
-    enabled: !!sprintId,
+    queryFn: sprintId ? async () =>
+      (await api.get<BurndownReport>(`/reports/burndown?sprintId=${sprintId}`)).data : skipToken,
   });
 }
 
 export function useVelocity(projectId?: string) {
   return useQuery({
     queryKey: keys.reports.velocity(projectId ?? ''),
-    queryFn: async () =>
-      (await api.get<VelocityReport>(`/reports/velocity?projectId=${projectId}&limit=8`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () =>
+      (await api.get<VelocityReport>(`/reports/velocity?projectId=${projectId}&limit=8`)).data : skipToken,
   });
 }
 
 export function useCfd(projectId?: string) {
   return useQuery({
     queryKey: keys.reports.cfd(projectId ?? ''),
-    queryFn: async () => (await api.get<CfdReport>(`/reports/cfd?projectId=${projectId}`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<CfdReport>(`/reports/cfd?projectId=${projectId}`)).data : skipToken,
   });
 }
 
 export function useCreatedResolved(projectId?: string) {
   return useQuery({
     queryKey: keys.reports.createdResolved(projectId ?? ''),
-    queryFn: async () =>
+    queryFn: projectId ? async () =>
       (await api.get<CreatedResolvedReport>(`/reports/created-resolved?projectId=${projectId}`))
-        .data,
-    enabled: !!projectId,
+        .data : skipToken,
   });
 }

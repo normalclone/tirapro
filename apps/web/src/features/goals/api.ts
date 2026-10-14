@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { KeyResultUnit, ListResponse, ObjectiveStatus, StatusCategory } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -243,13 +243,14 @@ export function useIssueSearch(term: string, projectId?: string | null, enabled 
   const q = term.trim();
   return useQuery({
     queryKey: keys.goals.issueSearch(q, projectId ?? ''),
-    queryFn: async () => {
-      const params: Record<string, string> = { limit: '20' };
-      if (q) params.search = q;
-      if (projectId) params.projectId = projectId;
-      const res = await api.get<ListResponse<IssueSearchItem>>('/issues', { params });
-      return res.data.data;
-    },
-    enabled,
+    queryFn: enabled
+      ? async () => {
+          const params: Record<string, string> = { limit: '20' };
+          if (q) params.search = q;
+          if (projectId) params.projectId = projectId;
+          const res = await api.get<ListResponse<IssueSearchItem>>('/issues', { params });
+          return res.data.data;
+        }
+      : skipToken,
   });
 }

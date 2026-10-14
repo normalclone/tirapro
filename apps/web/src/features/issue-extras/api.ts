@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UserDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -17,8 +17,7 @@ export interface ChecklistItemDto {
 export function useParticipants(issueId?: string) {
   return useQuery({
     queryKey: keys.issues.participants(issueId ?? ''),
-    queryFn: async () => (await api.get<UserDto[]>(`/issues/${issueId}/participants`)).data,
-    enabled: !!issueId,
+    queryFn: issueId ? async () => (await api.get<UserDto[]>(`/issues/${issueId}/participants`)).data : skipToken,
   });
 }
 
@@ -35,8 +34,7 @@ export function useSetParticipants(issueId: string) {
 export function useChecklist(issueId?: string) {
   return useQuery({
     queryKey: keys.issues.checklist(issueId ?? ''),
-    queryFn: async () => (await api.get<ChecklistItemDto[]>(`/issues/${issueId}/checklist`)).data,
-    enabled: !!issueId,
+    queryFn: issueId ? async () => (await api.get<ChecklistItemDto[]>(`/issues/${issueId}/checklist`)).data : skipToken,
   });
 }
 

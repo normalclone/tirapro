@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth-token';
 import { keys } from '@/lib/queryKeys';
@@ -99,9 +99,8 @@ export interface ImportJob {
 export function useComponents(projectId?: string) {
   return useQuery({
     queryKey: keys.projectConfig.components(projectId ?? ''),
-    queryFn: async () =>
-      (await api.get<Component[]>(`/projects/${projectId}/components`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () =>
+      (await api.get<Component[]>(`/projects/${projectId}/components`)).data : skipToken,
   });
 }
 
@@ -144,9 +143,8 @@ export function useDeleteComponent(projectId: string) {
 export function useVersions(projectId?: string) {
   return useQuery({
     queryKey: keys.projectConfig.versions(projectId ?? ''),
-    queryFn: async () =>
-      (await api.get<Version[]>(`/projects/${projectId}/versions`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () =>
+      (await api.get<Version[]>(`/projects/${projectId}/versions`)).data : skipToken,
   });
 }
 
@@ -189,8 +187,7 @@ export function useDeleteVersion(projectId: string) {
 export function useLabels(projectId?: string) {
   return useQuery({
     queryKey: keys.projectConfig.labels(projectId ?? ''),
-    queryFn: async () => (await api.get<Label[]>(`/projects/${projectId}/labels`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<Label[]>(`/projects/${projectId}/labels`)).data : skipToken,
   });
 }
 

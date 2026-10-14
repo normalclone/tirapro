@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CommentDto, IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -23,8 +23,7 @@ export interface DevLinkItem {
 export function useDevLinks(issueId: string | undefined) {
   return useQuery({
     queryKey: keys.issues.devLinks(issueId ?? ''),
-    queryFn: async () => (await api.get<DevLinkItem[]>(`/issues/${issueId}/dev-links`)).data,
-    enabled: !!issueId,
+    queryFn: issueId ? async () => (await api.get<DevLinkItem[]>(`/issues/${issueId}/dev-links`)).data : skipToken,
   });
 }
 
@@ -35,25 +34,22 @@ export function useDevLinks(issueId: string | undefined) {
 export function useProjectIssues(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.issues.byProject(projectId ?? ''),
-    queryFn: async () =>
-      (await api.get<ListResponse<IssueDto>>(`/issues?projectId=${projectId}&limit=200`)).data.data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () =>
+      (await api.get<ListResponse<IssueDto>>(`/issues?projectId=${projectId}&limit=200`)).data.data : skipToken,
   });
 }
 
 export function useIssue(key: string | null) {
   return useQuery({
     queryKey: keys.issues.byKey(key ?? ''),
-    queryFn: async () => (await api.get<IssueDto>(`/issues/${key}`)).data,
-    enabled: !!key,
+    queryFn: key ? async () => (await api.get<IssueDto>(`/issues/${key}`)).data : skipToken,
   });
 }
 
 export function useComments(issueId: string | undefined) {
   return useQuery({
     queryKey: keys.issues.comments(issueId ?? ''),
-    queryFn: async () => (await api.get<CommentDto[]>(`/issues/${issueId}/comments`)).data,
-    enabled: !!issueId,
+    queryFn: issueId ? async () => (await api.get<CommentDto[]>(`/issues/${issueId}/comments`)).data : skipToken,
   });
 }
 

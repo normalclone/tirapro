@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import type { IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -91,8 +91,7 @@ export interface WorkspaceOverview {
 export function useWorkspaceOverview(enabled: boolean) {
   return useQuery({
     queryKey: keys.dashboard.workspaceOverview,
-    queryFn: async () => (await api.get<WorkspaceOverview>('/reports/overview')).data,
-    enabled,
+    queryFn: enabled ? async () => (await api.get<WorkspaceOverview>('/reports/overview')).data : skipToken,
     staleTime: 30_000,
   });
 }

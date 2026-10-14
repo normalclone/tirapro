@@ -78,7 +78,7 @@ export function TreePage() {
           <div className={pageContainer('lg')}>
             <QueryError
               error={pErr ?? issuesQ.error}
-              onRetry={() => { void refetchProject(); void issuesQ.refetch(); }}
+              onRetry={() => { void refetchProject(); if (!pe) void issuesQ.refetch(); }}
             />
           </div>
         ) : isLoading ? (

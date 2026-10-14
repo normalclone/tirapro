@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -55,21 +55,22 @@ export function useWikiSearch(scope: string, q: string) {
   const term = q.trim();
   return useQuery({
     queryKey: keys.wiki.search(scope, term),
-    queryFn: async () =>
-      (
-        await api.get<WikiSearchHit[]>('/wiki', {
-          params: { q: term, ...(scope ? { projectId: scope } : {}) },
-        })
-      ).data,
-    enabled: term.length >= 2,
+    queryFn:
+      term.length >= 2
+        ? async () =>
+            (
+              await api.get<WikiSearchHit[]>('/wiki', {
+                params: { q: term, ...(scope ? { projectId: scope } : {}) },
+              })
+            ).data
+        : skipToken,
   });
 }
 
 export function useWikiPage(id: string | null) {
   return useQuery({
     queryKey: keys.wiki.page(id ?? ''),
-    queryFn: async () => (await api.get<WikiPageDetail>(`/wiki/${id}`)).data,
-    enabled: !!id,
+    queryFn: id ? async () => (await api.get<WikiPageDetail>(`/wiki/${id}`)).data : skipToken,
   });
 }
 

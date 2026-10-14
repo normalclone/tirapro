@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery } from '@tanstack/react-query';
 import type {
   AiCapabilities,
   AiGenerateIssuesResult,
@@ -19,8 +19,7 @@ export interface ProjectMeta {
 export function useProjectMeta(key: string | undefined) {
   return useQuery({
     queryKey: keys.ai.projectMeta(key ?? ''),
-    queryFn: async () => (await api.get<ProjectMeta>(`/projects/${key}/meta`)).data,
-    enabled: !!key,
+    queryFn: key ? async () => (await api.get<ProjectMeta>(`/projects/${key}/meta`)).data : skipToken,
     staleTime: 5 * 60_000,
   });
 }

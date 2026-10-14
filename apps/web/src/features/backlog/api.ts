@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IssueDto, SprintDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -7,8 +7,7 @@ import { invalidateIssue, optimisticPatchIssue, rollbackIssue, writeIssue } from
 export function useProjectSprints(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.sprints.byProject(projectId ?? ''),
-    queryFn: async () => (await api.get<SprintDto[]>(`/sprints?projectId=${projectId}`)).data,
-    enabled: !!projectId,
+    queryFn: projectId ? async () => (await api.get<SprintDto[]>(`/sprints?projectId=${projectId}`)).data : skipToken,
   });
 }
 

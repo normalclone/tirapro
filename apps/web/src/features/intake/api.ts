@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -61,13 +61,15 @@ export function useDuplicateCheck(projectId: string | undefined, summary: string
   const q = summary.trim();
   return useQuery({
     queryKey: keys.triage.duplicates(projectId ?? '', q),
-    queryFn: async () =>
-      (
-        await api.get<DuplicateSuggestion[]>('/intake/duplicates', {
-          params: { projectId, summary: q },
-        })
-      ).data,
-    enabled: !!projectId && q.length >= 4,
+    queryFn:
+      projectId && q.length >= 4
+        ? async () =>
+            (
+              await api.get<DuplicateSuggestion[]>('/intake/duplicates', {
+                params: { projectId, summary: q },
+              })
+            ).data
+        : skipToken,
     staleTime: 10_000,
   });
 }
@@ -95,14 +97,15 @@ const ACTIVITY_PAGE_SIZE = 40;
 export function useProjectActivity(projectId: string | undefined) {
   return useInfiniteQuery({
     queryKey: keys.projects.activity(projectId ?? ''),
-    queryFn: async ({ pageParam }) =>
-      (
-        await api.get<ProjectActivityResponse>(`/projects/${projectId}/activity`, {
-          params: { limit: ACTIVITY_PAGE_SIZE, cursor: pageParam ?? undefined },
-        })
-      ).data,
+    queryFn: projectId
+      ? async ({ pageParam }) =>
+          (
+            await api.get<ProjectActivityResponse>(`/projects/${projectId}/activity`, {
+              params: { limit: ACTIVITY_PAGE_SIZE, cursor: pageParam ?? undefined },
+            })
+          ).data
+      : skipToken,
     initialPageParam: null as string | null,
     getNextPageParam: (last) => (last.pageInfo.hasNextPage ? last.pageInfo.endCursor : undefined),
-    enabled: !!projectId,
   });
 }
