@@ -20,9 +20,22 @@ export class SprintsService {
     const sprints = await this.prisma.sprint.findMany({
       where: { projectId, deletedAt: null, project: { workspaceId } },
       orderBy: [{ state: 'asc' }, { sequence: 'desc' }],
-      include: { _count: { select: { issues: true } }, issues: { select: { storyPoints: true } } },
     });
-    return sprints.map((s) => this.toDto(s, s._count.issues, s.issues.reduce((a, i) => a + (i.storyPoints ?? 0), 0)));
+    if (sprints.length === 0) return [];
+    // Đếm issue + tổng điểm bằng một câu GROUP BY (không kéo từng issue về); issue đã xoá mềm không tính.
+    const groups = await this.prisma.issue.groupBy({
+      by: ['sprintId'],
+      where: { sprintId: { in: sprints.map((s) => s.id) }, deletedAt: null },
+      _count: { _all: true },
+      _sum: { storyPoints: true },
+    });
+    const statsBySprint = new Map(
+      groups.map((g) => [g.sprintId, { count: g._count._all, points: g._sum.storyPoints ?? 0 }]),
+    );
+    return sprints.map((s) => {
+      const st = statsBySprint.get(s.id);
+      return this.toDto(s, st?.count ?? 0, st?.points ?? 0);
+    });
   }
 
   async create(workspaceId: string, projectId: string, input: CreateSprintInput): Promise<SprintDto> {

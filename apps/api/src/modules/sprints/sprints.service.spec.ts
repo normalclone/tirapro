@@ -103,3 +103,35 @@ describe('SprintsService.complete / start — transaction', () => {
     expect(events.emit).not.toHaveBeenCalled();
   });
 });
+
+describe('SprintsService.listForProject — groupBy thay cho kéo từng issue', () => {
+  it('đếm + cộng điểm bằng một groupBy, sprint trống => 0/0', async () => {
+    const sprintFindMany = vi.fn(() => Promise.resolve([
+      sprintRow({ id: 's1', sequence: 2 }),
+      sprintRow({ id: 's2', sequence: 1, state: 'FUTURE' }),
+    ]));
+    const groupBy = vi.fn(() => Promise.resolve([{ sprintId: 's1', _count: { _all: 3 }, _sum: { storyPoints: 8.5 } }]));
+    const { service } = make({ sprint: { findMany: sprintFindMany }, issue: { groupBy } });
+    const list = await service.listForProject('w1', 'p1');
+    expect(list.map((s) => [s.id, s.issueCount, s.totalPoints])).toEqual([['s1', 3, 8.5], ['s2', 0, 0]]);
+    expect(groupBy).toHaveBeenCalledWith({
+      by: ['sprintId'],
+      where: { sprintId: { in: ['s1', 's2'] }, deletedAt: null },
+      _count: { _all: true },
+      _sum: { storyPoints: true },
+    });
+    // không include issues nữa
+    expect((sprintFindMany.mock.calls[0] as unknown as [Record<string, unknown>])[0]).not.toHaveProperty('include');
+  });
+
+  it('điểm null được tính là 0; không có sprint thì không gọi groupBy', async () => {
+    const groupBy = vi.fn(() => Promise.resolve([{ sprintId: 's1', _count: { _all: 2 }, _sum: { storyPoints: null } }]));
+    const findMany = vi.fn().mockResolvedValueOnce([sprintRow({ id: 's1' })]).mockResolvedValueOnce([]);
+    const { service } = make({ sprint: { findMany }, issue: { groupBy } });
+    const [one] = await service.listForProject('w1', 'p1');
+    expect(one).toMatchObject({ issueCount: 2, totalPoints: 0 });
+    groupBy.mockClear();
+    expect(await service.listForProject('w1', 'p1')).toEqual([]);
+    expect(groupBy).not.toHaveBeenCalled();
+  });
+});
