@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { api, apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
@@ -19,6 +20,7 @@ export function LinksPanel({ issueId }: { issueId: string }) {
   const { data: linkTypes } = useLinkTypes();
   const createLink = useCreateLink(issueId);
   const deleteLink = useDeleteLink(issueId);
+  const confirm = useConfirm();
 
   const [adding, setAdding] = useState(false);
   const [linkTypeId, setLinkTypeId] = useState('');
@@ -55,7 +57,7 @@ export function LinksPanel({ issueId }: { issueId: string }) {
   }
 
   async function onDelete(link: IssueLink) {
-    if (!window.confirm(`Xóa liên kết tới ${link.otherIssue.key}?`)) return;
+    if (!(await confirm({ title: `Xóa liên kết tới ${link.otherIssue.key}?`, destructive: true }))) return;
     try {
       await deleteLink.mutateAsync(link.id);
     } catch (e) {

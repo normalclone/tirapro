@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { Sparkles, X } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AiSprintPlanResult } from '@tirapro/shared';
 import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { cn } from '@/lib/utils';
 import { useBulkUpdateIssues } from '@/features/backlog/api';
 import { useSprintPlan } from './api';
 
@@ -83,87 +84,69 @@ export function SprintAssistantDialog({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-modal bg-black/30 animate-in fade-in duration-150" />
-        <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-modal flex max-h-[85vh] w-[min(94vw,40rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-150"
-        >
-          <div className="flex items-start justify-between gap-3 border-b border-border p-5 pb-4">
-            <div className="min-w-0">
-              <Dialog.Title className="flex items-center gap-2 text-sm font-semibold text-ink-strong">
-                <Sparkles className="h-4 w-4 text-primary" aria-hidden /> Trợ lý lập sprint — {sprint.name}
-              </Dialog.Title>
-              <Dialog.Description className="mt-1 text-sm text-muted">
-                Đề xuất việc trong Backlog vừa với năng lực của đội. Bạn xem lại và bỏ tick việc nào không muốn đưa vào.
-              </Dialog.Description>
-            </div>
-            <Dialog.Close asChild>
-              <button type="button" aria-label="Đóng" className="rounded-md p-1 text-muted hover:bg-surface-2">
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
-          </div>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => { if (!o) onClose(); }}
+      title={`Trợ lý lập sprint — ${sprint.name}`}
+      description="Đề xuất việc trong Backlog vừa với năng lực của đội. Bạn xem lại và bỏ tick việc nào không muốn đưa vào."
+      size="lg"
+      footer={
+        <>
+          <p className={cn('mr-auto', overCapacity ? 'text-sm text-danger' : 'text-sm text-muted')}>
+            {result ? `Đã chọn ${chosen.length} việc · ${chosenPoints} điểm${overCapacity ? ' — vượt năng lực' : ''}` : ''}
+          </p>
+          <Button variant="ghost" size="sm" onClick={onClose}>Đóng</Button>
+          <Button size="sm" onClick={() => void apply()} loading={bulkUpdate.isPending} disabled={chosen.length === 0}>
+            Đưa vào sprint
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+          <label className="block text-sm">
+            <span className="mb-1 block text-muted">Năng lực (điểm)</span>
+            <Input
+              type="number"
+              min={1}
+              inputMode="decimal"
+              value={capacity}
+              placeholder={result ? String(result.velocityAvg) : 'Theo velocity'}
+              onChange={(e) => setCapacity(e.target.value)}
+              aria-invalid={capacityInvalid}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-muted">Mục tiêu sprint (tuỳ chọn, để AI chọn việc khớp mục tiêu)</span>
+            <Input value={goal} maxLength={500} onChange={(e) => setGoal(e.target.value)} placeholder="Ví dụ: Hoàn thiện luồng thanh toán" />
+          </label>
+        </div>
+        {capacityInvalid && <p className="text-sm text-danger">Năng lực phải là số lớn hơn 0.</p>}
+        <div>
+          <Button size="sm" onClick={run} loading={plan.isPending} disabled={capacityInvalid}>
+            <Sparkles className="h-4 w-4" />
+            {result ? 'Đề xuất lại' : 'Đề xuất việc'}
+          </Button>
+        </div>
 
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
-            <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
-              <label className="block text-sm">
-                <span className="mb-1 block text-muted">Năng lực (điểm)</span>
-                <Input
-                  type="number"
-                  min={1}
-                  inputMode="decimal"
-                  value={capacity}
-                  placeholder={result ? String(result.velocityAvg) : 'Theo velocity'}
-                  onChange={(e) => setCapacity(e.target.value)}
-                  aria-invalid={capacityInvalid}
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block text-muted">Mục tiêu sprint (tuỳ chọn, để AI chọn việc khớp mục tiêu)</span>
-                <Input value={goal} maxLength={500} onChange={(e) => setGoal(e.target.value)} placeholder="Ví dụ: Hoàn thiện luồng thanh toán" />
-              </label>
-            </div>
-            {capacityInvalid && <p className="text-sm text-danger">Năng lực phải là số lớn hơn 0.</p>}
-            <div>
-              <Button size="sm" onClick={run} loading={plan.isPending} disabled={capacityInvalid}>
-                <Sparkles className="h-4 w-4" />
-                {result ? 'Đề xuất lại' : 'Đề xuất việc'}
-              </Button>
-            </div>
+        {plan.isError && <p className="text-sm text-danger">{apiErrorMessage(plan.error)}</p>}
 
-            {plan.isError && <p className="text-sm text-danger">{apiErrorMessage(plan.error)}</p>}
-
-            {result && (
-              <PlanResult
-                result={result}
-                ticked={ticked}
-                onToggle={(id, on) =>
-                  setTicked((prev) => {
-                    const next = new Set(prev);
-                    if (on) next.add(id);
-                    else next.delete(id);
-                    return next;
-                  })
-                }
-              />
-            )}
-          </div>
-
-          <div className="flex items-center justify-between gap-3 border-t border-border p-4">
-            <p className={overCapacity ? 'text-sm text-danger' : 'text-sm text-muted'}>
-              {result ? `Đã chọn ${chosen.length} việc · ${chosenPoints} điểm${overCapacity ? ' — vượt năng lực' : ''}` : ''}
-            </p>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={onClose}>Đóng</Button>
-              <Button size="sm" onClick={() => void apply()} loading={bulkUpdate.isPending} disabled={chosen.length === 0}>
-                Đưa vào sprint
-              </Button>
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        {result && (
+          <PlanResult
+            result={result}
+            ticked={ticked}
+            onToggle={(id, on) =>
+              setTicked((prev) => {
+                const next = new Set(prev);
+                if (on) next.add(id);
+                else next.delete(id);
+                return next;
+              })
+            }
+          />
+        )}
+      </div>
+    </Dialog>
   );
 }
 

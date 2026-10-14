@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { Trash2, X } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SprintDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { apiErrorMessage } from '@/lib/api';
@@ -75,64 +75,53 @@ export function SprintEditDialog({
 
   return (
     <>
-      <Dialog.Root open={open} onOpenChange={(o) => { if (!o && !update.isPending) onClose(); }}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-modal bg-black/30 animate-in fade-in duration-150" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-modal w-[min(92vw,28rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface p-5 shadow-lg animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-start gap-3">
-              <div className="min-w-0 flex-1">
-                <Dialog.Title className="text-base font-semibold text-ink-strong">Sửa sprint</Dialog.Title>
-                <Dialog.Description className="mt-0.5 text-sm text-muted">
-                  {future ? 'Sprint chưa bắt đầu — sửa được mọi thông tin.' : 'Sprint đang chạy — chỉ sửa được mục tiêu và ngày kết thúc.'}
-                </Dialog.Description>
-              </div>
-              <Dialog.Close asChild><Button variant="ghost" size="icon" aria-label="Đóng"><X className="h-4 w-4" /></Button></Dialog.Close>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => { if (!o && !update.isPending) onClose(); }}
+        title="Sửa sprint"
+        description={future ? 'Sprint chưa bắt đầu — sửa được mọi thông tin.' : 'Sprint đang chạy — chỉ sửa được mục tiêu và ngày kết thúc.'}
+        footer={
+          <>
+            {future && (
+              <Button variant="ghost" size="sm" className="mr-auto text-danger" onClick={() => setConfirmDelete(true)}>
+                <Trash2 className="h-4 w-4" /> Xoá sprint
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={update.isPending}>Huỷ</Button>
+            <Button size="sm" loading={update.isPending} disabled={!canSave} onClick={() => void save()}>Lưu</Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="sprint-name" className="mb-1.5 block text-sm font-medium text-muted">Tên sprint</label>
+            <Input id="sprint-name" value={name} maxLength={120} disabled={!future} onChange={(e) => setName(e.target.value)} className="text-sm" />
+          </div>
+          <div>
+            <label htmlFor="sprint-goal" className="mb-1.5 block text-sm font-medium text-muted">Mục tiêu</label>
+            <textarea
+              id="sprint-goal"
+              value={goal}
+              maxLength={1000}
+              rows={2}
+              onChange={(e) => setGoal(e.target.value)}
+              placeholder="Sprint này muốn đạt được điều gì?"
+              className="w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-faint focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="sprint-start" className="mb-1.5 block text-sm font-medium text-muted">Ngày bắt đầu</label>
+              <Input id="sprint-start" type="date" value={start} disabled={!future} onChange={(e) => setStart(e.target.value)} className="text-sm" />
             </div>
-
-            <div className="mt-4 space-y-3">
-              <div>
-                <label htmlFor="sprint-name" className="mb-1.5 block text-sm font-medium text-muted">Tên sprint</label>
-                <Input id="sprint-name" value={name} maxLength={120} disabled={!future} onChange={(e) => setName(e.target.value)} className="text-sm" />
-              </div>
-              <div>
-                <label htmlFor="sprint-goal" className="mb-1.5 block text-sm font-medium text-muted">Mục tiêu</label>
-                <textarea
-                  id="sprint-goal"
-                  value={goal}
-                  maxLength={1000}
-                  rows={2}
-                  onChange={(e) => setGoal(e.target.value)}
-                  placeholder="Sprint này muốn đạt được điều gì?"
-                  className="w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-faint focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="sprint-start" className="mb-1.5 block text-sm font-medium text-muted">Ngày bắt đầu</label>
-                  <Input id="sprint-start" type="date" value={start} disabled={!future} onChange={(e) => setStart(e.target.value)} className="text-sm" />
-                </div>
-                <div>
-                  <label htmlFor="sprint-end" className="mb-1.5 block text-sm font-medium text-muted">Ngày kết thúc</label>
-                  <Input id="sprint-end" type="date" value={end} min={start || undefined} onChange={(e) => setEnd(e.target.value)} className="text-sm" />
-                </div>
-              </div>
-              {dateError && <p role="alert" className="text-xs text-danger">{dateError}</p>}
+            <div>
+              <label htmlFor="sprint-end" className="mb-1.5 block text-sm font-medium text-muted">Ngày kết thúc</label>
+              <Input id="sprint-end" type="date" value={end} min={start || undefined} onChange={(e) => setEnd(e.target.value)} className="text-sm" />
             </div>
-
-            <div className="mt-5 flex items-center gap-2">
-              {future && (
-                <Button variant="ghost" size="sm" className="text-danger" onClick={() => setConfirmDelete(true)}>
-                  <Trash2 className="h-4 w-4" /> Xoá sprint
-                </Button>
-              )}
-              <div className="ml-auto flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={onClose} disabled={update.isPending}>Huỷ</Button>
-                <Button size="sm" loading={update.isPending} disabled={!canSave} onClick={() => void save()}>Lưu</Button>
-              </div>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+          </div>
+          {dateError && <p role="alert" className="text-xs text-danger">{dateError}</p>}
+        </div>
+      </Dialog>
 
       <ConfirmDialog
         open={confirmDelete}

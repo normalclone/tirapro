@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { SWIMLANE_BY, type BoardDto, type SwimlaneBy } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { DelayedSpinner } from '@/components/ui/primitives';
 import { QueryBuilder, Segmented } from '@/features/saved-filters/QueryBuilder';
@@ -163,62 +163,48 @@ export function BoardSettingsDialog({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-modal bg-black/30 animate-in fade-in duration-150" />
-        <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-modal flex max-h-[88vh] w-[min(94vw,44rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-150"
-        >
-          <header className="flex items-start gap-3 border-b border-border px-5 py-4">
-            <div className="min-w-0 flex-1">
-              <Dialog.Title className="text-base font-semibold text-ink-strong">Cài đặt bảng</Dialog.Title>
-              <Dialog.Description className="mt-0.5 text-sm text-muted">
-                Chọn cột, giới hạn việc đang làm (WIP), bộ lọc và cách chia hàng cho bảng này.
-              </Dialog.Description>
-            </div>
-            <Dialog.Close asChild>
-              <Button variant="ghost" size="icon" aria-label="Đóng" disabled={saving}><X className="h-4 w-4" /></Button>
-            </Dialog.Close>
-          </header>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => { if (!o && !saving) onClose(); }}
+      title="Cài đặt bảng"
+      description="Chọn cột, giới hạn việc đang làm (WIP), bộ lọc và cách chia hàng cho bảng này."
+      size="lg"
+      footer={
+        <>
+          {columnsDirty && problems.length > 0 && (
+            <p className="min-w-0 flex-1 text-xs text-danger" role="alert">{problems[0]}</p>
+          )}
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>Huỷ</Button>
+          <Button size="sm" onClick={() => void save()} loading={saving} disabled={!canSave}>Lưu</Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div>
+          <label htmlFor="board-name" className="mb-1.5 block text-sm font-medium text-muted">Tên bảng</label>
+          <Input id="board-name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} className="text-sm" />
+        </div>
 
-          <div className="space-y-3 overflow-y-auto px-5 py-4">
-            <div>
-              <label htmlFor="board-name" className="mb-1.5 block text-sm font-medium text-muted">Tên bảng</label>
-              <Input id="board-name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} className="text-sm" />
-            </div>
+        <Segmented value={tab} onChange={(v) => setTab(v as Tab)} options={TABS.map((t) => ({ value: t.id, label: t.label }))} />
 
-            <Segmented value={tab} onChange={(v) => setTab(v as Tab)} options={TABS.map((t) => ({ value: t.id, label: t.label }))} />
+        {tab === 'columns' && (
+          <ColumnsTab
+            statusesQ={statusesQ}
+            statuses={statuses}
+            statusById={statusById}
+            columns={columns}
+            unassigned={unassigned}
+            ops={{ patchColumn, moveColumn, removeColumn, addColumn, assignStatus, unassignStatus }}
+          />
+        )}
 
-            {tab === 'columns' && (
-              <ColumnsTab
-                statusesQ={statusesQ}
-                statuses={statuses}
-                statusById={statusById}
-                columns={columns}
-                unassigned={unassigned}
-                ops={{ patchColumn, moveColumn, removeColumn, addColumn, assignStatus, unassignStatus }}
-              />
-            )}
+        {tab === 'filter' && (
+          <FilterTab jql={jql} setJql={setJql} jqlMode={jqlMode} setJqlMode={setJqlMode} jqlError={jqlError} setJqlError={setJqlError} />
+        )}
 
-            {tab === 'filter' && (
-              <FilterTab jql={jql} setJql={setJql} jqlMode={jqlMode} setJqlMode={setJqlMode} jqlError={jqlError} setJqlError={setJqlError} />
-            )}
-
-            {tab === 'swimlane' && <SwimlaneTab swimlane={swimlane} setSwimlane={setSwimlane} />}
-          </div>
-
-          <footer className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-3">
-            {columnsDirty && problems.length > 0 && (
-              <p className="min-w-0 flex-1 text-xs text-danger" role="alert">{problems[0]}</p>
-            )}
-            <div className="ml-auto flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>Huỷ</Button>
-              <Button size="sm" onClick={() => void save()} loading={saving} disabled={!canSave}>Lưu</Button>
-            </div>
-          </footer>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        {tab === 'swimlane' && <SwimlaneTab swimlane={swimlane} setSwimlane={setSwimlane} />}
+      </div>
+    </Dialog>
   );
 }
 

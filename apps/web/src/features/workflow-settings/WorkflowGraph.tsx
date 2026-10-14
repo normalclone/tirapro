@@ -20,6 +20,7 @@ import { Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { cn } from '@/lib/utils';
 import { apiErrorMessage } from '@/lib/api';
 import {
@@ -184,6 +185,7 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
   const deleteTransition = useDeleteTransition();
   const addStatus = useAddStatus();
   const deleteStatus = useDeleteStatus();
+  const confirm = useConfirm();
 
   const posRef = useRef<PosMap>(loadPos(workflow.id));
   const statusById = useMemo(
@@ -192,19 +194,24 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
   );
 
   const handleDeleteStatus = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const s = statusById.get(id);
       if (!s) return;
-      if (!window.confirm(`Xoá trạng thái "${s.name}"? Các chuyển tiếp liên quan cũng sẽ bị xoá.`)) return;
+      const ok = await confirm({
+        title: `Xoá trạng thái "${s.name}"?`,
+        description: 'Các chuyển tiếp liên quan cũng sẽ bị xoá.',
+        destructive: true,
+      });
+      if (!ok) return;
       deleteStatus.mutate(id, { onError: (e) => toast.error(apiErrorMessage(e)) });
     },
-    [statusById, deleteStatus],
+    [statusById, deleteStatus, confirm],
   );
   // Tham chiếu ổn định cho onDelete để effect dựng node KHÔNG chạy lại mỗi render
   // (object mutation của react-query đổi ref mỗi render → tránh rebuild liên tục khiến reactflow giữ node ẩn).
   const deleteRef = useRef(handleDeleteStatus);
   deleteRef.current = handleDeleteStatus;
-  const stableDelete = useCallback((id: string) => deleteRef.current(id), []);
+  const stableDelete = useCallback((id: string) => void deleteRef.current(id), []);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);

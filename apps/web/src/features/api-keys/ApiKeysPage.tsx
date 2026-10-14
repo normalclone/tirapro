@@ -7,6 +7,7 @@ import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { QueryError } from '@/components/ui/QueryError';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useApiKeys, useCreateApiKey, useRevokeApiKey, type ApiKey, type CreatedApiKey } from './api';
@@ -54,6 +55,7 @@ export function ApiKeysPage() {
   const { data: keys, isLoading, isError, error, refetch } = useApiKeys();
   const create = useCreateApiKey();
   const revoke = useRevokeApiKey();
+  const confirm = useConfirm();
   const [name, setName] = useState('');
   const [write, setWrite] = useState(false);
   const [expiresInDays, setExpiresInDays] = useState(0);
@@ -201,7 +203,7 @@ export function ApiKeysPage() {
             />
           ) : (
             <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
-              {visibleKeys.map((k) => <KeyRow key={k.id} k={k} revoking={revoke.isPending} onRevoke={handleRevoke} />)}
+              {visibleKeys.map((k) => <KeyRow key={k.id} k={k} revoking={revoke.isPending} onRevoke={(key) => void handleRevoke(key)} />)}
             </ul>
           )}
         </>
@@ -209,8 +211,14 @@ export function ApiKeysPage() {
     </div>
   );
 
-  function handleRevoke(k: ApiKey) {
-    if (!window.confirm(`Thu hồi khoá “${k.name}”? Mọi tích hợp dùng khoá này sẽ ngừng hoạt động.`)) return;
+  async function handleRevoke(k: ApiKey) {
+    const ok = await confirm({
+      title: `Thu hồi khoá “${k.name}”?`,
+      description: 'Mọi tích hợp dùng khoá này sẽ ngừng hoạt động.',
+      confirmLabel: 'Thu hồi',
+      destructive: true,
+    });
+    if (!ok) return;
     revoke.mutate(k.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 }

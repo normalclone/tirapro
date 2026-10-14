@@ -7,6 +7,7 @@ import { TeamsPanel } from '@/features/teams/TeamsPanel';
 import { AddPeopleDialog } from './AddPeopleDialog';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { apiErrorMessage } from '@/lib/api';
 import { pageContainer } from '@/components/layout/page';
@@ -139,9 +140,16 @@ function MemberRow({
   const status = STATUS_META[user.status] ?? STATUS_META.DEACTIVATED;
   const setRoles = useSetMemberRoles();
   const remove = useRemoveMember();
+  const confirm = useConfirm();
 
-  function handleRemove() {
-    if (!window.confirm(`Gỡ ${user.displayName} khỏi không gian làm việc?\n\nHọ sẽ mất quyền vào mọi dự án ở đây. Việc đã giao cho họ vẫn giữ nguyên. Bạn có thể mời lại sau.`)) return;
+  async function handleRemove() {
+    const ok = await confirm({
+      title: `Gỡ ${user.displayName} khỏi không gian làm việc?`,
+      description: 'Họ sẽ mất quyền vào mọi dự án ở đây. Việc đã giao cho họ vẫn giữ nguyên. Bạn có thể mời lại sau.',
+      confirmLabel: 'Gỡ',
+      destructive: true,
+    });
+    if (!ok) return;
     remove.mutate(user.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -187,7 +195,7 @@ function MemberRow({
               title={`Gỡ ${user.displayName} khỏi không gian làm việc — họ sẽ mất quyền vào mọi dự án`}
               aria-label={`Gỡ ${user.displayName} khỏi không gian làm việc`}
               loading={remove.isPending}
-              onClick={handleRemove}
+              onClick={() => void handleRemove()}
             >
               <Trash2 className="h-4 w-4" />
             </Button>

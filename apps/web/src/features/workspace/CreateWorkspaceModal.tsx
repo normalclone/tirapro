@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Building2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { useSwitchWorkspace } from './api';
 
@@ -34,14 +34,6 @@ export function CreateWorkspaceModal({
   const [name, setName] = useState('');
 
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    if (open) window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  useEffect(() => {
     if (!open) setName('');
   }, [open]);
 
@@ -69,51 +61,39 @@ export function CreateWorkspaceModal({
   }
 
   return (
-    <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-[8vh]">
-      <button
-        className="absolute inset-0 bg-black/30 animate-in fade-in duration-200"
-        onClick={onClose}
-        aria-label="Đóng"
-      />
-      <div className="relative flex max-h-[84vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <Building2 className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-ink">Tạo không gian làm việc</span>
-          <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng">
-            <X className="h-4 w-4" />
+    <Dialog
+      open
+      onOpenChange={(o) => { if (!o) onClose(); }}
+      title="Tạo không gian làm việc"
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Hủy
           </Button>
-        </header>
-
-        <form onSubmit={(e) => void submit(e)} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            <div>
-              <label htmlFor="cw-name" className="mb-1.5 block text-sm font-medium text-muted">
-                Tên không gian làm việc
-              </label>
-              <Input
-                id="cw-name"
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="VD: Công ty ABC"
-                className="text-sm"
-              />
-              <p className="mt-1.5 text-xs text-faint">
-                Đây là nơi riêng để chứa dự án và thành viên — thường ứng với một công ty hoặc một phòng ban. Tạo xong, bạn sẽ được chuyển sang ngay.
-              </p>
-            </div>
-          </div>
-
-          <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Hủy
-            </Button>
-            <Button type="submit" loading={busy} disabled={!canSubmit}>
-              Tạo không gian làm việc
-            </Button>
-          </footer>
-        </form>
-      </div>
-    </div>
+          <Button type="submit" form="create-workspace-form" loading={busy} disabled={!canSubmit}>
+            Tạo không gian làm việc
+          </Button>
+        </>
+      }
+    >
+      <form id="create-workspace-form" onSubmit={(e) => void submit(e)} className="space-y-4">
+        <div>
+          <label htmlFor="cw-name" className="mb-1.5 block text-sm font-medium text-muted">
+            Tên không gian làm việc
+          </label>
+          <Input
+            id="cw-name"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="VD: Công ty ABC"
+            className="text-sm"
+          />
+          <p className="mt-1.5 text-xs text-faint">
+            Đây là nơi riêng để chứa dự án và thành viên — thường ứng với một công ty hoặc một phòng ban. Tạo xong, bạn sẽ được chuyển sang ngay.
+          </p>
+        </div>
+      </form>
+    </Dialog>
   );
 }
