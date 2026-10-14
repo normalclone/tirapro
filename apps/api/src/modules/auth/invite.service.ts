@@ -93,6 +93,10 @@ export class InviteService {
     if (!invite || invite.acceptedAt) throw new BusinessRuleException(INVALID_INVITE);
     if (invite.expiresAt.getTime() <= Date.now()) throw new BusinessRuleException(EXPIRED_INVITE);
 
+    // Workspace đã xoá mềm thì lời mời vô hiệu — kiểm trước khi băm mật khẩu và trước khi giành token.
+    const ws = await this.prisma.workspace.findFirst({ where: { id: invite.workspaceId, deletedAt: null }, select: { id: true } });
+    if (!ws) throw new BusinessRuleException(INVALID_INVITE);
+
     // Băm ngoài transaction để không giữ kết nối DB trong lúc argon2 chạy.
     const passwordHash = await argon2.hash(input.password);
 

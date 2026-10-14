@@ -465,6 +465,18 @@ describe('IssuesService — giới hạn WIP của cột board', () => {
     expect(same.issue.count).not.toHaveBeenCalled();
   });
 
+  it('move đổi trạng thái => ghi IssueHistory STATUS trong cùng transaction; không đổi trạng thái thì không ghi', async () => {
+    const tx = wipTx({ count: 0 });
+    await makeService(tx).service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2', boardId: 'b1' });
+    expect(tx.issueHistory.create).toHaveBeenCalledTimes(1);
+    expect(tx.issueHistory.create.mock.calls[0]![0]).toMatchObject({ data: { issueId: 'i1', field: 'STATUS', actorId: 'u1' } });
+
+    const same = wipTx({ count: 0 });
+    same.issue.findFirstOrThrow = vi.fn(() => Promise.resolve(issueRow({ version: 4 })));
+    await makeService(same).service.move('w1', 'u1', 'i1', { version: 3 });
+    expect(same.issueHistory.create).not.toHaveBeenCalled();
+  });
+
   it('bulkUpdate: chuyển nhiều việc vào cột chỉ còn 1 chỗ => chặn cả lô, nêu số chỗ còn lại', async () => {
     const tx = wipTx({ count: 1 });
     tx.issue.findMany = vi.fn(() => Promise.resolve([issueRow({ id: 'a' }), issueRow({ id: 'b' })]));
