@@ -245,8 +245,15 @@ export function BacklogPage() {
                   groups.set(value, [...(groups.get(value) ?? []), { id: u.id, version: u.version }]);
                 }
                 try {
+                  let stuck = 0;
                   for (const [value, items] of groups) {
-                    await bulkUpdate.mutateAsync({ items, patch: { [field]: value } });
+                    const r = await bulkUpdate.mutateAsync({ items, patch: { [field]: value } });
+                    stuck += r.conflicts.length;
+                  }
+                  if (stuck > 0) {
+                    toast.warning(`Chưa hoàn tác được ${stuck} việc`, {
+                      description: 'Người khác vừa sửa những việc đó — hãy tải lại trang để xem bản mới nhất rồi thử lại.',
+                    });
                   }
                 } catch (err) {
                   toast.error(apiErrorMessage(err));

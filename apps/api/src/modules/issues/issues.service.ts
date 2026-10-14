@@ -62,6 +62,15 @@ export class IssuesService {
     throw new ForbiddenAppException('Chỉ người tạo hoặc quản trị mới được sửa Story points/Hạn');
   }
 
+  /** Cùng quy ước với PermissionsGuard: system admin, hoặc có `issue:transition` / `issue:transition:own`. */
+  private async assertCanTransition(userId: string, workspaceId: string, projectId: string): Promise<void> {
+    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
+    if (perms.has(PERMISSIONS.ISSUE_TRANSITION) || perms.has(`${PERMISSIONS.ISSUE_TRANSITION}:own`)) return;
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isSystemAdmin: true } });
+    if (u?.isSystemAdmin) return;
+    throw new ForbiddenAppException('Bạn không có quyền chuyển trạng thái công việc — hãy bỏ phần đổi trạng thái hoặc nhờ quản trị cấp quyền');
+  }
+
   /** Đảm bảo metadata/quan hệ (nếu truyền) thuộc đúng workspace — chống gán/liên kết chéo tenant. */
   private async assertMetaInWorkspace(
     workspaceId: string,
@@ -317,6 +326,8 @@ export class IssuesService {
    */
   async bulkUpdate(workspaceId: string, userId: string, input: BulkUpdateIssuesInput): Promise<BulkUpdateIssuesResult> {
     const { projectId, items, patch } = input;
+    // Đổi trạng thái chỉ đi qua quyền chuyển trạng thái (giống POST :id/transition), không đi chung quyền sửa.
+    if (patch.statusId) await this.assertCanTransition(userId, workspaceId, projectId);
     const rows = await this.prisma.issue.findMany({
       where: { id: { in: items.map((i) => i.id) }, workspaceId, projectId, deletedAt: null },
       include: issueInclude,
