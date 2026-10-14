@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { pageContainer } from '@/components/layout/page';
@@ -61,6 +62,7 @@ export function WorkflowSettingsPage() {
   const { data, isLoading } = useWorkflows();
   const createWorkflow = useCreateWorkflow();
   const deleteWorkflow = useDeleteWorkflow();
+  const confirm = useConfirm();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -100,13 +102,13 @@ export function WorkflowSettingsPage() {
     );
   }
 
-  function handleDeleteWorkflow(wf: Workflow) {
-    if (
-      !window.confirm(
-        `Xoá quy trình "${wf.name}"? Hành động này không thể hoàn tác.`,
-      )
-    )
-      return;
+  async function handleDeleteWorkflow(wf: Workflow) {
+    const ok = await confirm({
+      title: `Xoá quy trình "${wf.name}"?`,
+      description: 'Hành động này không thể hoàn tác.',
+      destructive: true,
+    });
+    if (!ok) return;
     deleteWorkflow.mutate(wf.id, {
       onSuccess: () => {
         if (selectedId === wf.id) setSelectedId(null);
@@ -176,7 +178,7 @@ export function WorkflowSettingsPage() {
                   onToggle={() =>
                     setSelectedId((cur) => (cur === wf.id ? null : wf.id))
                   }
-                  onDelete={() => handleDeleteWorkflow(wf)}
+                  onDelete={() => void handleDeleteWorkflow(wf)}
                   deleting={deleteWorkflow.isPending}
                 />
               ))}
@@ -375,6 +377,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
   const addStatus = useAddStatus();
   const updateStatus = useUpdateStatus();
   const deleteStatus = useDeleteStatus();
+  const confirm = useConfirm();
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -415,11 +418,13 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
     );
   }
 
-  function handleDelete(status: WorkflowStatus) {
-    if (
-      !window.confirm(`Xoá trạng thái "${status.name}"? Hành động này không thể hoàn tác.`)
-    )
-      return;
+  async function handleDelete(status: WorkflowStatus) {
+    const ok = await confirm({
+      title: `Xoá trạng thái "${status.name}"?`,
+      description: 'Hành động này không thể hoàn tác.',
+      destructive: true,
+    });
+    if (!ok) return;
     deleteStatus.mutate(status.id, {
       onError: (e) => toast.error(apiErrorMessage(e)),
     });
@@ -492,7 +497,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleDelete(s)}
+                    onClick={() => void handleDelete(s)}
                     title="Xoá trạng thái"
                     className="text-muted hover:text-danger"
                   >
@@ -605,6 +610,7 @@ const ANY_FROM = '__ANY__';
 function TransitionSection({ workflow }: { workflow: Workflow }) {
   const addTransition = useAddTransition();
   const deleteTransition = useDeleteTransition();
+  const confirm = useConfirm();
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -660,11 +666,13 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
     );
   }
 
-  function handleDelete(t: WorkflowTransition) {
-    if (
-      !window.confirm(`Xoá bước chuyển "${t.name}"? Hành động này không thể hoàn tác.`)
-    )
-      return;
+  async function handleDelete(t: WorkflowTransition) {
+    const ok = await confirm({
+      title: `Xoá bước chuyển "${t.name}"?`,
+      description: 'Hành động này không thể hoàn tác.',
+      destructive: true,
+    });
+    if (!ok) return;
     deleteTransition.mutate(t.id, {
       onError: (e) => toast.error(apiErrorMessage(e)),
     });
@@ -721,7 +729,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleDelete(t)}
+                    onClick={() => void handleDelete(t)}
                     title="Xoá bước chuyển"
                     className="text-muted hover:text-danger"
                   >
