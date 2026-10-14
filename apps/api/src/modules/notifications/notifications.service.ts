@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS, NotificationType as NotificationTypeEnum } from '@tirapro/types';
 import { Prisma, type Notification, type NotificationType } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -94,7 +94,10 @@ interface CommentAddedPayload {
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventEmitter2,
+  ) {}
 
   // ---------- READ: luôn scope theo recipientId = user hiện tại ----------
 
@@ -270,7 +273,7 @@ export class NotificationsService {
     const prefs = effectivePrefs(recipient.settings);
     if (!prefs[input.type]) return;
 
-    await this.prisma.notification.create({
+    const created = await this.prisma.notification.create({
       data: {
         recipientId: input.recipientId,
         workspaceId: input.workspaceId,
@@ -280,6 +283,11 @@ export class NotificationsService {
         actorId: input.actorId ?? null,
         payload: input.payload as Prisma.InputJsonValue,
       },
+    });
+    // Báo cho gateway đẩy `notification:new` tới đúng người nhận (room user:<id>).
+    this.events.emit(DOMAIN_EVENTS.NOTIFICATION_CREATED, {
+      recipientId: input.recipientId,
+      notification: this.toDto(created),
     });
   }
 
