@@ -178,7 +178,7 @@ export function ProjectsIndexRedirect() {
   }
   let saved: { key?: string; view?: string } = {};
   try { saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}'); } catch { /* ignore */ }
-  const target = saved.key && projects.some((p) => p.key === saved.key) ? saved.key : projects[0].key;
+  const target = saved.key && projects.some((p) => p.key === saved.key) ? saved.key : projects[0]!.key;
   const view = saved.view || 'board';
   return <Navigate to={`/p/${target}/${view}`} replace />;
 }

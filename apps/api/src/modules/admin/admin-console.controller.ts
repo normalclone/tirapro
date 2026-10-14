@@ -38,7 +38,7 @@ export class AdminConsoleController {
   }
 
   @Get('config')
-  async config(@CurrentUser() user: AuthUser) {
+  config(@CurrentUser() user: AuthUser) {
     this.assertSysAdmin(user);
     return this.overviewSvc.configStatus();
   }

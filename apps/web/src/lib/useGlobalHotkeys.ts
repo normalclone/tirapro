@@ -30,7 +30,7 @@ function isDialogOpen(): boolean {
  */
 function currentProjectKey(projects: ProjectDto[] | undefined): string | null {
   const m = /^\/p\/([^/]+)/.exec(window.location.pathname);
-  if (m) return decodeURIComponent(m[1]);
+  if (m) return decodeURIComponent(m[1]!);
   try {
     const saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}') as { key?: string };
     if (saved.key && (projects ?? []).some((p) => p.key === saved.key)) return saved.key;

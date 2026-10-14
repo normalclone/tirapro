@@ -78,7 +78,7 @@ export function WikiPage() {
     if (!page.data?.breadcrumb.length) return;
     setExpanded((prev) => {
       const next = new Set(prev);
-      for (const b of page.data!.breadcrumb) next.add(b.id);
+      for (const b of page.data.breadcrumb) next.add(b.id);
       return next;
     });
   }, [page.data]);
@@ -368,14 +368,14 @@ export function WikiPage() {
                     </div>
                     {canManage && (
                       <div className="flex shrink-0 flex-wrap items-center gap-2">
-                        <Button size="sm" variant="secondary" onClick={() => { setDraftTitle(page.data!.title); setDraftBody(page.data!.body); setEditing(true); }}>
+                        <Button size="sm" variant="secondary" onClick={() => { setDraftTitle(page.data.title); setDraftBody(page.data.body); setEditing(true); }}>
                           <Pencil className="h-4 w-4" /> Sửa trang
                         </Button>
                         <Button
                           size="sm"
                           variant="secondary"
                           title="Tạo một trang nằm bên dưới trang này trong cây tài liệu."
-                          onClick={() => void addPage(page.data!.id)}
+                          onClick={() => void addPage(page.data.id)}
                         >
                           <Plus className="h-4 w-4" /> Thêm trang con
                         </Button>
@@ -385,7 +385,7 @@ export function WikiPage() {
                           className="text-muted hover:text-danger"
                           title="Xoá trang"
                           aria-label={`Xoá trang ${page.data.title}`}
-                          onClick={() => void destroy(page.data!.id, page.data!.title)}
+                          onClick={() => void destroy(page.data.id, page.data.title)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

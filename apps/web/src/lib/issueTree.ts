@@ -76,12 +76,12 @@ export function subtreeProgress(issues: IssueDto[], rootId: string): SubtreeProg
     counts[it.status.category] = (counts[it.status.category] ?? 0) + 1;
     for (const c of childrenOf.get(it.id) ?? []) stack.push(c);
   }
-  const done = counts.DONE;
+  const done = counts.DONE ?? 0;
   return {
     total,
     done,
-    inProgress: counts.IN_PROGRESS,
-    todo: counts.TODO,
+    inProgress: counts.IN_PROGRESS ?? 0,
+    todo: counts.TODO ?? 0,
     pct: total ? Math.round((done / total) * 100) : 0,
   };
 }

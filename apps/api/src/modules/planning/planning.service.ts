@@ -290,7 +290,7 @@ export class PlanningService {
       .map((d) => ({
         predecessorId: d.predecessorId,
         successorId: d.successorId,
-        type: d.type as DependencyTypeInput,
+        type: d.type,
         lagDays: d.lagDays,
       }));
 
@@ -371,7 +371,7 @@ export class PlanningService {
 
     // Lượt ngược: muộn nhất cho phép mà không trễ dự án.
     for (let k = order.length - 1; k >= 0; k--) {
-      const n = nodes.get(order[k])!;
+      const n = nodes.get(order[k]!)!;
       let lf = projectFinishDay;
       for (const e of outgoing.get(n.id) ?? []) {
         const s = nodes.get(e.successorId);

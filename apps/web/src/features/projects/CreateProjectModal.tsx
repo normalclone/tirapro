@@ -30,7 +30,7 @@ function suggestKey(name: string): string {
     .filter(Boolean);
   if (words.length === 0) return '';
   const raw =
-    words.length > 1 ? words.map((w) => w[0]).join('') : words[0];
+    words.length > 1 ? words.map((w) => w[0]).join('') : words[0]!;
   return raw.toUpperCase().slice(0, 10);
 }
 

@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import type { JqlFieldName, JqlNode, JqlOperator, JqlOrderBy, JqlQueryAst, JqlValue } from '@tirapro/shared';
 
 export interface JqlCompileContext {
@@ -58,10 +58,10 @@ function compileOrder(o: JqlOrderBy): Prisma.IssueOrderByWithRelationInput {
   const cfg = FIELD_MAP[o.field];
   const dir = o.direction === 'DESC' ? 'desc' : 'asc';
   if (cfg.kind === 'relationName' || cfg.kind === 'enumRel') {
-    return { [cfg.relation!]: { [cfg.field!]: dir } } as Prisma.IssueOrderByWithRelationInput;
+    return { [cfg.relation!]: { [cfg.field!]: dir } };
   }
-  if (cfg.kind === 'idUser') return { [cfg.idColumn!]: dir } as Prisma.IssueOrderByWithRelationInput;
-  if (cfg.column) return { [cfg.column]: dir } as Prisma.IssueOrderByWithRelationInput;
+  if (cfg.kind === 'idUser') return { [cfg.idColumn!]: dir };
+  if (cfg.column) return { [cfg.column]: dir };
   return { updatedAt: dir };
 }
 
@@ -73,7 +73,7 @@ function compileComparison(field: JqlFieldName, op: JqlOperator, value: JqlValue
       if (op === 'IS') return cfg.idColumn ? { [cfg.idColumn]: null } : { [cfg.relation!]: { is: null } };
       if (op === 'IS NOT') return cfg.idColumn ? { NOT: { [cfg.idColumn]: null } } : { [cfg.relation!]: { isNot: null } };
       const f = stringFilter(op, value, ctx);
-      return { [cfg.relation!]: { [cfg.field!]: f } } as Where;
+      return { [cfg.relation!]: { [cfg.field!]: f } };
     }
     case 'idUser': {
       const col = cfg.idColumn!;
@@ -88,10 +88,10 @@ function compileComparison(field: JqlFieldName, op: JqlOperator, value: JqlValue
     case 'text': {
       const col = cfg.column!;
       const v = scalarString(value, ctx);
-      if (op === '~') return { [col]: { contains: v, mode: 'insensitive' } } as Where;
-      if (op === '!~') return { NOT: { [col]: { contains: v, mode: 'insensitive' } } } as Where;
-      if (op === '!=') return { [col]: { not: v } } as Where;
-      return { [col]: v } as Where;
+      if (op === '~') return { [col]: { contains: v, mode: 'insensitive' } };
+      if (op === '!~') return { NOT: { [col]: { contains: v, mode: 'insensitive' } } };
+      if (op === '!=') return { [col]: { not: v } };
+      return { [col]: v };
     }
     case 'fulltext': {
       const v = scalarString(value, ctx);
@@ -113,7 +113,7 @@ function compileComparison(field: JqlFieldName, op: JqlOperator, value: JqlValue
       if (op === 'IS NOT') return { NOT: { [col]: null } };
       const d = resolveDateValue(value, ctx);
       const cmp = dateCmp(op, d);
-      return { [col]: cmp } as Where;
+      return { [col]: cmp };
     }
     case 'number': {
       const col = cfg.column!;
@@ -122,7 +122,7 @@ function compileComparison(field: JqlFieldName, op: JqlOperator, value: JqlValue
       if (op === 'IN') return { [col]: { in: listNumbers(value) } };
       if (op === 'NOT IN') return { [col]: { notIn: listNumbers(value) } };
       const num = scalarNumber(value);
-      return { [col]: numCmp(op, num) } as Where;
+      return { [col]: numCmp(op, num) };
     }
     default:
       return {};

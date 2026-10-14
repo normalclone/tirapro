@@ -15,7 +15,7 @@ const ISSUE_KEY_RE = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/;
 /** Dự án hiện tại cho các hành động điều hướng: URL `/p/:key` → view gần nhất → dự án đầu. */
 function currentProjectKey(projects: { key: string }[] | undefined): string | null {
   const m = /^\/p\/([^/]+)/.exec(window.location.pathname);
-  if (m) return decodeURIComponent(m[1]);
+  if (m) return decodeURIComponent(m[1]!);
   try {
     const saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}') as { key?: string };
     if (saved.key && (projects ?? []).some((p) => p.key === saved.key)) return saved.key;

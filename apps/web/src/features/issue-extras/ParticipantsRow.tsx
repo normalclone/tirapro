@@ -28,7 +28,8 @@ export function ParticipantsRow({ issueId, projectId }: { issueId: string; proje
 
   function toggle(userId: string) {
     const next = new Set(selected);
-    next.has(userId) ? next.delete(userId) : next.add(userId);
+    if (next.has(userId)) next.delete(userId);
+    else next.add(userId);
     setParticipants.mutate([...next], { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 

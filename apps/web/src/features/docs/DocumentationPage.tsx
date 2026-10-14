@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   ArrowUpRight, Bell, BookOpen, Bug, Building2, Check, ClipboardList, Code2, Command, Copy, Eye,
   Filter, GitBranch, History, KeyRound, LayoutGrid, Link2, ListPlus, MessageSquare, Moon,
-  MousePointerClick, Palette, Plug, Rocket, Search, ShieldCheck, Sparkles, Sun, TriangleAlert,
+  MousePointerClick, Palette, Plug, Search, ShieldCheck, Sparkles, Sun, TriangleAlert,
   UserPlus, Users,
 } from 'lucide-react';
 import { useTheme } from '@/stores/theme';

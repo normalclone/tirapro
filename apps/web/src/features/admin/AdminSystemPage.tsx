@@ -36,7 +36,7 @@ export function AdminSystemPage() {
   const { data: audit, isLoading: aLoading, isError: aError, error: aErr, refetch: aRefetch, isFetching: aFetching } = useAdminAudit(limit, action || undefined);
 
   // Còn nữa để tải nếu số dòng trả về vừa đúng limit và chưa chạm bậc cao nhất.
-  const canLoadMore = (audit?.length ?? 0) >= limit && limit < AUDIT_STEPS[AUDIT_STEPS.length - 1];
+  const canLoadMore = (audit?.length ?? 0) >= limit && limit < AUDIT_STEPS[AUDIT_STEPS.length - 1]!;
   const nextLimit = AUDIT_STEPS.find((s) => s > limit) ?? limit;
 
   return (

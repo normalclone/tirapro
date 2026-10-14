@@ -140,7 +140,7 @@ export class AutomationService {
         projectId,
         name,
         description: dto.description ?? null,
-        payload: this.cleanPayload(dto.payload) as Prisma.InputJsonValue,
+        payload: this.cleanPayload(dto.payload),
       },
       select: { id: true },
     });
@@ -167,7 +167,7 @@ export class AutomationService {
         data.project = { disconnect: true };
       }
     }
-    if (dto.payload !== undefined) data.payload = this.cleanPayload(dto.payload) as Prisma.InputJsonValue;
+    if (dto.payload !== undefined) data.payload = this.cleanPayload(dto.payload);
 
     await this.prisma.issueTemplate.update({ where: { id }, data });
     return this.getTemplate(workspaceId, id);
@@ -222,7 +222,7 @@ export class AutomationService {
         weekday: cfg.freq === 'WEEKLY' ? cfg.weekday : null,
         monthDay: cfg.freq === 'MONTHLY' ? cfg.monthDay : null,
         hour: cfg.hour,
-        payload: payload as Prisma.InputJsonValue,
+        payload,
         active: dto.active ?? true,
         nextRunAt: computeNextRun(cfg),
         createdById: actingUserId,
@@ -246,7 +246,7 @@ export class AutomationService {
     if (dto.payload !== undefined) {
       const payload = this.cleanPayload(dto.payload);
       this.assertRunnable(payload);
-      data.payload = payload as Prisma.InputJsonValue;
+      data.payload = payload;
     }
 
     // Đổi bất kỳ tham số lịch nào → tính lại mốc chạy kế tiếp.

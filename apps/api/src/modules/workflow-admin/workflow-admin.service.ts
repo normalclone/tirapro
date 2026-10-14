@@ -499,7 +499,7 @@ export class WorkflowAdminService {
       id: row.id,
       workflowId: row.workflowId,
       name: row.name,
-      category: row.category as StatusCategory,
+      category: row.category,
       color: row.color,
       order: row.order,
       isInitial: row.isInitial,

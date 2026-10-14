@@ -1,4 +1,5 @@
-import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
+import type { AxiosError } from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 import { getAccessToken, setAccessToken } from './auth-token';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1';
@@ -70,7 +71,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 export function apiErrorMessage(e: unknown): string {
   if (axios.isAxiosError(e)) {
     const err = (e.response?.data as { error?: { code?: string; message?: string } } | undefined)?.error;
-    if (err?.code && ERROR_MESSAGES[err.code]) return ERROR_MESSAGES[err.code];
+    if (err?.code && ERROR_MESSAGES[err.code]) return ERROR_MESSAGES[err.code]!;
     if (err?.message) return err.message;
     // Không có phản hồi = mất mạng hoặc máy chủ chưa sẵn sàng.
     if (!e.response) return 'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.';

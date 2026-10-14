@@ -165,7 +165,12 @@ export class MembersService {
     return { success: true };
   }
 
-  async addProject(workspaceId: string, projectId: string, userId: string, roleIds: string[]) {
+  async addProject(
+    workspaceId: string,
+    projectId: string,
+    userId: string,
+    roleIds: string[],
+  ): Promise<Awaited<ReturnType<MembersService['getProjectMember']>>> {
     await this.requireProject(workspaceId, projectId);
     // Người được thêm phải là thành viên workspace của dự án.
     const isMember = await this.prisma.workspaceMembership.findUnique({
@@ -188,7 +193,12 @@ export class MembersService {
     return this.getProjectMember(projectId, userId);
   }
 
-  async setProjectRoles(workspaceId: string, projectId: string, userId: string, roleIds: string[]) {
+  async setProjectRoles(
+    workspaceId: string,
+    projectId: string,
+    userId: string,
+    roleIds: string[],
+  ): Promise<Awaited<ReturnType<MembersService['getProjectMember']>>> {
     await this.requireProject(workspaceId, projectId);
     const membership = await this.prisma.projectMembership.findUnique({
       where: { projectId_userId: { projectId, userId } },

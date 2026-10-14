@@ -56,7 +56,7 @@ export class RedisService implements OnModuleDestroy {
     return this.client ? this.client.duplicate() : null;
   }
 
-  async onModuleDestroy(): Promise<void> {
+  onModuleDestroy(): void {
     if (this.client) {
       this.client.disconnect();
     }

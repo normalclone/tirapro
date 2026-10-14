@@ -185,7 +185,7 @@ export class ResourcesService {
     const where: Prisma.TimeOffWhereInput = {
       workspaceId,
       ...(q.userId ? { userId: q.userId } : {}),
-      ...(q.kind ? { kind: q.kind as TimeOffKind } : {}),
+      ...(q.kind ? { kind: q.kind } : {}),
     };
     if (q.to) where.startDate = { lte: parseDayParam(q.to, new Date()) };
     if (q.from) where.endDate = { gte: parseDayParam(q.from, new Date()) };
@@ -207,7 +207,7 @@ export class ResourcesService {
       data: {
         workspaceId,
         userId: dto.userId ?? null,
-        kind: (dto.kind ?? 'LEAVE') as TimeOffKind,
+        kind: dto.kind ?? 'LEAVE',
         startDate,
         endDate,
         note: dto.note ?? null,
@@ -233,7 +233,7 @@ export class ResourcesService {
         data.user = { disconnect: true };
       }
     }
-    if (dto.kind !== undefined && dto.kind !== null) data.kind = dto.kind as TimeOffKind;
+    if (dto.kind !== undefined && dto.kind !== null) data.kind = dto.kind;
     if (dto.note !== undefined) data.note = dto.note;
 
     if (dto.startDate !== undefined || dto.endDate !== undefined) {
@@ -386,7 +386,7 @@ export class ResourcesService {
       const first = Math.max(0, weekIndexOf(winStart));
       const last = Math.min(weekCount - 1, weekIndexOf(winEnd));
       for (let idx = first; idx <= last; idx++) {
-        const wStart = weekStarts[idx];
+        const wStart = weekStarts[idx]!;
         const segStart = winStart > wStart ? winStart : wStart;
         const segEnd = winEnd < addDays(wStart, 6) ? winEnd : addDays(wStart, 6);
         if (segEnd < segStart) continue;

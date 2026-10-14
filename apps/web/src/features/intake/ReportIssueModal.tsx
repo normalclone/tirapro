@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { useDuplicateCheck, useReportIssue, type DuplicateSuggestion } from './api';
 
 export function ReportIssueModal({
-  projectKey,
+  projectKey: _projectKey,
   projectId,
   open,
   onClose,

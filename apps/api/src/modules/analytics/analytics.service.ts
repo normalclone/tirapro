@@ -75,7 +75,7 @@ export class AnalyticsService {
     const attention: { key: string; summary: string; projectKey: string; reason: string; level: 'danger' | 'warning'; sort: number }[] = [];
 
     for (const i of issues) {
-      const cat = i.status.category as Category;
+      const cat = i.status.category;
       const isDone = cat === 'DONE';
       const overdue = !!i.dueDate && i.dueDate < now && !isDone;
       const highPri = (i.priority?.rank ?? 0) >= HIGH_RANK;
@@ -103,10 +103,10 @@ export class AnalyticsService {
 
       // Xu hướng
       const cIdx = Math.floor((now.getTime() - i.createdAt.getTime()) / WEEK);
-      if (cIdx >= 0 && cIdx <= 7) buckets[7 - cIdx].created++;
+      if (cIdx >= 0 && cIdx <= 7) buckets[7 - cIdx]!.created++;
       if (i.resolvedAt) {
         const rIdx = Math.floor((now.getTime() - i.resolvedAt.getTime()) / WEEK);
-        if (rIdx >= 0 && rIdx <= 7) buckets[7 - rIdx].resolved++;
+        if (rIdx >= 0 && rIdx <= 7) buckets[7 - rIdx]!.resolved++;
         if (now.getTime() - i.resolvedAt.getTime() <= 14 * DAY) resolvedLast14++;
       }
 
@@ -214,7 +214,7 @@ export class AnalyticsService {
     const UNASSIGNED = '__unassigned__';
 
     for (const i of issues) {
-      const cat = i.status.category as Category;
+      const cat = i.status.category;
       const isDone = cat === 'DONE';
       const overdue = !!i.dueDate && i.dueDate < now && !isDone;
       const pts = i.storyPoints ?? 0;
@@ -253,7 +253,7 @@ export class AnalyticsService {
           done: 0,
           overdue: 0,
           points: 0,
-        } as AssigneeRow);
+        });
       aRow.total++;
       aRow.points = round(aRow.points + pts);
       if (cat === 'IN_PROGRESS') aRow.inProgress++;
@@ -338,8 +338,8 @@ export class AnalyticsService {
     let h = 0;
     const series = days.map((date, idx) => {
       const endOfDay = new Date(`${date}T23:59:59.999Z`);
-      while (h < history.length && history[h].occurredAt <= endOfDay) {
-        const ev = history[h++];
+      while (h < history.length && history[h]!.occurredAt <= endOfDay) {
+        const ev = history[h++]!;
         const pts = points.get(ev.issueId) ?? 0;
         if (ev.newCategory === 'DONE' && ev.oldCategory !== 'DONE') done += pts;
         else if (ev.oldCategory === 'DONE' && ev.newCategory !== 'DONE') done -= pts;
@@ -403,9 +403,9 @@ export class AnalyticsService {
     let h = 0;
     const series: CfdPoint[] = days.map((date) => {
       const endOfDay = new Date(`${date}T23:59:59.999Z`);
-      while (h < history.length && history[h].occurredAt <= endOfDay) {
-        const ev = history[h++];
-        if (ev.newCategory) current.set(ev.issueId, ev.newCategory as Category);
+      while (h < history.length && history[h]!.occurredAt <= endOfDay) {
+        const ev = history[h++]!;
+        if (ev.newCategory) current.set(ev.issueId, ev.newCategory);
       }
       let todo = 0;
       let inProgress = 0;
@@ -418,7 +418,7 @@ export class AnalyticsService {
       return { date, todo, inProgress, done: doneC };
     });
 
-    return { from: days[0], to: days[days.length - 1], series };
+    return { from: days[0]!, to: days[days.length - 1]!, series };
   }
 
   // ---------- Created vs Resolved ----------
@@ -452,7 +452,7 @@ export class AnalyticsService {
       created: createdByDay.get(date) ?? 0,
       resolved: resolvedByDay.get(date) ?? 0,
     }));
-    return { from: days[0], to: days[days.length - 1], series };
+    return { from: days[0]!, to: days[days.length - 1]!, series };
   }
 
   private async requireProject(workspaceId: string, projectId: string) {

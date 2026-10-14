@@ -85,12 +85,12 @@ export class RaidService {
         projectId,
         ownerId,
         createdById: actingUserId,
-        kind: (dto.kind ?? 'RISK') as RaidKind,
+        kind: dto.kind ?? 'RISK',
         title: dto.title.trim(),
         description: dto.description ?? null,
         probability: dto.probability ?? 3,
         impact: dto.impact ?? 3,
-        status: (dto.status ?? 'OPEN') as RaidStatus,
+        status: dto.status ?? 'OPEN',
         mitigation: dto.mitigation ?? null,
         dueDate: this.parseDate(dto.dueDate ?? null),
       },
@@ -108,8 +108,8 @@ export class RaidService {
       if (!title) throw new ForbiddenAppException('Tiêu đề bắt buộc');
       data.title = title;
     }
-    if (dto.kind !== undefined && dto.kind !== null) data.kind = dto.kind as RaidKind;
-    if (dto.status !== undefined && dto.status !== null) data.status = dto.status as RaidStatus;
+    if (dto.kind !== undefined && dto.kind !== null) data.kind = dto.kind;
+    if (dto.status !== undefined && dto.status !== null) data.status = dto.status;
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.mitigation !== undefined) data.mitigation = dto.mitigation;
     if (dto.probability !== undefined && dto.probability !== null) data.probability = dto.probability;

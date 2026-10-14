@@ -284,7 +284,7 @@ export async function downloadProjectExport(projectId: string): Promise<void> {
   const blob = await res.blob();
   const disposition = res.headers.get('Content-Disposition') ?? '';
   const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
-  const filename = match ? decodeURIComponent(match[1]) : `project-${projectId}-export.json`;
+  const filename = match ? decodeURIComponent(match[1]!) : `project-${projectId}-export.json`;
 
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

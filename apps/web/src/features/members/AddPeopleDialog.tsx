@@ -80,12 +80,12 @@ export function AddPeopleDialog({
       }
       return (wsMembers ?? [])
         .filter((m) => !inProj.has(m.user.id))
-        .map((m) => ({ id: m.user.id, name: m.user.displayName, email: m.user.email, avatarUrl: m.user.avatarUrl, roleNames: m.roles.map((r) => r.name), teams: teamByUser.get(m.user.id) ?? [], status: m.user.status as string }));
+        .map((m) => ({ id: m.user.id, name: m.user.displayName, email: m.user.email, avatarUrl: m.user.avatarUrl, roleNames: m.roles.map((r) => r.name), teams: teamByUser.get(m.user.id) ?? [], status: m.user.status }));
     }
     const inWs = new Set((wsMembers ?? []).map((m) => m.user.id));
     return (allUsers ?? [])
       .filter((u) => !inWs.has(u.id))
-      .map((u) => ({ id: u.id, name: u.displayName, email: u.email, avatarUrl: u.avatarUrl, roleNames: [], teams: [], status: u.status as string }));
+      .map((u) => ({ id: u.id, name: u.displayName, email: u.email, avatarUrl: u.avatarUrl, roleNames: [], teams: [], status: u.status }));
   }, [isProject, allUsers, wsMembers, projMembers, teams]);
 
   const filtered = useMemo(() => {
@@ -121,7 +121,7 @@ export function AddPeopleDialog({
   const canSubmit = selected.size > 0 && roleIds.length > 0 && !busy;
 
   function toggle(id: string) {
-    setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
   function toggleAll() {
     setSelected((prev) => {

@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { createId } from '@paralleldrive/cuid2';
 import { DOMAIN_EVENTS, PERMISSIONS, type IssueDto } from '@tirapro/types';
 import { rankBetween, issueTypePrefix, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
@@ -144,7 +143,7 @@ export class IssuesService {
           number,
           key,
           typeId: input.typeId,
-          statusId: statusId!,
+          statusId,
           priorityId: priorityId ?? null,
           summary: input.summary,
           description: input.description ?? null,

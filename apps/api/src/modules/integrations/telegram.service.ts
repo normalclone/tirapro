@@ -91,7 +91,7 @@ export class TelegramService {
     const parts = enc.split(':');
     if (parts.length !== 3) return enc;
     try {
-      const [ivHex, tagHex, dataHex] = parts;
+      const [ivHex, tagHex, dataHex] = parts as [string, string, string]; // đã kiểm parts.length === 3 ở trên
       const decipher = crypto.createDecipheriv(
         'aes-256-gcm',
         this.deriveKey(),

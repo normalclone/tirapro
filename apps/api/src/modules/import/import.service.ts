@@ -104,7 +104,7 @@ export class ImportService {
         status: 'RUNNING',
         createdById: userId,
         startedAt: new Date(),
-        config: { projectId } as Prisma.InputJsonValue,
+        config: { projectId },
       },
       select: { id: true },
     });
@@ -140,7 +140,7 @@ export class ImportService {
       let created = 0;
 
       for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
+        const row = rows[i]!;
         const get = this.rowAccessor(row);
 
         const summary = get('summary', 'title');
@@ -252,7 +252,7 @@ export class ImportService {
         createdById: userId,
         startedAt: new Date(),
         totalItems: total,
-        config: { projectId, format: 'json' } as Prisma.InputJsonValue,
+        config: { projectId, format: 'json' },
       },
       select: { id: true },
     });
@@ -295,7 +295,7 @@ export class ImportService {
       let labelsLinked = 0;
 
       for (let i = 0; i < issues.length; i++) {
-        const issue = issues[i];
+        const issue = issues[i]!;
         const summary = issue?.summary?.trim();
         if (!summary) {
           errors.push({ row: i, error: 'Thiếu summary (tiêu đề) — bỏ qua' });

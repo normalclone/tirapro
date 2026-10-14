@@ -6,8 +6,8 @@
 
 const ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
 const BASE = ALPHABET.length;
-const MIN_CHAR = ALPHABET[0]; // '0'
-const MAX_CHAR = ALPHABET[BASE - 1]; // 'z'
+const MIN_CHAR = ALPHABET[0]!; // '0'
+const MAX_CHAR = ALPHABET[BASE - 1]!; // 'z'
 
 function charToVal(c: string): number {
   const v = ALPHABET.indexOf(c);
@@ -33,7 +33,7 @@ function rankBefore(next: string): string {
   // tìm rank < next
   const first = next[0] ?? MAX_CHAR;
   if (charToVal(first) > 0) {
-    return ALPHABET[Math.floor(charToVal(first) / 2)];
+    return ALPHABET[Math.floor(charToVal(first) / 2)]!;
   }
   // first là '0' -> đi sâu hơn
   return MIN_CHAR + rankBefore(next.slice(1) || MAX_CHAR);
@@ -43,7 +43,7 @@ function rankAfter(prev: string): string {
   const first = prev[0] ?? MIN_CHAR;
   const v = charToVal(first);
   if (v < BASE - 1) {
-    return ALPHABET[v + Math.max(1, Math.floor((BASE - v) / 2))];
+    return ALPHABET[v + Math.max(1, Math.floor((BASE - v) / 2))]!;
   }
   // first là 'z' -> giữ và nối thêm
   return MAX_CHAR + rankAfter(prev.slice(1));
@@ -64,7 +64,7 @@ function midpoint(a: string, b: string): string {
     const vb = charToVal(cb);
     if (vb - va > 1) {
       const mid = Math.floor((va + vb) / 2);
-      return result + ALPHABET[mid];
+      return result + ALPHABET[mid]!;
     }
     // sát nhau: giữ ca rồi tìm rank sau phần đuôi của a
     result += ca;

@@ -4,7 +4,8 @@ import { ERROR_CODES, type ErrorCode, type ErrorDetail } from '@tirapro/types';
 /** Exception nghiệp vụ mang error code (map sang error envelope ở filter). */
 export class AppException extends HttpException {
   constructor(
-    public readonly code: ErrorCode | string,
+    // `string & {}` giữ gợi ý tự hoàn thành của ErrorCode mà vẫn cho mã tuỳ ý.
+    public readonly code: ErrorCode | (string & {}),
     message: string,
     status: HttpStatus,
     public readonly details?: ErrorDetail[],

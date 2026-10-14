@@ -258,7 +258,7 @@ export class AuthService {
     };
   }
 
-  private async uniqueSlug(tx: { workspace: { findUnique: (a: any) => Promise<unknown> } }, name: string): Promise<string> {
+  private async uniqueSlug(tx: { workspace: { findUnique: (a: { where: { slug: string } }) => Promise<unknown> } }, name: string): Promise<string> {
     const base =
       name
         .toLowerCase()

@@ -10,8 +10,6 @@ import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import {
   CustomFieldsService,
-  type CreateCustomFieldInput,
-  type UpdateCustomFieldInput,
 } from './custom-fields.service';
 
 /** Body tạo custom field. SELECT/MULTI_SELECT có thể kèm options. */
@@ -62,7 +60,7 @@ export class CustomFieldsController {
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createCustomFieldSchema)) dto: CreateCustomFieldBody,
   ) {
-    return this.customFields.createDefinition(this.ws(user), dto as CreateCustomFieldInput);
+    return this.customFields.createDefinition(this.ws(user), dto);
   }
 
   @Patch('custom-fields/:id')
@@ -72,7 +70,7 @@ export class CustomFieldsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateCustomFieldSchema)) dto: UpdateCustomFieldBody,
   ) {
-    return this.customFields.updateDefinition(this.ws(user), id, dto as UpdateCustomFieldInput);
+    return this.customFields.updateDefinition(this.ws(user), id, dto);
   }
 
   @Delete('custom-fields/:id')

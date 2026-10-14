@@ -156,7 +156,7 @@ export class DevService {
         data: {
           workspaceId,
           integrationId: input.integrationId,
-          provider: input.provider as IntegrationType,
+          provider: input.provider,
           externalId: input.externalId,
           name: input.name,
           url: input.url,

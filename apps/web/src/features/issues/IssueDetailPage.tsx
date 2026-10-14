@@ -273,7 +273,7 @@ export function IssueDetailPage() {
                   {editingSummary ? (
                     <Input
                       autoFocus value={summary} onChange={(e) => setSummary(e.target.value)}
-                      onBlur={saveSummary} onKeyDown={(e) => { if (e.key === 'Enter') saveSummary(); }}
+                      onBlur={saveSummary} onKeyDown={(e) => { if (e.key === 'Enter') void saveSummary(); }}
                       className="h-10 text-2xl font-semibold tracking-tight"
                     />
                   ) : (

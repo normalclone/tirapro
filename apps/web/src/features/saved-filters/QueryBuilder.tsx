@@ -4,7 +4,6 @@ import { Check, ChevronDown, Copy, Plus, Trash2, Wand2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   CURRENT_USER_TOKEN,
-  isCategoricalField,
   isRelativeDateToken,
   jqlFieldType,
   serializeSimpleQuery,
@@ -44,10 +43,6 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
   { field: 'due', label: 'Hạn chót' },
   { field: 'storyPoints', label: 'Story point' },
 ];
-
-const FIELD_LABEL: Record<string, string> = Object.fromEntries(
-  FIELD_DEFS.map((d) => [d.field, d.label]),
-);
 
 /** Nhóm trạng thái: enum cố định, khớp Status.category ở backend. */
 const STATUS_CATEGORY_OPTIONS: FieldOption[] = [

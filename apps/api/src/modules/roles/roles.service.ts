@@ -37,7 +37,7 @@ export class RolesService {
       orderBy: [{ isSystem: 'desc' }, { scope: 'asc' }, { name: 'asc' }],
       select: ROLE_SELECT,
     });
-    return roles.map((r) => this.toDto(r as RoleRow));
+    return roles.map((r) => this.toDto(r));
   }
 
   async create(workspaceId: string, input: CreateRoleInput) {
@@ -50,7 +50,7 @@ export class RolesService {
       },
       select: ROLE_SELECT,
     });
-    return this.toDto(role as RoleRow);
+    return this.toDto(role);
   }
 
   async update(workspaceId: string, id: string, input: UpdateRoleInput) {
@@ -66,7 +66,7 @@ export class RolesService {
     }
     const role = await this.prisma.role.update({ where: { id }, data, select: ROLE_SELECT });
     await this.rbac.invalidateWorkspace(workspaceId); // quyền role đổi → xoá cache toàn workspace
-    return this.toDto(role as RoleRow);
+    return this.toDto(role);
   }
 
   async remove(workspaceId: string, id: string) {

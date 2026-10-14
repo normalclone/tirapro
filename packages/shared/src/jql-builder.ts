@@ -9,7 +9,7 @@
  */
 import { JQL_FIELDS, type JqlFieldName, type JqlValue } from './jql';
 import { JqlParseError, parseJql } from './jql-parser';
-import type { JqlNode, JqlComparison, JqlOrderBy } from './jql';
+import type { JqlNode, JqlComparison } from './jql';
 
 /** Toán tử mà bộ dựng trực quan hỗ trợ (tập con thân thiện của JQL_OPERATORS). */
 export type BuilderOperator =
@@ -92,7 +92,7 @@ function serializeValue(field: JqlFieldName, raw: string): string {
 export function isConditionComplete(c: SimpleCondition): boolean {
   if (c.operator === 'IS' || c.operator === 'IS NOT') return true;
   if (c.operator === 'IN' || c.operator === 'NOT IN') return c.values.length > 0;
-  return c.values.length > 0 && c.values[0].trim() !== '';
+  return c.values.length > 0 && c.values[0]!.trim() !== '';
 }
 
 function serializeCondition(c: SimpleCondition): string {
@@ -102,7 +102,7 @@ function serializeCondition(c: SimpleCondition): string {
     const items = c.values.map((v) => serializeValue(c.field, v)).join(', ');
     return `${c.field} ${c.operator} (${items})`;
   }
-  return `${c.field} ${c.operator} ${serializeValue(c.field, c.values[0])}`;
+  return `${c.field} ${c.operator} ${serializeValue(c.field, c.values[0]!)}`;
 }
 
 /** SimpleQuery → chuỗi JQL hợp lệ ('' nếu không có điều kiện & không sort). */
@@ -174,7 +174,7 @@ export function tryParseToSimpleQuery(jql: string): SimpleQuery | null {
   // Chỉ hỗ trợ 0 hoặc 1 mệnh đề sắp xếp ở chế độ đơn giản.
   if (ast.orderBy.length > 1) return null;
   const sort: SimpleSort | null = ast.orderBy[0]
-    ? { field: (ast.orderBy[0] as JqlOrderBy).field, direction: ast.orderBy[0].direction }
+    ? { field: ast.orderBy[0].field, direction: ast.orderBy[0].direction }
     : null;
 
   if (!ast.where) return { combinator: 'AND', conditions: [], sort };

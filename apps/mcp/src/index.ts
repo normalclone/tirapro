@@ -73,7 +73,7 @@ function buildServer(tira: Tira): McpServer {
   };
 
   // ---- KHÁM PHÁ NGỮ CẢNH ----
-  server.tool('help', 'Hướng dẫn dùng các tool Tirapro: khái niệm & quy trình nên theo.', {}, async () => asText(HELP_TEXT));
+  server.tool('help', 'Hướng dẫn dùng các tool Tirapro: khái niệm & quy trình nên theo.', {}, () => asText(HELP_TEXT));
 
   server.tool(
     'get_context',

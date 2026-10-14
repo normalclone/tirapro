@@ -202,9 +202,9 @@ export function GanttPage() {
     const months: { label: string; span: number }[] = [];
     let i = 0;
     while (i < days.length) {
-      const m = days[i];
+      const m = days[i]!;
       let j = i;
-      while (j < days.length && days[j].getMonth() === m.getMonth() && days[j].getFullYear() === m.getFullYear()) j++;
+      while (j < days.length && days[j]!.getMonth() === m.getMonth() && days[j]!.getFullYear() === m.getFullYear()) j++;
       months.push({ label: format(m, 'MM/yyyy'), span: j - i });
       i = j;
     }
@@ -533,7 +533,7 @@ export function GanttPage() {
                 )}
 
                 {model.spans.map((s) => {
-                  const { issue, start, end, overdue, inferred, critical } = s;
+                  const { issue, overdue, inferred, critical } = s;
                   const box = model.layout.get(issue.id);
                   const left = box?.left ?? 0;
                   const width = (box?.right ?? 0) - left;

@@ -8,7 +8,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
-import { DevService, type CreateRepositoryInput } from './dev.service';
+import { DevService } from './dev.service';
 
 /** Body kết nối repository code (GitHub/GitLab) với workspace. */
 export const createRepositorySchema = z.object({
@@ -40,7 +40,7 @@ export class DevController {
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createRepositorySchema)) body: CreateRepositoryBody,
   ) {
-    return this.dev.createRepository(this.ws(user), body as CreateRepositoryInput);
+    return this.dev.createRepository(this.ws(user), body);
   }
 
   /** Liệt kê repository của workspace (lọc theo project nếu truyền). */
@@ -73,6 +73,6 @@ export class DevController {
     @Headers('x-webhook-secret') secret: string | undefined,
     @Body() body: unknown,
   ) {
-    return this.dev.handleWebhook(repositoryId, secret, (body ?? {}) as never);
+    return this.dev.handleWebhook(repositoryId, secret, body ?? {});
   }
 }

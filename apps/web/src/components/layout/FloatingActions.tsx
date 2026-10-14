@@ -237,9 +237,9 @@ export function FloatingActions() {
       <CreateProjectModal open={createProject} onClose={() => setCreateProject(false)} />
       {hasProject && (
         <>
-          <ReportIssueModal projectKey={project!.key} projectId={project!.id} open={report} onClose={() => setReport(false)} />
+          <ReportIssueModal projectKey={project.key} projectId={project.id} open={report} onClose={() => setReport(false)} />
           {aiEnabled && (
-            <GenerateIssuesDialog projectKey={project!.key} projectId={project!.id} open={genAi} onClose={() => setGenAi(false)} />
+            <GenerateIssuesDialog projectKey={project.key} projectId={project.id} open={genAi} onClose={() => setGenAi(false)} />
           )}
         </>
       )}

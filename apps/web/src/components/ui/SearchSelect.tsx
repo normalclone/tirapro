@@ -109,7 +109,7 @@ export function SearchSelect({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && filtered.length > 0) {
                   e.preventDefault();
-                  pick(filtered[0].value);
+                  pick(filtered[0]!.value);
                 }
               }}
             />

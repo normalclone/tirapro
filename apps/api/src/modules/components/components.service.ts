@@ -344,7 +344,7 @@ export class ComponentsService {
       projectId: row.projectId,
       name: row.name,
       description: row.description,
-      status: row.status as VersionStatus,
+      status: row.status,
       startDate: row.startDate ? row.startDate.toISOString() : null,
       releaseDate: row.releaseDate ? row.releaseDate.toISOString() : null,
     };

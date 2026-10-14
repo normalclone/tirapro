@@ -241,7 +241,7 @@ function RoleDialog({
   const [name, setName] = useState(role?.name ?? '');
   const [scope, setScope] = useState<RoleScope>(role?.scope ?? initialScope);
   const [description, setDescription] = useState(role?.description ?? '');
-  const [color, setColor] = useState<string>(role?.color ?? PRESET_COLORS[3]);
+  const [color, setColor] = useState<string>(role?.color ?? PRESET_COLORS[3]!);
   const [perms, setPerms] = useState<Set<PermissionKey>>(
     () => new Set(role?.permissionKeys ?? []),
   );

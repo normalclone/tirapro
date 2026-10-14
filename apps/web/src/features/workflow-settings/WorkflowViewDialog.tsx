@@ -37,7 +37,7 @@ function buildNodes(wf: Workflow, currentStatusId: string): Node<NodeData>[] {
   const usesAny = wf.transitions.some((t) => t.fromStatusId == null);
   const nodes: Node<NodeData>[] = [];
   if (usesAny) {
-    nodes.push({ id: ANY_ID, type: 'wf', position: pos[ANY_ID], data: { label: 'Bất kỳ trạng thái', isAny: true }, draggable: false });
+    nodes.push({ id: ANY_ID, type: 'wf', position: pos[ANY_ID]!, data: { label: 'Bất kỳ trạng thái', isAny: true }, draggable: false });
   }
   for (const s of wf.statuses) {
     nodes.push({

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { KeyResultUnit, ObjectiveStatus, Prisma, StatusCategory } from '@prisma/client';
+import type { ObjectiveStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import type {
@@ -117,7 +117,7 @@ export class GoalsService {
         name: dto.name.trim(),
         description: dto.description ?? null,
         period: dto.period.trim(),
-        status: (dto.status ?? 'ACTIVE') as ObjectiveStatus,
+        status: dto.status ?? 'ACTIVE',
         keyResults: { create: (dto.keyResults ?? []).map((kr) => this.krCreateData(kr)) },
         issues: { create: issueIds.map((issueId) => ({ issueId })) },
       },
@@ -141,7 +141,7 @@ export class GoalsService {
       if (!period) throw new ForbiddenAppException('Kỳ bắt buộc');
       data.period = period;
     }
-    if (dto.status !== undefined && dto.status !== null) data.status = dto.status as ObjectiveStatus;
+    if (dto.status !== undefined && dto.status !== null) data.status = dto.status;
     if (dto.projectId !== undefined) {
       const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
       data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
@@ -206,7 +206,7 @@ export class GoalsService {
       if (!name) throw new ForbiddenAppException('Tên kết quả then chốt bắt buộc');
       data.name = name;
     }
-    if (dto.unit !== undefined) data.unit = dto.unit as KeyResultUnit;
+    if (dto.unit !== undefined) data.unit = dto.unit;
     if (dto.startValue !== undefined) data.startValue = dto.startValue;
     if (dto.targetValue !== undefined) data.targetValue = dto.targetValue;
     if (dto.currentValue !== undefined) data.currentValue = dto.currentValue;
@@ -245,7 +245,7 @@ export class GoalsService {
   private krCreateData(kr: KeyResultUpsertInput) {
     return {
       name: kr.name.trim(),
-      unit: (kr.unit ?? 'NUMBER') as KeyResultUnit,
+      unit: kr.unit ?? 'NUMBER',
       startValue: kr.startValue ?? 0,
       targetValue: kr.targetValue,
       currentValue: kr.currentValue ?? kr.startValue ?? 0,
@@ -321,7 +321,7 @@ export class GoalsService {
       typeName: oi.issue.type?.name ?? null,
       typeColor: oi.issue.type?.color ?? null,
       statusName: oi.issue.status?.name ?? null,
-      statusCategory: (oi.issue.status?.category ?? null) as StatusCategory | null,
+      statusCategory: oi.issue.status?.category ?? null,
       statusColor: oi.issue.status?.color ?? null,
     }));
 

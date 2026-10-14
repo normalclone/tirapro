@@ -21,7 +21,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<AuthedRequest>();
 
-    let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
+    let statusCode: number = HttpStatus.INTERNAL_SERVER_ERROR;
     let code: string = ERROR_CODES.INTERNAL;
     let message = 'Đã có lỗi xảy ra';
     let details: ErrorDetail[] | undefined;

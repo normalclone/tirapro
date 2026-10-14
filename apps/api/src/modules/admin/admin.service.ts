@@ -58,7 +58,7 @@ export class AdminService {
       },
       select: USER_SELECT,
     });
-    return { ...this.toDto(created as Row), tempPassword };
+    return { ...this.toDto(created), tempPassword };
   }
 
   async update(id: string, input: UpdateUserInput) {
@@ -74,6 +74,6 @@ export class AdminService {
       },
       select: USER_SELECT,
     });
-    return this.toDto(updated as Row);
+    return this.toDto(updated);
   }
 }
