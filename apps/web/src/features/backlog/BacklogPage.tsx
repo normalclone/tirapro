@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Plus, Play, CheckCircle2, ChevronRight, Inbox } from 'lucide-react';
+import { Plus, Play, CheckCircle2, ChevronRight, Inbox, Sparkles } from 'lucide-react';
 import { DueBadge, dueBorderClass } from '@/components/ui/DueBadge';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { byPriorityThenStatus } from '@/lib/issueOrder';
@@ -28,6 +28,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { cn } from '@/lib/utils';
 import { BulkActionBar } from './BulkActionBar';
+import { SprintAssistantDialog } from '@/features/ai/SprintAssistantDialog';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
 import { applyQuickFilters, useQuickFilters } from '@/features/quick-filters/useQuickFilters';
 import { AssigneeFilter, applyAssigneeFilter } from '@/features/quick-filters/AssigneeFilter';
@@ -63,6 +64,7 @@ export function BacklogPage() {
   const canManageBacklog = useAuth((s) => s.can('backlog:manage'));
   const canCreate = useAuth((s) => s.can('issue:create'));
   const canAssign = useAuth((s) => s.can('issue:assign'));
+  const canUseAi = useAuth((s) => s.can('ai:use'));
   const currentUserId = useAuth((s) => s.user?.id);
 
   const createSprint = useCreateSprint(projectId ?? '');
@@ -86,6 +88,7 @@ export function BacklogPage() {
   const [showClosed, setShowClosed] = useState(false);
   // Sprint đang chờ xác nhận hoàn thành khi còn việc chưa xong.
   const [completing, setCompleting] = useState<{ id: string; name: string; notDone: number } | null>(null);
+  const [assistantFor, setAssistantFor] = useState<{ id: string; name: string; goal: string | null } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -400,15 +403,28 @@ export function BacklogPage() {
                 action={
                   canManageSprint ? (
                     sprint.state === 'FUTURE' ? (
-                      <Button
-                        size="sm"
-                        title={`Bắt đầu đợt làm việc này. ${SPRINT_TIP}`}
-                        loading={startSprint.isPending && startSprint.variables === sprint.id}
-                        onClick={() => handleStartSprint(sprint.id, sprint.name)}
-                      >
-                        <Play className="h-4 w-4" />
-                        Bắt đầu sprint
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {canUseAi && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            title="Gợi ý việc trong Backlog vừa với năng lực của đội"
+                            onClick={() => setAssistantFor({ id: sprint.id, name: sprint.name, goal: sprint.goal ?? null })}
+                          >
+                            <Sparkles className="h-4 w-4" />
+                            Trợ lý lập sprint
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          title={`Bắt đầu đợt làm việc này. ${SPRINT_TIP}`}
+                          loading={startSprint.isPending && startSprint.variables === sprint.id}
+                          onClick={() => handleStartSprint(sprint.id, sprint.name)}
+                        >
+                          <Play className="h-4 w-4" />
+                          Bắt đầu sprint
+                        </Button>
+                      </div>
                     ) : (
                       <Button
                         size="sm"
@@ -519,6 +535,15 @@ export function BacklogPage() {
 
         <DragOverlay>{dragging ? <IssueRow issue={dragging} overlay /> : null}</DragOverlay>
       </DndContext>
+
+      {assistantFor && projectId && (
+        <SprintAssistantDialog
+          open
+          projectId={projectId}
+          sprint={assistantFor}
+          onClose={() => setAssistantFor(null)}
+        />
+      )}
 
       {completing && (
         <CompleteSprintDialog

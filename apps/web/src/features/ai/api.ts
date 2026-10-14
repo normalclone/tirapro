@@ -1,7 +1,9 @@
 import { skipToken, useMutation, useQuery } from '@tanstack/react-query';
 import type {
+  AiAssigneeSuggestResult,
   AiCapabilities,
   AiGenerateIssuesResult,
+  AiSprintPlanResult,
   AiSuggestResult,
   AiSummaryResult,
 } from '@tirapro/shared';
@@ -55,5 +57,23 @@ export function useGenerateIssues() {
   return useMutation({
     mutationFn: (v: { projectId: string; text: string }) =>
       api.post<AiGenerateIssuesResult>('/ai/generate-issues', v).then((r) => r.data),
+  });
+}
+
+/** Gợi ý người nhận việc cho một issue (projectId để máy chủ kiểm quyền). */
+export function useSuggestAssignee() {
+  return useMutation({
+    meta: { silent: true }, // component tự hiển thị lỗi ngay tại chỗ
+    mutationFn: (v: { projectId: string; issueId: string }) =>
+      api.post<AiAssigneeSuggestResult>('/ai/suggest-assignee', v).then((r) => r.data),
+  });
+}
+
+/** Trợ lý lập sprint: đề xuất việc từ backlog (không tự ghi — áp dụng qua bulk update). */
+export function useSprintPlan() {
+  return useMutation({
+    meta: { silent: true },
+    mutationFn: (v: { projectId: string; sprintId: string; capacityPoints?: number; goal?: string }) =>
+      api.post<AiSprintPlanResult>('/ai/sprint-plan', v).then((r) => r.data),
   });
 }
