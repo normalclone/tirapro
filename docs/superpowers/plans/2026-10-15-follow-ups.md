@@ -2,41 +2,56 @@
 
 Toàn bộ 23 task của `2026-10-15-review-fixes.md` + đợt sửa review cuối đã merge. Danh sách dưới là các điểm reviewer đánh giá **không chặn merge**, gom lại để làm tiếp.
 
+**Trạng thái (cập nhật cuối đợt follow-up):** mọi mục đều đã xử lý bởi task trong `2026-10-15-follow-ups-impl.md` (ID ở ngoặc, `[x]`), trừ các mục đánh dấu **CỐ Ý KHÔNG LÀM** (kèm lý do). `FW*` = đợt sửa cuối (final wave) sau review toàn nhánh. Release notes tổng hợp: `docs/RELEASE_NOTES_2026-10-follow-ups.md`.
+
 ## Bắt buộc khi triển khai
-- Chạy `prisma migrate deploy` + `db:raw` trên DB thật (6 migration mới: sprint_sequence_unique, perf_indexes, mail_invite_reset, project_archive, worklog_rules, ai_log_index) rồi smoke test tay: kéo thả board, backlog > 50 dòng (virtualization), các dialog, Cmd+K trên trang issue, mời thành viên/đặt lại mật khẩu (driver console).
-- Prod: đặt `INTEGRATION_ENCRYPTION_KEY` mới, giữ key cũ ở `INTEGRATION_ENCRYPTION_KEY_PREVIOUS`, chạy `pnpm --filter @tirapro/api run integrations:rekey` (xem `docs/DEPLOY.md`).
-- Project đang `isArchived` sẽ thành chỉ-đọc và bị ẩn sau migration — ghi vào release note.
+- [x] Chạy `prisma migrate deploy` + `db:raw` trên DB thật rồi smoke test tay — nay có checklist thứ tự + cảnh báo khoá bảng `Issue` ở `docs/DEPLOY.md` (FW-OPS; X5 đổi `db:raw`). Smoke test đã chạy lại ở môi trường verify (13 PASS/5 FAIL baseline → xử lý bằng X-task).
+- [x] Prod: `INTEGRATION_ENCRYPTION_KEY` mới + `…_PREVIOUS` + `integrations:rekey` — `docs/DEPLOY.md` (đã có; FW-OPS thêm cách chạy trong Docker/Render + `automation:seal-secrets`).
+- [x] Project `isArchived` thành chỉ-đọc và bị ẩn — ghi trong release notes (FW9/FW-OPS) và làm nhất quán ở API/web (X4).
 
 ## Bảo mật / quyền
-- Các route `ISSUE_EDIT`/`ISSUE_TRANSITION` khác (links, labels, components, attachments, triage, custom fields, `transition`, `move`) vẫn cho `:own` mà không kiểm ownership — gắn `@OwnOnly`.
-- `PUT /raid/:id` đổi được `projectId` sang dự án khác cùng workspace mà không kiểm quyền ở dự án đích; link liên dự án chỉ kiểm quyền một đầu.
-- `move()` đổi status không qua workflow/resolution và không phát `ISSUE_TRANSITIONED`; `assigneeId` chưa kiểm là thành viên workspace; `sprintId` chỉ kiểm theo workspace.
-- Webhook automation: thiếu dải `2002::/16`, `2001::/32`; chỉ pin IP đầu tiên; `lookup` nằm ngoài timeout; secret webhook lưu plaintext.
-- `decrypt` trả null → integrations/digests rơi về bot toàn cục; nên báo "token không dùng được".
-- Xoá mềm project chưa ẩn issue của nó ở `/issues/:key`, search, list.
+- [x] Route `ISSUE_EDIT`/`ISSUE_TRANSITION` khác cho `:own` không kiểm ownership (S1; + coverage spec dùng SENTINEL object ở S1/X1).
+- [x] `PUT /raid/:id` đổi dự án + link liên dự án chỉ kiểm một đầu (S2; X1 cho đọc chéo link).
+- [x] `move()` không qua workflow/resolution, `assigneeId`/`sprintId` chưa kiểm (S3). Gán vào sprint đã CLOSED (FW1).
+- [x] Webhook automation: dải IPv6 chuyển tiếp, pin mọi IP, timeout DNS, secret plaintext (S4; chạy `automation:seal-secrets` khi triển khai).
+- [x] `decrypt` null → rơi về bot toàn cục (S5; digest chạy khi tích hợp ERROR trả 422 — X1).
+- [x] Xoá mềm project chưa ẩn issue (S6; mở rộng sang dev-links/goals/analytics/programs ở X1).
 
 ## Đúng đắn / dữ liệu
-- Burndown vẫn tính delta `oldCategory` (CFD đã sửa sang "last category wins").
-- Rebalance rank bump version mọi issue nhưng chưa ai nghe `PROJECT_RANKS_REBALANCED`; `prev >= next` cũ kích hoạt rebalance toàn project.
-- `bulkUpdate` đổi cả status lẫn assignee không phát `ISSUE_ASSIGNED`; web `runBulk` không chia lô > 100.
-- Cột board nhiều status luôn nhắm status đầu tiên khi thả.
-- JQL `text ~` lấy top 200 toàn workspace rồi mới lọc project; mất match substring ở description/key.
-- Jira import: chạy trùng `analyzeId` tạo issue trùng; job kẹt RUNNING khi restart; parse CSV 25MB đồng bộ.
-- Digest có thể gửi đôi khi lệch đồng hồ giữa node (lock DEL, không có `lastRunAt`).
-- Comment `updated/deleted` chưa được server phát qua WS.
-- `setColumns` chưa lock board / bắt P2002.
+- [x] Burndown dùng "category cuối thắng" như CFD (C1).
+- [x] Rebalance rank: WS `PROJECT_RANKS_REBALANCED` + `409 RANK_NEIGHBORS_STALE` thay vì rebalance cả dự án (C2; kéo-thả theo rank X2a/b/c).
+- [x] `bulkUpdate` phát `ISSUE_ASSIGNED`/`ISSUE_UPDATED`; web chia lô > 100 (C3, X6).
+- [x] Cột board nhiều status — hỏi trạng thái đích (C4).
+- [x] JQL `text ~` toàn workspace/top 200/mất substring (C5; tìm kiếm tiếng Việt X5).
+  - **CỐ Ý KHÔNG LÀM:** `!=` / `NOT IN` trên quan hệ nullable (vd `sprint != X` bỏ backlog) vẫn loại bản ghi EMPTY — giữ ngữ nghĩa Jira; ai cần thì viết `OR x is EMPTY`. Lý do: kỳ vọng tương thích Jira; chi phí nếu sai: người dùng phải thêm `OR … is EMPTY`. (Ruling X5.)
+- [x] Jira import: trùng `analyzeId`, job kẹt RUNNING, parse CSV đồng bộ (C6).
+  - **CỐ Ý KHÔNG LÀM:** khôi phục job RUNNING mồ côi cho import **generic** (không phải `jira-csv`). Lý do: không có heartbeat → đánh FAILED nhầm job đang chạy tệ hơn để kẹt như trước C6. (Ruling C6.)
+- [x] Digest gửi đôi khi lệch đồng hồ (C7: compare-and-set `lastRunAt`).
+- [x] Comment `updated/deleted` qua WS (C8; test thiếu `projectId` FW4).
+- [x] `setColumns` chưa lock board / bắt P2002 (C9; lọc `deletedAt` + test thứ tự khoá FW3).
 
 ## Web / UX
-- `can()` chỉ dùng quyền workspace → member chỉ có quyền ở mức project không thấy "Ghi thời gian", kéo thả backlog…
-- Burndown `REPORT_VIEW` kiểm ở workspace → Member bị 403.
-- Viewer vẫn thấy nút lưu bộ lọc; hotkey `w` (worklog) chỉ chạy khi panel đã vào viewport.
-- PlanningPanel (drawer) chưa focus-trap/`data-state`; một số dialog còn `if (!open) return null` (mất animation đóng); header icon/màu bị bỏ.
-- Bỏ toggle cá nhân "Nhóm theo người" (swimlane giờ theo cấu hình board).
-- `setTimeout(0)` dedupe toast lỗi khá mong manh; `currentProjectKey` trong Cmd+K còn `decodeURIComponent` không try/catch.
+- [x] `can()` chỉ dùng quyền workspace (W1: `useCan(projectId)` + `GET /projects/:id/permissions/me`).
+- [x] Burndown `REPORT_VIEW` kiểm ở workspace (W2 + C1).
+- [x] Viewer thấy nút lưu bộ lọc; hotkey `w` (W3).
+- [x] PlanningPanel focus-trap, dialog `if (!open) return null`, icon/màu header (W4).
+- [x] Toggle "Nhóm theo người" (W5).
+- [x] Toast lỗi mong manh, `decodeURIComponent` không try/catch (W6).
 
 ## Tooling / nợ kỹ thuật
-- Hạ ratchet lint từ 275 xuống 246 (số cảnh báo hiện tại) và trả dần họ `no-unsafe-*`.
-- Một commit `prettier --write` toàn repo (265+ file chưa đạt) rồi bật `--max-warnings 0` cho lint-staged.
-- CI thêm job Postgres chạy `migrate deploy` + `migrate diff --exit-code`.
-- Đổi tên module `dev` → `dev-links`; cấu hình `knip`; `HEALTH_PATHS` đang hardcode `/api/v1`.
-- `issues.service.ts` ~1000 dòng → tách `RankService`/WIP helper.
+- [x] Hạ ratchet lint và trả `no-unsafe-*` (T1: 281 → 92; FW-OPS: đo lại = **91**, `docs/superpowers/plans/lint-debt.md`).
+  - **CHƯA LÀM (có chủ đích):** `--max-warnings 0` cho lint-staged/CI — còn 91 cảnh báo nền (65 `max-lines-per-function` web, 12 `no-unsafe-*` api, 3 `exhaustive-deps`). Chỉ bật khi ratchet về 0.
+- [x] Một commit `prettier --write` toàn repo + `format:check` ở CI (T5). Merge PR bằng merge commit để `.git-blame-ignore-revs` còn hiệu lực.
+- [x] CI job Postgres: `migrate deploy` + `migrate diff --exit-code` (T2); FW-OPS thêm `db:raw` song song + nhánh nâng cấp `searchVector`.
+- [x] Đổi tên `dev` → `dev-links`, `knip`, `HEALTH_PATHS` từ config (T3); tách `RankService` (T4).
+
+## Phát sinh trong đợt follow-up (đã xử lý)
+- [x] Kéo-thả board/backlog theo rank (X2a/b/c); `useInView` hỏng dưới StrictMode (X3); dự án lưu trữ chỉ-đọc nhất quán (X4); tìm kiếm tiếng Việt (X5); UX nhỏ + `/auth/refresh` không 401 đỏ (X6); board Scrum theo sprint chạy (X7); rò quyền đọc chéo (X1).
+- [x] Đợt cuối API: FW1-FW6, FW11 (`epicId` không lưu), FW12 (API `PATCH /boards/:id` `type`) + 4 Important của review cuối (tạo issue `statusId`, automation/workflow-admin theo dự án lưu trữ, soft-delete còn sót, quyền `/move`).
+- [x] Đợt cuối OPS: FW9 release notes + ratchet, `db:raw` advisory lock, `docs/DEPLOY.md`, `Dockerfile` có script vận hành, `api-contract.md`.
+- [x] Đợt cuối web: FW7, FW8, FW12 (UI), FW13 (+ dự án lưu trữ chỉ-đọc ở gốc, quyền tạo việc/Cmd+K, phím tắt không cướp phím khi overlay mở, route rank/move theo quyền, `skippedAssignees` ở kết quả import).
+
+## Cố ý không làm (quyết định sản phẩm)
+- **Resources → Allocation và clients → Contract trên dự án lưu trữ vẫn ghi được** — dữ liệu cấp workspace/khách hàng, không phải dữ liệu làm việc của dự án (X4). Ghi trong release notes + `api-contract.md` §6.1.
+- **Snapshot sprint của dự án lưu trữ vẫn ghi** — chỉ phục vụ biểu đồ, không đổi dữ liệu người dùng; chi phí nếu sai: burndown của sprint lưu trữ phẳng (X4).
+- **`knip.jsonc` còn ignore** `@nestjs/testing` và `src/features/ai/AiIssuePanel.tsx` (chưa nối UI) — xoá hay nối là quyết định riêng; có comment lý do trong file.

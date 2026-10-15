@@ -8,15 +8,21 @@
  *
  * Idempotent: secret đã có tiền tố "enc:v1:" bị bỏ qua, chạy lại không mã hoá hai lần.
  * Cần DATABASE_URL + INTEGRATION_ENCRYPTION_KEY (tối thiểu 32 ký tự, cùng khoá với API).
+ * Chống nhầm khoá: nếu DB đã có secret `enc:v1:` mà khoá hiện tại KHÔNG giải được, script dừng (exit 1) thay vì mã hoá
+ * phần còn lại bằng một khoá lạ (không lấy lại được). Mẫu đối chiếu lấy từ khoá webhook `enc:v1:` có sẵn, hoặc token bot
+ * Telegram đã mã hoá. Nếu DB không có mẫu nào (lần seal đầu) mà còn khoá cần mã hoá: in cảnh báo và đòi `--i-verified-key`
+ * (bạn đã tự đối chiếu khoá với dịch vụ API); `--force` bỏ qua mọi kiểm tra này (chỉ khi chắc chắn).
  * Thuật toán phải khớp telegram.service.ts: AES-256-GCM, khoá = sha256(secret), "iv:tag:ciphertext" hex;
  * tiền tố phải khớp webhook-secret.ts (WEBHOOK_SECRET_PREFIX).
  */
-import { createCipheriv, createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 
 const PREFIX = 'enc:v1:';
 const MAX_PLAIN = 200; // khớp WEBHOOK_SECRET_MAX_LENGTH (@tirapro/shared): dạng mã hoá của ≤200 ký tự luôn nằm trong giới hạn schema
 const dryRun = process.argv.includes('--dry-run');
+const force = process.argv.includes('--force');
+const verified = force || process.argv.includes('--i-verified-key');
 const current = process.env.INTEGRATION_ENCRYPTION_KEY ?? '';
 if (current.length < 32) {
   console.error(
@@ -34,6 +40,18 @@ function encrypt(plain) {
   return `${iv.toString('hex')}:${c.getAuthTag().toString('hex')}:${data.toString('hex')}`;
 }
 
+function canDecrypt(payload) {
+  try {
+    const [iv, tag, data] = payload.split(':');
+    const d = createDecipheriv('aes-256-gcm', derive(current), Buffer.from(iv, 'hex'));
+    d.setAuthTag(Buffer.from(tag, 'hex'));
+    Buffer.concat([d.update(Buffer.from(data, 'hex')), d.final()]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const isWebhook = (a) => !!a && typeof a === 'object' && a.type === 'webhook';
 
 const prisma = new PrismaClient();
@@ -42,6 +60,62 @@ try {
   const rows = await prisma.automationRule.findMany({
     select: { id: true, actions: true, updatedAt: true },
   });
+  if (!force) {
+    // Mẫu thử: một secret đã mã hoá sẵn phải giải được bằng khoá hiện tại, nếu không thì khoá trong shell khác khoá API đang dùng.
+    // Nguồn 1: khoá webhook `enc:v1:` có sẵn. Nguồn 2: token bot Telegram đã mã hoá (`iv:tag:ct`) ở bảng Integration.
+    const webhookSample = rows
+      .flatMap((r) => (Array.isArray(r.actions) ? r.actions : []))
+      .find((a) => isWebhook(a) && typeof a.secret === 'string' && a.secret.startsWith(PREFIX));
+    let sample = webhookSample ? webhookSample.secret.slice(PREFIX.length) : null;
+    if (sample === null) {
+      const integrations = await prisma.integration.findMany({
+        where: { type: 'TELEGRAM' },
+        select: { config: true },
+      });
+      for (const it of integrations) {
+        const cfg =
+          it.config && typeof it.config === 'object' && !Array.isArray(it.config) ? it.config : {};
+        const token = typeof cfg.botToken === 'string' ? cfg.botToken : '';
+        if (token.split(':').length === 3) {
+          sample = token;
+          break;
+        }
+      }
+    }
+    if (sample !== null && !canDecrypt(sample)) {
+      console.error(
+        'INTEGRATION_ENCRYPTION_KEY hiện tại KHÔNG giải được secret đã mã hoá sẵn trong DB — có vẻ khác khoá API đang dùng. ' +
+          'Dừng để tránh mã hoá bằng khoá lạ. Đặt đúng khoá (hoặc chạy integrations:rekey trước); dùng --force nếu chắc chắn.',
+      );
+      await prisma.$disconnect();
+      process.exit(1);
+    }
+    if (sample === null) {
+      // Lần seal đầu: DB chưa có gì đã mã hoá để đối chiếu → không kiểm chứng được khoá. Phải xác nhận tường minh.
+      const pending = rows
+        .flatMap((r) => (Array.isArray(r.actions) ? r.actions : []))
+        .some(
+          (a) =>
+            isWebhook(a) &&
+            typeof a.secret === 'string' &&
+            a.secret !== '' &&
+            !a.secret.startsWith(PREFIX),
+        );
+      if (pending) {
+        console.error(
+          'CẢNH BÁO: DB chưa có secret/token nào đã mã hoá để đối chiếu — script KHÔNG kiểm chứng được INTEGRATION_ENCRYPTION_KEY có đúng khoá API đang dùng. ' +
+            'Mã hoá bằng khoá sai thì khoá webhook không lấy lại được.',
+        );
+        if (!dryRun && !verified) {
+          console.error(
+            'Hãy đối chiếu khoá với biến môi trường của dịch vụ API, rồi chạy lại kèm --i-verified-key (hoặc --force). --dry-run không cần cờ này.',
+          );
+          await prisma.$disconnect();
+          process.exit(1);
+        }
+      }
+    }
+  }
   for (const row of rows) {
     if (!Array.isArray(row.actions)) continue;
     let changed = false;

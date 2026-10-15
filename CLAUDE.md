@@ -44,8 +44,9 @@ Dự án dùng skill **impeccable** cho frontend. **Ưu tiên cao nhất: thật
 - `pnpm dev` — chạy api + web song song (turbo).
 - `pnpm --filter @tirapro/api db:migrate|db:raw|db:seed`.
 - `pnpm lint` — eslint toàn repo (phải 0 lỗi). `pnpm test` — vitest qua turbo. `pnpm -r typecheck` — tsc mọi package.
-- `pnpm format` / `pnpm format:check` — `prettier --write .` / `--check .` (theo `.prettierignore`); CI chạy `format:check`. Sau commit format toàn repo (T5) chạy một lần: `git config blame.ignoreRevsFile .git-blame-ignore-revs`; nhánh đang mở cần rebase.
+- `pnpm format` / `pnpm format:check` — `prettier --write .` / `--check .` (theo `.prettierignore`); CI chạy `format:check`. Sau commit format toàn repo (T5) chạy một lần: `git config blame.ignoreRevsFile .git-blame-ignore-revs`; nhánh đang mở cần rebase. PR chứa commit format này phải merge bằng **merge commit** (không squash/rebase-merge) — đổi SHA thì `.git-blame-ignore-revs` mất hiệu lực.
 - `pnpm gen:enums` — sinh `packages/types/src/enums.ts` từ Prisma schema (file sinh tự động, không sửa tay).
-- `pnpm knip` — liệt kê dependency/file/export không dùng (chỉ báo cáo; xoá thì `grep -r` xác nhận 0 import trước).
+- `pnpm knip` — liệt kê dependency/file/export không dùng (export/type thừa chỉ cảnh báo; file/dependency thừa làm lệnh thoát 1 — xem `knip.jsonc`; xoá thì `grep -r` xác nhận 0 import trước).
+- Vận hành (một lần, cần `DATABASE_URL` + `INTEGRATION_ENCRYPTION_KEY` trong môi trường): `pnpm --filter @tirapro/api run integrations:rekey|automation:seal-secrets [-- --dry-run]`. Thứ tự triển khai `migrate deploy → db:raw → rekey → seal-secrets` và cảnh báo khoá bảng `Issue`: `docs/DEPLOY.md` mục "Checklist triển khai".
 - `pnpm --filter @tirapro/api db:seed:rich` — nạp demo giàu dữ liệu (cần API chạy ở :4000).
 - Docker API: `docker build -f apps/api/Dockerfile -t tirapro-api .` (build từ gốc repo).
