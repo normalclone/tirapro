@@ -3,8 +3,10 @@ import type { Workflow } from '@/features/workflow-settings/api';
 import { hintOf, type Placement } from '@/lib/rankDrop';
 import { resolveDropStatuses, type DropResolution } from './dropTarget';
 
-/** `blocked` = thả sang cột mà quy trình không cho chuyển tới (không đổi gì; phản hồi là thông báo lỗi, không vạch/viền). */
-export type DropPlan = 'ignore' | 'reorder' | 'status' | 'assign' | 'blocked';
+/**
+ * `status-only` = đổi cột nhưng người kéo KHÔNG có quyền xếp thứ tự (`issue:edit` hoặc `backlog:manage`): chỉ đổi trạng thái, không gửi mốc
+ * (rank giữ nguyên) nên không có vạch chèn. `blocked` = thả sang cột mà quy trình không cho chuyển tới (không đổi gì; phản hồi là thông báo lỗi, không vạch/viền). */
+export type DropPlan = 'ignore' | 'reorder' | 'status' | 'status-only' | 'assign' | 'blocked';
 
 /** Khoá làn của việc không có người/ưu tiên/epic/cha. */
 export const NO_LANE = '__none__';
@@ -19,11 +21,15 @@ export function planDrop(a: {
   assigneeChanged: boolean;
   unchanged: boolean;
   crossContainer?: boolean;
+  /** Được xếp lại thứ tự thẻ (mặc định có). */
+  canRank?: boolean;
 }): DropPlan {
+  const canRank = a.canRank ?? true;
   if (a.assigneeChanged) return 'assign';
-  if (a.resKind === 'stay') return a.unchanged || a.crossContainer ? 'ignore' : 'reorder';
+  if (a.resKind === 'stay')
+    return a.unchanged || a.crossContainer || !canRank ? 'ignore' : 'reorder';
   if (a.resKind === 'blocked') return 'blocked';
-  return 'status';
+  return canRank ? 'status' : 'status-only';
 }
 
 export interface DropContext {
@@ -33,6 +39,8 @@ export interface DropContext {
   canAssign: boolean;
   /** Người dùng có sửa được việc này không (quyền `issue:edit` hoặc `:own`). */
   canEditIssue: (issue: IssueDto) => boolean;
+  /** Được đổi thứ tự thẻ này (`issue:edit` HOẶC `backlog:manage`); không có thì chỉ đổi cột được, không đổi thứ tự. */
+  canRank: (issue: IssueDto) => boolean;
 }
 
 export interface DropDecision {
@@ -74,11 +82,12 @@ export function decideDrop(issue: IssueDto, p: Placement, ctx: DropContext): Dro
     assigneeChanged,
     unchanged: p.unchanged,
     crossContainer: p.crossContainer,
+    canRank: ctx.canRank(issue),
   });
   return { plan, col, res, targetAssignee, wantsReassign, assigneeChanged };
 }
 
-/** Phản hồi trực quan lúc kéo theo KẾT QUẢ thả thật: không đổi gì hoặc bị quy trình chặn ⇒ không đường kẻ, không viền; đổi người ⇒ không có vị trí. */
+/** Phản hồi trực quan lúc kéo theo KẾT QUẢ thả thật: không đổi gì hoặc bị quy trình chặn ⇒ không đường kẻ, không viền; đổi người hoặc chỉ-đổi-cột (không có quyền xếp thứ tự) ⇒ không có vị trí. */
 export function dropFeedback(
   plan: DropPlan | null,
   p: Placement | null,
@@ -86,7 +95,7 @@ export function dropFeedback(
   if (!p || !plan || plan === 'ignore' || plan === 'blocked')
     return { hint: null, container: null };
   return {
-    hint: plan === 'assign' ? null : hintOf(p),
+    hint: plan === 'assign' || plan === 'status-only' ? null : hintOf(p),
     container: p.crossContainer ? p.containerId : null,
   };
 }
@@ -111,6 +120,8 @@ export function dropMessage(
     return end
       ? `Đã thả ${key}, giữ nguyên vị trí.`
       : `${key}: thả ở đây không đổi gì, giữ nguyên vị trí.`;
+  if (plan === 'status-only')
+    return end ? `Đã thả ${key} vào cột “${colName}”.` : `${key} sang cột “${colName}”.`;
   if (plan === 'blocked')
     return end
       ? `Đã thả ${key}: không chuyển được sang cột “${colName}” — quy trình không cho phép, giữ nguyên vị trí.`

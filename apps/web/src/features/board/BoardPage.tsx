@@ -197,6 +197,12 @@ export function BoardPage() {
   const canCreate = can('issue:create');
   const canManageBoard = can('board:manage');
   const canManageSprint = can('sprint:manage');
+  const canManageBacklog = can('backlog:manage');
+  // Đổi thứ tự thẻ: `issue:edit` (hoặc `:own`) HOẶC `backlog:manage`; chỉ có `issue:transition` thì đổi cột được, không đổi thứ tự.
+  const canRank = useCallback(
+    (issue: IssueDto) => canManageBacklog || canEditIssue(issue),
+    [canManageBacklog, canEditIssue],
+  );
   const canForceWip = can('project:admin') || can('workspace:admin');
   const currentUserId = useAuth((s) => s.user?.id);
   const { active: quickFilters, toggle: toggleQuickFilter } = useQuickFilters();
@@ -340,13 +346,15 @@ export function BoardPage() {
   ) {
     if (!board) return;
     const statusName = o.statusName ?? col.name;
+    // Không có quyền xếp thứ tự → không gửi mốc (máy chủ giữ rank), kể cả khi Hoàn tác.
+    const ranked = canRank(issue);
     const vars: MoveVars = {
       route: 'move',
       id: issue.id,
       key: issue.key,
       version: o.version ?? issue.version,
-      afterId: p.afterId,
-      beforeId: p.beforeId,
+      afterId: ranked ? p.afterId : null,
+      beforeId: ranked ? p.beforeId : null,
       statusId: toStatusId,
       statusName,
       boardId: board.id,
@@ -367,8 +375,8 @@ export function BoardPage() {
                 id: issue.id,
                 key: issue.key,
                 version: updated.version,
-                afterId: p.origin.afterId,
-                beforeId: p.origin.beforeId,
+                afterId: ranked ? p.origin.afterId : null,
+                beforeId: ranked ? p.origin.beforeId : null,
                 ...from,
               })
               .catch(() => undefined),
@@ -433,6 +441,7 @@ export function BoardPage() {
     swimlaneBy,
     canAssign,
     canEditIssue,
+    canRank,
   };
   const planOfRef = useRef<(issue: IssueDto, p: Placement) => DropPlan | null>(() => null);
   planOfRef.current = (issue, p) =>
@@ -466,7 +475,7 @@ export function BoardPage() {
       toast.error(blockedMsg);
       return;
     }
-    if (plan === 'status') {
+    if (plan === 'status' || plan === 'status-only') {
       if (wantsReassign) toast.info('Bạn không có quyền đổi người phụ trách việc này.');
       if (only) void runMove(issue, col, only.id, p, { statusName: labelFor(only) });
       else if (res.kind === 'move')

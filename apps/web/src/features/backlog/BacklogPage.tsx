@@ -110,8 +110,9 @@ export function BacklogPage() {
   const canCreate = can('issue:create');
   const canAssign = can('issue:assign');
   const canEditIssue = useCanEditIssue(projectId);
+  // Ruling quyền: đổi THỨ TỰ cần `issue:edit` HOẶC `backlog:manage`; đổi SPRINT cần `issue:edit` (kiểm lúc thả).
   const canDragIssue = useCallback(
-    (i: IssueDto) => canManageBacklog && canEditIssue(i),
+    (i: IssueDto) => canManageBacklog || canEditIssue(i),
     [canManageBacklog, canEditIssue],
   );
   const canUseAi = useAuth((s) => s.can('ai:use'));
@@ -231,12 +232,18 @@ export function BacklogPage() {
     const plan = planBacklogDrop(issue, p, BACKLOG_ID);
     if (plan.ignore) return;
     const { targetSprintId, sprintChanged } = plan;
+    if (sprintChanged && !canEditIssue(issue)) {
+      toast.info(
+        'Bạn không có quyền đổi sprint của việc này — chỉ đổi được thứ tự trong cùng khu.',
+      );
+      return;
+    }
     const currentSprintId = issue.sprintId ?? null;
     // Mốc theo danh sách CHƯA lọc của khu đích (xem `widenNeighbors`); chỗ cũ (Hoàn tác) = láng giềng thật ở khu cũ.
     const idsOf = (container: string) => (fullBySprint.get(container) ?? []).map((i) => i.id);
     const { afterId, beforeId } = widenNeighbors(idsOf(p.containerId), p, issue.id);
     const origin = neighborsIn(idsOf(currentSprintId ?? BACKLOG_ID), issue.id);
-    // Route `rank` (backlog:manage + issue:edit) — khớp `canDragIssue`; một request vừa đổi sprint vừa chèn đúng chỗ.
+    // Route `rank` (thứ tự: issue:edit hoặc backlog:manage; đổi sprint: issue:edit — đã kiểm ở trên); một request vừa đổi sprint vừa chèn đúng chỗ.
     const vars: MoveVars = {
       route: 'rank',
       id: issue.id,
@@ -967,7 +974,7 @@ function Section({
   emptyDescription?: string;
   /** Sprint đã đóng: chỉ xem, không kéo-thả. */
   readOnly?: boolean;
-  /** Có được kéo dòng này giữa backlog/sprint không (`backlog:manage` và sửa được issue — kéo là PATCH cần `issue:edit`). */
+  /** Có được kéo dòng này không: đổi thứ tự cần `backlog:manage` hoặc sửa được issue; đổi sprint (thả sang khu khác) cần sửa được issue. */
   canDrag?: (issue: IssueDto) => boolean;
   projectKey?: string;
   projectId?: string;

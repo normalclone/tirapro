@@ -33,7 +33,7 @@ export interface MoveVars {
   sprintId?: string | null;
   boardId?: string;
   force?: boolean;
-  /** 'move' = POST /issues/:id/move (issue:transition) · 'rank' = POST /issues/:id/rank (backlog:manage + issue:edit). */
+  /** 'move' = POST /issues/:id/move (issue:transition) · 'rank' = POST /issues/:id/rank (thứ tự: issue:edit hoặc backlog:manage; đổi sprint: issue:edit). */
   route: 'move' | 'rank';
 }
 
