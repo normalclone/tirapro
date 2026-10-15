@@ -503,7 +503,11 @@ describe('AnalyticsService.createdResolved — đếm theo ngày bằng SQL', ()
 });
 
 const at = (iso: string) => new Date(iso);
-function makeBurndown(snaps: unknown[], history?: unknown[]) {
+function makeBurndown(
+  snaps: unknown[],
+  history?: unknown[],
+  sprintOver: Record<string, unknown> = {},
+) {
   const prisma = {
     sprint: {
       findFirst: vi.fn(() =>
@@ -519,6 +523,7 @@ function makeBurndown(snaps: unknown[], history?: unknown[]) {
             { id: 'a', storyPoints: 6 },
             { id: 'b', storyPoints: 4 },
           ],
+          ...sprintOver,
         }),
       ),
     },
@@ -753,5 +758,202 @@ describe('AnalyticsService.burndown — category cuối thắng như CFD (lịch
     );
     const r = await service.burndown('w1', 'p1', 'sp1');
     expect(r.series.map((x) => x.remaining)).toEqual([10, 4, 4, 4]);
+  });
+});
+
+describe('AnalyticsService.burndown — sprint ACTIVE không kéo đường "Còn lại" sang tương lai', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-15T10:00:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const active = {
+    state: 'ACTIVE',
+    startDate: at('2026-10-12T00:00:00Z'),
+    endDate: at('2026-10-18T00:00:00Z'),
+  };
+
+  it('ngày > hôm nay có remaining = null, ngày <= hôm nay là số; trả today', async () => {
+    const { service } = makeBurndown([], [], active);
+    const r = await service.burndown('w1', 'p1', 'sp1');
+    expect(r.today).toBe('2026-10-15');
+    expect(r.series.map((x) => x.date)).toEqual([
+      '2026-10-12',
+      '2026-10-13',
+      '2026-10-14',
+      '2026-10-15',
+      '2026-10-16',
+      '2026-10-17',
+      '2026-10-18',
+    ]);
+    expect(r.series.map((x) => x.remaining)).toEqual([10, 10, 10, 10, null, null, null]);
+    // đường lý tưởng vẫn đủ cả sprint
+    expect(r.series.every((x) => typeof x.ideal === 'number')).toBe(true);
+    expect(r.series[6]!.ideal).toBe(0);
+  });
+
+  it('sprint CLOSED không có null dù ngày kết thúc ở tương lai; today vẫn có', async () => {
+    const { service } = makeBurndown([], [], {
+      state: 'CLOSED',
+      startDate: at('2026-10-12T00:00:00Z'),
+      endDate: at('2026-10-18T00:00:00Z'),
+      completeDate: at('2026-10-14T00:00:00Z'),
+    });
+    const r = await service.burndown('w1', 'p1', 'sp1');
+    expect(r.series.every((x) => x.remaining !== null)).toBe(true);
+    expect(r.today).toBe('2026-10-15');
+  });
+});
+
+describe('AnalyticsService.sprintSummary', () => {
+  const closeSnap = {
+    kind: 'CLOSE',
+    snapshotAt: at('2026-10-14T10:00:00Z'),
+    committedPoints: 24,
+    completedPoints: 18,
+    committedCount: 6,
+    completedCount: 5,
+    payload: {
+      carriedOver: [{ id: 'i6', key: 'DEMO-TASK-6', summary: 'x', storyPoints: 6 }],
+      movedTo: { kind: 'new', sprintId: 's3', sprintName: 'Sprint 3' },
+    },
+  };
+  const baseSprint = {
+    id: 'sp1',
+    projectId: 'p1',
+    name: 'Sprint 2',
+    goal: 'Ra mắt thanh toán',
+    state: 'CLOSED',
+    startDate: at('2026-10-01T00:00:00Z'),
+    endDate: at('2026-10-14T00:00:00Z'),
+    completeDate: at('2026-10-14T10:00:00Z'),
+    createdAt: at('2026-09-28T00:00:00Z'),
+    sequence: 2,
+    snapshots: [closeSnap],
+  };
+  const prior = (...pts: number[]) =>
+    pts.map((completedPoints) => ({ snapshots: [{ completedPoints }] }));
+
+  function make(
+    sprint: Record<string, unknown> | null,
+    priorSprints: unknown[] = [],
+    issues: unknown[] = [],
+  ) {
+    const prisma = {
+      sprint: {
+        findFirst: vi.fn(() => Promise.resolve(sprint)),
+        findMany: vi.fn((_args: unknown) => Promise.resolve(priorSprints)),
+      },
+      issue: { findMany: vi.fn((_args: unknown) => Promise.resolve(issues)) },
+    };
+    return { service: new AnalyticsService(prisma as never), prisma };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-15T10:00:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('CLOSED: số liệu từ snapshot CLOSE, việc chuyển tiếp + nơi chuyển từ payload, velocity so với 3 sprint trước', async () => {
+    const { service, prisma } = make(baseSprint, prior(20, 22, 18));
+    const r = await service.sprintSummary('w1', 'p1', 'sp1');
+    expect(r.committed).toEqual({ points: 24, count: 6 });
+    expect(r.completed).toEqual({ points: 18, count: 5 });
+    expect(r.remaining).toEqual({ points: 6, count: 1 });
+    expect(r.carriedOver[0]!.key).toBe('DEMO-TASK-6');
+    expect(r.movedTo).toEqual({ kind: 'new', sprintId: 's3', sprintName: 'Sprint 3' });
+    expect(r.velocity).toEqual({ average: 20, sprintsCounted: 3, deltaPct: -10 });
+    expect(r.time).toEqual({ totalDays: 14, elapsedDays: 14, daysLeft: null });
+    // CLOSED đã có snapshot => không cần kéo issue
+    expect(prisma.issue.findMany).not.toHaveBeenCalled();
+    // velocity chỉ lấy sprint ĐÃ ĐÓNG có sequence nhỏ hơn, tối đa 3
+    const args = (
+      prisma.sprint.findMany.mock.calls[0] as unknown as [
+        { where: Record<string, unknown>; take: number },
+      ]
+    )[0];
+    expect(args.where).toMatchObject({
+      projectId: 'p1',
+      state: 'CLOSED',
+      deletedAt: null,
+      sequence: { lt: 2 },
+    });
+    expect(args.take).toBe(3);
+  });
+
+  it('cam kết lấy từ snapshot START khi có (không bị việc thêm giữa sprint làm đổi)', async () => {
+    const { service } = make({
+      ...baseSprint,
+      snapshots: [
+        {
+          kind: 'START',
+          snapshotAt: at('2026-10-01T09:00:00Z'),
+          committedPoints: 20,
+          committedCount: 5,
+        },
+        closeSnap,
+      ],
+    });
+    const r = await service.sprintSummary('w1', 'p1', 'sp1');
+    expect(r.committed).toEqual({ points: 20, count: 5 });
+    expect(r.completed).toEqual({ points: 18, count: 5 });
+  });
+
+  it('CLOSED trước khi có payload => carriedOver rỗng, movedTo null', async () => {
+    const { service } = make({
+      ...baseSprint,
+      snapshots: [{ ...closeSnap, payload: null }],
+    });
+    const r = await service.sprintSummary('w1', 'p1', 'sp1');
+    expect(r.carriedOver).toEqual([]);
+    expect(r.movedTo).toBeNull();
+  });
+
+  it('ACTIVE không có snapshot CLOSE: completed/remaining tính trực tiếp từ issue; chưa có sprint trước => deltaPct null', async () => {
+    const { service } = make(
+      {
+        ...baseSprint,
+        state: 'ACTIVE',
+        completeDate: null,
+        endDate: at('2026-10-18T00:00:00Z'),
+        snapshots: [],
+      },
+      [],
+      [
+        { storyPoints: 5, status: { category: 'DONE' } },
+        { storyPoints: 3, status: { category: 'IN_PROGRESS' } },
+        { storyPoints: null, status: { category: 'TODO' } },
+      ],
+    );
+    const r = await service.sprintSummary('w1', 'p1', 'sp1');
+    expect(r.committed).toEqual({ points: 8, count: 3 });
+    expect(r.completed).toEqual({ points: 5, count: 1 });
+    expect(r.remaining).toEqual({ points: 3, count: 2 });
+    expect(r.carriedOver).toEqual([]);
+    expect(r.velocity).toEqual({ average: 0, sprintsCounted: 0, deltaPct: null });
+    // 01/10 -> 18/10 = 18 ngày (tính cả hai đầu); hôm nay 15/10 là ngày thứ 15; còn 3 ngày
+    expect(r.time).toEqual({ totalDays: 18, elapsedDays: 15, daysLeft: 3 });
+  });
+
+  it('sprint không khớp dự án/workspace => NotFound', async () => {
+    const { service } = make(null);
+    await expect(service.sprintSummary('w1', 'p-khac', 'sp1')).rejects.toBeInstanceOf(
+      NotFoundAppException,
+    );
+  });
+
+  it('sprint không có endDate => totalDays/daysLeft null', async () => {
+    const { service } = make({
+      ...baseSprint,
+      state: 'FUTURE',
+      startDate: null,
+      endDate: null,
+      completeDate: null,
+      snapshots: [],
+    });
+    const r = await service.sprintSummary('w1', 'p1', 'sp1');
+    expect(r.time).toEqual({ totalDays: null, elapsedDays: null, daysLeft: null });
   });
 });
