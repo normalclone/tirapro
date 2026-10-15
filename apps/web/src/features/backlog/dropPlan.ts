@@ -12,6 +12,31 @@ export function planBacklogDrop(
   return { ignore: false, targetSprintId, sprintChanged };
 }
 
+/** Quyền kéo trong backlog (đã tính dự án lưu trữ = tắt hết). `editFull` = `issue:edit` ĐẦY ĐỦ (không phải `:own`). */
+export interface BacklogDragCaps {
+  backlogManage: boolean;
+  editFull: boolean;
+  transition: boolean;
+}
+
+/**
+ * Chọn route API cho kéo-thả ở Backlog theo đúng guard của máy chủ:
+ *  - `POST /issues/:id/rank` đòi CẢ `backlog:manage` VÀ `issue:edit` (đầy đủ) → `'rank'`;
+ *  - không đủ cả hai: `POST /issues/:id/move` đòi `issue:transition` và nhận mốc rank nếu có `issue:edit` đầy đủ HOẶC `backlog:manage` → `'move'`;
+ *  - còn lại → `null` (không cho kéo, tránh kéo xong mới 403).
+ * Đổi SPRINT qua `'move'` cần sửa được việc đó (`issue:edit`, hoặc `:own` với việc của mình): xem `canMoveSprintVia`.
+ */
+export function backlogDragRoute(c: BacklogDragCaps): 'rank' | 'move' | null {
+  if (c.backlogManage && c.editFull) return 'rank';
+  if (c.transition && (c.editFull || c.backlogManage)) return 'move';
+  return null;
+}
+
+/** Thả sang khu (sprint) khác qua route này có được không: `'rank'` luôn có `issue:edit`; `'move'` cần sửa được việc đó. */
+export function canMoveSprintVia(route: 'rank' | 'move', canEditThis: boolean): boolean {
+  return route === 'rank' || canEditThis;
+}
+
 export interface Neighbors {
   afterId: string | null;
   beforeId: string | null;

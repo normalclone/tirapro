@@ -60,7 +60,13 @@ import { useAuth } from '@/stores/auth';
 import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
 import { IssueRow, IssueRowBody } from './IssueRow';
-import { neighborsIn, planBacklogDrop, widenNeighbors } from './dropPlan';
+import {
+  backlogDragRoute,
+  canMoveSprintVia,
+  neighborsIn,
+  planBacklogDrop,
+  widenNeighbors,
+} from './dropPlan';
 import { BulkActionBar } from './BulkActionBar';
 import { SprintAssistantDialog } from '@/features/ai/SprintAssistantDialog';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
@@ -111,11 +117,13 @@ export function BacklogPage() {
   const canCreate = can('issue:create');
   const canAssign = can('issue:assign');
   const canEditIssue = useCanEditIssue(projectId);
-  // Ruling quyền: đổi THỨ TỰ cần `issue:edit` HOẶC `backlog:manage`; đổi SPRINT cần `issue:edit` (kiểm lúc thả).
-  const canDragIssue = useCallback(
-    (i: IssueDto) => canManageBacklog || canEditIssue(i),
-    [canManageBacklog, canEditIssue],
-  );
+  // Route kéo-thả theo guard của API (xem `backlogDragRoute`): rank = backlog:manage + issue:edit; move = issue:transition + (issue:edit | backlog:manage).
+  const dragRoute = backlogDragRoute({
+    backlogManage: canManageBacklog,
+    editFull: can('issue:edit'),
+    transition: can('issue:transition'),
+  });
+  const canDragIssue = useCallback(() => dragRoute !== null, [dragRoute]);
   const canUseAi = useAuth((s) => s.can('ai:use'));
   const currentUserId = useAuth((s) => s.user?.id);
 
@@ -230,11 +238,11 @@ export function BacklogPage() {
     clearDragFeedback();
     const issue = (issues ?? []).find((i) => i.id === e.active.id);
     const p = placementFromDnd(e);
-    if (!issue || !p || !canDragIssue(issue)) return;
+    if (!issue || !p || !dragRoute) return;
     const plan = planBacklogDrop(issue, p, BACKLOG_ID);
     if (plan.ignore) return;
     const { targetSprintId, sprintChanged } = plan;
-    if (sprintChanged && !canEditIssue(issue)) {
+    if (sprintChanged && !canMoveSprintVia(dragRoute, canEditIssue(issue))) {
       toast.info(
         'Bạn không có quyền đổi sprint của việc này — chỉ đổi được thứ tự trong cùng khu.',
       );
@@ -245,9 +253,9 @@ export function BacklogPage() {
     const idsOf = (container: string) => (fullBySprint.get(container) ?? []).map((i) => i.id);
     const { afterId, beforeId } = widenNeighbors(idsOf(p.containerId), p, issue.id);
     const origin = neighborsIn(idsOf(currentSprintId ?? BACKLOG_ID), issue.id);
-    // Route `rank` (thứ tự: issue:edit hoặc backlog:manage; đổi sprint: issue:edit — đã kiểm ở trên); một request vừa đổi sprint vừa chèn đúng chỗ.
+    // Route theo quyền (`dragRoute`: 'rank' hoặc 'move', cùng nhận sprintId + hai mốc); một request vừa đổi sprint vừa chèn đúng chỗ.
     const vars: MoveVars = {
-      route: 'rank',
+      route: dragRoute,
       id: issue.id,
       key: issue.key,
       version: issue.version,
@@ -269,7 +277,7 @@ export function BacklogPage() {
             onClick: () =>
               void move
                 .mutateAsync({
-                  route: 'rank',
+                  route: dragRoute,
                   id: issue.id,
                   key: issue.key,
                   version: updated.version,
@@ -981,7 +989,7 @@ function Section({
   emptyDescription?: string;
   /** Sprint đã đóng: chỉ xem, không kéo-thả. */
   readOnly?: boolean;
-  /** Có được kéo dòng này không: đổi thứ tự cần `backlog:manage` hoặc sửa được issue; đổi sprint (thả sang khu khác) cần sửa được issue. */
+  /** Có được kéo dòng này không (có route kéo-thả theo quyền — `backlogDragRoute`; không có thì dòng bị vô hiệu kéo). */
   canDrag?: (issue: IssueDto) => boolean;
   projectKey?: string;
   projectId?: string;

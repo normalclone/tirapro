@@ -126,6 +126,7 @@ export function FloatingActions() {
         }),
       },
     hasProject &&
+      !project?.archivedAt &&
       canCreate !== false &&
       aiEnabled &&
       enabled.ai && {

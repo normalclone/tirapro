@@ -29,7 +29,8 @@ import { ProjectRail } from './ProjectRail';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
 import { Button } from '@/components/ui/Button';
 import { useAi } from '@/stores/ai';
-import { useCan } from './permissions';
+import { useCan, useProjectPermissions } from './permissions';
+import { Skeleton } from '@/components/ui/primitives';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
 import { useProjectRealtime } from '@/lib/realtime';
@@ -60,7 +61,8 @@ export function ProjectLayout() {
   const navigate = useNavigate();
   const aiEnabled = useAi((s) => s.enabled);
   const openCreate = useCreateIssueModal((s) => s.openCreate);
-  const { data: project } = useProject(key);
+  const { data: project, isPending: projectPending } = useProject(key);
+  const permsPending = useProjectPermissions(project?.id).isPending;
   const canProject = useCan(project?.id);
   const canAdminProject = canProject('project:admin');
   // Thô (không tính lưu trữ): dự án lưu trữ vẫn hiện nút nhưng tắt kèm giải thích; Viewer không có quyền tạo thì không thấy nút.
@@ -142,6 +144,13 @@ export function ProjectLayout() {
             {project?.key ?? key}
           </span>
 
+          {(projectPending || (!!project?.id && permsPending)) && (
+            // Giữ chỗ cùng kích thước nút Tạo/AI trong lúc quyền đang tải → không nhảy bố cục khi nút hiện ra.
+            <Skeleton
+              aria-hidden
+              className={cn('ml-2 h-8 rounded-md', aiEnabled ? 'w-56' : 'w-32')}
+            />
+          )}
           {canCreateIssue && (
             <>
               <Button

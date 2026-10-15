@@ -198,10 +198,12 @@ export function BoardPage() {
   const canManageBoard = can('board:manage');
   const canManageSprint = can('sprint:manage');
   const canManageBacklog = can('backlog:manage');
-  // Đổi thứ tự thẻ: `issue:edit` (hoặc `:own`) HOẶC `backlog:manage`; chỉ có `issue:transition` thì đổi cột được, không đổi thứ tự.
+  // Đổi thứ tự thẻ — đúng quyền mà API `/move` nhận cho mốc rank: `issue:edit` ĐẦY ĐỦ (không tính `:own`) HOẶC `backlog:manage`;
+  // chỉ có `issue:transition` thì đổi cột được, không đổi thứ tự.
+  const canEditFull = can('issue:edit');
   const canRank = useCallback(
-    (issue: IssueDto) => canManageBacklog || canEditIssue(issue),
-    [canManageBacklog, canEditIssue],
+    () => canManageBacklog || canEditFull,
+    [canManageBacklog, canEditFull],
   );
   const canForceWip = can('project:admin') || can('workspace:admin');
   const currentUserId = useAuth((s) => s.user?.id);
@@ -347,7 +349,7 @@ export function BoardPage() {
     if (!board) return;
     const statusName = o.statusName ?? col.name;
     // Không có quyền xếp thứ tự → không gửi mốc (máy chủ giữ rank), kể cả khi Hoàn tác.
-    const ranked = canRank(issue);
+    const ranked = canRank();
     const vars: MoveVars = {
       route: 'move',
       id: issue.id,
@@ -455,7 +457,7 @@ export function BoardPage() {
     const d = decideDrop(issue, p, dropCtx);
     // Cột chưa gắn trạng thái nào thì không có đích để chuyển tới.
     if (!d) return;
-    const { col, res, plan, wantsReassign, assigneeChanged, targetAssignee } = d;
+    const { col, res, plan, wantsReassign, assigneeChanged, targetAssignee, rankDenied } = d;
     const only = res.kind === 'move' && res.options.length === 1 ? res.options[0]! : null;
     const labelFor = (o: NextStatus) => (col.statusIds.length > 1 ? o.name : col.name);
     const blockedMsg = `Quy trình không cho chuyển “${issue.status.name}” sang cột “${col.name}”. Hãy chọn một trạng thái trong danh sách gợi ý.`;
@@ -464,6 +466,10 @@ export function BoardPage() {
       // Thả sang hàng người khác nhưng không được đổi người phụ trách việc này → nói rõ thay vì lặng lẽ không làm gì.
       if (wantsReassign && !assigneeChanged)
         toast.info('Bạn không có quyền đổi người phụ trách việc này.');
+      else if (rankDenied)
+        toast.info(
+          'Bạn không có quyền đổi thứ tự thẻ trong cột — hãy kéo sang cột khác để đổi trạng thái.',
+        );
       return;
     }
     if (plan === 'reorder') {

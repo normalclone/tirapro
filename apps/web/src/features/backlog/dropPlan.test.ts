@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Placement } from '@/lib/rankDrop';
-import { neighborsIn, planBacklogDrop, widenNeighbors } from './dropPlan';
+import {
+  backlogDragRoute,
+  canMoveSprintVia,
+  neighborsIn,
+  planBacklogDrop,
+  widenNeighbors,
+} from './dropPlan';
 
 const p = (over: Partial<Placement>): Placement => ({
   containerId: 'backlog',
@@ -154,5 +160,38 @@ describe('neighborsIn — chỗ cũ trong danh sách chưa lọc (Hoàn tác)', 
     expect(neighborsIn(['x', 'a'], 'x')).toEqual({ afterId: null, beforeId: 'a' });
     expect(neighborsIn(['a', 'x'], 'x')).toEqual({ afterId: 'a', beforeId: null });
     expect(neighborsIn(['a'], 'x')).toEqual({ afterId: null, beforeId: null });
+  });
+});
+
+describe('backlogDragRoute — route theo guard của API (ma trận quyền)', () => {
+  // [backlogManage, editFull, transition] -> route
+  const matrix: Array<[boolean, boolean, boolean, 'rank' | 'move' | null, string]> = [
+    [true, true, true, 'rank', 'Admin/Developer/PO: đủ backlog:manage + issue:edit'],
+    [true, true, false, 'rank', 'rank không cần transition'],
+    [
+      false,
+      true,
+      true,
+      'move',
+      'Tester/Reviewer/DevOps: issue:edit + transition, không backlog:manage',
+    ],
+    [true, false, true, 'move', 'chỉ backlog:manage + transition'],
+    [false, true, false, null, 'issue:edit nhưng không transition và không đủ rank → không kéo'],
+    [true, false, false, null, 'chỉ backlog:manage → /rank 403, /move cần transition → không kéo'],
+    [false, false, true, null, 'chỉ transition: không có quyền xếp thứ tự ở Backlog'],
+    [false, false, false, null, 'không quyền nào'],
+  ];
+  it.each(matrix)('backlog:manage=%s issue:edit=%s transition=%s → %s (%s)', (b, e, t, route) => {
+    expect(backlogDragRoute({ backlogManage: b, editFull: e, transition: t })).toBe(route);
+  });
+});
+
+describe('canMoveSprintVia — đổi sprint', () => {
+  it("route 'rank' luôn được (đã có issue:edit)", () => {
+    expect(canMoveSprintVia('rank', false)).toBe(true);
+  });
+  it("route 'move': cần sửa được việc đó (chỉ có backlog:manage thì chặn)", () => {
+    expect(canMoveSprintVia('move', true)).toBe(true);
+    expect(canMoveSprintVia('move', false)).toBe(false);
   });
 });

@@ -121,6 +121,15 @@ describe('decideDrop', () => {
       decideDrop(issue, place({ containerId: 'c2', crossContainer: true }), noRank)?.plan,
     ).toBe('status-only');
   });
+  it('rankDenied: chỉ khi thả đổi thứ tự trong cùng cột mà thiếu quyền (để báo, không im lặng)', () => {
+    const noRank = ctx({ canRank: () => false });
+    expect(decideDrop(issue, place({}), noRank)?.rankDenied).toBe(true);
+    expect(decideDrop(issue, place({ unchanged: true }), noRank)?.rankDenied).toBe(false);
+    expect(
+      decideDrop(issue, place({ containerId: 'c2', crossContainer: true }), noRank)?.rankDenied,
+    ).toBe(false);
+    expect(decideDrop(issue, place({}), ctx())?.rankDenied).toBe(false);
+  });
   it('canRank tính theo từng việc', () => {
     const c = ctx({ canRank: (i) => i.id === 'other' });
     expect(decideDrop(issue, place({}), c)?.plan).toBe('ignore');

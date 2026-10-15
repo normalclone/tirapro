@@ -21,7 +21,7 @@ describe('importResultMessage', () => {
     const r = importResultMessage({ created: 3, failed: 0, total: 3, skippedAssignees: 2 });
     expect(r.level).toBe('warning');
     expect(r.text).toContain('Đã nhập thành công 3/3');
-    expect(r.text).toContain('2 người phụ trách không còn trong workspace — đã bỏ gán');
+    expect(r.text).toContain('2 người phụ trách không khớp thành viên nào — đã bỏ gán');
   });
   it('vừa lỗi vừa bỏ gán: gộp cả hai', () => {
     const r = importResultMessage({ created: 2, failed: 1, total: 3, skippedAssignees: 1 });

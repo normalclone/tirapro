@@ -39,7 +39,7 @@ export interface DropContext {
   canAssign: boolean;
   /** Người dùng có sửa được việc này không (quyền `issue:edit` hoặc `:own`). */
   canEditIssue: (issue: IssueDto) => boolean;
-  /** Được đổi thứ tự thẻ này (`issue:edit` HOẶC `backlog:manage`); không có thì chỉ đổi cột được, không đổi thứ tự. */
+  /** Được đổi thứ tự thẻ này — khớp `/move` của API: `issue:edit` ĐẦY ĐỦ (không tính `:own`) HOẶC `backlog:manage`; không có thì chỉ đổi cột được. */
   canRank: (issue: IssueDto) => boolean;
 }
 
@@ -53,6 +53,8 @@ export interface DropDecision {
   wantsReassign: boolean;
   /** … và được phép đổi người (quyền gán + sửa việc này). */
   assigneeChanged: boolean;
+  /** Thả đổi thứ tự trong CÙNG cột nhưng không có quyền xếp thứ tự → bị bỏ qua; báo lý do thay vì im lặng. */
+  rankDenied: boolean;
 }
 
 /** Container id = "laneKey::colId" (có swimlane) hoặc "colId" (phẳng). */
@@ -84,7 +86,13 @@ export function decideDrop(issue: IssueDto, p: Placement, ctx: DropContext): Dro
     crossContainer: p.crossContainer,
     canRank: ctx.canRank(issue),
   });
-  return { plan, col, res, targetAssignee, wantsReassign, assigneeChanged };
+  const rankDenied =
+    plan === 'ignore' &&
+    res.kind === 'stay' &&
+    !p.unchanged &&
+    !p.crossContainer &&
+    !ctx.canRank(issue);
+  return { plan, col, res, targetAssignee, wantsReassign, assigneeChanged, rankDenied };
 }
 
 /** Phản hồi trực quan lúc kéo theo KẾT QUẢ thả thật: không đổi gì hoặc bị quy trình chặn ⇒ không đường kẻ, không viền; đổi người hoặc chỉ-đổi-cột (không có quyền xếp thứ tự) ⇒ không có vị trí. */

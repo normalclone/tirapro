@@ -1,6 +1,6 @@
 import type { ImportResult } from './api';
 
-/** Thông báo kết quả import: số việc đã nhập / lỗi, kèm số người phụ trách không còn trong workspace (đã bỏ gán) khi > 0. */
+/** Thông báo kết quả import: số việc đã nhập / lỗi, kèm số người phụ trách không khớp thành viên nào của dự án (đã bỏ gán) khi > 0. */
 export function importResultMessage(
   result: Pick<ImportResult, 'created' | 'failed' | 'total' | 'skippedAssignees'>,
 ): { level: 'success' | 'warning'; text: string } {
@@ -12,7 +12,7 @@ export function importResultMessage(
       : `Đã nhập thành công ${created}/${total} công việc.`;
   const note =
     skipped > 0
-      ? ` ${skipped} người phụ trách không còn trong workspace — đã bỏ gán (việc vẫn được nhập).`
+      ? ` ${skipped} người phụ trách không khớp thành viên nào — đã bỏ gán (việc vẫn được nhập).`
       : '';
   return { level: failed > 0 || skipped > 0 ? 'warning' : 'success', text: base + note };
 }
