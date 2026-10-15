@@ -36,12 +36,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Tài khoản không hợp lệ');
     }
     // Phiên bị thu hồi (khoá, đặt lại mật khẩu, đăng xuất mọi thiết bị): token cấp TRƯỚC mốc đó chết ngay,
-    // không chờ hết hạn. So theo giây vì `iat` là giây — token cấp cùng giây (đăng nhập lại) vẫn hợp lệ.
-    if (
-      user.sessionsRevokedAt &&
-      (payload.iat ?? 0) < Math.floor(user.sessionsRevokedAt.getTime() / 1000)
-    ) {
-      throw new UnauthorizedException('Phiên đăng nhập đã bị thu hồi — hãy đăng nhập lại');
+    // không chờ hết hạn. Ưu tiên `iatMs` (chính xác tới ms); token không có (cấp bởi bản cũ) chỉ có `iat` theo giây →
+    // coi như cấp ở cuối giây đó, nên token cấp cùng giây với mốc thu hồi vẫn hợp lệ.
+    if (user.sessionsRevokedAt) {
+      const issuedMs = payload.iatMs ?? (payload.iat ?? 0) * 1000 + 999;
+      if (issuedMs < user.sessionsRevokedAt.getTime()) {
+        throw new UnauthorizedException('Phiên đăng nhập đã bị thu hồi — hãy đăng nhập lại');
+      }
     }
     // Kiểm tra membership MỖI request (PK lookup rẻ): token còn hạn nhưng đã bị gỡ khỏi
     // workspace thì không được tiếp tục dùng. System admin được miễn.

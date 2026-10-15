@@ -11,8 +11,13 @@ export interface AccessTokenPayload {
   email: string;
   workspaceId: string | null;
   jti: string;
-  /** Thời điểm cấp (giây, do jsonwebtoken tự thêm) — so với `User.sessionsRevokedAt`. */
+  /** Thời điểm cấp (giây, do jsonwebtoken tự thêm). Token cũ chỉ có trường này. */
   iat?: number;
+  /**
+   * Thời điểm cấp tính bằng mili giây — so với `User.sessionsRevokedAt` CHÍNH XÁC tới ms, để token cấp ngay trước
+   * lúc thu hồi (cùng giây) cũng chết, còn token cấp ngay sau (đăng nhập lại) vẫn sống.
+   */
+  iatMs?: number;
 }
 
 export interface RefreshMeta {
@@ -40,6 +45,7 @@ export class TokenService {
         email: user.email,
         workspaceId,
         jti: createId(),
+        iatMs: Date.now(),
       } satisfies AccessTokenPayload,
       { secret: this.config.get<string>('jwt.accessSecret'), expiresIn },
     );

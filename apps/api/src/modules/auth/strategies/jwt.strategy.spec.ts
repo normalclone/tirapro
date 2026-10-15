@@ -122,4 +122,21 @@ describe('JwtStrategy.validate', () => {
       id: 'U1',
     });
   });
+
+  it('token có iatMs: cấp ngay TRƯỚC mốc thu hồi (cùng giây) -> Unauthorized; ngay SAU -> hợp lệ', async () => {
+    const revoked = new Date(2_000_500);
+    const user = {
+      id: 'U1',
+      email: 'a@b.c',
+      displayName: 'A',
+      isSystemAdmin: false,
+      status: 'ACTIVE',
+      sessionsRevokedAt: revoked,
+    };
+    const before = setup({ user }).strategy.validate({ ...payload, iat: 2000, iatMs: 2_000_400 });
+    await expect(before).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(
+      setup({ user }).strategy.validate({ ...payload, iat: 2000, iatMs: 2_000_600 }),
+    ).resolves.toMatchObject({ id: 'U1' });
+  });
 });

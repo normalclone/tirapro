@@ -126,3 +126,15 @@ describe('TokenService.workspaceFromExpiredAccess', () => {
     expect(service.workspaceFromExpiredAccess('Bearer rác')).toBeNull();
   });
 });
+
+describe('TokenService.signAccess — mốc cấp token', () => {
+  it('payload có iat (giây) và iatMs (mili giây) để so với sessionsRevokedAt', () => {
+    const { service, jwt } = setup([], null);
+    const before = Date.now();
+    const { accessToken } = service.signAccess({ id: 'u1', email: 'a@x.vn' }, 'w1');
+    const payload = jwt.decode<{ iat: number; iatMs: number }>(accessToken);
+    expect(payload.iatMs).toBeGreaterThanOrEqual(before);
+    expect(payload.iatMs).toBeLessThanOrEqual(Date.now());
+    expect(payload.iat).toBe(Math.floor(payload.iatMs / 1000));
+  });
+});
