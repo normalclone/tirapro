@@ -18,8 +18,7 @@ import { BoardSettingsDialog, SWIMLANE_LABEL } from './BoardSettingsDialog';
 import { BoardDnd } from './BoardDnd';
 import { Column } from './Column';
 import { freshenBoardIssues } from './boardIssues';
-import { planDrop } from './dropPlan';
-import { resolveDropStatuses } from './dropTarget';
+import { NO_LANE, decideDrop, type DropContext, type DropPlan } from './dropPlan';
 import { StatusPickDialog } from './StatusPickDialog';
 import { useSwimlaneOverride } from './swimlane';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
@@ -72,7 +71,6 @@ interface Lane {
   empty?: boolean;
 }
 
-const NO_LANE = '__none__';
 /** Mảng rỗng dùng chung để `Column` memo không thấy prop đổi tham chiếu. */
 const EMPTY: IssueDto[] = [];
 
@@ -404,39 +402,31 @@ export function BoardPage() {
     }
   }
 
+  // Một nguồn quyết định "thả thì làm gì" cho cả `onMove` lẫn phản hồi lúc kéo (vạch chèn/viền/thông báo).
+  const dropCtx: DropContext = {
+    columns: board?.columns ?? [],
+    workflows,
+    swimlaneBy,
+    canAssign,
+    canEditIssue,
+  };
+  const planOfRef = useRef<(issue: IssueDto, p: Placement) => DropPlan | null>(() => null);
+  planOfRef.current = (issue, p) =>
+    canTransition ? (decideDrop(issue, p, dropCtx)?.plan ?? null) : null;
+  const planOf = useCallback((issue: IssueDto, p: Placement) => planOfRef.current(issue, p), []);
+
   async function onMove(issueId: string, p: Placement | null) {
     const issue = (issues ?? []).find((i) => i.id === issueId);
     // Không có quyền chuyển cột thì thẻ không kéo được; chốt chặn thêm cho trường hợp quyền đổi giữa lúc kéo.
     if (!issue || !p || !canTransition) return;
-    // Container id = "laneKey::colId" (có swimlane) hoặc "colId" (phẳng).
-    const overId = p.containerId;
-    const grouped = overId.includes('::');
-    const laneKey = grouped ? overId.split('::')[0]! : null;
-    const colId = grouped ? overId.split('::')[1]! : overId;
-    const col = board?.columns.find((c) => c.id === colId);
+    const d = decideDrop(issue, p, dropCtx);
     // Cột chưa gắn trạng thái nào thì không có đích để chuyển tới.
-    if (!col || col.statusIds.length === 0) return;
-
-    // Cột có thể gom nhiều trạng thái: chọn đích hợp lệ theo workflow (1 → chuyển luôn, >1 → hỏi, 0 → báo).
-    const res = resolveDropStatuses(col, issue.status.id, workflows);
+    if (!d) return;
+    const { col, res, plan, wantsReassign, assigneeChanged, targetAssignee } = d;
     const only = res.kind === 'move' && res.options.length === 1 ? res.options[0]! : null;
     const labelFor = (o: NextStatus) => (col.statusIds.length > 1 ? o.name : col.name);
     const blockedMsg = `Quy trình không cho chuyển “${issue.status.name}” sang cột “${col.name}”. Hãy chọn một trạng thái trong danh sách gợi ý.`;
 
-    // Thả sang làn khác chỉ có nghĩa "đổi người" khi bảng chia làn theo người; các kiểu chia khác chỉ đổi cột.
-    const targetAssignee: string | null = laneKey === NO_LANE ? null : laneKey;
-    const wantsReassign =
-      grouped && swimlaneBy === 'assignee' && targetAssignee !== (issue.assigneeId ?? null);
-    const assigneeChanged = wantsReassign && canAssign && canEditIssue(issue);
-
-    // Cùng cột nhưng khác ô (làn khác): làn không phải "người" chỉ là nhóm hiển thị — thẻ không rời làn của nó nên
-    // không có chỗ để chèn; coi như không đổi (như trước đây), không ghi rank theo thẻ của làn khác.
-    const crossLaneSameColumn = res.kind === 'stay' && p.crossContainer;
-    const plan = planDrop({
-      resKind: res.kind,
-      assigneeChanged,
-      unchanged: p.unchanged || crossLaneSameColumn,
-    });
     if (plan === 'ignore') {
       // Thả sang hàng người khác nhưng không được đổi người phụ trách việc này → nói rõ thay vì lặng lẽ không làm gì.
       if (wantsReassign && !assigneeChanged)
@@ -577,7 +567,7 @@ export function BoardPage() {
   }
 
   return (
-    <BoardDnd issues={issues} columns={board.columns} onMove={onMove}>
+    <BoardDnd issues={issues} columns={board.columns} onMove={onMove} planOf={planOf}>
       <div className="flex h-full flex-col">
         <TruncatedBanner projectId={project?.id} />
         <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3">

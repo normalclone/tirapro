@@ -56,9 +56,18 @@ export const movePatch =
     ...(v.sprintId !== undefined ? { sprintId: v.sprintId } : {}),
   });
 
+/**
+ * `version` gửi đi = phiên bản của việc trong cache NGAY TRƯỚC khi bản vá lạc quan của lần này (chụp ở `onMutate`), không phải
+ * `v.version` lấy lúc thả/bấm. Cache đã gồm bản vá lạc quan của các lần kéo trước còn xếp hàng (mỗi lần +1, đúng bằng version
+ * máy chủ sau khi chúng xong), nên kéo cùng thẻ lần hai khi lần một chưa trả về, hay Hoàn tác sau khi đã kéo tiếp (version trong
+ * toast đã cũ), đều gửi đúng version thay vì VERSION_CONFLICT. Không có trong cache thì dùng `v.version`.
+ * (Không đọc cache ở `mutationFn`: lúc đó đã chồng thêm bản vá lạc quan của chính lần này nên cao hơn máy chủ 1.)
+ */
+const sendVersion = new WeakMap<MoveVars, number>();
+
 function bodyOf(v: MoveVars) {
   return {
-    version: v.version,
+    version: sendVersion.get(v) ?? v.version,
     afterId: v.afterId,
     beforeId: v.beforeId,
     ...(v.route === 'move' && v.statusId ? { statusId: v.statusId } : {}),
@@ -75,7 +84,11 @@ export function moveMutationOptions(qc: QueryClient, projectId: string) {
     scope: { id: `issue-move:${projectId}` },
     mutationFn: (v: MoveVars) =>
       api.post<IssueDto>(`/issues/${v.id}/${v.route}`, bodyOf(v)).then((r) => r.data),
-    onMutate: (v: MoveVars) => optimisticPatchIssue(qc, projectId, v.id, movePatch(v), v.key),
+    onMutate: async (v: MoveVars) => {
+      const snap = await optimisticPatchIssue(qc, projectId, v.id, movePatch(v), v.key);
+      if (snap.prevListItem) sendVersion.set(v, snap.prevListItem.version);
+      return snap;
+    },
     onSuccess: (dto: IssueDto, v: MoveVars) => {
       writeIssue(qc, projectId, dto);
       // Đổi sprint/trạng thái đổi số liệu sprint (số việc, điểm).

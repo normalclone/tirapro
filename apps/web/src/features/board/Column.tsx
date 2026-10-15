@@ -1,11 +1,11 @@
 import { memo, useMemo } from 'react';
-import { useDndContext, useDroppable } from '@dnd-kit/core';
+import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { BoardColumnDto, IssueDto } from '@tirapro/types';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
 import { categoryColor } from '@/lib/statusColor';
 import { cn } from '@/lib/utils';
-import { sortableContainerOf } from '@/lib/sortableDnd';
+import { useIsDropContainer } from '@/lib/dropContainer';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
 import { Card } from './Card';
 
@@ -46,11 +46,8 @@ function ColumnImpl({
   const ids = useMemo(() => issues.map((i) => i.id), [issues]);
   const data = useMemo(() => ({ container: { items: ids } }), [ids]);
   const { setNodeRef } = useDroppable({ id: containerId, data });
-  // Viền nổi chỉ khi thẻ từ cột KHÁC đang rê tới (cùng cột thì các thẻ dịch chỗ là đủ).
-  const { active, over } = useDndContext();
-  const fromContainer = sortableContainerOf(active);
-  const overContainer = over ? (sortableContainerOf(over) ?? String(over.id)) : null;
-  const highlight = !!active && overContainer === containerId && fromContainer !== containerId;
+  // Viền nổi khi thẻ từ container KHÁC sẽ được thả vào đây (BoardDnd tính ở onDragMove, theo kết quả thả thật).
+  const highlight = useIsDropContainer(containerId);
   const dot = issues[0] ? categoryColor(issues[0].status.category) : 'var(--status-todo)';
   const columnStatusId = col.statusIds[0];
   return (
@@ -62,7 +59,7 @@ function ColumnImpl({
         highlight && 'ring-2 ring-[var(--ring)]',
       )}
     >
-      <div className="sticky top-0 flex items-center gap-2 px-3 py-2.5">
+      <div className="sticky top-0 flex items-center gap-2 px-3 pb-1 pt-2.5">
         <span className="h-2 w-2 rounded-full" style={{ background: dot }} />
         <span className="text-sm font-medium text-ink">{col.name}</span>
         <span
@@ -89,7 +86,8 @@ function ColumnImpl({
       </div>
       <div
         className={cn(
-          'flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2',
+          // pt-1.5: chừa chỗ cho đường kẻ chèn phía trên thẻ đầu (-top-[5px]) khỏi bị overflow cắt.
+          'flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 pt-1.5',
           grouped && 'min-h-[3rem]',
         )}
       >

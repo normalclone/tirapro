@@ -15,21 +15,18 @@ interface DroppableData {
 }
 const dataOf = (c: { data: { current?: unknown } }) => c.data.current as DroppableData | undefined;
 
-/** Container (cột/ô) của một draggable/droppable sortable; undefined nếu không phải phần tử sortable. */
-export const sortableContainerOf = (c: { data: { current?: unknown } } | null | undefined) => {
-  const id = c ? dataOf(c)?.sortable?.containerId : undefined;
-  return id == null ? undefined : String(id);
-};
-
 /**
  * Ưu tiên THẺ dưới con trỏ (nhỏ hơn container). Con trỏ nằm trong container nhưng không trúng thẻ nào (khe giữa thẻ,
  * mép dưới) → thẻ gần nhất của container đó, để thả ở khe không bị hiểu là "thả vào khoảng trống = xuống cuối".
  * Bàn phím không có toạ độ con trỏ → closestCorners (khuyến nghị của dnd-kit cho nhiều container).
+ * Kéo CHUỘT mà con trỏ nằm ngoài mọi cột/thẻ (toolbar, lề, khe giữa cột) → không có đích (`[]`, over = null) để thả ra
+ * ngoài là huỷ, không bị hút vào cột/thẻ gần nhất.
  */
 export const sortableCollision: CollisionDetection = (args) => {
+  if (!args.pointerCoordinates) return closestCorners(args);
   const within = pointerWithin(args);
   const first = within[0];
-  if (!first) return closestCorners(args);
+  if (!first) return [];
   const container = args.droppableContainers.find((c) => c.id === first.id);
   if (!container || !dataOf(container)?.container) return within;
   const rows = args.droppableContainers.filter(

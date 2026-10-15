@@ -9,15 +9,23 @@ import {
   type Announcements,
   type DragEndEvent,
   type DragMoveEvent,
+  type DragOverEvent,
   type DragStartEvent,
   type ScreenReaderInstructions,
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { BoardColumnDto, IssueDto } from '@tirapro/types';
+import { dropContainer } from '@/lib/dropContainer';
 import { dropHint } from '@/lib/dropHint';
-import { hintOf, placementFromDnd, type Placement } from '@/lib/rankDrop';
+import { placementFromDnd, type Placement } from '@/lib/rankDrop';
 import { sortableCollision } from '@/lib/sortableDnd';
 import { CardBody } from './Card';
+import { dropFeedback, dropMessage, type DropPlan } from './dropPlan';
+
+const clearFeedback = () => {
+  dropHint.set(null);
+  dropContainer.set(null);
+};
 
 const SCREEN_READER_INSTRUCTIONS: ScreenReaderInstructions = {
   draggable:
@@ -34,11 +42,14 @@ export function BoardDnd({
   issues,
   columns,
   onMove,
+  planOf,
   children,
 }: {
   issues: IssueDto[] | undefined;
   columns: BoardColumnDto[];
   onMove: (issueId: string, placement: Placement | null) => void;
+  /** Thả `issue` ở `placement` thì sẽ làm gì (null = đích không dùng được) — để phản hồi lúc kéo khớp kết quả thật. */
+  planOf: (issue: IssueDto, placement: Placement) => DropPlan | null;
   children: ReactNode;
 }) {
   const sensors = useSensors(
@@ -55,7 +66,16 @@ export function BoardDnd({
     // containerId = "laneKey::colId" (có swimlane) hoặc "colId" (phẳng).
     const colNameOf = (containerId: string) =>
       columns.find((c) => c.id === containerId.split('::').pop())?.name ?? 'cột khác';
-    const at = (p: Placement) => `vị trí ${p.index + 1}/${p.total}`;
+    const say = (phase: 'over' | 'end', e: Pick<DragOverEvent, 'active' | 'over'>) => {
+      const p = placementFromDnd(e);
+      const issue = issueById.get(String(e.active.id));
+      return dropMessage(phase, {
+        key: keyOf(e.active.id),
+        colName: p ? colNameOf(p.containerId) : '',
+        plan: p && issue ? planOf(issue, p) : null,
+        p,
+      });
+    };
     return {
       onDragStart: ({ active }) => {
         const s = active.data.current?.sortable as
@@ -66,43 +86,36 @@ export function BoardDnd({
           : '';
         return `Đã nhấc ${keyOf(active.id)}${where}. Mũi tên lên xuống đổi thứ tự, trái phải sang cột khác, Space để thả, Esc để huỷ.`;
       },
-      onDragOver: (e) => {
-        const p = placementFromDnd(e);
-        if (!p) return `${keyOf(e.active.id)} đang ở ngoài các cột.`;
-        return p.crossContainer
-          ? `${keyOf(e.active.id)} sang cột “${colNameOf(p.containerId)}”, ${at(p)}.`
-          : `${keyOf(e.active.id)} ở ${at(p)} trong cột “${colNameOf(p.containerId)}”.`;
-      },
-      onDragEnd: (e) => {
-        const p = placementFromDnd(e);
-        if (!p) return `Đã thả ${keyOf(e.active.id)} ra ngoài các cột, giữ nguyên.`;
-        if (p.unchanged)
-          return `Đã thả ${keyOf(e.active.id)}, giữ nguyên ${at(p)} trong cột “${colNameOf(p.containerId)}”.`;
-        return p.crossContainer
-          ? `Đã thả ${keyOf(e.active.id)} vào cột “${colNameOf(p.containerId)}”, ${at(p)}.`
-          : `Đã thả ${keyOf(e.active.id)} ở ${at(p)} trong cột “${colNameOf(p.containerId)}”.`;
-      },
+      onDragOver: (e) => say('over', e),
+      onDragEnd: (e) => say('end', e),
       onDragCancel: ({ active }) => `Đã huỷ kéo ${keyOf(active.id)}, giữ nguyên vị trí.`,
     };
-  }, [issueById, columns]);
+  }, [issueById, columns, planOf]);
 
   const onDragStart = useCallback((e: DragStartEvent) => setDraggingId(String(e.active.id)), []);
   // "Nửa trên/nửa dưới" của thẻ mốc đổi mà `over` không đổi → cập nhật hint ở onDragMove, không ở onDragOver.
+  // Vạch chèn + viền cột đích theo KẾT QUẢ thả thật (`planOf`): không đổi gì ⇒ không vạch, không viền.
   const onDragMove = useCallback(
-    (e: DragMoveEvent) => dropHint.set(hintOf(placementFromDnd(e))),
-    [],
+    (e: DragMoveEvent) => {
+      const p = placementFromDnd(e);
+      const issue = issueById.get(String(e.active.id));
+      const fb = dropFeedback(p && issue ? planOf(issue, p) : null, p);
+      dropHint.set(fb.hint);
+      dropContainer.set(fb.container);
+    },
+    [issueById, planOf],
   );
   const onDragEnd = useCallback(
     (e: DragEndEvent) => {
       setDraggingId(null);
-      dropHint.set(null);
+      clearFeedback();
       onMove(String(e.active.id), placementFromDnd(e));
     },
     [onMove],
   );
   const onDragCancel = useCallback(() => {
     setDraggingId(null);
-    dropHint.set(null);
+    clearFeedback();
   }, []);
 
   return (

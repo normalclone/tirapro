@@ -12,7 +12,7 @@ const same = (a: DropHint | null, b: DropHint | null) =>
 /** Một lần kéo tại một thời điểm → store toàn cục nhỏ; mỗi thẻ chỉ vẽ lại khi hint CỦA NÓ đổi (selector trả string|null). */
 export const dropHint = {
   get: () => current,
-  set(next: DropHint | null) {
+  set: (next: DropHint | null) => {
     if (same(current, next)) return;
     current = next;
     subs.forEach((f) => f());
