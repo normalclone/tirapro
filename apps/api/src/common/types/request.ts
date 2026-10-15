@@ -13,5 +13,10 @@ export interface AuthUser {
 
 export interface AuthedRequest extends Request {
   user?: AuthUser;
+  /**
+   * Quyền yêu cầu mà user CHỈ thoả bằng bản `:own` (vd chỉ có `issue:edit:own`, không có `issue:edit`).
+   * PermissionsGuard ghi; service phải tự kiểm quyền sở hữu tài nguyên cho các quyền trong tập này.
+   */
+  ownOnly?: Set<PermissionKey>;
   id: string;
 }

@@ -499,3 +499,76 @@ describe('IssuesService — giới hạn WIP của cột board', () => {
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('IssuesService — :own (issue:edit:own)', () => {
+  function ownTx(row: Record<string, unknown>) {
+    return {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(row)),
+        findFirstOrThrow: vi.fn(() => Promise.resolve({ ...row, version: 4, summary: 'mới' })),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+    };
+  }
+
+  it('update(ownOnly) trên việc của người khác -> 403, chưa ghi gì, không emit', async () => {
+    const tx = ownTx(issueRow({ reporterId: 'u1', createdById: 'u1', assigneeId: null }));
+    const { service, events } = makeService(tx);
+    await expect(service.update('w1', 'u9', 'i1', { version: 3, summary: 'x' }, undefined, true)).rejects.toMatchObject({ status: 403 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['reporter', { reporterId: 'u9', createdById: 'u1', assigneeId: null }],
+    ['assignee', { reporterId: 'u1', createdById: 'u1', assigneeId: 'u9' }],
+    ['createdBy', { reporterId: 'u1', createdById: 'u9', assigneeId: null }],
+  ])('update(ownOnly) cho phép khi user là %s', async (_name, over) => {
+    const tx = ownTx(issueRow(over));
+    const { service } = makeService(tx);
+    await expect(service.update('w1', 'u9', 'i1', { version: 3, summary: 'mới' }, undefined, true)).resolves.toMatchObject({ summary: 'mới' });
+    expect(tx.issue.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('update không ownOnly (quyền issue:edit đầy đủ) vẫn sửa được việc của người khác', async () => {
+    const tx = ownTx(issueRow({ reporterId: 'u1', createdById: 'u1', assigneeId: null }));
+    const { service } = makeService(tx);
+    await expect(service.update('w1', 'u9', 'i1', { version: 3, summary: 'mới' })).resolves.toBeDefined();
+  });
+
+  it('bulkUpdate(ownOnly): một việc của người khác -> 403 cả lô, không ghi việc nào', async () => {
+    const tx = {
+      issue: {
+        findMany: vi.fn(() => Promise.resolve([issueRow({ id: 'a', assigneeId: 'u9' }), issueRow({ id: 'b' })])),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+      project: { findUnique: vi.fn(() => Promise.resolve({ archivedAt: null })) },
+    };
+    const { service, events } = makeService(tx);
+    const items = [{ id: 'a', version: 3 }, { id: 'b', version: 3 }];
+    await expect(
+      service.bulkUpdate('w1', 'u9', { projectId: 'p1', items, patch: { assigneeId: 'u2' } }, true),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('bulkUpdate(ownOnly): toàn việc của mình -> ghi bình thường', async () => {
+    const tx = {
+      issue: {
+        findMany: vi.fn(() => Promise.resolve([issueRow({ id: 'a', assigneeId: 'u9' }), issueRow({ id: 'b', reporterId: 'u9' })])),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(({ where }: { where: { id: string } }) => Promise.resolve(issueRow({ id: where.id, version: 4, assigneeId: 'u2' }))),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+      project: { findUnique: vi.fn(() => Promise.resolve({ archivedAt: null })) },
+    };
+    const { service } = makeService(tx);
+    const items = [{ id: 'a', version: 3 }, { id: 'b', version: 3 }];
+    const res = await service.bulkUpdate('w1', 'u9', { projectId: 'p1', items, patch: { assigneeId: 'u2' } }, true);
+    expect(res.updated).toHaveLength(2);
+  });
+});
