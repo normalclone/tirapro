@@ -4,6 +4,9 @@ import { getAccessToken, setAccessToken } from './auth-token';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1';
 
+/** Phản hồi của endpoint xoá/thao tác không trả dữ liệu: máy chủ trả `{ success: true }` (không phải `void`). */
+export type Ack = { success: boolean };
+
 export const api = axios.create({ baseURL: BASE_URL, withCredentials: true });
 
 api.interceptors.request.use((config) => {

@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /** Một nút trong cây tài liệu (không kèm nội dung — nội dung lấy ở trang chi tiết). */
@@ -127,7 +127,7 @@ export function useMoveWikiPage() {
 export function useDeleteWikiPage() {
   const invalidate = useInvalidateWiki();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/wiki/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/wiki/${id}`).then((r) => r.data),
     onSuccess: () => invalidate(),
   });
 }

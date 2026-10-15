@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NotificationEmailPrefs } from '@tirapro/types';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /** ---- Thông báo (notification preferences) ---- */
@@ -93,7 +93,7 @@ export function useUpdateSeverity() {
 export function useDeleteSeverity() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/severities/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/severities/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.severities });
     },

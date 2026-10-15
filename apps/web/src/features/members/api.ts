@@ -1,6 +1,6 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MemberDto, UserDto } from '@tirapro/types';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { queryClient } from '@/lib/queryClient';
 import { useAuth } from '@/stores/auth';
 import { keys } from '@/lib/queryKeys';
@@ -162,7 +162,7 @@ export function useSetMemberRoles() {
 export function useRemoveMember() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (userId: string) => api.delete<void>(`/members/${userId}`).then((r) => r.data),
+    mutationFn: (userId: string) => api.delete<Ack>(`/members/${userId}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.members.workspace });
       void qc.invalidateQueries({ queryKey: keys.users.workspace });
@@ -237,7 +237,7 @@ export function useRemoveProjectMember(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (userId: string) =>
-      api.delete<void>(`/projects/${projectId}/members/${userId}`).then((r) => r.data),
+      api.delete<Ack>(`/projects/${projectId}/members/${userId}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
       void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /** ---- Độ ưu tiên (priorities) ---- */
@@ -60,7 +60,7 @@ export function useUpdatePriority() {
 export function useDeletePriority() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/priorities/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/priorities/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.priorities });
     },
@@ -141,7 +141,7 @@ export function useUpdateCustomField() {
 export function useDeleteCustomField() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/custom-fields/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/custom-fields/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.customFields });
     },

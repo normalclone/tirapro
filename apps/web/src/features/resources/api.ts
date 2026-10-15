@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TimeOffKind } from '@tirapro/types';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /* ─────────────────────────── Kiểu dữ liệu ─────────────────────────── */
@@ -156,8 +156,7 @@ export function useUpdateAllocation() {
 export function useDeleteAllocation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      api.delete<void>(`/resources/allocations/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/resources/allocations/${id}`).then((r) => r.data),
     onSuccess: () => invalidateResources(qc),
   });
 }
@@ -195,7 +194,7 @@ export function useUpdateTimeOff() {
 export function useDeleteTimeOff() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/resources/time-off/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/resources/time-off/${id}`).then((r) => r.data),
     onSuccess: () => invalidateResources(qc),
   });
 }
