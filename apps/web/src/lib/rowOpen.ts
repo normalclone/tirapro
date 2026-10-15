@@ -53,3 +53,74 @@ export function peekSearch(search: string, key: string | null): string {
   const s = p.toString();
   return s ? `?${s}` : '';
 }
+
+/**
+ * Thuộc tính bổ sung cho gốc dòng tuỳ khả năng kéo/mở (phần dnd-kit đã có tabIndex/role qua `attributes`).
+ * Dòng không kéo được nhưng mở được là nút KÍCH HOẠT ĐƯỢC → không `aria-disabled` (trình đọc màn hình sẽ báo "không khả dụng");
+ * `aria-roledescription` thay cho "dòng việc có thể kéo" của dnd-kit để nói rõ đây là dòng chỉ xem/mở.
+ */
+export function rowRootProps(o: { draggable: boolean; hasOpen: boolean }): Record<string, unknown> {
+  if (o.draggable) return {};
+  return o.hasOpen
+    ? { tabIndex: 0, role: 'button', 'aria-roledescription': 'dòng việc' }
+    : { 'aria-disabled': true };
+}
+
+/** Mở trang đầy đủ của công việc ở tab mới (một nơi cho mọi dòng/thẻ). */
+export function openIssueInNewTab(key: string): void {
+  window.open(`/issue/${key}`, '_blank', 'noopener');
+}
+
+interface RowClickEvent extends ClickLike {
+  currentTarget: Element;
+  target: EventTarget | null;
+}
+
+/**
+ * Xử lý click/auxclick trên một dòng/thẻ: bỏ qua sự kiện từ portal (popover…) hoặc từ phần tử tương tác bên trong
+ * (nút, link, ô nhập — chúng tự xử lý); Cmd/Ctrl/chuột giữa → tab mới; còn lại → `open(key)` (xem nhanh).
+ * Trả về true nếu đã xử lý.
+ */
+export function openOnClick(e: RowClickEvent, key: string, open: (key: string) => void): boolean {
+  if (
+    !e.currentTarget.contains(e.target as Node) ||
+    clickIsOnInteractive(e.target, e.currentTarget)
+  )
+    return false;
+  if (wantsNewTab(e)) openIssueInNewTab(key);
+  else open(key);
+  return true;
+}
+
+interface RowKeyEvent {
+  key: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  target: EventTarget | null;
+  currentTarget: EventTarget | null;
+  preventDefault: () => void;
+}
+
+/** Enter trên dòng = xem nhanh, Cmd/Ctrl+Enter = tab mới (xem `rowKeyAction`). Trả về true nếu đã xử lý (đã preventDefault). */
+export function openOnRowKey(
+  e: RowKeyEvent,
+  o: { key: string; open?: (key: string) => void; isDragging?: boolean },
+): boolean {
+  const act = rowKeyAction({
+    key: e.key,
+    isDragging: !!o.isDragging,
+    targetIsRow: e.target === e.currentTarget,
+    mod: e.metaKey || e.ctrlKey,
+  });
+  if (act === 'open' && o.open) {
+    e.preventDefault();
+    o.open(o.key);
+    return true;
+  }
+  if (act === 'open-new-tab') {
+    e.preventDefault();
+    openIssueInNewTab(o.key);
+    return true;
+  }
+  return false;
+}

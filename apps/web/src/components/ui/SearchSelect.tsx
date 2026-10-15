@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
+import { filterByQuery } from '@/lib/text';
 import { cn } from '@/lib/utils';
 
 export interface SearchSelectOption {
@@ -51,12 +52,8 @@ export function SearchSelect({
   const [q, setQ] = useState('');
 
   const selected = options.find((o) => o.value === value);
-  const query = q.trim().toLowerCase();
-  const filtered = query
-    ? options.filter(
-        (o) => o.label.toLowerCase().includes(query) || o.value.toLowerCase().includes(query),
-      )
-    : options;
+  // Không phân biệt hoa thường/dấu, tìm theo nhãn + mã hiển thị (`hint`), KHÔNG theo `value` (id nội bộ): xem `filterByQuery`.
+  const filtered = filterByQuery(options, q);
 
   function pick(v: string) {
     onChange(v);

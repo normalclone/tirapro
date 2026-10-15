@@ -8,6 +8,9 @@ import { cn } from '@/lib/utils';
 import { useDropEdge } from '@/lib/dropHint';
 import { SORT_TRANSITION } from '@/lib/sortableDnd';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
+import { openOnRowKey, rowRootProps } from '@/lib/rowOpen';
+import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
+import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
 
 /**
  * Phần giao diện thuần của một dòng backlog — dùng cho dòng kéo được (`IssueRow`) lẫn bản trôi theo chuột (`DragOverlay`).
@@ -26,6 +29,8 @@ export function IssueRowBody({
   rootRef,
   style,
   rootProps,
+  onOpen,
+  peeked,
 }: {
   issue: IssueDto;
   overlay?: boolean;
@@ -40,6 +45,10 @@ export function IssueRowBody({
   rootRef?: Ref<HTMLDivElement>;
   style?: CSSProperties;
   rootProps?: HTMLAttributes<HTMLDivElement>;
+  /** Bấm mã công việc → xem nhanh (bản overlay không truyền: mã vẫn là chữ thường). */
+  onOpen?: (key: string) => void;
+  /** Dòng đang được xem nhanh ở panel bên phải. */
+  peeked?: boolean;
 }) {
   const warn = dueBorderClass(issue);
   return (
@@ -54,6 +63,7 @@ export function IssueRowBody({
         'hover:bg-surface-2',
         checked && 'border-primary bg-primary-subtle',
         isDragging && 'opacity-40',
+        peeked && 'bg-primary-subtle/60 ring-1 ring-primary/40',
         overlay && 'rotate-1 border-border bg-surface shadow-lg',
       )}
     >
@@ -74,9 +84,13 @@ export function IssueRowBody({
         style={{ background: issue.priority?.color ?? 'var(--faint)' }}
         title={issue.priority ? `Mức ưu tiên: ${issue.priority.name}` : 'Chưa đặt mức ưu tiên'}
       />
-      <span className="shrink-0 font-mono text-xs text-muted" title={`Mã công việc ${issue.key}`}>
-        {issue.key}
-      </span>
+      {onOpen && !overlay ? (
+        <IssueKeyLink issueKey={issue.key} onPeek={onOpen} />
+      ) : (
+        <span className="shrink-0 font-mono text-xs text-muted" title={`Mã công việc ${issue.key}`}>
+          {issue.key}
+        </span>
+      )}
       <span className="min-w-0 flex-1 truncate text-sm text-ink">{issue.summary}</span>
       {issue.labels && issue.labels.length > 0 && (
         <span className="hidden shrink-0 items-center gap-1 lg:flex">
@@ -159,6 +173,8 @@ interface IssueRowProps {
   selectable?: boolean;
   checked?: boolean;
   onToggleSelect?: (id: string) => void;
+  onOpen?: (key: string) => void;
+  peeked?: boolean;
 }
 
 /**
@@ -174,6 +190,8 @@ export const IssueRow = memo(
     selectable,
     checked,
     onToggleSelect,
+    onOpen,
+    peeked,
   }: IssueRowProps) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
       id: issue.id,
@@ -189,6 +207,13 @@ export const IssueRow = memo(
         : undefined,
       transition,
     };
+    const key = issue.key;
+    const openProps = onOpen ? rowPeekProps(key, onOpen) : undefined;
+    const rowKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (openProps && openOnRowKey(e, { key, open: onOpen, isDragging })) return;
+      // Space + mọi phím khác (và mọi phím khi đang kéo) vẫn về dnd-kit như cũ.
+      if (draggable) listeners?.onKeyDown?.(e);
+    };
     return (
       <IssueRowBody
         issue={issue}
@@ -202,7 +227,19 @@ export const IssueRow = memo(
         // LUÔN gắn: dòng không kéo được vẫn là điểm thả hợp lệ (khu chỉ đọc đã tắt droppable).
         rootRef={setNodeRef}
         style={style}
-        rootProps={draggable ? { ...listeners, ...attributes } : { 'aria-disabled': true }}
+        onOpen={onOpen}
+        peeked={peeked}
+        // `onKeyDown` đứng SAU spread listeners: ghi đè có chủ đích, `rowKeyDown` tự chuyển tiếp cho dnd-kit.
+        rootProps={
+          {
+            ...(draggable ? { ...listeners, ...attributes } : {}),
+            ...rowRootProps({ draggable, hasOpen: !!onOpen }),
+            'data-issue-key': key,
+            onClick: openProps?.onClick,
+            onAuxClick: openProps?.onAuxClick,
+            onKeyDown: rowKeyDown,
+          } as HTMLAttributes<HTMLDivElement>
+        }
       />
     );
   },
@@ -213,5 +250,7 @@ export const IssueRow = memo(
     p.selectable === n.selectable &&
     p.checked === n.checked &&
     p.onToggleSelect === n.onToggleSelect &&
+    p.onOpen === n.onOpen &&
+    p.peeked === n.peeked &&
     sameProgress(p.progress, n.progress),
 );

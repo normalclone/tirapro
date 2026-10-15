@@ -19,6 +19,8 @@ import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
 import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
+import { useProjectIssues } from './api';
+import { epicChoices, parentChoices } from '@/lib/epic';
 import { TokenTitleInput } from './TokenTitleInput';
 import {
   changedTokenFields,
@@ -135,6 +137,8 @@ export function CreateIssueModal() {
   const [sprintId, setSprintId] = useState('');
   const [points, setPoints] = useState('');
   const [due, setDue] = useState('');
+  const [epicId, setEpicId] = useState('');
+  const [parentPick, setParentPick] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const prevTypeRef = useRef('');
@@ -152,6 +156,7 @@ export function CreateIssueModal() {
 
   const { data: meta } = useProjectMeta(open && selKey ? selKey : undefined);
   const { data: sprints } = useProjectSprints(open ? selId || undefined : undefined);
+  const { data: projIssues = [] } = useProjectIssues(open && selId ? selId : undefined);
   const { data: users } = useWorkspaceUsers();
   const assignees = useAssigneeOptions(selId || undefined);
   const create = useCreateIssue(selId);
@@ -176,6 +181,8 @@ export function CreateIssueModal() {
     setSprintId('');
     setPoints('');
     setDue('');
+    setEpicId('');
+    setParentPick('');
     setFiles([]);
     setBusy(false);
     prevTypeRef.current = '';
@@ -226,6 +233,40 @@ export function CreateIssueModal() {
         })),
     ],
     [sprints],
+  );
+
+  // Epic không thuộc epic nào, sub-task không có hàng Epic; "Việc cha" ẩn khi đã có cha định sẵn hoặc loại Epic.
+  const selType = meta?.issueTypes.find((t) => t.id === typeId);
+  const isEpicType = selType?.key === 'EPIC';
+  const hideEpic = isEpicType || !!selType?.isSubtask;
+  const hideParent = !!preset.parentId || isEpicType;
+  useEffect(() => {
+    if (hideEpic) setEpicId('');
+    if (hideParent) setParentPick('');
+  }, [hideEpic, hideParent]);
+  const epicOptions = useMemo(
+    () => [
+      { value: '', label: 'Không thuộc epic' },
+      ...epicChoices(projIssues, '').map((i) => ({
+        value: i.id,
+        label: i.summary,
+        hint: i.key,
+        color: i.type.color,
+      })),
+    ],
+    [projIssues],
+  );
+  const parentOptions = useMemo(
+    () => [
+      { value: '', label: 'Không có việc cha' },
+      ...parentChoices(projIssues, '').map((i) => ({
+        value: i.id,
+        label: i.summary,
+        hint: i.key,
+        color: i.type.color,
+      })),
+    ],
+    [projIssues],
   );
 
   const tokenCtx = useMemo<TokenCtx>(
@@ -298,7 +339,8 @@ export function CreateIssueModal() {
         descriptionFormat: 'MARKDOWN',
         priorityId: (tk.priorityId ?? priorityId) || undefined,
         assigneeId: (tk.assigneeId ?? assigneeId) || null,
-        parentId: preset.parentId ?? undefined,
+        parentId: preset.parentId ?? (hideParent ? undefined : parentPick || undefined),
+        epicId: hideEpic ? undefined : epicId || undefined,
         storyPoints: tk.points ?? (points ? Number(points) : undefined),
         sprintId: (tk.sprintId ?? sprintId) || undefined,
         dueDate: tk.dueLocal
@@ -441,6 +483,8 @@ export function CreateIssueModal() {
                 setPriorityId('');
                 setSprintId('');
                 setAssigneeId('');
+                setEpicId('');
+                setParentPick('');
               }}
               placeholder="Chọn dự án…"
               searchPlaceholder="Tìm dự án…"
@@ -581,6 +625,45 @@ export function CreateIssueModal() {
               />
             </Field>
           </div>
+
+          {(!hideEpic || !hideParent) && (
+            <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
+              {!hideEpic && (
+                <Field
+                  label="Epic"
+                  hint="(tùy chọn)"
+                  title="Mảng lớn mà việc này thuộc về. Tiến độ epic tính theo điểm các việc bên trong."
+                >
+                  <SearchSelect
+                    value={epicId}
+                    onChange={setEpicId}
+                    disabled={!selId}
+                    className={selectClass}
+                    ariaLabel="Epic"
+                    searchPlaceholder="Tìm epic theo mã hoặc tiêu đề…"
+                    options={epicOptions}
+                  />
+                </Field>
+              )}
+              {!hideParent && (
+                <Field
+                  label="Việc cha"
+                  hint="(tùy chọn)"
+                  title="Công việc lớn hơn mà việc này là một phần của nó."
+                >
+                  <SearchSelect
+                    value={parentPick}
+                    onChange={setParentPick}
+                    disabled={!selId}
+                    className={selectClass}
+                    ariaLabel="Việc cha"
+                    searchPlaceholder="Tìm việc cha theo mã hoặc tiêu đề…"
+                    options={parentOptions}
+                  />
+                </Field>
+              )}
+            </div>
+          )}
 
           <Field
             label="Mô tả"
