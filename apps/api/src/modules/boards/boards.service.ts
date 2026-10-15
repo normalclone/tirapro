@@ -155,7 +155,11 @@ export class BoardsService {
     try {
       await this.prisma.$transaction(async (tx) => {
         // Khoá dòng Board làm câu đầu tiên: các setColumns đồng thời xếp hàng, người sau thấy kết quả của người trước.
-        await tx.$queryRaw`SELECT "id" FROM "Board" WHERE "id" = ${boardId} FOR UPDATE`;
+        // Chỉ khoá board chưa xoá mềm: bị xoá giữa lúc đọc và lúc khoá thì 404 rõ ràng thay vì ghi vào board đã xoá.
+        const locked = await tx.$queryRaw<
+          Array<{ id: string }>
+        >`SELECT "id" FROM "Board" WHERE "id" = ${boardId} AND "deletedAt" IS NULL FOR UPDATE`;
+        if (locked.length === 0) throw new NotFoundAppException('Bảng việc');
         const live = new Set(
           (await tx.boardColumn.findMany({ where: { boardId }, select: { id: true } })).map(
             (c) => c.id,

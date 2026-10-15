@@ -219,6 +219,40 @@ describe('BoardsService.setColumns — khoá board và xung đột', () => {
     );
   });
 
+  it('FW3: khoá chạy TRƯỚC khi đọc lại cột, và chỉ khoá board chưa xoá mềm (deletedAt IS NULL)', async () => {
+    const { service, tx } = make();
+    await service.setColumns('w1', 'b1', {
+      columns: [
+        col('Todo', ['s1'], { id: 'c1' }),
+        col('Doing', ['s2'], { id: 'c2' }),
+        col('Done', ['s3'], { id: 'c3' }),
+      ],
+    });
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]!).toBeLessThan(
+      tx.boardColumn.findMany.mock.invocationCallOrder[0]!,
+    );
+    const strings = (tx.$queryRaw.mock.calls[0] as unknown as [readonly string[]])[0];
+    const sql = strings.join('?');
+    expect(sql).toContain('"deletedAt" IS NULL');
+    expect(sql).toContain('FOR UPDATE');
+  });
+
+  it('FW3: board bị xoá mềm giữa chừng (khoá không trả dòng nào) => 404, không đọc/ghi cột', async () => {
+    const { service, tx } = make();
+    tx.$queryRaw.mockResolvedValue([]);
+    await expect(
+      service.setColumns('w1', 'b1', {
+        columns: [
+          col('Todo', ['s1'], { id: 'c1' }),
+          col('Doing', ['s2'], { id: 'c2' }),
+          col('Done', ['s3'], { id: 'c3' }),
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(tx.boardColumn.findMany).not.toHaveBeenCalled();
+    expect(tx.boardColumn.deleteMany).not.toHaveBeenCalled();
+  });
+
   it('cột client tham chiếu đã bị người khác xoá (so với bản đọc lại sau khoá) => lỗi rõ ràng, không ghi', async () => {
     const { service, tx } = make(boardRow(), { lockedColumnIds: ['c1', 'c3'] }); // c2 đã bị xoá
     await expect(
