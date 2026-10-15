@@ -22,6 +22,7 @@ import { currentProjectKey, safeDecode } from '@/lib/currentProject';
 import { QUICK_SEARCH_MIN_LENGTH, useQuickSearch } from './api';
 import { ActionItem } from './ActionItem';
 import { IssueContextGroup } from './IssueContextGroup';
+import { commandFilter, ISSUE_VALUE_PREFIX } from './commandFilter';
 
 /** Nhận dạng mã issue người dùng gõ (vd `DEMO-BUG-1`) để nhảy thẳng tới issue. */
 const ISSUE_KEY_RE = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/;
@@ -87,7 +88,7 @@ export function CommandPalette() {
       open={open}
       onOpenChange={setOpen}
       label="Lệnh nhanh"
-      shouldFilter={false}
+      filter={commandFilter}
       overlayClassName="fixed inset-0 z-backdrop bg-black/30"
       contentClassName="fixed left-1/2 top-24 z-modal w-full max-w-lg -translate-x-1/2 rounded-xl border border-border bg-surface shadow-lg"
     >
@@ -113,7 +114,7 @@ export function CommandPalette() {
             className="text-faint [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-faint"
           >
             <Command.Item
-              value={`di toi cong viec issue ${issueKeyGuess}`}
+              value={`${ISSUE_VALUE_PREFIX}go ${issueKeyGuess}`}
               onSelect={() => runAction(() => navigate(`/issue/${issueKeyGuess}`))}
               className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink data-[selected=true]:bg-surface-2"
             >
@@ -133,7 +134,7 @@ export function CommandPalette() {
             {recents.map((r) => (
               <Command.Item
                 key={r.key}
-                value={`gan day ${r.key} ${r.summary}`}
+                value={`${ISSUE_VALUE_PREFIX}recent ${r.key} ${r.summary}`}
                 onSelect={() => runAction(() => navigate(`/issue/${r.key}`))}
                 className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink data-[selected=true]:bg-surface-2"
               >
@@ -253,7 +254,7 @@ export function CommandPalette() {
             {issueResults.map((issue) => (
               <Command.Item
                 key={issue.id}
-                value={`${issue.key} ${issue.summary}`}
+                value={`${ISSUE_VALUE_PREFIX}${issue.key} ${issue.summary}`}
                 onSelect={() => {
                   navigate(`/issue/${issue.key}`);
                   setOpen(false);
