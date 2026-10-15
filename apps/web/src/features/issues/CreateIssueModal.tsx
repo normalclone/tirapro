@@ -57,6 +57,7 @@ function saveLast(v: { projectKey?: string; typeId?: string }) {
 interface Draft {
   summary?: string;
   description?: string;
+  acceptance?: string;
 }
 const DRAFT_KEY = (projectKey: string) => `tirapro:createIssue:draft:${projectKey || '_'}`;
 function loadDraft(projectKey: string): Draft {
@@ -68,7 +69,7 @@ function loadDraft(projectKey: string): Draft {
 }
 function saveDraft(projectKey: string, d: Draft) {
   try {
-    if (!d.summary?.trim() && !d.description?.trim())
+    if (!d.summary?.trim() && !d.description?.trim() && !d.acceptance?.trim())
       localStorage.removeItem(DRAFT_KEY(projectKey));
     else localStorage.setItem(DRAFT_KEY(projectKey), JSON.stringify(d));
   } catch {
@@ -86,7 +87,7 @@ function clearDraft(projectKey: string) {
 /* --------- Mẫu mô tả gợi sẵn theo loại công việc --------- */
 const TEMPLATES: Record<string, string> = {
   BUG: 'Các bước tái hiện:\n1. \n2. \n\nKết quả hiện tại:\n\nKết quả mong muốn:\n',
-  STORY: 'Bối cảnh:\n\nTiêu chí hoàn thành:\n- \n- ',
+  STORY: 'Bối cảnh:\n\n',
   TASK: 'Mục tiêu:\n\nViệc cần làm:\n- ',
 };
 const TEMPLATE_VALUES = Object.values(TEMPLATES);
@@ -130,6 +131,7 @@ export function CreateIssueModal() {
   const [typeId, setTypeId] = useState('');
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
+  const [acceptance, setAcceptance] = useState('');
   const [priorityId, setPriorityId] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [sprintId, setSprintId] = useState('');
@@ -171,6 +173,7 @@ export function CreateIssueModal() {
     setTypeId('');
     setSummary(draft.summary ?? '');
     setDescription(draft.description ?? '');
+    setAcceptance(draft.acceptance ?? '');
     setPriorityId('');
     setAssigneeId('');
     setSprintId('');
@@ -181,7 +184,7 @@ export function CreateIssueModal() {
     prevTypeRef.current = '';
     lastTokens.current = { clean: '' };
     skipSyncRef.current = true;
-    if (draft.summary || draft.description)
+    if (draft.summary || draft.description || draft.acceptance)
       toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -196,9 +199,9 @@ export function CreateIssueModal() {
         return;
       heldDraftRef.current = null;
     }
-    const t = setTimeout(() => saveDraft(selKey, { summary, description }), 400);
+    const t = setTimeout(() => saveDraft(selKey, { summary, description, acceptance }), 400);
     return () => clearTimeout(t);
-  }, [open, selKey, summary, description]);
+  }, [open, selKey, summary, description, acceptance]);
 
   // Mặc định loại: sub-task nếu tạo sub-task, ngược lại ưu tiên loại đã dùng gần nhất.
   const defaultTypeId = useMemo(() => {
@@ -274,6 +277,7 @@ export function CreateIssueModal() {
     setDescription((d) => (d === '' || isTemplate(d) ? tmpl : d));
   }, [typeId, meta]);
 
+  const isStory = meta?.issueTypes.find((t) => t.id === typeId)?.key === 'STORY';
   const trimmed = summary.trim();
   const canSubmit =
     !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
@@ -296,6 +300,7 @@ export function CreateIssueModal() {
         summary: finalSummary,
         description: description.trim() || null,
         descriptionFormat: 'MARKDOWN',
+        acceptanceCriteria: isStory ? acceptance.trim() || null : null,
         priorityId: (tk.priorityId ?? priorityId) || undefined,
         assigneeId: (tk.assigneeId ?? assigneeId) || null,
         parentId: preset.parentId ?? undefined,
@@ -425,6 +430,7 @@ export function CreateIssueModal() {
                   const d = loadDraft(v);
                   setSummary(d.summary ?? '');
                   setDescription(d.description ?? '');
+                  setAcceptance(d.acceptance ?? '');
                 } else {
                   clearDraft(selKey); // nháp "chưa có dự án" đã chuyển sang dự án vừa chọn
                   const saved = loadDraft(v);
@@ -597,6 +603,24 @@ export function CreateIssueModal() {
               placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))"
             />
           </Field>
+
+          {isStory && (
+            <Field
+              label="Tiêu chí chấp nhận"
+              hint="(tùy chọn — mỗi dòng một tiêu chí)"
+              className="sm:col-span-2"
+              title="Điều kiện để Story được coi là xong. Mỗi dòng dạng - [ ] … để tick khi nghiệm thu."
+            >
+              <MarkdownEditor
+                value={acceptance}
+                onChange={setAcceptance}
+                onSubmit={() => void submitCreate()}
+                rows={4}
+                mentionPeople={assignees}
+                placeholder="- [ ] Người dùng đăng nhập được bằng email&#10;- [ ] Báo lỗi rõ khi sai mật khẩu"
+              />
+            </Field>
+          )}
 
           <Field label="Tệp đính kèm" hint="(tùy chọn)" className="sm:col-span-2">
             <FileDrop

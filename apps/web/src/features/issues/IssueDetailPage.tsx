@@ -29,6 +29,7 @@ import {
   Workflow,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { uncheckAllTasks } from '@tirapro/shared';
 import { useDevLinks, useIssue } from './api';
 import { useCreateIssue } from './create-api';
 import { useProjects } from '@/features/projects/api';
@@ -54,6 +55,7 @@ import {
   IssueTypeSelect,
   IssuePrioritySelect,
 } from '@/features/issue-edit/IssueProperties';
+import { AcceptanceCriteria } from '@/features/issue-edit/AcceptanceCriteria';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { CommentsSection } from '@/features/issue-edit/CommentsSection';
 import { computeNextStatuses } from './nextStatuses';
@@ -231,6 +233,10 @@ export function IssueDetailPage() {
         summary: `${issue.summary} (bản sao)`,
         description: issue.description ?? null,
         descriptionFormat: 'MARKDOWN',
+        // Bản sao giữ nội dung tiêu chí nhưng bỏ tick (việc mới chưa đạt gì).
+        acceptanceCriteria: issue.acceptanceCriteria
+          ? uncheckAllTasks(issue.acceptanceCriteria)
+          : undefined,
         priorityId: issue.priority?.id || undefined,
         storyPoints: issue.storyPoints ?? undefined,
         sprintId: issue.sprintId || undefined,
@@ -697,6 +703,11 @@ export function IssueDetailPage() {
                     <p className="mb-1.5 text-sm font-medium text-muted">Mô tả</p>
                     <IssueDescription issue={issue} />
                   </div>
+
+                  {/* Story luôn có khối này (kể cả rỗng); loại khác chỉ khi đã có nội dung */}
+                  {(issue.type.key === 'STORY' || issue.acceptanceCriteria) && (
+                    <AcceptanceCriteria issue={issue} />
+                  )}
 
                   {/* Danh sách bước nhỏ — nhẹ hơn việc con, chỉ để tick cho xong */}
                   <LazyPanel>
