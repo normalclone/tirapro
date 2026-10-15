@@ -643,27 +643,25 @@ export class AnalyticsService {
       }
     }
 
-    // Cam kết: ACTIVE/CLOSED lấy mốc START nếu có (không đổi khi thêm/bớt việc giữa sprint); FUTURE = tổng hiện tại.
-    const startCommit =
-      sprint.state !== 'FUTURE' &&
-      startSnap &&
-      (startSnap.committedPoints > 0 || startSnap.committedCount > 0)
-        ? { points: startSnap.committedPoints, count: startSnap.committedCount }
-        : null;
-    const committed =
-      startCommit ??
-      (closeSnap
-        ? { points: closeSnap.committedPoints, count: closeSnap.committedCount }
-        : { points: live.points, count: live.count });
+    // ĐỊNH NGHĨA (luôn nhất quán: committed = completed + remaining): `committed` là tổng phạm vi hiện tại của sprint
+    // (CLOSED: phạm vi lúc đóng theo snapshot CLOSE; ACTIVE/FUTURE: tính trực tiếp) — nên "đã xong x/y" không bao giờ
+    // có x > y dù giữa sprint có thêm/bớt việc. Mốc cam kết ban đầu (snapshot START) trả riêng ở `initialCommitted`.
+    const committed = closeSnap
+      ? { points: closeSnap.committedPoints, count: closeSnap.committedCount }
+      : { points: live.points, count: live.count };
     const completed = closeSnap
       ? { points: closeSnap.completedPoints, count: closeSnap.completedCount }
       : { points: live.donePoints, count: live.doneCount };
-    const remaining = closeSnap
-      ? {
-          points: closeSnap.committedPoints - closeSnap.completedPoints,
-          count: closeSnap.committedCount - closeSnap.completedCount,
-        }
-      : { points: live.points - live.donePoints, count: live.count - live.doneCount };
+    const remaining = {
+      points: Math.max(committed.points - completed.points, 0),
+      count: Math.max(committed.count - completed.count, 0),
+    };
+    const initialCommitted =
+      sprint.state !== 'FUTURE' &&
+      startSnap &&
+      (startSnap.committedPoints > 0 || startSnap.committedCount > 0)
+        ? { points: round(startSnap.committedPoints), count: startSnap.committedCount }
+        : null;
 
     // Việc chuyển tiếp: chỉ đọc từ payload (không suy diễn từ IssueHistory — không phân biệt được "chuyển lúc đóng"
     // với "bị gỡ giữa sprint"). Sprint đóng trước khi có tính năng: payload null → rỗng.
@@ -678,6 +676,8 @@ export class AnalyticsService {
         state: 'CLOSED',
         deletedAt: null,
         sequence: { lt: sprint.sequence },
+        // Sprint đóng trước khi có snapshot CLOSE không có số liệu → bỏ qua (không tính 0 kéo trung bình xuống).
+        snapshots: { some: { kind: 'CLOSE' } },
       },
       orderBy: { sequence: 'desc' },
       take: 3,
@@ -685,8 +685,9 @@ export class AnalyticsService {
         snapshots: { where: { kind: 'CLOSE' }, orderBy: { snapshotAt: 'desc' }, take: 1 },
       },
     });
-    const average = prior.length
-      ? round(prior.reduce((a, p) => a + (p.snapshots[0]?.completedPoints ?? 0), 0) / prior.length)
+    const priorPoints = prior.flatMap((p) => p.snapshots.map((x) => x.completedPoints));
+    const average = priorPoints.length
+      ? round(priorPoints.reduce((a, x) => a + x, 0) / priorPoints.length)
       : 0;
     const deltaPct =
       average > 0 ? Math.round(((completed.points - average) / average) * 100) : null;
@@ -703,11 +704,12 @@ export class AnalyticsService {
         sequence: sprint.sequence,
       },
       committed: { points: round(committed.points), count: committed.count },
+      initialCommitted,
       completed: { points: round(completed.points), count: completed.count },
       remaining: { points: round(remaining.points), count: remaining.count },
       carriedOver,
       movedTo,
-      velocity: { average, sprintsCounted: prior.length, deltaPct },
+      velocity: { average, sprintsCounted: priorPoints.length, deltaPct },
       time: sprintTime(sprint, new Date()),
     };
   }

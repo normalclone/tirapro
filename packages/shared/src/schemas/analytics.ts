@@ -51,8 +51,13 @@ export interface SprintSummaryReport {
     completeDate: string | null;
     sequence: number;
   };
-  /** ACTIVE/CLOSED: snapshot START (mốc cam kết) hoặc, thiếu, tổng hiện tại; FUTURE: tổng hiện tại. */
+  /**
+   * Tổng phạm vi hiện tại của sprint (CLOSED: lúc đóng, theo snapshot CLOSE; ACTIVE/FUTURE: tính trực tiếp).
+   * Luôn có `committed = completed + remaining`, nên không bao giờ `completed > committed` khi scope đổi giữa sprint.
+   */
   committed: SprintSummaryPoints;
+  /** Mốc cam kết ban đầu (snapshot START) của sprint ACTIVE/CLOSED; null khi FUTURE hoặc thiếu snapshot. */
+  initialCommitted: SprintSummaryPoints | null;
   /** CLOSED: snapshot CLOSE; ACTIVE/FUTURE: tính trực tiếp (status.category = DONE). */
   completed: SprintSummaryPoints;
   remaining: SprintSummaryPoints;

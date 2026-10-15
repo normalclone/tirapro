@@ -64,7 +64,8 @@ export class ProjectHealthService {
         orderBy: { sequence: 'desc' },
       }),
       this.prisma.raidItem.findMany({
-        where: { workspaceId, status: 'OPEN', projectId: { in: ids } },
+        // Chỉ loại Risk: Giả định/Vấn đề/Phụ thuộc cũng có điểm xác suất×ảnh hưởng nhưng không phải "rủi ro".
+        where: { workspaceId, kind: 'RISK', status: 'OPEN', projectId: { in: ids } },
         select: { projectId: true, title: true, probability: true, impact: true },
       }),
     ]);

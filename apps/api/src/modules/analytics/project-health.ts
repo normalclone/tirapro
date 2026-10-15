@@ -31,7 +31,7 @@ export interface ProjectHealthInput {
     remainingPoints: number;
     committedPoints: number;
   } | null;
-  /** Rủi ro/vướng mắc RAID đang mở (status OPEN). */
+  /** Rủi ro RAID (loại Risk) đang mở (status OPEN). Giả định/vấn đề/phụ thuộc không tính. */
   openRisks: Array<{ title: string; probability: number; impact: number }>;
   /** Lần hoàn tất việc gần nhất (null = chưa từng). */
   lastResolvedAt: Date | null;
@@ -49,10 +49,25 @@ const dayStart = (d: Date): number => Date.parse(`${d.toISOString().slice(0, 10)
 
 export function computeProjectHealth(input: ProjectHealthInput): ProjectHealthAuto {
   const { total, open, overdue, activeSprint, openRisks, lastResolvedAt, now, createdAt } = input;
-  if (total === 0) return { level: 'NONE', reasons: ['Dự án chưa có công việc nào'] };
 
   const red: string[] = [];
   const yellow: string[] = [];
+
+  // Rủi ro mở đánh giá trước: dự án chưa có việc nhưng đã ghi nhận rủi ro mức cao vẫn phải báo, không được ra NONE.
+  for (const r of openRisks) {
+    const { level, levelLabel } = raidLevel(r.probability * r.impact);
+    if (level === 'CRITICAL') red.push(`Rủi ro '${r.title}' mức ${levelLabel}`);
+    else if (level === 'HIGH') yellow.push(`Rủi ro '${r.title}' mức ${levelLabel}`);
+  }
+
+  if (total === 0) {
+    if (red.length > 0) return { level: 'RED', reasons: red };
+    if (yellow.length > 0) return { level: 'YELLOW', reasons: yellow };
+    return { level: 'NONE', reasons: ['Dự án chưa có công việc nào'] };
+  }
+  // Thứ tự lý do: đỏ trước vàng; rủi ro đứng sau các dấu hiệu từ việc/sprint.
+  const riskRed = red.splice(0);
+  const riskYellow = yellow.splice(0);
 
   if (overdue > 0) {
     const text = `${overdue}/${open} việc chưa xong đang quá hạn`;
@@ -79,11 +94,8 @@ export function computeProjectHealth(input: ProjectHealthInput): ProjectHealthAu
     }
   }
 
-  for (const r of openRisks) {
-    const { level, levelLabel } = raidLevel(r.probability * r.impact);
-    if (level === 'CRITICAL') red.push(`Rủi ro '${r.title}' mức ${levelLabel}`);
-    else if (level === 'HIGH') yellow.push(`Rủi ro '${r.title}' mức ${levelLabel}`);
-  }
+  red.push(...riskRed);
+  yellow.push(...riskYellow);
 
   const stallSince = now.getTime() - HEALTH_STALL_DAYS * DAY_MS;
   const youngProject = createdAt ? createdAt.getTime() > stallSince : false;

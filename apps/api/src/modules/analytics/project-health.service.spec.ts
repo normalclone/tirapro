@@ -103,8 +103,12 @@ describe('ProjectHealthService.forProjects', () => {
           updatedBy: { id: 'u1', displayName: 'Phúc' },
         },
       });
-      // p3: không có việc nào => NONE, dù có rủi ro (NONE ưu tiên "chưa đủ dữ liệu")
-      expect(map.get('p3')).toMatchObject({ level: 'NONE', override: null });
+      // p3: chưa có việc nào nhưng có rủi ro mở mức Nghiêm trọng => RED (không được ra NONE)
+      expect(map.get('p3')).toMatchObject({
+        level: 'RED',
+        auto: { reasons: [expect.stringContaining('Nghiêm trọng')] },
+        override: null,
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -146,7 +150,11 @@ describe('ProjectHealthService.forProjects', () => {
     });
     const raidWhere = (prisma.raidItem.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0]
       .where;
-    expect(raidWhere).toMatchObject({ status: 'OPEN', projectId: { in: ['p1', 'p2', 'p3'] } });
+    expect(raidWhere).toMatchObject({
+      kind: 'RISK',
+      status: 'OPEN',
+      projectId: { in: ['p1', 'p2', 'p3'] },
+    });
     const sprintWhere = (prisma.sprint.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0]
       .where;
     expect(sprintWhere).toMatchObject({

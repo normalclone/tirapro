@@ -22,6 +22,21 @@ describe('computeProjectHealth', () => {
   it('NONE khi chưa có công việc', () =>
     expect(computeProjectHealth({ ...base, total: 0, open: 0 }).level).toBe('NONE'));
 
+  it('0 việc nhưng có rủi ro mở mức cao => không phải NONE; rủi ro thấp thì vẫn NONE', () => {
+    const empty = { ...base, total: 0, open: 0 };
+    expect(
+      computeProjectHealth({ ...empty, openRisks: [{ title: 'X', probability: 5, impact: 5 }] }),
+    ).toEqual({ level: 'RED', reasons: ["Rủi ro 'X' mức Nghiêm trọng"] });
+    expect(
+      computeProjectHealth({ ...empty, openRisks: [{ title: 'X', probability: 4, impact: 4 }] })
+        .level,
+    ).toBe('YELLOW');
+    expect(
+      computeProjectHealth({ ...empty, openRisks: [{ title: 'X', probability: 2, impact: 2 }] })
+        .level,
+    ).toBe('NONE');
+  });
+
   it('GREEN khi không dấu hiệu xấu, không có lý do', () =>
     expect(computeProjectHealth(base)).toEqual({ level: 'GREEN', reasons: [] }));
 
