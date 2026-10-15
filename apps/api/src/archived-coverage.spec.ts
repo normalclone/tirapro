@@ -75,6 +75,8 @@ const EXEMPT_METHODS: Record<string, string> = {
     'kho mã nguồn là hạ tầng tích hợp cấp workspace',
   'dev-links/dev-links.service.ts#removeRepository':
     'kho mã nguồn là hạ tầng tích hợp cấp workspace',
+  'issues/rank.service.ts#resolveRank':
+    'chỉ đánh lại rank khi hết chỗ chèn; mọi caller (IssuesService.createCore/move) đã chặn dự án lưu trữ trước khi gọi',
   'import/import.service.ts#resolveOrCreateLabel':
     'helper nội bộ của luồng import (đã chặn trước khi tạo ImportJob)',
   'sla/sla.service.ts#onIssueCreated': 'phản ứng sự kiện issue (ghi issue đã bị chặn ở nguồn)',

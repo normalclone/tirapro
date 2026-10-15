@@ -1,17 +1,13 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   DOMAIN_EVENTS,
-  ERROR_CODES,
   PERMISSIONS,
   type AutomationEventMeta,
   type BulkUpdateIssuesResult,
   type IssueDto,
 } from '@tirapro/types';
 import {
-  rankBetween,
-  initialRanks,
-  RankGapError,
   issueTypePrefix,
   type BulkUpdateIssuesInput,
   type CreateIssueInput,
@@ -27,22 +23,17 @@ import { insensitiveContains } from '../../common/like';
 import { assertIssueOwner } from '../rbac/issue-ownership.service';
 import { RbacService } from '../rbac/rbac.service';
 import {
-  AppException,
   BusinessRuleException,
   ForbiddenAppException,
   InvalidTransitionException,
   NotFoundAppException,
-  RankNeighborsStaleException,
   VersionConflictException,
-  WipLimitReachedException,
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 import { assertNotArchived, assertProjectWritable } from '../../common/project-writable';
 import { LIVE_PROJECT } from '../../common/live-project';
-
-/** Thứ tự hai mốc đã đảo (prev > next nghiêm ngặt, sau khi bỏ số 0 đuôi) ⇒ client giữ mốc cũ, KHÔNG phải cạn chỗ. */
-const neighborsInverted = (prev: string | null, next: string | null): boolean =>
-  prev !== null && next !== null && prev.replace(/0+$/, '') > next.replace(/0+$/, '');
+import { RankService } from './rank.service';
+import { WipService } from './wip.service';
 
 const issueInclude = {
   type: true,
@@ -63,15 +54,6 @@ const issueWriteInclude = {
   project: { select: { archivedAt: true } },
 } satisfies Prisma.IssueInclude;
 type IssueWriteRow = Prisma.IssueGetPayload<{ include: typeof issueWriteInclude }>;
-
-/** Cột board có giới hạn WIP đang được áp cho một lần chuyển trạng thái. */
-interface WipColumn {
-  id: string;
-  name: string;
-  wipLimit: number;
-  statusIds: string[];
-  boardType: string;
-}
 
 /** Trường issue mà `update()` có thể đổi — dùng để báo `changedFields` cho automation (trigger ISSUE_UPDATED). */
 const TRACKED_FIELDS = [
@@ -120,6 +102,9 @@ export class IssuesService {
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
     private readonly rbac: RbacService,
+    // Mặc định dựng từ CÙNG prisma/events/rbac để chỗ dựng service bằng 3 đối số (spec cũ) chạy y như trước; Nest DI tiêm bản thật.
+    private readonly rankService: RankService = new RankService(prisma, events),
+    private readonly wipService: WipService = new WipService(prisma, rbac),
   ) {}
 
   /**
@@ -362,7 +347,7 @@ export class IssuesService {
       input.assigneeId ?? (project.defaultAssigneeMode === 'PROJECT_LEAD' ? project.leadId : null);
 
     // Rank: cuối danh sách trong project
-    const rank = await this.resolveRank(project.id, db, deferred, null, async () => {
+    const rank = await this.rankService.resolveRank(project.id, db, deferred, null, async () => {
       const last = await db.issue.findFirst({
         where: { projectId: project.id, deletedAt: null },
         orderBy: [{ rank: 'desc' }, { id: 'desc' }],
@@ -705,7 +690,7 @@ export class IssuesService {
     }
     // Giới hạn WIP của cột đích (nếu web gửi boardId); kiểm lại trong transaction sau khi khoá cột.
     const wip = patch.statusId
-      ? await this.resolveWipColumn(input.boardId, projectId, patch.statusId)
+      ? await this.wipService.resolveWipColumn(input.boardId, projectId, patch.statusId)
       : null;
 
     const conflicts: BulkUpdateIssuesResult['conflicts'] = [];
@@ -719,7 +704,7 @@ export class IssuesService {
           return b.version === i.version && !wip.statusIds.includes(b.statusId);
         }).length;
         if (incoming > 0)
-          await this.enforceWip(tx, wip, {
+          await this.wipService.enforceWip(tx, wip, {
             userId,
             workspaceId,
             projectId,
@@ -807,7 +792,7 @@ export class IssuesService {
     await this.assertTransitionAllowed(workflowId, current.statusId, input.toStatusId);
 
     const isDone = (await this.statusCategory(input.toStatusId)) === 'DONE';
-    const wip = await this.resolveWipColumn(
+    const wip = await this.wipService.resolveWipColumn(
       input.boardId,
       current.projectId,
       input.toStatusId,
@@ -816,7 +801,7 @@ export class IssuesService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (wip)
-        await this.enforceWip(tx, wip, {
+        await this.wipService.enforceWip(tx, wip, {
           userId,
           workspaceId,
           projectId: current.projectId,
@@ -873,19 +858,19 @@ export class IssuesService {
     // Không có mốc nào ⇒ giữ rank hiện tại (trước đây rankBetween(null, null) đặt thẻ vào GIỮA dự án).
     const hasNeighbor = !!input.afterId || !!input.beforeId;
     const rank = hasNeighbor
-      ? await this.resolveRank(current.projectId, this.prisma, null, id, async () => ({
+      ? await this.rankService.resolveRank(current.projectId, this.prisma, null, id, async () => ({
           prev: input.afterId
-            ? await this.rankOf(workspaceId, current.projectId, input.afterId)
+            ? await this.rankService.rankOf(workspaceId, current.projectId, input.afterId)
             : null,
           next: input.beforeId
-            ? await this.rankOf(workspaceId, current.projectId, input.beforeId)
+            ? await this.rankService.rankOf(workspaceId, current.projectId, input.beforeId)
             : null,
         }))
       : current.rank;
 
     // Chỉ kiểm WIP khi thật sự đổi sang trạng thái khác (kéo trong cùng cột/xếp lại thứ tự thì không chiếm thêm chỗ).
     const wip = statusChanged
-      ? await this.resolveWipColumn(
+      ? await this.wipService.resolveWipColumn(
           input.boardId,
           current.projectId,
           input.statusId!,
@@ -895,7 +880,7 @@ export class IssuesService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (wip)
-        await this.enforceWip(tx, wip, {
+        await this.wipService.enforceWip(tx, wip, {
           userId,
           workspaceId,
           projectId: current.projectId,
@@ -975,109 +960,6 @@ export class IssuesService {
     if (!issue) throw new NotFoundAppException('Công việc');
     assertNotArchived(issue.project.archivedAt);
     return issue;
-  }
-
-  /**
-   * Cột của board chứa trạng thái đích và có giới hạn WIP. Trả null (không cần kiểm) khi: không có boardId,
-   * board không thuộc dự án, trạng thái đích không nằm trong cột nào, cột không đặt giới hạn, hoặc
-   * issue đã nằm sẵn trong cột đó (đổi giữa hai trạng thái cùng cột không chiếm thêm chỗ).
-   */
-  private async resolveWipColumn(
-    boardId: string | undefined,
-    projectId: string,
-    toStatusId: string,
-    fromStatusId?: string,
-  ): Promise<WipColumn | null> {
-    if (!boardId) return null;
-    const col = await this.prisma.boardColumn.findFirst({
-      where: {
-        boardId,
-        board: { projectId, deletedAt: null },
-        statuses: { some: { statusId: toStatusId } },
-      },
-      select: {
-        id: true,
-        name: true,
-        wipLimit: true,
-        board: { select: { type: true } },
-        statuses: { select: { statusId: true } },
-      },
-    });
-    if (!col || col.wipLimit == null) return null;
-    const statusIds = col.statuses.map((s) => s.statusId);
-    if (fromStatusId && statusIds.includes(fromStatusId)) return null;
-    return {
-      id: col.id,
-      name: col.name,
-      wipLimit: col.wipLimit,
-      statusIds,
-      boardType: col.board.type,
-    };
-  }
-
-  /**
-   * Kiểm giới hạn WIP BÊN TRONG transaction của lần ghi: khoá dòng cột (FOR UPDATE) để hai request đồng thời
-   * vào cùng cột xếp hàng — request sau đếm lại sau khi request trước đã commit nên không cùng lọt qua.
-   * Board SCRUM chỉ đếm việc của sprint ACTIVE (không có sprint ACTIVE = board trống, không chặn).
-   * Vượt giới hạn: ném WIP_LIMIT_REACHED, trừ khi `force` và người dùng là quản trị dự án.
-   */
-  private async enforceWip(
-    tx: Prisma.TransactionClient,
-    wip: WipColumn,
-    ctx: {
-      userId: string;
-      workspaceId: string;
-      projectId: string;
-      incoming: number;
-      force?: boolean;
-    },
-  ): Promise<void> {
-    await tx.$queryRaw`SELECT "id" FROM "BoardColumn" WHERE "id" = ${wip.id} FOR UPDATE`;
-    let sprintFilter: { sprintId: string } | Record<string, never> = {};
-    if (wip.boardType === 'SCRUM') {
-      const active = await tx.sprint.findFirst({
-        where: { projectId: ctx.projectId, state: 'ACTIVE', deletedAt: null },
-        select: { id: true },
-      });
-      if (!active) return;
-      sprintFilter = { sprintId: active.id };
-    }
-    const current = await tx.issue.count({
-      where: {
-        projectId: ctx.projectId,
-        deletedAt: null,
-        statusId: { in: wip.statusIds },
-        ...sprintFilter,
-      },
-    });
-    if (current + ctx.incoming <= wip.wipLimit) return;
-    if (!ctx.force) {
-      const room = wip.wipLimit - current;
-      throw new WipLimitReachedException(
-        ctx.incoming > 1 && room > 0
-          ? `Cột "${wip.name}" (giới hạn ${wip.wipLimit} việc) chỉ còn chỗ cho ${room} việc — hãy chuyển ít việc hơn hoặc chọn "Vẫn chuyển"`
-          : `Cột "${wip.name}" đã đạt giới hạn ${wip.wipLimit} việc đang làm — hãy hoàn thành bớt hoặc chọn "Vẫn chuyển"`,
-      );
-    }
-    await this.assertCanForceWip(ctx.userId, ctx.workspaceId, ctx.projectId);
-  }
-
-  /** "Vẫn chuyển" qua giới hạn WIP chỉ dành cho quản trị dự án (project/workspace admin, system admin). */
-  private async assertCanForceWip(
-    userId: string,
-    workspaceId: string,
-    projectId: string,
-  ): Promise<void> {
-    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
-    if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.WORKSPACE_ADMIN)) return;
-    const u = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSystemAdmin: true },
-    });
-    if (u?.isSystemAdmin) return;
-    throw new ForbiddenAppException(
-      'Cột đã đạt giới hạn WIP — chỉ quản trị dự án mới được chọn "Vẫn chuyển"; hãy hoàn thành bớt việc trong cột trước',
-    );
   }
 
   /** Chặn vòng lặp cây: đi ngược từ parent mới lên gốc, không được gặp lại chính issue con. */
@@ -1185,103 +1067,6 @@ export class IssuesService {
         'Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại',
         { version: currentVersion },
       );
-    }
-  }
-
-  /** Rank của issue làm mốc — phải còn sống và cùng workspace/project, nếu không thì báo lỗi thay vì lặng lẽ xếp xuống cuối. */
-  private async rankOf(workspaceId: string, projectId: string, id: string): Promise<string> {
-    const r = await this.prisma.issue.findFirst({
-      where: { id, workspaceId, projectId, deletedAt: null },
-      select: { rank: true },
-    });
-    if (!r)
-      throw new AppException(
-        ERROR_CODES.NOT_FOUND,
-        'Công việc làm mốc không tồn tại — hãy tải lại trang',
-        HttpStatus.NOT_FOUND,
-      );
-    return r.rank;
-  }
-
-  /**
-   * Tính rank mới. Hai mốc đã đảo thứ tự (client giữ mốc cũ) thì 409 RANK_NEIGHBORS_STALE để client nạp lại,
-   * KHÔNG rebalance. Hết chỗ chèn (RankGapError) thì đánh số lại cả project rồi đọc lại
-   * hai mốc và tính lại đúng 1 lần.
-   */
-  private async resolveRank(
-    projectId: string,
-    db: Prisma.TransactionClient,
-    deferred: Array<() => void> | null,
-    movedId: string | null,
-    read: () => Promise<{ prev: string | null; next: string | null }>,
-  ): Promise<string> {
-    const first = await read();
-    if (neighborsInverted(first.prev, first.next)) throw new RankNeighborsStaleException();
-    try {
-      return rankBetween(first.prev, first.next);
-    } catch (e) {
-      if (!(e instanceof RankGapError)) throw e;
-    }
-    await this.rebalanceProject(projectId, db, deferred, movedId);
-    const again = await read();
-    if (neighborsInverted(again.prev, again.next)) throw new RankNeighborsStaleException();
-    try {
-      return rankBetween(again.prev, again.next);
-    } catch (e) {
-      if (!(e instanceof RankGapError)) throw e;
-      throw new BusinessRuleException(
-        'Không xác định được vị trí thả — hãy tải lại trang rồi thử kéo thả lại',
-      );
-    }
-  }
-
-  /**
-   * Đánh số lại rank toàn bộ issue của project (khi hết chỗ chèn). Khoá project bằng update để tuần tự hoá,
-   * rồi ghi MỘT câu UPDATE cho cả project (không update từng dòng — tránh vượt timeout transaction).
-   * `version` của các dòng (trừ issue đang kéo) được tăng để client đang giữ bản cũ bị OCC chặn thay vì ghi đè rank mới.
-   * Sự kiện PROJECT_RANKS_REBALANCED chỉ phát sau khi commit: ngay khi tự mở transaction, hoặc chạy qua
-   * `deferred` khi đang nằm trong transaction của bên gọi.
-   */
-  private async rebalanceProject(
-    projectId: string,
-    db: Prisma.TransactionClient,
-    deferred: Array<() => void> | null,
-    movedId: string | null,
-  ): Promise<void> {
-    const body = async (tx: Prisma.TransactionClient) => {
-      await tx.project.update({
-        where: { id: projectId },
-        data: { updatedAt: new Date() },
-        select: { id: true },
-      });
-      // allow-deleted: đánh lại rank cho mọi issue của dự án kể cả đã xoá mềm để thứ tự không trùng khi khôi phục
-      const rows = await tx.issue.findMany({
-        where: { projectId },
-        orderBy: [{ rank: 'asc' }, { id: 'asc' }],
-        select: { id: true },
-      });
-      if (!rows.length) return;
-      const ids = rows.map((r) => r.id);
-      const ranks = initialRanks(rows.length);
-      // Issue đang được kéo (movedId) KHÔNG tăng version ở đây: updateWithVersion của chính thao tác kéo sẽ tăng,
-      // và nó phải còn khớp version client gửi lên. updatedAt cập nhật tay vì @updatedAt của Prisma chỉ chạy phía client.
-      await tx.$executeRaw`
-        UPDATE "Issue" AS i
-        SET "rank" = v.rank,
-            "version" = i."version" + CASE WHEN i."id" = ${movedId}::text THEN 0 ELSE 1 END,
-            "updatedAt" = now()
-        FROM (SELECT unnest(${ids}::text[]) AS id, unnest(${ranks}::text[]) AS rank) AS v
-        WHERE i."id" = v.id`;
-    };
-    const notify = () => this.events.emit(DOMAIN_EVENTS.PROJECT_RANKS_REBALANCED, { projectId });
-    // Đang trong transaction của bên gọi (import) thì chạy thẳng trong đó; không thì tự mở transaction riêng.
-    if (db === (this.prisma as Prisma.TransactionClient)) {
-      await this.prisma.$transaction(body, { timeout: 30_000 });
-      notify();
-    } else {
-      await body(db);
-      if (deferred) deferred.push(notify);
-      else notify();
     }
   }
 
