@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/api', () => ({ api: { patch: vi.fn() } }));
-import { runBulkInChunks } from './api';
+import { bulkShortfallHint, runBulkInChunks } from './api';
 
 const mkItems = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `i${i}`, version: 1 }));
 type Items = Array<{ id: string; version: number }>;
@@ -16,6 +16,7 @@ describe('runBulkInChunks', () => {
     const r = await runBulkInChunks(mkItems(250), send);
     expect(send.mock.calls.map((c) => (c[0] as unknown[]).length)).toEqual([100, 100, 50]);
     expect(r.updated).toHaveLength(250);
+    expect(r.unsent).toBe(0);
   });
 
   it('gộp conflicts của từng lô, không mất mục nào', async () => {
@@ -48,6 +49,7 @@ describe('runBulkInChunks', () => {
     expect(r.updated).toHaveLength(100);
     expect(r.conflicts).toHaveLength(150);
     expect(r.conflicts[0]).toEqual({ id: 'i100', version: 1 });
+    expect(r.unsent).toBe(150); // lô lỗi + phần sau — KHÔNG phải conflict do người khác sửa
     expect(send).toHaveBeenCalledTimes(2);
   });
 
@@ -55,5 +57,19 @@ describe('runBulkInChunks', () => {
     const send = vi.fn((i: Items) => ok(i));
     await runBulkInChunks(mkItems(100), send);
     expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('bulkShortfallHint', () => {
+  it('conflict thật: nói người khác vừa sửa', () => {
+    expect(bulkShortfallHint(2, 0)).toMatch(/Người khác vừa sửa/);
+  });
+  it('chỉ có việc chưa gửi: câu trung tính, không đổ cho người khác', () => {
+    const msg = bulkShortfallHint(3, 3);
+    expect(msg).toBe('Một số việc chưa gửi được — thử lại.');
+    expect(msg).not.toMatch(/Người khác/);
+  });
+  it('lẫn cả hai: nêu cả hai nguyên nhân', () => {
+    expect(bulkShortfallHint(5, 3)).toMatch(/chưa gửi được, 2 việc khác bị người khác sửa/);
   });
 });

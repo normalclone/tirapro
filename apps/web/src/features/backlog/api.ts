@@ -93,16 +93,32 @@ export interface BulkIssuePatch {
 /** Máy chủ nhận tối đa 100 việc/lần (`bulkUpdateIssuesSchema`). */
 export const BULK_CHUNK = 100;
 
+/** Kết quả gộp các lô. `unsent` = số việc CHƯA được gửi/xử lý vì một lô sau bị lỗi (đã nằm trong `conflicts`). */
+export type BulkChunksResult = BulkUpdateIssuesResult & { unsent: number };
+
+/**
+ * Câu mô tả (theo SỐ conflict và số chưa gửi) phần "chưa xong" của một lần bulk. Phải tách việc chưa gửi được (mạng/403/WIP — thử lại là được) khỏi
+ * conflict thật (người khác sửa trước — cần tải lại), kẻo báo sai nguyên nhân.
+ */
+export function bulkShortfallHint(conflicts: number, unsent: number): string {
+  const edited = Math.max(0, conflicts - unsent);
+  if (unsent > 0 && edited === 0) return 'Một số việc chưa gửi được — thử lại.';
+  if (unsent > 0)
+    return `Một số việc chưa gửi được, ${edited} việc khác bị người khác sửa trước — hãy tải lại trang rồi thử lại.`;
+  return 'Người khác vừa sửa những việc đó — hãy tải lại trang để xem bản mới nhất rồi thử lại.';
+}
+
 /**
  * Gửi tuần tự từng lô (không song song: OCC + WIP cần khoá theo lô). Lô đầu lỗi → ném nguyên văn
- * (chưa ghi gì). Lô sau lỗi → dừng, không ném: trả phần đã xong, phần còn lại (kể cả lô lỗi) vào `conflicts`.
+ * (chưa ghi gì). Lô sau lỗi → dừng, không ném: trả phần đã xong, phần còn lại (kể cả lô lỗi) vào `conflicts`
+ * và đếm trong `unsent` để UI không nhầm với conflict do người khác sửa.
  */
 export async function runBulkInChunks(
   items: Array<{ id: string; version: number }>,
   send: (chunk: Array<{ id: string; version: number }>) => Promise<BulkUpdateIssuesResult>,
   size = BULK_CHUNK,
-): Promise<BulkUpdateIssuesResult> {
-  const out: BulkUpdateIssuesResult = { updated: [], conflicts: [] };
+): Promise<BulkChunksResult> {
+  const out: BulkChunksResult = { updated: [], conflicts: [], unsent: 0 };
   for (let i = 0; i < items.length; i += size) {
     const chunk = items.slice(i, i + size);
     try {
@@ -111,7 +127,9 @@ export async function runBulkInChunks(
       out.conflicts.push(...r.conflicts);
     } catch (err) {
       if (i === 0) throw err;
-      out.conflicts.push(...items.slice(i).map((x) => ({ id: x.id, version: x.version })));
+      const rest = items.slice(i);
+      out.conflicts.push(...rest.map((x) => ({ id: x.id, version: x.version })));
+      out.unsent = rest.length;
       return out;
     }
   }
