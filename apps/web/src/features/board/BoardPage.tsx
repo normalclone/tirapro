@@ -4,8 +4,9 @@ import { Layers, Settings, UserRound, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { BoardColumnDto, BoardDto, IssueDto, SwimlaneBy } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
-import { byPriorityThenStatus } from '@/lib/issueOrder';
 import { buildProgressMap } from '@/lib/issueTree';
+import { applyPendingOrder, sortByRank, type PendingMove } from '@/lib/rankOrder';
+import type { Placement } from '@/lib/rankDrop';
 import {
   isWipLimitError,
   useBoardIssues,
@@ -16,12 +17,14 @@ import {
 import { BoardSettingsDialog, SWIMLANE_LABEL } from './BoardSettingsDialog';
 import { BoardDnd } from './BoardDnd';
 import { Column } from './Column';
-import { resolveDropStatuses } from './dropTarget';
+import { freshenBoardIssues } from './boardIssues';
+import { NO_LANE, decideDrop, type DropContext, type DropPlan } from './dropPlan';
 import { StatusPickDialog } from './StatusPickDialog';
 import { useSwimlaneOverride } from './swimlane';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { useProjectSprints } from '@/features/backlog/api';
 import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
+import { useMoveIssue, usePendingMoves, type MoveVars } from '@/features/issues/moveIssue';
 import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
 import type { NextStatus } from '@/features/issues/nextStatuses';
 import { useWorkflows } from '@/features/workflow-settings/api';
@@ -40,10 +43,14 @@ import { applyQuickFilters, useQuickFilters } from '@/features/quick-filters/use
 import { AssigneeFilter, applyAssigneeFilter } from '@/features/quick-filters/AssigneeFilter';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 
-/** Phân bổ 1 tập công việc vào các cột của bảng (đã sort trong cột). */
+/**
+ * Phân bổ 1 tập công việc vào các cột của bảng; trong cột xếp theo rank (cùng thứ tự máy chủ) rồi phủ thứ tự lạc quan
+ * của các lần kéo đang chờ — thả xong thẻ nằm đúng chỗ ngay, không nhảy về chỗ cũ chờ máy chủ.
+ */
 function distribute(
   board: { columns: BoardColumnDto[] },
   list: IssueDto[],
+  pending: readonly PendingMove[],
 ): Map<string, IssueDto[]> {
   const map = new Map<string, IssueDto[]>();
   for (const col of board.columns) map.set(col.id, []);
@@ -51,7 +58,7 @@ function distribute(
     const col = board.columns.find((c) => c.statusIds.includes(issue.status.id));
     if (col) map.get(col.id)!.push(issue);
   }
-  for (const l of map.values()) l.sort(byPriorityThenStatus);
+  for (const [colId, l] of map) map.set(colId, applyPendingOrder(sortByRank(l), pending));
   return map;
 }
 
@@ -64,7 +71,6 @@ interface Lane {
   empty?: boolean;
 }
 
-const NO_LANE = '__none__';
 /** Mảng rỗng dùng chung để `Column` memo không thấy prop đổi tham chiếu. */
 const EMPTY: IssueDto[] = [];
 
@@ -158,8 +164,7 @@ export function BoardPage() {
   // Việc hiển thị: với bảng lọc, lấy bản MỚI NHẤT của từng việc từ cache dự án (vá lạc quan + realtime) để thẻ không cũ.
   const issues = useMemo(() => {
     if (!hasFilter) return projectIssues;
-    const fresh = new Map((projectIssues ?? []).map((i) => [i.id, i]));
-    return (boardIssuesQ.data ?? []).map((i) => fresh.get(i.id) ?? i);
+    return freshenBoardIssues(boardIssuesQ.data ?? [], projectIssues);
   }, [hasFilter, projectIssues, boardIssuesQ.data]);
   // Cache dự án đổi (chuyển cột, realtime…) thì việc khớp bộ lọc có thể đổi → nạp lại tập khớp (gộp trong 400ms).
   const projectStamp = projectIssuesQ.dataUpdatedAt;
@@ -172,6 +177,8 @@ export function BoardPage() {
     return () => clearTimeout(t);
   }, [hasFilter, projectStamp, refetchBoardIssues]);
   const transition = useTransitionIssue(project?.id ?? '');
+  const move = useMoveIssue(project?.id ?? '');
+  const pending = usePendingMoves(project?.id);
   const updateIssue = useUpdateIssue(project?.id);
   const { data: workflows } = useWorkflows();
   const can = useProjectCan(project); // dự án lưu trữ: chỉ còn quyền đọc → không kéo/quick-add/cài đặt bảng
@@ -188,7 +195,7 @@ export function BoardPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Cột đầy WIP + người có quyền → hỏi "Vẫn chuyển?" (giữ nguyên biến để gửi lại kèm force).
   const [wipPrompt, setWipPrompt] = useState<{
-    vars: TransitionVars;
+    vars: MoveVars;
     col: BoardColumnDto;
     issueKey: string;
   } | null>(null);
@@ -199,6 +206,8 @@ export function BoardPage() {
     options: NextStatus[];
     /** `null` = chưa đổi người → lấy bản mới nhất của việc khi người dùng chọn (tránh 409 nếu thẻ đổi qua realtime). */
     version: number | null;
+    /** Chỗ đã thả — chọn xong trạng thái thì thẻ vẫn nằm đúng chỗ đó. */
+    placement: Placement;
   } | null>(null);
   // Giữ bản cuối của hai hộp hỏi để nội dung (mã việc, tên cột, danh sách đích) không trống đi giữa hiệu ứng đóng.
   const wipShown = useRetained(wipPrompt);
@@ -262,7 +271,7 @@ export function BoardPage() {
     const run = (prefix: string, list: IssueDto[]) => {
       const out = new Map<string, IssueDto[]>();
       if (!board) return out;
-      for (const [colId, arr] of distribute(board, list))
+      for (const [colId, arr] of distribute(board, list, pending))
         out.set(colId, stable(`${prefix}::${colId}`, arr));
       return out;
     };
@@ -271,7 +280,7 @@ export function BoardPage() {
     for (const lane of lanes ?? []) byLane.set(lane.key, run(lane.key, lane.issues));
     prevLists.current = next;
     return { byColumn: byCol, laneCols: byLane };
-  }, [board, filteredIssues, lanes]);
+  }, [board, filteredIssues, lanes, pending]);
 
   // Số việc tính vào WIP của từng cột — tính một lần thay vì mỗi cột × mỗi làn × mỗi lần vẽ.
   const wipByCol = useMemo(() => {
@@ -288,7 +297,7 @@ export function BoardPage() {
   const openIssue = useCallback((k: string) => navigate(`/issue/${k}`), [navigate]);
 
   /** Cột đầy WIP: người có quyền được hỏi "Vẫn chuyển?", người khác nhận lời nhắc rõ việc cần làm. */
-  function onWipBlocked(err: unknown, vars: TransitionVars, col: BoardColumnDto, issueKey: string) {
+  function onWipBlocked(err: unknown, vars: MoveVars, col: BoardColumnDto, issueKey: string) {
     void apiErrorMessage(err); // đánh dấu đã xử lý → MutationCache không toast thêm lần hai
     if (canForceWip) setWipPrompt({ vars, col, issueKey });
     else
@@ -297,99 +306,143 @@ export function BoardPage() {
       );
   }
 
-  /** Chuyển trạng thái kèm Hoàn tác; `force` chỉ gửi khi người dùng đã xác nhận "Vẫn chuyển". */
-  function runTransition(
+  /** Kéo sang cột khác: MỘT `move` mang trạng thái + hai mốc (thẻ nằm đúng chỗ đã thả). `force` chỉ khi đã xác nhận "Vẫn chuyển". */
+  async function runMove(
     issue: IssueDto,
     col: BoardColumnDto,
     toStatusId: string,
-    force = false,
-    statusName = col.name,
-    version = issue.version,
+    p: Placement,
+    o: { force?: boolean; statusName?: string; version?: number } = {},
   ) {
     if (!board) return;
-    const fromStatusId = issue.status.id;
-    const fromStatusName = issue.status.name;
-    const vars: TransitionVars = {
+    const statusName = o.statusName ?? col.name;
+    const vars: MoveVars = {
+      route: 'move',
       id: issue.id,
-      toStatusId,
-      version,
+      key: issue.key,
+      version: o.version ?? issue.version,
+      afterId: p.afterId,
+      beforeId: p.beforeId,
+      statusId: toStatusId,
       statusName,
       boardId: board.id,
-      ...(force ? { force: true } : {}),
+      ...(o.force ? { force: true } : {}),
     };
-    transition.mutate(vars, {
-      onError: (err) =>
-        isWipLimitError(err)
-          ? onWipBlocked(err, vars, col, issue.key)
-          : toast.error(apiErrorMessage(err)),
-      onSuccess: (updated) =>
-        toast.success(`Đã chuyển ${issue.key} sang “${statusName}”`, {
-          duration: 4000,
-          action: {
-            label: 'Hoàn tác',
-            onClick: () =>
-              // Quay về cột cũ không làm cột đích đầy thêm nên không gửi boardId (không cần kiểm WIP).
-              transition.mutate(
-                {
-                  id: issue.id,
-                  toStatusId: fromStatusId,
-                  version: updated.version,
-                  statusName: fromStatusName,
-                },
-                { onError: (err) => toast.error(apiErrorMessage(err)) },
-              ),
-          },
-        }),
-    });
+    const from = { statusId: issue.status.id, statusName: issue.status.name };
+    try {
+      const updated = await move.mutateAsync(vars);
+      toast.success(`Đã chuyển ${issue.key} sang “${statusName}”`, {
+        duration: 4000,
+        action: {
+          label: 'Hoàn tác',
+          // Quay về cột cũ + chỗ cũ; không gửi boardId (không làm cột đích đầy thêm, không cần kiểm WIP).
+          onClick: () =>
+            void move
+              .mutateAsync({
+                route: 'move',
+                id: issue.id,
+                key: issue.key,
+                version: updated.version,
+                afterId: p.origin.afterId,
+                beforeId: p.origin.beforeId,
+                ...from,
+              })
+              .catch(() => undefined),
+        },
+      });
+    } catch (err) {
+      if (isWipLimitError(err)) onWipBlocked(err, vars, col, issue.key); // lỗi khác: hook + MutationCache đã báo
+    }
   }
 
-  function confirmForce() {
+  /** Đổi chỗ trong cùng cột: một `move` chỉ có hai mốc. */
+  async function runReorder(issue: IssueDto, p: Placement) {
+    try {
+      const updated = await move.mutateAsync({
+        route: 'move',
+        id: issue.id,
+        key: issue.key,
+        version: issue.version,
+        afterId: p.afterId,
+        beforeId: p.beforeId,
+      });
+      toast.success(`Đã đổi thứ tự ${issue.key}`, {
+        duration: 3000,
+        action: {
+          label: 'Hoàn tác',
+          onClick: () =>
+            void move
+              .mutateAsync({
+                route: 'move',
+                id: issue.id,
+                key: issue.key,
+                version: updated.version,
+                afterId: p.origin.afterId,
+                beforeId: p.origin.beforeId,
+              })
+              .catch(() => undefined),
+        },
+      });
+    } catch {
+      /* hook + MutationCache đã báo */
+    }
+  }
+
+  async function confirmForce() {
     if (!wipPrompt) return;
     const { vars, col, issueKey } = wipPrompt;
     setWipPrompt(null);
-    transition.mutate(
-      { ...vars, force: true },
-      {
-        onError: (err) => toast.error(apiErrorMessage(err)),
-        onSuccess: () =>
-          toast.success(`Đã chuyển ${issueKey} sang “${col.name}” (vượt giới hạn WIP)`, {
-            duration: 4000,
-          }),
-      },
-    );
+    try {
+      await move.mutateAsync({ ...vars, force: true });
+      toast.success(`Đã chuyển ${issueKey} sang “${col.name}” (vượt giới hạn WIP)`, {
+        duration: 4000,
+      });
+    } catch {
+      /* hook + MutationCache đã báo */
+    }
   }
 
-  async function onMove(issueId: string, overId: string) {
-    const issue = (issues ?? []).find((i) => i.id === issueId);
-    // Droppable id = "laneKey::colId" (có swimlane) hoặc "colId" (phẳng).
-    if (!issue || !overId) return;
-    const grouped = overId.includes('::');
-    const laneKey = grouped ? overId.split('::')[0]! : null;
-    const colId = grouped ? overId.split('::')[1]! : overId;
-    const col = board?.columns.find((c) => c.id === colId);
-    // Cột chưa gắn trạng thái nào thì không có đích để chuyển tới.
-    if (!col || col.statusIds.length === 0) return;
+  // Một nguồn quyết định "thả thì làm gì" cho cả `onMove` lẫn phản hồi lúc kéo (vạch chèn/viền/thông báo).
+  const dropCtx: DropContext = {
+    columns: board?.columns ?? [],
+    workflows,
+    swimlaneBy,
+    canAssign,
+    canEditIssue,
+  };
+  const planOfRef = useRef<(issue: IssueDto, p: Placement) => DropPlan | null>(() => null);
+  planOfRef.current = (issue, p) =>
+    canTransition ? (decideDrop(issue, p, dropCtx)?.plan ?? null) : null;
+  const planOf = useCallback((issue: IssueDto, p: Placement) => planOfRef.current(issue, p), []);
 
-    // Cột có thể gom nhiều trạng thái: chọn đích hợp lệ theo workflow (1 → chuyển luôn, >1 → hỏi, 0 → báo).
-    const res = canTransition
-      ? resolveDropStatuses(col, issue.status.id, workflows)
-      : ({ kind: 'stay' } as const);
+  async function onMove(issueId: string, p: Placement | null) {
+    const issue = (issues ?? []).find((i) => i.id === issueId);
+    // Không có quyền chuyển cột thì thẻ không kéo được; chốt chặn thêm cho trường hợp quyền đổi giữa lúc kéo.
+    if (!issue || !p || !canTransition) return;
+    const d = decideDrop(issue, p, dropCtx);
+    // Cột chưa gắn trạng thái nào thì không có đích để chuyển tới.
+    if (!d) return;
+    const { col, res, plan, wantsReassign, assigneeChanged, targetAssignee } = d;
     const only = res.kind === 'move' && res.options.length === 1 ? res.options[0]! : null;
     const labelFor = (o: NextStatus) => (col.statusIds.length > 1 ? o.name : col.name);
     const blockedMsg = `Quy trình không cho chuyển “${issue.status.name}” sang cột “${col.name}”. Hãy chọn một trạng thái trong danh sách gợi ý.`;
 
-    // Thả sang làn khác chỉ có nghĩa "đổi người" khi bảng chia làn theo người; các kiểu chia khác chỉ đổi cột.
-    const targetAssignee: string | null = laneKey === NO_LANE ? null : laneKey;
-    const wantsReassign =
-      grouped && swimlaneBy === 'assignee' && targetAssignee !== (issue.assigneeId ?? null);
-    const assigneeChanged = wantsReassign && canAssign && canEditIssue(issue);
-
-    if (!assigneeChanged) {
-      // Thả sang hàng người khác nhưng không được đổi người phụ trách việc này → nói rõ thay vì lặng lẽ chỉ đổi cột.
+    if (plan === 'ignore') {
+      // Thả sang hàng người khác nhưng không được đổi người phụ trách việc này → nói rõ thay vì lặng lẽ không làm gì.
+      if (wantsReassign && !assigneeChanged)
+        toast.info('Bạn không có quyền đổi người phụ trách việc này.');
+      return;
+    }
+    if (plan === 'reorder') {
+      void runReorder(issue, p);
+      return;
+    }
+    if (plan === 'status') {
       if (wantsReassign) toast.info('Bạn không có quyền đổi người phụ trách việc này.');
       if (res.kind === 'blocked') toast.error(blockedMsg);
-      else if (only) runTransition(issue, col, only.id, false, labelFor(only));
-      else if (res.kind === 'move') setPick({ issue, col, options: res.options, version: null });
+      else if (only) void runMove(issue, col, only.id, p, { statusName: labelFor(only) });
+      else if (res.kind === 'move')
+        setPick({ issue, col, options: res.options, version: null, placement: p });
       return;
     }
 
@@ -420,7 +473,7 @@ export function BoardPage() {
     if (res.kind === 'move' && !only) {
       // Đã đổi người; còn phải chọn trạng thái đích.
       toast.success(`Đã cập nhật ${issue.key} · ${who}`, { duration: 3000 });
-      setPick({ issue, col, options: res.options, version });
+      setPick({ issue, col, options: res.options, version, placement: p });
       return;
     }
     if (only && board) {
@@ -439,7 +492,23 @@ export function BoardPage() {
             `Đã giao ${issue.key} cho ${assigneeOptions.find((o) => o.id === targetAssignee)?.name ?? 'người khác'}`,
             { duration: 3000 },
           );
-          onWipBlocked(err, vars, col, issue.key);
+          // "Vẫn chuyển" gửi lại bằng `move` (không mốc ⇒ giữ rank) — tương đương transition.
+          onWipBlocked(
+            err,
+            {
+              route: 'move',
+              id: issue.id,
+              key: issue.key,
+              version,
+              afterId: null,
+              beforeId: null,
+              statusId: only.id,
+              statusName: labelFor(only),
+              boardId: board.id,
+            },
+            col,
+            issue.key,
+          );
         } else {
           toast.error(apiErrorMessage(err));
         }
@@ -498,7 +567,7 @@ export function BoardPage() {
   }
 
   return (
-    <BoardDnd issues={issues} columns={board.columns} onMove={onMove}>
+    <BoardDnd issues={issues} columns={board.columns} onMove={onMove} planOf={planOf}>
       <div className="flex h-full flex-col">
         <TruncatedBanner projectId={project?.id} />
         <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3">
@@ -646,7 +715,7 @@ export function BoardPage() {
         description={`Cột chỉ nên có tối đa ${wipShown?.col.wipLimit ?? ''} việc đang làm cùng lúc. Chuyển ${wipShown?.issueKey ?? 'việc này'} vào sẽ vượt giới hạn đó. Bạn vẫn muốn chuyển?`}
         confirmLabel="Vẫn chuyển"
         cancelLabel="Giữ nguyên"
-        onConfirm={confirmForce}
+        onConfirm={() => void confirmForce()}
         onCancel={() => setWipPrompt(null)}
       />
       {pickShown && (
@@ -659,7 +728,10 @@ export function BoardPage() {
             const p = pickShown;
             setPick(null);
             const latest = (issues ?? []).find((i) => i.id === p.issue.id) ?? p.issue;
-            runTransition(latest, p.col, id, false, name, p.version ?? latest.version);
+            void runMove(latest, p.col, id, p.placement, {
+              statusName: name,
+              version: p.version ?? latest.version,
+            });
           }}
           onCancel={() => setPick(null)}
         />

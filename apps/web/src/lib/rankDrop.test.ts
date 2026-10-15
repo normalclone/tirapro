@@ -163,3 +163,18 @@ describe('hintOf', () => {
     expect(hintOf(null)).toBeNull();
   });
 });
+
+describe('computePlacement — origin khi thẻ không có trong danh sách nguồn', () => {
+  it('không có mốc cũ (không lấy nhầm thẻ đầu danh sách làm beforeId)', () => {
+    const p = computePlacement({
+      activeId: 'z',
+      fromContainer: 'c1',
+      fromItems: ['a', 'b'],
+      toContainer: 'c2',
+      toItems: ['x'],
+      overId: 'x',
+      below: true,
+    });
+    expect(p.origin).toEqual({ afterId: null, beforeId: null });
+  });
+});

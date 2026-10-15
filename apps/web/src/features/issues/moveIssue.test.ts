@@ -75,6 +75,7 @@ describe('moveMutationOptions', () => {
       boardId: 'b1',
       force: true,
     });
+    qc.setQueryData<IssueDto[]>(keys.issues.byProject('p1'), [issue('a'), issue('b')]); // lần trước đã ghi version 4
     await run(vars({ route: 'rank', statusId: 's2', sprintId: 'sp1' }));
     expect(post).toHaveBeenLastCalledWith('/issues/a/rank', {
       version: 3,
@@ -111,5 +112,51 @@ describe('moveMutationOptions', () => {
     await run(vars()).catch(() => undefined);
     expect(qc.getQueryState(keys.issues.byProject('p1'))?.isInvalidated).toBe(true);
     expect(toastInfo).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['403 FORBIDDEN', axiosErr(403, 'FORBIDDEN')],
+    ['422 WIP_LIMIT_REACHED', axiosErr(422, 'WIP_LIMIT_REACHED')],
+    ['lỗi mạng (không có response)', new Error('Network Error')],
+  ])(
+    '%s: rollback rồi nạp lại danh sách + chi tiết (cache không được giữ rank sai)',
+    async (_n, err) => {
+      qc.setQueryData<IssueDto>(keys.issues.byKey('P-a'), issue('a'));
+      post.mockRejectedValue(err);
+      await run(vars({ sprintId: 'sp1' })).catch(() => undefined);
+      expect(listA()).toMatchObject({ version: 3, sprintId: null });
+      expect(qc.getQueryState(keys.issues.byProject('p1'))?.isInvalidated).toBe(true);
+      expect(qc.getQueryState(keys.issues.byKey('P-a'))?.isInvalidated).toBe(true);
+      expect(toastInfo).not.toHaveBeenCalled();
+    },
+  );
+
+  it('version gửi đi lấy từ cache (không phải v.version cũ): Hoàn tác sau khi đã kéo tiếp không VERSION_CONFLICT', async () => {
+    qc.setQueryData<IssueDto[]>(keys.issues.byProject('p1'), [
+      issue('a', { version: 7 }),
+      issue('b'),
+    ]);
+    post.mockResolvedValue({ data: issue('a', { version: 8 }) });
+    await run(vars({ version: 5 })); // version trong toast/closure đã cũ
+    expect(post).toHaveBeenLastCalledWith(
+      '/issues/a/move',
+      expect.objectContaining({ version: 7 }),
+    );
+  });
+
+  it('kéo cùng thẻ lần hai khi lần một chưa trả về: gửi version sau bản vá lạc quan của lần một (= version máy chủ sau lần một)', async () => {
+    let resolveFirst!: (v: unknown) => void;
+    post.mockReturnValueOnce(new Promise((r) => (resolveFirst = r)));
+    post.mockResolvedValueOnce({ data: issue('a', { version: 5 }) });
+    const first = run(vars({ version: 3, afterId: 'b' }));
+    await vi.waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    const second = run(vars({ version: 3, afterId: null, beforeId: 'b' })); // closure cũ: vẫn version 3
+    await vi.waitFor(() => expect(listA().version).toBe(5)); // hai bản vá lạc quan
+    resolveFirst({ data: issue('a', { version: 4 }) });
+    await first;
+    await second;
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post.mock.calls[0]![1]).toMatchObject({ version: 3 });
+    expect(post.mock.calls[1]![1]).toMatchObject({ version: 4 });
   });
 });
