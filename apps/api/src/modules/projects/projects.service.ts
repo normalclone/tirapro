@@ -1,19 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import type { Request } from 'express';
 import { DEFAULT_WORKFLOW_TEMPLATES, SYSTEM_ROLES, type ProjectDto } from '@tirapro/types';
-import type { CreateProjectInput, UpdateProjectInput } from '@tirapro/shared';
+import type {
+  CreateProjectInput,
+  ProjectHealthDto,
+  SetProjectHealthInput,
+  UpdateProjectInput,
+} from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { iso } from '../../common/mappers/date';
 import { assertNotArchived } from '../../common/project-writable';
 import { MediaService } from '../media/media.service';
+import { ProjectHealthService } from '../analytics/project-health.service';
 
 @Injectable()
 export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly media: MediaService,
+    private readonly health: ProjectHealthService,
   ) {}
 
   async create(
@@ -218,6 +225,46 @@ export class ProjectsService {
       throw e;
     }
     return this.getById(workspaceId, projectId);
+  }
+
+  /**
+   * Quản trị dự án đặt sức khoẻ thủ công (ghi đè giá trị tự tính). Đặt mức thì bắt buộc có ghi chú vì người đọc cần
+   * biết lý do PM khác số liệu; `health: null` = bỏ ghi đè và xoá cả ghi chú. Không tự hết hạn — FE hiện "đặt bởi X,
+   * N ngày trước" để người đọc tự đánh giá độ cũ. Dự án lưu trữ là chỉ đọc.
+   */
+  async setHealth(
+    workspaceId: string,
+    projectId: string,
+    userId: string,
+    input: SetProjectHealthInput,
+  ): Promise<ProjectHealthDto> {
+    const cur = await this.requireProject(workspaceId, projectId);
+    assertNotArchived(cur.archivedAt);
+    let data: Prisma.ProjectUncheckedUpdateInput;
+    if (input.health === null) {
+      data = {
+        healthOverride: null,
+        healthNote: null,
+        healthUpdatedAt: null,
+        healthUpdatedById: null,
+      };
+    } else {
+      const note = input.note?.trim();
+      if (!note)
+        throw new BusinessRuleException(
+          'Hãy ghi chú lý do khi đặt sức khoẻ dự án thủ công — người xem cần biết vì sao khác số liệu tự tính',
+        );
+      data = {
+        healthOverride: input.health,
+        healthNote: note,
+        healthUpdatedAt: new Date(),
+        healthUpdatedById: userId,
+      };
+    }
+    await this.prisma.project.update({ where: { id: projectId }, data, select: { id: true } });
+    const dto = (await this.health.forProjects(workspaceId, [projectId])).get(projectId);
+    if (!dto) throw new NotFoundAppException('Dự án');
+    return dto;
   }
 
   /** Lưu trữ dự án: ẩn khỏi danh sách và chuyển sang chỉ đọc. Giữ `isArchived` đồng bộ cho các báo cáo cũ. */

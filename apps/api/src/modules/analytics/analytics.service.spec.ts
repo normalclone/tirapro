@@ -6,6 +6,20 @@ import { AnalyticsService } from './analytics.service';
 const sqlOf = (call: unknown[]) => (call[0] as string[]).join('?');
 const paramsOf = (call: unknown[]) => call.slice(1);
 
+/** ProjectHealthService giả: trả sức khoẻ cố định cho mọi id được hỏi. */
+const HEALTH_DTO = {
+  level: 'YELLOW',
+  auto: { level: 'YELLOW', reasons: ['1/3 việc chưa xong đang quá hạn'] },
+  override: null,
+};
+function healthStub() {
+  return {
+    forProjects: vi.fn((_workspaceId: string, ids: string[]) =>
+      Promise.resolve(new Map(ids.map((id) => [id, HEALTH_DTO]))),
+    ),
+  };
+}
+
 describe('AnalyticsService.projectReport — aggregate SQL', () => {
   const statuses = [
     { id: 's-todo', name: 'To Do', category: 'TODO', order: 0 },
@@ -80,7 +94,14 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
         ),
       },
     };
-    return { service: new AnalyticsService(prisma as never), prisma, groupBy, count };
+    const health = healthStub();
+    return {
+      service: new AnalyticsService(prisma as never, health as never),
+      prisma,
+      groupBy,
+      count,
+      health,
+    };
   }
 
   it('không kéo từng issue: chỉ dùng groupBy/count, không findMany issue', async () => {
@@ -130,6 +151,13 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
       { id: 'u2', name: 'Bình', total: 2, inProgress: 0, done: 2, overdue: 0, points: 5 },
       { id: null, name: 'Chưa gán', total: 3, inProgress: 0, done: 0, overdue: 1, points: 5 },
     ]);
+  });
+
+  it('kèm sức khoẻ dự án (một lần gọi ProjectHealthService cho đúng dự án này)', async () => {
+    const { service, health } = make();
+    const r = await service.projectReport('w1', 'p1');
+    expect(r.health).toEqual(HEALTH_DTO);
+    expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1']);
   });
 
   it('project không thuộc workspace => 404', async () => {
@@ -266,7 +294,13 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
       },
       $queryRaw: queryRaw,
     };
-    return { service: new AnalyticsService(prisma as never), prisma, queryRaw };
+    const health = healthStub();
+    return {
+      service: new AnalyticsService(prisma as never, health as never),
+      prisma,
+      queryRaw,
+      health,
+    };
   }
 
   it('mọi truy vấn issue của tổng quan loại dự án đã xoá mềm; raw SQL có EXISTS Project.deletedAt IS NULL', async () => {
@@ -307,6 +341,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
         overdue: 2,
         bug: 2,
         sprint: { name: 'Sprint 1', daysLeft: 3 },
+        health: HEALTH_DTO,
       },
       {
         id: 'p2',
@@ -319,8 +354,16 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
         overdue: 0,
         bug: 0,
         sprint: null,
+        health: HEALTH_DTO,
       },
     ]);
+  });
+
+  it('sức khoẻ lấy một lô cho các dự án đang hiển thị (không gồm dự án lưu trữ)', async () => {
+    const { service, health } = make();
+    await service.workspaceOverview('w1');
+    expect(health.forProjects).toHaveBeenCalledTimes(1);
+    expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1', 'p2']);
   });
 
   it('byType/byPriority/trend/warnings/attention giữ đúng hình dạng cũ', async () => {
@@ -402,7 +445,7 @@ describe('AnalyticsService.cfd — sự kiện STATUS cuối cùng thắng', () 
       project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
       $queryRaw: queryRaw,
     };
-    return { service: new AnalyticsService(prisma as never), queryRaw };
+    return { service: new AnalyticsService(prisma as never, healthStub() as never), queryRaw };
   }
 
   it('chỉ một câu SQL: window LEAD theo issue, không phụ thuộc oldCategory, tham số bind', async () => {
@@ -488,7 +531,7 @@ describe('AnalyticsService.createdResolved — đếm theo ngày bằng SQL', ()
       project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
       $queryRaw: queryRaw,
     };
-    const service = new AnalyticsService(prisma as never);
+    const service = new AnalyticsService(prisma as never, healthStub() as never);
     const r = await service.createdResolved('w1', 'p1', '2026-10-01', '2026-10-03');
     expect(r.series).toEqual([
       { date: '2026-10-01', created: 2, resolved: 0 },
@@ -544,7 +587,7 @@ function makeBurndown(
     },
     sprintSnapshot: { findMany: vi.fn(() => Promise.resolve(snaps)) },
   };
-  return { service: new AnalyticsService(prisma as never), prisma };
+  return { service: new AnalyticsService(prisma as never, healthStub() as never), prisma };
 }
 
 describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính từ lịch sử', () => {
@@ -847,7 +890,7 @@ describe('AnalyticsService.sprintSummary', () => {
       },
       issue: { findMany: vi.fn((_args: unknown) => Promise.resolve(issues)) },
     };
-    return { service: new AnalyticsService(prisma as never), prisma };
+    return { service: new AnalyticsService(prisma as never, healthStub() as never), prisma };
   }
 
   beforeEach(() => {

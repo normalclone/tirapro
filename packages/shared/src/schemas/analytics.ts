@@ -1,4 +1,21 @@
+import type { ProjectHealth } from '@tirapro/types';
+
 /** DTO báo cáo/analytics (dùng chung BE compute & FE render recharts). */
+
+/** Sức khoẻ dự án. `NONE` = chưa đủ dữ liệu (dự án chưa có công việc nào). */
+export type ProjectHealthLevel = ProjectHealth | 'NONE';
+
+export interface ProjectHealthDto {
+  /** Mức hiển thị = ghi đè nếu có, không thì tự tính. */
+  level: ProjectHealthLevel;
+  auto: { level: ProjectHealthLevel; reasons: string[] };
+  override: {
+    level: ProjectHealth;
+    note: string;
+    updatedAt: string;
+    updatedBy: { id: string; displayName: string } | null;
+  } | null;
+}
 
 export interface BurndownPoint {
   date: string; // YYYY-MM-DD

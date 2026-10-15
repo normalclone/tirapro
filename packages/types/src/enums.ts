@@ -47,6 +47,13 @@ export const DefaultAssigneeMode = {
 } as const;
 export type DefaultAssigneeMode = (typeof DefaultAssigneeMode)[keyof typeof DefaultAssigneeMode];
 
+export const ProjectHealth = {
+  GREEN: 'GREEN',
+  YELLOW: 'YELLOW',
+  RED: 'RED',
+} as const;
+export type ProjectHealth = (typeof ProjectHealth)[keyof typeof ProjectHealth];
+
 export const BoardType = {
   KANBAN: 'KANBAN',
   SCRUM: 'SCRUM',

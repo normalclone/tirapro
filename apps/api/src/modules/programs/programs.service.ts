@@ -7,6 +7,8 @@ import {
   ForbiddenAppException,
   NotFoundAppException,
 } from '../../common/exceptions/app.exception';
+import type { ProjectHealthDto } from '@tirapro/shared';
+import { ProjectHealthService } from '../analytics/project-health.service';
 import type { CreateProgramInput, UpdateProgramInput } from './programs.schemas';
 
 const PROGRAM_SELECT = {
@@ -46,6 +48,8 @@ export interface RollupProject extends RollupStats {
   /** Khoảng thời gian suy ra từ issue: sớm nhất → hạn muộn nhất. */
   startDate: string | null;
   targetDate: string | null;
+  /** Sức khoẻ dự án; null với dự án đã lưu trữ. */
+  health: ProjectHealthDto | null;
 }
 
 export interface RollupGroup extends RollupStats {
@@ -80,7 +84,10 @@ const UNASSIGNED_NAME = 'Chưa thuộc chương trình';
  */
 @Injectable()
 export class ProgramsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly health: ProjectHealthService,
+  ) {}
 
   async list(workspaceId: string) {
     const rows = await this.prisma.program.findMany({
@@ -271,6 +278,11 @@ export class ProgramsService {
     for (const row of overdue) ensure(row.projectId).overdueCount += row._count._all;
 
     const spanOf = new Map(spans.map((r) => [r.projectId, r]));
+    // Sức khoẻ chỉ tính cho dự án đang hoạt động (dự án lưu trữ → null).
+    const healthOf = await this.health.forProjects(
+      workspaceId,
+      projects.filter((p) => !p.isArchived).map((p) => p.id),
+    );
 
     const rollupProjects: RollupProject[] = projects.map((p) => {
       const s = statsOf.get(p.id) ?? { ...EMPTY_STATS };
@@ -283,6 +295,7 @@ export class ProgramsService {
         leadName: p.lead?.displayName ?? null,
         startDate: span?._min.startDate?.toISOString() ?? null,
         targetDate: span?._max.dueDate?.toISOString() ?? null,
+        health: p.isArchived ? null : (healthOf.get(p.id) ?? null),
         ...s,
         progressPct: pct(s.doneCount, s.issueCount),
       };

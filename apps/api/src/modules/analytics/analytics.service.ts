@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { LIVE_PROJECT } from '../../common/live-project';
+import { ProjectHealthService } from './project-health.service';
 
 type Category = 'TODO' | 'IN_PROGRESS' | 'DONE';
 
@@ -32,7 +33,10 @@ interface WeekRow {
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly health: ProjectHealthService,
+  ) {}
 
   // ---------- Tổng quan workspace (mọi dự án — cho admin) ----------
   async workspaceOverview(workspaceId: string) {
@@ -235,6 +239,11 @@ export class AnalyticsService {
       return `${d.getDate()}/${d.getMonth() + 1}`;
     };
 
+    // Sức khoẻ: một lô cho mọi dự án đang hiển thị (danh sách đã là dự án sống, chưa lưu trữ).
+    const healthMap = await this.health.forProjects(
+      workspaceId,
+      projects.map((p) => p.id),
+    );
     const attention = attentionRows(now, keyByProject, { overdueTop, highPriTop, dueSoonTop });
     const { warnings, forecast } = narrate(
       totals,
@@ -251,6 +260,7 @@ export class AnalyticsService {
         name: p.name,
         ...byProject.get(p.id)!,
         sprint: sprintByProject.get(p.id) ?? null,
+        health: healthMap.get(p.id) ?? null,
       })),
       byType: [...typeMap.values()].sort((a, b) => b.count - a.count),
       byPriority: [...prioMap.values()]
@@ -474,9 +484,12 @@ export class AnalyticsService {
       return a.name.localeCompare(b.name);
     });
 
+    const health = (await this.health.forProjects(workspaceId, [projectId])).get(projectId) ?? null;
+
     return {
       totals,
       completionRate,
+      health,
       highPriUnassigned,
       dueSoon,
       // Theo thứ tự cột của workflow cho ổn định (bản cũ không đảm bảo thứ tự).
