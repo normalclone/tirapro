@@ -1,4 +1,5 @@
-import { useRef, useState, type Ref } from 'react';
+import { useCallback, useRef, useState, type Ref } from 'react';
+import { TriangleAlert } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 import {
@@ -7,19 +8,11 @@ import {
   suggestFor,
   tokenSegments,
   unmatchedTokens,
-  type TokenKind,
+  unmatchedHint,
   type ActiveToken,
   type Suggestion,
   type TokenCtx,
 } from './titleTokens';
-
-const UNMATCHED_HINT: Record<TokenKind, string> = {
-  priority: 'gõ ! để chọn mức ưu tiên từ danh sách',
-  assignee: 'gõ @ để chọn người',
-  sprint: 'gõ # để chọn sprint',
-  points: 'điểm là một số, ví dụ ~5',
-  due: 'hạn như mai, t6, 3d, 15/8',
-};
 
 /**
  * Ô tiêu đề "thông minh": gõ token (!ưu-tiên @người #sprint ~điểm ^hạn) →
@@ -59,6 +52,15 @@ export function TokenTitleInput({
   // Đang gõ tiếng Việt qua IME → không quét token / không đụng caret giữa chừng composition.
   const composingRef = useRef(false);
 
+  // Ref ổn định (không gọi lại inputRef(null)/inputRef(el) mỗi lần render).
+  const setRefs = useCallback(
+    (el: HTMLInputElement | null) => {
+      ref.current = el;
+      if (typeof inputRef === 'function') inputRef(el);
+      else if (inputRef) (inputRef as { current: HTMLInputElement | null }).current = el;
+    },
+    [inputRef],
+  );
   // Đã rời ô → token ở đuôi cũng được coi là gõ xong (cảnh báo cả token không khớp ở cuối).
   const [blurred, setBlurred] = useState(false);
   const segments = tokenSegments(value, ctx, { skipTail: !blurred });
@@ -125,7 +127,7 @@ export function TokenTitleInput({
             s.kind === 'unknown' ? (
               <span
                 key={i}
-                className="rounded bg-warning/15 text-warning underline decoration-dotted"
+                className="rounded bg-warning/15 text-warning-ink underline decoration-dotted"
               >
                 {s.text}
               </span>
@@ -139,11 +141,7 @@ export function TokenTitleInput({
           )}
         </div>
         <Input
-          ref={(el) => {
-            ref.current = el;
-            if (typeof inputRef === 'function') inputRef(el);
-            else if (inputRef) (inputRef as { current: HTMLInputElement | null }).current = el;
-          }}
+          ref={setRefs}
           id={id}
           autoFocus={autoFocus}
           value={value}
@@ -257,14 +255,17 @@ export function TokenTitleInput({
       </div>
 
       {warns.length > 0 && (
-        <p role="status" className="mt-1 text-xs text-warning">
-          Chưa nhận ra{' '}
-          {warns.map((w) => (
-            <code key={w.start} className="mx-0.5 rounded bg-surface-2 px-1">
-              {w.text}
-            </code>
-          ))}{' '}
-          — {UNMATCHED_HINT[warns[0]!.kind]}.
+        <p role="status" className="mt-1 flex items-start gap-1.5 text-xs text-warning-ink">
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>
+            Chưa nhận ra{' '}
+            {warns.map((w) => (
+              <code key={w.start} className="mx-0.5 rounded bg-surface-2 px-1">
+                {w.text}
+              </code>
+            ))}{' '}
+            — {unmatchedHint(warns)}.
+          </span>
         </p>
       )}
     </div>

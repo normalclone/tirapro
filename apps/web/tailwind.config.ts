@@ -46,6 +46,7 @@ export default {
         'primary-subtle': token('--primary-subtle'),
         success: token('--success'),
         warning: token('--warning'),
+        'warning-ink': token('--warning-ink'),
         danger: token('--danger'),
         'status-todo': token('--status-todo'),
         'status-progress': token('--status-progress'),

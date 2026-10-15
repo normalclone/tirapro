@@ -6,6 +6,7 @@ import {
   stripPartialTail,
   suggestFor,
   tokenSegments,
+  unmatchedHint,
   unmatchedTokens,
   type TokenCtx,
 } from './titleTokens';
@@ -143,5 +144,42 @@ describe('shouldAcceptSuggestionOnKey', () => {
   it('popup đóng hoặc phím khác => không đụng', () => {
     expect(shouldAcceptSuggestionOnKey(k('Enter'), false)).toBe('none');
     expect(shouldAcceptSuggestionOnKey(k('a'), true)).toBe('none');
+  });
+});
+
+describe('token nhiều từ đang gõ dở không bị báo sai', () => {
+  it.each([
+    'Việc !trung ',
+    'Việc !rất ',
+    'Việc !rat ',
+    'Việc !khẩn ',
+    'Việc !trung bi',
+    'Việc !rất th',
+  ])('%j => không báo', (t) => expect(unmatchedTokens(t, ctx)).toEqual([]));
+  it('người/sprint nhiều từ gõ dở', () => {
+    expect(unmatchedTokens('Việc @Bình (B', ctx)).toEqual([]);
+    expect(unmatchedTokens('Việc @Bình ', ctx)).toEqual([]);
+    expect(unmatchedTokens('Việc #Sprint 3 ', ctx)).toEqual([]);
+  });
+  it('tô sáng cũng không đánh dấu unknown khi đang gõ dở', () => {
+    expect(
+      tokenSegments('Việc !trung ', ctx, { skipTail: false }).some((s) => s.kind === 'unknown'),
+    ).toBe(false);
+  });
+  it('vẫn báo khi sai thật: có chữ khác theo sau, hoặc không phải tiền tố nhiều từ', () => {
+    expect(unmatchedTokens('Việc !trung xyz', ctx).map((t) => t.text)).toEqual(['!trung']);
+    expect(unmatchedTokens('Việc !ca ', ctx).map((t) => t.text)).toEqual(['!ca']);
+    expect(unmatchedTokens('Việc !trungbinhx ', ctx)).toHaveLength(1);
+  });
+});
+
+describe('unmatchedHint', () => {
+  it('liệt kê gợi ý của mọi loại token không khớp, mỗi loại một lần', () => {
+    const u = unmatchedTokens('Việc !xyz ~abc !qq ^zzz', ctx);
+    const h = unmatchedHint(u);
+    expect(h).toContain('mức ưu tiên');
+    expect(h).toContain('~5');
+    expect(h).toContain('mai');
+    expect(h.match(/mức ưu tiên/g)).toHaveLength(1);
   });
 });

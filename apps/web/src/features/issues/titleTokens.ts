@@ -245,6 +245,24 @@ interface TokenSpan {
   kind: TokenKind;
 }
 
+/**
+ * `rest` (toàn bộ phần còn lại sau ký hiệu) là tiền tố của một tên/bí danh NHIỀU TỪ (vd "trung " của "trung bình",
+ * "Bình (B" của "Bình (BA)") → người dùng đang gõ dở, chưa phải token sai.
+ */
+function isPartialPhrase(sym: string, rest: string, ctx: TokenCtx): boolean {
+  const typed = normalize(rest).trimEnd();
+  if (!typed) return false;
+  const names =
+    sym === '!'
+      ? [...ALIAS_LIST.map((a) => a.phrase), ...ctx.priorities.map((p) => normalize(p.name))]
+      : sym === '@'
+        ? ctx.users.map((u) => normalize(u.displayName))
+        : sym === '#'
+          ? ctx.sprints.filter((s) => s.state !== 'CLOSED').map((s) => normalize(s.name))
+          : [];
+  return names.some((n) => n.includes(' ') && n.length > typed.length && n.startsWith(typed));
+}
+
 export interface UnmatchedToken {
   kind: TokenKind;
   text: string;
@@ -287,8 +305,13 @@ function scanTokens(
         continue;
       }
       // Không khớp: ghi lại để UI cảnh báo (tiêu đề vẫn giữ nguyên chữ). `#123` là tham chiếu, không phải sprint.
+      // Đang gõ dở một tên/bí danh nhiều từ ("!trung " → "trung bình") thì chưa báo.
       const w = /^\S+/.exec(text.slice(i + 1));
-      if (w && !(ch === '#' && /^\d+$/.test(w[0]))) {
+      if (
+        w &&
+        !(ch === '#' && /^\d+$/.test(w[0])) &&
+        !isPartialPhrase(ch, text.slice(i + 1), ctx)
+      ) {
         unmatched.push({
           kind: SYM_KIND[ch]!,
           text: text.slice(i, i + 1 + w[0].length),
@@ -320,6 +343,19 @@ export function unmatchedTokens(
 ): UnmatchedToken[] {
   const { unmatched } = scanTokens(text, ctx);
   return opts.skipTail ? unmatched.filter((t) => t.end !== text.length) : unmatched;
+}
+
+const UNMATCHED_HINT: Record<TokenKind, string> = {
+  priority: 'gõ ! để chọn mức ưu tiên từ danh sách',
+  assignee: 'gõ @ để chọn người',
+  sprint: 'gõ # để chọn sprint',
+  points: 'điểm là một số, ví dụ ~5',
+  due: 'hạn như mai, t6, 3d, 15/8',
+};
+
+/** Gợi ý sửa cho MỌI loại token không khớp (mỗi loại một lần, giữ thứ tự xuất hiện). */
+export function unmatchedHint(tokens: { kind: TokenKind }[]): string {
+  return [...new Set(tokens.map((t) => t.kind))].map((k) => UNMATCHED_HINT[k]).join('; ');
 }
 
 /** Bỏ từ cuối nếu nó bắt đầu bằng `! @ # ~ ^` và chuỗi không kết thúc bằng khoảng trắng (token đang gõ dở). */
