@@ -2403,41 +2403,42 @@ describe('IssuesService — ai sửa được công việc thì sửa được �
   });
 });
 
+const rowsAB = () => [issueRow({ id: 'a' }), issueRow({ id: 'b' })];
+const items = [
+  { id: 'a', version: 3 },
+  { id: 'b', version: 3 },
+];
+function b7Tx(extra: Record<string, unknown> = {}) {
+  return {
+    issue: {
+      findMany: vi.fn((_args: unknown) => Promise.resolve(rowsAB())),
+      updateMany: vi.fn((_args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ count: 1 }),
+      ),
+      findFirst: vi.fn(() =>
+        Promise.resolve({
+          projectId: 'p1',
+          epicId: null,
+          type: { key: 'EPIC', hierarchyLevel: 1 },
+          version: 5,
+        }),
+      ),
+      findFirstOrThrow: vi.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve(issueRow({ id: where.id, version: 4, storyPoints: 8, epicId: 'e1' })),
+      ),
+    },
+    issueHistory: { createMany: vi.fn() },
+    issueLabel: { createMany: vi.fn(), deleteMany: vi.fn() },
+    label: { findMany: vi.fn(() => Promise.resolve([{ id: 'l1' }])) },
+    user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) },
+    project: { findUnique: vi.fn(() => Promise.resolve({ defaultWorkflowId: 'wf' })) },
+    ...extra,
+  };
+}
+
 describe('IssuesService.bulkUpdate — storyPoints / epicId / labels (B7)', () => {
-  const rowsAB = () => [issueRow({ id: 'a' }), issueRow({ id: 'b' })];
-  const items = [
-    { id: 'a', version: 3 },
-    { id: 'b', version: 3 },
-  ];
-  function tx(extra: Record<string, unknown> = {}) {
-    return {
-      issue: {
-        findMany: vi.fn((_args: unknown) => Promise.resolve(rowsAB())),
-        updateMany: vi.fn((_args: { data: Record<string, unknown> }) =>
-          Promise.resolve({ count: 1 }),
-        ),
-        findFirst: vi.fn(() =>
-          Promise.resolve({
-            projectId: 'p1',
-            epicId: null,
-            type: { key: 'EPIC', hierarchyLevel: 1 },
-            version: 5,
-          }),
-        ),
-        findFirstOrThrow: vi.fn(({ where }: { where: { id: string } }) =>
-          Promise.resolve(issueRow({ id: where.id, version: 4, storyPoints: 8, epicId: 'e1' })),
-        ),
-      },
-      issueHistory: { createMany: vi.fn() },
-      issueLabel: { createMany: vi.fn(), deleteMany: vi.fn() },
-      label: { findMany: vi.fn(() => Promise.resolve([{ id: 'l1' }])) },
-      user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) },
-      project: { findUnique: vi.fn(() => Promise.resolve({ defaultWorkflowId: 'wf' })) },
-      ...extra,
-    };
-  }
   it('storyPoints cho lô: ghi điểm', async () => {
-    const t = tx();
+    const t = b7Tx();
     const { service } = makeService(t);
     const r = await service.bulkUpdate('w1', 'u2', {
       projectId: 'p1',
@@ -2448,7 +2449,7 @@ describe('IssuesService.bulkUpdate — storyPoints / epicId / labels (B7)', () =
     expect(t.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ storyPoints: 8 });
   });
   it('storyPoints (issue:edit, không phải người tạo): ghi được cho cả lô', async () => {
-    const t = tx();
+    const t = b7Tx();
     const { service, rbac } = makeService(t);
     rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:edit']));
     const r = await service.bulkUpdate('w1', 'u2', {
@@ -2459,7 +2460,7 @@ describe('IssuesService.bulkUpdate — storyPoints / epicId / labels (B7)', () =
     expect(r.updated).toHaveLength(2);
   });
   it('storyPoints với :own: một việc của người khác => 403 cả lô, chưa ghi', async () => {
-    const t = tx(); // rowsAB: reporterId/createdById = u1, assigneeId null
+    const t = b7Tx(); // rowsAB: reporterId/createdById = u1, assigneeId null
     const { service } = makeService(t);
     await expect(
       service.bulkUpdate('w1', 'u2', { projectId: 'p1', items, patch: { storyPoints: 8 } }, true),
@@ -2467,7 +2468,7 @@ describe('IssuesService.bulkUpdate — storyPoints / epicId / labels (B7)', () =
     expect(t.issue.updateMany).not.toHaveBeenCalled();
   });
   it('epicId: epic hợp lệ => ghi cho cả lô; epic nằm trong lô => 422', async () => {
-    const t = tx();
+    const t = b7Tx();
     const { service } = makeService(t);
     await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { epicId: 'e1' } });
     expect(t.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ epicId: 'e1' });
@@ -2476,7 +2477,7 @@ describe('IssuesService.bulkUpdate — storyPoints / epicId / labels (B7)', () =
     ).rejects.toMatchObject({ status: 422 });
   });
   it('labels.add: tạo liên kết cho hàng còn khớp version, bỏ qua trùng; nhãn lạ => 404; phát ISSUE_UPDATED có changedFields labels', async () => {
-    const t = tx();
+    const t = b7Tx();
     const { service, events } = makeService(t);
     await service.bulkUpdate('w1', 'u1', {
       projectId: 'p1',
@@ -2503,10 +2504,13 @@ describe('IssuesService.bulkUpdate — storyPoints / epicId / labels (B7)', () =
       }),
     ).rejects.toMatchObject({ status: 404 });
   });
+});
+
+describe('IssuesService.bulkUpdate — ca biên nhãn/epic/điểm (B7)', () => {
   it('labels.add: hàng lệch version bị loại khỏi createMany và vào conflicts', async () => {
-    const t = tx({
+    const t = b7Tx({
       issue: {
-        ...tx().issue,
+        ...b7Tx().issue,
         findMany: vi.fn((_args: unknown) =>
           Promise.resolve([issueRow({ id: 'a' }), issueRow({ id: 'b', version: 9 })]),
         ),
@@ -2525,7 +2529,7 @@ describe('IssuesService.bulkUpdate — storyPoints / epicId / labels (B7)', () =
     expect(r.conflicts).toEqual([{ id: 'b', version: 9 }]);
   });
   it('labels.remove: gỡ đúng nhãn khỏi các hàng còn khớp version', async () => {
-    const t = tx();
+    const t = b7Tx();
     const { service } = makeService(t);
     await service.bulkUpdate('w1', 'u1', {
       projectId: 'p1',
@@ -2542,9 +2546,9 @@ describe('IssuesService.bulkUpdate — storyPoints / epicId / labels (B7)', () =
       e1: { projectId: 'p1', epicId: 'e2', type: { key: 'EPIC', hierarchyLevel: 1 } },
       e2: { projectId: 'p1', epicId: 'a', type: { key: 'EPIC', hierarchyLevel: 1 } },
     };
-    const t = tx({
+    const t = b7Tx({
       issue: {
-        ...tx().issue,
+        ...b7Tx().issue,
         findFirst: vi.fn(({ where }: { where: { id: string } }) =>
           Promise.resolve(chain[where.id] ?? null),
         ),
@@ -2557,9 +2561,9 @@ describe('IssuesService.bulkUpdate — storyPoints / epicId / labels (B7)', () =
     expect(t.issue.updateMany).not.toHaveBeenCalled();
   });
   it('storyPoints: null xoá điểm', async () => {
-    const t = tx({
+    const t = b7Tx({
       issue: {
-        ...tx().issue,
+        ...b7Tx().issue,
         findMany: vi.fn((_args: unknown) =>
           Promise.resolve([
             issueRow({ id: 'a', storyPoints: 5 }),
@@ -2573,12 +2577,12 @@ describe('IssuesService.bulkUpdate — storyPoints / epicId / labels (B7)', () =
     expect(t.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ storyPoints: null });
   });
   it('đọc lại nhãn SAU commit lỗi => vẫn trả thành công (dữ liệu đã ghi), không văng lỗi', async () => {
-    const base = tx();
+    const base = b7Tx();
     const findMany = vi
       .fn()
       .mockResolvedValueOnce(rowsAB())
       .mockRejectedValueOnce(new Error('db down'));
-    const t = tx({ issue: { ...base.issue, findMany } });
+    const t = b7Tx({ issue: { ...base.issue, findMany } });
     const { service } = makeService(t);
     const r = await service.bulkUpdate('w1', 'u1', {
       projectId: 'p1',
