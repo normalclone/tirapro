@@ -100,8 +100,9 @@ export class IssuesController {
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(transitionIssueSchema)) dto: TransitionIssueInput,
+    @OwnOnly(PERMISSIONS.ISSUE_TRANSITION) ownOnly: boolean,
   ) {
-    return this.issues.transition(workspaceId, user.id, id, dto);
+    return this.issues.transition(workspaceId, user.id, id, dto, undefined, ownOnly);
   }
 
   @Permissions(PERMISSIONS.ISSUE_TRANSITION)
@@ -112,8 +113,9 @@ export class IssuesController {
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(moveIssueSchema)) dto: MoveIssueInput,
+    @OwnOnly(PERMISSIONS.ISSUE_TRANSITION) ownOnly: boolean,
   ) {
-    return this.issues.move(workspaceId, user.id, id, dto);
+    return this.issues.move(workspaceId, user.id, id, dto, ownOnly);
   }
 
   @Permissions(PERMISSIONS.ISSUE_DELETE)

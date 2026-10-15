@@ -23,6 +23,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
 import { iso } from '../../common/mappers/date';
+import { assertIssueOwner } from '../rbac/issue-ownership.service';
 import { RbacService } from '../rbac/rbac.service';
 import {
   AppException,
@@ -134,27 +135,26 @@ export class IssuesService {
     userId: string,
     issue: { reporterId: string | null; assigneeId: string | null; createdById: string | null },
   ): void {
-    if (issue.reporterId === userId || issue.assigneeId === userId || issue.createdById === userId)
-      return;
-    throw new ForbiddenAppException(
-      'Bạn chỉ được sửa công việc do mình tạo, báo cáo hoặc được giao — hãy nhờ người phụ trách hoặc quản trị viên dự án',
-    );
+    assertIssueOwner(userId, issue);
   }
 
-  /** Cùng quy ước với PermissionsGuard: system admin, hoặc có `issue:transition` / `issue:transition:own`. */
+  /**
+   * Cùng quy ước với PermissionsGuard: có `issue:transition` hoặc system admin → `ownOnly:false`;
+   * chỉ có `issue:transition:own` → `ownOnly:true` (người gọi phải kiểm sở hữu từng issue); còn lại 403.
+   */
   private async assertCanTransition(
     userId: string,
     workspaceId: string,
     projectId: string,
-  ): Promise<void> {
+  ): Promise<{ ownOnly: boolean }> {
     const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
-    if (perms.has(PERMISSIONS.ISSUE_TRANSITION) || perms.has(`${PERMISSIONS.ISSUE_TRANSITION}:own`))
-      return;
+    if (perms.has(PERMISSIONS.ISSUE_TRANSITION)) return { ownOnly: false };
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { isSystemAdmin: true },
     });
-    if (u?.isSystemAdmin) return;
+    if (u?.isSystemAdmin) return { ownOnly: false };
+    if (perms.has(`${PERMISSIONS.ISSUE_TRANSITION}:own`)) return { ownOnly: true };
     throw new ForbiddenAppException(
       'Bạn không có quyền chuyển trạng thái công việc — hãy bỏ phần đổi trạng thái hoặc nhờ quản trị cấp quyền',
     );
@@ -576,7 +576,9 @@ export class IssuesService {
   ): Promise<BulkUpdateIssuesResult> {
     const { projectId, items, patch } = input;
     // Đổi trạng thái chỉ đi qua quyền chuyển trạng thái (giống POST :id/transition), không đi chung quyền sửa.
-    if (patch.statusId) await this.assertCanTransition(userId, workspaceId, projectId);
+    let transitionOwnOnly = false;
+    if (patch.statusId)
+      transitionOwnOnly = (await this.assertCanTransition(userId, workspaceId, projectId)).ownOnly;
     await assertProjectWritable(this.prisma, projectId);
     const rows = await this.prisma.issue.findMany({
       where: { id: { in: items.map((i) => i.id) }, workspaceId, projectId, deletedAt: null },
@@ -584,7 +586,7 @@ export class IssuesService {
     });
     if (rows.length !== items.length) throw new NotFoundAppException('Công việc');
     const byId = new Map(rows.map((r) => [r.id, r]));
-    if (ownOnly) for (const r of rows) this.assertOwnsIssue(userId, r); // một việc của người khác → 403 cả lô, chưa ghi gì
+    if (ownOnly || transitionOwnOnly) for (const r of rows) this.assertOwnsIssue(userId, r); // một việc của người khác → 403 cả lô, chưa ghi gì
     await this.assertMetaInWorkspace(workspaceId, {
       priorityId: patch.priorityId,
       sprintId: patch.sprintId,
@@ -687,8 +689,10 @@ export class IssuesService {
     id: string,
     input: TransitionIssueInput,
     opts?: AutomationEventMeta,
+    ownOnly?: boolean,
   ): Promise<IssueDto> {
     const current = await this.requireIssue(workspaceId, id);
+    if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, { resolutionId: input.resolutionId });
     if (current.statusId === input.toStatusId) return this.toDto(current);
@@ -738,8 +742,10 @@ export class IssuesService {
     userId: string,
     id: string,
     input: MoveIssueInput,
+    ownOnly?: boolean,
   ): Promise<IssueDto> {
     const current = await this.requireIssue(workspaceId, id);
+    if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, { sprintId: input.sprintId });
 

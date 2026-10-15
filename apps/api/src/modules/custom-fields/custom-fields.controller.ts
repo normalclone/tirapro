@@ -8,6 +8,10 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CustomFieldsService } from './custom-fields.service';
+import { IssueOwnershipService } from '../rbac/issue-ownership.service';
+import { OwnOnly } from '../../common/decorators/own-only.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/types/request';
 
 /** Body tạo custom field. SELECT/MULTI_SELECT có thể kèm options. */
 export const createCustomFieldSchema = z.object({
@@ -38,7 +42,10 @@ export const setCustomFieldValueSchema = z.object({ value: z.unknown() });
 @ApiTags('custom-fields')
 @Controller()
 export class CustomFieldsController {
-  constructor(private readonly customFields: CustomFieldsService) {}
+  constructor(
+    private readonly customFields: CustomFieldsService,
+    private readonly ownership: IssueOwnershipService,
+  ) {}
 
   // ============================ DEFINITIONS ============================
 
@@ -90,10 +97,13 @@ export class CustomFieldsController {
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   async setIssueValue(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Param('fieldId') fieldId: string,
     @Body(new ZodValidationPipe(setCustomFieldValueSchema)) body: { value: unknown },
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
     return this.customFields.setIssueValue(workspaceId, issueId, fieldId, body.value);
   }
 }

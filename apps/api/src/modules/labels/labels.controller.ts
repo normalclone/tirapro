@@ -7,6 +7,10 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { LabelsService } from './labels.service';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PERMISSIONS } from '@tirapro/types';
+import { IssueOwnershipService } from '../rbac/issue-ownership.service';
+import { OwnOnly } from '../../common/decorators/own-only.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/types/request';
 
 const hexColor = z
   .string()
@@ -45,7 +49,10 @@ type AttachLabelDto = z.infer<typeof attachLabelSchema>;
 @ApiTags('labels')
 @Controller()
 export class LabelsController {
-  constructor(private readonly labels: LabelsService) {}
+  constructor(
+    private readonly labels: LabelsService,
+    private readonly ownership: IssueOwnershipService,
+  ) {}
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('param', 'projectId')
@@ -88,9 +95,12 @@ export class LabelsController {
   @Post('issues/:issueId/labels')
   async attach(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(attachLabelSchema)) dto: AttachLabelDto,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
     return this.labels.attach(workspaceId, issueId, dto.labelId);
   }
 
@@ -99,9 +109,12 @@ export class LabelsController {
   @Delete('issues/:issueId/labels/:labelId')
   async detach(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Param('labelId') labelId: string,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
     return this.labels.detach(workspaceId, issueId, labelId);
   }
 }
