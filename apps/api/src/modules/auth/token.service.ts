@@ -11,6 +11,8 @@ export interface AccessTokenPayload {
   email: string;
   workspaceId: string | null;
   jti: string;
+  /** Thời điểm cấp (giây, do jsonwebtoken tự thêm) — so với `User.sessionsRevokedAt`. */
+  iat?: number;
 }
 
 export interface RefreshMeta {

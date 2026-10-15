@@ -72,6 +72,13 @@ export function useChangePassword() {
   });
 }
 
+/** Đăng xuất mọi thiết bị của chính mình (kể cả thiết bị này). Gọi xong phải `useAuth.getState().logout()`. */
+export function useLogoutAll() {
+  return useMutation({
+    mutationFn: async () => (await api.post<{ success: boolean }>('/auth/logout-all')).data,
+  });
+}
+
 /** Refresh user ở mọi nơi (header, danh sách thành viên, avatar trên issue). */
 function refreshUserEverywhere(bootstrap: () => Promise<void>) {
   void queryClient.invalidateQueries({ queryKey: keys.me });

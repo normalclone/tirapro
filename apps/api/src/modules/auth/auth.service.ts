@@ -10,6 +10,9 @@ import { WorkspaceBootstrapService } from '../workspaces/workspace-bootstrap.ser
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { TokenService, type RefreshMeta } from './token.service';
 
+/** Giãn cách tối thiểu giữa hai lần ghi `lastSeenAt` khi refresh. */
+const LAST_SEEN_THROTTLE_MS = 10 * 60_000;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -101,6 +104,23 @@ export class AuthService {
   async refresh(refreshToken: string, meta: RefreshMeta, preferredWorkspaceId?: string | null) {
     const { userId, newToken } = await this.tokens.rotateRefresh(refreshToken, meta);
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (user.status === 'DEACTIVATED') {
+      // Bảo hiểm: lúc khoá đã thu hồi hết, nhưng token cấp lại muộn hơn (race) cũng không được sống tiếp.
+      await this.prisma.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Tài khoản đã bị vô hiệu hoá',
+      });
+    }
+    // "Hoạt động gần nhất": refresh xảy ra ≈ mỗi 15 phút khi đang dùng → cập nhật có giãn cách, không ghi DB mỗi request.
+    if (!user.lastSeenAt || Date.now() - user.lastSeenAt.getTime() > LAST_SEEN_THROTTLE_MS) {
+      void this.prisma.user
+        .update({ where: { id: userId }, data: { lastSeenAt: new Date() } })
+        .catch(() => undefined);
+    }
     let workspaceId: string | null = null;
     if (preferredWorkspaceId) {
       const kept = await this.prisma.workspaceMembership.findUnique({
@@ -123,6 +143,19 @@ export class AuthService {
 
   async logout(refreshToken?: string) {
     if (refreshToken) await this.tokens.revokeFamilyByToken(refreshToken);
+    return { success: true };
+  }
+
+  /** Đăng xuất mọi thiết bị: thu hồi mọi refresh token + access token cấp trước thời điểm này. */
+  async logoutAll(userId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      await tx.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      await tx.user.update({ where: { id: userId }, data: { sessionsRevokedAt: now } });
+    });
     return { success: true };
   }
 

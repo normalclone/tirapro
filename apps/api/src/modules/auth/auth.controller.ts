@@ -54,6 +54,17 @@ export class AuthController {
     });
   }
 
+  /** Xoá cookie phải khớp thuộc tính lúc set (secure/sameSite) thì trình duyệt mới chấp nhận. */
+  private clearRefreshCookie(res: Response) {
+    const isProd = !!this.config.get<boolean>('isProd');
+    res.clearCookie(REFRESH_COOKIE, {
+      path: '/',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      httpOnly: true,
+    });
+  }
+
   @Public()
   @Post('register')
   async register(
@@ -105,15 +116,19 @@ export class AuthController {
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(req.cookies?.[REFRESH_COOKIE] as string);
-    // Xoá cookie phải khớp thuộc tính lúc set (secure/sameSite) thì trình duyệt mới chấp nhận.
-    const isProd = !!this.config.get<boolean>('isProd');
-    res.clearCookie(REFRESH_COOKIE, {
-      path: '/',
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      httpOnly: true,
-    });
+    this.clearRefreshCookie(res);
     return { success: true };
+  }
+
+  /** Đăng xuất mọi thiết bị của chính mình (kể cả thiết bị này). */
+  // Chỉ tác động lên tài khoản của chính người gọi (user.id từ token), không nhận id từ client.
+  @AuthOnly()
+  @HttpCode(200)
+  @Post('logout-all')
+  async logoutAll(@CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response) {
+    const out = await this.auth.logoutAll(user.id);
+    this.clearRefreshCookie(res);
+    return out;
   }
 
   // Tài khoản & danh sách workspace của chính người dùng; switchWorkspace tự kiểm tra thành viên trong service.

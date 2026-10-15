@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Check, Copy, Plus, ShieldCheck } from 'lucide-react';
+import { Check, Copy, Plus, Search, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/stores/auth';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -12,8 +12,17 @@ import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
+import { fmtRelative } from '@/lib/dateFormat';
 import { passwordPolicyError } from '@/features/members/passwordPolicy';
+import { AccountActionsMenu } from './AccountActionsMenu';
+import { filterAccounts, type AccountStatusFilter } from './accountFilter';
 import { useAdminUsers, useCreateAdminUser, useUpdateAdminUser, type AdminUser } from './api';
+
+const STATUS_FILTERS: { label: string; value: AccountStatusFilter | undefined }[] = [
+  { label: 'Tất cả', value: undefined },
+  { label: 'Đang hoạt động', value: 'ACTIVE' },
+  { label: 'Đã vô hiệu hoá', value: 'DEACTIVATED' },
+];
 
 /** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập không gian làm việc. */
 export function AdminUsersPage() {
@@ -23,6 +32,19 @@ export function AdminUsersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   // Hộp thoại luôn mount để có hiệu ứng đóng; mỗi lần mở là một `session` mới → form + mật khẩu tạm khởi tạo lại.
   const [session, setSession] = useState(0);
+  // Ô tìm: gõ tới đâu lọc tới đó nhưng trễ 250 ms để danh sách dài không giật; lọc client vì danh sách không phân trang.
+  const [searchInput, setSearchInput] = useState('');
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(searchInput), 250);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+  const search = useDeferredValue(debounced);
+  const [status, setStatus] = useState<AccountStatusFilter | undefined>(undefined);
+  const visible = useMemo(
+    () => filterAccounts(users ?? [], { search, status }),
+    [users, search, status],
+  );
 
   if (me && !me.isSystemAdmin) return <Navigate to="/" replace />;
 
@@ -67,38 +89,85 @@ export function AdminUsersPage() {
       ) : !users || users.length === 0 ? (
         <EmptyState title="Chưa có tài khoản" description="Tạo tài khoản đầu tiên cho hệ thống." />
       ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
-          {users.map((u) => (
-            <li key={u.id} className="flex items-center gap-3 px-4 py-3">
-              <Avatar name={u.displayName} src={u.avatarUrl} size={36} />
-              <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-2 truncate text-sm font-medium text-ink">
-                  {u.displayName}
-                  {u.isSystemAdmin && (
-                    <Badge className="bg-primary-subtle text-primary">Admin hệ thống</Badge>
-                  )}
-                </p>
-                <p className="truncate text-xs text-faint">
-                  {u.email} · {u.workspaceCount} không gian làm việc
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-4">
-                <Toggle
-                  label="Được lập không gian làm việc"
-                  on={u.canCreateWorkspace}
-                  disabled={update.isPending}
-                  onChange={() => toggle(u, 'canCreateWorkspace')}
-                />
-                <Toggle
-                  label="Admin HT"
-                  on={u.isSystemAdmin}
-                  disabled={update.isPending || u.id === me?.id}
-                  onChange={() => toggle(u, 'isSystemAdmin')}
-                />
-              </div>
-            </li>
-          ))}
-        </ul>
+        <>
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <div className="relative min-w-52 flex-1">
+              <Search
+                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
+                aria-hidden
+              />
+              <Input
+                type="search"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Tìm theo tên hoặc email…"
+                aria-label="Tìm tài khoản"
+                className="pl-8"
+              />
+            </div>
+            <div role="group" aria-label="Lọc theo trạng thái" className="flex gap-1">
+              {STATUS_FILTERS.map((f) => (
+                <Button
+                  key={f.label}
+                  size="sm"
+                  variant={status === f.value ? 'secondary' : 'ghost'}
+                  aria-pressed={status === f.value}
+                  onClick={() => setStatus(f.value)}
+                >
+                  {f.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          {visible.length === 0 ? (
+            <EmptyState
+              title="Không có tài khoản phù hợp"
+              description="Thử gõ ít chữ hơn hoặc chọn “Tất cả”."
+            />
+          ) : (
+            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+              {visible.map((u) => (
+                <li key={u.id} className="flex items-center gap-3 px-4 py-3">
+                  <Avatar name={u.displayName} src={u.avatarUrl} size={36} />
+                  <div className={cn('min-w-0 flex-1', u.status === 'DEACTIVATED' && 'opacity-60')}>
+                    <p className="flex items-center gap-2 truncate text-sm font-medium text-ink">
+                      {u.displayName}
+                      {u.isSystemAdmin && (
+                        <Badge className="bg-primary-subtle text-primary">Admin hệ thống</Badge>
+                      )}
+                      {u.status === 'DEACTIVATED' && (
+                        <Badge className="bg-surface-2 text-muted">Đã vô hiệu hoá</Badge>
+                      )}
+                    </p>
+                    <p className="truncate text-xs text-faint">
+                      {u.email} · {u.workspaceCount} không gian làm việc
+                    </p>
+                    <p className="truncate text-xs text-faint">
+                      {u.lastSeenAt
+                        ? `Hoạt động gần nhất: ${fmtRelative(u.lastSeenAt)}`
+                        : 'Chưa từng đăng nhập'}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-4">
+                    <Toggle
+                      label="Được lập không gian làm việc"
+                      on={u.canCreateWorkspace}
+                      disabled={update.isPending}
+                      onChange={() => toggle(u, 'canCreateWorkspace')}
+                    />
+                    <Toggle
+                      label="Admin HT"
+                      on={u.isSystemAdmin}
+                      disabled={update.isPending || u.id === me?.id}
+                      onChange={() => toggle(u, 'isSystemAdmin')}
+                    />
+                  </div>
+                  {u.id !== me?.id && <AccountActionsMenu user={u} />}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
 
       <CreateUserModal key={session} open={createOpen} onClose={() => setCreateOpen(false)} />

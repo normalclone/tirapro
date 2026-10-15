@@ -17,5 +17,11 @@ export const updateUserSchema = z.object({
   status: z.enum(['ACTIVE', 'DEACTIVATED']).optional(),
 });
 
+export const listUsersQuerySchema = z.object({
+  search: z.string().trim().max(100).optional(),
+  status: z.enum(['ACTIVE', 'DEACTIVATED']).optional(),
+});
+
+export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;

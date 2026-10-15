@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { AUDIT_ACTIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -6,7 +7,8 @@ import { BusinessRuleException, NotFoundAppException } from '../../common/except
 import { offsetPage } from '../../common/dto/page-result';
 import { generateTempPassword } from '../../common/password';
 import { AuditService } from '../audit/audit.service';
-import type { CreateUserInput, UpdateUserInput } from './admin.schemas';
+import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
+import type { CreateUserInput, ListUsersQuery, UpdateUserInput } from './admin.schemas';
 
 const USER_SELECT = {
   id: true,
@@ -57,9 +59,21 @@ export class AdminService {
     };
   }
 
-  async list() {
+  async list(query: ListUsersQuery = {}) {
+    const and: Prisma.UserWhereInput[] = [];
+    if (query.status) and.push({ status: query.status });
+    if (query.search) {
+      and.push({
+        OR: [
+          { displayName: { contains: query.search, mode: 'insensitive' } },
+          { email: { contains: query.search, mode: 'insensitive' } },
+        ],
+      });
+    }
     const rows = await this.prisma.user.findMany({
-      orderBy: { createdAt: 'asc' },
+      where: and.length ? { AND: and } : undefined,
+      // Người hoạt động gần đây lên đầu; người chưa từng đăng nhập xuống cuối (theo ngày tạo).
+      orderBy: [{ lastSeenAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'asc' }],
       select: USER_SELECT,
     });
     const data = rows.map((r) => this.toDto(r as Row));
@@ -115,28 +129,19 @@ export class AdminService {
       },
     });
     if (!found) throw new NotFoundAppException('Người dùng');
+    // Khoá / mở khoá có tác dụng phụ (thu hồi phiên) và có thể bị từ chối → làm TRƯỚC, các trường còn lại sau.
+    if (input.status && input.status !== found.status) {
+      await this.setStatus(actorId, id, input.status);
+    }
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
         displayName: input.displayName,
         isSystemAdmin: input.isSystemAdmin,
         canCreateWorkspace: input.canCreateWorkspace,
-        status: input.status as never,
       },
       select: USER_SELECT,
     });
-    // Khoá / mở khoá tài khoản là thao tác quản trị toàn hệ thống → workspaceId null (xem ở /admin/system).
-    if (input.status && input.status !== found.status) {
-      const deactivated = input.status === 'DEACTIVATED';
-      await this.audit.record({
-        actorId,
-        action: deactivated ? AUDIT_ACTIONS.ACCOUNT_DEACTIVATED : AUDIT_ACTIONS.ACCOUNT_REACTIVATED,
-        entityType: 'user',
-        entityId: id,
-        summary: `${deactivated ? 'Khoá' : 'Mở khoá'} tài khoản ${found.displayName} (${found.email})`,
-        meta: { from: found.status, to: input.status },
-      });
-    }
     // Đổi quyền hệ thống (admin hệ thống / được lập workspace) — thao tác quản trị giá trị cao nhất.
     const permChanges: string[] = [];
     if (input.isSystemAdmin !== undefined && input.isSystemAdmin !== found.isSystemAdmin) {
@@ -168,5 +173,119 @@ export class AdminService {
       });
     }
     return this.toDto(updated);
+  }
+
+  /**
+   * Khoá / mở khoá tài khoản. Khoá = cùng một transaction: đổi status, đặt mốc `sessionsRevokedAt`
+   * (access token còn hạn bị JwtStrategy từ chối ngay) và thu hồi mọi refresh token. Lịch sử công việc giữ nguyên.
+   */
+  async setStatus(actorId: string | undefined, id: string, status: 'ACTIVE' | 'DEACTIVATED') {
+    const found = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, displayName: true, status: true, isSystemAdmin: true },
+    });
+    if (!found) throw new NotFoundAppException('Người dùng');
+    if (found.status === status) return;
+    const deactivate = status === 'DEACTIVATED';
+    if (deactivate) {
+      if (id === actorId) throw new BusinessRuleException('Bạn không thể vô hiệu hoá chính mình');
+      if (found.email === SYSTEM_USER_EMAIL) {
+        throw new BusinessRuleException('Không thể vô hiệu hoá tài khoản hệ thống của tự động hoá');
+      }
+      if (found.isSystemAdmin) {
+        const activeAdmins = await this.prisma.user.count({
+          where: { isSystemAdmin: true, status: 'ACTIVE' },
+        });
+        if (activeAdmins <= 1) {
+          throw new BusinessRuleException('Không thể vô hiệu hoá admin hệ thống cuối cùng');
+        }
+      }
+    }
+    await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      await tx.user.update({
+        where: { id },
+        data: deactivate ? { status, sessionsRevokedAt: now } : { status },
+      });
+      if (deactivate) {
+        await tx.refreshToken.updateMany({
+          where: { userId: id, revokedAt: null },
+          data: { revokedAt: now },
+        });
+      }
+    });
+    // Thao tác quản trị toàn hệ thống → workspaceId null (xem ở /admin/system).
+    await this.audit.record({
+      actorId,
+      workspaceId: null,
+      action: deactivate ? AUDIT_ACTIONS.ACCOUNT_DEACTIVATED : AUDIT_ACTIONS.ACCOUNT_REACTIVATED,
+      entityType: 'user',
+      entityId: id,
+      summary: `${deactivate ? 'Khoá' : 'Mở khoá'} tài khoản ${found.displayName} (${found.email})`,
+      meta: { from: found.status, to: status },
+    });
+  }
+
+  /** Đặt mật khẩu tạm (hiện một lần cho admin) và đăng xuất mọi thiết bị của người đó. */
+  async resetPassword(actorId: string | undefined, id: string) {
+    const found = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, displayName: true, passwordHash: true },
+    });
+    if (!found) throw new NotFoundAppException('Người dùng');
+    if (id === actorId) {
+      throw new BusinessRuleException('Hãy đổi mật khẩu của chính bạn ở trang Tài khoản');
+    }
+    if (found.email === SYSTEM_USER_EMAIL || !found.passwordHash) {
+      throw new BusinessRuleException('Tài khoản này không đăng nhập bằng mật khẩu');
+    }
+    const tempPassword = generateTempPassword();
+    // Băm ngoài transaction để không giữ kết nối DB trong lúc argon2 chạy.
+    const passwordHash = await argon2.hash(tempPassword);
+    await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      await tx.user.update({ where: { id }, data: { passwordHash, sessionsRevokedAt: now } });
+      await tx.refreshToken.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: now },
+      });
+    });
+    await this.audit.record({
+      actorId,
+      workspaceId: null,
+      action: AUDIT_ACTIONS.ACCOUNT_PASSWORD_RESET,
+      entityType: 'user',
+      entityId: id,
+      summary: `Đặt lại mật khẩu của ${found.displayName} (${found.email})`,
+    });
+    return { tempPassword };
+  }
+
+  /** Đăng xuất mọi thiết bị của một tài khoản (không đổi mật khẩu, không khoá). */
+  async revokeSessions(actorId: string | undefined, id: string) {
+    const found = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, displayName: true },
+    });
+    if (!found) throw new NotFoundAppException('Người dùng');
+    const revoked = await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      await tx.user.update({ where: { id }, data: { sessionsRevokedAt: now } });
+      const res = await tx.refreshToken.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      return res.count;
+    });
+    await this.audit.record({
+      actorId,
+      workspaceId: null,
+      action: AUDIT_ACTIONS.ACCOUNT_SESSIONS_REVOKED,
+      entityType: 'user',
+      entityId: id,
+      summary: `Đăng xuất mọi thiết bị của ${found.displayName} (${found.email})`,
+      meta: { revoked },
+    });
+    return { revoked };
   }
 }

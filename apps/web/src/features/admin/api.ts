@@ -63,6 +63,24 @@ export function useUpdateAdminUser() {
   });
 }
 
+/** Đặt lại mật khẩu: trả mật khẩu tạm "chỉ hiện một lần" → không giữ trong MutationCache. */
+export function useResetAdminPassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    gcTime: 0,
+    mutationFn: async (id: string) =>
+      (await api.post<{ tempPassword: string }>(`/admin/users/${id}/reset-password`)).data,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.admin.users }),
+  });
+}
+
+export function useRevokeAdminSessions() {
+  return useMutation({
+    mutationFn: async (id: string) =>
+      (await api.post<{ revoked: number }>(`/admin/users/${id}/revoke-sessions`)).data,
+  });
+}
+
 /* ============================ ADMIN CONSOLE ============================ */
 
 export interface AdminOverview {
