@@ -16,6 +16,47 @@ export class TelegramUnreachableError extends Error {
   }
 }
 
+/** getUpdates trả 409: bot đang gắn webhook nên không đọc được tin nhắn bằng getUpdates. */
+export class TelegramWebhookConflictError extends Error {
+  constructor() {
+    super('Bot đang gắn webhook');
+    this.name = 'TelegramWebhookConflictError';
+  }
+}
+
+/** Telegram từ chối token (401/404) khi đang dùng. */
+export class TelegramTokenRejectedError extends Error {
+  constructor() {
+    super('Telegram từ chối token bot');
+    this.name = 'TelegramTokenRejectedError';
+  }
+}
+
+/** Một bản tin văn bản trong chat (đã rút gọn từ Update.message). */
+export interface TelegramMessageUpdate {
+  chatId: number;
+  chatType: string;
+  chatTitle?: string;
+  firstName?: string;
+  text: string;
+  /** Unix giây. */
+  date: number;
+}
+
+const LINK_COMMAND_RE = /^\/link(?:@(\w+))?\s+([A-Z0-9]{6})\b/i;
+
+/**
+ * Tách mã liên kết từ `/link@TenBot MÃ` hoặc `/link MÃ` (mã chuẩn hoá chữ hoa); lệnh khác → null.
+ * Truyền `botUsername` để bỏ qua lệnh gọi đích danh BOT KHÁC trong nhóm có nhiều bot.
+ */
+export function parseLinkCommand(text: string, botUsername?: string | null): string | null {
+  const m = LINK_COMMAND_RE.exec(text.trim());
+  if (!m) return null;
+  const target = m[1];
+  if (target && botUsername && target.toLowerCase() !== botUsername.toLowerCase()) return null;
+  return m[2]!.toUpperCase();
+}
+
 export interface TelegramBotInfo {
   id: number;
   username: string;
@@ -89,6 +130,53 @@ export class TelegramService {
       if (err instanceof TelegramError && (err.code === 401 || err.code === 404)) return null;
       if (err instanceof TelegramUnreachableError) throw err;
       this.logger.warn('Không gọi được getMe tới Telegram (lỗi mạng hoặc phản hồi bất thường)');
+      throw new TelegramUnreachableError();
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * 100 bản tin mới nhất bot nhận được, đọc THEO YÊU CẦU (không polling nền): getUpdates với
+   * offset âm, timeout 0 (token null → bot chung). Offset âm không xác nhận update gần đây nên các lần đọc sau vẫn thấy lại;
+   * Telegram chỉ quên những update cũ hơn 100 bản mới nhất. Ném TelegramWebhookConflictError (409),
+   * TelegramTokenRejectedError (401/404) hoặc TelegramUnreachableError (mạng/timeout/khác).
+   */
+  async recentUpdates(token: string | null): Promise<TelegramMessageUpdate[]> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const resolved = token || this.globalBotToken;
+      if (!resolved) throw new TelegramTokenRejectedError();
+      const bot = new Telegraf(resolved);
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new TelegramUnreachableError()), GET_ME_TIMEOUT_MS);
+      });
+      const updates = await Promise.race([
+        bot.telegram.getUpdates(0, 100, -100, ['message']),
+        timeout,
+      ]);
+      const out: TelegramMessageUpdate[] = [];
+      for (const u of updates) {
+        if (!('message' in u)) continue;
+        const m = u.message;
+        if (!m || !('text' in m) || typeof m.text !== 'string') continue;
+        out.push({
+          chatId: m.chat.id,
+          chatType: m.chat.type,
+          chatTitle: 'title' in m.chat ? m.chat.title : undefined,
+          firstName: 'first_name' in m.chat ? m.chat.first_name : undefined,
+          text: m.text,
+          date: m.date,
+        });
+      }
+      return out;
+    } catch (err) {
+      if (err instanceof TelegramError) {
+        if (err.code === 409) throw new TelegramWebhookConflictError();
+        if (err.code === 401 || err.code === 404) throw new TelegramTokenRejectedError();
+      }
+      if (err instanceof TelegramUnreachableError) throw err;
+      this.logger.warn('Không đọc được tin nhắn từ Telegram (lỗi mạng hoặc phản hồi bất thường)');
       throw new TelegramUnreachableError();
     } finally {
       if (timer) clearTimeout(timer);

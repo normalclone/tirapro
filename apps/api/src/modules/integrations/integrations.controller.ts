@@ -9,6 +9,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { IntegrationsService } from './integrations.service';
+import { LinkCodesService } from './link-codes.service';
 
 /** Body tạo integration Telegram. */
 export const createTelegramSchema = z.object({
@@ -26,10 +27,17 @@ export const addChannelSchema = z.object({
 });
 export type AddChannelBody = z.infer<typeof addChannelSchema>;
 
+/** Body tạo mã liên kết (projectId: kênh chỉ nhận thông báo của dự án đó). */
+export const createLinkCodeSchema = z.object({ projectId: z.string().min(1).optional() });
+export type CreateLinkCodeBody = z.infer<typeof createLinkCodeSchema>;
+
 @ApiTags('integrations')
 @Controller('integrations')
 export class IntegrationsController {
-  constructor(private readonly integrations: IntegrationsService) {}
+  constructor(
+    private readonly integrations: IntegrationsService,
+    private readonly linkCodes: LinkCodesService,
+  ) {}
 
   /** Liệt kê integration (đã ẩn token). Mọi thành viên workspace xem được; tạo/xoá cần INTEGRATION_MANAGE. */
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
@@ -103,5 +111,28 @@ export class IntegrationsController {
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async test(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
     return this.integrations.test(workspaceId, id);
+  }
+
+  /** Tạo mã liên kết 6 ký tự (15 phút, dùng một lần) để gõ `/link@Bot MÃ` trong nhóm Telegram. */
+  @Post(':id/link-codes')
+  @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
+  async createLinkCode(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(createLinkCodeSchema)) body: CreateLinkCodeBody,
+  ) {
+    return this.linkCodes.createCode(workspaceId, id, user.id, body.projectId);
+  }
+
+  /** Hỏi xem mã đã được gõ trong nhóm chưa (đọc tin mới nhất theo yêu cầu, không polling nền). */
+  @Post(':id/link-codes/:code/poll')
+  @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
+  async pollLinkCode(
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+    @Param('code') code: string,
+  ) {
+    return this.linkCodes.poll(workspaceId, id, code);
   }
 }

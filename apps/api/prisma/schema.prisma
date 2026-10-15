@@ -1387,6 +1387,7 @@ model Integration {
   workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   channels     IntegrationChannel[]
   repositories CodeRepository[]
+  linkTokens   ChannelLinkToken[]
 
   @@index([workspaceId, type])
 }
@@ -1418,14 +1419,18 @@ model ChannelLinkToken {
   workspaceId     String
   projectId       String?
   integrationType IntegrationType @default(TELEGRAM)
+  // Mã gắn với đúng một kết nối (bot) — workspace/bot khác không "cướp" được mã.
+  integrationId   String?
   createdById     String
   expiresAt       DateTime
   consumedAt      DateTime?
   createdAt       DateTime @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  integration Integration? @relation(fields: [integrationId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+  @@index([integrationId])
 }
 
 // Job migrate từ Jira (Cloud API hoặc file CSV/JSON), chạy nền BullMQ.

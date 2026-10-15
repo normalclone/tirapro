@@ -46,6 +46,8 @@ const EXEMPT: Record<string, string> = {
   'guides/guides.service.ts': 'hướng dẫn workspace',
   'system-settings/system-settings.service.ts': 'cấu hình hệ thống',
   'integrations/integrations.service.ts': 'hạ tầng tích hợp cấp workspace',
+  'integrations/link-codes.service.ts':
+    'mã liên kết nhóm Telegram — hạ tầng tích hợp cấp workspace',
   'integrations/telegram.service.ts': 'gửi tin',
   'digests/digests.service.ts': 'hạ tầng báo cáo định kỳ cấp workspace',
   'import/jira/jira-import.service.ts': 'tạo dự án mới; ghi issue qua IssuesService',

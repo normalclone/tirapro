@@ -1,14 +1,20 @@
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import { TelegramError } from 'telegraf';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TelegramService, TelegramUnreachableError } from './telegram.service';
+import {
+  TelegramService,
+  TelegramTokenRejectedError,
+  TelegramUnreachableError,
+  TelegramWebhookConflictError,
+  parseLinkCommand,
+} from './telegram.service';
 
 // Telegraf giả: getMe điều khiển được; TelegramError giữ nguyên bản thật.
-const tg = vi.hoisted(() => ({ getMe: vi.fn() }));
+const tg = vi.hoisted(() => ({ getMe: vi.fn(), getUpdates: vi.fn() }));
 vi.mock('telegraf', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('telegraf');
   class FakeTelegraf {
-    telegram = { getMe: tg.getMe };
+    telegram = { getMe: tg.getMe, getUpdates: tg.getUpdates };
   }
   return { ...actual, Telegraf: FakeTelegraf };
 });
@@ -199,5 +205,69 @@ describe('TelegramService.globalBotUsername', () => {
     await expect(svc.globalBotUsername()).resolves.toBeNull();
     await expect(svc.globalBotUsername()).resolves.toBeNull();
     expect(tg.getMe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('parseLinkCommand', () => {
+  it('/link@Bot K7M2QX và /link k7m2qx đều ra K7M2QX; lệnh khác → null', () => {
+    expect(parseLinkCommand('/link@TiraproBot K7M2QX')).toBe('K7M2QX');
+    expect(parseLinkCommand('/link k7m2qx')).toBe('K7M2QX');
+    expect(parseLinkCommand('/start')).toBeNull();
+    expect(parseLinkCommand('hello /link K7M2QX')).toBeNull();
+  });
+  it('mã sai độ dài/ký tự → null; có chữ thừa phía sau thì không khớp', () => {
+    expect(parseLinkCommand('/link K7M2Q')).toBeNull();
+    expect(parseLinkCommand('/link K7M2QXZ')).toBeNull();
+    expect(parseLinkCommand('/link K7M2QX cảm ơn')).toBe('K7M2QX');
+  });
+  it('có botUsername: lệnh gọi bot khác → null, đúng bot (không phân biệt hoa thường) → mã', () => {
+    expect(parseLinkCommand('/link@OtherBot K7M2QX', 'TiraproBot')).toBeNull();
+    expect(parseLinkCommand('/link@tiraprobot K7M2QX', 'TiraproBot')).toBe('K7M2QX');
+    expect(parseLinkCommand('/link K7M2QX', 'TiraproBot')).toBe('K7M2QX');
+  });
+});
+
+describe('TelegramService.recentUpdates', () => {
+  afterEach(() => tg.getUpdates.mockReset());
+
+  it('gọi getUpdates với offset -100, limit 100, timeout 0 và trả các bản tin văn bản', async () => {
+    tg.getUpdates.mockResolvedValue([
+      {
+        update_id: 1,
+        message: {
+          text: '/link@B K7M2QX',
+          date: 5,
+          chat: { id: -100, type: 'supergroup', title: 'Dev' },
+        },
+      },
+      { update_id: 2, edited_message: { text: 'x' } },
+      { update_id: 3, message: { date: 6, chat: { id: 9, type: 'private' }, sticker: {} } },
+    ]);
+    const res = await make(NEW_KEY).recentUpdates('1:A');
+    expect(tg.getUpdates).toHaveBeenCalledWith(0, 100, -100, ['message']);
+    expect(res).toEqual([
+      {
+        chatId: -100,
+        chatType: 'supergroup',
+        chatTitle: 'Dev',
+        firstName: undefined,
+        text: '/link@B K7M2QX',
+        date: 5,
+      },
+    ]);
+  });
+
+  it('409 → TelegramWebhookConflictError; 401 → TelegramTokenRejectedError; khác → Unreachable', async () => {
+    const svc = make(NEW_KEY);
+    vi.spyOn(
+      (svc as unknown as { logger: { warn: () => void } }).logger,
+      'warn',
+    ).mockImplementation(() => undefined);
+    tg.getUpdates.mockRejectedValueOnce(new TelegramError({ error_code: 409, description: 'x' }));
+    await expect(svc.recentUpdates('1:A')).rejects.toBeInstanceOf(TelegramWebhookConflictError);
+    tg.getUpdates.mockRejectedValueOnce(new TelegramError({ error_code: 401, description: 'x' }));
+    await expect(svc.recentUpdates('1:A')).rejects.toBeInstanceOf(TelegramTokenRejectedError);
+    tg.getUpdates.mockRejectedValueOnce(new Error('ECONNRESET'));
+    await expect(svc.recentUpdates('1:A')).rejects.toBeInstanceOf(TelegramUnreachableError);
   });
 });
