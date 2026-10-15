@@ -7,6 +7,7 @@ import type {
   AiSuggestResult,
   GenerateIssuesInput,
 } from '@tirapro/shared';
+import { mentionsToPlain } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ClaudeService } from './claude.service';
@@ -237,7 +238,11 @@ export class AiService {
 }
 
 /** Rút text từ MARKDOWN hoặc TIPTAP_JSON (chỉ lấy nội dung dạng chữ). */
-function stripText(input: string | null | undefined): string {
+export function stripText(input: string | null | undefined): string {
+  return mentionsToPlain(stripRaw(input));
+}
+
+function stripRaw(input: string | null | undefined): string {
   if (!input) return '';
   const trimmed = input.trim();
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {

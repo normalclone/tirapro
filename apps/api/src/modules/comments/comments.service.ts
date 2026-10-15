@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS, type AutomationEventMeta, type CommentDto } from '@tirapro/types';
-import type { CreateCommentInput } from '@tirapro/shared';
+import { extractMentionIds, type CreateCommentInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto } from '../../common/mappers/user.mapper';
@@ -11,6 +11,7 @@ import {
   VersionConflictException,
 } from '../../common/exceptions/app.exception';
 import { assertIssueWritable } from '../../common/project-writable';
+import { resolveMentionedMembers } from '../../common/mentions';
 
 const commentInclude = { author: true } satisfies Prisma.CommentInclude;
 type CommentRow = Prisma.CommentGetPayload<{ include: typeof commentInclude }>;
@@ -52,7 +53,13 @@ export class CommentsService {
         },
         include: commentInclude,
       });
-      const mentionIds = [...new Set(input.mentionUserIds ?? [])];
+      // Người được nhắc = token trong body ∪ mentionUserIds (client cũ / API key), lọc theo thành viên workspace.
+      const mentionIds = await resolveMentionedMembers(
+        tx,
+        workspaceId,
+        [...extractMentionIds(input.body), ...(input.mentionUserIds ?? [])],
+        userId,
+      );
       if (mentionIds.length) {
         await tx.mention.createMany({
           data: mentionIds.map((mentionedUserId) => ({
@@ -92,10 +99,32 @@ export class CommentsService {
       throw new VersionConflictException(
         'Người khác vừa sửa bình luận này — hãy tải lại để xem bản mới nhất',
       );
-    const updated = await this.prisma.comment.update({
-      where: { id: commentId },
-      data: { body, isEdited: true, version: { increment: 1 } },
-      include: commentInclude,
+    const { updated, fresh } = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.comment.update({
+        where: { id: commentId },
+        data: { body, isEdited: true, version: { increment: 1 } },
+        include: commentInclude,
+      });
+      // Chỉ người CHƯA có dòng Mention của bình luận này mới được báo (sửa chính tả không báo lại).
+      const existing = new Set(
+        (
+          await tx.mention.findMany({ where: { commentId }, select: { mentionedUserId: true } })
+        ).map((m) => m.mentionedUserId),
+      );
+      const fresh = (
+        await resolveMentionedMembers(tx, workspaceId, extractMentionIds(body), userId)
+      ).filter((id) => !existing.has(id));
+      if (fresh.length) {
+        await tx.mention.createMany({
+          data: fresh.map((mentionedUserId) => ({
+            mentionedUserId,
+            commentId,
+            issueId: u.issueId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      return { updated: u, fresh };
     });
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.COMMENT_UPDATED, {
@@ -103,6 +132,7 @@ export class CommentsService {
       issueId: updated.issueId,
       projectId: current.issue.projectId,
       actorId: userId,
+      newMentionIds: fresh,
     });
     return dto;
   }

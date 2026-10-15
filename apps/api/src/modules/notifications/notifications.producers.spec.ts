@@ -9,12 +9,20 @@ const issue = {
   assigneeId: 'u2' as string | null,
 };
 
-function setup(members: string[] = []) {
+function setup(
+  members: string[] = [],
+  opts: { settings?: unknown; existingMentions?: string[] } = {},
+) {
   const prisma = {
     user: {
       // Người nhận bật hết mặc định; actor chỉ cần displayName.
       findUnique: vi.fn(() =>
-        Promise.resolve({ settings: null, email: 'r@x.vn', status: 'ACTIVE', displayName: 'Minh' }),
+        Promise.resolve({
+          settings: opts.settings ?? null,
+          email: 'r@x.vn',
+          status: 'ACTIVE',
+          displayName: 'Minh',
+        }),
       ),
     },
     notification: {
@@ -32,6 +40,14 @@ function setup(members: string[] = []) {
       ),
     },
     issue: { findFirst: vi.fn(() => Promise.resolve({ ...issue })) },
+    mention: {
+      findMany: vi.fn(() =>
+        Promise.resolve(
+          (opts.existingMentions ?? []).map((mentionedUserId) => ({ mentionedUserId })),
+        ),
+      ),
+      createMany: vi.fn(() => Promise.resolve({ count: 0 })),
+    },
     workspaceMembership: {
       findMany: vi.fn((a: { where: { userId: { in: string[] } } }) =>
         Promise.resolve(
@@ -132,5 +148,117 @@ describe('NotificationsService — MENTIONED', () => {
     const { service, prisma } = setup();
     await service.onCommentAdded(payload);
     expect(prisma.workspaceMembership.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('NotificationsService — @mention kèm trích đoạn', () => {
+  const payload = { comment: { id: 'c1', authorId: 'a1' }, issueId: 'i1', actorId: 'a1' };
+  const createdPayloads = (prisma: ReturnType<typeof setup>['prisma']) =>
+    prisma.notification.create.mock.calls.map(
+      (c) => c[0].data as unknown as { type: string; payload: Record<string, unknown> },
+    );
+
+  it('onCommentAdded: payload MENTIONED có excerpt (đã đổi token → @Tên) và where=comment', async () => {
+    const { service, prisma } = setup(['u3']);
+    await service.onCommentAdded({
+      ...payload,
+      comment: { ...payload.comment, body: 'Chào @[Ba](user:u3), xem giúp' },
+      mentionIds: ['u3'],
+    });
+    const m = createdPayloads(prisma).find((n) => n.type === 'MENTIONED');
+    expect(m?.payload).toMatchObject({
+      key: 'TP-1',
+      summary: 'Sửa lỗi',
+      excerpt: 'Chào @Ba, xem giúp',
+      where: 'comment',
+    });
+  });
+
+  it('người nhận tắt MENTIONED (in-app + email) → không notification.create, không mail.enqueue', async () => {
+    const { service, prisma, mail } = setup(['u3'], {
+      settings: { notifications: { MENTIONED: false, email: { mention: false } } },
+    });
+    await service.onCommentAdded({ ...payload, mentionIds: ['u3'] });
+    expect(
+      prisma.notification.create.mock.calls.filter((c) => c[0].data.type === 'MENTIONED'),
+    ).toEqual([]);
+    expect(mail.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('onCommentUpdated: chỉ newMentionIds được báo MENTIONED (không báo COMMENT_ADDED)', async () => {
+    const { service, created } = setup(['u3']);
+    await service.onCommentUpdated({
+      comment: { id: 'c1', authorId: 'a1', body: 'thêm @[Ba](user:u3)' },
+      issueId: 'i1',
+      actorId: 'a1',
+      newMentionIds: ['u3'],
+    });
+    expect(created()).toEqual([{ type: 'MENTIONED', to: 'u3' }]);
+  });
+
+  it('onCommentUpdated: không có newMentionIds → không làm gì', async () => {
+    const { service, prisma } = setup(['u3']);
+    await service.onCommentUpdated({
+      comment: { id: 'c1', authorId: 'a1' },
+      issueId: 'i1',
+      actorId: 'a1',
+    });
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('NotificationsService — @mention trong mô tả công việc', () => {
+  const withDesc = { ...issue, description: 'cc @[Ba](user:u3)' };
+
+  it('@ mới trong mô tả → ghi sổ Mention + một MENTIONED where=description', async () => {
+    const { service, prisma, created } = setup(['u3']);
+    await service.onIssueDescriptionMentions({
+      issue: withDesc,
+      actorId: 'a1',
+      changedFields: ['description'],
+    });
+    expect(prisma.mention.createMany).toHaveBeenCalledWith({
+      data: [{ mentionedUserId: 'u3', issueId: 'i1' }],
+      skipDuplicates: true,
+    });
+    expect(created()).toEqual([{ type: 'MENTIONED', to: 'u3' }]);
+    const data = prisma.notification.create.mock.calls[0]![0].data as unknown as {
+      payload: Record<string, unknown>;
+    };
+    expect(data.payload).toMatchObject({ where: 'description', excerpt: 'cc @Ba' });
+  });
+
+  it('lần hai (đã có dòng Mention) → không báo thêm', async () => {
+    const { service, prisma, created } = setup(['u3'], { existingMentions: ['u3'] });
+    await service.onIssueDescriptionMentions({
+      issue: withDesc,
+      actorId: 'a1',
+      changedFields: ['description'],
+    });
+    expect(prisma.mention.createMany).not.toHaveBeenCalled();
+    expect(created()).toEqual([]);
+  });
+
+  it('ISSUE_UPDATED không đổi description → bỏ qua', async () => {
+    const { service, prisma } = setup(['u3']);
+    await service.onIssueDescriptionMentions({
+      issue: withDesc,
+      actorId: 'a1',
+      changedFields: ['summary'],
+    });
+    expect(prisma.workspaceMembership.findMany).not.toHaveBeenCalled();
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+  });
+
+  it('ISSUE_CREATED (không có changedFields) có description → xử lý', async () => {
+    const { service, created } = setup(['u3']);
+    await service.onIssueDescriptionMentions({ issue: withDesc, actorId: 'a1' });
+    expect(created()).toEqual([{ type: 'MENTIONED', to: 'u3' }]);
+  });
+
+  it('không tự nhắc chính mình (actor)', async () => {
+    const { service, created } = setup(['u3']);
+    await service.onIssueDescriptionMentions({ issue: withDesc, actorId: 'u3' });
+    expect(created()).toEqual([]);
   });
 });
