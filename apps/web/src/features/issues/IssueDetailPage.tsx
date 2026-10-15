@@ -62,6 +62,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
 import { IssueLabelsPicker } from '@/features/issue-meta/IssueLabelsPicker';
 import { IssueComponentsPicker } from '@/features/issue-meta/IssueComponentsPicker';
+import { EnvironmentPanel } from '@/features/issue-edit/EnvironmentPanel';
 import { DelayedSpinner, EmptyState } from '@/components/ui/primitives';
 import { pageContainer } from '@/components/layout/page';
 import { Button } from '@/components/ui/Button';
@@ -683,6 +684,7 @@ export function IssueDetailPage() {
 
                   {/* Thành phần & phiên bản + các trường do dự án tự thêm */}
                   <IssueComponentsPicker issue={issue} />
+                  <EnvironmentPanel issue={issue} />
                   <CustomFieldsPanel issueId={issue.id} canEdit={canEditThis} />
 
                   {devLinks && devLinks.length > 0 && (

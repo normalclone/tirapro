@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DOMAIN_EVENTS } from '@tirapro/types';
+import { Prisma } from '@prisma/client';
 import { IssuesService } from './issues.service';
 
 /** expect.stringContaining có kiểu any — bọc lại để không phát sinh cảnh báo lint. */
@@ -319,7 +320,7 @@ describe('IssuesService — OCC atomic', () => {
   });
 });
 
-describe('IssuesService.update — severityId', () => {
+describe('IssuesService.update — severityId, environment', () => {
   function occTx() {
     return {
       issue: {
@@ -345,6 +346,22 @@ describe('IssuesService.update — severityId', () => {
     expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ severityId: 'sv1' });
     await service.update('w1', 'u1', 'i1', { version: 3, severityId: null });
     expect(tx.issue.updateMany.mock.calls[1]![0].data).toMatchObject({ severityId: null });
+  });
+
+  it('environment: chuẩn hoá khi ghi, rỗng/null => DbNull', async () => {
+    const tx = occTx();
+    const { service } = makeService(tx);
+    await service.update('w1', 'u1', 'i1', {
+      version: 3,
+      environment: { env: 'staging', browser: ' Chrome 126 ', os: '' },
+    });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({
+      environment: { env: 'staging', browser: 'Chrome 126' },
+    });
+    await service.update('w1', 'u1', 'i1', { version: 3, environment: null });
+    expect(tx.issue.updateMany.mock.calls[1]![0].data.environment).toBe(Prisma.DbNull);
+    await service.update('w1', 'u1', 'i1', { version: 3, summary: 'x' });
+    expect(tx.issue.updateMany.mock.calls[2]![0].data).not.toHaveProperty('environment');
   });
 
   it('mức của workspace khác => 404, chưa ghi', async () => {

@@ -6,9 +6,11 @@ import {
   type AutomationEventMeta,
   type BulkUpdateIssuesResult,
   type IssueDto,
+  type IssueEnvironment,
 } from '@tirapro/types';
 import {
   issueTypePrefix,
+  normalizeEnvironment,
   type BulkUpdateIssuesInput,
   type CreateIssueInput,
   type MoveIssueInput,
@@ -533,6 +535,7 @@ export class IssuesService {
           resolvedAt: isDone ? new Date() : null,
           priorityId: priorityId ?? null,
           severityId: input.severityId ?? null,
+          environment: normalizeEnvironment(input.environment) ?? Prisma.DbNull,
           summary: input.summary,
           description: input.description ?? null,
           descriptionFormat: input.descriptionFormat,
@@ -766,6 +769,8 @@ export class IssuesService {
     if (input.description !== undefined) data.description = input.description;
     if (input.priorityId !== undefined) data.priorityId = input.priorityId ?? null;
     if (input.severityId !== undefined) data.severityId = input.severityId ?? null;
+    if (input.environment !== undefined)
+      data.environment = normalizeEnvironment(input.environment) ?? Prisma.DbNull;
     if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId ?? null;
     if (input.storyPoints !== undefined) data.storyPoints = input.storyPoints;
     if (input.sprintId !== undefined) data.sprintId = input.sprintId ?? null;
@@ -1353,6 +1358,7 @@ export class IssuesService {
       triageState: i.triageState,
       triageSnoozeUntil: iso(i.triageSnoozeUntil),
       occurrenceCount: i.occurrenceCount,
+      environment: (i.environment as IssueEnvironment | null) ?? null,
       rank: i.rank,
       version: i.version,
       labels: i.labels.map((l) => ({

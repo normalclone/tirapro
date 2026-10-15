@@ -4,6 +4,7 @@ export * from '@tirapro/types';
 // Zod schemas
 export * from './schemas/auth';
 export * from './schemas/issue';
+export * from './schemas/environment';
 export * from './schemas/common';
 export * from './schemas/ai';
 export * from './schemas/analytics';

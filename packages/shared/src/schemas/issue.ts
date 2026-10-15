@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { environmentSchema } from './environment';
 
 // priority/resolution/linkType giờ là config (FK theo id), không còn enum cứng.
 export const richTextFormatEnum = z.enum(['MARKDOWN', 'TIPTAP_JSON']);
@@ -11,6 +12,7 @@ export const createIssueSchema = z.object({
   descriptionFormat: richTextFormatEnum.default('MARKDOWN'),
   priorityId: z.string().optional().nullable(),
   severityId: z.string().optional().nullable(),
+  environment: environmentSchema.nullable().optional(),
   assigneeId: z.string().optional().nullable(),
   parentId: z.string().optional().nullable(),
   epicId: z.string().optional().nullable(),
