@@ -1,55 +1,10 @@
 import { useEffect } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import type { IssueDto } from '@tirapro/types';
-import type { IssueMovedPayload, RoomTarget } from '@tirapro/shared';
+import type { IssueMovedPayload } from '@tirapro/shared';
 import { keys } from './queryKeys';
 import { queryClient } from './queryClient';
-import { getSocket } from './socket';
-
-/* ------------------------------------------------------------------ */
-/* Room có đếm tham chiếu                                              */
-/* ------------------------------------------------------------------ */
-
-const roomRefs = new Map<string, number>();
-const roomId = (t: RoomTarget) => `${t.kind}:${t.id}`;
-
-/**
- * Vào room và trả hàm rời room. Nhiều component cùng cần một room (vd ProjectLayout và
- * trang chi tiết issue) → chỉ `unsubscribe` khi component CUỐI CÙNG rời đi.
- * Mỗi lần socket (re)connect room được vào lại; `onReconnect` cho phép bù event đã lỡ.
- */
-function joinRoom(target: RoomTarget, onReconnect?: () => void): () => void {
-  const s = getSocket();
-  const id = roomId(target);
-  if (!s.connected) s.connect();
-
-  let joined = false;
-  const join = () => {
-    s.emit('subscribe', target, (res) => {
-      // FORBIDDEN: không có quyền vào room → không nhận realtime, dữ liệu vẫn tải bình thường qua REST.
-      if (!res.ok) console.warn(`[realtime] không vào được room ${id}: ${res.error}`);
-    });
-    // Lần vào đầu tiên là lần nạp ban đầu; các lần sau là NỐI LẠI → có thể đã lỡ event.
-    if (joined) onReconnect?.();
-    joined = true;
-  };
-
-  roomRefs.set(id, (roomRefs.get(id) ?? 0) + 1);
-  // Chưa kết nối thì chờ sự kiện `connect` đầu tiên (không emit sớm để khỏi vào room hai lần).
-  if (s.connected) join();
-  s.on('connect', join);
-
-  return () => {
-    s.off('connect', join);
-    const n = (roomRefs.get(id) ?? 1) - 1;
-    if (n <= 0) {
-      roomRefs.delete(id);
-      s.emit('unsubscribe', target);
-    } else {
-      roomRefs.set(id, n);
-    }
-  };
-}
+import { acquireRoom, getSocket } from './socket';
 
 /* ------------------------------------------------------------------ */
 /* Vá cache issue                                                      */
@@ -157,7 +112,7 @@ export function useProjectRealtime(projectId: string | undefined) {
     const s = getSocket();
 
     // Mất kết nối rồi nối lại → có thể đã lỡ event → nạp lại những gì đang xem.
-    const leave = joinRoom({ kind: 'project', id: projectId }, () => {
+    const leave = acquireRoom({ kind: 'project', id: projectId }, () => {
       void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
       void qc.invalidateQueries({ queryKey: keys.sprints.byProject(projectId) });
     });
