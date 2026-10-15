@@ -8,6 +8,8 @@ import { useCanEditIssue } from '@/features/projects/permissions';
 import { useProjectSprints, useMoveToSprint } from '@/features/backlog/api';
 import { BACKLOG_LABEL, buildSprintOptions } from './sprintOptions';
 import { useUpdateIssue } from '@/features/issues/api';
+import { pointsEditWarning, WARN_TITLE } from '@/features/issues/pointsWarning';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { ParticipantsRow } from '@/features/issue-extras/ParticipantsRow';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -228,14 +230,19 @@ export function IssueStoryPointsInline({
   canEditRestricted: boolean;
 }) {
   const patch = useUpdateIssue(issue.projectId);
+  const { data: sprints } = useProjectSprints(issue.projectId);
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
 
-  function save(raw: string) {
+  async function save(raw: string) {
     setEditing(false);
     const next = raw.trim() === '' ? null : Number(raw);
     if (next !== null && Number.isNaN(next))
       return toast.error('Điểm ước lượng phải là một con số, ví dụ 3');
     if (next !== issue.storyPoints) {
+      const w = pointsEditWarning(issue, sprints);
+      if (w && !(await confirm({ title: WARN_TITLE, description: w, confirmLabel: 'Vẫn sửa' })))
+        return;
       patch.mutate(
         { id: issue.id, key: issue.key, patch: { storyPoints: next }, version: issue.version },
         { onError: (e) => toast.error(apiErrorMessage(e)) },
@@ -254,7 +261,7 @@ export function IssueStoryPointsInline({
         aria-label="Điểm ước lượng"
         defaultValue={issue.storyPoints ?? ''}
         disabled={patch.isPending}
-        onBlur={(e) => save(e.target.value)}
+        onBlur={(e) => void save(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
           if (e.key === 'Escape') {
