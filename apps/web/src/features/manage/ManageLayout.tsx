@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 
 /**
- * Khung "Quản trị" — gom các màn theo dõi cấp công ty (không thuộc riêng dự án nào)
+ * Khung "Danh mục" — gom các màn theo dõi cấp công ty (không thuộc riêng dự án nào)
  * vào một chỗ, thay vì mỗi thứ một mục ngoài thanh bên.
  */
 const MANAGE_NAV: { to: string; label: string; icon: ReactNode }[] = [
@@ -25,14 +25,14 @@ export function ManageLayout() {
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       <nav
-        aria-label="Mục quản trị"
+        aria-label="Mục danh mục"
         className={cn(
           'shrink-0 border-border bg-surface',
           'flex gap-1 overflow-x-auto border-b px-3 py-2',
           'lg:w-64 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
         )}
       >
-        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">Quản trị</h1>
+        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">Danh mục</h1>
         {MANAGE_NAV.map((item) => (
           <NavLink
             key={item.to}

@@ -16,6 +16,8 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
+import { useAuth } from '@/stores/auth';
+import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
 import { WorkflowGraph } from './WorkflowGraph';
@@ -65,6 +67,8 @@ export function WorkflowSettingsPage() {
   const createWorkflow = useCreateWorkflow();
   const deleteWorkflow = useDeleteWorkflow();
   const confirm = useConfirm();
+  // Ghi quy trình cần `workspace:admin` (API) — người khác xem được, không thấy nút ghi.
+  const canManage = useAuth((s) => s.can('workspace:admin'));
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -130,6 +134,7 @@ export function WorkflowSettingsPage() {
           thái nào sang trạng thái nào.
         </p>
       </header>
+      {!canManage && <ReadOnlyNote />}
 
       <section className="rounded-lg border border-border bg-surface">
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
@@ -144,7 +149,7 @@ export function WorkflowSettingsPage() {
               </p>
             </div>
           </div>
-          {!adding && (
+          {canManage && !adding && (
             <Button size="sm" onClick={() => setAdding(true)}>
               <Plus className="h-4 w-4" />
               Tạo quy trình
@@ -167,12 +172,18 @@ export function WorkflowSettingsPage() {
               <EmptyState
                 icon={<GitBranch className="h-6 w-6" />}
                 title="Chưa có quy trình nào"
-                description="Quy trình là chuỗi trạng thái mà mỗi công việc đi qua, từ lúc mở đến lúc xong. Tạo quy trình đầu tiên để bắt đầu."
+                description={
+                  canManage
+                    ? 'Quy trình là chuỗi trạng thái mà mỗi công việc đi qua, từ lúc mở đến lúc xong. Tạo quy trình đầu tiên để bắt đầu.'
+                    : 'Chưa có quy trình nào. Nhờ quản trị chung tạo giúp.'
+                }
                 action={
-                  <Button size="sm" onClick={() => setAdding(true)}>
-                    <Plus className="h-4 w-4" />
-                    Tạo quy trình
-                  </Button>
+                  canManage ? (
+                    <Button size="sm" onClick={() => setAdding(true)}>
+                      <Plus className="h-4 w-4" />
+                      Tạo quy trình
+                    </Button>
+                  ) : undefined
                 }
               />
             }
@@ -183,6 +194,7 @@ export function WorkflowSettingsPage() {
                   <WorkflowRow
                     key={wf.id}
                     workflow={wf}
+                    canManage={canManage}
                     expanded={wf.id === selectedId}
                     onToggle={() => setSelectedId((cur) => (cur === wf.id ? null : wf.id))}
                     onDelete={() => void handleDeleteWorkflow(wf)}
@@ -194,7 +206,7 @@ export function WorkflowSettingsPage() {
           </QueryBoundary>
 
           {/* Form tạo workflow */}
-          {adding && (
+          {canManage && adding && (
             <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
               <div className="space-y-3">
                 <div>
@@ -268,12 +280,14 @@ export function WorkflowSettingsPage() {
 
 function WorkflowRow({
   workflow,
+  canManage,
   expanded,
   onToggle,
   onDelete,
   deleting,
 }: {
   workflow: Workflow;
+  canManage: boolean;
   expanded: boolean;
   onToggle: () => void;
   onDelete: () => void;
@@ -304,17 +318,19 @@ function WorkflowRow({
         {workflow.isDefault && <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>}
         {workflow.isTemplate && <Badge className="bg-surface-2 text-muted">Template</Badge>}
       </button>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onDelete}
-        loading={deleting}
-        title="Xoá quy trình"
-        className="text-muted hover:text-danger"
-      >
-        <Trash2 className="h-4 w-4" />
-        <span className="sr-only">Xoá quy trình {workflow.name}</span>
-      </Button>
+      {canManage && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onDelete}
+          loading={deleting}
+          title="Xoá quy trình"
+          className="text-muted hover:text-danger"
+        >
+          <Trash2 className="h-4 w-4" />
+          <span className="sr-only">Xoá quy trình {workflow.name}</span>
+        </Button>
+      )}
     </li>
   );
 }
@@ -375,6 +391,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
   const updateStatus = useUpdateStatus();
   const deleteStatus = useDeleteStatus();
   const confirm = useConfirm();
+  const canManage = useAuth((s) => s.can('workspace:admin'));
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -446,12 +463,18 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
           <EmptyState
             icon={<CircleDot className="h-6 w-6" />}
             title="Chưa có trạng thái nào"
-            description="Trạng thái cho biết công việc đang ở bước nào (vd Cần làm, Đang làm, Xong). Thêm trạng thái đầu tiên cho quy trình này."
+            description={
+              canManage
+                ? 'Trạng thái cho biết công việc đang ở bước nào (vd Cần làm, Đang làm, Xong). Thêm trạng thái đầu tiên cho quy trình này.'
+                : 'Quy trình này chưa có trạng thái nào.'
+            }
             action={
-              <Button size="sm" onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4" />
-                Thêm trạng thái
-              </Button>
+              canManage ? (
+                <Button size="sm" onClick={() => setAdding(true)}>
+                  <Plus className="h-4 w-4" />
+                  Thêm trạng thái
+                </Button>
+              ) : undefined
             }
           />
         ) : (
@@ -475,37 +498,39 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                 )}
                 <span className="font-mono text-xs text-faint">#{s.order}</span>
 
-                <div className="ml-auto flex items-center gap-1">
-                  {!s.isInitial && (
+                {canManage && (
+                  <div className="ml-auto flex items-center gap-1">
+                    {!s.isInitial && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setInitial(s)}
+                        loading={updateStatus.isPending}
+                        title="Đặt làm trạng thái khởi đầu"
+                      >
+                        <Flag className="h-4 w-4" />
+                        Đặt khởi đầu
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
-                      size="sm"
-                      onClick={() => setInitial(s)}
-                      loading={updateStatus.isPending}
-                      title="Đặt làm trạng thái khởi đầu"
+                      size="icon"
+                      onClick={() => void handleDelete(s)}
+                      title="Xoá trạng thái"
+                      className="text-muted hover:text-danger"
                     >
-                      <Flag className="h-4 w-4" />
-                      Đặt khởi đầu
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Xoá trạng thái {s.name}</span>
                     </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => void handleDelete(s)}
-                    title="Xoá trạng thái"
-                    className="text-muted hover:text-danger"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    <span className="sr-only">Xoá trạng thái {s.name}</span>
-                  </Button>
-                </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
         )}
 
         {/* Form thêm trạng thái */}
-        {adding ? (
+        {!canManage ? null : adding ? (
           <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[10rem] flex-1">
@@ -586,6 +611,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
   const addTransition = useAddTransition();
   const deleteTransition = useDeleteTransition();
   const confirm = useConfirm();
+  const canManage = useAuth((s) => s.can('workspace:admin'));
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -680,6 +706,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
                 : 'Bước chuyển quy định công việc được đi từ trạng thái nào sang trạng thái nào. Thêm bước chuyển đầu tiên cho quy trình này.'
             }
             action={
+              canManage &&
               !noStatuses && (
                 <Button size="sm" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4" />
@@ -700,25 +727,27 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
                   <span className="font-mono">{statusName(t.toStatusId)}</span>
                 </span>
 
-                <div className="ml-auto flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => void handleDelete(t)}
-                    title="Xoá bước chuyển"
-                    className="text-muted hover:text-danger"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    <span className="sr-only">Xoá bước chuyển {t.name}</span>
-                  </Button>
-                </div>
+                {canManage && (
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => void handleDelete(t)}
+                      title="Xoá bước chuyển"
+                      className="text-muted hover:text-danger"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Xoá bước chuyển {t.name}</span>
+                    </Button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
         )}
 
         {/* Form thêm bước chuyển */}
-        {adding ? (
+        {!canManage ? null : adding ? (
           <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[10rem] flex-1">

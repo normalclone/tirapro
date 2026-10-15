@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { SignalHigh, Flag, Plus, Pencil, Trash2, Check, X, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -117,6 +118,7 @@ export function PrioritiesSection() {
       title="Độ ưu tiên"
       description="Đặt các mức ưu tiên để sắp xếp thứ tự làm công việc. Số thứ tự càng nhỏ thì càng ưu tiên."
     >
+      {!canManage && <ReadOnlyNote />}
       <QueryBoundary
         query={prioritiesQuery}
         skeleton={

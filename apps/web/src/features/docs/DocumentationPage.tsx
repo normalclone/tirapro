@@ -523,7 +523,7 @@ export function DocumentationPage() {
             {/* ============== NÂNG CAO ============== */}
             <section className="mb-14">
               <H2 id="quan-ly-nang-cao">Quản lý nâng cao</H2>
-              <P>Ngoài Scrum/Kanban, Tirapro hỗ trợ các mô hình quản lý sau — tất cả nằm trong mục Quản trị trên thanh bên trái.</P>
+              <P>Ngoài Scrum/Kanban, Tirapro hỗ trợ các mô hình quản lý sau — tất cả nằm trong mục Danh mục trên thanh bên trái.</P>
               <div className="border-t border-border">
                 <Feature icon={<GitBranch className="h-4 w-4" />} title="Lịch trình dự án">Khai báo việc nào phải xong trước việc nào, hệ thống tự tìm <strong>đường găng</strong> (chuỗi việc quyết định ngày kết thúc — trễ một việc là trễ cả dự án). Có cột mốc và <strong>kế hoạch gốc</strong> để đối chiếu kế hoạch với thực tế. Vào dự án → tab <Mono>Lịch trình</Mono>.</Feature>
                 <Feature icon={<Users className="h-4 w-4" />} title="Nhân lực">Khai báo mỗi người dành bao nhiêu phần trăm thời gian cho dự án nào, cùng ngày nghỉ và ngày lễ. Bảng theo tuần tô màu cảnh báo ai đang quá tải.</Feature>

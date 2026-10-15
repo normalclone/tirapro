@@ -6,6 +6,8 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
+import { useAuth } from '@/stores/auth';
+import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { PlatformLogo } from './PlatformLogo';
 import {
   useIntegrations,
@@ -49,39 +51,13 @@ export function TelegramSection() {
   const confirm = useConfirm();
   const integrationsQuery = useIntegrations();
   const { data } = integrationsQuery;
-  const create = useCreateTelegram();
   const remove = useDeleteIntegration();
+  // API ghi/đọc kênh cần `integration:manage` — người không có quyền chỉ xem danh sách, không thấy nút ghi.
+  const canManage = useAuth((s) => s.can('integration:manage'));
 
   const [adding, setAdding] = useState(false);
-  const [name, setName] = useState('');
-  const [botToken, setBotToken] = useState('');
 
   const integrations = data ?? [];
-
-  function resetAdd() {
-    setName('');
-    setBotToken('');
-    setAdding(false);
-  }
-
-  function submitAdd() {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      toast.error('Vui lòng nhập tên kết nối.');
-      return;
-    }
-    const token = botToken.trim();
-    create.mutate(
-      { name: trimmed, botToken: token === '' ? undefined : token },
-      {
-        onSuccess: () => {
-          resetAdd();
-          toast.success('Đã kết nối Telegram.');
-        },
-        onError: (e) => toast.error(apiErrorMessage(e)),
-      },
-    );
-  }
 
   async function handleDelete(it: Integration) {
     if (
@@ -103,6 +79,7 @@ export function TelegramSection() {
       title="Telegram"
       description="Gửi thông báo công việc tới nhóm hoặc kênh Telegram. Bỏ trống token thì dùng bot chung của hệ thống."
     >
+      {!canManage && <ReadOnlyNote />}
       <QueryBoundary
         query={integrationsQuery}
         skeleton={
@@ -117,12 +94,18 @@ export function TelegramSection() {
           <EmptyState
             icon={<Send className="h-6 w-6" />}
             title="Chưa có kết nối Telegram"
-            description="Nối Tirapro với Telegram để cập nhật về công việc và sprint được đẩy thẳng vào nhóm chat. Bấm Kết nối Telegram để bắt đầu."
+            description={
+              canManage
+                ? 'Nối Tirapro với Telegram để cập nhật về công việc và sprint được đẩy thẳng vào nhóm chat. Bấm Kết nối Telegram để bắt đầu.'
+                : 'Chưa có kết nối nào. Nhờ quản trị chung kết nối Telegram cho nhóm.'
+            }
             action={
-              <Button size="sm" onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4" />
-                Kết nối Telegram
-              </Button>
+              canManage ? (
+                <Button size="sm" onClick={() => setAdding(true)}>
+                  <Plus className="h-4 w-4" />
+                  Kết nối Telegram
+                </Button>
+              ) : undefined
             }
           />
         }
@@ -133,6 +116,7 @@ export function TelegramSection() {
               <TelegramRow
                 key={it.id}
                 integration={it}
+                canManage={canManage}
                 onDelete={() => handleDelete(it)}
                 deleting={remove.isPending}
               />
@@ -142,52 +126,8 @@ export function TelegramSection() {
       </QueryBoundary>
 
       {/* Form kết nối */}
-      {adding ? (
-        <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="tg-name" className="mb-1 block text-xs font-medium text-muted">
-                Tên kết nối
-              </label>
-              <Input
-                id="tg-name"
-                value={name}
-                autoFocus
-                placeholder="VD: Nhóm Dev"
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitAdd();
-                  if (e.key === 'Escape') resetAdd();
-                }}
-              />
-            </div>
-            <div>
-              <label htmlFor="tg-token" className="mb-1 block text-xs font-medium text-muted">
-                Bot token <span className="text-faint">(tùy chọn)</span>
-              </label>
-              <Input
-                id="tg-token"
-                value={botToken}
-                type="password"
-                autoComplete="off"
-                placeholder="Bỏ trống để dùng bot chung"
-                onChange={(e) => setBotToken(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitAdd();
-                  if (e.key === 'Escape') resetAdd();
-                }}
-              />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-2">
-            <Button size="sm" onClick={submitAdd} loading={create.isPending}>
-              Kết nối
-            </Button>
-            <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
-              Huỷ
-            </Button>
-          </div>
-        </div>
+      {!canManage ? null : adding ? (
+        <TelegramAddForm onClose={() => setAdding(false)} />
       ) : (
         integrations.length > 0 && (
           <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
@@ -200,12 +140,88 @@ export function TelegramSection() {
   );
 }
 
+/** Form kết nối Telegram mới (state riêng; đóng bằng Huỷ/Esc hoặc khi kết nối xong). */
+function TelegramAddForm({ onClose }: { onClose: () => void }) {
+  const create = useCreateTelegram();
+  const [name, setName] = useState('');
+  const [botToken, setBotToken] = useState('');
+
+  function submitAdd() {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      toast.error('Vui lòng nhập tên kết nối.');
+      return;
+    }
+    const token = botToken.trim();
+    create.mutate(
+      { name: trimmed, botToken: token === '' ? undefined : token },
+      {
+        onSuccess: () => {
+          onClose();
+          toast.success('Đã kết nối Telegram.');
+        },
+        onError: (e) => toast.error(apiErrorMessage(e)),
+      },
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor="tg-name" className="mb-1 block text-xs font-medium text-muted">
+            Tên kết nối
+          </label>
+          <Input
+            id="tg-name"
+            value={name}
+            autoFocus
+            placeholder="VD: Nhóm Dev"
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitAdd();
+              if (e.key === 'Escape') onClose();
+            }}
+          />
+        </div>
+        <div>
+          <label htmlFor="tg-token" className="mb-1 block text-xs font-medium text-muted">
+            Bot token <span className="text-faint">(tùy chọn)</span>
+          </label>
+          <Input
+            id="tg-token"
+            value={botToken}
+            type="password"
+            autoComplete="off"
+            placeholder="Bỏ trống để dùng bot chung"
+            onChange={(e) => setBotToken(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitAdd();
+              if (e.key === 'Escape') onClose();
+            }}
+          />
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <Button size="sm" onClick={submitAdd} loading={create.isPending}>
+          Kết nối
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onClose} disabled={create.isPending}>
+          Huỷ
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function TelegramRow({
   integration,
+  canManage,
   onDelete,
   deleting,
 }: {
   integration: Integration;
+  canManage: boolean;
   onDelete: () => void;
   deleting: boolean;
 }) {
@@ -230,46 +246,50 @@ function TelegramRow({
       <div className="flex items-center gap-3 px-3 py-2.5">
         <button
           type="button"
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => canManage && setExpanded((v) => !v)}
+          disabled={!canManage}
           className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] rounded-sm"
-          aria-expanded={expanded}
+          aria-expanded={canManage ? expanded : undefined}
         >
-          {expanded ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-faint" />
-          ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
-          )}
+          {canManage &&
+            (expanded ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-faint" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
+            ))}
           <span className="truncate text-sm font-medium text-ink">{integration.name}</span>
           <StatusBadge status={integration.status} />
           <span className="font-mono text-xs text-faint">token: ***</span>
         </button>
 
-        <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleTest}
-            loading={test.isPending}
-            title="Gửi tin nhắn kiểm tra tới tất cả kênh đang bật"
-          >
-            <Send className="h-4 w-4" />
-            Kiểm tra
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onDelete}
-            disabled={deleting}
-            className="text-muted hover:text-danger"
-            title="Xoá kết nối"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span className="sr-only">Xoá {integration.name}</span>
-          </Button>
-        </div>
+        {canManage && (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleTest}
+              loading={test.isPending}
+              title="Gửi tin nhắn kiểm tra tới tất cả kênh đang bật"
+            >
+              <Send className="h-4 w-4" />
+              Kiểm tra
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onDelete}
+              disabled={deleting}
+              className="text-muted hover:text-danger"
+              title="Xoá kết nối"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="sr-only">Xoá {integration.name}</span>
+            </Button>
+          </div>
+        )}
       </div>
 
-      {expanded && (
+      {canManage && expanded && (
         <div className="border-t border-border bg-surface-2 px-3 py-3">
           <ChannelList integrationId={integration.id} />
         </div>

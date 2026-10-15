@@ -28,7 +28,7 @@ import {
   SLA_SOON_LABEL,
 } from './api';
 
-/** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Quản trị). */
+/** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Danh mục). */
 export function SlaBoardPage() {
   return (
     <div className={pageContainer('sm')}>

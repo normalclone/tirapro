@@ -3,6 +3,9 @@ import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/stores/auth';
 import { AppShell } from '@/components/layout/AppShell';
 import { RouteError } from '@/components/layout/RouteError';
+import { RequireAccess } from '@/components/layout/RequireAccess';
+import { ConnectIndexRedirect } from '@/features/connect/ConnectIndexRedirect';
+import { NAV_RULES } from '@/lib/navAccess';
 // Vào ngay từ đầu (unauth first paint + shell) → giữ eager, không tách chunk.
 import { LoginPage } from '@/features/auth/LoginPage';
 import { SignupPage } from '@/features/auth/SignupPage';
@@ -236,7 +239,10 @@ export const router = createBrowserRouter([
         element: <SettingsLayout />,
         children: [
           { index: true, element: <Navigate to="/settings/general" replace /> },
-          { path: 'general', element: <SettingsGeneralPage /> },
+          {
+            element: <RequireAccess rule={NAV_RULES.settingsGeneral} who="quản trị viên" />,
+            children: [{ path: 'general', element: <SettingsGeneralPage /> }],
+          },
           // Tab 'Mời thành viên' đã gộp vào trang Thành viên — giữ link cũ hoạt động.
           { path: 'members', element: <Navigate to="/members" replace /> },
           { path: 'roles', element: <RolesPage /> },
@@ -245,8 +251,16 @@ export const router = createBrowserRouter([
           { path: 'priorities', element: <SettingsPrioritiesPage /> },
           { path: 'fields', element: <SettingsFieldsPage /> },
           { path: 'workflows', element: <WorkflowSettingsPage /> },
-          { path: 'import', element: <ImportPage /> },
-          { path: 'api', element: <ApiKeysPage /> },
+          {
+            element: (
+              <RequireAccess rule={NAV_RULES.settingsImport} who="người được phép nhập dữ liệu" />
+            ),
+            children: [{ path: 'import', element: <ImportPage /> }],
+          },
+          {
+            element: <RequireAccess rule={NAV_RULES.settingsApi} who="quản trị viên" />,
+            children: [{ path: 'api', element: <ApiKeysPage /> }],
+          },
           { path: 'response-time', element: <SlaPoliciesPage /> },
         ],
       },
@@ -266,12 +280,22 @@ export const router = createBrowserRouter([
       },
       // Kết nối & tự động hoá.
       {
-        path: 'connect',
-        element: <ConnectLayout />,
+        element: (
+          <RequireAccess rule={NAV_RULES.connect} who="người quản lý kết nối và tự động hoá" />
+        ),
         children: [
-          { index: true, element: <Navigate to="/connect/integrations" replace /> },
-          { path: 'integrations', element: <IntegrationsPage /> },
-          { path: 'automation', element: <AutomationPage /> },
+          {
+            path: 'connect',
+            element: <ConnectLayout />,
+            children: [
+              { index: true, element: <ConnectIndexRedirect /> },
+              {
+                element: <RequireAccess rule={NAV_RULES.connectIntegrations} who="quản trị viên" />,
+                children: [{ path: 'integrations', element: <IntegrationsPage /> }],
+              },
+              { path: 'automation', element: <AutomationPage /> },
+            ],
+          },
         ],
       },
       { path: 'wiki', element: <WikiPage /> },

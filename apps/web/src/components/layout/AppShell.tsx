@@ -29,11 +29,21 @@ import { ShortcutsDialog, SHORTCUTS_EVENT } from '@/components/layout/ShortcutsD
 import { Button } from '@/components/ui/Button';
 import { ConfirmHost } from '@/components/ui/useConfirm';
 import { useAi } from '@/stores/ai';
+import { NAV_RULES, useVisibleItems, type NavRule } from '@/lib/navAccess';
 import { useGlobalHotkeys } from '@/lib/useGlobalHotkeys';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 
-const NAV_ITEMS: { to: string; label: string; icon: ReactNode; match: (p: string) => boolean }[] = [
+interface NavEntry {
+  to: string;
+  label: string;
+  icon: ReactNode;
+  match: (p: string) => boolean;
+  /** Mục chỉ hiện khi người dùng thoả luật này (xem `lib/navAccess.ts`). */
+  rule?: NavRule;
+}
+
+const NAV_ITEMS: NavEntry[] = [
   {
     to: '/',
     label: 'Tổng quan',
@@ -60,7 +70,7 @@ const NAV_ITEMS: { to: string; label: string; icon: ReactNode; match: (p: string
   },
   {
     to: '/manage',
-    label: 'Quản trị',
+    label: 'Danh mục',
     icon: <Briefcase className="h-4 w-4" />,
     match: (p) => p.startsWith('/manage'),
   },
@@ -75,6 +85,7 @@ const NAV_ITEMS: { to: string; label: string; icon: ReactNode; match: (p: string
     label: 'Kết nối',
     icon: <Plug className="h-4 w-4" />,
     match: (p) => p.startsWith('/connect'),
+    rule: NAV_RULES.connect,
   },
   {
     to: '/settings',
@@ -82,10 +93,18 @@ const NAV_ITEMS: { to: string; label: string; icon: ReactNode; match: (p: string
     icon: <Settings className="h-4 w-4" />,
     match: (p) => p.startsWith('/settings'),
   },
+  // Admin hệ thống: lối vào console riêng ngay trên sidebar (trước đây chỉ có trong menu người dùng).
+  {
+    to: '/admin',
+    label: 'Quản trị hệ thống',
+    icon: <ShieldCheck className="h-4 w-4" />,
+    match: (p) => p === '/admin' || p.startsWith('/admin/'),
+    rule: NAV_RULES.admin,
+  },
 ];
 
 // Menu riêng cho Admin hệ thống — đứng trên mọi không gian làm việc (không gắn với nơi nào cụ thể).
-const ADMIN_NAV: { to: string; label: string; icon: ReactNode; match: (p: string) => boolean }[] = [
+const ADMIN_NAV: NavEntry[] = [
   {
     to: '/admin',
     label: 'Tổng quan',
@@ -121,7 +140,8 @@ const ADMIN_NAV: { to: string; label: string; icon: ReactNode; match: (p: string
 export function AppShell({ children }: { children: ReactNode }) {
   const loc = useLocation();
   const admin = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/');
-  const navItems = admin ? ADMIN_NAV : NAV_ITEMS;
+  const visibleNav = useVisibleItems(NAV_ITEMS);
+  const navItems = admin ? ADMIN_NAV : visibleNav;
   useNotificationRealtime();
   const [navOpen, setNavOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
