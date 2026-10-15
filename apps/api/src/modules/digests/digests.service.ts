@@ -12,8 +12,9 @@ import {
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { withCronLock } from '../../common/cron-lock';
-import { NotFoundAppException } from '../../common/exceptions/app.exception';
-import { TelegramService } from '../integrations/telegram.service';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { IntegrationsService } from '../integrations/integrations.service';
+import { TELEGRAM_TOKEN_UNUSABLE_MESSAGE, TelegramService } from '../integrations/telegram.service';
 
 /** Input tạo mới subscription (đã validate qua zod ở controller). */
 export interface CreateDigestInput {
@@ -35,6 +36,8 @@ export interface UpdateDigestInput {
 }
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+/** Cửa sổ chống gửi đôi cho cron: bằng TTL khoá cron (1800s). */
+const DIGEST_DEDUPE_MS = 30 * 60 * 1000;
 
 @Injectable()
 export class DigestsService implements OnApplicationShutdown {
@@ -46,6 +49,7 @@ export class DigestsService implements OnApplicationShutdown {
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramService,
     private readonly redis: RedisService,
+    private readonly integrations: IntegrationsService,
   ) {}
 
   onApplicationShutdown(): void {
@@ -101,7 +105,8 @@ export class DigestsService implements OnApplicationShutdown {
   async run(workspaceId: string, id: string): Promise<{ sent: boolean; summaryText: string }> {
     const sub = await this.requireSubscription(workspaceId, id);
     const summaryText = await this.buildDigest(workspaceId, sub.projectId ?? undefined);
-    const sent = await this.send(sub.channelId, summaryText);
+    const { sent, tokenUnusable } = await this.send(sub.channelId, summaryText);
+    if (tokenUnusable) throw new BusinessRuleException(TELEGRAM_TOKEN_UNUSABLE_MESSAGE);
     await this.prisma.reportSubscription.update({
       where: { id },
       data: { lastRunAt: new Date() },
@@ -249,39 +254,45 @@ export class DigestsService implements OnApplicationShutdown {
   /**
    * Gửi digest qua Telegram nếu có channelId. Degrade-graceful:
    * - Không có channelId / không tìm thấy kênh / kênh tắt / token thiếu → sent=false, KHÔNG ném.
+   * - Token riêng của tích hợp không giải mã được → sent=false, tokenUnusable=true (KHÔNG rơi về bot toàn cục).
    */
-  private async send(channelId: string | null, text: string): Promise<boolean> {
-    if (!channelId) return false;
+  private async send(
+    channelId: string | null,
+    text: string,
+  ): Promise<{ sent: boolean; tokenUnusable: boolean }> {
+    const notSent = { sent: false, tokenUnusable: false };
+    if (!channelId) return notSent;
     try {
       const channel = await this.prisma.integrationChannel.findFirst({
         where: { id: channelId, isEnabled: true },
         include: { integration: true },
       });
-      if (!channel) return false;
+      if (!channel) return notSent;
       const integration = channel.integration;
+      // ERROR vẫn phải qua resolveBotToken: token còn hỏng thì "Chạy ngay" phải báo 422 chứ không im lặng.
       if (
         integration.type !== IntegrationType.TELEGRAM ||
-        integration.status !== IntegrationStatus.ACTIVE
+        (integration.status !== IntegrationStatus.ACTIVE &&
+          integration.status !== IntegrationStatus.ERROR)
       ) {
-        return false;
+        return notSent;
       }
-      const token = this.resolveToken(integration.config);
-      return await this.telegram.send(token, channel.externalId, text);
+      const res = this.telegram.resolveBotToken(integration.config);
+      if (res.kind === 'unusable') {
+        await this.integrations.reportUnusableToken(integration.id);
+        return { sent: false, tokenUnusable: true };
+      }
+      if (integration.status === IntegrationStatus.ERROR) return notSent; // token ổn nhưng tích hợp chưa phục hồi (Gửi thử)
+      const sent = await this.telegram.send(
+        res.kind === 'own' ? res.token : null,
+        channel.externalId,
+        text,
+      );
+      return { sent, tokenUnusable: false };
     } catch (err) {
       this.warn('send', err);
-      return false;
+      return notSent;
     }
-  }
-
-  /** Giải mã botToken từ Integration.config; null → dùng token toàn cục. */
-  private resolveToken(config: Prisma.JsonValue): string | null {
-    if (config && typeof config === 'object' && !Array.isArray(config)) {
-      const botToken = (config as Record<string, unknown>).botToken;
-      if (typeof botToken === 'string' && botToken.length > 0) {
-        return this.telegram.decrypt(botToken);
-      }
-    }
-    return null;
   }
 
   // ------------------------------- Cron -------------------------------
@@ -311,6 +322,7 @@ export class DigestsService implements OnApplicationShutdown {
       projectId: string | null;
       channelId: string | null;
       schedule: DigestSchedule;
+      lastRunAt: Date | null;
     }>;
     try {
       subs = await this.prisma.reportSubscription.findMany({
@@ -326,6 +338,7 @@ export class DigestsService implements OnApplicationShutdown {
           projectId: true,
           channelId: true,
           schedule: true,
+          lastRunAt: true,
         },
       });
     } catch (err) {
@@ -335,13 +348,31 @@ export class DigestsService implements OnApplicationShutdown {
 
     for (const sub of subs) {
       if (this.stopping) break; // app đang tắt
+      const now = new Date();
+      // Node khác vừa gửi (đồng hồ lệch nên khoá cron đã nhả trước khi cron node này chạy).
+      if (sub.lastRunAt && now.getTime() - sub.lastRunAt.getTime() < DIGEST_DEDUPE_MS) continue;
       try {
-        const text = await this.buildDigest(sub.workspaceId, sub.projectId ?? undefined);
-        await this.send(sub.channelId, text);
-        await this.prisma.reportSubscription.update({
-          where: { id: sub.id },
-          data: { lastRunAt: new Date() },
+        // Compare-and-set: chỉ một node thắng; node thua thấy count 0.
+        const claimed = await this.prisma.reportSubscription.updateMany({
+          where: { id: sub.id, lastRunAt: sub.lastRunAt },
+          data: { lastRunAt: now },
         });
+        if (claimed.count === 0) continue;
+        try {
+          const text = await this.buildDigest(sub.workspaceId, sub.projectId ?? undefined);
+          await this.send(sub.channelId, text);
+        } catch (err) {
+          // Chỉ là lưới an toàn cho lỗi BẤT NGỜ (vd buildDigest ném). send()/telegram.send tự nuốt lỗi
+          // gửi nên lỗi mạng KHÔNG đi vào đây => không retry trong ngày (hành vi cũ). Cơ chế là at-most-once:
+          // node chết sau khi claim thì digest ngày đó mất.
+          await this.prisma.reportSubscription
+            .updateMany({
+              where: { id: sub.id, lastRunAt: now },
+              data: { lastRunAt: sub.lastRunAt },
+            })
+            .catch(() => undefined);
+          throw err;
+        }
       } catch (err) {
         this.warn(`runScheduled.sub:${sub.id}`, err);
       }
