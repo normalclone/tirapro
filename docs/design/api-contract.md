@@ -747,11 +747,11 @@ Mọi server→client event payload theo cấu trúc:
 
 | Event | Room | data |
 |---|---|---|
-| `comment.added` | `issue:{id}` | `CommentDto` |
-| `comment.updated` | `issue:{id}` | `CommentDto` |
-| `comment.deleted` | `issue:{id}` | `{ id, issueId }` |
+| `comment:added` | `project:{projectId}` | `{ comment: CommentDto }` |
+| `comment:updated` | `project:{projectId}` | `{ comment: CommentDto }` |
+| `comment:deleted` | `project:{projectId}` | `{ commentId, issueId }` |
 
-> Tên sự kiện thật trên dây dùng dấu hai chấm (`comment:added`, `comment:updated`, `comment:deleted`, `project:ranks_rebalanced`) — khớp `WS_EVENTS` trong `@tirapro/types`. Sự kiện domain nội bộ của comment (`comment.added/updated/deleted`) **bắt buộc mang `projectId`** (gateway định tuyến theo `project:{projectId}`; thiếu `projectId` ⇒ không phát), và payload WS của `comment:updated`/`comment:deleted` có `projectId` để client lọc theo dự án.
+> Tên sự kiện thật trên dây dùng dấu hai chấm (`comment:added|updated|deleted`, `project:ranks_rebalanced`) — khớp `WS_EVENTS` (`@tirapro/types`) và hợp đồng `packages/shared/src/ws.ts`. Comment được phát tới room **`project:{projectId}`** (không phải `issue:{id}`); client lọc theo `issueId` trong payload. `projectId` chỉ có ở **sự kiện domain nội bộ** (`comment.added/updated/deleted`) để gateway định tuyến — thiếu `projectId` ⇒ không phát — chứ **không** nằm trong payload gửi xuống client.
 
 ### 15.6. Presence & Typing (client→server và broadcast)
 

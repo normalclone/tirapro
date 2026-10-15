@@ -84,12 +84,21 @@ Thứ tự **duy nhất** cho mọi lần nâng cấp (bản đầu tiên của 
 | # | Bước | Lệnh | Khi nào |
 |---|---|---|---|
 | 0 | Sao lưu DB | `pg_dump` / snapshot của nhà cung cấp | Luôn, trước khi đụng DB prod |
-| 1 | Áp migration Prisma | `prisma migrate deploy` | Luôn (đợt `fix/review-findings` **không** thêm migration mới nên là no-op, nhưng vẫn chạy) |
+| 1 | Áp migration Prisma | `prisma migrate deploy` | Luôn. PR này không thêm migration riêng, nhưng **nếu prod chưa chạy 6 migration của base `22c116c` thì bước này áp cả 6** — xem "Bước 1" bên dưới |
 | 2 | SQL thô (extension, `searchVector`, chỉ mục) | `pnpm --filter @tirapro/api run db:raw` | Luôn. **DB lớn: chạy TAY trong giờ thấp điểm TRƯỚC khi rollout image mới** (xem cảnh báo bên dưới) |
 | 3 | Mã hoá lại token/khoá bí mật khi ĐỔI `INTEGRATION_ENCRYPTION_KEY` | `integrations:rekey` | Chỉ khi đổi khoá (xem mục "đổi khoá mã hoá" bên dưới) |
 | 4 | Mã hoá khoá bí mật webhook automation cũ | `automation:seal-secrets` | Một lần, **sau khi bản mới đã ổn định** (xem cảnh báo rollback) |
 
 Render/Docker (`render.yaml` `startCommand`, `Dockerfile` `CMD`) tự chạy bước 1 + 2 mỗi lần khởi động; bước 3-4 luôn là thao tác tay.
+
+### Bước 1 — `migrate deploy`: 6 migration của base có thể chưa chạy trên prod
+
+Nhánh này không thêm migration, nhưng base `22c116c` có 6 migration mà prod có thể chưa từng áp: `sprint_sequence_unique`, `perf_indexes`, `mail_invite_reset`, `project_archive`, `worklog_rules`, `ai_log_index`. Kiểm bằng `prisma migrate status`. Nếu còn pending, `migrate deploy` sẽ áp chúng, hệ quả:
+
+- **`project_archive`**: đặt `archivedAt = updatedAt` cho mọi dự án đang `isArchived` → các dự án đó trở thành **chỉ-đọc và bị ẩn** (thông báo cho quản trị dự án trước).
+- **`perf_indexes`**: `CREATE INDEX` thường (không `CONCURRENTLY`, vì chạy trong transaction migration) trên `"Issue"` → **khoá ghi bảng `Issue` trong lúc build index** (đọc vẫn được). Với bảng lớn hãy coi như cửa sổ bảo trì, cùng lúc với bước 2.
+- **`sprint_sequence_unique`**: nếu có sprint trùng `(projectId, sequence)` thì **đánh lại số** các bản trùng (giữ bản cũ nhất) rồi tạo unique index.
+- `mail_invite_reset`, `worklog_rules`, `ai_log_index`: thêm bảng/cột/chỉ mục nhỏ.
 
 ### Bước 2 — `db:raw`: khoá bảng `Issue` (cửa sổ bảo trì)
 
@@ -106,7 +115,7 @@ Việc cần làm:
 4. Quyền DB: cần tạo extension — `unaccent`, `pg_trgm`, `btree_gin` là extension "trusted" từ PG13 (chỉ cần quyền `CREATE` trên database; RDS/Render/Supabase đều có sẵn). `vector` (pgvector) vẫn như trước. Cần quyền `CREATE` trên schema `public` để tạo hàm `immutable_unaccent`. Hàm gọi cứng `public.unaccent` — nếu extension `unaccent` đã cài ở schema khác (vd Supabase `extensions`) thì `db:raw` sẽ lỗi; cài lại trong `public` hoặc báo lại.
 5. Chưa chạy `db:raw` thì tìm kiếm **vẫn chạy** (rơi về `translate()`/ILIKE, chậm hơn) và `/health` báo thiếu `searchVector`/`immutable_unaccent`.
 
-Cách chạy tay: VPS — `set -a; . ./.env; set +a; pnpm --filter @tirapro/api run db:raw` (Prisma **không** nạp `.env` ở gốc repo khi chạy từ `apps/api`, nên phải nạp biến vào shell như vậy). Docker:
+Cách chạy tay: VPS — `set -a; . ./.env; set +a; pnpm --filter @tirapro/api run db:raw` (Prisma **không** nạp `.env` ở gốc repo khi chạy từ `apps/api`, nên phải nạp biến vào shell như vậy). Render — không có Shell: từ máy của bạn, trỏ vào *External Database URL* (Dashboard → `tirapro-db` → Connect; cần cho phép IP của bạn) rồi `DATABASE_URL='<external-url>' DIRECT_URL='<external-url>' pnpm --filter @tirapro/api run db:raw`; làm TRƯỚC khi deploy bản mới. Docker:
 
 ```bash
 docker run --rm --env-file .env tirapro-api \
@@ -126,9 +135,10 @@ Hai script là `node scripts/*.mjs` — chỉ cần `DATABASE_URL` + `INTEGRATIO
 - **Docker:** image runtime có sẵn hai script ở `/app/scripts/`. Chạy như job một lần với **cùng env** của container API (đặc biệt cùng `INTEGRATION_ENCRYPTION_KEY`; nếu DB nằm ở máy host dùng `host.docker.internal` hoặc `--network host` thay cho `localhost` trong `DATABASE_URL`):
   ```bash
   docker run --rm --env-file .env tirapro-api node scripts/seal-webhook-secrets.mjs --dry-run
-  docker run --rm --env-file .env tirapro-api node scripts/seal-webhook-secrets.mjs
+  docker run --rm --env-file .env tirapro-api node scripts/seal-webhook-secrets.mjs --i-verified-key   # xem cảnh báo bên dưới
   docker run --rm --env-file .env tirapro-api node scripts/rekey-integrations.mjs --dry-run   # nếu đổi khoá
   ```
+  Lưu ý `--env-file` của Docker: giá trị lấy **nguyên văn** (dấu nháy `"…"`/`'…'` trong file không bị bóc — bỏ nháy đi), và `localhost` trong `DATABASE_URL` là chính container chứ không phải máy host.
   (Kubernetes/ECS: tạo Job/one-off task dùng cùng image + `command: ["node","scripts/seal-webhook-secrets.mjs"]` + secret env của API.)
 - **Render (không Shell, Free):** không có chỗ chạy trực tiếp. Chọn một:
   1. Chạy từ **máy của bạn** trỏ vào Postgres Render qua *External Database URL* (Dashboard → `tirapro-db` → Connect; cần mở IP cho phép) với đúng `INTEGRATION_ENCRYPTION_KEY` của dịch vụ API (Dashboard → Environment): `DATABASE_URL='<external-url>' INTEGRATION_ENCRYPTION_KEY='<key>' node apps/api/scripts/seal-webhook-secrets.mjs --dry-run` (cần `pnpm install` + `prisma generate` ở bản clone, hoặc dùng cách Docker ở trên với image build từ repo).
@@ -138,8 +148,9 @@ Hai script là `node scripts/*.mjs` — chỉ cần `DATABASE_URL` + `INTEGRATIO
 ### Cảnh báo cho bước 4 (`seal-secrets`)
 
 - **Không hoàn tác được và không an toàn khi rollback.** Sau khi seal, quay về image cũ thì code cũ dùng nguyên chuỗi `enc:v1:…` làm khoá HMAC → chữ ký webhook sai âm thầm. Chỉ seal **sau** khi bản mới đã chạy ổn định và bạn không còn định rollback.
-- Phải dùng **đúng** `INTEGRATION_ENCRYPTION_KEY` mà API đang chạy. Script tự thử giải một secret đã mã hoá sẵn bằng khoá hiện tại; không giải được (khoá trong shell khác khoá API) → **dừng, exit 1** thay vì mã hoá bằng khoá lạ. `--force` bỏ qua kiểm tra này — chỉ dùng khi chắc chắn (vd DB chưa từng có secret mã hoá).
-- Exit code: `0` xong, `1` thiếu khoá/sai khoá, `2` có quy tắc bị bỏ qua (xung đột đúng lúc có người sửa / khoá > 200 ký tự) → chạy lại.
+- Phải dùng **đúng** `INTEGRATION_ENCRYPTION_KEY` mà API đang chạy. Script tự thử giải một **mẫu đã mã hoá sẵn** — khoá webhook `enc:v1:…` có sẵn, hoặc token bot Telegram đã mã hoá — bằng khoá hiện tại; không giải được (khoá trong shell khác khoá API) → **dừng, exit 1** thay vì mã hoá bằng khoá lạ.
+- **Giới hạn của guard:** lần seal đầu mà DB **chưa có secret/token nào đã mã hoá** (không Telegram, không webhook `enc:v1:`) thì không có mẫu để đối chiếu — script in cảnh báo và **từ chối ghi** trừ khi bạn thêm `--i-verified-key` (bạn tự đối chiếu khoá với env của dịch vụ API) hoặc `--force`. `--dry-run` không cần cờ. `--force` bỏ qua mọi kiểm tra — chỉ dùng khi chắc chắn.
+- Exit code: `0` xong, `1` thiếu khoá/sai khoá/chưa xác nhận khoá, `2` có quy tắc bị bỏ qua (xung đột đúng lúc có người sửa / khoá > 200 ký tự) → chạy lại.
 
 ---
 

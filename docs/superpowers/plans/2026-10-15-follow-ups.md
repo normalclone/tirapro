@@ -47,7 +47,9 @@ Toàn bộ 23 task của `2026-10-15-review-fixes.md` + đợt sửa review cu�
 
 ## Phát sinh trong đợt follow-up (đã xử lý)
 - [x] Kéo-thả board/backlog theo rank (X2a/b/c); `useInView` hỏng dưới StrictMode (X3); dự án lưu trữ chỉ-đọc nhất quán (X4); tìm kiếm tiếng Việt (X5); UX nhỏ + `/auth/refresh` không 401 đỏ (X6); board Scrum theo sprint chạy (X7); rò quyền đọc chéo (X1).
-- [x] Đợt cuối: FW1-FW6 (API), FW7/FW8/FW12/FW13 (web), FW11 (`epicId` không lưu), FW9 release notes + ratchet (FW-OPS), `db:raw` advisory lock + `docs/DEPLOY.md` + `Dockerfile` có script vận hành + `api-contract.md` (FW-OPS).
+- [x] Đợt cuối API: FW1-FW6, FW11 (`epicId` không lưu), FW12 (API `PATCH /boards/:id` `type`) + 4 Important của review cuối (tạo issue `statusId`, automation/workflow-admin theo dự án lưu trữ, soft-delete còn sót, quyền `/move`).
+- [x] Đợt cuối OPS: FW9 release notes + ratchet, `db:raw` advisory lock, `docs/DEPLOY.md`, `Dockerfile` có script vận hành, `api-contract.md`.
+- [ ] Đợt cuối web: FW7, FW8, FW12 (UI), FW13 — đang làm (FW-WEB); controller đánh dấu sau khi merge.
 
 ## Cố ý không làm (quyết định sản phẩm)
 - **Resources → Allocation và clients → Contract trên dự án lưu trữ vẫn ghi được** — dữ liệu cấp workspace/khách hàng, không phải dữ liệu làm việc của dự án (X4). Ghi trong release notes + `api-contract.md` §6.1.

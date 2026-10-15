@@ -58,15 +58,17 @@ jobs:
         run: |
           pnpm --filter @tirapro/api db:raw
           pnpm --filter @tirapro/api db:raw
-      - name: db:raw song song (3 tiến trình) phải đều thoát 0
+      - name: db:raw song song (3 tiến trình x 2 vòng) phải đều thoát 0
         # Hai instance khởi động cùng lúc không được làm nhau chết (pg_advisory_xact_lock ở đầu file SQL).
         run: |
-          pids=()
-          for i in 1 2 3; do
-            pnpm --filter @tirapro/api db:raw & pids+=($!)
-          done
           rc=0
-          for p in "${pids[@]}"; do wait "$p" || rc=1; done
+          for round in 1 2; do
+            pids=()
+            for i in 1 2 3; do
+              pnpm --filter @tirapro/api db:raw & pids+=($!)
+            done
+            for p in "${pids[@]}"; do wait "$p" || rc=1; done
+          done
           exit $rc
       - name: db:raw nâng cấp từ searchVector bản cũ (nhánh DROP/ADD)
         run: |
@@ -77,11 +79,40 @@ jobs:
           SQL
           pnpm --filter @tirapro/api exec prisma db execute --file /tmp/old-search-vector.sql --schema prisma/schema.prisma
           pnpm --filter @tirapro/api db:raw
-          echo 'DO $$ BEGIN
-            IF position($x$immutable_unaccent$x$ IN (SELECT pg_get_expr(d.adbin, d.adrelid) FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum WHERE a.attrelid = $q$"Issue"$q$::regclass AND a.attname = $q$searchVector$q$)) = 0
-            THEN RAISE EXCEPTION $m$searchVector van la bieu thuc cu$m$; END IF;
-          END $$;' | pnpm --filter @tirapro/api exec prisma db execute --stdin --schema prisma/schema.prisma
-      - name: cột raw tồn tại
+          # coalesce: nếu cột biến mất (NULL) cũng phải đỏ, không được lọt qua như "đã nâng cấp".
+          cat > /tmp/assert-upgraded.sql <<'SQL'
+          DO $$ BEGIN
+            IF coalesce(position($x$immutable_unaccent$x$ IN (
+              SELECT pg_get_expr(d.adbin, d.adrelid) FROM pg_attrdef d
+              JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+              WHERE a.attrelid = $q$"Issue"$q$::regclass AND a.attname = $q$searchVector$q$)), 0) = 0
+            THEN RAISE EXCEPTION $m$searchVector van la bieu thuc cu hoac khong ton tai$m$; END IF;
+          END $$;
+          SQL
+          pnpm --filter @tirapro/api exec prisma db execute --file /tmp/assert-upgraded.sql --schema prisma/schema.prisma
+      - name: cột/hàm/chỉ mục raw tồn tại (assert thật)
         run: |
-          echo 'SELECT immutable_unaccent($$x$$); SELECT "searchVector" FROM "Issue" LIMIT 0; SELECT "embedding" FROM "IssueEmbedding" LIMIT 0; SELECT 1 FROM pg_indexes WHERE indexname = $$issue_summary_unaccent_trgm$$; SELECT $$issue_description_unaccent_trgm$$::regclass;' \
-            | pnpm --filter @tirapro/api exec prisma db execute --stdin --schema prisma/schema.prisma
+          cat > /tmp/assert-raw.sql <<'SQL'
+          DO $$
+          DECLARE missing text;
+          BEGIN
+            SELECT string_agg(n, ', ') INTO missing FROM (
+              SELECT i AS n FROM unnest(ARRAY[
+                $i$issue_search_gin$i$, $i$issue_summary_trgm$i$, $i$issue_description_trgm$i$, $i$issue_key_trgm$i$,
+                $i$issue_summary_unaccent_trgm$i$, $i$issue_description_unaccent_trgm$i$, $i$issue_embedding_hnsw$i$
+              ]) AS i
+              WHERE NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = i)
+            ) t;
+            IF missing IS NOT NULL THEN RAISE EXCEPTION $m$thieu chi muc: %$m$, missing; END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = $f$immutable_unaccent$f$) THEN
+              RAISE EXCEPTION $m$thieu ham immutable_unaccent$m$;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = $t$Issue$t$ AND column_name = $c$searchVector$c$) THEN
+              RAISE EXCEPTION $m$thieu cot Issue.searchVector$m$;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = $t$IssueEmbedding$t$ AND column_name = $c$embedding$c$) THEN
+              RAISE EXCEPTION $m$thieu cot IssueEmbedding.embedding$m$;
+            END IF;
+          END $$;
+          SQL
+          pnpm --filter @tirapro/api exec prisma db execute --file /tmp/assert-raw.sql --schema prisma/schema.prisma
