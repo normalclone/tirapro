@@ -2,11 +2,9 @@ import {
   lazy,
   Suspense,
   useEffect,
-  useMemo,
   useState,
   type ComponentProps,
   type ComponentType,
-  type ReactNode,
 } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -19,7 +17,6 @@ import {
   GitPullRequest,
   GitBranch,
   Hash,
-  History,
   Link2,
   ListTree,
   MessageSquare,
@@ -35,12 +32,10 @@ import { useProjects } from '@/features/projects/api';
 import { ProjectRail } from '@/features/projects/ProjectRail';
 import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useMyWorkspaces } from '@/features/workspace/api';
-import { useWorkflows } from '@/features/workflow-settings/api';
 import { useDeleteIssue } from '@/features/issue-edit/api';
 import { IssueRelations } from '@/features/tree/IssueRelations';
 import { CustomFieldsPanel } from '@/features/issue-fields/CustomFieldsPanel';
 import { AttachmentsPanel } from '@/features/attachments/AttachmentsPanel';
-import { ActivityPanel } from '@/features/activity/ActivityPanel';
 import { LinksPanel } from '@/features/issue-widgets/LinksPanel';
 import { ChecklistPanel } from '@/features/issue-extras/ChecklistPanel';
 import { IssueSlaBadge } from '@/features/sla/IssueSlaBadge';
@@ -54,9 +49,10 @@ import {
   IssuePrioritySelect,
 } from '@/features/issue-edit/IssueProperties';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
-import { CommentsSection } from '@/features/issue-edit/CommentsSection';
-import { computeNextStatuses } from './nextStatuses';
-import { transitionToastOptions } from './statusUndo';
+import { useIssueTransitions } from './useIssueTransitions';
+import { LazyPanel } from './LazyPanel';
+import { useCanEditRestricted } from './useCanEditRestricted';
+import { ActivityTabs } from './ActivityTabs';
 import { FOCUS_COMMENT_EVENT } from '@/features/command/events';
 import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
@@ -71,12 +67,10 @@ import { PresenceAvatars } from '@/features/presence/PresenceAvatars';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { useRecents } from '@/stores/recentIssues';
 import { useProjectRealtime } from '@/lib/realtime';
-import { useCachedProjectIssue, useUpdateIssue, useTransitionDetail } from './api';
-import { useInView } from '@/lib/useInView';
+import { useCachedProjectIssue, useUpdateIssue } from './api';
 import { isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import type { IssueDto } from '@tirapro/types';
 import type { WorkflowViewDialog as WorkflowViewDialogType } from '@/features/workflow-settings/WorkflowViewDialog';
 
 /** Sơ đồ quy trình kéo theo reactflow (nặng) → chỉ tải khi người dùng bấm “Xem quy trình”. */
@@ -89,31 +83,6 @@ const WorkflowViewDialog = lazy<ComponentType<ComponentProps<typeof WorkflowView
       return { default: () => null };
     }),
 );
-
-/**
- * Khu nằm dưới màn hình đầu tiên: chỉ dựng (và nhờ đó chỉ gọi API) khi cuộn tới gần. Khung giữ chỗ có chiều cao tối thiểu
- * để trang không giật khi nội dung hiện ra. `id` giữ nguyên cho liên kết nhảy tới khu này.
- */
-function LazyPanel({
-  children,
-  id,
-  minHeight = 80,
-  force = false,
-}: {
-  children: ReactNode;
-  id?: string;
-  minHeight?: number;
-  /** Ép dựng ngay (vd. phím tắt cần panel dù chưa cuộn tới). */
-  force?: boolean;
-}) {
-  const { ref, inView } = useInView<HTMLDivElement>();
-  const show = inView || force;
-  return (
-    <div ref={ref} id={id} style={show ? undefined : { minHeight }}>
-      {show ? children : null}
-    </div>
-  );
-}
 
 /** Nút trên thanh thao tác dưới tiêu đề (secondary, viền). */
 const TOOLBAR_BTN =
@@ -150,18 +119,11 @@ export function IssueDetailPage() {
     const p = parentId ? list.find((i) => i.id === parentId) : undefined;
     return p ? { key: p.key, summary: p.summary } : null;
   });
-  const { data: workflows } = useWorkflows();
   const updateIssue = useUpdateIssue(issue?.projectId);
-  const transition = useTransitionDetail(issue?.projectId ?? '');
   const createIssue = useCreateIssue(issue?.projectId ?? '');
   const removeIssue = useDeleteIssue();
 
-  // Chỉ các trạng thái ở BƯỚC KẾ TIẾP — chuyển tiếp hợp lệ từ trạng thái hiện tại theo workflow.
-  const currentStatusId = issue?.status.id;
-  const nextStatuses = useMemo(
-    () => computeNextStatuses(workflows, currentStatusId),
-    [workflows, currentStatusId],
-  );
+  const { nextStatuses, changeStatus, isPending: transitionPending } = useIssueTransitions(issue);
 
   const [editingSummary, setEditingSummary] = useState(false);
   const [summary, setSummary] = useState('');
@@ -199,23 +161,6 @@ export function IssueDetailPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [canLogWork, hasIssue]);
-
-  function changeStatus(toStatusId: string) {
-    if (!issue || toStatusId === issue.status.id) return;
-    const toName = nextStatuses.find((s) => s.id === toStatusId)?.name;
-    const from = { statusId: issue.status.id, statusName: issue.status.name };
-    transition.mutate(
-      { id: issue.id, key: issue.key, toStatusId, version: issue.version, statusName: toName },
-      {
-        onSuccess: (updated) =>
-          toast.success(
-            toName ? `Đã chuyển sang “${toName}”` : 'Đã đổi trạng thái',
-            transitionToastOptions({ workflows, from, toStatusId, updated, transition }),
-          ),
-        onError: (e) => toast.error(apiErrorMessage(e)),
-      },
-    );
-  }
 
   async function cloneIssue() {
     if (!issue) return;
@@ -358,15 +303,7 @@ export function IssueDetailPage() {
     };
   }, []);
 
-  // Story points/Hạn: phải sửa được issue này (issue:edit, hoặc :own với việc của mình) VÀ là người tạo/báo cáo hoặc quản trị (khớp API).
-  const canEditRestricted =
-    !!issue &&
-    canEditThis &&
-    (issue.reporterId === me?.id ||
-      issue.createdById === me?.id ||
-      can('workspace:admin') ||
-      can('project:admin') ||
-      !!me?.isSystemAdmin);
+  const canEditRestricted = useCanEditRestricted(issue);
 
   async function saveSummary() {
     if (!issue || summary.trim() === issue.summary) {
@@ -634,7 +571,7 @@ export function IssueDetailPage() {
                         <button
                           key={o.id}
                           type="button"
-                          disabled={transition.isPending}
+                          disabled={transitionPending}
                           onClick={() => changeStatus(o.id)}
                           title={
                             i < 9
@@ -777,48 +714,6 @@ export function IssueDetailPage() {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-/** Khu hoạt động với tab Bình luận / Lịch sử (controlled). */
-function ActivityTabs({
-  issue,
-  tab,
-  onTab,
-}: {
-  issue: IssueDto;
-  tab: 'comments' | 'history';
-  onTab: (t: 'comments' | 'history') => void;
-}) {
-  const tabCls = (active: boolean) =>
-    cn(
-      'flex items-center gap-1.5 border-b-2 px-1 pb-2 text-sm font-medium transition-colors',
-      active ? 'border-primary text-ink-strong' : 'border-transparent text-muted hover:text-ink',
-    );
-  return (
-    <div>
-      <div className="mb-4 flex items-center gap-5 border-b border-border">
-        <button
-          type="button"
-          className={tabCls(tab === 'comments')}
-          onClick={() => onTab('comments')}
-        >
-          <MessageSquare className="h-4 w-4" /> Bình luận
-        </button>
-        <button
-          type="button"
-          className={tabCls(tab === 'history')}
-          onClick={() => onTab('history')}
-        >
-          <History className="h-4 w-4" /> Lịch sử
-        </button>
-      </div>
-      {tab === 'comments' ? (
-        <CommentsSection issue={issue} />
-      ) : (
-        <ActivityPanel issueId={issue.id} />
-      )}
     </div>
   );
 }

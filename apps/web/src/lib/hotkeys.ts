@@ -69,10 +69,23 @@ export function shouldIgnoreGlobalHotkey(
   return e.metaKey || e.ctrlKey || e.altKey || ctx.typing || ctx.overlayOpen;
 }
 
-/** Esc có nên xoá vùng chọn hàng loạt không: không nếu Esc đã được xử lý (popover/kéo-thả bằng phím) hoặc lớp phủ đang mở. */
+/**
+ * Esc có nên xoá vùng chọn hàng loạt không: không nếu Esc đã được xử lý (popover/kéo-thả bằng phím) hoặc lớp phủ đang mở.
+ * `fromPeek`: Esc đến từ trong panel xem nhanh → dành cho việc đóng panel, không bỏ chọn.
+ */
 export function shouldClearSelectionOnEscape(
   e: Pick<KeyLike, 'key' | 'defaultPrevented'>,
   overlayOpen: boolean,
+  opts?: { fromPeek?: boolean },
 ): boolean {
+  if (opts?.fromPeek) return false;
   return e.key === 'Escape' && !e.defaultPrevented && !overlayOpen;
+}
+
+/** Esc có nên đóng panel xem nhanh không: không nếu lớp phủ đang mở hoặc Esc đã có người xử lý (bỏ chọn hàng loạt, huỷ sửa tiêu đề). */
+export function shouldClosePeekOnEscape(
+  e: Pick<KeyLike, 'key' | 'defaultPrevented'>,
+  ctx: { overlayOpen: boolean },
+): boolean {
+  return e.key === 'Escape' && !e.defaultPrevented && !ctx.overlayOpen;
 }

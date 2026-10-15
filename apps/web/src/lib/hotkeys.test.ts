@@ -5,6 +5,7 @@ import {
   isTypingTarget,
   isWorklogHotkey,
   shouldClearSelectionOnEscape,
+  shouldClosePeekOnEscape,
   shouldIgnoreGlobalHotkey,
 } from './hotkeys';
 
@@ -130,5 +131,30 @@ describe('shouldClearSelectionOnEscape (thanh thao tác hàng loạt)', () => {
   });
   it('phím khác → không', () => {
     expect(shouldClearSelectionOnEscape({ key: 'a', defaultPrevented: false }, false)).toBe(false);
+  });
+});
+
+describe('Esc với panel xem nhanh', () => {
+  const esc = (o: Partial<{ key: string; defaultPrevented: boolean }> = {}) => ({
+    key: 'Escape',
+    defaultPrevented: false,
+    ...o,
+  });
+  it('đóng panel khi không có lớp phủ, chưa ai xử lý', () => {
+    expect(shouldClosePeekOnEscape(esc(), { overlayOpen: false })).toBe(true);
+  });
+  it('không đóng khi lớp phủ đang mở hoặc Esc đã được xử lý (bỏ chọn hàng loạt / huỷ sửa tiêu đề)', () => {
+    expect(shouldClosePeekOnEscape(esc(), { overlayOpen: true })).toBe(false);
+    expect(shouldClosePeekOnEscape(esc({ defaultPrevented: true }), { overlayOpen: false })).toBe(
+      false,
+    );
+  });
+  it('phím khác Esc không đóng', () => {
+    expect(shouldClosePeekOnEscape(esc({ key: 'Enter' }), { overlayOpen: false })).toBe(false);
+  });
+  it('bỏ chọn hàng loạt không chạy khi Esc đến từ trong panel', () => {
+    expect(shouldClearSelectionOnEscape(esc(), false, { fromPeek: true })).toBe(false);
+    expect(shouldClearSelectionOnEscape(esc(), false, { fromPeek: false })).toBe(true);
+    expect(shouldClearSelectionOnEscape(esc(), false)).toBe(true); // chữ ký cũ vẫn đúng
   });
 });
