@@ -56,10 +56,11 @@ export class RaidController {
   @Permissions(PERMISSIONS.RISK_MANAGE)
   async update(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateRaidSchema)) dto: UpdateRaidInput,
   ) {
-    return this.raid.update(workspaceId, id, dto);
+    return this.raid.update(workspaceId, id, dto, user);
   }
 
   @ProjectRef('raid', 'id')

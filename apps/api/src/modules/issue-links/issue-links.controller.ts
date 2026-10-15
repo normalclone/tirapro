@@ -47,7 +47,7 @@ export class IssueLinksController {
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
     await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.links.create(workspaceId, issueId, dto);
+    return this.links.create(workspaceId, issueId, dto, user);
   }
 
   /** Xóa liên kết theo id. */
@@ -61,6 +61,6 @@ export class IssueLinksController {
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
     await this.ownership.assertOwnsLinkSource(ownOnly, workspaceId, user.id, id);
-    return this.links.remove(workspaceId, id);
+    return this.links.remove(workspaceId, id, user);
   }
 }

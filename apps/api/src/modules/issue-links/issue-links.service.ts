@@ -1,8 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { PERMISSIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  ForbiddenAppException,
+  NotFoundAppException,
+} from '../../common/exceptions/app.exception';
 import { assertIssueWritable } from '../../common/project-writable';
+import { isIssueOwner, type IssueOwners } from '../rbac/issue-ownership.service';
+import { RbacService } from '../rbac/rbac.service';
 
 /** Loại liên kết khả dụng trong workspace. */
 export interface LinkTypeView {
@@ -51,6 +58,15 @@ const linkEndSelect = {
   status: { select: { name: true, category: true } },
 } satisfies Prisma.IssueSelect;
 
+// Thêm dự án + 3 cột chủ sở hữu để kiểm quyền sửa ở đầu kia của link liên dự án.
+const linkWriteSelect = {
+  ...linkEndSelect,
+  projectId: true,
+  reporterId: true,
+  assigneeId: true,
+  createdById: true,
+} satisfies Prisma.IssueSelect;
+
 const linkInclude = {
   linkType: true,
   source: { select: linkEndSelect },
@@ -59,11 +75,16 @@ const linkInclude = {
 
 type LinkRow = Prisma.IssueLinkGetPayload<{ include: typeof linkInclude }>;
 type LinkEndRow = Prisma.IssueGetPayload<{ select: typeof linkEndSelect }>;
+type LinkWriteRow = Prisma.IssueGetPayload<{ select: typeof linkWriteSelect }>;
+type LinkActor = { id: string; isSystemAdmin: boolean };
 type LinkTypeRow = Prisma.LinkTypeGetPayload<true>;
 
 @Injectable()
 export class IssueLinksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rbac: RbacService,
+  ) {}
 
   /** Danh sách loại liên kết của workspace. */
   async listTypes(workspaceId: string): Promise<LinkTypeView[]> {
@@ -79,6 +100,7 @@ export class IssueLinksService {
     workspaceId: string,
     issueId: string,
     input: CreateIssueLinkInput,
+    actor: LinkActor,
   ): Promise<CreatedLinkView> {
     if (input.targetIssueId === issueId) {
       throw new BusinessRuleException(
@@ -87,10 +109,15 @@ export class IssueLinksService {
     }
 
     // Cả hai issue phải thuộc workspace của người dùng.
-    await this.requireIssue(workspaceId, issueId);
+    const source = await this.requireIssue(workspaceId, issueId);
     const target = await this.requireIssue(workspaceId, input.targetIssueId);
-    // Hai đầu có thể thuộc hai dự án khác nhau — dự án nào đã lưu trữ cũng chặn.
+    // Nguồn: guard đã kiểm quyền; archived của dự án nguồn chặn ngay.
     await assertIssueWritable(this.prisma, issueId);
+    // Guard chỉ kiểm quyền ở đầu NGUỒN → link liên dự án phải kiểm thêm quyền ở đầu ĐÍCH.
+    // Kiểm quyền TRƯỚC trạng thái lưu trữ của đích để không lộ trạng thái dự án cho người không có quyền.
+    if (target.projectId !== source.projectId) {
+      await this.assertCanEditAcrossProject(workspaceId, actor, target);
+    }
     await assertIssueWritable(this.prisma, input.targetIssueId);
 
     // Loại liên kết phải thuộc workspace.
@@ -123,12 +150,31 @@ export class IssueLinksService {
   }
 
   /** Xóa liên kết — issue nguồn của liên kết phải thuộc workspace. */
-  async remove(workspaceId: string, linkId: string): Promise<{ success: true }> {
+  async remove(workspaceId: string, linkId: string, actor: LinkActor): Promise<{ success: true }> {
     const link = await this.prisma.issueLink.findFirst({
       where: { id: linkId, source: { workspaceId, deletedAt: null } },
-      select: { id: true, sourceIssueId: true, targetIssueId: true },
+      select: {
+        id: true,
+        sourceIssueId: true,
+        targetIssueId: true,
+        source: { select: { projectId: true } },
+        target: {
+          select: {
+            id: true,
+            projectId: true,
+            deletedAt: true,
+            reporterId: true,
+            assigneeId: true,
+            createdById: true,
+          },
+        },
+      },
     });
     if (!link) throw new NotFoundAppException('Liên kết');
+    // Issue đích đã xoá mềm → cho dọn link mồ côi, không đòi quyền ở đầu đó.
+    if (!link.target.deletedAt && link.target.projectId !== link.source.projectId) {
+      await this.assertCanEditAcrossProject(workspaceId, actor, link.target);
+    }
     await assertIssueWritable(this.prisma, link.sourceIssueId);
     await assertIssueWritable(this.prisma, link.targetIssueId);
     await this.prisma.issueLink.delete({ where: { id: link.id } });
@@ -148,13 +194,28 @@ export class IssueLinksService {
   }
 
   // ---------- helpers ----------
-  private async requireIssue(workspaceId: string, issueId: string): Promise<LinkEndRow> {
+  private async requireIssue(workspaceId: string, issueId: string): Promise<LinkWriteRow> {
     const issue = await this.prisma.issue.findFirst({
       where: { id: issueId, workspaceId, deletedAt: null },
-      select: linkEndSelect,
+      select: linkWriteSelect,
     });
     if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
+  }
+
+  /** Ở dự án của issue `issue`: cần `issue:edit`, hoặc `issue:edit:own` và là chủ issue đó. */
+  private async assertCanEditAcrossProject(
+    workspaceId: string,
+    actor: LinkActor,
+    issue: IssueOwners & { projectId: string },
+  ): Promise<void> {
+    if (actor.isSystemAdmin) return;
+    const perms = await this.rbac.getEffectivePermissions(actor.id, workspaceId, issue.projectId);
+    if (perms.has(PERMISSIONS.ISSUE_EDIT)) return;
+    if (perms.has(`${PERMISSIONS.ISSUE_EDIT}:own`) && isIssueOwner(actor.id, issue)) return;
+    throw new ForbiddenAppException(
+      'Bạn không có quyền sửa công việc ở dự án còn lại của liên kết — hãy nhờ quản trị viên dự án đó cấp quyền hoặc chọn công việc cùng dự án',
+    );
   }
 
   /** Chuẩn hóa một liên kết theo góc nhìn của issue đang xem. */
