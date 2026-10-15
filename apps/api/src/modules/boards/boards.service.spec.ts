@@ -373,3 +373,22 @@ describe('BoardsService — dự án đã xoá mềm = board không tồn tại 
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
+
+describe('BoardsService.listIssues — board có filterJql sắp theo rank (Minor 5)', () => {
+  it('truyền orderByRank cho SearchService; board không filterJql đi đường IssuesService.list', async () => {
+    const search = { search: vi.fn(() => Promise.resolve({ data: [] })) };
+    const issues = { list: vi.fn(() => Promise.resolve({ data: [] })) };
+    const board = { projectId: 'p1', filterJql: 'assignee = currentUser()' };
+    const prisma = { board: { findFirst: vi.fn(() => Promise.resolve(board)) } };
+    const service = new BoardsService(prisma as never, issues as never, search as never);
+    await service.listIssues('w1', 'u1', 'b1', undefined, 50);
+    expect(search.search).toHaveBeenCalledWith(
+      'w1',
+      'u1',
+      expect.objectContaining({ orderByRank: true, projectId: 'p1' }),
+    );
+    board.filterJql = '';
+    await service.listIssues('w1', 'u1', 'b1', undefined, 50);
+    expect(issues.list).toHaveBeenCalledTimes(1);
+  });
+});

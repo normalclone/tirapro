@@ -94,6 +94,21 @@ describe('SearchService.search', () => {
     expect(call[6]).toBeUndefined();
   });
 
+  it('orderByRank (board có filterJql): không ORDER BY => sắp theo rank tăng dần, không dùng rankHint; ORDER BY tường minh vẫn thắng', async () => {
+    const { service, issues } = makeService([{ id: 'I2', rank: 1 }]);
+    await service.search('W1', 'U1', { jql: 'text ~ "foo"', limit: 50, orderByRank: true });
+    let call = issues.query.mock.calls[0] as unknown[];
+    expect(call[2]).toEqual([{ rank: 'asc' }]);
+    expect(call[6]).toBeUndefined();
+    await service.search('W1', 'U1', {
+      jql: 'summary ~ "x" ORDER BY created DESC',
+      limit: 50,
+      orderByRank: true,
+    });
+    call = issues.query.mock.calls[1] as unknown[];
+    expect(call[2]).toEqual([{ createdAt: 'desc' }]);
+  });
+
   it('JQL không có text ~ -> không đụng full-text (hành vi cũ)', async () => {
     const { service, issues, queryRaw } = makeService([]);
     await service.search('W1', 'U1', { jql: 'summary ~ "x"', limit: 50 });

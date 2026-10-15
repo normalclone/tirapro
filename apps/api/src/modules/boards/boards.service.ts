@@ -227,6 +227,7 @@ export class BoardsService {
       projectId: board.projectId,
       cursor,
       limit,
+      orderByRank: true, // cùng thứ tự với board không có bộ lọc (IssuesService.list: rank tăng dần) để phân trang khớp thứ tự hiển thị
     });
   }
 

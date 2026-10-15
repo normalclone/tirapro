@@ -79,6 +79,9 @@ function changedFieldsOf(before: IssueRow, after: IssueRow): string[] {
   return TRACKED_FIELDS.filter((f) => !same(before[f], after[f]));
 }
 
+/** Lô tối đa 100 issue × ~4 truy vấn tuần tự: mặc định 5s của interactive transaction quá sát, quá hạn là rollback cả lô. */
+const BULK_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
+
 /** `meta` chỉ gắn vào payload khi do automation gây ra — sự kiện của người dùng thật giữ nguyên hình dạng cũ. */
 const withMeta = (meta: AutomationEventMeta | undefined) => (meta ? { meta } : {});
 
@@ -572,8 +575,12 @@ export class IssuesService {
         const sorted = rows
           .sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0))
           .map((r) => this.toDto(r));
-        const start = cursor ? sorted.findIndex((i) => i.id === cursor) + 1 : 0;
-        return cursorPage(sorted.slice(start, start + limit + 1), limit, (i) => i.id);
+        // Con trỏ không còn trong danh sách (kết quả tìm đổi giữa hai lần gọi) → trang rỗng, KHÔNG quay về trang đầu
+        // (client nạp tiếp tự động sẽ lặp vô hạn). Con trỏ còn trong rawIds nhưng issue đã biến mất vẫn tiếp tục đúng chỗ.
+        const cursorPos = cursor ? (position.get(cursor) ?? -1) : -1;
+        if (cursor && cursorPos < 0) return cursorPage<IssueDto>([], limit, (i) => i.id);
+        const rest = cursor ? sorted.filter((i) => (position.get(i.id) ?? 0) > cursorPos) : sorted;
+        return cursorPage(rest.slice(0, limit + 1), limit, (i) => i.id);
       }
       return this.queryOrdered(idScope, orderBy, cursor, limit);
     }
@@ -838,7 +845,7 @@ export class IssuesService {
           conflicts.push({ id: item.id, version: (e.current as { version: number }).version });
         }
       }
-    });
+    }, BULK_TX_OPTIONS);
 
     for (const { before, after } of changed) {
       const dto = this.toDto(after);

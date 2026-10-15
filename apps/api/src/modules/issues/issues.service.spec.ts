@@ -352,6 +352,14 @@ describe('IssuesService.bulkUpdate', () => {
     { id: 'b', version: 3 },
   ];
 
+  it('transaction của lô đặt timeout/maxWait đủ rộng (mặc định 5s quá sát với 100 item × ~4 truy vấn)', async () => {
+    const tx = bulkTx();
+    const txSpy = vi.fn((fn: (t: unknown) => unknown, _opts?: unknown) => fn(tx));
+    const { service } = makeService(tx, { $transaction: txSpy });
+    await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { assigneeId: 'u2' } });
+    expect(txSpy.mock.calls[0]![1]).toMatchObject({ timeout: 30_000, maxWait: 10_000 });
+  });
+
   it('2 item, 1 thua OCC lúc ghi => updated 1, conflicts 1 (kèm version hiện tại), chỉ emit cho item đã ghi', async () => {
     const tx = bulkTx({ lose: 'b' });
     const { service, events } = makeService(tx);
@@ -516,6 +524,16 @@ describe('IssuesService.query — rawIds (full-text)', () => {
     const second = await service.query('w1', {}, [], 'b', 2, ['a', 'b', 'c']);
     expect(second.data.map((i) => i.id)).toEqual(['c']);
     expect(second.pageInfo).toMatchObject({ hasNextPage: false });
+  });
+
+  it('con trỏ không còn trong rawIds => trang rỗng (không quay lại trang đầu); con trỏ còn trong rawIds dù issue đã mất vẫn tiếp tục đúng chỗ', async () => {
+    const rows = ['a', 'c'].map((id) => issueRow({ id })); // b đã bị xoá/ẩn khỏi kết quả
+    const { service } = setup(rows);
+    const gone = await service.query('w1', {}, [], 'zzz', 2, ['a', 'b', 'c']);
+    expect(gone.data).toEqual([]);
+    expect(gone.pageInfo).toMatchObject({ hasNextPage: false, endCursor: null });
+    const afterB = await service.query('w1', {}, [], 'b', 2, ['a', 'b', 'c']);
+    expect(afterB.data.map((i) => i.id)).toEqual(['c']);
   });
 
   it('rawIds rỗng -> trang rỗng, không truy vấn DB', async () => {

@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { escapeLike, insensitiveContains } from '../../common/like';
 import type {
   JqlFieldName,
@@ -200,7 +201,10 @@ function compileComparison(
         return cfg.idColumn
           ? { NOT: { [cfg.idColumn]: null } }
           : { [cfg.relation!]: { isNot: null } };
-      const f = stringFilter(op, value, ctx);
+      const f =
+        cfg.kind === 'enumRel'
+          ? categoryFilter(field, op, value, ctx)
+          : stringFilter(op, value, ctx);
       const rel: Where = { [cfg.relation!]: { [cfg.field!]: f } };
       // `rel.name NOT ILIKE …` không bao giờ đúng với issue KHÔNG có quan hệ (JOIN ra NULL) ⇒ `!~` bỏ sót
       // issue ở backlog / chưa có priority / chưa có resolution. Thêm nhánh "không có quan hệ" để `!~` là phần bù đúng của `~`.
@@ -339,6 +343,42 @@ function listStrings(v: JqlValue, ctx: JqlCompileContext): string[] {
 function listNumbers(v: JqlValue): number[] {
   if (v.kind === 'list') return v.value.map((x) => scalarNumber(x));
   return [scalarNumber(v)];
+}
+
+/** Giá trị hợp lệ của `statusCategory` (enum Prisma StatusCategory). */
+const STATUS_CATEGORIES = ['TODO', 'IN_PROGRESS', 'DONE'] as const;
+
+/**
+ * Bộ lọc cho cột ENUM (`statusCategory`): chỉ `=`, `!=`, `IN`, `NOT IN` với giá trị đúng enum (không phân biệt
+ * hoa/thường; "in progress"/"in-progress" cũng nhận). Dùng `contains`/giá trị lạ trên enum làm Prisma ném lỗi → 500,
+ * nên báo 422 rõ ràng ở đây.
+ */
+function categoryFilter(
+  field: JqlFieldName,
+  op: JqlOperator,
+  value: JqlValue,
+  ctx: JqlCompileContext,
+): Prisma.EnumStatusCategoryFilter | string {
+  if (op !== '=' && op !== '!=' && op !== 'IN' && op !== 'NOT IN')
+    throw new BusinessRuleException(
+      `Toán tử ${op} không dùng được cho ${field} — hãy dùng =, !=, IN hoặc NOT IN`,
+    );
+  const norm = (raw: string): (typeof STATUS_CATEGORIES)[number] => {
+    const v = raw
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_');
+    const hit = STATUS_CATEGORIES.find((c) => c === v);
+    if (!hit)
+      throw new BusinessRuleException(
+        `Giá trị "${raw}" không hợp lệ cho ${field} — chỉ nhận ${STATUS_CATEGORIES.join(', ')}`,
+      );
+    return hit;
+  };
+  if (op === 'IN') return { in: listStrings(value, ctx).map(norm) };
+  if (op === 'NOT IN') return { notIn: listStrings(value, ctx).map(norm) };
+  const v = norm(scalarString(value, ctx));
+  return op === '!=' ? { not: v } : v;
 }
 
 function stringFilter(

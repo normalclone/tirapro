@@ -22,6 +22,8 @@ export interface SearchOptions {
   projectId?: string;
   cursor?: string;
   limit: number;
+  /** Không có ORDER BY tường minh thì xếp theo `rank` (thứ tự thả trên board/backlog) thay vì độ liên quan/updatedAt. */
+  orderByRank?: boolean;
 }
 
 /** Một lựa chọn cho bộ dựng truy vấn (value đúng dạng JQL khớp, label hiển thị). */
@@ -140,8 +142,9 @@ export class SearchService {
       const ids = primary ? fulltext.get(primary) : undefined;
       // Không ORDER BY tường minh → id khớp full-text xếp theo rank lên trước. Chỉ là gợi ý xếp hạng:
       // tập kết quả do `where` (đã gồm ILIKE summary/description/key) quyết định, không bị cắt top-200.
-      if (ids && !orderBy.length) rankHint = [...ids];
+      if (ids && !orderBy.length && !opts.orderByRank) rankHint = [...ids];
     }
+    if (opts.orderByRank && !orderBy.length) orderBy = [{ rank: 'asc' }];
     if (opts.projectId) {
       where = Object.keys(where).length
         ? { AND: [where, { projectId: opts.projectId }] }

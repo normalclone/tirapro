@@ -156,3 +156,30 @@ describe('JQL text ~ (full-text)', () => {
     });
   });
 });
+
+describe('JQL statusCategory — enum, không để Prisma ném 500 (Minor 7)', () => {
+  const w = (jql: string) => compileJql(ast(jql), { currentUserId: 'u' }).where;
+
+  it('=, !=, IN, NOT IN với giá trị đúng enum, không phân biệt hoa/thường', () => {
+    expect(w('statusCategory = Done')).toEqual({ status: { category: 'DONE' } });
+    expect(w('statusCategory = "in progress"')).toEqual({ status: { category: 'IN_PROGRESS' } });
+    expect(w('statusCategory != todo')).toEqual({ status: { category: { not: 'TODO' } } });
+    expect(w('statusCategory IN (todo, "In-Progress")')).toEqual({
+      status: { category: { in: ['TODO', 'IN_PROGRESS'] } },
+    });
+    expect(w('statusCategory NOT IN (done)')).toEqual({
+      status: { category: { notIn: ['DONE'] } },
+    });
+  });
+
+  it('giá trị ngoài enum hoặc toán tử ~ / !~ => 422 (BusinessRule), không sinh where lỗi', () => {
+    expect(() => w('statusCategory = Finished')).toThrowError(/không hợp lệ cho statusCategory/);
+    expect(() => w('statusCategory ~ "do"')).toThrowError(/Toán tử ~ không dùng được/);
+    expect(() => w('statusCategory !~ "do"')).toThrowError(/Toán tử !~ không dùng được/);
+    try {
+      w('statusCategory = x');
+    } catch (e) {
+      expect((e as { status?: number }).status).toBe(422);
+    }
+  });
+});
