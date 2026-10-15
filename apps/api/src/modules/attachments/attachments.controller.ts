@@ -19,11 +19,16 @@ import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import type { AuthUser } from '../../common/types/request';
 import { AttachmentsService } from './attachments.service';
+import { IssueOwnershipService } from '../rbac/issue-ownership.service';
+import { OwnOnly } from '../../common/decorators/own-only.decorator';
 
 @ApiTags('attachments')
 @Controller()
 export class AttachmentsController {
-  constructor(private readonly attachments: AttachmentsService) {}
+  constructor(
+    private readonly attachments: AttachmentsService,
+    private readonly ownership: IssueOwnershipService,
+  ) {}
 
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/attachments')
@@ -35,7 +40,9 @@ export class AttachmentsController {
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @UploadedFile() file: Express.Multer.File,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
     return this.attachments.upload(workspaceId, user.id, issueId, file);
   }
 
@@ -63,7 +70,13 @@ export class AttachmentsController {
   @ProjectRef('attachment', 'id')
   @Delete('attachments/:id')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
-  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+  async remove(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
+  ) {
+    await this.ownership.assertOwnsAttachment(ownOnly, workspaceId, user.id, id);
     return this.attachments.remove(workspaceId, id);
   }
 }

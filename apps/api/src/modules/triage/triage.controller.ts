@@ -9,6 +9,8 @@ import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { TriageService } from './triage.service';
+import { IssueOwnershipService } from '../rbac/issue-ownership.service';
+import { OwnOnly } from '../../common/decorators/own-only.decorator';
 
 const acceptSchema = z.object({
   version: z.number().int().nonnegative(),
@@ -31,7 +33,10 @@ type SnoozeInput = z.infer<typeof snoozeSchema>;
 @ApiTags('triage')
 @Controller('triage')
 export class TriageController {
-  constructor(private readonly triage: TriageService) {}
+  constructor(
+    private readonly triage: TriageService,
+    private readonly ownership: IssueOwnershipService,
+  ) {}
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('query', 'projectId')
@@ -65,7 +70,9 @@ export class TriageController {
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(acceptSchema)) dto: AcceptInput,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
     return this.triage.accept(workspaceId, user.id, issueId, dto);
   }
 
@@ -77,7 +84,9 @@ export class TriageController {
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(declineSchema)) dto: DeclineInput,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
     return this.triage.decline(workspaceId, user.id, issueId, dto);
   }
 
@@ -89,7 +98,9 @@ export class TriageController {
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(snoozeSchema)) dto: SnoozeInput,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
     return this.triage.snooze(workspaceId, user.id, issueId, dto);
   }
 }

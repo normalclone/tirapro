@@ -8,6 +8,10 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ComponentsService } from './components.service';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PERMISSIONS } from '@tirapro/types';
+import { IssueOwnershipService } from '../rbac/issue-ownership.service';
+import { OwnOnly } from '../../common/decorators/own-only.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/types/request';
 
 // ============================ SCHEMAS — COMPONENTS ==========================
 const nameSchema = z
@@ -76,7 +80,10 @@ type AttachVersionDto = z.infer<typeof attachVersionSchema>;
 @ApiTags('components')
 @Controller()
 export class ComponentsController {
-  constructor(private readonly components: ComponentsService) {}
+  constructor(
+    private readonly components: ComponentsService,
+    private readonly ownership: IssueOwnershipService,
+  ) {}
 
   // ============================ COMPONENTS ==================================
 
@@ -125,9 +132,12 @@ export class ComponentsController {
   @Post('issues/:issueId/components')
   async attachComponent(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(attachComponentSchema)) dto: AttachComponentDto,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
     return this.components.attachComponent(workspaceId, issueId, dto.componentId);
   }
 
@@ -136,9 +146,12 @@ export class ComponentsController {
   @Delete('issues/:issueId/components/:componentId')
   async detachComponent(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Param('componentId') componentId: string,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
     return this.components.detachComponent(workspaceId, issueId, componentId);
   }
 
@@ -185,9 +198,12 @@ export class ComponentsController {
   @Post('issues/:issueId/versions')
   async attachVersion(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(attachVersionSchema)) dto: AttachVersionDto,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
     return this.components.attachVersion(workspaceId, issueId, dto.versionId, dto.type);
   }
 
@@ -196,10 +212,13 @@ export class ComponentsController {
   @Delete('issues/:issueId/versions/:versionId/:type')
   async detachVersion(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Param('versionId') versionId: string,
     @Param('type', new ZodValidationPipe(fixVersionTypeSchema)) type: FixVersionType,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
     return this.components.detachVersion(workspaceId, issueId, versionId, type);
   }
 }

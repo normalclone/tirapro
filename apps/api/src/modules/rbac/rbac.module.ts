@@ -1,9 +1,10 @@
 import { Global, Module } from '@nestjs/common';
+import { IssueOwnershipService } from './issue-ownership.service';
 import { RbacService } from './rbac.service';
 
 @Global()
 @Module({
-  providers: [RbacService],
-  exports: [RbacService],
+  providers: [RbacService, IssueOwnershipService],
+  exports: [RbacService, IssueOwnershipService],
 })
 export class RbacModule {}

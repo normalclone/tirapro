@@ -776,6 +776,53 @@ describe('IssuesService — :own (issue:edit:own)', () => {
     expect(tx.issue.updateMany).toHaveBeenCalledTimes(1);
   });
 
+  it('transition(ownOnly) trên việc của người khác -> 403, chưa ghi gì, không emit', async () => {
+    const tx = ownTx(issueRow({ reporterId: 'u1', createdById: 'u1', assigneeId: null }));
+    const { service, events } = makeService(tx);
+    await expect(
+      service.transition('w1', 'u9', 'i1', { version: 3, toStatusId: 's2' }, undefined, true),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('move(ownOnly) trên việc của người khác -> 403; của mình -> qua', async () => {
+    const tx = ownTx(issueRow({ reporterId: 'u1', createdById: 'u1', assigneeId: null }));
+    const { service } = makeService(tx);
+    await expect(service.move('w1', 'u9', 'i1', { version: 3 }, true)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    await expect(service.move('w1', 'u1', 'i1', { version: 3 }, true)).resolves.toBeDefined();
+  });
+
+  it('bulkUpdate chỉ có issue:transition:own + việc của người khác -> 403 cả lô, chưa ghi', async () => {
+    const tx = {
+      issue: {
+        findMany: vi.fn(() =>
+          Promise.resolve([issueRow({ id: 'a', reporterId: 'u1', createdById: 'u1' })]),
+        ),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+      project: {
+        findUnique: vi.fn(() => Promise.resolve({ archivedAt: null, defaultWorkflowId: 'wf' })),
+      },
+      user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) },
+    };
+    const { service, rbac } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition:own']));
+    await expect(
+      service.bulkUpdate('w1', 'u9', {
+        projectId: 'p1',
+        items: [{ id: 'a', version: 3 }],
+        patch: { statusId: 's2' },
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
   it('update không ownOnly (quyền issue:edit đầy đủ) vẫn sửa được việc của người khác', async () => {
     const tx = ownTx(issueRow({ reporterId: 'u1', createdById: 'u1', assigneeId: null }));
     const { service } = makeService(tx);
