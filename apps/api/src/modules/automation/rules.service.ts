@@ -17,7 +17,7 @@ import {
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
-import { assertProjectIdWritable } from '../../common/project-writable';
+import { assertNotArchived, assertProjectIdWritable } from '../../common/project-writable';
 import { TelegramService } from '../integrations/telegram.service';
 import { maskWebhookActions, openSecret, sealWebhookActions } from './webhook-secret';
 
@@ -119,7 +119,6 @@ export class RulesService {
     input: CreateRuleInput,
   ): Promise<AutomationRuleDto> {
     if (input.projectId) await this.assertProject(workspaceId, input.projectId);
-    await assertProjectIdWritable(this.prisma, input.projectId);
     this.assertSemantics(input.trigger, input.triggerConfig, input.conditions);
     const row = await this.prisma.automationRule.create({
       data: {
@@ -230,9 +229,11 @@ export class RulesService {
   private async assertProject(workspaceId: string, projectId: string): Promise<void> {
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
+    // Dùng cho create (thao tác ghi): quy tắc theo dự án lưu trữ là chỉ đọc — gộp chung một truy vấn.
+    assertNotArchived(p.archivedAt);
   }
 
   /** Các ràng buộc zod không kiểm được: cron hợp lệ, SCHEDULED có JQL, JQL parse được. */

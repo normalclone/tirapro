@@ -271,9 +271,10 @@ export class ProjectsService {
   ): Promise<ProjectDto> {
     const prev = await this.prisma.project.findFirst({
       where: { workspaceId, key, deletedAt: null },
-      select: { id: true, avatarUrl: true },
+      select: { id: true, avatarUrl: true, archivedAt: true },
     });
     if (!prev) throw new NotFoundAppException('Dự án');
+    assertNotArchived(prev.archivedAt);
     const avatarUrl = await this.media.saveAvatar(file, 'proj', req);
     await this.prisma.project.update({ where: { id: prev.id }, data: { avatarUrl } });
     await this.media.removeByUrl(prev.avatarUrl);
@@ -284,9 +285,10 @@ export class ProjectsService {
   async clearAvatar(workspaceId: string, key: string): Promise<ProjectDto> {
     const prev = await this.prisma.project.findFirst({
       where: { workspaceId, key, deletedAt: null },
-      select: { id: true, avatarUrl: true },
+      select: { id: true, avatarUrl: true, archivedAt: true },
     });
     if (!prev) throw new NotFoundAppException('Dự án');
+    assertNotArchived(prev.archivedAt);
     await this.prisma.project.update({ where: { id: prev.id }, data: { avatarUrl: null } });
     await this.media.removeByUrl(prev.avatarUrl);
     return this.getByKey(workspaceId, key);

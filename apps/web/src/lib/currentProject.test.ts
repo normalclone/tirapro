@@ -43,6 +43,14 @@ describe('resolveCreateTarget', () => {
     expect(r.notice).toContain('DEMO');
     expect(r.block).toBeUndefined();
   });
+  it('key khác hoa/thường vẫn khớp dự án đang hoạt động => dùng key chuẩn, không thông báo', () => {
+    expect(resolveCreateTarget('qai', active)).toEqual({ projectKey: 'QAI' });
+  });
+  it('thông báo không khẳng định "đã lưu trữ" khi chỉ biết key không còn hoạt động', () => {
+    expect(resolveCreateTarget('OLD', active).notice).toContain('không còn hoạt động');
+    expect(resolveCreateTarget('OLD', active).notice).not.toContain('đã lưu trữ');
+    expect(resolveCreateTarget('OLD', []).notice).not.toContain('đã lưu trữ');
+  });
   it('không còn dự án nào đang hoạt động => chặn + thông báo (không mở dialog trống)', () => {
     expect(resolveCreateTarget('OLD', [])).toMatchObject({ block: true });
   });

@@ -41,7 +41,7 @@ function setup() {
       deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
     },
     project: {
-      findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })),
+      findFirst: vi.fn(() => Promise.resolve({ id: 'p1', archivedAt: null as Date | null })),
       findUnique: vi.fn(() => Promise.resolve({ archivedAt: null as Date | null })),
     },
   };
@@ -187,7 +187,9 @@ describe('RulesService — dự án lưu trữ là chỉ đọc', () => {
 
   function archivedSetup() {
     const s = setup();
-    s.prisma.project.findUnique.mockResolvedValue({ archivedAt: new Date() });
+    const archivedAt = new Date();
+    s.prisma.project.findUnique.mockResolvedValue({ archivedAt });
+    s.prisma.project.findFirst.mockResolvedValue({ id: 'p1', archivedAt });
     s.prisma.automationRule.findFirst.mockResolvedValue(row({ projectId: 'p1' }));
     return s;
   }

@@ -3,7 +3,7 @@ import { CustomFieldType, Prisma } from '@prisma/client';
 import { ERROR_CODES } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AppException, NotFoundAppException } from '../../common/exceptions/app.exception';
-import { assertIssueWritable } from '../../common/project-writable';
+import { assertIssueWritable, assertProjectIdWritable } from '../../common/project-writable';
 
 /** Field định nghĩa kèm options (cho dropdown / hiển thị). */
 const fieldInclude = {
@@ -81,6 +81,8 @@ export class CustomFieldsService {
     input: CreateCustomFieldInput,
   ): Promise<FieldDefinitionView> {
     if (input.projectId) await this.requireProject(workspaceId, input.projectId);
+    // Định nghĩa cấp workspace (không gắn dự án) không bị chặn.
+    await assertProjectIdWritable(this.prisma, input.projectId);
 
     const isSelect = SELECT_TYPES.has(input.type);
     const rawOptions = isSelect ? (input.options ?? []) : [];
@@ -111,7 +113,8 @@ export class CustomFieldsService {
     id: string,
     input: UpdateCustomFieldInput,
   ): Promise<FieldDefinitionView> {
-    await this.requireField(workspaceId, id);
+    const cur = await this.requireField(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     const data: Prisma.CustomFieldUpdateInput = {};
     if (input.name !== undefined) data.name = input.name.trim();
     if (input.isRequired !== undefined) data.isRequired = input.isRequired;
@@ -125,7 +128,8 @@ export class CustomFieldsService {
   }
 
   async softDeleteDefinition(workspaceId: string, id: string): Promise<{ success: true }> {
-    await this.requireField(workspaceId, id);
+    const cur = await this.requireField(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     await this.prisma.customField.update({ where: { id }, data: { deletedAt: new Date() } });
     return { success: true };
   }

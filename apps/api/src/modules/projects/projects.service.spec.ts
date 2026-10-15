@@ -138,4 +138,23 @@ describe('ProjectsService — dự án lưu trữ là chỉ đọc (cài đặt 
     await service.remove('w1', 'p1', 'u1');
     expect(prisma.project.updateMany).toHaveBeenCalledTimes(2);
   });
+
+  it('setAvatar()/clearAvatar() trên dự án đã lưu trữ => 422, không lưu tệp, không ghi', async () => {
+    const media = { saveAvatar: vi.fn(() => Promise.resolve('/u/a.png')), removeByUrl: vi.fn() };
+    const prisma = {
+      project: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({ id: 'p1', avatarUrl: null, archivedAt: new Date() }),
+        ),
+        update: vi.fn(() => Promise.resolve({})),
+      },
+    };
+    const service = new ProjectsService(prisma as never, media as never);
+    await expect(service.setAvatar('w1', 'DEMO', undefined, {} as never)).rejects.toMatchObject({
+      status: 422,
+    });
+    await expect(service.clearAvatar('w1', 'DEMO')).rejects.toMatchObject({ status: 422 });
+    expect(media.saveAvatar).not.toHaveBeenCalled();
+    expect(prisma.project.update).not.toHaveBeenCalled();
+  });
 });
