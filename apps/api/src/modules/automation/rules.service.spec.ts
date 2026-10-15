@@ -19,6 +19,12 @@ const row = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const cipher = {
+  // Giả dạng ba phần iv:tag:ct như TelegramService thật (openSecret kiểm đúng 3 phần).
+  encrypt: (p: string) => `i:t:${p}`,
+  decrypt: (e: string) => (e.startsWith('i:t:') ? e.slice(4) : null),
+};
+
 function setup() {
   const prisma = {
     automationRule: {
@@ -29,7 +35,7 @@ function setup() {
           row({ id: 'r3', trigger: 'COMMENT_ADDED' }),
         ]),
       ),
-      findFirst: vi.fn(() => Promise.resolve(row())),
+      findFirst: vi.fn((..._a: unknown[]) => Promise.resolve(row())),
       create: vi.fn(({ data }: { data: Record<string, unknown> }) => Promise.resolve(row(data))),
       updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
       deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
@@ -37,7 +43,7 @@ function setup() {
     project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
   };
   const redis = { isAvailable: () => false, getClient: () => null };
-  return { service: new RulesService(prisma as never, redis as never), prisma };
+  return { service: new RulesService(prisma as never, redis as never, cipher as never), prisma };
 }
 
 describe('RulesService', () => {
@@ -118,5 +124,49 @@ describe('RulesService', () => {
         actions: [{ type: 'assign', mode: 'lead' }],
       }),
     ).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+  });
+
+  type Written = [{ data: { actions: Array<{ secret: string }> } }];
+
+  it('create: secret webhook được mã hoá khi ghi DB và bị che trong response', async () => {
+    const { service, prisma } = setup();
+    const dto = await service.create('w1', 'u1', {
+      name: 'n',
+      trigger: 'ISSUE_CREATED',
+      triggerConfig: {},
+      conditions: [],
+      actions: [{ type: 'webhook', url: 'https://x.test/h', secret: 'k' }],
+    });
+    const stored = (prisma.automationRule.create.mock.calls[0] as unknown as Written)[0].data
+      .actions[0]!.secret;
+    expect(stored).toBe('enc:v1:i:t:k');
+    expect((dto.actions[0] as { secret?: string }).secret).toBe('********');
+  });
+
+  it('update: gửi lại ******** giữ khoá cũ; gửi khoá mới thì mã hoá lại', async () => {
+    const { service, prisma } = setup();
+    prisma.automationRule.findFirst.mockResolvedValue(
+      row({ actions: [{ type: 'webhook', url: 'https://x.test/h', secret: 'enc:v1:i:t:old' }] }),
+    );
+    await service.update('w1', 'r1', {
+      actions: [{ type: 'webhook', url: 'https://x.test/h', secret: '********' }],
+    });
+    expect(
+      (prisma.automationRule.updateMany.mock.calls[0] as unknown as Written)[0].data.actions[0]!
+        .secret,
+    ).toBe('enc:v1:i:t:old');
+    await service.update('w1', 'r1', {
+      actions: [{ type: 'webhook', url: 'https://x.test/h', secret: 'moi' }],
+    });
+    expect(
+      (prisma.automationRule.updateMany.mock.calls[1] as unknown as Written)[0].data.actions[0]!
+        .secret,
+    ).toBe('enc:v1:i:t:moi');
+  });
+
+  it('cache engine chỉ chứa bản đã mã hoá; openSecret giải mã được cả bản mã hoá lẫn plaintext cũ', () => {
+    const { service } = setup();
+    expect(service.openSecret('enc:v1:i:t:k')).toBe('k');
+    expect(service.openSecret('plain-cu')).toBe('plain-cu');
   });
 });

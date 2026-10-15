@@ -74,6 +74,16 @@ const notifyAction = z.object({
   roles: z.array(z.string().min(1)).max(20).optional(),
   message: z.string().trim().min(1).max(500),
 });
+/** Tiền tố của khoá bí mật webhook đã mã hoá (dạng lưu trong DB); API tự thêm khi lưu. */
+export const WEBHOOK_SECRET_PREFIX = 'enc:v1:';
+/** Giới hạn khoá bí mật người dùng nhập (plaintext, tính theo đơn vị UTF-16 như `string.length`). */
+export const WEBHOOK_SECRET_MAX_LENGTH = 200;
+/**
+ * Giới hạn dạng ĐÃ MÃ HOÁ: tiền tố + hex(iv 12B + tag 16B + ct ≤ 3 byte/đơn vị × 200) + 2 dấu ':' ≈ 1265 ký tự.
+ * Engine parse actions ở dạng lưu nên schema phải nhận đủ dài; plaintext vẫn bị chặn ở WEBHOOK_SECRET_MAX_LENGTH.
+ */
+export const WEBHOOK_SECRET_STORED_MAX_LENGTH = 2048;
+
 const webhookAction = z.object({
   type: z.literal('webhook'),
   url: z
@@ -81,7 +91,14 @@ const webhookAction = z.object({
     .url()
     .max(2000)
     .refine((u) => /^https?:\/\//i.test(u), 'Chỉ hỗ trợ http hoặc https'),
-  secret: z.string().max(200).optional(),
+  secret: z
+    .string()
+    .max(WEBHOOK_SECRET_STORED_MAX_LENGTH)
+    .refine(
+      (v) => v.startsWith(WEBHOOK_SECRET_PREFIX) || v.length <= WEBHOOK_SECRET_MAX_LENGTH,
+      `Khoá bí mật tối đa ${WEBHOOK_SECRET_MAX_LENGTH} ký tự`,
+    )
+    .optional(),
 });
 const createSubtaskAction = z.object({
   type: z.literal('createSubtask'),

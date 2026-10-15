@@ -90,3 +90,22 @@ Cách xử lý (chọn một):
    `pnpm --filter @tirapro/api run integrations:rekey -- --dry-run` để xem trước, rồi chạy không có `--dry-run`.
    Sau đó có thể xoá `INTEGRATION_ENCRYPTION_KEY_PREVIOUS`.
 3. Không còn khoá cũ → nhập lại token bot trong Cài đặt → Tích hợp.
+
+`integrations:rekey` cũng mã hoá lại khoá bí mật của webhook automation (`enc:v1:…`) cùng một lần chạy. Nếu đổi
+`INTEGRATION_ENCRYPTION_KEY` mà không rekey (hoặc không giữ khoá cũ trong `…_PREVIOUS`), webhook có khoá bí mật sẽ báo lỗi
+"Khoá bí mật của webhook không giải mã được" thay vì gửi thiếu chữ ký — nhập lại khoá trong quy tắc để khắc phục.
+
+### Mã hoá khoá bí mật webhook automation (sau khi nâng cấp)
+
+Khoá bí mật ký HMAC của webhook trong Automation giờ được lưu mã hoá (`enc:v1:…`, cùng khoá `INTEGRATION_ENCRYPTION_KEY`)
+và API chỉ trả `********`. Quy tắc tạo trước bản nâng cấp vẫn còn khoá dạng chữ thường (vẫn gửi được); mã hoá nốt bằng
+script một lần, **idempotent** (chạy lại không mã hoá hai lần, chỉ bỏ qua khoá đã mã hoá):
+
+```bash
+pnpm --filter @tirapro/api run automation:seal-secrets -- --dry-run   # xem trước: bao nhiêu khoá sẽ được mã hoá
+pnpm --filter @tirapro/api run automation:seal-secrets                # ghi vào DB
+```
+
+Cần `DATABASE_URL` và `INTEGRATION_ENCRYPTION_KEY` (đúng giá trị API đang dùng) trong môi trường. Script không đổi schema,
+không cần `prisma migrate`. Nếu in "bỏ qua (xung đột)" (có người đang sửa quy tắc) thì chạy lại. Client bên thứ ba từng đọc
+`actions[].secret` qua API sẽ không còn lấy lại được khoá.

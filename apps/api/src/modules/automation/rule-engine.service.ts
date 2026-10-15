@@ -332,6 +332,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
         issues: this.issues,
         comments: this.comments,
         events: this.events,
+        openSecret: (s: string) => this.rules.openSecret(s),
       },
       workspaceId: issue.workspaceId,
       actorId: systemId,

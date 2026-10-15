@@ -34,6 +34,10 @@ describe('isPrivateAddress', () => {
     '::ffff:7f00:1',
     '::ffff:a9fe:a9fe',
     '::ffff:a00:1',
+    '2002:7f00:1::1',
+    '2002:a9fe:a9fe::',
+    '2001:0:4136:e378:8000:63bf:3fff:fdd2',
+    '2001::1',
   ])('%s là nội bộ/đặc biệt', (ip) => {
     expect(isPrivateAddress(ip)).toBe(true);
   });
@@ -44,6 +48,7 @@ describe('isPrivateAddress', () => {
     '172.32.0.1',
     '100.128.0.1',
     '2606:4700::1111',
+    '2001:4860:4860::8888',
     '::ffff:8.8.8.8',
     '::ffff:808:808',
   ])('%s là công khai', (ip) => {
@@ -96,7 +101,11 @@ describe('resolveSafeTarget', () => {
 
   it('IP công khai được chấp nhận và trả đúng địa chỉ để ghim', async () => {
     const t = await resolveSafeTarget('https://8.8.8.8/hook');
-    expect(t).toMatchObject({ address: '8.8.8.8', family: 4 });
+    expect(t).toMatchObject({
+      address: '8.8.8.8',
+      family: 4,
+      addresses: [{ address: '8.8.8.8', family: 4 }],
+    });
   });
 
   it('cho phép nội bộ khi bật AUTOMATION_WEBHOOK_ALLOW_PRIVATE (dev/CI)', async () => {
@@ -110,14 +119,18 @@ describe('resolveSafeTarget', () => {
 });
 
 describe('pinnedLookup — chống DNS rebinding', () => {
-  it('luôn trả đúng địa chỉ đã kiểm, bất kể tên miền được hỏi', () => {
-    const lookup = pinnedLookup('8.8.8.8', 4);
-    const single = vi.fn();
-    lookup('evil.example', {}, single);
-    expect(single).toHaveBeenCalledWith(null, '8.8.8.8', 4);
+  const list = [
+    { address: '8.8.8.8', family: 4 as const },
+    { address: '2606:4700::1111', family: 6 as const },
+  ];
+  it('all:true trả cả danh sách đã kiểm, bất kể tên miền; all:false trả phần tử đầu', () => {
+    const lookup = pinnedLookup(list);
     const all = vi.fn();
     lookup('evil.example', { all: true }, all);
-    expect(all).toHaveBeenCalledWith(null, [{ address: '8.8.8.8', family: 4 }]);
+    expect(all).toHaveBeenCalledWith(null, list);
+    const one = vi.fn();
+    lookup('evil.example', {}, one);
+    expect(one).toHaveBeenCalledWith(null, '8.8.8.8', 4);
   });
 });
 
@@ -126,6 +139,10 @@ describe('runWebhook — kết nối thật tới máy chủ cục bộ (bật A
     dryRun: false,
     trigger: 'ISSUE_CREATED',
     rule: { id: 'r1', name: 'R' },
+    deps: {
+      openSecret: (s: string) =>
+        s.startsWith('enc:v1:') ? s.slice(7).split('').reverse().join('') : s,
+    },
     issue: {
       id: 'i1',
       key: 'P-1',
@@ -186,6 +203,26 @@ describe('runWebhook — kết nối thật tới máy chủ cục bộ (bật A
   it('HTTP 500 là lỗi', async () => {
     await withServer(500, async (url) => {
       await expect(runWebhook(ctx, { type: 'webhook', url })).rejects.toThrow(/HTTP 500/);
+    });
+  });
+
+  it('secret đã mã hoá được giải mã trước khi ký HMAC', async () => {
+    await withServer(200, async (url, seen) => {
+      await runWebhook(ctx, { type: 'webhook', url, secret: 'enc:v1:k' }); // openSecret giả: đảo chuỗi -> 'k'
+      const expected = `sha256=${createHmac('sha256', 'k')
+        .update(seen.body ?? '')
+        .digest('hex')}`;
+      expect(seen.headers?.['x-tirapro-signature']).toBe(expected);
+    });
+  });
+
+  it('secret không giải mã được => lỗi rõ ràng, KHÔNG gửi request', async () => {
+    const bad = { ...(ctx as object), deps: { openSecret: () => null } } as never;
+    await withServer(200, async (url, seen) => {
+      await expect(runWebhook(bad, { type: 'webhook', url, secret: 'enc:v1:xx' })).rejects.toThrow(
+        /không giải mã được/,
+      );
+      expect(seen.body).toBeUndefined();
     });
   });
 });

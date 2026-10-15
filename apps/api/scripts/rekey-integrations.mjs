@@ -1,5 +1,5 @@
 /**
- * Tirapro — mã hoá lại botToken của tích hợp Telegram bằng khoá hiện tại.
+ * Tirapro — mã hoá lại botToken của tích hợp Telegram và khoá bí mật webhook automation (enc:v1:) bằng khoá hiện tại.
  * Dùng sau khi đổi INTEGRATION_ENCRYPTION_KEY: đặt khoá cũ vào INTEGRATION_ENCRYPTION_KEY_PREVIOUS,
  * chạy script này một lần, sau đó có thể bỏ INTEGRATION_ENCRYPTION_KEY_PREVIOUS.
  *
@@ -43,7 +43,9 @@ function encrypt(plain) {
 }
 
 const prisma = new PrismaClient();
-const stats = { ok: 0, rekeyed: 0, plaintext: 0, failed: 0 };
+const stats = { ok: 0, rekeyed: 0, plaintext: 0, failed: 0 }; // Telegram
+const webhookStats = { ok: 0, rekeyed: 0, failed: 0 }; // khoá bí mật webhook automation
+const WEBHOOK_PREFIX = 'enc:v1:'; // khớp webhook-secret.ts
 try {
   const rows = await prisma.integration.findMany({
     where: { type: 'TELEGRAM' },
@@ -79,9 +81,53 @@ try {
     stats.rekeyed++;
   }
   console.log(
-    `${dryRun ? '[dry-run] ' : ''}đã đúng khoá: ${stats.ok} · mã hoá lại: ${stats.rekeyed} · plaintext cũ: ${stats.plaintext} · không giải được: ${stats.failed}`,
+    `${dryRun ? '[dry-run] ' : ''}Telegram — đã đúng khoá: ${stats.ok} · mã hoá lại: ${stats.rekeyed} · plaintext cũ: ${stats.plaintext} · không giải được: ${stats.failed}`,
   );
-  if (stats.failed > 0) process.exitCode = 2;
+
+  // Khoá bí mật webhook automation: "enc:v1:" + ciphertext. Không tiền tố = plaintext cũ (chưa seal) → bỏ qua.
+  const rules = await prisma.automationRule.findMany({
+    select: { id: true, actions: true, updatedAt: true },
+  });
+  for (const rule of rules) {
+    if (!Array.isArray(rule.actions)) continue;
+    let changed = false;
+    const actions = rule.actions.map((a) => {
+      if (!a || typeof a !== 'object' || a.type !== 'webhook') return a;
+      if (typeof a.secret !== 'string' || !a.secret.startsWith(WEBHOOK_PREFIX)) return a;
+      const enc = a.secret.slice(WEBHOOK_PREFIX.length);
+      if (tryDecrypt(enc, current) !== null) {
+        webhookStats.ok++;
+        return a;
+      }
+      const plain = previous.length >= 32 ? tryDecrypt(enc, previous) : null;
+      if (plain === null) {
+        webhookStats.failed++;
+        console.error(
+          `Quy tắc automation ${rule.id}: không giải mã được khoá bí mật webhook bằng khoá hiện tại lẫn khoá cũ — cần nhập lại khoá.`,
+        );
+        return a;
+      }
+      webhookStats.rekeyed++;
+      changed = true;
+      return { ...a, secret: WEBHOOK_PREFIX + encrypt(plain) };
+    });
+    if (changed && !dryRun) {
+      const { count } = await prisma.automationRule.updateMany({
+        where: { id: rule.id, updatedAt: rule.updatedAt },
+        data: { actions },
+      });
+      if (count === 0) {
+        webhookStats.failed++;
+        console.error(
+          `Quy tắc automation ${rule.id} vừa bị sửa trong lúc chạy — hãy chạy lại script.`,
+        );
+      }
+    }
+  }
+  console.log(
+    `${dryRun ? '[dry-run] ' : ''}webhook automation — đã đúng khoá: ${webhookStats.ok} · mã hoá lại: ${webhookStats.rekeyed} · không giải được: ${webhookStats.failed}`,
+  );
+  if (stats.failed > 0 || webhookStats.failed > 0) process.exitCode = 2;
 } finally {
   await prisma.$disconnect();
 }
