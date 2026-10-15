@@ -113,11 +113,16 @@ export function applyCommentChanged(qc: QueryClient, issueId: string) {
 export function applyRanksRebalanced(qc: QueryClient, projectId: string) {
   void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
   void qc.invalidateQueries({
-    predicate: (q) =>
-      q.queryKey[0] === keys.issues.all[0] &&
-      (q.queryKey[1] === 'board' ||
-        (q.queryKey[1] === 'key' &&
-          (q.state.data as IssueDto | undefined)?.projectId === projectId)),
+    predicate: (q) => {
+      if (q.queryKey[0] !== keys.issues.all[0]) return false;
+      // Key board chỉ chứa boardId (không có projectId) → nhận ra dự án qua dữ liệu đang giữ; board chưa nạp / rỗng
+      // không có rank nào để cũ nên bỏ qua. Không đụng board của dự án khác.
+      if (q.queryKey[1] === 'board')
+        return (q.state.data as IssueDto[] | undefined)?.[0]?.projectId === projectId;
+      if (q.queryKey[1] === 'key')
+        return (q.state.data as IssueDto | undefined)?.projectId === projectId;
+      return false;
+    },
   });
 }
 

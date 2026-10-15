@@ -1462,3 +1462,51 @@ describe('IssuesService.query — rankHint (id khớp FTS lên trước, phần 
     expect(JSON.stringify(findMany.mock.calls[0]![0])).not.toContain('notIn');
   });
 });
+
+describe('IssuesService.move — không mốc giữ rank; đổi sprint ghi lịch sử', () => {
+  const emitted = (events: { emit: ReturnType<typeof vi.fn> }) =>
+    events.emit.mock.calls.map((c) => c[0] as string);
+
+  it('không afterId/beforeId => KHÔNG tra mốc, KHÔNG rebalance, giữ rank hiện tại', async () => {
+    const tx = wipTx({ count: 0 });
+    tx.issue.findFirstOrThrow = vi.fn(() => Promise.resolve(issueRow({ version: 4 })));
+    const { service } = makeService(tx);
+    await service.move('w1', 'u1', 'i1', { version: 3, statusId: 's1' });
+    const data = (
+      tx.issue.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data.rank).toBe('n'); // rank của issueRow()
+    expect(tx.issue.findMany).not.toHaveBeenCalled(); // không rebalance
+  });
+
+  it('đổi sprintId => ghi IssueHistory SPRINT (cũ → mới) trong transaction và phát ISSUE_UPDATED{changedFields:[sprintId]} sau ISSUE_MOVED', async () => {
+    const tx = wipTx({ count: 0 });
+    tx.issue.findFirstOrThrow = vi.fn(() =>
+      Promise.resolve(issueRow({ version: 4, sprintId: 'sp2' })),
+    );
+    const { service, events } = makeService(tx);
+    await service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' });
+    const rows = (
+      tx.issueHistory.createMany.mock.calls[0] as unknown as [
+        { data: Array<Record<string, unknown>> },
+      ]
+    )[0].data;
+    expect(rows).toEqual([
+      expect.objectContaining({ field: 'SPRINT', oldValue: null, newValue: 'sp2', actorId: 'u1' }),
+    ]);
+    expect(emitted(events)).toEqual([DOMAIN_EVENTS.ISSUE_MOVED, DOMAIN_EVENTS.ISSUE_UPDATED]);
+    expect(events.emit).toHaveBeenLastCalledWith(
+      DOMAIN_EVENTS.ISSUE_UPDATED,
+      expect.objectContaining({ actorId: 'u1', changedFields: ['sprintId'] }),
+    );
+  });
+
+  it('sprintId không đổi (undefined hoặc bằng hiện tại) => không ghi history SPRINT, không phát ISSUE_UPDATED', async () => {
+    const tx = wipTx({ count: 0 });
+    tx.issue.findFirstOrThrow = vi.fn(() => Promise.resolve(issueRow({ version: 4 })));
+    const { service, events } = makeService(tx);
+    await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a' });
+    expect(tx.issueHistory.createMany).not.toHaveBeenCalled();
+    expect(emitted(events)).toEqual([DOMAIN_EVENTS.ISSUE_MOVED]);
+  });
+});

@@ -869,12 +869,18 @@ export class IssuesService {
       toDone = (await this.statusCategory(input.statusId!)) === 'DONE';
     }
 
-    const rank = await this.resolveRank(current.projectId, this.prisma, null, id, async () => ({
-      prev: input.afterId ? await this.rankOf(workspaceId, current.projectId, input.afterId) : null,
-      next: input.beforeId
-        ? await this.rankOf(workspaceId, current.projectId, input.beforeId)
-        : null,
-    }));
+    // Không có mốc nào ⇒ giữ rank hiện tại (trước đây rankBetween(null, null) đặt thẻ vào GIỮA dự án).
+    const hasNeighbor = !!input.afterId || !!input.beforeId;
+    const rank = hasNeighbor
+      ? await this.resolveRank(current.projectId, this.prisma, null, id, async () => ({
+          prev: input.afterId
+            ? await this.rankOf(workspaceId, current.projectId, input.afterId)
+            : null,
+          next: input.beforeId
+            ? await this.rankOf(workspaceId, current.projectId, input.beforeId)
+            : null,
+        }))
+      : current.rank;
 
     // Chỉ kiểm WIP khi thật sự đổi sang trạng thái khác (kéo trong cùng cột/xếp lại thứ tự thì không chiếm thêm chỗ).
     const wip = statusChanged
@@ -908,6 +914,9 @@ export class IssuesService {
       // Kéo sang cột/trạng thái khác cũng là đổi trạng thái: ghi lịch sử để CFD/burndown không hụt.
       if (row.statusId !== current.statusId)
         await this.recordStatusChange(tx, userId, current, row);
+      // Đổi sprint qua move cũng phải để lại lịch sử SPRINT (burndown/velocity dựa vào đó), như update()/bulkUpdate().
+      // Ở move chỉ sprint có thể khác nên recordChanges chỉ ghi đúng dòng SPRINT.
+      if (row.sprintId !== current.sprintId) await this.recordChanges(tx, userId, current, row);
       return row;
     });
     const dto = this.toDto(updated);
@@ -927,6 +936,13 @@ export class IssuesService {
         issue: dto,
         actorId: userId,
         fromStatusId: current.statusId,
+      });
+    // Đổi sprint cũng là cập nhật issue: automation/thông báo/tích hợp phải thấy (như PATCH).
+    if (updated.sprintId !== current.sprintId)
+      this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+        issue: dto,
+        actorId: userId,
+        changedFields: ['sprintId'],
       });
     return dto;
   }
