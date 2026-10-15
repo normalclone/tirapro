@@ -66,11 +66,12 @@ export class BoardsService {
     return board;
   }
 
-  /** Sửa tên / bộ lọc JQL / cách chia swimlane. `filterJql` rỗng = bỏ bộ lọc. */
+  /** Sửa tên / loại (Scrum ↔ Kanban) / bộ lọc JQL / cách chia swimlane. `filterJql` rỗng = bỏ bộ lọc. */
   async update(workspaceId: string, boardId: string, input: UpdateBoardInput): Promise<BoardDto> {
     const board = await this.require(workspaceId, boardId);
     const data: Prisma.BoardUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
+    if (input.type !== undefined) data.type = input.type;
     if (input.filterJql !== undefined) {
       const jql = input.filterJql?.trim() ?? '';
       if (jql) {

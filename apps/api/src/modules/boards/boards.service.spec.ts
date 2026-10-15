@@ -307,6 +307,39 @@ describe('BoardsService.update', () => {
     expect(prisma.board.update).not.toHaveBeenCalled();
   });
 
+  it('FW12: đổi loại SCRUM -> KANBAN và KANBAN -> SCRUM => ghi type, trả BoardDto có type', async () => {
+    const { service, prisma } = make(boardRow({ type: 'SCRUM' }));
+    await service.update('w1', 'b1', { type: 'KANBAN' });
+    expect(prisma.board.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'b1' }, data: { type: 'KANBAN' } }),
+    );
+    const k = make(boardRow({ type: 'KANBAN' }));
+    const dto = await k.service.update('w1', 'b1', { type: 'SCRUM' });
+    expect(k.prisma.board.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { type: 'SCRUM' } }),
+    );
+    expect(dto).toMatchObject({ id: 'b1', type: 'KANBAN' }); // DTO đọc lại từ DB, có trường type
+  });
+
+  it('FW12: không gửi type => không đụng type', async () => {
+    const { service, prisma } = make();
+    await service.update('w1', 'b1', { name: 'Mới' });
+    expect(prisma.board.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { name: 'Mới' } }),
+    );
+  });
+
+  it('FW12: dự án đã lưu trữ => chặn đổi loại, không ghi', async () => {
+    const { service, prisma } = make(
+      boardRow({ project: { archivedAt: new Date(), defaultWorkflowId: 'wf' } }),
+    );
+    await expect(service.update('w1', 'b1', { type: 'KANBAN' })).rejects.toMatchObject({
+      status: 422,
+      message: has('lưu trữ'),
+    });
+    expect(prisma.board.update).not.toHaveBeenCalled();
+  });
+
   it('filterJql hợp lệ + swimlane => lưu filter và swimlaneConfig { by }', async () => {
     const { service, prisma } = make();
     await service.update('w1', 'b1', { filterJql: 'assignee = currentUser()', swimlaneBy: 'epic' });

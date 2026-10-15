@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { SWIMLANE_BY } from '@tirapro/types';
 
-/** Sửa thông tin board. `filterJql` rỗng/null = bỏ bộ lọc. */
+/** Sửa thông tin board. `filterJql` rỗng/null = bỏ bộ lọc. `type` = đổi loại board Scrum ↔ Kanban. */
 export const updateBoardSchema = z
   .object({
     name: z
@@ -12,6 +12,7 @@ export const updateBoardSchema = z
       .optional(),
     filterJql: z.string().max(5_000, 'Bộ lọc JQL quá dài').nullable().optional(),
     swimlaneBy: z.enum(SWIMLANE_BY).optional(),
+    type: z.enum(['SCRUM', 'KANBAN']).optional(),
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined), 'Hãy chọn ít nhất một thay đổi');
 
