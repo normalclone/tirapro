@@ -3,6 +3,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { BoardColumnDto, IssueDto } from '@tirapro/types';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
+import type { CreateIssueInput } from '@/features/issues/create-api';
 import { categoryColor } from '@/lib/statusColor';
 import { cn } from '@/lib/utils';
 import { useIsDropContainer } from '@/lib/dropContainer';
@@ -17,6 +18,8 @@ export interface ColumnProps {
   projectKey: string;
   projectId: string;
   canCreate: boolean;
+  /** Trường phụ áp cho việc tạo nhanh (vd `sprintId` của sprint đang chạy ở bảng Scrum); gộp với `statusId` của cột. */
+  quickAddExtra?: Partial<CreateIssueInput>;
   /** Có quyền kéo thẻ đổi cột (`issue:transition`). */
   canDrag: boolean;
   droppableId?: string;
@@ -35,6 +38,7 @@ function ColumnImpl({
   projectKey,
   projectId,
   canCreate,
+  quickAddExtra,
   canDrag,
   droppableId,
   laneIdx = 0,
@@ -115,7 +119,7 @@ function ColumnImpl({
         <QuickAddRow
           projectKey={projectKey}
           projectId={projectId}
-          extra={{ statusId: columnStatusId }}
+          extra={{ statusId: columnStatusId, ...quickAddExtra }}
           placeholder="+ Thêm việc…"
           compact
         />
@@ -136,6 +140,7 @@ export const Column = memo(ColumnImpl, (p, n) => {
     p.projectKey !== n.projectKey ||
     p.projectId !== n.projectId ||
     p.canCreate !== n.canCreate ||
+    p.quickAddExtra?.sprintId !== n.quickAddExtra?.sprintId ||
     p.canDrag !== n.canDrag ||
     p.droppableId !== n.droppableId ||
     p.laneIdx !== n.laneIdx ||
