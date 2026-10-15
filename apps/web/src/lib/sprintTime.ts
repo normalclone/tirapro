@@ -1,5 +1,6 @@
 import type { SprintDto } from '@tirapro/types';
 import { differenceInCalendarDays, format } from 'date-fns';
+import { calendarDate } from './calendarDate';
 
 export type SprintTone = 'muted' | 'warning' | 'danger';
 
@@ -18,15 +19,6 @@ export const SPRINT_TONE_CLASS: Record<SprintTone, string> = {
   warning: 'text-warning',
   danger: 'text-danger',
 };
-
-/**
- * Ngày sprint lưu dạng `YYYY-MM-DDT00:00:00.000Z` — là NGÀY LỊCH, nên đọc phần `YYYY-MM-DD` thành ngày địa phương
- * (không `new Date(iso)` để khỏi lệch ngày theo múi giờ).
- */
-function calendarDate(iso: string): Date {
-  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
-  return new Date(y!, m! - 1, d);
-}
 
 function rangeOf(startDate: string | null, endDate: string | null, now: Date): string | null {
   if (!endDate) return null;

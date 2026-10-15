@@ -16,6 +16,8 @@ export interface ExportMenuItem {
 export function ExportMenu({ items, disabled }: { items: ExportMenuItem[]; disabled?: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
 
+  // Khi đang tải KHÔNG `disabled` trigger: Radix trả focus về trigger sau khi chọn mục, nút disabled sẽ làm focus rơi
+  // về body (người dùng bàn phím mất vị trí). Thay vào đó `aria-busy` + bỏ qua lựa chọn mới.
   async function onSelect(item: ExportMenuItem) {
     if (busy) return;
     setBusy(item.id);
@@ -35,7 +37,8 @@ export function ExportMenu({ items, disabled }: { items: ExportMenuItem[]; disab
           variant="secondary"
           size="sm"
           aria-label="Xuất dữ liệu"
-          disabled={disabled || busy !== null}
+          disabled={disabled}
+          aria-busy={busy !== null}
           className="print:hidden"
         >
           {busy ? (

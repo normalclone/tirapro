@@ -67,4 +67,21 @@ describe('portfolioCsv', () => {
     expect(lines[2]).toContain('"Ví, nội bộ"');
     expect(lines[3]).toMatch(/,PSL,PSL,,10,4,3,3,1,40,,$/);
   });
+
+  it('ngày bắt đầu/hạn là ngày lịch: 23:30Z vẫn ra đúng ngày', () => {
+    const csv = portfolioCsv({
+      ...rollup,
+      groups: [
+        group('g1', 'X', [
+          project('P1', 'Một', {
+            startDate: '2026-10-01T23:30:00.000Z',
+            targetDate: '2026-12-31T23:59:59.999Z',
+          }),
+        ]),
+      ],
+    });
+    expect(csv.replace('\uFEFF', '').trim().split('\r\n')[1]).toMatch(
+      /,01\/10\/2026,31\/12\/2026$/,
+    );
+  });
 });

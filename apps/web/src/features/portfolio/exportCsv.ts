@@ -1,13 +1,11 @@
-import { format } from 'date-fns';
 import { toCsv, type CsvColumn } from '@tirapro/shared';
+import { formatCalendarDmy as dmy } from '@/lib/calendarDate';
 import type { PortfolioRollup, RollupGroup, RollupProject } from './api';
 
 interface Row {
   group: RollupGroup;
   project: RollupProject;
 }
-
-const dmy = (iso: string | null): string => (iso ? format(new Date(iso), 'dd/MM/yyyy') : '');
 
 const COLUMNS: CsvColumn<Row>[] = [
   { header: 'Chương trình', value: (r) => r.group.name },

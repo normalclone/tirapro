@@ -53,4 +53,12 @@ describe('raidCsv', () => {
     expect(lines[1]!.startsWith(`Rủi ro,"'=HYPERLINK(""x"")",,5,4,20,`)).toBe(true);
     expect(lines[1]!.endsWith(',,,')).toBe(true);
   });
+
+  it('ngày hạn là ngày lịch: 23:30Z vẫn ra đúng ngày, không lệch theo múi giờ trình duyệt', () => {
+    const lines = raidCsv([item({ dueDate: '2026-11-05T23:30:00.000Z' })])
+      .replace('\uFEFF', '')
+      .trim()
+      .split('\r\n');
+    expect(lines[1]).toContain(',05/11/2026,');
+  });
 });
