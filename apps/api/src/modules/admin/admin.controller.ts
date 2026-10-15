@@ -38,7 +38,7 @@ export class AdminController {
     @Body(new ZodValidationPipe(createUserSchema)) dto: CreateUserInput,
   ) {
     this.assertSysAdmin(user);
-    return this.admin.create(dto);
+    return this.admin.create(dto, user.id);
   }
 
   @Patch(':id')

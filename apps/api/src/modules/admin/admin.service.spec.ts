@@ -16,10 +16,20 @@ function setup(status = 'ACTIVE') {
   };
   const prisma = {
     user: {
-      findUnique: vi.fn(() =>
-        Promise.resolve({ id: 'u1', status, displayName: 'An', email: 'a@x.vn' }),
+      findUnique: vi.fn((args: { where: { id?: string; email?: string } }) =>
+        args.where.email
+          ? Promise.resolve(null)
+          : Promise.resolve({
+              id: 'u1',
+              status,
+              displayName: 'An',
+              email: 'a@x.vn',
+              isSystemAdmin: false,
+              canCreateWorkspace: false,
+            }),
       ),
       update: vi.fn(() => Promise.resolve(updated)),
+      create: vi.fn(() => Promise.resolve({ ...updated, isSystemAdmin: true })),
     },
   };
   const audit = { record: vi.fn() };
@@ -48,5 +58,26 @@ describe('AdminService.update — nhật ký khoá/mở khoá', () => {
     const { service, audit } = setup('ACTIVE');
     await service.update('u1', { displayName: 'An B' }, 'admin');
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it('đổi isSystemAdmin / canCreateWorkspace ghi account.permissions_changed', async () => {
+    const { service, audit } = setup('ACTIVE');
+    await service.update('u1', { isSystemAdmin: true, canCreateWorkspace: true }, 'admin');
+    const entry = audit.record.mock.calls[0]![0] as { action: string; summary: string };
+    expect(entry.action).toBe('account.permissions_changed');
+    expect(entry.summary).toContain('cấp quyền admin hệ thống');
+    expect(entry.summary).toContain('cho phép lập không gian làm việc');
+  });
+
+  it('create(): ghi account.created, không đưa mật khẩu vào nhật ký', async () => {
+    const { service, audit } = setup('ACTIVE');
+    const out = await service.create(
+      { email: 'a@x.vn', displayName: 'An', isSystemAdmin: true },
+      'admin',
+    );
+    const entry = audit.record.mock.calls[0]![0] as { action: string; summary: string };
+    expect(entry.action).toBe('account.created');
+    expect(entry.summary).toContain('admin hệ thống');
+    expect(JSON.stringify(entry)).not.toContain(out.tempPassword!);
   });
 });

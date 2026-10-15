@@ -240,7 +240,7 @@ describe('MembersService — ghi nhật ký quản trị', () => {
       actorId: 'actor',
       action: 'member.added',
       entityId: 'u2',
-      summary: 'Thêm Bình (ba@x.vn) với vai trò Workspace Member',
+      summary: 'Thêm Bình (ba@x.vn) với vai trò Thành viên',
     });
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
@@ -370,5 +370,163 @@ describe('MembersService.createAccount', () => {
       svc.createAccount('w1', 'actor', { email: 'a@x.vn', displayName: 'A', roleIds: ['r1'] }),
     ).rejects.toThrow(/đã có tài khoản/);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('MembersService — chặn tài khoản không hợp lệ (M2/M3/M4)', () => {
+  function setup(userRow: Record<string, unknown> | null) {
+    const tx = {
+      user: {
+        create: vi.fn(() => Promise.resolve({ id: 'u9' })),
+      },
+      workspaceMembership: { create: vi.fn(() => Promise.resolve({})) },
+    };
+    const prisma = {
+      user: {
+        findUnique: vi.fn(() => Promise.resolve(userRow)),
+        findMany: vi.fn(() => Promise.resolve(userRow ? [userRow] : [])),
+      },
+      role: { findMany: vi.fn(() => Promise.resolve([{ id: 'r1' }])) },
+      workspaceMembership: {
+        findUnique: vi.fn(() => Promise.resolve(null)),
+        findMany: vi.fn(() => Promise.resolve([])),
+        create: vi.fn(() => Promise.resolve({})),
+      },
+      $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+    };
+    const svc = new MembersService(
+      prisma as never,
+      { invalidate: vi.fn(), invalidateWorkspace: vi.fn() } as never,
+      {} as never,
+      { emit: vi.fn() } as never,
+      { record: vi.fn() } as never,
+    );
+    return { svc, prisma, tx };
+  }
+
+  it('POST /members: từ chối tài khoản DEACTIVATED', async () => {
+    const { svc, prisma } = setup({ id: 'u2', status: 'DEACTIVATED', email: 'x@x.vn' });
+    await expect(svc.addWorkspace('w1', 'u2', ['r1'], 'a')).rejects.toThrow(/vô hiệu hoá/);
+    expect(prisma.workspaceMembership.create).not.toHaveBeenCalled();
+  });
+
+  it('POST /members: từ chối người dùng hệ thống automation', async () => {
+    const { svc } = setup({ id: 'u2', status: 'ACTIVE', email: 'automation@tirapro.local' });
+    await expect(svc.addWorkspace('w1', 'u2', ['r1'], 'a')).rejects.toThrow(/tài khoản hệ thống/);
+  });
+
+  it('POST /members/bulk: từ chối cả lô nếu có tài khoản không hợp lệ', async () => {
+    const { svc, prisma } = setup({ id: 'u2', status: 'DEACTIVATED', email: 'x@x.vn' });
+    await expect(svc.addWorkspaceMany('w1', ['u2'], ['r1'], 'a')).rejects.toThrow(/vô hiệu hoá/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('createAccount: email của tài khoản bị vô hiệu hoá → thông điệp riêng, KHÔNG bảo chọn trong danh sách', async () => {
+    const { svc } = setup({ id: 'u2', status: 'DEACTIVATED' });
+    const err = await svc
+      .createAccount('w1', 'a', { email: 'x@x.vn', displayName: 'X', roleIds: ['r1'] })
+      .catch((e: Error) => e);
+    expect((err as Error).message).toMatch(/vô hiệu hoá/);
+    expect((err as Error).message).not.toMatch(/chọn người đó/);
+  });
+
+  it('createAccount: email đang dùng được → mã EMAIL_ALREADY_REGISTERED', async () => {
+    const { svc } = setup({ id: 'u2', status: 'ACTIVE' });
+    const err = (await svc
+      .createAccount('w1', 'a', { email: 'x@x.vn', displayName: 'X', roleIds: ['r1'] })
+      .catch((e: unknown) => e)) as { code?: string };
+    expect(err.code).toBe('EMAIL_ALREADY_REGISTERED');
+  });
+
+  it('createAccount: hai request trùng email đồng thời (P2002) → cùng mã EMAIL_ALREADY_REGISTERED', async () => {
+    const { Prisma } = await import('@prisma/client');
+    const { svc, tx } = setup(null);
+    tx.user.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }),
+    );
+    const err = (await svc
+      .createAccount('w1', 'a', { email: 'x@x.vn', displayName: 'X', roleIds: ['r1'] })
+      .catch((e: unknown) => e)) as { code?: string };
+    expect(err.code).toBe('EMAIL_ALREADY_REGISTERED');
+  });
+});
+
+describe('MembersService — nhật ký dự án (M11)', () => {
+  function setup(opts: { hasOverride: boolean; deleteCount?: number }) {
+    const member = {
+      id: 'pm1',
+      roleId: 'pr1',
+      role: { id: 'pr1', name: 'Project Developer', color: null },
+      roles: [{ role: { id: 'pr1', name: 'Project Developer', color: null } }],
+      user: {
+        id: 'u2',
+        email: 'ba@x.vn',
+        displayName: 'Bình',
+        avatarUrl: null,
+        timezone: 'UTC',
+        locale: 'vi',
+        status: 'ACTIVE',
+        isSystemAdmin: false,
+        lastSeenAt: null,
+        createdAt: new Date(),
+      },
+    };
+    const prisma = {
+      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1', name: 'Demo' })) },
+      workspaceMembership: { findUnique: vi.fn(() => Promise.resolve({ id: 'm1' })) },
+      projectMembership: {
+        findUnique: vi.fn(() => Promise.resolve(opts.hasOverride ? { id: 'pm1' } : null)),
+        create: vi.fn(() => Promise.resolve({})),
+        update: vi.fn(() => Promise.resolve({})),
+        findUniqueOrThrow: vi.fn(() => Promise.resolve(member)),
+        deleteMany: vi.fn(() => Promise.resolve({ count: opts.deleteCount ?? 1 })),
+      },
+      projectMembershipRole: {
+        deleteMany: vi.fn(() => Promise.resolve({})),
+        createMany: vi.fn(() => Promise.resolve({})),
+      },
+      role: { findMany: vi.fn(() => Promise.resolve([{ id: 'pr1' }])) },
+      user: {
+        findUnique: vi.fn(() => Promise.resolve({ displayName: 'Bình', email: 'ba@x.vn' })),
+      },
+      $transaction: vi.fn(() => Promise.resolve([])),
+    };
+    const audit = { record: vi.fn() };
+    const svc = new MembersService(
+      prisma as never,
+      { invalidate: vi.fn() } as never,
+      {} as never,
+      { emit: vi.fn() } as never,
+      audit as never,
+    );
+    return { svc, audit };
+  }
+  const first = (audit: { record: { mock: { calls: unknown[][] } } }) =>
+    audit.record.mock.calls[0]![0] as Record<string, unknown>;
+
+  it('setProjectRoles cho người chưa có ghi đè → "đặt vai trò riêng" (roles_changed), không phải "thêm vào dự án"', async () => {
+    const { svc, audit } = setup({ hasOverride: false });
+    await svc.setProjectRoles('w1', 'p1', 'u2', ['pr1'], 'a');
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(first(audit)).toMatchObject({ action: 'project_member.roles_changed' });
+    expect(String(first(audit).summary)).toContain('Đặt vai trò riêng');
+  });
+
+  it('addProject cho người chưa có ghi đè → project_member.added', async () => {
+    const { svc, audit } = setup({ hasOverride: false });
+    await svc.addProject('w1', 'p1', 'u2', ['pr1'], 'a');
+    expect(first(audit)).toMatchObject({ action: 'project_member.added' });
+  });
+
+  it('clearProjectOverride: không có gì để gỡ → không ghi nhật ký', async () => {
+    const { svc, audit } = setup({ hasOverride: false, deleteCount: 0 });
+    await svc.clearProjectOverride('w1', 'p1', 'u2', 'a');
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it('clearProjectOverride: có gỡ → ghi project_member.removed', async () => {
+    const { svc, audit } = setup({ hasOverride: true, deleteCount: 1 });
+    await svc.clearProjectOverride('w1', 'p1', 'u2', 'a');
+    expect(first(audit)).toMatchObject({ action: 'project_member.removed' });
   });
 });

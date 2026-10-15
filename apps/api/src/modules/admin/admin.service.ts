@@ -67,7 +67,7 @@ export class AdminService {
     return offsetPage(data, 1, Math.max(1, data.length), data.length);
   }
 
-  async create(input: CreateUserInput) {
+  async create(input: CreateUserInput, actorId?: string) {
     const email = input.email.toLowerCase();
     const exists = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (exists) throw new BusinessRuleException('Email đã tồn tại');
@@ -87,13 +87,32 @@ export class AdminService {
       },
       select: USER_SELECT,
     });
+    // Tạo tài khoản (có thể là admin hệ thống) là thao tác giá trị cao → ghi nhật ký toàn hệ thống; không ghi mật khẩu.
+    await this.audit.record({
+      actorId,
+      action: AUDIT_ACTIONS.ACCOUNT_CREATED,
+      entityType: 'user',
+      entityId: created.id,
+      summary: `Tạo tài khoản ${created.displayName} (${created.email})${created.isSystemAdmin ? ' với quyền admin hệ thống' : ''}`,
+      meta: {
+        isSystemAdmin: created.isSystemAdmin,
+        canCreateWorkspace: created.canCreateWorkspace,
+      },
+    });
     return { ...this.toDto(created), tempPassword };
   }
 
   async update(id: string, input: UpdateUserInput, actorId?: string) {
     const found = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, status: true, displayName: true, email: true },
+      select: {
+        id: true,
+        status: true,
+        displayName: true,
+        email: true,
+        isSystemAdmin: true,
+        canCreateWorkspace: true,
+      },
     });
     if (!found) throw new NotFoundAppException('Người dùng');
     const updated = await this.prisma.user.update({
@@ -116,6 +135,36 @@ export class AdminService {
         entityId: id,
         summary: `${deactivated ? 'Khoá' : 'Mở khoá'} tài khoản ${found.displayName} (${found.email})`,
         meta: { from: found.status, to: input.status },
+      });
+    }
+    // Đổi quyền hệ thống (admin hệ thống / được lập workspace) — thao tác quản trị giá trị cao nhất.
+    const permChanges: string[] = [];
+    if (input.isSystemAdmin !== undefined && input.isSystemAdmin !== found.isSystemAdmin) {
+      permChanges.push(
+        input.isSystemAdmin ? 'cấp quyền admin hệ thống' : 'thu quyền admin hệ thống',
+      );
+    }
+    if (
+      input.canCreateWorkspace !== undefined &&
+      input.canCreateWorkspace !== found.canCreateWorkspace
+    ) {
+      permChanges.push(
+        input.canCreateWorkspace
+          ? 'cho phép lập không gian làm việc'
+          : 'thu quyền lập không gian làm việc',
+      );
+    }
+    if (permChanges.length) {
+      await this.audit.record({
+        actorId,
+        action: AUDIT_ACTIONS.ACCOUNT_PERMISSIONS_CHANGED,
+        entityType: 'user',
+        entityId: id,
+        summary: `Với tài khoản ${found.displayName} (${found.email}): ${permChanges.join(', ')}`,
+        meta: {
+          isSystemAdmin: updated.isSystemAdmin,
+          canCreateWorkspace: updated.canCreateWorkspace,
+        },
       });
     }
     return this.toDto(updated);

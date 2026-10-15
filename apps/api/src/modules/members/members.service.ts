@@ -1,16 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Prisma } from '@prisma/client';
 import {
   AUDIT_ACTIONS,
   DEFAULT_PROJECT_ROLE_BY_WS_ROLE,
   DOMAIN_EVENTS,
+  roleLabel,
   type RoleScope,
 } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto, USER_DTO_SELECT, type UserDtoSource } from '../../common/mappers/user.mapper';
 import {
   BusinessRuleException,
+  EmailAlreadyRegisteredException,
   ForbiddenAppException,
   NotFoundAppException,
 } from '../../common/exceptions/app.exception';
@@ -18,6 +21,7 @@ import { generateTempPassword } from '../../common/password';
 import { RbacService } from '../rbac/rbac.service';
 import { ApiKeyService } from '../api-keys/api-key.service';
 import { AuditService } from '../audit/audit.service';
+import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
 import type { CreateMemberAccountInput } from './members.schemas';
 
 type RoleRefRow = { role: { id: string; name: string; color: string | null } };
@@ -55,13 +59,17 @@ export class MembersService {
   }
 
   async addWorkspace(workspaceId: string, userId: string, roleIds: string[], actorId?: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true, email: true },
+    });
     if (!user) throw new NotFoundAppException('Người dùng');
     const existing = await this.prisma.workspaceMembership.findUnique({
       where: { workspaceId_userId: { workspaceId, userId } },
       select: { id: true },
     });
     if (existing) return this.setWorkspaceRoles(workspaceId, userId, roleIds, actorId); // đã là thành viên → cập nhật vai trò
+    this.assertAddable([user]);
     const ids = await this.validateRoles(workspaceId, roleIds, 'WORKSPACE');
     await this.prisma.workspaceMembership.create({
       data: {
@@ -92,45 +100,97 @@ export class MembersService {
    */
   async createAccount(workspaceId: string, actorId: string, input: CreateMemberAccountInput) {
     const email = input.email.toLowerCase();
-    const exists = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
-    if (exists) {
-      throw new BusinessRuleException(
-        'Email này đã có tài khoản — hãy chọn người đó trong danh sách để thêm vào không gian làm việc',
-      );
-    }
+    const exists = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, status: true },
+    });
+    if (exists) throw this.emailTakenError(email, exists.status);
     const ids = await this.validateRoles(workspaceId, input.roleIds, 'WORKSPACE');
     const tempPassword = input.password ? undefined : generateTempPassword();
     const passwordHash = await argon2.hash(input.password ?? tempPassword!); // băm NGOÀI transaction (chậm)
-    const userId = await this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: { email, displayName: input.displayName, passwordHash },
-        select: { id: true },
-      });
-      await tx.workspaceMembership.create({
-        data: {
-          workspaceId,
-          userId: user.id,
-          roleId: ids[0]!,
-          joinedAt: new Date(),
-          roles: { create: ids.map((roleId) => ({ roleId })) },
-        },
-      });
-      await this.audit.record(
-        {
-          workspaceId,
-          actorId,
-          action: AUDIT_ACTIONS.MEMBER_ACCOUNT_CREATED,
-          entityType: 'user',
-          entityId: user.id,
-          summary: `Tạo tài khoản ${input.displayName} (${email}) và thêm vào không gian làm việc`,
-          meta: { roleIds: ids },
-        },
-        tx,
-      );
-      return user.id;
-    });
+    const userId = await this.createAccountTx(
+      workspaceId,
+      actorId,
+      input,
+      email,
+      ids,
+      passwordHash,
+    );
     await this.rbac.invalidate(userId, workspaceId);
     return { member: await this.getWorkspaceMember(workspaceId, userId), tempPassword };
+  }
+
+  /** Transaction tạo user + membership + nhật ký; hai request trùng email đồng thời → P2002 → cùng lỗi "đã có tài khoản". */
+  private async createAccountTx(
+    workspaceId: string,
+    actorId: string,
+    input: CreateMemberAccountInput,
+    email: string,
+    ids: string[],
+    passwordHash: string,
+  ): Promise<string> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: { email, displayName: input.displayName, passwordHash },
+          select: { id: true },
+        });
+        await tx.workspaceMembership.create({
+          data: {
+            workspaceId,
+            userId: user.id,
+            roleId: ids[0]!,
+            joinedAt: new Date(),
+            roles: { create: ids.map((roleId) => ({ roleId })) },
+          },
+        });
+        await this.audit.record(
+          {
+            workspaceId,
+            actorId,
+            action: AUDIT_ACTIONS.MEMBER_ACCOUNT_CREATED,
+            entityType: 'user',
+            entityId: user.id,
+            summary: `Tạo tài khoản ${input.displayName} (${email}) và thêm vào không gian làm việc`,
+            meta: { roleIds: ids },
+          },
+          tx,
+        );
+        return user.id;
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw this.emailTakenError(email, 'ACTIVE');
+      }
+      throw e;
+    }
+  }
+
+  /** Thông điệp đúng theo tình trạng tài khoản đang giữ email (không bảo "chọn trong danh sách" khi pool đã ẩn họ). */
+  private emailTakenError(email: string, status: string) {
+    if (email === SYSTEM_USER_EMAIL) {
+      return new BusinessRuleException(
+        'Email này dành riêng cho tài khoản hệ thống — hãy dùng email khác',
+      );
+    }
+    if (status === 'DEACTIVATED') {
+      return new BusinessRuleException(
+        'Email này thuộc một tài khoản đã bị vô hiệu hoá — hãy nhờ quản trị hệ thống mở khoá, hoặc dùng email khác',
+      );
+    }
+    return new EmailAlreadyRegisteredException();
+  }
+
+  /** Tài khoản vô hiệu hoá và người dùng hệ thống của automation không được thêm vào không gian làm việc. */
+  private assertAddable(users: { status: string; email: string }[]): void {
+    const bad = users.filter((u) => u.status === 'DEACTIVATED' || u.email === SYSTEM_USER_EMAIL);
+    if (bad.length) {
+      throw new BusinessRuleException(
+        bad.length === 1
+          ? 'Không thể thêm tài khoản đã bị vô hiệu hoá hoặc tài khoản hệ thống vào không gian làm việc'
+          : `Có ${bad.length} tài khoản đã bị vô hiệu hoá hoặc là tài khoản hệ thống — bỏ họ khỏi danh sách rồi thử lại`,
+      );
+    }
   }
 
   async setWorkspaceRoles(
@@ -180,7 +240,7 @@ export class MembersService {
     const unique = [...new Set(userIds)];
     const existUsers = await this.prisma.user.findMany({
       where: { id: { in: unique } },
-      select: { id: true },
+      select: { id: true, status: true, email: true },
     });
     const valid = new Set(existUsers.map((u) => u.id));
     const already = await this.prisma.workspaceMembership.findMany({
@@ -189,6 +249,7 @@ export class MembersService {
     });
     const alreadySet = new Set(already.map((a) => a.userId));
     const toAdd = [...valid].filter((u) => !alreadySet.has(u));
+    this.assertAddable(existUsers.filter((u) => toAdd.includes(u.id)));
     if (toAdd.length) {
       // Một transaction cho cả lô: hoặc thêm đủ, hoặc không thêm ai. skipDuplicates để hai request đồng thời
       // thêm cùng một người không làm cả lô thất bại; vai trò chỉ gán cho membership chưa có vai trò nào.
@@ -342,8 +403,11 @@ export class MembersService {
     actorId?: string,
   ) {
     const project = await this.requireProject(workspaceId, projectId);
-    await this.prisma.projectMembership.deleteMany({ where: { projectId, userId } });
+    const { count } = await this.prisma.projectMembership.deleteMany({
+      where: { projectId, userId },
+    });
     await this.rbac.invalidate(userId, workspaceId);
+    if (count === 0) return { success: true }; // không có vai trò riêng để gỡ → không ghi nhật ký
     await this.audit.record({
       workspaceId,
       actorId,
@@ -364,16 +428,7 @@ export class MembersService {
     actorId?: string,
   ): Promise<Awaited<ReturnType<MembersService['getProjectMember']>>> {
     const project = await this.requireProject(workspaceId, projectId);
-    // Người được thêm phải là thành viên workspace của dự án.
-    const isMember = await this.prisma.workspaceMembership.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId } },
-      select: { id: true },
-    });
-    if (!isMember)
-      throw new ForbiddenAppException(
-        'Người dùng chưa thuộc không gian làm việc này — hãy thêm họ vào không gian làm việc trước',
-      );
-
+    await this.assertWorkspaceMember(workspaceId, userId);
     const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
     const existing = await this.prisma.projectMembership.findUnique({
       where: { projectId_userId: { projectId, userId } },
@@ -381,16 +436,7 @@ export class MembersService {
     });
     if (existing) return this.setProjectRoles(workspaceId, projectId, userId, roleIds, actorId);
 
-    await this.prisma.projectMembership.create({
-      data: {
-        projectId,
-        userId,
-        roleId: ids[0]!,
-        roles: { create: ids.map((roleId) => ({ roleId })) },
-      },
-    });
-    await this.rbac.invalidate(userId, workspaceId);
-    const member = await this.getProjectMember(projectId, userId);
+    const member = await this.createProjectMembership(workspaceId, projectId, userId, ids);
     await this.audit.record({
       workspaceId,
       actorId,
@@ -416,8 +462,22 @@ export class MembersService {
       select: { id: true },
     });
     // Chưa có ghi đè → TẠO MỚI (mọi thành viên workspace đều thuộc dự án theo mặc định,
-    // đặt vai trò riêng ở đây chính là tạo bản ghi đè).
-    if (!membership) return this.addProject(workspaceId, projectId, userId, roleIds, actorId);
+    // đặt vai trò riêng ở đây chính là tạo bản ghi đè) — ghi nhật ký là "đặt vai trò riêng", không phải "thêm vào dự án".
+    if (!membership) {
+      await this.assertWorkspaceMember(workspaceId, userId);
+      const newIds = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
+      const created = await this.createProjectMembership(workspaceId, projectId, userId, newIds);
+      await this.audit.record({
+        workspaceId,
+        actorId,
+        action: AUDIT_ACTIONS.PROJECT_MEMBER_ROLES_CHANGED,
+        entityType: 'user',
+        entityId: userId,
+        summary: `Đặt vai trò riêng của ${this.label(created.user)} trong dự án "${project.name}" thành ${this.roleNames(created.roles)}`,
+        meta: { projectId, roleIds: newIds },
+      });
+      return created;
+    }
     const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
     await this.prisma.$transaction([
       this.prisma.projectMembershipRole.deleteMany({ where: { membershipId: membership.id } }),
@@ -441,6 +501,36 @@ export class MembersService {
       meta: { projectId, roleIds: ids },
     });
     return member;
+  }
+
+  /** Người được đặt vai trò ở dự án phải là thành viên workspace của dự án. */
+  private async assertWorkspaceMember(workspaceId: string, userId: string): Promise<void> {
+    const isMember = await this.prisma.workspaceMembership.findUnique({
+      where: { workspaceId_userId: { workspaceId, userId } },
+      select: { id: true },
+    });
+    if (!isMember)
+      throw new ForbiddenAppException(
+        'Người dùng chưa thuộc không gian làm việc này — hãy thêm họ vào không gian làm việc trước',
+      );
+  }
+
+  private async createProjectMembership(
+    workspaceId: string,
+    projectId: string,
+    userId: string,
+    ids: string[],
+  ) {
+    await this.prisma.projectMembership.create({
+      data: {
+        projectId,
+        userId,
+        roleId: ids[0]!,
+        roles: { create: ids.map((roleId) => ({ roleId })) },
+      },
+    });
+    await this.rbac.invalidate(userId, workspaceId);
+    return this.getProjectMember(projectId, userId);
   }
 
   /** Thêm NHIỀU người vào dự án cùng bộ vai trò; chỉ nhận người ĐÃ thuộc workspace, bỏ qua người đã ở dự án. */
@@ -501,8 +591,9 @@ export class MembersService {
     return `${user.displayName} (${user.email})`;
   }
 
+  /** Nhãn tiếng Việt hiển thị (vai trò hệ thống) — câu `summary` lưu vĩnh viễn nên phải đúng ngôn ngữ ngay lúc ghi. */
   private roleNames(roles: { name: string }[]): string {
-    return roles.map((r) => r.name).join(', ') || '—';
+    return roles.map((r) => roleLabel(r.name)).join(', ') || '—';
   }
 
   private async userLabel(userId: string): Promise<string> {

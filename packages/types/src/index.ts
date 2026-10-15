@@ -5,3 +5,4 @@ export * from './events';
 export * from './entities';
 export * from './common';
 export * from './audit';
+export * from './roleLabels';

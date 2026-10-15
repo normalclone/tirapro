@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { ScrollText } from 'lucide-react';
 import { pageContainer } from '@/components/layout/page';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -48,6 +48,63 @@ const fmtUptime = (s: number) => {
 };
 
 const prettyAction = (a: string) => a.replace(/_/g, ' ').toLowerCase();
+
+/** Tabs loại nhật ký theo mẫu ARIA: roving tabindex, mũi tên trái/phải + Home/End, aria-controls tới tabpanel. */
+function AuditTabs({ kind, onChange }: { kind: AuditKind; onChange: (k: AuditKind) => void }) {
+  const refs = useRef<Record<string, HTMLButtonElement | null>>({});
+  function onKeyDown(e: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const last = AUDIT_TABS.length - 1;
+    const next =
+      e.key === 'ArrowRight'
+        ? index === last
+          ? 0
+          : index + 1
+        : e.key === 'ArrowLeft'
+          ? index === 0
+            ? last
+            : index - 1
+          : e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? last
+              : null;
+    if (next === null) return;
+    e.preventDefault();
+    const target = AUDIT_TABS[next]!;
+    onChange(target.kind);
+    refs.current[target.kind]?.focus();
+  }
+  return (
+    <div
+      role="tablist"
+      aria-label="Loại nhật ký"
+      className="flex rounded-md border border-border bg-surface p-0.5"
+    >
+      {AUDIT_TABS.map((t, i) => (
+        <button
+          key={t.kind}
+          ref={(el) => {
+            refs.current[t.kind] = el;
+          }}
+          type="button"
+          role="tab"
+          id={`audit-tab-${t.kind}`}
+          aria-selected={kind === t.kind}
+          aria-controls="audit-tabpanel"
+          tabIndex={kind === t.kind ? 0 : -1}
+          onClick={() => onChange(t.kind)}
+          onKeyDown={(e) => onKeyDown(e, i)}
+          className={cn(
+            'rounded px-3 py-1 text-xs font-medium transition-colors',
+            kind === t.kind ? 'bg-primary-subtle text-primary' : 'text-muted hover:text-ink',
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function AdminSystemPage() {
   const [limit, setLimit] = useState<number>(AUDIT_STEPS[0]);
@@ -135,31 +192,14 @@ export function AdminSystemPage() {
       <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-ink">Nhật ký kiểm toán · gần đây</h2>
-          <div
-            role="tablist"
-            aria-label="Loại nhật ký"
-            className="flex rounded-md border border-border bg-surface p-0.5"
-          >
-            {AUDIT_TABS.map((t) => (
-              <button
-                key={t.kind}
-                type="button"
-                role="tab"
-                aria-selected={kind === t.kind}
-                onClick={() => {
-                  setKind(t.kind);
-                  setAction('');
-                  setLimit(AUDIT_STEPS[0]);
-                }}
-                className={cn(
-                  'rounded px-3 py-1 text-xs font-medium transition-colors',
-                  kind === t.kind ? 'bg-primary-subtle text-primary' : 'text-muted hover:text-ink',
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <AuditTabs
+            kind={kind}
+            onChange={(k) => {
+              setKind(k);
+              setAction('');
+              setLimit(AUDIT_STEPS[0]);
+            }}
+          />
           <label className="flex items-center gap-2 text-xs text-muted">
             Lọc
             <select
@@ -178,68 +218,70 @@ export function AdminSystemPage() {
             </select>
           </label>
         </div>
-        {aError ? (
-          <QueryError error={aErr} onRetry={() => void aRefetch()} />
-        ) : aLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
-            ))}
-          </div>
-        ) : !audit || audit.length === 0 ? (
-          <EmptyState
-            icon={<ScrollText className="h-6 w-6" />}
-            title="Chưa có nhật ký"
-            description={
-              kind === 'admin'
-                ? 'Nhật ký ghi lại các thao tác quản trị: tạo/sửa/xoá vai trò, thêm/gỡ thành viên, đổi vai trò, tích hợp, khoá/mở tài khoản.'
-                : 'Nhật ký ghi lại ai đã làm gì trên công việc. Khi có người tạo/sửa công việc hay chuyển trạng thái, các thao tác đó sẽ hiện ở đây.'
-            }
-          />
-        ) : (
-          <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
-            {audit.map((e) => (
-              <li key={e.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                <Avatar name={e.actor?.displayName ?? '?'} src={e.actor?.avatarUrl} size={26} />
-                <div className="min-w-0 flex-1">
-                  <span className="text-ink">{e.actor?.displayName ?? 'Hệ thống'}</span>
-                  {e.summary ? (
-                    <span className="ml-2 text-muted">{e.summary}</span>
-                  ) : (
-                    <>
-                      <Badge className="ml-2 text-muted">{prettyAction(e.action)}</Badge>
-                      <span className="ml-2 text-muted">{e.entityType}</span>
-                      {e.field && <span className="ml-1 text-faint">· {e.field}</span>}
-                    </>
+        <div role="tabpanel" id="audit-tabpanel" aria-labelledby={`audit-tab-${kind}`}>
+          {aError ? (
+            <QueryError error={aErr} onRetry={() => void aRefetch()} />
+          ) : aLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : !audit || audit.length === 0 ? (
+            <EmptyState
+              icon={<ScrollText className="h-6 w-6" />}
+              title="Chưa có nhật ký"
+              description={
+                kind === 'admin'
+                  ? 'Nhật ký ghi lại các thao tác quản trị: tạo/sửa/xoá vai trò, thêm/gỡ thành viên, đổi vai trò, tích hợp, khoá/mở tài khoản.'
+                  : 'Nhật ký ghi lại ai đã làm gì trên công việc. Khi có người tạo/sửa công việc hay chuyển trạng thái, các thao tác đó sẽ hiện ở đây.'
+              }
+            />
+          ) : (
+            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+              {audit.map((e) => (
+                <li key={e.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                  <Avatar name={e.actor?.displayName ?? '?'} src={e.actor?.avatarUrl} size={26} />
+                  <div className="min-w-0 flex-1">
+                    <span className="text-ink">{e.actor?.displayName ?? 'Hệ thống'}</span>
+                    {e.summary ? (
+                      <span className="ml-2 text-muted">{e.summary}</span>
+                    ) : (
+                      <>
+                        <Badge className="ml-2 text-muted">{prettyAction(e.action)}</Badge>
+                        <span className="ml-2 text-muted">{e.entityType}</span>
+                        {e.field && <span className="ml-1 text-faint">· {e.field}</span>}
+                      </>
+                    )}
+                  </div>
+                  {e.workspace && (
+                    <span className="hidden shrink-0 text-xs text-faint sm:block">
+                      {e.workspace.name}
+                    </span>
                   )}
-                </div>
-                {e.workspace && (
-                  <span className="hidden shrink-0 text-xs text-faint sm:block">
-                    {e.workspace.name}
-                  </span>
-                )}
-                <time
-                  className="shrink-0 text-xs text-faint"
-                  title={new Date(e.createdAt).toLocaleString(LOCALE)}
-                >
-                  {relTime(e.createdAt)}
-                </time>
-              </li>
-            ))}
-          </ul>
-        )}
-        {!aError && audit && audit.length > 0 && canLoadMore && (
-          <div className="mt-3 flex justify-center">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setLimit(nextLimit)}
-              loading={aFetching}
-            >
-              Tải thêm ({nextLimit})
-            </Button>
-          </div>
-        )}
+                  <time
+                    className="shrink-0 text-xs text-faint"
+                    title={new Date(e.createdAt).toLocaleString(LOCALE)}
+                  >
+                    {relTime(e.createdAt)}
+                  </time>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!aError && audit && audit.length > 0 && canLoadMore && (
+            <div className="mt-3 flex justify-center">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setLimit(nextLimit)}
+                loading={aFetching}
+              >
+                Tải thêm ({nextLimit})
+              </Button>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );

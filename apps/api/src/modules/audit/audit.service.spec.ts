@@ -114,4 +114,33 @@ describe('AuditService', () => {
     });
     expect(page.pageInfo).toMatchObject({ hasNextPage: false, endCursor: 'a1' });
   });
+
+  it('list(): có con trỏ → keyset (createdAt < cur HOẶC cùng createdAt và id < cur), con trỏ tra trong CÙNG workspace', async () => {
+    const { svc, prisma } = make();
+    const at = new Date('2026-10-02T00:00:00Z');
+    (prisma.auditLog as unknown as { findFirst: unknown }).findFirst = vi.fn(() =>
+      Promise.resolve({ createdAt: at }),
+    );
+    await svc.list('w1', { limit: 20, cursor: 'a5' });
+    const find = (prisma.auditLog as unknown as { findFirst: { mock: { calls: unknown[][] } } })
+      .findFirst;
+    expect(find.mock.calls[0]![0]).toEqual({
+      where: { id: 'a5', workspaceId: 'w1' },
+      select: { createdAt: true },
+    });
+    const arg = prisma.auditLog.findMany.mock.calls[0] as unknown as [{ where: unknown }];
+    expect(arg[0].where).toEqual({
+      workspaceId: 'w1',
+      AND: [{ OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: 'a5' } }] }],
+    });
+  });
+
+  it('list(): con trỏ không tồn tại → lỗi rõ, KHÔNG trả lại trang đầu', async () => {
+    const { svc, prisma } = make();
+    (prisma.auditLog as unknown as { findFirst: unknown }).findFirst = vi.fn(() =>
+      Promise.resolve(null),
+    );
+    await expect(svc.list('w1', { limit: 20, cursor: 'gone' })).rejects.toThrow(/Con trỏ/);
+    expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
+  });
 });

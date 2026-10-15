@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import type { AuditAction, AuditLogDto } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { cursorPage, type PageResult } from '../../common/dto/page-result';
 
 export interface AuditEntry {
@@ -72,16 +73,18 @@ export class AuditService {
         where: { id: q.cursor, workspaceId },
         select: { createdAt: true },
       });
-      if (cur) {
-        where.AND = [
-          {
-            OR: [
-              { createdAt: { lt: cur.createdAt } },
-              { createdAt: cur.createdAt, id: { lt: q.cursor } },
-            ],
-          },
-        ];
-      }
+      // Con trỏ không tồn tại (đã xoá, hoặc của workspace khác): báo lỗi rõ — KHÔNG lặng lẽ trả lại trang đầu
+      // (client sẽ nối trang đầu vào danh sách đang xem và lặp mãi).
+      if (!cur)
+        throw new BusinessRuleException('Con trỏ phân trang không hợp lệ — hãy tải lại trang');
+      where.AND = [
+        {
+          OR: [
+            { createdAt: { lt: cur.createdAt } },
+            { createdAt: cur.createdAt, id: { lt: q.cursor } },
+          ],
+        },
+      ];
     }
     const rows = await this.prisma.auditLog.findMany({
       where,

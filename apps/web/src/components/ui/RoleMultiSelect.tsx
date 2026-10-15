@@ -4,7 +4,8 @@ import { Check, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { cn } from '@/lib/utils';
-import { roleLabel, roleHint } from '@/lib/roleLabels';
+import { roleLabel } from '@tirapro/types';
+import { roleHint } from '@/lib/roleLabels';
 
 export interface RoleOption {
   id: string;
