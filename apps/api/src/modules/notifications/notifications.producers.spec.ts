@@ -40,14 +40,17 @@ function setup(
       ),
     },
     issue: { findFirst: vi.fn(() => Promise.resolve({ ...issue })) },
+    // Mô phỏng chỉ mục duy nhất: chỉ dòng CHƯA có sổ mới được chèn và trả về.
     mention: {
-      findMany: vi.fn(() =>
+      createManyAndReturn: vi.fn((a: { data: { mentionedUserId: string }[] }) =>
         Promise.resolve(
-          (opts.existingMentions ?? []).map((mentionedUserId) => ({ mentionedUserId })),
+          a.data
+            .filter((d) => !(opts.existingMentions ?? []).includes(d.mentionedUserId))
+            .map((d) => ({ mentionedUserId: d.mentionedUserId })),
         ),
       ),
-      createMany: vi.fn(() => Promise.resolve({ count: 0 })),
     },
+    $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
     workspaceMembership: {
       findMany: vi.fn((a: { where: { userId: { in: string[] } } }) =>
         Promise.resolve(
@@ -210,16 +213,18 @@ describe('NotificationsService — @mention kèm trích đoạn', () => {
 describe('NotificationsService — @mention trong mô tả công việc', () => {
   const withDesc = { ...issue, description: 'cc @[Ba](user:u3)' };
 
-  it('@ mới trong mô tả → ghi sổ Mention + một MENTIONED where=description', async () => {
+  it('@ mới trong mô tả → ghi sổ + thông báo CÙNG transaction, một MENTIONED where=description', async () => {
     const { service, prisma, created } = setup(['u3']);
     await service.onIssueDescriptionMentions({
       issue: withDesc,
       actorId: 'a1',
       changedFields: ['description'],
     });
-    expect(prisma.mention.createMany).toHaveBeenCalledWith({
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.mention.createManyAndReturn).toHaveBeenCalledWith({
       data: [{ mentionedUserId: 'u3', issueId: 'i1' }],
       skipDuplicates: true,
+      select: { mentionedUserId: true },
     });
     expect(created()).toEqual([{ type: 'MENTIONED', to: 'u3' }]);
     const data = prisma.notification.create.mock.calls[0]![0].data as unknown as {
@@ -228,15 +233,45 @@ describe('NotificationsService — @mention trong mô tả công việc', () => 
     expect(data.payload).toMatchObject({ where: 'description', excerpt: 'cc @Ba' });
   });
 
-  it('lần hai (đã có dòng Mention) → không báo thêm', async () => {
-    const { service, prisma, created } = setup(['u3'], { existingMentions: ['u3'] });
+  it('đã có dòng sổ (lần hai, hoặc sự kiện đồng thời thua cuộc ở ON CONFLICT) → không báo thêm', async () => {
+    const { service, created, mail } = setup(['u3'], { existingMentions: ['u3'] });
     await service.onIssueDescriptionMentions({
       issue: withDesc,
       actorId: 'a1',
       changedFields: ['description'],
     });
-    expect(prisma.mention.createMany).not.toHaveBeenCalled();
     expect(created()).toEqual([]);
+    expect(mail.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('hai sự kiện đồng thời cùng @ người mới: chỉ một bên chèn được → đúng một thông báo', async () => {
+    const { service, prisma, created } = setup(['u3']);
+    const seen = new Set<string>();
+    // sổ dùng chung: bên chèn trước thắng, bên sau nhận về mảng rỗng (ON CONFLICT DO NOTHING)
+    prisma.mention.createManyAndReturn.mockImplementation(
+      (a: { data: { mentionedUserId: string }[] }) => {
+        const out = a.data.filter((d) => !seen.has(d.mentionedUserId));
+        out.forEach((d) => seen.add(d.mentionedUserId));
+        return Promise.resolve(out.map((d) => ({ mentionedUserId: d.mentionedUserId })));
+      },
+    );
+    const ev = { issue: withDesc, actorId: 'a1', changedFields: ['description'] };
+    await Promise.all([
+      service.onIssueDescriptionMentions(ev),
+      service.onIssueDescriptionMentions(ev),
+    ]);
+    expect(created()).toEqual([{ type: 'MENTIONED', to: 'u3' }]);
+  });
+
+  it('tạo thông báo lỗi giữa chừng → transaction rollback, không phát event/email', async () => {
+    const { service, prisma, mail } = setup(['u3']);
+    prisma.notification.create.mockRejectedValueOnce(new Error('DB lỗi'));
+    await service.onIssueDescriptionMentions({
+      issue: withDesc,
+      actorId: 'a1',
+      changedFields: ['description'],
+    });
+    expect(mail.enqueue).not.toHaveBeenCalled();
   });
 
   it('ISSUE_UPDATED không đổi description → bỏ qua', async () => {

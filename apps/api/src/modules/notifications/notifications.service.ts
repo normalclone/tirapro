@@ -147,6 +147,16 @@ interface CommentAddedPayload {
   newMentionIds?: string[];
 }
 
+interface NotificationInput {
+  recipientId: string;
+  workspaceId: string;
+  type: NotificationType;
+  issueId?: string | null;
+  commentId?: string | null;
+  actorId?: string | null;
+  payload: Record<string, unknown>;
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -408,30 +418,33 @@ export class NotificationsService {
       if (!ids.length) return;
       const members = await resolveMentionedMembers(this.prisma, issue.workspaceId, ids, actorId);
       if (!members.length) return;
-      const already = new Set(
-        (
-          await this.prisma.mention.findMany({
-            where: { issueId: issue.id, commentId: null, mentionedUserId: { in: members } },
-            select: { mentionedUserId: true },
-          })
-        ).map((m) => m.mentionedUserId),
-      );
-      const fresh = members.filter((id) => !already.has(id));
-      if (!fresh.length) return;
-      await this.prisma.mention.createMany({
-        data: fresh.map((mentionedUserId) => ({ mentionedUserId, issueId: issue.id })),
-        skipDuplicates: true,
-      });
-      for (const recipientId of fresh) {
-        await this.create({
-          recipientId,
-          workspaceId: issue.workspaceId,
-          type: 'MENTIONED',
-          issueId: issue.id,
-          actorId,
-          payload: this.mentionPayload(issue, issue.description, 'description'),
+      // Sổ + thông báo trong CÙNG transaction. Chỉ mục duy nhất (issueId, người) WHERE commentId IS NULL làm
+      // `ON CONFLICT DO NOTHING` quyết định ai thắng khi nhiều sự kiện chạy đồng thời → chỉ báo dòng thực sự chèn được.
+      // Email/đẩy realtime chạy SAU commit; lỗi giữa chừng thì rollback cả sổ lẫn thông báo (lần sau còn được báo).
+      const after: Array<() => Promise<void>> = [];
+      await this.prisma.$transaction(async (tx) => {
+        const inserted = await tx.mention.createManyAndReturn({
+          data: members.map((mentionedUserId) => ({ mentionedUserId, issueId: issue.id })),
+          skipDuplicates: true,
+          select: { mentionedUserId: true },
         });
-      }
+        for (const { mentionedUserId } of inserted) {
+          after.push(
+            await this.createDeferred(
+              {
+                recipientId: mentionedUserId,
+                workspaceId: issue.workspaceId,
+                type: 'MENTIONED',
+                issueId: issue.id,
+                actorId,
+                payload: this.mentionPayload(issue, issue.description, 'description'),
+              },
+              tx,
+            ),
+          );
+        }
+      });
+      for (const run of after) await run();
     } catch (err) {
       this.logger.warn(`onIssueDescriptionMentions thất bại: ${this.errMsg(err)}`);
     }
@@ -490,49 +503,58 @@ export class NotificationsService {
     });
   }
 
-  private async create(input: {
-    recipientId: string;
-    workspaceId: string;
-    type: NotificationType;
-    issueId?: string | null;
-    commentId?: string | null;
-    actorId?: string | null;
-    payload: Record<string, unknown>;
-  }): Promise<void> {
+  private async create(input: NotificationInput): Promise<void> {
+    const after = await this.createDeferred(input);
+    await after();
+  }
+
+  /**
+   * Ghi dòng Notification bằng `db` (có thể là transaction đang mở) và trả về phần "sau commit":
+   * đẩy `notification:new` qua gateway + xếp email. Gọi `after()` CHỈ KHI transaction đã commit thành công.
+   */
+  private async createDeferred(
+    input: NotificationInput,
+    db: Pick<Prisma.TransactionClient, 'notification'> = this.prisma,
+  ): Promise<() => Promise<void>> {
+    const noop = (): Promise<void> => Promise.resolve();
     // Quiet-by-default: tôn trọng tùy chọn của người nhận. In-app và email là hai tuỳ chọn độc lập.
     const recipient = await this.prisma.user.findUnique({
       where: { id: input.recipientId },
       select: { settings: true, email: true, status: true },
     });
-    if (!recipient) return;
+    if (!recipient) return noop;
     const prefs = effectivePrefs(recipient.settings);
     const emailKey = EMAIL_KEY_BY_TYPE[input.type];
     const emailOn =
       !!emailKey &&
       recipient.status !== 'DEACTIVATED' &&
       effectiveEmailPrefs(recipient.settings)[emailKey];
-    if (!prefs[input.type] && !emailOn) return;
+    if (!prefs[input.type] && !emailOn) return noop;
 
-    if (prefs[input.type]) {
-      const created = await this.prisma.notification.create({
-        data: {
+    const created = prefs[input.type]
+      ? await db.notification.create({
+          data: {
+            recipientId: input.recipientId,
+            workspaceId: input.workspaceId,
+            type: input.type,
+            issueId: input.issueId ?? null,
+            commentId: input.commentId ?? null,
+            actorId: input.actorId ?? null,
+            payload: input.payload as Prisma.InputJsonValue,
+          },
+        })
+      : null;
+
+    return async () => {
+      if (created) {
+        // Báo cho gateway đẩy `notification:new` tới đúng người nhận (room user:<id>).
+        this.events.emit(DOMAIN_EVENTS.NOTIFICATION_CREATED, {
           recipientId: input.recipientId,
-          workspaceId: input.workspaceId,
-          type: input.type,
-          issueId: input.issueId ?? null,
-          commentId: input.commentId ?? null,
-          actorId: input.actorId ?? null,
-          payload: input.payload as Prisma.InputJsonValue,
-        },
-      });
-      // Báo cho gateway đẩy `notification:new` tới đúng người nhận (room user:<id>).
-      this.events.emit(DOMAIN_EVENTS.NOTIFICATION_CREATED, {
-        recipientId: input.recipientId,
-        notification: this.toDto(created),
-      });
-    }
-
-    if (emailOn) await this.enqueueEmail(recipient.email, input);
+          notification: this.toDto(created),
+        });
+      }
+      if (emailOn) await this.enqueueEmail(recipient.email, input);
+    };
   }
 
   /** Xếp thư thông báo vào outbox (gộp digest 5 phút). Lỗi chỉ log — không được làm hỏng thông báo in-app. */

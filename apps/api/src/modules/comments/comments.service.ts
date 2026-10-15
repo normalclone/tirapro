@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS, type AutomationEventMeta, type CommentDto } from '@tirapro/types';
-import { extractMentionIds, type CreateCommentInput } from '@tirapro/shared';
+import { extractMentionIds, MENTION_LIMIT, type CreateCommentInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto } from '../../common/mappers/user.mapper';
@@ -54,12 +54,14 @@ export class CommentsService {
         include: commentInclude,
       });
       // Người được nhắc = token trong body ∪ mentionUserIds (client cũ / API key), lọc theo thành viên workspace.
-      const mentionIds = await resolveMentionedMembers(
-        tx,
-        workspaceId,
-        [...extractMentionIds(input.body), ...(input.mentionUserIds ?? [])],
-        userId,
-      );
+      const mentionIds = (
+        await resolveMentionedMembers(
+          tx,
+          workspaceId,
+          [...extractMentionIds(input.body), ...(input.mentionUserIds ?? [])],
+          userId,
+        )
+      ).slice(0, MENTION_LIMIT); // hợp hai nguồn có thể tới 40 → cắt về 20
       if (mentionIds.length) {
         await tx.mention.createMany({
           data: mentionIds.map((mentionedUserId) => ({
@@ -100,31 +102,37 @@ export class CommentsService {
         'Người khác vừa sửa bình luận này — hãy tải lại để xem bản mới nhất',
       );
     const { updated, fresh } = await this.prisma.$transaction(async (tx) => {
-      const u = await tx.comment.update({
-        where: { id: commentId },
+      // OCC nguyên tử: điều kiện `version` nằm TRONG câu UPDATE — hai lần ghi đồng thời (hai tab, hai cú tick)
+      // thì chỉ một bên khớp, bên kia count=0 → 409 (kiểm ở ngoài transaction chỉ là fast-fail).
+      const w = await tx.comment.updateMany({
+        where: { id: commentId, version },
         data: { body, isEdited: true, version: { increment: 1 } },
+      });
+      if (w.count === 0)
+        throw new VersionConflictException(
+          'Người khác vừa sửa bình luận này — hãy tải lại để xem bản mới nhất',
+        );
+      const u = await tx.comment.findUniqueOrThrow({
+        where: { id: commentId },
         include: commentInclude,
       });
-      // Chỉ người CHƯA có dòng Mention của bình luận này mới được báo (sửa chính tả không báo lại).
-      const existing = new Set(
-        (
-          await tx.mention.findMany({ where: { commentId }, select: { mentionedUserId: true } })
-        ).map((m) => m.mentionedUserId),
-      );
-      const fresh = (
+      // Sổ "đã báo ai": chèn tất cả ứng viên với ON CONFLICT DO NOTHING (chỉ mục duy nhất commentId+người);
+      // chỉ những dòng THỰC SỰ được chèn mới là người mới → không báo đôi kể cả khi hai lần sửa chạy song song.
+      const candidates = (
         await resolveMentionedMembers(tx, workspaceId, extractMentionIds(body), userId)
-      ).filter((id) => !existing.has(id));
-      if (fresh.length) {
-        await tx.mention.createMany({
-          data: fresh.map((mentionedUserId) => ({
-            mentionedUserId,
-            commentId,
-            issueId: u.issueId,
-          })),
-          skipDuplicates: true,
-        });
-      }
-      return { updated: u, fresh };
+      ).slice(0, MENTION_LIMIT);
+      const inserted = candidates.length
+        ? await tx.mention.createManyAndReturn({
+            data: candidates.map((mentionedUserId) => ({
+              mentionedUserId,
+              commentId,
+              issueId: u.issueId,
+            })),
+            skipDuplicates: true,
+            select: { mentionedUserId: true },
+          })
+        : [];
+      return { updated: u, fresh: inserted.map((m) => m.mentionedUserId) };
     });
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.COMMENT_UPDATED, {
