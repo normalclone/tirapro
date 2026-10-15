@@ -18,7 +18,7 @@ import { BoardSettingsDialog, SWIMLANE_LABEL } from './BoardSettingsDialog';
 import { BoardDnd } from './BoardDnd';
 import { Column } from './Column';
 import { freshenBoardIssues } from './boardIssues';
-import { scopeBoardIssues } from './scope';
+import { noActiveSprintHint, scopeBoardIssues, swimlaneEmptyKind } from './scope';
 import { NO_LANE, decideDrop, type DropContext, type DropPlan } from './dropPlan';
 import { StatusPickDialog } from './StatusPickDialog';
 import { useSwimlaneOverride } from './swimlane';
@@ -196,6 +196,7 @@ export function BoardPage() {
   const canAssign = can('issue:assign');
   const canCreate = can('issue:create');
   const canManageBoard = can('board:manage');
+  const canManageSprint = can('sprint:manage');
   const canForceWip = can('project:admin') || can('workspace:admin');
   const currentUserId = useAuth((s) => s.user?.id);
   const { active: quickFilters, toggle: toggleQuickFilter } = useQuickFilters();
@@ -262,6 +263,11 @@ export function BoardPage() {
   const allIssues = useMemo(() => projectIssues ?? issues ?? EMPTY, [projectIssues, issues]);
 
   // Làn (swimlane) theo cấu hình của bảng.
+  const swimlaneEmpty = swimlaneEmptyKind({
+    isScrum,
+    scopedCount: scoped.length,
+    filtered: hasFilter || assignee !== '' || quickFilters.size > 0,
+  });
   const lanes = useMemo(
     () => buildLanes(swimlaneBy, filteredIssues, allIssues),
     [swimlaneBy, filteredIssues, allIssues],
@@ -665,16 +671,36 @@ export function BoardPage() {
           <div className="flex min-h-0 flex-1 items-center justify-center p-6">
             <EmptyState
               title="Chưa có sprint nào đang chạy"
-              description="Bảng Scrum chỉ hiện việc của sprint đang chạy. Lên kế hoạch và bắt đầu một sprint ở Backlog."
+              description={noActiveSprintHint({
+                canManageSprint,
+                archived: !!project?.archivedAt,
+              })}
               action={<Button onClick={() => navigate(`/p/${key}/backlog`)}>Mở Backlog</Button>}
             />
           </div>
         ) : lanes ? (
           <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4">
             {lanes.length === 0 ? (
-              <p className="py-10 text-center text-sm text-faint">
-                Không có việc nào khớp bộ lọc. Tắt bớt bộ lọc phía trên để xem thêm.
-              </p>
+              swimlaneEmpty === 'filtered' ? (
+                <p className="py-10 text-center text-sm text-faint">
+                  Không có việc nào khớp bộ lọc. Tắt bớt bộ lọc phía trên để xem thêm.
+                </p>
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <p className="text-sm text-faint">
+                    {swimlaneEmpty === 'sprint'
+                      ? 'Sprint này chưa có việc nào. Thêm việc từ Backlog.'
+                      : 'Bảng chưa có việc nào. Thêm việc từ Backlog.'}
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => navigate(`/p/${key}/backlog`)}
+                  >
+                    Mở Backlog
+                  </Button>
+                </div>
+              )
             ) : (
               lanes.map((lane, laneIdx) => {
                 const cols = laneCols.get(lane.key);
