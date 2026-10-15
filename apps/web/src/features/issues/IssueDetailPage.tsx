@@ -55,7 +55,7 @@ import {
 } from '@/features/issue-edit/IssueProperties';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { CommentsSection } from '@/features/issue-edit/CommentsSection';
-import { computeNextStatuses } from './nextStatuses';
+import { canRevertTransition, computeNextStatuses } from './nextStatuses';
 import { FOCUS_COMMENT_EVENT } from '@/features/command/events';
 import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
@@ -202,12 +202,30 @@ export function IssueDetailPage() {
   function changeStatus(toStatusId: string) {
     if (!issue || toStatusId === issue.status.id) return;
     const toName = nextStatuses.find((s) => s.id === toStatusId)?.name;
+    const from = { statusId: issue.status.id, statusName: issue.status.name };
+    // "Hoàn tác" chỉ khi workflow cho phép bước ngược — nếu không bấm sẽ bị 409.
+    const canUndo = canRevertTransition(workflows, from.statusId, toStatusId);
     transition.mutate(
       { id: issue.id, key: issue.key, toStatusId, version: issue.version, statusName: toName },
       {
-        onSuccess: () =>
+        onSuccess: (updated) =>
           toast.success(toName ? `Đã chuyển sang “${toName}”` : 'Đã đổi trạng thái', {
-            duration: 2000,
+            duration: canUndo ? 4000 : 2000,
+            action: canUndo
+              ? {
+                  label: 'Hoàn tác',
+                  onClick: () =>
+                    void transition
+                      .mutateAsync({
+                        id: updated.id,
+                        key: updated.key,
+                        toStatusId: from.statusId,
+                        version: updated.version,
+                        statusName: from.statusName,
+                      })
+                      .catch((e) => toast.error(apiErrorMessage(e))),
+                }
+              : undefined,
           }),
         onError: (e) => toast.error(apiErrorMessage(e)),
       },

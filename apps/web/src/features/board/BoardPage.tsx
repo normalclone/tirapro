@@ -27,7 +27,7 @@ import { useProjectSprints } from '@/features/backlog/api';
 import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
 import { useMoveIssue, usePendingMoves, type MoveVars } from '@/features/issues/moveIssue';
 import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
-import type { NextStatus } from '@/features/issues/nextStatuses';
+import { canRevertTransition, type NextStatus } from '@/features/issues/nextStatuses';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { PresenceAvatars } from '@/features/presence/PresenceAvatars';
 import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -367,22 +367,25 @@ export function BoardPage() {
       const updated = await move.mutateAsync(vars);
       toast.success(`Đã chuyển ${issue.key} sang “${statusName}”`, {
         duration: 4000,
-        action: {
-          label: 'Hoàn tác',
-          // Quay về cột cũ + chỗ cũ; không gửi boardId (không làm cột đích đầy thêm, không cần kiểm WIP).
-          onClick: () =>
-            void move
-              .mutateAsync({
-                route: 'move',
-                id: issue.id,
-                key: issue.key,
-                version: updated.version,
-                afterId: ranked ? p.origin.afterId : null,
-                beforeId: ranked ? p.origin.beforeId : null,
-                ...from,
-              })
-              .catch(() => undefined),
-        },
+        // Chỉ hứa "Hoàn tác" khi workflow cho phép bước ngược (vd Done chỉ về To Do thì bấm sẽ bị 409).
+        action: canRevertTransition(workflows, from.statusId, toStatusId)
+          ? {
+              label: 'Hoàn tác',
+              // Quay về cột cũ + chỗ cũ; không gửi boardId (không làm cột đích đầy thêm, không cần kiểm WIP).
+              onClick: () =>
+                void move
+                  .mutateAsync({
+                    route: 'move',
+                    id: issue.id,
+                    key: issue.key,
+                    version: updated.version,
+                    afterId: ranked ? p.origin.afterId : null,
+                    beforeId: ranked ? p.origin.beforeId : null,
+                    ...from,
+                  })
+                  .catch(() => undefined),
+            }
+          : undefined,
       });
     } catch (err) {
       if (isWipLimitError(err)) onWipBlocked(err, vars, col, issue.key); // lỗi khác: hook + MutationCache đã báo
