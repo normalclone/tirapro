@@ -71,7 +71,9 @@ export class DigestsService implements OnApplicationShutdown {
 
   /** Tạo subscription mới. */
   async create(workspaceId: string, userId: string, input: CreateDigestInput) {
-    if (input.channelId) await this.assertChannelInWorkspace(workspaceId, input.channelId);
+    // `!== undefined` (không phải truthy): chuỗi rỗng cũng phải bị từ chối, không được lưu như một channelId.
+    if (input.channelId !== undefined)
+      await this.assertChannelInWorkspace(workspaceId, input.channelId);
     return this.prisma.reportSubscription.create({
       data: {
         workspaceId,
@@ -90,7 +92,9 @@ export class DigestsService implements OnApplicationShutdown {
   async update(workspaceId: string, id: string, input: UpdateDigestInput) {
     await this.requireSubscription(workspaceId, id);
     // null = gỡ kênh (không cần kiểm).
-    if (input.channelId) await this.assertChannelInWorkspace(workspaceId, input.channelId);
+    if (input.channelId !== undefined && input.channelId !== null) {
+      await this.assertChannelInWorkspace(workspaceId, input.channelId);
+    }
     const data: Prisma.ReportSubscriptionUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
     if (input.schedule !== undefined) data.schedule = input.schedule;

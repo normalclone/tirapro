@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma, TimeOffKind } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { LIVE_PROJECT } from '../../common/live-project';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import {
   HOURS_PER_DAY,
@@ -350,6 +351,7 @@ export class ResourcesService {
         where: {
           workspaceId,
           deletedAt: null,
+          ...LIVE_PROJECT,
           assigneeId: { in: userIds },
           ...projectFilter,
           OR: [
@@ -371,7 +373,7 @@ export class ResourcesService {
         where: {
           authorId: { in: userIds },
           startedAt: { gte: rangeStart, lt: addDays(rangeEnd, 1) },
-          issue: { workspaceId, deletedAt: null, ...projectFilter },
+          issue: { workspaceId, deletedAt: null, ...LIVE_PROJECT, ...projectFilter },
         },
         select: { authorId: true, timeSpent: true, startedAt: true },
       }),

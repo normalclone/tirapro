@@ -179,7 +179,8 @@ export class IssueLinksService {
       },
     });
     if (!link) throw new NotFoundAppException('Liên kết');
-    // Issue đích đã xoá mềm → cho dọn link mồ côi, không đòi quyền ở đầu đó.
+    // Issue đích đã xoá mềm → cho dọn link mồ côi, không đòi quyền ở đầu đó. `listForIssue` đã ẩn loại link này
+    // nên UI không còn nút xoá cho chúng; nhánh này chỉ còn tới được khi gọi API trực tiếp với id link.
     if (!link.target.deletedAt && link.target.projectId !== link.source.projectId) {
       await this.assertCanEditAcrossProject(workspaceId, actor, link.target);
     }
@@ -197,7 +198,7 @@ export class IssueLinksService {
   ): Promise<IssueLinkView[]> {
     const self = await this.requireIssue(workspaceId, issueId);
     // Ẩn link tới issue đã xoá mềm / thuộc dự án đã xoá mềm (IssueLink không có deletedAt → lọc trên quan hệ).
-    const liveEnd = { deletedAt: null, ...LIVE_PROJECT };
+    const liveEnd = { workspaceId, deletedAt: null, ...LIVE_PROJECT };
     const rows = await this.prisma.issueLink.findMany({
       where: {
         OR: [

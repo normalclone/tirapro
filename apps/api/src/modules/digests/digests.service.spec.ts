@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createDigestSchema, updateDigestSchema } from './digests.controller';
 import { DigestsService } from './digests.service';
 
 function setup(
@@ -133,6 +134,28 @@ describe('DigestsService — kênh phải thuộc workspace', () => {
       status: 404,
     });
     expect(prisma.reportSubscription.update).not.toHaveBeenCalled();
+  });
+
+  it('channelId chuỗi rỗng bị từ chối ở create/update (không lưu "")', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    prisma.integrationChannel.findFirst.mockResolvedValue(null as never);
+    const create = vi.fn();
+    (prisma.reportSubscription as Record<string, unknown>).create = create;
+    await expect(service.create('w1', 'u1', { name: 'n', channelId: '' })).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(service.update('w1', 's1', { channelId: '' })).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(create).not.toHaveBeenCalled();
+    expect(prisma.reportSubscription.update).not.toHaveBeenCalled();
+  });
+
+  it('schema controller từ chối channelId rỗng', () => {
+    expect(createDigestSchema.safeParse({ name: 'n', channelId: '' }).success).toBe(false);
+    expect(updateDigestSchema.safeParse({ channelId: '' }).success).toBe(false);
+    expect(updateDigestSchema.safeParse({ channelId: null }).success).toBe(true);
+    expect(createDigestSchema.safeParse({ name: 'n' }).success).toBe(true);
   });
 
   it('update channelId null (gỡ kênh) không tra kênh', async () => {

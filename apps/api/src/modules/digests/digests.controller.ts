@@ -12,21 +12,21 @@ import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 
 const scheduleEnum = z.enum(['DAILY', 'WEEKLY', 'SPRINT_END', 'MANUAL']);
 
-const createDigestSchema = z.object({
+export const createDigestSchema = z.object({
   name: z.string().trim().min(1, 'Tên không được để trống').max(120),
   schedule: scheduleEnum.optional(),
   projectId: z.string().optional(),
-  channelId: z.string().optional(),
+  channelId: z.string().min(1).optional(),
   metrics: z.array(z.string()).optional(),
   recipients: z.array(z.string()).optional(),
 });
 type CreateDigestBody = z.infer<typeof createDigestSchema>;
 
-const updateDigestSchema = z.object({
+export const updateDigestSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   schedule: scheduleEnum.optional(),
   isEnabled: z.boolean().optional(),
-  channelId: z.string().nullable().optional(),
+  channelId: z.string().min(1).nullable().optional(),
   metrics: z.array(z.string()).optional(),
 });
 type UpdateDigestBody = z.infer<typeof updateDigestSchema>;
