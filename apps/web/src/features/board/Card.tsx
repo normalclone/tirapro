@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils';
 import { useDropEdge } from '@/lib/dropHint';
 import { SORT_TRANSITION } from '@/lib/sortableDnd';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
-import { clickIsOnInteractive, wantsNewTab } from '@/lib/rowOpen';
+import { openOnRowKey } from '@/lib/rowOpen';
+import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
 
 /** Roving focus giữa các card bằng phím mũi tên (theo data-lane/col/row). */
@@ -219,14 +220,7 @@ export const Card = memo(
 
     function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
       if (isDragging) return; // đang kéo bằng bàn phím: mũi tên thuộc về dnd-kit, không dời focus
-      if (e.key === 'Enter') {
-        if (e.target !== e.currentTarget) return; // Enter trên link mã bên trong: link tự xử lý (kể cả Cmd+Enter = tab mới)
-        if (e.metaKey || e.ctrlKey) {
-          e.preventDefault();
-          window.open(`/issue/${issue.key}`, '_blank', 'noopener');
-        } else onOpen(issue.key);
-        return;
-      }
+      if (openOnRowKey(e, { key: issue.key, open: onOpen })) return; // Enter = xem nhanh, Cmd/Ctrl+Enter = tab mới
       if (e.key === ' ') {
         listeners?.onKeyDown?.(e);
         return;
@@ -265,16 +259,7 @@ export const Card = memo(
             'data-row': rowIdx,
             'data-issue-key': issue.key,
           } as object),
-          onClick: (e: React.MouseEvent<HTMLDivElement>) => {
-            // Link mã/nút bên trong tự xử lý; sự kiện từ portal nổi lên theo cây React thì bỏ.
-            if (
-              !e.currentTarget.contains(e.target as Node) ||
-              clickIsOnInteractive(e.target, e.currentTarget)
-            )
-              return;
-            if (wantsNewTab(e)) window.open(`/issue/${issue.key}`, '_blank', 'noopener');
-            else onOpen(issue.key);
-          },
+          ...rowPeekProps(issue.key, onOpen),
           role: 'button',
           tabIndex: 0,
           onKeyDown,

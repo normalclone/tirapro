@@ -231,6 +231,7 @@ export function TriagePage() {
                                 />
                                 <div
                                   role="menu"
+                                  data-state="open"
                                   className="absolute right-0 top-full z-20 mt-1 w-32 overflow-hidden rounded-md border border-border bg-surface py-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
                                 >
                                   {SNOOZE_CHOICES.map((c) => (
