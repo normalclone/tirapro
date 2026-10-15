@@ -299,6 +299,19 @@ describe('RealtimeGateway — bridge notification & sprint', () => {
     expect(to).not.toHaveBeenCalled();
   });
 
+  it('project.ranks_rebalanced -> project:ranks_rebalanced tới room project', () => {
+    const { gateway, to, emit } = makeGateway();
+    gateway.onProjectRanksRebalanced({ projectId: 'P1' });
+    expect(to).toHaveBeenCalledWith('project:P1');
+    expect(emit).toHaveBeenCalledWith(WS_EVENTS.PROJECT_RANKS_REBALANCED, { projectId: 'P1' });
+  });
+
+  it('project.ranks_rebalanced thiếu projectId thì bỏ qua', () => {
+    const { gateway, to } = makeGateway();
+    gateway.onProjectRanksRebalanced({});
+    expect(to).not.toHaveBeenCalled();
+  });
+
   it('notification.created -> notification:new tới room user của người nhận', () => {
     const { gateway, to, emit } = makeGateway();
     const notification = { id: 'N1', type: 'MENTIONED' } as never;

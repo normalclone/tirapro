@@ -407,6 +407,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.toProject(p.projectId, WS_EVENTS.ISSUE_MOVED, p);
   }
 
+  @OnEvent(DOMAIN_EVENTS.PROJECT_RANKS_REBALANCED)
+  onProjectRanksRebalanced(p: { projectId?: string }) {
+    if (!p?.projectId) return;
+    this.toProject(p.projectId, WS_EVENTS.PROJECT_RANKS_REBALANCED, { projectId: p.projectId });
+  }
+
   @OnEvent(DOMAIN_EVENTS.ISSUE_DELETED)
   onIssueDeleted(p: { issueId: string; projectId?: string }) {
     if (!p.projectId) return;

@@ -31,11 +31,16 @@ import {
   ForbiddenAppException,
   InvalidTransitionException,
   NotFoundAppException,
+  RankNeighborsStaleException,
   VersionConflictException,
   WipLimitReachedException,
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 import { assertNotArchived, assertProjectWritable } from '../../common/project-writable';
+
+/** Thứ tự hai mốc đã đảo (prev > next nghiêm ngặt, sau khi bỏ số 0 đuôi) ⇒ client giữ mốc cũ, KHÔNG phải cạn chỗ. */
+const neighborsInverted = (prev: string | null, next: string | null): boolean =>
+  prev !== null && next !== null && prev.replace(/0+$/, '') > next.replace(/0+$/, '');
 
 const issueInclude = {
   type: true,
@@ -1142,7 +1147,8 @@ export class IssuesService {
   }
 
   /**
-   * Tính rank mới. Hết chỗ chèn (RankGapError) thì đánh số lại cả project rồi đọc lại
+   * Tính rank mới. Hai mốc đã đảo thứ tự (client giữ mốc cũ) thì 409 RANK_NEIGHBORS_STALE để client nạp lại,
+   * KHÔNG rebalance. Hết chỗ chèn (RankGapError) thì đánh số lại cả project rồi đọc lại
    * hai mốc và tính lại đúng 1 lần.
    */
   private async resolveRank(
@@ -1153,6 +1159,7 @@ export class IssuesService {
     read: () => Promise<{ prev: string | null; next: string | null }>,
   ): Promise<string> {
     const first = await read();
+    if (neighborsInverted(first.prev, first.next)) throw new RankNeighborsStaleException();
     try {
       return rankBetween(first.prev, first.next);
     } catch (e) {
@@ -1160,6 +1167,7 @@ export class IssuesService {
     }
     await this.rebalanceProject(projectId, db, deferred, movedId);
     const again = await read();
+    if (neighborsInverted(again.prev, again.next)) throw new RankNeighborsStaleException();
     try {
       return rankBetween(again.prev, again.next);
     } catch (e) {

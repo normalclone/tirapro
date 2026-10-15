@@ -73,6 +73,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   UNAUTHORIZED: 'Phiên đăng nhập đã hết hạn — hãy đăng nhập lại.',
   NOT_FOUND: 'Không tìm thấy dữ liệu. Có thể nó vừa bị xoá hoặc đường dẫn không đúng.',
   VALIDATION_ERROR: 'Thông tin nhập chưa hợp lệ — kiểm tra lại các ô được đánh dấu.',
+  RANK_NEIGHBORS_STALE:
+    'Thứ tự công việc vừa thay đổi do người khác — danh sách đã được nạp lại, hãy kéo thả lại.',
   RATE_LIMITED: 'Bạn thao tác hơi nhanh. Chờ vài giây rồi thử lại.',
   WORKFLOW_TRANSITION_INVALID:
     'Quy trình không cho chuyển thẳng sang trạng thái này. Hãy chọn một trạng thái trong danh sách gợi ý.',
