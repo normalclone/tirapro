@@ -152,11 +152,15 @@ export class AssigneeSuggestService {
       ...issue.targetLinks.map((l) => l.sourceIssueId),
     ].filter((x): x is string => !!x && x !== issue.id);
 
+    // Mọi lần đếm đều loại issue đã xoá mềm ngay tại đây (không để từng nơi gọi tự nhớ).
     const groupCount = (where: Record<string, unknown>) =>
-      this.prisma.issue.groupBy({ by: ['assigneeId'], where, _count: { _all: true } });
+      this.prisma.issue.groupBy({
+        by: ['assigneeId'],
+        where: { deletedAt: null, ...where },
+        _count: { _all: true },
+      });
     const baseDone = {
       projectId: issue.projectId,
-      deletedAt: null,
       id: { not: issue.id },
       assigneeId: { in: ids },
       status: { category: 'DONE' },
@@ -167,13 +171,11 @@ export class AssigneeSuggestService {
       specificOr.length ? groupCount({ ...baseDone, OR: specificOr }) : Promise.resolve([]),
       groupCount({
         projectId: issue.projectId,
-        deletedAt: null,
         assigneeId: { in: ids },
         status: { category: { not: 'DONE' } },
       }),
       groupCount({
         projectId: issue.projectId,
-        deletedAt: null,
         assigneeId: { in: ids },
         updatedAt: { gte: sinceRecent },
       }),

@@ -80,8 +80,12 @@ describe('AssigneeSuggestService', () => {
    * C: không tín hiệu dương; tải 0 → 0.25                                                        = 0.25
    */
   it('heuristic: xếp đúng thứ tự theo điểm; lý do cụ thể có số', async () => {
-    const { svc, claude } = make();
+    const { svc, claude, prisma } = make();
     const out = await svc.suggest('ws1', 'me', { projectId: 'p1', issueId: 'i1' });
+    // Cả 4 lần đếm đều loại issue đã xoá mềm.
+    expect(prisma.issue.groupBy).toHaveBeenCalledTimes(4);
+    for (const c of prisma.issue.groupBy.mock.calls)
+      expect((c[0] as { where: { deletedAt: null } }).where.deletedAt).toBeNull();
     expect(out.source).toBe('heuristic');
     expect('reason' in out).toBe(false);
     expect(out.suggestions.map((s) => s.userId)).toEqual(['uB', 'uA', 'uC']);
