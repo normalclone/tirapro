@@ -43,9 +43,9 @@ function previewOf(text: string): { ok: boolean; label: string } {
 
 /**
  * Theo dõi thời gian của một công việc: thanh tiến độ (đã làm / ước lượng gốc / còn lại), form "Ghi thời gian"
- * nhận chuỗi kiểu "2h 30m" và danh sách worklog. Phím tắt `w` mở form.
+ * nhận chuỗi kiểu "2h 30m" và danh sách worklog. Phím tắt `w` (ở trang issue) mở form qua `openRequest`.
  */
-export function WorklogPanel({ issue }: { issue: IssueDto }) {
+export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequest?: number }) {
   const me = useAuth((s) => s.user);
   const can = useAuth((s) => s.can);
   const worklogsQuery = useWorklogs(issue.id);
@@ -64,24 +64,14 @@ export function WorklogPanel({ issue }: { issue: IssueDto }) {
   const isAdmin = can('project:admin') || can('workspace:admin');
   const canEstimate = can('issue:edit');
 
-  // Phím tắt `w` — chỉ khi không gõ trong ô nhập và không có hộp thoại nào đang mở.
+  // Phím `w` được xử lý ở IssueDetailPage (panel này chỉ mount khi cuộn tới) → nhận yêu cầu mở qua `openRequest`.
+  const sectionRef = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (!canLog) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== 'w' && e.key !== 'W') return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const el = e.target as HTMLElement | null;
-      const tag = el?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable)
-        return;
-      if (document.querySelector('[data-radix-popper-content-wrapper],[role="dialog"]')) return;
-      e.preventDefault();
-      setEditing(null);
-      setFormOpen(true);
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [canLog]);
+    if (!openRequest || !canLog) return;
+    setEditing(null);
+    setFormOpen(true);
+    sectionRef.current?.scrollIntoView({ block: 'nearest' }); // `scroll-behavior`/reduced-motion do trình duyệt xử lý
+  }, [openRequest, canLog]);
 
   const spent = data?.totalSec ?? issue.timeSpent ?? 0;
   const original = data?.originalEstimate ?? issue.originalEstimate;
@@ -117,6 +107,7 @@ export function WorklogPanel({ issue }: { issue: IssueDto }) {
 
   return (
     <section
+      ref={sectionRef}
       aria-label="Theo dõi thời gian"
       className="rounded-lg border border-border bg-surface p-4"
     >

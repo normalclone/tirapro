@@ -61,6 +61,7 @@ import { useRecents } from '@/stores/recentIssues';
 import { useProjectRealtime } from '@/lib/realtime';
 import { useCachedProjectIssue, useUpdateIssue, useTransitionDetail } from './api';
 import { useInView } from '@/lib/useInView';
+import { isDialogOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { IssueDto } from '@tirapro/types';
@@ -84,15 +85,19 @@ function LazyPanel({
   children,
   id,
   minHeight = 80,
+  force = false,
 }: {
   children: ReactNode;
   id?: string;
   minHeight?: number;
+  /** Ép dựng ngay (vd. phím tắt cần panel dù chưa cuộn tới). */
+  force?: boolean;
 }) {
   const { ref, inView } = useInView<HTMLDivElement>();
+  const show = inView || force;
   return (
-    <div ref={ref} id={id} style={inView ? undefined : { minHeight }}>
-      {inView ? children : null}
+    <div ref={ref} id={id} style={show ? undefined : { minHeight }}>
+      {show ? children : null}
     </div>
   );
 }
@@ -151,6 +156,29 @@ export function IssueDetailPage() {
   useEffect(() => {
     if (issue) setSummary(issue.summary);
   }, [issue?.id]);
+
+  // Phím `w` ghi thời gian: đăng ký ở cấp trang vì WorklogPanel chỉ mount khi cuộn tới (LazyPanel).
+  // Mỗi lần bấm tăng `worklogRequest` → ép dựng panel, cuộn tới và mở form (đếm số để bấm lại sau khi đóng vẫn mở).
+  const [worklogRequest, setWorklogRequest] = useState(0);
+  const canLogWork = can('worklog:create');
+  const hasIssue = !!issue;
+  useEffect(() => {
+    if (!canLogWork || !hasIssue) return;
+    function onKey(e: KeyboardEvent) {
+      if (
+        !isWorklogHotkey(e, {
+          typing: isTypingTarget(e.target),
+          dialogOpen: isDialogOpen(),
+          canLog: true,
+        })
+      )
+        return;
+      e.preventDefault();
+      setWorklogRequest((n) => n + 1);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canLogWork, hasIssue]);
 
   function changeStatus(toStatusId: string) {
     if (!issue || toStatusId === issue.status.id) return;
@@ -666,8 +694,8 @@ export function IssueDetailPage() {
                   <div className="space-y-5 lg:sticky lg:top-4">
                     <IssuePeoplePanel issue={issue} />
                     <IssueDatesPanel issue={issue} canEditRestricted={canEditRestricted} />
-                    <LazyPanel minHeight={96}>
-                      <WorklogPanel issue={issue} />
+                    <LazyPanel id="issue-worklog" minHeight={96} force={worklogRequest > 0}>
+                      <WorklogPanel issue={issue} openRequest={worklogRequest} />
                     </LazyPanel>
                   </div>
                 </aside>
