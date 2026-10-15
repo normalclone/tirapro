@@ -65,6 +65,12 @@ function useCommitOnce(onCommit?: (iso: string) => void) {
   };
 }
 
+/** `pointerType` của lần bấm; chưa rõ (rỗng) thì suy từ thiết bị (`pointer: coarse`). */
+function isTouchLike(pointerType: string): boolean {
+  if (pointerType === 'touch' || pointerType === 'pen') return true;
+  return pointerType === '' && !!window.matchMedia?.('(pointer: coarse)').matches;
+}
+
 function isInside(e: FocusEvent<HTMLElement>): boolean {
   return e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget);
 }
@@ -226,10 +232,7 @@ export function DateInput({
             }}
             onMouseDown={(e) => {
               e.preventDefault();
-              const touchLike =
-                pointerType.current === 'touch' ||
-                pointerType.current === 'pen' ||
-                (pointerType.current === '' && window.matchMedia?.('(pointer: coarse)').matches);
+              const touchLike = isTouchLike(pointerType.current);
               if (!touchLike) inputRef.current?.focus();
             }}
             onClick={openPicker}
