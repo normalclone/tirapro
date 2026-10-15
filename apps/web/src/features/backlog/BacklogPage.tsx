@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Play, CheckCircle2, ChevronRight, Inbox, Sparkles, Pencil } from 'lucide-react';
 import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
 import { buildProgressMap, type SubtreeProgress } from '@/lib/issueTree';
@@ -98,6 +98,7 @@ function pointsSum(issues: IssueDto[]): number {
 
 export function BacklogPage() {
   const { key = '' } = useParams();
+  const navigate = useNavigate();
   const {
     data: project,
     isLoading: lp,
@@ -514,6 +515,11 @@ export function BacklogPage() {
     });
   }
 
+  // Sau khi kết thúc sprint: sang trang tổng kết đúng sprint đó (x/y điểm, việc chuyển tiếp, so velocity TB).
+  function showSprintSummary(sprintId: string) {
+    navigate(`/p/${key}/reports?tab=sprint&sprint=${sprintId}`);
+  }
+
   // Xác nhận hoàn thành sprint còn việc chưa xong; người dùng chọn việc chưa xong đi đâu.
   function confirmComplete(moveIncompleteTo: MoveIncompleteTo) {
     if (!completing) return;
@@ -528,12 +534,14 @@ export function BacklogPage() {
     completeSprint.mutate(
       { sprintId: id, moveIncompleteTo },
       {
-        onSuccess: () =>
+        onSuccess: () => {
           toast.success(
             notDone > 0
               ? `Đã kết thúc sprint “${name}”. ${notDone} việc chưa xong ${where}.`
               : `Đã kết thúc sprint “${name}”`,
-          ),
+          );
+          showSprintSummary(id);
+        },
         onError: (err) => toast.error(apiErrorMessage(err)),
       },
     );
@@ -703,8 +711,10 @@ export function BacklogPage() {
                               : completeSprint.mutate(
                                   { sprintId: sprint.id },
                                   {
-                                    onSuccess: () =>
-                                      toast.success(`Đã kết thúc sprint “${sprint.name}”`),
+                                    onSuccess: () => {
+                                      toast.success(`Đã kết thúc sprint “${sprint.name}”`);
+                                      showSprintSummary(sprint.id);
+                                    },
                                     onError: (err) => toast.error(apiErrorMessage(err)),
                                   },
                                 )

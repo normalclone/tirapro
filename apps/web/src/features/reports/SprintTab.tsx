@@ -22,6 +22,7 @@ import {
   VelocityChart,
   type StatItem,
 } from './charts';
+import { SprintSummaryPanel } from './SprintSummaryPanel';
 import { sprintCsvFilename, sprintIssuesCsv } from './exportCsv';
 import { completionPct, fmtPoints } from './sprintSummary';
 
@@ -97,6 +98,10 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
         </p>
         <SprintExport projectId={projectId} projectKey={projectKey} sprint={sprint} />
       </div>
+
+      {closed && summary.data && (
+        <SprintSummaryPanel summary={summary.data} projectKey={projectKey} />
+      )}
 
       {summary.isLoading ? (
         <Skeleton className="h-[92px] w-full" />
