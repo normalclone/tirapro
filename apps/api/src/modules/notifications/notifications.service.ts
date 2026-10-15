@@ -114,6 +114,13 @@ interface IssueTransitionedPayload {
 interface IssueUpdatedPayload {
   issue: IssueEventShape;
   actorId: string;
+  /** Các trường vừa đổi (có từ E3); thiếu → coi như không rõ, không suy ra việc giao lại. */
+  changedFields?: string[];
+}
+
+interface IssueCreatedPayload {
+  issue: IssueEventShape;
+  actorId: string;
 }
 
 interface CommentAddedPayload {
@@ -121,6 +128,7 @@ interface CommentAddedPayload {
   issueId: string;
   projectId?: string;
   actorId?: string;
+  mentionIds?: string[];
 }
 
 
@@ -266,11 +274,28 @@ export class NotificationsService {
     }
   }
 
+  /** Issue mới tạo đã có người nhận việc (≠ người tạo) → ISSUE_ASSIGNED. */
+  @OnEvent(DOMAIN_EVENTS.ISSUE_CREATED)
+  async onIssueCreated(payload: unknown): Promise<void> {
+    try {
+      const { issue, actorId } = payload as IssueCreatedPayload;
+      if (!issue?.assigneeId || issue.assigneeId === actorId) return;
+      await this.notifyAssigned(issue, actorId);
+    } catch (err) {
+      this.logger.warn(`onIssueCreated thất bại: ${this.errMsg(err)}`);
+    }
+  }
+
   @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
   async onIssueUpdated(payload: unknown): Promise<void> {
     try {
-      const { issue, actorId } = payload as IssueUpdatedPayload;
+      const { issue, actorId, changedFields } = payload as IssueUpdatedPayload;
       if (!issue?.assigneeId || issue.assigneeId === actorId) return;
+      // Người phụ trách vừa được đổi sang người này → "được giao việc" (thay cho "việc được cập nhật" để khỏi báo trùng).
+      if (changedFields?.includes('assigneeId')) {
+        await this.notifyAssigned(issue, actorId);
+        return;
+      }
       await this.create({
         recipientId: issue.assigneeId,
         workspaceId: issue.workspaceId,
@@ -287,21 +312,48 @@ export class NotificationsService {
   @OnEvent(DOMAIN_EVENTS.COMMENT_ADDED)
   async onCommentAdded(payload: unknown): Promise<void> {
     try {
-      const { comment, issueId, actorId } = payload as CommentAddedPayload;
+      const { comment, issueId, actorId, mentionIds } = payload as CommentAddedPayload;
       const author = actorId ?? comment?.authorId;
       if (!issueId || !author) return;
       const issue = await this.prisma.issue.findFirst({
         where: { id: issueId, deletedAt: null },
         select: { id: true, workspaceId: true, assigneeId: true, key: true, summary: true },
       });
-      if (!issue?.assigneeId || issue.assigneeId === author) return;
+      if (!issue) return;
+      const issuePayload = { key: issue.key, summary: issue.summary };
+
+      // @nhắc tên: chỉ thành viên không gian làm việc, không tự nhắc chính mình.
+      const wanted = [...new Set(mentionIds ?? [])].filter((id) => id !== author);
+      const mentioned = new Set<string>();
+      if (wanted.length) {
+        const members = await this.prisma.workspaceMembership.findMany({
+          where: { workspaceId: issue.workspaceId, userId: { in: wanted } },
+          select: { userId: true },
+        });
+        for (const m of members) mentioned.add(m.userId);
+        for (const recipientId of mentioned) {
+          await this.create({
+            recipientId,
+            workspaceId: issue.workspaceId,
+            type: 'MENTIONED',
+            issueId: issue.id,
+            commentId: comment?.id ?? null,
+            actorId: author,
+            payload: issuePayload,
+          });
+        }
+      }
+
+      // Người được nhắc tên đã nhận thông báo trực tiếp, không báo thêm "có bình luận mới".
+      if (!issue.assigneeId || issue.assigneeId === author || mentioned.has(issue.assigneeId)) return;
       await this.create({
         recipientId: issue.assigneeId,
         workspaceId: issue.workspaceId,
         type: 'COMMENT_ADDED',
         issueId: issue.id,
+        commentId: comment?.id ?? null,
         actorId: author,
-        payload: { key: issue.key, summary: issue.summary },
+        payload: issuePayload,
       });
     } catch (err) {
       this.logger.warn(`onCommentAdded thất bại: ${this.errMsg(err)}`);
@@ -309,6 +361,17 @@ export class NotificationsService {
   }
 
   // ---------- helpers ----------
+
+  private notifyAssigned(issue: IssueEventShape, actorId: string): Promise<void> {
+    return this.create({
+      recipientId: issue.assigneeId as string,
+      workspaceId: issue.workspaceId,
+      type: 'ISSUE_ASSIGNED',
+      issueId: issue.id,
+      actorId,
+      payload: { key: issue.key, summary: issue.summary },
+    });
+  }
 
   private async create(input: {
     recipientId: string;
