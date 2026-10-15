@@ -25,6 +25,7 @@ import { useAuth } from '@/stores/auth';
 import {
   useCan,
   useCanEditIssue,
+  useCanEditSchedule,
   useCanIn,
   useProjectArchived,
   useProjectCan,
@@ -120,6 +121,64 @@ describe('useCanEditIssue', () => {
       permissions: ['issue:edit'],
     });
     expect(probeEdit(qc, 'p1', { reporterId: 'other', assigneeId: null })).toBe(true);
+  });
+});
+
+describe('useCanEditSchedule — ai đổi Ngày bắt đầu/Hạn/Story points', () => {
+  type Own = { reporterId: string | null; assigneeId: string | null; createdById?: string | null };
+  function probeSchedule(qc: QueryClient, projectId: string, i: Own) {
+    let result: boolean | undefined;
+    function Probe() {
+      result = useCanEditSchedule(projectId)(i);
+      return null;
+    }
+    renderToString(createElement(QueryClientProvider, { client: qc }, createElement(Probe)));
+    return result;
+  }
+  const mine: Own = { reporterId: 'u1', assigneeId: null };
+  const theirs: Own = { reporterId: 'other', assigneeId: 'u1', createdById: 'other' };
+  let qc: QueryClient;
+  function grant(perms: string[]) {
+    qc.setQueryData(keys.projects.permissions('p1'), { projectId: 'p1', permissions: perms });
+  }
+  beforeEach(() => {
+    qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000 } } });
+    useAuth.setState({
+      user: { id: 'u1', isSystemAdmin: false } as never,
+      permissions: ['project:view'],
+    });
+  });
+
+  it('người tạo/báo cáo (có issue:edit hoặc issue:edit:own) → true', () => {
+    grant(['issue:edit']);
+    expect(probeSchedule(qc, 'p1', mine)).toBe(true);
+    grant(['issue:edit:own']);
+    expect(probeSchedule(qc, 'p1', mine)).toBe(true);
+    expect(probeSchedule(qc, 'p1', { reporterId: 'x', assigneeId: null, createdById: 'u1' })).toBe(
+      true,
+    );
+  });
+  it('quản trị dự án (không phải người tạo) → true', () => {
+    grant(['issue:edit', 'project:admin']);
+    expect(probeSchedule(qc, 'p1', theirs)).toBe(true);
+  });
+  it('quản trị workspace và system admin → true', () => {
+    useAuth.setState({ permissions: ['workspace:admin', 'issue:edit'] });
+    expect(probeSchedule(qc, 'p1', theirs)).toBe(true);
+    useAuth.setState({ user: { id: 'u1', isSystemAdmin: true } as never, permissions: [] });
+    expect(probeSchedule(qc, 'p1', theirs)).toBe(true);
+  });
+  it('chỉ có issue:edit mà không phải người tạo → false (dù được giao việc)', () => {
+    grant(['issue:edit']);
+    expect(probeSchedule(qc, 'p1', theirs)).toBe(false);
+  });
+  it('người tạo nhưng không có quyền sửa (Viewer) → false', () => {
+    grant(['project:view']);
+    expect(probeSchedule(qc, 'p1', mine)).toBe(false);
+  });
+  it('chưa đăng nhập (không có user.id) → false, không so khớp undefined === undefined', () => {
+    useAuth.setState({ user: undefined as never, permissions: ['issue:edit'] });
+    expect(probeSchedule(qc, 'p1', { reporterId: null, assigneeId: null })).toBe(false);
   });
 });
 

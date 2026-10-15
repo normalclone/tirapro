@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
@@ -20,7 +20,8 @@ import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { dueState } from '@/components/ui/DueBadge';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { fmtDateTime, fmtRelative, toDateTimeInput } from '@/lib/dateFormat';
+import { fmtDate, fmtDateTime, fmtRelative, toDateInput, toDateTimeInput } from '@/lib/dateFormat';
+import { DateInput } from '@/components/ui/DateInput';
 
 /** Trigger SearchSelect ở dạng badge/label (không viền, hover nền) — bấm để đổi. */
 export const INLINE_TRIGGER =
@@ -408,7 +409,7 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Mốc thời gian (cột phải — Hạn / Tạo / Cập nhật / Hoàn tất)         */
+/* Mốc thời gian (cột phải — Bắt đầu / Hạn / Tạo / Cập nhật / Hoàn tất) */
 /* ------------------------------------------------------------------ */
 
 export function IssueDatesPanel({
@@ -421,6 +422,7 @@ export function IssueDatesPanel({
   return (
     <PanelSection title="Mốc thời gian">
       <div className="divide-y divide-border">
+        <StartRow issue={issue} canEdit={canEditRestricted} />
         <DueRow issue={issue} canEdit={canEditRestricted} />
         <InfoRow label="Ngày tạo" hint="Lúc công việc được tạo">
           <span title={fmtRelative(issue.createdAt)}>{fmtDateTime(issue.createdAt)}</span>
@@ -435,6 +437,137 @@ export function IssueDatesPanel({
         )}
       </div>
     </PanelSection>
+  );
+}
+
+/**
+ * Khung chung của hàng ngày sửa-tại-chỗ ("Ngày bắt đầu", "Hạn"): nhãn (+ khoá khi không có quyền), giá trị bấm mới sửa,
+ * ô sửa do bên gọi cấp. Cùng luật quyền (`canEdit` = `useCanEditSchedule`) nên hai hàng khoá/mở đồng nhất.
+ */
+function DateRowShell({
+  label,
+  hint,
+  lockedTip,
+  canEdit,
+  editing,
+  editor,
+  display,
+  emptyAction,
+  valueClass,
+  valueTip,
+  onEdit,
+}: {
+  label: string;
+  hint: string;
+  lockedTip: string;
+  canEdit: boolean;
+  editing: boolean;
+  editor: ReactNode;
+  display: string | null;
+  /** Chữ nút khi chưa có ngày ("Đặt hạn"). */
+  emptyAction: string;
+  valueClass?: string;
+  valueTip?: string | null;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
+      <span className="flex shrink-0 items-center gap-1 text-muted" title={hint}>
+        {label}
+        {!canEdit && <Lock className="h-3 w-3 text-faint" aria-label={lockedTip} />}
+      </span>
+      {editing && canEdit ? (
+        editor
+      ) : canEdit ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          title={
+            valueTip ? `${valueTip} — bấm để đổi` : `Bấm để đặt hoặc đổi ${label.toLowerCase()}`
+          }
+          className={cn(
+            'rounded px-1.5 py-0.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+            display ? valueClass : 'text-faint',
+          )}
+        >
+          {display ?? emptyAction}
+        </button>
+      ) : (
+        <span
+          className={cn('rounded px-1.5 py-0.5', display ? valueClass : 'text-ink')}
+          title={valueTip ?? (display ? undefined : `Việc này chưa đặt ${label.toLowerCase()}`)}
+        >
+          {display ?? '—'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Hàng "Ngày bắt đầu": chỉ ngày (Gantt chỉ xét ngày), gõ/chọn dd/MM/yyyy; server từ chối bắt đầu sau hạn. */
+function StartRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
+  const patch = useUpdateIssue(issue.projectId);
+  const [editing, setEditing] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const current = issue.startDate ? toDateInput(issue.startDate) : '';
+  const [draft, setDraft] = useState(current);
+
+  // DateInput không có autoFocus: đưa con trỏ vào ô chữ để rời ô mới "chốt" được giá trị.
+  useEffect(() => {
+    if (editing) wrap.current?.querySelector<HTMLInputElement>('input[type="text"]')?.focus();
+  }, [editing]);
+
+  function save(iso: string) {
+    setEditing(false);
+    if (iso === current) return;
+    patch.mutate(
+      {
+        id: issue.id,
+        key: issue.key,
+        // Ngày thuần theo giờ địa phương: 00:00 của ngày chọn.
+        patch: { startDate: iso ? new Date(`${iso}T00:00`).toISOString() : null },
+        version: issue.version,
+      },
+      { onError: (e) => toast.error(apiErrorMessage(e)) },
+    );
+  }
+
+  return (
+    <DateRowShell
+      label="Ngày bắt đầu"
+      hint="Ngày bắt đầu làm việc này — cùng Hạn tạo thanh nhiều ngày trên Gantt"
+      lockedTip="Chỉ người tạo việc hoặc quản trị mới sửa được ngày bắt đầu"
+      canEdit={canEdit}
+      editing={editing}
+      display={issue.startDate ? fmtDate(issue.startDate) : null}
+      emptyAction="Đặt ngày bắt đầu"
+      valueClass="text-ink"
+      onEdit={() => {
+        setDraft(current);
+        setEditing(true);
+      }}
+      editor={
+        <div
+          ref={wrap}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault(); // huỷ sửa ô này thôi — panel xem nhanh không đóng theo
+              e.stopPropagation();
+              setEditing(false);
+            }
+          }}
+        >
+          <DateInput
+            value={draft}
+            onChange={setDraft}
+            onCommit={save}
+            ariaLabel="Ngày bắt đầu"
+            disabled={patch.isPending}
+            className="h-8 w-40 text-sm"
+          />
+        </div>
+      }
+    />
   );
 }
 
@@ -476,17 +609,18 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
-      <span className="flex shrink-0 items-center gap-1 text-muted" title="Mốc việc này phải xong">
-        Hạn
-        {!canEdit && (
-          <Lock
-            className="h-3 w-3 text-faint"
-            aria-label="Chỉ người tạo việc hoặc quản trị mới sửa được hạn"
-          />
-        )}
-      </span>
-      {editing && canEdit ? (
+    <DateRowShell
+      label="Hạn"
+      hint="Mốc việc này phải xong"
+      lockedTip="Chỉ người tạo việc hoặc quản trị mới sửa được hạn"
+      canEdit={canEdit}
+      editing={editing}
+      display={display}
+      emptyAction="Đặt hạn"
+      valueClass={toneCls}
+      valueTip={toneTip}
+      onEdit={() => setEditing(true)}
+      editor={
         <Input
           type="datetime-local"
           autoFocus
@@ -503,26 +637,7 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
             }
           }}
         />
-      ) : canEdit ? (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          title={toneTip ? `${toneTip} — bấm để đổi hạn` : 'Bấm để đặt hoặc đổi hạn'}
-          className={cn(
-            'rounded px-1.5 py-0.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            display ? toneCls : 'text-faint',
-          )}
-        >
-          {display ?? 'Đặt hạn'}
-        </button>
-      ) : (
-        <span
-          className={cn('rounded px-1.5 py-0.5', display ? toneCls : 'text-ink')}
-          title={toneTip ?? (display ? undefined : 'Việc này chưa đặt hạn')}
-        >
-          {display ?? '—'}
-        </span>
-      )}
-    </div>
+      }
+    />
   );
 }

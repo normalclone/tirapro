@@ -113,3 +113,26 @@ export function useCanEditIssue(projectId?: string | null): (issue: IssueOwnersh
     [isSystemAdmin, workspace, project, userId, archived],
   );
 }
+
+/**
+ * `const canSchedule = useCanEditSchedule(projectId); canSchedule(issue)` — đổi lịch/ước lượng của MỘT công việc
+ * (Ngày bắt đầu, Hạn, Story points): phải sửa được việc đó (`useCanEditIssue`) VÀ là người tạo/báo cáo hoặc quản trị
+ * (project/workspace/system admin) — khớp `assertCanEditRestrictedFields` ở API. Một luật cho trang chi tiết, panel xem
+ * nhanh và Gantt (L15) để không có chỗ cho kéo được mà server từ chối một nửa.
+ */
+export function useCanEditSchedule(projectId?: string | null): (issue: IssueOwnership) => boolean {
+  const canEdit = useCanEditIssue(projectId);
+  const can = useCanIn(projectId);
+  const me = useAuth((s) => s.user);
+  return useCallback(
+    (issue) =>
+      canEdit(issue) &&
+      (me?.isSystemAdmin === true ||
+        (!!me?.id &&
+          (issue.reporterId === me.id ||
+            issue.createdById === me.id ||
+            can('workspace:admin') ||
+            can('project:admin')))),
+    [canEdit, can, me],
+  );
+}

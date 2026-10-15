@@ -2339,3 +2339,103 @@ describe('IssuesService.move — không rebalance khi giữ rank; đổi status 
     );
   });
 });
+
+describe('IssuesService — Ngày bắt đầu (L14): start <= hạn và cùng luật quyền với Hạn', () => {
+  const D18 = '2026-10-18T00:00:00.000Z';
+  const D20 = '2026-10-20T00:00:00.000Z';
+  function schedTx(rowOver: Record<string, unknown> = {}) {
+    return {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow(rowOver))),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 4 }))),
+        updateMany: vi.fn(
+          (_args: { where: Record<string, unknown>; data: Record<string, unknown> }) =>
+            Promise.resolve({ count: 1 }),
+        ),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+    };
+  }
+
+  it('update: bắt đầu > hạn (gửi cả hai) => 422 nêu "Ngày bắt đầu", chưa ghi', async () => {
+    const tx = schedTx();
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, startDate: D20, dueDate: D18 }),
+    ).rejects.toMatchObject({ status: 422, message: has('Ngày bắt đầu') });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('update: chỉ đổi startDate vượt dueDate HIỆN CÓ => cũng lỗi; chỉ đổi dueDate sớm hơn startDate hiện có => lỗi', async () => {
+    const tx = schedTx({ dueDate: new Date(D18), startDate: new Date(D18) });
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, startDate: D20 }),
+    ).rejects.toMatchObject({ status: 422 });
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, dueDate: '2026-10-10T00:00:00.000Z' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('update: bằng nhau hợp lệ; xoá một trong hai luôn được; chỉ có một ngày thì không kiểm', async () => {
+    const tx = schedTx({ dueDate: new Date(D18) });
+    const { service } = makeService(tx);
+    await service.update('w1', 'u1', 'i1', { version: 3, startDate: D18 });
+    await service.update('w1', 'u1', 'i1', { version: 3, startDate: null });
+    const tx2 = schedTx({ startDate: new Date(D20) });
+    const svc2 = makeService(tx2).service;
+    await svc2.update('w1', 'u1', 'i1', { version: 3, dueDate: null });
+    await svc2.update('w1', 'u1', 'i1', { version: 3, summary: 'không đụng ngày' });
+    expect(tx.issue.updateMany).toHaveBeenCalledTimes(2);
+    expect(tx2.issue.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('update: người KHÔNG phải người tạo/quản trị gửi startDate => 403 (cùng luật với Hạn)', async () => {
+    const tx = schedTx();
+    const { service } = makeService(tx, {
+      user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) },
+    });
+    await expect(
+      service.update('w1', 'u2', 'i1', { version: 3, startDate: D18 }),
+    ).rejects.toMatchObject({ status: 403, message: has('Ngày bắt đầu') });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('update: quản trị dự án (không phải người tạo) đổi được startDate', async () => {
+    const tx = schedTx();
+    const { service, rbac } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:edit', 'project:admin']));
+    await service.update('w1', 'u2', 'i1', { version: 3, startDate: D18 });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({
+      startDate: new Date(D18),
+    });
+  });
+
+  it('update: automation (opts.automationDepth) bỏ qua kiểm quyền startDate như Hạn', async () => {
+    const tx = schedTx();
+    const { service } = makeService(tx, {
+      user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) },
+    });
+    await service.update('w1', 'u2', 'i1', { version: 3, startDate: D18 }, { automationDepth: 1 });
+    expect(tx.issue.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('create: bắt đầu > hạn => 422 trước khi đụng bất cứ thứ gì khác', async () => {
+    const { service } = makeService({
+      project: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'p1', key: 'P', archivedAt: null })),
+      },
+    });
+    await expect(
+      service.create('w1', 'u1', {
+        projectId: 'p1',
+        typeId: 't1',
+        summary: 's',
+        descriptionFormat: 'MARKDOWN',
+        startDate: D20,
+        dueDate: D18,
+      }),
+    ).rejects.toMatchObject({ status: 422, message: has('Ngày bắt đầu') });
+  });
+});

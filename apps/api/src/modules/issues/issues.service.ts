@@ -117,8 +117,8 @@ export class IssuesService {
   ) {}
 
   /**
-   * Story points & Hạn chỉ người TẠO/BÁO CÁO issue hoặc QUẢN TRỊ (project admin /
-   * workspace admin / system admin) được sửa. Ném lỗi nếu vi phạm.
+   * Story points, Hạn & Ngày bắt đầu (một luật "ai đổi lịch/ước lượng") chỉ người TẠO/BÁO CÁO issue hoặc
+   * QUẢN TRỊ (project admin / workspace admin / system admin) được sửa. Ném lỗi nếu vi phạm.
    */
   private async assertCanEditRestrictedFields(
     userId: string,
@@ -133,7 +133,20 @@ export class IssuesService {
       select: { isSystemAdmin: true },
     });
     if (u?.isSystemAdmin) return;
-    throw new ForbiddenAppException('Chỉ người tạo hoặc quản trị mới được sửa Story points/Hạn');
+    throw new ForbiddenAppException(
+      'Chỉ người tạo hoặc quản trị mới được sửa Story points/Hạn/Ngày bắt đầu',
+    );
+  }
+
+  /** Bắt đầu phải trước hoặc bằng hạn — chỉ kiểm khi cả hai có giá trị (xoá một trong hai luôn được). */
+  private assertScheduleOrder(
+    start: Date | string | null | undefined,
+    due: Date | string | null | undefined,
+  ): void {
+    if (!start || !due) return;
+    if (new Date(start).getTime() > new Date(due).getTime()) {
+      throw new BusinessRuleException('Ngày bắt đầu phải trước hoặc bằng hạn — hãy chọn lại ngày');
+    }
   }
 
   /** Người chỉ có `issue:edit:own` chỉ sửa được việc mình báo cáo, được giao hoặc đã tạo. */
@@ -450,6 +463,7 @@ export class IssuesService {
     });
     if (!project) throw new NotFoundAppException('Dự án');
     assertNotArchived(project.archivedAt);
+    this.assertScheduleOrder(input.startDate, input.dueDate);
     await this.assertMetaInWorkspace(
       workspaceId,
       {
@@ -812,13 +826,20 @@ export class IssuesService {
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
       await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
 
-    // Field-level: Story points / Hạn chỉ người tạo hoặc admin sửa được.
+    // Field-level: Story points / Hạn / Ngày bắt đầu chỉ người tạo hoặc admin sửa được.
     if (
-      (input.storyPoints !== undefined || input.dueDate !== undefined) &&
+      (input.storyPoints !== undefined ||
+        input.dueDate !== undefined ||
+        input.startDate !== undefined) &&
       opts?.automationDepth === undefined
     ) {
       await this.assertCanEditRestrictedFields(userId, workspaceId, current);
     }
+    // Thứ tự ngày tính trên giá trị HIỆU LỰC sau khi sửa (trường không gửi giữ giá trị hiện có).
+    this.assertScheduleOrder(
+      input.startDate !== undefined ? input.startDate : current.startDate,
+      input.dueDate !== undefined ? input.dueDate : current.dueDate,
+    );
 
     const data: Prisma.IssueUncheckedUpdateManyInput = { updatedById: userId };
     if (input.summary !== undefined) data.summary = input.summary;
