@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils';
 import { useDropEdge } from '@/lib/dropHint';
 import { SORT_TRANSITION } from '@/lib/sortableDnd';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
+import { clickIsOnInteractive, wantsNewTab } from '@/lib/rowOpen';
+import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
 
 /** Roving focus giữa các card bằng phím mũi tên (theo data-lane/col/row). */
 function focusCard(lane: number, col: number, row: number): boolean {
@@ -50,6 +52,7 @@ export function CardBody({
   dropEdge,
   rootRef,
   rootProps,
+  onOpenKey,
 }: {
   issue: IssueDto;
   progress?: SubtreeProgress;
@@ -63,6 +66,8 @@ export function CardBody({
   dropEdge?: 'before' | 'after' | null;
   rootRef?: Ref<HTMLDivElement>;
   rootProps?: HTMLAttributes<HTMLDivElement>;
+  /** Có → mã công việc là link thật (bấm = xem nhanh, Cmd/Ctrl+bấm = tab mới). Bản overlay không truyền. */
+  onOpenKey?: (key: string) => void;
 }) {
   const labels = issue.labels ?? [];
   return (
@@ -108,12 +113,16 @@ export function CardBody({
       )}
 
       <div className="flex items-center gap-2">
-        <span
-          className="shrink-0 whitespace-nowrap font-mono text-xs text-muted"
-          title={`Mã công việc ${issue.key}`}
-        >
-          {issue.key}
-        </span>
+        {onOpenKey && !overlay ? (
+          <IssueKeyLink issueKey={issue.key} onPeek={onOpenKey} className="whitespace-nowrap" />
+        ) : (
+          <span
+            className="shrink-0 whitespace-nowrap font-mono text-xs text-muted"
+            title={`Mã công việc ${issue.key}`}
+          >
+            {issue.key}
+          </span>
+        )}
         {issue.priority && (
           <span
             className="h-1.5 w-1.5 rounded-full"
@@ -211,7 +220,11 @@ export const Card = memo(
     function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
       if (isDragging) return; // đang kéo bằng bàn phím: mũi tên thuộc về dnd-kit, không dời focus
       if (e.key === 'Enter') {
-        onOpen(issue.key);
+        if (e.target !== e.currentTarget) return; // Enter trên link mã bên trong: link tự xử lý (kể cả Cmd+Enter = tab mới)
+        if (e.metaKey || e.ctrlKey) {
+          e.preventDefault();
+          window.open(`/issue/${issue.key}`, '_blank', 'noopener');
+        } else onOpen(issue.key);
         return;
       }
       if (e.key === ' ') {
@@ -241,6 +254,7 @@ export const Card = memo(
         style={style}
         dropEdge={dropEdge}
         rootRef={setNodeRef}
+        onOpenKey={onOpen}
         rootProps={{
           ...listeners,
           ...attributes,
@@ -249,8 +263,18 @@ export const Card = memo(
             'data-lane': laneIdx,
             'data-col': colIdx,
             'data-row': rowIdx,
+            'data-issue-key': issue.key,
           } as object),
-          onClick: () => onOpen(issue.key),
+          onClick: (e: React.MouseEvent<HTMLDivElement>) => {
+            // Link mã/nút bên trong tự xử lý; sự kiện từ portal nổi lên theo cây React thì bỏ.
+            if (
+              !e.currentTarget.contains(e.target as Node) ||
+              clickIsOnInteractive(e.target, e.currentTarget)
+            )
+              return;
+            if (wantsNewTab(e)) window.open(`/issue/${issue.key}`, '_blank', 'noopener');
+            else onOpen(issue.key);
+          },
           role: 'button',
           tabIndex: 0,
           onKeyDown,

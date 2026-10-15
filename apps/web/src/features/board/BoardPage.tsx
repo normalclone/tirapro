@@ -16,6 +16,8 @@ import {
 } from './api';
 import { BoardSettingsDialog, SWIMLANE_LABEL } from './BoardSettingsDialog';
 import { BoardDnd } from './BoardDnd';
+import { PeekShell } from '@/features/issues/peek/PeekShell';
+import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import { Column } from './Column';
 import { freshenBoardIssues } from './boardIssues';
 import { noActiveSprintHint, scopeBoardIssues, swimlaneEmptyKind } from './scope';
@@ -327,7 +329,8 @@ export function BoardPage() {
     [isScrum, activeSprintId],
   );
 
-  const openIssue = useCallback((k: string) => navigate(`/issue/${k}`), [navigate]);
+  const peek = useIssuePeek();
+  const openIssue = peek.open; // bấm thẻ → xem nhanh ở cột phải (?peek=KEY); `open` ổn định nên Card memo không vẽ lại
 
   /** Cột đầy WIP: người có quyền được hỏi "Vẫn chuyển?", người khác nhận lời nhắc rõ việc cần làm. */
   function onWipBlocked(err: unknown, vars: MoveVars, col: BoardColumnDto, issueKey: string) {
@@ -622,172 +625,175 @@ export function BoardPage() {
 
   return (
     <BoardDnd issues={scoped} columns={board.columns} onMove={onMove} planOf={planOf}>
-      <div className="flex h-full flex-col">
-        <TruncatedBanner projectId={project?.id} />
-        <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3">
-          <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
-          <AssigneeFilter options={assigneeOptions} value={assignee} onChange={changeAssignee} />
-          <button
-            type="button"
-            onClick={toggleAssignee}
-            aria-pressed={swimlaneBy === 'assignee'}
-            title={`Chia bảng thành hàng theo người phụ trách — chỉ áp cho bạn${swimlaneOverride === null ? '' : ' (đang khác cấu hình bảng)'}. Kéo việc sang hàng khác để giao cho người đó.`}
-            className={cn(
-              'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              swimlaneBy === 'assignee'
-                ? 'border-transparent bg-primary-subtle text-primary'
-                : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
-            )}
-          >
-            <Users className="h-3.5 w-3.5" aria-hidden /> Nhóm theo người
-          </button>
-          {swimlaneBy !== 'none' && swimlaneBy !== 'assignee' && (
-            <span
-              className="inline-flex h-7 items-center gap-1.5 rounded-full border border-transparent bg-primary-subtle px-2.5 text-xs font-medium text-primary"
-              title={`Bảng đang chia hàng: ${SWIMLANE_LABEL[swimlaneBy].toLowerCase()}.`}
+      {/* PeekShell BÊN TRONG BoardDnd: DragOverlay vẫn phủ toàn khung, panel không là droppable. */}
+      <PeekShell>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <TruncatedBanner projectId={project?.id} />
+          <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3">
+            <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
+            <AssigneeFilter options={assigneeOptions} value={assignee} onChange={changeAssignee} />
+            <button
+              type="button"
+              onClick={toggleAssignee}
+              aria-pressed={swimlaneBy === 'assignee'}
+              title={`Chia bảng thành hàng theo người phụ trách — chỉ áp cho bạn${swimlaneOverride === null ? '' : ' (đang khác cấu hình bảng)'}. Kéo việc sang hàng khác để giao cho người đó.`}
+              className={cn(
+                'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                swimlaneBy === 'assignee'
+                  ? 'border-transparent bg-primary-subtle text-primary'
+                  : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
+              )}
             >
-              <Layers className="h-3.5 w-3.5" /> {SWIMLANE_LABEL[swimlaneBy]}
-            </span>
-          )}
-          {isScrum && activeSprint && (
-            <span
-              className="inline-flex h-7 max-w-[16rem] items-center truncate rounded-full border border-border px-2.5 text-xs text-muted"
-              title="Bảng Scrum chỉ hiện việc của sprint đang chạy"
-            >
-              Sprint: {activeSprint.name}
-            </span>
-          )}
-          {hasFilter && (
-            <span
-              className="inline-flex h-7 max-w-[18rem] items-center gap-1.5 truncate rounded-full border border-border px-2.5 text-xs text-muted"
-              title={`Bảng chỉ hiện việc khớp bộ lọc: ${board.filterJql ?? ''}`}
-            >
-              Bộ lọc bảng: <span className="truncate font-mono">{board.filterJql}</span>
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-2">
-            <PresenceAvatars room="project" projectId={project?.id} />
-            {canManageBoard && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setSettingsOpen(true)}
-                title="Cột, giới hạn WIP, bộ lọc và cách chia hàng của bảng"
+              <Users className="h-3.5 w-3.5" aria-hidden /> Nhóm theo người
+            </button>
+            {swimlaneBy !== 'none' && swimlaneBy !== 'assignee' && (
+              <span
+                className="inline-flex h-7 items-center gap-1.5 rounded-full border border-transparent bg-primary-subtle px-2.5 text-xs font-medium text-primary"
+                title={`Bảng đang chia hàng: ${SWIMLANE_LABEL[swimlaneBy].toLowerCase()}.`}
               >
-                <Settings className="h-4 w-4" /> Cài đặt bảng
-              </Button>
+                <Layers className="h-3.5 w-3.5" /> {SWIMLANE_LABEL[swimlaneBy]}
+              </span>
             )}
+            {isScrum && activeSprint && (
+              <span
+                className="inline-flex h-7 max-w-[16rem] items-center truncate rounded-full border border-border px-2.5 text-xs text-muted"
+                title="Bảng Scrum chỉ hiện việc của sprint đang chạy"
+              >
+                Sprint: {activeSprint.name}
+              </span>
+            )}
+            {hasFilter && (
+              <span
+                className="inline-flex h-7 max-w-[18rem] items-center gap-1.5 truncate rounded-full border border-border px-2.5 text-xs text-muted"
+                title={`Bảng chỉ hiện việc khớp bộ lọc: ${board.filterJql ?? ''}`}
+              >
+                Bộ lọc bảng: <span className="truncate font-mono">{board.filterJql}</span>
+              </span>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              <PresenceAvatars room="project" projectId={project?.id} />
+              {canManageBoard && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSettingsOpen(true)}
+                  title="Cột, giới hạn WIP, bộ lọc và cách chia hàng của bảng"
+                >
+                  <Settings className="h-4 w-4" /> Cài đặt bảng
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
 
-        {isScrum && !activeSprintId ? (
-          <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-            <EmptyState
-              title="Chưa có sprint nào đang chạy"
-              description={noActiveSprintHint({
-                canManageSprint,
-                archived: !!project?.archivedAt,
-              })}
-              action={<Button onClick={() => navigate(`/p/${key}/backlog`)}>Mở Backlog</Button>}
-            />
-          </div>
-        ) : lanes ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4">
-            {lanes.length === 0 ? (
-              swimlaneEmpty === 'filtered' ? (
-                <p className="py-10 text-center text-sm text-faint">
-                  Không có việc nào khớp bộ lọc. Tắt bớt bộ lọc phía trên để xem thêm.
-                </p>
-              ) : (
-                <div className="flex flex-col items-center gap-3 py-10 text-center">
-                  <p className="text-sm text-faint">
-                    {swimlaneEmpty === 'sprint'
-                      ? 'Sprint này chưa có việc nào. Thêm việc từ Backlog.'
-                      : 'Bảng chưa có việc nào. Thêm việc từ Backlog.'}
-                  </p>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => navigate(`/p/${key}/backlog`)}
-                  >
-                    Mở Backlog
-                  </Button>
-                </div>
-              )
-            ) : (
-              lanes.map((lane, laneIdx) => {
-                const cols = laneCols.get(lane.key);
-                return (
-                  <section key={lane.key}>
-                    <div className="mb-2 flex items-center gap-2">
-                      {lane.kind === 'assignee' ? (
-                        lane.empty ? (
-                          <span className="grid h-6 w-6 place-items-center rounded-full bg-surface-2 text-faint">
-                            <UserRound className="h-3.5 w-3.5" />
-                          </span>
-                        ) : (
-                          <Avatar name={lane.name} src={lane.avatarUrl} size={24} />
-                        )
-                      ) : (
-                        <span className="grid h-6 w-6 place-items-center rounded-md bg-surface-2 text-faint">
-                          <Layers className="h-3.5 w-3.5" />
-                        </span>
-                      )}
-                      <span className="text-sm font-semibold text-ink-strong">{lane.name}</span>
-                      <span
-                        className="tabular rounded-full bg-surface-2 px-1.5 text-xs text-muted"
-                        title={`${lane.issues.length} việc đang hiển thị của ${lane.name}`}
-                      >
-                        {lane.issues.length}
-                      </span>
-                    </div>
-                    <div className="flex gap-3 overflow-x-auto pb-1">
-                      {board.columns.map((col, colIdx) => (
-                        <Column
-                          key={col.id}
-                          col={col}
-                          issues={cols?.get(col.id) ?? EMPTY}
-                          progressMap={progressMap}
-                          onOpen={openIssue}
-                          projectKey={key}
-                          projectId={project?.id ?? ''}
-                          canCreate={false}
-                          canDrag={canTransition}
-                          droppableId={`${lane.key}::${col.id}`}
-                          laneIdx={laneIdx}
-                          colIdx={colIdx}
-                          wipUsed={wipByCol.get(col.id) ?? 0}
-                          grouped
-                        />
-                      ))}
-                    </div>
-                  </section>
-                );
-              })
-            )}
-          </div>
-        ) : (
-          <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
-            {board.columns.map((col, colIdx) => (
-              <Column
-                key={col.id}
-                col={col}
-                issues={byColumn.get(col.id) ?? []}
-                progressMap={progressMap}
-                onOpen={openIssue}
-                projectKey={key}
-                projectId={project?.id ?? ''}
-                canCreate={canCreate}
-                quickAddExtra={quickAddExtra}
-                canDrag={canTransition}
-                laneIdx={0}
-                colIdx={colIdx}
-                wipUsed={wipByCol.get(col.id) ?? 0}
+          {isScrum && !activeSprintId ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+              <EmptyState
+                title="Chưa có sprint nào đang chạy"
+                description={noActiveSprintHint({
+                  canManageSprint,
+                  archived: !!project?.archivedAt,
+                })}
+                action={<Button onClick={() => navigate(`/p/${key}/backlog`)}>Mở Backlog</Button>}
               />
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ) : lanes ? (
+            <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4">
+              {lanes.length === 0 ? (
+                swimlaneEmpty === 'filtered' ? (
+                  <p className="py-10 text-center text-sm text-faint">
+                    Không có việc nào khớp bộ lọc. Tắt bớt bộ lọc phía trên để xem thêm.
+                  </p>
+                ) : (
+                  <div className="flex flex-col items-center gap-3 py-10 text-center">
+                    <p className="text-sm text-faint">
+                      {swimlaneEmpty === 'sprint'
+                        ? 'Sprint này chưa có việc nào. Thêm việc từ Backlog.'
+                        : 'Bảng chưa có việc nào. Thêm việc từ Backlog.'}
+                    </p>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => navigate(`/p/${key}/backlog`)}
+                    >
+                      Mở Backlog
+                    </Button>
+                  </div>
+                )
+              ) : (
+                lanes.map((lane, laneIdx) => {
+                  const cols = laneCols.get(lane.key);
+                  return (
+                    <section key={lane.key}>
+                      <div className="mb-2 flex items-center gap-2">
+                        {lane.kind === 'assignee' ? (
+                          lane.empty ? (
+                            <span className="grid h-6 w-6 place-items-center rounded-full bg-surface-2 text-faint">
+                              <UserRound className="h-3.5 w-3.5" />
+                            </span>
+                          ) : (
+                            <Avatar name={lane.name} src={lane.avatarUrl} size={24} />
+                          )
+                        ) : (
+                          <span className="grid h-6 w-6 place-items-center rounded-md bg-surface-2 text-faint">
+                            <Layers className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                        <span className="text-sm font-semibold text-ink-strong">{lane.name}</span>
+                        <span
+                          className="tabular rounded-full bg-surface-2 px-1.5 text-xs text-muted"
+                          title={`${lane.issues.length} việc đang hiển thị của ${lane.name}`}
+                        >
+                          {lane.issues.length}
+                        </span>
+                      </div>
+                      <div className="flex gap-3 overflow-x-auto pb-1">
+                        {board.columns.map((col, colIdx) => (
+                          <Column
+                            key={col.id}
+                            col={col}
+                            issues={cols?.get(col.id) ?? EMPTY}
+                            progressMap={progressMap}
+                            onOpen={openIssue}
+                            projectKey={key}
+                            projectId={project?.id ?? ''}
+                            canCreate={false}
+                            canDrag={canTransition}
+                            droppableId={`${lane.key}::${col.id}`}
+                            laneIdx={laneIdx}
+                            colIdx={colIdx}
+                            wipUsed={wipByCol.get(col.id) ?? 0}
+                            grouped
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+            <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
+              {board.columns.map((col, colIdx) => (
+                <Column
+                  key={col.id}
+                  col={col}
+                  issues={byColumn.get(col.id) ?? []}
+                  progressMap={progressMap}
+                  onOpen={openIssue}
+                  projectKey={key}
+                  projectId={project?.id ?? ''}
+                  canCreate={canCreate}
+                  quickAddExtra={quickAddExtra}
+                  canDrag={canTransition}
+                  laneIdx={0}
+                  colIdx={colIdx}
+                  wipUsed={wipByCol.get(col.id) ?? 0}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </PeekShell>
 
       {/* Luôn mount sau lần mở đầu (để có hiệu ứng đóng); key theo lần mở → bản nháp cột khởi tạo lại. */}
       {settingsKey > 0 && project?.id && (

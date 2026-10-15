@@ -61,6 +61,12 @@ describe('clickIsOnInteractive', () => {
       clickIsOnInteractive(node('DIV', root, ['[data-no-peek]']) as never, root as never),
     ).toBe(true);
   });
+  it('Triage: bấm nút Nhận bên trong li không mở panel, bấm vùng trống thì mở', () => {
+    const li = node('LI');
+    const btn = node('BUTTON', node('DIV', li));
+    expect(clickIsOnInteractive(btn as never, li as never)).toBe(true);
+    expect(clickIsOnInteractive(node('SPAN', node('DIV', li)) as never, li as never)).toBe(false);
+  });
 });
 
 describe('rowKeyAction', () => {
