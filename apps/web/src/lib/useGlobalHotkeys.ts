@@ -5,27 +5,7 @@ import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { LAST_VIEW_KEY } from '@/features/projects/ProjectLayout';
 import { SHORTCUTS_EVENT } from '@/components/layout/ShortcutsDialog';
-
-/** Có đang gõ trong ô nhập / vùng soạn thảo không → bỏ qua hotkey. */
-function isTypingTarget(el: EventTarget | null): boolean {
-  if (!(el instanceof HTMLElement)) return false;
-  const tag = el.tagName;
-  return (
-    tag === 'INPUT' ||
-    tag === 'TEXTAREA' ||
-    tag === 'SELECT' ||
-    el.isContentEditable ||
-    !!el.closest('[contenteditable="true"]')
-  );
-}
-
-/**
- * Có dialog/modal nào đang MỞ không → bỏ qua hotkey. Radix gắn cả `role="dialog"` lẫn
- * `data-state` ("closed" khi đang chạy hiệu ứng đóng, DOM chưa gỡ) nên phải kiểm `open`.
- */
-function isDialogOpen(): boolean {
-  return !!document.querySelector('[role="dialog"][data-state="open"]');
-}
+import { isDialogOpen, isTypingTarget } from './hotkeys';
 
 /**
  * Dự án "hiện tại" cho các phím điều hướng: ưu tiên project trong URL (`/p/:key`),

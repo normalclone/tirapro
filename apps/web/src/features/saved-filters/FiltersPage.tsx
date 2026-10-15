@@ -23,6 +23,7 @@ import { categoryColor } from '@/lib/statusColor';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
+import { useAuth } from '@/stores/auth';
 import { QueryBuilder, Segmented } from './QueryBuilder';
 import {
   useCreateFilter,
@@ -53,9 +54,27 @@ type ActiveSource =
   | { kind: 'filter'; filter: SavedFilter }
   | { kind: 'adhoc'; jql: string };
 
+/** Lưu bộ lọc mới, báo kết quả bằng toast; trả `true` khi thành công (để modal tự đóng). */
+async function saveWithToast(
+  save: (input: { name: string; jql: string; visibility: FilterVisibility }) => Promise<unknown>,
+  name: string,
+  jql: string,
+  visibility: FilterVisibility,
+): Promise<boolean> {
+  try {
+    await save({ name, jql, visibility });
+    toast.success(`Đã lưu bộ lọc "${name}".`);
+    return true;
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+    return false;
+  }
+}
+
 export function FiltersPage() {
   const navigate = useNavigate();
   const { data: projects } = useProjects();
+  const canManageFilters = useAuth((s) => s.can('filter:manage'));
 
   const [active, setActive] = useState<ActiveSource>({ kind: 'none' });
   const [results, setResults] = useState<IssueDto[] | null>(null);
@@ -157,16 +176,19 @@ export function FiltersPage() {
           </h1>
         </div>
 
-        <Button size="sm" onClick={() => setCreateOpen(true)} className="w-full">
-          <Plus className="h-4 w-4" aria-hidden />
-          Tạo bộ lọc
-        </Button>
+        {canManageFilters && (
+          <Button size="sm" onClick={() => setCreateOpen(true)} className="w-full">
+            <Plus className="h-4 w-4" aria-hidden />
+            Tạo bộ lọc
+          </Button>
+        )}
 
         <SavedFilterList
           query={savedFilters}
           activeId={activeFilterId}
           onSelect={loadAndRunSaved}
           onDelete={handleDelete}
+          canManage={canManageFilters}
           deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
         />
       </aside>
@@ -204,21 +226,16 @@ export function FiltersPage() {
         </div>
       </div>
 
-      <CreateFilterModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        saving={createFilter.isPending}
-        onSave={async (name, jql, visibility) => {
-          try {
-            await createFilter.mutateAsync({ name, jql, visibility });
-            toast.success(`Đã lưu bộ lọc "${name}".`);
-            return true;
-          } catch (e) {
-            toast.error(apiErrorMessage(e));
-            return false;
+      {canManageFilters && (
+        <CreateFilterModal
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          saving={createFilter.isPending}
+          onSave={(name, jql, visibility) =>
+            saveWithToast(createFilter.mutateAsync, name, jql, visibility)
           }
-        }}
-      />
+        />
+      )}
     </div>
   );
 }
@@ -301,12 +318,14 @@ function SavedFilterList({
   activeId,
   onSelect,
   onDelete,
+  canManage,
   deleting,
 }: {
   query: UseQueryResult<SavedFilter[]>;
   activeId: string | null;
   onSelect: (f: SavedFilter) => void;
   onDelete: (f: SavedFilter) => void;
+  canManage: boolean;
   deleting: string | undefined;
 }) {
   return (
@@ -322,7 +341,9 @@ function SavedFilterList({
       empty={(d) => d.length === 0}
       emptyState={
         <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
-          Chưa có bộ lọc nào. Bấm “Tạo bộ lọc” để lưu một truy vấn.
+          {canManage
+            ? 'Chưa có bộ lọc nào. Bấm “Tạo bộ lọc” để lưu một truy vấn.'
+            : 'Chưa có bộ lọc nào được chia sẻ với bạn.'}
         </p>
       }
     >
@@ -358,7 +379,7 @@ function SavedFilterList({
                       </Badge>
                     </span>
                   </button>
-                  {f.isOwner && (
+                  {f.isOwner && canManage && (
                     <Button
                       variant="ghost"
                       size="icon"
