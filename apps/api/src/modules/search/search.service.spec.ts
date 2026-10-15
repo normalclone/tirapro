@@ -6,8 +6,11 @@ function makeService(rows: Array<{ id: string; rank: number }> | Error) {
     rows instanceof Error ? Promise.reject(rows) : Promise.resolve(rows),
   );
   const issues = { query: vi.fn().mockResolvedValue({ data: [], meta: {} }) };
-  const prisma = { $queryRaw: queryRaw };
-  return { service: new SearchService(issues as never, prisma as never), issues, queryRaw };
+  const prisma = {
+    $queryRaw: queryRaw,
+    project: { findMany: vi.fn().mockResolvedValue([{ id: 'P1' }]) },
+  };
+  return { service: new SearchService(issues as never, prisma as never), issues, queryRaw, prisma };
 }
 
 const missingColumn = Object.assign(new Error('Raw query failed'), {
@@ -40,21 +43,49 @@ describe('SearchService.search', () => {
     expect(issues.query).toHaveBeenCalledWith('W1', {}, [], undefined, 8, []);
   });
 
-  it('JQL text ~ trên chuỗi AND, không ORDER BY -> where id in + rawIds theo rank', async () => {
+  it('JQL text ~ trên chuỗi AND, không ORDER BY -> where lai (id in | contains) + rankHint theo rank', async () => {
     const { service, issues } = makeService([
       { id: 'I2', rank: 1 },
       { id: 'I1', rank: 0.5 },
     ]);
     await service.search('W1', 'U1', { jql: 'text ~ "foo"', limit: 50 });
     const call = issues.query.mock.calls[0] as unknown[];
-    expect(call[1]).toEqual({ id: { in: ['I2', 'I1'] } });
-    expect(call[5]).toEqual(['I2', 'I1']);
+    expect(JSON.stringify(call[1])).toContain('{"id":{"in":["I2","I1"]}}');
+    expect(Object.keys(call[1] as object)).toEqual(['OR']);
+    expect(call[5]).toBeUndefined();
+    expect(call[6]).toEqual(['I2', 'I1']);
+  });
+
+  it('JQL project = ABC AND text ~ => FTS bị giới hạn project đã resolve (bind P1), không quét cả workspace', async () => {
+    const { service, queryRaw, prisma } = makeService([{ id: 'I1', rank: 1 }]);
+    await service.search('W1', 'U1', { jql: 'project = ABC AND text ~ "foo"', limit: 50 });
+    expect(prisma.project.findMany).toHaveBeenCalledWith({
+      where: { workspaceId: 'W1', key: { in: ['ABC'] }, deletedAt: null },
+      select: { id: true },
+    });
+    expect(JSON.stringify((queryRaw.mock.calls[0] as unknown[]).slice(1))).toContain('P1');
+  });
+
+  it('opts.projectId cũng thu hẹp FTS của JQL (không tra project khi JQL không có project =)', async () => {
+    const { service, queryRaw, prisma } = makeService([{ id: 'I1', rank: 1 }]);
+    await service.search('W1', 'U1', { jql: 'text ~ "foo"', projectId: 'P9', limit: 50 });
+    expect(prisma.project.findMany).not.toHaveBeenCalled();
+    expect(JSON.stringify((queryRaw.mock.calls[0] as unknown[]).slice(1))).toContain('P9');
+  });
+
+  it('project = ABC không khớp dự án nào => FTS ids rỗng, không chạm DB full-text', async () => {
+    const { service, queryRaw, prisma } = makeService([{ id: 'I1', rank: 1 }]);
+    prisma.project.findMany.mockResolvedValueOnce([]);
+    await service.search('W1', 'U1', { jql: 'project = NOPE AND text ~ "foo"', limit: 50 });
+    expect(queryRaw).not.toHaveBeenCalled();
   });
 
   it('JQL có ORDER BY tường minh -> không ép thứ tự rank', async () => {
     const { service, issues } = makeService([{ id: 'I2', rank: 1 }]);
     await service.search('W1', 'U1', { jql: 'text ~ "foo" ORDER BY created DESC', limit: 50 });
-    expect((issues.query.mock.calls[0] as unknown[])[5]).toBeUndefined();
+    const call = issues.query.mock.calls[0] as unknown[];
+    expect(call[5]).toBeUndefined();
+    expect(call[6]).toBeUndefined();
   });
 
   it('JQL không có text ~ -> không đụng full-text (hành vi cũ)', async () => {

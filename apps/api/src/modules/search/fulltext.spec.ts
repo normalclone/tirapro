@@ -94,7 +94,33 @@ describe('FulltextSearcher.search', () => {
     await new FulltextSearcher(prisma as never).search('W1', 'abc', { projectId: 'P1' });
     const { sql, values } = renderCall(prisma.$queryRaw.mock.calls[0]!);
     expect(sql).toContain('"projectId"');
-    expect(values).toContain('P1');
+    expect(values).toContainEqual(['P1']);
+  });
+
+  it('ILIKE cả summary, description và key; nhận nhiều projectIds (bind, = ANY)', async () => {
+    const prisma = makePrisma(() => Promise.resolve([]));
+    await new FulltextSearcher(prisma as never).search('W1', 'abc', { projectIds: ['P1', 'P2'] });
+    const { sql, values } = renderCall(prisma.$queryRaw.mock.calls[0]!);
+    expect(sql).toContain('"description" ILIKE');
+    expect(sql).toContain('"key" ILIKE');
+    expect(sql).toMatch(/"projectId" = ANY/);
+    expect(values).toContainEqual(['P1', 'P2']);
+  });
+
+  it('projectIds rỗng => không chạm DB, ids []', async () => {
+    const prisma = makePrisma(() => Promise.resolve([]));
+    expect(
+      await new FulltextSearcher(prisma as never).search('W1', 'abc', { projectIds: [] }),
+    ).toEqual({ ids: [] });
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('JOIN Project và lọc dự án đã xoá mềm (id dự án đã xoá không chiếm chỗ trong top)', async () => {
+    const prisma = makePrisma(() => Promise.resolve([]));
+    await new FulltextSearcher(prisma as never).search('W1', 'abc');
+    const { sql } = renderCall(prisma.$queryRaw.mock.calls[0]!);
+    expect(sql).toMatch(/JOIN "Project" p ON p\."id" = i\."projectId"/);
+    expect(sql).toContain('p."deletedAt" IS NULL');
   });
 
   it('chuỗi rỗng -> ids [] và không chạm DB', async () => {

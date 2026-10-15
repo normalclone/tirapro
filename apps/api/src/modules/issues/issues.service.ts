@@ -480,6 +480,8 @@ export class IssuesService {
    * Truy vấn theo where đã biên dịch (vd từ JQL/Search). Tự ghép workspace + soft-delete.
    * `rawIds` (kết quả full-text, đã xếp theo rank): chỉ lấy các id đó và — khi không có `orderBy` —
    * giữ đúng thứ tự rank (tối đa vài trăm id nên sắp xếp/phân trang trong bộ nhớ).
+   * `rankHint` (id đã xếp hạng, KHÔNG giới hạn tập kết quả): khi không có `orderBy`, các id này
+   * khớp `where` lên trước theo thứ tự rank, phần còn lại khớp `where` theo `updatedAt` giảm dần.
    */
   async query(
     workspaceId: string,
@@ -488,6 +490,7 @@ export class IssuesService {
     cursor: string | undefined,
     limit: number,
     rawIds?: string[],
+    rankHint?: string[],
   ): Promise<PageResult<IssueDto>> {
     const scope: Prisma.IssueWhereInput = {
       AND: [{ workspaceId, deletedAt: null, ...LIVE_PROJECT }, where],
@@ -506,7 +509,44 @@ export class IssuesService {
       }
       return this.queryOrdered(idScope, orderBy, cursor, limit);
     }
+    if (rankHint?.length && !orderBy.length) {
+      return this.queryRankFirst(scope, rankHint, cursor, limit);
+    }
     return this.queryOrdered(scope, orderBy, cursor, limit);
+  }
+
+  /** Id trong `rank` (đã xếp hạng) lên trước theo đúng thứ tự, sau đó các việc khớp còn lại theo updatedAt giảm dần. */
+  private async queryRankFirst(
+    scope: Prisma.IssueWhereInput,
+    rank: string[],
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<PageResult<IssueDto>> {
+    const pos = new Map(rank.map((id, i) => [id, i]));
+    const cursorRanked = cursor !== undefined && pos.has(cursor);
+    const out: IssueDto[] = [];
+    if (!cursor || cursorRanked) {
+      // allow-deleted: scope do `query()` dựng sẵn (có `workspaceId, deletedAt: null`)
+      const rows = await this.prisma.issue.findMany({
+        where: { AND: [scope, { id: { in: rank } }] },
+        include: issueInclude,
+      });
+      const sorted = rows.sort((a, b) => pos.get(a.id)! - pos.get(b.id)!).map((r) => this.toDto(r));
+      const after = cursorRanked ? pos.get(cursor)! : -1;
+      out.push(...sorted.filter((i) => pos.get(i.id)! > after).slice(0, limit + 1));
+    }
+    if (out.length < limit + 1) {
+      // allow-deleted: scope do `query()` dựng sẵn (có `workspaceId, deletedAt: null`)
+      const rest = await this.prisma.issue.findMany({
+        where: { AND: [scope, { id: { notIn: rank } }] },
+        include: issueInclude,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+        take: limit + 1 - out.length,
+        ...(cursor && !cursorRanked ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      out.push(...rest.map((r) => this.toDto(r)));
+    }
+    return cursorPage(out, limit, (i) => i.id);
   }
 
   private async queryOrdered(

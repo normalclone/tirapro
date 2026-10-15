@@ -57,12 +57,26 @@ export function primaryFulltextTerm(node: JqlNode | null): string | null {
   return node ? walk(node) : null;
 }
 
+/** Khoá project của điều kiện `project = X` / `project IN (…)` nằm trên chuỗi AND thuần (không qua OR/NOT); null nếu không có. */
+export function topLevelProjectKeys(node: JqlNode | null): string[] | null {
+  const walk = (n: JqlNode): string[] | null => {
+    if (n.type === 'logical') return n.op === 'AND' ? (walk(n.left) ?? walk(n.right)) : null;
+    if (n.type === 'not') return null;
+    if (n.field !== 'project' || (n.operator !== '=' && n.operator !== 'IN')) return null;
+    const vs = n.value.kind === 'list' ? n.value.value : [n.value];
+    const keys = vs.flatMap((x) => (x.kind === 'string' ? [x.value] : []));
+    return keys.length ? keys : null;
+  };
+  return node ? walk(node) : null;
+}
+
 interface FieldCfg {
   kind: 'relationName' | 'idUser' | 'enumRel' | 'text' | 'fulltext' | 'array' | 'date' | 'number';
   relation?: string; // tên relation Prisma
   field?: string; // cột bên trong relation (name/key/category)
   idColumn?: string; // cột FK để xử lý IS EMPTY trực tiếp
   column?: string; // cột scalar (summary/createdAt/storyPoints...)
+  nullable?: boolean; // cột scalar cho phép NULL (ảnh hưởng cách dựng `contains`, xem containsWhere)
 }
 
 /** Map field JQL → cách dựng Prisma where (an toàn, whitelist). */
@@ -125,6 +139,43 @@ function compileOrder(o: JqlOrderBy): Prisma.IssueOrderByWithRelationInput {
   return { updatedAt: dir };
 }
 
+/** Escape `\`, `%`, `_` — Prisma `contains` KHÔNG tự escape (ghép thẳng vào LIKE; `\` là escape mặc định của Postgres). */
+function escapeLike(v: string): string {
+  return v.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/** Bộ lọc chuỗi con không phân biệt hoa thường, đã escape ký tự đại diện — dùng chung cho mọi toán tử `~`/`!~`. */
+function likeFilter(v: string) {
+  return { contains: escapeLike(v), mode: 'insensitive' as const };
+}
+
+/**
+ * `column contains v` (đã escape) mà KHÔNG BAO GIỜ cho NULL: cột nullable được chặn bằng `not: null`
+ * (`NULL ILIKE …` là NULL, và `NOT NULL` vẫn là NULL => issue có giá trị NULL bị rơi khỏi phép phủ định).
+ * Nhờ vậy `NOT (…)` quanh nó (`!~`, `NOT (…)`, NOT bọc nhiều điều kiện) luôn là phần bù đúng.
+ */
+export function containsWhere(column: string, v: string, nullable = false): Where {
+  const match: Where = { [column]: likeFilter(v) };
+  return nullable ? { AND: [{ [column]: { not: null } }, match] } : match;
+}
+
+/**
+ * Điều kiện Prisma ĐẦY ĐỦ cho `text ~ v`: id full-text đã xếp hạng (nếu có) HOẶC chuỗi con ở
+ * summary/description/key. Đúng đắn không phụ thuộc danh sách xếp hạng (vốn bị cắt top-N);
+ * danh sách đó chỉ giúp bắt token khác dạng mà `contains` không thấy và để xếp hạng (rankHint).
+ * Không bao giờ cho NULL (xem `containsWhere`; `description` nullable).
+ */
+function textMatchWhere(v: string, ranked?: readonly string[]): Where {
+  return {
+    OR: [
+      ...(ranked?.length ? [{ id: { in: [...ranked] } }] : []),
+      containsWhere('summary', v),
+      containsWhere('description', v, true),
+      containsWhere('key', v),
+    ],
+  };
+}
+
 function compileComparison(
   field: JqlFieldName,
   op: JqlOperator,
@@ -157,17 +208,15 @@ function compileComparison(
     case 'text': {
       const col = cfg.column!;
       const v = scalarString(value, ctx);
-      if (op === '~') return { [col]: { contains: v, mode: 'insensitive' } };
-      if (op === '!~') return { NOT: { [col]: { contains: v, mode: 'insensitive' } } };
+      if (op === '~') return containsWhere(col, v, cfg.nullable);
+      if (op === '!~') return { NOT: containsWhere(col, v, cfg.nullable) };
       if (op === '!=') return { [col]: { not: v } };
       return { [col]: v };
     }
     case 'fulltext': {
       const v = scalarString(value, ctx);
-      const ranked = op === '~' ? ctx.fulltext?.get(v) : undefined;
-      if (ranked) return { id: { in: [...ranked] } };
-      const like = { contains: v, mode: 'insensitive' as const };
-      const match: Where = { OR: [{ summary: like }, { description: like }] };
+      // `!~` dùng cùng tập xếp hạng (nếu `text ~ v` cũng có trong truy vấn) để hai vế là phần bù chính xác.
+      const match = textMatchWhere(v, ctx.fulltext?.get(v));
       return op === '!~' ? { NOT: match } : match;
     }
     case 'array': {
@@ -287,8 +336,8 @@ function stringFilter(
   if (op === 'IN') return { in: listStrings(value, ctx) };
   if (op === 'NOT IN') return { notIn: listStrings(value, ctx) };
   const v = scalarString(value, ctx);
-  if (op === '~') return { contains: v, mode: 'insensitive' };
-  if (op === '!~') return { not: { contains: v } };
+  if (op === '~') return likeFilter(v);
+  if (op === '!~') return { not: { contains: escapeLike(v) }, mode: 'insensitive' };
   if (op === '!=') return { not: v };
   return v;
 }
