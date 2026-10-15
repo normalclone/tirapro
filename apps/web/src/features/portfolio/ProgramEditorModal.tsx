@@ -10,6 +10,7 @@ import { useWorkspaceUsers } from '@/features/members/api';
 import { useProjects } from '@/features/projects/api';
 import { cn } from '@/lib/utils';
 import { useCreateProgram, useUpdateProgram, type ProgramDto } from './api';
+import { toDateInput } from '@/lib/dateFormat';
 
 /** Bảng màu nhãn chương trình — cùng hệ với nhãn nhóm để đọc nhanh trên dòng thời gian. */
 const PROGRAM_COLORS = [
@@ -34,15 +35,6 @@ const COLOR_NAMES: Record<string, string> = {
   '#db2777': 'Hồng',
   '#6366f1': 'Chàm',
 };
-
-/** ISO → 'YYYY-MM-DD' cho input type=date (rỗng nếu không có). */
-function toDateInput(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
 
 function Field({
   label,

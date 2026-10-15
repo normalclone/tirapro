@@ -70,6 +70,36 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': 'off',
+      // Ngày giờ tiếng Việt: một nguồn duy nhất (@/lib/dateFormat). Rule này ghi đè rule cùng tên
+      // ở khối chung nên phải lặp lại pattern của khối đó.
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@tirapro/shared'],
+              importNames: ['IssueStatusCategory'],
+              message: 'Enum nhập từ @tirapro/types',
+            },
+          ],
+          paths: [
+            {
+              name: 'date-fns',
+              importNames: ['formatDistanceToNow', 'formatDistance', 'formatRelative'],
+              message: 'Dùng fmtRelative từ @/lib/dateFormat (tiếng Việt).',
+            },
+          ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'CallExpression[callee.property.name=/^(toLocaleDateString|toLocaleTimeString)$/]',
+          message:
+            'Dùng fmtDate/fmtDateTime từ @/lib/dateFormat (dd/MM/yyyy). Số vẫn dùng toLocaleString/Intl.NumberFormat.',
+        },
+      ],
     },
   },
   {

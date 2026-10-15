@@ -29,15 +29,9 @@ import {
   type RollupStats,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { LOCALE } from '@/lib/locale';
+import { fmtDate } from '@/lib/dateFormat';
 
 type Tab = 'programs' | 'roadmap';
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(LOCALE);
-}
 
 function isOverdue(target: string | null, pct: number): boolean {
   if (!target || pct >= 100) return false;

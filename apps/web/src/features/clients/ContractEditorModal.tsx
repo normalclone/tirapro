@@ -8,6 +8,7 @@ import { useRetained } from '@/lib/useRetained';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useProjects } from '@/features/projects/api';
 import { useCreateContract, useUpdateContract, formatMoney, type ContractDto } from './api';
+import { toDateInput } from '@/lib/dateFormat';
 
 const CURRENCIES = [
   { value: 'VND', label: 'VND — Đồng' },
@@ -15,15 +16,6 @@ const CURRENCIES = [
   { value: 'EUR', label: 'EUR — Euro' },
   { value: 'JPY', label: 'JPY — Yên Nhật' },
 ];
-
-/** ISO → 'YYYY-MM-DD' cho input type=date. */
-function toDateInput(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
 
 /** '1.500.000' / '1500000' → 1500000. Chuỗi rỗng → null. */
 function parseMoney(raw: string): number | null {

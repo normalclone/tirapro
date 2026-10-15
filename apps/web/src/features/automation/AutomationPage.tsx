@@ -23,18 +23,11 @@ import {
   type RecurringIssue,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { LOCALE } from '@/lib/locale';
+import { fmtDateTime } from '@/lib/dateFormat';
 
 type Tab = 'rules' | 'templates' | 'recurring';
 
-const dateTime = (iso: string) =>
-  new Date(iso).toLocaleString(LOCALE, {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+const dateTime = fmtDateTime;
 
 /**
  * Tự động hoá: mẫu công việc (điền sẵn trường khi tạo) và công việc lặp lại (hệ thống

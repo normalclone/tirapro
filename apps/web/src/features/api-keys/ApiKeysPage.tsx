@@ -27,7 +27,7 @@ import {
   type ApiKey,
   type CreatedApiKey,
 } from './api';
-import { LOCALE } from '@/lib/locale';
+import { fmtDate, fmtDateTime } from '@/lib/dateFormat';
 
 // Chỉ fallback localhost khi chạy dev; production để trống nếu thiếu env (không lộ URL localhost sai).
 const DEV_FALLBACK = import.meta.env.DEV;
@@ -341,11 +341,6 @@ export function ApiKeysPage() {
   }
 }
 
-/** Ngày ISO → nhãn ngắn tiếng Việt. */
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(LOCALE);
-}
-
 /** Một dòng khoá — hiện scope, thời hạn (badge "hết hạn" nếu quá hạn) và nút thu hồi. */
 function KeyRow({
   k,
@@ -372,9 +367,7 @@ function KeyRow({
         </div>
         <div className="mt-0.5 font-mono text-xs text-faint">
           {k.prefix}…
-          {k.lastUsedAt
-            ? ` · dùng gần nhất ${new Date(k.lastUsedAt).toLocaleString(LOCALE)}`
-            : ' · chưa dùng'}
+          {k.lastUsedAt ? ` · dùng gần nhất ${fmtDateTime(k.lastUsedAt)}` : ' · chưa dùng'}
           {k.expiresAt
             ? ` · ${expired ? 'đã hết hạn' : 'hết hạn'} ${fmtDate(k.expiresAt)}`
             : ' · không hết hạn'}

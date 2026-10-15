@@ -3,7 +3,7 @@ import { CalendarRange } from 'lucide-react';
 import { EmptyState } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import type { RollupGroup } from './api';
-import { LOCALE } from '@/lib/locale';
+import { fmtDate } from '@/lib/dateFormat';
 
 const DAY = 86_400_000;
 
@@ -37,10 +37,6 @@ function addMonths(t: number, n: number): number {
 function monthLabel(t: number): string {
   const d = new Date(t);
   return `T${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`;
-}
-
-function fmtDate(t: number): string {
-  return new Date(t).toLocaleDateString(LOCALE);
 }
 
 /**

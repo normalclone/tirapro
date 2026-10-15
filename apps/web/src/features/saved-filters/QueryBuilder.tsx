@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useWorkspaceUsers } from '@/features/members/api';
 import { useFilterFields, type FieldOption } from './api';
+import { toDateInput } from '@/lib/dateFormat';
 
 /* ------------------------------------------------------------------ */
 /* Metadata field (nhãn tiếng Việt + thứ tự hiển thị)                  */
@@ -497,7 +498,7 @@ function isAbsoluteDate(v: string): boolean {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toDateInput(new Date());
 }
 
 function DateValueControl({ value, onChange }: { value: string; onChange: (v: string) => void }) {

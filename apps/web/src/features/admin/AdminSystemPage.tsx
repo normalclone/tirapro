@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { useAdminAudit, useAdminHealth } from './api';
 import { StatTile, StatusPill, relTime } from './_ui';
-import { LOCALE } from '@/lib/locale';
+import { fmtDateTime } from '@/lib/dateFormat';
 
 /** Bậc số lượng nhật ký tải mỗi lần. */
 const AUDIT_STEPS = [50, 100, 200] as const;
@@ -164,10 +164,7 @@ export function AdminSystemPage() {
                     {e.workspace.name}
                   </span>
                 )}
-                <time
-                  className="shrink-0 text-xs text-faint"
-                  title={new Date(e.createdAt).toLocaleString(LOCALE)}
-                >
+                <time className="shrink-0 text-xs text-faint" title={fmtDateTime(e.createdAt)}>
                   {relTime(e.createdAt)}
                 </time>
               </li>

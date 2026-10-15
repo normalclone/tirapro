@@ -12,6 +12,7 @@ import {
   type CustomFieldValue,
   type IssueCustomField,
 } from './api';
+import { toDateTimeInput } from '@/lib/dateFormat';
 
 /** `canEdit`: được sửa issue này (`useCanEditIssue`) — không thì hiện giá trị chỉ-đọc, không dựng ô nhập (tránh 403 khi lưu). */
 export function CustomFieldsPanel({ issueId, canEdit }: { issueId: string; canEdit: boolean }) {
@@ -134,7 +135,7 @@ function FieldEditor({
       return (
         <DateField
           id={id}
-          value={toDatetimeLocal(asString(value))}
+          value={toDateTimeInput(asString(value))}
           type="datetime-local"
           onSave={onSave}
         />
@@ -379,13 +380,4 @@ function asString(value: CustomFieldValue): string {
 
 function asStringArray(value: CustomFieldValue): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
-}
-
-/** ISO → `yyyy-MM-ddTHH:mm` cho input datetime-local (giờ địa phương). */
-function toDatetimeLocal(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

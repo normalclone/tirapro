@@ -14,7 +14,7 @@ import { useAuth } from '@/stores/auth';
 import { useProjects } from '@/features/projects/api';
 import { cn } from '@/lib/utils';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { LOCALE } from '@/lib/locale';
+import { fmtDateTime } from '@/lib/dateFormat';
 import {
   useSlaBoard,
   useSlaPolicies,
@@ -150,8 +150,8 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
                 )}
                 title={
                   late
-                    ? `Đã quá hạn xử lý. Hạn là ${new Date(r.resolveDueAt).toLocaleString(LOCALE)}.`
-                    : `Thời gian còn lại trước khi phải xử lý xong, hạn là ${new Date(r.resolveDueAt).toLocaleString(LOCALE)}.`
+                    ? `Đã quá hạn xử lý. Hạn là ${fmtDateTime(r.resolveDueAt)}.`
+                    : `Thời gian còn lại trước khi phải xử lý xong, hạn là ${fmtDateTime(r.resolveDueAt)}.`
                 }
               >
                 {late ? (

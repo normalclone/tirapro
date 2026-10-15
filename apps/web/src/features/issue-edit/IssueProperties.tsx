@@ -20,7 +20,7 @@ import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { dueState } from '@/components/ui/DueBadge';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { LOCALE } from '@/lib/locale';
+import { fmtDateTime, fmtRelative, toDateTimeInput } from '@/lib/dateFormat';
 
 /** Trigger SearchSelect ở dạng badge/label (không viền, hover nền) — bấm để đổi. */
 const INLINE_TRIGGER =
@@ -73,33 +73,6 @@ function PriorityBadge({ priority }: { priority: IssueDto['priority'] }) {
       {priority.name}
     </span>
   );
-}
-
-/** Ngày giờ chi tiết tới phút: dd/MM/yyyy HH:mm. */
-function fmtDateTime(iso: string): string {
-  const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-/** ISO → giá trị input datetime-local (giờ địa phương): YYYY-MM-DDTHH:mm. */
-function toLocalInput(iso: string): string {
-  const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-function relTime(iso: string): string {
-  const t = new Date(iso).getTime();
-  const s = Math.round((Date.now() - t) / 1000);
-  if (s < 60) return 'vừa xong';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} phút trước`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} giờ trước`;
-  const d = Math.round(h / 24);
-  if (d < 30) return `${d} ngày trước`;
-  return new Date(iso).toLocaleDateString(LOCALE);
 }
 
 /* ------------------------------------------------------------------ */
@@ -439,14 +412,14 @@ export function IssueDatesPanel({
       <div className="divide-y divide-border">
         <DueRow issue={issue} canEdit={canEditRestricted} />
         <InfoRow label="Ngày tạo" hint="Lúc công việc được tạo">
-          <span title={relTime(issue.createdAt)}>{fmtDateTime(issue.createdAt)}</span>
+          <span title={fmtRelative(issue.createdAt)}>{fmtDateTime(issue.createdAt)}</span>
         </InfoRow>
         <InfoRow label="Sửa lần cuối" hint="Lần gần nhất có người thay đổi việc này">
-          <span title={relTime(issue.updatedAt)}>{fmtDateTime(issue.updatedAt)}</span>
+          <span title={fmtRelative(issue.updatedAt)}>{fmtDateTime(issue.updatedAt)}</span>
         </InfoRow>
         {issue.resolvedAt && (
           <InfoRow label="Hoàn tất" hint="Lúc công việc chuyển sang trạng thái đã xong">
-            <span title={relTime(issue.resolvedAt)}>{fmtDateTime(issue.resolvedAt)}</span>
+            <span title={fmtRelative(issue.resolvedAt)}>{fmtDateTime(issue.resolvedAt)}</span>
           </InfoRow>
         )}
       </div>
@@ -478,7 +451,7 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
 
   function save(raw: string) {
     setEditing(false);
-    const cur = issue.dueDate ? toLocalInput(issue.dueDate) : '';
+    const cur = issue.dueDate ? toDateTimeInput(issue.dueDate) : '';
     if (raw === cur) return;
     patch.mutate(
       {
@@ -507,7 +480,7 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
           type="datetime-local"
           autoFocus
           aria-label="Hạn hoàn thành"
-          defaultValue={issue.dueDate ? toLocalInput(issue.dueDate) : ''}
+          defaultValue={issue.dueDate ? toDateTimeInput(issue.dueDate) : ''}
           className="h-8 w-52 text-sm"
           disabled={patch.isPending}
           onBlur={(e) => save(e.target.value)}

@@ -19,7 +19,7 @@ import {
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
 import { importResultMessage } from './importResult';
-import { LOCALE } from '@/lib/locale';
+import { fmtDateTime } from '@/lib/dateFormat';
 
 /** Nhãn + style cho từng trạng thái job import. */
 const IMPORT_STATUS: Record<ImportStatus, { label: string; className: string }> = {
@@ -28,20 +28,6 @@ const IMPORT_STATUS: Record<ImportStatus, { label: string; className: string }> 
   COMPLETED: { label: 'Hoàn tất', className: 'bg-success/10 text-success' },
   FAILED: { label: 'Thất bại', className: 'bg-danger/10 text-danger' },
 };
-
-/** Định dạng ISO → ngày giờ ngắn gọn theo vi-VN. */
-function formatDateTime(iso?: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString(LOCALE, {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 /** Thông báo kết quả import (created / failed / total + người phụ trách bị bỏ gán). */
 function importResultToast(result: ImportResult) {
@@ -282,7 +268,7 @@ function ImportJobRow({ job }: { job: ImportJob }) {
         {job.processedItems}/{job.totalItems} mục
       </span>
       <span className="ml-auto font-mono text-xs text-faint">
-        {formatDateTime(job.completedAt ?? job.createdAt)}
+        {fmtDateTime(job.completedAt ?? job.createdAt)}
       </span>
     </li>
   );
