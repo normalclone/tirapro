@@ -222,13 +222,7 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
 }
 
 /** Điểm ước lượng dạng label mờ ("N điểm"), bấm mới sửa; khoá nếu không có quyền. */
-export function IssueStoryPointsInline({
-  issue,
-  canEditRestricted,
-}: {
-  issue: IssueDto;
-  canEditRestricted: boolean;
-}) {
+export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
   const patch = useUpdateIssue(issue.projectId);
   const { data: sprints } = useProjectSprints(issue.projectId);
   const confirm = useConfirm();
@@ -250,7 +244,7 @@ export function IssueStoryPointsInline({
     }
   }
 
-  if (editing && canEditRestricted) {
+  if (editing && canEdit) {
     return (
       <Input
         type="number"
@@ -275,12 +269,9 @@ export function IssueStoryPointsInline({
 
   const text = issue.storyPoints != null ? `${issue.storyPoints} điểm` : null;
   const tip = 'Điểm ước lượng — con số ước chừng độ lớn của việc, càng lớn càng tốn công.';
-  if (!canEditRestricted) {
+  if (!canEdit) {
     return (
-      <span
-        className="text-sm text-muted"
-        title={`${tip} Chỉ người tạo việc hoặc quản trị mới sửa được.`}
-      >
+      <span className="text-sm text-muted" title={`${tip} Bạn không có quyền sửa công việc này.`}>
         {text ?? '—'}
       </span>
     );

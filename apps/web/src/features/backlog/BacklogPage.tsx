@@ -25,7 +25,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { toast } from 'sonner';
-import type { IssueDto, SprintDto } from '@tirapro/types';
+import type { IssueDto, PriorityDto, SprintDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
 import {
   useProjectSprints,
@@ -40,7 +40,8 @@ import {
 } from './api';
 import { CompleteSprintDialog } from './CompleteSprintDialog';
 import { SprintEditDialog } from './SprintEditDialog';
-import { useProjectIssues } from '@/features/issues/api';
+import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
+import { useProjectMeta } from '@/features/ai/api';
 import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
@@ -60,7 +61,7 @@ import { useMoveIssue, usePendingMoves, type MoveVars } from '@/features/issues/
 import { useAuth } from '@/stores/auth';
 import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
-import { IssueRow, IssueRowBody } from './IssueRow';
+import { IssueRow, IssueRowBody, type RowEdit } from './IssueRow';
 import {
   backlogDragRoute,
   canMoveSprintVia,
@@ -98,6 +99,8 @@ function pointsSum(issues: IssueDto[]): number {
   return issues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
 }
 
+const NO_PRIORITIES: RowEdit['priorities'] = [];
+
 export function BacklogPage() {
   const { key = '' } = useParams();
   const peek = useIssuePeek();
@@ -121,6 +124,41 @@ export function BacklogPage() {
   const canCreate = can('issue:create');
   const canAssign = can('issue:assign');
   const canEditIssue = useCanEditIssue(projectId);
+  // Sửa tại chỗ trên dòng (điểm/ưu tiên): callback + đối tượng ổn định để `IssueRow` (memo) không vẽ lại thừa.
+  const { data: meta } = useProjectMeta(key);
+  const patchIssue = useUpdateIssue(projectId);
+  const mutateIssue = patchIssue.mutate;
+  const onEditPoints = useCallback(
+    (issue: IssueDto, value: number | null) =>
+      mutateIssue(
+        { id: issue.id, key: issue.key, patch: { storyPoints: value }, version: issue.version },
+        { onError: (e) => toast.error(apiErrorMessage(e)) },
+      ),
+    [mutateIssue],
+  );
+  const onEditPriority = useCallback(
+    (issue: IssueDto, priority: PriorityDto | null) =>
+      mutateIssue(
+        {
+          id: issue.id,
+          key: issue.key,
+          patch: { priorityId: priority?.id ?? null },
+          version: issue.version,
+          optimistic: { priority },
+        },
+        { onError: (e) => toast.error(apiErrorMessage(e)) },
+      ),
+    [mutateIssue],
+  );
+  const rowEdit = useMemo<RowEdit>(
+    () => ({
+      priorities: meta?.priorities ?? NO_PRIORITIES,
+      sprints,
+      onEditPoints,
+      onEditPriority,
+    }),
+    [meta?.priorities, sprints, onEditPoints, onEditPriority],
+  );
   // Route kéo-thả theo guard của API (xem `backlogDragRoute`): rank = backlog:manage + issue:edit; move = issue:transition + (issue:edit | backlog:manage).
   const dragRoute = backlogDragRoute({
     backlogManage: canManageBacklog,
@@ -642,6 +680,8 @@ export function BacklogPage() {
                   quickAddSprintId={sprint.state !== 'CLOSED' ? sprint.id : undefined}
                   selectable={canAssign || canManageBacklog}
                   canDrag={canDragIssue}
+                  rowEdit={rowEdit}
+                  canEditRow={canEditIssue}
                   selected={selected}
                   onToggleSelect={toggleSelect}
                   onToggleSection={toggleSelectSection}
@@ -751,6 +791,8 @@ export function BacklogPage() {
               quickAddSprintId={null}
               selectable={canAssign || canManageBacklog}
               canDrag={canDragIssue}
+              rowEdit={rowEdit}
+              canEditRow={canEditIssue}
               selected={selected}
               onToggleSelect={toggleSelect}
               onToggleSection={toggleSelectSection}
@@ -984,6 +1026,8 @@ function Section({
   emptyDescription,
   readOnly,
   canDrag,
+  rowEdit,
+  canEditRow,
   projectKey,
   projectId,
   canCreate,
@@ -1014,6 +1058,9 @@ function Section({
   readOnly?: boolean;
   /** Có được kéo dòng này không (có route kéo-thả theo quyền — `backlogDragRoute`; không có thì dòng bị vô hiệu kéo). */
   canDrag?: (issue: IssueDto) => boolean;
+  /** Sửa tại chỗ điểm/ưu tiên trên dòng (không truyền cho sprint đã đóng). */
+  rowEdit?: RowEdit;
+  canEditRow?: (issue: IssueDto) => boolean;
   projectKey?: string;
   projectId?: string;
   canCreate?: boolean;
@@ -1053,6 +1100,8 @@ function Section({
       onToggleSelect={onToggleSelect}
       onOpen={onOpen}
       peeked={peekedKey === issue.key}
+      edit={readOnly ? undefined : rowEdit}
+      canEdit={!!canEditRow?.(issue)}
     />
   );
   return (

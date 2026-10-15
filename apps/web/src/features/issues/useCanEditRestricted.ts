@@ -3,8 +3,9 @@ import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 
 /**
- * Story points/Hạn: phải sửa được công việc này (issue:edit, hoặc :own với việc của mình) VÀ là người tạo/báo cáo
+ * Hạn hoàn thành: phải sửa được công việc này (issue:edit, hoặc :own với việc của mình) VÀ là người tạo/báo cáo
  * hoặc quản trị (khớp API). Một nơi cho trang chi tiết và panel xem nhanh.
+ * KHÔNG áp cho điểm ước lượng: ai sửa được công việc thì sửa được điểm (`canEditIssue`, B7).
  */
 export function useCanEditRestricted(issue: IssueDto | undefined): boolean {
   const me = useAuth((s) => s.user);

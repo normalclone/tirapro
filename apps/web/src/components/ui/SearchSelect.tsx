@@ -34,6 +34,7 @@ export function SearchSelect({
   className,
   align = 'start',
   renderTrigger,
+  hideChevron,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -47,6 +48,8 @@ export function SearchSelect({
   align?: 'start' | 'end';
   /** Tuỳ biến nội dung trigger (mặc định: label của option đang chọn). */
   renderTrigger?: (selected: SearchSelectOption | undefined) => ReactNode;
+  /** Bỏ mũi tên (trigger gọn dạng chấm/biểu tượng, vd chấm ưu tiên trên dòng Việc chờ). */
+  hideChevron?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -89,7 +92,7 @@ export function SearchSelect({
               {selected ? selected.label : placeholder}
             </span>
           )}
-          <ChevronDown className="h-4 w-4 shrink-0 text-faint" aria-hidden />
+          {!hideChevron && <ChevronDown className="h-4 w-4 shrink-0 text-faint" aria-hidden />}
         </button>
       </Popover.Trigger>
       <Popover.Portal>

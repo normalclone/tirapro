@@ -153,6 +153,15 @@ export function useAddComment(issueId: string) {
   });
 }
 
+interface UpdateIssueVars {
+  id: string;
+  key: string;
+  patch: Record<string, unknown>;
+  version: number;
+  /** Vá lạc quan thêm (vd `{ priority }` khi đổi `priorityId`); chỉ dùng phía web. */
+  optimistic?: Partial<IssueDto>;
+}
+
 /**
  * `opts.silent`: tắt toast lỗi chung của MutationCache — dùng khi gọi hàng loạt (Promise.allSettled)
  * và tự gom lỗi thành MỘT thông báo tổng kết.
@@ -161,9 +170,17 @@ export function useUpdateIssue(projectId: string | undefined, opts?: { silent?: 
   const qc = useQueryClient();
   return useMutation({
     meta: { silent: opts?.silent },
-    mutationFn: (v: { id: string; key: string; patch: Record<string, unknown>; version: number }) =>
+    mutationFn: (v: UpdateIssueVars) =>
       api.patch<IssueDto>(`/issues/${v.id}`, { ...v.patch, version: v.version }),
-    onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, scalarIssuePatch(v.patch), v.key),
+    // `optimistic`: phần vá lạc quan cho trường quan hệ cần cả đối tượng (vd `priority`) — KHÔNG gửi lên máy chủ.
+    onMutate: (v) =>
+      optimisticPatchIssue(
+        qc,
+        projectId,
+        v.id,
+        { ...scalarIssuePatch(v.patch), ...(v.optimistic ?? {}) },
+        v.key,
+      ),
     onSuccess: (res) => {
       // Ghi bản THẬT (version mới) vào cả chi tiết lẫn danh sách → sửa inline liên tiếp không bị 409 OCC.
       writeIssue(qc, projectId, res.data);
