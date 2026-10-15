@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { PresenceUser, RoomTarget, TypingPayload } from '@tirapro/shared';
-import { getSocket } from '@/lib/socket';
+import { acquireRoom, getSocket } from '@/lib/socket';
 import { useAuth } from '@/stores/auth';
 
 /** Server coi entry presence quá 60s là hết hạn → gửi heartbeat mỗi 25s (xem PresenceService). */
@@ -14,12 +14,11 @@ const EMPTY: PresenceUser[] = [];
 
 const projectRoom = (id: string) => `project:${id}`;
 const issueRoom = (id: string) => `issue:${id}`;
-const targetKey = (t: RoomTarget) => `${t.kind}:${t.id}`;
 
 // ---------- Kho presence dùng chung (một listener socket cho mọi component) ----------
 const state = new Map<string, PresenceUser[]>();
 const storeListeners = new Set<() => void>();
-const subscriptions = new Map<string, { target: RoomTarget; count: number }>();
+let activeRefs = 0;
 let handlersAttached = false;
 
 function emitChange(): void {
@@ -36,10 +35,6 @@ const onJoin = (p: { room: string; user: PresenceUser }) =>
   setRoom(p.room, [...(state.get(p.room) ?? EMPTY).filter((u) => u.userId !== p.user.userId), p.user]);
 const onLeave = (p: { room: string; userId: string }) =>
   setRoom(p.room, (state.get(p.room) ?? EMPTY).filter((u) => u.userId !== p.userId));
-const resubscribeAll = () => {
-  const s = getSocket();
-  subscriptions.forEach(({ target }) => s.emit('subscribe', target));
-};
 /** Mất kết nối → danh sách cũ không còn đáng tin; subscribe lại sẽ nhận `presence:state` mới. */
 const onDisconnect = () => {
   state.clear();
@@ -53,7 +48,6 @@ function attachHandlers(): void {
   s.on('presence:state', onState);
   s.on('presence:join', onJoin);
   s.on('presence:leave', onLeave);
-  s.on('connect', resubscribeAll);
   s.on('disconnect', onDisconnect);
 }
 
@@ -64,35 +58,29 @@ function detachHandlers(): void {
   s.off('presence:state', onState);
   s.off('presence:join', onJoin);
   s.off('presence:leave', onLeave);
-  s.off('connect', resubscribeAll);
   s.off('disconnect', onDisconnect);
   state.clear();
 }
 
-/** Subscribe room theo đếm tham chiếu: nhiều component cùng room chỉ subscribe/unsubscribe một lần. */
+/**
+ * Vào room qua registry dùng chung (`acquireRoom`) — cùng room với `useProjectRealtime` nên
+ * rời một nơi không làm nơi kia mất subscribe. Mất kết nối → registry tự subscribe lại và server
+ * gửi `presence:state` mới. Listener presence chỉ gắn khi còn ít nhất một người dùng hook.
+ */
 function acquire(target: RoomTarget): () => void {
-  const s = getSocket();
   attachHandlers();
-  if (!s.connected) s.connect();
-  const k = targetKey(target);
-  const entry = subscriptions.get(k);
-  if (entry) {
-    entry.count += 1;
-  } else {
-    subscriptions.set(k, { target, count: 1 });
-    s.emit('subscribe', target);
-  }
+  activeRefs += 1;
+  const releaseRoom = acquireRoom(target);
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    const cur = subscriptions.get(k);
-    if (!cur) return;
-    cur.count -= 1;
-    if (cur.count > 0) return;
-    subscriptions.delete(k);
-    s.emit('unsubscribe', target);
-    if (subscriptions.size === 0) detachHandlers();
+    releaseRoom();
+    activeRefs -= 1;
+    if (activeRefs <= 0) {
+      activeRefs = 0;
+      detachHandlers();
+    }
   };
 }
 

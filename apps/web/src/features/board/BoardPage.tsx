@@ -13,6 +13,7 @@ import { Column } from './Column';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { useProjectSprints } from '@/features/backlog/api';
 import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
+import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
 import { PresenceAvatars } from '@/features/presence/PresenceAvatars';
 import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
@@ -327,6 +328,7 @@ export function BoardPage() {
   return (
     <BoardDnd issues={issues} columns={board.columns} onMove={onMove}>
       <div className="flex h-full flex-col">
+        <TruncatedBanner projectId={project?.id} />
         <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3">
           <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
           <AssigneeFilter options={assigneeOptions} value={assignee} onChange={changeAssignee} />

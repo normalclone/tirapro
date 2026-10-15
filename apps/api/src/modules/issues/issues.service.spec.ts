@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { DOMAIN_EVENTS } from '@tirapro/types';
 import { IssuesService } from './issues.service';
 
 /** expect.stringContaining có kiểu any — bọc lại để không phát sinh cảnh báo lint. */
@@ -192,6 +193,10 @@ describe('IssuesService — OCC atomic', () => {
     await service.softDelete('w1', 'u1', 'i1');
     expect(tx.issue.updateMany.mock.calls[0]![0]).toMatchObject({ data: { version: { increment: 1 } } });
     expect(events.emit).toHaveBeenCalledTimes(1);
+    // Gateway chỉ phát `issue:deleted` tới room project khi payload có projectId.
+    expect(events.emit).toHaveBeenCalledWith(DOMAIN_EVENTS.ISSUE_DELETED, {
+      issueId: 'i1', projectId: 'p1', actorId: 'u1',
+    });
 
     const lost = occTx(0, null);
     const b = makeService(lost);

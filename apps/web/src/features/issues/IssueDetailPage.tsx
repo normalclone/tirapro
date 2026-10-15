@@ -246,7 +246,7 @@ export function IssueDetailPage() {
   async function onDelete() {
     if (!issue) return;
     try {
-      await removeIssue.mutateAsync(issue.id);
+      await removeIssue.mutateAsync({ id: issue.id, key: issue.key, projectId: issue.projectId });
       setConfirmDelete(false);
       toast.success(`Đã xoá công việc ${issue.key}`);
       navigate(projectKey ? `/p/${projectKey}/board` : '/');

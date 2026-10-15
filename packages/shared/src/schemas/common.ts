@@ -47,6 +47,8 @@ export const validateJqlSchema = z.object({
 });
 
 export const createSprintSchema = z.object({
+  /** Bắt buộc trong body: guard phân quyền đọc đúng trường này (`@ProjectRef('body', 'projectId')`). */
+  projectId: z.string().min(1, 'Thiếu dự án'),
   name: z.string().min(1).max(120),
   goal: z.string().max(1000).optional().nullable(),
   boardId: z.string().optional().nullable(),

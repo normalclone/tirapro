@@ -545,14 +545,14 @@ export class IssuesService {
 
   /** Soft-delete (vào Recycle Bin). */
   async softDelete(workspaceId: string, userId: string, id: string): Promise<{ success: true }> {
-    await this.requireIssue(workspaceId, id);
+    const current = await this.requireIssue(workspaceId, id);
     // updateMany + deletedAt:null để hai lần xoá đồng thời chỉ một lần thắng (và chỉ phát sự kiện một lần).
     const { count } = await this.prisma.issue.updateMany({
       where: { id, workspaceId, deletedAt: null },
       data: { deletedAt: new Date(), updatedById: userId, version: { increment: 1 } },
     });
     if (count === 0) throw new NotFoundAppException('Công việc');
-    this.events.emit(DOMAIN_EVENTS.ISSUE_DELETED, { issueId: id, actorId: userId });
+    this.events.emit(DOMAIN_EVENTS.ISSUE_DELETED, { issueId: id, projectId: current.projectId, actorId: userId });
     return { success: true };
   }
 

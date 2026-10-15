@@ -40,7 +40,7 @@ export class SprintsService {
     });
   }
 
-  async create(workspaceId: string, projectId: string, input: CreateSprintInput): Promise<SprintDto> {
+  async create(workspaceId: string, projectId: string, input: Omit<CreateSprintInput, 'projectId'>): Promise<SprintDto> {
     const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, deletedAt: null }, select: { id: true, archivedAt: true } });
     if (!project) throw new NotFoundAppException('Dự án');
     assertNotArchived(project.archivedAt);
