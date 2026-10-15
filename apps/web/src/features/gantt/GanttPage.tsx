@@ -13,7 +13,7 @@ import { QueryError } from '@/components/ui/QueryError';
 import { isOverdue } from '@/components/ui/DueBadge';
 import { categoryColor } from '@/lib/statusColor';
 import { apiErrorMessage } from '@/lib/api';
-import { useAuth } from '@/stores/auth';
+import { useCan } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
 import { PlanningPanel } from '@/features/planning/PlanningPanel';
 import {
@@ -103,8 +103,6 @@ function LegendItem({
 export function GanttPage() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
-  const canManagePlan = useAuth((s) => s.can('plan:manage'));
-
   const {
     data: project,
     isLoading: lp,
@@ -113,6 +111,7 @@ export function GanttPage() {
     refetch: refetchProject,
   } = useProject(key);
   const projectId = project?.id;
+  const canManagePlan = useCan(projectId)('plan:manage');
   const issuesQ = useProjectIssues(projectId);
   const { data: issues, isLoading: li } = issuesQ;
   const isLoading = lp || li;

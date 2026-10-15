@@ -139,6 +139,8 @@ export function useProjectRealtime(projectId: string | undefined) {
     const leave = acquireRoom({ kind: 'project', id: projectId }, () => {
       void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
       void qc.invalidateQueries({ queryKey: keys.sprints.byProject(projectId) });
+      // Vai trò có thể đổi trong lúc mất kết nối (chưa có event realtime cho việc này).
+      void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });
     });
 
     const onCreated = ({ issue }: { issue: IssueDto }) => {

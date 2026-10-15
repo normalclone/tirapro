@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
+import { useCanEditIssue } from '@/features/projects/permissions';
 import { useProjectSprints, useMoveToSprint } from '@/features/backlog/api';
 import { useUpdateIssue } from '@/features/issues/api';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
@@ -110,6 +111,14 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
   const projectKey = projects?.find((p) => p.id === issue.projectId)?.key;
   const { data: meta } = useProjectMeta(projectKey);
   const patch = useUpdateIssue(issue.projectId);
+  const canEdit = useCanEditIssue(issue.projectId)(issue);
+  if (!canEdit) {
+    return (
+      <span title={`Loại việc: ${issue.type.name}`}>
+        <IssueTypeBadge name={issue.type.name} color={issue.type.color} />
+      </span>
+    );
+  }
   return (
     <SearchSelect
       ariaLabel="Loại việc"
@@ -143,6 +152,8 @@ export function IssuePrioritySelect({ issue }: { issue: IssueDto }) {
   const projectKey = projects?.find((p) => p.id === issue.projectId)?.key;
   const { data: meta } = useProjectMeta(projectKey);
   const patch = useUpdateIssue(issue.projectId);
+  const canEdit = useCanEditIssue(issue.projectId)(issue);
+  if (!canEdit) return <PriorityBadge priority={issue.priority} />;
   return (
     <SearchSelect
       ariaLabel="Ưu tiên"
@@ -174,6 +185,7 @@ export function IssuePrioritySelect({ issue }: { issue: IssueDto }) {
 export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
   const { data: sprints } = useProjectSprints(issue.projectId);
   const moveToSprint = useMoveToSprint(issue.projectId);
+  const canEdit = useCanEditIssue(issue.projectId)(issue);
 
   const sprintOptions = useMemo(
     () => [
@@ -188,6 +200,14 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
     [sprints],
   );
 
+  if (!canEdit) {
+    const current = sprintOptions.find((o) => o.value === (issue.sprintId ?? ''));
+    return (
+      <span className="truncate text-sm text-muted" title="Sprint chứa việc này">
+        {current?.label ?? 'Backlog — chưa xếp vào sprint'}
+      </span>
+    );
+  }
   return (
     <SearchSelect
       ariaLabel="Sprint — đợt làm việc chứa việc này"
@@ -300,7 +320,8 @@ export function IssueStoryPointsInline({
 export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
   const assignees = useAssigneeOptions(issue.projectId);
   const patch = useUpdateIssue(issue.projectId);
-  const canSuggest = useAuth((s) => s.can('ai:use') && s.can('issue:edit'));
+  const canEditThis = useCanEditIssue(issue.projectId)(issue);
+  const canSuggest = useAuth((s) => s.can('ai:use')) && canEditThis;
 
   return (
     <PanelSection title="Người liên quan">
@@ -330,47 +351,64 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
                 }}
               />
             )}
-            <PeoplePicker
-              ariaLabel="Người phụ trách"
-              value={issue.assignee?.id ?? ''}
-              disabled={patch.isPending}
-              align="end"
-              options={assignees}
-              onChange={(v) => {
-                const next = v || null;
-                if (next !== (issue.assignee?.id ?? null)) {
-                  patch.mutate(
-                    {
-                      id: issue.id,
-                      key: issue.key,
-                      patch: { assigneeId: next },
-                      version: issue.version,
-                    },
-                    { onError: (e) => toast.error(apiErrorMessage(e)) },
-                  );
+            {canEditThis ? (
+              <PeoplePicker
+                ariaLabel="Người phụ trách"
+                value={issue.assignee?.id ?? ''}
+                disabled={patch.isPending}
+                align="end"
+                options={assignees}
+                onChange={(v) => {
+                  const next = v || null;
+                  if (next !== (issue.assignee?.id ?? null)) {
+                    patch.mutate(
+                      {
+                        id: issue.id,
+                        key: issue.key,
+                        patch: { assigneeId: next },
+                        version: issue.version,
+                      },
+                      { onError: (e) => toast.error(apiErrorMessage(e)) },
+                    );
+                  }
+                }}
+                className={`${INLINE_TRIGGER} justify-end`}
+                renderTrigger={() =>
+                  issue.assignee ? (
+                    <span className="flex items-center gap-1.5">
+                      <Avatar
+                        name={issue.assignee.displayName}
+                        src={issue.assignee.avatarUrl}
+                        size={18}
+                      />
+                      <span className="truncate">{issue.assignee.displayName}</span>
+                    </span>
+                  ) : (
+                    <span
+                      className="text-faint"
+                      title="Chưa có ai nhận việc này. Bấm để chọn người phụ trách."
+                    >
+                      Chưa gán
+                    </span>
+                  )
                 }
-              }}
-              className={`${INLINE_TRIGGER} justify-end`}
-              renderTrigger={() =>
-                issue.assignee ? (
-                  <span className="flex items-center gap-1.5">
+              />
+            ) : (
+              <span className="flex min-w-0 items-center gap-1.5">
+                {issue.assignee ? (
+                  <>
                     <Avatar
                       name={issue.assignee.displayName}
                       src={issue.assignee.avatarUrl}
                       size={18}
                     />
                     <span className="truncate">{issue.assignee.displayName}</span>
-                  </span>
+                  </>
                 ) : (
-                  <span
-                    className="text-faint"
-                    title="Chưa có ai nhận việc này. Bấm để chọn người phụ trách."
-                  >
-                    Chưa gán
-                  </span>
-                )
-              }
-            />
+                  <span className="text-faint">Chưa gán</span>
+                )}
+              </span>
+            )}
           </div>
         </div>
 
@@ -386,7 +424,7 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
         </InfoRow>
 
         {/* Người tham gia — nhiều người cùng theo việc này (ngoài người phụ trách và người tạo). */}
-        <ParticipantsRow issueId={issue.id} projectId={issue.projectId} />
+        <ParticipantsRow issueId={issue.id} projectId={issue.projectId} owner={issue} />
       </div>
     </PanelSection>
   );

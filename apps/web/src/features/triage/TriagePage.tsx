@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
-import { useAuth } from '@/stores/auth';
+import { useCan } from '@/features/projects/permissions';
 import { useAccept, useDecline, useSnooze, useTriageCount, useTriageInbox } from './api';
 
 const DAY_MS = 86_400_000;
@@ -29,7 +29,7 @@ export function TriagePage() {
   const { data: issues, isLoading } = inbox;
   const { data: count } = useTriageCount(projectId);
 
-  const canTriage = useAuth((s) => s.can('issue:triage'));
+  const canTriage = useCan(projectId)('issue:triage');
 
   const accept = useAccept(projectId ?? '');
   const decline = useDecline(projectId ?? '');

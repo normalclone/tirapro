@@ -1010,6 +1010,14 @@ describe('IssuesService — :own (issue:edit:own)', () => {
     expect(tx.issue.updateMany).toHaveBeenCalledTimes(1);
   });
 
+  it('DTO trả createdById (web dùng để hiện nút sửa theo issue:edit:own)', async () => {
+    const tx = ownTx(issueRow({ reporterId: 'u1', createdById: 'u9', assigneeId: null }));
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u9', 'i1', { version: 3, summary: 'mới' }, undefined, true),
+    ).resolves.toMatchObject({ createdById: 'u9', reporterId: 'u1' });
+  });
+
   it('transition(ownOnly) trên việc của người khác -> 403, chưa ghi gì, không emit', async () => {
     const tx = ownTx(issueRow({ reporterId: 'u1', createdById: 'u1', assigneeId: null }));
     const { service, events } = makeService(tx);

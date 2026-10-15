@@ -43,6 +43,7 @@ export function CardBody({
   progress,
   overlay,
   isDragging,
+  canDrag = true,
   rootRef,
   rootProps,
 }: {
@@ -50,6 +51,8 @@ export function CardBody({
   progress?: SubtreeProgress;
   overlay?: boolean;
   isDragging?: boolean;
+  /** false = không có quyền chuyển cột: không hiện con trỏ nắm/kéo, cuộn cảm ứng bình thường. */
+  canDrag?: boolean;
   rootRef?: Ref<HTMLDivElement>;
   rootProps?: HTMLAttributes<HTMLDivElement>;
 }) {
@@ -59,9 +62,10 @@ export function CardBody({
       ref={rootRef}
       {...rootProps}
       className={cn(
-        'cursor-grab touch-none rounded-md border bg-surface p-2.5 shadow-sm transition-shadow',
+        'rounded-md border bg-surface p-2.5 shadow-sm transition-shadow',
+        canDrag ? 'cursor-grab touch-none active:cursor-grabbing' : 'cursor-pointer',
         dueBorderClass(issue) || 'border-border',
-        'hover:shadow-md active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+        'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
         isDragging && 'opacity-40',
         overlay && 'rotate-1 shadow-lg',
       )}
@@ -152,6 +156,8 @@ interface CardProps {
   laneIdx?: number;
   colIdx?: number;
   rowIdx?: number;
+  /** Có quyền chuyển cột (`issue:transition`) không — false thì thẻ chỉ mở chi tiết, không kéo được. */
+  canDrag: boolean;
 }
 
 /**
@@ -159,8 +165,19 @@ interface CardProps {
  * nhưng thẻ không có việc con đổi thì không cần vẽ lại.
  */
 export const Card = memo(
-  function Card({ issue, progress, onOpen, laneIdx = 0, colIdx = 0, rowIdx = 0 }: CardProps) {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: issue.id });
+  function Card({
+    issue,
+    progress,
+    onOpen,
+    laneIdx = 0,
+    colIdx = 0,
+    rowIdx = 0,
+    canDrag,
+  }: CardProps) {
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+      id: issue.id,
+      disabled: !canDrag,
+    });
 
     function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
       if (isDragging) return; // đang kéo bằng bàn phím: mũi tên thuộc về dnd-kit, không dời focus
@@ -191,6 +208,7 @@ export const Card = memo(
         issue={issue}
         progress={progress}
         isDragging={isDragging}
+        canDrag={canDrag}
         rootRef={setNodeRef}
         rootProps={{
           ...listeners,
@@ -215,5 +233,6 @@ export const Card = memo(
     prev.laneIdx === next.laneIdx &&
     prev.colIdx === next.colIdx &&
     prev.rowIdx === next.rowIdx &&
+    prev.canDrag === next.canDrag &&
     sameProgress(prev.progress, next.progress),
 );

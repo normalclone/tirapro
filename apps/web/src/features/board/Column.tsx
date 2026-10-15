@@ -15,6 +15,8 @@ export interface ColumnProps {
   projectKey: string;
   projectId: string;
   canCreate: boolean;
+  /** Có quyền kéo thẻ đổi cột (`issue:transition`). */
+  canDrag: boolean;
   droppableId?: string;
   laneIdx?: number;
   colIdx?: number;
@@ -31,6 +33,7 @@ function ColumnImpl({
   projectKey,
   projectId,
   canCreate,
+  canDrag,
   droppableId,
   laneIdx = 0,
   colIdx = 0,
@@ -89,6 +92,7 @@ function ColumnImpl({
             laneIdx={laneIdx}
             colIdx={colIdx}
             rowIdx={rowIdx}
+            canDrag={canDrag}
           />
         ))}
         {issues.length === 0 && (
@@ -122,6 +126,7 @@ export const Column = memo(ColumnImpl, (p, n) => {
     p.projectKey !== n.projectKey ||
     p.projectId !== n.projectId ||
     p.canCreate !== n.canCreate ||
+    p.canDrag !== n.canDrag ||
     p.droppableId !== n.droppableId ||
     p.laneIdx !== n.laneIdx ||
     p.colIdx !== n.colIdx ||

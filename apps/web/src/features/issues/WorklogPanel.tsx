@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
+import { useCan, useCanEditIssue } from '@/features/projects/permissions';
 import { useUpdateIssue } from './api';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useAddWorklog, useDeleteWorklog, useUpdateWorklog, useWorklogs } from './worklog-api';
@@ -47,7 +48,8 @@ function previewOf(text: string): { ok: boolean; label: string } {
  */
 export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequest?: number }) {
   const me = useAuth((s) => s.user);
-  const can = useAuth((s) => s.can);
+  const can = useCan(issue.projectId);
+  const canEditThis = useCanEditIssue(issue.projectId)(issue);
   const worklogsQuery = useWorklogs(issue.id);
   const { data } = worklogsQuery;
   const add = useAddWorklog(issue.id, issue.key);
@@ -62,7 +64,7 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
 
   const canLog = can('worklog:create');
   const isAdmin = can('project:admin') || can('workspace:admin');
-  const canEstimate = can('issue:edit');
+  const canEstimate = canEditThis;
 
   // Phím `w` được xử lý ở IssueDetailPage (panel này chỉ mount khi cuộn tới) → nhận yêu cầu mở qua `openRequest`.
   const sectionRef = useRef<HTMLElement>(null);

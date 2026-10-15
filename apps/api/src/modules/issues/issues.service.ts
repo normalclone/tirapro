@@ -1310,6 +1310,7 @@ export class IssuesService {
       descriptionFormat: i.descriptionFormat,
       reporter: i.reporter ? toUserDto(i.reporter) : null,
       reporterId: i.reporterId,
+      createdById: i.createdById,
       assigneeId: i.assigneeId,
       parentId: i.parentId,
       epicId: i.epicId,

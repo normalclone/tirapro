@@ -35,6 +35,8 @@ export function useRoles(scope?: RoleScope) {
 /** Làm mới mọi biến thể cache vai trò (ALL/WORKSPACE/PROJECT). */
 function invalidateAllRoles(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: keys.roles.all });
+  // Đổi quyền của vai trò → quyền hiệu lực của mọi dự án có thể đổi theo.
+  void qc.invalidateQueries({ queryKey: keys.projects.permissionsAll });
 }
 
 /** Tạo vai trò tuỳ chỉnh. */

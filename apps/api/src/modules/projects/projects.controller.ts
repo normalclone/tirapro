@@ -20,19 +20,23 @@ import {
   type CreateProjectInput,
   type UpdateProjectInput,
 } from '@tirapro/shared';
-import { PERMISSIONS } from '@tirapro/types';
+import { PERMISSIONS, type PermissionKey, type ProjectPermissionsDto } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
+import { RbacService } from '../rbac/rbac.service';
 import { ProjectsService } from './projects.service';
 
 @ApiTags('projects')
 @Controller('projects')
 export class ProjectsController {
-  constructor(private readonly projects: ProjectsService) {}
+  constructor(
+    private readonly projects: ProjectsService,
+    private readonly rbac: RbacService,
+  ) {}
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get()
@@ -65,6 +69,19 @@ export class ProjectsController {
   @Get(':key/meta')
   async meta(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
     return this.projects.meta(workspaceId, key.toUpperCase());
+  }
+
+  /** Quyền hiệu lực của chính người gọi ở dự án này — để web hiện đúng nút theo vai trò dự án. */
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('param', 'id')
+  @Get(':id/permissions/me')
+  async myPermissions(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ): Promise<ProjectPermissionsDto> {
+    const perms = await this.rbac.getEffectivePermissions(user.id, workspaceId, id);
+    return { projectId: id, permissions: [...perms].sort() as PermissionKey[] };
   }
 
   @Permissions(PERMISSIONS.PROJECT_ADMIN)

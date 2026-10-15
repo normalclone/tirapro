@@ -5,7 +5,8 @@ import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
+import type { IssueOwnership } from '@/lib/permissions';
+import { useCanEditIssue } from '@/features/projects/permissions';
 import {
   useChecklist,
   useAddChecklistItem,
@@ -14,8 +15,17 @@ import {
 } from './api';
 
 /** Danh sách bước nhỏ trong một công việc — nhẹ hơn việc con, chỉ để tick cho xong. */
-export function ChecklistPanel({ issueId }: { issueId: string }) {
-  const canEdit = useAuth((s) => s.can('issue:edit'));
+export function ChecklistPanel({
+  issueId,
+  projectId,
+  owner,
+}: {
+  issueId: string;
+  projectId: string;
+  /** Người liên quan của issue — để kiểm `issue:edit:own`. */
+  owner: IssueOwnership;
+}) {
+  const canEdit = useCanEditIssue(projectId)(owner);
   const { data: items } = useChecklist(issueId);
   const add = useAddChecklistItem(issueId);
   const update = useUpdateChecklistItem(issueId);

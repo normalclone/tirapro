@@ -29,7 +29,7 @@ import { ProjectRail } from './ProjectRail';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
 import { Button } from '@/components/ui/Button';
 import { useAi } from '@/stores/ai';
-import { useAuth } from '@/stores/auth';
+import { useCan } from './permissions';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
 import { useProjectRealtime } from '@/lib/realtime';
@@ -59,9 +59,9 @@ export function ProjectLayout() {
   const loc = useLocation();
   const navigate = useNavigate();
   const aiEnabled = useAi((s) => s.enabled);
-  const canAdminProject = useAuth((s) => s.can('project:admin'));
   const openCreate = useCreateIssueModal((s) => s.openCreate);
   const { data: project } = useProject(key);
+  const canAdminProject = useCan(project?.id)('project:admin');
   const { data: projects } = useProjects();
   // Một lần cho mọi tab của project: vá cache issue/sprint khi người khác thao tác.
   useProjectRealtime(project?.id);

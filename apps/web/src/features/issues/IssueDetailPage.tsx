@@ -23,6 +23,7 @@ import { useDevLinks, useIssue } from './api';
 import { useCreateIssue } from './create-api';
 import { useProjects } from '@/features/projects/api';
 import { ProjectRail } from '@/features/projects/ProjectRail';
+import { useCan, useCanEditIssue } from '@/features/projects/permissions';
 import { useMyWorkspaces } from '@/features/workspace/api';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { useDeleteIssue } from '@/features/issue-edit/api';
@@ -117,10 +118,12 @@ export function IssueDetailPage() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
   const me = useAuth((s) => s.user);
-  const can = useAuth((s) => s.can);
   const openCreate = useCreateIssueModal((s) => s.openCreate);
 
   const { data: issue, isLoading, isError } = useIssue(key);
+  const can = useCan(issue?.projectId);
+  const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
+  const canTransition = can('issue:transition');
   const { data: devLinks } = useDevLinks(issue?.id);
   // Mã issue theo LOẠI (BUG-4…) → KHÔNG suy ra project key từ chuỗi; resolve theo projectId.
   const { data: projects } = useProjects();
@@ -233,7 +236,7 @@ export function IssueDetailPage() {
       // Chặn khi còn overlay/menu Radix đang mở ở đâu đó trên trang.
       if (document.querySelector('[data-radix-popper-content-wrapper],[role="dialog"]')) return;
       // i = gán cho tôi, y = sao chép liên kết.
-      if (e.key === 'i' || e.key === 'I') {
+      if ((e.key === 'i' || e.key === 'I') && canEditThis) {
         e.preventDefault();
         assignToMe();
         return;
@@ -244,7 +247,7 @@ export function IssueDetailPage() {
         return;
       }
       const n = Number(e.key);
-      if (!Number.isInteger(n) || n < 1 || n > nextStatuses.length) return;
+      if (!canTransition || !Number.isInteger(n) || n < 1 || n > nextStatuses.length) return;
       const opt = nextStatuses[n - 1];
       if (opt) {
         e.preventDefault();
@@ -254,7 +257,14 @@ export function IssueDetailPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shortcutsEnabled, nextStatuses, issue?.status.id, issue?.version]);
+  }, [
+    shortcutsEnabled,
+    nextStatuses,
+    issue?.status.id,
+    issue?.version,
+    canTransition,
+    canEditThis,
+  ]);
 
   function copyLink() {
     navigator.clipboard
@@ -333,9 +343,12 @@ export function IssueDetailPage() {
     };
   }, []);
 
+  // Story points/Hạn: phải sửa được issue này (issue:edit, hoặc :own với việc của mình) VÀ là người tạo/báo cáo hoặc quản trị (khớp API).
   const canEditRestricted =
     !!issue &&
+    canEditThis &&
     (issue.reporterId === me?.id ||
+      issue.createdById === me?.id ||
       can('workspace:admin') ||
       can('project:admin') ||
       !!me?.isSystemAdmin);
@@ -453,9 +466,12 @@ export function IssueDetailPage() {
                     />
                   ) : (
                     <h1
-                      className="-mx-1 min-w-0 flex-1 cursor-text rounded px-1 text-2xl font-semibold tracking-tight hover:bg-surface-2"
-                      onClick={() => setEditingSummary(true)}
-                      title="Bấm để sửa tiêu đề"
+                      className={cn(
+                        '-mx-1 min-w-0 flex-1 rounded px-1 text-2xl font-semibold tracking-tight',
+                        canEditThis && 'cursor-text hover:bg-surface-2',
+                      )}
+                      onClick={canEditThis ? () => setEditingSummary(true) : undefined}
+                      title={canEditThis ? 'Bấm để sửa tiêu đề' : undefined}
                     >
                       {issue.summary}
                     </h1>
@@ -490,24 +506,28 @@ export function IssueDetailPage() {
                   <MessageSquare className="h-4 w-4" /> Bình luận
                 </button>
 
-                <button
-                  type="button"
-                  className={TOOLBAR_BTN}
-                  title="Tách một phần việc nhỏ nằm bên trong công việc này"
-                  onClick={() => openCreate({ projectKey, parentId: issue.id, subtask: true })}
-                >
-                  <ListTree className="h-4 w-4" /> Tạo việc con
-                </button>
-                <button
-                  type="button"
-                  className={TOOLBAR_BTN}
-                  title="Tạo một công việc mới giống hệt việc này để sửa lại cho nhanh"
-                  onClick={() => void cloneIssue()}
-                  disabled={createIssue.isPending}
-                >
-                  <Copy className="h-4 w-4" /> Tạo bản sao
-                </button>
-                {me && !isMine && (
+                {can('issue:create') && (
+                  <button
+                    type="button"
+                    className={TOOLBAR_BTN}
+                    title="Tách một phần việc nhỏ nằm bên trong công việc này"
+                    onClick={() => openCreate({ projectKey, parentId: issue.id, subtask: true })}
+                  >
+                    <ListTree className="h-4 w-4" /> Tạo việc con
+                  </button>
+                )}
+                {can('issue:create') && (
+                  <button
+                    type="button"
+                    className={TOOLBAR_BTN}
+                    title="Tạo một công việc mới giống hệt việc này để sửa lại cho nhanh"
+                    onClick={() => void cloneIssue()}
+                    disabled={createIssue.isPending}
+                  >
+                    <Copy className="h-4 w-4" /> Tạo bản sao
+                  </button>
+                )}
+                {me && !isMine && canEditThis && (
                   <button
                     type="button"
                     className={TOOLBAR_BTN}
@@ -541,13 +561,15 @@ export function IssueDetailPage() {
                       >
                         <Link2 className="h-4 w-4 text-muted" /> Sao chép liên kết
                       </DropdownMenu.Item>
-                      <DropdownMenu.Item
-                        onSelect={() => setConfirmDelete(true)}
-                        disabled={removeIssue.isPending}
-                        className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-danger outline-none transition-colors data-[highlighted]:bg-danger/10"
-                      >
-                        <Trash2 className="h-4 w-4" /> Xoá công việc
-                      </DropdownMenu.Item>
+                      {can('issue:delete') && (
+                        <DropdownMenu.Item
+                          onSelect={() => setConfirmDelete(true)}
+                          disabled={removeIssue.isPending}
+                          className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-danger outline-none transition-colors data-[highlighted]:bg-danger/10"
+                        >
+                          <Trash2 className="h-4 w-4" /> Xoá công việc
+                        </DropdownMenu.Item>
+                      )}
                     </DropdownMenu.Content>
                   </DropdownMenu.Portal>
                 </DropdownMenu.Root>
@@ -579,7 +601,7 @@ export function IssueDetailPage() {
                   >
                     <Workflow className="h-4 w-4" />
                   </button>
-                  {nextStatuses.length > 0 && (
+                  {canTransition && nextStatuses.length > 0 && (
                     <>
                       <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
                       {nextStatuses.map((o, i) => (
@@ -626,7 +648,7 @@ export function IssueDetailPage() {
 
                   {/* Danh sách bước nhỏ — nhẹ hơn việc con, chỉ để tick cho xong */}
                   <LazyPanel>
-                    <ChecklistPanel issueId={issue.id} />
+                    <ChecklistPanel issueId={issue.id} projectId={issue.projectId} owner={issue} />
                   </LazyPanel>
 
                   <LazyPanel>

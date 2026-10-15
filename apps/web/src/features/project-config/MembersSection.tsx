@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
+import { useCan } from '@/features/projects/permissions';
 import { useRoles } from '@/features/roles/api';
 import { EditRolesPopover } from '@/features/members/EditRolesPopover';
 import {
@@ -25,8 +25,7 @@ import { SectionCard } from './SectionCard';
 
 export function MembersSection({ projectId }: { projectId?: string }) {
   const confirm = useConfirm();
-  const can = useAuth((s) => s.can);
-  const canAdmin = can('project:admin');
+  const canAdmin = useCan(projectId)('project:admin');
 
   // Thành viên dự án = TOÀN BỘ thành viên của không gian làm việc (dự án dùng chung tập người dùng).
   // `isOverride` cho biết vai trò đang là ĐẶT RIÊNG hay MẶC ĐỊNH theo vai trò chung.

@@ -22,6 +22,10 @@ export const keys = {
     /** Cùng tiền tố `all` nên invalidate `all` làm mới cả hai. */
     withArchived: ['projects', 'with-archived'] as const,
     activity: (projectId: string) => ['project-activity', projectId] as const,
+    /** Quyền hiệu lực của người đang đăng nhập ở một dự án (workspace ∪ dự án). */
+    permissions: (projectId: string) => ['project-permissions', projectId] as const,
+    /** Tiền tố của mọi `permissions(...)` — dùng khi đổi vai trò workspace (ảnh hưởng mọi dự án). */
+    permissionsAll: ['project-permissions'] as const,
   },
 
   issues: {

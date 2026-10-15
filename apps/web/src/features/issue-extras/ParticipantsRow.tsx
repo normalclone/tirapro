@@ -6,7 +6,8 @@ import { apiErrorMessage } from '@/lib/api';
 import { Avatar } from '@/components/ui/primitives';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
+import type { IssueOwnership } from '@/lib/permissions';
+import { useCanEditIssue } from '@/features/projects/permissions';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { useParticipants, useSetParticipants } from './api';
 
@@ -14,8 +15,15 @@ import { useParticipants, useSetParticipants } from './api';
  * Hàng "Người tham gia" trong panel Người liên quan của công việc — nhiều người, ngoài
  * người phụ trách & người tạo. Bấm để mở danh sách chọn (tìm theo tên/vị trí/nhóm).
  */
-export function ParticipantsRow({ issueId, projectId }: { issueId: string; projectId: string }) {
-  const canEdit = useAuth((s) => s.can('issue:edit'));
+interface ParticipantsRowProps {
+  issueId: string;
+  projectId: string;
+  /** Người liên quan của issue — để kiểm `issue:edit:own`. */
+  owner: IssueOwnership;
+}
+
+export function ParticipantsRow({ issueId, projectId, owner }: ParticipantsRowProps) {
+  const canEdit = useCanEditIssue(projectId)(owner);
   const { data: participants } = useParticipants(issueId);
   const setParticipants = useSetParticipants(issueId);
   const options = useAssigneeOptions(projectId);

@@ -32,6 +32,7 @@ import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
+import { useCan, useCanEditIssue } from '@/features/projects/permissions';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
 import { applyQuickFilters, useQuickFilters } from '@/features/quick-filters/useQuickFilters';
 import { AssigneeFilter, applyAssigneeFilter } from '@/features/quick-filters/AssigneeFilter';
@@ -171,11 +172,13 @@ export function BoardPage() {
   const transition = useTransitionIssue(project?.id ?? '');
   const updateIssue = useUpdateIssue(project?.id);
   const { data: workflows } = useWorkflows();
-  const canTransition = useAuth((s) => s.can('issue:transition'));
-  const canAssign = useAuth((s) => s.can('issue:assign'));
-  const canCreate = useAuth((s) => s.can('issue:create'));
-  const canManageBoard = useAuth((s) => s.can('board:manage'));
-  const canForceWip = useAuth((s) => s.can('project:admin') || s.can('workspace:admin'));
+  const can = useCan(project?.id);
+  const canEditIssue = useCanEditIssue(project?.id);
+  const canTransition = can('issue:transition');
+  const canAssign = can('issue:assign');
+  const canCreate = can('issue:create');
+  const canManageBoard = can('board:manage');
+  const canForceWip = can('project:admin') || can('workspace:admin');
   const currentUserId = useAuth((s) => s.user?.id);
   const { active: quickFilters, toggle: toggleQuickFilter } = useQuickFilters();
   const [assignee, setAssignee] = useState('');
@@ -369,13 +372,13 @@ export function BoardPage() {
 
     // Thả sang làn khác chỉ có nghĩa "đổi người" khi bảng chia làn theo người; các kiểu chia khác chỉ đổi cột.
     const targetAssignee: string | null = laneKey === NO_LANE ? null : laneKey;
-    const assigneeChanged =
-      grouped &&
-      swimlaneBy === 'assignee' &&
-      canAssign &&
-      targetAssignee !== (issue.assigneeId ?? null);
+    const wantsReassign =
+      grouped && swimlaneBy === 'assignee' && targetAssignee !== (issue.assigneeId ?? null);
+    const assigneeChanged = wantsReassign && canAssign && canEditIssue(issue);
 
     if (!assigneeChanged) {
+      // Thả sang hàng người khác nhưng không được đổi người phụ trách việc này → nói rõ thay vì lặng lẽ chỉ đổi cột.
+      if (wantsReassign) toast.info('Bạn không có quyền đổi người phụ trách việc này.');
       if (res.kind === 'blocked') toast.error(blockedMsg);
       else if (only) runTransition(issue, col, only.id, false, labelFor(only));
       else if (res.kind === 'move') setPick({ issue, col, options: res.options, version: null });
@@ -582,6 +585,7 @@ export function BoardPage() {
                           projectKey={key}
                           projectId={project?.id ?? ''}
                           canCreate={false}
+                          canDrag={canTransition}
                           droppableId={`${lane.key}::${col.id}`}
                           laneIdx={laneIdx}
                           colIdx={colIdx}
@@ -607,6 +611,7 @@ export function BoardPage() {
                 projectKey={key}
                 projectId={project?.id ?? ''}
                 canCreate={canCreate}
+                canDrag={canTransition}
                 laneIdx={0}
                 colIdx={colIdx}
                 wipUsed={wipByCol.get(col.id) ?? 0}
