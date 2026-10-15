@@ -71,6 +71,13 @@ describe('TelegramService.resolveBotToken', () => {
     },
   );
 
+  it.each([[{ botToken: 123 }], [{ botToken: {} }], [{ botToken: true }], [{ botToken: [] }]])(
+    'botToken có mặt nhưng không phải string (%j) → unusable, KHÔNG rơi về global',
+    (cfg) => {
+      expect(make(NEW_KEY).resolveBotToken(cfg as never)).toEqual({ kind: 'unusable' });
+    },
+  );
+
   it('botToken giải mã được → own, trả token đã giải', () => {
     const svc = make(NEW_KEY);
     expect(svc.resolveBotToken({ botToken: svc.encrypt('123:ABC') })).toEqual({

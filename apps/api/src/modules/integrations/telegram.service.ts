@@ -147,7 +147,9 @@ export class TelegramService {
   resolveBotToken(config: Prisma.JsonValue): BotTokenResolution {
     if (!config || typeof config !== 'object' || Array.isArray(config)) return { kind: 'global' };
     const botToken = (config as Record<string, unknown>).botToken;
-    if (typeof botToken !== 'string' || botToken.length === 0) return { kind: 'global' };
+    // Chỉ "chưa cấu hình" (undefined/null/'') mới dùng bot toàn cục; giá trị sai kiểu = dữ liệu hỏng.
+    if (botToken === undefined || botToken === null || botToken === '') return { kind: 'global' };
+    if (typeof botToken !== 'string') return { kind: 'unusable' };
     const token = this.decrypt(botToken);
     return token === null ? { kind: 'unusable' } : { kind: 'own', token };
   }

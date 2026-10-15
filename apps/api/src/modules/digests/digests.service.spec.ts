@@ -3,6 +3,7 @@ import { DigestsService } from './digests.service';
 
 function setup(
   resolution: { kind: 'global' } | { kind: 'own'; token: string } | { kind: 'unusable' },
+  integrationStatus: 'ACTIVE' | 'ERROR' | 'DISABLED' = 'ACTIVE',
 ) {
   const prisma = {
     reportSubscription: {
@@ -15,7 +16,12 @@ function setup(
       findFirst: vi.fn(() =>
         Promise.resolve({
           externalId: 'c1',
-          integration: { id: 'g1', type: 'TELEGRAM', status: 'ACTIVE', config: { botToken: 'x' } },
+          integration: {
+            id: 'g1',
+            type: 'TELEGRAM',
+            status: integrationStatus,
+            config: { botToken: 'x' },
+          },
         }),
       ),
     },
@@ -44,6 +50,31 @@ describe('DigestsService.run — token không dùng được', () => {
     });
     expect(telegram.send).not.toHaveBeenCalled();
     expect(integrations.reportUnusableToken).toHaveBeenCalledWith('g1');
+  });
+
+  it('tích hợp đã ERROR + token vẫn hỏng → run() vẫn ném 422 (không im lặng 200 sent:false)', async () => {
+    const { service, telegram } = setup({ kind: 'unusable' }, 'ERROR');
+    await expect(service.run('w1', 's1')).rejects.toMatchObject({ status: 422 });
+    expect(telegram.send).not.toHaveBeenCalled();
+  });
+
+  it('tích hợp status khác ACTIVE/ERROR → sent:false, không đụng token', async () => {
+    const { service, telegram } = setup({ kind: 'unusable' }, 'DISABLED');
+    await expect(service.run('w1', 's1')).resolves.toMatchObject({ sent: false });
+    expect(telegram.resolveBotToken).not.toHaveBeenCalled();
+    expect(telegram.send).not.toHaveBeenCalled();
+  });
+
+  it('tích hợp ERROR nhưng token dùng được → không gửi (chờ "Gửi thử" phục hồi), không 422', async () => {
+    const { service, telegram } = setup({ kind: 'own', token: 'T' }, 'ERROR');
+    await expect(service.run('w1', 's1')).resolves.toMatchObject({ sent: false });
+    expect(telegram.send).not.toHaveBeenCalled();
+  });
+
+  it('global → gửi với token null', async () => {
+    const { service, telegram } = setup({ kind: 'global' });
+    await expect(service.run('w1', 's1')).resolves.toMatchObject({ sent: true });
+    expect(telegram.send).toHaveBeenCalledWith(null, 'c1', 'tổng kết');
   });
 
   it('own/global → gửi như cũ', async () => {

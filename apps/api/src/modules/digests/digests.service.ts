@@ -269,9 +269,11 @@ export class DigestsService implements OnApplicationShutdown {
       });
       if (!channel) return notSent;
       const integration = channel.integration;
+      // ERROR vẫn phải qua resolveBotToken: token còn hỏng thì "Chạy ngay" phải báo 422 chứ không im lặng.
       if (
         integration.type !== IntegrationType.TELEGRAM ||
-        integration.status !== IntegrationStatus.ACTIVE
+        (integration.status !== IntegrationStatus.ACTIVE &&
+          integration.status !== IntegrationStatus.ERROR)
       ) {
         return notSent;
       }
@@ -280,6 +282,7 @@ export class DigestsService implements OnApplicationShutdown {
         await this.integrations.reportUnusableToken(integration.id);
         return { sent: false, tokenUnusable: true };
       }
+      if (integration.status === IntegrationStatus.ERROR) return notSent; // token ổn nhưng tích hợp chưa phục hồi (Gửi thử)
       const sent = await this.telegram.send(
         res.kind === 'own' ? res.token : null,
         channel.externalId,
