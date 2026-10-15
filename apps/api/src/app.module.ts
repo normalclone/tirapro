@@ -40,7 +40,7 @@ import { MediaModule } from './modules/media/media.module';
 import { ExportModule } from './modules/export/export.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { GuidesModule } from './modules/guides/guides.module';
-import { DevModule } from './modules/dev/dev.module';
+import { DevLinksModule } from './modules/dev-links/dev-links.module';
 import { TriageModule } from './modules/triage/triage.module';
 import { DigestsModule } from './modules/digests/digests.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
@@ -152,7 +152,7 @@ const HEALTH_PATHS = new Set(['/api/v1/health', '/api/v1/health/live', '/api/v1/
     ExportModule,
     IntegrationsModule,
     GuidesModule,
-    DevModule,
+    DevLinksModule,
     TriageModule,
     DigestsModule,
     CustomFieldsModule,

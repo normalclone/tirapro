@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Headers, Param, Post, Query, Req, type RawBodyRequest } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Param,
+  Post,
+  Query,
+  Req,
+  type RawBodyRequest,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { z } from 'zod';
@@ -8,7 +19,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { DevService } from './dev.service';
+import { DevLinksService } from './dev-links.service';
 
 /** Body kết nối repository code (GitHub/GitLab) với workspace. */
 export const createRepositorySchema = z.object({
@@ -25,8 +36,8 @@ export type CreateRepositoryBody = z.infer<typeof createRepositorySchema>;
 
 @ApiTags('dev')
 @Controller()
-export class DevController {
-  constructor(private readonly dev: DevService) {}
+export class DevLinksController {
+  constructor(private readonly devLinks: DevLinksService) {}
 
   /** Kết nối repository code (GitHub/GitLab) với workspace. */
   @Post('dev/repositories')
@@ -35,15 +46,18 @@ export class DevController {
     @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(createRepositorySchema)) body: CreateRepositoryBody,
   ) {
-    return this.dev.createRepository(workspaceId, body);
+    return this.devLinks.createRepository(workspaceId, body);
   }
 
   /** Liệt kê repository của workspace (lọc theo project nếu truyền). */
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('query', 'projectId')
   @Get('dev/repositories')
-  async listRepositories(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
-    return this.dev.listRepositories(workspaceId, projectId);
+  async listRepositories(
+    @WorkspaceId() workspaceId: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.devLinks.listRepositories(workspaceId, projectId);
   }
 
   /** Gỡ kết nối một repository. */
@@ -51,7 +65,7 @@ export class DevController {
   @Delete('dev/repositories/:id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async removeRepository(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.dev.removeRepository(workspaceId, id);
+    return this.devLinks.removeRepository(workspaceId, id);
   }
 
   /** Danh sách dev-link (commit/PR/branch) của một issue — dùng cho dev panel. */
@@ -59,7 +73,7 @@ export class DevController {
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/dev-links')
   async listIssueDevLinks(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
-    return this.dev.listIssueDevLinks(workspaceId, issueId);
+    return this.devLinks.listIssueDevLinks(workspaceId, issueId);
   }
 
   /**
@@ -75,7 +89,7 @@ export class DevController {
     @Req() req: RawBodyRequest<Request>,
     @Body() body: unknown,
   ) {
-    return this.dev.handleWebhook(
+    return this.devLinks.handleWebhook(
       repositoryId,
       { githubSignature, gitlabToken, rawBody: req.rawBody },
       body ?? {},

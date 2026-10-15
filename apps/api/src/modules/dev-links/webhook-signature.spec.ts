@@ -4,7 +4,8 @@ import { verifyGithubSignature, verifyGitlabToken } from './webhook-signature';
 
 const secret = 'whsec_test_secret';
 const body = Buffer.from(JSON.stringify({ ref: 'refs/heads/main', commits: [] }));
-const sign = (raw: Buffer, key: string) => 'sha256=' + createHmac('sha256', key).update(raw).digest('hex');
+const sign = (raw: Buffer, key: string) =>
+  'sha256=' + createHmac('sha256', key).update(raw).digest('hex');
 
 describe('verifyGithubSignature', () => {
   it('đúng với HMAC-SHA256 sha256=<hex>', () => {
