@@ -285,6 +285,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.WORKLOG_CREATE,
     PERMISSIONS.WORKLOG_UPDATE,
     PERMISSIONS.WORKLOG_DELETE,
+    PERMISSIONS.ISSUE_TRANSITION,
     PERMISSIONS.ISSUE_ASSIGN,
     PERMISSIONS.ISSUE_LINK,
     PERMISSIONS.ISSUE_TRIAGE,
@@ -298,6 +299,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
   // Scrum Master: quy trình, board, sprint, backlog, báo cáo.
   [SYSTEM_ROLES.SCRUM_MASTER]: [
     PERMISSIONS.PROJECT_VIEW,
+    PERMISSIONS.ISSUE_CREATE,
     PERMISSIONS.ISSUE_EDIT,
     PERMISSIONS.WORKLOG_CREATE,
     PERMISSIONS.WORKLOG_UPDATE,
@@ -305,6 +307,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.ISSUE_TRANSITION,
     PERMISSIONS.ISSUE_ASSIGN,
     PERMISSIONS.ISSUE_LINK,
+    PERMISSIONS.ISSUE_TRIAGE,
     PERMISSIONS.COMMENT_CREATE,
     PERMISSIONS.COMMENT_EDIT_OWN,
     PERMISSIONS.SPRINT_MANAGE,
@@ -449,7 +452,7 @@ export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; col
     color: 'oklch(0.55 0.20 25)',
   },
   [SYSTEM_ROLES.PROJECT_DEVELOPER]: {
-    description: 'Lập trình viên (chung)',
+    description: 'Bộ quyền cơ bản cho lập trình viên (bản cũ — thường dùng vai trò "Developer")',
     color: 'oklch(0.55 0.13 245)',
   },
   [SYSTEM_ROLES.PROJECT_REPORTER]: {
