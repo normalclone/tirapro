@@ -18,6 +18,7 @@ import { BoardSettingsDialog, SWIMLANE_LABEL } from './BoardSettingsDialog';
 import { BoardDnd } from './BoardDnd';
 import { Column } from './Column';
 import { freshenBoardIssues } from './boardIssues';
+import { scopeBoardIssues } from './scope';
 import { NO_LANE, decideDrop, type DropContext, type DropPlan } from './dropPlan';
 import { StatusPickDialog } from './StatusPickDialog';
 import { useSwimlaneOverride } from './swimlane';
@@ -166,6 +167,14 @@ export function BoardPage() {
     if (!hasFilter) return projectIssues;
     return freshenBoardIssues(boardIssuesQ.data ?? [], projectIssues);
   }, [hasFilter, projectIssues, boardIssuesQ.data]);
+  // Bảng Scrum chỉ hiện việc của sprint ĐANG CHẠY (như WIP + máy chủ); Kanban hiện mọi việc.
+  const isScrum = board?.type === 'SCRUM';
+  const activeSprint = (sprintsQ.data ?? []).find((sp) => sp.state === 'ACTIVE') ?? null;
+  const activeSprintId = activeSprint?.id ?? null;
+  const scoped = useMemo(
+    () => (board ? scopeBoardIssues(board.type, issues ?? [], activeSprintId) : (issues ?? [])),
+    [board, issues, activeSprintId],
+  );
   // Cache dự án đổi (chuyển cột, realtime…) thì việc khớp bộ lọc có thể đổi → nạp lại tập khớp (gộp trong 400ms).
   const projectStamp = projectIssuesQ.dataUpdatedAt;
   const refetchBoardIssues = boardIssuesQ.refetch;
@@ -218,7 +227,6 @@ export function BoardPage() {
     override: swimlaneOverride,
     toggleAssignee,
   } = useSwimlaneOverride(board?.id, board?.swimlaneBy ?? 'none');
-  const activeSprintId = (sprintsQ.data ?? []).find((sp) => sp.state === 'ACTIVE')?.id ?? null;
 
   // Nhớ lọc người THEO DỰ ÁN (localStorage). Nạp khi đổi dự án.
   useEffect(() => {
@@ -246,14 +254,17 @@ export function BoardPage() {
 
   // Lọc: bộ lọc nhanh (AND) + người phụ trách. Đếm cột/làn dựa trên tập này.
   const filteredIssues = useMemo(() => {
-    const base = applyQuickFilters(issues ?? [], quickFilters, currentUserId);
+    const base = applyQuickFilters(scoped, quickFilters, currentUserId);
     return applyAssigneeFilter(base, assignee);
-  }, [issues, quickFilters, currentUserId, assignee]);
+  }, [scoped, quickFilters, currentUserId, assignee]);
+
+  // Tên epic/việc cha tra trên tập ĐẦY ĐỦ của dự án (không bị thu hẹp theo sprint/bộ lọc bảng).
+  const allIssues = useMemo(() => projectIssues ?? issues ?? EMPTY, [projectIssues, issues]);
 
   // Làn (swimlane) theo cấu hình của bảng.
   const lanes = useMemo(
-    () => buildLanes(swimlaneBy, filteredIssues, issues ?? []),
-    [swimlaneBy, filteredIssues, issues],
+    () => buildLanes(swimlaneBy, filteredIssues, allIssues),
+    [swimlaneBy, filteredIssues, allIssues],
   );
 
   // Phân bổ việc vào cột MỘT lần cho cả bảng phẳng lẫn mọi làn; mảng của cột không đổi nội dung thì giữ nguyên
@@ -292,7 +303,14 @@ export function BoardPage() {
     return m;
   }, [board, projectIssues, activeSprintId]);
 
-  const progressMap = useMemo(() => buildProgressMap(issues ?? []), [issues]);
+  // Tiến độ epic/việc cha tính trên tập đầy đủ: con nằm ở sprint khác vẫn được tính.
+  const progressMap = useMemo(() => buildProgressMap(allIssues), [allIssues]);
+
+  // Thêm nhanh ở bảng Scrum: việc mới vào luôn sprint đang chạy (nếu không, nó biến mất khỏi bảng).
+  const quickAddExtra = useMemo(
+    () => (isScrum && activeSprintId ? { sprintId: activeSprintId } : undefined),
+    [isScrum, activeSprintId],
+  );
 
   const openIssue = useCallback((k: string) => navigate(`/issue/${k}`), [navigate]);
 
@@ -527,22 +545,35 @@ export function BoardPage() {
     );
   }
 
-  if (boardsQ.isError || projectIssuesQ.isError || (hasFilter && boardIssuesQ.isError)) {
+  const sprintsFailed = isScrum && sprintsQ.isError;
+  if (
+    boardsQ.isError ||
+    projectIssuesQ.isError ||
+    (hasFilter && boardIssuesQ.isError) ||
+    sprintsFailed
+  ) {
     return (
       <div className="p-6">
         <QueryError
-          error={boardsQ.error ?? projectIssuesQ.error ?? boardIssuesQ.error}
+          error={
+            boardsQ.error ??
+            projectIssuesQ.error ??
+            boardIssuesQ.error ??
+            (sprintsFailed ? sprintsQ.error : null)
+          }
           onRetry={() => {
             void boardsQ.refetch();
             void projectIssuesQ.refetch();
             if (hasFilter) void boardIssuesQ.refetch();
+            if (isScrum) void sprintsQ.refetch();
           }}
         />
       </div>
     );
   }
 
-  if (lp || lb || li) {
+  // Chờ cả danh sách sprint (bảng Scrum) rồi mới quyết định hiện việc/trạng thái trống — không nháy.
+  if (lp || lb || li || (isScrum && sprintsQ.isLoading)) {
     return (
       <div className="p-6">
         <div className="flex gap-4">
@@ -567,7 +598,7 @@ export function BoardPage() {
   }
 
   return (
-    <BoardDnd issues={issues} columns={board.columns} onMove={onMove} planOf={planOf}>
+    <BoardDnd issues={scoped} columns={board.columns} onMove={onMove} planOf={planOf}>
       <div className="flex h-full flex-col">
         <TruncatedBanner projectId={project?.id} />
         <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3">
@@ -595,6 +626,14 @@ export function BoardPage() {
               <Layers className="h-3.5 w-3.5" /> {SWIMLANE_LABEL[swimlaneBy]}
             </span>
           )}
+          {isScrum && activeSprint && (
+            <span
+              className="inline-flex h-7 max-w-[16rem] items-center truncate rounded-full border border-border px-2.5 text-xs text-muted"
+              title="Bảng Scrum chỉ hiện việc của sprint đang chạy"
+            >
+              Sprint: {activeSprint.name}
+            </span>
+          )}
           {hasFilter && (
             <span
               className="inline-flex h-7 max-w-[18rem] items-center gap-1.5 truncate rounded-full border border-border px-2.5 text-xs text-muted"
@@ -618,7 +657,15 @@ export function BoardPage() {
           </div>
         </div>
 
-        {lanes ? (
+        {isScrum && !activeSprintId ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+            <EmptyState
+              title="Chưa có sprint nào đang chạy"
+              description="Bảng Scrum chỉ hiện việc của sprint đang chạy. Lên kế hoạch và bắt đầu một sprint ở Backlog."
+              action={<Button onClick={() => navigate(`/p/${key}/backlog`)}>Mở Backlog</Button>}
+            />
+          </div>
+        ) : lanes ? (
           <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4">
             {lanes.length === 0 ? (
               <p className="py-10 text-center text-sm text-faint">
@@ -688,6 +735,7 @@ export function BoardPage() {
                 projectKey={key}
                 projectId={project?.id ?? ''}
                 canCreate={canCreate}
+                quickAddExtra={quickAddExtra}
                 canDrag={canTransition}
                 laneIdx={0}
                 colIdx={colIdx}
