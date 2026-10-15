@@ -11,6 +11,18 @@ import { PERMISSIONS_KEY } from './common/decorators/permissions.decorator';
 const OWN_AWARE = [PERMISSIONS.ISSUE_EDIT, PERMISSIONS.ISSUE_TRANSITION] as const;
 /** Không thuộc một issue cụ thể (theo projectId trong body) nên không có gì để kiểm sở hữu. */
 const EXEMPT = new Set(['AiController.suggestAssignee']);
+/** Handler có @OwnOnly nhưng không gọi `ownership.assertOwns*` / không truyền `ownOnly` xuống service (hiện không có ngoại lệ; thêm `Ctrl.handler` kèm lý do nếu cần). */
+const EXEMPT_NO_OWNERSHIP_CALL = new Set<string>();
+
+/**
+ * Handler (đã biên dịch) thật sự dùng cờ `ownOnly`: gọi `ownership.assertOwns*` hoặc truyền `ownOnly` xuống
+ * service. Chỉ xét thân hàm (sau danh sách tham số) vì tham số `ownOnly` luôn xuất hiện ở chữ ký.
+ */
+function callsOwnershipCheck(handler: unknown): boolean {
+  const src = String(handler);
+  const body = src.slice(src.indexOf(') {') + 3);
+  return /ownership\.assertOwns/.test(body) || /\bownOnly\b/.test(body);
+}
 
 function controllerFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -23,6 +35,10 @@ function controllerFiles(dir: string): string[] {
 type Ctor = (new (...a: never[]) => unknown) & { prototype: Record<string, unknown> };
 type ArgMeta = Record<string, { factory?: unknown; data?: unknown }>;
 
+/**
+ * Giới hạn: spec chỉ quét `modules/**\/*.controller.ts` và chỉ thấy handler khai báo TRỰC TIẾP trên prototype
+ * của controller (`getOwnPropertyNames`) — handler kế thừa từ lớp cha hoặc controller ngoài `modules/` không được kiểm.
+ */
 describe('@OwnOnly coverage', () => {
   it('mọi route ISSUE_EDIT/ISSUE_TRANSITION nhận @OwnOnly tương ứng', async () => {
     const root = join(__dirname, 'modules');
@@ -60,5 +76,34 @@ describe('@OwnOnly coverage', () => {
     }
     expect(checked).toBeGreaterThanOrEqual(20);
     expect(missing, `Route thiếu @OwnOnly:\n${missing.join('\n')}`).toEqual([]);
+  });
+
+  it('mọi handler có @OwnOnly thật sự kiểm sở hữu (assertOwns* hoặc truyền ownOnly xuống service)', async () => {
+    const root = join(__dirname, 'modules');
+    const unchecked: string[] = [];
+    let checked = 0;
+    for (const file of controllerFiles(root).sort()) {
+      const mod = (await import(file)) as Record<string, unknown>;
+      for (const exported of Object.values(mod)) {
+        if (typeof exported !== 'function') continue;
+        const ctrl = exported as Ctor;
+        if (Reflect.getMetadata('path', ctrl) === undefined) continue;
+        for (const name of Object.getOwnPropertyNames(ctrl.prototype)) {
+          const handler = ctrl.prototype[name];
+          if (name === 'constructor' || typeof handler !== 'function') continue;
+          const args = (Reflect.getMetadata(ROUTE_ARGS_METADATA, ctrl, name) ?? {}) as ArgMeta;
+          if (!Object.values(args).some((a) => a.factory === ownOnlyFactory)) continue;
+          checked++;
+          const id = `${ctrl.name}.${name}`;
+          if (!callsOwnershipCheck(handler) && !EXEMPT_NO_OWNERSHIP_CALL.has(id))
+            unchecked.push(`${relative(root, file)} → ${id}`);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(20);
+    expect(
+      unchecked,
+      `Handler nhận @OwnOnly nhưng không kiểm sở hữu:\n${unchecked.join('\n')}`,
+    ).toEqual([]);
   });
 });
