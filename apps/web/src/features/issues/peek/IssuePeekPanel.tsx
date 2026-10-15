@@ -18,7 +18,8 @@ import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { ChecklistPanel } from '@/features/issue-extras/ChecklistPanel';
 import { LinksPanel } from '@/features/issue-widgets/LinksPanel';
 import { IssueRelations } from '@/features/tree/IssueRelations';
-import { isOverlayOpen, shouldClosePeekOnEscape } from '@/lib/hotkeys';
+import { activeDrag } from '@/lib/activeDrag';
+import { hasDraftText, isOverlayOpen, shouldClosePeekOnEscape } from '@/lib/hotkeys';
 import { useIssue } from '../api';
 import { ActivityTabs } from '../ActivityTabs';
 import { LazyPanel } from '../LazyPanel';
@@ -42,12 +43,20 @@ export function IssuePeekPanel({ issueKey, onClose }: { issueKey: string; onClos
   keyRef.current = issueKey;
 
   // Esc đóng panel (nghe ở `window`, sau `document`): lớp phủ mở → nhường; Esc đã có người dùng (bỏ chọn hàng loạt,
-  // huỷ sửa tiêu đề) → bỏ qua.
+  // huỷ sửa tại chỗ) → bỏ qua; Esc từ ô nhập TRONG panel đang có chữ chưa gửi (bình luận, bước checklist, liên kết…)
+  // → chỉ rời ô (nháp còn nguyên vì panel không bị gỡ), Esc kế tiếp mới đóng.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (shouldClosePeekOnEscape(e, { overlayOpen: isOverlayOpen() })) {
+      const t = e.target as HTMLElement | null;
+      const draftFocused = !!t?.closest?.('[data-peek-panel]') && hasDraftText(t);
+      const dragging = activeDrag.get() !== null;
+      const overlayOpen = isOverlayOpen();
+      if (shouldClosePeekOnEscape(e, { overlayOpen, draftFocused, dragging })) {
         e.preventDefault();
         onClose();
+      } else if (e.key === 'Escape' && draftFocused && !e.defaultPrevented && !overlayOpen) {
+        e.preventDefault();
+        t?.blur();
       }
     }
     window.addEventListener('keydown', onKey);
@@ -148,7 +157,7 @@ function PeekContent({ issue }: { issue: IssueDto }) {
   const canTransition = can('issue:transition');
 
   return (
-    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
+    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-24 pt-4">
       <div className="flex items-start gap-2">
         <div className="mt-1 flex shrink-0 items-center gap-1.5">
           <IssueTypeSelect issue={issue} />

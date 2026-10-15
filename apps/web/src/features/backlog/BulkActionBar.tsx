@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
 import { isOverlayOpen, shouldClearSelectionOnEscape } from '@/lib/hotkeys';
+import { activeDrag } from '@/lib/activeDrag';
 import { cn } from '@/lib/utils';
 
 /** id ảo cho lựa chọn "Backlog" trong picker chuyển sprint (sprintId thực = null). */
@@ -43,7 +44,12 @@ export function BulkActionBar({
     function onKey(e: KeyboardEvent) {
       // Nghe ở `document` (trước `window` của panel xem nhanh): bỏ chọn xong thì preventDefault để panel không đóng theo.
       const fromPeek = !!(e.target as Element | null)?.closest?.('[data-peek-panel]');
-      if (shouldClearSelectionOnEscape(e, isOverlayOpen(), { fromPeek })) {
+      if (
+        shouldClearSelectionOnEscape(e, isOverlayOpen(), {
+          fromPeek,
+          dragging: activeDrag.get() !== null,
+        })
+      ) {
         e.preventDefault();
         onClear();
       }

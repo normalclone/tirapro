@@ -14,6 +14,7 @@ export function InlineSummary({ issue }: { issue: IssueDto }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(issue.summary);
   const cancelled = useRef(false);
+  const saving = useRef(false); // Enter rồi blur khi request còn bay → không gửi lần 2 với version cũ
 
   function start() {
     cancelled.current = false;
@@ -22,12 +23,13 @@ export function InlineSummary({ issue }: { issue: IssueDto }) {
   }
 
   async function save() {
-    if (cancelled.current) return;
+    if (cancelled.current || saving.current) return;
     const next = value.trim();
     if (!next || next === issue.summary) {
       setEditing(false);
       return;
     }
+    saving.current = true;
     try {
       await update.mutateAsync({
         id: issue.id,
@@ -38,6 +40,8 @@ export function InlineSummary({ issue }: { issue: IssueDto }) {
       setEditing(false);
     } catch (e) {
       toast.error(apiErrorMessage(e));
+    } finally {
+      saving.current = false;
     }
   }
 

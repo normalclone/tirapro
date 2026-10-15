@@ -5,6 +5,7 @@ import {
   isTypingTarget,
   isWorklogHotkey,
   shouldClearSelectionOnEscape,
+  hasDraftText,
   shouldClosePeekOnEscape,
   shouldIgnoreGlobalHotkey,
 } from './hotkeys';
@@ -156,5 +157,29 @@ describe('Esc với panel xem nhanh', () => {
     expect(shouldClearSelectionOnEscape(esc(), false, { fromPeek: true })).toBe(false);
     expect(shouldClearSelectionOnEscape(esc(), false, { fromPeek: false })).toBe(true);
     expect(shouldClearSelectionOnEscape(esc(), false)).toBe(true); // chữ ký cũ vẫn đúng
+  });
+});
+
+describe('Esc: kéo bằng phím và nháp chưa gửi', () => {
+  const esc = { key: 'Escape', defaultPrevented: false };
+  it('đang kéo → Esc chỉ huỷ kéo, không xoá vùng chọn và không đóng panel', () => {
+    expect(shouldClearSelectionOnEscape(esc, false, { dragging: true })).toBe(false);
+    expect(shouldClosePeekOnEscape(esc, { overlayOpen: false, dragging: true })).toBe(false);
+    expect(shouldClearSelectionOnEscape(esc, false, { dragging: false })).toBe(true);
+  });
+  it('Esc từ ô đang có nháp → không đóng panel (chỉ rời ô)', () => {
+    expect(shouldClosePeekOnEscape(esc, { overlayOpen: false, draftFocused: true })).toBe(false);
+    expect(shouldClosePeekOnEscape(esc, { overlayOpen: false, draftFocused: false })).toBe(true);
+  });
+  it('hasDraftText: ô có chữ → có nháp; ô trống/chỉ khoảng trắng/phần tử khác → không', () => {
+    expect(hasDraftText({ tagName: 'TEXTAREA', value: 'Viết dở' })).toBe(true);
+    expect(hasDraftText({ tagName: 'INPUT', value: 'bước 1' })).toBe(true);
+    expect(hasDraftText({ tagName: 'INPUT', value: '   ' })).toBe(false);
+    expect(hasDraftText({ tagName: 'TEXTAREA', value: '' })).toBe(false);
+    expect(hasDraftText({ tagName: 'DIV', isContentEditable: true, textContent: 'abc' })).toBe(
+      true,
+    );
+    expect(hasDraftText({ tagName: 'BUTTON' })).toBe(false);
+    expect(hasDraftText(null)).toBe(false);
   });
 });

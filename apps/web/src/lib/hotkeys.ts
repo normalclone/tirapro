@@ -72,20 +72,47 @@ export function shouldIgnoreGlobalHotkey(
 /**
  * Esc có nên xoá vùng chọn hàng loạt không: không nếu Esc đã được xử lý (popover/kéo-thả bằng phím) hoặc lớp phủ đang mở.
  * `fromPeek`: Esc đến từ trong panel xem nhanh → dành cho việc đóng panel, không bỏ chọn.
+ * `dragging`: đang kéo (dnd-kit active) → Esc chỉ huỷ kéo. Cần vì thanh chọn nghe ở `document`, chạy TRƯỚC listener dnd-kit
+ * nên chưa thấy `defaultPrevented` của nó.
  */
 export function shouldClearSelectionOnEscape(
   e: Pick<KeyLike, 'key' | 'defaultPrevented'>,
   overlayOpen: boolean,
-  opts?: { fromPeek?: boolean },
+  opts?: { fromPeek?: boolean; dragging?: boolean },
 ): boolean {
-  if (opts?.fromPeek) return false;
+  if (opts?.fromPeek || opts?.dragging) return false;
   return e.key === 'Escape' && !e.defaultPrevented && !overlayOpen;
 }
 
-/** Esc có nên đóng panel xem nhanh không: không nếu lớp phủ đang mở hoặc Esc đã có người xử lý (bỏ chọn hàng loạt, huỷ sửa tiêu đề). */
+/**
+ * Esc có nên đóng panel xem nhanh không: không nếu lớp phủ đang mở, Esc đã có người xử lý (bỏ chọn hàng loạt, huỷ sửa tại chỗ),
+ * hoặc Esc đến từ một ô nhập đang có chữ chưa gửi (`draftFocused`) — lần Esc đó chỉ rời ô (giữ nháp), Esc sau mới đóng.
+ */
 export function shouldClosePeekOnEscape(
   e: Pick<KeyLike, 'key' | 'defaultPrevented'>,
-  ctx: { overlayOpen: boolean },
+  ctx: { overlayOpen: boolean; draftFocused?: boolean; dragging?: boolean },
 ): boolean {
-  return e.key === 'Escape' && !e.defaultPrevented && !ctx.overlayOpen;
+  return (
+    e.key === 'Escape' &&
+    !e.defaultPrevented &&
+    !ctx.overlayOpen &&
+    !ctx.draftFocused &&
+    !ctx.dragging
+  );
+}
+
+/** Phần tử nhập liệu đang chứa chữ (ô input/textarea có giá trị, hoặc contenteditable có nội dung) — tức có nháp chưa gửi. */
+export function hasDraftText(
+  t: {
+    tagName?: string;
+    value?: string;
+    isContentEditable?: boolean;
+    textContent?: string | null;
+  } | null,
+): boolean {
+  if (!t) return false;
+  const tag = t.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return (t.value ?? '').trim() !== '';
+  if (t.isContentEditable) return (t.textContent ?? '').trim() !== '';
+  return false;
 }

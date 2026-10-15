@@ -284,7 +284,10 @@ export function IssueStoryPointsInline({
         onBlur={(e) => save(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          if (e.key === 'Escape') setEditing(false);
+          if (e.key === 'Escape') {
+            e.preventDefault(); // huỷ sửa ô này thôi — panel xem nhanh không đóng theo
+            setEditing(false);
+          }
         }}
       />
     );
@@ -521,7 +524,10 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
           onBlur={(e) => save(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-            if (e.key === 'Escape') setEditing(false);
+            if (e.key === 'Escape') {
+              e.preventDefault(); // huỷ sửa ô này thôi — panel xem nhanh không đóng theo
+              setEditing(false);
+            }
           }}
         />
       ) : canEdit ? (
