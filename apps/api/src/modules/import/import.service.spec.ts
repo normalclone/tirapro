@@ -94,7 +94,7 @@ describe('ImportService.importJson — assignee chỉ là thành viên workspace
       },
     });
     expect(res.skippedAssignees).toBe(1);
-    const updateArg = prisma.importJob.update.mock.calls.at(-1)![0] as unknown as {
+    const updateArg = (prisma.importJob.update.mock.calls as unknown[][]).at(-1)![0] as {
       data: { result: { skippedAssignees: number } };
     };
     expect(updateArg.data.result.skippedAssignees).toBe(1);

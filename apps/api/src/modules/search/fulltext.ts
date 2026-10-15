@@ -62,8 +62,6 @@ export function isMissingSearchObject(err: unknown): boolean {
   if (codes.includes(e.code as string) || codes.includes(e.meta?.code as string)) return true;
   return typeof e.message === 'string' && codes.some((c) => (e.message as string).includes(c));
 }
-/** Tên cũ — giữ cho caller/test hiện có. */
-export const isMissingColumnError = isMissingSearchObject;
 
 /** Lỗi cú pháp (42601) — phòng thủ khi `to_tsquery` vẫn nhận chuỗi lạ mà bước lọc token bỏ sót. */
 export function isSyntaxError(err: unknown): boolean {

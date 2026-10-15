@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  buildFulltextQuery,
-  FulltextSearcher,
-  isMissingColumnError,
-  isMissingSearchObject,
-} from './fulltext';
+import { buildFulltextQuery, FulltextSearcher, isMissingSearchObject } from './fulltext';
 
 /** Có surrogate mồ côi (nửa cặp UTF-16) không. */
 const hasLoneSurrogate = (s: string): boolean =>
@@ -78,29 +73,28 @@ describe('buildFulltextQuery — bỏ dấu/tiền tố', () => {
   });
 });
 
-describe('isMissingColumnError / isMissingSearchObject', () => {
-  it('nhận cả 42883 (thiếu hàm immutable_unaccent), cùng một hàm với tên cũ', () => {
+describe('isMissingSearchObject', () => {
+  it('nhận cả 42883 (thiếu hàm immutable_unaccent)', () => {
     expect(isMissingSearchObject({ code: 'P2010', meta: { code: '42883' } })).toBe(true);
     expect(isMissingSearchObject(new Error('Raw query failed. Code: `42883`. function'))).toBe(
       true,
     );
-    expect(isMissingColumnError).toBe(isMissingSearchObject);
   });
   it('nhận mã 42703 ở các dạng lỗi Prisma/pg', () => {
-    expect(isMissingColumnError({ code: 'P2010', meta: { code: '42703', message: 'x' } })).toBe(
+    expect(isMissingSearchObject({ code: 'P2010', meta: { code: '42703', message: 'x' } })).toBe(
       true,
     );
-    expect(isMissingColumnError({ code: '42703' })).toBe(true);
+    expect(isMissingSearchObject({ code: '42703' })).toBe(true);
     expect(
-      isMissingColumnError(
+      isMissingSearchObject(
         new Error('Raw query failed. Code: `42703`. Message: column "searchVector" does not exist'),
       ),
     ).toBe(true);
   });
   it('không nhận lỗi khác', () => {
-    expect(isMissingColumnError(new Error('timeout'))).toBe(false);
-    expect(isMissingColumnError({ code: 'P2010', meta: { code: '57014' } })).toBe(false);
-    expect(isMissingColumnError(null)).toBe(false);
+    expect(isMissingSearchObject(new Error('timeout'))).toBe(false);
+    expect(isMissingSearchObject({ code: 'P2010', meta: { code: '57014' } })).toBe(false);
+    expect(isMissingSearchObject(null)).toBe(false);
   });
 });
 
@@ -270,7 +264,9 @@ describe('FulltextSearcher.search', () => {
       'connection lost',
     );
   });
+});
 
+describe('FulltextSearcher.search — log đường phòng thủ 42601', () => {
   it('FW6: đường phòng thủ 42601 ghi log warn, nhưng chỉ một lần trong mỗi khoảng', async () => {
     vi.useFakeTimers();
     try {
