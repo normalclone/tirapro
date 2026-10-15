@@ -25,7 +25,7 @@ Jira clone + nâng cấp (AI, realtime, analytics). Monorepo pnpm + Turborepo.
 - Auth: JWT access (in-memory FE) + refresh rotation (httpOnly cookie). RBAC = permission string `resource:action`.
 - Response: list bọc envelope `{success,data,pageInfo,meta}`; single trả raw object. Error `{success:false,error:{code,...}}`.
 - Naming: REST `api/v1/<plural>`; domain event `domain.action`; WS event `domain:action`; error code `SCREAMING_SNAKE`.
-- Degrade gracefully: thiếu `ANTHROPIC_API_KEY` → AI heuristic; Redis down → REST vẫn chạy; search hiện = JQL → Prisma `where` (ILIKE); FTS/pgvector trong `apps/api/prisma/sql/01_pgvector_fts.sql` là chuẩn bị, **chưa dùng**.
+- Degrade gracefully: thiếu `ANTHROPIC_API_KEY` → AI heuristic; Redis down → REST vẫn chạy; search = JQL → Prisma `where`; ô tìm văn bản dùng full-text Postgres (`searchVector` trong `apps/api/prisma/sql/01_pgvector_fts.sql`, bật bằng `pnpm --filter @tirapro/api run db:raw`) — chưa chạy `db:raw` thì tự rơi về ILIKE. Phần pgvector (embedding) trong file đó vẫn **chưa dùng**.
 
 ## Thiết kế UI — impeccable + ease-of-use
 Dự án dùng skill **impeccable** cho frontend. **Ưu tiên cao nhất: thật thuận tiện, dễ dùng** (`docs/UX_CONVENTIONS.md` — keyboard-first/Cmd+K, optimistic UI, inline edit, quick-add, undo, empty states, AI giảm gõ tay). Khi build/sửa UI:
