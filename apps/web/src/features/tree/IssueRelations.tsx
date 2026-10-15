@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ListTree } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import { byPriorityThenStatus } from '@/lib/issueOrder';
+import { isEpicIssue, treeParentId } from '@/lib/issueRefs';
 import { subtreeProgress } from '@/lib/issueTree';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { categoryColor } from '@/lib/statusColor';
@@ -19,11 +20,12 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
   const children = useMemo(
     () =>
       issues
-        .filter((i) => i.parentId === issue.id)
+        .filter((i) => treeParentId(i) === issue.id)
         .slice()
         .sort(byPriorityThenStatus),
     [issues, issue.id],
   );
+  const isEpic = isEpicIssue(issue);
   const progress = useMemo(() => subtreeProgress(issues, issue.id), [issues, issue.id]);
 
   // Chỉ hiển thị mục Việc con khi thực sự có việc con.
@@ -35,9 +37,13 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
         <ListTree className="h-4 w-4 text-muted" aria-hidden />
         <h2
           className="text-sm font-medium text-ink-strong"
-          title="Những việc nhỏ được tách ra từ việc này. Xong hết việc con thì việc cha mới coi là xong."
+          title={
+            isEpic
+              ? 'Các công việc thuộc epic này (gắn epic hoặc là việc con trực tiếp).'
+              : 'Những việc nhỏ được tách ra từ việc này. Xong hết việc con thì việc cha mới coi là xong.'
+          }
         >
-          Việc con ({children.length})
+          {isEpic ? 'Công việc trong epic' : 'Việc con'} ({children.length})
         </h2>
         {progress.total > 0 && (
           <span className="ml-auto tabular text-xs text-muted">{progress.pct}% hoàn thành</span>
