@@ -65,10 +65,23 @@ describe('DigestsService.run — token không dùng được', () => {
     expect(telegram.send).not.toHaveBeenCalled();
   });
 
-  it('tích hợp ERROR nhưng token dùng được → không gửi (chờ "Gửi thử" phục hồi), không 422', async () => {
-    const { service, telegram } = setup({ kind: 'own', token: 'T' }, 'ERROR');
-    await expect(service.run('w1', 's1')).resolves.toMatchObject({ sent: false });
+  it('tích hợp ERROR nhưng token dùng được → 422 gợi ý "Gửi thử", không gửi, không ghi lastRunAt', async () => {
+    const { service, telegram, prisma } = setup({ kind: 'own', token: 'T' }, 'ERROR');
+    await expect(service.run('w1', 's1')).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('bấm Gửi thử') as unknown,
+    });
     expect(telegram.send).not.toHaveBeenCalled();
+    expect(prisma.reportSubscription.update).not.toHaveBeenCalled();
+  });
+
+  it('sent:false (kênh tắt/không có) → không ghi lastRunAt; sent:true → ghi lastRunAt', async () => {
+    const off = setup({ kind: 'global' }, 'DISABLED');
+    await expect(off.service.run('w1', 's1')).resolves.toMatchObject({ sent: false });
+    expect(off.prisma.reportSubscription.update).not.toHaveBeenCalled();
+    const ok = setup({ kind: 'global' });
+    await expect(ok.service.run('w1', 's1')).resolves.toMatchObject({ sent: true });
+    expect(ok.prisma.reportSubscription.update).toHaveBeenCalledTimes(1);
   });
 
   it('global → gửi với token null', async () => {
@@ -81,6 +94,52 @@ describe('DigestsService.run — token không dùng được', () => {
     const { service, telegram } = setup({ kind: 'own', token: 'T' });
     await expect(service.run('w1', 's1')).resolves.toMatchObject({ sent: true });
     expect(telegram.send).toHaveBeenCalledWith('T', 'c1', 'tổng kết');
+  });
+});
+
+describe('DigestsService — kênh phải thuộc workspace', () => {
+  it('send(run) ràng workspaceId của subscription khi tra kênh', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    await service.run('w1', 's1');
+    expect(prisma.integrationChannel.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'ch1',
+          workspaceId: 'w1',
+          isEnabled: true,
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('create với channelId của workspace khác -> 404, không ghi', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    prisma.integrationChannel.findFirst.mockResolvedValueOnce(null as never);
+    const create = vi.fn();
+    (prisma.reportSubscription as Record<string, unknown>).create = create;
+    await expect(
+      service.create('w1', 'u1', { name: 'n', channelId: 'khac-ws' }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(prisma.integrationChannel.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'khac-ws', workspaceId: 'w1' } }),
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('update channelId của workspace khác -> 404, không ghi', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    prisma.integrationChannel.findFirst.mockResolvedValueOnce(null as never);
+    await expect(service.update('w1', 's1', { channelId: 'khac-ws' })).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(prisma.reportSubscription.update).not.toHaveBeenCalled();
+  });
+
+  it('update channelId null (gỡ kênh) không tra kênh', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    await service.update('w1', 's1', { channelId: null });
+    expect(prisma.integrationChannel.findFirst).not.toHaveBeenCalled();
+    expect(prisma.reportSubscription.update).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -127,7 +186,7 @@ function makeNode(
   );
   const send = vi.spyOn(service as never, 'send' as never);
   if (opts.sendFails) send.mockRejectedValue(new Error('telegram down'));
-  else send.mockResolvedValue({ sent: true, tokenUnusable: false });
+  else send.mockResolvedValue({ sent: true, tokenUnusable: false, integrationError: false });
   vi.spyOn(service, 'buildDigest').mockResolvedValue('t');
   return { service, updateMany, send };
 }
@@ -159,6 +218,7 @@ describe('DigestsService.runScheduled — chống gửi đôi (CAS lastRunAt)', 
     const { service, send, updateMany } = makeNode([{ id: 's1', lastRunAt: null }]);
     await service.runScheduled();
     expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('w1', 'c1', 't'); // ràng workspaceId của subscription
     expect(updateMany.mock.invocationCallOrder[0]!).toBeLessThan(send.mock.invocationCallOrder[0]!);
   });
 

@@ -200,7 +200,7 @@ Mỗi báo cáo dưới đây mô tả: **nguồn dữ liệu → công thức �
   - `remaining(d)` = `committed₀ + Σ scopeAdded(≤d) − Σ scopeRemoved(≤d) − Σ completed(≤d)`, trong đó `completed` = issue chuyển sang `newCategory=DONE` (lấy lần DONE đầu tiên; nếu reopen rồi done lại → xử lý net theo `occurredAt`).
   - `ideal(d)` = đường thẳng từ `committed₀` về `0`, chia đều **chỉ trên working days** (bỏ T7/CN/holidays): `ideal(dₖ) = committed₀ × (1 − k / totalWorkingDays)`.
 - **Pre-aggregation**: sprint đang mở → tính on-the-fly + cache TTL 60s. Sprint đã đóng → đọc `SprintSnapshot.burndownSeries` (bất biến).
-- **Endpoint**: `GET /api/reports/burndown?sprintId=&unit=points|count`
+- **Endpoint**: `GET /api/reports/burndown?projectId=&sprintId=&unit=points|count` (`projectId` bắt buộc: quyền `report:view` tính theo dự án; sprint không thuộc dự án → 404)
 - **Shape (recharts `ComposedChart`: Area/Line)**:
 ```jsonc
 {

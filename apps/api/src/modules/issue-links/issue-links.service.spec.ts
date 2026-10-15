@@ -83,6 +83,27 @@ describe('IssueLinksService.create — link liên dự án', () => {
   });
 });
 
+describe('IssueLinksService.create — không lộ sự tồn tại của issue đích', () => {
+  it('đích không tồn tại và đích ở dự án không có quyền trả CÙNG một lỗi (403, cùng thông điệp)', async () => {
+    const missing = setup([], { a: end('a', 'p1') });
+    const denied = setup([], { a: end('a', 'p1'), b: end('b', 'p2') });
+    const e1 = await missing.service.create('w1', 'a', input, user).catch((e: unknown) => e);
+    const e2 = await denied.service.create('w1', 'a', input, user).catch((e: unknown) => e);
+    expect(e1).toMatchObject({ status: 403 });
+    expect(e2).toMatchObject({ status: 403 });
+    expect((e1 as Error).message).toBe((e2 as Error).message);
+    expect(missing.prisma.issueLink.create).not.toHaveBeenCalled();
+  });
+
+  it('tra issue đích với điều kiện dự án chưa xoá mềm', async () => {
+    const { service, prisma } = setup(['issue:edit'], { a: end('a', 'p1'), b: end('b', 'p1') });
+    await service.create('w1', 'a', input, user);
+    const wheres = prisma.issue.findFirst.mock.calls.map((c) => c[0].where);
+    const targetWhere = wheres.find((w) => w.id === 'b');
+    expect(JSON.stringify(targetWhere)).toContain('"project":{"deletedAt":null}');
+  });
+});
+
 describe('IssueLinksService.remove — link liên dự án', () => {
   function removeSetup(
     perms: string[],
@@ -139,5 +160,69 @@ describe('IssueLinksService.remove — link liên dự án', () => {
     const s = removeSetup([], { targetDeleted: true });
     await expect(s.service.remove('w1', 'l1', user)).resolves.toEqual({ success: true });
     expect(s.rbac.getEffectivePermissions).not.toHaveBeenCalled();
+  });
+});
+
+function listSetup(perms: Record<string, string[]>, rows: unknown[]) {
+  const prisma = {
+    issue: { findFirst: vi.fn(() => Promise.resolve(end('a', 'p1'))) },
+    issueLink: { findMany: vi.fn(() => Promise.resolve(rows)) },
+  };
+  const rbac = {
+    getEffectivePermissions: vi.fn((_u: string, _w: string, projectId: string) =>
+      Promise.resolve(new Set(perms[projectId] ?? [])),
+    ),
+  };
+  return { service: new IssueLinksService(prisma as never, rbac as never), prisma, rbac };
+}
+const linkRow = (id: string, other: ReturnType<typeof end>) => ({
+  id,
+  sourceIssueId: 'a',
+  targetIssueId: other.id,
+  linkTypeId: 'lt',
+  linkType: { id: 'lt', name: 'n', outwardName: 'chặn', inwardName: 'bị chặn bởi' },
+  source: end('a', 'p1'),
+  target: other,
+});
+
+describe('IssueLinksService.listForIssue — không rò issue ở dự án không xem được', () => {
+  it('đầu kia ở dự án khác và người gọi không có project:view ở đó -> bị ẩn', async () => {
+    const { service, rbac } = listSetup({ p2: [] }, [
+      linkRow('l1', end('b', 'p2')),
+      linkRow('l2', end('c', 'p1')),
+    ]);
+    const out = await service.listForIssue('w1', 'a', user);
+    expect(out.map((l) => l.id)).toEqual(['l2']);
+    expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', 'p2');
+  });
+
+  it('có project:view ở dự án kia -> hiện; mỗi dự án chỉ tra quyền một lần', async () => {
+    const { service, rbac } = listSetup({ p2: ['project:view'] }, [
+      linkRow('l1', end('b', 'p2')),
+      linkRow('l2', end('d', 'p2')),
+    ]);
+    expect((await service.listForIssue('w1', 'a', user)).map((l) => l.id)).toEqual(['l1', 'l2']);
+    expect(rbac.getEffectivePermissions).toHaveBeenCalledTimes(1);
+  });
+
+  it('cùng dự án với issue đang xem và system admin -> không tra quyền', async () => {
+    const same = listSetup({}, [linkRow('l1', end('c', 'p1'))]);
+    await same.service.listForIssue('w1', 'a', user);
+    expect(same.rbac.getEffectivePermissions).not.toHaveBeenCalled();
+    const admin = listSetup({}, [linkRow('l1', end('b', 'p2'))]);
+    expect(
+      await admin.service.listForIssue('w1', 'a', { id: 'u9', isSystemAdmin: true }),
+    ).toHaveLength(1);
+    expect(admin.rbac.getEffectivePermissions).not.toHaveBeenCalled();
+  });
+
+  it('where loại issue đầu kia đã xoá mềm / dự án xoá mềm', async () => {
+    const { service, prisma } = listSetup({}, []);
+    await service.listForIssue('w1', 'a', user);
+    const where = JSON.stringify(
+      (prisma.issueLink.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
+    );
+    expect(where).toContain('"deletedAt":null');
+    expect(where).toContain('"project":{"deletedAt":null}');
   });
 });

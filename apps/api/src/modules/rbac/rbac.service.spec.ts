@@ -39,6 +39,7 @@ function setup(redis: 'ok' | 'down' = 'ok') {
     codeRepository: { findFirst: vi.fn() },
     comment: { findFirst: vi.fn() },
     attachment: { findFirst: vi.fn() },
+    workLog: { findFirst: vi.fn() },
     issueLink: { findFirst: vi.fn() },
     version: { findFirst: vi.fn() },
     workspaceMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
@@ -120,7 +121,7 @@ describe('RbacService.resolveProjectId', () => {
     prisma.comment.findFirst.mockResolvedValue(null);
     await expect(svc.resolveProjectId('W1', 'comment', 'C-ws-khac')).resolves.toBeNull();
     expect(prisma.comment.findFirst).toHaveBeenCalledWith({
-      where: { id: 'C-ws-khac', issue: { workspaceId: 'W1' } },
+      where: { id: 'C-ws-khac', issue: { workspaceId: 'W1', project: { deletedAt: null } } },
       select: { issue: { select: { projectId: true } } },
     });
   });
@@ -164,6 +165,8 @@ describe('RbacService.resolveProjectId', () => {
       expect.objectContaining({
         where: {
           id: 'L1',
+          source: { project: { deletedAt: null } },
+          target: { project: { deletedAt: null } },
           OR: [{ source: { workspaceId: 'W1' } }, { target: { workspaceId: 'W1' } }],
         },
       }),
@@ -297,5 +300,48 @@ describe('RbacService.getEffectivePermissions', () => {
     const perms = await svc.getEffectivePermissions('U1', 'W1', 'P1');
     expect(perms.size).toBe(0);
     expect(prisma.rolePermission.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('RbacService.resolveProjectId — tài nguyên của dự án đã xoá mềm', () => {
+  it.each([
+    ['comment', 'comment'],
+    ['worklog', 'workLog'],
+  ] as const)(
+    '%s: issue cha của dự án đã xoá mềm bị loại (where có project.deletedAt:null)',
+    async (kind, model) => {
+      const { svc, prisma } = setup();
+      prisma[model].findFirst.mockResolvedValue(null);
+      await expect(svc.resolveProjectId('W1', kind, 'X1')).resolves.toBeNull();
+      expect(prisma[model].findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'X1', issue: { workspaceId: 'W1', project: { deletedAt: null } } },
+        }),
+      );
+    },
+  );
+
+  it('attachment: cả đường issue lẫn đường comment->issue đều loại dự án đã xoá mềm', async () => {
+    const { svc, prisma } = setup();
+    prisma.attachment.findFirst.mockResolvedValue(null);
+    await expect(svc.resolveProjectId('W1', 'attachment', 'A1')).resolves.toBeNull();
+    const live = { workspaceId: 'W1', project: { deletedAt: null } };
+    expect(prisma.attachment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'A1', OR: [{ issue: live }, { comment: { issue: live } }] },
+      }),
+    );
+  });
+
+  it('issueLink: link có đầu ở dự án đã xoá mềm bị loại (where đòi cả hai đầu project.deletedAt:null)', async () => {
+    const { svc, prisma } = setup();
+    prisma.issueLink.findFirst.mockResolvedValue(null);
+    await expect(svc.resolveProjectId('W1', 'issueLink', 'L1')).resolves.toBeNull();
+    const where = (prisma.issueLink.findFirst.mock.calls[0] as unknown as [{ where: object }])[0]
+      .where;
+    expect(where).toMatchObject({
+      source: { project: { deletedAt: null } },
+      target: { project: { deletedAt: null } },
+    });
   });
 });

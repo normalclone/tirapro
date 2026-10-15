@@ -35,6 +35,9 @@ export interface UpdateDigestInput {
   metrics?: string[];
 }
 
+/** Tích hợp đang ERROR (token vẫn dùng được): digest không gửi cho tới khi "Gửi thử" phục hồi. */
+const INTEGRATION_ERROR_MESSAGE = 'Tích hợp đang ở trạng thái Lỗi — bấm Gửi thử để kiểm tra lại';
+
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 /** Cửa sổ chống gửi đôi cho cron: bằng TTL khoá cron (1800s). */
 const DIGEST_DEDUPE_MS = 30 * 60 * 1000;
@@ -68,6 +71,7 @@ export class DigestsService implements OnApplicationShutdown {
 
   /** Tạo subscription mới. */
   async create(workspaceId: string, userId: string, input: CreateDigestInput) {
+    if (input.channelId) await this.assertChannelInWorkspace(workspaceId, input.channelId);
     return this.prisma.reportSubscription.create({
       data: {
         workspaceId,
@@ -85,6 +89,8 @@ export class DigestsService implements OnApplicationShutdown {
   /** Cập nhật subscription (name/schedule/isEnabled/channelId/metrics). */
   async update(workspaceId: string, id: string, input: UpdateDigestInput) {
     await this.requireSubscription(workspaceId, id);
+    // null = gỡ kênh (không cần kiểm).
+    if (input.channelId) await this.assertChannelInWorkspace(workspaceId, input.channelId);
     const data: Prisma.ReportSubscriptionUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
     if (input.schedule !== undefined) data.schedule = input.schedule;
@@ -101,16 +107,26 @@ export class DigestsService implements OnApplicationShutdown {
     return { success: true };
   }
 
-  /** Chạy ngay một subscription: tính toán + gửi + cập nhật lastRunAt. */
+  /**
+   * Chạy ngay một subscription: tính toán + gửi + cập nhật lastRunAt.
+   * Chỉ ghi lastRunAt khi thật sự gửi được — `sent:false` không được làm cron bỏ qua sub trong cửa sổ dedupe.
+   */
   async run(workspaceId: string, id: string): Promise<{ sent: boolean; summaryText: string }> {
     const sub = await this.requireSubscription(workspaceId, id);
     const summaryText = await this.buildDigest(workspaceId, sub.projectId ?? undefined);
-    const { sent, tokenUnusable } = await this.send(sub.channelId, summaryText);
+    const { sent, tokenUnusable, integrationError } = await this.send(
+      workspaceId,
+      sub.channelId,
+      summaryText,
+    );
     if (tokenUnusable) throw new BusinessRuleException(TELEGRAM_TOKEN_UNUSABLE_MESSAGE);
-    await this.prisma.reportSubscription.update({
-      where: { id },
-      data: { lastRunAt: new Date() },
-    });
+    if (integrationError) throw new BusinessRuleException(INTEGRATION_ERROR_MESSAGE);
+    if (sent) {
+      await this.prisma.reportSubscription.update({
+        where: { id },
+        data: { lastRunAt: new Date() },
+      });
+    }
     return { sent, summaryText };
   }
 
@@ -255,16 +271,19 @@ export class DigestsService implements OnApplicationShutdown {
    * Gửi digest qua Telegram nếu có channelId. Degrade-graceful:
    * - Không có channelId / không tìm thấy kênh / kênh tắt / token thiếu → sent=false, KHÔNG ném.
    * - Token riêng của tích hợp không giải mã được → sent=false, tokenUnusable=true (KHÔNG rơi về bot toàn cục).
+   * - Tích hợp đang ERROR nhưng token dùng được → sent=false, integrationError=true (chờ "Gửi thử" phục hồi).
+   * Kênh phải thuộc `workspaceId` (không gửi qua kênh của workspace khác).
    */
   private async send(
+    workspaceId: string,
     channelId: string | null,
     text: string,
-  ): Promise<{ sent: boolean; tokenUnusable: boolean }> {
-    const notSent = { sent: false, tokenUnusable: false };
+  ): Promise<{ sent: boolean; tokenUnusable: boolean; integrationError: boolean }> {
+    const notSent = { sent: false, tokenUnusable: false, integrationError: false };
     if (!channelId) return notSent;
     try {
       const channel = await this.prisma.integrationChannel.findFirst({
-        where: { id: channelId, isEnabled: true },
+        where: { id: channelId, workspaceId, isEnabled: true },
         include: { integration: true },
       });
       if (!channel) return notSent;
@@ -280,15 +299,18 @@ export class DigestsService implements OnApplicationShutdown {
       const res = this.telegram.resolveBotToken(integration.config);
       if (res.kind === 'unusable') {
         await this.integrations.reportUnusableToken(integration.id);
-        return { sent: false, tokenUnusable: true };
+        return { sent: false, tokenUnusable: true, integrationError: false };
       }
-      if (integration.status === IntegrationStatus.ERROR) return notSent; // token ổn nhưng tích hợp chưa phục hồi (Gửi thử)
+      // Token ổn nhưng tích hợp chưa phục hồi (Gửi thử).
+      if (integration.status === IntegrationStatus.ERROR) {
+        return { sent: false, tokenUnusable: false, integrationError: true };
+      }
       const sent = await this.telegram.send(
         res.kind === 'own' ? res.token : null,
         channel.externalId,
         text,
       );
-      return { sent, tokenUnusable: false };
+      return { sent, tokenUnusable: false, integrationError: false };
     } catch (err) {
       this.warn('send', err);
       return notSent;
@@ -360,7 +382,7 @@ export class DigestsService implements OnApplicationShutdown {
         if (claimed.count === 0) continue;
         try {
           const text = await this.buildDigest(sub.workspaceId, sub.projectId ?? undefined);
-          await this.send(sub.channelId, text);
+          await this.send(sub.workspaceId, sub.channelId, text);
         } catch (err) {
           // Chỉ là lưới an toàn cho lỗi BẤT NGỜ (vd buildDigest ném). send()/telegram.send tự nuốt lỗi
           // gửi nên lỗi mạng KHÔNG đi vào đây => không retry trong ngày (hành vi cũ). Cơ chế là at-most-once:
@@ -380,6 +402,15 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   // ----------------------------- Helpers ------------------------------
+
+  /** Kênh phải thuộc workspace của người gọi — chặn trỏ digest vào kênh Telegram của workspace khác. */
+  private async assertChannelInWorkspace(workspaceId: string, channelId: string): Promise<void> {
+    const channel = await this.prisma.integrationChannel.findFirst({
+      where: { id: channelId, workspaceId },
+      select: { id: true },
+    });
+    if (!channel) throw new NotFoundAppException('Kênh thông báo');
+  }
 
   private async requireSubscription(workspaceId: string, id: string) {
     const row = await this.prisma.reportSubscription.findFirst({

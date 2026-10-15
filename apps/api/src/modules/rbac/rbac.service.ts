@@ -18,6 +18,8 @@ const issueInLiveProject = (value: string, workspaceId: string) => ({
   workspaceId,
   project: { deletedAt: null },
 });
+// Điều kiện đầu issue: thuộc workspace và dự án chưa bị xoá mềm.
+const liveIssueEnd = (workspaceId: string) => ({ workspaceId, project: { deletedAt: null } });
 const inWorkspace = (value: string, workspaceId: string) => ({ id: value, workspaceId });
 const ownProjectId = (row: { projectId: string | null }) => row.projectId;
 
@@ -73,7 +75,7 @@ const RESOURCE_RESOLVERS: Record<
   // Worklog đi qua issue cha.
   worklog: {
     model: 'workLog',
-    where: (value, workspaceId) => ({ id: value, issue: { workspaceId } }),
+    where: (value, workspaceId) => ({ id: value, issue: liveIssueEnd(workspaceId) }),
     select: { issue: { select: projectIdOnly } },
     project: (row: { issue: { projectId: string } }) => row.issue.projectId,
   },
@@ -91,7 +93,7 @@ const RESOURCE_RESOLVERS: Record<
   },
   comment: {
     model: 'comment',
-    where: (value, workspaceId) => ({ id: value, issue: { workspaceId } }),
+    where: (value, workspaceId) => ({ id: value, issue: liveIssueEnd(workspaceId) }),
     select: { issue: { select: projectIdOnly } },
     project: (row: { issue: { projectId: string } }) => row.issue.projectId,
   },
@@ -100,7 +102,7 @@ const RESOURCE_RESOLVERS: Record<
     model: 'attachment',
     where: (value, workspaceId) => ({
       id: value,
-      OR: [{ issue: { workspaceId } }, { comment: { issue: { workspaceId } } }],
+      OR: [{ issue: liveIssueEnd(workspaceId) }, { comment: { issue: liveIssueEnd(workspaceId) } }],
     }),
     select: {
       issue: { select: projectIdOnly },
@@ -112,10 +114,13 @@ const RESOURCE_RESOLVERS: Record<
     }) => row.issue?.projectId ?? row.comment?.issue.projectId ?? null,
   },
   // Hai đầu có thể khác dự án: lấy đầu thuộc workspace hiện tại (ưu tiên đầu nguồn).
+  // Link có một đầu ở dự án đã xoá mềm = không tồn tại (cả hai đầu đều phải ở dự án còn sống).
   issueLink: {
     model: 'issueLink',
     where: (value, workspaceId) => ({
       id: value,
+      source: { project: { deletedAt: null } },
+      target: { project: { deletedAt: null } },
       OR: [{ source: { workspaceId } }, { target: { workspaceId } }],
     }),
     select: {

@@ -9,6 +9,7 @@ import type {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { LIVE_PROJECT } from '../../common/live-project';
 
 type Category = 'TODO' | 'IN_PROGRESS' | 'DONE';
 
@@ -59,7 +60,8 @@ export class AnalyticsService {
     }
 
     // Mọi số liệu tính bằng aggregate SQL (groupBy/count/$queryRaw) — không kéo từng issue về app.
-    const baseWhere: Prisma.IssueWhereInput = { workspaceId, deletedAt: null };
+    // Loại issue của dự án đã XOÁ; dự án chỉ lưu trữ vẫn tính vào tổng (xem comment ở `totals`).
+    const baseWhere: Prisma.IssueWhereInput = { workspaceId, deletedAt: null, ...LIVE_PROJECT };
     const openStatus: Prisma.IssueWhereInput = { status: { category: { not: 'DONE' } } };
     const overdueWhere: Prisma.IssueWhereInput = {
       ...baseWhere,
@@ -709,6 +711,7 @@ export class AnalyticsService {
                    count(*) AS n
             FROM "Issue"
             WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
+              AND EXISTS (SELECT 1 FROM "Project" p WHERE p."id" = "Issue"."projectId" AND p."deletedAt" IS NULL)
               AND "createdAt" > ${utc(low)} AND "createdAt" <= ${utc(now)}
             GROUP BY 1`
         : await this.prisma.$queryRaw<WeekRow[]>`
@@ -716,6 +719,7 @@ export class AnalyticsService {
                    count(*) AS n
             FROM "Issue"
             WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
+              AND EXISTS (SELECT 1 FROM "Project" p WHERE p."id" = "Issue"."projectId" AND p."deletedAt" IS NULL)
               AND "resolvedAt" > ${utc(low)} AND "resolvedAt" <= ${utc(now)}
             GROUP BY 1`;
     return rows

@@ -269,6 +269,27 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
     return { service: new AnalyticsService(prisma as never), prisma, queryRaw };
   }
 
+  it('mọi truy vấn issue của tổng quan loại dự án đã xoá mềm; raw SQL có EXISTS Project.deletedAt IS NULL', async () => {
+    const { service, prisma, queryRaw } = make();
+    await service.workspaceOverview('w1');
+    expect(prisma.issue.groupBy.mock.calls.length).toBeGreaterThan(0);
+    for (const c of prisma.issue.groupBy.mock.calls)
+      expect(JSON.stringify((c[0] as { where: unknown }).where)).toContain(
+        '"project":{"deletedAt":null}',
+      );
+    for (const c of prisma.issue.count.mock.calls)
+      expect(JSON.stringify((c[0] as { where: unknown }).where)).toContain(
+        '"project":{"deletedAt":null}',
+      );
+    for (const c of prisma.issue.findMany.mock.calls)
+      expect(JSON.stringify((c[0] as { where: unknown }).where)).toContain(
+        '"project":{"deletedAt":null}',
+      );
+    expect(queryRaw.mock.calls).toHaveLength(2);
+    for (const call of queryRaw.mock.calls)
+      expect(sqlOf(call)).toMatch(/"Project"[\s\S]*"deletedAt" IS NULL/);
+  });
+
   it('totals gồm cả project lưu trữ, byProject chỉ gồm project đang hiển thị', async () => {
     const { service } = make();
     const r = await service.workspaceOverview('w1');
