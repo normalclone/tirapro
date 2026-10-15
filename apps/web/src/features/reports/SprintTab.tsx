@@ -204,7 +204,7 @@ function SprintExport({
 const upper = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Hàng 5 chỉ số: Cam kết · Hoàn thành · Còn lại · Thời gian · Velocity TB. */
-export function SprintSummaryCards({ summary }: { summary: SprintSummaryReport }) {
+function SprintSummaryCards({ summary }: { summary: SprintSummaryReport }) {
   const { committed, completed, remaining, initialCommitted, velocity, sprint } = summary;
   const time = sprintTimeInfo(sprint);
   const scopeChanged =

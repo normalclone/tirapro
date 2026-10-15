@@ -72,7 +72,7 @@ export function ChartSkeleton() {
 /* Hàng chỉ số                                                         */
 /* ------------------------------------------------------------------ */
 
-export type StatTone = 'default' | 'progress' | 'done' | 'danger' | 'warning';
+type StatTone = 'default' | 'progress' | 'done' | 'danger' | 'warning';
 
 const STAT_TONE: Record<StatTone, string> = {
   default: 'text-ink-strong',
