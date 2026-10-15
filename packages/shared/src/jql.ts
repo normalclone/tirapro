@@ -30,6 +30,7 @@ export const JQL_FIELDS = {
   status: { type: 'enumRef', column: 'status.name' },
   statusCategory: { type: 'enum', column: 'status.category' },
   priority: { type: 'enumRef', column: 'priority.name' },
+  severity: { type: 'enumRef', column: 'severity.name' },
   assignee: { type: 'user', column: 'assigneeId' },
   reporter: { type: 'user', column: 'reporterId' },
   sprint: { type: 'ref', column: 'sprint.name' },

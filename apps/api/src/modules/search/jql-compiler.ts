@@ -95,6 +95,13 @@ const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
     idColumn: 'priorityId',
     relNullable: true,
   },
+  severity: {
+    kind: 'relationName',
+    relation: 'severity',
+    field: 'name',
+    idColumn: 'severityId',
+    relNullable: true,
+  },
   assignee: { kind: 'idUser', idColumn: 'assigneeId' },
   reporter: { kind: 'idUser', idColumn: 'reporterId' },
   sprint: {
@@ -147,6 +154,8 @@ function compileNode(node: JqlNode, ctx: JqlCompileContext): Where {
 function compileOrder(o: JqlOrderBy): Prisma.IssueOrderByWithRelationInput {
   const cfg = FIELD_MAP[o.field];
   const dir = o.direction === 'DESC' ? 'desc' : 'asc';
+  // Severity sắp theo `rank` (cao = nghiêm trọng hơn), không theo tên — admin có thể đổi tên mức.
+  if (o.field === 'severity') return { severity: { rank: dir } };
   if (cfg.kind === 'relationName' || cfg.kind === 'enumRel') {
     return { [cfg.relation!]: { [cfg.field!]: dir } };
   }

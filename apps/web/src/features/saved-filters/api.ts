@@ -34,6 +34,7 @@ export interface FilterFields {
   types: FieldOption[];
   statuses: FieldOption[];
   priorities: FieldOption[];
+  severities: FieldOption[];
   sprints: FieldOption[];
   labels: FieldOption[];
   resolutions: FieldOption[];

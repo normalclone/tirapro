@@ -25,6 +25,8 @@ interface RecentsState {
   items: RecentIssue[];
   /** Ghi 1 issue vừa mở lên đầu danh sách (dedup theo key, giữ tối đa 8). */
   record: (issue: RecentIssue) => void;
+  /** Gỡ một issue (đã xoá/thu hồi) khỏi danh sách để không dẫn tới trang 404. */
+  remove: (key: string) => void;
   clear: () => void;
 }
 
@@ -40,6 +42,16 @@ export const useRecents = create<RecentsState>((set, get) => ({
       { key: issue.key, summary: issue.summary },
       ...cur.filter((x) => x.key !== issue.key),
     ].slice(0, MAX);
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore quota */
+    }
+    set({ items: next });
+  },
+  remove: (key) => {
+    const next = get().items.filter((x) => x.key !== key);
+    if (next.length === get().items.length) return;
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(next));
     } catch {

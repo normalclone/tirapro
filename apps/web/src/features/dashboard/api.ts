@@ -17,6 +17,21 @@ export function useMyIssues() {
   });
 }
 
+/** Bug do tôi báo còn mở (loại chứa "bug" — chịu được workspace đổi tên loại), mới cập nhật trước. */
+export const MY_BUGS_JQL =
+  'reporter = currentUser() AND type ~ "bug" AND statusCategory != DONE ORDER BY updated DESC';
+
+export function useMyReportedBugs() {
+  return useQuery({
+    queryKey: keys.dashboard.myBugs,
+    queryFn: async () => {
+      const url = `/search?jql=${encodeURIComponent(MY_BUGS_JQL)}&limit=30`;
+      return (await api.get<ListResponse<IssueDto>>(url)).data.data;
+    },
+    staleTime: 15_000,
+  });
+}
+
 /** Số liệu tổng hợp một dự án (hoặc toàn tổ chức) cho Tổng quan admin. */
 export interface OverviewTotals {
   total: number;

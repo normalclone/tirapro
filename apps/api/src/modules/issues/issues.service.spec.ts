@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DOMAIN_EVENTS } from '@tirapro/types';
+import { Prisma } from '@prisma/client';
 import { IssuesService } from './issues.service';
 
 /** expect.stringContaining có kiểu any — bọc lại để không phát sinh cảnh báo lint. */
@@ -316,6 +317,198 @@ describe('IssuesService — OCC atomic', () => {
     const b = makeService(lost);
     await expect(b.service.softDelete('w1', 'u1', 'i1')).rejects.toMatchObject({ status: 404 });
     expect(b.events.emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('IssuesService.update — severityId, environment', () => {
+  function occTx() {
+    return {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow())),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 4 }))),
+        updateMany: vi.fn(
+          (_args: { where: Record<string, unknown>; data: Record<string, unknown> }) =>
+            Promise.resolve({ count: 1 }),
+        ),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+    };
+  }
+
+  it('kiểm mức thuộc workspace, ghi severityId, null để bỏ mức', async () => {
+    const tx = occTx();
+    const severity = { findFirst: vi.fn(() => Promise.resolve({ id: 'sv1' })) };
+    const { service } = makeService(tx, { severity });
+    await service.update('w1', 'u1', 'i1', { version: 3, severityId: 'sv1' });
+    expect(severity.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'sv1', workspaceId: 'w1' } }),
+    );
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ severityId: 'sv1' });
+    await service.update('w1', 'u1', 'i1', { version: 3, severityId: null });
+    expect(tx.issue.updateMany.mock.calls[1]![0].data).toMatchObject({ severityId: null });
+  });
+
+  it('environment: chuẩn hoá khi ghi, rỗng/null => DbNull', async () => {
+    const tx = occTx();
+    const { service } = makeService(tx);
+    await service.update('w1', 'u1', 'i1', {
+      version: 3,
+      environment: { env: 'staging', browser: ' Chrome 126 ', os: '' },
+    });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({
+      environment: { env: 'staging', browser: 'Chrome 126' },
+    });
+    await service.update('w1', 'u1', 'i1', { version: 3, environment: null });
+    expect(tx.issue.updateMany.mock.calls[1]![0].data.environment).toBe(Prisma.DbNull);
+    await service.update('w1', 'u1', 'i1', { version: 3, summary: 'x' });
+    expect(tx.issue.updateMany.mock.calls[2]![0].data).not.toHaveProperty('environment');
+  });
+
+  it('mức của workspace khác => 404, chưa ghi', async () => {
+    const tx = occTx();
+    const { service } = makeService(tx, {
+      severity: { findFirst: vi.fn(() => Promise.resolve(null)) },
+    });
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, severityId: 'x' }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('IssuesService.retract — người báo xoá việc của mình trong 10 phút', () => {
+  const at = (minAgo: number) => new Date(Date.now() - minAgo * 60_000);
+  function setup(row: Record<string, unknown>, children = 0, othersComments = 0) {
+    const issue = {
+      findFirst: vi.fn(() => Promise.resolve(issueRow(row))),
+      count: vi.fn(() => Promise.resolve(children)),
+      updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+    };
+    const comment = { count: vi.fn(() => Promise.resolve(othersComments)) };
+    return { ...makeService({ issue }, { comment }), issue, comment };
+  }
+  it('người báo, 3 phút, không việc con/bình luận người khác => xoá mềm + phát ISSUE_DELETED', async () => {
+    const { service, issue, events } = setup({
+      reporterId: 'u1',
+      createdById: 'u1',
+      createdAt: at(3),
+    });
+    await expect(service.retract('w1', 'u1', 'i1')).resolves.toEqual({ success: true });
+    const data = (
+      issue.updateMany.mock.calls as unknown as Array<[{ data: { deletedAt: unknown } }]>
+    )[0]![0].data;
+    expect(data.deletedAt).toBeInstanceOf(Date);
+    expect(events.emit).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.ISSUE_DELETED,
+      expect.objectContaining({ issueId: 'i1' }),
+    );
+  });
+  it('người tạo (không phải người báo) cũng thu hồi được', async () => {
+    const { service } = setup({ reporterId: 'u2', createdById: 'u1', createdAt: at(1) });
+    await expect(service.retract('w1', 'u1', 'i1')).resolves.toEqual({ success: true });
+  });
+  it('quá 10 phút => 422, không ghi', async () => {
+    const { service, issue } = setup({ reporterId: 'u1', createdAt: at(11) });
+    await expect(service.retract('w1', 'u1', 'i1')).rejects.toMatchObject({ status: 422 });
+    expect(issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('người được giao (không phải người báo/tạo) => 403', async () => {
+    const { service } = setup({
+      reporterId: 'u2',
+      createdById: 'u2',
+      assigneeId: 'u1',
+      createdAt: at(1),
+    });
+    await expect(service.retract('w1', 'u1', 'i1')).rejects.toMatchObject({ status: 403 });
+  });
+  it('đã có việc con hoặc bình luận của người khác => 422', async () => {
+    await expect(
+      setup({ reporterId: 'u1', createdAt: at(1) }, 1).service.retract('w1', 'u1', 'i1'),
+    ).rejects.toMatchObject({ status: 422 });
+    const { service, comment, issue } = setup({ reporterId: 'u1', createdAt: at(1) }, 0, 2);
+    await expect(service.retract('w1', 'u1', 'i1')).rejects.toMatchObject({ status: 422 });
+    // Bình luận authorId NULL cũng tính là của người khác (SQL `<>` bỏ qua NULL nếu chỉ dùng `not`).
+    expect(comment.count).toHaveBeenCalledWith({
+      where: {
+        issueId: 'i1',
+        deletedAt: null,
+        OR: [{ authorId: null }, { authorId: { not: 'u1' } }],
+      },
+    });
+    // Việc con HOẶC việc gắn qua epicId (Epic) đều chặn.
+    expect(issue.count).toHaveBeenCalledWith({
+      where: { deletedAt: null, OR: [{ parentId: 'i1' }, { epicId: 'i1' }] },
+    });
+  });
+  it('dự án đã lưu trữ => chặn', async () => {
+    const { service } = setup({
+      reporterId: 'u1',
+      createdAt: at(1),
+      project: { archivedAt: new Date() },
+    });
+    await expect(service.retract('w1', 'u1', 'i1')).rejects.toMatchObject({ status: 422 });
+  });
+});
+
+describe('IssuesService.restore — khôi phục việc từ Thùng rác', () => {
+  function setup(found: Record<string, unknown> | null, count = 1) {
+    const issue = {
+      findFirst: vi.fn(() => Promise.resolve(found ? issueRow(found) : null)),
+      findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 5 }))),
+      updateMany: vi.fn(() => Promise.resolve({ count })),
+    };
+    return { ...makeService({ issue }), issue };
+  }
+  it('ghi deletedAt:null chỉ khi đang xoá, tăng version, phát ISSUE_UPDATED, trả IssueDto', async () => {
+    const { service, issue, events } = setup({ deletedAt: new Date() });
+    const dto = await service.restore('w1', 'u9', 'p1', 'i1');
+    expect(issue.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'i1', workspaceId: 'w1', projectId: 'p1', deletedAt: { not: null } },
+      }),
+    );
+    expect(issue.updateMany).toHaveBeenCalledWith({
+      where: { id: 'i1', workspaceId: 'w1', projectId: 'p1', deletedAt: { not: null } },
+      data: { deletedAt: null, updatedById: 'u9', version: { increment: 1 } },
+    });
+    expect(dto.id).toBe('i1');
+    expect(events.emit).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.ISSUE_UPDATED,
+      expect.objectContaining({ actorId: 'u9' }),
+    );
+  });
+  it('cha/epic đã xoá mềm => khôi phục thành việc không cha/epic, changedFields nêu rõ', async () => {
+    const found = { deletedAt: new Date(), parentId: 'gone', epicId: 'live' };
+    const { service, issue, events } = setup(found);
+    (issue as unknown as { findMany: unknown }).findMany = vi.fn(() =>
+      Promise.resolve([{ id: 'live' }]),
+    );
+    await service.restore('w1', 'u9', 'p1', 'i1');
+    const data = (issue.updateMany.mock.calls as unknown as Array<[{ data: object }]>)[0]![0].data;
+    expect(data).toMatchObject({ deletedAt: null, parentId: null });
+    expect(data).not.toHaveProperty('epicId');
+    expect(events.emit).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.ISSUE_UPDATED,
+      expect.objectContaining({ changedFields: ['deletedAt', 'parentId'] }),
+    );
+  });
+  it('không có trong Thùng rác => 404; hai lần khôi phục đồng thời chỉ một thắng', async () => {
+    await expect(setup(null).service.restore('w1', 'u9', 'p1', 'i1')).rejects.toMatchObject({
+      status: 404,
+    });
+    const raced = setup({ deletedAt: new Date() }, 0);
+    await expect(raced.service.restore('w1', 'u9', 'p1', 'i1')).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(raced.events.emit).not.toHaveBeenCalled();
+  });
+  it('dự án đã lưu trữ => chặn, chưa ghi', async () => {
+    const { service, issue } = setup({
+      deletedAt: new Date(),
+      project: { archivedAt: new Date() },
+    });
+    await expect(service.restore('w1', 'u9', 'p1', 'i1')).rejects.toMatchObject({ status: 422 });
+    expect(issue.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -1210,6 +1403,26 @@ describe('IssuesService.create — statusId phải thuộc workflow của dự �
     { id: 's9', category: 'DONE', isInitial: false },
   ];
 
+  it('severityId: kiểm thuộc workspace rồi ghi vào issue; sai workspace => 404, không tạo', async () => {
+    const { tx, created } = createTx(WF);
+    const severity = { findFirst: vi.fn(() => Promise.resolve({ id: 'sv1' })) };
+    const { service } = makeService({ ...tx, severity }, {});
+    await service.create('w1', 'u1', { ...baseInput, severityId: 'sv1' });
+    expect(severity.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'sv1', workspaceId: 'w1' } }),
+    );
+    expect(created.mock.calls[0]![0].data.severityId).toBe('sv1');
+    const bad = createTx(WF);
+    const other = makeService(
+      { ...bad.tx, severity: { findFirst: vi.fn(() => Promise.resolve(null)) } },
+      {},
+    );
+    await expect(
+      other.service.create('w1', 'u1', { ...baseInput, severityId: 'x' }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(bad.created).not.toHaveBeenCalled();
+  });
+
   it('statusId của workflow khác => 422, không tạo', async () => {
     const { tx, created } = createTx(WF);
     const { service, rbac } = makeService(tx);
@@ -1854,6 +2067,51 @@ describe('IssuesService.move — neighbor cũ (409) vs hết chỗ (rebalance)',
       service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' }),
     ).rejects.toMatchObject({ status: 409, code: 'RANK_NEIGHBORS_STALE' });
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('IssuesService.query — ORDER BY severity DESC đẩy việc chưa đặt mức xuống cuối', () => {
+  type Arg = { where: { AND: unknown[] }; cursor?: { id: string }; skip?: number; take?: number };
+  const row = (id: string) => issueRow({ id });
+  const desc = [{ severity: { rank: 'desc' as const } }];
+  function svc(withSev: string[], unset: string[], cursorSeverityId: string | null = 'sv') {
+    const findMany = vi.fn((a: Arg) =>
+      Promise.resolve(
+        (JSON.stringify(a.where).includes('"severityId":null') ? unset : withSev).map(row),
+      ),
+    );
+    const findFirst = vi.fn(() => Promise.resolve({ severityId: cursorSeverityId }));
+    return { findMany, findFirst, ...makeService({ issue: { findMany, findFirst } }) };
+  }
+  it('trang 1: việc có mức trước, bù bằng việc chưa đặt mức; hai truy vấn lọc đúng severityId', async () => {
+    const { service, findMany } = svc(['a', 'b'], ['x', 'y']);
+    const page = await service.query('w1', {}, desc, undefined, 3);
+    expect(page.data.map((i) => i.id)).toEqual(['a', 'b', 'x']);
+    expect(JSON.stringify(findMany.mock.calls[0]![0].where)).toContain('"severityId":{"not":null}');
+    expect(findMany.mock.calls[1]![0].take).toBe(2); // limit + 1 - số đã có
+  });
+  it('đủ trang từ pha có mức => không truy vấn pha chưa đặt mức', async () => {
+    const { service, findMany } = svc(['a', 'b', 'c'], ['x']);
+    await service.query('w1', {}, desc, undefined, 2);
+    expect(findMany).toHaveBeenCalledTimes(1);
+  });
+  it('con trỏ nằm ở pha chưa đặt mức => bỏ pha có mức, cursor+skip ở pha chưa đặt', async () => {
+    const { service, findMany } = svc(['a'], ['y', 'z'], null);
+    const page = await service.query('w1', {}, desc, 'x', 2);
+    expect(page.data.map((i) => i.id)).toEqual(['y', 'z']);
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany.mock.calls[0]![0]).toMatchObject({ cursor: { id: 'x' }, skip: 1 });
+  });
+  it('con trỏ không còn => trang rỗng (không quay lại trang đầu)', async () => {
+    const { service, findFirst } = svc(['a'], ['x']);
+    findFirst.mockResolvedValueOnce(null as never);
+    const page = await service.query('w1', {}, desc, 'gone', 2);
+    expect(page.data).toEqual([]);
+  });
+  it('ASC giữ nguyên một truy vấn (Postgres đã đặt NULL cuối)', async () => {
+    const { service, findMany } = svc(['a'], []);
+    await service.query('w1', {}, [{ severity: { rank: 'asc' } }], undefined, 2);
+    expect(findMany).toHaveBeenCalledTimes(1);
   });
 });
 

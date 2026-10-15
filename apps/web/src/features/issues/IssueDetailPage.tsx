@@ -36,7 +36,8 @@ import { ProjectRail } from '@/features/projects/ProjectRail';
 import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useMyWorkspaces } from '@/features/workspace/api';
 import { useWorkflows } from '@/features/workflow-settings/api';
-import { useDeleteIssue } from '@/features/issue-edit/api';
+import { useDeleteIssue, useRetractIssue } from '@/features/issue-edit/api';
+import { RetractMenuItem } from './RetractMenuItem';
 import { IssueRelations } from '@/features/tree/IssueRelations';
 import { CustomFieldsPanel } from '@/features/issue-fields/CustomFieldsPanel';
 import { AttachmentsPanel } from '@/features/attachments/AttachmentsPanel';
@@ -62,6 +63,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
 import { IssueLabelsPicker } from '@/features/issue-meta/IssueLabelsPicker';
 import { IssueComponentsPicker } from '@/features/issue-meta/IssueComponentsPicker';
+import { EnvironmentPanel } from '@/features/issue-edit/EnvironmentPanel';
 import { DelayedSpinner, EmptyState } from '@/components/ui/primitives';
 import { pageContainer } from '@/components/layout/page';
 import { Button } from '@/components/ui/Button';
@@ -156,6 +158,7 @@ export function IssueDetailPage() {
   const transition = useTransitionDetail(issue?.projectId ?? '');
   const createIssue = useCreateIssue(issue?.projectId ?? '');
   const removeIssue = useDeleteIssue();
+  const retractIssue = useRetractIssue();
 
   // Chỉ các trạng thái ở BƯỚC KẾ TIẾP — chuyển tiếp hợp lệ từ trạng thái hiện tại theo workflow.
   const currentStatusId = issue?.status.id;
@@ -170,6 +173,7 @@ export function IssueDetailPage() {
   const [wfOpen, setWfOpen] = useState(false);
   const [wfSeen, setWfSeen] = useState(false); // đã từng mở → giữ dialog trong cây để hiệu ứng đóng chạy được
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmRetract, setConfirmRetract] = useState(false);
   useEffect(() => {
     if (issue) setSummary(issue.summary);
   }, [issue?.id]);
@@ -240,7 +244,7 @@ export function IssueDetailPage() {
 
   // Phím tắt 1..9 = chuyển nhanh sang trạng thái ở bước kế tiếp.
   // Chỉ bind khi KHÔNG có overlay mở (dialog quy trình / xác nhận xoá) và không gõ trong ô nhập.
-  const shortcutsEnabled = !wfOpen && !confirmDelete && !editingSummary;
+  const shortcutsEnabled = !wfOpen && !confirmDelete && !confirmRetract && !editingSummary;
   useEffect(() => {
     if (!shortcutsEnabled) return;
     function onKey(e: KeyboardEvent) {
@@ -395,6 +399,21 @@ export function IssueDetailPage() {
       toast.success(`Đã xoá công việc ${issue.key}`);
       navigate(projectKey ? `/p/${projectKey}/board` : '/');
     } catch (e) {
+      toast.error(apiErrorMessage(e));
+    }
+  }
+
+  async function onRetract() {
+    if (!issue) return;
+    try {
+      await retractIssue.mutateAsync({ id: issue.id, key: issue.key, projectId: issue.projectId });
+      setConfirmRetract(false);
+      toast.success(`Đã thu hồi công việc ${issue.key}`, {
+        description: 'Quản trị dự án có thể khôi phục từ Thùng rác nếu cần.',
+      });
+      navigate(projectKey ? `/p/${projectKey}/board` : '/');
+    } catch (e) {
+      setConfirmRetract(false);
       toast.error(apiErrorMessage(e));
     }
   }
@@ -588,6 +607,12 @@ export function IssueDetailPage() {
                       >
                         <Link2 className="h-4 w-4 text-muted" /> Sao chép liên kết
                       </DropdownMenu.Item>
+                      <RetractMenuItem
+                        issue={issue}
+                        meId={me?.id}
+                        can={can}
+                        onSelect={() => setConfirmRetract(true)}
+                      />
                       {can('issue:delete') && (
                         <DropdownMenu.Item
                           onSelect={() => setConfirmDelete(true)}
@@ -637,11 +662,11 @@ export function IssueDetailPage() {
                           type="button"
                           disabled={transition.isPending}
                           onClick={() => changeStatus(o.id)}
-                          title={
-                            i < 9
-                              ? `Chuyển sang “${o.name}” · phím tắt ${i + 1}`
+                          title={`${
+                            o.label !== o.name
+                              ? `${o.label} → “${o.name}”`
                               : `Chuyển sang “${o.name}”`
-                          }
+                          }${i < 9 ? ` · phím tắt ${i + 1}` : ''}`}
                           className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
                         >
                           <span
@@ -649,7 +674,7 @@ export function IssueDetailPage() {
                             style={{ background: CATEGORY_COLOR[o.category] ?? 'var(--faint)' }}
                             aria-hidden
                           />
-                          {o.name}
+                          {o.label}
                           {i < 9 && (
                             <kbd
                               aria-hidden
@@ -684,6 +709,7 @@ export function IssueDetailPage() {
 
                   {/* Thành phần & phiên bản + các trường do dự án tự thêm */}
                   <IssueComponentsPicker issue={issue} />
+                  <EnvironmentPanel issue={issue} />
                   <CustomFieldsPanel issueId={issue.id} canEdit={canEditThis} />
 
                   {FEATURES.repos && devLinks && devLinks.length > 0 && (
@@ -773,6 +799,15 @@ export function IssueDetailPage() {
                 loading={removeIssue.isPending}
                 onConfirm={() => void onDelete()}
                 onCancel={() => setConfirmDelete(false)}
+              />
+              <ConfirmDialog
+                open={confirmRetract}
+                title={`Thu hồi công việc ${issue.key}?`}
+                description="Công việc sẽ biến mất khỏi bảng và mọi danh sách. Bạn không tự khôi phục được — quản trị dự án có thể khôi phục từ Thùng rác nếu cần."
+                confirmLabel="Thu hồi công việc"
+                loading={retractIssue.isPending}
+                onConfirm={() => void onRetract()}
+                onCancel={() => setConfirmRetract(false)}
               />
             </>
           )}

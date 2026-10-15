@@ -39,6 +39,7 @@ import {
   type OverviewTrendPoint,
   type OverviewWarning,
 } from './api';
+import { MyBugsSection } from './MyBugsSection';
 import { useAuth } from '@/stores/auth';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { DueBadge, dueState } from '@/components/ui/DueBadge';
@@ -681,6 +682,13 @@ function PersonalOverview() {
           />
         </div>
       )}
+
+      {/* Bug tôi báo chưa đóng / chờ tôi xác nhận — tự ẩn khi không có */}
+      <MyBugsSection
+        renderRow={(issue) => (
+          <MyIssueRow key={issue.id} issue={issue} projectKey={keyById.get(issue.projectId)} />
+        )}
+      />
 
       {/* Ưu tiên cao */}
       <section className="mb-10">

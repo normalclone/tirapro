@@ -27,6 +27,21 @@ export interface ProjectMeta {
     rank: number;
     isDefault: boolean;
   }[];
+  severities: {
+    id: string;
+    name: string;
+    description: string | null;
+    color: string | null;
+    rank: number;
+    isDefault: boolean;
+  }[];
+  resolutions: {
+    id: string;
+    name: string;
+    description: string | null;
+    rank: number;
+    isDefault: boolean;
+  }[];
 }
 
 /** Config tạo issue (issue types + priorities) cho quick-add / AI generate. */

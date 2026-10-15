@@ -6,9 +6,11 @@ import {
   type AutomationEventMeta,
   type BulkUpdateIssuesResult,
   type IssueDto,
+  type IssueEnvironment,
 } from '@tirapro/types';
 import {
   issueTypePrefix,
+  normalizeEnvironment,
   type BulkUpdateIssuesInput,
   type CreateIssueInput,
   type MoveIssueInput,
@@ -55,11 +57,15 @@ const issueWriteInclude = {
 } satisfies Prisma.IssueInclude;
 type IssueWriteRow = Prisma.IssueGetPayload<{ include: typeof issueWriteInclude }>;
 
+/** Người báo tự thu hồi (xoá) công việc của mình trong khoảng này kể từ lúc tạo. */
+export const RETRACT_WINDOW_MS = 10 * 60_000;
+
 /** Trường issue mà `update()` có thể đổi — dùng để báo `changedFields` cho automation (trigger ISSUE_UPDATED). */
 const TRACKED_FIELDS = [
   'summary',
   'description',
   'priorityId',
+  'severityId',
   'assigneeId',
   'storyPoints',
   'sprintId',
@@ -160,12 +166,25 @@ export class IssuesService {
     );
   }
 
+  /** Priority mặc định của workspace (undefined nếu chưa cấu hình). */
+  private async defaultPriorityId(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+  ): Promise<string | undefined> {
+    const def = await db.priority.findFirst({
+      where: { workspaceId, isDefault: true },
+      select: { id: true },
+    });
+    return def?.id;
+  }
+
   /** Đảm bảo metadata/quan hệ (nếu truyền) thuộc đúng workspace — chống gán/liên kết chéo tenant. */
   private async assertMetaInWorkspace(
     workspaceId: string,
     m: {
       typeId?: string | null;
       priorityId?: string | null;
+      severityId?: string | null;
       sprintId?: string | null;
       /** Import (Jira) tạo sprint CLOSED theo lịch sử rồi gắn issue vào — chỉ đường `createWithin` bật cờ này. */
       allowClosedSprint?: boolean;
@@ -184,6 +203,10 @@ export class IssuesService {
     if (m.priorityId)
       jobs.push(
         db.priority.findFirst({ where: { id: m.priorityId, workspaceId }, select: { id: true } }),
+      );
+    if (m.severityId)
+      jobs.push(
+        db.severity.findFirst({ where: { id: m.severityId, workspaceId }, select: { id: true } }),
       );
     if (m.resolutionId)
       jobs.push(
@@ -432,6 +455,7 @@ export class IssuesService {
       {
         typeId: input.typeId,
         priorityId: input.priorityId,
+        severityId: input.severityId,
         sprintId: input.sprintId,
         parentId: input.parentId,
         projectId: project.id,
@@ -471,14 +495,7 @@ export class IssuesService {
     }
 
     // Priority mặc định của workspace nếu không truyền
-    let priorityId = input.priorityId ?? undefined;
-    if (!priorityId) {
-      const def = await db.priority.findFirst({
-        where: { workspaceId, isDefault: true },
-        select: { id: true },
-      });
-      priorityId = def?.id;
-    }
+    const priorityId = input.priorityId || (await this.defaultPriorityId(db, workspaceId));
 
     const assigneeId =
       input.assigneeId ?? (project.defaultAssigneeMode === 'PROJECT_LEAD' ? project.leadId : null);
@@ -520,6 +537,8 @@ export class IssuesService {
           statusId,
           resolvedAt: isDone ? new Date() : null,
           priorityId: priorityId ?? null,
+          severityId: input.severityId ?? null,
+          environment: normalizeEnvironment(input.environment) ?? Prisma.DbNull,
           summary: input.summary,
           description: input.description ?? null,
           descriptionFormat: input.descriptionFormat,
@@ -686,6 +705,11 @@ export class IssuesService {
     const finalOrder: Prisma.IssueOrderByWithRelationInput[] = orderBy.length
       ? [...orderBy, { id: 'asc' }]
       : [{ updatedAt: 'desc' }, { id: 'asc' }];
+    // ORDER BY severity DESC: Postgres đặt NULL (chưa đặt mức) lên ĐẦU khi DESC và Prisma không cho `nulls` trên
+    // quan hệ → tách hai pha (có mức rồi chưa đặt mức) để việc chưa đặt mức luôn xuống cuối.
+    const first = finalOrder[0] as { severity?: { rank?: string } };
+    if (first.severity?.rank === 'desc')
+      return this.queryNullsLastBySeverity(where, finalOrder, cursor, limit);
     // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`); queryOrdered chỉ nhận scope đó
     const rows = await this.prisma.issue.findMany({
       where,
@@ -694,6 +718,54 @@ export class IssuesService {
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
+    return cursorPage(
+      rows.map((r) => this.toDto(r)),
+      limit,
+      (i) => i.id,
+    );
+  }
+
+  /** Hai pha cho ORDER BY severity DESC: việc có mức (theo `orderBy`), rồi việc chưa đặt mức (cùng `orderBy`). Con trỏ = id. */
+  private async queryNullsLastBySeverity(
+    where: Prisma.IssueWhereInput,
+    orderBy: Prisma.IssueOrderByWithRelationInput[],
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<PageResult<IssueDto>> {
+    let cursorInUnset = false;
+    if (cursor) {
+      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      const c = await this.prisma.issue.findFirst({
+        where: { AND: [where, { id: cursor }] },
+        select: { severityId: true },
+      });
+      if (!c) return cursorPage<IssueDto>([], limit, (i) => i.id);
+      cursorInUnset = c.severityId === null;
+    }
+    const take = limit + 1;
+    const rows: IssueRow[] = [];
+    if (!cursorInUnset) {
+      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      const withSeverity = await this.prisma.issue.findMany({
+        where: { AND: [where, { severityId: { not: null } }] },
+        include: issueInclude,
+        orderBy,
+        take,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      rows.push(...withSeverity);
+    }
+    if (rows.length < take) {
+      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      const unset = await this.prisma.issue.findMany({
+        where: { AND: [where, { severityId: null }] },
+        include: issueInclude,
+        orderBy,
+        take: take - rows.length,
+        ...(cursor && cursorInUnset ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      rows.push(...unset);
+    }
     return cursorPage(
       rows.map((r) => this.toDto(r)),
       limit,
@@ -729,6 +801,7 @@ export class IssuesService {
     await this.assertMetaInWorkspace(workspaceId, {
       typeId: input.typeId,
       priorityId: input.priorityId,
+      severityId: input.severityId,
       sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
       resolutionId: input.resolutionId,
       parentId: input.parentId,
@@ -751,6 +824,9 @@ export class IssuesService {
     if (input.summary !== undefined) data.summary = input.summary;
     if (input.description !== undefined) data.description = input.description;
     if (input.priorityId !== undefined) data.priorityId = input.priorityId ?? null;
+    if (input.severityId !== undefined) data.severityId = input.severityId ?? null;
+    if (input.environment !== undefined)
+      data.environment = normalizeEnvironment(input.environment) ?? Prisma.DbNull;
     if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId ?? null;
     if (input.storyPoints !== undefined) data.storyPoints = input.storyPoints;
     if (input.sprintId !== undefined) data.sprintId = input.sprintId ?? null;
@@ -1103,6 +1179,93 @@ export class IssuesService {
     return { success: true };
   }
 
+  /**
+   * Người BÁO/TẠO tự xoá việc của mình ngay sau khi tạo (nhầm, trùng) mà không cần `issue:delete`.
+   * Server quyết hết điều kiện: đúng người, trong `RETRACT_WINDOW_MS` kể từ `createdAt`, chưa có việc con,
+   * chưa có bình luận của người KHÁC. Xoá mềm → vào Thùng rác (quản trị dự án khôi phục được).
+   */
+  async retract(workspaceId: string, userId: string, id: string): Promise<{ success: true }> {
+    const current = await this.requireIssue(workspaceId, id); // đã chặn dự án lưu trữ
+    if (current.reporterId !== userId && current.createdById !== userId)
+      throw new ForbiddenAppException(
+        'Chỉ người báo cáo công việc này mới thu hồi được — hãy nhờ quản trị dự án xoá',
+      );
+    if (Date.now() - current.createdAt.getTime() > RETRACT_WINDOW_MS)
+      throw new BusinessRuleException('Đã quá 10 phút kể từ lúc báo — hãy nhờ quản trị dự án xoá');
+    const [children, others] = await Promise.all([
+      // Việc con (parentId) hoặc việc gắn vào Epic này (epicId) đều chặn thu hồi.
+      this.prisma.issue.count({
+        where: { deletedAt: null, OR: [{ parentId: id }, { epicId: id }] },
+      }),
+      // Bình luận không rõ tác giả (authorId NULL: tài khoản đã xoá/bình luận hệ thống) coi như của người khác;
+      // `authorId: { not }` một mình bị SQL bỏ qua NULL.
+      this.prisma.comment.count({
+        where: {
+          issueId: id,
+          deletedAt: null,
+          OR: [{ authorId: null }, { authorId: { not: userId } }],
+        },
+      }),
+    ]);
+    if (children > 0)
+      throw new BusinessRuleException('Công việc đã có việc con — hãy nhờ quản trị dự án xoá');
+    if (others > 0)
+      throw new BusinessRuleException('Đã có người bình luận — hãy nhờ quản trị dự án xoá');
+    return this.softDelete(workspaceId, userId, id);
+  }
+
+  /** Khôi phục việc đã xoá mềm (Thùng rác). Dự án lưu trữ → chặn; hai lần đồng thời chỉ một lần thắng. */
+  async restore(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+    issueId: string,
+  ): Promise<IssueDto> {
+    const where = { id: issueId, workspaceId, projectId, deletedAt: { not: null } };
+    // allow-deleted: khôi phục cố ý đọc việc đã xoá mềm
+    const current = await this.prisma.issue.findFirst({ where, include: issueWriteInclude });
+    if (!current) throw new NotFoundAppException('Công việc');
+    assertNotArchived(current.project.archivedAt);
+    // Cha/Epic đã xoá mềm (hoặc không còn) → khôi phục thành việc KHÔNG cha/epic thay vì treo vào việc đã xoá.
+    const refs = [current.parentId, current.epicId].filter((x): x is string => !!x);
+    const alive = new Set(
+      refs.length
+        ? (
+            await this.prisma.issue.findMany({
+              where: { id: { in: refs }, workspaceId, deletedAt: null },
+              select: { id: true },
+            })
+          ).map((r) => r.id)
+        : [],
+    );
+    const orphaned: string[] = [];
+    const detach: { parentId?: null; epicId?: null } = {};
+    if (current.parentId && !alive.has(current.parentId)) {
+      detach.parentId = null;
+      orphaned.push('parentId');
+    }
+    if (current.epicId && !alive.has(current.epicId)) {
+      detach.epicId = null;
+      orphaned.push('epicId');
+    }
+    const { count } = await this.prisma.issue.updateMany({
+      where,
+      data: { deletedAt: null, updatedById: userId, version: { increment: 1 }, ...detach },
+    });
+    if (count === 0) throw new NotFoundAppException('Công việc');
+    const row = await this.prisma.issue.findFirstOrThrow({
+      where: { id: issueId, workspaceId, deletedAt: null },
+      include: issueInclude,
+    });
+    const dto = this.toDto(row);
+    this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+      issue: dto,
+      actorId: userId,
+      changedFields: ['deletedAt', ...orphaned],
+    });
+    return dto;
+  }
+
   // ---------- helpers ----------
   /** Issue dùng cho thao tác GHI: dự án đã lưu trữ thì từ chối ngay. */
   private async requireIssue(workspaceId: string, id: string): Promise<IssueWriteRow> {
@@ -1338,6 +1501,7 @@ export class IssuesService {
       triageState: i.triageState,
       triageSnoozeUntil: iso(i.triageSnoozeUntil),
       occurrenceCount: i.occurrenceCount,
+      environment: (i.environment as IssueEnvironment | null) ?? null,
       rank: i.rank,
       version: i.version,
       labels: i.labels.map((l) => ({

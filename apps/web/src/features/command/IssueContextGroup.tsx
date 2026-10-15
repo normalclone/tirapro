@@ -110,9 +110,9 @@ export function IssueContextGroup({
         nextStatuses.map((s) => (
           <ActionItem
             key={s.id}
-            value={`doi trang thai chuyen ${s.name} ${issue.key}`}
+            value={`doi trang thai chuyen ${s.label} ${s.name} ${issue.key}`}
             icon={<ArrowRightLeft className={ICON} aria-hidden="true" />}
-            label={`Đổi trạng thái → ${s.name}`}
+            label={s.label !== s.name ? `${s.label} → ${s.name}` : `Đổi trạng thái → ${s.name}`}
             onSelect={() => runAction(() => void changeStatus(s.id, s.name))}
           />
         ))}

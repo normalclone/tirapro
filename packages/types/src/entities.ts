@@ -258,6 +258,16 @@ export interface IssueSummaryDto {
   assignee?: UserDto | null;
 }
 
+/** Môi trường phát sinh lỗi (Bug): do người báo điền hoặc "Điền từ phiên hiện tại". */
+export interface IssueEnvironment {
+  env?: 'production' | 'staging' | 'dev' | 'other';
+  browser?: string;
+  os?: string;
+  build?: string;
+  url?: string;
+  viewport?: string;
+}
+
 export interface IssueDto extends IssueSummaryDto {
   workspaceId: ID;
   projectId: ID;
@@ -284,6 +294,7 @@ export interface IssueDto extends IssueSummaryDto {
   triageState: TriageState | null;
   triageSnoozeUntil: ISODate | null;
   occurrenceCount: number;
+  environment: IssueEnvironment | null;
   rank: string;
   version: number;
   labels: LabelDto[];

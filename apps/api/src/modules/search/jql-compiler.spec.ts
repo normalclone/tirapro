@@ -183,3 +183,25 @@ describe('JQL statusCategory — enum, không để Prisma ném 500 (Minor 7)', 
     }
   });
 });
+
+describe('severity', () => {
+  const ctx = { currentUserId: 'U' };
+  const like = (v: string) => ({ contains: v, mode: 'insensitive' });
+  it('severity ~ / !~: quan hệ nullable, !~ gồm cả issue chưa đặt mức', () => {
+    expect(compileJql(ast('severity ~ "Crit"'), ctx).where).toEqual({
+      severity: { name: like('Crit') },
+    });
+    expect(compileJql(ast('severity !~ "a_b"'), ctx).where).toEqual({
+      OR: [
+        { severityId: null },
+        { severity: { name: { not: { contains: 'a\\_b' }, mode: 'insensitive' } } },
+      ],
+    });
+  });
+  it('severity IS EMPTY dùng cột FK; ORDER BY severity sắp theo rank', () => {
+    expect(compileJql(ast('severity IS EMPTY'), ctx).where).toEqual({ severityId: null });
+    expect(compileJql(ast('type = Bug ORDER BY severity DESC'), ctx).orderBy).toEqual([
+      { severity: { rank: 'desc' } },
+    ]);
+  });
+});

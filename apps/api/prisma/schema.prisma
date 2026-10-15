@@ -730,6 +730,7 @@ model Issue {
   fingerprint       String?  // hash để dedupe/collapse double-report từ nguồn tự động
   occurrenceCount   Int      @default(1)
   lastOccurredAt    DateTime?
+  environment       Json?    // môi trường phát sinh lỗi: {env,browser,os,build,url,viewport}
   deletedAt         DateTime?
   createdById       String?
   updatedById       String?
