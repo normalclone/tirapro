@@ -76,6 +76,7 @@ interface FieldCfg {
   field?: string; // cột bên trong relation (name/key/category)
   idColumn?: string; // cột FK để xử lý IS EMPTY trực tiếp
   column?: string; // cột scalar (summary/createdAt/storyPoints...)
+  nullable?: boolean; // cột scalar cho phép NULL (ảnh hưởng cách dựng `contains`, xem containsWhere)
 }
 
 /** Map field JQL → cách dựng Prisma where (an toàn, whitelist). */
@@ -143,23 +144,34 @@ function escapeLike(v: string): string {
   return v.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
+/** Bộ lọc chuỗi con không phân biệt hoa thường, đã escape ký tự đại diện — dùng chung cho mọi toán tử `~`/`!~`. */
+function likeFilter(v: string) {
+  return { contains: escapeLike(v), mode: 'insensitive' as const };
+}
+
+/**
+ * `column contains v` (đã escape) mà KHÔNG BAO GIỜ cho NULL: cột nullable được chặn bằng `not: null`
+ * (`NULL ILIKE …` là NULL, và `NOT NULL` vẫn là NULL => issue có giá trị NULL bị rơi khỏi phép phủ định).
+ * Nhờ vậy `NOT (…)` quanh nó (`!~`, `NOT (…)`, NOT bọc nhiều điều kiện) luôn là phần bù đúng.
+ */
+export function containsWhere(column: string, v: string, nullable = false): Where {
+  const match: Where = { [column]: likeFilter(v) };
+  return nullable ? { AND: [{ [column]: { not: null } }, match] } : match;
+}
+
 /**
  * Điều kiện Prisma ĐẦY ĐỦ cho `text ~ v`: id full-text đã xếp hạng (nếu có) HOẶC chuỗi con ở
  * summary/description/key. Đúng đắn không phụ thuộc danh sách xếp hạng (vốn bị cắt top-N);
  * danh sách đó chỉ giúp bắt token khác dạng mà `contains` không thấy và để xếp hạng (rankHint).
- *
- * Không bao giờ cho NULL (3 trị đúng/sai): `description` có thể NULL nên chặn bằng `not: null`
- * — nhờ vậy `NOT (…)` (kể cả `!~`, `NOT (text ~ …)` hay NOT bọc nhiều điều kiện) luôn là phần bù đúng,
- * không làm rơi issue không có mô tả.
+ * Không bao giờ cho NULL (xem `containsWhere`; `description` nullable).
  */
 function textMatchWhere(v: string, ranked?: readonly string[]): Where {
-  const like = { contains: escapeLike(v), mode: 'insensitive' as const };
   return {
     OR: [
       ...(ranked?.length ? [{ id: { in: [...ranked] } }] : []),
-      { summary: like },
-      { AND: [{ description: { not: null } }, { description: like }] },
-      { key: like },
+      containsWhere('summary', v),
+      containsWhere('description', v, true),
+      containsWhere('key', v),
     ],
   };
 }
@@ -196,8 +208,8 @@ function compileComparison(
     case 'text': {
       const col = cfg.column!;
       const v = scalarString(value, ctx);
-      if (op === '~') return { [col]: { contains: v, mode: 'insensitive' } };
-      if (op === '!~') return { NOT: { [col]: { contains: v, mode: 'insensitive' } } };
+      if (op === '~') return containsWhere(col, v, cfg.nullable);
+      if (op === '!~') return { NOT: containsWhere(col, v, cfg.nullable) };
       if (op === '!=') return { [col]: { not: v } };
       return { [col]: v };
     }
@@ -324,8 +336,8 @@ function stringFilter(
   if (op === 'IN') return { in: listStrings(value, ctx) };
   if (op === 'NOT IN') return { notIn: listStrings(value, ctx) };
   const v = scalarString(value, ctx);
-  if (op === '~') return { contains: v, mode: 'insensitive' };
-  if (op === '!~') return { not: { contains: v } };
+  if (op === '~') return likeFilter(v);
+  if (op === '!~') return { not: { contains: escapeLike(v) }, mode: 'insensitive' };
   if (op === '!=') return { not: v };
   return v;
 }

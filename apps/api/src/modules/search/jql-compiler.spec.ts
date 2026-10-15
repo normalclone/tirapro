@@ -3,6 +3,7 @@ import { parseJql } from '@tirapro/shared';
 import {
   collectFulltextTerms,
   compileJql,
+  containsWhere,
   primaryFulltextTerm,
   topLevelProjectKeys,
 } from './jql-compiler';
@@ -97,5 +98,34 @@ describe('JQL text ~ (full-text)', () => {
     expect(topLevelProjectKeys(ast('project = A OR text ~ "x"').where)).toBeNull();
     expect(topLevelProjectKeys(ast('NOT (project = A)').where)).toBeNull();
     expect(topLevelProjectKeys(ast('status = Done').where)).toBeNull();
+  });
+
+  it('summary ~ / !~ (cột đơn): escape % _ \\, summary không nullable nên không thêm not null', () => {
+    const ctx = { currentUserId: 'U' };
+    expect(compileJql(ast('summary ~ "_"'), ctx).where).toEqual({ summary: like('\\_') });
+    expect(compileJql(ast('summary ~ "50%"'), ctx).where).toEqual({ summary: like('50\\%') });
+    expect(compileJql(ast('summary !~ "a_b"'), ctx).where).toEqual({
+      NOT: { summary: like('a\\_b') },
+    });
+    expect(compileJql(ast('NOT (summary ~ "%")'), ctx).where).toEqual({
+      NOT: { summary: like('\\%') },
+    });
+  });
+
+  it('containsWhere: cột nullable (vd description) ~ "%" escape + chặn NULL; !~ là NOT của cùng điều kiện', () => {
+    expect(containsWhere('description', '%', true)).toEqual({
+      AND: [{ description: { not: null } }, { description: like('\\%') }],
+    });
+    expect(containsWhere('summary', '_')).toEqual({ summary: like('\\_') });
+  });
+
+  it('trường quan hệ (type/status/…): ~ và !~ cùng escape + không phân biệt hoa thường', () => {
+    const ctx = { currentUserId: 'U' };
+    expect(compileJql(ast('status ~ "50%"'), ctx).where).toEqual({
+      status: { name: like('50\\%') },
+    });
+    expect(compileJql(ast('status !~ "a_b"'), ctx).where).toEqual({
+      status: { name: { not: { contains: 'a\\_b' }, mode: 'insensitive' } },
+    });
   });
 });
