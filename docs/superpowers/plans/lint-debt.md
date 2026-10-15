@@ -1,6 +1,7 @@
 # Nợ lint (ESLint 9, `pnpm lint`)
 
-Cập nhật: 2026-10-15 (Task T1). `pnpm lint` thoát 0 với **0 lỗi, 92 cảnh báo** (root `eslint . --max-warnings 92`).
+Cập nhật: 2026-10-15 (đợt cuối FW-OPS, đo lại sau khi gộp mọi task). `pnpm lint` thoát 0 với **0 lỗi, 91 cảnh báo** (root `eslint . --max-warnings 91`).
+Đợt cuối: ngưỡng hạ 92 -> 91 = số đo thật (api: `no-unsafe-*` 12 + `max-lines-per-function` 10; mcp `max-lines-per-function` 1; web `max-lines-per-function` 65 + `exhaustive-deps` 3), để không còn chỗ trống cho 1 cảnh báo mới lọt qua. Nếu nhánh FW-API/FW-WEB đổi số này thì đo lại trước khi merge và đặt ngưỡng = số đo.
 T1: đo lại trước khi sửa = 281 cảnh báo (sau Prettier toàn repo ở T5; trong đó 201 thuộc họ `no-unsafe-*` + `no-explicit-any`),
 sau khi gắn kiểu thật = 92 (**-189**, không dùng `as any`/`eslint-disable`). Ngưỡng đặt = số đo thật.
 `eslint .` ở root hiện KHÔNG có `--max-warnings 0` — đó là "ngân sách cảnh báo" tạm: số
@@ -30,7 +31,7 @@ Còn lại 12 chỗ họ `no-unsafe-*` nằm ở `apps/api`: `permissions.guard.
 
 | Rule | Cảnh báo | Ghi chú |
 |---|---|---|
-| `max-lines-per-function` (150 dòng) | 77 (web 66, api 10, mcp 1; trước format 42; T1 không đụng) | Component React dài; tách dần khi chạm vào file. D4 đã tách ProjectConfigPage/IntegrationsPage/SettingsLayout thành file theo mục (cảnh báo chuyển sang từng section, chưa giảm) |
+| `max-lines-per-function` (150 dòng) | 76 (web 65, api 10, mcp 1; trước format 42; T1 không đụng; web giảm 66 -> 65 khi W4 gộp) | Component React dài; tách dần khi chạm vào file. D4 đã tách ProjectConfigPage/IntegrationsPage/SettingsLayout thành file theo mục (cảnh báo chuyển sang từng section, chưa giảm) |
 | `react-hooks/exhaustive-deps` | 3 (web 3) | `IssueDetailPage.tsx` (2 `useEffect` thiếu dep `issue`), 1 `useMemo` thừa dep `open`; cần xem từng hook, không sửa máy móc |
 
 ## Đã sửa trong Task T1

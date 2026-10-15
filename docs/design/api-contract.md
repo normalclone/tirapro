@@ -144,7 +144,8 @@ Mọi lỗi đi qua một `AllExceptionsFilter` global trả về JSON đồng n
 | 404 | `*_NOT_FOUND` | Resource không tồn tại / ngoài scope (cố tình mơ hồ để tránh enumeration) |
 | 409 | `CONFLICT` / `INVALID_TRANSITION` | Vi phạm ràng buộc (vd workflow transition không hợp lệ) |
 | 409 | `IDEMPOTENCY_CONFLICT` | Idempotency-Key trùng với payload khác |
-| 422 | `BUSINESS_RULE_VIOLATION` | Hợp lệ về schema nhưng vi phạm rule (vd sprint đã đóng) |
+| 409 | `RANK_NEIGHBORS_STALE` | Mốc kéo-thả (`beforeId`/`afterId`) của client đã lỗi thời — thứ tự hai mốc bị đảo so với server. Client tải lại danh sách rồi thả lại (server **không** rebalance cả dự án để "chữa"; xem §7.3) |
+| 422 | `BUSINESS_RULE_VIOLATION` | Hợp lệ về schema nhưng vi phạm rule (vd sprint đã đóng, **dự án đã lưu trữ**, `GET /search` thiếu điều kiện — xem §6.1, §10) |
 | 429 | `RATE_LIMITED` | Vượt rate limit (kèm `Retry-After`) |
 | 503 | `AI_UNAVAILABLE` | Thiếu/lỗi Anthropic API key — AI degrade gracefully |
 
@@ -195,7 +196,8 @@ class AuthTokensDto {
 
 // POST /auth/refresh
 class RefreshDto { refreshToken: string; } // hoặc đọc từ httpOnly cookie
-// Không có cookie ⇒ `200 { accessToken: null }` (chưa đăng nhập); cookie không hợp lệ/hết hạn/đã thu hồi ⇒ `401`.
+// Không có cookie ⇒ `200 { accessToken: null }` (chưa đăng nhập — KHÔNG phải 401, để trình duyệt khỏi ghi lỗi đỏ ở lần mở trang đầu);
+// cookie không hợp lệ/hết hạn/đã thu hồi ⇒ `401`. Client phải xử lý `accessToken === null` như "chưa có phiên".
 
 // GET /auth/me → response
 class MeDto {
@@ -266,6 +268,7 @@ class UpdateMemberRoleDto { roleId: string; }
 | GET | `/projects/{id}/members` | `project:read` | Member của project (team) |
 | POST | `/projects/{id}/members` | `project:manage` | Thêm member vào project |
 | DELETE | `/projects/{id}/members/{userId}` | `project:manage` | Gỡ member |
+| GET | `/projects/{id}/permissions/me` | `project:view` | Quyền **hiệu lực** của chính người gọi ở dự án này (vai trò dự án ghi đè vai trò workspace) → `{ projectId, permissions: PermissionKey[] }` (đã sắp xếp). Web dùng để ẩn/khoá nút (`useCan`); server vẫn kiểm quyền ở mọi route |
 | GET | `/projects/{id}/issue-types` | `project:read` | Issue types khả dụng + custom fields config |
 | GET | `/projects/{id}/components` | `project:read` | Components/labels |
 
@@ -287,6 +290,13 @@ class ProjectDto {
 }
 ```
 
+### 6.1. Dự án lưu trữ = chỉ đọc
+
+Dự án có `archivedAt != null` là **chỉ đọc**: mọi thao tác GHI vào dữ liệu của dự án (issue, sprint, board, worklog, comment, link, đính kèm, checklist, việc lặp lại, mẫu/quy tắc automation, dev-link webhook, OKR/SLA/wiki theo dự án, cột mốc/baseline, nhãn, trường tuỳ chỉnh, component/phiên bản, avatar…) trả
+`422 BUSINESS_RULE_VIOLATION` với message `"Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi"` (hằng `PROJECT_ARCHIVED_MESSAGE`, kiểm bằng `assertProjectWritable`/`assertIssueWritable` trong `common/project-writable.ts`).
+Đường không có người dùng để báo lỗi (webhook vào, cron việc lặp lại) **bỏ qua im lặng** issue của dự án lưu trữ (`WRITABLE_PROJECT_FILTER`) thay vì ném lỗi. Đọc (GET) vẫn bình thường.
+Ngoại lệ có chủ đích: (1) snapshot sprint (`sprints#snapshot`, chỉ phục vụ biểu đồ, không đổi dữ liệu người dùng); (2) Resources → Allocation và clients → Contract là dữ liệu cấp workspace, vẫn ghi được trên dự án lưu trữ (quyết định sản phẩm). Dự án **xoá mềm** (`deletedAt`) thì issue của nó biến khỏi mọi đường đọc (`/issues/:key`, danh sách, tìm kiếm/JQL, guard theo issue id) → `404`.
+
 `key` được dùng làm prefix cho issue key (`PROJ-128`). Việc sinh số chạy (`128`) là sequence per-project — giao tiếp với subsystem **Persistence** (atomic counter trong transaction).
 
 ---
@@ -304,6 +314,7 @@ Issue type: `EPIC | STORY | TASK | BUG | SUBTASK`. Hỗ trợ custom fields (gia
 | DELETE | `/issues/{id}` | `issue:delete` | Xóa (soft) |
 | POST | `/issues/{id}/transitions` | `issue:transition` | Đổi status theo workflow transition |
 | POST | `/issues/{id}/move` | `issue:update` | Di chuyển vị trí trên board/backlog (rank + status/sprint) |
+| POST | `/issues/{id}/rank` | `backlog:manage` + `issue:edit` | Chỉ xếp lại thứ tự / đổi sprint (KHÔNG đổi trạng thái) — dùng cho Backlog (Product Owner có `backlog:manage` nhưng không có `issue:transition`). Body: `{ beforeId?, afterId?, sprintId?, version }`. Cùng `IssuesService.move()`. Xem §7.3 |
 | POST | `/issues/{id}/subtasks` | `issue:create` | Tạo subtask |
 | GET | `/issues/{id}/links` | `issue:read` | Liên kết (blocks, relates, duplicates) |
 | POST | `/issues/{id}/links` | `issue:update` | Tạo link tới issue khác |
@@ -388,7 +399,12 @@ class UserMiniDto { id: string; fullName: string; avatarUrl: string|null; }
 `POST /issues/{id}/transitions` **không** nhận `statusId` trực tiếp — nhận `transitionId`. Server validate transition có hợp lệ từ status hiện tại không (theo workflow của project). Nếu không → `409 INVALID_TRANSITION`. Khi thành công, server emit WS event `issue.transitioned` (§9.4).
 
 ### 7.3. Ranking (drag-drop)
-Dùng **LexoRank** string. Khi `move`, server chỉ cần `beforeIssueId`/`afterIssueId` để tính rank giữa 2 neighbor → tránh re-index toàn bảng. Map Prisma: `rank String` field, `orderBy: { rank: 'asc' }`.
+Dùng **LexoRank** string. Khi `move`/`rank`, client gửi **hai mốc** `afterId` (issue nằm trên vị trí thả) + `beforeId` (issue nằm dưới) — server tính rank giữa hai neighbor → tránh re-index toàn bảng. Map Prisma: `rank String` field, `orderBy: { rank: 'asc' }`. Chỉ API gọi `rankBetween`; FE không tự tính rank.
+
+- Thứ tự hai mốc bị đảo (client đang xem danh sách cũ) ⇒ `409 RANK_NEIGHBORS_STALE`; web tự tải lại danh sách (không rebalance cả dự án).
+- Chỉ khi khoảng rank cạn kiệt server mới rebalance dự án, rồi phát WS `project:ranks_rebalanced` (§15.4) để mọi client tải lại thứ tự.
+- Quyền của `POST /issues/{id}/move`: đổi sprint cần `issue:edit`; mốc rank cần `issue:edit` hoặc `backlog:manage`. Khi request đổi cả trạng thái thì mốc rank bị bỏ qua (giữ rank hiện tại), khi không đổi trạng thái mà gửi mốc thì cần quyền rank ở trên, thiếu ⇒ `403`.
+- Role chỉ có quyền `:own` chỉ được move/rank issue của chính mình.
 
 ---
 
@@ -401,7 +417,7 @@ Dùng **LexoRank** string. Khi `move`, server chỉ cần `beforeIssueId`/`after
 | GET | `/projects/{projectId}/boards` | `board:read` | List board của project |
 | POST | `/projects/{projectId}/boards` | `board:manage` | Tạo board (Kanban/Scrum) |
 | GET | `/boards/{id}` | `board:read` | Cấu hình board (columns ↔ statuses, swimlanes, WIP limits) |
-| PATCH | `/boards/{id}` | `board:manage` | Cập nhật cấu hình |
+| PATCH | `/boards/{id}` | `board:manage` | Cập nhật cấu hình: `name?`, `filterJql?`, `swimlaneBy?`, **`type?: 'KANBAN'\|'SCRUM'`** (chuyển Scrum ⇄ Kanban; cần ít nhất một trường). Dự án lưu trữ ⇒ 422 |
 | GET | `/boards/{id}/issues` | `board:read` | Issue trên board, group theo column; hỗ trợ `?sprintId=`, `?jql=` filter overlay |
 
 ```ts
@@ -414,7 +430,7 @@ class BoardDto {
 // GET /boards/{id}/issues response
 class BoardIssuesDto {
   columns: { columnId: string; issues: IssueDto[]; }[];
-  // Kanban: tất cả issue active; Scrum: chỉ issue trong sprint active (hoặc ?sprintId)
+  // Kanban: tất cả issue active; Scrum: chỉ issue trong sprint active (hoặc ?sprintId). Scrum không có sprint chạy ⇒ rỗng
 }
 ```
 
@@ -503,6 +519,7 @@ Storage local (volume) cho dev; abstraction `StorageService` để chuyển S3 s
 
 | Method | Path | Permission | Mô tả |
 |---|---|---|---|
+| GET | `/search` | `project:view` | Điểm vào tìm kiếm thực tế: `?jql=` (cú pháp JQL) **hoặc** `?q=…&mode=text` (tìm theo chữ, bỏ dấu tiếng Việt, khớp tiền tố/typo bằng pg_trgm); `?mode=jql\|text`, `?projectId=`, `?cursor=`, `?limit=` (≤200). **Thiếu điều kiện (không `jql`, không `q`; hoặc `mode=jql` mà `jql` rỗng) ⇒ `422 BUSINESS_RULE_VIOLATION`** — không im lặng trả mọi issue. `mode` khác `jql`/`text` ⇒ 422. JQL sai cú pháp ⇒ 422 kèm vị trí |
 | GET | `/search/issues` | `issue:read` | Tìm issue bằng JQL-like (§13). `?jql=...&limit=&cursor=&sort=` |
 | POST | `/search/issues` | `issue:read` | Body version (JQL dài) `{ jql, limit, cursor, sort }` |
 | GET | `/search/suggest` | `issue:read` | Autocomplete cho JQL builder: `?type=field\|value&field=&q=` |
@@ -581,10 +598,10 @@ Notification được sinh server-side khi có event (assign, mention, comment, 
 | GET | `/dashboards/{id}` | `dashboard:read` | Layout + widgets config |
 | PATCH | `/dashboards/{id}` | `dashboard:manage` | Cập nhật layout/widget |
 | DELETE | `/dashboards/{id}` | `dashboard:manage` | Xóa |
-| GET | `/reports/burndown` | `report:view` | `?projectId=&sprintId=` (cả hai BẮT BUỘC; sprint phải thuộc dự án) → series burndown |
-| GET | `/reports/velocity` | `report:read` | `?projectId=&last=6` → velocity N sprint |
-| GET | `/reports/cumulative-flow` | `report:read` | `?projectId=&boardId=&from=&to=` → CFD |
-| GET | `/reports/export` | `report:read` | `?type=burndown&format=pdf\|xlsx&...` → file stream |
+| GET | `/reports/burndown` | `report:view` | `?projectId=&sprintId=` (cả hai BẮT BUỘC — thiếu `projectId`/`sprintId` ⇒ 422 "Thiếu projectId"; (đường thật: `GET /analytics/burndown`) sprint không thuộc dự án ⇒ 404; quyền `report:view` kiểm theo dự án). Số liệu theo "category cuối thắng" như CFD → series burndown |
+| GET | `/reports/velocity` | `report:view` | `?projectId=&last=6` → velocity N sprint |
+| GET | `/reports/cumulative-flow` | `report:view` | `?projectId=&boardId=&from=&to=` → CFD |
+| GET | `/reports/export` | `report:view` | `?type=burndown&format=pdf\|xlsx&...` → file stream |
 
 ```ts
 class DashboardDto {
@@ -724,6 +741,7 @@ Mọi server→client event payload theo cấu trúc:
 | `issue.moved` | `board:{id}` | `{ id, fromColumnId, toColumnId, fromSprintId, toSprintId, rank, version }` | POST /issues/{id}/move |
 | `issue.transitioned` | `issue:{id}`, `board:{id}` | `{ id, fromStatusId, toStatusId, resolution }` | POST /issues/{id}/transitions |
 | `issue.deleted` | `project:{id}`, `board:{id}` | `{ id }` | DELETE /issues/{id} |
+| `project:ranks_rebalanced` | `project:{id}` | `{ projectId }` | Server rebalance rank cả dự án (khoảng LexoRank cạn). Client **tải lại** danh sách/board của dự án; không có thay đổi thứ tự nào khác được phát cho từng issue (xem §7.3) |
 
 ### 15.5. Event catalog — Comments
 
@@ -732,6 +750,8 @@ Mọi server→client event payload theo cấu trúc:
 | `comment.added` | `issue:{id}` | `CommentDto` |
 | `comment.updated` | `issue:{id}` | `CommentDto` |
 | `comment.deleted` | `issue:{id}` | `{ id, issueId }` |
+
+> Tên sự kiện thật trên dây dùng dấu hai chấm (`comment:added`, `comment:updated`, `comment:deleted`, `project:ranks_rebalanced`) — khớp `WS_EVENTS` trong `@tirapro/types`. Sự kiện domain nội bộ của comment (`comment.added/updated/deleted`) **bắt buộc mang `projectId`** (gateway định tuyến theo `project:{projectId}`; thiếu `projectId` ⇒ không phát), và payload WS của `comment:updated`/`comment:deleted` có `projectId` để client lọc theo dự án.
 
 ### 15.6. Presence & Typing (client→server và broadcast)
 

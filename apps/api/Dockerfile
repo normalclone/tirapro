@@ -40,16 +40,19 @@ FROM node:22-alpine AS runtime
 RUN apk add --no-cache openssl
 ENV NODE_ENV=production
 WORKDIR /app
-# Chỉ lấy dist + node_modules + prisma (migrations/schema/sql) — không có mã nguồn, devDependencies hay web.
+# Chỉ lấy dist + node_modules + prisma (migrations/schema/sql) + 2 script vận hành — không có mã nguồn, devDependencies hay web.
 COPY --from=build --chown=node:node /out/package.json ./package.json
 COPY --from=build --chown=node:node /out/node_modules ./node_modules
 COPY --from=build --chown=node:node /out/dist ./dist
 COPY --from=build --chown=node:node /out/prisma ./prisma
+# Script vận hành một lần (không phải một phần server): `docker run --rm --env-file … <image> node scripts/seal-webhook-secrets.mjs --dry-run`.
+# Chỉ cần node:crypto + @prisma/client (đã có trong node_modules production). Xem docs/DEPLOY.md mục "Checklist triển khai".
+COPY --from=build --chown=node:node /repo/apps/api/scripts/rekey-integrations.mjs /repo/apps/api/scripts/seal-webhook-secrets.mjs ./scripts/
 # Thư mục upload (STORAGE_DRIVER=local) — mount volume vào đây nếu cần giữ file.
 RUN mkdir -p /app/uploads && chown node:node /app/uploads
 USER node
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/api/v1/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-# migrate deploy + db:raw (extension pgvector/pg_trgm, idempotent) rồi mới chạy server — giống startCommand ở render.yaml.
+# migrate deploy + db:raw (extension, searchVector, chỉ mục trigram; idempotent, tuần tự hoá bằng advisory lock) rồi mới chạy server — giống startCommand ở render.yaml.
 CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/prisma db execute --file ./prisma/sql/01_pgvector_fts.sql --schema ./prisma/schema.prisma && exec node dist/main.js"]

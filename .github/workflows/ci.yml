@@ -43,7 +43,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --filter @tirapro/api...
       - run: pnpm --filter @tirapro/api db:generate
       - name: migrate deploy trên DB trống
         run: pnpm --filter @tirapro/api db:migrate:deploy
@@ -58,7 +58,30 @@ jobs:
         run: |
           pnpm --filter @tirapro/api db:raw
           pnpm --filter @tirapro/api db:raw
+      - name: db:raw song song (3 tiến trình) phải đều thoát 0
+        # Hai instance khởi động cùng lúc không được làm nhau chết (pg_advisory_xact_lock ở đầu file SQL).
+        run: |
+          pids=()
+          for i in 1 2 3; do
+            pnpm --filter @tirapro/api db:raw & pids+=($!)
+          done
+          rc=0
+          for p in "${pids[@]}"; do wait "$p" || rc=1; done
+          exit $rc
+      - name: db:raw nâng cấp từ searchVector bản cũ (nhánh DROP/ADD)
+        run: |
+          cat > /tmp/old-search-vector.sql <<'SQL'
+          ALTER TABLE "Issue" DROP COLUMN "searchVector";
+          ALTER TABLE "Issue" ADD COLUMN "searchVector" tsvector
+            GENERATED ALWAYS AS (setweight(to_tsvector('simple', coalesce("key", '') || ' ' || coalesce("summary", '')), 'A')) STORED;
+          SQL
+          pnpm --filter @tirapro/api exec prisma db execute --file /tmp/old-search-vector.sql --schema prisma/schema.prisma
+          pnpm --filter @tirapro/api db:raw
+          echo 'DO $$ BEGIN
+            IF position($x$immutable_unaccent$x$ IN (SELECT pg_get_expr(d.adbin, d.adrelid) FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum WHERE a.attrelid = $q$"Issue"$q$::regclass AND a.attname = $q$searchVector$q$)) = 0
+            THEN RAISE EXCEPTION $m$searchVector van la bieu thuc cu$m$; END IF;
+          END $$;' | pnpm --filter @tirapro/api exec prisma db execute --stdin --schema prisma/schema.prisma
       - name: cột raw tồn tại
         run: |
-          echo 'SELECT "searchVector" FROM "Issue" LIMIT 0; SELECT "embedding" FROM "IssueEmbedding" LIMIT 0;' \
+          echo 'SELECT immutable_unaccent($$x$$); SELECT "searchVector" FROM "Issue" LIMIT 0; SELECT "embedding" FROM "IssueEmbedding" LIMIT 0; SELECT 1 FROM pg_indexes WHERE indexname = $$issue_summary_unaccent_trgm$$; SELECT $$issue_description_unaccent_trgm$$::regclass;' \
             | pnpm --filter @tirapro/api exec prisma db execute --stdin --schema prisma/schema.prisma

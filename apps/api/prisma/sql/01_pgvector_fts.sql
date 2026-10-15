@@ -4,6 +4,12 @@
 -- Thêm: full-text search (tsvector generated) + semantic search (pgvector).
 -- ============================================================================
 
+-- Tuần tự hoá `db:raw`: hai instance khởi động cùng lúc (rolling deploy, --scale, k8s) sẽ đụng nhau ở
+-- CREATE OR REPLACE FUNCTION ("tuple concurrently updated") và ở bước DROP/ADD cột. Khoá advisory theo transaction:
+-- `prisma db execute` chạy cả file trong MỘT transaction ngầm nên khoá giữ đến hết file rồi tự nhả; bên đến sau
+-- chờ, rồi thấy mọi thứ đã có → chạy như no-op.
+SELECT pg_advisory_xact_lock(hashtext('tirapro:db:raw'));
+
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS btree_gin;
