@@ -172,7 +172,7 @@ export class IssuesService {
     },
     db: Prisma.TransactionClient = this.prisma,
   ): Promise<void> {
-    const jobs: Array<Promise<{ id: string } | null>> = [];
+    const jobs: Array<Promise<{ id: string; state?: string } | null>> = [];
     if (m.typeId)
       jobs.push(
         db.issueType.findFirst({ where: { id: m.typeId, workspaceId }, select: { id: true } }),
@@ -197,7 +197,7 @@ export class IssuesService {
             project: { workspaceId },
             ...(m.projectId ? { projectId: m.projectId } : {}),
           },
-          select: { id: true },
+          select: { id: true, state: true },
         }),
       );
     if (m.parentId)
@@ -214,11 +214,30 @@ export class IssuesService {
           select: { id: true },
         }),
       );
-    if (jobs.length && (await Promise.all(jobs)).some((r) => r == null)) {
+    if (!jobs.length) return;
+    const found = await Promise.all(jobs);
+    if (found.some((r) => r == null)) {
       throw new NotFoundAppException(
         'Loại công việc, độ ưu tiên, sprint (phải cùng dự án), kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
       );
     }
+    // Sprint đã hoàn thành không nhận thêm việc (bỏ gán/giữ nguyên thì không đi qua đây — xem `sprintIfChanged`).
+    if (found.some((r) => r?.state === 'CLOSED')) {
+      throw new BusinessRuleException(
+        'Sprint đã hoàn thành — không thêm việc vào được nữa. Hãy chọn sprint khác hoặc để việc ở Backlog',
+      );
+    }
+  }
+
+  /**
+   * Chỉ kiểm sprint khi thật sự ĐỔI: việc đang nằm trong sprint đã đóng mà client gửi lại đúng `sprintId` cũ
+   * (hoặc không đụng tới) thì không bị chặn; `null` (bỏ gán) cũng không cần kiểm.
+   */
+  private sprintIfChanged(
+    next: string | null | undefined,
+    current: string | null,
+  ): string | null | undefined {
+    return next === undefined || next === current ? undefined : next;
   }
 
   /** Có thể gán mới cho user này không: là thành viên workspace và tài khoản chưa bị vô hiệu hoá. */
@@ -587,7 +606,7 @@ export class IssuesService {
     await this.assertMetaInWorkspace(workspaceId, {
       typeId: input.typeId,
       priorityId: input.priorityId,
-      sprintId: input.sprintId,
+      sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
       resolutionId: input.resolutionId,
       parentId: input.parentId,
       epicId: input.epicId,
@@ -671,7 +690,8 @@ export class IssuesService {
     if (ownOnly || transitionOwnOnly) for (const r of rows) this.assertOwnsIssue(userId, r); // một việc của người khác → 403 cả lô, chưa ghi gì
     await this.assertMetaInWorkspace(workspaceId, {
       priorityId: patch.priorityId,
-      sprintId: patch.sprintId,
+      // Chỉ kiểm khi có việc thật sự đổi sprint (lô đã ở đúng sprint đó thì thôi).
+      sprintId: rows.some((r) => r.sprintId !== patch.sprintId) ? patch.sprintId : undefined,
       projectId,
     });
     // Chỉ kiểm khi có hàng thật sự đổi assignee (hàng đã giữ đúng assignee đó thì bỏ qua).
@@ -838,7 +858,7 @@ export class IssuesService {
     if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, {
-      sprintId: input.sprintId,
+      sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
       projectId: current.projectId,
     });
 

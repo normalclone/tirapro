@@ -975,6 +975,131 @@ describe('IssuesService — assignee phải là thành viên, sprint phải cùn
   });
 });
 
+describe('IssuesService — sprint CLOSED không nhận việc (FW1)', () => {
+  const closedSprint = () => vi.fn(() => Promise.resolve({ id: 'sp9', state: 'CLOSED' }));
+
+  it('create(sprintId đã đóng) => 422, chưa ghi', async () => {
+    const tx = {
+      project: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({
+            id: 'p1',
+            key: 'P',
+            defaultWorkflowId: 'wf',
+            leadId: null,
+            defaultAssigneeMode: 'NONE',
+            archivedAt: null,
+          }),
+        ),
+      },
+      issueType: { findFirst: vi.fn(() => Promise.resolve({ id: 't1' })) },
+      sprint: { findFirst: closedSprint() },
+      issue: { create: vi.fn() },
+    };
+    const { service } = makeService(tx);
+    await expect(
+      service.create('w1', 'u1', {
+        projectId: 'p1',
+        typeId: 't1',
+        summary: 's',
+        descriptionFormat: 'MARKDOWN',
+        sprintId: 'sp9',
+      }),
+    ).rejects.toMatchObject({ status: 422, message: has('Sprint đã hoàn thành') });
+    expect(tx.issue.create).not.toHaveBeenCalled();
+  });
+
+  it('update(sprintId đã đóng) => 422, chưa ghi', async () => {
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow())),
+        updateMany: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+      },
+      sprint: { findFirst: closedSprint() },
+    };
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, sprintId: 'sp9' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('update: việc ĐANG ở sprint đã đóng, sửa field khác (kể cả gửi lại sprintId cũ) => không bị chặn', async () => {
+    const sprintFind = closedSprint();
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow({ sprintId: 'sp9' }))),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(() =>
+          Promise.resolve(issueRow({ sprintId: 'sp9', version: 4, summary: 'mới' })),
+        ),
+      },
+      issueHistory: { createMany: vi.fn() },
+      sprint: { findFirst: sprintFind },
+    };
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới' }),
+    ).resolves.toBeDefined();
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới', sprintId: 'sp9' }),
+    ).resolves.toBeDefined();
+    expect(tx.issue.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('update(sprintId: null) từ sprint đã đóng => được bỏ gán', async () => {
+    const sprintFind = closedSprint();
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow({ sprintId: 'sp9' }))),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ sprintId: null, version: 4 }))),
+      },
+      issueHistory: { createMany: vi.fn() },
+      sprint: { findFirst: sprintFind },
+    };
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, sprintId: null }),
+    ).resolves.toBeDefined();
+    expect(sprintFind).not.toHaveBeenCalled();
+  });
+
+  it('bulkUpdate(patch.sprintId đã đóng) => 422, không ghi gì', async () => {
+    const tx = {
+      issue: {
+        findMany: vi.fn(() => Promise.resolve([issueRow({ id: 'a' })])),
+        updateMany: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+      },
+      project: { findUnique: vi.fn(() => Promise.resolve({ archivedAt: null })) },
+      sprint: { findFirst: closedSprint() },
+    };
+    const txSpy = vi.fn();
+    const { service } = makeService(tx, { $transaction: txSpy });
+    await expect(
+      service.bulkUpdate('w1', 'u1', {
+        projectId: 'p1',
+        items: [{ id: 'a', version: 3 }],
+        patch: { sprintId: 'sp9' },
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(txSpy).not.toHaveBeenCalled();
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('move / rank (sprintId đã đóng) => 422, không ghi', async () => {
+    const tx = wipTx({ count: 0 });
+    tx.sprint.findFirst = closedSprint();
+    const { service } = makeService(tx);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp9' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('IssuesService — :own (issue:edit:own)', () => {
   function ownTx(row: Record<string, unknown>) {
     return {
