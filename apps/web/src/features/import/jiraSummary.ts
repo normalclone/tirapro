@@ -14,5 +14,5 @@ export function unmatchedAssigneesNotice(
   const who = names.length
     ? `: ${names.join(', ')}${more > 0 ? ` và ${more} người khác` : ''}`
     : '';
-  return `${skipped} việc đã nhập nhưng chưa có người phụ trách vì người phụ trách trong Jira không khớp thành viên nào${who}. Hãy mời họ vào không gian làm việc rồi gán lại.`;
+  return `${skipped} việc đã nhập nhưng chưa có người phụ trách vì người phụ trách trong Jira không khớp thành viên nào${who}. Hãy thêm họ vào không gian làm việc rồi gán lại.`;
 }

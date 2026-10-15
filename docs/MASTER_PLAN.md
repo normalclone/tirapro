@@ -276,7 +276,7 @@ model WorkspaceMembership {
   workspaceId String
   userId      String
   roleId      String
-  invitedById String?
+  invitedById String?   // (UX vòng 2: luồng lời mời đã gỡ — cột này không còn ghi)
   joinedAt    DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

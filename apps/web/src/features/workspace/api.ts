@@ -1,5 +1,4 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import type { InviteCreatedDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { setAccessToken } from '@/lib/auth-token';
 import { queryClient } from '@/lib/queryClient';
@@ -28,12 +27,6 @@ interface SwitchWorkspaceResponse {
   user: unknown;
 }
 
-interface InviteInput {
-  email: string;
-  /** Vai trò workspace cho người được mời (tuỳ chọn; BE mặc định "Thành viên" nếu trống). */
-  roleId?: string;
-}
-
 /** Danh sách không gian làm việc của người dùng hiện tại. */
 export function useMyWorkspaces() {
   return useQuery({
@@ -58,14 +51,6 @@ export function useSwitchWorkspace() {
       queryClient.clear();
       window.location.assign('/');
     },
-  });
-}
-
-/** Mời thành viên vào không gian làm việc hiện tại. */
-export function useInvite() {
-  return useMutation({
-    mutationFn: (v: InviteInput) =>
-      api.post<InviteCreatedDto>('/auth/invites', v).then((r) => r.data),
   });
 }
 

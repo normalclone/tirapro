@@ -34,7 +34,6 @@ const EXEMPT: Record<string, string> = {
   'audit/audit.service.ts': 'nhật ký quản trị, không thuộc dự án',
   'api-keys/api-key.service.ts': 'khoá API cấp workspace',
   'auth/auth.service.ts': 'định danh',
-  'auth/invite.service.ts': 'định danh',
   'auth/password-reset.service.ts': 'định danh',
   'auth/token.service.ts': 'định danh',
   'clients/clients.service.ts': 'cấp workspace',

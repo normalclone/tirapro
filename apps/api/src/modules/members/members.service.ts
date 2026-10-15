@@ -317,7 +317,7 @@ export class MembersService {
     });
     if (!isMember)
       throw new ForbiddenAppException(
-        'Người dùng chưa thuộc không gian làm việc này — hãy mời họ vào trước',
+        'Người dùng chưa thuộc không gian làm việc này — hãy thêm họ vào không gian làm việc trước',
       );
 
     const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');

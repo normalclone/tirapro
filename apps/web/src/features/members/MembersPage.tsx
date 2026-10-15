@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pencil, Trash2, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { MemberDto, UserStatus } from '@tirapro/types';
-import { InvitePanel } from '@/features/workspace/InvitePanel';
+import { AddMemberPanel } from './AddMemberPanel';
 import { TeamsPanel } from '@/features/teams/TeamsPanel';
 import { AddPeopleDialog } from './AddPeopleDialog';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -21,7 +21,7 @@ import { QueryBoundary } from '@/components/ui/QueryBoundary';
 /** Nhãn + màu badge tiếng Việt cho từng trạng thái tài khoản. */
 const STATUS_META: Record<UserStatus, { label: string; className: string }> = {
   ACTIVE: { label: 'Đang hoạt động', className: 'bg-success/10 text-success' },
-  INVITED: { label: 'Đã mời', className: 'bg-primary-subtle text-primary' },
+  INVITED: { label: 'Chưa kích hoạt', className: 'bg-primary-subtle text-primary' },
   DEACTIVATED: { label: 'Đã vô hiệu hoá', className: 'bg-surface-2 text-muted' },
 };
 
@@ -80,7 +80,7 @@ export function MembersPage() {
         <TeamsPanel />
       ) : (
         <div className="space-y-8">
-          <InvitePanel />
+          <AddMemberPanel />
 
           <section className="rounded-lg border border-border bg-surface">
             <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
@@ -122,7 +122,7 @@ export function MembersPage() {
                   <EmptyState
                     icon={<Users className="h-6 w-6" />}
                     title="Chưa có thành viên nào"
-                    description="Đây là danh sách người được vào không gian làm việc này. Mời người đầu tiên bằng ô nhập email phía trên."
+                    description="Đây là danh sách người được vào không gian làm việc này. Chọn người dùng có sẵn ở ô phía trên để thêm người đầu tiên."
                   />
                 }
               >
@@ -171,7 +171,7 @@ function MemberRow({
     const ok = await confirm({
       title: `Gỡ ${user.displayName} khỏi không gian làm việc?`,
       description:
-        'Họ sẽ mất quyền vào mọi dự án ở đây. Việc đã giao cho họ vẫn giữ nguyên. Bạn có thể mời lại sau.',
+        'Họ sẽ mất quyền vào mọi dự án ở đây. Việc đã giao cho họ vẫn giữ nguyên. Bạn có thể thêm lại sau.',
       confirmLabel: 'Gỡ',
       destructive: true,
     });

@@ -64,7 +64,7 @@ export const envSchema = z.object({
   // console = ghi thư ra log (dev, chưa gửi thật); smtp = khung, chưa gửi được (chưa cài nodemailer).
   MAIL_DRIVER: z.enum(['console', 'smtp']).default('console'),
   MAIL_FROM: z.string().default('Tirapro <no-reply@tirapro.local>'),
-  // Gốc URL của web — dùng dựng liên kết trong thư (mời, đặt lại mật khẩu). Không có dấu "/" cuối.
+  // Gốc URL của web — dùng dựng liên kết trong thư (đặt lại mật khẩu). Không có dấu "/" cuối.
   APP_WEB_URL: z
     .string()
     .url('APP_WEB_URL phải là URL hợp lệ, vd http://localhost:5173')

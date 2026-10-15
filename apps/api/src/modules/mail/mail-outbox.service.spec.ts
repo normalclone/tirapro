@@ -8,7 +8,7 @@ function row(over: Record<string, unknown> = {}) {
     subject: 's',
     html: '<p>h</p>',
     text: 't',
-    template: 'invite',
+    template: 'password-reset',
     payload: {},
     status: 'PENDING',
     attempts: 0,

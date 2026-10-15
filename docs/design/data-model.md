@@ -133,7 +133,7 @@ RefreshToken n──1 User
 | `avatarUrl` | String? | | |
 | `timezone` | String | `@default("UTC")` | IANA tz, ảnh hưởng reports/notifications |
 | `locale` | String | `@default("en")` | |
-| `status` | `UserStatus` enum | `@default(ACTIVE)` | ACTIVE / DEACTIVATED / INVITED |
+| `status` | `UserStatus` enum | `@default(ACTIVE)` | ACTIVE / DEACTIVATED / INVITED (`INVITED` giữ làm giá trị dự phòng, không còn code nào sinh ra; UI hiện "Chưa kích hoạt") |
 | `lastSeenAt` | DateTime? | | Cho presence (Realtime) |
 | `isSystemAdmin` | Boolean | `@default(false)` | Super-admin toàn hệ thống |
 | audit | createdAt/updatedAt | | |
@@ -196,7 +196,7 @@ Tenant boundary cao nhất. Một user có thể thuộc nhiều workspace.
 | `workspaceId` | String | FK Cascade |
 | `userId` | String | FK Cascade |
 | `roleId` | String | FK |
-| `invitedById` | String? | FK → User |
+| `invitedById` | String? | Cột dự phòng — không còn ghi (luồng lời mời đã gỡ, bảng `InviteToken` bị xoá) |
 | `joinedAt` | DateTime? | |
 | audit | | |
 - `@@unique([workspaceId, userId])`, `@@index([userId])`.

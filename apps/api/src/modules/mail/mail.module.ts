@@ -30,7 +30,7 @@ import { SmtpMailProvider } from './providers/smtp.provider';
         }
         if (config.get<boolean>('isProd')) {
           new Logger('MailModule').warn(
-            'MAIL_DRIVER=console ở production: thư KHÔNG được gửi thật và log API sẽ chứa liên kết mời / đặt lại mật khẩu. Hãy cấu hình SMTP khi sẵn sàng.',
+            'MAIL_DRIVER=console ở production: thư KHÔNG được gửi thật và log API sẽ chứa liên kết đặt lại mật khẩu. Hãy cấu hình SMTP khi sẵn sàng.',
           );
         }
         return new ConsoleMailProvider(from);

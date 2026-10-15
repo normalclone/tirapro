@@ -243,14 +243,14 @@ Multi-tenant root. Mỗi resource con scope theo `orgId` (từ token).
 | GET | `/orgs/{orgId}` | `org:read` | Chi tiết org |
 | PATCH | `/orgs/{orgId}` | `org:manage` | Cập nhật org (name, logo, settings) |
 | GET | `/orgs/{orgId}/members` | `org:read` | List member + role (offset) |
-| POST | `/orgs/{orgId}/members` | `org:manage` | Mời member (email + role) — degrade email |
+| POST | `/orgs/{orgId}/members` | `org:manage` | Thêm member có sẵn (userId + roleIds). Lời mời qua email đã gỡ; tạo tài khoản mới: `POST /members/accounts` |
 | PATCH | `/orgs/{orgId}/members/{userId}` | `org:manage` | Đổi role member |
 | DELETE | `/orgs/{orgId}/members/{userId}` | `org:manage` | Gỡ member |
 | GET | `/orgs/{orgId}/roles` | `org:read` | List role + permission (giao tiếp RBAC) |
 
 ```ts
 class OrgDto { id: string; name: string; slug: string; logoUrl: string|null; createdAt: string; }
-class InviteMemberDto { email: string; roleId: string; }
+// InviteMemberDto đã gỡ (không còn lời mời): dùng POST /members (người có sẵn) hoặc POST /members/accounts (tạo tài khoản + thêm).
 class UpdateMemberRoleDto { roleId: string; }
 ```
 

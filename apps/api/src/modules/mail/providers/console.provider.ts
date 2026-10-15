@@ -3,7 +3,7 @@ import type { MailMessage, MailProvider } from '../mail.provider';
 
 /**
  * Provider dev: không gửi thật, chỉ ghi nội dung thư (bản text, có chứa liên kết) ra log.
- * Không dùng ở production — log sẽ chứa liên kết mời / đặt lại mật khẩu còn hiệu lực.
+ * Không dùng ở production — log sẽ chứa liên kết đặt lại mật khẩu còn hiệu lực.
  */
 export class ConsoleMailProvider implements MailProvider {
   private readonly logger = new Logger('MailConsole');

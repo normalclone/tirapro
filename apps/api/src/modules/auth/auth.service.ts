@@ -223,7 +223,7 @@ export class AuthService {
     });
     if (!membership) {
       throw new ForbiddenAppException(
-        'Bạn không phải thành viên của không gian làm việc này — hãy liên hệ quản trị viên để được mời vào',
+        'Bạn không phải thành viên của không gian làm việc này — hãy liên hệ quản trị viên để được thêm vào',
       );
     }
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });

@@ -127,19 +127,6 @@ export interface AuthTokensDto {
   expiresIn: number;
 }
 
-/** Kết quả tạo lời mời; `acceptUrl` chỉ có khi MAIL_DRIVER=console (dev, chưa gửi thư thật). */
-export interface InviteCreatedDto {
-  inviteId: ID;
-  acceptUrl?: string;
-}
-
-/** Kết quả chấp nhận lời mời; `existingUser` = email đã có tài khoản (giữ mật khẩu cũ, chỉ gắn vào workspace). */
-export interface InviteAcceptedDto {
-  userId: ID;
-  workspaceId: ID;
-  existingUser: boolean;
-}
-
 /** Tuỳ chọn nhận thông báo qua email (lưu ở `User.settings.notifications.email`). */
 export interface NotificationEmailPrefs {
   mention: boolean;

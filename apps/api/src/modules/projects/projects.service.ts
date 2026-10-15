@@ -207,7 +207,7 @@ export class ProjectsService {
         });
         if (!member)
           throw new BusinessRuleException(
-            'Người phụ trách phải là thành viên của không gian làm việc — hãy mời họ vào trước',
+            'Người phụ trách phải là thành viên của không gian làm việc — hãy thêm họ vào không gian làm việc trước',
           );
       }
       data.leadId = input.leadId;

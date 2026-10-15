@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MailService } from './mail.service';
-import { render as renderInvite } from './templates/invite';
+import { render as renderPasswordReset } from './templates/password-reset';
 
 function setup() {
   const emailOutbox = {
@@ -14,32 +14,31 @@ function setup() {
   return { service: new MailService(prisma as never), emailOutbox };
 }
 
-const invitePayload = {
-  workspaceName: 'Công ty <A>',
-  inviterName: 'Minh',
-  acceptUrl: 'http://localhost:5173/invite/accept?token=abc',
+const resetPayload = {
+  displayName: 'Minh <A>',
+  resetUrl: 'http://localhost:5173/reset-password?token=abc',
 };
 
 describe('MailService.enqueue', () => {
   it('ghi vào outbox đúng subject/html/text render từ template', async () => {
     const { service, emailOutbox } = setup();
-    await service.enqueue({ to: 'a@x.vn', template: 'invite', payload: invitePayload });
+    await service.enqueue({ to: 'a@x.vn', template: 'password-reset', payload: resetPayload });
 
-    const expected = renderInvite(invitePayload);
+    const expected = renderPasswordReset(resetPayload);
     expect(emailOutbox.create).toHaveBeenCalledTimes(1);
     const data = emailOutbox.create.mock.calls[0]![0].data;
     expect(data).toMatchObject({
       to: 'a@x.vn',
-      template: 'invite',
+      template: 'password-reset',
       subject: expected.subject,
       html: expected.html,
       text: expected.text,
     });
-    // HTML phải escape tên workspace, link nằm trong nút CTA và bản text.
-    expect(expected.html).toContain('Công ty &lt;A&gt;');
-    expect(expected.html).not.toContain('Công ty <A>');
-    expect(expected.html).toContain(invitePayload.acceptUrl);
-    expect(expected.text).toContain(invitePayload.acceptUrl);
+    // HTML phải escape tên người nhận, link nằm trong nút CTA và bản text.
+    expect(expected.html).toContain('Minh &lt;A&gt;');
+    expect(expected.html).not.toContain('Minh <A>');
+    expect(expected.html).toContain(resetPayload.resetUrl);
+    expect(expected.text).toContain(resetPayload.resetUrl);
   });
 
   it('dùng tx được truyền vào thay vì prisma gốc', async () => {

@@ -42,7 +42,7 @@
 
 ### 2.3 Workspace Admin
 - Tạo / sửa / lưu trữ / xóa **project** trong workspace.
-- **Quản lý thành viên workspace**: mời, gỡ, gán vai trò workspace cho từng người.
+- **Quản lý thành viên workspace**: thêm (chọn người có sẵn hoặc tạo tài khoản mới), gỡ, gán vai trò workspace cho từng người.
 - Tạo & quản lý **vai trò tùy biến** và gán bộ quyền (RBAC).
 - Cấu hình workspace (tên, slug, settings, gói plan).
 - Quản lý **custom field cấp workspace**, **issue types**.
@@ -50,7 +50,7 @@
 - Toàn quyền nội dung của mọi project (kế thừa quyền Project Admin ở tất cả project).
 
 ### 2.4 Workspace Member
-- Xem danh sách project mình tham gia; được mời/thêm vào project.
+- Xem danh sách project mình tham gia; được thêm vào project.
 - Tạo project mới (**nếu** được cấp quyền `project:create`).
 - Trong project mình tham gia: thao tác theo **vai trò project** tương ứng.
 - Dùng **AI**, tạo saved filter & dashboard cá nhân, semantic search.
@@ -93,7 +93,7 @@ Chú thích: ✅ toàn quyền · 👁 chỉ xem · ➖ không có · ⚙️ tù
 | Xem workspace & project được phép | ✅ | ✅ | ✅ | 👁 |
 | Tạo project | ✅ | ✅ | ⚙️ | ➖ |
 | Lưu trữ / xóa project | ✅ | ✅ | ➖ | ➖ |
-| Mời / gỡ thành viên workspace | ✅ | ✅ | ➖ | ➖ |
+| Thêm / gỡ thành viên workspace | ✅ | ✅ | ➖ | ➖ |
 | Tạo vai trò & gán quyền (RBAC) | ✅ | ✅ | ➖ | ➖ |
 | Cấu hình workspace (settings/plan) | ✅ | ✅ | ➖ | ➖ |
 | Custom field / issue type cấp workspace | ✅ | ✅ | ➖ | ➖ |

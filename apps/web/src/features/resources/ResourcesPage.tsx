@@ -221,7 +221,7 @@ export function ResourcesPage() {
             <EmptyState
               icon={<Users className="h-6 w-6" />}
               title="Chưa có ai để tính khối lượng việc"
-              description="Bảng này cho biết mỗi tuần một người gánh bao nhiêu giờ. Hãy mời người vào không gian làm việc, rồi phân bổ họ vào dự án."
+              description="Bảng này cho biết mỗi tuần một người gánh bao nhiêu giờ. Hãy thêm người vào không gian làm việc, rồi phân bổ họ vào dự án."
             />
           ) : (
             <HeatMap

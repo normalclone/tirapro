@@ -31,7 +31,7 @@ interface Cand {
 
 const STATUS_LABEL: Record<string, string> = {
   ACTIVE: 'Đang hoạt động',
-  INVITED: 'Đã mời',
+  INVITED: 'Chưa kích hoạt',
   DEACTIVATED: 'Đã vô hiệu hoá',
 };
 
@@ -347,7 +347,7 @@ export function AddPeopleDialog({
           <li className="px-3 py-10 text-center text-sm text-muted">
             {isProject
               ? 'Không còn ai khớp bộ lọc. Xoá bớt bộ lọc, hoặc thêm người vào không gian làm việc trước.'
-              : 'Không còn ai khớp bộ lọc. Xoá bớt bộ lọc, hoặc mời người mới bằng email ở trang Thành viên.'}
+              : 'Không còn ai khớp bộ lọc. Xoá bớt bộ lọc, hoặc thêm người mới ở trang Thành viên.'}
           </li>
         )}
       </ul>

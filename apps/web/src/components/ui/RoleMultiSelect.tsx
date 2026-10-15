@@ -15,7 +15,7 @@ export interface RoleOption {
 /**
  * Chọn NHIỀU vai trò — dropdown có ô tìm + checklist. Hiển thị các vai trò đã chọn
  * dưới dạng `RoleBadge` ngay trên trigger. Bắt buộc ≥1 (không cho bỏ chọn vai trò
- * cuối cùng) khi `requireOne`. Dùng chung cho gán vai trò thành viên & mời.
+ * cuối cùng) khi `requireOne`. Dùng chung cho gán vai trò thành viên khi thêm người.
  */
 export function RoleMultiSelect({
   options,
