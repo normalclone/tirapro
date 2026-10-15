@@ -3,6 +3,7 @@ import { Bold, Code, Heading2, Image as ImageIcon, Italic, Link2, List } from 'l
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
 import { useUpdateIssue } from '@/features/issues/api';
+import { useCanEditIssue } from '@/features/projects/permissions';
 import { Button } from '@/components/ui/Button';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -303,6 +304,7 @@ export function MarkdownEditor({
  */
 export function IssueDescription({ issue }: { issue: IssueDto }) {
   const patch = useUpdateIssue(issue.projectId);
+  const canEdit = useCanEditIssue(issue.projectId)(issue);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(issue.description ?? '');
 
@@ -325,6 +327,16 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
     patch.mutate(
       { id: issue.id, key: issue.key, patch: { description: next }, version: issue.version },
       { onError: (e) => toast.error(apiErrorMessage(e)) },
+    );
+  }
+
+  if (!canEdit) {
+    return issue.description ? (
+      <div className="rounded-md border border-border bg-surface p-3">
+        <MarkdownView text={issue.description} />
+      </div>
+    ) : (
+      <p className="text-sm text-faint">Chưa có mô tả.</p>
     );
   }
 

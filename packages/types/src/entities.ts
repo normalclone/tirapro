@@ -266,6 +266,8 @@ export interface IssueDto extends IssueSummaryDto {
   descriptionFormat: RichTextFormat;
   reporter?: UserDto | null;
   reporterId: ID | null;
+  /** Người tạo (có thể khác `reporterId`); cùng với reporter/assignee quyết định "việc của mình" cho `issue:edit:own`. */
+  createdById: ID | null;
   assigneeId: ID | null;
   parentId: ID | null;
   epicId: ID | null;

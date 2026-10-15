@@ -175,7 +175,7 @@ export const IssueRow = memo(
         isDragging={isDragging}
         rootRef={readOnly ? undefined : setNodeRef}
         style={style}
-        rootProps={readOnly ? undefined : { ...listeners, ...attributes }}
+        rootProps={readOnly ? { 'aria-disabled': true } : { ...listeners, ...attributes }}
       />
     );
   },

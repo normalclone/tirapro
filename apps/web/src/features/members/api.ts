@@ -194,6 +194,7 @@ export function useAddProjectMember(projectId: string) {
         .then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });
     },
   });
 }
@@ -209,7 +210,10 @@ export function useAddProjectMembersBulk(projectId: string) {
           skipped: number;
         }>(`/projects/${projectId}/members/bulk`, { userIds, roleIds })
         .then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.members.project(projectId) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });
+    },
   });
 }
 

@@ -343,9 +343,12 @@ export function IssueDetailPage() {
     };
   }, []);
 
+  // Story points/Hạn: phải sửa được issue này (issue:edit, hoặc :own với việc của mình) VÀ là người tạo/báo cáo hoặc quản trị (khớp API).
   const canEditRestricted =
     !!issue &&
+    canEditThis &&
     (issue.reporterId === me?.id ||
+      issue.createdById === me?.id ||
       can('workspace:admin') ||
       can('project:admin') ||
       !!me?.isSystemAdmin);
@@ -503,23 +506,27 @@ export function IssueDetailPage() {
                   <MessageSquare className="h-4 w-4" /> Bình luận
                 </button>
 
-                <button
-                  type="button"
-                  className={TOOLBAR_BTN}
-                  title="Tách một phần việc nhỏ nằm bên trong công việc này"
-                  onClick={() => openCreate({ projectKey, parentId: issue.id, subtask: true })}
-                >
-                  <ListTree className="h-4 w-4" /> Tạo việc con
-                </button>
-                <button
-                  type="button"
-                  className={TOOLBAR_BTN}
-                  title="Tạo một công việc mới giống hệt việc này để sửa lại cho nhanh"
-                  onClick={() => void cloneIssue()}
-                  disabled={createIssue.isPending}
-                >
-                  <Copy className="h-4 w-4" /> Tạo bản sao
-                </button>
+                {can('issue:create') && (
+                  <button
+                    type="button"
+                    className={TOOLBAR_BTN}
+                    title="Tách một phần việc nhỏ nằm bên trong công việc này"
+                    onClick={() => openCreate({ projectKey, parentId: issue.id, subtask: true })}
+                  >
+                    <ListTree className="h-4 w-4" /> Tạo việc con
+                  </button>
+                )}
+                {can('issue:create') && (
+                  <button
+                    type="button"
+                    className={TOOLBAR_BTN}
+                    title="Tạo một công việc mới giống hệt việc này để sửa lại cho nhanh"
+                    onClick={() => void cloneIssue()}
+                    disabled={createIssue.isPending}
+                  >
+                    <Copy className="h-4 w-4" /> Tạo bản sao
+                  </button>
+                )}
                 {me && !isMine && canEditThis && (
                   <button
                     type="button"
@@ -554,13 +561,15 @@ export function IssueDetailPage() {
                       >
                         <Link2 className="h-4 w-4 text-muted" /> Sao chép liên kết
                       </DropdownMenu.Item>
-                      <DropdownMenu.Item
-                        onSelect={() => setConfirmDelete(true)}
-                        disabled={removeIssue.isPending}
-                        className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-danger outline-none transition-colors data-[highlighted]:bg-danger/10"
-                      >
-                        <Trash2 className="h-4 w-4" /> Xoá công việc
-                      </DropdownMenu.Item>
+                      {can('issue:delete') && (
+                        <DropdownMenu.Item
+                          onSelect={() => setConfirmDelete(true)}
+                          disabled={removeIssue.isPending}
+                          className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-danger outline-none transition-colors data-[highlighted]:bg-danger/10"
+                        >
+                          <Trash2 className="h-4 w-4" /> Xoá công việc
+                        </DropdownMenu.Item>
+                      )}
                     </DropdownMenu.Content>
                   </DropdownMenu.Portal>
                 </DropdownMenu.Root>

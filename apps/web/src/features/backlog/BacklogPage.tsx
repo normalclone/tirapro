@@ -41,7 +41,7 @@ import { QueryError } from '@/components/ui/QueryError';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
-import { useCan } from '@/features/projects/permissions';
+import { useCan, useCanEditIssue } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
 import { IssueRow, IssueRowBody } from './IssueRow';
 import { BulkActionBar } from './BulkActionBar';
@@ -88,6 +88,11 @@ export function BacklogPage() {
   const canManageBacklog = can('backlog:manage');
   const canCreate = can('issue:create');
   const canAssign = can('issue:assign');
+  const canEditIssue = useCanEditIssue(projectId);
+  const canDragIssue = useCallback(
+    (i: IssueDto) => canManageBacklog && canEditIssue(i),
+    [canManageBacklog, canEditIssue],
+  );
   const canUseAi = useAuth((s) => s.can('ai:use'));
   const currentUserId = useAuth((s) => s.user?.id);
 
@@ -185,10 +190,9 @@ export function BacklogPage() {
 
   function onDragEnd(e: DragEndEvent) {
     setDragging(null);
-    if (!canManageBacklog) return;
     const issue = (issues ?? []).find((i) => i.id === e.active.id);
     const overId = e.over?.id;
-    if (!issue || overId == null) return;
+    if (!issue || overId == null || !canDragIssue(issue)) return;
     const targetSprintId = overId === BACKLOG_ID ? null : String(overId);
     const currentSprintId = issue.sprintId ?? null;
     if (currentSprintId === targetSprintId) return;
@@ -483,7 +487,7 @@ export function BacklogPage() {
                 canCreate={canCreate}
                 quickAddSprintId={sprint.state !== 'CLOSED' ? sprint.id : undefined}
                 selectable={canAssign || canManageBacklog}
-                canDrag={canManageBacklog}
+                canDrag={canDragIssue}
                 selected={selected}
                 onToggleSelect={toggleSelect}
                 onToggleSection={toggleSelectSection}
@@ -590,7 +594,7 @@ export function BacklogPage() {
             canCreate={canCreate}
             quickAddSprintId={null}
             selectable={canAssign || canManageBacklog}
-            canDrag={canManageBacklog}
+            canDrag={canDragIssue}
             selected={selected}
             onToggleSelect={toggleSelect}
             onToggleSection={toggleSelectSection}
@@ -806,7 +810,7 @@ function Section({
   emptyTitle,
   emptyDescription,
   readOnly,
-  canDrag = true,
+  canDrag,
   projectKey,
   projectId,
   canCreate,
@@ -831,8 +835,8 @@ function Section({
   emptyDescription?: string;
   /** Sprint đã đóng: chỉ xem, không kéo-thả. */
   readOnly?: boolean;
-  /** Có quyền xếp việc giữa backlog/sprint (`backlog:manage`); false thì dòng không kéo được. */
-  canDrag?: boolean;
+  /** Có được kéo dòng này giữa backlog/sprint không (`backlog:manage` và sửa được issue — kéo là PATCH cần `issue:edit`). */
+  canDrag?: (issue: IssueDto) => boolean;
   projectKey?: string;
   projectId?: string;
   canCreate?: boolean;
@@ -858,7 +862,7 @@ function Section({
       key={issue.id}
       issue={issue}
       progress={progressMap.get(issue.id)}
-      readOnly={readOnly || !canDrag}
+      readOnly={readOnly || (canDrag ? !canDrag(issue) : false)}
       selectable={canSelect}
       checked={selected?.has(issue.id) ?? false}
       onToggleSelect={onToggleSelect}
