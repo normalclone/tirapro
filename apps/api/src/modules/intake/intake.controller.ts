@@ -22,7 +22,10 @@ export class IntakeController {
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(reportIssueSchema)) dto: ReportIssueInput,
   ) {
-    return this.intake.report(workspaceId, user.id, dto);
+    // Gộp vào bug cũ = một bình luận nên cần `comment:create` ở dự án (guard đã nạp quyền hiệu lực vào user.permissions).
+    const canComment =
+      !!user.isSystemAdmin || !!user.permissions?.some((p) => p === PERMISSIONS.COMMENT_CREATE);
+    return this.intake.report(workspaceId, user.id, dto, { canComment });
   }
 
   @Permissions(PERMISSIONS.ISSUE_CREATE)
@@ -32,7 +35,14 @@ export class IntakeController {
     @WorkspaceId() workspaceId: string,
     @Query('projectId') projectId: string,
     @Query('summary') summary: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.intake.findDuplicates(workspaceId, projectId ?? '', summary ?? '');
+    const n = Number(limit);
+    return this.intake.findDuplicates(
+      workspaceId,
+      projectId ?? '',
+      summary ?? '',
+      Number.isFinite(n) && n > 0 ? n : undefined,
+    );
   }
 }
