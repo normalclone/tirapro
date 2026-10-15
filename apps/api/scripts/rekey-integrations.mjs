@@ -43,7 +43,8 @@ function encrypt(plain) {
 }
 
 const prisma = new PrismaClient();
-const stats = { ok: 0, rekeyed: 0, plaintext: 0, failed: 0 };
+const stats = { ok: 0, rekeyed: 0, plaintext: 0, failed: 0 }; // Telegram
+const webhookStats = { ok: 0, rekeyed: 0, failed: 0 }; // khoá bí mật webhook automation
 const WEBHOOK_PREFIX = 'enc:v1:'; // khớp webhook-secret.ts
 try {
   const rows = await prisma.integration.findMany({
@@ -79,6 +80,10 @@ try {
     }
     stats.rekeyed++;
   }
+  console.log(
+    `${dryRun ? '[dry-run] ' : ''}Telegram — đã đúng khoá: ${stats.ok} · mã hoá lại: ${stats.rekeyed} · plaintext cũ: ${stats.plaintext} · không giải được: ${stats.failed}`,
+  );
+
   // Khoá bí mật webhook automation: "enc:v1:" + ciphertext. Không tiền tố = plaintext cũ (chưa seal) → bỏ qua.
   const rules = await prisma.automationRule.findMany({
     select: { id: true, actions: true, updatedAt: true },
@@ -91,18 +96,18 @@ try {
       if (typeof a.secret !== 'string' || !a.secret.startsWith(WEBHOOK_PREFIX)) return a;
       const enc = a.secret.slice(WEBHOOK_PREFIX.length);
       if (tryDecrypt(enc, current) !== null) {
-        stats.ok++;
+        webhookStats.ok++;
         return a;
       }
       const plain = previous.length >= 32 ? tryDecrypt(enc, previous) : null;
       if (plain === null) {
-        stats.failed++;
+        webhookStats.failed++;
         console.error(
           `Quy tắc automation ${rule.id}: không giải mã được khoá bí mật webhook bằng khoá hiện tại lẫn khoá cũ — cần nhập lại khoá.`,
         );
         return a;
       }
-      stats.rekeyed++;
+      webhookStats.rekeyed++;
       changed = true;
       return { ...a, secret: WEBHOOK_PREFIX + encrypt(plain) };
     });
@@ -112,7 +117,7 @@ try {
         data: { actions },
       });
       if (count === 0) {
-        stats.failed++;
+        webhookStats.failed++;
         console.error(
           `Quy tắc automation ${rule.id} vừa bị sửa trong lúc chạy — hãy chạy lại script.`,
         );
@@ -120,9 +125,9 @@ try {
     }
   }
   console.log(
-    `${dryRun ? '[dry-run] ' : ''}đã đúng khoá: ${stats.ok} · mã hoá lại: ${stats.rekeyed} · plaintext cũ: ${stats.plaintext} · không giải được: ${stats.failed}`,
+    `${dryRun ? '[dry-run] ' : ''}webhook automation — đã đúng khoá: ${webhookStats.ok} · mã hoá lại: ${webhookStats.rekeyed} · không giải được: ${webhookStats.failed}`,
   );
-  if (stats.failed > 0) process.exitCode = 2;
+  if (stats.failed > 0 || webhookStats.failed > 0) process.exitCode = 2;
 } finally {
   await prisma.$disconnect();
 }

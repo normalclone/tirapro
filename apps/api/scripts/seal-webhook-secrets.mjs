@@ -15,6 +15,7 @@ import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 
 const PREFIX = 'enc:v1:';
+const MAX_PLAIN = 200; // khớp WEBHOOK_SECRET_MAX_LENGTH (@tirapro/shared): dạng mã hoá của ≤200 ký tự luôn nằm trong giới hạn schema
 const dryRun = process.argv.includes('--dry-run');
 const current = process.env.INTEGRATION_ENCRYPTION_KEY ?? '';
 if (current.length < 32) {
@@ -36,7 +37,7 @@ function encrypt(plain) {
 const isWebhook = (a) => !!a && typeof a === 'object' && a.type === 'webhook';
 
 const prisma = new PrismaClient();
-const stats = { sealed: 0, already: 0, none: 0, skipped: 0 };
+const stats = { sealed: 0, already: 0, none: 0, skipped: 0, tooLong: 0 };
 try {
   const rows = await prisma.automationRule.findMany({
     select: { id: true, actions: true, updatedAt: true },
@@ -52,6 +53,14 @@ try {
       }
       if (a.secret.startsWith(PREFIX)) {
         stats.already++;
+        return a;
+      }
+      if (a.secret.length > MAX_PLAIN) {
+        // Không thể xảy ra với dữ liệu tạo qua API (schema ≤200); bỏ qua thay vì tạo dạng vượt giới hạn schema.
+        stats.tooLong++;
+        console.error(
+          `Quy tắc ${row.id}: khoá webhook dài ${a.secret.length} ký tự (> ${MAX_PLAIN}) — bỏ qua, hãy nhập lại khoá ngắn hơn.`,
+        );
         return a;
       }
       stats.sealed++;
@@ -70,9 +79,9 @@ try {
     }
   }
   console.log(
-    `${dryRun ? '[dry-run] ' : ''}mã hoá mới: ${stats.sealed} · đã mã hoá sẵn: ${stats.already} · không có khoá: ${stats.none} · bỏ qua (xung đột): ${stats.skipped}`,
+    `${dryRun ? '[dry-run] ' : ''}mã hoá mới: ${stats.sealed} · đã mã hoá sẵn: ${stats.already} · không có khoá: ${stats.none} · bỏ qua (xung đột): ${stats.skipped} · quá dài: ${stats.tooLong}`,
   );
-  if (stats.skipped > 0) process.exitCode = 2;
+  if (stats.skipped > 0 || stats.tooLong > 0) process.exitCode = 2;
 } finally {
   await prisma.$disconnect();
 }

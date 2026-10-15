@@ -20,8 +20,9 @@ const row = (over: Record<string, unknown> = {}) => ({
 });
 
 const cipher = {
-  encrypt: (p: string) => `E[${p}]`,
-  decrypt: (e: string) => (e.startsWith('E[') ? e.slice(2, -1) : null),
+  // Giả dạng ba phần iv:tag:ct như TelegramService thật (openSecret kiểm đúng 3 phần).
+  encrypt: (p: string) => `i:t:${p}`,
+  decrypt: (e: string) => (e.startsWith('i:t:') ? e.slice(4) : null),
 };
 
 function setup() {
@@ -138,14 +139,14 @@ describe('RulesService', () => {
     });
     const stored = (prisma.automationRule.create.mock.calls[0] as unknown as Written)[0].data
       .actions[0]!.secret;
-    expect(stored).toBe('enc:v1:E[k]');
+    expect(stored).toBe('enc:v1:i:t:k');
     expect((dto.actions[0] as { secret?: string }).secret).toBe('********');
   });
 
   it('update: gửi lại ******** giữ khoá cũ; gửi khoá mới thì mã hoá lại', async () => {
     const { service, prisma } = setup();
     prisma.automationRule.findFirst.mockResolvedValue(
-      row({ actions: [{ type: 'webhook', url: 'https://x.test/h', secret: 'enc:v1:E[old]' }] }),
+      row({ actions: [{ type: 'webhook', url: 'https://x.test/h', secret: 'enc:v1:i:t:old' }] }),
     );
     await service.update('w1', 'r1', {
       actions: [{ type: 'webhook', url: 'https://x.test/h', secret: '********' }],
@@ -153,19 +154,19 @@ describe('RulesService', () => {
     expect(
       (prisma.automationRule.updateMany.mock.calls[0] as unknown as Written)[0].data.actions[0]!
         .secret,
-    ).toBe('enc:v1:E[old]');
+    ).toBe('enc:v1:i:t:old');
     await service.update('w1', 'r1', {
       actions: [{ type: 'webhook', url: 'https://x.test/h', secret: 'moi' }],
     });
     expect(
       (prisma.automationRule.updateMany.mock.calls[1] as unknown as Written)[0].data.actions[0]!
         .secret,
-    ).toBe('enc:v1:E[moi]');
+    ).toBe('enc:v1:i:t:moi');
   });
 
   it('cache engine chỉ chứa bản đã mã hoá; openSecret giải mã được cả bản mã hoá lẫn plaintext cũ', () => {
     const { service } = setup();
-    expect(service.openSecret('enc:v1:E[k]')).toBe('k');
+    expect(service.openSecret('enc:v1:i:t:k')).toBe('k');
     expect(service.openSecret('plain-cu')).toBe('plain-cu');
   });
 });
