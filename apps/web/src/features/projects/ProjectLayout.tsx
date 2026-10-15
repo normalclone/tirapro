@@ -34,7 +34,7 @@ import { Skeleton } from '@/components/ui/primitives';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
 import { useProjectRealtime } from '@/lib/realtime';
-import { LAST_VIEW_KEY } from '@/lib/currentProject';
+import { LAST_ACTIVE_KEY, LAST_VIEW_KEY } from '@/lib/currentProject';
 
 const VIEWS = [
   { seg: 'board', label: 'Bảng việc', icon: LayoutGrid },
@@ -96,6 +96,16 @@ export function ProjectLayout() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, seg]);
+  // Nhớ dự án HOẠT ĐỘNG xem gần nhất để "Tạo việc" có dự án thay thế đúng khi đang ở dự án lưu trữ.
+  const activeKey = project && !project.archivedAt ? project.key : null;
+  useEffect(() => {
+    if (!activeKey) return;
+    try {
+      localStorage.setItem(LAST_ACTIVE_KEY, activeKey);
+    } catch {
+      /* ignore */
+    }
+  }, [activeKey]);
 
   const tabCls = (active: boolean) =>
     cn(

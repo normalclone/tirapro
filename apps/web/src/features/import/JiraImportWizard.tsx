@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { unmatchedAssigneesNotice } from './jiraSummary';
+import { BLANK, UNMAPPED, autoMapUsers, buildUserMapping } from './jiraUsers';
 import {
   useImportJob,
   useJiraAnalyze,
@@ -19,8 +21,6 @@ import {
 
 const STEPS = ['Tải tệp', 'Ghép dữ liệu', 'Nhập & kết quả'] as const;
 const NEW_PROJECT = '__new__';
-/** Giá trị rỗng của ô chọn người dùng = để trống. */
-const EMPTY = '';
 
 const selectClass = cn(
   'h-9 w-full rounded-md border border-border bg-bg px-2 text-sm text-ink',
@@ -34,22 +34,6 @@ type Mapping = Record<string, string>;
 function autoMap(names: string[], options: Array<{ id: string; name: string }>): Mapping {
   const byName = new Map(options.map((o) => [o.name.toLowerCase(), o.id]));
   return Object.fromEntries(names.map((n) => [n, byName.get(n.toLowerCase()) ?? JIRA_CREATE]));
-}
-
-/** Gợi ý người dùng: khớp email, rồi tên hiển thị; không khớp thì để trống. */
-function autoMapUsers(
-  users: JiraAnalyzeResult['users'],
-  members: JiraImportTargets['members'],
-): Mapping {
-  const out: Mapping = {};
-  for (const u of users) {
-    const email = (u.email ?? '').toLowerCase();
-    const hit =
-      (email && members.find((m) => m.email.toLowerCase() === email)) ||
-      members.find((m) => m.displayName.toLowerCase() === u.name.toLowerCase());
-    out[u.name] = hit ? hit.id : EMPTY;
-  }
-  return out;
 }
 
 function Stepper({ step }: { step: number }) {
@@ -93,6 +77,7 @@ function MappingTable({
   onChange,
   children,
   disabled,
+  fallback = BLANK,
 }: {
   title: string;
   hint?: string;
@@ -102,6 +87,8 @@ function MappingTable({
   /** Các `<option>` đích (ngoài "Tạo mới"/"Để trống"). */
   children: ReactNode;
   disabled?: boolean;
+  /** Giá trị hiển thị khi dòng chưa có trong `value`. */
+  fallback?: string;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -120,7 +107,7 @@ function MappingTable({
             <select
               aria-label={`${title}: ${name}`}
               className={selectClass}
-              value={value[name] ?? EMPTY}
+              value={value[name] ?? fallback}
               disabled={disabled}
               onChange={(e) => onChange(name, e.target.value)}
             >
@@ -479,12 +466,14 @@ function MappingTables({
 
       <MappingTable
         title="Người dùng"
-        hint="Người không ghép được sẽ để trống (người nhập sẽ là người báo cáo)."
+        hint="Chọn thành viên tương ứng, hoặc “Để trống” nếu cố ý không gán. Người để “Chưa ghép” vẫn được nhập nhưng không có người phụ trách và sẽ có cảnh báo."
         rows={analysis.users.map((u) => u.name)}
         value={maps.users[0]}
+        fallback={UNMAPPED}
         onChange={(k, v) => maps.users[1]((m) => ({ ...m, [k]: v }))}
       >
-        <option value={EMPTY}>— Để trống —</option>
+        <option value={UNMAPPED}>— Chưa ghép —</option>
+        <option value={BLANK}>— Để trống (cố ý) —</option>
         {targets.members.map((m) => (
           <option key={m.id} value={m.id}>
             {m.displayName} ({m.email})
@@ -554,9 +543,7 @@ function MappingStep({
   const projectValid = !isNew || newProjectValid;
 
   function submit(isDry: boolean) {
-    const userMap: Record<string, string | null> = {};
-    for (const [name, id] of Object.entries(maps.users[0]))
-      userMap[name] = id === EMPTY ? null : id;
+    const userMap = buildUserMapping(maps.users[0]);
     const body: JiraImportRunInput = {
       analyzeId: analysis.analyzeId,
       ...(isNew
@@ -667,6 +654,7 @@ function ProgressStep({
   }
   const running = job.status === 'RUNNING' || job.status === 'PENDING';
   const summary = (job.result ?? {}) as JiraImportSummary;
+  const assigneeNotice = unmatchedAssigneesNotice(summary);
 
   function downloadLog() {
     if (!job?.errorLog) return;
@@ -722,6 +710,8 @@ function ProgressStep({
               ['Nhãn gắn', summary.labels],
               ['Bình luận', summary.comments],
               ['Cảnh báo', summary.warnings],
+              ['Chưa có người phụ trách', summary.skippedAssignees],
+              ['Để trống có chủ đích', summary.blankedAssignees],
               ['Lỗi', summary.failed],
             ].map(([label, n]) => (
               <div
@@ -733,6 +723,15 @@ function ProgressStep({
               </div>
             ))}
           </dl>
+          {assigneeNotice && (
+            <p
+              role="status"
+              className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-ink"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              <span>{assigneeNotice}</span>
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             {job.errorLog && (
               <Button variant="secondary" size="sm" onClick={downloadLog}>

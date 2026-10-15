@@ -56,6 +56,7 @@ import {
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { CommentsSection } from '@/features/issue-edit/CommentsSection';
 import { computeNextStatuses } from './nextStatuses';
+import { transitionToastOptions } from './statusUndo';
 import { FOCUS_COMMENT_EVENT } from '@/features/command/events';
 import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
@@ -202,13 +203,15 @@ export function IssueDetailPage() {
   function changeStatus(toStatusId: string) {
     if (!issue || toStatusId === issue.status.id) return;
     const toName = nextStatuses.find((s) => s.id === toStatusId)?.name;
+    const from = { statusId: issue.status.id, statusName: issue.status.name };
     transition.mutate(
       { id: issue.id, key: issue.key, toStatusId, version: issue.version, statusName: toName },
       {
-        onSuccess: () =>
-          toast.success(toName ? `Đã chuyển sang “${toName}”` : 'Đã đổi trạng thái', {
-            duration: 2000,
-          }),
+        onSuccess: (updated) =>
+          toast.success(
+            toName ? `Đã chuyển sang “${toName}”` : 'Đã đổi trạng thái',
+            transitionToastOptions({ workflows, from, toStatusId, updated, transition }),
+          ),
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
     );

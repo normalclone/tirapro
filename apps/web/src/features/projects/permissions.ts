@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { skipToken, useQuery } from '@tanstack/react-query';
+import { queryOptions, skipToken, useQueries, useQuery } from '@tanstack/react-query';
 import type { PermissionKey, ProjectPermissionsDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { useProjects } from './api';
@@ -12,15 +12,42 @@ import {
 import { keys } from '@/lib/queryKeys';
 import { useAuth } from '@/stores/auth';
 
-export function useProjectPermissions(projectId?: string | null) {
-  return useQuery({
+function projectPermissionsQuery(projectId?: string | null) {
+  return queryOptions({
     queryKey: keys.projects.permissions(projectId ?? ''),
     queryFn: projectId
       ? async () =>
           (await api.get<ProjectPermissionsDto>(`/projects/${projectId}/permissions/me`)).data
       : skipToken,
     staleTime: 60_000, // khớp TTL cache RBAC phía API
+    // Lỗi mạng: thử lại tối đa 1 lần (mặc định 3 lần giãn dần giữ skeleton hàng chục giây ở nơi chờ quyền).
+    retry: 1,
   });
+}
+
+export function useProjectPermissions(projectId?: string | null) {
+  return useQuery(projectPermissionsQuery(projectId));
+}
+
+/**
+ * Có `perm` ở TỪNG dự án trong danh sách không (dùng chung cache `useProjectPermissions`): true/false, undefined = quyền dự án
+ * đó đang tải. Dùng để chọn dự án mặc định "dự án đầu tiên tôi CÓ quyền" mà không gọi API nghiệp vụ ở dự án không có quyền.
+ */
+export function useProjectsCan(
+  projectIds: readonly string[],
+  perm: PermissionKey,
+): (projectId: string) => boolean | undefined {
+  const isSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);
+  const workspace = useAuth((s) => s.permissions);
+  const results = useQueries({ queries: projectIds.map((id) => projectPermissionsQuery(id)) });
+  const byId = new Map<string, boolean | undefined>();
+  projectIds.forEach((id, i) => {
+    const project = results[i]?.data?.permissions;
+    // Có từ cấp workspace/system admin → khỏi chờ quyền dự án; chưa có dữ liệu mà cũng chưa lỗi → chưa biết.
+    const known = hasPermission({ isSystemAdmin, workspace, project }, perm);
+    byId.set(id, known || project || results[i]?.isError ? known : undefined);
+  });
+  return (id) => byId.get(id);
 }
 
 /** `const can = useCan(project?.id); can('worklog:create')` — quyền hiệu lực trong dự án. */

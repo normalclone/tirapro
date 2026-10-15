@@ -10,6 +10,8 @@ export interface SearchSelectOption {
   color?: string | null;
   /** Nội dung phụ bên phải (vd: key issue, mã). */
   hint?: string;
+  /** Không chọn được (hiện mờ, kèm `hint` giải thích nếu có). */
+  disabled?: boolean;
 }
 
 /**
@@ -107,9 +109,10 @@ export function SearchSelect({
               autoFocus
               className="h-8 text-sm"
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && filtered.length > 0) {
+                const first = filtered.find((o) => !o.disabled);
+                if (e.key === 'Enter' && first) {
                   e.preventDefault();
-                  pick(filtered[0]!.value);
+                  pick(first.value);
                 }
               }}
             />
@@ -123,10 +126,13 @@ export function SearchSelect({
                     type="button"
                     role="option"
                     aria-selected={active}
+                    aria-disabled={o.disabled || undefined}
+                    disabled={o.disabled}
                     onClick={() => pick(o.value)}
                     className={cn(
                       'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2',
                       active && 'bg-surface-2',
+                      o.disabled && 'cursor-not-allowed text-muted hover:bg-transparent',
                     )}
                   >
                     <Check

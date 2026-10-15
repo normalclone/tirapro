@@ -6,6 +6,7 @@ import {
   createAccess,
   currentProjectKey,
   issueKeyFromPathname,
+  readRecentProjectKeys,
   resolveCreateTarget,
   type CreateTarget,
 } from './currentProject';
@@ -28,7 +29,11 @@ export function useCreateTarget(): {
   const { data: all } = useProjects(true, !!issueKey);
   const issueProjectKey = issue ? all?.find((p) => p.id === issue.projectId)?.key : undefined;
 
-  const target = resolveCreateTarget(issueProjectKey ?? currentProjectKey(active), active);
+  const target = resolveCreateTarget(
+    issueProjectKey ?? currentProjectKey(active),
+    active,
+    readRecentProjectKeys,
+  );
   const targetProject = target.projectKey
     ? active?.find((p) => p.key.toLowerCase() === target.projectKey!.toLowerCase())
     : undefined;

@@ -17,6 +17,7 @@ import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
+import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
 import { TokenTitleInput } from './TokenTitleInput';
 import { parseTitleTokens, type TokenCtx } from './titleTokens';
@@ -28,10 +29,9 @@ const selectClass = cn(
 );
 
 // Nhớ dự án/loại đã dùng gần nhất để prefill lần sau (tăng tốc nhập liệu).
-const LAST_KEY = 'tirapro:createIssue:last';
 function loadLast(): { projectKey?: string; typeId?: string } {
   try {
-    return JSON.parse(localStorage.getItem(LAST_KEY) || '{}') as {
+    return JSON.parse(localStorage.getItem(CREATE_LAST_KEY) || '{}') as {
       projectKey?: string;
       typeId?: string;
     };
@@ -41,7 +41,7 @@ function loadLast(): { projectKey?: string; typeId?: string } {
 }
 function saveLast(v: { projectKey?: string; typeId?: string }) {
   try {
-    localStorage.setItem(LAST_KEY, JSON.stringify(v));
+    localStorage.setItem(CREATE_LAST_KEY, JSON.stringify(v));
   } catch {
     /* ignore */
   }
@@ -132,6 +132,8 @@ export function CreateIssueModal() {
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const prevTypeRef = useRef('');
+  // Chữ đang giữ (không tự lưu) sau khi chọn dự án đã có nháp riêng — xem ô Dự án.
+  const heldDraftRef = useRef<{ key: string; summary: string; description: string } | null>(null);
 
   const selProject = useMemo(
     () => (projects ?? []).find((p) => p.key === selKey),
@@ -150,7 +152,11 @@ export function CreateIssueModal() {
   // Mở popup: đặt lại theo ngữ cảnh; dự án prefill từ lần dùng gần nhất; khôi phục bản nháp (nếu có).
   useEffect(() => {
     if (!open) return;
-    const key = preset.projectKey ?? loadLast().projectKey ?? projects?.[0]?.key ?? '';
+    // pickProject: dự án hiện tại đã lưu trữ → để TRỐNG, người dùng tự chọn (không đoán dự án đầu danh sách).
+    heldDraftRef.current = null;
+    const key = preset.pickProject
+      ? ''
+      : (preset.projectKey ?? loadLast().projectKey ?? projects?.[0]?.key ?? '');
     const draft = loadDraft(key);
     setSelKey(key);
     setTypeId('');
@@ -172,6 +178,13 @@ export function CreateIssueModal() {
   // Tự lưu bản nháp (tiêu đề + mô tả) theo dự án khi đang mở — không mất khi lỡ đóng.
   useEffect(() => {
     if (!open) return;
+    // Vừa chọn dự án đã có nháp riêng khi đang giữ chữ đã gõ: chưa ghi đè nháp cũ cho tới khi người dùng gõ thêm.
+    const held = heldDraftRef.current;
+    if (held) {
+      if (held.key === selKey && held.summary === summary && held.description === description)
+        return;
+      heldDraftRef.current = null;
+    }
     const t = setTimeout(() => saveDraft(selKey, { summary, description }), 400);
     return () => clearTimeout(t);
   }, [open, selKey, summary, description]);
@@ -320,6 +333,15 @@ export function CreateIssueModal() {
       onOpenChange={(o) => {
         if (!o) close();
       }}
+      // Ô Dự án trống (dự án hiện tại đã lưu trữ): focus thẳng vào ô đó thay vì ô tiêu đề.
+      onOpenAutoFocus={
+        preset.pickProject
+          ? (e) => {
+              e.preventDefault();
+              document.getElementById('ci-project')?.focus();
+            }
+          : undefined
+      }
       title={title}
       size="xl"
       onSubmit={() => void submitCreate()}
@@ -362,23 +384,43 @@ export function CreateIssueModal() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Dự án">
             <SearchSelect
+              id="ci-project"
               value={selKey}
               onChange={(v) => {
                 // Đổi dự án → nạp bản nháp của DỰ ÁN MỚI (không mang chữ dự án cũ sang, không đè nháp dự án mới).
-                const d = loadDraft(v);
+                // Riêng khi CHƯA có dự án (chọn lần đầu): giữ chữ đã gõ, chỉ nạp nháp nếu chưa gõ gì — không ghi đè.
+                const typed = !selKey && (summary.trim() !== '' || description.trim() !== '');
+                if (!typed) {
+                  const d = loadDraft(v);
+                  setSummary(d.summary ?? '');
+                  setDescription(d.description ?? '');
+                } else {
+                  clearDraft(selKey); // nháp "chưa có dự án" đã chuyển sang dự án vừa chọn
+                  const saved = loadDraft(v);
+                  if (saved.summary?.trim() || saved.description?.trim()) {
+                    // Dự án này đã có nháp riêng: giữ nguyên nháp đó trong kho cho tới khi người dùng gõ thêm.
+                    heldDraftRef.current = { key: v, summary, description };
+                    toast.info(
+                      'Dự án này đang có một bản nháp khác — chữ bạn vừa gõ được giữ nguyên, bản nháp cũ chỉ bị thay khi bạn gõ tiếp.',
+                    );
+                  }
+                }
                 setSelKey(v);
                 setTypeId('');
                 setPriorityId('');
                 setSprintId('');
                 setAssigneeId('');
-                setSummary(d.summary ?? '');
-                setDescription(d.description ?? '');
               }}
               placeholder="Chọn dự án…"
               searchPlaceholder="Tìm dự án…"
               className={selectClass}
               options={(projects ?? []).map((p) => ({ value: p.key, label: p.name, hint: p.key }))}
             />
+            {preset.pickProject && !selKey && (
+              <p className="mt-1 text-xs text-muted" role="status">
+                {ARCHIVED_PICK_HINT}
+              </p>
+            )}
           </Field>
           <Field label="Loại việc">
             <SearchSelect
@@ -398,7 +440,7 @@ export function CreateIssueModal() {
           <Field label="Tiêu đề" className="relative z-20 sm:col-span-2">
             <TokenTitleInput
               id="ci-summary"
-              autoFocus
+              autoFocus={!preset.pickProject}
               value={summary}
               onChange={setSummary}
               onBlur={applyTokens}

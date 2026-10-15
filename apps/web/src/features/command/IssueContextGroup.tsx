@@ -6,6 +6,7 @@ import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { useIssue, useTransitionDetail, useUpdateIssue } from '@/features/issues/api';
 import { computeNextStatuses } from '@/features/issues/nextStatuses';
+import { transitionToastOptions } from '@/features/issues/statusUndo';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { useToggleWatch, useWatchState } from '@/features/issue-widgets/api';
 import { ActionItem } from './ActionItem';
@@ -65,15 +66,19 @@ export function IssueContextGroup({
 
   async function changeStatus(toStatusId: string, toName: string) {
     if (!issue) return;
+    const from = { statusId: issue.status.id, statusName: issue.status.name };
     try {
-      await transition.mutateAsync({
+      const updated = await transition.mutateAsync({
         id: issue.id,
         key: issue.key,
         toStatusId,
         version: issue.version,
         statusName: toName,
       });
-      toast.success(`Đã chuyển sang “${toName}”`, { duration: 2000 });
+      toast.success(
+        `Đã chuyển sang “${toName}”`,
+        transitionToastOptions({ workflows, from, toStatusId, updated, transition }),
+      );
     } catch (e) {
       toast.error(apiErrorMessage(e));
     }

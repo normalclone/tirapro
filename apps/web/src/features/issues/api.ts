@@ -174,7 +174,12 @@ export function useTransitionDetail(projectId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: TransitionVars) =>
-      api.post(`/issues/${v.id}/transition`, { toStatusId: v.toStatusId, version: v.version }),
+      api
+        .post<IssueDto>(`/issues/${v.id}/transition`, {
+          toStatusId: v.toStatusId,
+          version: v.version,
+        })
+        .then((r) => r.data),
     onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, statusPatch(v), v.key),
     onError: (_e, _v, snap) => rollbackIssue(qc, snap),
     // Chuyển trạng thái có thể đổi resolution/resolvedAt → luôn nạp lại bản thật (hẹp: issue này + danh sách project).

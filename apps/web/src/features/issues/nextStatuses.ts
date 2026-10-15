@@ -29,3 +29,16 @@ export function computeNextStatuses(
   }
   return out;
 }
+
+/**
+ * Bước NGƯỢC (trạng thái mới → trạng thái cũ) có hợp lệ theo workflow không — quyết định toast sau khi chuyển trạng thái
+ * có nút "Hoàn tác" hay không (Done → In Review thường không có transition, bấm Hoàn tác sẽ bị 409).
+ * Workflow chưa tải / không chứa trạng thái mới → false (không hứa thứ chưa kiểm chứng được).
+ */
+export function canRevertTransition(
+  workflows: Workflow[] | undefined,
+  fromStatusId: string,
+  toStatusId: string,
+): boolean {
+  return computeNextStatuses(workflows, toStatusId).some((s) => s.id === fromStatusId);
+}
