@@ -31,6 +31,7 @@ const EXEMPT: Record<string, string> = {
   'admin/admin-overview.service.ts': 'quản trị hệ thống',
   'admin/admin-system.service.ts': 'quản trị hệ thống',
   'admin/admin-workspaces.service.ts': 'quản trị hệ thống',
+  'audit/audit.service.ts': 'nhật ký quản trị, không thuộc dự án',
   'api-keys/api-key.service.ts': 'khoá API cấp workspace',
   'auth/auth.service.ts': 'định danh',
   'auth/invite.service.ts': 'định danh',

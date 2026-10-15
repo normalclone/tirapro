@@ -11,14 +11,22 @@ import {
   KeyRound,
   AlarmClock,
   FileUp,
+  ScrollText,
 } from 'lucide-react';
+import type { PermissionKey } from '@tirapro/types';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
+import { useAuth } from '@/stores/auth';
 
 /** Cài đặt được chia nhóm để dễ tìm: chung → con người → cách làm việc → nâng cao. */
 const SETTINGS_GROUPS: {
   group: string;
-  items: { to: string; label: string; icon: ReactNode }[];
+  items: {
+    to: string;
+    label: string;
+    icon: ReactNode;
+    /** Chỉ hiện khi có quyền này. */ permission?: PermissionKey;
+  }[];
 }[] = [
   {
     group: 'Chung',
@@ -31,6 +39,12 @@ const SETTINGS_GROUPS: {
     group: 'Con người',
     items: [
       { to: '/settings/roles', label: 'Vai trò & quyền', icon: <Shield className="h-4 w-4" /> },
+      {
+        to: '/settings/audit',
+        label: 'Nhật ký quản trị',
+        icon: <ScrollText className="h-4 w-4" />,
+        permission: 'workspace:admin',
+      },
     ],
   },
   {
@@ -69,6 +83,7 @@ const SETTINGS_GROUPS: {
 ];
 
 export function SettingsLayout() {
+  const can = useAuth((s) => s.can);
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       {/* Submenu: rail dọc trên desktop, hàng pill cuộn ngang trên mobile */}
@@ -86,23 +101,25 @@ export function SettingsLayout() {
             <p className="hidden px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-faint lg:block">
               {g.group}
             </p>
-            {g.items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  cn(
-                    'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-primary-subtle text-primary'
-                      : 'text-muted hover:bg-surface-2 hover:text-ink',
-                  )
-                }
-              >
-                <span className="shrink-0">{item.icon}</span>
-                <TruncatedLabel text={item.label} />
-              </NavLink>
-            ))}
+            {g.items
+              .filter((item) => !item.permission || can(item.permission))
+              .map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      isActive
+                        ? 'bg-primary-subtle text-primary'
+                        : 'text-muted hover:bg-surface-2 hover:text-ink',
+                    )
+                  }
+                >
+                  <span className="shrink-0">{item.icon}</span>
+                  <TruncatedLabel text={item.label} />
+                </NavLink>
+              ))}
           </div>
         ))}
       </nav>

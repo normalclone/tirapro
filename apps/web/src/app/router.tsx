@@ -69,6 +69,9 @@ const ApiKeysPage = lazy(() =>
 const RolesPage = lazy(() =>
   import('@/features/settings/RolesPage').then((m) => ({ default: m.RolesPage })),
 );
+const AuditLogPage = lazy(() =>
+  import('@/features/audit/AuditLogPage').then((m) => ({ default: m.AuditLogPage })),
+);
 const DocumentationPage = lazy(() =>
   import('@/features/docs/DocumentationPage').then((m) => ({ default: m.DocumentationPage })),
 );
@@ -237,6 +240,7 @@ export const router = createBrowserRouter([
           // Tab 'Mời thành viên' đã gộp vào trang Thành viên — giữ link cũ hoạt động.
           { path: 'members', element: <Navigate to="/members" replace /> },
           { path: 'roles', element: <RolesPage /> },
+          { path: 'audit', element: <AuditLogPage /> },
           { path: 'notifications', element: <SettingsNotificationsPage /> },
           { path: 'severities', element: <SettingsSeveritiesPage /> },
           { path: 'priorities', element: <SettingsPrioritiesPage /> },

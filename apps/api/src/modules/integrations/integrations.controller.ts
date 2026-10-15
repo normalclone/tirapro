@@ -53,8 +53,12 @@ export class IntegrationsController {
   /** Xóa integration (cascade kênh). */
   @Delete(':id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.integrations.remove(workspaceId, id);
+  async remove(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.integrations.remove(workspaceId, id, user.id);
   }
 
   /** Liệt kê kênh của một integration. */
@@ -69,17 +73,22 @@ export class IntegrationsController {
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async addChannel(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(addChannelSchema)) body: AddChannelBody,
   ) {
-    return this.integrations.addChannel(workspaceId, id, body);
+    return this.integrations.addChannel(workspaceId, id, body, user.id);
   }
 
   /** Xóa một kênh. */
   @Delete('channels/:channelId')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async removeChannel(@WorkspaceId() workspaceId: string, @Param('channelId') channelId: string) {
-    return this.integrations.removeChannel(workspaceId, channelId);
+  async removeChannel(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('channelId') channelId: string,
+  ) {
+    return this.integrations.removeChannel(workspaceId, channelId, user.id);
   }
 
   /** Gửi tin nhắn kiểm tra tới mọi kênh đang bật. */

@@ -302,6 +302,7 @@ model Workspace {
   clients             Client[]
   inviteTokens        InviteToken[]
   automationRules     AutomationRule[]
+  auditLogs           AuditLog[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -2059,4 +2060,24 @@ model PasswordResetToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// Nhật ký kiểm toán quản trị (vai trò/thành viên/tích hợp/tài khoản). `action` là chuỗi (xem AUDIT_ACTIONS
+/// trong @tirapro/types) để thêm loại mới không cần migration. `actorId` KHÔNG là FK để giữ nhật ký khi xoá người dùng.
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String?
+  summary     String
+  meta        Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, action, createdAt])
+  @@index([actorId, createdAt])
 }

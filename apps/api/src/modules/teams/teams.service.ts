@@ -156,7 +156,13 @@ export class TeamsService {
   }
 
   /** Thêm CẢ nhóm vào một dự án: mỗi thành viên → project membership với vai trò đã chọn. */
-  async assignToProject(workspaceId: string, teamId: string, projectId: string, roleIds: string[]) {
+  async assignToProject(
+    workspaceId: string,
+    teamId: string,
+    projectId: string,
+    roleIds: string[],
+    actorId?: string,
+  ) {
     await this.requireTeam(workspaceId, teamId);
     const teamMembers = await this.prisma.teamMember.findMany({
       where: { teamId },
@@ -164,7 +170,7 @@ export class TeamsService {
     });
     let added = 0;
     for (const m of teamMembers) {
-      await this.members.addProject(workspaceId, projectId, m.userId, roleIds); // validate project∈ws, existing→setRoles, rbac invalidate
+      await this.members.addProject(workspaceId, projectId, m.userId, roleIds, actorId); // validate project∈ws, existing→setRoles, rbac invalidate
       added++;
     }
     return { success: true, added };

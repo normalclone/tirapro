@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { DOMAIN_EVENTS } from '@tirapro/types';
+import { AUDIT_ACTIONS, DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma, IntegrationType, IntegrationStatus } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { AuditService } from '../audit/audit.service';
 import { TELEGRAM_TOKEN_UNUSABLE_MESSAGE, TelegramService } from './telegram.service';
 
 /** Cấu hình lưu trong Integration.config (botToken đã mã hóa). */
@@ -74,6 +75,7 @@ export class IntegrationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramService,
+    private readonly audit: AuditService,
   ) {}
 
   // ----------------------------- CRUD -----------------------------
@@ -106,22 +108,50 @@ export class IntegrationsService {
         createdById: userId,
       },
     });
+    // Không ghi botToken/config vào nhật ký — chỉ loại + tên.
+    await this.audit.record({
+      workspaceId,
+      actorId: userId,
+      action: AUDIT_ACTIONS.INTEGRATION_CREATED,
+      entityType: 'integration',
+      entityId: row.id,
+      summary: `Tạo tích hợp Telegram "${row.name}"`,
+      meta: { type: row.type, name: row.name },
+    });
     return this.redact(row);
   }
 
   /** Xóa integration (cascade kênh). */
-  async remove(workspaceId: string, integrationId: string): Promise<{ success: true }> {
-    await this.requireIntegration(workspaceId, integrationId);
+  async remove(
+    workspaceId: string,
+    integrationId: string,
+    actorId?: string,
+  ): Promise<{ success: true }> {
+    const integration = await this.requireIntegration(workspaceId, integrationId);
     await this.prisma.integration.delete({ where: { id: integrationId } });
+    await this.audit.record({
+      workspaceId,
+      actorId,
+      action: AUDIT_ACTIONS.INTEGRATION_DELETED,
+      entityType: 'integration',
+      entityId: integrationId,
+      summary: `Xoá tích hợp ${integration.type === IntegrationType.TELEGRAM ? 'Telegram ' : ''}"${integration.name}"`,
+      meta: { type: integration.type, name: integration.name },
+    });
     return { success: true };
   }
 
   // --------------------------- Channels ---------------------------
 
-  async addChannel(workspaceId: string, integrationId: string, input: AddChannelInput) {
-    await this.requireIntegration(workspaceId, integrationId);
+  async addChannel(
+    workspaceId: string,
+    integrationId: string,
+    input: AddChannelInput,
+    actorId?: string,
+  ) {
+    const integration = await this.requireIntegration(workspaceId, integrationId);
     try {
-      return await this.prisma.integrationChannel.create({
+      const channel = await this.prisma.integrationChannel.create({
         data: {
           integrationId,
           workspaceId,
@@ -131,6 +161,16 @@ export class IntegrationsService {
           projectId: input.projectId ?? null,
         },
       });
+      await this.audit.record({
+        workspaceId,
+        actorId,
+        action: AUDIT_ACTIONS.INTEGRATION_CHANNEL_ADDED,
+        entityType: 'integration_channel',
+        entityId: channel.id,
+        summary: `Thêm kênh "${input.title ?? input.externalId}" vào tích hợp "${integration.name}"`,
+        meta: { integrationId, title: input.title ?? null, events: input.events ?? [] },
+      });
+      return channel;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new BusinessRuleException('Kênh đã tồn tại');
@@ -147,13 +187,26 @@ export class IntegrationsService {
     });
   }
 
-  async removeChannel(workspaceId: string, channelId: string): Promise<{ success: true }> {
+  async removeChannel(
+    workspaceId: string,
+    channelId: string,
+    actorId?: string,
+  ): Promise<{ success: true }> {
     const channel = await this.prisma.integrationChannel.findFirst({
       where: { id: channelId, workspaceId },
-      select: { id: true },
+      select: { id: true, title: true, externalId: true, integrationId: true },
     });
     if (!channel) throw new NotFoundAppException('Kênh');
     await this.prisma.integrationChannel.delete({ where: { id: channelId } });
+    await this.audit.record({
+      workspaceId,
+      actorId,
+      action: AUDIT_ACTIONS.INTEGRATION_CHANNEL_REMOVED,
+      entityType: 'integration_channel',
+      entityId: channelId,
+      summary: `Gỡ kênh "${channel.title ?? channel.externalId}" khỏi tích hợp`,
+      meta: { integrationId: channel.integrationId },
+    });
     return { success: true };
   }
 

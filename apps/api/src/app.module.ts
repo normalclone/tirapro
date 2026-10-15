@@ -19,6 +19,7 @@ import { MailModule } from './modules/mail/mail.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RbacModule } from './modules/rbac/rbac.module';
+import { AuditModule } from './modules/audit/audit.module';
 import { PermissionsGuard } from './modules/rbac/permissions.guard';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { UsersModule } from './modules/users/users.module';
@@ -132,6 +133,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     SystemSettingsModule,
     ApiKeyModule,
     RbacModule,
+    AuditModule,
     MailModule,
     HealthModule,
     AuthModule,

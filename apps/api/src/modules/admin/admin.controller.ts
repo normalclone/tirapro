@@ -48,6 +48,6 @@ export class AdminController {
     @Body(new ZodValidationPipe(updateUserSchema)) dto: UpdateUserInput,
   ) {
     this.assertSysAdmin(user);
-    return this.admin.update(id, dto);
+    return this.admin.update(id, dto, user.id);
   }
 }

@@ -142,12 +142,16 @@ export interface AdminHealth {
   timestamp: string;
 }
 
+/** `admin` = nhật ký quản trị (AuditLog, có `summary`); `activity` = hoạt động công việc (ActivityLog, có `field`). */
+export type AuditKind = 'admin' | 'activity';
+
 export interface AuditEntry {
   id: string;
   action: string;
   entityType: string;
-  entityId: string;
-  field: string | null;
+  entityId: string | null;
+  field?: string | null;
+  summary?: string;
   createdAt: string;
   workspace: { id: string; name: string } | null;
   actor: { id: string; displayName: string; avatarUrl: string | null } | null;
@@ -209,11 +213,11 @@ export function useAdminHealth() {
   });
 }
 
-export function useAdminAudit(limit = 50, action?: string) {
+export function useAdminAudit(limit = 50, action?: string, kind: AuditKind = 'admin') {
   return useQuery({
-    queryKey: keys.admin.audit(limit, action ?? ''),
+    queryKey: keys.admin.audit(limit, action ?? '', kind),
     queryFn: async () => {
-      const qs = new URLSearchParams({ limit: String(limit) });
+      const qs = new URLSearchParams({ limit: String(limit), kind });
       if (action) qs.set('action', action);
       return (await api.get<ListEnvelope<AuditEntry>>(`/admin/system/audit?${qs.toString()}`)).data
         .data;

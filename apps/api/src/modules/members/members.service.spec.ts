@@ -21,16 +21,19 @@ describe('MembersService.addWorkspaceMany', () => {
       workspaceMembership: tx.workspaceMembership,
     };
     const rbac = { invalidate: vi.fn(), invalidateWorkspace: vi.fn() };
+    const audit = { record: vi.fn() };
     return {
       service: new MembersService(
         prisma as never,
         rbac as never,
         { revokeAllForUser: vi.fn(), dropCaches: vi.fn() } as never,
         { emit: vi.fn() } as never,
+        audit as never,
       ),
       prisma,
       tx,
       rbac,
+      audit,
     };
   }
 
@@ -73,6 +76,9 @@ describe('MembersService.removeWorkspace', () => {
     const prisma = {
       $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
       workspace: { findUnique: vi.fn(() => Promise.resolve({ ownerId: 'owner' })) },
+      user: {
+        findUnique: vi.fn(() => Promise.resolve({ displayName: 'Bình', email: 'ba@x.vn' })),
+      },
     };
     const rbac = { invalidate: vi.fn(() => Promise.resolve()) };
     const apiKeys = {
@@ -80,17 +86,19 @@ describe('MembersService.removeWorkspace', () => {
       dropCaches: vi.fn(() => Promise.resolve()),
     };
     const events = { emit: vi.fn() };
+    const audit = { record: vi.fn() };
     const service = new MembersService(
       prisma as never,
       rbac as never,
       apiKeys as never,
       events as never,
+      audit as never,
     );
-    return { service, prisma, tx, rbac, apiKeys, events };
+    return { service, prisma, tx, rbac, apiKeys, events, audit };
   }
 
   it('gỡ membership + xoá ghi đè dự án + thu hồi API key trong CÙNG transaction, rồi invalidate + phát sự kiện', async () => {
-    const { service, prisma, tx, rbac, apiKeys, events } = setup();
+    const { service, prisma, tx, rbac, apiKeys, events, audit } = setup();
     await expect(service.removeWorkspace('w1', 'u1', 'admin')).resolves.toEqual({ success: true });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(tx.workspaceMembership.delete).toHaveBeenCalledWith({
@@ -103,6 +111,13 @@ describe('MembersService.removeWorkspace', () => {
     expect(apiKeys.dropCaches).toHaveBeenCalledWith(['pfx1', 'pfx2']);
     expect(rbac.invalidate).toHaveBeenCalledWith('u1', 'w1');
     expect(events.emit).toHaveBeenCalledWith('member.removed', { workspaceId: 'w1', userId: 'u1' });
+    expect(audit.record.mock.calls[0]![0]).toMatchObject({
+      workspaceId: 'w1',
+      actorId: 'admin',
+      action: 'member.removed',
+      entityId: 'u1',
+      summary: 'Gỡ Bình (ba@x.vn) khỏi không gian làm việc',
+    });
   });
 
   it('transaction lỗi -> không invalidate, không phát sự kiện', async () => {
@@ -155,8 +170,95 @@ describe('MembersService.listWorkspace — phòng thủ bảng nối rỗng', ()
       {} as never,
       {} as never,
       { emit: vi.fn() } as never,
+      { record: vi.fn() } as never,
     );
     const out = await service.listWorkspace('w1');
     expect(out[0]!.roles).toEqual([{ id: 'r1', name: 'Workspace Admin', color: null }]);
+  });
+});
+
+describe('MembersService — ghi nhật ký quản trị', () => {
+  const userRow = {
+    id: 'u2',
+    email: 'ba@x.vn',
+    displayName: 'Bình',
+    avatarUrl: null,
+    timezone: 'UTC',
+    locale: 'vi',
+    status: 'ACTIVE',
+    isSystemAdmin: false,
+    lastSeenAt: null,
+    createdAt: new Date(),
+  };
+  const memberRow = {
+    id: 'm2',
+    joinedAt: new Date(),
+    roleId: 'r1',
+    role: { id: 'r1', name: 'Workspace Member', color: null },
+    user: userRow,
+    roles: [{ role: { id: 'r1', name: 'Workspace Member', color: null } }],
+  };
+
+  function setup(opts: { existing?: boolean } = {}) {
+    const prisma = {
+      user: {
+        findUnique: vi.fn(() =>
+          Promise.resolve({ id: 'u2', displayName: 'Bình', email: 'ba@x.vn' }),
+        ),
+      },
+      role: { findMany: vi.fn(() => Promise.resolve([{ id: 'r1' }])) },
+      workspaceMembership: {
+        findUnique: vi.fn(() => Promise.resolve(opts.existing ? { id: 'm2' } : null)),
+        create: vi.fn(() => Promise.resolve({})),
+        update: vi.fn(() => Promise.resolve({})),
+        findUniqueOrThrow: vi.fn(() => Promise.resolve(memberRow)),
+      },
+      workspaceMembershipRole: {
+        deleteMany: vi.fn(() => Promise.resolve({})),
+        createMany: vi.fn(() => Promise.resolve({})),
+      },
+      $transaction: vi.fn(() => Promise.resolve([])),
+    };
+    const audit = { record: vi.fn() };
+    const svc = new MembersService(
+      prisma as never,
+      { invalidate: vi.fn() } as never,
+      {} as never,
+      { emit: vi.fn() } as never,
+      audit as never,
+    );
+    return { svc, audit };
+  }
+  const first = (audit: { record: { mock: { calls: unknown[][] } } }) =>
+    audit.record.mock.calls[0]![0] as Record<string, unknown>;
+
+  it('addWorkspace(): thành viên mới → member.added kèm tên, vai trò và người thực hiện', async () => {
+    const { svc, audit } = setup();
+    await svc.addWorkspace('w1', 'u2', ['r1'], 'actor');
+    expect(first(audit)).toMatchObject({
+      workspaceId: 'w1',
+      actorId: 'actor',
+      action: 'member.added',
+      entityId: 'u2',
+      summary: 'Thêm Bình (ba@x.vn) với vai trò Workspace Member',
+    });
+    expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it('addWorkspace(): đã là thành viên → chỉ ghi member.roles_changed (không ghi đôi)', async () => {
+    const { svc, audit } = setup({ existing: true });
+    await svc.addWorkspace('w1', 'u2', ['r1'], 'actor');
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(first(audit)).toMatchObject({ action: 'member.roles_changed', actorId: 'actor' });
+  });
+
+  it('setWorkspaceRoles(): ghi member.roles_changed', async () => {
+    const { svc, audit } = setup({ existing: true });
+    await svc.setWorkspaceRoles('w1', 'u2', ['r1'], 'actor');
+    expect(first(audit)).toMatchObject({
+      workspaceId: 'w1',
+      action: 'member.roles_changed',
+      entityId: 'u2',
+    });
   });
 });

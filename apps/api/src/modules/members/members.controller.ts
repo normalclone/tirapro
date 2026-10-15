@@ -32,30 +32,33 @@ export class WorkspaceMembersController {
   @Post()
   @Permissions(PERMISSIONS.MEMBER_MANAGE)
   async add(
+    @CurrentUser() user: AuthUser,
     @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(addProjectMemberSchema)) dto: AddProjectMemberInput,
   ) {
-    return this.members.addWorkspace(workspaceId, dto.userId, dto.roleIds);
+    return this.members.addWorkspace(workspaceId, dto.userId, dto.roleIds, user.id);
   }
 
   /** Thêm NHIỀU người vào workspace một lúc. */
   @Post('bulk')
   @Permissions(PERMISSIONS.MEMBER_MANAGE)
   async addBulk(
+    @CurrentUser() user: AuthUser,
     @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(addMembersBulkSchema)) dto: AddMembersBulkInput,
   ) {
-    return this.members.addWorkspaceMany(workspaceId, dto.userIds, dto.roleIds);
+    return this.members.addWorkspaceMany(workspaceId, dto.userIds, dto.roleIds, user.id);
   }
 
   @Put(':userId/roles')
   @Permissions(PERMISSIONS.MEMBER_MANAGE)
   async setRoles(
+    @CurrentUser() user: AuthUser,
     @WorkspaceId() workspaceId: string,
     @Param('userId') userId: string,
     @Body(new ZodValidationPipe(setRolesSchema)) dto: SetRolesInput,
   ) {
-    return this.members.setWorkspaceRoles(workspaceId, userId, dto.roleIds);
+    return this.members.setWorkspaceRoles(workspaceId, userId, dto.roleIds, user.id);
   }
 
   @Delete(':userId')
@@ -84,33 +87,36 @@ export class ProjectMembersController {
   @Post()
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async add(
+    @CurrentUser() user: AuthUser,
     @WorkspaceId() workspaceId: string,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(addProjectMemberSchema)) dto: AddProjectMemberInput,
   ) {
-    return this.members.addProject(workspaceId, projectId, dto.userId, dto.roleIds);
+    return this.members.addProject(workspaceId, projectId, dto.userId, dto.roleIds, user.id);
   }
 
   /** Thêm NHIỀU người vào dự án một lúc. */
   @Post('bulk')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async addBulk(
+    @CurrentUser() user: AuthUser,
     @WorkspaceId() workspaceId: string,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(addMembersBulkSchema)) dto: AddMembersBulkInput,
   ) {
-    return this.members.addProjectMany(workspaceId, projectId, dto.userIds, dto.roleIds);
+    return this.members.addProjectMany(workspaceId, projectId, dto.userIds, dto.roleIds, user.id);
   }
 
   @Put(':userId/roles')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async setRoles(
+    @CurrentUser() user: AuthUser,
     @WorkspaceId() workspaceId: string,
     @Param('projectId') projectId: string,
     @Param('userId') userId: string,
     @Body(new ZodValidationPipe(setRolesSchema)) dto: SetRolesInput,
   ) {
-    return this.members.setProjectRoles(workspaceId, projectId, userId, dto.roleIds);
+    return this.members.setProjectRoles(workspaceId, projectId, userId, dto.roleIds, user.id);
   }
 
   /**
@@ -120,10 +126,11 @@ export class ProjectMembersController {
   @Delete(':userId')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async clearOverride(
+    @CurrentUser() user: AuthUser,
     @WorkspaceId() workspaceId: string,
     @Param('projectId') projectId: string,
     @Param('userId') userId: string,
   ) {
-    return this.members.clearProjectOverride(workspaceId, projectId, userId);
+    return this.members.clearProjectOverride(workspaceId, projectId, userId, user.id);
   }
 }

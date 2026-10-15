@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'node:crypto';
+import { AUDIT_ACTIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { offsetPage } from '../../common/dto/page-result';
+import { AuditService } from '../audit/audit.service';
 import type { CreateUserInput, UpdateUserInput } from './admin.schemas';
 
 const USER_SELECT = {
@@ -35,7 +37,10 @@ type Row = {
 /** Quản trị tài khoản toàn hệ thống (chỉ admin hệ thống). */
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   private toDto(u: Row) {
     return {
@@ -85,8 +90,11 @@ export class AdminService {
     return { ...this.toDto(created), tempPassword };
   }
 
-  async update(id: string, input: UpdateUserInput) {
-    const found = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
+  async update(id: string, input: UpdateUserInput, actorId?: string) {
+    const found = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, status: true, displayName: true, email: true },
+    });
     if (!found) throw new NotFoundAppException('Người dùng');
     const updated = await this.prisma.user.update({
       where: { id },
@@ -98,6 +106,18 @@ export class AdminService {
       },
       select: USER_SELECT,
     });
+    // Khoá / mở khoá tài khoản là thao tác quản trị toàn hệ thống → workspaceId null (xem ở /admin/system).
+    if (input.status && input.status !== found.status) {
+      const deactivated = input.status === 'DEACTIVATED';
+      await this.audit.record({
+        actorId,
+        action: deactivated ? AUDIT_ACTIONS.ACCOUNT_DEACTIVATED : AUDIT_ACTIONS.ACCOUNT_REACTIVATED,
+        entityType: 'user',
+        entityId: id,
+        summary: `${deactivated ? 'Khoá' : 'Mở khoá'} tài khoản ${found.displayName} (${found.email})`,
+        meta: { from: found.status, to: input.status },
+      });
+    }
     return this.toDto(updated);
   }
 }

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
+import { AuditService } from '../audit/audit.service';
 import { offsetPage } from '../../common/dto/page-result';
 import type { AuditQueryInput } from './admin-console.schemas';
 
@@ -14,6 +15,7 @@ export class AdminSystemService {
     private readonly config: ConfigService,
     private readonly redis: RedisService,
     private readonly settings: SystemSettingsService,
+    private readonly auditSvc: AuditService,
   ) {}
 
   async health() {
@@ -48,6 +50,28 @@ export class AdminSystemService {
   }
 
   async audit(params: AuditQueryInput) {
+    if (params.kind === 'activity') return this.activityLog(params);
+    return this.adminLog(params);
+  }
+
+  /** Nhật ký quản trị toàn hệ thống (AuditLog), mới nhất trước; cùng hình dạng `AuditLogDto` (+ workspace). */
+  private async adminLog(params: AuditQueryInput) {
+    const rows = await this.prisma.auditLog.findMany({
+      where: {
+        ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
+        ...(params.action ? { action: params.action } : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: params.limit,
+      include: { workspace: { select: { id: true, name: true } } },
+    });
+    const actors = await this.auditSvc.resolveActors(rows.map((r) => r.actorId));
+    const data = rows.map((r) => ({ ...this.auditSvc.toDto(r, actors), workspace: r.workspace }));
+    return offsetPage(data, 1, Math.max(1, data.length), data.length);
+  }
+
+  /** Hoạt động công việc (ActivityLog) — hành vi cũ của trang nhật ký. */
+  private async activityLog(params: AuditQueryInput) {
     const rows = await this.prisma.activityLog.findMany({
       where: {
         ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),

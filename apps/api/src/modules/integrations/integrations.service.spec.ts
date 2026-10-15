@@ -24,18 +24,22 @@ function setup(
       findMany: vi.fn(() => Promise.resolve([row])),
       findFirst: vi.fn(() => Promise.resolve(row)),
       updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+      create: vi.fn(() => Promise.resolve(row)),
+      delete: vi.fn(() => Promise.resolve(row)),
     },
     integrationChannel: { findMany: vi.fn(() => Promise.resolve(row.channels)) },
   };
+  const audit = { record: vi.fn() };
   const telegram = {
     resolveBotToken: vi.fn(() => resolution),
     send: vi.fn(() => Promise.resolve(true)),
     available: vi.fn(() => true),
   };
   return {
-    service: new IntegrationsService(prisma as never, telegram as never),
+    service: new IntegrationsService(prisma as never, telegram as never, audit as never),
     prisma,
     telegram,
+    audit,
   };
 }
 const payload = {
@@ -81,6 +85,34 @@ describe('IntegrationsService — token không dùng được', () => {
     expect(prisma.integration.updateMany).toHaveBeenCalledWith({
       where: { id: 'g1', status: 'ERROR' },
       data: { status: 'ACTIVE' },
+    });
+  });
+});
+
+describe('IntegrationsService — ghi nhật ký quản trị', () => {
+  it('createTelegram(): ghi integration.created, KHÔNG đưa botToken vào nhật ký', async () => {
+    const { service, audit, telegram } = setup({ kind: 'global' });
+    (telegram as unknown as Record<string, unknown>).encrypt = vi.fn(() => 'ENCRYPTED');
+    await service.createTelegram('w1', 'u1', { name: 'Bot QA', botToken: '123:SECRET' });
+    const entry = audit.record.mock.calls[0]![0] as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      workspaceId: 'w1',
+      actorId: 'u1',
+      action: 'integration.created',
+      entityType: 'integration',
+    });
+    expect(JSON.stringify(entry)).not.toContain('SECRET');
+    expect(JSON.stringify(entry)).not.toContain('ENCRYPTED');
+  });
+
+  it('remove(): ghi integration.deleted với người thực hiện', async () => {
+    const { service, audit } = setup({ kind: 'global' });
+    await service.remove('w1', 'g1', 'u1');
+    expect(audit.record.mock.calls[0]![0]).toMatchObject({
+      workspaceId: 'w1',
+      actorId: 'u1',
+      action: 'integration.deleted',
+      entityId: 'g1',
     });
   });
 });
