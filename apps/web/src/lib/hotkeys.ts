@@ -50,6 +50,16 @@ export function isWorklogHotkey(
   return e.key === 'w' || e.key === 'W';
 }
 
+/** Phím `m` (không modifier) viết bình luận — chỉ khi có quyền bình luận, không đang gõ, không có dialog mở. */
+export function isCommentHotkey(
+  e: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean },
+  ctx: { typing: boolean; dialogOpen: boolean; canComment: boolean },
+): boolean {
+  if (!ctx.canComment || ctx.typing || ctx.dialogOpen) return false;
+  if (e.metaKey || e.ctrlKey || e.altKey) return false;
+  return e.key === 'm' || e.key === 'M';
+}
+
 interface KeyLike {
   key: string;
   metaKey: boolean;

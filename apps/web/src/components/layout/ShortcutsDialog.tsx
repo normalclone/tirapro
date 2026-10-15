@@ -13,6 +13,7 @@ const GROUPS: { title: string; items: { keys: string[]; label: string }[] }[] = 
       { keys: ['/'], label: 'Tìm kiếm / bảng lệnh' },
       { keys: ['c'], label: 'Tạo công việc' },
       { keys: ['w'], label: 'Ghi thời gian (trong chi tiết công việc)' },
+      { keys: ['m'], label: 'Viết bình luận (trong chi tiết công việc)' },
       { keys: ['?'], label: 'Bảng phím tắt này' },
     ],
   },

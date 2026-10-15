@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import type { CommentDto, IssueDto } from '@tirapro/types';
 import { useAddComment, useComments } from '@/features/issues/api';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
+import { COMMENT_INPUT_ID } from '@/features/command/events';
 import { useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { Avatar } from '@/components/ui/primitives';
@@ -84,6 +85,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             onSubmit={() => void submit()}
             rows={3}
             mentionPeople={people}
+            textareaId={COMMENT_INPUT_ID}
             placeholder="Viết bình luận… (viết được Markdown · ⌘/Ctrl+Enter để gửi)"
           />
           <TypingIndicator issueId={issue.id} />

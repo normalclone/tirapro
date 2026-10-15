@@ -60,7 +60,11 @@ import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { CommentsSection } from '@/features/issue-edit/CommentsSection';
 import { computeNextStatuses } from './nextStatuses';
 import { transitionToastOptions } from './statusUndo';
-import { FOCUS_COMMENT_EVENT } from '@/features/command/events';
+import {
+  COMMENT_INPUT_ID,
+  FOCUS_COMMENT_EVENT,
+  requestFocusComment,
+} from '@/features/command/events';
 import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
 import { IssueLabelsPicker } from '@/features/issue-meta/IssueLabelsPicker';
@@ -77,7 +81,7 @@ import { useRecents } from '@/stores/recentIssues';
 import { useProjectRealtime } from '@/lib/realtime';
 import { useCachedProjectIssue, useUpdateIssue, useTransitionDetail } from './api';
 import { useInView } from '@/lib/useInView';
-import { isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
+import { isCommentHotkey, isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { FEATURES } from '@/lib/features';
@@ -207,6 +211,26 @@ export function IssueDetailPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [canLogWork, hasIssue]);
 
+  // Phím `m` viết bình luận: cùng cách đăng ký với `w` (khu bình luận dựng lười nên bắt phím ở cấp trang).
+  const canComment = can('comment:create');
+  useEffect(() => {
+    if (!canComment || !hasIssue) return;
+    function onKey(e: KeyboardEvent) {
+      if (
+        !isCommentHotkey(e, {
+          typing: isTypingTarget(e.target),
+          dialogOpen: isOverlayOpen(),
+          canComment,
+        })
+      )
+        return;
+      e.preventDefault(); // chữ "m" không lọt vào ô vừa được focus
+      requestFocusComment();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canComment, hasIssue]);
+
   function changeStatus(toStatusId: string) {
     if (!issue || toStatusId === issue.status.id) return;
     const toName = nextStatuses.find((s) => s.id === toStatusId)?.name;
@@ -329,13 +353,9 @@ export function IssueDetailPage() {
     if (issue) useRecents.getState().record({ key: issue.key, summary: issue.summary });
   }, [issue?.id, issue?.summary]);
 
+  // Một đường chung với phím `m` và Cmd+K: listener bên dưới mở tab, cuộn, rồi đặt con trỏ vào ô viết.
   function jumpToComments() {
-    setActivityTab('comments');
-    requestAnimationFrame(() =>
-      document
-        .getElementById('issue-activity')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-    );
+    requestFocusComment();
   }
 
   // Cmd+K "Thêm bình luận": mở tab bình luận, cuộn tới khu hoạt động rồi đưa con trỏ vào ô viết bình luận.
@@ -351,11 +371,10 @@ export function IssueDetailPage() {
       );
       let tries = 0;
       const attempt = () => {
-        const box = document.querySelector<HTMLTextAreaElement>(
-          '#issue-activity textarea[placeholder^="Viết bình luận"]',
-        );
+        const box = document.getElementById(COMMENT_INPUT_ID) as HTMLTextAreaElement | null;
         if (box) {
           box.focus({ preventScroll: true });
+          box.setSelectionRange(box.value.length, box.value.length); // gõ tiếp ở cuối bản nháp
           return;
         }
         if (++tries < 25) timer = window.setTimeout(attempt, 80);
@@ -552,7 +571,7 @@ export function IssueDetailPage() {
                 <button
                   type="button"
                   className={TOOLBAR_BTN}
-                  title="Xuống khu bình luận để trao đổi về việc này"
+                  title="Xuống khu bình luận và viết ngay · phím m"
                   onClick={jumpToComments}
                 >
                   <MessageSquare className="h-4 w-4" /> Bình luận

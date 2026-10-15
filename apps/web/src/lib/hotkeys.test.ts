@@ -3,6 +3,7 @@ import {
   isDialogOpen,
   isOverlayOpen,
   isTypingTarget,
+  isCommentHotkey,
   isWorklogHotkey,
   shouldClearSelectionOnEscape,
   shouldIgnoreGlobalHotkey,
@@ -33,6 +34,29 @@ describe('isWorklogHotkey', () => {
     expect(isWorklogHotkey(ev(), ctx({ typing: true }))).toBe(false);
     expect(isWorklogHotkey(ev(), ctx({ dialogOpen: true }))).toBe(false);
     expect(isWorklogHotkey(ev(), ctx({ canLog: false }))).toBe(false);
+  });
+});
+
+describe('isCommentHotkey', () => {
+  const k = (
+    key: string,
+    mod: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean }> = {},
+  ) => ({ key, metaKey: false, ctrlKey: false, altKey: false, ...mod });
+  const ok = { typing: false, dialogOpen: false, canComment: true };
+  it('m / M không modifier → true', () => {
+    expect(isCommentHotkey(k('m'), ok)).toBe(true);
+    expect(isCommentHotkey(k('M'), ok)).toBe(true);
+  });
+  it('đang gõ, có dialog mở, hoặc không có quyền bình luận → false', () => {
+    expect(isCommentHotkey(k('m'), { ...ok, typing: true })).toBe(false);
+    expect(isCommentHotkey(k('m'), { ...ok, dialogOpen: true })).toBe(false);
+    expect(isCommentHotkey(k('m'), { ...ok, canComment: false })).toBe(false);
+  });
+  it('có modifier hoặc phím khác → false', () => {
+    expect(isCommentHotkey(k('m', { metaKey: true }), ok)).toBe(false);
+    expect(isCommentHotkey(k('m', { ctrlKey: true }), ok)).toBe(false);
+    expect(isCommentHotkey(k('m', { altKey: true }), ok)).toBe(false);
+    expect(isCommentHotkey(k('n'), ok)).toBe(false);
   });
 });
 
