@@ -8,12 +8,13 @@ import animate from 'tailwindcss-animate';
  * nếu không có modifier thì trả về biến như cũ.
  * Thiếu hàm này, các class như `bg-success/10` sẽ bị BỎ QUA (không sinh CSS).
  */
-const token =
-  (name: string) =>
-  ({ opacityValue }: { opacityValue?: string }) =>
+const token = (name: string): string =>
+  // Kiểu của Tailwind chỉ khai báo màu là chuỗi dù runtime chấp nhận hàm; ép kiểu để file này qua được `tsc`
+  // (motionTokens.test.ts import cấu hình nên nó nằm trong chương trình TypeScript).
+  (({ opacityValue }: { opacityValue?: string }) =>
     opacityValue === undefined
       ? `var(${name})`
-      : `color-mix(in oklch, var(${name}) calc(${opacityValue} * 100%), transparent)`;
+      : `color-mix(in oklch, var(${name}) calc(${opacityValue} * 100%), transparent)`) as unknown as string;
 
 export default {
   darkMode: 'class',
@@ -46,6 +47,9 @@ export default {
         sans: ['Geist Variable', 'Geist', 'system-ui', 'sans-serif'],
         mono: ['Geist Mono Variable', 'Geist Mono', 'ui-monospace', 'monospace'],
       },
+      // Token motion theo DESIGN.md. Đặt tên (không dùng duration-[120ms]) vì tailwindcss-animate cũng đăng ký
+      // `duration` (animation-duration) nên giá trị tuỳ ý bị coi là mơ hồ.
+      transitionDuration: { fast: '120ms', base: '180ms', slow: '240ms' },
       borderRadius: {
         sm: '4px',
         DEFAULT: '6px',
