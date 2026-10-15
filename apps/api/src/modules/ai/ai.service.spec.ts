@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AiService } from './ai.service';
+import { AiService, stripText } from './ai.service';
 import type { ClaudeService } from './claude.service';
 
 type CompleteArg = Parameters<ClaudeService['complete']>[0];
@@ -76,5 +76,11 @@ describe('AiService', () => {
     expect(out.source).toBe('heuristic');
     expect('reason' in out).toBe(false);
     expect(out.issues.length).toBeGreaterThan(0);
+  });
+});
+
+describe('stripText — @mention', () => {
+  it('đổi token @[Tên](user:id) thành @Tên để AI không nhận chuỗi id', () => {
+    expect(stripText('Chào @[Dũng](user:u1)')).toBe('Chào @Dũng');
   });
 });

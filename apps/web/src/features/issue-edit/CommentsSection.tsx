@@ -7,8 +7,12 @@ import { useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { Avatar } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import type { PersonOption } from '@/components/ui/PeoplePicker';
 import { apiErrorMessage } from '@/lib/api';
-import { MarkdownEditor, MarkdownView } from './DescriptionEditor';
+import { MarkdownEditor } from './MarkdownEditor';
+import { MarkdownView } from './MarkdownView';
+import { useAssigneeOptions } from './useAssigneeOptions';
+import { useCommentTaskToggle } from './useCommentTaskToggle';
 import { useDeleteComment, useUpdateComment } from './api';
 import { TypingIndicator } from '@/features/presence/TypingIndicator';
 import { useTypingEmitter } from '@/features/presence/usePresence';
@@ -22,6 +26,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   const currentUser = useAuth((s) => s.user);
   const { data: comments } = useComments(issue.id);
   const addComment = useAddComment(issue.id);
+  const people = useAssigneeOptions(issue.projectId);
   const can = useCanIn(issue.projectId); // dự án lưu trữ / không có quyền → chỉ đọc
   const canComment = can('comment:create');
   const canEditOwn = can('comment:edit:own');
@@ -58,6 +63,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             key={c.id}
             comment={c}
             issueId={issue.id}
+            people={people}
             canEdit={canEditOwn && !!currentUser && c.author?.id === currentUser.id}
           />
         ))}
@@ -77,6 +83,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             onChange={onDraftChange}
             onSubmit={() => void submit()}
             rows={3}
+            mentionPeople={people}
             placeholder="Viết bình luận… (viết được Markdown · ⌘/Ctrl+Enter để gửi)"
           />
           <TypingIndicator issueId={issue.id} />
@@ -100,13 +107,16 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
 function CommentRow({
   comment,
   issueId,
+  people,
   canEdit,
 }: {
   comment: CommentDto;
   issueId: string;
+  people: PersonOption[];
   canEdit: boolean;
 }) {
   const update = useUpdateComment(issueId);
+  const toggleTask = useCommentTaskToggle(issueId);
   const remove = useDeleteComment(issueId);
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(comment.body);
@@ -161,6 +171,7 @@ function CommentRow({
               }}
               autoFocus
               rows={3}
+              mentionPeople={people}
             />
             <div className="flex items-center gap-2">
               <span className="mr-auto text-xs text-faint">⌘/Ctrl+Enter để lưu · Esc huỷ</span>
@@ -182,7 +193,14 @@ function CommentRow({
         ) : (
           <>
             <div className="mt-0.5">
-              <MarkdownView text={comment.body} />
+              <MarkdownView
+                text={comment.body}
+                onToggleTask={
+                  canEdit
+                    ? (i, checked, text) => void toggleTask(comment.id, i, checked, text)
+                    : undefined
+                }
+              />
             </div>
             {canEdit && (
               <div className="mt-1 flex items-center gap-3 text-xs">

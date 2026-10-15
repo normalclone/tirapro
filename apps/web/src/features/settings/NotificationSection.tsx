@@ -10,7 +10,11 @@ import { QueryBoundary } from '@/components/ui/QueryBoundary';
 /** Thứ tự + nhãn tiếng Việt cho từng loại thông báo. */
 const NOTIFICATION_TYPES: { key: string; label: string; hint: string }[] = [
   { key: 'ISSUE_ASSIGNED', label: 'Được giao việc', hint: 'Khi bạn được gán vào một công việc' },
-  { key: 'MENTIONED', label: 'Được nhắc đến (@)', hint: 'Khi ai đó @ bạn trong bình luận' },
+  {
+    key: 'MENTIONED',
+    label: 'Được nhắc đến (@)',
+    hint: 'Khi ai đó @ bạn trong bình luận hoặc mô tả công việc',
+  },
   { key: 'COMMENT_ADDED', label: 'Bình luận mới', hint: 'Bình luận mới trên công việc liên quan' },
   { key: 'STATUS_CHANGED', label: 'Đổi trạng thái', hint: 'Công việc chuyển sang trạng thái khác' },
   {

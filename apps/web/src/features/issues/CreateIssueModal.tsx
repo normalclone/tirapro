@@ -8,7 +8,7 @@ import { useProjects } from '@/features/projects/api';
 import { useProjectSprints } from '@/features/backlog/api';
 import { useWorkspaceUsers } from '@/features/issue-edit/api';
 import { uploadAttachmentFile } from '@/features/attachments/api';
-import { MarkdownEditor } from '@/features/issue-edit/DescriptionEditor';
+import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
@@ -593,6 +593,7 @@ export function CreateIssueModal() {
               onChange={setDescription}
               onSubmit={() => void submitCreate()}
               rows={10}
+              mentionPeople={assignees}
               placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))"
             />
           </Field>

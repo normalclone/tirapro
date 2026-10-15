@@ -1072,6 +1072,9 @@ model Mention {
   createdAt       DateTime @default(now())
   comment         Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
   issue           Issue?   @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  @@unique([commentId, mentionedUserId])
+  // Sổ cho @ ở mô tả (commentId IS NULL) dùng thêm chỉ mục duy nhất CÓ ĐIỀU KIỆN `Mention_issueId_mentionedUserId_desc_key`
+  // tạo bằng SQL trong migration 20261016299000 — Prisma không biểu diễn/không introspect được mệnh đề WHERE nên không khai báo ở đây.
   @@index([mentionedUserId])
   @@index([commentId])
 }

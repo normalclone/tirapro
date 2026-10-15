@@ -32,7 +32,7 @@ export const createCommentSchema = z.object({
   body: z.string().min(1, 'Nội dung bắt buộc').max(50_000),
   bodyFormat: z.enum(['MARKDOWN', 'TIPTAP_JSON']).default('TIPTAP_JSON'),
   parentId: z.string().optional().nullable(),
-  mentionUserIds: z.array(z.string()).optional(),
+  mentionUserIds: z.array(z.string()).max(20).optional(),
 });
 
 /** Sửa bình luận: `version` để phát hiện sửa đồng thời (409). Giới hạn độ dài khớp lúc tạo. */

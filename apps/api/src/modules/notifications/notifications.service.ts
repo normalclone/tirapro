@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { z } from 'zod';
+import { extractMentionIds, plainExcerpt } from '@tirapro/shared';
 import {
   DOMAIN_EVENTS,
   NotificationType as NotificationTypeEnum,
@@ -12,6 +13,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { cursorPage, type PageResult } from '../../common/dto/page-result';
 import { MailService } from '../mail/mail.service';
+import { resolveMentionedMembers } from '../../common/mentions';
 
 /** DTO trả về cho client — Date đã chuyển sang ISO string. */
 export interface NotificationDto {
@@ -114,6 +116,7 @@ interface IssueEventShape {
   workspaceId: string;
   assigneeId: string | null;
   status?: { name?: string } | null;
+  description?: string | null;
 }
 
 interface IssueTransitionedPayload {
@@ -135,11 +138,23 @@ interface IssueCreatedPayload {
 }
 
 interface CommentAddedPayload {
-  comment: { id: string; authorId: string };
+  comment: { id: string; authorId: string; body?: string };
   issueId: string;
   projectId?: string;
   actorId?: string;
   mentionIds?: string[];
+  /** Chỉ có ở `comment.updated`: @ mới thêm khi sửa (chưa từng được báo). */
+  newMentionIds?: string[];
+}
+
+interface NotificationInput {
+  recipientId: string;
+  workspaceId: string;
+  type: NotificationType;
+  issueId?: string | null;
+  commentId?: string | null;
+  actorId?: string | null;
+  payload: Record<string, unknown>;
 }
 
 @Injectable()
@@ -337,26 +352,14 @@ export class NotificationsService {
       const issuePayload = { key: issue.key, summary: issue.summary };
 
       // @nhắc tên: chỉ thành viên không gian làm việc, không tự nhắc chính mình.
-      const wanted = [...new Set(mentionIds ?? [])].filter((id) => id !== author);
-      const mentioned = new Set<string>();
-      if (wanted.length) {
-        const members = await this.prisma.workspaceMembership.findMany({
-          where: { workspaceId: issue.workspaceId, userId: { in: wanted } },
-          select: { userId: true },
-        });
-        for (const m of members) mentioned.add(m.userId);
-        for (const recipientId of mentioned) {
-          await this.create({
-            recipientId,
-            workspaceId: issue.workspaceId,
-            type: 'MENTIONED',
-            issueId: issue.id,
-            commentId: comment?.id ?? null,
-            actorId: author,
-            payload: issuePayload,
-          });
-        }
-      }
+      const mentioned = await this.notifyMentioned({
+        issue,
+        author,
+        ids: mentionIds ?? [],
+        commentId: comment?.id ?? null,
+        body: comment?.body,
+        where: 'comment',
+      });
 
       // Người được nhắc tên đã nhận thông báo trực tiếp, không báo thêm "có bình luận mới".
       if (!issue.assigneeId || issue.assigneeId === author || mentioned.has(issue.assigneeId))
@@ -375,7 +378,119 @@ export class NotificationsService {
     }
   }
 
+  /** Sửa bình luận có thêm @ mới → báo đúng những người mới (không phát lại COMMENT_ADDED). */
+  @OnEvent(DOMAIN_EVENTS.COMMENT_UPDATED)
+  async onCommentUpdated(payload: unknown): Promise<void> {
+    try {
+      const { comment, issueId, actorId, newMentionIds } = payload as CommentAddedPayload;
+      const author = actorId ?? comment?.authorId;
+      if (!issueId || !author || !newMentionIds?.length) return;
+      const issue = await this.prisma.issue.findFirst({
+        where: { id: issueId, deletedAt: null },
+        select: { id: true, workspaceId: true, key: true, summary: true },
+      });
+      if (!issue) return;
+      await this.notifyMentioned({
+        issue,
+        author,
+        ids: newMentionIds,
+        commentId: comment?.id ?? null,
+        body: comment?.body,
+        where: 'comment',
+      });
+    } catch (err) {
+      this.logger.warn(`onCommentUpdated thất bại: ${this.errMsg(err)}`);
+    }
+  }
+
+  /**
+   * @ trong mô tả công việc (lúc tạo hoặc khi sửa mô tả). Dòng `Mention(issueId, commentId=null)` là sổ "đã báo ai":
+   * chỉ người CHƯA có dòng mới được báo; gỡ @ rồi thêm lại không báo lần nữa (tránh spam khi sửa chính tả).
+   */
+  @OnEvent(DOMAIN_EVENTS.ISSUE_CREATED)
+  @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
+  async onIssueDescriptionMentions(payload: unknown): Promise<void> {
+    try {
+      const { issue, actorId, changedFields } = payload as IssueUpdatedPayload;
+      if (!issue?.description || !actorId) return;
+      if (changedFields && !changedFields.includes('description')) return;
+      const ids = extractMentionIds(issue.description);
+      if (!ids.length) return;
+      const members = await resolveMentionedMembers(this.prisma, issue.workspaceId, ids, actorId);
+      if (!members.length) return;
+      // Sổ + thông báo trong CÙNG transaction. Chỉ mục duy nhất (issueId, người) WHERE commentId IS NULL làm
+      // `ON CONFLICT DO NOTHING` quyết định ai thắng khi nhiều sự kiện chạy đồng thời → chỉ báo dòng thực sự chèn được.
+      // Email/đẩy realtime chạy SAU commit; lỗi giữa chừng thì rollback cả sổ lẫn thông báo (lần sau còn được báo).
+      const after: Array<() => Promise<void>> = [];
+      await this.prisma.$transaction(async (tx) => {
+        const inserted = await tx.mention.createManyAndReturn({
+          data: members.map((mentionedUserId) => ({ mentionedUserId, issueId: issue.id })),
+          skipDuplicates: true,
+          select: { mentionedUserId: true },
+        });
+        for (const { mentionedUserId } of inserted) {
+          after.push(
+            await this.createDeferred(
+              {
+                recipientId: mentionedUserId,
+                workspaceId: issue.workspaceId,
+                type: 'MENTIONED',
+                issueId: issue.id,
+                actorId,
+                payload: this.mentionPayload(issue, issue.description, 'description'),
+              },
+              tx,
+            ),
+          );
+        }
+      });
+      for (const run of after) await run();
+    } catch (err) {
+      this.logger.warn(`onIssueDescriptionMentions thất bại: ${this.errMsg(err)}`);
+    }
+  }
+
   // ---------- helpers ----------
+
+  private mentionPayload(
+    issue: { key: string; summary: string },
+    body: string | null | undefined,
+    where: 'comment' | 'description',
+  ): Record<string, unknown> {
+    return { key: issue.key, summary: issue.summary, excerpt: plainExcerpt(body, 80), where };
+  }
+
+  /** Tạo MENTIONED cho các id còn là thành viên workspace (≠ người nhắc); trả về tập người đã được báo. */
+  private async notifyMentioned(input: {
+    issue: { id: string; workspaceId: string; key: string; summary: string };
+    author: string;
+    ids: readonly string[];
+    commentId: string | null;
+    body: string | null | undefined;
+    where: 'comment' | 'description';
+  }): Promise<Set<string>> {
+    const { issue, author } = input;
+    const mentioned = new Set<string>();
+    const members = await resolveMentionedMembers(
+      this.prisma,
+      issue.workspaceId,
+      input.ids,
+      author,
+    );
+    for (const recipientId of members) {
+      mentioned.add(recipientId);
+      await this.create({
+        recipientId,
+        workspaceId: issue.workspaceId,
+        type: 'MENTIONED',
+        issueId: issue.id,
+        commentId: input.commentId,
+        actorId: author,
+        payload: this.mentionPayload(issue, input.body, input.where),
+      });
+    }
+    return mentioned;
+  }
 
   private notifyAssigned(issue: IssueEventShape, actorId: string): Promise<void> {
     return this.create({
@@ -388,49 +503,58 @@ export class NotificationsService {
     });
   }
 
-  private async create(input: {
-    recipientId: string;
-    workspaceId: string;
-    type: NotificationType;
-    issueId?: string | null;
-    commentId?: string | null;
-    actorId?: string | null;
-    payload: Record<string, unknown>;
-  }): Promise<void> {
+  private async create(input: NotificationInput): Promise<void> {
+    const after = await this.createDeferred(input);
+    await after();
+  }
+
+  /**
+   * Ghi dòng Notification bằng `db` (có thể là transaction đang mở) và trả về phần "sau commit":
+   * đẩy `notification:new` qua gateway + xếp email. Gọi `after()` CHỈ KHI transaction đã commit thành công.
+   */
+  private async createDeferred(
+    input: NotificationInput,
+    db: Pick<Prisma.TransactionClient, 'notification'> = this.prisma,
+  ): Promise<() => Promise<void>> {
+    const noop = (): Promise<void> => Promise.resolve();
     // Quiet-by-default: tôn trọng tùy chọn của người nhận. In-app và email là hai tuỳ chọn độc lập.
     const recipient = await this.prisma.user.findUnique({
       where: { id: input.recipientId },
       select: { settings: true, email: true, status: true },
     });
-    if (!recipient) return;
+    if (!recipient) return noop;
     const prefs = effectivePrefs(recipient.settings);
     const emailKey = EMAIL_KEY_BY_TYPE[input.type];
     const emailOn =
       !!emailKey &&
       recipient.status !== 'DEACTIVATED' &&
       effectiveEmailPrefs(recipient.settings)[emailKey];
-    if (!prefs[input.type] && !emailOn) return;
+    if (!prefs[input.type] && !emailOn) return noop;
 
-    if (prefs[input.type]) {
-      const created = await this.prisma.notification.create({
-        data: {
+    const created = prefs[input.type]
+      ? await db.notification.create({
+          data: {
+            recipientId: input.recipientId,
+            workspaceId: input.workspaceId,
+            type: input.type,
+            issueId: input.issueId ?? null,
+            commentId: input.commentId ?? null,
+            actorId: input.actorId ?? null,
+            payload: input.payload as Prisma.InputJsonValue,
+          },
+        })
+      : null;
+
+    return async () => {
+      if (created) {
+        // Báo cho gateway đẩy `notification:new` tới đúng người nhận (room user:<id>).
+        this.events.emit(DOMAIN_EVENTS.NOTIFICATION_CREATED, {
           recipientId: input.recipientId,
-          workspaceId: input.workspaceId,
-          type: input.type,
-          issueId: input.issueId ?? null,
-          commentId: input.commentId ?? null,
-          actorId: input.actorId ?? null,
-          payload: input.payload as Prisma.InputJsonValue,
-        },
-      });
-      // Báo cho gateway đẩy `notification:new` tới đúng người nhận (room user:<id>).
-      this.events.emit(DOMAIN_EVENTS.NOTIFICATION_CREATED, {
-        recipientId: input.recipientId,
-        notification: this.toDto(created),
-      });
-    }
-
-    if (emailOn) await this.enqueueEmail(recipient.email, input);
+          notification: this.toDto(created),
+        });
+      }
+      if (emailOn) await this.enqueueEmail(recipient.email, input);
+    };
   }
 
   /** Xếp thư thông báo vào outbox (gộp digest 5 phút). Lỗi chỉ log — không được làm hỏng thông báo in-app. */

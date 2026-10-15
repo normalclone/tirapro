@@ -21,6 +21,7 @@ export * from './jql';
 export * from './jql-parser';
 export * from './jql-builder';
 export * from './issue-key';
+export * from './markdown-text';
 export * from './duration';
 export * from './lexorank';
 export * from './guides';
