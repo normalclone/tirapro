@@ -10,11 +10,11 @@ import { useAuth } from '@/stores/auth';
 import { Avatar } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import type { PersonOption } from '@/components/ui/PeoplePicker';
-import { setTaskChecked } from '@tirapro/shared';
 import { apiErrorMessage } from '@/lib/api';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownView } from './MarkdownView';
 import { useAssigneeOptions } from './useAssigneeOptions';
+import { useCommentTaskToggle } from './useCommentTaskToggle';
 import { useDeleteComment, useUpdateComment } from './api';
 import { TypingIndicator } from '@/features/presence/TypingIndicator';
 import { useTypingEmitter } from '@/features/presence/usePresence';
@@ -117,6 +117,7 @@ function CommentRow({
   canEdit: boolean;
 }) {
   const update = useUpdateComment(issueId);
+  const toggleTask = useCommentTaskToggle(issueId);
   const remove = useDeleteComment(issueId);
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(comment.body);
@@ -132,19 +133,6 @@ function CommentRow({
     try {
       await update.mutateAsync({ id: comment.id, body: next, version: comment.version });
       setEditing(false);
-    } catch (e) {
-      toast.error(apiErrorMessage(e));
-    }
-  }
-
-  async function toggleTask(index: number, checked: boolean, itemText: string) {
-    const next = setTaskChecked(comment.body, index, checked, itemText);
-    if (next === null) {
-      toast.error('Nội dung bình luận vừa thay đổi — hãy tải lại rồi tick lại.');
-      return;
-    }
-    try {
-      await update.mutateAsync({ id: comment.id, body: next, version: comment.version });
     } catch (e) {
       toast.error(apiErrorMessage(e));
     }
@@ -209,7 +197,9 @@ function CommentRow({
               <MarkdownView
                 text={comment.body}
                 onToggleTask={
-                  canEdit ? (i, checked, text) => void toggleTask(i, checked, text) : undefined
+                  canEdit
+                    ? (i, checked, text) => void toggleTask(comment.id, i, checked, text)
+                    : undefined
                 }
               />
             </div>

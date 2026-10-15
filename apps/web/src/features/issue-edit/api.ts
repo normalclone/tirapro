@@ -58,9 +58,10 @@ export function useDeleteIssue() {
 }
 
 /** Sửa nội dung bình luận (OCC: gửi `version`). */
-export function useUpdateComment(issueId: string) {
+export function useUpdateComment(issueId: string, opts?: { silent?: boolean }) {
   const qc = useQueryClient();
   return useMutation({
+    meta: { silent: opts?.silent },
     mutationFn: (v: { id: string; body: string; version: number }) =>
       api.patch<CommentDto>(`/comments/${v.id}`, { body: v.body, version: v.version }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.issues.comments(issueId) }),
