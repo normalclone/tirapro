@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { parseMarkdown, type MdBlock } from './markdownParse';
 import { MentionChip } from './MentionChip';
+import { safeHref, safeImg } from './safeUrl';
 
 /* ----------------------------- Render markdown (tập con GFM) ----------------------------- */
 
@@ -16,13 +17,6 @@ const INLINE_SOURCE =
   '|\\*(?<em1>[^*]+)\\*' +
   '|_(?<em2>[^_]+)_' +
   '|(?<mention>@\\[(?<mentionName>[^\\]\\n]{1,80})\\]\\(user:(?<mentionId>[A-Za-z0-9_-]{1,64})\\))';
-
-// Chống XSS lưu trữ: chỉ cho phép scheme an toàn. Liên kết chặn javascript:/data:;
-// riêng ảnh cho thêm data:image vì thẻ ảnh không chạy được mã từ nguồn này.
-const SAFE_HREF = /^(https?:\/\/|mailto:|\/)/i;
-const SAFE_IMG = /^(https?:\/\/|data:image\/|\/)/i;
-const safeHref = (u: string): string | null => (SAFE_HREF.test(u.trim()) ? u : null);
-const safeImg = (u: string): string | null => (SAFE_IMG.test(u.trim()) ? u : null);
 
 function renderInline(text: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -58,7 +52,7 @@ function renderInline(text: string): ReactNode[] {
             key={k++}
             href={href}
             target="_blank"
-            rel="noreferrer nofollow"
+            rel="noopener noreferrer nofollow"
             onClick={(e) => e.stopPropagation()}
             className="text-primary hover:underline"
           >
