@@ -64,6 +64,9 @@ export const keys = {
     all: ['notifications'] as const,
     list: ['notifications', 'list'] as const,
     unread: ['notifications', 'unread'] as const,
+    /** Gốc của mọi danh sách phân trang ở trang /notifications (để vá/làm mới cùng lúc). */
+    pageRoot: ['notifications', 'page'] as const,
+    page: (filter: string) => ['notifications', 'page', filter] as const,
   },
 
   system: {

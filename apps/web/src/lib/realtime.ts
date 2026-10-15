@@ -212,6 +212,7 @@ export function useNotificationRealtime() {
     const refresh = () => {
       void qc.invalidateQueries({ queryKey: keys.notifications.list });
       void qc.invalidateQueries({ queryKey: keys.notifications.unread });
+      void qc.invalidateQueries({ queryKey: keys.notifications.pageRoot });
     };
     let seen = s.connected;
     const onConnect = () => {
