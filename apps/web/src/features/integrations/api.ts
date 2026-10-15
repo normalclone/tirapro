@@ -1,6 +1,7 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { pollPlan } from './telegramWizard';
 
 /* ------------------------------------------------------------------ */
 /* Kiểu dữ liệu                                                       */
@@ -159,6 +160,64 @@ export function useTestIntegration() {
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: keys.integrations.byType('TELEGRAM') });
     },
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Mã liên kết nhóm (/link@bot MÃ)                                    */
+/* ------------------------------------------------------------------ */
+
+export interface LinkCode {
+  code: string;
+  expiresAt: string;
+  botUsername: string | null;
+  command: string;
+  startGroupUrl: string | null;
+}
+
+export type LinkPoll =
+  | { status: 'waiting'; hint?: string }
+  | { status: 'linked'; channel: { id: string; externalId: string; title: string | null } }
+  | { status: 'expired' }
+  | { status: 'error'; hint: string };
+
+export function useCreateLinkCode(integrationId: string) {
+  return useMutation({
+    mutationFn: () =>
+      api.post<LinkCode>(`/integrations/${integrationId}/link-codes`, {}).then((r) => r.data),
+  });
+}
+
+/**
+ * Hỏi server mỗi 3 giây xem mã đã được gõ trong nhóm chưa; dừng khi có kết quả cuối (linked/expired/error)
+ * hoặc quá 180 giây kể từ `startedAt`. Server không giữ trạng thái chờ.
+ */
+export function usePollLinkCode(integrationId: string, code: string | null, startedAt: number) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: keys.integrations.linkCode(integrationId, code ?? ''),
+    queryFn: code
+      ? async () => {
+          const res = (
+            await api.post<LinkPoll>(`/integrations/${integrationId}/link-codes/${code}/poll`)
+          ).data;
+          if (res.status === 'linked') {
+            void qc.invalidateQueries({ queryKey: keys.integrations.byType('TELEGRAM') });
+            void qc.invalidateQueries({ queryKey: keys.integrations.channels(integrationId) });
+          }
+          return res;
+        }
+      : skipToken,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status && status !== 'waiting') return false;
+      const plan = pollPlan(startedAt, Date.now());
+      return plan.continue ? plan.intervalMs : false;
+    },
+    // Mỗi lần hỏi là một lệnh gọi thật tới Telegram — không giữ cache, không hỏi lại khi quay lại tab.
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+    retry: false,
   });
 }
 
