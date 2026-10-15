@@ -40,13 +40,13 @@ export interface DialogProps {
 
 const CENTER_CLASS = [
   // `inset-0 m-auto h-fit` canh giữa mà không dùng transform → không xung đột với animation zoom.
-  'fixed inset-0 z-modal m-auto flex h-fit max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-lg duration-150',
+  'fixed inset-0 z-modal m-auto flex h-fit max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-lg duration-base',
   'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[.98]',
   'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98]',
 ];
 
 const RIGHT_CLASS = [
-  'fixed inset-y-0 right-0 z-modal flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-surface shadow-lg duration-200',
+  'fixed inset-y-0 right-0 z-modal flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-surface shadow-lg duration-base',
   'data-[state=open]:animate-in data-[state=open]:slide-in-from-right',
   'data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right',
 ];
@@ -86,7 +86,7 @@ export function Dialog({
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
-        <RadixDialog.Overlay className="fixed inset-0 z-modal bg-[oklch(0.2_0.014_256/0.45)] duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
+        <RadixDialog.Overlay className="fixed inset-0 z-modal bg-[oklch(0.2_0.014_256/0.45)] duration-base data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
         <RadixDialog.Content
           // Không có mô tả thì báo rõ cho Radix (tránh cảnh báo thiếu aria-describedby).
           {...(description ? {} : { 'aria-describedby': undefined })}
@@ -141,7 +141,7 @@ export function Dialog({
           )}
           <RadixDialog.Close
             aria-label="Đóng"
-            className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md text-muted transition-colors duration-fast hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <X className="h-4 w-4" aria-hidden />
           </RadixDialog.Close>

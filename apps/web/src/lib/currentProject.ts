@@ -62,6 +62,30 @@ export function resolveCreateTarget(
   };
 }
 
+/** Trang chi tiết issue `/issue/:key` → key (đã giải mã) để suy ra dự án của issue đang xem. */
+export function issueKeyFromPathname(pathname: string): string | null {
+  const m = /^\/issue\/([^/]+)/.exec(pathname);
+  return m ? safeDecode(m[1]!) : null;
+}
+
+/**
+ * Một nơi quyết định cho MỌI lối tạo việc (nút, phím `c`, Cmd+K, nút nổi, "Tạo bằng AI"):
+ *  - `deny`: biết chắc không có `issue:create` ở dự án đích → ẩn nút / phím báo ngắn, KHÔNG mở form;
+ *  - `blocked`: không có dự án hoạt động nào nhận việc (đã có `notice` giải thích);
+ *  - `open`: mở form tạo việc vào `target.projectKey` (kèm `notice` nếu phải đổi dự án).
+ * `canCreate` undefined = chưa biết (quyền đang tải) → không chặn, API vẫn kiểm.
+ */
+export function createAccess(
+  target: CreateTarget,
+  canCreate: boolean | undefined,
+): 'open' | 'blocked' | 'deny' {
+  if (target.block) return 'blocked';
+  if (canCreate === false) return 'deny';
+  return 'open';
+}
+
+export const CREATE_DENIED_NOTICE = 'Bạn không có quyền tạo việc trong dự án này.';
+
 /** Dự án hiện tại cho các hành động điều hướng (Cmd+K, phím tắt `c`, `g b`, `g l`…). */
 export function currentProjectKey(projects: { key: string }[] | undefined): string | null {
   let lastViewRaw: string | null = null;

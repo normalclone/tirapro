@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { resolveCreateTarget, resolveCurrentProjectKey, safeDecode } from './currentProject';
+import {
+  resolveCreateTarget,
+  resolveCurrentProjectKey,
+  safeDecode,
+  createAccess,
+  issueKeyFromPathname,
+} from './currentProject';
 
 const projects = [{ key: 'AAA' }, { key: 'BBB' }];
 const r = (
@@ -57,5 +63,34 @@ describe('resolveCreateTarget', () => {
   it('danh sách chưa tải hoặc không có dự án hiện tại => như cũ', () => {
     expect(resolveCreateTarget('OLD', undefined)).toEqual({ projectKey: 'OLD' });
     expect(resolveCreateTarget(null, active)).toEqual({ projectKey: undefined });
+  });
+});
+
+describe('createAccess — một luật cho mọi lối tạo việc', () => {
+  it('không có issue:create ở dự án đích → deny (ẩn nút / phím báo ngắn, không mở form)', () => {
+    expect(createAccess({ projectKey: 'DEMO' }, false)).toBe('deny');
+  });
+  it('có quyền hoặc chưa biết (đang tải) → open', () => {
+    expect(createAccess({ projectKey: 'DEMO' }, true)).toBe('open');
+    expect(createAccess({ projectKey: 'DEMO' }, undefined)).toBe('open');
+  });
+  it('không có dự án hoạt động nào (block) → blocked, kể cả khi thiếu quyền', () => {
+    expect(createAccess({ block: true, notice: 'x' }, true)).toBe('blocked');
+    expect(createAccess({ block: true, notice: 'x' }, false)).toBe('blocked');
+  });
+  it('đổi dự án do dự án hiện tại lưu trữ vẫn mở (kèm notice) khi có quyền ở dự án mới', () => {
+    expect(createAccess({ projectKey: 'B', notice: 'đã chọn B' }, true)).toBe('open');
+  });
+});
+
+describe('issueKeyFromPathname', () => {
+  it('lấy key (đã giải mã) ở /issue/:key', () => {
+    expect(issueKeyFromPathname('/issue/DEMO-BUG-1')).toBe('DEMO-BUG-1');
+    expect(issueKeyFromPathname('/issue/A%2DB')).toBe('A-B');
+    expect(issueKeyFromPathname('/issue/%E0%A4%A')).toBe('%E0%A4%A');
+  });
+  it('trang khác → null', () => {
+    expect(issueKeyFromPathname('/p/DEMO/board')).toBeNull();
+    expect(issueKeyFromPathname('/')).toBeNull();
   });
 });

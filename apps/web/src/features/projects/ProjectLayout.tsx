@@ -61,7 +61,10 @@ export function ProjectLayout() {
   const aiEnabled = useAi((s) => s.enabled);
   const openCreate = useCreateIssueModal((s) => s.openCreate);
   const { data: project } = useProject(key);
-  const canAdminProject = useCan(project?.id)('project:admin');
+  const canProject = useCan(project?.id);
+  const canAdminProject = canProject('project:admin');
+  // Thô (không tính lưu trữ): dự án lưu trữ vẫn hiện nút nhưng tắt kèm giải thích; Viewer không có quyền tạo thì không thấy nút.
+  const canCreateIssue = canProject('issue:create');
   const { data: projects } = useProjects();
   // Một lần cho mọi tab của project: vá cache issue/sprint khi người khác thao tác.
   useProjectRealtime(project?.id);
@@ -139,25 +142,29 @@ export function ProjectLayout() {
             {project?.key ?? key}
           </span>
 
-          <Button
-            size="sm"
-            className="ml-2"
-            onClick={() => openCreate({ projectKey: key })}
-            disabled={!project?.id || !!project.archivedAt}
-            title={project?.archivedAt ? 'Dự án đã lưu trữ — chỉ đọc' : undefined}
-          >
-            <Plus className="h-4 w-4" /> Tạo công việc
-          </Button>
-          {aiEnabled && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setGenOpen(true)}
-              disabled={!project?.id || !!project.archivedAt}
-              data-tour="board-ai"
-            >
-              <Sparkles className="h-4 w-4 text-primary" /> Tạo bằng AI
-            </Button>
+          {canCreateIssue && (
+            <>
+              <Button
+                size="sm"
+                className="ml-2"
+                onClick={() => openCreate({ projectKey: key })}
+                disabled={!project?.id || !!project.archivedAt}
+                title={project?.archivedAt ? 'Dự án đã lưu trữ — chỉ đọc' : undefined}
+              >
+                <Plus className="h-4 w-4" /> Tạo công việc
+              </Button>
+              {aiEnabled && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setGenOpen(true)}
+                  disabled={!project?.id || !!project.archivedAt}
+                  data-tour="board-ai"
+                >
+                  <Sparkles className="h-4 w-4 text-primary" /> Tạo bằng AI
+                </Button>
+              )}
+            </>
           )}
 
           <div className="ml-auto flex items-center gap-1">

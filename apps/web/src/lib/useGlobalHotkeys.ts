@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
-import { currentProjectKey, resolveCreateTarget } from './currentProject';
+import { CREATE_DENIED_NOTICE, currentProjectKey } from './currentProject';
+import { useCreateTarget } from './useCreateTarget';
 import { SHORTCUTS_EVENT } from '@/components/layout/ShortcutsDialog';
-import { isDialogOpen, isTypingTarget } from './hotkeys';
+import { isOverlayOpen, isTypingTarget, shouldIgnoreGlobalHotkey } from './hotkeys';
 
 /** Đưa focus vào ô tìm/bảng lệnh: mở bảng lệnh (⌘K) qua sự kiện dùng chung. */
 function focusSearch() {
@@ -18,7 +19,7 @@ function focusSearch() {
  *  - `/` focus tìm kiếm (mở bảng lệnh)
  *  - `g b` / `g l` / `g d` đi Board / Backlog / Tổng quan của dự án hiện tại
  *  - `?` mở bảng phím tắt
- * Bỏ qua khi đang gõ trong input/textarea/contenteditable hoặc có dialog đang mở.
+ * Bỏ qua khi đang gõ trong input/textarea/contenteditable hoặc có lớp phủ đang mở (dialog, menu, popover — trong menu phím chữ là typeahead).
  */
 export function useGlobalHotkeys() {
   const navigate = useNavigate();
@@ -27,15 +28,23 @@ export function useGlobalHotkeys() {
   // Giữ tham chiếu mới nhất để listener (đăng ký 1 lần) luôn dùng dữ liệu hiện thời.
   const projectsRef = useRef(projects);
   projectsRef.current = projects;
+  const create = useCreateTarget();
+  const createRef = useRef(create);
+  createRef.current = create;
 
   useEffect(() => {
     // Chuỗi `g` + phím: nhớ thời điểm bấm `g` để ghép phím kế trong ~1s.
     let awaitingG = 0;
 
     function onKeyDown(e: KeyboardEvent) {
-      // Không chặn tổ hợp có modifier (để ⌘K, copy/paste… hoạt động bình thường).
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isTypingTarget(e.target) || isDialogOpen()) return;
+      // Không chặn tổ hợp có modifier (để ⌘K, copy/paste… hoạt động bình thường), ô nhập, hay menu/dialog đang mở.
+      if (
+        shouldIgnoreGlobalHotkey(e, {
+          typing: isTypingTarget(e.target),
+          overlayOpen: isOverlayOpen(),
+        })
+      )
+        return;
 
       const key = e.key;
 
@@ -64,13 +73,13 @@ export function useGlobalHotkeys() {
         case 'c':
           e.preventDefault();
           {
-            // Dự án hiện tại đã lưu trữ → đổi sang dự án hoạt động đầu tiên (kèm báo) hoặc chỉ báo, không mở dialog trống.
-            const t = resolveCreateTarget(
-              currentProjectKey(projectsRef.current),
-              projectsRef.current,
-            );
-            if (t.notice) toast.info(t.notice);
-            if (!t.block) openCreate({ projectKey: t.projectKey });
+            // Cùng đích + cùng luật quyền với nút Tạo / Cmd+K / nút nổi (xem `useCreateTarget`).
+            const { target: t, access } = createRef.current;
+            if (access === 'deny') toast.info(CREATE_DENIED_NOTICE);
+            else {
+              if (t.notice) toast.info(t.notice);
+              if (access === 'open') openCreate({ projectKey: t.projectKey });
+            }
           }
           break;
         case '/':

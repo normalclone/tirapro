@@ -19,7 +19,8 @@ import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { useTheme } from '@/stores/theme';
 import { useRecents } from '@/stores/recentIssues';
-import { currentProjectKey, resolveCreateTarget, safeDecode } from '@/lib/currentProject';
+import { currentProjectKey, safeDecode } from '@/lib/currentProject';
+import { useCreateTarget } from '@/lib/useCreateTarget';
 import { QUICK_SEARCH_MIN_LENGTH, useQuickSearch } from './api';
 import { ActionItem } from './ActionItem';
 import { IssueContextGroup } from './IssueContextGroup';
@@ -43,6 +44,7 @@ export function CommandPalette() {
   const recents = useRecents((s) => s.items);
 
   const { data: projects } = useProjects();
+  const create = useCreateTarget();
   const trimmed = q.trim();
   // Hoãn giá trị gõ cho truy vấn: ô nhập luôn mượt, chỉ query khi đủ ký tự tối thiểu.
   const deferredQ = useDeferredValue(q);
@@ -155,19 +157,21 @@ export function CommandPalette() {
           heading="Hành động"
           className="text-faint [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-faint"
         >
-          <ActionItem
-            value="tao cong viec issue create"
-            icon={<Plus className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
-            label="Tạo công việc"
-            onSelect={() =>
-              runAction(() => {
-                // Dự án hiện tại đã lưu trữ → dự án hoạt động đầu tiên (kèm báo) hoặc chỉ báo, không mở dialog trống.
-                const t = resolveCreateTarget(currentProjectKey(projects), projects);
-                if (t.notice) toast.info(t.notice);
-                if (!t.block) openCreate({ projectKey: t.projectKey });
-              })
-            }
-          />
+          {create.access !== 'deny' && (
+            <ActionItem
+              value="tao cong viec issue create"
+              icon={<Plus className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
+              label="Tạo công việc"
+              onSelect={() =>
+                runAction(() => {
+                  // Cùng đích + cùng luật quyền với phím `c` / nút Tạo / nút nổi (xem `useCreateTarget`).
+                  if (create.target.notice) toast.info(create.target.notice);
+                  if (create.access === 'open')
+                    openCreate({ projectKey: create.target.projectKey });
+                })
+              }
+            />
+          )}
           <ActionItem
             value="doi giao dien theme sang toi"
             icon={

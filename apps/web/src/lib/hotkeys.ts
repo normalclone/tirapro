@@ -49,3 +49,30 @@ export function isWorklogHotkey(
   if (e.metaKey || e.ctrlKey || e.altKey) return false;
   return e.key === 'w' || e.key === 'W';
 }
+
+interface KeyLike {
+  key: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  defaultPrevented?: boolean;
+}
+
+/**
+ * Phím tắt TOÀN CỤC (`c`, `g _`, `/`, `?`) có phải bỏ qua không: có modifier (⌘K, copy…), đang gõ, hoặc có lớp phủ mở —
+ * kể cả menu/listbox/popover (không chỉ dialog): trong menu đang mở phím chữ là typeahead, không được cướp.
+ */
+export function shouldIgnoreGlobalHotkey(
+  e: Pick<KeyLike, 'metaKey' | 'ctrlKey' | 'altKey'>,
+  ctx: { typing: boolean; overlayOpen: boolean },
+): boolean {
+  return e.metaKey || e.ctrlKey || e.altKey || ctx.typing || ctx.overlayOpen;
+}
+
+/** Esc có nên xoá vùng chọn hàng loạt không: không nếu Esc đã được xử lý (popover/kéo-thả bằng phím) hoặc lớp phủ đang mở. */
+export function shouldClearSelectionOnEscape(
+  e: Pick<KeyLike, 'key' | 'defaultPrevented'>,
+  overlayOpen: boolean,
+): boolean {
+  return e.key === 'Escape' && !e.defaultPrevented && !overlayOpen;
+}
