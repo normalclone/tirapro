@@ -64,6 +64,7 @@ Status category (Jira): TODO / IN_PROGRESS / DONE.
 | `--status-done`     | `oklch(0.58 0.13 150)`  | `oklch(0.70 0.14 150)` | Done (xanh lá)                     |
 | `--success`         | `oklch(0.58 0.14 150)`  | `oklch(0.70 0.14 150)` | thành công                         |
 | `--warning`         | `oklch(0.72 0.15 75)`   | `oklch(0.80 0.15 75)`  | cảnh báo (amber)                   |
+| `--warning-ink`     | `oklch(0.48 0.12 75)`   | `oklch(0.85 0.12 80)`  | CHỮ cảnh báo (AA, ≥ 6:1 trên nền)  |
 | `--danger`          | `oklch(0.55 0.20 25)`   | `oklch(0.66 0.19 25)`  | lỗi/xóa (đỏ)                       |
 | `--info`            | `var(--primary)`        | `var(--primary)`       | thông tin                          |
 

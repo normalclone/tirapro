@@ -1,5 +1,6 @@
 import type { IssueDto } from '@tirapro/types';
 import { byPriorityThenStatus } from './issueOrder';
+import { treeParentId } from './issueRefs';
 
 export interface IssueTreeNode {
   issue: IssueDto;
@@ -8,8 +9,9 @@ export interface IssueTreeNode {
 }
 
 /**
- * Dựng cây issue theo `parentId`. Gốc = issue không có cha HOẶC cha không nằm trong tập
- * hiện tại (mồ côi → coi như gốc, không mất issue). Mỗi cấp sắp theo ưu tiên→trạng thái.
+ * Dựng cây issue theo cha-trong-cây `parentId ?? epicId` (`treeParentId`). Gốc = issue không có cha HOẶC
+ * cha không nằm trong tập hiện tại (mồ côi → coi như gốc, không mất issue). Issue nằm trong vòng lẫn
+ * (X.parentId=Y, Y.epicId=X) không có gốc nên được nối vào cuối như gốc. Mỗi cấp sắp theo ưu tiên→trạng thái.
  */
 export function buildIssueTree(issues: IssueDto[]): IssueTreeNode[] {
   const byId = new Map(issues.map((i) => [i.id, i]));
@@ -17,11 +19,11 @@ export function buildIssueTree(issues: IssueDto[]): IssueTreeNode[] {
   const roots: IssueDto[] = [];
 
   for (const it of issues) {
-    const hasParent = it.parentId && byId.has(it.parentId);
-    if (hasParent) {
-      const arr = childrenOf.get(it.parentId!) ?? [];
+    const pid = treeParentId(it);
+    if (pid && byId.has(pid)) {
+      const arr = childrenOf.get(pid) ?? [];
       arr.push(it);
-      childrenOf.set(it.parentId!, arr);
+      childrenOf.set(pid, arr);
     } else {
       roots.push(it);
     }
@@ -37,10 +39,15 @@ export function buildIssueTree(issues: IssueDto[]): IssueTreeNode[] {
   };
 
   const seen = new Set<string>();
-  return roots
+  const tree = roots
     .slice()
     .sort(byPriorityThenStatus)
     .map((r) => build(r, 0, seen));
+  // Lưới an toàn: issue thuộc vòng không có gốc → chưa được duyệt; nối làm gốc để không bao giờ "mất" việc.
+  for (const it of issues.slice().sort(byPriorityThenStatus)) {
+    if (!seen.has(it.id)) tree.push(build(it, 0, seen));
+  }
+  return tree;
 }
 
 export interface SubtreeProgress {
@@ -55,10 +62,11 @@ export interface SubtreeProgress {
 function childrenMap(issues: IssueDto[]): Map<string, IssueDto[]> {
   const m = new Map<string, IssueDto[]>();
   for (const it of issues) {
-    if (it.parentId) {
-      const arr = m.get(it.parentId) ?? [];
+    const pid = treeParentId(it);
+    if (pid) {
+      const arr = m.get(pid) ?? [];
       arr.push(it);
-      m.set(it.parentId, arr);
+      m.set(pid, arr);
     }
   }
   return m;
@@ -103,10 +111,11 @@ export function buildProgressMap(issues: IssueDto[]): Map<string, SubtreeProgres
 export function descendantIdsWithSelf(issues: IssueDto[], rootId: string): Set<string> {
   const childrenOf = new Map<string, string[]>();
   for (const it of issues) {
-    if (it.parentId) {
-      const arr = childrenOf.get(it.parentId) ?? [];
+    const pid = treeParentId(it);
+    if (pid) {
+      const arr = childrenOf.get(pid) ?? [];
       arr.push(it.id);
-      childrenOf.set(it.parentId, arr);
+      childrenOf.set(pid, arr);
     }
   }
   const out = new Set<string>([rootId]);

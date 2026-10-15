@@ -2,13 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import type { IssueDto } from '@tirapro/types';
 
 /** Bộ lọc nhanh có thể bật/tắt độc lập; bật nhiều bộ cùng lúc thì việc phải khớp TẤT CẢ. */
-export type QuickFilterId = 'mine' | 'overdue' | 'unassigned';
+export type QuickFilterId = 'mine' | 'reported' | 'unassigned' | 'overdue' | 'bug';
 
 /** `hint` hiện trong tooltip của chip — nói rõ bộ lọc giữ lại những việc nào. */
 export const QUICK_FILTERS: { id: QuickFilterId; label: string; hint: string }[] = [
   { id: 'mine', label: 'Của tôi', hint: 'Chỉ hiện việc bạn đang phụ trách' },
-  { id: 'overdue', label: 'Quá hạn', hint: 'Chỉ hiện việc đã qua hạn mà chưa xong' },
+  { id: 'reported', label: 'Tôi báo cáo', hint: 'Chỉ hiện việc do bạn báo cáo hoặc tạo' },
   { id: 'unassigned', label: 'Chưa gán', hint: 'Chỉ hiện việc chưa có ai nhận' },
+  { id: 'overdue', label: 'Quá hạn', hint: 'Chỉ hiện việc đã qua hạn mà chưa xong' },
+  { id: 'bug', label: 'Chỉ Bug', hint: 'Chỉ hiện công việc loại Bug' },
 ];
 
 const LS_KEY = 'tirapro:quickFilters';
@@ -78,6 +80,14 @@ export function applyQuickFilters(
     if (active.has('mine') && issue.assigneeId !== userId) return false;
     if (active.has('overdue') && !isOverdue(issue, now)) return false;
     if (active.has('unassigned') && issue.assigneeId) return false;
+    // Khoá hệ thống BUG (không phụ thuộc tên hiển thị); loại tuỳ chỉnh không có key thì không phải Bug.
+    if (active.has('bug') && issue.type.key !== 'BUG') return false;
+    // Khớp ngữ nghĩa báo cáo/tạo của isIssueOwner phía server; KHÔNG tính "được giao".
+    if (
+      active.has('reported') &&
+      !(userId && (issue.reporterId === userId || issue.createdById === userId))
+    )
+      return false;
     return true;
   });
 }
