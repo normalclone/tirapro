@@ -5,6 +5,7 @@ import type {
   VelocityReport,
   CfdReport,
   CreatedResolvedReport,
+  SprintSummaryReport,
 } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -78,6 +79,22 @@ export function useBurndown(sprintId?: string, projectId?: string) {
             (
               await api.get<BurndownReport>(
                 `/reports/burndown?sprintId=${sprintId}&projectId=${projectId}`,
+              )
+            ).data
+        : skipToken,
+  });
+}
+
+/** Tổng kết một sprint (x/y điểm, việc chuyển tiếp, so velocity TB) — `GET /reports/sprint-summary`. */
+export function useSprintSummary(sprintId?: string, projectId?: string) {
+  return useQuery({
+    queryKey: keys.reports.sprintSummary(sprintId ?? ''),
+    queryFn:
+      sprintId && projectId
+        ? async () =>
+            (
+              await api.get<SprintSummaryReport>(
+                `/reports/sprint-summary?sprintId=${sprintId}&projectId=${projectId}`,
               )
             ).data
         : skipToken,

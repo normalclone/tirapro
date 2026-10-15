@@ -20,6 +20,8 @@ function useInvalidateBacklog(projectId: string) {
   return () => {
     void qc.invalidateQueries({ queryKey: keys.sprints.byProject(projectId) });
     void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
+    // Báo cáo sprint (tổng kết, burndown, velocity) phụ thuộc đúng những thứ vừa đổi.
+    void qc.invalidateQueries({ queryKey: keys.reports.all });
   };
 }
 

@@ -229,9 +229,12 @@ export const keys = {
   },
 
   reports: {
+    /** Tiền tố chung của mọi báo cáo — để invalidate một lượt sau khi sprint/việc đổi. */
+    all: ['report'] as const,
     project: (projectId: string) => ['report', 'project', projectId] as const,
     sprints: (projectId: string) => ['report', 'sprints', projectId] as const,
     burndown: (sprintId: string) => ['report', 'burndown', sprintId] as const,
+    sprintSummary: (sprintId: string) => ['report', 'sprint-summary', sprintId] as const,
     velocity: (projectId: string) => ['report', 'velocity', projectId] as const,
     cfd: (projectId: string) => ['report', 'cfd', projectId] as const,
     createdResolved: (projectId: string) => ['report', 'created-resolved', projectId] as const,
