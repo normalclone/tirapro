@@ -422,7 +422,8 @@ function CreateFilterModal({
   const [visibility, setVisibility] = useState<FilterVisibility>('PRIVATE');
 
   useEffect(() => {
-    if (!open) {
+    // Reset khi MỞ để nội dung không trống đi giữa hiệu ứng đóng.
+    if (open) {
       setMode('simple');
       setJql('');
       setName('');
@@ -448,6 +449,7 @@ function CreateFilterModal({
         if (!o) onClose();
       }}
       title="Tạo bộ lọc"
+      icon={<FilterIcon className="h-4 w-4" />}
       size="lg"
       footer={
         <>

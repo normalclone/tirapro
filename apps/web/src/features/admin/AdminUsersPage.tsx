@@ -19,6 +19,8 @@ export function AdminUsersPage() {
   const { data: users, isLoading, isError, error, refetch } = useAdminUsers();
   const update = useUpdateAdminUser();
   const [createOpen, setCreateOpen] = useState(false);
+  // Hộp thoại luôn mount để có hiệu ứng đóng; mỗi lần mở là một `session` mới → form + mật khẩu tạm khởi tạo lại.
+  const [session, setSession] = useState(0);
 
   if (me && !me.isSystemAdmin) return <Navigate to="/" replace />;
 
@@ -41,7 +43,13 @@ export function AdminUsersPage() {
             thống.
           </p>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
+        <Button
+          size="sm"
+          onClick={() => {
+            setSession((n) => n + 1);
+            setCreateOpen(true);
+          }}
+        >
           <Plus className="h-4 w-4" /> Tạo tài khoản
         </Button>
       </header>
@@ -91,7 +99,7 @@ export function AdminUsersPage() {
         </ul>
       )}
 
-      {createOpen && <CreateUserModal onClose={() => setCreateOpen(false)} />}
+      <CreateUserModal key={session} open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   );
 }
@@ -134,7 +142,7 @@ function Toggle({
   );
 }
 
-function CreateUserModal({ onClose }: { onClose: () => void }) {
+function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useCreateAdminUser();
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -179,7 +187,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog
-      open
+      open={open}
       onOpenChange={(o) => {
         if (!o) onClose();
       }}

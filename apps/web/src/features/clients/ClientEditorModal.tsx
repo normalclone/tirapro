@@ -69,8 +69,6 @@ export function ClientEditorModal({
 
   const emailInvalid = email.trim().length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-  if (!open) return null;
-
   const busy = create.isPending || update.isPending;
   const canSave = name.trim().length > 0 && !emailInvalid && !busy;
 

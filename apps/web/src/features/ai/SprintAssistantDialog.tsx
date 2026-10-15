@@ -100,6 +100,7 @@ export function SprintAssistantDialog({
         if (!o) onClose();
       }}
       title={`Trợ lý lập sprint — ${sprint.name}`}
+      icon={<Sparkles className="h-4 w-4" />}
       description="Đề xuất việc trong Backlog vừa với năng lực của đội. Bạn xem lại và bỏ tick việc nào không muốn đưa vào."
       size="lg"
       footer={

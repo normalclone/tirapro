@@ -15,6 +15,7 @@ import { RoleBadge } from '@/components/ui/RoleBadge';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
+import { useRetained } from '@/lib/useRetained';
 import { useAuth } from '@/stores/auth';
 import {
   useCreateRole,
@@ -58,6 +59,21 @@ export function RolesPage() {
 
   const [editing, setEditing] = useState<RoleDto | null>(null);
   const [creatingScope, setCreatingScope] = useState<RoleScope | null>(null);
+  // Hộp thoại luôn mount để có hiệu ứng đóng; mỗi lần mở là một `session` mới → form khởi tạo lại.
+  const [session, setSession] = useState(0);
+  const dialogOpen = !!(editing || creatingScope);
+  const dialogTarget = useRetained(
+    dialogOpen ? { role: editing, scope: creatingScope ?? 'WORKSPACE' } : null,
+  );
+
+  function openEdit(r: RoleDto) {
+    setSession((n) => n + 1);
+    setEditing(r);
+  }
+  function openCreate(scope: RoleScope) {
+    setSession((n) => n + 1);
+    setCreatingScope(scope);
+  }
 
   const grouped = useMemo(() => {
     const all = roles ?? [];
@@ -78,7 +94,7 @@ export function RolesPage() {
           </p>
         </div>
         {canManage && (
-          <Button size="sm" onClick={() => setCreatingScope('WORKSPACE')}>
+          <Button size="sm" onClick={() => openCreate('WORKSPACE')}>
             <Plus className="h-4 w-4" />
             Tạo vai trò
           </Button>
@@ -102,7 +118,7 @@ export function RolesPage() {
             description="Tạo vai trò đầu tiên để phân quyền cho thành viên."
             action={
               canManage ? (
-                <Button size="sm" onClick={() => setCreatingScope('WORKSPACE')}>
+                <Button size="sm" onClick={() => openCreate('WORKSPACE')}>
                   <Plus className="h-4 w-4" />
                   Tạo vai trò
                 </Button>
@@ -119,25 +135,25 @@ export function RolesPage() {
                 scope={scope}
                 roles={grouped[scope]}
                 canManage={canManage}
-                onOpen={(r) => setEditing(r)}
-                onCreate={() => setCreatingScope(scope)}
+                onOpen={openEdit}
+                onCreate={() => openCreate(scope)}
               />
             ))}
           </div>
         )}
       </QueryBoundary>
 
-      {(editing || creatingScope) && (
-        <RoleDialog
-          role={editing}
-          initialScope={creatingScope ?? 'WORKSPACE'}
-          canManage={canManage}
-          onClose={() => {
-            setEditing(null);
-            setCreatingScope(null);
-          }}
-        />
-      )}
+      <RoleDialog
+        key={session}
+        open={dialogOpen}
+        role={dialogTarget?.role ?? null}
+        initialScope={dialogTarget?.scope ?? 'WORKSPACE'}
+        canManage={canManage}
+        onClose={() => {
+          setEditing(null);
+          setCreatingScope(null);
+        }}
+      />
     </div>
   );
 }
@@ -234,11 +250,13 @@ const PERM_SCOPE_LABEL: Record<PermissionScope, string> = {
 };
 
 function RoleDialog({
+  open,
   role,
   initialScope,
   canManage,
   onClose,
 }: {
+  open: boolean;
   role: RoleDto | null;
   initialScope: RoleScope;
   canManage: boolean;
@@ -330,11 +348,12 @@ function RoleDialog({
 
   return (
     <Dialog
-      open
+      open={open}
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
       title={title}
+      icon={readOnly ? undefined : <Shield className="h-4 w-4" />}
       hideTitle={readOnly}
       size="lg"
       footer={

@@ -115,8 +115,6 @@ export function ProgramEditorModal({
 
   const dateOrderInvalid = !!startDate && !!targetDate && startDate > targetDate;
 
-  if (!open) return null;
-
   const busy = create.isPending || update.isPending;
   const canSave = name.trim().length > 0 && !dateOrderInvalid && !busy;
 
@@ -152,6 +150,7 @@ export function ProgramEditorModal({
         if (!o) onClose();
       }}
       title={editing ? 'Sửa chương trình' : 'Tạo chương trình'}
+      icon={<span className="h-3 w-3 rounded-full" style={{ background: color }} />}
       size="md"
       footer={
         <>

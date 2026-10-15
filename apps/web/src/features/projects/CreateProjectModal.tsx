@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FolderKanban } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProjectType } from '@tirapro/types';
 import { apiErrorMessage } from '@/lib/api';
@@ -44,7 +45,8 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
   const [description, setDescription] = useState('');
 
   useEffect(() => {
-    if (!open) {
+    // Reset khi MỞ (không phải khi đóng) để nội dung không trống đi giữa hiệu ứng đóng.
+    if (open) {
       setName('');
       setKey('');
       setKeyTouched(false);
@@ -52,8 +54,6 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
       setDescription('');
     }
   }, [open]);
-
-  if (!open) return null;
 
   function onNameChange(value: string) {
     setName(value);
@@ -90,7 +90,8 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
 
   return (
     <Dialog
-      open
+      open={open}
+      icon={<FolderKanban className="h-4 w-4" />}
       onOpenChange={(o) => {
         if (!o) onClose();
       }}

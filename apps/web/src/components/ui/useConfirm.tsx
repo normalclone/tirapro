@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 
@@ -57,6 +58,8 @@ export function ConfirmHost(): JSX.Element | null {
       title={opts.title}
       description={opts.description}
       size="sm"
+      icon={destructive ? <AlertTriangle className="h-4 w-4" /> : undefined}
+      iconTone="danger"
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={() => settle(false)} autoFocus={destructive}>

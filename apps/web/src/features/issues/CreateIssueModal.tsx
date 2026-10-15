@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Paperclip, X } from 'lucide-react';
+import { Paperclip, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { useProjectMeta } from '@/features/ai/api';
@@ -228,8 +228,6 @@ export function CreateIssueModal() {
     setDescription((d) => (d === '' || isTemplate(d) ? tmpl : d));
   }, [typeId, meta]);
 
-  if (!open) return null;
-
   const trimmed = summary.trim();
   const canSubmit =
     !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
@@ -314,7 +312,8 @@ export function CreateIssueModal() {
 
   return (
     <Dialog
-      open
+      open={open}
+      icon={<Plus className="h-4 w-4" />}
       onOpenChange={(o) => {
         if (!o) close();
       }}

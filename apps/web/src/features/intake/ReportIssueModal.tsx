@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Bug } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
@@ -25,13 +25,12 @@ export function ReportIssueModal({
   const { data: duplicates, isFetching: checkingDup } = useDuplicateCheck(projectId, summary);
 
   useEffect(() => {
-    if (!open) {
+    // Reset khi MỞ để nội dung không trống đi giữa hiệu ứng đóng.
+    if (open) {
       setSummary('');
       setDescription('');
     }
   }, [open]);
-
-  if (!open) return null;
 
   const trimmedSummary = summary.trim();
   const canSubmit = trimmedSummary.length > 0;
@@ -60,7 +59,8 @@ export function ReportIssueModal({
 
   return (
     <Dialog
-      open
+      open={open}
+      icon={<Bug className="h-4 w-4" />}
       onOpenChange={(o) => {
         if (!o) onClose();
       }}

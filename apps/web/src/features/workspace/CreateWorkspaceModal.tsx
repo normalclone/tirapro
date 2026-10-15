@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
@@ -28,10 +29,9 @@ export function CreateWorkspaceModal({ open, onClose }: { open: boolean; onClose
   const [name, setName] = useState('');
 
   useEffect(() => {
-    if (!open) setName('');
+    // Reset khi MỞ để nội dung không trống đi giữa hiệu ứng đóng.
+    if (open) setName('');
   }, [open]);
-
-  if (!open) return null;
 
   const trimmedName = name.trim();
   const canSubmit = trimmedName.length > 0;
@@ -56,7 +56,8 @@ export function CreateWorkspaceModal({ open, onClose }: { open: boolean; onClose
 
   return (
     <Dialog
-      open
+      open={open}
+      icon={<Building2 className="h-4 w-4" />}
       onOpenChange={(o) => {
         if (!o) onClose();
       }}

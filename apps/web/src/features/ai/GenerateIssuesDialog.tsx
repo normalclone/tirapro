@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Wand2 } from 'lucide-react';
+import { Sparkles, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AiGeneratedIssue } from '@tirapro/shared';
 import { api, apiErrorMessage } from '@/lib/api';
@@ -36,14 +36,13 @@ export function GenerateIssuesDialog({
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    if (!open) {
+    // Reset khi MỞ để nội dung không trống đi giữa hiệu ứng đóng.
+    if (open) {
       setText('');
       setRows(null);
       setSource(null);
     }
   }, [open]);
-
-  if (!open) return null;
 
   const defaultTypeId =
     meta?.issueTypes.find((t) => !t.isSubtask)?.id ?? meta?.issueTypes[0]?.id ?? '';
@@ -105,7 +104,8 @@ export function GenerateIssuesDialog({
 
   return (
     <Dialog
-      open
+      open={open}
+      icon={<Sparkles className="h-4 w-4" />}
       onOpenChange={(o) => {
         if (!o) onClose();
       }}

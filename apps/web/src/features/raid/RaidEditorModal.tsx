@@ -7,6 +7,7 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
 import { Badge } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
+import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useWorkspaceUsers } from '@/features/members/api';
@@ -92,7 +93,7 @@ function ScalePicker({
 /** Modal tạo/sửa một mục trong danh sách rủi ro & vướng mắc. */
 export function RaidEditorModal({
   open,
-  item,
+  item: itemProp,
   defaultKind,
   onClose,
 }: {
@@ -105,6 +106,8 @@ export function RaidEditorModal({
   const { data: users } = useWorkspaceUsers();
   const create = useCreateRaidItem();
   const update = useUpdateRaidItem();
+  // Cha đặt `item` về null ngay khi đóng → giữ bản lúc mở để tiêu đề/nút không đổi giữa hiệu ứng đóng.
+  const item = useRetained(open ? { item: itemProp } : null)?.item;
   const editing = !!item;
 
   const [kind, setKind] = useState<RaidKind>('RISK');
@@ -151,8 +154,6 @@ export function RaidEditorModal({
       })),
     [users],
   );
-
-  if (!open) return null;
 
   const busy = create.isPending || update.isPending;
   const canSave = title.trim().length > 0 && !busy;

@@ -1,3 +1,4 @@
+import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 
@@ -36,6 +37,8 @@ export function ConfirmDialog({
       title={title}
       description={description}
       size="sm"
+      icon={danger ? <AlertTriangle className="h-4 w-4" /> : undefined}
+      iconTone="danger"
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onCancel} autoFocus={danger}>
