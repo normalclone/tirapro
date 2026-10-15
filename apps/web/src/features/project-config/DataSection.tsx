@@ -18,6 +18,7 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
+import { importResultMessage } from './importResult';
 import { LOCALE } from '@/lib/locale';
 
 /** Nhãn + style cho từng trạng thái job import. */
@@ -42,14 +43,10 @@ function formatDateTime(iso?: string | null): string {
   });
 }
 
-/** Thông báo kết quả import (created / failed / total). */
+/** Thông báo kết quả import (created / failed / total + người phụ trách bị bỏ gán). */
 function importResultToast(result: ImportResult) {
-  const { created, failed, total } = result;
-  if (failed > 0) {
-    toast.warning(`Đã nhập ${created}/${total} công việc · ${failed} việc lỗi.`);
-  } else {
-    toast.success(`Đã nhập thành công ${created}/${total} công việc.`);
-  }
+  const { level, text } = importResultMessage(result);
+  toast[level](text);
 }
 
 /* ------------------------------------------------------------------ */

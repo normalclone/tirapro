@@ -78,6 +78,8 @@ export interface ImportResult {
   failed: number;
   total: number;
   errors: string[];
+  /** Import JSON: số người phụ trách không còn là thành viên nên bị bỏ gán (API cũ/CSV có thể không có). */
+  skippedAssignees?: number;
 }
 
 export interface ImportJob {
