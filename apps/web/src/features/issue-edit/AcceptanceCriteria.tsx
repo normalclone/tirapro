@@ -4,6 +4,7 @@ import type { IssueDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { useUpdateIssue } from '@/features/issues/api';
+import { apiErrorCode } from '@/features/issues/moveIssue';
 import { useCanEditIssue } from '@/features/projects/permissions';
 import { apiErrorMessage } from '@/lib/api';
 import { MarkdownEditor } from './MarkdownEditor';
@@ -49,7 +50,19 @@ export function AcceptanceCriteria({ issue }: { issue: IssueDto }) {
     if (next === (text ?? null)) return;
     patch.mutate(
       { id: issue.id, key: issue.key, patch: { acceptanceCriteria: next }, version: issue.version },
-      { onError: (e) => toast.error(apiErrorMessage(e)) },
+      {
+        // Lỗi/409: KHÔNG mất chữ đang sửa — mở lại editor với đúng nội dung vừa gõ. 409: useUpdateIssue đã nạp lại bản mới
+        // (version mới nằm trong `issue`), nên bấm Lưu lần nữa là ghi đè có chủ đích sau khi người dùng đã được báo.
+        onError: (e) => {
+          setDraft(next ?? '');
+          setEditing(true);
+          toast.error(
+            apiErrorCode(e) === 'VERSION_CONFLICT'
+              ? 'Tiêu chí vừa được người khác thay đổi — đã nạp bản mới, chữ bạn đang sửa vẫn còn. Kiểm tra rồi bấm Lưu lại.'
+              : apiErrorMessage(e),
+          );
+        },
+      },
     );
   }
 

@@ -110,7 +110,11 @@ export function IssueRowBody({
           </span>
         </span>
       )}
-      <AcceptanceBadge progress={issue.acceptanceProgress} />
+      {issue.acceptanceProgress && (
+        <span className="hidden shrink-0 sm:inline-flex">
+          <AcceptanceBadge progress={issue.acceptanceProgress} />
+        </span>
+      )}
       <DueBadge issue={issue} warnOnly className="shrink-0" />
       {issue.storyPoints != null && (
         <span

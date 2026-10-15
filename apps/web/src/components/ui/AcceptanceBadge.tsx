@@ -20,6 +20,7 @@ export function AcceptanceBadge({
         done === total ? 'text-success' : 'text-muted',
         className,
       )}
+      role="img"
       title={label}
       aria-label={label}
     >
