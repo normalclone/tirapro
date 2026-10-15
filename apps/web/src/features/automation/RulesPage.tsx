@@ -25,7 +25,7 @@ import {
   RULES_CHECK_BATCH,
   projectIdsToCheck,
   resolveRulesScope,
-  shouldCheckMore,
+  nextCheckLimit,
 } from './rulesScope';
 import {
   ALL_RULES,
@@ -67,16 +67,18 @@ export function RulesPage() {
     }),
     'automation:manage',
   );
-  const needMore = shouldCheckMore({
+  const nextLimit = nextCheckLimit({
     projects,
     choice: scopeChoice,
     canWorkspace: canManageWorkspace,
     limit: checkLimit,
     projectCan,
   });
+  // Phụ thuộc cả `nextLimit` (đổi theo `checkLimit`): đợt kế đã có sẵn trong cache thì `shouldCheckMore` vẫn true nhưng
+  // `nextLimit` đổi → effect vẫn chạy tiếp, không kẹt ở skeleton.
   useEffect(() => {
-    if (needMore) setCheckLimit((l) => l + RULES_CHECK_BATCH);
-  }, [needMore]);
+    if (nextLimit !== checkLimit) setCheckLimit(nextLimit);
+  }, [nextLimit, checkLimit]);
   const { scope, canManage } = resolveRulesScope({
     choice: scopeChoice,
     canWorkspace: canManageWorkspace,

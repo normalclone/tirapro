@@ -20,6 +20,8 @@ function projectPermissionsQuery(projectId?: string | null) {
           (await api.get<ProjectPermissionsDto>(`/projects/${projectId}/permissions/me`)).data
       : skipToken,
     staleTime: 60_000, // khớp TTL cache RBAC phía API
+    // Lỗi mạng: thử lại tối đa 1 lần (mặc định 3 lần giãn dần giữ skeleton hàng chục giây ở nơi chờ quyền).
+    retry: 1,
   });
 }
 

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { projectIdsToCheck, resolveRulesScope, shouldCheckMore, type ScopeCan } from './rulesScope';
+import {
+  nextCheckLimit,
+  projectIdsToCheck,
+  resolveRulesScope,
+  shouldCheckMore,
+  type ScopeCan,
+} from './rulesScope';
 
 const projects = [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }];
 const can =
@@ -107,5 +113,59 @@ describe('projectIdsToCheck / shouldCheckMore — không bắn quyền cho mọi
         projectCan: can(allFalse),
       }),
     ).toBe(false);
+  });
+});
+
+describe('nextCheckLimit — vòng tăng đợt không kẹt khi đợt kế đã có trong cache', () => {
+  const many = Array.from({ length: 22 }, (_, i) => ({ id: `p${i}` }));
+  // Mọi quyền đã có sẵn trong cache (mount lại trang): dự án có quyền đầu tiên là p17.
+  const cached = (id: string) => id === 'p17';
+  const step = (limit: number, choice: string | null = null, canWorkspace = false) =>
+    nextCheckLimit({ projects: many, choice, canWorkspace, limit, projectCan: can2(limit) });
+  // Chỉ các dự án nằm trong `limit` đầu mới "biết" quyền (đúng như `useProjectsCan` chỉ truy vấn các id đang tra).
+  const can2 =
+    (limit: number): ScopeCan =>
+    (id) =>
+      many.findIndex((p) => p.id === id) < limit ? cached(id) : undefined;
+
+  it('liên tiếp tăng từng đợt dù `shouldCheckMore` giữ nguyên true, dừng ngay khi thấy dự án có quyền', () => {
+    const seen: number[] = [];
+    let limit = 5;
+    for (let i = 0; i < 10 && step(limit) !== limit; i++) {
+      limit = step(limit);
+      seen.push(limit);
+    }
+    expect(seen).toEqual([10, 15, 20]); // p17 nằm trong đợt 15–20 → dừng ở 20
+    expect(
+      resolveRulesScope({
+        choice: null,
+        canWorkspace: false,
+        projects: many,
+        projectCan: can2(limit),
+      }),
+    ).toEqual({ scope: 'p17', canManage: true });
+  });
+  it('không dự án nào có quyền → tăng tới hết danh sách rồi dừng, trang báo thiếu quyền (không skeleton mãi)', () => {
+    const none: ScopeCan = () => false;
+    let limit = 5;
+    for (let i = 0; i < 10; i++) {
+      const n = nextCheckLimit({
+        projects: many,
+        choice: null,
+        canWorkspace: false,
+        limit,
+        projectCan: none,
+      });
+      if (n === limit) break;
+      limit = n;
+    }
+    expect(limit).toBeGreaterThanOrEqual(many.length);
+    expect(
+      resolveRulesScope({ choice: null, canWorkspace: false, projects: many, projectCan: none }),
+    ).toEqual({ scope: 'p0', canManage: false });
+  });
+  it('quản trị workspace hoặc đã chọn tay → giữ nguyên giới hạn', () => {
+    expect(step(5, null, true)).toBe(5);
+    expect(step(5, 'p3')).toBe(5);
   });
 });

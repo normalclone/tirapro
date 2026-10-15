@@ -21,7 +21,6 @@ import {
 
 const STEPS = ['Tải tệp', 'Ghép dữ liệu', 'Nhập & kết quả'] as const;
 const NEW_PROJECT = '__new__';
-/** Giá trị rỗng của ô chọn người dùng = để trống. */
 
 const selectClass = cn(
   'h-9 w-full rounded-md border border-border bg-bg px-2 text-sm text-ink',

@@ -132,6 +132,8 @@ export function CreateIssueModal() {
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const prevTypeRef = useRef('');
+  // Chữ đang giữ (không tự lưu) sau khi chọn dự án đã có nháp riêng — xem ô Dự án.
+  const heldDraftRef = useRef<{ key: string; summary: string; description: string } | null>(null);
 
   const selProject = useMemo(
     () => (projects ?? []).find((p) => p.key === selKey),
@@ -151,6 +153,7 @@ export function CreateIssueModal() {
   useEffect(() => {
     if (!open) return;
     // pickProject: dự án hiện tại đã lưu trữ → để TRỐNG, người dùng tự chọn (không đoán dự án đầu danh sách).
+    heldDraftRef.current = null;
     const key = preset.pickProject
       ? ''
       : (preset.projectKey ?? loadLast().projectKey ?? projects?.[0]?.key ?? '');
@@ -175,6 +178,13 @@ export function CreateIssueModal() {
   // Tự lưu bản nháp (tiêu đề + mô tả) theo dự án khi đang mở — không mất khi lỡ đóng.
   useEffect(() => {
     if (!open) return;
+    // Vừa chọn dự án đã có nháp riêng khi đang giữ chữ đã gõ: chưa ghi đè nháp cũ cho tới khi người dùng gõ thêm.
+    const held = heldDraftRef.current;
+    if (held) {
+      if (held.key === selKey && held.summary === summary && held.description === description)
+        return;
+      heldDraftRef.current = null;
+    }
     const t = setTimeout(() => saveDraft(selKey, { summary, description }), 400);
     return () => clearTimeout(t);
   }, [open, selKey, summary, description]);
@@ -384,7 +394,17 @@ export function CreateIssueModal() {
                   const d = loadDraft(v);
                   setSummary(d.summary ?? '');
                   setDescription(d.description ?? '');
-                } else clearDraft(selKey); // nháp "chưa có dự án" đã chuyển sang dự án vừa chọn
+                } else {
+                  clearDraft(selKey); // nháp "chưa có dự án" đã chuyển sang dự án vừa chọn
+                  const saved = loadDraft(v);
+                  if (saved.summary?.trim() || saved.description?.trim()) {
+                    // Dự án này đã có nháp riêng: giữ nguyên nháp đó trong kho cho tới khi người dùng gõ thêm.
+                    heldDraftRef.current = { key: v, summary, description };
+                    toast.info(
+                      'Dự án này đang có một bản nháp khác — chữ bạn vừa gõ được giữ nguyên, bản nháp cũ chỉ bị thay khi bạn gõ tiếp.',
+                    );
+                  }
+                }
                 setSelKey(v);
                 setTypeId('');
                 setPriorityId('');

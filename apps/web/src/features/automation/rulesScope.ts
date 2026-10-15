@@ -71,3 +71,12 @@ export function shouldCheckMore(input: {
   const checked = projects.slice(0, limit);
   return checked.every((p) => projectCan(p.id) === false);
 }
+
+/**
+ * Giới hạn tra quyền KẾ TIẾP: tăng một đợt nếu còn cần (`shouldCheckMore`), không thì giữ nguyên. Gọi lại mỗi lần
+ * `limit` đổi (kể cả khi đợt kế đã có sẵn trong cache và `shouldCheckMore` vẫn `true`) để vòng tăng luôn chạy tới khi
+ * gặp dự án có quyền hoặc hết danh sách.
+ */
+export function nextCheckLimit(input: Parameters<typeof shouldCheckMore>[0]): number {
+  return shouldCheckMore(input) ? input.limit + RULES_CHECK_BATCH : input.limit;
+}
