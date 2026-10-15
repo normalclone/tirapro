@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeVi, searchTokens, VI_TRANSLATE_FROM, VI_TRANSLATE_TO } from './vi-text';
+import {
+  normalizeVi,
+  searchTokens,
+  truncateCodePoints,
+  VI_TRANSLATE_FROM,
+  VI_TRANSLATE_TO,
+} from './vi-text';
+
+/** Có surrogate mồ côi (nửa cặp UTF-16) không. */
+const hasLoneSurrogate = (s: string): boolean =>
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(s);
 
 describe('normalizeVi', () => {
   it('bỏ dấu tiếng Việt, đ/Đ → d, hạ chữ thường', () => {
@@ -42,5 +52,20 @@ describe('bảng translate cho fallback', () => {
     expect(map.get('ố')).toBe('o');
     expect(map.get('Đ')).toBe('D');
     expect(map.get('ữ')).toBe('u');
+  });
+});
+
+describe('cắt theo code point (FW6) — không sinh surrogate mồ côi', () => {
+  it('truncateCodePoints cắt theo ký tự, không chẻ đôi cặp surrogate', () => {
+    expect(truncateCodePoints('abc', 5)).toBe('abc');
+    expect(truncateCodePoints('abcdef', 3)).toBe('abc');
+    expect(truncateCodePoints('a😀b', 2)).toBe('a😀');
+    expect('a😀b'.slice(0, 2)).not.toBe('a😀'); // slice theo UTF-16 sẽ chẻ đôi emoji
+  });
+
+  it('searchTokens: token chữ ngoài BMP dài hơn 40 vẫn nguyên vẹn (40 code point)', () => {
+    const [tok] = searchTokens('𠀀'.repeat(50));
+    expect([...tok!]).toHaveLength(40);
+    expect(hasLoneSurrogate(tok!)).toBe(false);
   });
 });

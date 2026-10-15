@@ -6,6 +6,10 @@ import {
   isMissingSearchObject,
 } from './fulltext';
 
+/** Có surrogate mồ côi (nửa cặp UTF-16) không. */
+const hasLoneSurrogate = (s: string): boolean =>
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(s);
+
 /** Gom chuỗi SQL + tham số từ lời gọi tagged template `$queryRaw` (làm phẳng cả Prisma.sql lồng nhau). */
 function renderCall(call: unknown[]): { sql: string; values: unknown[] } {
   const first = call[0] as string[] | { strings: readonly string[]; values: unknown[] };
@@ -37,6 +41,14 @@ describe('buildFulltextQuery', () => {
   it('cắt khoảng trắng thừa, bỏ ký tự NUL và giới hạn độ dài', () => {
     expect(buildFulltextQuery('  đăng   nhập \u0000lỗi ')?.q).toBe('đăng nhập lỗi');
     expect(buildFulltextQuery('a'.repeat(500))?.q).toHaveLength(200);
+  });
+
+  it('FW6: cắt 200 theo code point — emoji nằm ở biên không bị chẻ thành surrogate mồ côi', () => {
+    const q = buildFulltextQuery(`${'a'.repeat(199)}😀b`)!;
+    expect([...q.q]).toHaveLength(200);
+    expect(q.q.endsWith('😀')).toBe(true);
+    for (const v of [q.q, q.like, q.qn, q.likeNorm, q.tsquery])
+      expect(hasLoneSurrogate(v)).toBe(false);
   });
 
   it('trả null khi rỗng/chỉ khoảng trắng', () => {
@@ -257,5 +269,31 @@ describe('FulltextSearcher.search', () => {
     await expect(new FulltextSearcher(prisma as never).search('W1', 'abc')).rejects.toThrow(
       'connection lost',
     );
+  });
+
+  it('FW6: đường phòng thủ 42601 ghi log warn, nhưng chỉ một lần trong mỗi khoảng', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-10-15T00:00:00Z'));
+      const syntaxErr = () =>
+        Object.assign(new Error('Raw query failed'), { code: 'P2010', meta: { code: '42601' } });
+      let n = 0;
+      const prisma = {
+        // lần gọi lẻ = câu ranked đầu của mỗi search → lỗi cú pháp; lần chẵn = câu chạy lại → ok
+        $queryRaw: vi.fn(() => (n++ % 2 === 0 ? Promise.reject(syntaxErr()) : Promise.resolve([]))),
+      };
+      const logger = { warn: vi.fn() };
+      const searcher = new FulltextSearcher(prisma as never, logger);
+      await searcher.search('W1', 'ʼ⑴');
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn.mock.calls[0]![0]).toContain('42601');
+      await searcher.search('W1', 'ʼ⑴');
+      expect(logger.warn).toHaveBeenCalledTimes(1); // trong khoảng => không log lại
+      vi.setSystemTime(new Date('2026-10-15T00:30:00Z'));
+      await searcher.search('W1', 'ʼ⑴');
+      expect(logger.warn).toHaveBeenCalledTimes(2); // qua khoảng => log lại
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

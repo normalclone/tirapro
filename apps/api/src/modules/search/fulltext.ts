@@ -1,11 +1,20 @@
 import { Logger } from '@nestjs/common';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { escapeLike } from '../../common/like';
-import { normalizeVi, searchTokens, VI_TRANSLATE_FROM, VI_TRANSLATE_TO } from './vi-text';
+import {
+  normalizeVi,
+  searchTokens,
+  truncateCodePoints,
+  VI_TRANSLATE_FROM,
+  VI_TRANSLATE_TO,
+} from './vi-text';
 
 /** Số issue tối đa trả về từ một lần tìm full-text (xếp theo rank). */
 export const FULLTEXT_LIMIT = 200;
+/** Độ dài tối đa của chuỗi tìm (tính theo ký tự/code point, không phải đơn vị UTF-16). */
 const MAX_QUERY_LENGTH = 200;
+/** Khoảng tối thiểu giữa hai lần log cảnh báo "đường phòng thủ 42601 chạy lại" (tránh ngập log). */
+const SYNTAX_WARN_INTERVAL_MS = 10 * 60 * 1000;
 
 export interface FulltextQuery {
   /** Chuỗi gõ đã chuẩn hoá khoảng trắng (giữ dấu, giữ hoa/thường). */
@@ -22,12 +31,13 @@ export interface FulltextQuery {
 
 /** Chuẩn hoá chuỗi tìm kiếm của người dùng; null nếu rỗng. Mọi giá trị đều được bind, không nối vào SQL. */
 export function buildFulltextQuery(raw: string): FulltextQuery | null {
-  const q = raw
-    .replace(/\u0000/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, MAX_QUERY_LENGTH)
-    .trim();
+  const q = truncateCodePoints(
+    raw
+      .replace(/\u0000/g, '')
+      .replace(/\s+/g, ' ')
+      .trim(),
+    MAX_QUERY_LENGTH,
+  ).trim();
   if (!q) return null;
   const qn = normalizeVi(q);
   return {
@@ -97,6 +107,7 @@ function resolveProjectScope(opts: SearchOptions): string[] | null {
  */
 export class FulltextSearcher {
   private warned = false;
+  private lastSyntaxWarnAt = 0;
 
   constructor(
     private readonly prisma: Pick<PrismaClient, '$queryRaw'>,
@@ -127,6 +138,13 @@ export class FulltextSearcher {
       } catch (err) {
         // Phòng thủ: tsquery vẫn bị từ chối (42601) ⇒ chạy lại chỉ bằng nhánh ILIKE/trigram thay vì 500.
         if (!isSyntaxError(err) || !built.tsquery) throw err;
+        const now = Date.now();
+        if (now - this.lastSyntaxWarnAt >= SYNTAX_WARN_INTERVAL_MS) {
+          this.lastSyntaxWarnAt = now;
+          this.logger.warn(
+            `to_tsquery bị từ chối (42601) — chạy lại bằng nhánh ILIKE/trigram. Có ký tự lạ lọt qua searchTokens; hãy bổ sung bộ lọc nếu lặp lại (nội dung tìm không được ghi vào log).`,
+          );
+        }
         return await this.ranked({ ...built, tsquery: '' }, workspaceId, projectFilter, limit);
       }
     } catch (err) {
