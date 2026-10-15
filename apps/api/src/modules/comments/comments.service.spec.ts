@@ -104,4 +104,28 @@ describe('CommentsService — domain event kèm projectId', () => {
       actorId: 'u1',
     });
   });
+
+  it('FW4: update() ném lỗi khi ghi => không phát comment.updated', async () => {
+    const { service, update, events } = make('u1');
+    update.mockRejectedValueOnce(new Error('DB lỗi giả lập'));
+    await expect(service.update('w1', 'u1', 'c1', 'nội dung mới', 1)).rejects.toThrow(
+      'DB lỗi giả lập',
+    );
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('FW4: update() bị từ chối (không phải tác giả / lệch version) => không ghi, không phát event', async () => {
+    const other = make('u2');
+    await expect(other.service.update('w1', 'u1', 'c1', 'x', 1)).rejects.toMatchObject({
+      status: 403,
+    });
+    const stale = make('u1');
+    await expect(stale.service.update('w1', 'u1', 'c1', 'x', 99)).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(other.update).not.toHaveBeenCalled();
+    expect(stale.update).not.toHaveBeenCalled();
+    expect(other.events.emit).not.toHaveBeenCalled();
+    expect(stale.events.emit).not.toHaveBeenCalled();
+  });
 });
