@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { analyzeJira, parseJiraCsv, parseJiraDate } from './jira-csv.parser';
+import { analyzeJira, parseJiraCsv, parseJiraCsvAsync, parseJiraDate } from './jira-csv.parser';
 
 const fixture = readFileSync(join(__dirname, '..', 'fixtures', 'jira-sample.csv'));
 
@@ -132,5 +132,77 @@ describe('parseJiraCsv — biến thể', () => {
   it('bỏ qua dòng trống hoàn toàn', () => {
     const csv = 'Summary,Issue key\nA,P-1\n,\n\nB,P-2\n';
     expect(parseJiraCsv(csv).issues.map((i) => i.key)).toEqual(['P-1', 'P-2']);
+  });
+});
+
+describe('parseJiraCsvAsync', () => {
+  it('cho kết quả giống hệt parseJiraCsv trên jira-sample.csv', async () => {
+    const [a, b] = [parseJiraCsv(fixture), await parseJiraCsvAsync(fixture)];
+    expect(b.issues).toEqual(a.issues);
+    expect(b.unknownColumns).toEqual(a.unknownColumns);
+    expect([...b.accountNames]).toEqual([...a.accountNames]);
+  });
+
+  it('nhận cả string và ném cùng lỗi thiếu cột như bản đồng bộ', async () => {
+    await expect(parseJiraCsvAsync('a,b\n1,2\n')).rejects.toThrow(/Summary/);
+    await expect(parseJiraCsvAsync('')).rejects.toThrow(/Summary/);
+    await expect(parseJiraCsvAsync('Summary,Status\nx,y\n')).rejects.toThrow(/Issue key/);
+  });
+
+  it('không chặn event loop: setImmediate/timer vẫn chạy xen giữa lúc parse tệp lớn', async () => {
+    const header = 'Summary,Issue key\n';
+    const big = header + Array.from({ length: 60_000 }, (_, i) => `Việc ${i},P-${i}`).join('\n');
+    let ticks = 0;
+    const t = setInterval(() => {
+      ticks++;
+    }, 0);
+    const r = await parseJiraCsvAsync(Buffer.from(big));
+    clearInterval(t);
+    expect(r.issues).toHaveLength(60_000);
+    expect(r.issues[59_999]!.row).toBe(60_000);
+    expect(ticks).toBeGreaterThan(3); // ≥ vài lần nhường event loop
+  });
+
+  it('tệp ~25MB: khoảng chặn event loop dài nhất < một nửa thời gian chặn của bản đồng bộ', async () => {
+    const header = 'Summary,Issue key,Description\n';
+    const desc = 'x'.repeat(200);
+    const rows: string[] = [];
+    let size = header.length;
+    for (let i = 0; size < 25 * 1024 * 1024; i++) {
+      const line = `Việc ${i},P-${i},${desc}`;
+      rows.push(line);
+      size += Buffer.byteLength(line) + 1;
+    }
+    const buf = Buffer.from(header + rows.join('\n'));
+    // Baseline: bản đồng bộ chặn event loop trọn vẹn bằng chừng này (đo cùng máy, cùng lúc).
+    const syncStart = performance.now();
+    parseJiraCsv(buf);
+    const syncBlock = performance.now() - syncStart;
+
+    let last = performance.now();
+    let maxGap = 0;
+    const t = setInterval(() => {
+      const now = performance.now();
+      maxGap = Math.max(maxGap, now - last);
+      last = now;
+    }, 1);
+    const r = await parseJiraCsvAsync(buf);
+    clearInterval(t);
+    maxGap = Math.max(maxGap, performance.now() - last);
+    expect(r.issues).toHaveLength(rows.length);
+    expect(maxGap).toBeLessThan(syncBlock / 2);
+  }, 60_000);
+
+  it('CSV hỏng giữa luồng (quote không đóng / quote lạc) → reject, không treo', async () => {
+    const rows = Array.from({ length: 5000 }, (_, i) => `Việc ${i},P-${i}`);
+    const head = 'Summary,Issue key\n';
+    await expect(
+      parseJiraCsvAsync(head + rows.join('\n') + '\n"không đóng,P-x\nvà tiếp\n'),
+    ).rejects.toThrow();
+    await expect(
+      parseJiraCsvAsync(
+        head + rows.slice(0, 2500).join('\n') + '\nViệc "lạc,P-y\n' + rows.join('\n'),
+      ),
+    ).rejects.toThrow();
   });
 });

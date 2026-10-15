@@ -1,4 +1,6 @@
+import { parse as streamParse } from 'csv-parse';
 import { parse } from 'csv-parse/sync';
+import { pipeline, Readable } from 'node:stream';
 import type { JiraAnalyzeResult } from '@tirapro/types';
 
 /** Một comment Jira đã tách (`dd/MMM/yy h:mm a;accountId;nội dung`). */
@@ -182,109 +184,170 @@ function projectKeyOf(issueKey: string): string {
   return i > 0 ? issueKey.slice(0, i) : '';
 }
 
+const CSV_OPTS = {
+  bom: true,
+  skip_empty_lines: true,
+  relax_column_count: true,
+  trim: false,
+} as const;
+
+/** Kích thước mỗi mảnh đẩy vào parser stream. */
+const STREAM_CHUNK_BYTES = 65_536;
+/** Sau chừng này dòng, parser async nhường event loop một lượt. */
+const YIELD_EVERY_ROWS = 500;
+
 /**
- * Parse file CSV export chuẩn của Jira. Đọc theo MẢNG (không theo tên cột) vì Jira lặp tên cột
- * `Labels`/`Sprint`/`Comment` — đọc theo object sẽ chỉ còn giá trị cuối.
+ * Dựng JiraIssueRow từ từng record CSV. Đọc theo MẢNG (không theo tên cột) vì Jira lặp tên cột
+ * `Labels`/`Sprint`/`Comment` — đọc theo object sẽ chỉ còn giá trị cuối. Dùng chung cho bản
+ * đồng bộ và bản stream để hai đường cho kết quả giống hệt.
  */
-export function parseJiraCsv(input: string | Buffer): JiraParseResult {
-  const records = parse(input, {
-    bom: true,
-    skip_empty_lines: true,
-    relax_column_count: true,
-    trim: false,
-  }) as string[][];
+class JiraRowBuilder {
+  readonly issues: JiraIssueRow[] = [];
+  readonly accountNames = new Map<string, string>();
+  readonly unknownColumns: string[] = [];
+  private readonly indexes = new Map<string, number[]>();
+  private readonly spIdx: number[];
+  private readonly descIdx: number[];
 
-  const header = (records[0] ?? []).map((h) => h.trim());
-  const lower = header.map((h) => h.toLowerCase());
-  const indexesOf = (name: string): number[] => {
-    const out: number[] = [];
+  constructor(header: string[]) {
+    const lower = header.map((h) => h.toLowerCase());
     lower.forEach((h, i) => {
-      if (h === name) out.push(i);
+      const list = this.indexes.get(h);
+      if (list) list.push(i);
+      else this.indexes.set(h, [i]);
     });
-    return out;
-  };
-  if (!lower.includes('summary')) {
-    throw new Error(
-      'Tệp không có cột "Summary" — hãy xuất từ Jira bằng "Export issues → CSV (tất cả các trường)"',
-    );
-  }
-  if (!lower.includes('issue key')) {
-    throw new Error(
-      'Tệp không có cột "Issue key" — hãy xuất từ Jira bằng "Export issues → CSV (tất cả các trường)"',
-    );
+    if (!lower.includes('summary')) {
+      throw new Error(
+        'Tệp không có cột "Summary" — hãy xuất từ Jira bằng "Export issues → CSV (tất cả các trường)"',
+      );
+    }
+    if (!lower.includes('issue key')) {
+      throw new Error(
+        'Tệp không có cột "Issue key" — hãy xuất từ Jira bằng "Export issues → CSV (tất cả các trường)"',
+      );
+    }
+
+    const seenUnknown = new Set<string>();
+    header.forEach((h, i) => {
+      const l = lower[i]!;
+      if (!h || USED_COLUMNS.has(l) || IGNORED_COLUMNS.has(l) || seenUnknown.has(l)) return;
+      seenUnknown.add(l);
+      this.unknownColumns.push(h);
+    });
+
+    this.spIdx = STORY_POINT_COLUMNS.flatMap((n) => this.indexesOf(n));
+    this.descIdx = this.indexesOf('description');
   }
 
-  const unknownColumns: string[] = [];
-  const seenUnknown = new Set<string>();
-  header.forEach((h, i) => {
-    const l = lower[i]!;
-    if (!h || USED_COLUMNS.has(l) || IGNORED_COLUMNS.has(l) || seenUnknown.has(l)) return;
-    seenUnknown.add(l);
-    unknownColumns.push(h);
-  });
+  private indexesOf(name: string): number[] {
+    return this.indexes.get(name) ?? [];
+  }
 
-  const spIdx = STORY_POINT_COLUMNS.flatMap(indexesOf);
-  const descIdx = indexesOf('description');
-  const first = (cells: string[], name: string): string => {
-    for (const i of indexesOf(name)) {
+  private first(cells: string[], name: string): string {
+    for (const i of this.indexesOf(name)) {
       const v = (cells[i] ?? '').trim();
       if (v) return v;
     }
     return '';
-  };
-  const all = (cells: string[], name: string): string[] =>
-    indexesOf(name)
-      .map((i) => (cells[i] ?? '').trim())
-      .filter(Boolean);
-
-  const issues: JiraIssueRow[] = [];
-  const accountNames = new Map<string, string>();
-  for (let r = 1; r < records.length; r++) {
-    const cells = records[r]!;
-    const summary = first(cells, 'summary');
-    const key = first(cells, 'issue key');
-    if (!summary && !key) continue;
-
-    const row: JiraIssueRow = {
-      row: issues.length + 1,
-      key,
-      id: first(cells, 'issue id'),
-      summary,
-      issueType: first(cells, 'issue type'),
-      status: first(cells, 'status'),
-      priority: first(cells, 'priority'),
-      resolution: first(cells, 'resolution'),
-      assignee: first(cells, 'assignee'),
-      assigneeId: first(cells, 'assignee id'),
-      reporter: first(cells, 'reporter'),
-      reporterId: first(cells, 'reporter id'),
-      creator: first(cells, 'creator'),
-      creatorId: first(cells, 'creator id'),
-      created: parseJiraDate(first(cells, 'created')),
-      updated: parseJiraDate(first(cells, 'updated')),
-      resolved: parseJiraDate(first(cells, 'resolved')),
-      dueDate: parseJiraDate(first(cells, 'due date')),
-      labels: all(cells, 'labels'),
-      sprints: all(cells, 'sprint'),
-      parentRef: first(cells, 'parent') || first(cells, 'parent id'),
-      epicRef: first(cells, 'custom field (epic link)'),
-      description: (cells[descIdx[0] ?? -1] ?? '').trim(),
-      storyPoints: parseNumber(spIdx.map((i) => (cells[i] ?? '').trim()).find(Boolean) ?? ''),
-      comments: all(cells, 'comment')
-        .map(parseComment)
-        .filter((c): c is JiraComment => c !== null),
-      timeSpent: parseNumber(first(cells, 'time spent')),
-      originalEstimate: parseNumber(first(cells, 'original estimate')),
-      projectKey: first(cells, 'project key') || projectKeyOf(key),
-    };
-    issues.push(row);
-
-    if (row.assigneeId && row.assignee) accountNames.set(row.assigneeId, row.assignee);
-    if (row.reporterId && row.reporter) accountNames.set(row.reporterId, row.reporter);
-    if (row.creatorId && row.creator) accountNames.set(row.creatorId, row.creator);
   }
 
-  return { issues, unknownColumns, accountNames };
+  private all(cells: string[], name: string): string[] {
+    return this.indexesOf(name)
+      .map((i) => (cells[i] ?? '').trim())
+      .filter(Boolean);
+  }
+
+  add(cells: string[]): void {
+    const first = (name: string): string => this.first(cells, name);
+    const summary = first('summary');
+    const key = first('issue key');
+    if (!summary && !key) return;
+
+    const row: JiraIssueRow = {
+      row: this.issues.length + 1,
+      key,
+      id: first('issue id'),
+      summary,
+      issueType: first('issue type'),
+      status: first('status'),
+      priority: first('priority'),
+      resolution: first('resolution'),
+      assignee: first('assignee'),
+      assigneeId: first('assignee id'),
+      reporter: first('reporter'),
+      reporterId: first('reporter id'),
+      creator: first('creator'),
+      creatorId: first('creator id'),
+      created: parseJiraDate(first('created')),
+      updated: parseJiraDate(first('updated')),
+      resolved: parseJiraDate(first('resolved')),
+      dueDate: parseJiraDate(first('due date')),
+      labels: this.all(cells, 'labels'),
+      sprints: this.all(cells, 'sprint'),
+      parentRef: first('parent') || first('parent id'),
+      epicRef: first('custom field (epic link)'),
+      description: (cells[this.descIdx[0] ?? -1] ?? '').trim(),
+      storyPoints: parseNumber(this.spIdx.map((i) => (cells[i] ?? '').trim()).find(Boolean) ?? ''),
+      comments: this.all(cells, 'comment')
+        .map(parseComment)
+        .filter((c): c is JiraComment => c !== null),
+      timeSpent: parseNumber(first('time spent')),
+      originalEstimate: parseNumber(first('original estimate')),
+      projectKey: first('project key') || projectKeyOf(key),
+    };
+    this.issues.push(row);
+
+    if (row.assigneeId && row.assignee) this.accountNames.set(row.assigneeId, row.assignee);
+    if (row.reporterId && row.reporter) this.accountNames.set(row.reporterId, row.reporter);
+    if (row.creatorId && row.creator) this.accountNames.set(row.creatorId, row.creator);
+  }
+
+  result(): JiraParseResult {
+    return {
+      issues: this.issues,
+      unknownColumns: this.unknownColumns,
+      accountNames: this.accountNames,
+    };
+  }
+}
+
+/** Parse file CSV export chuẩn của Jira (đồng bộ — giữ cho test/tương thích; server dùng bản async). */
+export function parseJiraCsv(input: string | Buffer): JiraParseResult {
+  const records = parse(input, CSV_OPTS) as string[][];
+  const builder = new JiraRowBuilder((records[0] ?? []).map((h) => h.trim()));
+  for (let r = 1; r < records.length; r++) builder.add(records[r]!);
+  return builder.result();
+}
+
+/**
+ * Như `parseJiraCsv` nhưng đọc dạng stream và nhường event loop mỗi 500 dòng, để tệp tới 25MB
+ * không làm đứng server (healthcheck/WebSocket vẫn đáp trong lúc parse).
+ */
+export async function parseJiraCsvAsync(input: string | Buffer): Promise<JiraParseResult> {
+  const buf = typeof input === 'string' ? Buffer.from(input) : input;
+  const chunks = function* (): Generator<Buffer> {
+    for (let i = 0; i < buf.length; i += STREAM_CHUNK_BYTES)
+      yield buf.subarray(i, i + STREAM_CHUNK_BYTES);
+  };
+  // `pipeline` huỷ nguồn khi parser lỗi/bị huỷ (pipe() thì để nguồn treo); lỗi tới tay ta qua `for await`.
+  const parser = streamParse(CSV_OPTS);
+  pipeline(Readable.from(chunks(), { objectMode: false }), parser, () => undefined);
+  let builder: JiraRowBuilder | null = null;
+  let n = 0;
+  try {
+    for await (const rec of parser as AsyncIterable<string[]>) {
+      if (!builder) {
+        builder = new JiraRowBuilder(rec.map((h) => h.trim()));
+        continue;
+      }
+      builder.add(rec);
+      if (++n % YIELD_EVERY_ROWS === 0) await new Promise<void>((r) => setImmediate(r));
+    }
+  } finally {
+    parser.destroy();
+  }
+  // Tệp rỗng ⇒ header rỗng ⇒ constructor ném lỗi thiếu cột Summary như bản đồng bộ.
+  return (builder ?? new JiraRowBuilder([])).result();
 }
 
 /** Tên dùng làm khoá mapping cho một tác giả comment (accountId → tên nếu biết, không thì chính accountId). */

@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { createId } from '@paralleldrive/cuid2';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -22,7 +23,7 @@ import { ImportService, type PreparedItem } from '../import.service';
 import {
   analyzeJira,
   commentAuthorName,
-  parseJiraCsv,
+  parseJiraCsvAsync,
   type JiraIssueRow,
   type JiraParseResult,
 } from './jira-csv.parser';
@@ -47,6 +48,12 @@ export const JIRA_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 /** Số dòng tối đa ghi vào errorLog (tránh cột Text phình khi hàng nghìn dòng lỗi). */
 const MAX_ERROR_LOG_LINES = 5000;
 const SUMMARY_MAX = 255;
+/** Job RUNNING mà `updatedAt` (heartbeat) cũ hơn mức này bị coi là kẹt. */
+const STALE_JOB_MS = 3 * 60 * 1000;
+/** Chu kỳ phát heartbeat khi job đang chạy (phải nhỏ hơn nhiều so với STALE_JOB_MS). */
+const HEARTBEAT_MS = 30 * 1000;
+/** Giá trị `config.format` của ImportJob do service này tạo (create + configWith). */
+const JIRA_JOB_FORMAT = 'jira-csv';
 
 type Category = 'TODO' | 'IN_PROGRESS' | 'DONE';
 
@@ -87,11 +94,15 @@ interface AnalyzeMeta {
   userId: string;
 }
 
+const INTERRUPTED_MESSAGE =
+  'Tiến trình import bị gián đoạn (máy chủ khởi động lại hoặc dừng đột ngột). Các việc đã tạo trước đó được giữ nguyên — hãy kiểm tra dự án rồi import lại phần còn thiếu.';
+const ALREADY_RUN_MESSAGE =
+  'Phiên phân tích này đã (hoặc đang) được import — hãy tải lại tệp CSV để tạo phiên mới nếu muốn import lại';
 const EXPIRED_MESSAGE =
   'Phiên phân tích đã hết hạn (giữ tối đa 1 giờ) hoặc không tồn tại — hãy tải lại tệp CSV để phân tích lại';
 
 @Injectable()
-export class JiraImportService {
+export class JiraImportService implements OnApplicationBootstrap {
   private readonly logger = new Logger(JiraImportService.name);
   private readonly localDir: string;
   /** Các job đang chạy trong process (để test/tắt máy chờ được). */
@@ -104,6 +115,57 @@ export class JiraImportService {
     config: ConfigService,
   ) {
     this.localDir = config.get<string>('storage.localDir') ?? './uploads';
+  }
+
+  // ---------------------------------------------------------------- khôi phục job kẹt
+
+  /** Khi khởi động: job RUNNING bị bỏ lại bởi lần chạy trước (crash/restart) → FAILED. */
+  async onApplicationBootstrap(): Promise<void> {
+    await this.recoverStaleJobs().catch((e: unknown) =>
+      this.logger.warn(`Khôi phục job import kẹt thất bại: ${this.errMessage(e)}`),
+    );
+  }
+
+  /** Quét định kỳ cho trường hợp process chết mà không restart ngay (hoặc node khác chết). */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async sweepStaleJobs(): Promise<void> {
+    await this.recoverStaleJobs().catch((e: unknown) =>
+      this.logger.warn(`Quét job import kẹt thất bại: ${this.errMessage(e)}`),
+    );
+  }
+
+  /**
+   * Đánh FAILED mọi ImportJob Jira `RUNNING` mà heartbeat (`updatedAt`) cũ hơn `staleMs`. Job đang chạy
+   * thật ở bất kỳ node nào đều phát heartbeat (mỗi lô + mỗi ~30s) nên không bị đụng tới; job của
+   * chính process này (`this.running`) luôn được loại trừ. Không requeue: issue đã tạo dở nên chạy
+   * lại sẽ trùng. Một `updateMany` idempotent ⇒ nhiều node cùng quét cũng an toàn.
+   */
+  async recoverStaleJobs(staleMs = STALE_JOB_MS): Promise<number> {
+    const { count } = await this.prisma.importJob.updateMany({
+      where: {
+        status: 'RUNNING',
+        // Chỉ job Jira (có heartbeat). Job CSV/JSON của ImportService chạy đồng bộ trong request,
+        // không heartbeat và không nằm trong `running` ⇒ quét nhầm sẽ đánh FAILED job đang chạy thật.
+        config: { path: ['format'], equals: JIRA_JOB_FORMAT },
+        updatedAt: { lt: new Date(Date.now() - staleMs) },
+        id: { notIn: [...this.running.keys()] },
+      },
+      data: { status: 'FAILED', completedAt: new Date(), errorLog: INTERRUPTED_MESSAGE },
+    });
+    if (count) this.logger.warn(`Đã đánh FAILED ${count} job import bị gián đoạn`);
+    return count;
+  }
+
+  /** Phát heartbeat: chạm `updatedAt` (chỉ khi job còn RUNNING). Lỗi DB chỉ cảnh báo. */
+  private async touchJob(jobId: string): Promise<void> {
+    try {
+      await this.prisma.importJob.updateMany({
+        where: { id: jobId, status: 'RUNNING' },
+        data: { updatedAt: new Date() },
+      });
+    } catch (e) {
+      this.logger.warn(`Không ghi được heartbeat của job ${jobId}: ${this.errMessage(e)}`);
+    }
   }
 
   // ---------------------------------------------------------------- bước 1: analyze
@@ -129,7 +191,7 @@ export class JiraImportService {
 
     let parsed: JiraParseResult;
     try {
-      parsed = parseJiraCsv(file.buffer);
+      parsed = await parseJiraCsvAsync(file.buffer);
     } catch (err) {
       throw new BusinessRuleException(this.errMessage(err));
     }
@@ -261,25 +323,34 @@ export class JiraImportService {
       };
     }
 
-    const job = await this.prisma.importJob.create({
-      data: {
-        workspaceId,
-        source: 'JIRA_CLOUD',
-        status: 'RUNNING',
-        createdById: userId,
-        startedAt: new Date(),
-        totalItems: parsed.issues.length,
-        config: {
-          format: 'jira-csv',
-          analyzeId: input.analyzeId,
-          projectId: input.projectId ?? null,
-          newProject: input.newProject ?? null,
-          mapping: input.mapping,
-          options: input.options,
+    // Claim nguyên tử `<id>.json` → `<id>.claimed`: chỉ MỘT request qua được; request song song
+    // hoặc bấm "Chạy" lần hai nhận lỗi thay vì tạo job + issue trùng.
+    await this.claim(input.analyzeId);
+    let job: { id: string };
+    try {
+      job = await this.prisma.importJob.create({
+        data: {
+          workspaceId,
+          source: 'JIRA_CLOUD',
+          status: 'RUNNING',
+          createdById: userId,
+          startedAt: new Date(),
+          totalItems: parsed.issues.length,
+          config: {
+            format: JIRA_JOB_FORMAT,
+            analyzeId: input.analyzeId,
+            projectId: input.projectId ?? null,
+            newProject: input.newProject ?? null,
+            mapping: input.mapping,
+            options: input.options,
+          },
         },
-      },
-      select: { id: true },
-    });
+        select: { id: true },
+      });
+    } catch (err) {
+      await this.unclaim(input.analyzeId); // chưa có job nào → cho người dùng thử lại
+      throw err;
+    }
 
     const ctx: RunContext = {
       workspaceId,
@@ -307,6 +378,10 @@ export class JiraImportService {
   private async execute(ctx: RunContext): Promise<void> {
     const { workspaceId, userId, jobId, parsed, input } = ctx;
     const opts = input.options;
+    // Heartbeat nền: giữ `updatedAt` mới kể cả khi một bước (tạo project, một lô lớn) kéo dài, để
+    // job đang chạy thật không bị node khác coi là kẹt.
+    const heartbeat = setInterval(() => void this.touchJob(jobId), HEARTBEAT_MS);
+    heartbeat.unref();
     try {
       // 1. Project đích.
       let projectId: string;
@@ -491,6 +566,7 @@ export class JiraImportService {
         );
       }
     } finally {
+      clearInterval(heartbeat);
       await this.removeFiles(ctx.analyzeId);
     }
   }
@@ -904,10 +980,40 @@ export class JiraImportService {
         await this.removeFiles(analyzeId);
         throw new Error('hết hạn');
       }
-      return parseJiraCsv(await fs.readFile(csvPath));
+      return await parseJiraCsvAsync(await fs.readFile(csvPath));
     } catch {
-      throw new BusinessRuleException(EXPIRED_MESSAGE);
+      // Có `.claimed` ⇒ phiên này đã/đang được import, khác với hết hạn/không tồn tại.
+      const claimed = await fs
+        .access(path.join(this.dir(), `${analyzeId}.claimed`))
+        .then(() => true)
+        .catch(() => false);
+      throw new BusinessRuleException(claimed ? ALREADY_RUN_MESSAGE : EXPIRED_MESSAGE);
     }
+  }
+
+  /** Claim nguyên tử: chỉ MỘT request đổi tên được `<id>.json` → `<id>.claimed` (ENOENT ⇒ đã bị claim). */
+  private async claim(analyzeId: string): Promise<void> {
+    try {
+      await fs.rename(
+        path.join(this.dir(), `${analyzeId}.json`),
+        path.join(this.dir(), `${analyzeId}.claimed`),
+      );
+    } catch (err) {
+      // ENOENT = tệp `.json` không còn ⇒ request khác đã claim. Lỗi khác (EACCES, EIO…) là sự cố thật.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT')
+        throw new BusinessRuleException(ALREADY_RUN_MESSAGE);
+      throw err;
+    }
+  }
+
+  /** Nhả claim khi chưa tạo được job để người dùng bấm "Chạy" lại. */
+  private async unclaim(analyzeId: string): Promise<void> {
+    await fs
+      .rename(
+        path.join(this.dir(), `${analyzeId}.claimed`),
+        path.join(this.dir(), `${analyzeId}.json`),
+      )
+      .catch(() => undefined);
   }
 
   /** Xoá tệp phân tích quá 1 giờ (gọi ở mỗi lần analyze — không cần cron). */
@@ -932,7 +1038,7 @@ export class JiraImportService {
 
   private async removeFiles(analyzeId: string): Promise<void> {
     if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success) return; // không bao giờ unlink theo id lạ (path traversal)
-    for (const ext of ['csv', 'json']) {
+    for (const ext of ['csv', 'json', 'claimed']) {
       await fs.unlink(path.join(this.dir(), `${analyzeId}.${ext}`)).catch(() => undefined);
     }
   }
@@ -944,7 +1050,7 @@ export class JiraImportService {
     extra: Record<string, string>,
   ): Prisma.InputJsonValue {
     return {
-      format: 'jira-csv',
+      format: JIRA_JOB_FORMAT,
       analyzeId: input.analyzeId,
       mapping: input.mapping,
       options: input.options,

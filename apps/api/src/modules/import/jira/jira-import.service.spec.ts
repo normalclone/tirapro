@@ -1,4 +1,12 @@
-import { mkdtempSync, existsSync, readFileSync, utimesSync, readdirSync, rmSync } from 'node:fs';
+import {
+  mkdtempSync,
+  existsSync,
+  readFileSync,
+  utimesSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,6 +31,7 @@ function setup(opts: { failSummaries?: string[] } = {}) {
     importJob: {
       create: vi.fn(() => Promise.resolve({ id: 'job1' })),
       update: vi.fn(() => Promise.resolve({})),
+      updateMany: vi.fn(() => Promise.resolve({ count: 0 })),
     },
     project: {
       findFirst: vi.fn((args: { where: { id?: string; key?: string } }) =>
@@ -527,5 +536,288 @@ describe('JiraImportService.run — chạy thật', () => {
     const done = lastUpdate();
     expect(done).toMatchObject({ status: 'FAILED', errorLog: 'hết chỗ' });
     expect(existsSync(join(ctx.localDir, 'imports', `${analyzeId}.csv`))).toBe(false);
+  });
+});
+
+describe('JiraImportService.run — chống chạy trùng theo analyzeId', () => {
+  async function prepared(c = setup()) {
+    const { analyzeId } = await c.service.analyze('w1', 'u1', file());
+    return { ...c, analyzeId, input: runInput(analyzeId) };
+  }
+  const importsDir = (localDir: string) => join(localDir, 'imports');
+
+  it('hai run() song song cùng analyzeId => chỉ MỘT job được tạo, lần hai bị từ chối', async () => {
+    const { service, prisma, input } = await prepared();
+    const results = await Promise.allSettled([
+      service.run('w1', 'u1', input),
+      service.run('w1', 'u1', input),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(prisma.importJob.create).toHaveBeenCalledTimes(1);
+    const rej = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect(rej.reason).toBeInstanceOf(BusinessRuleException);
+    expect((rej.reason as Error).message).toContain('đã (hoặc đang) được import');
+    await service.waitForJob('job1');
+  });
+
+  it('chạy lần hai khi job đầu còn đang chạy => bị từ chối, chỉ tạo issue một lần', async () => {
+    const c = await prepared();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    c.importService.createIssuesInChunks.mockImplementationOnce(async () => {
+      await gate;
+      return { created: 0, labels: 0, comments: 0, errors: [] };
+    });
+    const first = await c.service.run('w1', 'u1', c.input);
+    expect(first).toEqual({ jobId: 'job1' });
+    await expect(c.service.run('w1', 'u1', c.input)).rejects.toThrow(
+      /đã \(hoặc đang\) được import/,
+    );
+    expect(c.prisma.importJob.create).toHaveBeenCalledTimes(1);
+    release();
+    await c.service.waitForJob('job1');
+    // xong job => tệp (cả .claimed) đã được dọn
+    expect(readdirSync(importsDir(c.localDir))).toEqual([]);
+  });
+
+  it('dry-run KHÔNG claim: chạy dry-run rồi chạy thật vẫn được', async () => {
+    const { service, prisma, input } = await prepared();
+    const dry = await service.run('w1', 'u1', {
+      ...input,
+      options: { ...input.options, dryRun: true },
+    });
+    expect(dry).toMatchObject({ dryRun: true });
+    const real = await service.run('w1', 'u1', input);
+    expect(real).toEqual({ jobId: 'job1' });
+    expect(prisma.importJob.create).toHaveBeenCalledTimes(1);
+    await service.waitForJob('job1');
+  });
+
+  it('importJob.create ném lỗi => nhả claim, lần sau chạy lại được', async () => {
+    const { service, prisma, input, analyzeId, localDir } = await prepared();
+    prisma.importJob.create.mockRejectedValueOnce(new Error('DB sập'));
+    await expect(service.run('w1', 'u1', input)).rejects.toThrow('DB sập');
+    expect(existsSync(join(importsDir(localDir), `${analyzeId}.json`))).toBe(true);
+    expect(existsSync(join(importsDir(localDir), `${analyzeId}.claimed`))).toBe(false);
+    await expect(service.run('w1', 'u1', input)).resolves.toEqual({ jobId: 'job1' });
+    await service.waitForJob('job1');
+  });
+
+  it('rename lỗi không phải ENOENT (vd EACCES) → ném lại lỗi gốc, không báo "đã import"', async () => {
+    const c = await prepared();
+    const fsp = (await import('node:fs')).promises;
+    const spy = vi
+      .spyOn(fsp, 'rename')
+      .mockRejectedValueOnce(
+        Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }),
+      );
+    try {
+      const err = await c.service.run('w1', 'u1', c.input).catch((e: unknown) => e);
+      expect(err).not.toBeInstanceOf(BusinessRuleException);
+      expect((err as Error).message).toContain('EACCES');
+      expect(c.prisma.importJob.create).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('analyzeId đã claim: load() báo "đã/đang được import" thay vì "hết hạn"', async () => {
+    const { service, input, analyzeId, localDir } = await prepared();
+    await service.run('w1', 'u1', input);
+    await service.waitForJob('job1');
+    // giả lập trạng thái "đang chạy": chỉ còn tệp claim (json đã đổi tên)
+    writeFileSync(join(importsDir(localDir), `${analyzeId}.claimed`), '{}');
+    await expect(service.run('w1', 'u1', input)).rejects.toThrow(/đã \(hoặc đang\) được import/);
+  });
+});
+
+interface FakeJob {
+  id: string;
+  status: string;
+  updatedAt: Date;
+  config?: { format?: string };
+  errorLog?: string | null;
+  completedAt?: Date | null;
+}
+/** updateMany giả áp đúng điều kiện where (status, updatedAt.lt, id.notIn) lên danh sách job trong bộ nhớ. */
+function withFakeJobs(c: ReturnType<typeof setup>, jobs: FakeJob[]) {
+  c.prisma.importJob.updateMany.mockImplementation(((args: {
+    where: {
+      id?: { notIn?: string[] } | string;
+      status?: string;
+      updatedAt?: { lt: Date };
+      config?: { path: string[]; equals: string };
+    };
+    data: Partial<FakeJob>;
+  }) => {
+    let count = 0;
+    for (const j of jobs) {
+      const w = args.where;
+      if (w.status && j.status !== w.status) continue;
+      if (
+        w.config &&
+        (j.config as Record<string, unknown> | undefined)?.[w.config.path[0]!] !== w.config.equals
+      )
+        continue;
+      if (w.updatedAt && !(j.updatedAt < w.updatedAt.lt)) continue;
+      if (typeof w.id === 'object' && w.id.notIn?.includes(j.id)) continue;
+      if (typeof w.id === 'string' && w.id !== j.id) continue;
+      Object.assign(j, args.data);
+      count++;
+    }
+    return Promise.resolve({ count });
+  }) as never);
+  return jobs;
+}
+const ago = (ms: number) => new Date(Date.now() - ms);
+const jira = { format: 'jira-csv' };
+
+describe('JiraImportService — khôi phục job kẹt (heartbeat)', () => {
+  it('RUNNING quá hạn (không thuộc node này) => FAILED + errorLog; trả số dòng', async () => {
+    const { service, prisma } = setup();
+    prisma.importJob.updateMany = vi.fn(() => Promise.resolve({ count: 2 }));
+    expect(await service.recoverStaleJobs(60_000)).toBe(2);
+    const arg = (prisma.importJob.updateMany.mock.calls[0] as unknown[])[0] as {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    };
+    expect(arg.where).toMatchObject({
+      status: 'RUNNING',
+      updatedAt: { lt: expect.any(Date) as unknown },
+    });
+    expect(arg.data).toMatchObject({ status: 'FAILED' });
+    expect(String(arg.data.errorLog)).toContain('gián đoạn');
+  });
+
+  it('job RUNNING có heartbeat mới => KHÔNG bị khôi phục; heartbeat cũ => FAILED', async () => {
+    const c = setup();
+    const jobs = withFakeJobs(c, [
+      // chạy từ lâu nhưng vừa có heartbeat (job lớn ở node khác)
+      { id: 'live', status: 'RUNNING', updatedAt: ago(20_000), config: jira },
+      { id: 'dead', status: 'RUNNING', updatedAt: ago(10 * 60_000), config: jira },
+      { id: 'done', status: 'COMPLETED', updatedAt: ago(10 * 60_000), config: jira },
+    ]);
+    expect(await c.service.recoverStaleJobs()).toBe(1);
+    const by = new Map(jobs.map((j) => [j.id, j]));
+    expect(by.get('live')!.status).toBe('RUNNING');
+    expect(by.get('dead')!.status).toBe('FAILED');
+    expect(by.get('dead')!.errorLog).toContain('gián đoạn');
+    expect(by.get('dead')!.completedAt).toBeInstanceOf(Date);
+    expect(by.get('done')!.status).toBe('COMPLETED');
+  });
+
+  it('chỉ áp lên job Jira: job RUNNING format csv/json/không format với heartbeat cũ KHÔNG bị đụng', async () => {
+    const c = setup();
+    const jobs = withFakeJobs(c, [
+      { id: 'csv', status: 'RUNNING', updatedAt: ago(10 * 60_000), config: {} }, // importCsv: config { projectId }
+      {
+        id: 'json',
+        status: 'RUNNING',
+        updatedAt: ago(10 * 60_000),
+        config: { format: 'json' },
+      },
+      { id: 'jira', status: 'RUNNING', updatedAt: ago(10 * 60_000), config: jira },
+    ]);
+    expect(await c.service.recoverStaleJobs()).toBe(1);
+    expect(jobs.map((j) => [j.id, j.status])).toEqual([
+      ['csv', 'RUNNING'],
+      ['json', 'RUNNING'],
+      ['jira', 'FAILED'],
+    ]);
+    const arg = (c.prisma.importJob.updateMany.mock.calls[0] as unknown[])[0] as {
+      where: Record<string, unknown>;
+    };
+    expect(arg.where).toMatchObject({ config: { path: ['format'], equals: 'jira-csv' } });
+  });
+
+  it('job Jira thật tạo ra mang đúng config.format để bộ quét nhận ra', async () => {
+    const c = setup();
+    const { analyzeId } = await c.service.analyze('w1', 'u1', file());
+    await c.service.run('w1', 'u1', runInput(analyzeId));
+    await c.service.waitForJob('job1');
+    const created = (c.prisma.importJob.create.mock.calls[0] as unknown[])[0] as {
+      data: { config: { format: string } };
+    };
+    expect(created.data.config.format).toBe('jira-csv');
+    const withConfig = (
+      c.prisma.importJob.update.mock.calls as unknown as Array<
+        [{ data: { config?: { format?: string } } }]
+      >
+    ).find((x) => x[0].data.config)![0].data.config!;
+    expect(withConfig.format).toBe('jira-csv');
+  });
+
+  it('ngưỡng mặc định là 3 phút: 2 phút còn sống, 4 phút bị đánh FAILED', async () => {
+    const c = setup();
+    const jobs = withFakeJobs(c, [
+      { id: 'a', status: 'RUNNING', updatedAt: ago(2 * 60_000), config: jira },
+      { id: 'b', status: 'RUNNING', updatedAt: ago(4 * 60_000), config: jira },
+    ]);
+    await c.service.recoverStaleJobs();
+    expect(jobs.map((j) => j.status)).toEqual(['RUNNING', 'FAILED']);
+  });
+});
+
+describe('JiraImportService — heartbeat và vòng đời job đang chạy', () => {
+  it('job đang chạy trong process này không bao giờ bị đánh FAILED dù updatedAt cũ', async () => {
+    const c = setup();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    c.importService.createIssuesInChunks.mockImplementationOnce(async () => {
+      await gate;
+      return { created: 0, labels: 0, comments: 0, errors: [] };
+    });
+    const { analyzeId } = await c.service.analyze('w1', 'u1', file());
+    await c.service.run('w1', 'u1', runInput(analyzeId));
+    const jobs = withFakeJobs(c, [
+      { id: 'job1', status: 'RUNNING', updatedAt: ago(60 * 60_000), config: jira },
+    ]);
+    expect(await c.service.recoverStaleJobs()).toBe(0);
+    expect(jobs[0]!.status).toBe('RUNNING');
+    release();
+    await c.service.waitForJob('job1');
+  });
+
+  it('job đang chạy phát heartbeat định kỳ (~30s) kể cả khi một lô kéo dài, và dừng khi xong', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      const c = setup();
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      c.importService.createIssuesInChunks.mockImplementationOnce(async () => {
+        await gate;
+        return { created: 0, labels: 0, comments: 0, errors: [] };
+      });
+      const { analyzeId } = await c.service.analyze('w1', 'u1', file());
+      await c.service.run('w1', 'u1', runInput(analyzeId));
+      for (let i = 0; i < 50; i++) await new Promise<void>((r) => setImmediate(r));
+      expect(c.importService.createIssuesInChunks).toHaveBeenCalledTimes(1);
+
+      expect(c.prisma.importJob.updateMany).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(65_000);
+      const calls = c.prisma.importJob.updateMany.mock.calls as unknown as Array<
+        [{ where: Record<string, unknown>; data: { updatedAt: Date } }]
+      >;
+      expect(calls).toHaveLength(2);
+      expect(calls[0]![0].where).toEqual({ id: 'job1', status: 'RUNNING' });
+      expect(calls[0]![0].data.updatedAt).toBeInstanceOf(Date);
+
+      release();
+      await c.service.waitForJob('job1');
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(c.prisma.importJob.updateMany).toHaveBeenCalledTimes(2); // timer đã bị clear
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('onApplicationBootstrap gọi recoverStaleJobs và không ném khi DB lỗi', async () => {
+    const c = setup();
+    await c.service.onApplicationBootstrap();
+    expect(c.prisma.importJob.updateMany).toHaveBeenCalledTimes(1);
+    c.prisma.importJob.updateMany.mockRejectedValueOnce(new Error('DB chưa sẵn sàng'));
+    await expect(c.service.onApplicationBootstrap()).resolves.toBeUndefined();
+    c.prisma.importJob.updateMany.mockRejectedValueOnce(new Error('DB chưa sẵn sàng'));
+    await expect(c.service.sweepStaleJobs()).resolves.toBeUndefined();
   });
 });
