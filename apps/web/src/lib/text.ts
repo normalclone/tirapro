@@ -18,3 +18,16 @@ export function matchesQuery(q: string, ...fields: (string | undefined)[]): bool
   const hay = normalizeVi(fields.filter(Boolean).join(' '));
   return terms.every((t) => hay.includes(t));
 }
+
+/**
+ * Lọc lựa chọn của ô chọn có tìm kiếm: chỉ khớp chữ NGƯỜI DÙNG THẤY — nhãn và mã (`hint`). Không khớp `value` (thường là
+ * id nội bộ như CUID: số/chữ ngẫu nhiên làm "psl 3" khớp gần hết) và không khớp `hint` của lựa chọn bị vô hiệu
+ * (đó là câu giải thích vì sao không chọn được, không phải mã).
+ */
+export function filterByQuery<T extends { label: string; hint?: string; disabled?: boolean }>(
+  options: T[],
+  q: string,
+): T[] {
+  if (!q.trim()) return options;
+  return options.filter((o) => matchesQuery(q, o.label, o.disabled ? undefined : o.hint));
+}
