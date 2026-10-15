@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pointsEditWarning, pointsEditWarningBulk } from './pointsWarning';
+import { confirmPointsEdit, pointsEditWarning, pointsEditWarningBulk } from './pointsWarning';
 
 const issue = (o: Record<string, unknown> = {}) =>
   ({ key: 'P-1', sprintId: null, status: { category: 'TODO' }, ...o }) as never;
@@ -41,4 +41,21 @@ describe('pointsEditWarningBulk', () => {
   });
   it('không việc nào ảnh hưởng => null', () =>
     expect(pointsEditWarningBulk([issue()], sprints)).toBeNull());
+});
+
+describe('confirmPointsEdit', () => {
+  it('mở hộp SAU khi sự kiện phím hiện tại kết thúc (không trong cùng tick) và trả kết quả người dùng chọn', async () => {
+    const calls: string[] = [];
+    const confirm = (o: { title: string; confirmLabel?: string }) => {
+      calls.push(`${o.title}|${o.confirmLabel}`);
+      return Promise.resolve(true);
+    };
+    const p = confirmPointsEdit(confirm, 'cảnh báo');
+    expect(calls).toEqual([]); // chưa mở ngay: keypress của Enter còn đang đi tới nút "Vẫn sửa"
+    await expect(p).resolves.toBe(true);
+    expect(calls).toEqual(['Sửa điểm của việc đã hoàn thành?|Vẫn sửa']);
+  });
+  it('Huỷ => false', async () => {
+    await expect(confirmPointsEdit(() => Promise.resolve(false), 'x')).resolves.toBe(false);
+  });
 });

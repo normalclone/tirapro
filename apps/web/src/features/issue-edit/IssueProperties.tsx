@@ -8,7 +8,7 @@ import { useCanEditIssue } from '@/features/projects/permissions';
 import { useProjectSprints, useMoveToSprint } from '@/features/backlog/api';
 import { BACKLOG_LABEL, buildSprintOptions } from './sprintOptions';
 import { useUpdateIssue } from '@/features/issues/api';
-import { pointsEditWarning, WARN_TITLE } from '@/features/issues/pointsWarning';
+import { confirmPointsEdit, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { ParticipantsRow } from '@/features/issue-extras/ParticipantsRow';
@@ -235,8 +235,7 @@ export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; ca
       return toast.error('Điểm ước lượng phải là một con số, ví dụ 3');
     if (next !== issue.storyPoints) {
       const w = pointsEditWarning(issue, sprints);
-      if (w && !(await confirm({ title: WARN_TITLE, description: w, confirmLabel: 'Vẫn sửa' })))
-        return;
+      if (w && !(await confirmPointsEdit(confirm, w))) return;
       patch.mutate(
         { id: issue.id, key: issue.key, patch: { storyPoints: next }, version: issue.version },
         { onError: (e) => toast.error(apiErrorMessage(e)) },

@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import type { IssueDto, PriorityDto, SprintDto } from '@tirapro/types';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useConfirm } from '@/components/ui/useConfirm';
-import { pointsEditWarning, WARN_TITLE } from '@/features/issues/pointsWarning';
+import { confirmPointsEdit, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { parsePointsInput } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 
@@ -73,8 +73,7 @@ export function InlinePoints({
     if (!r.ok) return void toast.error(r.error);
     if (r.value === issue.storyPoints) return;
     const w = pointsEditWarning(issue, sprints);
-    if (w && !(await confirm({ title: WARN_TITLE, description: w, confirmLabel: 'Vẫn sửa' })))
-      return;
+    if (w && !(await confirmPointsEdit(confirm, w))) return;
     onSave(issue, r.value);
   }
 

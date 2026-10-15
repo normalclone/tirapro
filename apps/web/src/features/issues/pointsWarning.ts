@@ -1,4 +1,5 @@
 import type { IssueDto, SprintDto } from '@tirapro/types';
+import type { ConfirmOptions } from '@/components/ui/useConfirm';
 
 type Sp = Pick<SprintDto, 'id' | 'name' | 'state'>;
 type Is = Pick<IssueDto, 'key' | 'sprintId' | 'status'>;
@@ -27,4 +28,17 @@ export function pointsEditWarningBulk(list: Is[], sprints: Sp[] | undefined): st
   return n
     ? `${n} việc trong số đã chọn đã hoàn thành hoặc thuộc sprint đã kết thúc. Đổi điểm sẽ làm lệch velocity và báo cáo của các sprint đó.`
     : null;
+}
+
+/**
+ * Hỏi xác nhận sửa điểm. Mở hộp SAU khi sự kiện phím hiện tại kết thúc: Enter ở ô nhập → blur → hộp mở và focus rơi vào
+ * nút "Vẫn sửa" ngay giữa keydown và keypress, nên keypress của chính phím Enter đó bấm luôn nút và tự xác nhận
+ * (hộp không kịp hiện).
+ */
+export async function confirmPointsEdit(
+  confirm: (opts: ConfirmOptions) => Promise<boolean>,
+  warning: string,
+): Promise<boolean> {
+  await new Promise<void>((r) => setTimeout(r, 0));
+  return confirm({ title: WARN_TITLE, description: warning, confirmLabel: 'Vẫn sửa' });
 }
