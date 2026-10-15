@@ -60,6 +60,8 @@ export class AdminService {
       status: u.status,
       isSystemAdmin: u.isSystemAdmin,
       canCreateWorkspace: u.canCreateWorkspace,
+      // Tài khoản nội bộ của tự động hoá: không khoá / đặt lại mật khẩu được → web ẩn menu thao tác.
+      isAutomation: u.email === SYSTEM_USER_EMAIL,
       workspaceCount: u._count.workspaceMemberships,
       lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
       createdAt: u.createdAt.toISOString(),

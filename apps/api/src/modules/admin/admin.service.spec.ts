@@ -335,3 +335,27 @@ describe('AdminService.addToWorkspace — gán tài khoản vào không gian là
     expect(members.addWorkspace).not.toHaveBeenCalled();
   });
 });
+
+describe('AdminService.list — đánh dấu tài khoản automation', () => {
+  it('isAutomation = true chỉ với email của tài khoản hệ thống', async () => {
+    const { svc, prisma } = make();
+    const row = (email: string) => ({
+      id: email,
+      email,
+      displayName: email,
+      avatarUrl: null,
+      status: 'ACTIVE',
+      isSystemAdmin: false,
+      canCreateWorkspace: false,
+      lastSeenAt: null,
+      createdAt: new Date(),
+      _count: { workspaceMemberships: 0 },
+    });
+    prisma.user.findMany.mockResolvedValue([
+      row('automation@tirapro.local'),
+      row('dev@x.vn'),
+    ] as never);
+    const out = await svc.list();
+    expect(out.data.map((u) => u.isAutomation)).toEqual([true, false]);
+  });
+});

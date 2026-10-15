@@ -17,6 +17,8 @@ export interface AdminUser {
   status: string;
   isSystemAdmin: boolean;
   canCreateWorkspace: boolean;
+  /** Tài khoản nội bộ của tự động hoá — không có thao tác khoá / đặt lại mật khẩu. */
+  isAutomation?: boolean;
   workspaceCount: number;
   lastSeenAt: string | null;
   createdAt: string;

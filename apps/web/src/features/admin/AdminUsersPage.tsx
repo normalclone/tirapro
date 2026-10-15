@@ -135,6 +135,9 @@ export function AdminUsersPage() {
                       {u.isSystemAdmin && (
                         <Badge className="bg-primary-subtle text-primary">Admin hệ thống</Badge>
                       )}
+                      {u.isAutomation && (
+                        <Badge className="bg-surface-2 text-muted">Tài khoản hệ thống</Badge>
+                      )}
                       {u.status === 'DEACTIVATED' && (
                         <Badge className="bg-surface-2 text-muted">Đã vô hiệu hoá</Badge>
                       )}
@@ -162,7 +165,7 @@ export function AdminUsersPage() {
                       onChange={() => toggle(u, 'isSystemAdmin')}
                     />
                   </div>
-                  {u.id !== me?.id && <AccountActionsMenu user={u} />}
+                  {u.id !== me?.id && !u.isAutomation && <AccountActionsMenu user={u} />}
                 </li>
               ))}
             </ul>
