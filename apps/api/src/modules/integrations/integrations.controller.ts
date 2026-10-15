@@ -39,7 +39,14 @@ export class IntegrationsController {
     return this.integrations.list(workspaceId, parsed);
   }
 
-  /** Tạo integration Telegram. */
+  /** Cờ hệ thống + bot chung (để wizard biết có cho dùng "bot chung" không). Đặt trước mọi route `:id`. */
+  @Get('telegram/platform')
+  @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
+  async platform() {
+    return this.integrations.platform();
+  }
+
+  /** Tạo integration Telegram (xác thực token qua getMe trước khi lưu). */
   @Post('telegram')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async createTelegram(

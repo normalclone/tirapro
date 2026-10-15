@@ -5,12 +5,37 @@ import { Prisma, IntegrationType, IntegrationStatus } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { AuditService } from '../audit/audit.service';
-import { TELEGRAM_TOKEN_UNUSABLE_MESSAGE, TelegramService } from './telegram.service';
+import {
+  TELEGRAM_TOKEN_UNUSABLE_MESSAGE,
+  TelegramService,
+  TelegramUnreachableError,
+} from './telegram.service';
+import { telegramHealth, type TelegramHealth } from './telegram-health';
 
 /** Cấu hình lưu trong Integration.config (botToken đã mã hóa). */
 interface TelegramConfig {
   botToken: string | null;
   useGlobal: boolean;
+  /** @username của bot (không phải bí mật) — lấy từ getMe lúc kết nối. */
+  botUsername?: string | null;
+}
+
+/** Kết quả lần "Kiểm tra" gần nhất, lưu trong config. */
+export interface TelegramLastTest {
+  at: string;
+  ok: boolean;
+  sent: number;
+  total: number;
+}
+
+export type TelegramTestReason = 'NO_CHANNEL' | 'NO_BOT' | 'PLATFORM_OFF';
+
+export interface TelegramTestResult {
+  sent: number;
+  total: number;
+  enabled: boolean;
+  ok: boolean;
+  reason?: TelegramTestReason;
 }
 
 /** Integration đã redact (không lộ botToken). */
@@ -24,6 +49,11 @@ interface IntegrationDto {
   createdById: string | null;
   createdAt: Date;
   updatedAt: Date;
+  /** @username của bot Telegram (null: chưa biết / không phải Telegram). */
+  botUsername: string | null;
+  /** Trạng thái thật (Sẵn sàng / Chưa có kênh / Chưa có bot / Lỗi token / Tắt toàn hệ thống). */
+  health: TelegramHealth;
+  lastTest: TelegramLastTest | null;
 }
 
 interface CreateTelegramInput {
@@ -85,8 +115,23 @@ export class IntegrationsService {
     const rows = await this.prisma.integration.findMany({
       where: { workspaceId, ...(type ? { type } : {}) },
       orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { channels: { where: { isEnabled: true } } } } },
     });
-    return rows.map((r) => this.redact(r));
+    return rows.map((r) => this.redact(r, r._count.channels));
+  }
+
+  /** Cờ hệ thống + bot chung — wizard dùng để biết có cho chọn "bot chung" không. */
+  async platform(): Promise<{
+    platformEnabled: boolean;
+    globalBotAvailable: boolean;
+    globalBotUsername: string | null;
+  }> {
+    const globalBotAvailable = this.telegram.available();
+    return {
+      platformEnabled: this.telegram.platformEnabled(),
+      globalBotAvailable,
+      globalBotUsername: globalBotAvailable ? await this.telegram.globalBotUsername() : null,
+    };
   }
 
   /** Tạo integration Telegram; lưu botToken đã mã hóa (nếu có). */
@@ -95,10 +140,7 @@ export class IntegrationsService {
     userId: string,
     input: CreateTelegramInput,
   ): Promise<IntegrationDto> {
-    const config: TelegramConfig = {
-      botToken: input.botToken ? this.telegram.encrypt(input.botToken) : null,
-      useGlobal: !input.botToken,
-    };
+    const config = await this.buildTelegramConfig(input.botToken);
     const row = await this.prisma.integration.create({
       data: {
         workspaceId,
@@ -118,7 +160,40 @@ export class IntegrationsService {
       summary: `Tạo tích hợp Telegram "${row.name}"`,
       meta: { type: row.type, name: row.name },
     });
-    return this.redact(row);
+    return this.redact(row, 0);
+  }
+
+  /**
+   * Xác thực bot TRƯỚC khi lưu: token riêng → getMe (401/404 = sai token; lỗi mạng = thử lại sau);
+   * không token → bắt buộc có bot chung của hệ thống. Không bao giờ dựng kết nối "mồ côi" không có bot.
+   */
+  private async buildTelegramConfig(botToken?: string): Promise<TelegramConfig> {
+    if (botToken) {
+      let me;
+      try {
+        me = await this.telegram.getMe(botToken);
+      } catch (err) {
+        if (err instanceof TelegramUnreachableError) {
+          throw new BusinessRuleException('Không kết nối được tới Telegram — thử lại sau');
+        }
+        throw err;
+      }
+      if (!me) {
+        throw new BusinessRuleException('Token bot không hợp lệ — hãy copy lại từ @BotFather');
+      }
+      return {
+        botToken: this.telegram.encrypt(botToken),
+        useGlobal: false,
+        botUsername: me.username,
+      };
+    }
+    if (!this.telegram.available()) {
+      throw new BusinessRuleException(
+        'Hệ thống chưa có bot chung — hãy dán token bot của bạn (tạo ở @BotFather)',
+      );
+    }
+    const botUsername = await this.telegram.globalBotUsername().catch(() => null);
+    return { botToken: null, useGlobal: true, botUsername };
   }
 
   /** Xóa integration (cascade kênh). */
@@ -212,11 +287,12 @@ export class IntegrationsService {
 
   // ------------------------------ Test ----------------------------
 
-  /** Gửi tin nhắn kiểm tra tới mọi kênh đang bật của integration. */
-  async test(
-    workspaceId: string,
-    integrationId: string,
-  ): Promise<{ sent: number; total: number; enabled: boolean }> {
+  /**
+   * Gửi tin nhắn kiểm tra tới mọi kênh đang bật. Không gửi được vì nguyên nhân cấu hình thì trả
+   * `reason` (PLATFORM_OFF / NO_BOT / NO_CHANNEL) thay vì "đã gửi 0/0"; mỗi lần có gửi đều ghi
+   * `config.lastTest` để giao diện hiện "Gửi thử gần nhất …".
+   */
+  async test(workspaceId: string, integrationId: string): Promise<TelegramTestResult> {
     const integration = await this.requireIntegration(workspaceId, integrationId);
     const res = this.telegram.resolveBotToken(integration.config);
     if (res.kind === 'unusable') {
@@ -231,16 +307,40 @@ export class IntegrationsService {
       });
     }
     const token = res.kind === 'own' ? res.token : null;
+    const enabled = this.telegram.available(token);
+    if (!this.telegram.platformEnabled()) {
+      return { sent: 0, total: 0, enabled, ok: false, reason: 'PLATFORM_OFF' };
+    }
+    if (!enabled) return { sent: 0, total: 0, enabled, ok: false, reason: 'NO_BOT' };
     const channels = await this.prisma.integrationChannel.findMany({
       where: { integrationId, workspaceId, isEnabled: true },
     });
+    if (channels.length === 0)
+      return { sent: 0, total: 0, enabled, ok: false, reason: 'NO_CHANNEL' };
     const text = '✅ Tirapro đã kết nối';
     let sent = 0;
     for (const ch of channels) {
       const ok = await this.telegram.send(token, ch.externalId, text);
       if (ok) sent += 1;
     }
-    return { sent, total: channels.length, enabled: this.telegram.available(token) };
+    const ok = sent === channels.length;
+    const lastTest: TelegramLastTest = {
+      at: new Date().toISOString(),
+      ok,
+      sent,
+      total: channels.length,
+    };
+    const base =
+      integration.config &&
+      typeof integration.config === 'object' &&
+      !Array.isArray(integration.config)
+        ? (integration.config as Record<string, unknown>)
+        : {};
+    await this.prisma.integration.update({
+      where: { id: integration.id },
+      data: { config: { ...base, lastTest } as unknown as Prisma.InputJsonValue },
+    });
+    return { sent, total: channels.length, enabled, ok };
   }
 
   // -------------------------- Producers ---------------------------
@@ -342,23 +442,30 @@ export class IntegrationsService {
     }
   }
 
-  /** Trả DTO đã ẩn botToken (thay bằng '***' nếu có). */
-  private redact(row: {
-    id: string;
-    workspaceId: string;
-    type: IntegrationType;
-    name: string;
-    config: Prisma.JsonValue;
-    status: IntegrationStatus;
-    createdById: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }): IntegrationDto {
+  /** Trả DTO đã ẩn botToken (thay bằng '***' nếu có) + health tính lúc đọc. */
+  private redact(
+    row: {
+      id: string;
+      workspaceId: string;
+      type: IntegrationType;
+      name: string;
+      config: Prisma.JsonValue;
+      status: IntegrationStatus;
+      createdById: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+    },
+    enabledChannelCount: number,
+  ): IntegrationDto {
     const config: Record<string, unknown> =
       row.config && typeof row.config === 'object' && !Array.isArray(row.config)
         ? { ...(row.config as Record<string, unknown>) }
         : {};
+    const hasOwnToken = Boolean(config.botToken);
     if (config.botToken) config.botToken = '***';
+    const lastTest = parseLastTest(config.lastTest);
+    delete config.lastTest;
+    const botUsername = typeof config.botUsername === 'string' ? config.botUsername : null;
     return {
       id: row.id,
       workspaceId: row.workspaceId,
@@ -369,6 +476,29 @@ export class IntegrationsService {
       createdById: row.createdById,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      botUsername,
+      health: telegramHealth({
+        status: row.status,
+        hasOwnToken,
+        globalAvailable: this.telegram.available(),
+        platformEnabled: this.telegram.platformEnabled(),
+        channelCount: enabledChannelCount,
+      }),
+      lastTest,
     };
   }
+}
+
+function parseLastTest(raw: unknown): TelegramLastTest | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (
+    typeof r.at !== 'string' ||
+    typeof r.ok !== 'boolean' ||
+    typeof r.sent !== 'number' ||
+    typeof r.total !== 'number'
+  ) {
+    return null;
+  }
+  return { at: r.at, ok: r.ok, sent: r.sent, total: r.total };
 }

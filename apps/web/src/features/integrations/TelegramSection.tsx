@@ -16,27 +16,24 @@ import {
   useDeleteChannel,
   useTestIntegration,
   type Integration,
-  type IntegrationStatus,
+  type TelegramHealth,
 } from './api';
+import { HEALTH_TONE, lastTestLabel, testToast, type StatusTone } from './telegramStatus';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
 
-const STATUS_LABEL: Record<IntegrationStatus, string> = {
-  ACTIVE: 'Hoạt động',
-  INACTIVE: 'Tạm dừng',
-  ERROR: 'Lỗi',
+const TONE_CLASS: Record<StatusTone, string> = {
+  success: 'bg-surface-2 text-success',
+  warning: 'bg-surface-2 text-warning',
+  danger: 'bg-surface-2 text-danger',
+  muted: 'bg-surface-2 text-muted',
 };
 
-function StatusBadge({ status }: { status: IntegrationStatus }) {
-  const cls =
-    status === 'ACTIVE'
-      ? 'bg-surface-2 text-success'
-      : status === 'ERROR'
-        ? 'bg-surface-2 text-danger'
-        : 'bg-surface-2 text-muted';
+/** Nhãn trạng thái THẬT do server tính (không còn "Hoạt động" giả chỉ vì bản ghi tồn tại). */
+function HealthBadge({ health }: { health: TelegramHealth }) {
   return (
-    <Badge className={cls} dotColor="currentColor">
-      {STATUS_LABEL[status] ?? status}
+    <Badge className={TONE_CLASS[HEALTH_TONE[health.state]]} dotColor="currentColor">
+      {health.label}
     </Badge>
   );
 }
@@ -215,11 +212,8 @@ function TelegramRow({
   function handleTest() {
     test.mutate(integration.id, {
       onSuccess: (res) => {
-        if (res.enabled === false) {
-          toast.info('Chưa cấu hình bot token (global), bỏ qua gửi.');
-        } else {
-          toast.success(`Đã gửi ${res.sent}/${res.total}.`);
-        }
+        const { kind, text } = testToast(res);
+        toast[kind](text);
       },
       onError: (e) => toast.error(apiErrorMessage(e)),
     });
@@ -240,8 +234,10 @@ function TelegramRow({
             <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
           )}
           <span className="truncate text-sm font-medium text-ink">{integration.name}</span>
-          <StatusBadge status={integration.status} />
-          <span className="font-mono text-xs text-faint">token: ***</span>
+          <HealthBadge health={integration.health} />
+          <span className="truncate font-mono text-xs text-faint">
+            {integration.botUsername ? `@${integration.botUsername}` : 'bot chung'}
+          </span>
         </button>
 
         <div className="flex shrink-0 items-center gap-1">
@@ -268,6 +264,17 @@ function TelegramRow({
           </Button>
         </div>
       </div>
+
+      {integration.health.state !== 'READY' && (
+        <p className="border-t border-border px-3 py-2 text-xs text-muted">
+          {integration.health.hint}
+        </p>
+      )}
+      {lastTestLabel(integration.lastTest) && (
+        <p className="border-t border-border px-3 py-1.5 text-xs text-faint">
+          {lastTestLabel(integration.lastTest)}
+        </p>
+      )}
 
       {expanded && (
         <div className="border-t border-border bg-surface-2 px-3 py-3">
@@ -408,9 +415,7 @@ function ChannelList({ integrationId }: { integrationId: string }) {
           Thêm kênh
         </Button>
       </div>
-      <p className="mt-2 text-xs text-faint">
-        Mặc định kênh nhận tất cả loại thông báo. Lọc theo từng loại sẽ bổ sung sau.
-      </p>
+      <p className="mt-2 text-xs text-faint">Kênh nhận mọi loại thông báo của kết nối này.</p>
     </div>
   );
 }

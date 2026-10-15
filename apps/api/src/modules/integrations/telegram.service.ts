@@ -2,11 +2,29 @@ import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common
 import { ConfigService } from '@nestjs/config';
 import type { Prisma } from '@prisma/client';
 import * as crypto from 'node:crypto';
-import { Telegraf } from 'telegraf';
+import { Telegraf, TelegramError } from 'telegraf';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 
 export const TELEGRAM_TOKEN_UNUSABLE_MESSAGE =
   'Token bot của tích hợp Telegram này không dùng được (khoá mã hoá đã đổi hoặc dữ liệu hỏng) — hãy xoá rồi thêm lại tích hợp với token mới, hoặc đặt khoá cũ vào INTEGRATION_ENCRYPTION_KEY_PREVIOUS rồi chạy integrations:rekey';
+
+/** Không liên lạc được Telegram (mạng/timeout/5xx) — KHÁC với token sai. */
+export class TelegramUnreachableError extends Error {
+  constructor() {
+    super('Không kết nối được tới Telegram');
+    this.name = 'TelegramUnreachableError';
+  }
+}
+
+export interface TelegramBotInfo {
+  id: number;
+  username: string;
+  firstName: string;
+}
+
+const GET_ME_TIMEOUT_MS = 8000;
+/** Sau khi hỏi bot chung thất bại, không hỏi lại trong khoảng này (tránh dồn request mỗi lần mở danh sách). */
+const GLOBAL_BOT_RETRY_MS = 30_000;
 
 export type BotTokenResolution =
   | { kind: 'global' }
@@ -30,6 +48,8 @@ export class TelegramService {
   private readonly previousKey: string;
   /** Cache Telegraf theo token để tái dùng (tránh tạo client mới mỗi lần gửi). */
   private readonly bots = new Map<string, Telegraf>();
+  private globalBotInfo: TelegramBotInfo | null = null;
+  private globalBotFailedAt = 0;
 
   constructor(
     private readonly config: ConfigService,
@@ -44,6 +64,49 @@ export class TelegramService {
   /** Có bot khả dụng không (token truyền vào hoặc token toàn cục). */
   available(globalOrToken?: string | null): boolean {
     return Boolean(globalOrToken || this.globalBotToken);
+  }
+
+  /** Cờ hệ thống (kill-switch) cho phép tích hợp hoạt động. */
+  platformEnabled(): boolean {
+    return this.settings.flags().integrationsEnabled;
+  }
+
+  /**
+   * Hỏi Telegram `getMe` để xác thực token. Trả thông tin bot; trả null khi Telegram từ chối token
+   * (401/404); ném TelegramUnreachableError khi lỗi mạng/timeout/5xx (không kết luận được token sai).
+   * KHÔNG ghi token vào log.
+   */
+  async getMe(token: string): Promise<TelegramBotInfo | null> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const bot = new Telegraf(token); // không cache: token chưa xác thực
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new TelegramUnreachableError()), GET_ME_TIMEOUT_MS);
+      });
+      const me = await Promise.race([bot.telegram.getMe(), timeout]);
+      return { id: me.id, username: me.username, firstName: me.first_name };
+    } catch (err) {
+      if (err instanceof TelegramError && (err.code === 401 || err.code === 404)) return null;
+      if (err instanceof TelegramUnreachableError) throw err;
+      this.logger.warn('Không gọi được getMe tới Telegram (lỗi mạng hoặc phản hồi bất thường)');
+      throw new TelegramUnreachableError();
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /** @username của bot chung (TELEGRAM_BOT_TOKEN); null nếu chưa cấu hình hoặc chưa lấy được. Có cache. */
+  async globalBotUsername(): Promise<string | null> {
+    if (!this.globalBotToken) return null;
+    if (this.globalBotInfo) return this.globalBotInfo.username;
+    if (Date.now() - this.globalBotFailedAt < GLOBAL_BOT_RETRY_MS) return null;
+    try {
+      this.globalBotInfo = await this.getMe(this.globalBotToken);
+      if (!this.globalBotInfo) this.globalBotFailedAt = Date.now();
+    } catch {
+      this.globalBotFailedAt = Date.now();
+    }
+    return this.globalBotInfo?.username ?? null;
   }
 
   /** Lấy (hoặc tạo & cache) Telegraf cho token. */

@@ -9,6 +9,26 @@ import { keys } from '@/lib/queryKeys';
 export type IntegrationType = 'TELEGRAM' | 'GITHUB' | 'GITLAB';
 export type IntegrationStatus = 'ACTIVE' | 'INACTIVE' | 'ERROR';
 
+export type TelegramHealthState =
+  | 'READY'
+  | 'NO_CHANNEL'
+  | 'NO_BOT'
+  | 'TOKEN_ERROR'
+  | 'PLATFORM_OFF';
+
+export interface TelegramHealth {
+  state: TelegramHealthState;
+  label: string;
+  hint: string;
+}
+
+export interface TelegramLastTest {
+  at: string;
+  ok: boolean;
+  sent: number;
+  total: number;
+}
+
 export interface Integration {
   id: string;
   type: IntegrationType;
@@ -17,6 +37,17 @@ export interface Integration {
   /** botToken luôn bị che thành '***' trong phản hồi. */
   config: Record<string, unknown>;
   createdAt: string;
+  /** @username của bot (null nếu chưa biết). */
+  botUsername: string | null;
+  /** Trạng thái thật do server tính lúc đọc. */
+  health: TelegramHealth;
+  lastTest: TelegramLastTest | null;
+}
+
+export interface PlatformTelegram {
+  platformEnabled: boolean;
+  globalBotAvailable: boolean;
+  globalBotUsername: string | null;
 }
 
 export interface Channel {
@@ -68,6 +99,9 @@ export interface TestResult {
   sent: number;
   total: number;
   enabled: boolean;
+  ok: boolean;
+  /** Có mặt khi không thể gửi vì cấu hình (không phải lỗi gửi). */
+  reason?: 'NO_CHANNEL' | 'NO_BOT' | 'PLATFORM_OFF';
 }
 
 /* ------------------------------------------------------------------ */
@@ -83,6 +117,15 @@ export function useIntegrations() {
     queryKey: keys.integrations.byType('TELEGRAM'),
     queryFn: async () =>
       (await api.get<Integration[]>('/integrations', { params: { type: 'TELEGRAM' } })).data,
+  });
+}
+
+/** Cờ hệ thống + bot chung — wizard biết có cho chọn "bot chung" không. */
+export function usePlatformTelegram() {
+  return useQuery({
+    queryKey: keys.integrations.platform,
+    queryFn: async () => (await api.get<PlatformTelegram>('/integrations/telegram/platform')).data,
+    staleTime: 60_000,
   });
 }
 
@@ -108,9 +151,14 @@ export function useDeleteIntegration() {
 }
 
 export function useTestIntegration() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       api.post<TestResult>(`/integrations/${id}/test`).then((r) => r.data),
+    // Kết quả gần nhất nằm trong danh sách kết nối.
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.integrations.byType('TELEGRAM') });
+    },
   });
 }
 
@@ -134,6 +182,7 @@ export function useAddChannel(integrationId: string) {
       api.post<Channel>(`/integrations/${integrationId}/channels`, input).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.integrations.channels(integrationId) });
+      void qc.invalidateQueries({ queryKey: keys.integrations.byType('TELEGRAM') });
     },
   });
 }
@@ -145,6 +194,7 @@ export function useDeleteChannel(integrationId: string) {
       api.delete<Ack>(`/integrations/channels/${channelId}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.integrations.channels(integrationId) });
+      void qc.invalidateQueries({ queryKey: keys.integrations.byType('TELEGRAM') });
     },
   });
 }
