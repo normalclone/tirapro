@@ -116,11 +116,3 @@ export function placementFromDnd(e: DndLike): Placement | null {
     below: !!t && t.top + t.height / 2 > e.over.rect.top + e.over.rect.height / 2,
   });
 }
-
-/** Đường kẻ chèn khi kéo sang container khác: ngay trước thẻ phía dưới, hoặc ngay sau thẻ phía trên. */
-export function hintOf(p: Placement | null): { id: string; edge: 'before' | 'after' } | null {
-  if (!p || !p.crossContainer) return null;
-  if (p.beforeId) return { id: p.beforeId, edge: 'before' };
-  if (p.afterId) return { id: p.afterId, edge: 'after' };
-  return null;
-}
