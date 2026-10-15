@@ -167,6 +167,7 @@ export const keys = {
 
   dashboard: {
     myIssues: ['my-issues'] as const,
+    myBugs: ['my-bugs'] as const,
     workspaceOverview: ['workspace-overview'] as const,
   },
 
