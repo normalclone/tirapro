@@ -577,6 +577,24 @@ describe('IssuesService.bulkUpdate', () => {
       expect(call[0].data.resolutionId).toBe('r-done');
   });
 
+  it('bulk rời Done => resolutionId và resolvedAt về null', async () => {
+    const rows = [
+      issueRow({ id: 'a', resolutionId: 'r-old' }),
+      issueRow({ id: 'b', resolutionId: 'r-old' }),
+    ];
+    const tx = bulkTx({ rows });
+    const resolution = { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) };
+    const { service } = makeService(tx, { resolution });
+    await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { statusId: 's2' } });
+    expect(resolution.findFirst).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { workspaceId: 'w1', isDefault: true } }),
+    );
+    for (const call of tx.issue.updateMany.mock.calls as unknown as Array<
+      [{ data: Record<string, unknown> }]
+    >)
+      expect(call[0].data).toMatchObject({ resolutionId: null, resolvedAt: null });
+  });
+
   it('2 item, 1 thua OCC lúc ghi => updated 1, conflicts 1 (kèm version hiện tại), chỉ emit cho item đã ghi', async () => {
     const tx = bulkTx({ lose: 'b' });
     const { service, events } = makeService(tx);
@@ -1153,7 +1171,60 @@ describe('IssuesService.transition — Resolution mặc định và lý do', () 
       comment: 'lý do',
     });
     expect(dto.id).toBe('i1');
+    expect(dto.reasonSaved).toBe(false); // FE dựa vào cờ này để báo "chưa ghi được lý do"
     expect(events.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('transition: ghi lý do thành công => reasonSaved=true; không gửi comment => không có cờ', async () => {
+    const comments = { create: vi.fn(() => Promise.resolve({})) };
+    const a = await makeService(wipTx({ count: 0 }), {}, comments).service.transition(
+      'w1',
+      'u1',
+      'i1',
+      { toStatusId: 's2', version: 3, comment: 'lý do' },
+    );
+    expect(a.reasonSaved).toBe(true);
+    const b = await makeService(wipTx({ count: 0 }), {}, comments).service.transition(
+      'w1',
+      'u1',
+      'i1',
+      { toStatusId: 's2', version: 3 },
+    );
+    expect('reasonSaved' in b).toBe(false);
+  });
+
+  it('transition rời Done => resolutionId và resolvedAt về null (không tra mặc định)', async () => {
+    const tx = wipTx({ count: 0, issue: { statusId: 's4', resolutionId: 'r-done' } });
+    const resolution = { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) };
+    await makeService(tx, { resolution }).service.transition('w1', 'u1', 'i1', {
+      toStatusId: 's2',
+      version: 3,
+    });
+    const data = (
+      tx.issue.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data).toMatchObject({ resolutionId: null, resolvedAt: null });
+    expect(resolution.findFirst).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { workspaceId: 'w1', isDefault: true } }),
+    );
+  });
+
+  it('transition có comment: system admin không có comment:create vẫn ghi được lý do', async () => {
+    const tx = wipTx({ count: 0 });
+    const comments = { create: vi.fn(() => Promise.resolve({})) };
+    const { service } = makeService(
+      tx,
+      { user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: true })) } },
+      comments,
+      ['issue:transition'],
+    );
+    const dto = await service.transition('w1', 'u1', 'i1', {
+      toStatusId: 's2',
+      version: 3,
+      comment: 'lý do',
+    });
+    expect(dto.reasonSaved).toBe(true);
+    expect(comments.create).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1497,6 +1568,7 @@ function createTx(
       ),
     },
     priority: { findFirst: vi.fn(() => Promise.resolve(null)) },
+    resolution: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) },
     issue: {
       findFirst: vi.fn(({ where }: { where: { id?: string } }) =>
         Promise.resolve(where.id && where.id in epics ? epics[where.id] : null),
@@ -1576,6 +1648,7 @@ describe('IssuesService.create — statusId phải thuộc workflow của dự �
     const data = created.mock.calls[0]![0].data;
     expect(data.statusId).toBe('s9');
     expect(data.resolvedAt).toBeInstanceOf(Date);
+    expect(data.resolutionId).toBe('r-done'); // tạo thẳng ở Done cũng nhận Resolution mặc định
   });
 
   it('statusId chính là trạng thái khởi tạo => không đòi issue:transition, không resolvedAt', async () => {

@@ -7,6 +7,7 @@ import {
   type BulkUpdateIssuesResult,
   type IssueDto,
   type IssueEnvironment,
+  type IssueTransitionResultDto,
 } from '@tirapro/types';
 import {
   issueTypePrefix,
@@ -527,6 +528,8 @@ export class IssuesService {
       statusId = initial.id;
     }
 
+    const doneResolutionId = isDone ? await this.defaultResolutionId(db, workspaceId) : null;
+
     // Priority mặc định của workspace nếu không truyền
     const priorityId = input.priorityId || (await this.defaultPriorityId(db, workspaceId));
 
@@ -569,6 +572,8 @@ export class IssuesService {
           typeId: input.typeId,
           statusId,
           resolvedAt: isDone ? new Date() : null,
+          // Tạo thẳng ở Done: cùng quy ước chuyển sang Done — luôn có Resolution (mặc định workspace) để báo cáo QA tin cậy.
+          ...(doneResolutionId ? { resolutionId: doneResolutionId } : {}),
           priorityId: priorityId ?? null,
           severityId: input.severityId ?? null,
           environment: normalizeEnvironment(input.environment) ?? Prisma.DbNull,
@@ -1037,7 +1042,7 @@ export class IssuesService {
     input: TransitionIssueInput,
     opts?: AutomationEventMeta,
     ownOnly?: boolean,
-  ): Promise<IssueDto> {
+  ): Promise<IssueTransitionResultDto> {
     const current = await this.requireIssue(workspaceId, id);
     if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
@@ -1093,18 +1098,20 @@ export class IssuesService {
       fromStatusId: current.statusId,
       ...withMeta(opts),
     });
-    if (reason) {
-      // Sau commit: chuyển trạng thái là thao tác chính, lỗi ghi lý do chỉ log (FE nhận biết qua refetch bình luận).
-      try {
-        await this.comments?.create(workspaceId, userId, id, {
-          body: `*Chuyển ${current.status.name} → ${updated.status.name}*\n\n${reason}`,
-          bodyFormat: 'MARKDOWN',
-        });
-      } catch (e) {
-        this.logger.warn(`Ghi lý do chuyển trạng thái thất bại: ${String(e)}`);
-      }
+    if (!reason) return dto;
+    // Sau commit: chuyển trạng thái là thao tác chính, lỗi ghi lý do chỉ log + báo qua cờ `reasonSaved=false`
+    // để FE nói rõ cho người dùng (không nuốt im lặng chữ họ đã gõ).
+    try {
+      if (!this.comments) throw new Error('CommentsService chưa được tiêm');
+      await this.comments.create(workspaceId, userId, id, {
+        body: `*Chuyển ${current.status.name} → ${updated.status.name}*\n\n${reason}`,
+        bodyFormat: 'MARKDOWN',
+      });
+      return { ...dto, reasonSaved: true };
+    } catch (e) {
+      this.logger.warn(`Ghi lý do chuyển trạng thái thất bại: ${String(e)}`);
+      return { ...dto, reasonSaved: false };
     }
-    return dto;
   }
 
   private async assertCanWriteReason(userId: string, workspaceId: string, projectId: string) {
