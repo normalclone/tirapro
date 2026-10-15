@@ -165,7 +165,8 @@ export class TeamsService {
   ) {
     await this.requireTeam(workspaceId, teamId);
     const teamMembers = await this.prisma.teamMember.findMany({
-      where: { teamId },
+      // Bỏ qua tài khoản đã vô hiệu hoá — không đặt vai trò dự án cho họ (và không làm hỏng cả lượt giao nhóm).
+      where: { teamId, user: { status: { not: 'DEACTIVATED' } } },
       select: { userId: true },
     });
     let added = 0;

@@ -521,6 +521,13 @@ export class MembersService {
     userId: string,
     ids: string[],
   ) {
+    // Tạo ghi đè mới: không đặt vai trò dự án cho tài khoản vô hiệu hoá / người dùng hệ thống (như thêm vào workspace).
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true, email: true },
+    });
+    if (!user) throw new NotFoundAppException('Người dùng');
+    this.assertAddable([user]);
     await this.prisma.projectMembership.create({
       data: {
         projectId,
@@ -557,6 +564,11 @@ export class MembersService {
     const alreadySet = new Set(already.map((a) => a.userId));
     const toAdd = valid.filter((u) => !alreadySet.has(u));
     if (toAdd.length) {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: toAdd } },
+        select: { status: true, email: true },
+      });
+      this.assertAddable(users);
       await this.prisma.$transaction(async (tx) => {
         await tx.projectMembership.createMany({
           data: toAdd.map((userId) => ({ projectId, userId, roleId: ids[0]! })),

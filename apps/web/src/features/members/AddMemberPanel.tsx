@@ -278,6 +278,8 @@ function CreateAccountForm({
         },
         onError: (err) => {
           if (apiErrorCode(err) === ERROR_CODES.EMAIL_ALREADY_REGISTERED) {
+            // Đánh dấu lỗi đã được xử lý tại đây để MutationCache toàn cục không toast lần hai.
+            void apiErrorMessage(err);
             toast.info('Email này đã có tài khoản — chọn người đó trong danh sách.');
             onEmailExists(cleanEmail);
           } else toast.error(apiErrorMessage(err));

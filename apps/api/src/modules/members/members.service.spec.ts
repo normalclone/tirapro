@@ -452,7 +452,12 @@ describe('MembersService — chặn tài khoản không hợp lệ (M2/M3/M4)', 
 });
 
 describe('MembersService — nhật ký dự án (M11)', () => {
-  function setup(opts: { hasOverride: boolean; deleteCount?: number }) {
+  function setup(opts: {
+    hasOverride: boolean;
+    deleteCount?: number;
+    userStatus?: string;
+    userEmail?: string;
+  }) {
     const member = {
       id: 'pm1',
       roleId: 'pr1',
@@ -487,7 +492,18 @@ describe('MembersService — nhật ký dự án (M11)', () => {
       },
       role: { findMany: vi.fn(() => Promise.resolve([{ id: 'pr1' }])) },
       user: {
-        findUnique: vi.fn(() => Promise.resolve({ displayName: 'Bình', email: 'ba@x.vn' })),
+        findUnique: vi.fn(() =>
+          Promise.resolve({
+            displayName: 'Bình',
+            email: opts.userEmail ?? 'ba@x.vn',
+            status: opts.userStatus ?? 'ACTIVE',
+          }),
+        ),
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            { email: opts.userEmail ?? 'ba@x.vn', status: opts.userStatus ?? 'ACTIVE' },
+          ]),
+        ),
       },
       $transaction: vi.fn(() => Promise.resolve([])),
     };
@@ -499,10 +515,37 @@ describe('MembersService — nhật ký dự án (M11)', () => {
       { emit: vi.fn() } as never,
       audit as never,
     );
-    return { svc, audit };
+    return { svc, audit, prisma };
   }
   const first = (audit: { record: { mock: { calls: unknown[][] } } }) =>
     audit.record.mock.calls[0]![0] as Record<string, unknown>;
+
+  it('addProject / setProjectRoles (tạo ghi đè mới) từ chối tài khoản vô hiệu hoá hoặc automation', async () => {
+    const a = setup({ hasOverride: false, userStatus: 'DEACTIVATED' });
+    await expect(a.svc.addProject('w1', 'p1', 'u2', ['pr1'], 'a')).rejects.toThrow(/vô hiệu hoá/);
+    await expect(a.svc.setProjectRoles('w1', 'p1', 'u2', ['pr1'], 'a')).rejects.toThrow(
+      /vô hiệu hoá/,
+    );
+    expect(a.prisma.projectMembership.create).not.toHaveBeenCalled();
+    const b = setup({ hasOverride: false, userEmail: 'automation@tirapro.local' });
+    await expect(b.svc.addProject('w1', 'p1', 'u2', ['pr1'], 'a')).rejects.toThrow(
+      /tài khoản hệ thống/,
+    );
+  });
+
+  it('addProjectMany từ chối cả lô nếu có tài khoản vô hiệu hoá', async () => {
+    const a = setup({ hasOverride: false, userStatus: 'DEACTIVATED' });
+    (a.prisma.workspaceMembership as unknown as { findMany: unknown }).findMany = vi.fn(() =>
+      Promise.resolve([{ userId: 'u2' }]),
+    );
+    (a.prisma.projectMembership as unknown as { findMany: unknown }).findMany = vi.fn(() =>
+      Promise.resolve([]),
+    );
+    await expect(a.svc.addProjectMany('w1', 'p1', ['u2'], ['pr1'], 'a')).rejects.toThrow(
+      /vô hiệu hoá/,
+    );
+    expect(a.prisma.$transaction).not.toHaveBeenCalled();
+  });
 
   it('setProjectRoles cho người chưa có ghi đè → "đặt vai trò riêng" (roles_changed), không phải "thêm vào dự án"', async () => {
     const { svc, audit } = setup({ hasOverride: false });

@@ -46,6 +46,8 @@ export function useAdminUsers() {
 export function useCreateAdminUser() {
   const qc = useQueryClient();
   return useMutation({
+    // Kết quả chứa mật khẩu tạm "chỉ hiện một lần" → không giữ trong MutationCache (gcTime 0 + reset() khi đóng modal).
+    gcTime: 0,
     mutationFn: async (input: CreateAdminUserInput) =>
       (await api.post<AdminUser & { tempPassword?: string }>('/admin/users', input)).data,
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.admin.users }),

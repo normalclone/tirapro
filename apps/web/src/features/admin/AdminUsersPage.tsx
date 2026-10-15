@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Check, Copy, Plus, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -146,6 +146,13 @@ function Toggle({
 
 function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useCreateAdminUser();
+  // Mật khẩu tạm không được nằm lại trong MutationCache sau khi đóng modal ("chỉ hiện một lần").
+  const resetCreate = create.reset;
+  useEffect(() => resetCreate, [resetCreate]);
+  function close() {
+    resetCreate();
+    onClose();
+  }
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
@@ -171,7 +178,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
         onSuccess: (u) => {
           toast.success(`Đã tạo tài khoản ${u.email}`);
           if (u.tempPassword) setTempPassword(u.tempPassword);
-          else onClose();
+          else close();
         },
         onError: (err) => toast.error(apiErrorMessage(err)),
       },
@@ -182,7 +189,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        if (!o) onClose();
+        if (!o) close();
       }}
       title="Tạo tài khoản"
       size="md"
@@ -208,7 +215,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
             </Button>
           </div>
           <div className="flex justify-end">
-            <Button size="sm" onClick={onClose}>
+            <Button size="sm" onClick={close}>
               Xong
             </Button>
           </div>
@@ -268,7 +275,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
             </label>
           </div>
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            <Button type="button" variant="ghost" size="sm" onClick={close}>
               Huỷ
             </Button>
             <Button
