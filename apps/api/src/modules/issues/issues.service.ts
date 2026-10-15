@@ -57,6 +57,9 @@ const issueWriteInclude = {
 } satisfies Prisma.IssueInclude;
 type IssueWriteRow = Prisma.IssueGetPayload<{ include: typeof issueWriteInclude }>;
 
+/** Người báo tự thu hồi (xoá) công việc của mình trong khoảng này kể từ lúc tạo. */
+export const RETRACT_WINDOW_MS = 10 * 60_000;
+
 /** Trường issue mà `update()` có thể đổi — dùng để báo `changedFields` cho automation (trigger ISSUE_UPDATED). */
 const TRACKED_FIELDS = [
   'summary',
@@ -1121,6 +1124,62 @@ export class IssuesService {
       actorId: userId,
     });
     return { success: true };
+  }
+
+  /**
+   * Người BÁO/TẠO tự xoá việc của mình ngay sau khi tạo (nhầm, trùng) mà không cần `issue:delete`.
+   * Server quyết hết điều kiện: đúng người, trong `RETRACT_WINDOW_MS` kể từ `createdAt`, chưa có việc con,
+   * chưa có bình luận của người KHÁC. Xoá mềm → vào Thùng rác (quản trị dự án khôi phục được).
+   */
+  async retract(workspaceId: string, userId: string, id: string): Promise<{ success: true }> {
+    const current = await this.requireIssue(workspaceId, id); // đã chặn dự án lưu trữ
+    if (current.reporterId !== userId && current.createdById !== userId)
+      throw new ForbiddenAppException(
+        'Chỉ người báo cáo công việc này mới thu hồi được — hãy nhờ quản trị dự án xoá',
+      );
+    if (Date.now() - current.createdAt.getTime() > RETRACT_WINDOW_MS)
+      throw new BusinessRuleException('Đã quá 10 phút kể từ lúc báo — hãy nhờ quản trị dự án xoá');
+    const [children, others] = await Promise.all([
+      this.prisma.issue.count({ where: { parentId: id, deletedAt: null } }),
+      this.prisma.comment.count({
+        where: { issueId: id, deletedAt: null, authorId: { not: userId } },
+      }),
+    ]);
+    if (children > 0)
+      throw new BusinessRuleException('Công việc đã có việc con — hãy nhờ quản trị dự án xoá');
+    if (others > 0)
+      throw new BusinessRuleException('Đã có người bình luận — hãy nhờ quản trị dự án xoá');
+    return this.softDelete(workspaceId, userId, id);
+  }
+
+  /** Khôi phục việc đã xoá mềm (Thùng rác). Dự án lưu trữ → chặn; hai lần đồng thời chỉ một lần thắng. */
+  async restore(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+    issueId: string,
+  ): Promise<IssueDto> {
+    const where = { id: issueId, workspaceId, projectId, deletedAt: { not: null } };
+    // allow-deleted: khôi phục cố ý đọc việc đã xoá mềm
+    const current = await this.prisma.issue.findFirst({ where, include: issueWriteInclude });
+    if (!current) throw new NotFoundAppException('Công việc');
+    assertNotArchived(current.project.archivedAt);
+    const { count } = await this.prisma.issue.updateMany({
+      where,
+      data: { deletedAt: null, updatedById: userId, version: { increment: 1 } },
+    });
+    if (count === 0) throw new NotFoundAppException('Công việc');
+    const row = await this.prisma.issue.findFirstOrThrow({
+      where: { id: issueId, workspaceId, deletedAt: null },
+      include: issueInclude,
+    });
+    const dto = this.toDto(row);
+    this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+      issue: dto,
+      actorId: userId,
+      changedFields: [],
+    });
+    return dto;
   }
 
   // ---------- helpers ----------

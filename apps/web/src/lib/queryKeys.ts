@@ -163,6 +163,8 @@ export const keys = {
     duplicates: (projectId: string, q: string) => ['triage', 'duplicates', projectId, q] as const,
   },
 
+  trash: (projectId: string) => ['trash', projectId] as const,
+
   dashboard: {
     myIssues: ['my-issues'] as const,
     workspaceOverview: ['workspace-overview'] as const,

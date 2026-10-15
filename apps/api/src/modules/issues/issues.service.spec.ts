@@ -376,6 +376,118 @@ describe('IssuesService.update — severityId, environment', () => {
   });
 });
 
+describe('IssuesService.retract — người báo xoá việc của mình trong 10 phút', () => {
+  const at = (minAgo: number) => new Date(Date.now() - minAgo * 60_000);
+  function setup(row: Record<string, unknown>, children = 0, othersComments = 0) {
+    const issue = {
+      findFirst: vi.fn(() => Promise.resolve(issueRow(row))),
+      count: vi.fn(() => Promise.resolve(children)),
+      updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+    };
+    const comment = { count: vi.fn(() => Promise.resolve(othersComments)) };
+    return { ...makeService({ issue }, { comment }), issue, comment };
+  }
+  it('người báo, 3 phút, không việc con/bình luận người khác => xoá mềm + phát ISSUE_DELETED', async () => {
+    const { service, issue, events } = setup({
+      reporterId: 'u1',
+      createdById: 'u1',
+      createdAt: at(3),
+    });
+    await expect(service.retract('w1', 'u1', 'i1')).resolves.toEqual({ success: true });
+    const data = (
+      issue.updateMany.mock.calls as unknown as Array<[{ data: { deletedAt: unknown } }]>
+    )[0]![0].data;
+    expect(data.deletedAt).toBeInstanceOf(Date);
+    expect(events.emit).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.ISSUE_DELETED,
+      expect.objectContaining({ issueId: 'i1' }),
+    );
+  });
+  it('người tạo (không phải người báo) cũng thu hồi được', async () => {
+    const { service } = setup({ reporterId: 'u2', createdById: 'u1', createdAt: at(1) });
+    await expect(service.retract('w1', 'u1', 'i1')).resolves.toEqual({ success: true });
+  });
+  it('quá 10 phút => 422, không ghi', async () => {
+    const { service, issue } = setup({ reporterId: 'u1', createdAt: at(11) });
+    await expect(service.retract('w1', 'u1', 'i1')).rejects.toMatchObject({ status: 422 });
+    expect(issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('người được giao (không phải người báo/tạo) => 403', async () => {
+    const { service } = setup({
+      reporterId: 'u2',
+      createdById: 'u2',
+      assigneeId: 'u1',
+      createdAt: at(1),
+    });
+    await expect(service.retract('w1', 'u1', 'i1')).rejects.toMatchObject({ status: 403 });
+  });
+  it('đã có việc con hoặc bình luận của người khác => 422', async () => {
+    await expect(
+      setup({ reporterId: 'u1', createdAt: at(1) }, 1).service.retract('w1', 'u1', 'i1'),
+    ).rejects.toMatchObject({ status: 422 });
+    const { service, comment } = setup({ reporterId: 'u1', createdAt: at(1) }, 0, 2);
+    await expect(service.retract('w1', 'u1', 'i1')).rejects.toMatchObject({ status: 422 });
+    expect(comment.count).toHaveBeenCalledWith({
+      where: { issueId: 'i1', deletedAt: null, authorId: { not: 'u1' } },
+    });
+  });
+  it('dự án đã lưu trữ => chặn', async () => {
+    const { service } = setup({
+      reporterId: 'u1',
+      createdAt: at(1),
+      project: { archivedAt: new Date() },
+    });
+    await expect(service.retract('w1', 'u1', 'i1')).rejects.toMatchObject({ status: 422 });
+  });
+});
+
+describe('IssuesService.restore — khôi phục việc từ Thùng rác', () => {
+  function setup(found: Record<string, unknown> | null, count = 1) {
+    const issue = {
+      findFirst: vi.fn(() => Promise.resolve(found ? issueRow(found) : null)),
+      findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 5 }))),
+      updateMany: vi.fn(() => Promise.resolve({ count })),
+    };
+    return { ...makeService({ issue }), issue };
+  }
+  it('ghi deletedAt:null chỉ khi đang xoá, tăng version, phát ISSUE_UPDATED, trả IssueDto', async () => {
+    const { service, issue, events } = setup({ deletedAt: new Date() });
+    const dto = await service.restore('w1', 'u9', 'p1', 'i1');
+    expect(issue.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'i1', workspaceId: 'w1', projectId: 'p1', deletedAt: { not: null } },
+      }),
+    );
+    expect(issue.updateMany).toHaveBeenCalledWith({
+      where: { id: 'i1', workspaceId: 'w1', projectId: 'p1', deletedAt: { not: null } },
+      data: { deletedAt: null, updatedById: 'u9', version: { increment: 1 } },
+    });
+    expect(dto.id).toBe('i1');
+    expect(events.emit).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.ISSUE_UPDATED,
+      expect.objectContaining({ actorId: 'u9' }),
+    );
+  });
+  it('không có trong Thùng rác => 404; hai lần khôi phục đồng thời chỉ một thắng', async () => {
+    await expect(setup(null).service.restore('w1', 'u9', 'p1', 'i1')).rejects.toMatchObject({
+      status: 404,
+    });
+    const raced = setup({ deletedAt: new Date() }, 0);
+    await expect(raced.service.restore('w1', 'u9', 'p1', 'i1')).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(raced.events.emit).not.toHaveBeenCalled();
+  });
+  it('dự án đã lưu trữ => chặn, chưa ghi', async () => {
+    const { service, issue } = setup({
+      deletedAt: new Date(),
+      project: { archivedAt: new Date() },
+    });
+    await expect(service.restore('w1', 'u9', 'p1', 'i1')).rejects.toMatchObject({ status: 422 });
+    expect(issue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('IssuesService.bulkUpdate', () => {
   /** Hai issue a, b (version 3). `lose` = id bị thua OCC lúc ghi (version hiện tại trong DB = 5). */
   function bulkTx(

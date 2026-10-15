@@ -42,17 +42,31 @@ export function usePatchIssue(key: string, projectId?: string) {
  * không chỉ trông vào event realtime `issue:deleted` (có thể chậm/lỡ khi mất kết nối).
  */
 export function useDeleteIssue() {
+  return useRemoveFromCaches((v: IssueRef) => api.delete(`/issues/${v.id}`));
+}
+
+/**
+ * Người báo thu hồi việc của mình trong 10 phút đầu (không cần quyền xoá chung) — xoá mềm vào Thùng rác.
+ * Server quyết điều kiện; cache được dọn giống `useDeleteIssue`.
+ */
+export function useRetractIssue() {
+  return useRemoveFromCaches((v: IssueRef) => api.post(`/issues/${v.id}/retract`));
+}
+
+type IssueRef = { id: string; key: string; projectId: string };
+
+function useRemoveFromCaches(call: (v: IssueRef) => Promise<unknown>) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; key: string; projectId: string }) =>
-      api.delete(`/issues/${v.id}`),
+    mutationFn: call,
     onSuccess: (_res, v) => {
       qc.setQueryData<IssueDto[]>(keys.issues.byProject(v.projectId), (old) =>
         old ? old.filter((i) => i.id !== v.id) : undefined,
       );
       qc.removeQueries({ queryKey: keys.issues.byKey(v.key), exact: true });
-      // Số issue/điểm của sprint đổi theo.
+      // Số issue/điểm của sprint đổi theo; việc vừa xoá xuất hiện trong Thùng rác.
       void qc.invalidateQueries({ queryKey: keys.sprints.byProject(v.projectId) });
+      void qc.invalidateQueries({ queryKey: keys.trash(v.projectId) });
     },
   });
 }

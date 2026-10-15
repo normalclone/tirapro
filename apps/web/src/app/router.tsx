@@ -35,6 +35,9 @@ const BacklogPage = lazy(() =>
 const TriagePage = lazy(() =>
   import('@/features/triage/TriagePage').then((m) => ({ default: m.TriagePage })),
 );
+const TrashPage = lazy(() =>
+  import('@/features/trash/TrashPage').then((m) => ({ default: m.TrashPage })),
+);
 const ReportsPage = lazy(() =>
   import('@/features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })),
 );
@@ -292,6 +295,7 @@ export const router = createBrowserRouter([
           { path: 'board', element: <BoardPage /> },
           { path: 'backlog', element: <BacklogPage /> },
           { path: 'triage', element: <TriagePage /> },
+          { path: 'trash', element: <TrashPage /> },
           { path: 'activity', element: <ProjectActivityPage /> },
           { path: 'reports', element: <ReportsPage /> },
           { path: 'gantt', element: <GanttPage /> },

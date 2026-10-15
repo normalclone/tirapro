@@ -22,6 +22,7 @@ import {
   Plus,
   Settings,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { useProject, useProjects } from './api';
 import { CreateProjectModal } from './CreateProjectModal';
@@ -47,6 +48,7 @@ const VIEWS = [
 const MORE = [
   { seg: 'triage', label: 'Việc mới vào', icon: Inbox },
   { seg: 'activity', label: 'Hoạt động', icon: Activity },
+  { seg: 'trash', label: 'Thùng rác', icon: Trash2 },
   { seg: 'config', label: 'Cấu hình', icon: Settings },
 ] as const;
 
@@ -82,6 +84,7 @@ export function ProjectLayout() {
     'tree',
     'reports',
     'triage',
+    'trash',
     'activity',
     'config',
   ]);
@@ -214,7 +217,7 @@ export function ProjectLayout() {
                   sideOffset={6}
                   className="z-dropdown w-48 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
                 >
-                  {MORE.map((m) => (
+                  {MORE.filter((m) => m.seg !== 'trash' || canProject('issue:delete')).map((m) => (
                     <DropdownMenu.Item key={m.seg} asChild>
                       <Link
                         to={`/p/${key}/${m.seg}`}

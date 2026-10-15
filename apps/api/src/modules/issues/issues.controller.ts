@@ -137,6 +137,18 @@ export class IssuesController {
     return this.issues.move(workspaceId, user.id, id, dto, ownOnly);
   }
 
+  /** Người báo/tạo tự thu hồi việc của mình trong 10 phút đầu (không cần `issue:delete`); server quyết điều kiện. */
+  @Permissions(PERMISSIONS.ISSUE_CREATE)
+  @ProjectRef('issue', 'id')
+  @Post(':id/retract')
+  async retract(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+  ) {
+    return this.issues.retract(workspaceId, user.id, id);
+  }
+
   @Permissions(PERMISSIONS.ISSUE_DELETE)
   @ProjectRef('issue', 'id')
   @Delete(':id')
