@@ -1,9 +1,4 @@
-export type TelegramHealthState =
-  | 'READY'
-  | 'NO_CHANNEL'
-  | 'NO_BOT'
-  | 'TOKEN_ERROR'
-  | 'PLATFORM_OFF';
+type TelegramHealthState = 'READY' | 'NO_CHANNEL' | 'NO_BOT' | 'TOKEN_ERROR' | 'PLATFORM_OFF';
 
 export interface TelegramHealth {
   state: TelegramHealthState;

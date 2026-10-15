@@ -21,14 +21,14 @@ interface TelegramConfig {
 }
 
 /** Kết quả lần "Kiểm tra" gần nhất, lưu trong config. */
-export interface TelegramLastTest {
+interface TelegramLastTest {
   at: string;
   ok: boolean;
   sent: number;
   total: number;
 }
 
-export type TelegramTestReason = 'NO_CHANNEL' | 'NO_BOT' | 'PLATFORM_OFF';
+type TelegramTestReason = 'NO_CHANNEL' | 'NO_BOT' | 'PLATFORM_OFF';
 
 export interface TelegramTestResult {
   sent: number;
