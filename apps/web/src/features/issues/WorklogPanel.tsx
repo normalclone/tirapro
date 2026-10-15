@@ -70,7 +70,11 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
     if (!openRequest || !canLog) return;
     setEditing(null);
     setFormOpen(true);
-    sectionRef.current?.scrollIntoView({ block: 'nearest' }); // `scroll-behavior`/reduced-motion do trình duyệt xử lý
+    // Sau khi form đã vẽ (panel cao hơn) mới cuộn; `scroll-behavior`/reduced-motion do trình duyệt xử lý.
+    const raf = requestAnimationFrame(() =>
+      sectionRef.current?.scrollIntoView({ block: 'nearest' }),
+    );
+    return () => cancelAnimationFrame(raf);
   }, [openRequest, canLog]);
 
   const spent = data?.totalSec ?? issue.timeSpent ?? 0;

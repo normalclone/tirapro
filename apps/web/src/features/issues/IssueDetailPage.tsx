@@ -61,7 +61,7 @@ import { useRecents } from '@/stores/recentIssues';
 import { useProjectRealtime } from '@/lib/realtime';
 import { useCachedProjectIssue, useUpdateIssue, useTransitionDetail } from './api';
 import { useInView } from '@/lib/useInView';
-import { isDialogOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
+import { isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { IssueDto } from '@tirapro/types';
@@ -162,14 +162,18 @@ export function IssueDetailPage() {
   const [worklogRequest, setWorklogRequest] = useState(0);
   const canLogWork = can('worklog:create');
   const hasIssue = !!issue;
+  // Sang issue khác → huỷ yêu cầu cũ để panel mới không tự mở form.
+  useEffect(() => {
+    setWorklogRequest(0);
+  }, [issue?.id]);
   useEffect(() => {
     if (!canLogWork || !hasIssue) return;
     function onKey(e: KeyboardEvent) {
       if (
         !isWorklogHotkey(e, {
           typing: isTypingTarget(e.target),
-          dialogOpen: isDialogOpen(),
-          canLog: true,
+          dialogOpen: isOverlayOpen(),
+          canLog: canLogWork,
         })
       )
         return;
