@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { passwordSchema } from '@tirapro/shared';
 
 /** Zod cục bộ cho AdminModule (admin hệ thống quản trị tài khoản). */
 export const createUserSchema = z.object({
   email: z.string().email('Email không hợp lệ').toLowerCase(),
   displayName: z.string().min(1, 'Tên hiển thị bắt buộc').max(120),
-  password: z.string().min(6, 'Mật khẩu tối thiểu 6 ký tự').max(200).optional(),
+  password: passwordSchema.optional(),
   isSystemAdmin: z.boolean().optional(),
   canCreateWorkspace: z.boolean().optional(),
 });

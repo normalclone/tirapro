@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import * as argon2 from 'argon2';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   AUDIT_ACTIONS,
@@ -8,10 +9,16 @@ import {
 } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto, USER_DTO_SELECT, type UserDtoSource } from '../../common/mappers/user.mapper';
-import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  ForbiddenAppException,
+  NotFoundAppException,
+} from '../../common/exceptions/app.exception';
+import { generateTempPassword } from '../../common/password';
 import { RbacService } from '../rbac/rbac.service';
 import { ApiKeyService } from '../api-keys/api-key.service';
 import { AuditService } from '../audit/audit.service';
+import type { CreateMemberAccountInput } from './members.schemas';
 
 type RoleRefRow = { role: { id: string; name: string; color: string | null } };
 
@@ -77,6 +84,53 @@ export class MembersService {
       meta: { roleIds: ids },
     });
     return member;
+  }
+
+  /**
+   * Tạo tài khoản mới + membership + vai trò trong MỘT transaction (không để lại tài khoản mồ côi khi bước
+   * thêm thất bại). Mật khẩu tạm chỉ trả về ở đây, không lưu thô.
+   */
+  async createAccount(workspaceId: string, actorId: string, input: CreateMemberAccountInput) {
+    const email = input.email.toLowerCase();
+    const exists = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (exists) {
+      throw new BusinessRuleException(
+        'Email này đã có tài khoản — hãy chọn người đó trong danh sách để thêm vào không gian làm việc',
+      );
+    }
+    const ids = await this.validateRoles(workspaceId, input.roleIds, 'WORKSPACE');
+    const tempPassword = input.password ? undefined : generateTempPassword();
+    const passwordHash = await argon2.hash(input.password ?? tempPassword!); // băm NGOÀI transaction (chậm)
+    const userId = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: { email, displayName: input.displayName, passwordHash },
+        select: { id: true },
+      });
+      await tx.workspaceMembership.create({
+        data: {
+          workspaceId,
+          userId: user.id,
+          roleId: ids[0]!,
+          joinedAt: new Date(),
+          roles: { create: ids.map((roleId) => ({ roleId })) },
+        },
+      });
+      await this.audit.record(
+        {
+          workspaceId,
+          actorId,
+          action: AUDIT_ACTIONS.MEMBER_ACCOUNT_CREATED,
+          entityType: 'user',
+          entityId: user.id,
+          summary: `Tạo tài khoản ${input.displayName} (${email}) và thêm vào không gian làm việc`,
+          meta: { roleIds: ids },
+        },
+        tx,
+      );
+      return user.id;
+    });
+    await this.rbac.invalidate(userId, workspaceId);
+    return { member: await this.getWorkspaceMember(workspaceId, userId), tempPassword };
   }
 
   async setWorkspaceRoles(

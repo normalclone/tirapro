@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { randomBytes } from 'node:crypto';
 import { AUDIT_ACTIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { offsetPage } from '../../common/dto/page-result';
+import { generateTempPassword } from '../../common/password';
 import { AuditService } from '../audit/audit.service';
 import type { CreateUserInput, UpdateUserInput } from './admin.schemas';
 
@@ -74,8 +74,8 @@ export class AdminService {
 
     // Tạo tài khoản bởi admin hệ thống có thể trả mật khẩu tạm; để thêm người vào workspace dùng POST /members (người có sẵn) hoặc POST /members/accounts (tạo mới).
     let tempPassword: string | undefined;
-    // Mật khẩu tạm: ngẫu nhiên bằng crypto (không dùng cuid — cuid không phải bí mật an toàn).
-    const plain = input.password ?? (tempPassword = randomBytes(18).toString('base64url'));
+    // Mật khẩu tạm: ngẫu nhiên bằng crypto, luôn thoả chính sách chung (không dùng cuid — không phải bí mật an toàn).
+    const plain = input.password ?? (tempPassword = generateTempPassword());
     const passwordHash = await argon2.hash(plain);
     const created = await this.prisma.user.create({
       data: {

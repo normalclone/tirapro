@@ -11,6 +11,7 @@ import { QueryError } from '@/components/ui/QueryError';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { passwordPolicyError } from '@/features/members/passwordPolicy';
 import { useAdminUsers, useCreateAdminUser, useUpdateAdminUser, type AdminUser } from './api';
 
 /** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập không gian làm việc. */
@@ -152,9 +153,11 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const passwordError = passwordPolicyError(password);
+
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (!email.trim() || !displayName.trim() || create.isPending) return;
+    if (!email.trim() || !displayName.trim() || create.isPending || passwordError) return;
     create.mutate(
       {
         email: email.trim(),
@@ -249,8 +252,10 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
               type="text"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Tối thiểu 6 ký tự"
+              placeholder="Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và số"
+              aria-invalid={passwordError ? true : undefined}
             />
+            {passwordError && <p className="text-xs text-danger">{passwordError}</p>}
           </label>
           <div className="flex items-center gap-6">
             <label className="flex items-center gap-2 text-sm text-ink">
@@ -280,7 +285,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
               type="submit"
               size="sm"
               loading={create.isPending}
-              disabled={!email.trim() || !displayName.trim()}
+              disabled={!email.trim() || !displayName.trim() || !!passwordError}
             >
               Tạo tài khoản
             </Button>

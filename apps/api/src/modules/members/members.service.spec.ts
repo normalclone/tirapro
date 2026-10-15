@@ -262,3 +262,113 @@ describe('MembersService — ghi nhật ký quản trị', () => {
     });
   });
 });
+
+describe('MembersService.createAccount', () => {
+  function setup(existingEmail = false) {
+    const tx = {
+      user: { create: vi.fn(() => Promise.resolve({ id: 'u9' })) },
+      workspaceMembership: { create: vi.fn(() => Promise.resolve({ id: 'm9' })) },
+    };
+    const prisma = {
+      user: { findUnique: vi.fn(() => Promise.resolve(existingEmail ? { id: 'u1' } : null)) },
+      role: { findMany: vi.fn(() => Promise.resolve([{ id: 'r1' }])) },
+      $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+      workspaceMembership: {
+        findUniqueOrThrow: vi.fn(() =>
+          Promise.resolve({
+            id: 'm9',
+            joinedAt: new Date(),
+            roleId: 'r1',
+            role: { id: 'r1', name: 'Workspace Member', color: null },
+            user: {
+              id: 'u9',
+              email: 'a@x.vn',
+              displayName: 'A',
+              avatarUrl: null,
+              timezone: 'UTC',
+              locale: 'vi',
+              status: 'ACTIVE',
+              isSystemAdmin: false,
+              lastSeenAt: null,
+              createdAt: new Date(),
+            },
+            roles: [{ role: { id: 'r1', name: 'Workspace Member', color: null } }],
+          }),
+        ),
+      },
+    };
+    const audit = { record: vi.fn() };
+    const rbac = { invalidate: vi.fn() };
+    const svc = new MembersService(
+      prisma as never,
+      rbac as never,
+      {} as never,
+      { emit: vi.fn() } as never,
+      audit as never,
+    );
+    return { svc, tx, prisma, audit, rbac };
+  }
+  const arg = (fn: { mock: { calls: unknown[][] } }) => fn.mock.calls[0] as unknown[];
+
+  it('tạo user + membership + vai trò trong một transaction, trả mật khẩu tạm khi không nhập', async () => {
+    const { svc, tx, prisma, audit, rbac } = setup();
+    const out = await svc.createAccount('w1', 'actor', {
+      email: 'A@X.vn',
+      displayName: 'A',
+      roleIds: ['r1'],
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect((arg(tx.user.create)[0] as { data: unknown }).data).toMatchObject({
+      email: 'a@x.vn',
+      displayName: 'A',
+    });
+    expect((arg(tx.workspaceMembership.create)[0] as { data: unknown }).data).toMatchObject({
+      workspaceId: 'w1',
+      userId: 'u9',
+      roleId: 'r1',
+      roles: { create: [{ roleId: 'r1' }] },
+    });
+    expect(out.tempPassword).toMatch(/^[A-Za-z0-9]{20,}$/);
+    expect(out.member.user.id).toBe('u9');
+    const [entry, txArg] = arg(audit.record);
+    expect(entry).toMatchObject({
+      action: 'member.account_created',
+      workspaceId: 'w1',
+      actorId: 'actor',
+      entityId: 'u9',
+    });
+    expect(txArg).toBe(tx); // ghi cùng transaction
+    expect(rbac.invalidate).toHaveBeenCalledWith('u9', 'w1');
+  });
+
+  it('không lưu mật khẩu thô: user.create nhận hash, không nhận tempPassword', async () => {
+    const { svc, tx } = setup();
+    const out = await svc.createAccount('w1', 'actor', {
+      email: 'a@x.vn',
+      displayName: 'A',
+      roleIds: ['r1'],
+    });
+    const data = (arg(tx.user.create)[0] as { data: { passwordHash: string } }).data;
+    expect(data.passwordHash).toMatch(/^\$argon2/);
+    expect(data.passwordHash).not.toContain(out.tempPassword!);
+  });
+
+  it('có nhập mật khẩu thì không trả tempPassword', async () => {
+    const { svc } = setup();
+    const out = await svc.createAccount('w1', 'actor', {
+      email: 'a@x.vn',
+      displayName: 'A',
+      roleIds: ['r1'],
+      password: 'Password1',
+    });
+    expect(out.tempPassword).toBeUndefined();
+  });
+
+  it('email đã có tài khoản → từ chối với thông điệp chỉ cách thêm người có sẵn', async () => {
+    const { svc, prisma } = setup(true);
+    await expect(
+      svc.createAccount('w1', 'actor', { email: 'a@x.vn', displayName: 'A', roleIds: ['r1'] }),
+    ).rejects.toThrow(/đã có tài khoản/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});

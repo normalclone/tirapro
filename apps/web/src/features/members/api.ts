@@ -128,6 +128,30 @@ export function useAddMember() {
   });
 }
 
+/** Kết quả tạo tài khoản: `tempPassword` chỉ có khi không nhập mật khẩu và chỉ trả MỘT lần. */
+export interface CreateMemberAccountResult {
+  member: MemberDto;
+  tempPassword?: string;
+}
+
+/** Tạo tài khoản mới + thêm vào không gian làm việc hiện tại trong một lần (POST /members/accounts). */
+export function useCreateMemberAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      email: string;
+      displayName: string;
+      roleIds: string[];
+      password?: string;
+    }) => api.post<CreateMemberAccountResult>('/members/accounts', input).then((r) => r.data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.members.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.allRoot });
+    },
+  });
+}
+
 /** Thêm NHIỀU người vào không gian làm việc một lúc (cùng bộ vai trò). */
 export function useAddMembersBulk() {
   const qc = useQueryClient();

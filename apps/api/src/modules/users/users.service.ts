@@ -7,6 +7,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { insensitiveContains } from '../../common/like';
 import { AppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { MediaService } from '../media/media.service';
+import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
 
 @Injectable()
 export class UsersService {
@@ -62,17 +63,29 @@ export class UsersService {
     return members.map((m) => this.toDto(m.user));
   }
 
-  /** Toàn bộ user hệ thống (pool) — cho picker "thêm thành viên". */
+  /**
+   * Toàn bộ user hệ thống (pool chung) — cho picker "thêm thành viên". Loại tài khoản vô hiệu hoá và
+   * người dùng hệ thống của automation (không phải người thật).
+   */
   async listAllUsers(search?: string) {
+    const eligible = {
+      status: { not: 'DEACTIVATED' },
+      email: { not: SYSTEM_USER_EMAIL },
+    } as const;
     const users = await this.prisma.user.findMany({
       where: search
         ? {
-            OR: [
-              { displayName: insensitiveContains(search) },
-              { email: insensitiveContains(search) },
+            AND: [
+              eligible,
+              {
+                OR: [
+                  { displayName: insensitiveContains(search) },
+                  { email: insensitiveContains(search) },
+                ],
+              },
             ],
           }
-        : undefined,
+        : eligible,
       take: 100,
       orderBy: { displayName: 'asc' },
     });

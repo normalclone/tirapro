@@ -11,9 +11,11 @@ import {
   setRolesSchema,
   addProjectMemberSchema,
   addMembersBulkSchema,
+  createMemberAccountSchema,
   type SetRolesInput,
   type AddProjectMemberInput,
   type AddMembersBulkInput,
+  type CreateMemberAccountInput,
 } from './members.schemas';
 
 @ApiTags('members')
@@ -37,6 +39,20 @@ export class WorkspaceMembersController {
     @Body(new ZodValidationPipe(addProjectMemberSchema)) dto: AddProjectMemberInput,
   ) {
     return this.members.addWorkspace(workspaceId, dto.userId, dto.roleIds, user.id);
+  }
+
+  /**
+   * Tạo TÀI KHOẢN MỚI và thêm vào workspace trong một lần (quản trị workspace). Mật khẩu tạm chỉ trả MỘT lần,
+   * và chỉ khi không truyền `password`.
+   */
+  @Post('accounts')
+  @Permissions(PERMISSIONS.MEMBER_MANAGE)
+  async createAccount(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Body(new ZodValidationPipe(createMemberAccountSchema)) dto: CreateMemberAccountInput,
+  ) {
+    return this.members.createAccount(workspaceId, user.id, dto);
   }
 
   /** Thêm NHIỀU người vào workspace một lúc. */
