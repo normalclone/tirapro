@@ -4,6 +4,8 @@ import { Plus, Play, CheckCircle2, ChevronRight, Inbox, Sparkles, Pencil } from 
 import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
 import { byPriorityThenStatus } from '@/lib/issueOrder';
 import { buildProgressMap, type SubtreeProgress } from '@/lib/issueTree';
+import { useOpenSession } from '@/lib/useOpenSession';
+import { useRetained } from '@/lib/useRetained';
 import {
   DndContext,
   DragOverlay,
@@ -130,6 +132,13 @@ export function BacklogPage() {
   } | null>(null);
   // Sprint đang mở hộp thoại sửa/xoá.
   const [editing, setEditing] = useState<SprintDto | null>(null);
+  // Ba hộp thoại luôn mount (có hiệu ứng đóng): giữ đối tượng đích gần nhất + key theo lần mở (form khởi tạo lại).
+  const assistantShown = useRetained(assistantFor);
+  const assistantKey = useOpenSession(!!assistantFor);
+  const completingShown = useRetained(completing);
+  const completingKey = useOpenSession(!!completing);
+  const editingShown = useRetained(editing);
+  const editingKey = useOpenSession(!!editing);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -663,30 +672,33 @@ export function BacklogPage() {
         <DragOverlay>{dragging ? <IssueRowBody issue={dragging} overlay /> : null}</DragOverlay>
       </DndContext>
 
-      {assistantFor && projectId && (
+      {assistantShown && projectId && (
         <SprintAssistantDialog
-          open
+          key={assistantKey}
+          open={!!assistantFor}
           projectId={projectId}
-          sprint={assistantFor}
+          sprint={assistantShown}
           onClose={() => setAssistantFor(null)}
         />
       )}
 
-      {completing && (
+      {completingShown && (
         <CompleteSprintDialog
-          open
-          name={completing.name}
-          notDone={completing.notDone}
+          key={completingKey}
+          open={!!completing}
+          name={completingShown.name}
+          notDone={completingShown.notDone}
           futureSprints={visibleSprints.filter((sp) => sp.state === 'FUTURE')}
           loading={completeSprint.isPending}
           onConfirm={confirmComplete}
           onCancel={() => setCompleting(null)}
         />
       )}
-      {editing && projectId && (
+      {editingShown && projectId && (
         <SprintEditDialog
-          open
-          sprint={editing}
+          key={editingKey}
+          open={!!editing}
+          sprint={editingShown}
           projectId={projectId}
           onClose={() => setEditing(null)}
         />

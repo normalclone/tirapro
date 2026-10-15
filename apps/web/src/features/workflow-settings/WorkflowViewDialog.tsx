@@ -212,7 +212,7 @@ export function WorkflowViewDialog({
       title={`Quy trình${workflow ? `: ${workflow.name}` : ''}`}
       headerExtra={
         currentStatusName && (
-          <span className="rounded bg-primary-subtle px-2 py-0.5 text-xs font-medium text-primary">
+          <span className="shrink-0 rounded bg-primary-subtle px-2 py-0.5 text-xs font-medium text-primary">
             Hiện tại: {currentStatusName}
           </span>
         )

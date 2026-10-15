@@ -1,13 +1,23 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ComponentProps } from 'react';
 import { AlertTriangle, Bug } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { useDuplicateCheck, useReportIssue, type DuplicateSuggestion } from './api';
 
-export function ReportIssueModal({
+/**
+ * Luôn mount (có hiệu ứng đóng); `key` theo lần mở → mỗi lần mở là mount mới nên form khởi tạo lại, không có
+ * khung hình nội dung cũ. Lúc đóng `key` giữ nguyên nên nội dung ở lại suốt hiệu ứng.
+ */
+export function ReportIssueModal(props: ComponentProps<typeof ReportIssueModalInner>) {
+  const session = useOpenSession(props.open);
+  return <ReportIssueModalInner key={session} {...props} />;
+}
+
+function ReportIssueModalInner({
   projectKey: _projectKey,
   projectId,
   open,
@@ -23,14 +33,6 @@ export function ReportIssueModal({
 
   const report = useReportIssue(projectId);
   const { data: duplicates, isFetching: checkingDup } = useDuplicateCheck(projectId, summary);
-
-  useEffect(() => {
-    // Reset khi MỞ để nội dung không trống đi giữa hiệu ứng đóng.
-    if (open) {
-      setSummary('');
-      setDescription('');
-    }
-  }, [open]);
 
   const trimmedSummary = summary.trim();
   const canSubmit = trimmedSummary.length > 0;

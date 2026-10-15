@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ComponentProps } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import {
@@ -14,6 +14,7 @@ import {
 import { toast } from 'sonner';
 import type { IssueDto, UserDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
+import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
@@ -405,7 +406,16 @@ function SavedFilterList({
 /* Modal tạo bộ lọc                                                    */
 /* ------------------------------------------------------------------ */
 
-function CreateFilterModal({
+/**
+ * Luôn mount (có hiệu ứng đóng); `key` theo lần mở → mỗi lần mở là mount mới nên form khởi tạo lại, không có
+ * khung hình nội dung cũ. Lúc đóng `key` giữ nguyên nên nội dung ở lại suốt hiệu ứng.
+ */
+function CreateFilterModal(props: ComponentProps<typeof CreateFilterModalInner>) {
+  const session = useOpenSession(props.open);
+  return <CreateFilterModalInner key={session} {...props} />;
+}
+
+function CreateFilterModalInner({
   open,
   onClose,
   onSave,
@@ -420,16 +430,6 @@ function CreateFilterModal({
   const [jql, setJql] = useState('');
   const [name, setName] = useState('');
   const [visibility, setVisibility] = useState<FilterVisibility>('PRIVATE');
-
-  useEffect(() => {
-    // Reset khi MỞ để nội dung không trống đi giữa hiệu ứng đóng.
-    if (open) {
-      setMode('simple');
-      setJql('');
-      setName('');
-      setVisibility('PRIVATE');
-    }
-  }, [open]);
 
   const trimmedName = name.trim();
   const trimmedJql = jql.trim();

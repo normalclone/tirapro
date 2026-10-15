@@ -30,6 +30,7 @@ import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/pr
 import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
+import { useOpenSession } from '@/lib/useOpenSession';
 import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
@@ -202,6 +203,7 @@ export function BoardPage() {
   // Giữ bản cuối của hai hộp hỏi để nội dung (mã việc, tên cột, danh sách đích) không trống đi giữa hiệu ứng đóng.
   const wipShown = useRetained(wipPrompt);
   const pickShown = useRetained(pick);
+  const settingsKey = useOpenSession(settingsOpen);
   const {
     swimlaneBy,
     override: swimlaneOverride,
@@ -625,8 +627,10 @@ export function BoardPage() {
         )}
       </div>
 
-      {settingsOpen && project?.id && (
+      {/* Luôn mount sau lần mở đầu (để có hiệu ứng đóng); key theo lần mở → bản nháp cột khởi tạo lại. */}
+      {settingsKey > 0 && project?.id && (
         <BoardSettingsDialog
+          key={settingsKey}
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           projectId={project.id}

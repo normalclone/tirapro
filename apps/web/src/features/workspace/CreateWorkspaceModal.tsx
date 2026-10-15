@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ComponentProps } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { useSwitchWorkspace } from './api';
@@ -22,16 +23,20 @@ function useCreateWorkspace() {
   });
 }
 
-export function CreateWorkspaceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+/**
+ * Luôn mount (có hiệu ứng đóng); `key` theo lần mở → mỗi lần mở là mount mới nên form khởi tạo lại, không có
+ * khung hình nội dung cũ. Lúc đóng `key` giữ nguyên nên nội dung ở lại suốt hiệu ứng.
+ */
+export function CreateWorkspaceModal(props: ComponentProps<typeof CreateWorkspaceModalInner>) {
+  const session = useOpenSession(props.open);
+  return <CreateWorkspaceModalInner key={session} {...props} />;
+}
+
+function CreateWorkspaceModalInner({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useCreateWorkspace();
   const switchWs = useSwitchWorkspace();
 
   const [name, setName] = useState('');
-
-  useEffect(() => {
-    // Reset khi MỞ để nội dung không trống đi giữa hiệu ứng đóng.
-    if (open) setName('');
-  }, [open]);
 
   const trimmedName = name.trim();
   const canSubmit = trimmedName.length > 0;

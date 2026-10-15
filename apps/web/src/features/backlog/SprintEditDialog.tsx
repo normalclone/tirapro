@@ -16,7 +16,8 @@ const toIso = (d: string) => `${d}T00:00:00.000Z`;
 /**
  * Sửa sprint (tên, mục tiêu, ngày) + xoá sprint chưa bắt đầu. Sprint đang chạy chỉ sửa được
  * mục tiêu và ngày kết thúc; sprint đã đóng không mở hộp thoại này.
- * Mount mới mỗi lần mở (state khởi tạo từ `sprint`).
+ * Cha gắn `key` theo lần mở (useOpenSession) nên state khởi tạo lại từ `sprint` mỗi lần mở; giữ `sprint` gần nhất
+ * (useRetained) để nội dung còn nguyên suốt hiệu ứng đóng.
  */
 export function SprintEditDialog({
   open,

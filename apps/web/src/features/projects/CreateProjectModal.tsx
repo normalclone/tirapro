@@ -1,10 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ComponentProps } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FolderKanban } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProjectType } from '@tirapro/types';
 import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
@@ -34,7 +35,16 @@ function suggestKey(name: string): string {
   return raw.toUpperCase().slice(0, 10);
 }
 
-export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+/**
+ * Luôn mount (có hiệu ứng đóng); `key` theo lần mở → mỗi lần mở là mount mới nên form khởi tạo lại, không có
+ * khung hình nội dung cũ. Lúc đóng `key` giữ nguyên nên nội dung ở lại suốt hiệu ứng.
+ */
+export function CreateProjectModal(props: ComponentProps<typeof CreateProjectModalInner>) {
+  const session = useOpenSession(props.open);
+  return <CreateProjectModalInner key={session} {...props} />;
+}
+
+function CreateProjectModalInner({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
   const create = useCreateProject();
 
@@ -43,17 +53,6 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
   const [keyTouched, setKeyTouched] = useState(false);
   const [type, setType] = useState<ProjectType>('SCRUM');
   const [description, setDescription] = useState('');
-
-  useEffect(() => {
-    // Reset khi MỞ (không phải khi đóng) để nội dung không trống đi giữa hiệu ứng đóng.
-    if (open) {
-      setName('');
-      setKey('');
-      setKeyTouched(false);
-      setType('SCRUM');
-      setDescription('');
-    }
-  }, [open]);
 
   function onNameChange(value: string) {
     setName(value);
