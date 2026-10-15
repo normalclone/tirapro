@@ -54,6 +54,7 @@ import {
   IssueStoryPointsInline,
   IssueTypeSelect,
   IssuePrioritySelect,
+  IssueSeveritySelect,
 } from '@/features/issue-edit/IssueProperties';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { CommentsSection } from '@/features/issue-edit/CommentsSection';
@@ -565,6 +566,7 @@ export function IssueDetailPage() {
                   <div className="mt-1.5 flex shrink-0 items-center gap-1.5">
                     <IssueTypeSelect issue={issue} />
                     <IssuePrioritySelect issue={issue} />
+                    <IssueSeveritySelect issue={issue} />
                   </div>
                   {editingSummary ? (
                     <Input

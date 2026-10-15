@@ -32,6 +32,7 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
   { field: 'status', label: 'Trạng thái' },
   { field: 'statusCategory', label: 'Nhóm trạng thái' },
   { field: 'priority', label: 'Độ ưu tiên' },
+  { field: 'severity', label: 'Mức nghiêm trọng' },
   { field: 'assignee', label: 'Người được giao' },
   { field: 'reporter', label: 'Người báo cáo' },
   { field: 'sprint', label: 'Sprint' },
@@ -326,6 +327,8 @@ function optionsForField(field: JqlFieldName, sources: Sources): FieldOption[] |
       return sources.fields?.statuses ?? [];
     case 'priority':
       return sources.fields?.priorities ?? [];
+    case 'severity':
+      return sources.fields?.severities ?? [];
     case 'sprint':
       return sources.fields?.sprints ?? [];
     case 'labels':

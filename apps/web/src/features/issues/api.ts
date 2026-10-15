@@ -161,9 +161,22 @@ export function useUpdateIssue(projectId: string | undefined, opts?: { silent?: 
   const qc = useQueryClient();
   return useMutation({
     meta: { silent: opts?.silent },
-    mutationFn: (v: { id: string; key: string; patch: Record<string, unknown>; version: number }) =>
-      api.patch<IssueDto>(`/issues/${v.id}`, { ...v.patch, version: v.version }),
-    onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, scalarIssuePatch(v.patch), v.key),
+    mutationFn: (v: {
+      id: string;
+      key: string;
+      patch: Record<string, unknown>;
+      version: number;
+      /** Phần vá lạc quan cho field quan hệ (vd `severity` tra từ meta) — KHÔNG gửi lên máy chủ; bản thật thay khi trả về. */
+      optimistic?: Partial<IssueDto>;
+    }) => api.patch<IssueDto>(`/issues/${v.id}`, { ...v.patch, version: v.version }),
+    onMutate: (v) =>
+      optimisticPatchIssue(
+        qc,
+        projectId,
+        v.id,
+        { ...scalarIssuePatch(v.patch), ...v.optimistic },
+        v.key,
+      ),
     onSuccess: (res) => {
       // Ghi bản THẬT (version mới) vào cả chi tiết lẫn danh sách → sửa inline liên tiếp không bị 409 OCC.
       writeIssue(qc, projectId, res.data);

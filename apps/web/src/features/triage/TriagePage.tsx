@@ -7,6 +7,7 @@ import type { IssueDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
 import { Avatar, Badge, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { QueryError } from '@/components/ui/QueryError';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
@@ -141,20 +142,7 @@ export function TriagePage() {
                       {issue.summary}
                     </button>
 
-                    {issue.severity && (
-                      <span
-                        className="hidden shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium sm:inline-flex"
-                        style={{
-                          color: issue.severity.color ?? 'var(--ink)',
-                          background: issue.severity.color
-                            ? `color-mix(in oklch, ${issue.severity.color} 14%, transparent)`
-                            : 'var(--surface-2)',
-                        }}
-                        title={`Mức độ: ${issue.severity.name}`}
-                      >
-                        {issue.severity.name}
-                      </span>
-                    )}
+                    <SeverityBadge severity={issue.severity} className="hidden sm:inline-flex" />
 
                     {issue.priority && (
                       <span

@@ -4,6 +4,8 @@ import type { IssueDto } from '@tirapro/types';
 import { DueBadge, dueBorderClass } from '@/components/ui/DueBadge';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { Avatar } from '@/components/ui/primitives';
+import { SeverityBadge } from '@/components/ui/SeverityBadge';
+import { isBugType } from '@/features/issue-edit/severity';
 import { cn } from '@/lib/utils';
 import { useDropEdge } from '@/lib/dropHint';
 import { SORT_TRANSITION } from '@/lib/sortableDnd';
@@ -77,6 +79,9 @@ export function IssueRowBody({
       <span className="shrink-0 font-mono text-xs text-muted" title={`Mã công việc ${issue.key}`}>
         {issue.key}
       </span>
+      {issue.severity && isBugType(issue.type) && (
+        <SeverityBadge severity={issue.severity} compact />
+      )}
       <span className="min-w-0 flex-1 truncate text-sm text-ink">{issue.summary}</span>
       {issue.labels && issue.labels.length > 0 && (
         <span className="hidden shrink-0 items-center gap-1 lg:flex">
