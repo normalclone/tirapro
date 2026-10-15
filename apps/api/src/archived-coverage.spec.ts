@@ -44,7 +44,6 @@ const EXEMPT: Record<string, string> = {
   'roles/roles.service.ts': 'phân quyền',
   'members/members.service.ts': 'phân quyền truy cập (quản trị cần chỉnh khi lưu trữ)',
   'config-catalog/config-catalog.service.ts': 'danh mục cấp workspace',
-  'workflow-admin/workflow-admin.service.ts': 'workflow dùng chung workspace',
   'guides/guides.service.ts': 'hướng dẫn workspace',
   'system-settings/system-settings.service.ts': 'cấu hình hệ thống',
   'integrations/integrations.service.ts': 'hạ tầng tích hợp cấp workspace',
