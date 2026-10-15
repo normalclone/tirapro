@@ -30,6 +30,7 @@ import {
 import {
   findMissingMapping,
   formatMissing,
+  formatUnmatchedAssignees,
   hasMissing,
   inferPriorityRank,
   inferStatusCategory,
@@ -38,6 +39,7 @@ import {
   layerIssues,
   ownValue,
   resolveLinks,
+  summarizeUnmatchedAssignees,
   type IssueLinks,
 } from './jira-mapping';
 
@@ -317,9 +319,16 @@ export class JiraImportService implements OnApplicationBootstrap {
         sprints: input.options.importSprints ? plan.sprintNames.length : 0,
         labels: plan.labels,
         comments: input.options.importComments ? plan.comments : 0,
-        warnings: [...plan.links.entries()].flatMap(([r, l]) =>
-          l.warnings.map((w) => this.line(r, w, true)),
-        ),
+        warnings: [
+          ...[...plan.links.entries()].flatMap(([r, l]) =>
+            l.warnings.map((w) => this.line(r, w, true)),
+          ),
+          ...this.unmatchedWarning(
+            parsed.issues.filter(
+              (r) => r.assignee && !(ownValue(input.mapping.users, r.assignee) || undefined),
+            ),
+          ),
+        ],
       };
     }
 
@@ -446,6 +455,8 @@ export class JiraImportService implements OnApplicationBootstrap {
       const rowByNo = new Map(parsed.issues.map((r) => [r.row, r]));
       const errorLines: string[] = [];
       const counters = { created: 0, failed: 0, labels: 0, comments: 0, warnings: 0 };
+      // Người phụ trách Jira không khớp thành viên nào: việc vẫn tạo (đếm theo việc ĐÃ tạo được), chỉ bỏ gán.
+      const unmatchedCreated = new Map<string, number>();
       let processed = 0;
       const total = parsed.issues.length;
       const hooks = {
@@ -506,7 +517,11 @@ export class JiraImportService implements OnApplicationBootstrap {
               options: opts,
               parsed,
               userFor,
-              onCreated: (dto) => idByRow.set(row, dto.id),
+              onCreated: (dto) => {
+                idByRow.set(row, dto.id);
+                if (row.assignee && !userFor(row.assignee))
+                  unmatchedCreated.set(row.assignee, (unmatchedCreated.get(row.assignee) ?? 0) + 1);
+              },
             }),
           );
         }
@@ -527,6 +542,13 @@ export class JiraImportService implements OnApplicationBootstrap {
         }
       }
 
+      // 5b. Báo người phụ trách bị bỏ gán (một dòng gộp, không mỗi việc một dòng).
+      const unmatched = summarizeUnmatchedAssignees(unmatchedCreated);
+      if (unmatched) {
+        errorLines.push(`[Cảnh báo]: ${formatUnmatchedAssignees(unmatched)}`);
+        counters.warnings++;
+      }
+
       // 6. Tổng kết.
       const status: 'COMPLETED' | 'FAILED' =
         counters.created === 0 && total > 0 ? 'FAILED' : 'COMPLETED';
@@ -543,6 +565,9 @@ export class JiraImportService implements OnApplicationBootstrap {
             created: counters.created,
             failed: counters.failed,
             warnings: counters.warnings,
+            skippedAssignees: unmatched?.skipped ?? 0,
+            unmatchedAssignees: unmatched?.listed ?? [],
+            unmatchedAssigneesMore: unmatched?.more ?? 0,
             epics: plan.epics,
             subtasks: plan.subtasks,
             sprints: opts.importSprints ? plan.sprintNames.length : 0,
@@ -1071,6 +1096,14 @@ export class JiraImportService implements OnApplicationBootstrap {
   }
 
   /** "Dòng 5 (ABC-12): lý do" / "Dòng 5 (ABC-12) [Cảnh báo]: lý do". */
+  /** Dòng cảnh báo gộp cho các dòng có người phụ trách không khớp (rỗng nếu không có). */
+  private unmatchedWarning(rows: JiraIssueRow[]): string[] {
+    const counts = new Map<string, number>();
+    for (const r of rows) counts.set(r.assignee, (counts.get(r.assignee) ?? 0) + 1);
+    const u = summarizeUnmatchedAssignees(counts);
+    return u ? [formatUnmatchedAssignees(u)] : [];
+  }
+
   private line(row: JiraIssueRow, message: string, warning: boolean): string {
     return `Dòng ${row.row} (${row.key || 'không có mã'})${warning ? ' [Cảnh báo]' : ''}: ${message}`;
   }

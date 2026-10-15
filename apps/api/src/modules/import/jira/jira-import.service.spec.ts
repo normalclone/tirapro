@@ -297,6 +297,8 @@ describe('JiraImportService.run — kiểm tra mapping', () => {
       }),
     );
     expect(res).toMatchObject({ dryRun: true, total: 20, epics: 2, subtasks: 6, sprints: 3 });
+    // P5: dry-run báo trước người phụ trách sẽ bị bỏ gán.
+    expect((res as { warnings: string[] }).warnings.join('\n')).toContain('Lê Minh Cường (4 việc)');
     expect(prisma.importJob.create).not.toHaveBeenCalled();
     expect(projects.create).not.toHaveBeenCalled();
     expect(prisma.sprint.create).not.toHaveBeenCalled();
@@ -400,6 +402,43 @@ describe('JiraImportService.run — chạy thật', () => {
       epics: 2,
       subtasks: 6,
       sprints: 3,
+    });
+    // Duy nhất cảnh báo gộp "người phụ trách không khớp" (4 việc của Lê Minh Cường, được để trống ở mapping).
+    expect(done.errorLog).toMatch(/^\[Cảnh báo\]: 4 việc/);
+  });
+
+  it('P5: người phụ trách không khớp thành viên → đếm skippedAssignees + một cảnh báo gộp trong báo cáo (không còn "Cảnh báo 0" im lặng)', async () => {
+    await runAndWait();
+    const done = lastUpdate();
+    expect(done.result).toMatchObject({
+      warnings: 1,
+      skippedAssignees: 4,
+      unmatchedAssignees: [{ name: 'Lê Minh Cường', count: 4 }],
+      unmatchedAssigneesMore: 0,
+    });
+    expect(done.errorLog).toContain('Lê Minh Cường (4 việc)');
+    expect(done.errorLog).toContain('KHÔNG có người phụ trách');
+  });
+
+  it('P5: chỉ đếm việc ĐÃ tạo được — dòng lỗi không tính vào skippedAssignees', async () => {
+    const c = setup({ failSummaries: ['Cấu hình CI/CD'] }); // một việc của Lê Minh Cường bị lỗi
+    await runAndWait({}, c);
+    expect(lastUpdate(c).result).toMatchObject({
+      skippedAssignees: 3,
+      unmatchedAssignees: [{ name: 'Lê Minh Cường', count: 3 }],
+    });
+  });
+
+  it('P5: mọi người phụ trách đều khớp → skippedAssignees 0, không cảnh báo, errorLog rỗng', async () => {
+    await runAndWait({
+      mapping: { ...fullMapping(), users: { ...fullMapping().users, 'Lê Minh Cường': 'u-binh' } },
+    });
+    const done = lastUpdate();
+    expect(done.result).toMatchObject({
+      warnings: 0,
+      skippedAssignees: 0,
+      unmatchedAssignees: [],
+      unmatchedAssigneesMore: 0,
     });
     expect(done.errorLog).toBeNull();
   });

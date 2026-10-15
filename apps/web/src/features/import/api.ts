@@ -7,6 +7,7 @@ import type {
   JiraImportTargets,
 } from '@tirapro/types';
 import { api } from '@/lib/api';
+import type { ImportResult } from '@/features/project-config/api';
 
 /** Khoá cache riêng của tính năng nhập dữ liệu (không dùng chung với module khác). */
 export const importKeys = {
@@ -64,8 +65,12 @@ export function useImportJob(jobId: string | null) {
   });
 }
 
-/** Kết quả tổng kết do server ghi vào `ImportJob.result`. */
-export interface JiraImportSummary {
+/** Kết quả tổng kết do server ghi vào `ImportJob.result`. `skippedAssignees` cùng nghĩa với import JSON (`ImportResult`). */
+export interface JiraImportSummary extends Pick<ImportResult, 'skippedAssignees'> {
+  /** Tên/email Jira không khớp thành viên nào (≤ 20, nhiều việc nhất trước) — việc vẫn được nhập, chỉ bỏ gán. */
+  unmatchedAssignees?: Array<{ name: string; count: number }>;
+  /** Số tên khác không được liệt kê (vượt giới hạn). */
+  unmatchedAssigneesMore?: number;
   projectKey?: string;
   created?: number;
   failed?: number;

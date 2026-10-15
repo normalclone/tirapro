@@ -163,3 +163,41 @@ export function layerIssues(
   for (const r of subs) (layers[base + depth(r)] ??= []).push(r);
   return layers.filter((l): l is JiraIssueRow[] => Array.isArray(l) && l.length > 0);
 }
+
+/** Tối đa bao nhiêu người phụ trách không khớp được liệt kê trong báo cáo import (phần còn lại gộp "và N người khác"). */
+export const MAX_UNMATCHED_LISTED = 20;
+
+export interface UnmatchedAssignees {
+  /** Số việc không có người phụ trách vì tên/email Jira không khớp thành viên nào. */
+  skipped: number;
+  /** Tên/email Jira không khớp, nhiều việc nhất trước (≤ `MAX_UNMATCHED_LISTED`). */
+  listed: Array<{ name: string; count: number }>;
+  /** Số tên khác nhau không được liệt kê vì vượt giới hạn. */
+  more: number;
+}
+
+/**
+ * Gom người phụ trách Jira không khớp thành viên nào (`counts`: tên/email → số việc). Rỗng → null.
+ * Việc đã nhập bình thường nhưng bị bỏ gán — cần báo lại thay vì im lặng.
+ */
+export function summarizeUnmatchedAssignees(
+  counts: ReadonlyMap<string, number>,
+  max = MAX_UNMATCHED_LISTED,
+): UnmatchedAssignees | null {
+  if (counts.size === 0) return null;
+  const sorted = [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  return {
+    skipped: sorted.reduce((s, x) => s + x.count, 0),
+    listed: sorted.slice(0, max),
+    more: Math.max(0, sorted.length - max),
+  };
+}
+
+/** Câu cảnh báo cho báo cáo import (một dòng). */
+export function formatUnmatchedAssignees(u: UnmatchedAssignees): string {
+  const names = u.listed.map((x) => `${x.name} (${x.count} việc)`).join(', ');
+  const more = u.more > 0 ? ` và ${u.more} người khác` : '';
+  return `${u.skipped} việc được nhập nhưng KHÔNG có người phụ trách vì người phụ trách trong Jira không khớp thành viên nào: ${names}${more}. Hãy ghép họ với thành viên (hoặc mời họ vào không gian làm việc) rồi gán lại.`;
+}

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { unmatchedAssigneesNotice } from './jiraSummary';
 import {
   useImportJob,
   useJiraAnalyze,
@@ -667,6 +668,7 @@ function ProgressStep({
   }
   const running = job.status === 'RUNNING' || job.status === 'PENDING';
   const summary = (job.result ?? {}) as JiraImportSummary;
+  const assigneeNotice = unmatchedAssigneesNotice(summary);
 
   function downloadLog() {
     if (!job?.errorLog) return;
@@ -722,6 +724,7 @@ function ProgressStep({
               ['Nhãn gắn', summary.labels],
               ['Bình luận', summary.comments],
               ['Cảnh báo', summary.warnings],
+              ['Chưa có người phụ trách', summary.skippedAssignees],
               ['Lỗi', summary.failed],
             ].map(([label, n]) => (
               <div
@@ -733,6 +736,15 @@ function ProgressStep({
               </div>
             ))}
           </dl>
+          {assigneeNotice && (
+            <p
+              role="status"
+              className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-ink"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              <span>{assigneeNotice}</span>
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             {job.errorLog && (
               <Button variant="secondary" size="sm" onClick={downloadLog}>
