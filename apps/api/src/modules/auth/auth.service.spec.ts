@@ -140,6 +140,12 @@ describe('AuthService.refresh — tài khoản bị khoá và hoạt động g�
     expect(prisma.user.update).toHaveBeenCalled();
   });
 
+  it('user trả về cho web có canCreateWorkspace (màn "chưa thuộc không gian làm việc nào" cần)', async () => {
+    const { service } = makeSession({ canCreateWorkspace: true });
+    const out = await service.refresh('fam.raw', {}, null);
+    expect(out.user.canCreateWorkspace).toBe(true);
+  });
+
   it('lastSeenAt mới (dưới 10 phút) -> không ghi DB', async () => {
     const { service, prisma } = makeSession({ lastSeenAt: new Date(Date.now() - 60_000) });
     await service.refresh('fam.raw', {}, null);

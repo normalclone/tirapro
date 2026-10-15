@@ -1,14 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { AUDIT_ACTIONS } from '@tirapro/types';
+import { AUDIT_ACTIONS, SYSTEM_ROLES } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { offsetPage } from '../../common/dto/page-result';
 import { generateTempPassword } from '../../common/password';
 import { AuditService } from '../audit/audit.service';
+import { MembersService } from '../members/members.service';
 import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
-import type { CreateUserInput, ListUsersQuery, UpdateUserInput } from './admin.schemas';
+import type {
+  AddToWorkspaceInput,
+  CreateUserInput,
+  ListUsersQuery,
+  UpdateUserInput,
+} from './admin.schemas';
 
 const USER_SELECT = {
   id: true,
@@ -42,6 +48,7 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly members: MembersService,
   ) {}
 
   private toDto(u: Row) {
@@ -287,5 +294,59 @@ export class AdminService {
       meta: { revoked },
     });
     return { revoked };
+  }
+
+  /**
+   * Thêm một tài khoản có sẵn vào không gian làm việc. Bỏ trống vai trò → "Workspace Member". Người đã là thành viên
+   * bị từ chối (tránh âm thầm ghi đè vai trò đang có — muốn đổi vai trò dùng trang Thành viên).
+   */
+  async addToWorkspace(actorId: string | undefined, userId: string, input: AddToWorkspaceInput) {
+    const [user, ws] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, displayName: true },
+      }),
+      this.prisma.workspace.findFirst({
+        where: { id: input.workspaceId, deletedAt: null },
+        select: { id: true, name: true },
+      }),
+    ]);
+    if (!user) throw new NotFoundAppException('Người dùng');
+    if (!ws) throw new NotFoundAppException('Không gian làm việc');
+    const existing = await this.prisma.workspaceMembership.findUnique({
+      where: { workspaceId_userId: { workspaceId: ws.id, userId } },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new BusinessRuleException(
+        `${user.displayName} đã thuộc không gian làm việc ${ws.name} — đổi vai trò ở trang Thành viên của nơi đó`,
+      );
+    }
+    let roleIds = input.roleIds ?? [];
+    if (roleIds.length === 0) {
+      const memberRole = await this.prisma.role.findFirst({
+        where: {
+          name: SYSTEM_ROLES.WORKSPACE_MEMBER,
+          scope: 'WORKSPACE',
+          workspaceId: null,
+          isSystem: true,
+        },
+        select: { id: true },
+      });
+      if (!memberRole) throw new NotFoundAppException('Vai trò Thành viên');
+      roleIds = [memberRole.id];
+    }
+    const member = await this.members.addWorkspace(ws.id, userId, roleIds, actorId);
+    // Nhật ký toàn hệ thống (workspaceId null); nhật ký của workspace đích đã có `member.added` từ MembersService.
+    await this.audit.record({
+      actorId,
+      workspaceId: null,
+      action: AUDIT_ACTIONS.ACCOUNT_WORKSPACE_ADDED,
+      entityType: 'user',
+      entityId: userId,
+      summary: `Thêm ${user.displayName} (${user.email}) vào không gian làm việc ${ws.name}`,
+      meta: { workspaceId: ws.id, roleIds },
+    });
+    return member;
   }
 }

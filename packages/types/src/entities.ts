@@ -37,6 +37,8 @@ export interface UserDto {
   locale: string;
   status: UserStatus;
   isSystemAdmin: boolean;
+  /** Có quyền lập không gian làm việc mới (admin hệ thống cấp). Chỉ có trong `/auth/me`, `/auth/login`… của chính mình. */
+  canCreateWorkspace?: boolean;
   lastSeenAt: ISODate | null;
   createdAt: ISODate;
 }

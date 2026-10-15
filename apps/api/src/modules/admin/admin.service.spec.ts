@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { AdminService } from './admin.service';
 
 /** `expect.any(Date)` có kiểu `any` → ép kiểu một lần để không dính no-unsafe-assignment. */
 const anyDate = expect.any(Date) as unknown as Date;
 const anyString = expect.any(String) as unknown as string;
 /** `expect.objectContaining` lồng trong object khác — cùng lý do ép kiểu. */
-const contain = <T extends object>(o: T) => expect.objectContaining(o) as unknown as T;
+const contain = (o: Record<string, unknown>) =>
+  expect.objectContaining(o) as unknown as Record<string, unknown>;
 
 function setup(status = 'ACTIVE') {
   const updated = {
@@ -42,7 +44,10 @@ function setup(status = 'ACTIVE') {
     $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(prisma))),
   };
   const audit = { record: vi.fn() };
-  return { service: new AdminService(prisma as never, audit as never), audit };
+  return {
+    service: new AdminService(prisma as never, audit as never, {} as never),
+    audit,
+  };
 }
 
 describe('AdminService.update — nhật ký khoá/mở khoá', () => {
@@ -111,10 +116,20 @@ function make(
       count: vi.fn(() => Promise.resolve(2)),
       findMany: vi.fn(() => Promise.resolve([])),
     },
+    workspace: { findFirst: vi.fn(() => Promise.resolve({ id: 'w2', name: 'Công ty Demo' })) },
+    workspaceMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
+    role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-member' })) },
     $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
   };
   const audit = { record: vi.fn() };
-  return { svc: new AdminService(prisma as never, audit as never), tx, prisma, audit };
+  const members = { addWorkspace: vi.fn(() => Promise.resolve({ membershipId: 'm1' })) };
+  return {
+    svc: new AdminService(prisma as never, audit as never, members as never),
+    tx,
+    prisma,
+    audit,
+    members,
+  };
 }
 
 describe('AdminService — vòng đời tài khoản', () => {
@@ -269,5 +284,54 @@ describe('AdminService — vòng đời tài khoản', () => {
     expect(JSON.stringify(where)).toContain('Bình');
     expect(JSON.stringify(where)).toContain('insensitive');
     expect(where.AND).toContainEqual({ status: 'DEACTIVATED' });
+  });
+});
+
+describe('AdminService.addToWorkspace — gán tài khoản vào không gian làm việc', () => {
+  it('không chỉ định vai trò -> dùng vai trò hệ thống Workspace Member, ghi account.workspace_added', async () => {
+    const { svc, members, audit, prisma } = make();
+    await svc.addToWorkspace('admin1', 'u2', { workspaceId: 'w2' });
+    expect(members.addWorkspace).toHaveBeenCalledWith('w2', 'u2', ['r-member'], 'admin1');
+    expect(prisma.role.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: contain({ name: 'Workspace Member', isSystem: true }),
+      }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'account.workspace_added',
+        workspaceId: null,
+        actorId: 'admin1',
+        entityId: 'u2',
+      }),
+    );
+  });
+
+  it('có chỉ định vai trò -> giữ nguyên danh sách, không tra vai trò mặc định', async () => {
+    const { svc, members, prisma } = make();
+    await svc.addToWorkspace('admin1', 'u2', { workspaceId: 'w2', roleIds: ['r1', 'r2'] });
+    expect(members.addWorkspace).toHaveBeenCalledWith('w2', 'u2', ['r1', 'r2'], 'admin1');
+    expect(prisma.role.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('không gian làm việc không tồn tại / đã lưu trữ -> NotFoundAppException', async () => {
+    const { svc, prisma, members } = make();
+    prisma.workspace.findFirst.mockResolvedValue(null as never);
+    await expect(svc.addToWorkspace('admin1', 'u2', { workspaceId: 'zz' })).rejects.toBeInstanceOf(
+      NotFoundAppException,
+    );
+    expect(prisma.workspace.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'zz', deletedAt: null } }),
+    );
+    expect(members.addWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('đã là thành viên -> từ chối, không ghi đè vai trò', async () => {
+    const { svc, prisma, members } = make();
+    prisma.workspaceMembership.findUnique.mockResolvedValue({ id: 'm9' } as never);
+    await expect(svc.addToWorkspace('admin1', 'u2', { workspaceId: 'w2' })).rejects.toThrow(
+      /đã thuộc/,
+    );
+    expect(members.addWorkspace).not.toHaveBeenCalled();
   });
 });

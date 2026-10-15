@@ -1,10 +1,12 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/stores/auth';
 import { AppShell } from '@/components/layout/AppShell';
 import { RouteError } from '@/components/layout/RouteError';
 // Vào ngay từ đầu (unauth first paint + shell) → giữ eager, không tách chunk.
 import { LoginPage } from '@/features/auth/LoginPage';
+import { NoWorkspaceScreen } from '@/features/auth/NoWorkspaceScreen';
+import { needsWorkspaceScreen } from '@/features/auth/workspaceGate';
 import { SignupPage } from '@/features/auth/SignupPage';
 import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
@@ -176,6 +178,9 @@ function PageLoading() {
 
 function RequireAuth() {
   const status = useAuth((s) => s.status);
+  const user = useAuth((s) => s.user);
+  const workspaceId = useAuth((s) => s.workspaceId);
+  const { pathname } = useLocation();
   if (status === 'loading') {
     return (
       <div className="grid h-full place-items-center text-sm text-muted">
@@ -184,6 +189,10 @@ function RequireAuth() {
     );
   }
   if (status === 'guest') return <Navigate to="/login" replace />;
+  // Chưa thuộc không gian làm việc nào: màn riêng thay cho khung ứng dụng (xem workspaceGate).
+  if (user && needsWorkspaceScreen({ workspaceId, isSystemAdmin: user.isSystemAdmin }, pathname)) {
+    return <NoWorkspaceScreen />;
+  }
   return (
     <AppShell>
       <Suspense fallback={<PageLoading />}>

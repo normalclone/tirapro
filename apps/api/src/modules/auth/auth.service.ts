@@ -283,6 +283,7 @@ export class AuthService {
     locale: string;
     status: string;
     isSystemAdmin: boolean;
+    canCreateWorkspace: boolean;
     lastSeenAt: Date | null;
     createdAt: Date;
   }) {
@@ -295,6 +296,7 @@ export class AuthService {
       locale: u.locale,
       status: u.status,
       isSystemAdmin: u.isSystemAdmin,
+      canCreateWorkspace: u.canCreateWorkspace,
       lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
       createdAt: u.createdAt.toISOString(),
     };

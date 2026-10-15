@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { MemberDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -78,6 +79,24 @@ export function useRevokeAdminSessions() {
   return useMutation({
     mutationFn: async (id: string) =>
       (await api.post<{ revoked: number }>(`/admin/users/${id}/revoke-sessions`)).data,
+  });
+}
+
+/** Thêm tài khoản vào một không gian làm việc (bỏ trống vai trò → "Thành viên"). */
+export function useAddAdminUserToWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { userId: string; workspaceId: string; roleIds?: string[] }) =>
+      (
+        await api.post<MemberDto>(`/admin/users/${v.userId}/workspaces`, {
+          workspaceId: v.workspaceId,
+          roleIds: v.roleIds,
+        })
+      ).data,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.admin.users });
+      void qc.invalidateQueries({ queryKey: keys.admin.workspaces });
+    },
   });
 }
 

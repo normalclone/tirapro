@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Check, Copy, KeyRound, LogOut, MoreHorizontal, UserCheck, UserX } from 'lucide-react';
+import {
+  Building2,
+  Check,
+  Copy,
+  KeyRound,
+  LogOut,
+  MoreHorizontal,
+  UserCheck,
+  UserX,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
@@ -8,6 +17,7 @@ import { Input } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
 import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
+import { AddToWorkspaceDialog } from './AddToWorkspaceDialog';
 import {
   useResetAdminPassword,
   useRevokeAdminSessions,
@@ -28,6 +38,9 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
     open: false,
     password: '',
   });
+  // Hộp thoại chỉ dựng từ lần mở đầu tiên (mỗi dòng đều có menu này — không tải danh sách workspace cho mọi dòng).
+  const [addOpen, setAddOpen] = useState(false);
+  const [addMounted, setAddMounted] = useState(false);
   const clearTimer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => () => clearTimeout(clearTimer.current), []);
   const resetMutation = reset.reset;
@@ -123,6 +136,15 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
             sideOffset={4}
             className="z-dropdown w-64 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
           >
+            <DropdownMenu.Item
+              className={ITEM}
+              onSelect={() => {
+                setAddMounted(true);
+                setAddOpen(true);
+              }}
+            >
+              <Building2 className="h-4 w-4 shrink-0 text-muted" /> Thêm vào không gian làm việc…
+            </DropdownMenu.Item>
             <DropdownMenu.Item className={ITEM} onSelect={() => void onReset()}>
               <KeyRound className="h-4 w-4 shrink-0 text-muted" /> Đặt lại mật khẩu
             </DropdownMenu.Item>
@@ -146,6 +168,9 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
 
+      {addMounted && (
+        <AddToWorkspaceDialog user={user} open={addOpen} onClose={() => setAddOpen(false)} />
+      )}
       <TempPasswordDialog
         open={temp.open}
         name={user.displayName}

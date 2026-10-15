@@ -6,9 +6,11 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AdminService } from './admin.service';
 import {
+  addToWorkspaceSchema,
   createUserSchema,
   listUsersQuerySchema,
   updateUserSchema,
+  type AddToWorkspaceInput,
   type CreateUserInput,
   type ListUsersQuery,
   type UpdateUserInput,
@@ -70,5 +72,16 @@ export class AdminController {
   async revokeSessions(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     this.assertSysAdmin(user);
     return this.admin.revokeSessions(user.id, id);
+  }
+
+  /** Thêm tài khoản vào một không gian làm việc (vd tài khoản mồ côi chưa thuộc nơi nào). */
+  @Post(':id/workspaces')
+  async addToWorkspace(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(addToWorkspaceSchema)) dto: AddToWorkspaceInput,
+  ) {
+    this.assertSysAdmin(user);
+    return this.admin.addToWorkspace(user.id, id, dto);
   }
 }
