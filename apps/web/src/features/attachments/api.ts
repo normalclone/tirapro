@@ -26,11 +26,11 @@ export function useAttachments(issueId: string | undefined) {
   });
 }
 
-/** Tải 1 tệp lên issue (multipart/form-data, field `file`). Dùng lại được (vd tạo issue rồi upload). */
-export async function uploadAttachmentFile(issueId: string, file: File): Promise<Attachment> {
+/** POST một tệp (multipart/form-data, field `file`) tới `path` của API; lỗi → Error mang thông điệp của server. */
+async function postFile(path: string, file: File): Promise<Attachment> {
   const formData = new FormData();
   formData.append('file', file);
-  const res = await fetch(`${BASE_URL}/issues/${issueId}/attachments`, {
+  const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${getAccessToken()}` },
     credentials: 'include',
@@ -44,6 +44,19 @@ export async function uploadAttachmentFile(issueId: string, file: File): Promise
     throw new Error(message);
   }
   return json as Attachment;
+}
+
+/** Tải 1 tệp lên issue (cần quyền sửa). Dùng lại được (vd tạo issue rồi upload). */
+export function uploadAttachmentFile(issueId: string, file: File): Promise<Attachment> {
+  return postFile(`/issues/${issueId}/attachments`, file);
+}
+
+/**
+ * Tải 1 tệp minh hoạ cho BÌNH LUẬN (vd người báo lại bug cũ) — chỉ cần quyền bình luận, không cần quyền sửa issue.
+ * Tệp gắn vào issue; hiện trong bình luận qua `![](attachment:ID)`.
+ */
+export function uploadCommentAttachmentFile(issueId: string, file: File): Promise<Attachment> {
+  return postFile(`/issues/${issueId}/comment-attachments`, file);
 }
 
 /** Tải lên tệp (multipart/form-data, field `file`). Không tự set Content-Type. */

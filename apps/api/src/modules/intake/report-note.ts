@@ -1,6 +1,6 @@
 import { formatEnvironment, type EnvironmentInput } from '@tirapro/shared';
 
-export interface ReportNoteAttachment {
+interface ReportNoteAttachment {
   id: string;
   fileName: string;
   mimeType: string;

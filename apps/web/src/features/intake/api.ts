@@ -7,14 +7,23 @@ import {
 } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import type { StatusCategory } from '@tirapro/types';
+import type { ReportPayload } from './reportForm';
 
-/** Gợi ý issue có thể trùng với tiêu đề đang gõ. */
+/** Gợi ý issue có thể trùng với tiêu đề đang gõ (kể cả bug đã đóng — "bug cũ tái diễn"). */
 export interface DuplicateSuggestion {
   id: string;
   key: string;
   summary: string;
   occurrenceCount: number;
-  triageState: string;
+  triageState: string | null;
+  status: { name: string; category: StatusCategory };
+  closed: boolean;
+  /** Cách giải quyết (khi đã đóng). */
+  resolution: string | null;
+  severity: { id: string; name: string; color: string | null } | null;
+  reporterName: string | null;
+  createdAt: string;
 }
 
 /** Một mục hoạt động trong feed của dự án. */
@@ -43,20 +52,20 @@ interface ProjectActivityResponse {
   pageInfo: { hasNextPage: boolean; endCursor: string | null };
 }
 
-/** Kết quả gửi báo lỗi: được gộp vào issue trùng, hoặc tạo issue mới. */
-export interface ReportIssueResult {
-  deduped: boolean;
-  issueId: string;
-  key?: string;
-  occurrenceCount?: number;
-}
+/** Kết quả gửi báo lỗi: tạo issue mới, hoặc nội dung được thêm thành bình luận vào bug đã có. */
+export type ReportIssueResult =
+  | { deduped: false; issueId: string; key: string }
+  | {
+      deduped: true;
+      issueId: string;
+      key: string;
+      occurrenceCount: number;
+      commentId: string;
+      /** `chosen` = người dùng chọn bug cũ; `auto` = server thấy tiêu đề giống hệt. */
+      merged: 'chosen' | 'auto';
+    };
 
-interface ReportIssueInput {
-  projectId: string;
-  summary: string;
-  description?: string;
-  typeId?: string;
-}
+export type ReportIssueInput = ReportPayload & { attachmentIds?: string[] };
 
 /**
  * Kiểm tra trùng lặp theo tiêu đề. Chỉ chạy khi đã gõ ≥4 ký tự.
@@ -79,15 +88,19 @@ export function useDuplicateCheck(projectId: string | undefined, summary: string
   });
 }
 
-/** Gửi báo lỗi: server tự quyết định gộp (dedupe) hay tạo mới. */
-export function useReportIssue(projectId: string) {
+/** Gửi báo lỗi / yêu cầu: tạo mới, hoặc thêm ghi chú vào bug đã có (nội dung của người báo luôn được giữ). */
+export function useReportIssue() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: ReportIssueInput) =>
       (await api.post<ReportIssueResult>('/intake/report', input)).data,
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
+    onSuccess: (res, input) => {
+      void qc.invalidateQueries({ queryKey: keys.issues.byProject(input.projectId) });
       void qc.invalidateQueries({ queryKey: keys.triage.all });
+      if (res.deduped) {
+        void qc.invalidateQueries({ queryKey: keys.issues.comments(res.issueId) });
+        void qc.invalidateQueries({ queryKey: keys.issues.attachments(res.issueId) });
+      }
     },
   });
 }

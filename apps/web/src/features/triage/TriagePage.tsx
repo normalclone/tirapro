@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Check, Clock, Inbox, Repeat2, X, Bug } from 'lucide-react';
-import { ReportIssueModal } from '@/features/intake/ReportIssueModal';
+import { useReportIssueModal } from '@/stores/reportIssue';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
@@ -45,7 +45,6 @@ export function TriagePage() {
   // Panel mở → cột danh sách hẹp: bỏ chip phụ, nút chỉ còn biểu tượng (tên nút vẫn có cho trình đọc màn hình + tooltip).
   const compact = !!peek.peekKey;
   const [snoozingId, setSnoozingId] = useState<string | null>(null);
-  const [reportOpen, setReportOpen] = useState(false);
 
   const inboxCount = count?.count ?? issues?.length ?? 0;
 
@@ -92,7 +91,9 @@ export function TriagePage() {
           <Button
             size="sm"
             className="ml-auto"
-            onClick={() => setReportOpen(true)}
+            onClick={() =>
+              useReportIssueModal.getState().openReport({ projectKey: key, kind: 'BUG' })
+            }
             disabled={!projectId}
           >
             <Bug className="h-4 w-4" />
@@ -263,15 +264,6 @@ export function TriagePage() {
             </div>
           )}
         </div>
-
-        {projectId && (
-          <ReportIssueModal
-            projectKey={key}
-            projectId={projectId}
-            open={reportOpen}
-            onClose={() => setReportOpen(false)}
-          />
-        )}
       </div>
     </PeekShell>
   );

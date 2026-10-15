@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { environmentSchema } from '@tirapro/shared';
 
 /** Loại yêu cầu của form "Báo lỗi / Gửi yêu cầu": Bug, Yêu cầu tính năng, Câu hỏi. */
-export const REQUEST_KINDS = ['BUG', 'FEATURE', 'QUESTION'] as const;
+const REQUEST_KINDS = ['BUG', 'FEATURE', 'QUESTION'] as const;
 export type RequestKind = (typeof REQUEST_KINDS)[number];
 
 /** Body cho POST /intake/report — báo cáo một issue/bug hoặc gửi yêu cầu. */

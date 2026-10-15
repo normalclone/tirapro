@@ -1,62 +1,290 @@
-import { useState, type FormEvent, type ComponentProps } from 'react';
-import { AlertTriangle, Bug } from 'lucide-react';
-import { toast } from 'sonner';
-import { apiErrorMessage } from '@/lib/api';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Bug, ChevronRight } from 'lucide-react';
+import type { EnvironmentInput } from '@tirapro/shared';
+import type { ProjectDto } from '@tirapro/types';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
-import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
-import { useDuplicateCheck, useReportIssue, type DuplicateSuggestion } from './api';
+import { SearchSelect } from '@/components/ui/SearchSelect';
+import { useOpenSession } from '@/lib/useOpenSession';
+import { useCreateTarget } from '@/lib/useCreateTarget';
+import { useProjectMeta } from '@/features/ai/api';
+import { useProjects } from '@/features/projects/api';
+import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
+import { toDraft } from '@/features/issue-edit/environment';
+import { useReportIssueModal, type ReportIssuePreset } from '@/stores/reportIssue';
+import { useDuplicateCheck, type DuplicateSuggestion } from './api';
+import { FIELD_LABEL, ReportDetails } from './ReportDetails';
+import {
+  clearDraft,
+  loadDetailsOpen,
+  saveDetailsOpen,
+  useDraftAutosave,
+  useReportInitial,
+} from './useReportDraft';
+import { useReportSubmit } from './useReportSubmit';
+import {
+  isReportTemplate,
+  REPORT_KINDS,
+  reportDialogTitle,
+  reportKindLabel,
+  reportTemplate,
+  type RequestKind,
+} from './reportForm';
 
 /**
- * Luôn mount (có hiệu ứng đóng); `key` theo lần mở → mỗi lần mở là mount mới nên form khởi tạo lại, không có
- * khung hình nội dung cũ. Lúc đóng `key` giữ nguyên nên nội dung ở lại suốt hiệu ứng.
+ * Form "Báo lỗi / Gửi yêu cầu" DUY NHẤT — gắn một lần ở khung ứng dụng, mở bằng `openReportIssue()` /
+ * `useReportIssueModal.openReport()`. `key` theo lần mở → mỗi lần mở là mount mới (form khởi tạo lại), còn lúc
+ * đóng thì nội dung ở lại suốt hiệu ứng đóng.
  */
-export function ReportIssueModal(props: ComponentProps<typeof ReportIssueModalInner>) {
-  const session = useOpenSession(props.open);
-  return <ReportIssueModalInner key={session} {...props} />;
+export function ReportIssueModal() {
+  const open = useReportIssueModal((s) => s.open);
+  const preset = useReportIssueModal((s) => s.preset);
+  const close = useReportIssueModal((s) => s.close);
+  const session = useOpenSession(open);
+  return <ReportIssueForm key={session} open={open} preset={preset} onClose={close} />;
 }
 
-function ReportIssueModalInner({
-  projectKey: _projectKey,
-  projectId,
+/** Ba nút phân đoạn chọn loại yêu cầu. */
+function KindPicker({ kind, onChange }: { kind: RequestKind; onChange: (k: RequestKind) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Loại yêu cầu" className="flex gap-1.5">
+      {REPORT_KINDS.map((k) => (
+        <button
+          key={k}
+          type="button"
+          role="radio"
+          aria-checked={kind === k}
+          onClick={() => onChange(k)}
+          className={cn(
+            'h-8 flex-1 rounded-md border px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+            kind === k
+              ? 'border-primary bg-primary-subtle font-medium text-primary'
+              : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
+          )}
+        >
+          {reportKindLabel(k)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Dự án đích: một dòng "Gửi vào X · Đổi"; chưa có dự án (hoặc bấm Đổi) thì ô chọn — không tự đoán dự án lạ. */
+function ProjectField({
+  projects,
+  selected,
+  picking,
+  onPick,
+  onChange,
+}: {
+  projects: ProjectDto[];
+  selected: ProjectDto | undefined;
+  picking: boolean;
+  onPick: () => void;
+  onChange: (key: string) => void;
+}) {
+  if (selected && !picking)
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-muted">
+        Gửi vào <span className="font-medium text-ink">{selected.name}</span>
+        <button
+          type="button"
+          onClick={onPick}
+          className="rounded px-1 text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        >
+          Đổi
+        </button>
+      </p>
+    );
+  return (
+    <div>
+      <label htmlFor="ri-project" className={FIELD_LABEL}>
+        Dự án
+      </label>
+      <SearchSelect
+        id="ri-project"
+        value={selected?.key ?? ''}
+        onChange={onChange}
+        placeholder="Chọn dự án nhận báo cáo…"
+        searchPlaceholder="Tìm dự án…"
+        options={projects.map((p) => ({ value: p.key, label: p.name, hint: p.key }))}
+      />
+      {!selected && (
+        <p className="mt-1 text-xs text-muted" role="status">
+          Chọn dự án để gửi — hộp này không tự đoán dự án.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Gợi ý trùng (tạm: chỉ liệt kê; hành động "Thêm ghi chú / Vẫn tạo mới" ở DuplicatePanel — Q9). */
+function DuplicateHint({ matches }: { matches: DuplicateSuggestion[] }) {
+  return (
+    <div id="ri-dup" className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-2.5">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
+        <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+        Có thể trùng:
+      </p>
+      <ul className="space-y-1">
+        {matches.map((m) => (
+          <li key={m.id} className="flex items-baseline gap-2 px-1.5 py-1 text-sm">
+            <span className="font-mono text-xs font-medium text-primary">{m.key}</span>
+            <span className="min-w-0 flex-1 truncate text-ink">{m.summary}</span>
+            {m.occurrenceCount > 1 && (
+              <span className="shrink-0 text-xs text-faint">×{m.occurrenceCount}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Nút gập/mở khối "Thêm chi tiết". */
+function DetailsToggle({
   open,
+  isBug,
+  onToggle,
+}: {
+  open: boolean;
+  isBug: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-controls="ri-details"
+      className="inline-flex items-center gap-1 rounded-md text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+    >
+      <ChevronRight
+        className={cn(
+          'h-4 w-4 transition-transform duration-fast motion-reduce:transition-none',
+          open && 'rotate-90',
+        )}
+        aria-hidden
+      />
+      Thêm chi tiết
+      <span className="font-normal text-faint">
+        {isBug ? '(mức nghiêm trọng, môi trường, tệp đính kèm)' : '(tệp đính kèm)'}
+      </span>
+    </button>
+  );
+}
+
+/** Hàng nút đáy: gợi ý phím tắt, Hủy, Gửi. */
+function ReportFooter({
+  busy,
+  canSubmit,
   onClose,
 }: {
-  projectKey: string;
-  projectId: string;
-  open: boolean;
+  busy: boolean;
+  canSubmit: boolean;
   onClose: () => void;
 }) {
-  const [summary, setSummary] = useState('');
-  const [description, setDescription] = useState('');
+  return (
+    <>
+      <span className="mr-auto hidden text-xs text-faint sm:block">
+        ⌘/Ctrl + Enter để gửi nhanh
+      </span>
+      <Button type="button" variant="ghost" onClick={onClose}>
+        Hủy
+      </Button>
+      <Button type="submit" form="report-issue-form" loading={busy} disabled={!canSubmit}>
+        Gửi
+      </Button>
+    </>
+  );
+}
 
-  const report = useReportIssue(projectId);
-  const { data: duplicates, isFetching: checkingDup } = useDuplicateCheck(projectId, summary);
+const TITLE_PLACEHOLDER: Record<RequestKind, string> = {
+  BUG: 'Mô tả ngắn gọn lỗi/sự cố gặp phải…',
+  FEATURE: 'Bạn muốn có tính năng gì?',
+  QUESTION: 'Bạn muốn hỏi điều gì?',
+};
 
-  const trimmedSummary = summary.trim();
-  const canSubmit = trimmedSummary.length > 0;
-  const matches: DuplicateSuggestion[] = duplicates ?? [];
-  const showDup = trimmedSummary.length >= 4 && matches.length > 0;
+function ReportIssueForm({
+  open,
+  preset,
+  onClose,
+}: {
+  open: boolean;
+  preset: ReportIssuePreset;
+  onClose: () => void;
+}) {
+  const { data: projects } = useProjects();
+  const { target } = useCreateTarget();
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (!canSubmit) return;
-    try {
-      const res = await report.mutateAsync({
-        projectId,
-        summary: trimmedSummary,
-        description: description.trim() || undefined,
-      });
-      if (res.deduped) {
-        toast.success(`Đã gộp vào công việc trùng (lần thứ ${res.occurrenceCount ?? '?'})`);
-      } else {
-        toast.success(`Đã tạo ${res.key ?? 'công việc'}`);
-      }
+  const initial = useReportInitial(open, preset, target.projectKey);
+  const [selKey, setSelKey] = useState(initial.key);
+  const [changingProject, setChangingProject] = useState(false);
+  const [kind, setKind] = useState<RequestKind>(initial.kind);
+  const [summary, setSummary] = useState(initial.summary);
+  const [description, setDescription] = useState(initial.description);
+  const [detailsOpen, setDetailsOpen] = useState(loadDetailsOpen);
+  const [severityId, setSeverityId] = useState('');
+  const [envDraft, setEnvDraft] = useState(() => toDraft(null));
+  const [envError, setEnvError] = useState<string | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const severityTouched = useRef(false);
+
+  const selProject = useMemo(
+    () => (projects ?? []).find((p) => p.key.toLowerCase() === selKey.toLowerCase()),
+    [projects, selKey],
+  );
+  const projectId = selProject?.id ?? '';
+  const isBug = kind === 'BUG';
+  const { data: meta } = useProjectMeta(open && selProject ? selProject.key : undefined);
+  const { data: duplicates, isFetching: checkingDup } = useDuplicateCheck(
+    open ? projectId : undefined,
+    summary,
+  );
+  const long = summary.trim().length >= 4;
+  const showDup = long && (duplicates?.length ?? 0) > 0;
+
+  const form = {
+    projectId,
+    kind,
+    summary,
+    description,
+    severityId,
+    environment: envDraft as EnvironmentInput,
+    mergeIntoIssueId: null as string | null,
+    forceNew: false,
+  };
+  const { busy, canSubmit, submit } = useReportSubmit({
+    form,
+    files,
+    onEnvInvalid: (m) => {
+      setDetailsOpen(true);
+      setEnvError(m);
+    },
+    onDone: () => {
+      clearDraft(selKey);
       onClose();
-    } catch (err) {
-      toast.error(apiErrorMessage(err));
-    }
+    },
+  });
+  const updateEnv = useCallback((u: (d: typeof envDraft) => typeof envDraft) => {
+    setEnvError(null);
+    setEnvDraft(u);
+  }, []);
+
+  useDraftAutosave(open, selKey, { kind, summary, description });
+
+  function changeKind(next: RequestKind) {
+    if (next === kind) return;
+    setKind(next);
+    // Chỉ thay mô tả khi đang trống hoặc đang đúng một mẫu (không đè chữ người dùng).
+    setDescription((d) => (d.trim() === '' || isReportTemplate(d) ? reportTemplate(next) : d));
+  }
+
+  function toggleDetails() {
+    saveDetailsOpen(!detailsOpen);
+    setDetailsOpen(!detailsOpen);
   }
 
   return (
@@ -66,26 +294,25 @@ function ReportIssueModalInner({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      title="Báo lỗi / sự cố"
-      footer={
-        <>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Hủy
-          </Button>
-          <Button
-            type="submit"
-            form="report-issue-form"
-            loading={report.isPending}
-            disabled={!canSubmit}
-          >
-            Gửi
-          </Button>
-        </>
-      }
+      title={reportDialogTitle(kind)}
+      size="lg"
+      onSubmit={() => void submit()}
+      footer={<ReportFooter busy={busy} canSubmit={canSubmit} onClose={onClose} />}
     >
       <form id="report-issue-form" onSubmit={(e) => void submit(e)} className="space-y-4">
+        <KindPicker kind={kind} onChange={changeKind} />
+        <ProjectField
+          projects={projects ?? []}
+          selected={selProject}
+          picking={changingProject}
+          onPick={() => setChangingProject(true)}
+          onChange={(k) => {
+            setSelKey(k);
+            setChangingProject(false);
+          }}
+        />
         <div>
-          <label htmlFor="ri-summary" className="mb-1.5 block text-sm font-medium text-muted">
+          <label htmlFor="ri-summary" className={FIELD_LABEL}>
             Tiêu đề
           </label>
           <Input
@@ -93,57 +320,45 @@ function ReportIssueModalInner({
             autoFocus
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
-            placeholder="Mô tả ngắn gọn lỗi/sự cố gặp phải…"
+            placeholder={TITLE_PLACEHOLDER[kind]}
             className="text-sm"
             aria-describedby={showDup ? 'ri-dup' : undefined}
           />
-
-          {showDup && (
-            <div
-              id="ri-dup"
-              className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-2.5 animate-in fade-in duration-150"
-            >
-              <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
-                <AlertTriangle className="h-3.5 w-3.5 text-warning" />
-                Có thể trùng:
-              </p>
-              <ul className="space-y-1">
-                {matches.map((m) => (
-                  <li key={m.id}>
-                    <button
-                      type="button"
-                      onClick={onClose}
-                      title="Đã có công việc tương tự — bấm để đóng"
-                      className="flex w-full items-baseline gap-2 rounded px-1.5 py-1 text-left text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                    >
-                      <span className="font-mono text-xs font-medium text-primary">{m.key}</span>
-                      <span className="min-w-0 flex-1 truncate text-ink">{m.summary}</span>
-                      {m.occurrenceCount > 1 && (
-                        <span className="shrink-0 text-xs text-faint">×{m.occurrenceCount}</span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {checkingDup && !showDup && trimmedSummary.length >= 4 && (
+          {showDup && <DuplicateHint matches={duplicates ?? []} />}
+          {checkingDup && !showDup && long && (
             <p className="mt-1.5 text-xs text-faint">Đang kiểm tra trùng lặp…</p>
           )}
         </div>
-
         <div>
-          <label htmlFor="ri-desc" className="mb-1.5 block text-sm font-medium text-muted">
+          <label htmlFor="ri-desc" className={FIELD_LABEL}>
             Mô tả <span className="font-normal text-faint">(tùy chọn)</span>
           </label>
-          <textarea
-            id="ri-desc"
+          <MarkdownEditor
+            textareaId="ri-desc"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={4}
-            placeholder="Các bước tái hiện, kết quả mong đợi vs thực tế…"
-            className="w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus-visible:border-primary"
+            onChange={setDescription}
+            onSubmit={() => void submit()}
+            rows={6}
+            placeholder="Viết được Markdown; chèn ảnh bằng ![](đường-dẫn)"
           />
+        </div>
+        <div>
+          <DetailsToggle open={detailsOpen} isBug={isBug} onToggle={toggleDetails} />
+          {detailsOpen && (
+            <ReportDetails
+              isBug={isBug}
+              meta={meta}
+              severityId={severityId}
+              onSeverity={setSeverityId}
+              severityTouched={severityTouched}
+              envDraft={envDraft}
+              onEnvDraft={updateEnv}
+              envError={envError}
+              onEnvChange={(k) => (v) => updateEnv((d) => ({ ...d, [k]: v }))}
+              files={files}
+              onFiles={setFiles}
+            />
+          )}
         </div>
       </form>
     </Dialog>
