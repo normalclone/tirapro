@@ -207,6 +207,94 @@ export function IssueSeveritySelect({ issue }: { issue: IssueDto }) {
   );
 }
 
+/** Chip "Giải quyết: Done" (chỉ đọc hoặc làm nút bấm đổi). */
+function ResolutionChip({ name, hint }: { name: string; hint: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-muted ring-1 ring-inset ring-border"
+      title={hint}
+    >
+      <span className="text-faint">Giải quyết:</span> {name}
+    </span>
+  );
+}
+
+/**
+ * Cách giải quyết — chỉ hiện khi trạng thái thuộc nhóm Done (rời Done thì máy chủ xoá nên ẩn).
+ * Chọn lại được ở đây để sửa giá trị gán ngầm (kéo thẻ board sang Done nhận mặc định "Done").
+ * Có "Hoàn tác" sau khi đổi; người không có quyền sửa / dự án lưu trữ chỉ thấy chip.
+ */
+export function IssueResolutionSelect({ issue }: { issue: IssueDto }) {
+  const { data: projects } = useProjects();
+  const projectKey = projects?.find((p) => p.id === issue.projectId)?.key;
+  const { data: meta } = useProjectMeta(projectKey);
+  const patch = useUpdateIssue(issue.projectId);
+  const canEdit = useCanEditIssue(issue.projectId)(issue);
+  if (issue.status.category !== 'DONE') return null;
+  const resolutions = meta?.resolutions ?? [];
+  const current = issue.resolution;
+  if (!canEdit)
+    return current ? (
+      <ResolutionChip name={current.name} hint={`Cách giải quyết: ${current.name}`} />
+    ) : null;
+
+  function apply(nextId: string, version: number, prev: IssueDto['resolution'], undoable: boolean) {
+    const found = resolutions.find((r) => r.id === nextId);
+    patch.mutate(
+      {
+        id: issue.id,
+        key: issue.key,
+        patch: { resolutionId: nextId },
+        version,
+        optimistic: {
+          resolution: found
+            ? { id: found.id, name: found.name, description: found.description, rank: found.rank }
+            : null,
+        },
+      },
+      {
+        onSuccess: (res) => {
+          if (!undoable || !prev) return;
+          toast.success(`Cách giải quyết: ${found?.name ?? ''}`, {
+            duration: 4000,
+            action: {
+              label: 'Hoàn tác',
+              onClick: () => apply(prev.id, res.data.version, null, false),
+            },
+          });
+        },
+        onError: (e) => toast.error(apiErrorMessage(e)),
+      },
+    );
+  }
+
+  return (
+    <SearchSelect
+      ariaLabel="Cách giải quyết"
+      value={current?.id ?? ''}
+      disabled={patch.isPending}
+      options={resolutions.map((r) => ({ value: r.id, label: r.name }))}
+      onChange={(v) => {
+        if (!v || v === current?.id) return;
+        apply(v, issue.version, current, true);
+      }}
+      className={INLINE_TRIGGER}
+      renderTrigger={() =>
+        current ? (
+          <ResolutionChip
+            name={current.name}
+            hint={`Cách giải quyết: ${current.name}${current.description ? ` — ${current.description}` : ''}. Bấm để đổi.`}
+          />
+        ) : (
+          <span className="text-xs text-faint" title="Chưa đặt cách giải quyết. Bấm để chọn.">
+            Đặt cách giải quyết
+          </span>
+        )
+      }
+    />
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Sprint & điểm ước lượng — dòng phụ (subtitle) dưới tiêu đề         */
 /* ------------------------------------------------------------------ */
