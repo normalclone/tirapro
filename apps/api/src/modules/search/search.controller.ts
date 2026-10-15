@@ -31,11 +31,20 @@ export class SearchController {
     @Query('limit') limit?: string,
   ) {
     const lim = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    const hasJql = !!jql?.trim();
+    const hasQ = !!q?.trim();
     if (mode !== undefined && mode !== 'jql' && mode !== 'text') {
       throw new BusinessRuleException('mode chỉ nhận "jql" hoặc "text" — hãy chọn một trong hai');
     }
+    // Không im lặng trả mọi issue: thiếu điều kiện là lỗi. Chỉ siết ở đây — board/saved-filter gọi thẳng service.
+    const effective = mode ?? (hasJql ? 'jql' : hasQ ? 'text' : undefined);
+    if (effective === undefined || (effective === 'jql' && !hasJql)) {
+      throw new BusinessRuleException(
+        'Thiếu điều kiện tìm — dùng jql=… (cú pháp JQL) hoặc q=…&mode=text (tìm theo chữ)',
+      );
+    }
     return this.search.search(workspaceId, user.id, {
-      mode,
+      mode: effective,
       q,
       jql,
       projectId,

@@ -128,4 +128,31 @@ describe('JQL text ~ (full-text)', () => {
       status: { name: { not: { contains: 'a\\_b' }, mode: 'insensitive' } },
     });
   });
+
+  it('quan hệ nullable (priority/sprint/resolution): `!~` gồm cả issue không có quan hệ (phần bù đúng của `~`)', () => {
+    const ctx = { currentUserId: 'U' };
+    for (const [field, rel, id] of [
+      ['priority', 'priority', 'priorityId'],
+      ['sprint', 'sprint', 'sprintId'],
+      ['resolution', 'resolution', 'resolutionId'],
+    ] as const) {
+      expect(compileJql(ast(`${field} !~ "a_b"`), ctx).where).toEqual({
+        OR: [
+          { [id]: null },
+          { [rel]: { name: { not: { contains: 'a\\_b' }, mode: 'insensitive' } } },
+        ],
+      });
+      // `~` giữ nguyên (Prisma tự thêm điều kiện quan hệ tồn tại)
+      expect(compileJql(ast(`${field} ~ "a"`), ctx).where).toEqual({
+        [rel]: { name: like('a') },
+      });
+    }
+  });
+
+  it('quan hệ bắt buộc (type/status/project): `!~` không thêm nhánh null', () => {
+    const ctx = { currentUserId: 'U' };
+    expect(compileJql(ast('type !~ "Bug"'), ctx).where).toEqual({
+      type: { name: { not: { contains: 'Bug' }, mode: 'insensitive' } },
+    });
+  });
 });

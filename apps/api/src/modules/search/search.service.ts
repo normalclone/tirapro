@@ -9,6 +9,7 @@ import { FulltextSearcher } from './fulltext';
 import {
   collectFulltextTerms,
   compileJql,
+  containsWhere,
   primaryFulltextTerm,
   topLevelProjectKeys,
 } from './jql-compiler';
@@ -189,10 +190,14 @@ export class SearchService {
     const res = await this.fulltext.search(workspaceId, q, { projectId: opts.projectId });
     if (res) return this.issues.query(workspaceId, {}, [], opts.cursor, opts.limit, res.ids);
 
-    // Chưa có searchVector → rơi về contains (không xếp rank).
-    const like = { contains: q, mode: 'insensitive' as const };
+    // Nhánh phòng thủ (FulltextSearcher đã có fallback translate(), không còn trả null): contains ĐÃ ESCAPE
+    // (`q="_"` không được khớp mọi dòng) — dùng chung containsWhere với JQL.
     const match: Prisma.IssueWhereInput = {
-      OR: [{ summary: like }, { description: like }, { key: like }],
+      OR: [
+        containsWhere('summary', q),
+        containsWhere('description', q, true),
+        containsWhere('key', q),
+      ],
     };
     const where: Prisma.IssueWhereInput = opts.projectId
       ? { AND: [match, { projectId: opts.projectId }] }

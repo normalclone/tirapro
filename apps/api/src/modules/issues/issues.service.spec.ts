@@ -1275,6 +1275,18 @@ describe('IssuesService — dự án đã xoá mềm', () => {
     });
   });
 
+  it('list với search: escape % _ \\ (không để "_" khớp mọi dòng)', async () => {
+    const findMany = vi.fn(() => Promise.resolve([]));
+    const { service } = makeService({ issue: { findMany } });
+    await service.list('w1', { search: '_' }, undefined, 50);
+    await service.list('w1', { search: '50%\\' }, undefined, 50);
+    const wheres = (
+      findMany.mock.calls as unknown as Array<[{ where: Record<string, unknown> }]>
+    ).map((c) => c[0].where.summary);
+    expect(wheres[0]).toEqual({ contains: '\\_', mode: 'insensitive' });
+    expect(wheres[1]).toEqual({ contains: '50\\%\\\\', mode: 'insensitive' });
+  });
+
   it('query (JQL/search) và query theo rawIds (full-text) đều ghép project.deletedAt:null vào scope', async () => {
     const findMany = vi.fn(() => Promise.resolve([]));
     const { service } = makeService({ issue: { findMany } });

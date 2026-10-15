@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { escapeLike, insensitiveContains } from '../../common/like';
 import type {
   JqlFieldName,
   JqlNode,
@@ -76,6 +77,7 @@ interface FieldCfg {
   field?: string; // cột bên trong relation (name/key/category)
   idColumn?: string; // cột FK để xử lý IS EMPTY trực tiếp
   column?: string; // cột scalar (summary/createdAt/storyPoints...)
+  relNullable?: boolean; // quan hệ cho phép không có (priority/sprint/resolution) — `!~` phải gồm cả issue không có quan hệ
   nullable?: boolean; // cột scalar cho phép NULL (ảnh hưởng cách dựng `contains`, xem containsWhere)
 }
 
@@ -85,10 +87,22 @@ const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
   type: { kind: 'relationName', relation: 'type', field: 'name', idColumn: 'typeId' },
   status: { kind: 'relationName', relation: 'status', field: 'name', idColumn: 'statusId' },
   statusCategory: { kind: 'enumRel', relation: 'status', field: 'category' },
-  priority: { kind: 'relationName', relation: 'priority', field: 'name', idColumn: 'priorityId' },
+  priority: {
+    kind: 'relationName',
+    relation: 'priority',
+    field: 'name',
+    idColumn: 'priorityId',
+    relNullable: true,
+  },
   assignee: { kind: 'idUser', idColumn: 'assigneeId' },
   reporter: { kind: 'idUser', idColumn: 'reporterId' },
-  sprint: { kind: 'relationName', relation: 'sprint', field: 'name', idColumn: 'sprintId' },
+  sprint: {
+    kind: 'relationName',
+    relation: 'sprint',
+    field: 'name',
+    idColumn: 'sprintId',
+    relNullable: true,
+  },
   labels: { kind: 'array' },
   summary: { kind: 'text', column: 'summary' },
   text: { kind: 'fulltext' },
@@ -100,6 +114,7 @@ const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
     relation: 'resolution',
     field: 'name',
     idColumn: 'resolutionId',
+    relNullable: true,
   },
   storyPoints: { kind: 'number', column: 'storyPoints' },
 };
@@ -139,15 +154,8 @@ function compileOrder(o: JqlOrderBy): Prisma.IssueOrderByWithRelationInput {
   return { updatedAt: dir };
 }
 
-/** Escape `\`, `%`, `_` — Prisma `contains` KHÔNG tự escape (ghép thẳng vào LIKE; `\` là escape mặc định của Postgres). */
-function escapeLike(v: string): string {
-  return v.replace(/[\\%_]/g, (c) => `\\${c}`);
-}
-
 /** Bộ lọc chuỗi con không phân biệt hoa thường, đã escape ký tự đại diện — dùng chung cho mọi toán tử `~`/`!~`. */
-function likeFilter(v: string) {
-  return { contains: escapeLike(v), mode: 'insensitive' as const };
-}
+const likeFilter = insensitiveContains;
 
 /**
  * `column contains v` (đã escape) mà KHÔNG BAO GIỜ cho NULL: cột nullable được chặn bằng `not: null`
@@ -193,7 +201,12 @@ function compileComparison(
           ? { NOT: { [cfg.idColumn]: null } }
           : { [cfg.relation!]: { isNot: null } };
       const f = stringFilter(op, value, ctx);
-      return { [cfg.relation!]: { [cfg.field!]: f } };
+      const rel: Where = { [cfg.relation!]: { [cfg.field!]: f } };
+      // `rel.name NOT ILIKE …` không bao giờ đúng với issue KHÔNG có quan hệ (JOIN ra NULL) ⇒ `!~` bỏ sót
+      // issue ở backlog / chưa có priority / chưa có resolution. Thêm nhánh "không có quan hệ" để `!~` là phần bù đúng của `~`.
+      if (op === '!~' && cfg.relNullable && cfg.idColumn)
+        return { OR: [{ [cfg.idColumn]: null }, rel] };
+      return rel;
     }
     case 'idUser': {
       const col = cfg.idColumn!;

@@ -1,15 +1,23 @@
 import { Logger } from '@nestjs/common';
 import { Prisma, type PrismaClient } from '@prisma/client';
+import { escapeLike } from '../../common/like';
+import { normalizeVi, searchTokens, VI_TRANSLATE_FROM, VI_TRANSLATE_TO } from './vi-text';
 
 /** Số issue tối đa trả về từ một lần tìm full-text (xếp theo rank). */
 export const FULLTEXT_LIMIT = 200;
 const MAX_QUERY_LENGTH = 200;
 
 export interface FulltextQuery {
-  /** Chuỗi gửi cho `websearch_to_tsquery` (đã chuẩn hoá khoảng trắng). */
+  /** Chuỗi gõ đã chuẩn hoá khoảng trắng (giữ dấu, giữ hoa/thường). */
   q: string;
   /** Pattern cho ILIKE (ký tự đại diện đã escape) — khớp một phần từ, dựa vào index trigram. */
   like: string;
+  /** Chuỗi gõ đã bỏ dấu + hạ chữ thường (so với `lower(immutable_unaccent(col))`). */
+  qn: string;
+  /** Pattern LIKE của `qn` (đã escape). */
+  likeNorm: string;
+  /** `tok:* & tok:*` cho `to_tsquery('simple', immutable_unaccent(…))`; '' nếu không có token. */
+  tsquery: string;
 }
 
 /** Chuẩn hoá chuỗi tìm kiếm của người dùng; null nếu rỗng. Mọi giá trị đều được bind, không nối vào SQL. */
@@ -21,17 +29,31 @@ export function buildFulltextQuery(raw: string): FulltextQuery | null {
     .slice(0, MAX_QUERY_LENGTH)
     .trim();
   if (!q) return null;
-  const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`);
-  return { q, like: `%${escaped}%` };
+  const qn = normalizeVi(q);
+  return {
+    q,
+    like: `%${escapeLike(q)}%`,
+    qn,
+    likeNorm: `%${escapeLike(qn)}%`,
+    tsquery: searchTokens(q)
+      .map((t) => `${t}:*`)
+      .join(' & '),
+  };
 }
 
-/** Lỗi Postgres 42703 (undefined_column) — cột `searchVector` chưa có vì chưa chạy `db:raw`. */
-export function isMissingColumnError(err: unknown): boolean {
+/**
+ * Lỗi Postgres 42703 (undefined_column — chưa có cột `searchVector`) hoặc 42883 (undefined_function —
+ * chưa có `immutable_unaccent`): cả hai đều do chưa chạy `db:raw`.
+ */
+export function isMissingSearchObject(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
   const e = err as { code?: unknown; meta?: { code?: unknown }; message?: unknown };
-  if (e.code === '42703' || e.meta?.code === '42703') return true;
-  return typeof e.message === 'string' && e.message.includes('42703');
+  const codes = ['42703', '42883'];
+  if (codes.includes(e.code as string) || codes.includes(e.meta?.code as string)) return true;
+  return typeof e.message === 'string' && codes.some((c) => (e.message as string).includes(c));
 }
+/** Tên cũ — giữ cho caller/test hiện có. */
+export const isMissingColumnError = isMissingSearchObject;
 
 export interface SearchOptions {
   projectId?: string;
@@ -41,14 +63,17 @@ export interface SearchOptions {
 }
 
 /**
- * Điều kiện khớp văn bản của một issue (alias `i`, tsquery `q`): token full-text HOẶC chuỗi con
- * (ILIKE, dùng index trigram) ở summary/description/key. Tách riêng để mở rộng (bỏ dấu, typo-tolerant).
+ * Điều kiện khớp văn bản của một issue (alias `i`; CTE `q(tsq, qn)`): token full-text tiền tố HOẶC chuỗi con
+ * đã bỏ dấu ở summary/description (dùng index trigram theo biểu thức), mã `key` (ILIKE thô — mã không bỏ dấu)
+ * HOẶC gõ sai nhẹ so với summary (`<%` = word_similarity ≥ ngưỡng, dùng chỉ mục trigram). Description không
+ * quét fuzzy (dài, tốn kém, nhiều nhiễu); từ ≤ 4 ký tự gõ sai không được tha.
  */
 export function buildTextMatchSql(built: FulltextQuery): Prisma.Sql {
-  return Prisma.sql`(i."searchVector" @@ q
-    OR i."summary" ILIKE ${built.like}
-    OR i."description" ILIKE ${built.like}
-    OR i."key" ILIKE ${built.like})`;
+  return Prisma.sql`(i."searchVector" @@ q.tsq
+    OR lower(immutable_unaccent(i."summary")) LIKE ${built.likeNorm}
+    OR lower(immutable_unaccent(i."description")) LIKE ${built.likeNorm}
+    OR i."key" ILIKE ${built.like}
+    OR q.qn <% lower(immutable_unaccent(i."summary")))`;
 }
 
 /** Phạm vi project cho câu SQL: `projectIds` > `projectId` > không giới hạn; mảng rỗng => `[]`. */
@@ -57,8 +82,8 @@ function resolveProjectScope(opts: SearchOptions): string[] | null {
 }
 
 /**
- * Tìm full-text trên Issue bằng `tsvector` (searchVector, config 'simple') cộng ILIKE trên
- * summary/description/key (trigram) để khớp một phần từ. Chỉ xét issue chưa xoá của dự án chưa xoá,
+ * Tìm full-text trên Issue: `tsvector` (searchVector, 'simple', đã bỏ dấu) với tiền tố từng từ, cộng chuỗi con
+ * bỏ dấu ở summary/description, mã `key`, và typo nhẹ (trigram) ở summary. Chỉ xét issue chưa xoá của dự án chưa xoá,
  * trong phạm vi project nếu có. Trả id xếp theo rank giảm dần (tối đa `limit`) — dùng để XẾP HẠNG;
  * tính đúng đắn của kết quả JQL không phụ thuộc danh sách này (xem `jql-compiler`).
  */
@@ -71,8 +96,9 @@ export class FulltextSearcher {
   ) {}
 
   /**
-   * `{ ids }` (có thể rỗng), hoặc `null` khi cột `searchVector` chưa tồn tại — khi đó người gọi
-   * phải rơi về `contains` (đã log cảnh báo đúng một lần). Lỗi khác được ném lại.
+   * `{ ids }` (có thể rỗng). Khi chưa chạy `db:raw` (thiếu `searchVector`/`immutable_unaccent`) rơi về câu
+   * `translate()`+LIKE (log cảnh báo đúng một lần) nên không còn trả `null`; kiểu giữ `| null` cho tương thích
+   * (người gọi vẫn có nhánh `contains` phòng thủ). Lỗi khác được ném lại.
    */
   async search(
     workspaceId: string,
@@ -89,10 +115,17 @@ export class FulltextSearcher {
       : Prisma.empty;
     try {
       const rows = await this.prisma.$queryRaw<{ id: string; rank: number }[]>`
-        SELECT i."id", ts_rank(i."searchVector", q) AS rank
+        WITH q AS (
+          SELECT to_tsquery('simple', immutable_unaccent(${built.tsquery})) AS tsq, ${built.qn}::text AS qn
+        )
+        SELECT i."id",
+          ( ts_rank(i."searchVector", q.tsq)
+            + CASE WHEN lower(immutable_unaccent(i."summary")) LIKE ${built.likeNorm} THEN 0.5 ELSE 0 END
+            + CASE WHEN i."key" ILIKE ${built.like} THEN 0.8 ELSE 0 END
+            + word_similarity(q.qn, lower(immutable_unaccent(i."summary"))) * 0.3 ) AS rank
         FROM "Issue" i
         JOIN "Project" p ON p."id" = i."projectId"
-        CROSS JOIN websearch_to_tsquery('simple', ${built.q}) q
+        CROSS JOIN q
         WHERE i."workspaceId" = ${workspaceId}
           AND i."deletedAt" IS NULL
           AND p."deletedAt" IS NULL
@@ -102,14 +135,27 @@ export class FulltextSearcher {
         LIMIT ${limit}`;
       return { ids: rows.map((r) => r.id) };
     } catch (err) {
-      if (!isMissingColumnError(err)) throw err;
+      if (!isMissingSearchObject(err)) throw err;
       if (!this.warned) {
         this.warned = true;
         this.logger.warn(
-          'Issue.searchVector chưa có — tìm kiếm văn bản tạm dùng "contains" (chậm hơn). Hãy chạy `pnpm --filter @tirapro/api db:raw` để bật full-text.',
+          'Issue.searchVector / immutable_unaccent chưa có — tìm kiếm văn bản tạm dùng translate()+LIKE (bỏ dấu nhưng không tiền tố/gõ sai/xếp hạng, chậm hơn). Hãy chạy `pnpm --filter @tirapro/api db:raw` để bật full-text.',
         );
       }
-      return null;
+      // Không cần extension/cột sinh: translate() là hàm có sẵn. Lỗi lạ ở đây được ném lại (không nuốt).
+      const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT i."id" FROM "Issue" i
+        JOIN "Project" p ON p."id" = i."projectId"
+        WHERE i."workspaceId" = ${workspaceId}
+          AND i."deletedAt" IS NULL
+          AND p."deletedAt" IS NULL
+          ${projectFilter}
+          AND (lower(translate(i."summary", ${VI_TRANSLATE_FROM}, ${VI_TRANSLATE_TO})) LIKE ${built.likeNorm}
+            OR lower(translate(coalesce(i."description", ''), ${VI_TRANSLATE_FROM}, ${VI_TRANSLATE_TO})) LIKE ${built.likeNorm}
+            OR i."key" ILIKE ${built.like})
+        ORDER BY i."updatedAt" DESC
+        LIMIT ${limit}`;
+      return { ids: rows.map((r) => r.id) };
     }
   }
 }
