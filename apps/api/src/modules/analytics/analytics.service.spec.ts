@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { AnalyticsService } from './analytics.service';
 
 /** Ghép chuỗi SQL từ lời gọi tagged template của $queryRaw (strings, ...values). */
@@ -523,7 +524,7 @@ function makeBurndown(snaps: unknown[], history?: unknown[]) {
 describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính từ lịch sử', () => {
   it('không có snapshot => giữ cách tính cũ từ lịch sử (không đổi hành vi trước khi deploy)', async () => {
     const { service } = makeBurndown([]);
-    const r = await service.burndown('w1', 'sp1');
+    const r = await service.burndown('w1', 'p1', 'sp1');
     expect(r.committedPoints).toBe(10);
     expect(r.series.map((x) => [x.date, x.remaining])).toEqual([
       ['2026-10-01', 10],
@@ -555,7 +556,7 @@ describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính t
         remainingPoints: 9,
       },
     ]);
-    const r = await service.burndown('w1', 'sp1');
+    const r = await service.burndown('w1', 'p1', 'sp1');
     expect(r.committedPoints).toBe(15);
     expect(r.series.map((x) => [x.date, x.remaining])).toEqual([
       ['2026-10-01', 15],
@@ -576,7 +577,7 @@ describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính t
         remainingPoints: 10,
       },
     ]);
-    const r = await service.burndown('w1', 'sp1');
+    const r = await service.burndown('w1', 'p1', 'sp1');
     // a (6 điểm) xong ngày 02 theo lịch sử; ngày 01 cũng từ lịch sử (=10), không phải START
     expect(r.series.map((x) => x.remaining)).toEqual([10, 4, 4, 4]);
   });
@@ -596,8 +597,63 @@ describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính t
         remainingPoints: 3,
       },
     ]);
-    const r = await service.burndown('w1', 'sp1');
+    const r = await service.burndown('w1', 'p1', 'sp1');
     expect(r.series.find((x) => x.date === '2026-10-03')!.remaining).toBe(3);
+  });
+});
+
+describe('AnalyticsService.burndown — sprint phải thuộc đúng dự án trong workspace', () => {
+  it('chỉ tìm sprint thuộc đúng dự án trong workspace (chặn lấy sprint dự án khác bằng projectId của mình)', async () => {
+    const { service, prisma } = makeBurndown([]);
+    await service.burndown('w1', 'p1', 'sp1');
+    const where = (
+      prisma.sprint.findFirst.mock.calls[0] as unknown as [{ where: Record<string, unknown> }]
+    )[0].where;
+    expect(where).toMatchObject({
+      id: 'sp1',
+      projectId: 'p1',
+      deletedAt: null,
+      project: { workspaceId: 'w1' },
+    });
+  });
+
+  it('sprint không thuộc dự án → NotFound', async () => {
+    const { service, prisma } = makeBurndown([]);
+    prisma.sprint.findFirst.mockResolvedValueOnce(null as never);
+    await expect(service.burndown('w1', 'p-khac', 'sp1')).rejects.toBeInstanceOf(
+      NotFoundAppException,
+    );
+  });
+
+  it('hành vi: sprint của dự án p2 + projectId của dự án mình (p1) => từ chối; đúng p2 => trả về', async () => {
+    const { service, prisma } = makeBurndown([]);
+    // DB giả: chỉ sprint sp-p2 (thuộc p2, workspace w1) — findFirst áp đúng điều kiện where như Prisma
+    const sprintP2 = {
+      id: 'sp-p2',
+      projectId: 'p2',
+      name: 'Sprint của p2',
+      startDate: new Date('2026-10-01T09:00:00Z'),
+      endDate: new Date('2026-10-02T09:00:00Z'),
+      completeDate: null,
+      createdAt: new Date('2026-09-30T00:00:00Z'),
+      issues: [],
+    };
+    prisma.sprint.findFirst.mockImplementation(((args: {
+      where: { id: string; projectId: string; project: { workspaceId: string } };
+    }) =>
+      Promise.resolve(
+        args.where.id === sprintP2.id &&
+          args.where.projectId === sprintP2.projectId &&
+          args.where.project.workspaceId === 'w1'
+          ? sprintP2
+          : null,
+      )) as never);
+    await expect(service.burndown('w1', 'p1', 'sp-p2')).rejects.toBeInstanceOf(
+      NotFoundAppException,
+    );
+    await expect(service.burndown('w1', 'p2', 'sp-p2')).resolves.toMatchObject({
+      sprintId: 'sp-p2',
+    });
   });
 });
 
@@ -629,7 +685,7 @@ describe('AnalyticsService.burndown — category cuối thắng như CFD (lịch
         },
       ],
     );
-    const r = await service.burndown('w1', 'sp1');
+    const r = await service.burndown('w1', 'p1', 'sp1');
     // 01: 10; 02: a done (6) => 4; 03: a vẫn done (không cộng lần 2); b chưa từng DONE nên không bị trừ
     expect(r.series.map((x) => x.remaining)).toEqual([10, 4, 4, 4]);
   });
@@ -652,7 +708,7 @@ describe('AnalyticsService.burndown — category cuối thắng như CFD (lịch
         },
       ],
     );
-    const r = await service.burndown('w1', 'sp1');
+    const r = await service.burndown('w1', 'p1', 'sp1');
     expect(r.series.map((x) => x.remaining)).toEqual([10, 4, 10, 10]);
   });
 
@@ -674,7 +730,7 @@ describe('AnalyticsService.burndown — category cuối thắng như CFD (lịch
         },
       ],
     );
-    const r = await service.burndown('w1', 'sp1');
+    const r = await service.burndown('w1', 'p1', 'sp1');
     expect(r.series.map((x) => x.remaining)).toEqual([10, 4, 4, 4]);
   });
 });

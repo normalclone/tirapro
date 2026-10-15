@@ -68,12 +68,19 @@ export function useProjectSprints(projectId?: string) {
   });
 }
 
-export function useBurndown(sprintId?: string) {
+export function useBurndown(sprintId?: string, projectId?: string) {
   return useQuery({
+    // Sprint đã xác định dự án nên key không cần projectId.
     queryKey: keys.reports.burndown(sprintId ?? ''),
-    queryFn: sprintId
-      ? async () => (await api.get<BurndownReport>(`/reports/burndown?sprintId=${sprintId}`)).data
-      : skipToken,
+    queryFn:
+      sprintId && projectId
+        ? async () =>
+            (
+              await api.get<BurndownReport>(
+                `/reports/burndown?sprintId=${sprintId}&projectId=${projectId}`,
+              )
+            ).data
+        : skipToken,
   });
 }
 

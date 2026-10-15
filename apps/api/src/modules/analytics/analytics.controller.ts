@@ -28,11 +28,18 @@ export class AnalyticsController {
     return this.analytics.projectReport(workspaceId, projectId);
   }
 
+  /** projectId BẮT BUỘC: guard tính report:view theo dự án; service kiểm sprint thuộc đúng dự án đó. */
+  @ProjectRef('query', 'projectId')
   @Get('burndown')
   @Permissions(PERMISSIONS.REPORT_VIEW)
-  async burndown(@WorkspaceId() workspaceId: string, @Query('sprintId') sprintId?: string) {
+  async burndown(
+    @WorkspaceId() workspaceId: string,
+    @Query('sprintId') sprintId?: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    if (!projectId) throw new BusinessRuleException('Thiếu projectId');
     if (!sprintId) throw new BusinessRuleException('Thiếu sprintId');
-    return this.analytics.burndown(workspaceId, sprintId);
+    return this.analytics.burndown(workspaceId, projectId, sprintId);
   }
 
   @ProjectRef('query', 'projectId')

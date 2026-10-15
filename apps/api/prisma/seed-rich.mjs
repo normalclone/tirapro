@@ -421,7 +421,9 @@ async function main() {
   // 10) Verify nhanh
   const issuesNow =
     (await api('GET', `/issues?projectId=${project.id}&limit=200`)).json?.data ?? [];
-  const bd = active ? (await api('GET', `/reports/burndown?sprintId=${active.id}`)).json : null;
+  const bd = active
+    ? (await api('GET', `/reports/burndown?sprintId=${active.id}&projectId=${project.id}`)).json
+    : null;
   const vel = (await api('GET', `/reports/velocity?projectId=${project.id}`)).json;
   console.log(
     `\n✅ DEMO: ${issuesNow.length} issue | burndown ${bd?.series?.length} ngày (committed ${bd?.committedPoints}, remaining cuối ${bd?.series?.at(-1)?.remaining}) | velocity ${vel?.sprints?.length} sprint`,
