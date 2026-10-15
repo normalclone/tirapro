@@ -1,5 +1,6 @@
 import type { RuleAction } from '@tirapro/shared';
 import { BusinessRuleException } from '../../../common/exceptions/app.exception';
+import { assertIssueWritable } from '../../../common/project-writable';
 import type { ActionContext, ActionResult } from './types';
 
 /**
@@ -11,6 +12,8 @@ export async function runLabel(
   a: Extract<RuleAction, { type: 'addLabel' | 'removeLabel' }>,
 ): Promise<ActionResult> {
   const { prisma } = ctx.deps;
+  // Action ghi thẳng `issueLabel` (không qua service) nên tự chặn dự án lưu trữ — kể cả khi chạy thử.
+  await assertIssueWritable(prisma, ctx.issue.id);
   const label = await prisma.label.findFirst({
     where: { id: a.labelId, projectId: ctx.issue.projectId },
     select: { id: true, name: true },

@@ -36,7 +36,8 @@ const EXEMPT: Record<string, string> = {
   'auth/invite.service.ts': 'định danh',
   'auth/password-reset.service.ts': 'định danh',
   'auth/token.service.ts': 'định danh',
-  'automation/rule-engine.service.ts': 'thực thi qua IssuesService (lỗi archived vào nhật ký chạy)',
+  'automation/rule-engine.service.ts':
+    'thực thi qua IssuesService (lỗi archived vào nhật ký chạy) và các action (đã quét ở test riêng); scheduler lọc ACTIVE_PROJECT',
   'clients/clients.service.ts': 'cấp workspace',
   'programs/programs.service.ts': 'cấp workspace',
   'resources/resources.service.ts': 'cấp workspace',
@@ -135,6 +136,24 @@ export function unguardedWriteMethods(source: string): string[] {
     .map((m) => m.name);
 }
 
+/** Ghi Prisma TRỰC TIẾP (`prisma.x.create(`…): action automation ghi kiểu này không đi qua service nên phải tự có guard. */
+const DIRECT_PRISMA_WRITE =
+  /\bprisma\.\w+\.(create|createMany|update|updateMany|delete|deleteMany|upsert)\(/;
+
+/** Action ghi Prisma trực tiếp nhưng cố ý không chặn: tệp → lý do. */
+const EXEMPT_ACTIONS: Record<string, string> = {
+  'notify.ts':
+    'tạo thông báo của người dùng, không phải dữ liệu làm việc của dự án (rule SCHEDULED đã loại dự án lưu trữ ở scheduler)',
+};
+
+/** Tệp action (không phải spec) ghi Prisma trực tiếp mà không có guard dự án lưu trữ. */
+export function unguardedActionFiles(files: Record<string, string>): string[] {
+  return Object.entries(files)
+    .filter(([name]) => !(name in EXEMPT_ACTIONS))
+    .filter(([, src]) => DIRECT_PRISMA_WRITE.test(src) && !GUARD.test(src))
+    .map(([name]) => name);
+}
+
 function services(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
     const p = join(dir, n);
@@ -210,5 +229,26 @@ export class FakeService {
   }
 }`;
     expect(unguardedWriteMethods(fake).sort()).toEqual(['unsafe', 'unsafeViaHelper']);
+  });
+
+  it('automation/actions/*.ts: action ghi Prisma trực tiếp phải có guard dự án lưu trữ', () => {
+    const dir = join(MODULES, 'automation', 'actions');
+    const sources = Object.fromEntries(
+      readdirSync(dir)
+        .filter((n) => n.endsWith('.ts') && !n.endsWith('.spec.ts'))
+        .map((n) => [n, readFileSync(join(dir, n), 'utf8')]),
+    );
+    expect(Object.keys(sources).length).toBeGreaterThan(0);
+    expect(unguardedActionFiles(sources)).toEqual([]);
+  });
+
+  it('tự kiểm: bắt action ghi trực tiếp thiếu guard', () => {
+    expect(
+      unguardedActionFiles({
+        ok: 'await assertIssueWritable(prisma, id); await prisma.issueLabel.createMany({});',
+        bad: 'await prisma.issueLabel.deleteMany({});',
+        viaService: 'await ctx.deps.issues.update(1);',
+      }),
+    ).toEqual(['bad']);
   });
 });

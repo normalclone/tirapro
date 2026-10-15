@@ -65,6 +65,8 @@ function setup(rule = makeRule(), issue = issueDto()) {
     issue: {
       count: vi.fn(() => Promise.resolve(1)),
       findFirst: vi.fn(() => Promise.resolve({ workspaceId: 'w1' })),
+      // assertIssueWritable (action ghi trực tiếp prisma): mặc định dự án chưa lưu trữ
+      findUnique: vi.fn(() => Promise.resolve({ project: { archivedAt: null } })),
     },
     automationRun: {
       create: vi.fn(() => Promise.resolve({})),
@@ -421,6 +423,34 @@ describe('RuleEngineService — chạy thử, lịch, người dùng hệ thốn
     expect(issues.query).toHaveBeenCalled();
     expect(prisma.issueLabel.createMany).toHaveBeenCalledTimes(1);
     expect(prisma.issue.count).not.toHaveBeenCalled(); // JQL đã lọc ở truy vấn chọn issue
+  });
+
+  it('runScheduled: chỉ chọn issue của dự án chưa lưu trữ/chưa xoá (project.archivedAt = null) (I2)', async () => {
+    const rule = makeRule({
+      trigger: 'SCHEDULED',
+      triggerConfig: { cron: '30 9 * * *' },
+      conditions: [{ jql: 'priority = High' }],
+      actions: [{ type: 'addLabel', labelId: 'L1' }],
+    });
+    const { engine, prisma, issues } = setup(rule);
+    prisma.automationRule.findMany.mockResolvedValueOnce([rule] as never);
+    await engine.runScheduled(new Date('2026-10-15T09:30:20Z'));
+    const where = (issues.query.mock.calls as unknown[][])[0]![1];
+    expect(JSON.stringify(where)).toContain('"project":{"deletedAt":null,"archivedAt":null}');
+  });
+
+  it('action addLabel/removeLabel trên issue của dự án lưu trữ => FAILED, không ghi issueLabel (I2)', async () => {
+    for (const type of ['addLabel', 'removeLabel'] as const) {
+      const rule = makeRule({ conditions: [], actions: [{ type, labelId: 'L1' }] });
+      const issue = issueDto({ labels: type === 'removeLabel' ? [{ id: 'L1' }] : [] });
+      const { engine, prisma } = setup(rule, issue);
+      prisma.issue.findUnique.mockResolvedValue({ project: { archivedAt: new Date() } } as never);
+      await engine.handle('ISSUE_CREATED', { issue: issue as never, actorId: 'u1' });
+      expect(lastRun(prisma).status).toBe('FAILED');
+      expect(lastRun(prisma).log[0]?.message).toMatch(/lưu trữ/);
+      expect(prisma.issueLabel.createMany).not.toHaveBeenCalled();
+      expect(prisma.issueLabel.deleteMany).not.toHaveBeenCalled();
+    }
   });
 
   it('runScheduled: lượt đã bị node khác nhận (count=0) => không chạy', async () => {

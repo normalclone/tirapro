@@ -24,6 +24,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { withCronLock } from '../../common/cron-lock';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { ACTIVE_PROJECT } from '../../common/live-project';
 import { CommentsService } from '../comments/comments.service';
 import { IssuesService } from '../issues/issues.service';
 import { compileJql } from '../search/jql-compiler';
@@ -480,7 +481,12 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
         wheres.push(compileJql(parseJql(c.jql), { currentUserId: systemId }).where);
     }
     const where: Prisma.IssueWhereInput = {
-      AND: [...wheres, ...(rule.projectId ? [{ projectId: rule.projectId }] : [])],
+      AND: [
+        ...wheres,
+        // Cron không có người dùng để báo lỗi: dự án lưu trữ/xoá bị bỏ qua im lặng (như recurring), không sinh run FAILED mỗi phút.
+        ACTIVE_PROJECT,
+        ...(rule.projectId ? [{ projectId: rule.projectId }] : []),
+      ],
     };
     const page = await this.issues.query(
       rule.workspaceId,
