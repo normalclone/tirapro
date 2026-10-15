@@ -42,3 +42,8 @@ export function startWarnings(input: StartWarningInput): string[] {
   }
   return out;
 }
+
+/** Lỗi khoảng ngày của hộp Bắt đầu sprint (ngày yyyy-MM-dd; bằng nhau được phép); null khi hợp lệ hoặc còn thiếu ngày. */
+export function startRangeError(start: string, end: string): string | null {
+  return start && end && end < start ? 'Ngày kết thúc không được trước ngày bắt đầu.' : null;
+}

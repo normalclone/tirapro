@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  burndownSummary,
   orderSprints,
   pickDefaultSprint,
   resolveSprint,
-  sprintLabel,
   todayMarker,
+  velocitySummary,
   type SprintLike,
 } from './burndown';
 
@@ -95,10 +96,51 @@ describe('orderSprints', () => {
   });
 });
 
-describe('sprintLabel', () => {
-  it('ghi trạng thái cạnh tên', () => {
-    expect(sprintLabel(sp('a', 'ACTIVE', 2))).toBe('Sprint 2 · đang chạy');
-    expect(sprintLabel(sp('c', 'CLOSED', 1))).toBe('Sprint 1 · đã kết thúc');
-    expect(sprintLabel(sp('f', 'FUTURE', 3))).toBe('Sprint 3 · chưa bắt đầu');
+describe('burndownSummary', () => {
+  const base = {
+    sprintId: 's',
+    sprintName: 'Sprint 2',
+    committedPoints: 20,
+    start: null,
+    end: null,
+    today: '2026-10-14',
+  };
+
+  it('nêu cam kết và điểm còn lại ở ngày cuối có số liệu (bỏ qua ngày tương lai null)', () => {
+    const text = burndownSummary({
+      ...base,
+      series: [
+        { date: '2026-10-13', ideal: 20, remaining: 20 },
+        { date: '2026-10-14', ideal: 10, remaining: 12 },
+        { date: '2026-10-15', ideal: 0, remaining: null },
+      ],
+    });
+    expect(text).toBe(
+      'Burndown Sprint 2: cam kết 20 điểm. Đến 14/10/2026 còn 12 điểm, đường lý tưởng 10 điểm.',
+    );
+  });
+
+  it('chưa có số liệu còn lại', () => {
+    const text = burndownSummary({
+      ...base,
+      series: [{ date: '2026-10-15', ideal: 0, remaining: null }],
+    });
+    expect(text).toContain('Chưa có số liệu điểm còn lại');
+  });
+});
+
+describe('velocitySummary', () => {
+  it('trung bình + từng sprint', () => {
+    const text = velocitySummary({
+      averageCompleted: 16,
+      sprints: [{ sprintId: 'a', sprintName: 'Sprint 1', committed: 18, completed: 16 }],
+    });
+    expect(text).toBe('Velocity: trung bình hoàn thành 16 điểm. Sprint 1 hoàn thành 16/18 điểm.');
+  });
+
+  it('rỗng', () => {
+    expect(velocitySummary({ averageCompleted: 0, sprints: [] })).toBe(
+      'Velocity: chưa có sprint nào đã đóng.',
+    );
   });
 });

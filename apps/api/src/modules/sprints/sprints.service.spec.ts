@@ -186,7 +186,7 @@ describe('SprintsService.start — ngày và mục tiêu trong cùng giao dịch
     expect(events.emit).toHaveBeenCalledTimes(1);
   });
 
-  it('ngày kết thúc trước ngày bắt đầu => BusinessRuleException, KHÔNG ghi gì', async () => {
+  it('ngày kết thúc trước ngày bắt đầu => BusinessRuleException, KHÔNG ghi sprint, KHÔNG emit', async () => {
     const tx = startTx();
     const { service, events } = makeStart(tx);
     await expect(
@@ -196,7 +196,6 @@ describe('SprintsService.start — ngày và mục tiêu trong cùng giao dịch
       }),
     ).rejects.toMatchObject({ status: 422 });
     expect(tx.sprint.updateMany).not.toHaveBeenCalled();
-    expect(tx.project.update).not.toHaveBeenCalled();
     expect(events.emit).not.toHaveBeenCalled();
   });
 
@@ -233,6 +232,54 @@ describe('SprintsService.start — ngày và mục tiêu trong cùng giao dịch
       state: 'ACTIVE',
       startDate: D('2026-10-01'),
     });
+  });
+
+  it('ngày kết thúc bằng ngày bắt đầu là hợp lệ (sprint một ngày)', async () => {
+    const tx = startTx();
+    const { service } = makeStart(tx);
+    await service.start('w1', 's1', {
+      startDate: '2026-10-15T00:00:00.000Z',
+      endDate: '2026-10-15T00:00:00.000Z',
+    });
+    expect(tx.sprint.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('ngày hiệu lực lấy từ bản đọc SAU khi khoá, không phải bản đọc trước (PATCH xen giữa không bị ghi đè)', async () => {
+    const tx = startTx({ startDate: D('2026-10-01') });
+    // Lần đọc đầu (requireSprint) thấy startDate cũ; lần đọc trong transaction thấy PATCH đã dời sang 20/10.
+    const stale = sprintRow({ state: 'FUTURE', startDate: D('2026-10-01') });
+    const fresh = sprintRow({ state: 'FUTURE', startDate: D('2026-10-20') });
+    tx.sprint.findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(stale)
+      .mockResolvedValueOnce(fresh)
+      .mockResolvedValueOnce(null);
+    const { service } = makeStart(tx);
+    // endDate 10/10 hợp lệ với bản cũ nhưng trước ngày bắt đầu mới => phải bị chặn.
+    await expect(
+      service.start('w1', 's1', { endDate: '2026-10-10T00:00:00.000Z' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.sprint.updateMany).not.toHaveBeenCalled();
+
+    // Không gửi ngày => giữ startDate MỚI (20/10), không ghi đè về 01/10.
+    const tx2 = startTx();
+    tx2.sprint.findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(stale)
+      .mockResolvedValueOnce(fresh)
+      .mockResolvedValueOnce(null);
+    await makeStart(tx2).service.start('w1', 's1', {});
+    expect(tx2.sprint.updateMany.mock.calls[0]![0].data).toEqual({
+      state: 'ACTIVE',
+      startDate: D('2026-10-20'),
+    });
+  });
+
+  it('mục tiêu được trim khi lưu', async () => {
+    const tx = startTx();
+    const { service } = makeStart(tx);
+    await service.start('w1', 's1', { goal: '  Ra mắt beta  ' });
+    expect(tx.sprint.updateMany.mock.calls[0]![0].data).toMatchObject({ goal: 'Ra mắt beta' });
   });
 
   it('null xoá endDate / mục tiêu; mục tiêu toàn khoảng trắng coi như xoá', async () => {

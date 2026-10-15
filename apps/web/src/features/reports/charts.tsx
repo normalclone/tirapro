@@ -17,7 +17,7 @@ import type { BurndownReport, VelocityReport } from '@tirapro/shared';
 import { Skeleton } from '@/components/ui/primitives';
 import { fmtDate } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
-import { todayMarker } from './burndown';
+import { burndownSummary, todayMarker, velocitySummary } from './burndown';
 
 export const AXIS_PROPS = {
   tick: { fontSize: 11, fill: 'var(--muted)' },
@@ -137,40 +137,47 @@ export function BurndownChart({
 }) {
   const today = closed ? null : todayMarker(report.series, report.today);
   return (
-    <ResponsiveContainer width="100%" height={260}>
-      <LineChart data={report.series} margin={{ top: 16, right: 12, bottom: 0, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="date" {...AXIS_PROPS} tickFormatter={shortDay} minTickGap={16} />
-        <YAxis {...AXIS_PROPS} allowDecimals={false} axisLine={false} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(d: string) => fmtDate(d)} />
-        <Legend wrapperStyle={LEGEND_STYLE} />
-        {today && (
-          <ReferenceLine
-            x={today}
-            stroke="var(--warning)"
-            strokeWidth={1.5}
-            label={{ value: 'Hôm nay', position: 'top', fontSize: 11, fill: 'var(--warning-ink)' }}
+    <div role="img" aria-label={burndownSummary(report)}>
+      <ResponsiveContainer width="100%" height={260}>
+        <LineChart data={report.series} margin={{ top: 16, right: 12, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+          <XAxis dataKey="date" {...AXIS_PROPS} tickFormatter={shortDay} minTickGap={16} />
+          <YAxis {...AXIS_PROPS} allowDecimals={false} axisLine={false} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(d: string) => fmtDate(d)} />
+          <Legend wrapperStyle={LEGEND_STYLE} />
+          {today && (
+            <ReferenceLine
+              x={today}
+              stroke="var(--warning)"
+              strokeWidth={1.5}
+              label={{
+                value: 'Hôm nay',
+                position: 'top',
+                fontSize: 11,
+                fill: 'var(--warning-ink)',
+              }}
+            />
+          )}
+          <Line
+            type="linear"
+            dataKey="ideal"
+            name="Lý tưởng"
+            stroke="var(--muted)"
+            strokeDasharray="4 4"
+            dot={false}
           />
-        )}
-        <Line
-          type="linear"
-          dataKey="ideal"
-          name="Lý tưởng"
-          stroke="var(--muted)"
-          strokeDasharray="4 4"
-          dot={false}
-        />
-        <Line
-          type="linear"
-          dataKey="remaining"
-          name="Còn lại"
-          stroke="var(--primary)"
-          strokeWidth={2}
-          dot={false}
-          connectNulls={false}
-        />
-      </LineChart>
-    </ResponsiveContainer>
+          <Line
+            type="linear"
+            dataKey="remaining"
+            name="Còn lại"
+            stroke="var(--primary)"
+            strokeWidth={2}
+            dot={false}
+            connectNulls={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -195,35 +202,37 @@ export function VelocityChart({
   const dim = !!highlightSprintId && report.sprints.some((s) => s.sprintId === highlightSprintId);
   const opacity = (id: string) => (dim && id !== highlightSprintId ? DIM : 1);
   return (
-    <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={report.sprints} margin={{ top: 16, right: 12, bottom: 0, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="sprintName" {...AXIS_PROPS} />
-        <YAxis {...AXIS_PROPS} allowDecimals={false} axisLine={false} />
-        <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={TOOLTIP_STYLE} />
-        <Legend wrapperStyle={LEGEND_STYLE} />
-        <ReferenceLine
-          y={report.averageCompleted}
-          stroke="var(--muted)"
-          strokeDasharray="4 4"
-          label={{
-            value: `TB ${report.averageCompleted}`,
-            position: 'insideTopRight',
-            fontSize: 11,
-            fill: 'var(--muted)',
-          }}
-        />
-        <Bar dataKey="committed" name="Cam kết" fill="var(--status-todo)" radius={[4, 4, 0, 0]}>
-          {report.sprints.map((s) => (
-            <Cell key={s.sprintId} fillOpacity={opacity(s.sprintId)} />
-          ))}
-        </Bar>
-        <Bar dataKey="completed" name="Hoàn thành" fill="var(--primary)" radius={[4, 4, 0, 0]}>
-          {report.sprints.map((s) => (
-            <Cell key={s.sprintId} fillOpacity={opacity(s.sprintId)} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+    <div role="img" aria-label={velocitySummary(report)}>
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart data={report.sprints} margin={{ top: 16, right: 12, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+          <XAxis dataKey="sprintName" {...AXIS_PROPS} />
+          <YAxis {...AXIS_PROPS} allowDecimals={false} axisLine={false} />
+          <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={TOOLTIP_STYLE} />
+          <Legend wrapperStyle={LEGEND_STYLE} />
+          <ReferenceLine
+            y={report.averageCompleted}
+            stroke="var(--muted)"
+            strokeDasharray="4 4"
+            label={{
+              value: `TB ${report.averageCompleted}`,
+              position: 'insideTopRight',
+              fontSize: 11,
+              fill: 'var(--muted)',
+            }}
+          />
+          <Bar dataKey="committed" name="Cam kết" fill="var(--status-todo)" radius={[4, 4, 0, 0]}>
+            {report.sprints.map((s) => (
+              <Cell key={s.sprintId} fillOpacity={opacity(s.sprintId)} />
+            ))}
+          </Bar>
+          <Bar dataKey="completed" name="Hoàn thành" fill="var(--primary)" radius={[4, 4, 0, 0]}>
+            {report.sprints.map((s) => (
+              <Cell key={s.sprintId} fillOpacity={opacity(s.sprintId)} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

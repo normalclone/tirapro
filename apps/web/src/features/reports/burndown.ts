@@ -1,5 +1,7 @@
-import type { BurndownPoint } from '@tirapro/shared';
+import type { BurndownPoint, BurndownReport, VelocityReport } from '@tirapro/shared';
 import type { SprintState } from '@tirapro/types';
+import { fmtDate } from '@/lib/dateFormat';
+import { fmtPoints } from './sprintSummary';
 
 /** Phần tối thiểu của sprint mà các hàm thuần ở đây cần (khớp một phần `SprintDto`). */
 export interface SprintLike {
@@ -23,11 +25,6 @@ export const SPRINT_STATE_LABEL: Record<SprintState, string> = {
   CLOSED: 'đã kết thúc',
   FUTURE: 'chưa bắt đầu',
 };
-
-/** "Sprint 2 · đang chạy". */
-export function sprintLabel(s: Pick<SprintLike, 'name' | 'state'>): string {
-  return `${s.name} · ${SPRINT_STATE_LABEL[s.state]}`;
-}
 
 /**
  * Thứ tự trong danh sách chọn: Đang chạy → Đã kết thúc (mới nhất trước) → Chưa bắt đầu (sớm nhất trước,
@@ -61,4 +58,23 @@ export function resolveSprint<T extends SprintLike>(
   wantedId: string | null | undefined,
 ): T | undefined {
   return sprints.find((s) => s.id === wantedId) ?? pickDefaultSprint(sprints);
+}
+
+/** Mô tả văn bản của biểu đồ Burndown cho trình đọc màn hình (`aria-label` của `role="img"`). */
+export function burndownSummary(report: BurndownReport): string {
+  const head = `Burndown ${report.sprintName}: cam kết ${fmtPoints(report.committedPoints)} điểm.`;
+  const last = [...report.series].reverse().find((p) => p.remaining !== null);
+  if (!last) return `${head} Chưa có số liệu điểm còn lại.`;
+  return `${head} Đến ${fmtDate(last.date)} còn ${fmtPoints(last.remaining ?? 0)} điểm, đường lý tưởng ${fmtPoints(last.ideal)} điểm.`;
+}
+
+/** Mô tả văn bản của biểu đồ Velocity: trung bình và từng sprint đã đóng. */
+export function velocitySummary(report: VelocityReport): string {
+  if (report.sprints.length === 0) return 'Velocity: chưa có sprint nào đã đóng.';
+  const rows = report.sprints
+    .map(
+      (s) => `${s.sprintName} hoàn thành ${fmtPoints(s.completed)}/${fmtPoints(s.committed)} điểm`,
+    )
+    .join('; ');
+  return `Velocity: trung bình hoàn thành ${fmtPoints(report.averageCompleted)} điểm. ${rows}.`;
 }

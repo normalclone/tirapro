@@ -97,7 +97,7 @@ export class SprintsService {
 
   /**
    * Bắt đầu sprint. `input` (tuỳ chọn) chốt ngày bắt đầu/kết thúc và mục tiêu trong CÙNG giao dịch chuyển ACTIVE
-   * (không PATCH rồi start — hai request sẽ để sprint nửa vời nếu request sau lỗi). Kiểm `end >= start` TRƯỚC khi ghi.
+   * (không PATCH rồi start — hai request sẽ để sprint nửa vời nếu request sau lỗi). Kiểm `end >= start` trong transaction, TRƯỚC khi ghi.
    */
   async start(
     workspaceId: string,
@@ -105,21 +105,6 @@ export class SprintsService {
     input: StartSprintInput = {},
   ): Promise<SprintDto> {
     const sprint = await this.requireSprint(workspaceId, sprintId);
-    const startDate = input.startDate
-      ? new Date(input.startDate)
-      : (sprint.startDate ?? new Date());
-    const endDate =
-      input.endDate === undefined
-        ? sprint.endDate
-        : input.endDate === null
-          ? null
-          : new Date(input.endDate);
-    // So theo NGÀY (UTC): ngày kết thúc = hôm nay vẫn hợp lệ khi ngày bắt đầu là "bây giờ".
-    if (endDate && utcDay(endDate) < utcDay(startDate))
-      throw new BusinessRuleException('Ngày kết thúc phải sau ngày bắt đầu — hãy chọn lại ngày');
-    const data: Prisma.SprintUpdateManyMutationInput = { state: 'ACTIVE', startDate };
-    if (input.endDate !== undefined) data.endDate = endDate;
-    if (input.goal !== undefined) data.goal = input.goal?.trim() ? input.goal : null;
     const updated = await this.prisma.$transaction(async (tx) => {
       // Khoá dòng project để hai request start đồng thời trong cùng project phải xếp hàng.
       await tx.project.update({
@@ -130,10 +115,26 @@ export class SprintsService {
       // Đọc lại trạng thái SAU khi khoá: sprint đang ACTIVE/CLOSED thì báo đúng lý do thay vì "đã có sprint ACTIVE".
       const cur = await tx.sprint.findFirst({
         where: { id: sprintId, deletedAt: null },
-        select: { state: true },
+        select: { state: true, startDate: true, endDate: true },
       });
       if (cur?.state !== 'FUTURE')
         throw new BusinessRuleException('Chỉ sprint FUTURE mới start được');
+      // Ngày hiệu lực tính từ giá trị đọc SAU khi khoá (không dùng bản đọc trước đó) để không ghi đè một PATCH ngày xen giữa.
+      const startDate = input.startDate ? new Date(input.startDate) : (cur.startDate ?? new Date());
+      const endDate =
+        input.endDate === undefined
+          ? cur.endDate
+          : input.endDate === null
+            ? null
+            : new Date(input.endDate);
+      // So theo NGÀY (UTC): bằng nhau được phép (sprint một ngày; kết thúc = hôm nay khi bắt đầu là "bây giờ").
+      if (endDate && utcDay(endDate) < utcDay(startDate))
+        throw new BusinessRuleException(
+          'Ngày kết thúc không được trước ngày bắt đầu — hãy chọn lại ngày',
+        );
+      const data: Prisma.SprintUpdateManyMutationInput = { state: 'ACTIVE', startDate };
+      if (input.endDate !== undefined) data.endDate = endDate;
+      if (input.goal !== undefined) data.goal = input.goal?.trim() ? input.goal.trim() : null;
       const active = await tx.sprint.findFirst({
         where: { projectId: sprint.projectId, state: 'ACTIVE', deletedAt: null },
         select: { id: true },

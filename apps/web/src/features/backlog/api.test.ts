@@ -1,10 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
+const { post } = vi.hoisted(() => ({ post: vi.fn() }));
 vi.mock('@/lib/api', () => ({
-  api: { patch: vi.fn() },
+  api: { patch: vi.fn(), post },
   apiErrorMessage: (e: Error) => `msg:${e.message}`,
 }));
 import { AxiosError } from 'axios';
-import { bulkShortfallHint, rejectionReason, runBulkInChunks } from './api';
+import {
+  bulkShortfallHint,
+  postStartSprint,
+  rejectionReason,
+  runBulkInChunks,
+  sprintReportKeys,
+} from './api';
 
 const mkItems = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `i${i}`, version: 1 }));
 type Items = Array<{ id: string; version: number }>;
@@ -98,5 +105,41 @@ describe('rejectionReason', () => {
     expect(bulkShortfallHint(5, 3, 'WIP đầy.')).toMatch(
       /^WIP đầy\. Ngoài ra 2 việc bị người khác sửa/,
     );
+  });
+});
+
+describe('postStartSprint', () => {
+  it('gửi ngày/mục tiêu trong body, sprintId nằm ở URL chứ không ở body', async () => {
+    post.mockResolvedValueOnce({ data: { id: 's1' } });
+    const r = await postStartSprint({
+      sprintId: 's1',
+      startDate: '2026-10-15T00:00:00.000Z',
+      endDate: null,
+      goal: 'G',
+    });
+    expect(post).toHaveBeenCalledWith('/sprints/s1/start', {
+      startDate: '2026-10-15T00:00:00.000Z',
+      endDate: null,
+      goal: 'G',
+    });
+    expect(r).toEqual({ id: 's1' });
+  });
+
+  it('chỉ có sprintId → body rỗng (tương thích máy chủ cũ)', async () => {
+    post.mockResolvedValueOnce({ data: {} });
+    await postStartSprint({ sprintId: 's2' });
+    expect(post).toHaveBeenLastCalledWith('/sprints/s2/start', {});
+  });
+});
+
+describe('sprintReportKeys', () => {
+  it('gồm danh sách sprint, tổng kết, burndown, velocity và báo cáo dự án', () => {
+    expect(sprintReportKeys('p1', 's1')).toEqual([
+      ['report', 'sprints', 'p1'],
+      ['report', 'sprint-summary', 's1'],
+      ['report', 'burndown', 's1'],
+      ['report', 'velocity', 'p1'],
+      ['report', 'project', 'p1'],
+    ]);
   });
 });

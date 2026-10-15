@@ -6,7 +6,14 @@ import { DateInput } from '@/components/ui/DateInput';
 import { Dialog } from '@/components/ui/Dialog';
 import { fmtDate } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
-import { dayOf, defaultStart, startWarnings, suggestEnd, toDayIso } from './sprintDefaults';
+import {
+  dayOf,
+  defaultStart,
+  startRangeError,
+  startWarnings,
+  suggestEnd,
+  toDayIso,
+} from './sprintDefaults';
 
 export interface StartSprintValues {
   startDate: string;
@@ -58,7 +65,7 @@ export function StartSprintDialog({
 
   const issueCount = sprint.issueCount ?? 0;
   const totalPoints = sprint.totalPoints ?? 0;
-  const rangeError = start && end && end < start ? 'Ngày kết thúc phải sau ngày bắt đầu.' : null;
+  const rangeError = startRangeError(start, end);
   const canConfirm = !!start && !startErr && !endErr && !rangeError && !loading;
   const warnings = startWarnings({
     issueCount,
@@ -145,38 +152,7 @@ export function StartSprintDialog({
           </div>
         </div>
 
-        <div
-          className="flex flex-wrap items-center gap-1.5"
-          role="group"
-          aria-label="Gợi ý thời lượng"
-        >
-          <span className="text-xs text-muted">Thời lượng:</span>
-          {WEEK_CHOICES.map((n) => {
-            const active = weeks === n;
-            return (
-              <button
-                key={n}
-                type="button"
-                aria-pressed={active}
-                disabled={!start}
-                onClick={() => pickWeeks(n)}
-                className={cn(
-                  'rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
-                  active
-                    ? 'border-primary bg-primary-subtle text-primary'
-                    : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
-                )}
-              >
-                {n} tuần
-              </button>
-            );
-          })}
-          {start && (
-            <span className="ml-auto text-xs tabular text-muted">
-              {fmtDate(start)} → {end ? fmtDate(end) : 'chưa đặt'}
-            </span>
-          )}
-        </div>
+        <DurationChips weeks={weeks} start={start} end={end} onPick={pickWeeks} />
         {rangeError && (
           <p role="alert" className="text-xs text-danger">
             {rangeError}
@@ -201,19 +177,7 @@ export function StartSprintDialog({
           />
         </div>
 
-        {warnings.length > 0 && (
-          <ul
-            aria-label="Lưu ý trước khi bắt đầu"
-            className="space-y-1 rounded-md bg-warning/10 px-3 py-2 text-sm text-warning-ink"
-          >
-            {warnings.map((w) => (
-              <li key={w} className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                {w}
-              </li>
-            ))}
-          </ul>
-        )}
+        <WarningList warnings={warnings} />
 
         <p className="text-xs text-muted">
           Không hoàn tác được: nếu bắt đầu nhầm, hãy kết thúc sprint sớm. Nhấn Ctrl/Cmd+Enter để xác
@@ -221,5 +185,67 @@ export function StartSprintDialog({
         </p>
       </div>
     </Dialog>
+  );
+}
+
+/** Chip 1/2/3 tuần + khoảng ngày xem trước `dd/MM/yyyy → dd/MM/yyyy`. */
+function DurationChips({
+  weeks,
+  start,
+  end,
+  onPick,
+}: {
+  weeks: number | null;
+  start: string;
+  end: string;
+  onPick: (weeks: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Gợi ý thời lượng">
+      <span className="text-xs text-muted">Thời lượng:</span>
+      {WEEK_CHOICES.map((n) => {
+        const active = weeks === n;
+        return (
+          <button
+            key={n}
+            type="button"
+            aria-pressed={active}
+            disabled={!start}
+            onClick={() => onPick(n)}
+            className={cn(
+              'rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
+              active
+                ? 'border-primary bg-primary-subtle text-primary'
+                : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
+            )}
+          >
+            {n} tuần
+          </button>
+        );
+      })}
+      {start && (
+        <span className="ml-auto text-xs tabular text-muted">
+          {fmtDate(start)} → {end ? fmtDate(end) : 'chưa đặt'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Cảnh báo không chặn trước khi bắt đầu sprint. */
+function WarningList({ warnings }: { warnings: string[] }) {
+  if (warnings.length === 0) return null;
+  return (
+    <ul
+      aria-label="Lưu ý trước khi bắt đầu"
+      className="space-y-1 rounded-md bg-warning/10 px-3 py-2 text-sm text-warning-ink"
+    >
+      {warnings.map((w) => (
+        <li key={w} className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          {w}
+        </li>
+      ))}
+    </ul>
   );
 }

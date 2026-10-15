@@ -1,4 +1,3 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { SprintSummaryReport } from '@tirapro/shared';
@@ -7,12 +6,16 @@ import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { ExportMenu } from '@/components/ui/ExportMenu';
 import { QueryError } from '@/components/ui/QueryError';
 import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
-import { fetchAllProjectIssues } from '@/features/issues/api';
 import { fmtDate } from '@/lib/dateFormat';
 import { downloadText } from '@/lib/download';
-import { keys } from '@/lib/queryKeys';
 import { sprintTimeInfo } from '@/lib/sprintTime';
-import { useBurndown, useProjectSprints, useSprintSummary, useVelocity } from './api';
+import {
+  fetchSprintIssues,
+  useBurndown,
+  useProjectSprints,
+  useSprintSummary,
+  useVelocity,
+} from './api';
 import { orderSprints, resolveSprint, SPRINT_STATE_LABEL } from './burndown';
 import {
   BurndownChart,
@@ -79,6 +82,13 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
     hint: SPRINT_STATE_LABEL[s.state],
   }));
   const time = sprintTimeInfo(sprint);
+  const statusLine = [
+    SPRINT_STATE_LABEL[sprint.state],
+    time.range,
+    sprint.goal && `Mục tiêu: ${sprint.goal}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div className="space-y-4">
@@ -91,10 +101,11 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
           searchPlaceholder="Tìm sprint…"
           className="w-64 max-w-full"
         />
-        <p className="order-last w-full min-w-0 text-sm text-muted sm:order-none sm:w-auto sm:flex-1">
-          <span>{SPRINT_STATE_LABEL[sprint.state]}</span>
-          {time.range && <span> · {time.range}</span>}
-          {sprint.goal && <span className="truncate"> · Mục tiêu: {sprint.goal}</span>}
+        <p
+          title={statusLine}
+          className="order-last w-full min-w-0 text-sm text-muted sm:order-none sm:w-auto sm:flex-1 sm:truncate"
+        >
+          {statusLine}
         </p>
         <SprintExport projectId={projectId} projectKey={projectKey} sprint={sprint} />
       </div>
@@ -173,7 +184,6 @@ function SprintExport({
   projectKey: string;
   sprint: SprintDto;
 }) {
-  const qc = useQueryClient();
   return (
     <ExportMenu
       items={[
@@ -182,17 +192,17 @@ function SprintExport({
           label: 'Việc trong sprint (CSV)',
           hint: 'Mở được bằng Excel',
           run: async () => {
-            const all = await qc.ensureQueryData({
-              queryKey: keys.issues.byProject(projectId),
-              queryFn: () => fetchAllProjectIssues(qc, projectId),
-            });
-            const rows = all.filter((i) => i.sprintId === sprint.id);
+            const { issues: rows, truncated } = await fetchSprintIssues(projectId, sprint.id);
             if (rows.length === 0) {
               toast.info('Sprint này chưa có việc nào để xuất.');
               return;
             }
             downloadText(sprintCsvFilename(projectKey, sprint.name), sprintIssuesCsv(rows));
-            toast.success(`Đã xuất ${rows.length} việc.`);
+            if (truncated) {
+              toast.warning(
+                `Chỉ xuất được ${rows.length} việc đầu của sprint (đã chạm giới hạn). File chưa đủ — hãy lọc bớt rồi xuất lại.`,
+              );
+            } else toast.success(`Đã xuất ${rows.length} việc.`);
           },
         },
       ]}
