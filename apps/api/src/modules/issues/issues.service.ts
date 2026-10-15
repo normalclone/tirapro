@@ -117,8 +117,9 @@ export class IssuesService {
   ) {}
 
   /**
-   * Story points & Hạn chỉ người TẠO/BÁO CÁO issue hoặc QUẢN TRỊ (project admin /
+   * Hạn (dueDate) chỉ người TẠO/BÁO CÁO issue hoặc QUẢN TRỊ (project admin /
    * workspace admin / system admin) được sửa. Ném lỗi nếu vi phạm.
+   * Story points KHÔNG qua đây: ai sửa được công việc (`issue:edit`, hoặc `:own` với việc của mình) thì sửa được điểm.
    */
   private async assertCanEditRestrictedFields(
     userId: string,
@@ -133,7 +134,7 @@ export class IssuesService {
       select: { isSystemAdmin: true },
     });
     if (u?.isSystemAdmin) return;
-    throw new ForbiddenAppException('Chỉ người tạo hoặc quản trị mới được sửa Story points/Hạn');
+    throw new ForbiddenAppException('Chỉ người tạo hoặc quản trị mới được sửa Hạn');
   }
 
   /** Người chỉ có `issue:edit:own` chỉ sửa được việc mình báo cáo, được giao hoặc đã tạo. */
@@ -355,6 +356,51 @@ export class IssuesService {
       });
       cur = next?.epicId ?? null;
     }
+  }
+
+  /**
+   * Epic cho CẢ LÔ (bulk): kiểm một lần (cùng dự án, đúng loại Epic) rồi kiểm vòng — epic không được nằm trong lô
+   * và chuỗi `epicId` của epic không được chạm một item của lô (tránh N × chuỗi truy vấn).
+   */
+  private async assertEpicForBulk(
+    workspaceId: string,
+    epicId: string,
+    projectId: string,
+    ids: string[],
+  ): Promise<void> {
+    if (ids.includes(epicId))
+      throw new BusinessRuleException(
+        'Một công việc không thể là epic của chính nó — hãy chọn một epic khác',
+      );
+    await this.assertEpicValid(this.prisma, workspaceId, epicId, projectId, null);
+    let cur: string | null =
+      (
+        await this.prisma.issue.findFirst({
+          where: { id: epicId, workspaceId, deletedAt: null },
+          select: { epicId: true },
+        })
+      )?.epicId ?? null;
+    for (let depth = 0; cur && depth < 50; depth++) {
+      if (ids.includes(cur))
+        throw new BusinessRuleException(
+          'Không thể chọn epic này vì sẽ tạo vòng lặp (epic đó đang thuộc về một công việc đã chọn)',
+        );
+      const next: { epicId: string | null } | null = await this.prisma.issue.findFirst({
+        where: { id: cur, workspaceId, deletedAt: null },
+        select: { epicId: true },
+      });
+      cur = next?.epicId ?? null;
+    }
+  }
+
+  /** Nhãn phải thuộc đúng dự án của lô — chống gắn nhãn chéo dự án/tenant. */
+  private async assertLabelsInProject(projectId: string, labelIds: string[]): Promise<void> {
+    const ids = [...new Set(labelIds)];
+    const valid = await this.prisma.label.findMany({
+      where: { id: { in: ids }, projectId },
+      select: { id: true },
+    });
+    if (valid.length !== ids.length) throw new NotFoundAppException('Nhãn');
   }
 
   /** Có thể gán mới cho user này không: là thành viên workspace và tài khoản chưa bị vô hiệu hoá. */
@@ -784,7 +830,7 @@ export class IssuesService {
 
   /**
    * `opts` do automation truyền vào (tầng/chuỗi quy tắc): gắn vào `meta` của sự kiện để engine chặn vòng lặp,
-   * và bỏ qua kiểm tra "chỉ người tạo/quản trị sửa Story points/Hạn" (người dùng hệ thống không phải thành viên —
+   * và bỏ qua kiểm tra "chỉ người tạo/quản trị sửa Hạn" (người dùng hệ thống không phải thành viên —
    * quy tắc đã do quản trị tạo).
    */
   async update(
@@ -812,11 +858,8 @@ export class IssuesService {
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
       await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
 
-    // Field-level: Story points / Hạn chỉ người tạo hoặc admin sửa được.
-    if (
-      (input.storyPoints !== undefined || input.dueDate !== undefined) &&
-      opts?.automationDepth === undefined
-    ) {
+    // Field-level: Hạn chỉ người tạo hoặc admin sửa được (điểm: ai sửa được công việc thì sửa được).
+    if (input.dueDate !== undefined && opts?.automationDepth === undefined) {
       await this.assertCanEditRestrictedFields(userId, workspaceId, current);
     }
 
@@ -898,6 +941,23 @@ export class IssuesService {
     // Chỉ kiểm khi có hàng thật sự đổi assignee (hàng đã giữ đúng assignee đó thì bỏ qua).
     if (patch.assigneeId !== undefined && rows.some((r) => r.assigneeId !== patch.assigneeId))
       await this.assertAssigneeInWorkspace(workspaceId, patch.assigneeId);
+    // storyPoints không cần kiểm quyền riêng: `ownOnly` ở trên đã 403 cả lô khi có việc của người khác.
+    if (patch.epicId)
+      await this.assertEpicForBulk(
+        workspaceId,
+        patch.epicId,
+        projectId,
+        items.map((i) => i.id),
+      );
+    const labelOps =
+      patch.labels && (patch.labels.add?.length ?? 0) + (patch.labels.remove?.length ?? 0) > 0
+        ? patch.labels
+        : null;
+    if (labelOps)
+      await this.assertLabelsInProject(projectId, [
+        ...(labelOps.add ?? []),
+        ...(labelOps.remove ?? []),
+      ]);
 
     // Chuyển trạng thái: kiểm tra workflow đúng như transition() trước khi ghi bất cứ thứ gì.
     let toDone = false;
@@ -917,6 +977,7 @@ export class IssuesService {
     const conflicts: BulkUpdateIssuesResult['conflicts'] = [];
     const changed: Array<{ before: IssueRow; after: IssueRow }> = [];
     const result: IssueRow[] = [];
+    const labelIds: string[] = []; // hàng đã/sẽ được ghi nhãn (version còn khớp)
     await this.prisma.$transaction(async (tx) => {
       if (wip) {
         // Chỉ tính việc thật sự SẼ vào cột: version còn khớp và chưa nằm trong cột đích.
@@ -953,7 +1014,12 @@ export class IssuesService {
           data.priorityId = patch.priorityId;
         if (patch.sprintId !== undefined && patch.sprintId !== before.sprintId)
           data.sprintId = patch.sprintId;
+        if (patch.storyPoints !== undefined && patch.storyPoints !== before.storyPoints)
+          data.storyPoints = patch.storyPoints;
+        if (patch.epicId !== undefined && patch.epicId !== before.epicId)
+          data.epicId = patch.epicId;
         if (Object.keys(data).length === 0) {
+          if (labelOps) labelIds.push(item.id);
           result.push(before); // không có gì khác đi — coi như đã đạt, không tăng version
           continue;
         }
@@ -964,16 +1030,61 @@ export class IssuesService {
           if (statusChanged) await this.recordStatusChange(tx, userId, before, after);
           changed.push({ before, after });
           result.push(after);
+          if (labelOps) labelIds.push(item.id);
         } catch (e) {
           if (!(e instanceof VersionConflictException)) throw e;
           conflicts.push({ id: item.id, version: (e.current as { version: number }).version });
         }
       }
+      if (labelOps && labelIds.length) await this.applyBulkLabels(tx, labelIds, labelOps);
     }, BULK_TX_OPTIONS);
 
+    const fresh = await this.emitBulkEvents(workspaceId, userId, changed, labelIds);
+    return { updated: result.map((r) => this.toDto(fresh.get(r.id) ?? r)), conflicts };
+  }
+
+  /** Ghi nhãn cho các hàng của lô. Nhãn không phải cột của Issue nên không tăng version (giống POST :id/labels). */
+  private async applyBulkLabels(
+    tx: Prisma.TransactionClient,
+    issueIds: string[],
+    ops: { add?: string[]; remove?: string[] },
+  ): Promise<void> {
+    if (ops.add?.length)
+      await tx.issueLabel.createMany({
+        data: issueIds.flatMap((issueId) => ops.add!.map((labelId) => ({ issueId, labelId }))),
+        skipDuplicates: true,
+      });
+    if (ops.remove?.length)
+      await tx.issueLabel.deleteMany({
+        where: { issueId: { in: issueIds }, labelId: { in: ops.remove } },
+      });
+  }
+
+  /**
+   * Phát sự kiện của lô SAU commit; đọc lại hàng có đổi nhãn để DTO/sự kiện phản ánh đúng nhãn sau khi ghi.
+   * Trả về map id → hàng đã đọc lại (rỗng khi lô không đổi nhãn).
+   */
+  private async emitBulkEvents(
+    workspaceId: string,
+    userId: string,
+    changed: Array<{ before: IssueRow; after: IssueRow }>,
+    labelIds: string[],
+  ): Promise<Map<string, IssueRow>> {
+    // Đọc lại hàng có đổi nhãn để `updated[].labels` và sự kiện phản ánh đúng sau khi ghi.
+    const fresh = new Map<string, IssueRow>();
+    if (labelIds.length) {
+      const reread = await this.prisma.issue.findMany({
+        where: { id: { in: labelIds }, workspaceId, deletedAt: null },
+        include: issueInclude,
+      });
+      for (const r of reread) fresh.set(r.id, r);
+    }
+    const labelSet = new Set(labelIds);
+    const changedIds = new Set(changed.map((c) => c.after.id));
     for (const { before, after } of changed) {
-      const dto = this.toDto(after);
+      const dto = this.toDto(fresh.get(after.id) ?? after);
       const changedFields = changedFieldsOf(before, after);
+      if (labelSet.has(after.id)) changedFields.push('labels');
       if (before.statusId !== after.statusId) {
         this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, {
           issue: dto,
@@ -991,7 +1102,17 @@ export class IssuesService {
         });
       }
     }
-    return { updated: result.map((r) => this.toDto(r)), conflicts };
+    // Hàng chỉ đổi nhãn (không có cột nào khác đổi): vẫn báo realtime cho người khác.
+    for (const id of labelSet) {
+      const row = fresh.get(id);
+      if (!row || changedIds.has(id)) continue;
+      this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+        issue: this.toDto(row),
+        actorId: userId,
+        changedFields: ['labels'],
+      });
+    }
+    return fresh;
   }
 
   async transition(

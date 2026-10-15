@@ -70,6 +70,15 @@ export const bulkUpdateIssuesSchema = z.object({
       assigneeId: z.string().min(1).nullable().optional(),
       priorityId: z.string().min(1).nullable().optional(),
       sprintId: z.string().min(1).nullable().optional(),
+      storyPoints: z.number().min(0).max(1000).nullable().optional(),
+      epicId: z.string().min(1).nullable().optional(),
+      // Nhãn của DỰ ÁN; chỉ thêm/gỡ, không thay cả bộ — hoàn tác phía web dùng đối ngẫu add ↔ remove.
+      labels: z
+        .object({
+          add: z.array(z.string().min(1)).max(10).optional(),
+          remove: z.array(z.string().min(1)).max(10).optional(),
+        })
+        .optional(),
     })
     .refine((p) => Object.values(p).some((v) => v !== undefined), 'Hãy chọn ít nhất một thay đổi'),
 });

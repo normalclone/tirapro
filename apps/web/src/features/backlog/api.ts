@@ -89,6 +89,9 @@ export interface BulkIssuePatch {
   assigneeId?: string | null;
   priorityId?: string | null;
   sprintId?: string | null;
+  storyPoints?: number | null;
+  epicId?: string | null;
+  labels?: { add?: string[]; remove?: string[] };
 }
 
 /** Máy chủ nhận tối đa 100 việc/lần (`bulkUpdateIssuesSchema`). */
