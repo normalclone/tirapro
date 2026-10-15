@@ -27,9 +27,14 @@
  *   header-offscreen   nút/link trong header dự án có right > 390 (trên màn hình)
  *   small-targets      > 6 nút/link cao < 28px (CẢNH BÁO — không làm exit code = 1)
  *
+ * Giới hạn heuristic: `text-overlap` chỉ so mỗi phần tử lá với 40 phần tử kế tiếp theo thứ tự DOM nên sót chữ
+ * đè nhau ở xa nhau trong DOM (vd hai cột bố trí lệch); phát hiện 404 dựa vào 400 ký tự đầu của trang.
+ *
  * Allowlist `mobile-audit.allow.json`: { "<route>|<loại>": "lý do" }. Route có thể viết thô hoặc thay
  * khoá dự án / mã công việc bằng `:project` / `:issue`.
  * Exit code 1 nếu còn lỗi (trừ cảnh báo) ngoài allowlist.
+ * Lưu ý: `small-targets` vốn là cảnh báo (WARN_ONLY, không bao giờ làm exit 1) nên cho vào allowlist chỉ để
+ * ẩn khỏi báo cáo, KHÔNG phải ngoại lệ thật. Chỉ các loại chặn mới cần allowlist có lý do.
  */
 import { chromium } from 'playwright-core';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
