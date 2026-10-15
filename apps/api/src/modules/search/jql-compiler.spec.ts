@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { parseJql } from '@tirapro/shared';
-import { collectFulltextTerms, compileJql, primaryFulltextTerm } from './jql-compiler';
+import {
+  collectFulltextTerms,
+  compileJql,
+  primaryFulltextTerm,
+  topLevelProjectKeys,
+} from './jql-compiler';
 
 const ast = (jql: string) => parseJql(jql);
 
@@ -19,22 +24,52 @@ describe('JQL text ~ (full-text)', () => {
     expect(primaryFulltextTerm(ast('NOT (text ~ "foo")').where)).toBeNull();
   });
 
-  it('có kết quả full-text -> where id in ids; `!~` vẫn dùng contains', () => {
-    const fulltext = new Map([['foo', ['I1', 'I2']]]);
-    expect(compileJql(ast('text ~ "foo"'), { currentUserId: 'U', fulltext }).where).toEqual({
-      id: { in: ['I1', 'I2'] },
+  it('text ~ có kết quả xếp hạng => OR (id in ranked | summary/description/key contains) — không phụ thuộc top-200', () => {
+    const fulltext = new Map([['foo', ['I1']]]);
+    const { where } = compileJql(ast('text ~ "foo"'), { currentUserId: 'u', fulltext });
+    expect(where).toEqual({
+      OR: [
+        { id: { in: ['I1'] } },
+        { summary: { contains: 'foo', mode: 'insensitive' } },
+        { description: { contains: 'foo', mode: 'insensitive' } },
+        { key: { contains: 'foo', mode: 'insensitive' } },
+      ],
     });
-    const neg = compileJql(ast('text !~ "foo"'), { currentUserId: 'U', fulltext }).where;
-    expect(JSON.stringify(neg)).toContain('contains');
   });
 
-  it('không có kết quả full-text (thiếu searchVector) -> contains summary/description như cũ', () => {
+  it('`!~` là NOT của cùng điều kiện contains (không dùng id xếp hạng)', () => {
+    const fulltext = new Map([['foo', ['I1', 'I2']]]);
+    const neg = compileJql(ast('text !~ "foo"'), { currentUserId: 'U', fulltext }).where;
+    expect(neg).toEqual({
+      NOT: {
+        OR: [
+          { summary: { contains: 'foo', mode: 'insensitive' } },
+          { description: { contains: 'foo', mode: 'insensitive' } },
+          { key: { contains: 'foo', mode: 'insensitive' } },
+        ],
+      },
+    });
+  });
+
+  it('không có kết quả full-text (thiếu searchVector) -> contains summary/description/key', () => {
     const w = compileJql(ast('text ~ "foo"'), { currentUserId: 'U' }).where;
     expect(w).toEqual({
       OR: [
         { summary: { contains: 'foo', mode: 'insensitive' } },
         { description: { contains: 'foo', mode: 'insensitive' } },
+        { key: { contains: 'foo', mode: 'insensitive' } },
       ],
     });
+  });
+
+  it('topLevelProjectKeys: lấy project = / IN trên chuỗi AND; bỏ qua khi nằm trong OR/NOT', () => {
+    expect(topLevelProjectKeys(ast('project = ABC AND text ~ "x"').where)).toEqual(['ABC']);
+    expect(topLevelProjectKeys(ast('project IN (A, B) AND status = Done').where)).toEqual([
+      'A',
+      'B',
+    ]);
+    expect(topLevelProjectKeys(ast('project = A OR text ~ "x"').where)).toBeNull();
+    expect(topLevelProjectKeys(ast('NOT (project = A)').where)).toBeNull();
+    expect(topLevelProjectKeys(ast('status = Done').where)).toBeNull();
   });
 });

@@ -1406,3 +1406,51 @@ describe('IssuesService.move — neighbor cũ (409) vs hết chỗ (rebalance)',
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('IssuesService.query — rankHint (id khớp FTS lên trước, phần còn lại theo updatedAt)', () => {
+  const row = (id: string) => issueRow({ id });
+  type FindManyArg = { where: unknown; cursor?: { id: string }; skip?: number; take?: number };
+  function svc(rankedRows: string[], restRows: string[]) {
+    const findMany = vi.fn(({ where }: FindManyArg) => {
+      const isRanked = JSON.stringify(where).includes('"in"');
+      return Promise.resolve((isRanked ? rankedRows : restRows).map(row));
+    });
+    return { findMany, ...makeService({ issue: { findMany } }) };
+  }
+
+  it('trang 1: id xếp hạng theo thứ tự rank rồi bù bằng phần còn lại', async () => {
+    const { service } = svc(['b', 'a'], ['x', 'y']); // DB trả ranked không theo thứ tự rank
+    const page = await service.query('w1', {}, [], undefined, 3, undefined, ['a', 'b']);
+    expect(page.data.map((i) => i.id)).toEqual(['a', 'b', 'x']);
+  });
+
+  it('cursor nằm trong phần xếp hạng => tiếp tục sau nó rồi chuyển sang phần còn lại', async () => {
+    const { service } = svc(['b', 'a'], ['x', 'y']);
+    const page = await service.query('w1', {}, [], 'a', 2, undefined, ['a', 'b']);
+    expect(page.data.map((i) => i.id)).toEqual(['b', 'x']);
+  });
+
+  it('cursor nằm ở phần còn lại => Prisma cursor+skip cho phần còn lại, không lặp phần xếp hạng', async () => {
+    const { service, findMany } = svc(['b', 'a'], ['y', 'z']);
+    const page = await service.query('w1', {}, [], 'x', 2, undefined, ['a', 'b']);
+    expect(page.data.map((i) => i.id)).toEqual(['y', 'z']);
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany.mock.calls[0]![0]).toMatchObject({ cursor: { id: 'x' }, skip: 1 });
+  });
+
+  it('phần xếp hạng lọc theo scope (workspace, chưa xoá, dự án còn sống)', async () => {
+    const { service, findMany } = svc(['a'], []);
+    await service.query('w1', {}, [], undefined, 5, undefined, ['a']);
+    const json = JSON.stringify(findMany.mock.calls[0]![0]);
+    expect(json).toContain('"workspaceId":"w1"');
+    expect(json).toContain('"deletedAt":null');
+    expect(json).toContain('"project":{"deletedAt":null}');
+  });
+
+  it('có orderBy tường minh => bỏ qua rankHint (đường queryOrdered)', async () => {
+    const { service, findMany } = svc(['a'], ['x']);
+    await service.query('w1', {}, [{ createdAt: 'desc' }], undefined, 5, undefined, ['a']);
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(findMany.mock.calls[0]![0])).not.toContain('notIn');
+  });
+});

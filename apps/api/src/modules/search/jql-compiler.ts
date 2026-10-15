@@ -57,6 +57,19 @@ export function primaryFulltextTerm(node: JqlNode | null): string | null {
   return node ? walk(node) : null;
 }
 
+/** Khoá project của điều kiện `project = X` / `project IN (…)` nằm trên chuỗi AND thuần (không qua OR/NOT); null nếu không có. */
+export function topLevelProjectKeys(node: JqlNode | null): string[] | null {
+  const walk = (n: JqlNode): string[] | null => {
+    if (n.type === 'logical') return n.op === 'AND' ? (walk(n.left) ?? walk(n.right)) : null;
+    if (n.type === 'not') return null;
+    if (n.field !== 'project' || (n.operator !== '=' && n.operator !== 'IN')) return null;
+    const vs = n.value.kind === 'list' ? n.value.value : [n.value];
+    const keys = vs.flatMap((x) => (x.kind === 'string' ? [x.value] : []));
+    return keys.length ? keys : null;
+  };
+  return node ? walk(node) : null;
+}
+
 interface FieldCfg {
   kind: 'relationName' | 'idUser' | 'enumRel' | 'text' | 'fulltext' | 'array' | 'date' | 'number';
   relation?: string; // tên relation Prisma
@@ -125,6 +138,23 @@ function compileOrder(o: JqlOrderBy): Prisma.IssueOrderByWithRelationInput {
   return { updatedAt: dir };
 }
 
+/**
+ * Điều kiện Prisma ĐẦY ĐỦ cho `text ~ v`: id full-text đã xếp hạng (nếu có) HOẶC chuỗi con ở
+ * summary/description/key. Đúng đắn không phụ thuộc danh sách xếp hạng (vốn bị cắt top-N);
+ * danh sách đó chỉ giúp bắt token khác dạng mà `contains` không thấy và để xếp hạng (rankHint).
+ */
+function textMatchWhere(v: string, ranked?: readonly string[]): Where {
+  const like = { contains: v, mode: 'insensitive' as const };
+  return {
+    OR: [
+      ...(ranked?.length ? [{ id: { in: [...ranked] } }] : []),
+      { summary: like },
+      { description: like },
+      { key: like },
+    ],
+  };
+}
+
 function compileComparison(
   field: JqlFieldName,
   op: JqlOperator,
@@ -164,10 +194,7 @@ function compileComparison(
     }
     case 'fulltext': {
       const v = scalarString(value, ctx);
-      const ranked = op === '~' ? ctx.fulltext?.get(v) : undefined;
-      if (ranked) return { id: { in: [...ranked] } };
-      const like = { contains: v, mode: 'insensitive' as const };
-      const match: Where = { OR: [{ summary: like }, { description: like }] };
+      const match = textMatchWhere(v, op === '~' ? ctx.fulltext?.get(v) : undefined);
       return op === '!~' ? { NOT: match } : match;
     }
     case 'array': {

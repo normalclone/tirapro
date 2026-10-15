@@ -33,14 +33,34 @@ export function isMissingColumnError(err: unknown): boolean {
   return typeof e.message === 'string' && e.message.includes('42703');
 }
 
-interface SearchOptions {
+export interface SearchOptions {
   projectId?: string;
+  /** Thu hẹp theo nhiều dự án (giao với `projectId` nếu truyền cả hai do người gọi tự xử lý). Mảng rỗng => không có kết quả. */
+  projectIds?: string[];
   limit?: number;
 }
 
 /**
- * Tìm full-text trên Issue bằng `tsvector` (searchVector, config 'simple') cộng ILIKE trên summary
- * (trigram) để khớp một phần từ. Trả id xếp theo rank giảm dần.
+ * Điều kiện khớp văn bản của một issue (alias `i`, tsquery `q`): token full-text HOẶC chuỗi con
+ * (ILIKE, dùng index trigram) ở summary/description/key. Tách riêng để mở rộng (bỏ dấu, typo-tolerant).
+ */
+export function buildTextMatchSql(built: FulltextQuery): Prisma.Sql {
+  return Prisma.sql`(i."searchVector" @@ q
+    OR i."summary" ILIKE ${built.like}
+    OR i."description" ILIKE ${built.like}
+    OR i."key" ILIKE ${built.like})`;
+}
+
+/** Phạm vi project cho câu SQL: `projectIds` > `projectId` > không giới hạn; mảng rỗng => `[]`. */
+function resolveProjectScope(opts: SearchOptions): string[] | null {
+  return opts.projectIds ?? (opts.projectId ? [opts.projectId] : null);
+}
+
+/**
+ * Tìm full-text trên Issue bằng `tsvector` (searchVector, config 'simple') cộng ILIKE trên
+ * summary/description/key (trigram) để khớp một phần từ. Chỉ xét issue chưa xoá của dự án chưa xoá,
+ * trong phạm vi project nếu có. Trả id xếp theo rank giảm dần (tối đa `limit`) — dùng để XẾP HẠNG;
+ * tính đúng đắn của kết quả JQL không phụ thuộc danh sách này (xem `jql-compiler`).
  */
 export class FulltextSearcher {
   private warned = false;
@@ -62,17 +82,22 @@ export class FulltextSearcher {
     const built = buildFulltextQuery(raw);
     if (!built) return { ids: [] };
     const limit = Math.min(Math.max(opts.limit ?? FULLTEXT_LIMIT, 1), FULLTEXT_LIMIT);
-    const projectFilter = opts.projectId
-      ? Prisma.sql`AND i."projectId" = ${opts.projectId}`
+    const scope = resolveProjectScope(opts);
+    if (scope && scope.length === 0) return { ids: [] };
+    const projectFilter = scope
+      ? Prisma.sql`AND i."projectId" = ANY(${scope}::text[])`
       : Prisma.empty;
     try {
       const rows = await this.prisma.$queryRaw<{ id: string; rank: number }[]>`
         SELECT i."id", ts_rank(i."searchVector", q) AS rank
-        FROM "Issue" i, websearch_to_tsquery('simple', ${built.q}) q
+        FROM "Issue" i
+        JOIN "Project" p ON p."id" = i."projectId"
+        CROSS JOIN websearch_to_tsquery('simple', ${built.q}) q
         WHERE i."workspaceId" = ${workspaceId}
           AND i."deletedAt" IS NULL
+          AND p."deletedAt" IS NULL
           ${projectFilter}
-          AND (i."searchVector" @@ q OR i."summary" ILIKE ${built.like})
+          AND ${buildTextMatchSql(built)}
         ORDER BY rank DESC, i."updatedAt" DESC
         LIMIT ${limit}`;
       return { ids: rows.map((r) => r.id) };

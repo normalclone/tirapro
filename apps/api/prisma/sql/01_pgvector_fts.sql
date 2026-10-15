@@ -18,6 +18,9 @@ ALTER TABLE "Issue" ADD COLUMN IF NOT EXISTS "searchVector" tsvector
 
 CREATE INDEX IF NOT EXISTS issue_search_gin   ON "Issue" USING gin ("searchVector");
 CREATE INDEX IF NOT EXISTS issue_summary_trgm ON "Issue" USING gin ("summary" gin_trgm_ops);
+-- ILIKE '%…%' trên description/key (JQL `text ~`, Cmd+K) — không có index này là quét tuần tự.
+CREATE INDEX IF NOT EXISTS issue_description_trgm ON "Issue" USING gin ("description" gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS issue_key_trgm ON "Issue" USING gin ("key" gin_trgm_ops);
 
 -- ---------- Semantic search trên IssueEmbedding ----------
 -- Dimension mặc định 1024 (voyage-3). Đổi EMBEDDING_DIM => sửa số này + reindex.
