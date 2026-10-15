@@ -8,7 +8,10 @@ import {
   Italic,
   Link2,
   List,
+  ListChecks,
+  Table2,
 } from 'lucide-react';
+import { insertTableTemplate, toggleLinePrefix } from './markdownEdit';
 import type { MentionPerson } from './mentionQuery';
 import { MentionPopup } from './MentionPopup';
 import { useMentionPopup } from './useMentionPopup';
@@ -41,12 +44,16 @@ function MarkdownToolbar({
   linePrefix,
   insertLink,
   insertImage,
+  toggleChecklist,
+  insertTable,
   insertAt,
 }: {
   wrap: (marker: string, placeholder: string) => void;
   linePrefix: (prefix: string) => void;
   insertLink: () => void;
   insertImage: () => void;
+  toggleChecklist: () => void;
+  insertTable: () => void;
   /** Có → hiện nút @ (chỉ khi editor bật popup nhắc tên). */
   insertAt?: () => void;
 }) {
@@ -67,6 +74,15 @@ function MarkdownToolbar({
       </ToolBtn>
       <ToolBtn title="Biến dòng hiện tại thành gạch đầu dòng" onClick={() => linePrefix('- ')}>
         <List className="h-4 w-4" />
+      </ToolBtn>
+      <ToolBtn
+        title="Biến các dòng đang chọn thành danh sách ô tick (bấm lại để bỏ)"
+        onClick={toggleChecklist}
+      >
+        <ListChecks className="h-4 w-4" />
+      </ToolBtn>
+      <ToolBtn title="Chèn bảng mẫu 3 cột" onClick={insertTable}>
+        <Table2 className="h-4 w-4" />
       </ToolBtn>
       <span className="mx-1 h-4 w-px bg-border" aria-hidden />
       <ToolBtn title="Chèn liên kết tới một đường dẫn" onClick={insertLink}>
@@ -177,6 +193,9 @@ export function MarkdownEditor({
     });
   }
 
+  const toggleChecklist = () => apply((val, s, e) => toggleLinePrefix(val, s, e, '- [ ] '));
+  const insertTable = () => apply((val, s) => insertTableTemplate(val, s));
+
   function insertImage() {
     const url = window.prompt('Dán đường dẫn (URL) của ảnh muốn chèn:');
     if (url) insert(`\n![](${url})\n`);
@@ -190,6 +209,8 @@ export function MarkdownEditor({
           linePrefix={linePrefix}
           insertLink={insertLink}
           insertImage={insertImage}
+          toggleChecklist={toggleChecklist}
+          insertTable={insertTable}
           insertAt={mentionPeople ? insertAt : undefined}
         />
         <textarea

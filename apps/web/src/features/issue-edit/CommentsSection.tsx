@@ -10,6 +10,7 @@ import { useAuth } from '@/stores/auth';
 import { Avatar } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import type { PersonOption } from '@/components/ui/PeoplePicker';
+import { setTaskChecked } from '@tirapro/shared';
 import { apiErrorMessage } from '@/lib/api';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownView } from './MarkdownView';
@@ -136,6 +137,19 @@ function CommentRow({
     }
   }
 
+  async function toggleTask(index: number, checked: boolean, itemText: string) {
+    const next = setTaskChecked(comment.body, index, checked, itemText);
+    if (next === null) {
+      toast.error('Nội dung bình luận vừa thay đổi — hãy tải lại rồi tick lại.');
+      return;
+    }
+    try {
+      await update.mutateAsync({ id: comment.id, body: next, version: comment.version });
+    } catch (e) {
+      toast.error(apiErrorMessage(e));
+    }
+  }
+
   async function onDelete() {
     try {
       await remove.mutateAsync(comment.id);
@@ -192,7 +206,12 @@ function CommentRow({
         ) : (
           <>
             <div className="mt-0.5">
-              <MarkdownView text={comment.body} />
+              <MarkdownView
+                text={comment.body}
+                onToggleTask={
+                  canEdit ? (i, checked, text) => void toggleTask(i, checked, text) : undefined
+                }
+              />
             </div>
             {canEdit && (
               <div className="mt-1 flex items-center gap-3 text-xs">

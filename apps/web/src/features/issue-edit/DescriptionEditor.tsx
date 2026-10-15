@@ -8,6 +8,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownView } from './MarkdownView';
 import { useAssigneeOptions } from './useAssigneeOptions';
+import { useTaskToggle } from './useTaskToggle';
 
 /**
  * Mô tả công việc: xem (render Markdown, dạng label) → bấm để sửa bằng MarkdownEditor.
@@ -17,6 +18,7 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
   const patch = useUpdateIssue(issue.projectId);
   const canEdit = useCanEditIssue(issue.projectId)(issue);
   const people = useAssigneeOptions(issue.projectId);
+  const toggleTask = useTaskToggle(issue.projectId, 'description');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(issue.description ?? '');
 
@@ -97,6 +99,7 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return; // Enter trên ô tick/liên kết bên trong không vào chế độ sửa
         if (e.key === 'Enter') {
           e.preventDefault();
           start();
@@ -105,7 +108,10 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
       title="Bấm để sửa mô tả"
       className="cursor-text rounded-md border border-border bg-surface p-3 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
     >
-      <MarkdownView text={issue.description} />
+      <MarkdownView
+        text={issue.description}
+        onToggleTask={(i, checked, text) => void toggleTask(issue, i, checked, text)}
+      />
     </div>
   );
 }
