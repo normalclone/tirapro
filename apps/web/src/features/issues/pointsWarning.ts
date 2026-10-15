@@ -30,15 +30,7 @@ export function pointsEditWarningBulk(list: Is[], sprints: Sp[] | undefined): st
     : null;
 }
 
-/**
- * Hỏi xác nhận sửa điểm. Mở hộp SAU khi sự kiện phím hiện tại kết thúc: Enter ở ô nhập → blur → hộp mở và focus rơi vào
- * nút "Vẫn sửa" ngay giữa keydown và keypress, nên keypress của chính phím Enter đó bấm luôn nút và tự xác nhận
- * (hộp không kịp hiện).
- */
-export async function confirmPointsEdit(
-  confirm: (opts: ConfirmOptions) => Promise<boolean>,
-  warning: string,
-): Promise<boolean> {
-  await new Promise<void>((r) => setTimeout(r, 0));
-  return confirm({ title: WARN_TITLE, description: warning, confirmLabel: 'Vẫn sửa' });
+/** Tuỳ chọn hộp xác nhận cho cảnh báo sửa điểm (một nơi cho trang công việc, dòng Việc chờ và hàng loạt). */
+export function pointsConfirmOptions(warning: string): ConfirmOptions {
+  return { title: WARN_TITLE, description: warning, confirmLabel: 'Vẫn sửa' };
 }

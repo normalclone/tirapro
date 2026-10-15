@@ -8,7 +8,7 @@ import { useCanEditIssue } from '@/features/projects/permissions';
 import { useProjectSprints, useMoveToSprint } from '@/features/backlog/api';
 import { BACKLOG_LABEL, buildSprintOptions } from './sprintOptions';
 import { useUpdateIssue } from '@/features/issues/api';
-import { confirmPointsEdit, pointsEditWarning } from '@/features/issues/pointsWarning';
+import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { ParticipantsRow } from '@/features/issue-extras/ParticipantsRow';
@@ -21,6 +21,7 @@ import { Avatar } from '@/components/ui/primitives';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { dueState } from '@/components/ui/DueBadge';
 import { apiErrorMessage } from '@/lib/api';
+import { parsePointsInput } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { fmtDateTime, fmtRelative, toDateTimeInput } from '@/lib/dateFormat';
 
@@ -230,12 +231,12 @@ export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; ca
 
   async function save(raw: string) {
     setEditing(false);
-    const next = raw.trim() === '' ? null : Number(raw);
-    if (next !== null && Number.isNaN(next))
-      return toast.error('Điểm ước lượng phải là một con số, ví dụ 3');
+    const r = parsePointsInput(raw); // MỘT luật cho mọi nơi nhập điểm (dòng Việc chờ, hàng loạt, trang công việc)
+    if (!r.ok) return toast.error(r.error);
+    const next = r.value;
     if (next !== issue.storyPoints) {
       const w = pointsEditWarning(issue, sprints);
-      if (w && !(await confirmPointsEdit(confirm, w))) return;
+      if (w && !(await confirm(pointsConfirmOptions(w)))) return;
       patch.mutate(
         { id: issue.id, key: issue.key, patch: { storyPoints: next }, version: issue.version },
         { onError: (e) => toast.error(apiErrorMessage(e)) },
@@ -248,7 +249,9 @@ export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; ca
       <Input
         type="number"
         min={0}
-        inputMode="numeric"
+        max={1000}
+        step="any"
+        inputMode="decimal"
         autoFocus
         className="h-6 w-16 text-sm"
         aria-label="Điểm ước lượng"

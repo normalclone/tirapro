@@ -4,7 +4,7 @@ import type { IssueDto, SprintDto } from '@tirapro/types';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
 import { canRevertTransition } from '@/features/issues/nextStatuses';
-import { confirmPointsEdit, pointsEditWarningBulk } from '@/features/issues/pointsWarning';
+import { pointsConfirmOptions, pointsEditWarningBulk } from '@/features/issues/pointsWarning';
 import type { Workflow } from '@/features/workflow-settings/api';
 import {
   bulkShortfallHint,
@@ -126,7 +126,7 @@ export function useBulkEdit(a: {
         targets.filter((i) => i.storyPoints !== points),
         sprints,
       );
-      if (w && !(await confirmPointsEdit(confirm, w))) return;
+      if (w && !(await confirm(pointsConfirmOptions(w)))) return;
       await doField('storyPoints', points, 'đặt điểm cho', restoreField('storyPoints'));
     },
     setPriority: (priorityId: string | null) =>

@@ -19,7 +19,11 @@ interface ConfirmState {
   resolve: ((ok: boolean) => void) | null;
 }
 
-const useConfirmStore = create<ConfirmState>(() => ({ open: false, opts: null, resolve: null }));
+export const useConfirmStore = create<ConfirmState>(() => ({
+  open: false,
+  opts: null,
+  resolve: null,
+}));
 
 function settle(ok: boolean) {
   const { resolve } = useConfirmStore.getState();
@@ -27,11 +31,29 @@ function settle(ok: boolean) {
   resolve?.(ok);
 }
 
+/** Hộp đang CHỜ mở (đã gọi `ask` nhưng chưa tới lượt mở): để gọi `ask` lần nữa kịp huỷ nó. */
+let pendingOpen: { timer: ReturnType<typeof setTimeout>; resolve: (ok: boolean) => void } | null =
+  null;
+
+/**
+ * Hộp chỉ MỞ sau khi sự kiện hiện tại kết thúc (macrotask kế). Gọi `confirm()` ngay trong handler Enter/blur thì hộp mở
+ * và focus rơi vào nút xác nhận giữa keydown và keypress → keypress của chính phím Enter đó bấm luôn nút và tự xác nhận
+ * mà hộp không kịp hiện. Promise trả về vẫn tới ngay lúc gọi; chỉ phần hiển thị bị hoãn.
+ */
 function ask(opts: ConfirmOptions): Promise<boolean> {
-  // Đang có hộp xác nhận khác → coi như người dùng bỏ qua hộp cũ.
+  // Đang có hộp khác (đang hiện hoặc đang chờ mở) → coi như người dùng bỏ qua hộp cũ.
+  if (pendingOpen) {
+    clearTimeout(pendingOpen.timer);
+    pendingOpen.resolve(false);
+    pendingOpen = null;
+  }
   useConfirmStore.getState().resolve?.(false);
   return new Promise<boolean>((resolve) => {
-    useConfirmStore.setState({ open: true, opts, resolve });
+    const timer = setTimeout(() => {
+      pendingOpen = null;
+      useConfirmStore.setState({ open: true, opts, resolve });
+    }, 0);
+    pendingOpen = { timer, resolve };
   });
 }
 
