@@ -8,7 +8,7 @@ import { parsePointsInput } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 
 /** Dãy Fibonacci hay dùng khi ước lượng — chỉ là lối tắt, ô tự do vẫn nhập được số bất kỳ 0–1000. */
-export const FIBONACCI_POINTS = [1, 2, 3, 5, 8, 13, 21] as const;
+const FIBONACCI_POINTS = [1, 2, 3, 5, 8, 13, 21] as const;
 
 /**
  * Đặt điểm ước lượng cho cả lô: bấm một chip hoặc gõ số + Enter để áp dụng; để trống rồi Enter = xoá điểm.
