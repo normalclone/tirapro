@@ -195,6 +195,7 @@ class AuthTokensDto {
 
 // POST /auth/refresh
 class RefreshDto { refreshToken: string; } // hoặc đọc từ httpOnly cookie
+// Không có cookie ⇒ `200 { accessToken: null }` (chưa đăng nhập); cookie không hợp lệ/hết hạn/đã thu hồi ⇒ `401`.
 
 // GET /auth/me → response
 class MeDto {

@@ -92,7 +92,11 @@ export class AuthController {
   @HttpCode(200)
   @Post('refresh')
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const token = (req.cookies?.[REFRESH_COOKIE] as string) ?? '';
+    const token = (req.cookies?.[REFRESH_COOKIE] as string | undefined) ?? '';
+    // Chưa đăng nhập (không có cookie) là trạng thái bình thường, không phải lỗi: FE gọi refresh lúc mở trang
+    // để dò phiên (cookie httpOnly nên JS không tự biết). Trả 200 + null để console không đỏ 401.
+    // Cookie CÓ nhưng sai/hết hạn/bị thu hồi vẫn 401 (tín hiệu tái sử dụng token — không nới).
+    if (!token) return { accessToken: null };
     // Access token cũ (có thể đã hết hạn) cho biết workspace đang làm việc — refresh phải giữ nguyên nó.
     const preferredWorkspaceId = this.tokens.workspaceFromExpiredAccess(req.headers.authorization);
     const { refreshToken, ...rest } = await this.auth.refresh(
