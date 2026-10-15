@@ -158,3 +158,28 @@ describe('ProjectsService — dự án lưu trữ là chỉ đọc (cài đặt 
     expect(prisma.project.update).not.toHaveBeenCalled();
   });
 });
+
+describe('ProjectsService.meta — severities + resolutions', () => {
+  it('trả danh mục Severity (rank giảm) và Resolution (rank tăng) của workspace', async () => {
+    const sev = [
+      { id: 's1', name: 'Critical', description: null, color: '#f00', rank: 4, isDefault: false },
+    ];
+    const res = [{ id: 'r1', name: 'Fixed', description: null, rank: 1, isDefault: true }];
+    const prisma = {
+      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1', key: 'DEMO' })) },
+      issueType: { findMany: vi.fn(() => Promise.resolve([])) },
+      priority: { findMany: vi.fn(() => Promise.resolve([])) },
+      severity: { findMany: vi.fn(() => Promise.resolve(sev)) },
+      resolution: { findMany: vi.fn(() => Promise.resolve(res)) },
+    };
+    const service = new ProjectsService(prisma as never, {} as never);
+    const out = await service.meta('w1', 'DEMO');
+    expect(out).toMatchObject({ projectId: 'p1', severities: sev, resolutions: res });
+    expect(prisma.severity.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { workspaceId: 'w1' }, orderBy: { rank: 'desc' } }),
+    );
+    expect(prisma.resolution.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { workspaceId: 'w1' }, orderBy: { rank: 'asc' } }),
+    );
+  });
+});

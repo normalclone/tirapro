@@ -705,6 +705,11 @@ export class IssuesService {
     const finalOrder: Prisma.IssueOrderByWithRelationInput[] = orderBy.length
       ? [...orderBy, { id: 'asc' }]
       : [{ updatedAt: 'desc' }, { id: 'asc' }];
+    // ORDER BY severity DESC: Postgres đặt NULL (chưa đặt mức) lên ĐẦU khi DESC và Prisma không cho `nulls` trên
+    // quan hệ → tách hai pha (có mức rồi chưa đặt mức) để việc chưa đặt mức luôn xuống cuối.
+    const first = finalOrder[0] as { severity?: { rank?: string } };
+    if (first.severity?.rank === 'desc')
+      return this.queryNullsLastBySeverity(where, finalOrder, cursor, limit);
     // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`); queryOrdered chỉ nhận scope đó
     const rows = await this.prisma.issue.findMany({
       where,
@@ -713,6 +718,54 @@ export class IssuesService {
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
+    return cursorPage(
+      rows.map((r) => this.toDto(r)),
+      limit,
+      (i) => i.id,
+    );
+  }
+
+  /** Hai pha cho ORDER BY severity DESC: việc có mức (theo `orderBy`), rồi việc chưa đặt mức (cùng `orderBy`). Con trỏ = id. */
+  private async queryNullsLastBySeverity(
+    where: Prisma.IssueWhereInput,
+    orderBy: Prisma.IssueOrderByWithRelationInput[],
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<PageResult<IssueDto>> {
+    let cursorInUnset = false;
+    if (cursor) {
+      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      const c = await this.prisma.issue.findFirst({
+        where: { AND: [where, { id: cursor }] },
+        select: { severityId: true },
+      });
+      if (!c) return cursorPage<IssueDto>([], limit, (i) => i.id);
+      cursorInUnset = c.severityId === null;
+    }
+    const take = limit + 1;
+    const rows: IssueRow[] = [];
+    if (!cursorInUnset) {
+      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      const withSeverity = await this.prisma.issue.findMany({
+        where: { AND: [where, { severityId: { not: null } }] },
+        include: issueInclude,
+        orderBy,
+        take,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      rows.push(...withSeverity);
+    }
+    if (rows.length < take) {
+      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      const unset = await this.prisma.issue.findMany({
+        where: { AND: [where, { severityId: null }] },
+        include: issueInclude,
+        orderBy,
+        take: take - rows.length,
+        ...(cursor && cursorInUnset ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      rows.push(...unset);
+    }
     return cursorPage(
       rows.map((r) => this.toDto(r)),
       limit,
@@ -1140,9 +1193,18 @@ export class IssuesService {
     if (Date.now() - current.createdAt.getTime() > RETRACT_WINDOW_MS)
       throw new BusinessRuleException('Đã quá 10 phút kể từ lúc báo — hãy nhờ quản trị dự án xoá');
     const [children, others] = await Promise.all([
-      this.prisma.issue.count({ where: { parentId: id, deletedAt: null } }),
+      // Việc con (parentId) hoặc việc gắn vào Epic này (epicId) đều chặn thu hồi.
+      this.prisma.issue.count({
+        where: { deletedAt: null, OR: [{ parentId: id }, { epicId: id }] },
+      }),
+      // Bình luận không rõ tác giả (authorId NULL: tài khoản đã xoá/bình luận hệ thống) coi như của người khác;
+      // `authorId: { not }` một mình bị SQL bỏ qua NULL.
       this.prisma.comment.count({
-        where: { issueId: id, deletedAt: null, authorId: { not: userId } },
+        where: {
+          issueId: id,
+          deletedAt: null,
+          OR: [{ authorId: null }, { authorId: { not: userId } }],
+        },
       }),
     ]);
     if (children > 0)
@@ -1164,9 +1226,31 @@ export class IssuesService {
     const current = await this.prisma.issue.findFirst({ where, include: issueWriteInclude });
     if (!current) throw new NotFoundAppException('Công việc');
     assertNotArchived(current.project.archivedAt);
+    // Cha/Epic đã xoá mềm (hoặc không còn) → khôi phục thành việc KHÔNG cha/epic thay vì treo vào việc đã xoá.
+    const refs = [current.parentId, current.epicId].filter((x): x is string => !!x);
+    const alive = new Set(
+      refs.length
+        ? (
+            await this.prisma.issue.findMany({
+              where: { id: { in: refs }, workspaceId, deletedAt: null },
+              select: { id: true },
+            })
+          ).map((r) => r.id)
+        : [],
+    );
+    const orphaned: string[] = [];
+    const detach: { parentId?: null; epicId?: null } = {};
+    if (current.parentId && !alive.has(current.parentId)) {
+      detach.parentId = null;
+      orphaned.push('parentId');
+    }
+    if (current.epicId && !alive.has(current.epicId)) {
+      detach.epicId = null;
+      orphaned.push('epicId');
+    }
     const { count } = await this.prisma.issue.updateMany({
       where,
-      data: { deletedAt: null, updatedById: userId, version: { increment: 1 } },
+      data: { deletedAt: null, updatedById: userId, version: { increment: 1 }, ...detach },
     });
     if (count === 0) throw new NotFoundAppException('Công việc');
     const row = await this.prisma.issue.findFirstOrThrow({
@@ -1177,7 +1261,7 @@ export class IssuesService {
     this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
       issue: dto,
       actorId: userId,
-      changedFields: [],
+      changedFields: ['deletedAt', ...orphaned],
     });
     return dto;
   }

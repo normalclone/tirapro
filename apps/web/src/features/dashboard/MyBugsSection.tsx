@@ -15,13 +15,14 @@ const LIMIT = 6;
  */
 export function MyBugsSection({ renderRow }: { renderRow: (issue: IssueDto) => ReactNode }) {
   const { data: bugs, isLoading } = useMyReportedBugs();
-  const { data: workflows } = useWorkflows();
+  const { data: workflows, isLoading: workflowsLoading } = useWorkflows();
   const { awaiting, open } = useMemo(
     () => splitMyBugs(bugs ?? [], verifyStageStatusIds(workflows)),
     [bugs, workflows],
   );
 
-  if (isLoading) {
+  // Chờ cả workflow: chưa có thì mọi bug rơi vào "chưa đóng" rồi nhảy sang "chờ xác nhận" khi tải xong.
+  if (isLoading || workflowsLoading) {
     return (
       <div
         className="mb-10 space-y-px overflow-hidden rounded-lg border border-border bg-surface"
