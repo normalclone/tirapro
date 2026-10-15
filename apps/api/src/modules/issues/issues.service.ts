@@ -276,7 +276,7 @@ export class IssuesService {
     input: CreateIssueInput,
     opts?: AutomationEventMeta,
   ): Promise<IssueDto> {
-    const dto = await this.createCore(null, workspaceId, userId, input);
+    const dto = await this.createCore(null, workspaceId, userId, input, null, true);
     this.emitCreated(dto, userId, input.clientId, opts);
     return dto;
   }
@@ -311,6 +311,8 @@ export class IssuesService {
     userId: string,
     input: CreateIssueInput,
     deferred: Array<() => void> | null = null,
+    /** Chỉ đường API người dùng (`create`) đòi `issue:transition` khi chọn trạng thái ≠ khởi tạo; import có quyền riêng. */
+    enforceTransitionPerm = false,
   ): Promise<IssueDto> {
     const db: Prisma.TransactionClient = outerTx ?? this.prisma;
     const project = await db.project.findFirst({
@@ -340,13 +342,28 @@ export class IssuesService {
     );
     await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId, db);
 
-    // Status: input hoặc trạng thái initial của workflow project
+    // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project
+    const workflowId = project.defaultWorkflowId ?? '';
+    const initial = await db.status.findFirst({
+      where: { workflowId, isInitial: true },
+      select: { id: true },
+    });
     let statusId = input.statusId;
-    if (!statusId) {
-      const initial = await db.status.findFirst({
-        where: { workflowId: project.defaultWorkflowId ?? '', isInitial: true },
-        select: { id: true },
+    let isDone = false;
+    if (statusId) {
+      const chosen = await db.status.findFirst({
+        where: { id: statusId, workflowId },
+        select: { id: true, category: true },
       });
+      if (!chosen)
+        throw new BusinessRuleException(
+          'Trạng thái không thuộc quy trình của dự án này — hãy chọn lại trạng thái từ danh sách',
+        );
+      // Tạo thẳng ở trạng thái khác trạng thái khởi tạo cũng là một lần "chuyển trạng thái" → cần cùng quyền.
+      if (enforceTransitionPerm && chosen.id !== initial?.id)
+        await this.assertCanTransition(userId, workspaceId, project.id);
+      isDone = chosen.category === 'DONE';
+    } else {
       if (!initial)
         throw new BusinessRuleException('Project chưa cấu hình workflow/trạng thái khởi đầu');
       statusId = initial.id;
@@ -400,6 +417,7 @@ export class IssuesService {
           key,
           typeId: input.typeId,
           statusId,
+          resolvedAt: isDone ? new Date() : null,
           priorityId: priorityId ?? null,
           summary: input.summary,
           description: input.description ?? null,

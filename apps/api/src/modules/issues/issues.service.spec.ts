@@ -1100,6 +1100,122 @@ describe('IssuesService — sprint CLOSED không nhận việc (FW1)', () => {
   });
 });
 
+describe('IssuesService.create — statusId phải thuộc workflow của dự án (I1)', () => {
+  const baseInput = {
+    projectId: 'p1',
+    typeId: 't1',
+    summary: 's',
+    descriptionFormat: 'MARKDOWN' as const,
+  };
+
+  /** `statuses`: các trạng thái của workflow dự án (wf); status ngoài danh sách coi như thuộc workflow khác. */
+  function createTx(statuses: Array<{ id: string; category: string; isInitial: boolean }>) {
+    const created = vi.fn((_args: { data: Record<string, unknown> }) =>
+      Promise.resolve(issueRow({ statusId: 's9' })),
+    );
+    const tx = {
+      project: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({
+            id: 'p1',
+            key: 'P',
+            defaultWorkflowId: 'wf',
+            leadId: null,
+            defaultAssigneeMode: 'NONE',
+            archivedAt: null,
+          }),
+        ),
+        update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
+      },
+      issueType: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
+        findUnique: vi.fn(() => Promise.resolve({ key: 'task', name: 'Task' })),
+      },
+      status: {
+        findFirst: vi.fn(
+          ({ where }: { where: { id?: string; workflowId: string; isInitial?: boolean } }) =>
+            Promise.resolve(
+              statuses.find(
+                (st) =>
+                  where.workflowId === 'wf' &&
+                  (where.id === undefined || where.id === st.id) &&
+                  (where.isInitial === undefined || where.isInitial === st.isInitial),
+              ) ?? null,
+            ),
+        ),
+      },
+      priority: { findFirst: vi.fn(() => Promise.resolve(null)) },
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(null)),
+        count: vi.fn(() => Promise.resolve(0)),
+        create: created,
+      },
+      issueHistory: { create: vi.fn() },
+    };
+    return { tx, created };
+  }
+  const WF = [
+    { id: 's1', category: 'TODO', isInitial: true },
+    { id: 's2', category: 'IN_PROGRESS', isInitial: false },
+    { id: 's9', category: 'DONE', isInitial: false },
+  ];
+
+  it('statusId của workflow khác => 422, không tạo', async () => {
+    const { tx, created } = createTx(WF);
+    const { service, rbac } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition']));
+    await expect(
+      service.create('w1', 'u1', { ...baseInput, statusId: 'ngoai-workflow' }),
+    ).rejects.toMatchObject({ status: 422, message: has('không thuộc quy trình') });
+    expect(created).not.toHaveBeenCalled();
+  });
+
+  it('statusId khác trạng thái khởi tạo mà thiếu issue:transition => 403, không tạo', async () => {
+    const { tx, created } = createTx(WF);
+    const { service, rbac } = makeService(tx, {
+      user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) },
+    });
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:create']));
+    await expect(
+      service.create('w1', 'u1', { ...baseInput, statusId: 's9' }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(created).not.toHaveBeenCalled();
+  });
+
+  it('có issue:transition + status DONE của workflow => tạo ở DONE và đặt resolvedAt', async () => {
+    const { tx, created } = createTx(WF);
+    const { service, rbac } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition']));
+    await service.create('w1', 'u1', { ...baseInput, statusId: 's9' });
+    const data = created.mock.calls[0]![0].data;
+    expect(data.statusId).toBe('s9');
+    expect(data.resolvedAt).toBeInstanceOf(Date);
+  });
+
+  it('statusId chính là trạng thái khởi tạo => không đòi issue:transition, không resolvedAt', async () => {
+    const { tx, created } = createTx(WF);
+    const { service, rbac } = makeService(tx);
+    await service.create('w1', 'u1', { ...baseInput, statusId: 's1' });
+    expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
+    expect(created.mock.calls[0]![0].data.resolvedAt).toBeNull();
+  });
+
+  it('không truyền statusId => dùng trạng thái khởi tạo (hành vi cũ)', async () => {
+    const { tx, created } = createTx(WF);
+    const { service } = makeService(tx);
+    await service.create('w1', 'u1', baseInput);
+    expect(created.mock.calls[0]![0].data.statusId).toBe('s1');
+  });
+
+  it('createWithin (import) nhận trạng thái bất kỳ của workflow dự án, không đòi issue:transition', async () => {
+    const { tx, created } = createTx(WF);
+    const { service, rbac } = makeService(tx);
+    await service.createWithin(tx as never, 'w1', 'u1', { ...baseInput, statusId: 's2' }, []);
+    expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
+    expect(created.mock.calls[0]![0].data.statusId).toBe('s2');
+  });
+});
+
 describe('IssuesService.update — epicId được lưu (FW11)', () => {
   function epicTx(current: Record<string, unknown>, after: Record<string, unknown>) {
     return {
