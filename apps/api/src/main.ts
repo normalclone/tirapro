@@ -15,7 +15,10 @@ import { RedisIoAdapter } from './modules/realtime/redis-io.adapter';
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true, rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
   const config = app.get(ConfigService);
 
   // ---- Ops: log pino + proxy ----
@@ -68,11 +71,17 @@ async function bootstrap(): Promise<void> {
           '(tạo ở Cài đặt → API & MCP). Có thể dùng header `X-API-Key: tira_…` thay thế. ' +
           'Bấm **Authorize** rồi dán key để thử trực tiếp.\n\n' +
           '**MCP** (cho trợ lý AI): Streamable HTTP tại `http://localhost:4100/mcp`. ' +
-          'Tổng quan nhanh: `GET /api/v1/help`.',
+          `Tổng quan nhanh: \`GET /${globalPrefix}/${version}/help\`.`,
       )
       .setVersion('0.1.0')
-      .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'JWT hoặc API key tira_…' }, 'bearer')
-      .addApiKey({ type: 'apiKey', name: 'X-API-Key', in: 'header', description: 'API key tira_…' }, 'api-key')
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', description: 'JWT hoặc API key tira_…' },
+        'bearer',
+      )
+      .addApiKey(
+        { type: 'apiKey', name: 'X-API-Key', in: 'header', description: 'API key tira_…' },
+        'api-key',
+      )
       .build();
     const doc = SwaggerModule.createDocument(app, docConfig);
     SwaggerModule.setup(`${globalPrefix}/docs`, app, doc, {
