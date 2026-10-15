@@ -64,6 +64,15 @@ describe('IssueLinksService.create — link liên dự án', () => {
     await expect(owner.service.create('w1', 'a', input, user)).resolves.toBeDefined();
   });
 
+  it('đích ở dự án đã lưu trữ nhưng user không có quyền -> 403 (không lộ trạng thái lưu trữ)', async () => {
+    const { service, prisma } = setup([], { a: end('a', 'p1'), b: end('b', 'p2') });
+    prisma.issue.findUnique.mockImplementation(((args: { where: { id: string } }) =>
+      Promise.resolve({
+        project: { archivedAt: args.where.id === 'b' ? new Date() : null },
+      })) as never);
+    await expect(service.create('w1', 'a', input, user)).rejects.toMatchObject({ status: 403 });
+  });
+
   it('cùng dự án -> không kiểm quyền thêm; system admin bỏ qua', async () => {
     const same = setup([], { a: end('a', 'p1'), b: end('b', 'p1') });
     await same.service.create('w1', 'a', input, user);
@@ -75,7 +84,10 @@ describe('IssueLinksService.create — link liên dự án', () => {
 });
 
 describe('IssueLinksService.remove — link liên dự án', () => {
-  function removeSetup(perms: string[], targetDeleted = false) {
+  function removeSetup(
+    perms: string[],
+    opts: { targetDeleted?: boolean; targetProject?: string } = {},
+  ) {
     const s = setup(perms, {});
     const issueLink = {
       findFirst: vi.fn(() =>
@@ -84,7 +96,10 @@ describe('IssueLinksService.remove — link liên dự án', () => {
           sourceIssueId: 'a',
           targetIssueId: 'b',
           source: { projectId: 'p1' },
-          target: { ...end('b', 'p2'), deletedAt: targetDeleted ? new Date() : null },
+          target: {
+            ...end('b', opts.targetProject ?? 'p2'),
+            deletedAt: opts.targetDeleted ? new Date() : null,
+          },
         }),
       ),
       delete: vi.fn(() => Promise.resolve({})),
@@ -99,8 +114,30 @@ describe('IssueLinksService.remove — link liên dự án', () => {
     expect(s.issueLink.delete).not.toHaveBeenCalled();
   });
 
-  it('issue đích đã xoá mềm -> dọn link không cần quyền ở đích', async () => {
-    const s = removeSetup([], true);
+  it('khác dự án, có issue:edit ở đích -> xoá được', async () => {
+    const s = removeSetup(['issue:edit']);
     await expect(s.service.remove('w1', 'l1', user)).resolves.toEqual({ success: true });
+    expect(s.rbac.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', 'p2');
+    expect(s.issueLink.delete).toHaveBeenCalledTimes(1);
+  });
+
+  it('cùng dự án -> không kiểm quyền thêm', async () => {
+    const s = removeSetup([], { targetProject: 'p1' });
+    await expect(s.service.remove('w1', 'l1', user)).resolves.toEqual({ success: true });
+    expect(s.rbac.getEffectivePermissions).not.toHaveBeenCalled();
+  });
+
+  it('system admin bỏ qua kiểm quyền ở đích', async () => {
+    const s = removeSetup([]);
+    await expect(s.service.remove('w1', 'l1', { id: 'u9', isSystemAdmin: true })).resolves.toEqual({
+      success: true,
+    });
+    expect(s.rbac.getEffectivePermissions).not.toHaveBeenCalled();
+  });
+
+  it('issue đích đã xoá mềm -> dọn link không cần quyền ở đích', async () => {
+    const s = removeSetup([], { targetDeleted: true });
+    await expect(s.service.remove('w1', 'l1', user)).resolves.toEqual({ success: true });
+    expect(s.rbac.getEffectivePermissions).not.toHaveBeenCalled();
   });
 });

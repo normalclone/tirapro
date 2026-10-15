@@ -111,13 +111,14 @@ export class IssueLinksService {
     // Cả hai issue phải thuộc workspace của người dùng.
     const source = await this.requireIssue(workspaceId, issueId);
     const target = await this.requireIssue(workspaceId, input.targetIssueId);
-    // Hai đầu có thể thuộc hai dự án khác nhau — dự án nào đã lưu trữ cũng chặn.
+    // Nguồn: guard đã kiểm quyền; archived của dự án nguồn chặn ngay.
     await assertIssueWritable(this.prisma, issueId);
-    await assertIssueWritable(this.prisma, input.targetIssueId);
     // Guard chỉ kiểm quyền ở đầu NGUỒN → link liên dự án phải kiểm thêm quyền ở đầu ĐÍCH.
+    // Kiểm quyền TRƯỚC trạng thái lưu trữ của đích để không lộ trạng thái dự án cho người không có quyền.
     if (target.projectId !== source.projectId) {
       await this.assertCanEditAcrossProject(workspaceId, actor, target);
     }
+    await assertIssueWritable(this.prisma, input.targetIssueId);
 
     // Loại liên kết phải thuộc workspace.
     const linkType = await this.prisma.linkType.findFirst({

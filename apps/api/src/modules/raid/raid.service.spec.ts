@@ -21,7 +21,11 @@ const raidRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function setup(perms: string[] = [], current: { projectId: string | null } = { projectId: 'p1' }) {
+function setup(
+  perms: string[] = [],
+  current: { projectId: string | null } = { projectId: 'p1' },
+  projectExists = true,
+) {
   const prisma = {
     raidItem: {
       findFirst: vi.fn((args: { select: Record<string, unknown> }) =>
@@ -30,7 +34,9 @@ function setup(perms: string[] = [], current: { projectId: string | null } = { p
       update: vi.fn((_args: unknown) => Promise.resolve({})),
     },
     project: {
-      findFirst: vi.fn(({ where }: { where: { id: string } }) => Promise.resolve({ id: where.id })),
+      findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve(projectExists ? { id: where.id } : null),
+      ),
       findUnique: vi.fn(() => Promise.resolve({ archivedAt: null })),
     },
   };
@@ -76,5 +82,29 @@ describe('RaidService.update — đổi dự án', () => {
     await service.update('w1', 'r1', { projectId: 'p2' }, { id: 'u9', isSystemAdmin: true });
     expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
     expect(prisma.raidItem.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('dự án đích ngoài workspace -> 404, không hỏi quyền, không ghi', async () => {
+    const { service, prisma, rbac } = setup(['risk:manage'], { projectId: 'p1' }, false);
+    await expect(service.update('w1', 'r1', { projectId: 'px' }, member)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
+    expect(prisma.raidItem.update).not.toHaveBeenCalled();
+  });
+
+  it('chuyển từ cấp workspace vào dự án: kiểm risk:manage ở dự án đích', async () => {
+    const denied = setup([], { projectId: null });
+    await expect(
+      denied.service.update('w1', 'r1', { projectId: 'p2' }, member),
+    ).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(denied.rbac.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', 'p2');
+    const ok = setup(['risk:manage'], { projectId: null });
+    await ok.service.update('w1', 'r1', { projectId: 'p2' }, member);
+    expect(ok.prisma.raidItem.update.mock.calls[0]![0]).toMatchObject({
+      data: { project: { connect: { id: 'p2' } } },
+    });
   });
 });
