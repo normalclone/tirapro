@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { insensitiveContains } from '../../common/like';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import type { CreateWikiPageInput, MoveWikiPageInput, UpdateWikiPageInput } from './wiki.schemas';
 
@@ -95,10 +96,7 @@ export class WikiService {
       where: {
         workspaceId,
         ...this.scopeWhere(projectId),
-        OR: [
-          { title: { contains: term, mode: 'insensitive' } },
-          { body: { contains: term, mode: 'insensitive' } },
-        ],
+        OR: [{ title: insensitiveContains(term) }, { body: insensitiveContains(term) }],
       },
       orderBy: { updatedAt: 'desc' },
       take: 50,

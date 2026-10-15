@@ -23,6 +23,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
 import { iso } from '../../common/mappers/date';
+import { insensitiveContains } from '../../common/like';
 import { assertIssueOwner } from '../rbac/issue-ownership.service';
 import { RbacService } from '../rbac/rbac.service';
 import {
@@ -460,7 +461,7 @@ export class IssuesService {
       assigneeId: filter.assigneeId,
       typeId: filter.typeId,
       sprintId: filter.sprintId,
-      ...(filter.search ? { summary: { contains: filter.search, mode: 'insensitive' } } : {}),
+      ...(filter.search ? { summary: insensitiveContains(filter.search) } : {}),
     };
     const rows = await this.prisma.issue.findMany({
       where,

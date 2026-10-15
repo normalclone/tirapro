@@ -41,7 +41,12 @@ export class HealthController {
     const warnings: string[] = [];
     if (db && (await this.hasSearchVector()) === false) {
       warnings.push(
-        'Issue.searchVector chưa có — tìm kiếm văn bản đang dùng "contains". Hãy chạy `pnpm --filter @tirapro/api db:raw` để bật full-text.',
+        'Issue.searchVector chưa có — tìm kiếm văn bản đang dùng chế độ dự phòng (chậm hơn). Hãy chạy `pnpm --filter @tirapro/api db:raw` để bật full-text.',
+      );
+    }
+    if (db && (await this.hasUnaccent()) === false) {
+      warnings.push(
+        'Chưa có immutable_unaccent — tìm kiếm chưa bỏ dấu bằng chỉ mục. Hãy chạy `pnpm --filter @tirapro/api db:raw`.',
       );
     }
     return { status: db ? 'ok' : 'unavailable', db, redis, warnings };
@@ -78,6 +83,23 @@ export class HealthController {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /** Hàm `immutable_unaccent(text)` (db:raw) đã có? `null` nếu không kiểm tra được (không coi là thiếu). */
+  private async hasUnaccent(): Promise<boolean | null> {
+    try {
+      const rows = await Promise.race([
+        this.prisma.$queryRaw<
+          { ok: boolean }[]
+        >`SELECT to_regprocedure('immutable_unaccent(text)') IS NOT NULL AS ok`,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('DB timeout')), READY_TIMEOUT_MS).unref(),
+        ),
+      ]);
+      return rows[0]?.ok ?? null;
+    } catch {
+      return null;
     }
   }
 

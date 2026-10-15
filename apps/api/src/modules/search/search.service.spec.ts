@@ -13,11 +13,6 @@ function makeService(rows: Array<{ id: string; rank: number }> | Error) {
   return { service: new SearchService(issues as never, prisma as never), issues, queryRaw, prisma };
 }
 
-const missingColumn = Object.assign(new Error('Raw query failed'), {
-  code: 'P2010',
-  meta: { code: '42703' },
-});
-
 describe('SearchService.search', () => {
   it('mode=text: full-text -> query(rawIds) giữ thứ tự rank, không orderBy', async () => {
     const { service, issues } = makeService([
@@ -28,12 +23,23 @@ describe('SearchService.search', () => {
     expect(issues.query).toHaveBeenCalledWith('W1', {}, [], undefined, 8, ['I2', 'I1']);
   });
 
-  it('mode=text: thiếu searchVector -> contains trên summary/description/key', async () => {
-    const { service, issues } = makeService(missingColumn);
-    await service.search('W1', 'U1', { mode: 'text', q: 'abc', limit: 8 });
+  it('mode=text: FTS trả null (nhánh phòng thủ) -> contains ĐÃ ESCAPE trên summary/description/key', async () => {
+    const { service, issues } = makeService([]);
+    (service as unknown as { fulltext: { search: () => Promise<null> } }).fulltext = {
+      search: () => Promise.resolve(null),
+    };
+    await service.search('W1', 'U1', { mode: 'text', q: '_', limit: 8 });
     const call = issues.query.mock.calls[0] as unknown[];
-    expect(JSON.stringify(call[1])).toContain('"contains":"abc"');
+    const json = JSON.stringify(call[1]);
+    expect(json).toContain('"contains":"\\\\_"');
+    expect(json).not.toContain('"contains":"_"');
+    expect(json).toContain('{"description":{"not":null}}');
     expect(call[5]).toBeUndefined();
+    // % và \ cũng được escape; mã issue (key) cũng đi qua cùng bộ lọc
+    await service.search('W1', 'U1', { mode: 'text', q: '50%', limit: 8, projectId: 'P1' });
+    const j2 = JSON.stringify((issues.query.mock.calls[1] as unknown[])[1]);
+    expect(j2).toContain('"contains":"50\\\\%"');
+    expect(j2).toContain('"projectId":"P1"');
   });
 
   it('mode=text với q rỗng -> trang rỗng, không tra DB', async () => {

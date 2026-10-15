@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import type { UpdateProfileInput } from '@tirapro/shared';
 import { ERROR_CODES } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { insensitiveContains } from '../../common/like';
 import { AppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { MediaService } from '../media/media.service';
 
@@ -48,8 +49,8 @@ export class UsersService {
         user: search
           ? {
               OR: [
-                { displayName: { contains: search, mode: 'insensitive' } },
-                { email: { contains: search, mode: 'insensitive' } },
+                { displayName: insensitiveContains(search) },
+                { email: insensitiveContains(search) },
               ],
             }
           : undefined,
@@ -67,8 +68,8 @@ export class UsersService {
       where: search
         ? {
             OR: [
-              { displayName: { contains: search, mode: 'insensitive' } },
-              { email: { contains: search, mode: 'insensitive' } },
+              { displayName: insensitiveContains(search) },
+              { email: insensitiveContains(search) },
             ],
           }
         : undefined,
