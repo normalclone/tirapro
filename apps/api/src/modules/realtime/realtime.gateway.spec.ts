@@ -6,7 +6,10 @@ function makeGateway(projectRow: unknown = null, issueRow: unknown = null) {
   const prisma = {
     project: { findFirst: vi.fn().mockResolvedValue(projectRow) },
     issue: { findFirst: vi.fn().mockResolvedValue(issueRow) },
-    user: { findUnique: vi.fn().mockResolvedValue({ displayName: 'An', avatarUrl: null }) },
+    user: {
+      findUnique: vi.fn().mockResolvedValue({ displayName: 'An', avatarUrl: null, status: 'ACTIVE', isSystemAdmin: false }),
+    },
+    workspaceMembership: { findUnique: vi.fn().mockResolvedValue({ id: 'M1' }) },
   };
   const presence = {
     join: vi.fn().mockResolvedValue({ userId: 'U1', displayName: 'An', avatarUrl: null, viewing: null }),
@@ -117,10 +120,118 @@ describe('RealtimeGateway.onSubscribe — kiểm quyền', () => {
   });
 });
 
+describe('RealtimeGateway.handleConnection — membership', () => {
+  function connect(userRow: unknown, membership: unknown) {
+    const ctx = makeGateway();
+    ctx.jwt.verify.mockReturnValue({ sub: 'U1', workspaceId: 'W1' });
+    ctx.prisma.user.findUnique.mockResolvedValue(userRow);
+    ctx.prisma.workspaceMembership.findUnique.mockResolvedValue(membership);
+    const client = { ...makeClient({}), handshake: { auth: { token: 't' }, headers: {} } };
+    return { ...ctx, client };
+  }
+
+  it('cho vào khi user ACTIVE và còn là thành viên workspace', async () => {
+    const { gateway, client, prisma } = connect({ status: 'ACTIVE', isSystemAdmin: false }, { id: 'M1' });
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).not.toHaveBeenCalled();
+    expect(client.join).toHaveBeenCalledWith('user:U1');
+    expect(client.join).toHaveBeenCalledWith('ws:W1');
+    expect(prisma.workspaceMembership.findUnique).toHaveBeenCalledWith({
+      where: { workspaceId_userId: { workspaceId: 'W1', userId: 'U1' } },
+      select: { id: true },
+    });
+  });
+
+  it('từ chối (disconnect, không join room nào) khi token còn hạn nhưng không còn membership', async () => {
+    const { gateway, client } = connect({ status: 'ACTIVE', isSystemAdmin: false }, null);
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+    expect(client.join).not.toHaveBeenCalled();
+  });
+
+  it('từ chối user DEACTIVATED dù còn membership', async () => {
+    const { gateway, client } = connect({ status: 'DEACTIVATED', isSystemAdmin: false }, { id: 'M1' });
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+    expect(client.join).not.toHaveBeenCalled();
+  });
+
+  it('system admin được miễn kiểm membership', async () => {
+    const { gateway, client, prisma } = connect({ status: 'ACTIVE', isSystemAdmin: true }, null);
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).not.toHaveBeenCalled();
+    expect(prisma.workspaceMembership.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('lỗi DB khi kiểm -> từ chối (fail closed)', async () => {
+    const { gateway, client, prisma } = connect({ status: 'ACTIVE', isSystemAdmin: false }, null);
+    prisma.user.findUnique.mockRejectedValue(new Error('db down'));
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('JWT sai -> disconnect', async () => {
+    const { gateway, client, jwt } = connect({ status: 'ACTIVE', isSystemAdmin: false }, { id: 'M1' });
+    jwt.verify.mockImplementation(() => {
+      throw new Error('bad');
+    });
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+  });
+});
+
+describe('RealtimeGateway.onSubscribe — membership bị gỡ sau handshake', () => {
+  it('từ chối mọi room (kể cả workspace/project) và không join', async () => {
+    const { gateway, prisma } = makeGateway({ id: 'P1' });
+    prisma.workspaceMembership.findUnique.mockResolvedValue(null);
+    const client = makeClient();
+    for (const target of [
+      { kind: 'project', id: 'P1' },
+      { kind: 'workspace', id: 'W1' },
+      { kind: 'user', id: 'U1' },
+    ] as const) {
+      expect(await gateway.onSubscribe(target, client as never)).toEqual({ ok: false, error: 'FORBIDDEN' });
+    }
+    expect(client.join).not.toHaveBeenCalled();
+    expect(prisma.project.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('từ chối khi user bị DEACTIVATED sau handshake', async () => {
+    const { gateway, prisma } = makeGateway({ id: 'P1' });
+    prisma.user.findUnique.mockResolvedValue({ status: 'DEACTIVATED', isSystemAdmin: false, displayName: 'An', avatarUrl: null });
+    const client = makeClient();
+    expect(await gateway.onSubscribe({ kind: 'project', id: 'P1' }, client as never)).toEqual({ ok: false, error: 'FORBIDDEN' });
+  });
+});
+
+describe('RealtimeGateway.onMemberRemoved', () => {
+  it('ngắt socket của đúng user trong room ws:<id>, giữ nguyên socket người khác', async () => {
+    const { gateway, fetchSockets } = makeGateway();
+    const mine = { data: { userId: 'U1' }, disconnect: vi.fn() };
+    const mine2 = { data: { userId: 'U1' }, disconnect: vi.fn() };
+    const other = { data: { userId: 'U2' }, disconnect: vi.fn() };
+    fetchSockets.mockResolvedValue([mine, other, mine2]);
+    await gateway.onMemberRemoved({ workspaceId: 'W1', userId: 'U1' });
+    const server = (gateway as unknown as { server: { in: ReturnType<typeof vi.fn> } }).server;
+    expect(server.in).toHaveBeenCalledWith('ws:W1');
+    expect(mine.disconnect).toHaveBeenCalledWith(true);
+    expect(mine2.disconnect).toHaveBeenCalledWith(true);
+    expect(other.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('bỏ qua payload thiếu và nuốt lỗi fetchSockets', async () => {
+    const { gateway, fetchSockets } = makeGateway();
+    await gateway.onMemberRemoved({ workspaceId: 'W1' });
+    expect(fetchSockets).not.toHaveBeenCalled();
+    fetchSockets.mockRejectedValue(new Error('redis'));
+    await expect(gateway.onMemberRemoved({ workspaceId: 'W1', userId: 'U1' })).resolves.toBeUndefined();
+  });
+});
+
 describe('RealtimeGateway — bridge notification & sprint', () => {
   it('notification.created -> notification:new tới room user của người nhận', () => {
     const { gateway, to, emit } = makeGateway();
-    const notification = { id: 'N1', type: 'MENTIONED' };
+    const notification = { id: 'N1', type: 'MENTIONED' } as never;
     gateway.onNotificationCreated({ recipientId: 'U9', notification });
     expect(to).toHaveBeenCalledWith('user:U9');
     expect(emit).toHaveBeenCalledWith(WS_EVENTS.NOTIFICATION_NEW, { notification });
@@ -128,7 +239,7 @@ describe('RealtimeGateway — bridge notification & sprint', () => {
 
   it('bỏ qua notification.created thiếu recipientId', () => {
     const { gateway, to } = makeGateway();
-    gateway.onNotificationCreated({ notification: { id: 'N1' } });
+    gateway.onNotificationCreated({ notification: { id: 'N1' } as never });
     expect(to).not.toHaveBeenCalled();
   });
 
