@@ -72,7 +72,12 @@ function issueRow(over: Record<string, unknown> = {}) {
   };
 }
 
-function makeService(tx: Record<string, unknown>, prismaExtra: Record<string, unknown> = {}) {
+function makeService(
+  tx: Record<string, unknown>,
+  prismaExtra: Record<string, unknown> = {},
+  comments?: { create: ReturnType<typeof vi.fn> },
+  perms: string[] = ['issue:edit', 'backlog:manage', 'issue:transition', 'comment:create'],
+) {
   // Mặc định mọi assignee đều là thành viên workspace; ca "người ngoài" ghi đè workspaceMembership qua prismaExtra.
   const base = {
     workspaceMembership: { findFirst: vi.fn(() => Promise.resolve({ userId: 'u2' })) },
@@ -86,11 +91,16 @@ function makeService(tx: Record<string, unknown>, prismaExtra: Record<string, un
   const events = { emit: vi.fn() };
   // Mặc định đủ quyền sửa/xếp backlog/chuyển trạng thái; ca thiếu quyền ghi đè bằng mockResolvedValue.
   const rbac = {
-    getEffectivePermissions: vi.fn(() =>
-      Promise.resolve(new Set(['issue:edit', 'backlog:manage', 'issue:transition'])),
-    ),
+    getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(perms))),
   };
-  const service = new IssuesService(prisma as never, events as never, rbac as never);
+  const service = new IssuesService(
+    prisma as never,
+    events as never,
+    rbac as never,
+    undefined,
+    undefined,
+    comments as never,
+  );
   return { service, events, prisma, rbac };
 }
 
@@ -289,6 +299,7 @@ describe('IssuesService — OCC atomic', () => {
       project: { findUnique: vi.fn(() => Promise.resolve({ defaultWorkflowId: 'wf' })) },
       workflowTransition: { findFirst: vi.fn(() => Promise.resolve({ id: 'x' })) },
       status: { findUnique: vi.fn(() => Promise.resolve({ category: 'DONE' })) },
+      resolution: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) },
     };
     const { service, events } = makeService(tx);
     await expect(
@@ -551,6 +562,19 @@ describe('IssuesService.bulkUpdate', () => {
     const { service } = makeService(tx, { $transaction: txSpy });
     await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { assigneeId: 'u2' } });
     expect(txSpy.mock.calls[0]![1]).toMatchObject({ timeout: 30_000, maxWait: 10_000 });
+  });
+
+  it('bulk sang Done => mỗi item nhận Resolution mặc định, tra mặc định đúng một lần cho cả lô', async () => {
+    const tx = bulkTx();
+    tx.status.findUnique = vi.fn(() => Promise.resolve({ category: 'DONE' }));
+    const resolution = { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) };
+    const { service } = makeService(tx, { resolution });
+    await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { statusId: 's2' } });
+    expect(resolution.findFirst).toHaveBeenCalledTimes(1);
+    for (const call of tx.issue.updateMany.mock.calls as unknown as Array<
+      [{ data: Record<string, unknown> }]
+    >)
+      expect(call[0].data.resolutionId).toBe('r-done');
   });
 
   it('2 item, 1 thua OCC lúc ghi => updated 1, conflicts 1 (kèm version hiện tại), chỉ emit cho item đã ghi', async () => {
@@ -1001,15 +1025,22 @@ describe('IssuesService.move — workflow, resolution, sự kiện', () => {
     expect(tx.issueHistory.create).toHaveBeenCalledTimes(1);
   });
 
-  it('sang trạng thái DONE => resolvedAt được đặt, resolutionId giữ nguyên (undefined); rời DONE => cả hai về null', async () => {
+  it('sang DONE => resolvedAt đặt, resolutionId = Resolution mặc định của workspace; rời DONE => cả hai null', async () => {
     const done = wipTx({ count: 0 });
     done.status.findUnique = vi.fn(() => Promise.resolve({ category: 'DONE' }));
-    await makeService(done).service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2' });
+    const resolution = { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) };
+    await makeService(done, { resolution }).service.move('w1', 'u1', 'i1', {
+      version: 3,
+      statusId: 's2',
+    });
+    expect(resolution.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { workspaceId: 'w1', isDefault: true } }),
+    );
     const d1 = done.issue.updateMany.mock.calls[0] as unknown as [
       { data: Record<string, unknown> },
     ];
     expect(d1[0].data.resolvedAt).toBeInstanceOf(Date);
-    expect(d1[0].data.resolutionId).toBeUndefined();
+    expect(d1[0].data.resolutionId).toBe('r-done');
 
     const open = wipTx({ count: 0 });
     await makeService(open).service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2' });
@@ -1017,6 +1048,97 @@ describe('IssuesService.move — workflow, resolution, sự kiện', () => {
       { data: Record<string, unknown> },
     ];
     expect(d2[0].data).toMatchObject({ resolvedAt: null, resolutionId: null });
+  });
+
+  it('transition sang Done: resolutionId tường minh thắng mặc định; comment được tạo sau commit', async () => {
+    const tx = wipTx({ count: 0 });
+    tx.status.findUnique = vi.fn(() => Promise.resolve({ category: 'DONE', name: 'Done' }));
+    const comments = { create: vi.fn(() => Promise.resolve({})) };
+    const resolution = {
+      findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })),
+      findUnique: vi.fn(() => Promise.resolve({ id: 'r-cnr', workspaceId: 'w1' })),
+    };
+    const { service } = makeService(tx, { resolution }, comments);
+    await service.transition('w1', 'u1', 'i1', {
+      toStatusId: 's2',
+      version: 3,
+      resolutionId: 'r-cnr',
+      comment: 'Không tái hiện được trên iOS 17',
+    });
+    const data = (
+      tx.issue.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data.resolutionId).toBe('r-cnr');
+    expect(resolution.findFirst).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { workspaceId: 'w1', isDefault: true } }),
+    );
+    expect(comments.create).toHaveBeenCalledWith(
+      'w1',
+      'u1',
+      'i1',
+      expect.objectContaining({
+        bodyFormat: 'MARKDOWN',
+        body: expect.stringContaining('Không tái hiện được trên iOS 17'),
+      }),
+    );
+  });
+
+  it('transition sang Done không gửi resolutionId => dùng Resolution mặc định; resolutionId=null tường minh => không đặt', async () => {
+    const mk = () => {
+      const tx = wipTx({ count: 0 });
+      tx.status.findUnique = vi.fn(() => Promise.resolve({ category: 'DONE' }));
+      return tx;
+    };
+    const resolution = { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) };
+    const a = mk();
+    await makeService(a, { resolution }).service.transition('w1', 'u1', 'i1', {
+      toStatusId: 's2',
+      version: 3,
+    });
+    expect(
+      (a.issue.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }])[0].data
+        .resolutionId,
+    ).toBe('r-done');
+    const b = mk();
+    await makeService(b, { resolution }).service.transition('w1', 'u1', 'i1', {
+      toStatusId: 's2',
+      version: 3,
+      resolutionId: null,
+    });
+    expect(
+      (b.issue.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }])[0].data
+        .resolutionId,
+    ).toBeNull();
+  });
+
+  it('transition có comment nhưng thiếu comment:create => 403, chưa ghi', async () => {
+    const tx = wipTx({ count: 0 });
+    const comments = { create: vi.fn() };
+    const { service, events } = makeService(
+      tx,
+      { user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) } },
+      comments,
+      ['issue:transition'],
+    );
+    await expect(
+      service.transition('w1', 'u1', 'i1', { toStatusId: 's2', version: 3, comment: 'lý do' }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(comments.create).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('transition: ghi lý do thất bại không làm hỏng chuyển trạng thái', async () => {
+    const tx = wipTx({ count: 0 });
+    const comments = { create: vi.fn(() => Promise.reject(new Error('boom'))) };
+    const { service, events } = makeService(tx, {}, comments);
+    const dto = await service.transition('w1', 'u1', 'i1', {
+      toStatusId: 's2',
+      version: 3,
+      comment: 'lý do',
+    });
+    expect(dto.id).toBe('i1');
+    expect(events.emit).toHaveBeenCalledTimes(1);
   });
 
   it('không đổi trạng thái (xếp lại thứ tự / cùng statusId) => không tra workflow, chỉ emit ISSUE_MOVED', async () => {

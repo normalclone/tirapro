@@ -5,8 +5,10 @@ import { TrashController } from './trash.controller';
 import { TrashService } from './trash.service';
 import { RankService } from './rank.service';
 import { WipService } from './wip.service';
+import { CommentsModule } from '../comments/comments.module';
 
 @Module({
+  imports: [CommentsModule],
   controllers: [IssuesController, TrashController],
   providers: [IssuesService, RankService, WipService, TrashService],
   exports: [IssuesService],

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   DOMAIN_EVENTS,
@@ -24,6 +24,7 @@ import { iso } from '../../common/mappers/date';
 import { insensitiveContains } from '../../common/like';
 import { assertIssueOwner } from '../rbac/issue-ownership.service';
 import { RbacService } from '../rbac/rbac.service';
+import { CommentsService } from '../comments/comments.service';
 import {
   BusinessRuleException,
   ForbiddenAppException,
@@ -114,7 +115,39 @@ export class IssuesService {
     // Mặc định dựng từ CÙNG prisma/events/rbac để chỗ dựng service bằng 3 đối số (spec cũ) chạy y như trước; Nest DI tiêm bản thật.
     private readonly rankService: RankService = new RankService(prisma, events),
     private readonly wipService: WipService = new WipService(prisma, rbac),
+    // Tuỳ chọn (như rank/wip) để chỗ dựng service bằng 3 đối số vẫn chạy; Nest DI tiêm bản thật. Chỉ dùng để ghi lý do chuyển trạng thái.
+    private readonly comments?: CommentsService,
   ) {}
+
+  private readonly logger = new Logger(IssuesService.name);
+
+  /**
+   * Resolution khi một việc VÀO nhóm Done. Ưu tiên: `explicit` (kể cả `null` rõ ràng = "không đặt")
+   * > giữ `current` > Resolution `isDefault` của workspace > null nếu workspace không có.
+   * Chọn mặc định ở BE (không để FE) để kéo-thả board, bulk, phím tắt, API/MCP/automation đều có dữ liệu —
+   * báo cáo QA dựa vào đó.
+   */
+  private async resolutionForDone(
+    db: Prisma.TransactionClient | PrismaService,
+    workspaceId: string,
+    explicit: string | null | undefined,
+    current: string | null,
+  ): Promise<string | null> {
+    if (explicit !== undefined) return explicit;
+    if (current) return current;
+    return this.defaultResolutionId(db, workspaceId);
+  }
+
+  private async defaultResolutionId(
+    db: Prisma.TransactionClient | PrismaService,
+    workspaceId: string,
+  ): Promise<string | null> {
+    const d = await db.resolution.findFirst({
+      where: { workspaceId, isDefault: true },
+      select: { id: true },
+    });
+    return d?.id ?? null;
+  }
 
   /**
    * Story points & Hạn chỉ người TẠO/BÁO CÁO issue hoặc QUẢN TRỊ (project admin /
@@ -901,6 +934,7 @@ export class IssuesService {
 
     // Chuyển trạng thái: kiểm tra workflow đúng như transition() trước khi ghi bất cứ thứ gì.
     let toDone = false;
+    let doneResolutionId: string | null = null;
     if (patch.statusId) {
       const workflowId = await this.workflowIdOf(projectId);
       for (const r of rows) {
@@ -908,6 +942,8 @@ export class IssuesService {
           await this.assertTransitionAllowed(workflowId, r.statusId, patch.statusId);
       }
       toDone = (await this.statusCategory(patch.statusId)) === 'DONE';
+      // Một lần tra mặc định cho cả lô (bulk không nhận resolution tường minh).
+      if (toDone) doneResolutionId = await this.defaultResolutionId(this.prisma, workspaceId);
     }
     // Giới hạn WIP của cột đích (nếu web gửi boardId); kiểm lại trong transaction sau khi khoá cột.
     const wip = patch.statusId
@@ -944,7 +980,7 @@ export class IssuesService {
         const data: Prisma.IssueUncheckedUpdateManyInput = {};
         if (statusChanged) {
           data.statusId = patch.statusId;
-          data.resolutionId = toDone ? undefined : null;
+          data.resolutionId = toDone ? (before.resolutionId ?? doneResolutionId) : null;
           data.resolvedAt = toDone ? new Date() : null;
         }
         if (patch.assigneeId !== undefined && patch.assigneeId !== before.assigneeId)
@@ -1007,12 +1043,24 @@ export class IssuesService {
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, { resolutionId: input.resolutionId });
     if (current.statusId === input.toStatusId) return this.toDto(current);
+    // Lý do được lưu thành bình luận → cần `comment:create`. Thiếu quyền thì báo TRƯỚC khi ghi gì
+    // (bỏ qua im lặng sẽ nuốt chữ người dùng đã gõ).
+    const reason = input.comment?.trim();
+    if (reason) await this.assertCanWriteReason(userId, workspaceId, current.projectId);
 
     // Validate transition theo workflow của project
     const workflowId = await this.workflowIdOf(current.projectId);
     await this.assertTransitionAllowed(workflowId, current.statusId, input.toStatusId);
 
     const isDone = (await this.statusCategory(input.toStatusId)) === 'DONE';
+    const resolutionId = isDone
+      ? await this.resolutionForDone(
+          this.prisma,
+          workspaceId,
+          input.resolutionId,
+          current.resolutionId,
+        )
+      : null;
     const wip = await this.wipService.resolveWipColumn(
       input.boardId,
       current.projectId,
@@ -1032,7 +1080,7 @@ export class IssuesService {
       const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
         statusId: input.toStatusId,
         updatedById: userId,
-        resolutionId: isDone ? (input.resolutionId ?? undefined) : null,
+        resolutionId,
         resolvedAt: isDone ? new Date() : null,
       });
       await this.recordStatusChange(tx, userId, current, row);
@@ -1045,7 +1093,29 @@ export class IssuesService {
       fromStatusId: current.statusId,
       ...withMeta(opts),
     });
+    if (reason) {
+      // Sau commit: chuyển trạng thái là thao tác chính, lỗi ghi lý do chỉ log (FE nhận biết qua refetch bình luận).
+      try {
+        await this.comments?.create(workspaceId, userId, id, {
+          body: `*Chuyển ${current.status.name} → ${updated.status.name}*\n\n${reason}`,
+          bodyFormat: 'MARKDOWN',
+        });
+      } catch (e) {
+        this.logger.warn(`Ghi lý do chuyển trạng thái thất bại: ${String(e)}`);
+      }
+    }
     return dto;
+  }
+
+  private async assertCanWriteReason(userId: string, workspaceId: string, projectId: string) {
+    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
+    if (perms.has(PERMISSIONS.COMMENT_CREATE)) return;
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
+    if (u?.isSystemAdmin) return;
+    throw new ForbiddenAppException('Bạn không có quyền bình luận để ghi lý do');
   }
 
   async move(
@@ -1075,6 +1145,7 @@ export class IssuesService {
     // Kéo sang cột khác là đổi trạng thái: đi đúng workflow như transition()/bulkUpdate(). Kiểm TRƯỚC resolveRank
     // để không rebalance rank rồi mới báo lỗi; kéo cùng cột/xếp lại thứ tự không đụng workflow.
     let toDone = false;
+    let moveResolutionId: string | null = null;
     if (statusChanged) {
       await this.assertTransitionAllowed(
         await this.workflowIdOf(current.projectId),
@@ -1082,6 +1153,14 @@ export class IssuesService {
         input.statusId!,
       );
       toDone = (await this.statusCategory(input.statusId!)) === 'DONE';
+      // Board kéo sang Done không hỏi: nhận Resolution mặc định (sửa sau ở trang công việc).
+      if (toDone)
+        moveResolutionId = await this.resolutionForDone(
+          this.prisma,
+          workspaceId,
+          undefined,
+          current.resolutionId,
+        );
     }
 
     // Không có mốc nào ⇒ giữ rank hiện tại (trước đây rankBetween(null, null) đặt thẻ vào GIỮA dự án).
@@ -1121,9 +1200,12 @@ export class IssuesService {
         statusId: input.statusId ?? current.statusId,
         sprintId: input.sprintId !== undefined ? input.sprintId : current.sprintId,
         updatedById: userId,
-        // Cùng quy ước bulkUpdate: sang DONE giữ resolutionId (move không nhận resolutionId), rời DONE xoá cả hai.
+        // Cùng quy ước bulkUpdate: sang DONE đặt Resolution mặc định (move không nhận resolutionId), rời DONE xoá cả hai.
         ...(statusChanged
-          ? { resolutionId: toDone ? undefined : null, resolvedAt: toDone ? new Date() : null }
+          ? {
+              resolutionId: toDone ? moveResolutionId : null,
+              resolvedAt: toDone ? new Date() : null,
+            }
           : {}),
       });
       // Kéo sang cột/trạng thái khác cũng là đổi trạng thái: ghi lịch sử để CFD/burndown không hụt.
