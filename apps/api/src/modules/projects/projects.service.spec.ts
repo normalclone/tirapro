@@ -45,7 +45,16 @@ function make(
       findUnique: vi.fn(() => Promise.resolve(over.member === false ? null : { id: 'm1' })),
     },
   };
-  return { service: new ProjectsService(prisma as never, {} as never), prisma };
+  const health = {
+    forProjects: vi.fn((_w: string, ids: string[]) =>
+      Promise.resolve(new Map(ids.map((id) => [id, { level: 'RED', auto: {}, override: {} }]))),
+    ),
+  };
+  return {
+    service: new ProjectsService(prisma as never, {} as never, health as never),
+    prisma,
+    health,
+  };
 }
 
 describe('ProjectsService — lưu trữ / sửa / xoá', () => {
@@ -149,7 +158,7 @@ describe('ProjectsService — dự án lưu trữ là chỉ đọc (cài đặt 
         update: vi.fn(() => Promise.resolve({})),
       },
     };
-    const service = new ProjectsService(prisma as never, media as never);
+    const service = new ProjectsService(prisma as never, media as never, {} as never);
     await expect(service.setAvatar('w1', 'DEMO', undefined, {} as never)).rejects.toMatchObject({
       status: 422,
     });
@@ -172,7 +181,7 @@ describe('ProjectsService.meta — severities + resolutions', () => {
       severity: { findMany: vi.fn(() => Promise.resolve(sev)) },
       resolution: { findMany: vi.fn(() => Promise.resolve(res)) },
     };
-    const service = new ProjectsService(prisma as never, {} as never);
+    const service = new ProjectsService(prisma as never, {} as never, {} as never);
     const out = await service.meta('w1', 'DEMO');
     expect(out).toMatchObject({ projectId: 'p1', severities: sev, resolutions: res });
     expect(prisma.severity.findMany).toHaveBeenCalledWith(
@@ -181,5 +190,73 @@ describe('ProjectsService.meta — severities + resolutions', () => {
     expect(prisma.resolution.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { workspaceId: 'w1' }, orderBy: { rank: 'asc' } }),
     );
+  });
+});
+
+describe('ProjectsService.setHealth — ghi đè sức khoẻ dự án', () => {
+  const lastUpdate = (prisma: ReturnType<typeof make>['prisma']) =>
+    (
+      prisma.project.update.mock.calls[0] as unknown as [
+        { where: { id: string }; data: Record<string, unknown> },
+      ]
+    )[0];
+
+  it('đặt mức + ghi chú: lưu healthOverride/healthNote/healthUpdatedAt/healthUpdatedById và trả sức khoẻ hiệu lực', async () => {
+    const { service, prisma, health } = make();
+    const dto = await service.setHealth('w1', 'p1', 'u1', {
+      health: 'RED',
+      note: '  Khách đổi phạm vi giữa chừng  ',
+    });
+    const call = lastUpdate(prisma);
+    expect(call.where).toEqual({ id: 'p1' });
+    expect(call.data).toMatchObject({
+      healthOverride: 'RED',
+      healthNote: 'Khách đổi phạm vi giữa chừng',
+      healthUpdatedById: 'u1',
+    });
+    expect(call.data.healthUpdatedAt).toBeInstanceOf(Date);
+    expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1']);
+    expect(dto).toMatchObject({ level: 'RED' });
+  });
+
+  it('đặt mức mà không có ghi chú (hoặc chỉ khoảng trắng) => lỗi nghiệp vụ, không ghi', async () => {
+    const { service, prisma } = make();
+    await expect(service.setHealth('w1', 'p1', 'u1', { health: 'RED' })).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('ghi chú') as unknown,
+    });
+    await expect(
+      service.setHealth('w1', 'p1', 'u1', { health: 'YELLOW', note: '   ' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(prisma.project.update).not.toHaveBeenCalled();
+  });
+
+  it('health: null => bỏ ghi đè, xoá cả ghi chú/người đặt/thời điểm (không cần ghi chú)', async () => {
+    const { service, prisma } = make();
+    await service.setHealth('w1', 'p1', 'u1', { health: null, note: 'bỏ qua' });
+    expect(lastUpdate(prisma).data).toEqual({
+      healthOverride: null,
+      healthNote: null,
+      healthUpdatedAt: null,
+      healthUpdatedById: null,
+    });
+  });
+
+  it('dự án đã lưu trữ => 422 "lưu trữ", không ghi; dự án không tồn tại => 404', async () => {
+    const archived = make({
+      cur: row({ archivedAt: new Date('2026-10-10T00:00:00Z'), isArchived: true }),
+    });
+    await expect(
+      archived.service.setHealth('w1', 'p1', 'u1', { health: 'GREEN', note: 'ok' }),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('lưu trữ') as unknown,
+    });
+    expect(archived.prisma.project.update).not.toHaveBeenCalled();
+
+    const missing = make({ cur: null });
+    await expect(
+      missing.service.setHealth('w1', 'p1', 'u1', { health: null }),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });

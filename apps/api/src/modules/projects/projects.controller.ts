@@ -16,8 +16,10 @@ import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import {
   createProjectSchema,
+  setProjectHealthSchema,
   updateProjectSchema,
   type CreateProjectInput,
+  type SetProjectHealthInput,
   type UpdateProjectInput,
 } from '@tirapro/shared';
 import { PERMISSIONS, type PermissionKey, type ProjectPermissionsDto } from '@tirapro/types';
@@ -94,6 +96,19 @@ export class ProjectsController {
     @Body(new ZodValidationPipe(updateProjectSchema)) dto: UpdateProjectInput,
   ) {
     return this.projects.update(workspaceId, id, user.id, dto);
+  }
+
+  /** Ghi đè sức khoẻ dự án (kèm ghi chú) hoặc bỏ ghi đè (`health: null`). */
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  @ProjectRef('param', 'id')
+  @Patch(':id/health')
+  async setHealth(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(setProjectHealthSchema)) dto: SetProjectHealthInput,
+  ) {
+    return this.projects.setHealth(workspaceId, id, user.id, dto);
   }
 
   /** Lưu trữ dự án (chỉ đọc, ẩn khỏi danh sách mặc định). */

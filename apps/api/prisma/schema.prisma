@@ -52,6 +52,13 @@ enum DefaultAssigneeMode {
   PROJECT_LEAD
 }
 
+/// Sức khoẻ dự án: xanh = tốt, vàng = cần chú ý, đỏ = nguy cơ.
+enum ProjectHealth {
+  GREEN
+  YELLOW
+  RED
+}
+
 enum BoardType {
   KANBAN
   SCRUM
@@ -230,6 +237,7 @@ model User {
   projectMemberships   ProjectMembership[]
   ownedWorkspaces      Workspace[]           @relation("WorkspaceOwner")
   ledProjects          Project[]             @relation("ProjectLead")
+  healthUpdatedProjects Project[]            @relation("ProjectHealthUpdater")
   reportedIssues       Issue[]               @relation("IssueReporter")
   assignedIssues       Issue[]               @relation("IssueAssignee")
   comments             Comment[]
@@ -478,6 +486,11 @@ model Project {
   archivedAt          DateTime?
   programId           String?
   clientId            String?
+  /// Sức khoẻ do quản trị dự án đặt tay (ghi đè giá trị tự tính); null = dùng giá trị tự tính.
+  healthOverride      ProjectHealth?
+  healthNote          String?  @db.VarChar(500)
+  healthUpdatedAt     DateTime?
+  healthUpdatedById   String?
   settings            Json     @default("{}")
   deletedAt           DateTime?
   createdById         String?
@@ -487,6 +500,7 @@ model Project {
 
   workspace    Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   lead         User?       @relation("ProjectLead", fields: [leadId], references: [id], onDelete: SetNull)
+  healthUpdatedBy User?    @relation("ProjectHealthUpdater", fields: [healthUpdatedById], references: [id], onDelete: SetNull)
   memberships  ProjectMembership[]
   issues       Issue[]
   boards       Board[]

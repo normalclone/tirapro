@@ -22,6 +22,25 @@ describe('AnalyticsController.burndown — metadata', () => {
   });
 });
 
+describe('AnalyticsController.sprintSummary — metadata', () => {
+  const h = AnalyticsController.prototype.sprintSummary;
+  it('cùng khuôn quyền với burndown: report:view theo dự án (query projectId)', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, h)).toEqual([PERMISSIONS.REPORT_VIEW]);
+    expect(Reflect.getMetadata(PROJECT_REF_KEY, h)).toEqual({ kind: 'query', param: 'projectId' });
+  });
+  it('thiếu projectId hoặc sprintId => lỗi nghiệp vụ', async () => {
+    const analytics = { sprintSummary: vi.fn() };
+    const controller = new AnalyticsController(analytics as unknown as AnalyticsService);
+    await expect(controller.sprintSummary('w1', 'sp1', undefined)).rejects.toBeInstanceOf(
+      BusinessRuleException,
+    );
+    await expect(controller.sprintSummary('w1', undefined, 'p1')).rejects.toBeInstanceOf(
+      BusinessRuleException,
+    );
+    expect(analytics.sprintSummary).not.toHaveBeenCalled();
+  });
+});
+
 describe('AnalyticsController.burndown — guard thật + controller', () => {
   /** Member: KHÔNG có report:view ở cấp workspace, chỉ có ở dự án p1 (vai trò dự án Developer). */
   function setup(query: Record<string, string>) {

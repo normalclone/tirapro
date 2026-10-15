@@ -42,6 +42,20 @@ export class AnalyticsController {
     return this.analytics.burndown(workspaceId, projectId, sprintId);
   }
 
+  /** Tổng kết một sprint (đã xong x/y điểm, việc chuyển tiếp, so velocity TB). Cùng khuôn quyền với burndown. */
+  @ProjectRef('query', 'projectId')
+  @Get('sprint-summary')
+  @Permissions(PERMISSIONS.REPORT_VIEW)
+  async sprintSummary(
+    @WorkspaceId() workspaceId: string,
+    @Query('sprintId') sprintId?: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    if (!projectId) throw new BusinessRuleException('Thiếu projectId');
+    if (!sprintId) throw new BusinessRuleException('Thiếu sprintId');
+    return this.analytics.sprintSummary(workspaceId, projectId, sprintId);
+  }
+
   @ProjectRef('query', 'projectId')
   @Get('velocity')
   @Permissions(PERMISSIONS.REPORT_VIEW)

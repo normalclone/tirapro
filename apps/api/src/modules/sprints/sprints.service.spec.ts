@@ -21,6 +21,12 @@ const sprintRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** Payload của snapshot CLOSE đầu tiên được tạo trên tx giả. */
+const closePayload = (t: {
+  sprintSnapshot: { create: { mock: { calls: Array<[{ data: unknown }]> } } };
+}): { carriedOver: unknown[]; movedTo: unknown } =>
+  (t.sprintSnapshot.create.mock.calls[0]![0].data as { payload: never }).payload;
+
 const dupError = () =>
   new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'test' });
 
@@ -183,42 +189,42 @@ describe('SprintsService.listForProject — groupBy thay cho kéo từng issue',
   });
 });
 
-describe('SprintsService.complete — chọn đích cho việc chưa xong', () => {
-  /** tx giả: sprint s1 (project p1, sequence 4 là lớn nhất), 2 issue chưa Done là i1, i2. */
-  function tx(over: { targetCount?: number; stateCount?: number } = {}) {
-    return {
-      sprint: {
-        findFirst: vi.fn((args: { select?: { sequence?: boolean } }) =>
-          Promise.resolve(args.select?.sequence ? { sequence: 4 } : sprintRow()),
-        ),
-        updateMany: vi.fn((args: { where: { id: string; state?: string } }) =>
-          Promise.resolve({
-            count: args.where.state === 'ACTIVE' ? (over.stateCount ?? 1) : (over.targetCount ?? 1),
-          }),
-        ),
-        create: vi.fn((_args: { data: Record<string, unknown> }) =>
-          Promise.resolve({ id: 's-new' }),
-        ),
-        findUniqueOrThrow: vi.fn(() => Promise.resolve(sprintRow({ state: 'CLOSED' }))),
-      },
-      issue: {
-        findMany: vi.fn((args: { select: { id?: boolean } }) =>
-          Promise.resolve(args.select.id ? [{ id: 'i1' }, { id: 'i2' }] : []),
-        ),
-        updateMany: vi.fn(
-          (_args: { where: Record<string, unknown>; data: Record<string, unknown> }) =>
-            Promise.resolve({ count: 2 }),
-        ),
-      },
-      issueHistory: {
-        createMany: vi.fn((_args: { data: Array<Record<string, unknown>> }) =>
-          Promise.resolve({ count: 0 }),
-        ),
-      },
-      sprintSnapshot: { create: vi.fn((_args: { data: { kind: string } }) => Promise.resolve({})) },
-    };
-  }
+/** tx giả: sprint s1 (project p1, sequence 4 là lớn nhất), 2 issue chưa Done là i1, i2. */
+function tx(over: { targetCount?: number; stateCount?: number } = {}) {
+  return {
+    sprint: {
+      findFirst: vi.fn((args: { select?: { sequence?: boolean } }) =>
+        Promise.resolve(args.select?.sequence ? { sequence: 4 } : sprintRow()),
+      ),
+      updateMany: vi.fn((args: { where: { id: string; state?: string } }) =>
+        Promise.resolve({
+          count: args.where.state === 'ACTIVE' ? (over.stateCount ?? 1) : (over.targetCount ?? 1),
+        }),
+      ),
+      create: vi.fn((_args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 's-new', name: 'Sprint 5' }),
+      ),
+      findUniqueOrThrow: vi.fn(() => Promise.resolve(sprintRow({ state: 'CLOSED' }))),
+    },
+    issue: {
+      findMany: vi.fn((args: { select: { id?: boolean } }) =>
+        Promise.resolve(args.select.id ? [{ id: 'i1' }, { id: 'i2' }] : []),
+      ),
+      updateMany: vi.fn(
+        (_args: { where: Record<string, unknown>; data: Record<string, unknown> }) =>
+          Promise.resolve({ count: 2 }),
+      ),
+    },
+    issueHistory: {
+      createMany: vi.fn((_args: { data: Array<Record<string, unknown>> }) =>
+        Promise.resolve({ count: 0 }),
+      ),
+    },
+    sprintSnapshot: { create: vi.fn((_args: { data: { kind: string } }) => Promise.resolve({})) },
+  };
+}
 
+describe('SprintsService.complete — chọn đích cho việc chưa xong', () => {
   it("'new' => tạo sprint FUTURE kế tiếp, chuyển N issue sang đó + N history, snapshot CLOSE", async () => {
     const t = tx();
     const { service, events } = make(t);
@@ -298,6 +304,56 @@ describe('SprintsService.complete — chọn đích cho việc chưa xong', () =
       message: has('lưu trữ'),
     });
     expect(t.sprint.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('SprintsService.complete — payload của snapshot CLOSE', () => {
+  it("snapshot CLOSE ghi payload: việc chưa xong bị chuyển tiếp + nơi chuyển ('new'), chụp TRƯỚC khi di chuyển issue", async () => {
+    const t = tx();
+    t.issue.findMany.mockImplementation((args: { select: { id?: boolean } }) =>
+      Promise.resolve(
+        args.select.id
+          ? [
+              { id: 'i1', key: 'DEMO-TASK-1', summary: 'Một', storyPoints: 3 },
+              { id: 'i2', key: 'DEMO-TASK-2', summary: 'Hai', storyPoints: null },
+            ]
+          : [],
+      ),
+    );
+    const order: string[] = [];
+    t.sprintSnapshot.create.mockImplementation((_a: unknown) => {
+      order.push('snapshot');
+      return Promise.resolve({});
+    });
+    t.issue.updateMany.mockImplementation((_a: unknown) => {
+      order.push('move');
+      return Promise.resolve({ count: 2 });
+    });
+    const { service } = make(t);
+    await service.complete('w1', 's1', 'u1', { moveIncompleteTo: 'new' });
+    expect(t.sprintSnapshot.create.mock.calls[0]![0].data.kind).toBe('CLOSE');
+    expect(closePayload(t)).toEqual({
+      carriedOver: [
+        { id: 'i1', key: 'DEMO-TASK-1', summary: 'Một', storyPoints: 3 },
+        { id: 'i2', key: 'DEMO-TASK-2', summary: 'Hai', storyPoints: null },
+      ],
+      movedTo: { kind: 'new', sprintId: 's-new', sprintName: 'Sprint 5' },
+    });
+    expect(order).toEqual(['snapshot', 'move']);
+  });
+
+  it("payload movedTo: 'backlog' không kèm sprint; { sprintId } kèm tên sprint đích", async () => {
+    const t1 = tx();
+    await make(t1).service.complete('w1', 's1', 'u1');
+    expect(closePayload(t1).movedTo).toEqual({ kind: 'backlog' });
+
+    const t2 = tx();
+    await make(t2).service.complete('w1', 's1', 'u1', { moveIncompleteTo: { sprintId: 's9' } });
+    expect(closePayload(t2).movedTo).toEqual({
+      kind: 'sprint',
+      sprintId: 's9',
+      sprintName: 'Sprint 1', // tên do mock findFirst trả (sprintRow)
+    });
   });
 });
 

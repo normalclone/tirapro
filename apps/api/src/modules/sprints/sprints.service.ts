@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS, type SprintDto } from '@tirapro/types';
-import type { CompleteSprintInput, CreateSprintInput, UpdateSprintInput } from '@tirapro/shared';
+import type {
+  CompleteSprintInput,
+  CreateSprintInput,
+  SprintClosePayload,
+  UpdateSprintInput,
+} from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { iso } from '../../common/mappers/date';
@@ -146,12 +151,20 @@ export class SprintsService {
       });
       if (count === 0) throw new BusinessRuleException('Chỉ sprint ACTIVE mới complete được');
 
-      // Snapshot CLOSE chụp TOÀN BỘ sprint (cả việc sắp bị đẩy ra) — velocity cần "cam kết" thật của sprint.
-      await this.snapshot(tx, sprintId, 'CLOSE');
+      // Thứ tự: (1) đóng sprint ở trên, (2) tính việc chưa Done, (3) tạo/khoá sprint đích, (4) snapshot CLOSE kèm
+      // payload (việc chuyển tiếp + nơi chuyển), (5) mới chuyển issue ra. Snapshot vẫn chụp TOÀN BỘ sprint (cả việc sắp
+      // bị đẩy ra) vì issue chưa di chuyển — velocity cần "cam kết" thật của sprint.
+      const pushed = await tx.issue.findMany({
+        where: { sprintId, deletedAt: null, status: { category: { not: 'DONE' } } },
+        select: { id: true, key: true, summary: true, storyPoints: true },
+      });
 
       let targetSprintId: string | null = null;
+      let movedTo: SprintClosePayload['movedTo'] = { kind: 'backlog' };
       if (dest === 'new') {
-        targetSprintId = await this.createNextSprint(tx, sprint);
+        const created = await this.createNextSprint(tx, sprint);
+        targetSprintId = created.id;
+        movedTo = { kind: 'new', sprintId: created.id, sprintName: created.name };
       } else if (typeof dest === 'object') {
         // updateMany làm vừa khoá dòng vừa kiểm: sprint đích phải còn FUTURE, cùng dự án, chưa xoá; và
         // `remove()` (cũng updateMany trên dòng này) phải xếp hàng sau — không có việc nào trỏ vào sprint vừa bị xoá.
@@ -169,13 +182,31 @@ export class SprintsService {
             'Sprint đích không còn hợp lệ — hãy chọn một sprint chưa bắt đầu (FUTURE) của dự án này',
           );
         targetSprintId = dest.sprintId;
+        const target = await tx.sprint.findFirst({
+          where: { id: dest.sprintId, deletedAt: null },
+          select: { name: true },
+        });
+        movedTo = { kind: 'sprint', sprintId: dest.sprintId, sprintName: target?.name };
       }
 
+      const payload: SprintClosePayload = {
+        carriedOver: pushed.map((i) => ({
+          id: i.id,
+          key: i.key,
+          summary: i.summary,
+          storyPoints: i.storyPoints ?? null,
+        })),
+        movedTo,
+      };
+      await this.snapshot(
+        tx,
+        sprintId,
+        'CLOSE',
+        new Date(),
+        payload as unknown as Prisma.InputJsonValue,
+      );
+
       // Đưa issue chưa Done sang đích và ghi lịch sử cho từng issue.
-      const pushed = await tx.issue.findMany({
-        where: { sprintId, deletedAt: null, status: { category: { not: 'DONE' } } },
-        select: { id: true },
-      });
       if (pushed.length) {
         await this.moveIssuesOut(tx, {
           sprintId,
@@ -273,7 +304,7 @@ export class SprintsService {
   private async createNextSprint(
     tx: Prisma.TransactionClient,
     from: { projectId: string; boardId: string | null },
-  ): Promise<string> {
+  ): Promise<{ id: string; name: string }> {
     // allow-deleted: sequence phải tính cả sprint đã xoá để không trùng số thứ tự
     const last = await tx.sprint.findFirst({
       where: { projectId: from.projectId },
@@ -290,9 +321,9 @@ export class SprintsService {
           sequence,
           state: 'FUTURE',
         },
-        select: { id: true },
+        select: { id: true, name: true },
       });
-      return created.id;
+      return created;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new BusinessRuleException(
@@ -348,6 +379,7 @@ export class SprintsService {
     sprintId: string,
     kind: 'START' | 'DAILY' | 'SCOPE_CHANGE' | 'CLOSE',
     at: Date = new Date(),
+    payload?: Prisma.InputJsonValue,
   ) {
     const issues = await tx.issue.findMany({
       where: { sprintId, deletedAt: null },
@@ -368,6 +400,7 @@ export class SprintsService {
         remainingPoints: committedPoints - completedPoints,
         committedCount: issues.length,
         completedCount,
+        payload,
       },
     });
   }

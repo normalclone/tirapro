@@ -11,6 +11,9 @@ import { useAuth } from '@/stores/auth';
 import { useProjects } from '@/features/projects/api';
 import { AllocationsPanel } from './AllocationsPanel';
 import { TimeOffPanel } from './TimeOffPanel';
+import { workloadCsv } from './exportCsv';
+import { ExportMenu } from '@/components/ui/ExportMenu';
+import { downloadText } from '@/lib/download';
 import {
   addDays,
   formatHours,
@@ -19,6 +22,7 @@ import {
   shortDay,
   useWorkload,
   type WorkloadCell,
+  type WorkloadReport,
   type WorkloadRow,
 } from './api';
 
@@ -78,6 +82,62 @@ function cellStyle(cell: WorkloadCell, level: Level) {
   return { backgroundColor: `color-mix(in oklab, ${tint} ${pct}%, var(--surface))` };
 }
 
+/** Nút Xuất CSV của tab "Khối lượng theo tuần". */
+function WorkloadExport({
+  report,
+  from,
+  to,
+}: {
+  report: WorkloadReport | undefined;
+  from: string;
+  to: string;
+}) {
+  return (
+    <ExportMenu
+      disabled={!report || report.rows.length === 0}
+      items={[
+        {
+          id: 'csv',
+          label: 'Tải CSV',
+          hint: 'Mỗi dòng là một người trong một tuần',
+          run: () => {
+            if (report) downloadText(`tirapro-nhan-luc-${from}-${to}.csv`, workloadCsv(report));
+          },
+        },
+      ]}
+    />
+  );
+}
+
+function ResourcesHeader({
+  exportReport,
+  showExport,
+  from,
+  to,
+}: {
+  exportReport: WorkloadReport | undefined;
+  showExport: boolean;
+  from: string;
+  to: string;
+}) {
+  return (
+    <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+          Nhân lực & khối lượng việc
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted">
+          Xem mỗi người đang gánh bao nhiêu giờ so với số giờ họ thật sự làm được. Số giờ làm được
+          (năng lực) = ngày làm việc trong tuần, đã trừ nghỉ phép và ngày lễ, nhân tỉ lệ phân bổ;
+          khối lượng việc = ước lượng giờ của các việc được giao, chia đều cho những ngày việc đó
+          kéo dài.
+        </p>
+      </div>
+      {showExport && <WorkloadExport report={exportReport} from={from} to={to} />}
+    </header>
+  );
+}
+
 /**
  * Nhân lực & khối lượng việc — bảng nhiệt NGƯỜI × TUẦN, phân bổ theo dự án,
  * nghỉ phép & ngày lễ chung.
@@ -116,17 +176,12 @@ export function ResourcesPage() {
 
   return (
     <div className={pageContainer('xl')}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          Nhân lực & khối lượng việc
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Xem mỗi người đang gánh bao nhiêu giờ so với số giờ họ thật sự làm được. Số giờ làm được
-          (năng lực) = ngày làm việc trong tuần, đã trừ nghỉ phép và ngày lễ, nhân tỉ lệ phân bổ;
-          khối lượng việc = ước lượng giờ của các việc được giao, chia đều cho những ngày việc đó
-          kéo dài.
-        </p>
-      </header>
+      <ResourcesHeader
+        exportReport={tab === 'load' ? workload.data : undefined}
+        showExport={tab === 'load'}
+        from={from}
+        to={to}
+      />
 
       <div className="mb-5 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5">

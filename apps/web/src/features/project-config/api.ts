@@ -1,6 +1,6 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Ack } from '@/lib/api';
-import { getAccessToken } from '@/lib/auth-token';
+import { downloadFile } from '@/lib/download';
 import { keys } from '@/lib/queryKeys';
 
 /** ---- Components ---- */
@@ -265,32 +265,9 @@ export function useImportJson() {
   });
 }
 
-/**
- * Tải file export JSON của dự án. Dùng fetch thuần (không qua axios `api`) vì
- * endpoint trả về file đính kèm; tự đính kèm Bearer token rồi kích hoạt tải về.
- */
+/** Tải file export JSON của dự án (fetch + Bearer qua `downloadFile`). */
 export async function downloadProjectExport(projectId: string): Promise<void> {
-  const baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1';
-  const token = getAccessToken();
-  const res = await fetch(`${baseUrl}/export/project/${projectId}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    credentials: 'include',
+  await downloadFile(`/export/project/${projectId}`, {
+    fallbackName: `project-${projectId}-export.json`,
   });
-  if (!res.ok) {
-    throw new Error(`Tải dữ liệu thất bại (HTTP ${res.status}).`);
-  }
-
-  const blob = await res.blob();
-  const disposition = res.headers.get('Content-Disposition') ?? '';
-  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
-  const filename = match ? decodeURIComponent(match[1]!) : `project-${projectId}-export.json`;
-
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }

@@ -4,12 +4,15 @@ import type {
   CfdPoint,
   CfdReport,
   CreatedResolvedReport,
+  SprintClosePayload,
+  SprintSummaryReport,
   VelocityReport,
 } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { LIVE_PROJECT } from '../../common/live-project';
+import { ProjectHealthService } from './project-health.service';
 
 type Category = 'TODO' | 'IN_PROGRESS' | 'DONE';
 
@@ -30,7 +33,10 @@ interface WeekRow {
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly health: ProjectHealthService,
+  ) {}
 
   // ---------- Tổng quan workspace (mọi dự án — cho admin) ----------
   async workspaceOverview(workspaceId: string) {
@@ -233,6 +239,11 @@ export class AnalyticsService {
       return `${d.getDate()}/${d.getMonth() + 1}`;
     };
 
+    // Sức khoẻ: một lô cho mọi dự án đang hiển thị (danh sách đã là dự án sống, chưa lưu trữ).
+    const healthMap = await this.health.forProjects(
+      workspaceId,
+      projects.map((p) => p.id),
+    );
     const attention = attentionRows(now, keyByProject, { overdueTop, highPriTop, dueSoonTop });
     const { warnings, forecast } = narrate(
       totals,
@@ -249,6 +260,7 @@ export class AnalyticsService {
         name: p.name,
         ...byProject.get(p.id)!,
         sprint: sprintByProject.get(p.id) ?? null,
+        health: healthMap.get(p.id) ?? null,
       })),
       byType: [...typeMap.values()].sort((a, b) => b.count - a.count),
       byPriority: [...prioMap.values()]
@@ -472,9 +484,12 @@ export class AnalyticsService {
       return a.name.localeCompare(b.name);
     });
 
+    const health = (await this.health.forProjects(workspaceId, [projectId])).get(projectId) ?? null;
+
     return {
       totals,
       completionRate,
+      health,
       highPriUnassigned,
       dueSoon,
       // Theo thứ tự cột của workflow cho ổn định (bản cũ không đảm bảo thứ tự).
@@ -545,6 +560,7 @@ export class AnalyticsService {
 
     // Cố ý KHÔNG dùng oldCategory/delta (giống CFD): chuỗi STATUS có thể đứt nên chỉ tin newCategory của sự kiện
     // cuối cùng — issue đang DONE hay không — và chỉ cộng/trừ điểm khi trạng thái boolean đó thật sự đổi.
+    const todayKey = dayKey(new Date());
     let done = 0;
     const doneNow = new Map<string, boolean>();
     let h = 0;
@@ -560,6 +576,11 @@ export class AnalyticsService {
         done += isDone ? pts : -pts;
       }
       const ideal = days.length > 1 ? baseline * (1 - idx / (days.length - 1)) : 0;
+      // Sprint đang chạy: ngày chưa tới không có dữ liệu thật — trả null để FE ngừng đường "Còn lại" ở hôm nay
+      // thay vì kéo đường phẳng tới cuối sprint (CLOSED đã đủ ngày; FUTURE không có "hôm nay" trong khoảng).
+      if (sprint.state === 'ACTIVE' && date > todayKey) {
+        return { date, ideal: round(ideal), remaining: null };
+      }
       const snapped = snapByDay.get(date);
       const remaining =
         snapped !== undefined ? Math.max(snapped, 0) : Math.max(committed - done, 0);
@@ -572,7 +593,124 @@ export class AnalyticsService {
       committedPoints: round(baseline),
       start: start.toISOString(),
       end: end.toISOString(),
+      today: todayKey,
       series,
+    };
+  }
+
+  // ---------- Tổng kết sprint (1 sprint) ----------
+  async sprintSummary(
+    workspaceId: string,
+    projectId: string,
+    sprintId: string,
+  ): Promise<SprintSummaryReport> {
+    // projectId (đã qua guard report:view theo dự án) PHẢI khớp sprint — cùng lý do với burndown().
+    const sprint = await this.prisma.sprint.findFirst({
+      where: {
+        id: sprintId,
+        projectId,
+        deletedAt: null,
+        project: { workspaceId, deletedAt: null },
+      },
+      include: {
+        snapshots: {
+          where: { kind: { in: ['START', 'CLOSE'] } },
+          orderBy: { snapshotAt: 'desc' },
+        },
+      },
+    });
+    if (!sprint) throw new NotFoundAppException('Đợt làm việc (sprint)');
+
+    const startSnap = sprint.snapshots.find((x) => x.kind === 'START');
+    const closeSnap =
+      sprint.state === 'CLOSED' ? sprint.snapshots.find((x) => x.kind === 'CLOSE') : undefined;
+
+    // Số liệu trực tiếp: chỉ cần khi chưa có snapshot CLOSE (ACTIVE/FUTURE, hoặc CLOSED cũ thiếu snapshot).
+    const live = { points: 0, count: 0, donePoints: 0, doneCount: 0 };
+    if (!closeSnap) {
+      const issues = await this.prisma.issue.findMany({
+        where: { sprintId, deletedAt: null },
+        select: { storyPoints: true, status: { select: { category: true } } },
+      });
+      for (const i of issues) {
+        const p = i.storyPoints ?? 0;
+        live.points += p;
+        live.count += 1;
+        if (i.status.category === 'DONE') {
+          live.donePoints += p;
+          live.doneCount += 1;
+        }
+      }
+    }
+
+    // ĐỊNH NGHĨA (luôn nhất quán: committed = completed + remaining): `committed` là tổng phạm vi hiện tại của sprint
+    // (CLOSED: phạm vi lúc đóng theo snapshot CLOSE; ACTIVE/FUTURE: tính trực tiếp) — nên "đã xong x/y" không bao giờ
+    // có x > y dù giữa sprint có thêm/bớt việc. Mốc cam kết ban đầu (snapshot START) trả riêng ở `initialCommitted`.
+    const committed = closeSnap
+      ? { points: closeSnap.committedPoints, count: closeSnap.committedCount }
+      : { points: live.points, count: live.count };
+    const completed = closeSnap
+      ? { points: closeSnap.completedPoints, count: closeSnap.completedCount }
+      : { points: live.donePoints, count: live.doneCount };
+    const remaining = {
+      points: Math.max(committed.points - completed.points, 0),
+      count: Math.max(committed.count - completed.count, 0),
+    };
+    const initialCommitted =
+      sprint.state !== 'FUTURE' &&
+      startSnap &&
+      (startSnap.committedPoints > 0 || startSnap.committedCount > 0)
+        ? { points: round(startSnap.committedPoints), count: startSnap.committedCount }
+        : null;
+
+    // Việc chuyển tiếp: chỉ đọc từ payload (không suy diễn từ IssueHistory — không phân biệt được "chuyển lúc đóng"
+    // với "bị gỡ giữa sprint"). Sprint đóng trước khi có tính năng: payload null → rỗng.
+    const payload = closeSnap?.payload as Partial<SprintClosePayload> | null | undefined;
+    const carriedOver = Array.isArray(payload?.carriedOver) ? payload.carriedOver : [];
+    const movedTo = payload?.movedTo ?? null;
+
+    // Velocity TB = trung bình completedPoints của tối đa 3 sprint đã đóng TRƯỚC sprint này (cùng định nghĩa trợ lý sprint).
+    const prior = await this.prisma.sprint.findMany({
+      where: {
+        projectId,
+        state: 'CLOSED',
+        deletedAt: null,
+        sequence: { lt: sprint.sequence },
+        // Sprint đóng trước khi có snapshot CLOSE không có số liệu → bỏ qua (không tính 0 kéo trung bình xuống).
+        snapshots: { some: { kind: 'CLOSE' } },
+      },
+      orderBy: { sequence: 'desc' },
+      take: 3,
+      include: {
+        snapshots: { where: { kind: 'CLOSE' }, orderBy: { snapshotAt: 'desc' }, take: 1 },
+      },
+    });
+    const priorPoints = prior.flatMap((p) => p.snapshots.map((x) => x.completedPoints));
+    const average = priorPoints.length
+      ? round(priorPoints.reduce((a, x) => a + x, 0) / priorPoints.length)
+      : 0;
+    const deltaPct =
+      average > 0 ? Math.round(((completed.points - average) / average) * 100) : null;
+
+    return {
+      sprint: {
+        id: sprint.id,
+        name: sprint.name,
+        goal: sprint.goal,
+        state: sprint.state,
+        startDate: sprint.startDate?.toISOString() ?? null,
+        endDate: sprint.endDate?.toISOString() ?? null,
+        completeDate: sprint.completeDate?.toISOString() ?? null,
+        sequence: sprint.sequence,
+      },
+      committed: { points: round(committed.points), count: committed.count },
+      initialCommitted,
+      completed: { points: round(completed.points), count: completed.count },
+      remaining: { points: round(remaining.points), count: remaining.count },
+      carriedOver,
+      movedTo,
+      velocity: { average, sprintsCounted: priorPoints.length, deltaPct },
+      time: sprintTime(sprint, new Date()),
     };
   }
 
@@ -858,6 +996,40 @@ function narrate(
 
 function dayKey(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+const MS_PER_DAY = 86_400_000;
+const daysBetween = (from: Date, to: Date): number =>
+  Math.round(
+    (Date.parse(`${dayKey(to)}T00:00:00.000Z`) - Date.parse(`${dayKey(from)}T00:00:00.000Z`)) /
+      MS_PER_DAY,
+  );
+
+/**
+ * Thời gian sprint theo NGÀY LỊCH (UTC, đếm cả hai đầu). `totalDays`/`daysLeft` null khi chưa đặt ngày kết thúc;
+ * `daysLeft` chỉ cho sprint ACTIVE (0 = hết hôm nay, âm = trễ).
+ */
+function sprintTime(
+  s: {
+    state: string;
+    createdAt: Date;
+    startDate: Date | null;
+    endDate: Date | null;
+    completeDate: Date | null;
+  },
+  now: Date,
+): SprintSummaryReport['time'] {
+  if (!s.endDate) return { totalDays: null, elapsedDays: null, daysLeft: null };
+  const start = s.startDate ?? s.createdAt;
+  const totalDays = Math.max(daysBetween(start, s.endDate) + 1, 1);
+  const ref = s.state === 'CLOSED' ? (s.completeDate ?? s.endDate) : now;
+  const elapsedDays =
+    s.state === 'FUTURE' ? 0 : Math.min(Math.max(daysBetween(start, ref) + 1, 0), totalDays);
+  return {
+    totalDays,
+    elapsedDays,
+    daysLeft: s.state === 'ACTIVE' ? daysBetween(now, s.endDate) : null,
+  };
 }
 
 function eachDay(from: Date, to: Date): string[] {
