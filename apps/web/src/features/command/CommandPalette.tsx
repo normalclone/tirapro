@@ -18,7 +18,7 @@ import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { useTheme } from '@/stores/theme';
 import { useRecents } from '@/stores/recentIssues';
-import { LAST_VIEW_KEY } from '@/features/projects/ProjectLayout';
+import { currentProjectKey, safeDecode } from '@/lib/currentProject';
 import { QUICK_SEARCH_MIN_LENGTH, useQuickSearch } from './api';
 import { ActionItem } from './ActionItem';
 import { IssueContextGroup } from './IssueContextGroup';
@@ -28,28 +28,6 @@ const ISSUE_KEY_RE = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/;
 
 /** Đang xem trang chi tiết công việc `/issue/:key` → trả về key để hiện nhóm hành động theo ngữ cảnh. */
 const ISSUE_ROUTE_RE = /^\/issue\/([^/]+)/;
-
-/** decodeURIComponent không ném lỗi với đường dẫn hỏng (vd `%E0%A4%A`) — lỗi thì dùng nguyên chuỗi. */
-function safeDecode(s: string): string {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
-}
-
-/** Dự án hiện tại cho các hành động điều hướng: URL `/p/:key` → view gần nhất → dự án đầu. */
-function currentProjectKey(projects: { key: string }[] | undefined): string | null {
-  const m = /^\/p\/([^/]+)/.exec(window.location.pathname);
-  if (m) return decodeURIComponent(m[1]!);
-  try {
-    const saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}') as { key?: string };
-    if (saved.key && (projects ?? []).some((p) => p.key === saved.key)) return saved.key;
-  } catch {
-    /* ignore */
-  }
-  return projects?.[0]?.key ?? null;
-}
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);

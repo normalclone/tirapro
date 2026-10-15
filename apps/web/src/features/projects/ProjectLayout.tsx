@@ -33,9 +33,7 @@ import { useAuth } from '@/stores/auth';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
 import { useProjectRealtime } from '@/lib/realtime';
-
-/** localStorage: view cơ bản người dùng mở gần nhất (để /projects mở lại đúng view). */
-export const LAST_VIEW_KEY = 'tirapro:lastProjectView';
+import { LAST_VIEW_KEY } from '@/lib/currentProject';
 
 const VIEWS = [
   { seg: 'board', label: 'Bảng việc', icon: LayoutGrid },
