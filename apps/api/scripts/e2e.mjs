@@ -307,15 +307,9 @@ async function main() {
     'auth/workspaces + switch',
     wss.status === 200 && Array.isArray(wss.json) && sw.status < 400 && !!sw.json?.accessToken,
   );
-  // Mời qua liên kết: không truyền roleId → mặc định "Workspace Member". `acceptUrl` chỉ có khi MAIL_DRIVER=console.
-  const inv = await call('POST', '/auth/invites', { email: `e2e-${Date.now()}@x.test` });
-  const mailDriver = process.env.MAIL_DRIVER ?? 'console';
-  check(
-    'auth/invites',
-    inv.status < 400 &&
-      typeof inv.json?.inviteId === 'string' &&
-      (mailDriver !== 'console' || typeof inv.json?.acceptUrl === 'string'),
-  );
+  // Lời mời đã gỡ: thêm người = chọn từ danh sách (POST /members) hoặc tạo tài khoản (POST /members/accounts).
+  const gone = await call('POST', '/auth/invites', { email: `e2e-${Date.now()}@x.test` });
+  check('auth/invites đã gỡ (404)', gone.status === 404);
 
   console.log(`\n=== E2E: ${pass} PASS / ${fail} FAIL ===`);
   process.exit(fail === 0 ? 0 : 1);

@@ -8,7 +8,6 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { SignupPage } from '@/features/auth/SignupPage';
 import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
-import { AcceptInvitePage } from '@/features/auth/AcceptInvitePage';
 // ProjectLayout dùng nhiều (board/backlog/reports…) → eager để đổi tab không nháy toàn trang;
 // nội dung con của nó lazy, có Suspense riêng bên trong ProjectLayout.
 import { ProjectLayout, ProjectsIndexRedirect } from '@/features/projects/ProjectLayout';
@@ -71,6 +70,9 @@ const ApiKeysPage = lazy(() =>
 );
 const RolesPage = lazy(() =>
   import('@/features/settings/RolesPage').then((m) => ({ default: m.RolesPage })),
+);
+const AuditLogPage = lazy(() =>
+  import('@/features/audit/AuditLogPage').then((m) => ({ default: m.AuditLogPage })),
 );
 const DocumentationPage = lazy(() =>
   import('@/features/docs/DocumentationPage').then((m) => ({ default: m.DocumentationPage })),
@@ -198,10 +200,9 @@ function RequireAuth() {
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/signup', element: <SignupPage /> },
-  // Công khai: quên / đặt lại mật khẩu và nhận lời mời qua liên kết trong email.
+  // Công khai: quên / đặt lại mật khẩu qua liên kết trong email.
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
-  { path: '/invite/accept', element: <AcceptInvitePage /> },
   // Trang tài liệu — công khai, độc lập, KHÔNG cần đăng nhập, có sidebar riêng.
   {
     path: '/documentation',
@@ -237,9 +238,10 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/settings/general" replace /> },
           { path: 'general', element: <SettingsGeneralPage /> },
-          // Tab 'Mời thành viên' đã gộp vào trang Thành viên — giữ link cũ hoạt động.
+          // Tab thành viên trong Cài đặt đã gộp vào trang Thành viên — giữ link cũ hoạt động.
           { path: 'members', element: <Navigate to="/members" replace /> },
           { path: 'roles', element: <RolesPage /> },
+          { path: 'audit', element: <AuditLogPage /> },
           { path: 'notifications', element: <SettingsNotificationsPage /> },
           { path: 'severities', element: <SettingsSeveritiesPage /> },
           { path: 'priorities', element: <SettingsPrioritiesPage /> },

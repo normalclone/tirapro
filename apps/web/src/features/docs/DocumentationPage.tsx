@@ -330,7 +330,7 @@ export function DocumentationPage() {
                 ['Xem không gian làm việc & dự án được phép', <Perm v="yes" />, <Perm v="yes" />, <Perm v="yes" />, <Perm v="view" />],
                 ['Tạo dự án', <Perm v="yes" />, <Perm v="yes" />, <Perm v="cfg" />, <Perm v="no" />],
                 ['Lưu trữ / xoá dự án', <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />],
-                ['Mời / gỡ thành viên của tổ chức', <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />],
+                ['Thêm / gỡ thành viên của tổ chức', <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />],
                 ['Tạo vai trò & phân quyền', <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />],
                 ['Cấu hình chung / gói dịch vụ', <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />],
                 ['Dùng AI', <Perm v="yes" />, <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />],
@@ -478,7 +478,7 @@ export function DocumentationPage() {
               <CanDo
                 can={[
                   'Tạo / sửa / lưu trữ / xoá dự án trong không gian làm việc.',
-                  'Mời & gỡ thành viên, gán vai trò cho họ.',
+                  'Thêm & gỡ thành viên, tạo tài khoản mới, gán vai trò cho họ.',
                   'Tạo vai trò tuỳ biến và trộn bộ quyền (RBAC).',
                   'Cấu hình chung (tên, đường dẫn, gói dịch vụ), trường tuỳ chỉnh & loại công việc dùng cho mọi dự án.',
                   'Tạo dashboard & bộ lọc chia sẻ cho toàn tổ chức.',
@@ -486,9 +486,9 @@ export function DocumentationPage() {
                   'Kế thừa quyền Quản trị dự án ở mọi dự án.',
                 ]}
               />
-              <H3>Mời người mới &amp; phân quyền</H3>
+              <H3>Thêm người mới &amp; phân quyền</H3>
               <Steps items={[
-                <>Vào trang <strong>Thành viên</strong> của không gian làm việc, mời bằng email và chọn vai trò chung cho họ.</>,
+                <>Vào trang <strong>Thành viên</strong> của không gian làm việc, chọn người có sẵn hoặc tạo tài khoản mới, rồi chọn vai trò chung cho họ.</>,
                 <>Xong! Họ đã tham gia mọi dự án. Chỉ khi cần vai trò khác mặc định ở một dự án, vào <strong>dự án → Cấu hình → Thành viên</strong> để <em>đặt vai trò riêng</em>.</>,
                 'Cần bộ quyền riêng? Tạo vai trò tuỳ biến trong Cài đặt → Vai trò rồi gán cho người dùng.',
               ]} />

@@ -2,6 +2,7 @@ import type { GoalFilter } from '@/features/goals/api';
 import type { RaidFilter } from '@/features/raid/api';
 import type { IntegrationType } from '@/features/integrations/api';
 import type { RoleScope } from '@tirapro/types';
+import type { AuditQuery } from '@/features/audit/auditFilters';
 
 /**
  * Nơi DUY NHẤT định nghĩa query key của web.
@@ -136,7 +137,14 @@ export const keys = {
     workspaces: ['admin-workspaces'] as const,
     config: ['admin-config'] as const,
     health: ['admin-health'] as const,
-    audit: (limit: number, action: string) => ['admin-audit', limit, action] as const,
+    audit: (limit: number, action: string, kind: string) =>
+      ['admin-audit', limit, action, kind] as const,
+  },
+
+  /** Nhật ký quản trị của workspace (Cài đặt → Nhật ký quản trị). */
+  audit: {
+    all: ['audit'] as const,
+    list: (filters: AuditQuery) => ['audit', 'list', filters] as const,
   },
 
   wiki: {

@@ -308,8 +308,8 @@ model Workspace {
   issueTemplates      IssueTemplate[]
   wikiPages           WikiPage[]
   clients             Client[]
-  inviteTokens        InviteToken[]
   automationRules     AutomationRule[]
+  auditLogs           AuditLog[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -2036,7 +2036,7 @@ model EmailOutbox {
   subject     String
   html        String     @db.Text
   text        String     @db.Text
-  template    String // 'invite' | 'password-reset' | 'notification'
+  template    String // 'password-reset' | 'notification'
   payload     Json       @default("{}")
   status      MailStatus @default(PENDING)
   attempts    Int        @default(0)
@@ -2046,23 +2046,6 @@ model EmailOutbox {
   createdAt   DateTime   @default(now())
 
   @@index([status, scheduledAt])
-}
-
-/// Lời mời vào workspace qua liên kết. Chỉ lưu sha256 của token, không lưu token thô.
-model InviteToken {
-  id          String    @id @default(cuid())
-  workspaceId String
-  email       String
-  roleId      String
-  tokenHash   String    @unique
-  invitedById String
-  expiresAt   DateTime
-  acceptedAt  DateTime?
-  createdAt   DateTime  @default(now())
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([workspaceId, email])
 }
 
 /// Token đặt lại mật khẩu (dùng một lần, hết hạn sau 1 giờ). Chỉ lưu sha256 của token.
@@ -2077,4 +2060,24 @@ model PasswordResetToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// Nhật ký kiểm toán quản trị (vai trò/thành viên/tích hợp/tài khoản). `action` là chuỗi (xem AUDIT_ACTIONS
+/// trong @tirapro/types) để thêm loại mới không cần migration. `actorId` KHÔNG là FK để giữ nhật ký khi xoá người dùng.
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String?
+  summary     String
+  meta        Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, action, createdAt])
+  @@index([actorId, createdAt])
 }

@@ -52,19 +52,5 @@ export const resetPasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 
-export const createInviteSchema = z.object({
-  email: z.string().email('Email không hợp lệ').toLowerCase(),
-  /** Vai trò workspace cho người được mời; bỏ trống → "Workspace Member". */
-  roleId: z.string().min(1).optional(),
-});
-
-export const acceptInviteSchema = z.object({
-  token: z.string().min(20, 'Liên kết không hợp lệ').max(200),
-  displayName: z.string().trim().min(1, 'Tên hiển thị bắt buộc').max(120),
-  password: passwordSchema,
-});
-
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
-export type CreateInviteInput = z.infer<typeof createInviteSchema>;
-export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;

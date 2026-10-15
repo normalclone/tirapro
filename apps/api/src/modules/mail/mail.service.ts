@@ -1,12 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { render as renderInvite } from './templates/invite';
 import { render as renderNotification, toDropped, toItems } from './templates/notification';
 import { render as renderPasswordReset } from './templates/password-reset';
 import type { RenderedMail } from './templates/layout';
 
-export type MailTemplate = 'invite' | 'password-reset' | 'notification';
+export type MailTemplate = 'password-reset' | 'notification';
 
 export interface EnqueueInput {
   to: string;
@@ -15,13 +14,12 @@ export interface EnqueueInput {
 }
 
 const RENDERERS: Record<MailTemplate, (payload: Record<string, unknown>) => RenderedMail> = {
-  invite: renderInvite,
   'password-reset': renderPasswordReset,
   notification: renderNotification,
 };
 
 /** Các template chứa liên kết dùng-một-lần: phải xoá nội dung khỏi outbox sau khi xử lý xong. */
-export const SENSITIVE_TEMPLATES: readonly MailTemplate[] = ['invite', 'password-reset'];
+export const SENSITIVE_TEMPLATES: readonly MailTemplate[] = ['password-reset'];
 
 /** Cửa sổ gộp (digest) cho thư thông báo. */
 export const NOTIFICATION_DIGEST_WINDOW_MS = 5 * 60_000;

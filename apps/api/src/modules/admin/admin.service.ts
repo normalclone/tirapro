@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { randomBytes } from 'node:crypto';
+import { AUDIT_ACTIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { offsetPage } from '../../common/dto/page-result';
+import { generateTempPassword } from '../../common/password';
+import { AuditService } from '../audit/audit.service';
 import type { CreateUserInput, UpdateUserInput } from './admin.schemas';
 
 const USER_SELECT = {
@@ -35,7 +37,10 @@ type Row = {
 /** Quản trị tài khoản toàn hệ thống (chỉ admin hệ thống). */
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   private toDto(u: Row) {
     return {
@@ -62,15 +67,15 @@ export class AdminService {
     return offsetPage(data, 1, Math.max(1, data.length), data.length);
   }
 
-  async create(input: CreateUserInput) {
+  async create(input: CreateUserInput, actorId?: string) {
     const email = input.email.toLowerCase();
     const exists = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (exists) throw new BusinessRuleException('Email đã tồn tại');
 
-    // Tạo tài khoản bởi admin hệ thống có thể trả mật khẩu tạm; để thêm người vào workspace nên dùng luồng mời qua liên kết (POST /auth/invites).
+    // Tạo tài khoản bởi admin hệ thống có thể trả mật khẩu tạm; để thêm người vào workspace dùng POST /members (người có sẵn) hoặc POST /members/accounts (tạo mới).
     let tempPassword: string | undefined;
-    // Mật khẩu tạm: ngẫu nhiên bằng crypto (không dùng cuid — cuid không phải bí mật an toàn).
-    const plain = input.password ?? (tempPassword = randomBytes(18).toString('base64url'));
+    // Mật khẩu tạm: ngẫu nhiên bằng crypto, luôn thoả chính sách chung (không dùng cuid — không phải bí mật an toàn).
+    const plain = input.password ?? (tempPassword = generateTempPassword());
     const passwordHash = await argon2.hash(plain);
     const created = await this.prisma.user.create({
       data: {
@@ -82,11 +87,33 @@ export class AdminService {
       },
       select: USER_SELECT,
     });
+    // Tạo tài khoản (có thể là admin hệ thống) là thao tác giá trị cao → ghi nhật ký toàn hệ thống; không ghi mật khẩu.
+    await this.audit.record({
+      actorId,
+      action: AUDIT_ACTIONS.ACCOUNT_CREATED,
+      entityType: 'user',
+      entityId: created.id,
+      summary: `Tạo tài khoản ${created.displayName} (${created.email})${created.isSystemAdmin ? ' với quyền admin hệ thống' : ''}`,
+      meta: {
+        isSystemAdmin: created.isSystemAdmin,
+        canCreateWorkspace: created.canCreateWorkspace,
+      },
+    });
     return { ...this.toDto(created), tempPassword };
   }
 
-  async update(id: string, input: UpdateUserInput) {
-    const found = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
+  async update(id: string, input: UpdateUserInput, actorId?: string) {
+    const found = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        displayName: true,
+        email: true,
+        isSystemAdmin: true,
+        canCreateWorkspace: true,
+      },
+    });
     if (!found) throw new NotFoundAppException('Người dùng');
     const updated = await this.prisma.user.update({
       where: { id },
@@ -98,6 +125,48 @@ export class AdminService {
       },
       select: USER_SELECT,
     });
+    // Khoá / mở khoá tài khoản là thao tác quản trị toàn hệ thống → workspaceId null (xem ở /admin/system).
+    if (input.status && input.status !== found.status) {
+      const deactivated = input.status === 'DEACTIVATED';
+      await this.audit.record({
+        actorId,
+        action: deactivated ? AUDIT_ACTIONS.ACCOUNT_DEACTIVATED : AUDIT_ACTIONS.ACCOUNT_REACTIVATED,
+        entityType: 'user',
+        entityId: id,
+        summary: `${deactivated ? 'Khoá' : 'Mở khoá'} tài khoản ${found.displayName} (${found.email})`,
+        meta: { from: found.status, to: input.status },
+      });
+    }
+    // Đổi quyền hệ thống (admin hệ thống / được lập workspace) — thao tác quản trị giá trị cao nhất.
+    const permChanges: string[] = [];
+    if (input.isSystemAdmin !== undefined && input.isSystemAdmin !== found.isSystemAdmin) {
+      permChanges.push(
+        input.isSystemAdmin ? 'cấp quyền admin hệ thống' : 'thu quyền admin hệ thống',
+      );
+    }
+    if (
+      input.canCreateWorkspace !== undefined &&
+      input.canCreateWorkspace !== found.canCreateWorkspace
+    ) {
+      permChanges.push(
+        input.canCreateWorkspace
+          ? 'cho phép lập không gian làm việc'
+          : 'thu quyền lập không gian làm việc',
+      );
+    }
+    if (permChanges.length) {
+      await this.audit.record({
+        actorId,
+        action: AUDIT_ACTIONS.ACCOUNT_PERMISSIONS_CHANGED,
+        entityType: 'user',
+        entityId: id,
+        summary: `Với tài khoản ${found.displayName} (${found.email}): ${permChanges.join(', ')}`,
+        meta: {
+          isSystemAdmin: updated.isSystemAdmin,
+          canCreateWorkspace: updated.canCreateWorkspace,
+        },
+      });
+    }
     return this.toDto(updated);
   }
 }

@@ -4,31 +4,23 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import {
-  acceptInviteSchema,
-  createInviteSchema,
   forgotPasswordSchema,
   loginSchema,
   registerSchema,
   resetPasswordSchema,
-  type AcceptInviteInput,
-  type CreateInviteInput,
   type ForgotPasswordInput,
   type LoginInput,
   type RegisterInput,
   type ResetPasswordInput,
 } from '@tirapro/shared';
-import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Permissions } from '../../common/decorators/permissions.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
-import { InviteService } from './invite.service';
 import { PasswordResetService } from './password-reset.service';
 import { switchWorkspaceSchema, type SwitchWorkspaceInput } from './auth.schemas';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 const REFRESH_COOKIE = 'tirapro_rt';
@@ -39,7 +31,6 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly tokens: TokenService,
-    private readonly invites: InviteService,
     private readonly passwordReset: PasswordResetService,
     private readonly config: ConfigService,
   ) {}
@@ -158,33 +149,6 @@ export class AuthController {
     );
     this.setRefreshCookie(res, refreshToken);
     return rest;
-  }
-
-  /**
-   * Mời thành viên vào workspace hiện tại bằng email + liên kết (hiệu lực 7 ngày). Cần quyền quản trị workspace.
-   * `acceptUrl` chỉ có trong response khi MAIL_DRIVER=console.
-   */
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  @HttpCode(200)
-  @Post('invites')
-  async createInvite(
-    @CurrentUser() user: AuthUser,
-    @Body(new ZodValidationPipe(createInviteSchema)) dto: CreateInviteInput,
-  ) {
-    if (!user.workspaceId) {
-      throw new ForbiddenAppException(
-        'Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại',
-      );
-    }
-    return this.invites.createInvite(user.workspaceId, user.id, dto);
-  }
-
-  /** Người được mời mở liên kết trong thư để đặt tên + mật khẩu và vào workspace. */
-  @Public()
-  @HttpCode(200)
-  @Post('invites/accept')
-  async acceptInvite(@Body(new ZodValidationPipe(acceptInviteSchema)) dto: AcceptInviteInput) {
-    return this.invites.acceptInvite(dto);
   }
 
   /** Luôn trả `{ success: true }` dù email có tồn tại hay không (không lộ tài khoản). 5 lần / 15 phút / IP. */

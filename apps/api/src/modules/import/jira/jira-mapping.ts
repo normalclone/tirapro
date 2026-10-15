@@ -229,5 +229,5 @@ export function summarizeUnmatchedAssignees(
 export function formatUnmatchedAssignees(u: UnmatchedAssignees): string {
   const names = u.listed.map((x) => `${x.name} (${x.count} việc)`).join(', ');
   const more = u.more > 0 ? ` và ${u.more} người khác` : '';
-  return `${u.skipped} việc được nhập nhưng KHÔNG có người phụ trách vì người phụ trách trong Jira không khớp thành viên nào: ${names}${more}. Hãy ghép họ với thành viên (hoặc mời họ vào không gian làm việc) rồi gán lại.`;
+  return `${u.skipped} việc được nhập nhưng KHÔNG có người phụ trách vì người phụ trách trong Jira không khớp thành viên nào: ${names}${more}. Hãy ghép họ với thành viên (hoặc thêm họ vào không gian làm việc) rồi gán lại.`;
 }

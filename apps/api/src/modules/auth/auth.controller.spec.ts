@@ -9,13 +9,7 @@ function make() {
   };
   const tokens = { workspaceFromExpiredAccess: vi.fn(() => null) };
   const config = { get: vi.fn(() => false) };
-  const ctrl = new AuthController(
-    auth as never,
-    tokens as never,
-    {} as never,
-    {} as never,
-    config as never,
-  );
+  const ctrl = new AuthController(auth as never, tokens as never, {} as never, config as never);
   const res = { cookie: vi.fn(), clearCookie: vi.fn() };
   const req = (cookies: Record<string, string> | undefined) =>
     ({ cookies, headers: {}, ip: '127.0.0.1' }) as never;

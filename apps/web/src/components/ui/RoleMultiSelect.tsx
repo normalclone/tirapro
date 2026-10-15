@@ -4,7 +4,8 @@ import { Check, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { cn } from '@/lib/utils';
-import { roleLabel, roleHint } from '@/lib/roleLabels';
+import { roleLabel } from '@tirapro/types';
+import { roleHint } from '@/lib/roleLabels';
 
 export interface RoleOption {
   id: string;
@@ -15,7 +16,7 @@ export interface RoleOption {
 /**
  * Chọn NHIỀU vai trò — dropdown có ô tìm + checklist. Hiển thị các vai trò đã chọn
  * dưới dạng `RoleBadge` ngay trên trigger. Bắt buộc ≥1 (không cho bỏ chọn vai trò
- * cuối cùng) khi `requireOne`. Dùng chung cho gán vai trò thành viên & mời.
+ * cuối cùng) khi `requireOne`. Dùng chung cho gán vai trò thành viên khi thêm người.
  */
 export function RoleMultiSelect({
   options,

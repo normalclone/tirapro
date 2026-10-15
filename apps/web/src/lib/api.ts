@@ -91,6 +91,12 @@ const describedErrors = new WeakSet<object>();
 export const wasErrorDescribed = (e: unknown): boolean =>
   typeof e === 'object' && e !== null && describedErrors.has(e);
 
+/** Mã lỗi nghiệp vụ của máy chủ (`error.code`) — để client phân nhánh mà không so khớp câu chữ. */
+export function apiErrorCode(e: unknown): string | undefined {
+  if (!axios.isAxiosError(e)) return undefined;
+  return (e.response?.data as { error?: { code?: string } } | undefined)?.error?.code;
+}
+
 /** Bóc lỗi envelope { error: { code, message } } thành câu người dùng đọc hiểu. */
 export function apiErrorMessage(e: unknown): string {
   if (typeof e === 'object' && e !== null) describedErrors.add(e);

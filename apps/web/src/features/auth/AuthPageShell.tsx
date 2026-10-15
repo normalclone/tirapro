@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-/** Khung chung cho các trang auth công khai (quên mật khẩu, đặt lại, nhận lời mời): logo + tiêu đề + nội dung. */
+/** Khung chung cho các trang auth công khai (quên mật khẩu, đặt lại): logo + tiêu đề + nội dung. */
 export function AuthPageShell({
   title,
   subtitle,

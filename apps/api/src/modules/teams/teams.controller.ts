@@ -70,11 +70,12 @@ export class TeamsController {
   @Post(':id/assign-project')
   @Permissions(PERMISSIONS.TEAM_MANAGE)
   async assignProject(
+    @CurrentUser() user: AuthUser,
     @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(assignTeamToProjectSchema)) dto: AssignTeamToProjectInput,
   ) {
-    return this.teams.assignToProject(workspaceId, id, dto.projectId, dto.roleIds);
+    return this.teams.assignToProject(workspaceId, id, dto.projectId, dto.roleIds, user.id);
   }
 
   @Delete(':id')

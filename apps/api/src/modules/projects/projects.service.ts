@@ -130,7 +130,12 @@ export class ProjectsService {
         // Người tạo = Project Admin
         if (adminRole) {
           await tx.projectMembership.create({
-            data: { projectId: project.id, userId, roleId: adminRole.id },
+            data: {
+              projectId: project.id,
+              userId,
+              roleId: adminRole.id,
+              roles: { create: [{ roleId: adminRole.id }] },
+            },
           });
         }
         return project;
@@ -209,7 +214,7 @@ export class ProjectsService {
         });
         if (!member)
           throw new BusinessRuleException(
-            'Người phụ trách phải là thành viên của không gian làm việc — hãy mời họ vào trước',
+            'Người phụ trách phải là thành viên của không gian làm việc — hãy thêm họ vào không gian làm việc trước',
           );
       }
       data.leadId = input.leadId;

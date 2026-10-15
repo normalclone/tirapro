@@ -41,6 +41,9 @@ export interface UserDto {
   createdAt: ISODate;
 }
 
+/** Người dùng trong pool chung (picker "thêm thành viên") — chỉ những trường picker cần. */
+export type PoolUserDto = Pick<UserDto, 'id' | 'email' | 'displayName' | 'avatarUrl' | 'status'>;
+
 export interface WorkspaceDto {
   id: ID;
   name: string;
@@ -125,19 +128,6 @@ export interface ProjectPermissionsDto {
 export interface AuthTokensDto {
   accessToken: string;
   expiresIn: number;
-}
-
-/** Kết quả tạo lời mời; `acceptUrl` chỉ có khi MAIL_DRIVER=console (dev, chưa gửi thư thật). */
-export interface InviteCreatedDto {
-  inviteId: ID;
-  acceptUrl?: string;
-}
-
-/** Kết quả chấp nhận lời mời; `existingUser` = email đã có tài khoản (giữ mật khẩu cũ, chỉ gắn vào workspace). */
-export interface InviteAcceptedDto {
-  userId: ID;
-  workspaceId: ID;
-  existingUser: boolean;
 }
 
 /** Tuỳ chọn nhận thông báo qua email (lưu ở `User.settings.notifications.email`). */

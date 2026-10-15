@@ -99,6 +99,7 @@ Nhánh này không thêm migration, nhưng base `22c116c` có 6 migration mà pr
 - **`perf_indexes`**: `CREATE INDEX` thường (không `CONCURRENTLY`, vì chạy trong transaction migration) trên `"Issue"` → **khoá ghi bảng `Issue` trong lúc build index** (đọc vẫn được). Với bảng lớn hãy coi như cửa sổ bảo trì, cùng lúc với bước 2.
 - **`sprint_sequence_unique`**: nếu có sprint trùng `(projectId, sequence)` thì **đánh lại số** các bản trùng (giữ bản cũ nhất) rồi tạo unique index.
 - `mail_invite_reset`, `worklog_rules`, `ai_log_index`: thêm bảng/cột/chỉ mục nhỏ.
+- **`remove_invites`** (UX vòng 2): xoá bảng `InviteToken` và mọi thư mời (mọi trạng thái) trong `EmailOutbox` (liên kết nhận lời mời trong hộp thư người dùng sẽ 404). Không thể hoàn tác dữ liệu lời mời đã xoá.
 
 ### Bước 2 — `db:raw`: khoá bảng `Issue` (cửa sổ bảo trì)
 

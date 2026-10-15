@@ -2,11 +2,12 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import type { Request } from 'express';
 import type { UpdateProfileInput } from '@tirapro/shared';
-import { ERROR_CODES } from '@tirapro/types';
+import { ERROR_CODES, type PoolUserDto } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { insensitiveContains } from '../../common/like';
 import { AppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { MediaService } from '../media/media.service';
+import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
 
 @Injectable()
 export class UsersService {
@@ -62,21 +63,42 @@ export class UsersService {
     return members.map((m) => this.toDto(m.user));
   }
 
-  /** Toàn bộ user hệ thống (pool) — cho picker "thêm thành viên". */
+  /**
+   * Toàn bộ user hệ thống (pool chung) — cho picker "thêm thành viên". Loại tài khoản vô hiệu hoá và
+   * người dùng hệ thống của automation (không phải người thật).
+   */
   async listAllUsers(search?: string) {
+    const eligible = {
+      status: { not: 'DEACTIVATED' },
+      email: { not: SYSTEM_USER_EMAIL },
+    } as const;
     const users = await this.prisma.user.findMany({
       where: search
         ? {
-            OR: [
-              { displayName: insensitiveContains(search) },
-              { email: insensitiveContains(search) },
+            AND: [
+              eligible,
+              {
+                OR: [
+                  { displayName: insensitiveContains(search) },
+                  { email: insensitiveContains(search) },
+                ],
+              },
             ],
           }
-        : undefined,
+        : eligible,
       take: 100,
       orderBy: { displayName: 'asc' },
     });
-    return users.map((u) => this.toDto(u));
+    // Pool chung chỉ trả những trường picker cần — không lộ ai là admin hệ thống, lastSeenAt, múi giờ…
+    return users.map(
+      (u): PoolUserDto => ({
+        id: u.id,
+        email: u.email,
+        displayName: u.displayName,
+        avatarUrl: u.avatarUrl,
+        status: u.status,
+      }),
+    );
   }
 
   /** Chỉ tra được người dùng cùng workspace — không lộ email/hồ sơ của user ngoài workspace. */

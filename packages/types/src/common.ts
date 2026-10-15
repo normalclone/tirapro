@@ -52,6 +52,8 @@ export const ERROR_CODES = {
   INVALID_TRANSITION: 'INVALID_TRANSITION',
   VERSION_CONFLICT: 'VERSION_CONFLICT',
   BUSINESS_RULE_VIOLATION: 'BUSINESS_RULE_VIOLATION',
+  /** Tạo tài khoản với email đã có tài khoản (đang dùng được) — client chuyển sang chọn người có sẵn. */
+  EMAIL_ALREADY_REGISTERED: 'EMAIL_ALREADY_REGISTERED',
   /** Cột board đã đạt giới hạn WIP — client có thể hỏi "Vẫn chuyển?" (chỉ quản trị dự án được ép). */
   WIP_LIMIT_REACHED: 'WIP_LIMIT_REACHED',
   RATE_LIMITED: 'RATE_LIMITED',

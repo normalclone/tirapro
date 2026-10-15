@@ -120,7 +120,7 @@ export class MailOutboxService implements OnApplicationShutdown {
     return true;
   }
 
-  /** Thư mời / đặt lại mật khẩu chứa token thô trong html/text/payload → xoá khi đã xong (chỉ còn sha256 ở bảng token). */
+  /** Thư đặt lại mật khẩu chứa token thô trong html/text/payload → xoá khi đã xong (chỉ còn sha256 ở bảng token). */
   private redaction(
     template: string,
   ): Pick<Prisma.EmailOutboxUpdateInput, 'html' | 'text' | 'payload'> {

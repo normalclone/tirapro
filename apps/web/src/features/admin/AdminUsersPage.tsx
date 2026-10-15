@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Check, Copy, Plus, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,6 +11,8 @@ import { QueryError } from '@/components/ui/QueryError';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
+import { passwordPolicyError } from '@/features/members/passwordPolicy';
 import { useAdminUsers, useCreateAdminUser, useUpdateAdminUser, type AdminUser } from './api';
 
 /** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập không gian làm việc. */
@@ -144,17 +146,26 @@ function Toggle({
 
 function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useCreateAdminUser();
+  // Mật khẩu tạm không được nằm lại trong MutationCache sau khi đóng modal ("chỉ hiện một lần").
+  const resetCreate = create.reset;
+  useEffect(() => resetCreate, [resetCreate]);
+  function close() {
+    resetCreate();
+    onClose();
+  }
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [canCreateWorkspace, setCanCreate] = useState(false);
   const [isSystemAdmin, setIsAdmin] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
+
+  const passwordError = passwordPolicyError(password);
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (!email.trim() || !displayName.trim() || create.isPending) return;
+    if (!email.trim() || !displayName.trim() || create.isPending || passwordError) return;
     create.mutate(
       {
         email: email.trim(),
@@ -167,29 +178,18 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
         onSuccess: (u) => {
           toast.success(`Đã tạo tài khoản ${u.email}`);
           if (u.tempPassword) setTempPassword(u.tempPassword);
-          else onClose();
+          else close();
         },
         onError: (err) => toast.error(apiErrorMessage(err)),
       },
     );
   }
 
-  async function copyTemp() {
-    if (!tempPassword) return;
-    try {
-      await navigator.clipboard.writeText(tempPassword);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* ignore */
-    }
-  }
-
   return (
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        if (!o) onClose();
+        if (!o) close();
       }}
       title="Tạo tài khoản"
       size="md"
@@ -208,14 +208,14 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
               type="button"
               variant="secondary"
               size="icon"
-              onClick={() => void copyTemp()}
+              onClick={() => void copy(tempPassword ?? '')}
               aria-label="Sao chép"
             >
               {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
             </Button>
           </div>
           <div className="flex justify-end">
-            <Button size="sm" onClick={onClose}>
+            <Button size="sm" onClick={close}>
               Xong
             </Button>
           </div>
@@ -249,8 +249,10 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
               type="text"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Tối thiểu 6 ký tự"
+              placeholder="Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và số"
+              aria-invalid={passwordError ? true : undefined}
             />
+            {passwordError && <p className="text-xs text-danger">{passwordError}</p>}
           </label>
           <div className="flex items-center gap-6">
             <label className="flex items-center gap-2 text-sm text-ink">
@@ -273,14 +275,14 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
             </label>
           </div>
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            <Button type="button" variant="ghost" size="sm" onClick={close}>
               Huỷ
             </Button>
             <Button
               type="submit"
               size="sm"
               loading={create.isPending}
-              disabled={!email.trim() || !displayName.trim()}
+              disabled={!email.trim() || !displayName.trim() || !!passwordError}
             >
               Tạo tài khoản
             </Button>
