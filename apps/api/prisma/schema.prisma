@@ -723,6 +723,7 @@ model Issue {
   summary           String   @db.VarChar(255)
   description       String?  @db.Text
   descriptionFormat RichTextFormat @default(MARKDOWN)
+  acceptanceCriteria String? @db.Text
   reporterId        String?
   assigneeId        String?
   parentId          String?

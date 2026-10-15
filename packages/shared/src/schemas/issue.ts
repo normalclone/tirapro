@@ -10,6 +10,7 @@ export const createIssueSchema = z.object({
   summary: z.string().min(1, 'Tiêu đề bắt buộc').max(255),
   description: z.string().max(50_000).optional().nullable(),
   descriptionFormat: richTextFormatEnum.default('MARKDOWN'),
+  acceptanceCriteria: z.string().max(20_000).optional().nullable(),
   priorityId: z.string().optional().nullable(),
   severityId: z.string().optional().nullable(),
   environment: environmentSchema.nullable().optional(),

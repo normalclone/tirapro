@@ -19,6 +19,7 @@ function issueRow(over: Record<string, unknown> = {}) {
     number: 1,
     description: null,
     descriptionFormat: 'MARKDOWN',
+    acceptanceCriteria: null,
     type: {
       id: 't1',
       name: 'Task',
@@ -264,6 +265,33 @@ describe('IssuesService — OCC atomic', () => {
     });
     expect(dto.version).toBe(4);
     expect(events.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('update(): acceptanceCriteria được ghi qua updateMany (OCC) và DTO trả acceptanceProgress', async () => {
+    const tx = occTx(1, null);
+    tx.issue.findFirstOrThrow.mockResolvedValueOnce(
+      issueRow({ version: 4, acceptanceCriteria: '- [x] a\n- [ ] b\n- [ ] c' }),
+    );
+    const { service } = makeService(tx);
+    const dto = await service.update('w1', 'u1', 'i1', {
+      version: 3,
+      acceptanceCriteria: '- [x] a\n- [ ] b\n- [ ] c',
+    });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({
+      acceptanceCriteria: '- [x] a\n- [ ] b\n- [ ] c',
+    });
+    expect(dto.acceptanceProgress).toEqual({ done: 1, total: 3 });
+  });
+
+  it('update(): chuỗi rỗng/khoảng trắng → null; không có mục tick → acceptanceProgress null', async () => {
+    const tx = occTx(1, null);
+    tx.issue.findFirstOrThrow.mockResolvedValueOnce(
+      issueRow({ version: 4, acceptanceCriteria: null }),
+    );
+    const { service } = makeService(tx);
+    const dto = await service.update('w1', 'u1', 'i1', { version: 3, acceptanceCriteria: '   ' });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ acceptanceCriteria: null });
+    expect(dto.acceptanceProgress).toBeNull();
   });
 
   it('update(): issue bị xoá giữa chừng => 404 thay vì 409', async () => {

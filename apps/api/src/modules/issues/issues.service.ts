@@ -9,6 +9,7 @@ import {
   type IssueEnvironment,
 } from '@tirapro/types';
 import {
+  countTasks,
   issueTypePrefix,
   normalizeEnvironment,
   type BulkUpdateIssuesInput,
@@ -64,6 +65,7 @@ export const RETRACT_WINDOW_MS = 10 * 60_000;
 const TRACKED_FIELDS = [
   'summary',
   'description',
+  'acceptanceCriteria',
   'priorityId',
   'severityId',
   'assigneeId',
@@ -542,6 +544,7 @@ export class IssuesService {
           summary: input.summary,
           description: input.description ?? null,
           descriptionFormat: input.descriptionFormat,
+          acceptanceCriteria: input.acceptanceCriteria?.trim() ? input.acceptanceCriteria : null,
           reporterId: userId,
           assigneeId: assigneeId ?? null,
           parentId: input.parentId ?? null,
@@ -823,6 +826,8 @@ export class IssuesService {
     const data: Prisma.IssueUncheckedUpdateManyInput = { updatedById: userId };
     if (input.summary !== undefined) data.summary = input.summary;
     if (input.description !== undefined) data.description = input.description;
+    if (input.acceptanceCriteria !== undefined)
+      data.acceptanceCriteria = input.acceptanceCriteria?.trim() ? input.acceptanceCriteria : null;
     if (input.priorityId !== undefined) data.priorityId = input.priorityId ?? null;
     if (input.severityId !== undefined) data.severityId = input.severityId ?? null;
     if (input.environment !== undefined)
@@ -1466,6 +1471,8 @@ export class IssuesService {
       number: i.number,
       description: i.description,
       descriptionFormat: i.descriptionFormat,
+      acceptanceCriteria: i.acceptanceCriteria,
+      acceptanceProgress: countTasks(i.acceptanceCriteria),
       reporter: i.reporter ? toUserDto(i.reporter) : null,
       reporterId: i.reporterId,
       createdById: i.createdById,
