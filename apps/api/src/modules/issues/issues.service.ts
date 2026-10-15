@@ -639,6 +639,13 @@ export class IssuesService {
       data.originalEstimate = input.originalEstimate ?? null;
     if (input.remainingEstimate !== undefined)
       data.remainingEstimate = input.remainingEstimate ?? null;
+    if (input.epicId !== undefined) {
+      if (input.epicId === id)
+        throw new BusinessRuleException(
+          'Một công việc không thể là epic của chính nó — hãy chọn một epic khác',
+        );
+      data.epicId = input.epicId ?? null;
+    }
     if (input.parentId !== undefined) {
       if (input.parentId === id)
         throw new BusinessRuleException(

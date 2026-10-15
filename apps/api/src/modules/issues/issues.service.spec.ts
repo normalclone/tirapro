@@ -1100,6 +1100,57 @@ describe('IssuesService — sprint CLOSED không nhận việc (FW1)', () => {
   });
 });
 
+describe('IssuesService.update — epicId được lưu (FW11)', () => {
+  function epicTx(current: Record<string, unknown>, after: Record<string, unknown>) {
+    return {
+      issue: {
+        // requireIssue + assertMetaInWorkspace(epic) đều đi qua findFirst
+        findFirst: vi.fn(() => Promise.resolve(current)),
+        updateMany: vi.fn((_args: { data: Record<string, unknown> }) =>
+          Promise.resolve({ count: 1 }),
+        ),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(after)),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+  }
+
+  it('PATCH { epicId } ghi epicId vào DB và phát ISSUE_UPDATED với changedFields chứa epicId', async () => {
+    const tx = epicTx(issueRow(), issueRow({ epicId: 'e1', version: 4 }));
+    const { service, events } = makeService(tx);
+    const dto = await service.update('w1', 'u1', 'i1', { version: 3, epicId: 'e1' });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ epicId: 'e1' });
+    expect(dto.epicId).toBe('e1');
+    expect(events.emit).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.ISSUE_UPDATED,
+      expect.objectContaining({ changedFields: ['epicId'] }),
+    );
+  });
+
+  it('PATCH { epicId: null } gỡ epic', async () => {
+    const tx = epicTx(issueRow({ epicId: 'e1' }), issueRow({ epicId: null, version: 4 }));
+    const { service } = makeService(tx);
+    await service.update('w1', 'u1', 'i1', { version: 3, epicId: null });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ epicId: null });
+  });
+
+  it('không gửi epicId => không đụng epicId', async () => {
+    const tx = epicTx(issueRow({ epicId: 'e1' }), issueRow({ epicId: 'e1', version: 4 }));
+    const { service } = makeService(tx);
+    await service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới' });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).not.toHaveProperty('epicId');
+  });
+
+  it('epicId là chính issue này => 422, không ghi', async () => {
+    const tx = epicTx(issueRow(), issueRow());
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, epicId: 'i1' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('IssuesService — :own (issue:edit:own)', () => {
   function ownTx(row: Record<string, unknown>) {
     return {
