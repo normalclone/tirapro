@@ -55,6 +55,14 @@ export function isMissingSearchObject(err: unknown): boolean {
 /** Tên cũ — giữ cho caller/test hiện có. */
 export const isMissingColumnError = isMissingSearchObject;
 
+/** Lỗi cú pháp (42601) — phòng thủ khi `to_tsquery` vẫn nhận chuỗi lạ mà bước lọc token bỏ sót. */
+export function isSyntaxError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: unknown; meta?: { code?: unknown }; message?: unknown };
+  if (e.code === '42601' || e.meta?.code === '42601') return true;
+  return typeof e.message === 'string' && e.message.includes('42601');
+}
+
 export interface SearchOptions {
   projectId?: string;
   /** Thu hẹp theo nhiều dự án (giao với `projectId` nếu truyền cả hai do người gọi tự xử lý). Mảng rỗng => không có kết quả. */
@@ -114,26 +122,13 @@ export class FulltextSearcher {
       ? Prisma.sql`AND i."projectId" = ANY(${scope}::text[])`
       : Prisma.empty;
     try {
-      const rows = await this.prisma.$queryRaw<{ id: string; rank: number }[]>`
-        WITH q AS (
-          SELECT to_tsquery('simple', immutable_unaccent(${built.tsquery})) AS tsq, ${built.qn}::text AS qn
-        )
-        SELECT i."id",
-          ( ts_rank(i."searchVector", q.tsq)
-            + CASE WHEN lower(immutable_unaccent(i."summary")) LIKE ${built.likeNorm} THEN 0.5 ELSE 0 END
-            + CASE WHEN i."key" ILIKE ${built.like} THEN 0.8 ELSE 0 END
-            + word_similarity(q.qn, lower(immutable_unaccent(i."summary"))) * 0.3 ) AS rank
-        FROM "Issue" i
-        JOIN "Project" p ON p."id" = i."projectId"
-        CROSS JOIN q
-        WHERE i."workspaceId" = ${workspaceId}
-          AND i."deletedAt" IS NULL
-          AND p."deletedAt" IS NULL
-          ${projectFilter}
-          AND ${buildTextMatchSql(built)}
-        ORDER BY rank DESC, i."updatedAt" DESC
-        LIMIT ${limit}`;
-      return { ids: rows.map((r) => r.id) };
+      try {
+        return await this.ranked(built, workspaceId, projectFilter, limit);
+      } catch (err) {
+        // Phòng thủ: tsquery vẫn bị từ chối (42601) ⇒ chạy lại chỉ bằng nhánh ILIKE/trigram thay vì 500.
+        if (!isSyntaxError(err) || !built.tsquery) throw err;
+        return await this.ranked({ ...built, tsquery: '' }, workspaceId, projectFilter, limit);
+      }
     } catch (err) {
       if (!isMissingSearchObject(err)) throw err;
       if (!this.warned) {
@@ -157,5 +152,33 @@ export class FulltextSearcher {
         LIMIT ${limit}`;
       return { ids: rows.map((r) => r.id) };
     }
+  }
+
+  private async ranked(
+    built: FulltextQuery,
+    workspaceId: string,
+    projectFilter: Prisma.Sql,
+    limit: number,
+  ): Promise<{ ids: string[] }> {
+    const rows = await this.prisma.$queryRaw<{ id: string; rank: number }[]>`
+        WITH q AS (
+          SELECT to_tsquery('simple', immutable_unaccent(${built.tsquery})) AS tsq, ${built.qn}::text AS qn
+        )
+        SELECT i."id",
+          ( ts_rank(i."searchVector", q.tsq)
+            + CASE WHEN lower(immutable_unaccent(i."summary")) LIKE ${built.likeNorm} THEN 0.5 ELSE 0 END
+            + CASE WHEN i."key" ILIKE ${built.like} THEN 0.8 ELSE 0 END
+            + word_similarity(q.qn, lower(immutable_unaccent(i."summary"))) * 0.3 ) AS rank
+        FROM "Issue" i
+        JOIN "Project" p ON p."id" = i."projectId"
+        CROSS JOIN q
+        WHERE i."workspaceId" = ${workspaceId}
+          AND i."deletedAt" IS NULL
+          AND p."deletedAt" IS NULL
+          ${projectFilter}
+          AND ${buildTextMatchSql(built)}
+        ORDER BY rank DESC, i."updatedAt" DESC
+        LIMIT ${limit}`;
+    return { ids: rows.map((r) => r.id) };
   }
 }

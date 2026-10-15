@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { commandFilter, ISSUE_VALUE_PREFIX, normalizeVi } from './commandFilter';
+import {
+  commandFilter,
+  ISSUE_GO_VALUE_PREFIX,
+  ISSUE_VALUE_PREFIX,
+  normalizeVi,
+} from './commandFilter';
 
 describe('commandFilter', () => {
   it('ô tìm rỗng => mọi lệnh hiện (điểm 1)', () => {
@@ -22,6 +27,14 @@ describe('commandFilter', () => {
     const s = commandFilter(`${ISSUE_VALUE_PREFIX}DEMO-1 Lỗi thanh toán`, 'zzz');
     expect(s).toBeGreaterThan(0);
     expect(s).toBeLessThan(commandFilter('tao cong viec', 'tao'));
+  });
+  it('"Đi tới công việc" (issue:go) xếp trên mọi lệnh khớp khác để gõ mã + Enter là điều hướng', () => {
+    const go = commandFilter(`${ISSUE_GO_VALUE_PREFIX}DEMO-TASK-1`, 'demo-task-1');
+    expect(go).toBeGreaterThan(
+      commandFilter('doi trang thai chuyen Done DEMO-TASK-1', 'demo-task-1'),
+    );
+    expect(go).toBeGreaterThan(commandFilter('giao cho toi assign me DEMO-TASK-1', 'demo-task-1'));
+    expect(go).toBeGreaterThan(commandFilter(`${ISSUE_VALUE_PREFIX}DEMO-TASK-1 x`, 'demo-task-1'));
   });
   it('keywords cũng được so khớp', () => {
     expect(commandFilter('a', 'giao', ['giao cho toi'])).toBeGreaterThan(0);

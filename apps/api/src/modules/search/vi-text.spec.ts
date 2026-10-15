@@ -18,6 +18,23 @@ describe('searchTokens', () => {
   });
 });
 
+describe('searchTokens — ký tự mà unaccent đổi thành dấu nháy/hai chấm/ngoặc (to_tsquery 42601)', () => {
+  it('bỏ ký tự modifier (ʼ ʹ ʻ ʽ ˈ ː) và số khoanh ⑴ — không để lọt dấu đặc biệt của tsquery', () => {
+    expect(searchTokens('ʼ')).toEqual([]);
+    expect(searchTokens('ː ˈ ʹ ʻ ʽ')).toEqual([]);
+    expect(searchTokens('⑴')).toEqual(['1']);
+    expect(searchTokens('⒇ abc')).toEqual(['20', 'abc']);
+    expect(searchTokens('ŉ')).toEqual(['n']);
+    expect(searchTokens('thanhʼ toán')).toEqual(['thanh', 'toán']);
+    for (const t of searchTokens("ʼ ⑴ ŉ ː a:b x'y")) expect(t).toMatch(/^[\p{L}\p{N}]+$/u);
+  });
+  it('chuẩn hoá NFC: chuỗi NFD (macOS) cho cùng token với NFC', () => {
+    const nfd = 'thanh toán số'.normalize('NFD');
+    expect(searchTokens(nfd)).toEqual(['thanh', 'toán', 'số']);
+    expect(searchTokens(nfd)).toEqual(searchTokens('thanh toán số'.normalize('NFC')));
+  });
+});
+
 describe('bảng translate cho fallback', () => {
   it('FROM và TO cùng độ dài, ánh xạ về chữ cái không dấu', () => {
     expect([...VI_TRANSLATE_FROM]).toHaveLength([...VI_TRANSLATE_TO].length);

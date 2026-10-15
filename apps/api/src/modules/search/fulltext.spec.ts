@@ -227,6 +227,31 @@ describe('FulltextSearcher.search', () => {
     expect(fb.values).toContain('W1');
   });
 
+  it('lỗi cú pháp tsquery (42601) => chạy lại chỉ bằng nhánh ILIKE (tsquery rỗng), không 500', async () => {
+    const calls: unknown[][] = [];
+    const prisma = {
+      $queryRaw: vi.fn((...args: unknown[]) => {
+        calls.push(args);
+        return calls.length === 1
+          ? Promise.reject(
+              Object.assign(new Error('Raw query failed'), {
+                code: 'P2010',
+                meta: { code: '42601' },
+              }),
+            )
+          : Promise.resolve([{ id: 'S1', rank: 1 }]);
+      }),
+    };
+    const res = await new FulltextSearcher(prisma as never).search('W1', 'ʼ⑴');
+    expect(res).toEqual({ ids: ['S1'] });
+    const first = renderCall(calls[0]!);
+    const retry = renderCall(calls[1]!);
+    expect(first.values).toContain('1:*');
+    expect(retry.values).not.toContain('1:*');
+    expect(retry.values).toContain('');
+    expect(retry.sql).toContain("to_tsquery('simple'");
+  });
+
   it('lỗi DB khác được ném lại (không nuốt)', async () => {
     const prisma = makePrisma(() => Promise.reject(new Error('connection lost')));
     await expect(new FulltextSearcher(prisma as never).search('W1', 'abc')).rejects.toThrow(

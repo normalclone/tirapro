@@ -22,7 +22,7 @@ import { currentProjectKey, safeDecode } from '@/lib/currentProject';
 import { QUICK_SEARCH_MIN_LENGTH, useQuickSearch } from './api';
 import { ActionItem } from './ActionItem';
 import { IssueContextGroup } from './IssueContextGroup';
-import { commandFilter, ISSUE_VALUE_PREFIX } from './commandFilter';
+import { commandFilter, ISSUE_GO_VALUE_PREFIX, ISSUE_VALUE_PREFIX } from './commandFilter';
 
 /** Nhận dạng mã issue người dùng gõ (vd `DEMO-BUG-1`) để nhảy thẳng tới issue. */
 const ISSUE_KEY_RE = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/;
@@ -114,7 +114,7 @@ export function CommandPalette() {
             className="text-faint [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-faint"
           >
             <Command.Item
-              value={`${ISSUE_VALUE_PREFIX}go ${issueKeyGuess}`}
+              value={`${ISSUE_GO_VALUE_PREFIX}${issueKeyGuess}`}
               onSelect={() => runAction(() => navigate(`/issue/${issueKeyGuess}`))}
               className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink data-[selected=true]:bg-surface-2"
             >
