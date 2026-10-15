@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { FixVersionType, VersionStatus } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { assertIssueWritable } from '../../common/project-writable';
+import { assertIssueWritable, assertProjectWritable } from '../../common/project-writable';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 
 type ComponentRow = Prisma.ComponentGetPayload<true>;
@@ -75,6 +75,7 @@ export class ComponentsService {
     input: CreateComponentInput,
   ): Promise<ComponentDto> {
     await this.requireProject(workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     try {
       const row = await this.prisma.component.create({
         data: {
@@ -98,7 +99,8 @@ export class ComponentsService {
     componentId: string,
     input: UpdateComponentInput,
   ): Promise<ComponentDto> {
-    await this.requireComponent(workspaceId, componentId);
+    const cur = await this.requireComponent(workspaceId, componentId);
+    await assertProjectWritable(this.prisma, cur.projectId);
     const data: Prisma.ComponentUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
     if (input.description !== undefined) data.description = input.description;
@@ -118,7 +120,8 @@ export class ComponentsService {
   }
 
   async removeComponent(workspaceId: string, componentId: string): Promise<{ success: true }> {
-    await this.requireComponent(workspaceId, componentId);
+    const cur = await this.requireComponent(workspaceId, componentId);
+    await assertProjectWritable(this.prisma, cur.projectId);
     await this.prisma.component.delete({ where: { id: componentId } });
     return { success: true };
   }
@@ -183,6 +186,7 @@ export class ComponentsService {
     input: CreateVersionInput,
   ): Promise<VersionDto> {
     await this.requireProject(workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     try {
       const row = await this.prisma.version.create({
         data: {
@@ -208,7 +212,8 @@ export class ComponentsService {
     versionId: string,
     input: UpdateVersionInput,
   ): Promise<VersionDto> {
-    await this.requireVersion(workspaceId, versionId);
+    const cur = await this.requireVersion(workspaceId, versionId);
+    await assertProjectWritable(this.prisma, cur.projectId);
     const data: Prisma.VersionUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
     if (input.description !== undefined) data.description = input.description;
@@ -234,7 +239,8 @@ export class ComponentsService {
   }
 
   async removeVersion(workspaceId: string, versionId: string): Promise<{ success: true }> {
-    await this.requireVersion(workspaceId, versionId);
+    const cur = await this.requireVersion(workspaceId, versionId);
+    await assertProjectWritable(this.prisma, cur.projectId);
     await this.prisma.version.delete({ where: { id: versionId } });
     return { success: true };
   }
@@ -298,7 +304,7 @@ export class ComponentsService {
   private async requireComponent(workspaceId: string, componentId: string) {
     const component = await this.prisma.component.findFirst({
       where: { id: componentId, project: { workspaceId } },
-      select: { id: true },
+      select: { id: true, projectId: true },
     });
     if (!component) throw new NotFoundAppException('Hạng mục');
     return component;
@@ -307,7 +313,7 @@ export class ComponentsService {
   private async requireVersion(workspaceId: string, versionId: string) {
     const version = await this.prisma.version.findFirst({
       where: { id: versionId, project: { workspaceId } },
-      select: { id: true },
+      select: { id: true, projectId: true },
     });
     if (!version) throw new NotFoundAppException('Phiên bản');
     return version;

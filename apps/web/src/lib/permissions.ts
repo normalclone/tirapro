@@ -11,6 +11,10 @@ export function hasPermission(ctx: PermissionContext, perm: string): boolean {
   );
 }
 
+/** Khi dự án đã lưu trữ chỉ còn các quyền ĐỌC; mọi quyền ghi (tạo/kéo/gán/quản lý) tắt. */
+const READ_ONLY_PERMISSIONS = new Set(['project:view', 'report:view', 'workspace:view']);
+export const allowedWhenArchived = (perm: string): boolean => READ_ONLY_PERMISSIONS.has(perm);
+
 /** Phần của issue dùng để xác định "việc của mình" — cùng quy ước `assertIssueOwner` của API. */
 export interface IssueOwnership {
   reporterId?: string | null;

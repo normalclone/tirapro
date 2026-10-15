@@ -2,7 +2,12 @@ import { useCallback } from 'react';
 import { skipToken, useQuery } from '@tanstack/react-query';
 import type { PermissionKey, ProjectPermissionsDto } from '@tirapro/types';
 import { api } from '@/lib/api';
-import { canEditIssue, hasPermission, type IssueOwnership } from '@/lib/permissions';
+import {
+  allowedWhenArchived,
+  canEditIssue,
+  hasPermission,
+  type IssueOwnership,
+} from '@/lib/permissions';
 import { keys } from '@/lib/queryKeys';
 import { useAuth } from '@/stores/auth';
 
@@ -25,6 +30,21 @@ export function useCan(projectId?: string | null): (perm: PermissionKey) => bool
   return useCallback(
     (perm) => hasPermission({ isSystemAdmin, workspace, project }, perm),
     [isSystemAdmin, workspace, project],
+  );
+}
+
+/**
+ * Như `useCan(project.id)` nhưng dự án đã lưu trữ chỉ giữ quyền đọc (`allowedWhenArchived`) — một điểm duy nhất
+ * thay vì rải `&& !archived` khắp trang; API cũng từ chối mọi ghi (422) kể cả system admin.
+ */
+export function useProjectCan(
+  project?: { id: string; archivedAt: string | null } | null,
+): (perm: PermissionKey) => boolean {
+  const can = useCan(project?.id);
+  const archived = !!project?.archivedAt;
+  return useCallback(
+    (perm) => can(perm) && (!archived || allowedWhenArchived(perm)),
+    [can, archived],
   );
 }
 

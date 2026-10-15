@@ -27,6 +27,41 @@ export function resolveCurrentProjectKey(input: {
   return input.projects?.[0]?.key ?? null;
 }
 
+export interface CreateTarget {
+  projectKey?: string;
+  /** Câu báo người dùng (toast) khi phải đổi dự án đích. */
+  notice?: string;
+  /** true = không có dự án nào tạo việc được → chỉ báo, không mở dialog. */
+  block?: boolean;
+}
+
+/**
+ * Dự án đích của "Tạo việc" từ phím `c` / Cmd+K / nút nổi. Dự án hiện tại (lấy từ URL) mà không nằm trong danh sách
+ * dự án ĐANG HOẠT ĐỘNG (so key không phân biệt hoa/thường) là dự án đã lưu trữ hoặc không còn → dùng dự án đầu tiên đang hoạt động, hoặc chặn.
+ * Danh sách chưa tải → giữ key hiện tại như cũ.
+ */
+export function resolveCreateTarget(
+  currentKey: string | null,
+  active: { key: string }[] | undefined,
+): CreateTarget {
+  // URL có thể gõ khác hoa/thường (`/p/demo`) trong khi API/danh sách dùng key in hoa.
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  if (!currentKey || !active) return { projectKey: currentKey ?? undefined };
+  const found = active.find((p) => same(p.key, currentKey));
+  if (found) return { projectKey: found.key };
+  // Không có trong danh sách đang hoạt động: có thể đã lưu trữ, cũng có thể không tồn tại — không khẳng định.
+  const fallback = active[0];
+  if (!fallback)
+    return {
+      block: true,
+      notice: `Dự án “${currentKey}” không còn hoạt động — hãy khôi phục dự án hoặc tạo một dự án khác trước khi thêm việc.`,
+    };
+  return {
+    projectKey: fallback.key,
+    notice: `Dự án “${currentKey}” không còn hoạt động nên không thêm việc được — đã chọn dự án “${fallback.key}”.`,
+  };
+}
+
 /** Dự án hiện tại cho các hành động điều hướng (Cmd+K, phím tắt `c`, `g b`, `g l`…). */
 export function currentProjectKey(projects: { key: string }[] | undefined): string | null {
   let lastViewRaw: string | null = null;

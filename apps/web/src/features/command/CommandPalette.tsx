@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
+import { toast } from 'sonner';
 import {
   ArrowRight,
   BookOpen,
@@ -18,7 +19,7 @@ import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { useTheme } from '@/stores/theme';
 import { useRecents } from '@/stores/recentIssues';
-import { currentProjectKey, safeDecode } from '@/lib/currentProject';
+import { currentProjectKey, resolveCreateTarget, safeDecode } from '@/lib/currentProject';
 import { QUICK_SEARCH_MIN_LENGTH, useQuickSearch } from './api';
 import { ActionItem } from './ActionItem';
 import { IssueContextGroup } from './IssueContextGroup';
@@ -159,7 +160,12 @@ export function CommandPalette() {
             icon={<Plus className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
             label="Tạo công việc"
             onSelect={() =>
-              runAction(() => openCreate({ projectKey: currentProjectKey(projects) ?? undefined }))
+              runAction(() => {
+                // Dự án hiện tại đã lưu trữ → dự án hoạt động đầu tiên (kèm báo) hoặc chỉ báo, không mở dialog trống.
+                const t = resolveCreateTarget(currentProjectKey(projects), projects);
+                if (t.notice) toast.info(t.notice);
+                if (!t.block) openCreate({ projectKey: t.projectKey });
+              })
             }
           />
           <ActionItem

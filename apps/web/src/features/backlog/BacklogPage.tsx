@@ -45,7 +45,7 @@ import { QueryError } from '@/components/ui/QueryError';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
-import { useCan, useCanEditIssue } from '@/features/projects/permissions';
+import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
 import { IssueRow, IssueRowBody } from './IssueRow';
 import { BulkActionBar } from './BulkActionBar';
@@ -87,7 +87,7 @@ export function BacklogPage() {
   const { data: sprints, isLoading: ls } = sprintsQ;
   const { data: issues, isLoading: li } = issuesQ;
 
-  const can = useCan(projectId);
+  const can = useProjectCan(project); // dự án lưu trữ: chỉ còn quyền đọc
   const canManageSprint = can('sprint:manage');
   const canManageBacklog = can('backlog:manage');
   const canCreate = can('issue:create');

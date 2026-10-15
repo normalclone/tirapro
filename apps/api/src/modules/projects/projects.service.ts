@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { iso } from '../../common/mappers/date';
+import { assertNotArchived } from '../../common/project-writable';
 import { MediaService } from '../media/media.service';
 
 @Injectable()
@@ -176,6 +177,7 @@ export class ProjectsService {
     input: UpdateProjectInput,
   ): Promise<ProjectDto> {
     const cur = await this.requireProject(workspaceId, projectId);
+    assertNotArchived(cur.archivedAt);
     const data: Prisma.ProjectUncheckedUpdateInput = { updatedById: userId };
     if (input.name !== undefined && input.name !== cur.name) {
       const dup = await this.prisma.project.findFirst({
@@ -269,9 +271,10 @@ export class ProjectsService {
   ): Promise<ProjectDto> {
     const prev = await this.prisma.project.findFirst({
       where: { workspaceId, key, deletedAt: null },
-      select: { id: true, avatarUrl: true },
+      select: { id: true, avatarUrl: true, archivedAt: true },
     });
     if (!prev) throw new NotFoundAppException('Dự án');
+    assertNotArchived(prev.archivedAt);
     const avatarUrl = await this.media.saveAvatar(file, 'proj', req);
     await this.prisma.project.update({ where: { id: prev.id }, data: { avatarUrl } });
     await this.media.removeByUrl(prev.avatarUrl);
@@ -282,9 +285,10 @@ export class ProjectsService {
   async clearAvatar(workspaceId: string, key: string): Promise<ProjectDto> {
     const prev = await this.prisma.project.findFirst({
       where: { workspaceId, key, deletedAt: null },
-      select: { id: true, avatarUrl: true },
+      select: { id: true, avatarUrl: true, archivedAt: true },
     });
     if (!prev) throw new NotFoundAppException('Dự án');
+    assertNotArchived(prev.archivedAt);
     await this.prisma.project.update({ where: { id: prev.id }, data: { avatarUrl: null } });
     await this.media.removeByUrl(prev.avatarUrl);
     return this.getByKey(workspaceId, key);

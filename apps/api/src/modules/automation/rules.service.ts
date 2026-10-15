@@ -17,6 +17,7 @@ import {
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertNotArchived, assertProjectIdWritable } from '../../common/project-writable';
 import { TelegramService } from '../integrations/telegram.service';
 import { maskWebhookActions, openSecret, sealWebhookActions } from './webhook-secret';
 
@@ -142,6 +143,7 @@ export class RulesService {
     input: UpdateRuleInput,
   ): Promise<AutomationRuleDto> {
     const current = await this.require(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, current.projectId);
     const trigger = input.trigger ?? current.trigger;
     const triggerConfig = input.triggerConfig ?? (current.triggerConfig as Record<string, unknown>);
     const conditions = input.conditions ?? (current.conditions as unknown as RuleCondition[]);
@@ -173,6 +175,8 @@ export class RulesService {
   }
 
   async remove(workspaceId: string, id: string): Promise<{ success: true }> {
+    const row = await this.require(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, row.projectId);
     const { count } = await this.prisma.automationRule.deleteMany({ where: { id, workspaceId } });
     if (count === 0) throw new NotFoundAppException('Quy tắc');
     await this.invalidate(workspaceId);
@@ -225,9 +229,11 @@ export class RulesService {
   private async assertProject(workspaceId: string, projectId: string): Promise<void> {
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
+    // Dùng cho create (thao tác ghi): quy tắc theo dự án lưu trữ là chỉ đọc — gộp chung một truy vấn.
+    assertNotArchived(p.archivedAt);
   }
 
   /** Các ràng buộc zod không kiểm được: cron hợp lệ, SCHEDULED có JQL, JQL parse được. */

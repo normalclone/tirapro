@@ -150,6 +150,7 @@ export class PlanningService {
 
   async createMilestone(workspaceId: string, projectId: string, dto: CreateMilestoneInput) {
     await this.requireProject(workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     const name = dto.name.trim();
     if (!name) throw new BusinessRuleException('Tên cột mốc bắt buộc');
     const row = await this.prisma.milestone.create({
@@ -172,6 +173,7 @@ export class PlanningService {
     dto: UpdateMilestoneInput,
   ) {
     await this.requireProject(workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     const cur = await this.prisma.milestone.findFirst({
       where: { id, projectId },
       select: { id: true },
@@ -202,6 +204,7 @@ export class PlanningService {
 
   async removeMilestone(workspaceId: string, projectId: string, id: string) {
     await this.requireProject(workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     const cur = await this.prisma.milestone.findFirst({
       where: { id, projectId },
       select: { id: true },
@@ -245,6 +248,7 @@ export class PlanningService {
     actingUserId: string,
   ) {
     await this.requireProject(workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     const issues = await this.prisma.issue.findMany({
       where: { projectId, deletedAt: null },
       select: { id: true, startDate: true, dueDate: true },

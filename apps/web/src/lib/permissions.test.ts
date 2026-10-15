@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canEditIssue, hasPermission } from './permissions';
+import { allowedWhenArchived, canEditIssue, hasPermission } from './permissions';
 
 describe('hasPermission', () => {
   const base = { isSystemAdmin: false, workspace: ['project:view'], project: ['worklog:create'] };
@@ -35,4 +35,22 @@ describe('canEditIssue', () => {
     expect(canEditIssue(ctx(['issue:edit:own']), issue, undefined)).toBe(false));
   it('không có quyền nào → false', () => expect(canEditIssue(ctx([]), issue, 'r')).toBe(false));
   it('system admin luôn true', () => expect(canEditIssue(ctx([], true), issue, 'x')).toBe(true));
+});
+
+describe('allowedWhenArchived', () => {
+  it('chỉ nhóm đọc còn lại khi dự án lưu trữ', () => {
+    for (const p of ['project:view', 'report:view', 'workspace:view'])
+      expect(allowedWhenArchived(p)).toBe(true);
+    for (const p of [
+      'issue:create',
+      'issue:transition',
+      'issue:assign',
+      'backlog:manage',
+      'sprint:manage',
+      'board:manage',
+      'worklog:create',
+      'project:admin',
+    ])
+      expect(allowedWhenArchived(p)).toBe(false);
+  });
 });

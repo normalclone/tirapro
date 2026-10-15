@@ -117,3 +117,44 @@ describe('ProjectsService — lưu trữ / sửa / xoá', () => {
     );
   });
 });
+
+describe('ProjectsService — dự án lưu trữ là chỉ đọc (cài đặt chung)', () => {
+  const archivedRow = () => row({ archivedAt: new Date('2026-10-10T00:00:00Z'), isArchived: true });
+
+  it('update() trên dự án đã lưu trữ => 422 PROJECT_ARCHIVED_MESSAGE, không ghi', async () => {
+    const { service, prisma } = make({ cur: archivedRow() });
+    await expect(
+      service.update('w1', 'p1', 'u1', { description: 'Mô tả mới' }),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('lưu trữ') as unknown,
+    });
+    expect(prisma.project.update).not.toHaveBeenCalled();
+  });
+
+  it('unarchive()/remove() KHÔNG bị chặn (vòng đời dự án)', async () => {
+    const { service, prisma } = make({ cur: archivedRow() });
+    await service.unarchive('w1', 'p1', 'u1');
+    await service.remove('w1', 'p1', 'u1');
+    expect(prisma.project.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('setAvatar()/clearAvatar() trên dự án đã lưu trữ => 422, không lưu tệp, không ghi', async () => {
+    const media = { saveAvatar: vi.fn(() => Promise.resolve('/u/a.png')), removeByUrl: vi.fn() };
+    const prisma = {
+      project: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({ id: 'p1', avatarUrl: null, archivedAt: new Date() }),
+        ),
+        update: vi.fn(() => Promise.resolve({})),
+      },
+    };
+    const service = new ProjectsService(prisma as never, media as never);
+    await expect(service.setAvatar('w1', 'DEMO', undefined, {} as never)).rejects.toMatchObject({
+      status: 422,
+    });
+    await expect(service.clearAvatar('w1', 'DEMO')).rejects.toMatchObject({ status: 422 });
+    expect(media.saveAvatar).not.toHaveBeenCalled();
+    expect(prisma.project.update).not.toHaveBeenCalled();
+  });
+});

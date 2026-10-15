@@ -40,7 +40,10 @@ function setup() {
       updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
       deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
     },
-    project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+    project: {
+      findFirst: vi.fn(() => Promise.resolve({ id: 'p1', archivedAt: null as Date | null })),
+      findUnique: vi.fn(() => Promise.resolve({ archivedAt: null as Date | null })),
+    },
   };
   const redis = { isAvailable: () => false, getClient: () => null };
   return { service: new RulesService(prisma as never, redis as never, cipher as never), prisma };
@@ -168,5 +171,45 @@ describe('RulesService', () => {
     const { service } = setup();
     expect(service.openSecret('enc:v1:i:t:k')).toBe('k');
     expect(service.openSecret('plain-cu')).toBe('plain-cu');
+  });
+});
+
+describe('RulesService — dự án lưu trữ là chỉ đọc', () => {
+  const ARCHIVED = { status: 422, message: expect.stringContaining('lưu trữ') as unknown };
+  const input = {
+    name: 'n',
+    projectId: 'p1',
+    trigger: 'ISSUE_CREATED',
+    triggerConfig: {},
+    conditions: [],
+    actions: [{ type: 'assign', mode: 'lead' }],
+  } as never;
+
+  function archivedSetup() {
+    const s = setup();
+    const archivedAt = new Date();
+    s.prisma.project.findUnique.mockResolvedValue({ archivedAt });
+    s.prisma.project.findFirst.mockResolvedValue({ id: 'p1', archivedAt });
+    s.prisma.automationRule.findFirst.mockResolvedValue(row({ projectId: 'p1' }));
+    return s;
+  }
+
+  it('create/update/remove quy tắc của dự án đã lưu trữ => 422, không ghi', async () => {
+    const { service, prisma } = archivedSetup();
+    await expect(service.create('w1', 'u1', input)).rejects.toMatchObject(ARCHIVED);
+    await expect(service.update('w1', 'r1', { enabled: false })).rejects.toMatchObject(ARCHIVED);
+    await expect(service.remove('w1', 'r1')).rejects.toMatchObject(ARCHIVED);
+    expect(prisma.automationRule.create).not.toHaveBeenCalled();
+    expect(prisma.automationRule.updateMany).not.toHaveBeenCalled();
+    expect(prisma.automationRule.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('quy tắc cả workspace (không gắn dự án) vẫn sửa/xoá được', async () => {
+    const { service, prisma } = archivedSetup();
+    prisma.automationRule.findFirst.mockResolvedValue(row({ projectId: null }));
+    await service.update('w1', 'r1', { enabled: false });
+    await service.remove('w1', 'r1');
+    expect(prisma.automationRule.updateMany).toHaveBeenCalled();
+    expect(prisma.automationRule.deleteMany).toHaveBeenCalled();
   });
 });

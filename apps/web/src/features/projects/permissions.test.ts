@@ -22,7 +22,7 @@ vi.mock('@/stores/auth', () => {
   return { useAuth };
 });
 import { useAuth } from '@/stores/auth';
-import { useCan, useCanEditIssue } from './permissions';
+import { useCan, useCanEditIssue, useProjectCan } from './permissions';
 
 /** Vẽ một component dò, trả kết quả `can(perm)` ở lần vẽ đầu (cache đã nạp sẵn nên useQuery trả đồng bộ). */
 function probe(qc: QueryClient, projectId: string | undefined, perm: string) {
@@ -114,5 +114,56 @@ describe('useCanEditIssue', () => {
       permissions: ['issue:edit'],
     });
     expect(probeEdit(qc, 'p1', { reporterId: 'other', assigneeId: null })).toBe(true);
+  });
+});
+
+describe('useProjectCan', () => {
+  function probeProject(
+    qc: QueryClient,
+    project: { id: string; archivedAt: string | null } | undefined,
+    perm: string,
+  ) {
+    let result: boolean | undefined;
+    function Probe() {
+      result = useProjectCan(project)(perm as never);
+      return null;
+    }
+    renderToString(createElement(QueryClientProvider, { client: qc }, createElement(Probe)));
+    return result;
+  }
+  let qc: QueryClient;
+  beforeEach(() => {
+    qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000 } } });
+    useAuth.setState({
+      user: { id: 'u1', isSystemAdmin: false } as never,
+      permissions: ['project:view'],
+    });
+    qc.setQueryData(keys.projects.permissions('p1'), {
+      projectId: 'p1',
+      permissions: ['issue:create', 'board:manage', 'report:view'],
+    });
+  });
+
+  it('dự án đang hoạt động → như useCan', () => {
+    const p = { id: 'p1', archivedAt: null };
+    expect(probeProject(qc, p, 'issue:create')).toBe(true);
+    expect(probeProject(qc, p, 'board:manage')).toBe(true);
+  });
+  it('dự án đã lưu trữ → quyền ghi tắt hết, quyền đọc còn', () => {
+    const p = { id: 'p1', archivedAt: '2026-10-10T00:00:00.000Z' };
+    expect(probeProject(qc, p, 'issue:create')).toBe(false);
+    expect(probeProject(qc, p, 'board:manage')).toBe(false);
+    expect(probeProject(qc, p, 'report:view')).toBe(true);
+    expect(probeProject(qc, p, 'project:view')).toBe(true);
+  });
+  it('system admin cũng chỉ đọc khi dự án đã lưu trữ (khớp API 422 với mọi người)', () => {
+    useAuth.setState({ user: { id: 'a', isSystemAdmin: true } as never, permissions: [] });
+    expect(
+      probeProject(qc, { id: 'p1', archivedAt: '2026-10-10T00:00:00.000Z' }, 'issue:create'),
+    ).toBe(false);
+    expect(probeProject(qc, { id: 'p1', archivedAt: null }, 'issue:create')).toBe(true);
+  });
+  it('chưa có project → như useCan(undefined)', () => {
+    expect(probeProject(qc, undefined, 'issue:create')).toBe(false);
   });
 });

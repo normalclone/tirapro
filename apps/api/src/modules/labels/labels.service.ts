@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { LabelDto } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { assertIssueWritable } from '../../common/project-writable';
+import { assertIssueWritable, assertProjectWritable } from '../../common/project-writable';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 
 export interface CreateLabelInput {
@@ -32,6 +32,7 @@ export class LabelsService {
 
   async create(workspaceId: string, projectId: string, input: CreateLabelInput): Promise<LabelDto> {
     await this.requireProject(workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     try {
       const row = await this.prisma.label.create({
         data: { projectId, name: input.name, color: input.color ?? null },
@@ -46,7 +47,8 @@ export class LabelsService {
   }
 
   async update(workspaceId: string, labelId: string, input: UpdateLabelInput): Promise<LabelDto> {
-    await this.requireLabel(workspaceId, labelId);
+    const cur = await this.requireLabel(workspaceId, labelId);
+    await assertProjectWritable(this.prisma, cur.projectId);
     const data: Prisma.LabelUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
     if (input.color !== undefined) data.color = input.color;
@@ -62,7 +64,8 @@ export class LabelsService {
   }
 
   async remove(workspaceId: string, labelId: string): Promise<{ success: true }> {
-    await this.requireLabel(workspaceId, labelId);
+    const cur = await this.requireLabel(workspaceId, labelId);
+    await assertProjectWritable(this.prisma, cur.projectId);
     await this.prisma.label.delete({ where: { id: labelId } });
     return { success: true };
   }
@@ -114,7 +117,7 @@ export class LabelsService {
   private async requireLabel(workspaceId: string, labelId: string) {
     const label = await this.prisma.label.findFirst({
       where: { id: labelId, project: { workspaceId } },
-      select: { id: true },
+      select: { id: true, projectId: true },
     });
     if (!label) throw new NotFoundAppException('Nhãn');
     return label;
