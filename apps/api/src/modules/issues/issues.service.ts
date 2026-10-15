@@ -93,6 +93,12 @@ function changedFieldsOf(before: IssueRow, after: IssueRow): string[] {
 /** `meta` chỉ gắn vào payload khi do automation gây ra — sự kiện của người dùng thật giữ nguyên hình dạng cũ. */
 const withMeta = (meta: AutomationEventMeta | undefined) => (meta ? { meta } : {});
 
+/**
+ * Issue của dự án đã xoá mềm là "không tồn tại" với mọi truy vấn đọc cấp workspace (getByKey/list/search).
+ * Lọc lúc đọc (join `project.deletedAt`) thay vì xoá mềm dây chuyền issue khi xoá dự án.
+ */
+const LIVE_PROJECT: Prisma.IssueWhereInput = { project: { deletedAt: null } };
+
 export interface IssueListFilter {
   projectId?: string;
   statusId?: string;
@@ -443,6 +449,7 @@ export class IssuesService {
     const where: Prisma.IssueWhereInput = {
       workspaceId,
       deletedAt: null,
+      ...LIVE_PROJECT,
       projectId: filter.projectId,
       statusId: filter.statusId,
       assigneeId: filter.assigneeId,
@@ -477,7 +484,9 @@ export class IssuesService {
     limit: number,
     rawIds?: string[],
   ): Promise<PageResult<IssueDto>> {
-    const scope: Prisma.IssueWhereInput = { AND: [{ workspaceId, deletedAt: null }, where] };
+    const scope: Prisma.IssueWhereInput = {
+      AND: [{ workspaceId, deletedAt: null, ...LIVE_PROJECT }, where],
+    };
     if (rawIds) {
       if (rawIds.length === 0) return cursorPage<IssueDto>([], limit, (i) => i.id);
       const idScope: Prisma.IssueWhereInput = { AND: [scope, { id: { in: rawIds } }] };
@@ -521,7 +530,7 @@ export class IssuesService {
 
   async getByKey(workspaceId: string, key: string): Promise<IssueDto> {
     const issue = await this.prisma.issue.findFirst({
-      where: { workspaceId, key, deletedAt: null },
+      where: { workspaceId, key, deletedAt: null, ...LIVE_PROJECT },
       include: issueInclude,
     });
     if (!issue) throw new NotFoundAppException('Công việc');
