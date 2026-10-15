@@ -1,10 +1,28 @@
+import { Test } from '@nestjs/testing';
 import { describe, expect, it, vi } from 'vitest';
+import { PrismaService } from '../../infra/prisma/prisma.service';
+import { IntegrationsService } from './integrations.service';
 import { LINK_CODE_ALPHABET, LinkCodesService } from './link-codes.service';
 import {
   TelegramTokenRejectedError,
+  TelegramService,
   TelegramUnreachableError,
   TelegramWebhookConflictError,
 } from './telegram.service';
+
+describe('LinkCodesService — Nest DI', () => {
+  it('dựng được qua Nest DI (mọi tham số constructor đều là provider)', async () => {
+    const mod = await Test.createTestingModule({
+      providers: [
+        LinkCodesService,
+        { provide: PrismaService, useValue: {} },
+        { provide: TelegramService, useValue: {} },
+        { provide: IntegrationsService, useValue: {} },
+      ],
+    }).compile();
+    expect(mod.get(LinkCodesService)).toBeInstanceOf(LinkCodesService);
+  });
+});
 
 const NOW = new Date('2026-10-16T10:00:00.000Z');
 const future = new Date(NOW.getTime() + 10 * 60_000);
@@ -74,12 +92,8 @@ function setup(opts: { integration?: unknown; token?: unknown; updates?: unknown
     ),
     reportUnusableToken: vi.fn(() => Promise.resolve()),
   };
-  const service = new LinkCodesService(
-    prisma as never,
-    telegram as never,
-    integrations as never,
-    () => NOW,
-  );
+  const service = new LinkCodesService(prisma as never, telegram as never, integrations as never);
+  service.clock = () => NOW;
   return { service, prisma, telegram, integrations };
 }
 

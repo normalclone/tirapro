@@ -60,9 +60,10 @@ export class LinkCodesService {
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramService,
     private readonly integrations: IntegrationsService,
-    /** Đồng hồ — tiêm để test. */
-    private readonly now: () => Date = () => new Date(),
   ) {}
+
+  /** Đồng hồ — thuộc tính thường (KHÔNG phải tham số constructor: Nest sẽ cố tiêm) để test đặt giờ cố định. */
+  clock: () => Date = () => new Date();
 
   private async requireTelegram(workspaceId: string, integrationId: string) {
     const row = await this.prisma.integration.findFirst({
@@ -94,7 +95,7 @@ export class LinkCodesService {
       });
       if (!project) throw new NotFoundAppException('Dự án');
     }
-    const now = this.now();
+    const now = this.clock();
     const dayAgo = new Date(now.getTime() - CLEANUP_AFTER_MS);
     await this.prisma.channelLinkToken.deleteMany({
       where: {
@@ -151,7 +152,7 @@ export class LinkCodesService {
     const row = await this.prisma.channelLinkToken.findFirst({
       where: { token: code, integrationId, workspaceId },
     });
-    const now = this.now();
+    const now = this.clock();
     if (!row || row.consumedAt || row.expiresAt <= now) return { status: 'expired' };
 
     const res = this.telegram.resolveBotToken(integration.config);
