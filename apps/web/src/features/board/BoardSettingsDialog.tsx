@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { SWIMLANE_BY, type BoardDto, type SwimlaneBy } from '@tirapro/types';
+import { SWIMLANE_BY, type BoardDto, type BoardType, type SwimlaneBy } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
@@ -10,6 +10,7 @@ import { QueryBuilder, Segmented } from '@/features/saved-filters/QueryBuilder';
 import { apiErrorMessage } from '@/lib/api';
 import { categoryColor } from '@/lib/statusColor';
 import { cn } from '@/lib/utils';
+import { boardMetaPatch } from './boardPatch';
 import {
   useProjectStatuses,
   useSetBoardColumns,
@@ -33,11 +34,24 @@ const SWIMLANE_HINT: Record<SwimlaneBy, string> = {
   parent: 'Việc con nằm cùng hàng với việc cha.',
 };
 
-type Tab = 'columns' | 'filter' | 'swimlane';
+const BOARD_TYPE_LABEL: Record<BoardType, string> = {
+  SCRUM: 'Scrum',
+  KANBAN: 'Kanban',
+};
+
+const BOARD_TYPE_HINT: Record<BoardType, string> = {
+  SCRUM:
+    'Chỉ hiện việc của sprint đang chạy; không có sprint đang chạy thì bảng trống. Giới hạn WIP cũng chỉ đếm việc của sprint đó.',
+  KANBAN:
+    'Hiện mọi việc của dự án, không phụ thuộc sprint. Giới hạn WIP đếm tất cả việc trong cột.',
+};
+
+type Tab = 'columns' | 'filter' | 'swimlane' | 'type';
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'columns', label: 'Cột' },
   { id: 'filter', label: 'Bộ lọc' },
   { id: 'swimlane', label: 'Swimlane' },
+  { id: 'type', label: 'Loại bảng' },
 ];
 
 interface DraftColumn {
@@ -93,6 +107,7 @@ export function BoardSettingsDialog({
   const [jql, setJql] = useState(board.filterJql ?? '');
   const [jqlMode, setJqlMode] = useState<'simple' | 'jql'>('simple');
   const [swimlane, setSwimlane] = useState<SwimlaneBy>(board.swimlaneBy);
+  const [type, setType] = useState<BoardType>(board.type);
   const [jqlError, setJqlError] = useState<string | null>(null);
   const [seq, setSeq] = useState(0);
   const saving = updateBoard.isPending || setColumns.isPending;
@@ -120,10 +135,8 @@ export function BoardSettingsDialog({
   if (columns.length === 0) problems.push('Bảng cần ít nhất một cột');
 
   const columnsDirty = !sameColumns(columns, initialColumns);
-  const metaDirty =
-    name.trim() !== board.name ||
-    (jql.trim() || null) !== (board.filterJql?.trim() || null) ||
-    swimlane !== board.swimlaneBy;
+  const metaPatch = boardMetaPatch(board, { name, jql, swimlane, type });
+  const metaDirty = Object.keys(metaPatch).length > 0;
   const dirty = columnsDirty || metaDirty;
   const canSave = dirty && !saving && !!name.trim() && (!columnsDirty || problems.length === 0);
 
@@ -160,13 +173,7 @@ export function BoardSettingsDialog({
     setJqlError(null);
     try {
       if (metaDirty) {
-        await updateBoard.mutateAsync({
-          ...(name.trim() !== board.name ? { name: name.trim() } : {}),
-          ...((jql.trim() || null) !== (board.filterJql?.trim() || null)
-            ? { filterJql: jql.trim() || null }
-            : {}),
-          ...(swimlane !== board.swimlaneBy ? { swimlaneBy: swimlane } : {}),
-        });
+        await updateBoard.mutateAsync(metaPatch);
       }
       if (columnsDirty) {
         const payload: BoardColumnInput[] = columns.map((c) => ({
@@ -258,6 +265,8 @@ export function BoardSettingsDialog({
         )}
 
         {tab === 'swimlane' && <SwimlaneTab swimlane={swimlane} setSwimlane={setSwimlane} />}
+
+        {tab === 'type' && <TypeTab type={type} setType={setType} />}
       </div>
     </Dialog>
   );
@@ -544,6 +553,38 @@ function SwimlaneTab({
           </span>
         </label>
       ))}
+    </fieldset>
+  );
+}
+
+function TypeTab({ type, setType }: { type: BoardType; setType: (v: BoardType) => void }) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="mb-1 text-sm text-muted">Loại bảng:</legend>
+      {(Object.keys(BOARD_TYPE_LABEL) as BoardType[]).map((opt) => (
+        <label
+          key={opt}
+          className={cn(
+            'flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors',
+            type === opt ? 'border-primary bg-primary-subtle' : 'border-border hover:bg-surface-2',
+          )}
+        >
+          <input
+            type="radio"
+            name="board-type"
+            checked={type === opt}
+            onChange={() => setType(opt)}
+            className="mt-0.5 accent-[var(--primary)]"
+          />
+          <span>
+            <span className="block text-sm font-medium text-ink">{BOARD_TYPE_LABEL[opt]}</span>
+            <span className="block text-xs text-muted">{BOARD_TYPE_HINT[opt]}</span>
+          </span>
+        </label>
+      ))}
+      <p className="text-xs text-faint">
+        Đổi loại không xoá hay di chuyển việc nào; có thể đổi lại bất cứ lúc nào.
+      </p>
     </fieldset>
   );
 }
