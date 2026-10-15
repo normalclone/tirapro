@@ -1,10 +1,12 @@
 import { memo, type CSSProperties, type HTMLAttributes, type Ref } from 'react';
-import { useDraggable } from '@dnd-kit/core';
+import { useSortable } from '@dnd-kit/sortable';
 import type { IssueDto } from '@tirapro/types';
 import { DueBadge, dueBorderClass } from '@/components/ui/DueBadge';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { Avatar } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
+import { useDropEdge } from '@/lib/dropHint';
+import { SORT_TRANSITION } from '@/lib/sortableDnd';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
 
 /**
@@ -20,6 +22,7 @@ export function IssueRowBody({
   checked,
   onToggleSelect,
   isDragging,
+  dropEdge,
   rootRef,
   style,
   rootProps,
@@ -32,6 +35,8 @@ export function IssueRowBody({
   checked?: boolean;
   onToggleSelect?: (id: string) => void;
   isDragging?: boolean;
+  /** Đường kẻ chèn khi kéo từ khu khác sang (cùng `dropHint` với Board). */
+  dropEdge?: 'before' | 'after' | null;
   rootRef?: Ref<HTMLDivElement>;
   style?: CSSProperties;
   rootProps?: HTMLAttributes<HTMLDivElement>;
@@ -43,7 +48,7 @@ export function IssueRowBody({
       style={style}
       {...rootProps}
       className={cn(
-        'flex items-center gap-3 rounded-md border bg-surface px-2.5 py-2 transition-colors',
+        'relative flex items-center gap-3 rounded-md border bg-surface px-2.5 py-2 transition-colors',
         readOnly ? 'cursor-default' : 'cursor-grab touch-none active:cursor-grabbing',
         warn || 'border-transparent hover:border-border',
         'hover:bg-surface-2',
@@ -131,6 +136,15 @@ export function IssueRowBody({
           Chưa gán
         </span>
       )}
+      {dropEdge && (
+        <span
+          aria-hidden
+          className={cn(
+            'pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-primary',
+            dropEdge === 'before' ? '-top-[4px]' : '-bottom-[4px]',
+          )}
+        />
+      )}
     </div>
   );
 }
@@ -138,14 +152,17 @@ export function IssueRowBody({
 interface IssueRowProps {
   issue: IssueDto;
   progress?: SubtreeProgress;
+  /** Cả khu chỉ đọc (sprint đã đóng): không kéo, không là điểm thả. */
   readOnly?: boolean;
+  /** Dòng này không kéo được (thiếu quyền) nhưng vẫn là điểm thả hợp lệ. */
+  dragDisabled?: boolean;
   selectable?: boolean;
   checked?: boolean;
   onToggleSelect?: (id: string) => void;
 }
 
 /**
- * Dòng backlog kéo được. `memo` + so sánh tiến độ theo giá trị: chọn một dòng hay kéo một dòng chỉ vẽ lại dòng đó
+ * Dòng backlog kéo-sắp xếp được. `memo` + so sánh tiến độ theo giá trị: chọn một dòng hay kéo một dòng chỉ vẽ lại dòng đó
  * (`onToggleSelect` phải ổn định — useCallback ở trang).
  */
 export const IssueRow = memo(
@@ -153,35 +170,46 @@ export const IssueRow = memo(
     issue,
     progress,
     readOnly,
+    dragDisabled,
     selectable,
     checked,
     onToggleSelect,
   }: IssueRowProps) {
-    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
       id: issue.id,
-      disabled: readOnly,
+      disabled: { draggable: !!readOnly || !!dragDisabled, droppable: !!readOnly },
+      transition: SORT_TRANSITION,
+      attributes: { roleDescription: 'dòng việc có thể kéo' },
     });
-    const style = transform
-      ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-      : undefined;
+    const draggable = !readOnly && !dragDisabled;
+    const dropEdge = useDropEdge(issue.id);
+    const style = {
+      transform: transform
+        ? `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0)`
+        : undefined,
+      transition,
+    };
     return (
       <IssueRowBody
         issue={issue}
         progress={progress}
-        readOnly={readOnly}
+        readOnly={readOnly || dragDisabled}
         selectable={selectable}
         checked={checked}
         onToggleSelect={onToggleSelect}
         isDragging={isDragging}
-        rootRef={readOnly ? undefined : setNodeRef}
+        dropEdge={dropEdge}
+        // LUÔN gắn: dòng không kéo được vẫn là điểm thả hợp lệ (khu chỉ đọc đã tắt droppable).
+        rootRef={setNodeRef}
         style={style}
-        rootProps={readOnly ? { 'aria-disabled': true } : { ...listeners, ...attributes }}
+        rootProps={draggable ? { ...listeners, ...attributes } : { 'aria-disabled': true }}
       />
     );
   },
   (p, n) =>
     p.issue === n.issue &&
     p.readOnly === n.readOnly &&
+    p.dragDisabled === n.dragDisabled &&
     p.selectable === n.selectable &&
     p.checked === n.checked &&
     p.onToggleSelect === n.onToggleSelect &&
