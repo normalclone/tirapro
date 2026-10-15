@@ -51,7 +51,6 @@ function setup(opts: {
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const guard = new PermissionsGuard(reflector as any, rbac as any);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return { guard, rbac, req: opts.req, ctx: ctx as unknown as ExecutionContext };
 }
 
