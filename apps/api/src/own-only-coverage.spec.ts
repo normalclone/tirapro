@@ -11,8 +11,14 @@ import { PERMISSIONS_KEY } from './common/decorators/permissions.decorator';
 const OWN_AWARE = [PERMISSIONS.ISSUE_EDIT, PERMISSIONS.ISSUE_TRANSITION] as const;
 /** Không thuộc một issue cụ thể (theo projectId trong body) nên không có gì để kiểm sở hữu. */
 const EXEMPT = new Set(['AiController.suggestAssignee']);
-/** Handler có @OwnOnly nhưng chạy thử không gọi service nào với `ownOnly=true` (hiện không có ngoại lệ; thêm `Ctrl.handler` kèm lý do nếu cần). */
+/** Handler có @OwnOnly nhưng chạy thử không gọi service nào với sentinel `ownOnly` (hiện không có ngoại lệ; thêm `Ctrl.handler` kèm lý do nếu cần). */
 const EXEMPT_NO_OWNERSHIP_CALL = new Set<string>();
+
+/**
+ * Giá trị truthy DUY NHẤT dùng làm `ownOnly` khi chạy thử. Không dùng `true` để một đối số `true`/boolean
+ * không liên quan (vd `dto.x !== undefined`) không thoả nhầm; chỉ đối số CHÍNH LÀ sentinel mới tính.
+ */
+const SENTINEL = Object.freeze({ ownOnly: true });
 
 type Ctor = (new (...a: never[]) => unknown) & { prototype: Record<string, unknown> };
 type Call = { path: string; args: unknown[] };
@@ -33,8 +39,8 @@ function makeStub(calls: Call[], path = 'stub'): unknown {
 }
 
 /**
- * CHẠY THỬ handler với `ownOnly=true` và mọi dependency là stub, rồi đòi có ít nhất một lời gọi service nhận đối số
- * `true` (đúng là `ownership.assertOwns*(ownOnly, …)` hoặc `service.method(…, ownOnly)`). Không đọc mã nguồn nên
+ * CHẠY THỬ handler với `ownOnly = SENTINEL` và mọi dependency là stub, rồi đòi có ít nhất một lời gọi service nhận
+ * đúng SENTINEL làm đối số (`ownership.assertOwns*(ownOnly, …)` — ở vị trí đầu — hoặc `service.method(…, ownOnly)`). Không đọc mã nguồn nên
  * dòng bị comment, `void ownOnly`, chuỗi chứa tên `ownOnly` đều KHÔNG qua được. Vị trí tham số lấy từ metadata
  * ROUTE_ARGS của Nest. Lỗi ném ra trong lúc chạy thử được coi là không đạt (fail-closed).
  */
@@ -47,7 +53,7 @@ async function handlerUsesOwnOnly(ctrl: Ctor, name: string): Promise<boolean> {
   const entries = Object.values(args);
   const argv: unknown[] = [];
   for (let i = 0; i <= Math.max(-1, ...entries.map((e) => e.index)); i++) argv[i] = makeStub(calls);
-  for (const e of entries) if (e.factory === ownOnlyFactory) argv[e.index] = true;
+  for (const e of entries) if (e.factory === ownOnlyFactory) argv[e.index] = SENTINEL;
   const nDeps = Math.max(
     ctrl.length,
     ((Reflect.getMetadata('design:paramtypes', ctrl) ?? []) as unknown[]).length,
@@ -59,7 +65,9 @@ async function handlerUsesOwnOnly(ctrl: Ctor, name: string): Promise<boolean> {
   } catch {
     return false;
   }
-  return calls.some((c) => c.args.includes(true));
+  return calls.some((c) =>
+    /\.assertOwns[A-Za-z]*$/.test(c.path) ? c.args[0] === SENTINEL : c.args.includes(SENTINEL),
+  );
 }
 
 function controllerFiles(dir: string): string[] {
@@ -152,13 +160,13 @@ type Deps = {
 
 describe('handlerUsesOwnOnly (chính bộ kiểm)', () => {
   /** Dựng controller giả với một handler `h(ownOnly)`; `body` quyết định handler làm gì. */
-  function fake(body: (ownOnly: boolean, self: Deps) => unknown): Ctor {
+  function fake(body: (ownOnly: unknown, self: Deps) => unknown): Ctor {
     class Fake {
       constructor(
         readonly ownership: unknown,
         readonly svc: unknown,
       ) {}
-      h(ownOnly: boolean) {
+      h(ownOnly: unknown) {
         return Promise.resolve(body(ownOnly, this as unknown as Deps));
       }
     }
@@ -184,6 +192,29 @@ describe('handlerUsesOwnOnly (chính bộ kiểm)', () => {
         'h',
       ),
     ).toBe(true);
+  });
+
+  it('đối số `true` / boolean không liên quan KHÔNG thoả nhầm (chỉ SENTINEL mới tính)', async () => {
+    const dto: { x?: number } = { x: 1 };
+    expect(
+      await handlerUsesOwnOnly(
+        fake((_o, s) => s.svc.update('w', dto.x !== undefined)),
+        'h',
+      ),
+    ).toBe(false);
+    expect(
+      await handlerUsesOwnOnly(
+        fake((_o, s) => s.svc.update(true)),
+        'h',
+      ),
+    ).toBe(false);
+    // assertOwns*: sentinel phải ở đối số ĐẦU, đặt sai vị trí thì không đạt.
+    expect(
+      await handlerUsesOwnOnly(
+        fake((o, s) => s.ownership.assertOwnsIssue(true, 'w', o)),
+        'h',
+      ),
+    ).toBe(false);
   });
 
   it('lời gọi bị comment, `void ownOnly`, chuỗi chứa tên, hoặc không dùng -> báo vi phạm', async () => {

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma, DevLinkType, DevLinkState, IntegrationType } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { LIVE_PROJECT } from '../../common/live-project';
 import { verifyGithubSignature, verifyGitlabToken } from './webhook-signature';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 
@@ -207,7 +208,7 @@ export class DevLinksService {
 
   async listIssueDevLinks(workspaceId: string, issueId: string): Promise<DevLinkDto[]> {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, workspaceId, deletedAt: null, ...LIVE_PROJECT },
       select: { id: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');
@@ -340,7 +341,7 @@ export class DevLinksService {
 
   private async findIssue(workspaceId: string, key: string): Promise<{ id: string } | null> {
     return this.prisma.issue.findFirst({
-      where: { workspaceId, key, deletedAt: null },
+      where: { workspaceId, key, deletedAt: null, ...LIVE_PROJECT },
       select: { id: true },
     });
   }

@@ -37,6 +37,7 @@ import {
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 import { assertNotArchived, assertProjectWritable } from '../../common/project-writable';
+import { LIVE_PROJECT } from '../../common/live-project';
 
 /** Thứ tự hai mốc đã đảo (prev > next nghiêm ngặt, sau khi bỏ số 0 đuôi) ⇒ client giữ mốc cũ, KHÔNG phải cạn chỗ. */
 const neighborsInverted = (prev: string | null, next: string | null): boolean =>
@@ -102,7 +103,6 @@ const withMeta = (meta: AutomationEventMeta | undefined) => (meta ? { meta } : {
  * Issue của dự án đã xoá mềm là "không tồn tại" với mọi truy vấn đọc cấp workspace (getByKey/list/search).
  * Lọc lúc đọc (join `project.deletedAt`) thay vì xoá mềm dây chuyền issue khi xoá dự án.
  */
-const LIVE_PROJECT: Prisma.IssueWhereInput = { project: { deletedAt: null } };
 
 export interface IssueListFilter {
   projectId?: string;

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { LIVE_PROJECT } from '../../common/live-project';
 import {
   BusinessRuleException,
   ForbiddenAppException,
@@ -227,7 +228,7 @@ export class ProgramsService {
     const [byStatus, overdue, spans] = await Promise.all([
       this.prisma.issue.groupBy({
         by: ['projectId', 'statusId'],
-        where: { workspaceId, deletedAt: null },
+        where: { workspaceId, deletedAt: null, ...LIVE_PROJECT },
         _count: { _all: true },
       }),
       this.prisma.issue.groupBy({
@@ -235,6 +236,7 @@ export class ProgramsService {
         where: {
           workspaceId,
           deletedAt: null,
+          ...LIVE_PROJECT,
           dueDate: { lt: now },
           ...(doneStatusIds.length ? { statusId: { notIn: doneStatusIds } } : {}),
         },
@@ -242,7 +244,7 @@ export class ProgramsService {
       }),
       this.prisma.issue.groupBy({
         by: ['projectId'],
-        where: { workspaceId, deletedAt: null },
+        where: { workspaceId, deletedAt: null, ...LIVE_PROJECT },
         _min: { startDate: true },
         _max: { dueDate: true },
       }),

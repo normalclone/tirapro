@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { ObjectiveStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { LIVE_PROJECT } from '../../common/live-project';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import type {
   CreateGoalInput,
@@ -37,7 +38,7 @@ const OBJECTIVE_SELECT = {
     },
   },
   issues: {
-    where: { issue: { deletedAt: null } },
+    where: { issue: { deletedAt: null, project: { deletedAt: null } } },
     select: {
       issue: {
         select: {
@@ -342,6 +343,7 @@ export class GoalsService {
         id: { in: unique },
         workspaceId,
         deletedAt: null,
+        ...LIVE_PROJECT,
         ...(projectId ? { projectId } : {}),
       },
       select: { id: true },

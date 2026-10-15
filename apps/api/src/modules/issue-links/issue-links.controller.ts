@@ -31,8 +31,12 @@ export class IssueLinksController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/links')
-  async listForIssue(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
-    return this.links.listForIssue(workspaceId, issueId);
+  async listForIssue(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('issueId') issueId: string,
+  ) {
+    return this.links.listForIssue(workspaceId, issueId, user);
   }
 
   /** Tạo liên kết từ issue nguồn (:issueId) tới issue đích. */

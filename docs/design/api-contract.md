@@ -580,7 +580,7 @@ Notification được sinh server-side khi có event (assign, mention, comment, 
 | GET | `/dashboards/{id}` | `dashboard:read` | Layout + widgets config |
 | PATCH | `/dashboards/{id}` | `dashboard:manage` | Cập nhật layout/widget |
 | DELETE | `/dashboards/{id}` | `dashboard:manage` | Xóa |
-| GET | `/reports/burndown` | `report:read` | `?sprintId=` → series burndown |
+| GET | `/reports/burndown` | `report:view` | `?projectId=&sprintId=` (cả hai BẮT BUỘC; sprint phải thuộc dự án) → series burndown |
 | GET | `/reports/velocity` | `report:read` | `?projectId=&last=6` → velocity N sprint |
 | GET | `/reports/cumulative-flow` | `report:read` | `?projectId=&boardId=&from=&to=` → CFD |
 | GET | `/reports/export` | `report:read` | `?type=burndown&format=pdf\|xlsx&...` → file stream |
