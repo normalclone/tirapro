@@ -1,4 +1,4 @@
-import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { CommentDto, IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -27,18 +27,63 @@ export function useDevLinks(issueId: string | undefined) {
   });
 }
 
+/** Mỗi trang xin tối đa 100 — bằng mức máy chủ cho phép (`issues.controller` kẹp limit ở 100). */
+const PAGE_LIMIT = 100;
+/** Trần số việc gom về một lần; vượt thì cắt và báo người dùng dùng bộ lọc. */
+export const ISSUE_LIST_HARD_CAP = 2000;
+
+export interface IssueListMeta {
+  /** Dự án còn việc chưa nạp (đã chạm trần). */
+  truncated: boolean;
+  /** Số việc đã nạp được. */
+  loaded: number;
+}
+
 /**
  * Danh sách issue của MỘT project — cache duy nhất `keys.issues.byProject(pid)`,
- * Board / Backlog / Gantt / Tree / chi tiết issue đều đọc chung và `useProjectRealtime` vá vào đây.
+ * Board / Backlog / Gantt / Tree / chi tiết issue đều đọc chung và `useProjectIssues` vá vào đây.
+ * Đi theo cursor (`pageInfo.endCursor`) đến hết hoặc đến HARD_CAP. Dữ liệu cache vẫn là `IssueDto[]`;
+ * cờ cắt ghi vào query phụ `byProjectMeta` (đọc bằng `useIssueListTruncated`).
  */
-const fetchProjectIssues = (projectId: string) => async () =>
-  (await api.get<ListResponse<IssueDto>>(`/issues?projectId=${projectId}&limit=200`)).data.data;
+export async function fetchAllProjectIssues(qc: QueryClient, projectId: string): Promise<IssueDto[]> {
+  const all: IssueDto[] = [];
+  let cursor: string | null = null;
+  let truncated = false;
+  for (;;) {
+    const qs = new URLSearchParams({ projectId, limit: String(PAGE_LIMIT) });
+    if (cursor) qs.set('cursor', cursor);
+    const res: ListResponse<IssueDto> = (await api.get<ListResponse<IssueDto>>(`/issues?${qs.toString()}`)).data;
+    all.push(...res.data);
+    const info = res.pageInfo;
+    const next = 'hasNextPage' in info && info.hasNextPage ? info.endCursor : null;
+    if (!next || res.data.length === 0) break;
+    if (all.length >= ISSUE_LIST_HARD_CAP) {
+      truncated = true;
+      break;
+    }
+    cursor = next;
+  }
+  const meta: IssueListMeta = { truncated, loaded: all.length };
+  qc.setQueryData<IssueListMeta>(keys.issues.byProjectMeta(projectId), meta);
+  return all;
+}
 
 export function useProjectIssues(projectId: string | undefined) {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: keys.issues.byProject(projectId ?? ''),
-    queryFn: projectId ? fetchProjectIssues(projectId) : skipToken,
+    queryFn: projectId ? () => fetchAllProjectIssues(qc, projectId) : skipToken,
   });
+}
+
+/** Danh sách việc của dự án có bị cắt ở HARD_CAP không (đọc từ query phụ do `useProjectIssues` ghi). */
+export function useIssueListTruncated(projectId: string | undefined): IssueListMeta | null {
+  const { data } = useQuery<IssueListMeta>({
+    queryKey: keys.issues.byProjectMeta(projectId ?? ''),
+    queryFn: skipToken,
+    enabled: !!projectId,
+  });
+  return data?.truncated ? data : null;
 }
 
 /**
@@ -47,9 +92,10 @@ export function useProjectIssues(projectId: string | undefined) {
  * `select` cắt đúng phần cần nên chỉ vẽ lại khi phần đó đổi, không phải mỗi lần realtime vá việc khác.
  */
 export function useCachedProjectIssue<T>(projectId: string | undefined, pick: (list: IssueDto[]) => T) {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: keys.issues.byProject(projectId ?? ''),
-    queryFn: fetchProjectIssues(projectId ?? ''),
+    queryFn: () => fetchAllProjectIssues(qc, projectId ?? ''),
     enabled: false,
     select: pick,
   });

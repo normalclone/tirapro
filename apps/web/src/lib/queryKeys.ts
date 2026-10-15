@@ -27,6 +27,8 @@ export const keys = {
   issues: {
     all: ['issues'] as const,
     byProject: (projectId: string) => ['issues', 'project', projectId] as const,
+    /** Thông tin kèm danh sách dự án (vd bị cắt ở HARD_CAP) — ghi cùng lúc nạp `byProject`, không tự tải. */
+    byProjectMeta: (projectId: string) => ['issues', 'project-meta', projectId] as const,
     /** Việc của MỘT board có bộ lọc JQL (board không lọc thì dùng `byProject`). */
     byBoard: (boardId: string) => ['issues', 'board', boardId] as const,
     byKey: (key: string) => ['issues', 'key', key] as const,

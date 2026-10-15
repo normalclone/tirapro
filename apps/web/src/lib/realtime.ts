@@ -58,7 +58,7 @@ export function applyIssueMoved(qc: QueryClient, p: IssueMovedPayload) {
   const list = getList(qc, p.projectId);
   const cur = list?.find((i) => i.id === p.issueId);
   if (!list || !cur) {
-    // Không có trong danh sách (vd nằm ngoài 200 issue đầu) → chi tiết đang mở cũng có thể đã cũ.
+    // Không có trong danh sách (vd nằm ngoài phần đã nạp (tối đa 2000)) → chi tiết đang mở cũng có thể đã cũ.
     void qc.invalidateQueries({ queryKey: keys.issues.byProject(p.projectId) });
     // Payload chỉ có issueId (không có mã) → tìm cache chi tiết theo id của dữ liệu đang giữ.
     void qc.invalidateQueries({

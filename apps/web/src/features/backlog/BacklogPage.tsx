@@ -19,6 +19,7 @@ import {
 import { CompleteSprintDialog } from './CompleteSprintDialog';
 import { SprintEditDialog } from './SprintEditDialog';
 import { useProjectIssues } from '@/features/issues/api';
+import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -346,6 +347,7 @@ export function BacklogPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <TruncatedBanner projectId={projectId} />
       <div className="flex items-center gap-2 border-b border-border px-6 py-3">
         <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
         <AssigneeFilter options={assigneeOptions} value={assignee} onChange={setAssignee} />
