@@ -90,8 +90,36 @@ export interface BulkIssuePatch {
   sprintId?: string | null;
 }
 
+/** Máy chủ nhận tối đa 100 việc/lần (`bulkUpdateIssuesSchema`). */
+export const BULK_CHUNK = 100;
+
 /**
- * Sửa hàng loạt trong MỘT request. Kết quả: `updated` (kèm version mới của máy chủ — dùng cho "Hoàn tác")
+ * Gửi tuần tự từng lô (không song song: OCC + WIP cần khoá theo lô). Lô đầu lỗi → ném nguyên văn
+ * (chưa ghi gì). Lô sau lỗi → dừng, không ném: trả phần đã xong, phần còn lại (kể cả lô lỗi) vào `conflicts`.
+ */
+export async function runBulkInChunks(
+  items: Array<{ id: string; version: number }>,
+  send: (chunk: Array<{ id: string; version: number }>) => Promise<BulkUpdateIssuesResult>,
+  size = BULK_CHUNK,
+): Promise<BulkUpdateIssuesResult> {
+  const out: BulkUpdateIssuesResult = { updated: [], conflicts: [] };
+  for (let i = 0; i < items.length; i += size) {
+    const chunk = items.slice(i, i + size);
+    try {
+      const r = await send(chunk);
+      out.updated.push(...r.updated);
+      out.conflicts.push(...r.conflicts);
+    } catch (err) {
+      if (i === 0) throw err;
+      out.conflicts.push(...items.slice(i).map((x) => ({ id: x.id, version: x.version })));
+      return out;
+    }
+  }
+  return out;
+}
+
+/**
+ * Sửa hàng loạt, tuần tự theo lô ≤ 100 việc/request (`BULK_CHUNK`). Kết quả: `updated` (kèm version mới của máy chủ — dùng cho "Hoàn tác")
  * và `conflicts` (việc bị người khác sửa trước, không làm hỏng cả lô).
  */
 export function useBulkUpdateIssues(projectId: string) {
@@ -100,7 +128,11 @@ export function useBulkUpdateIssues(projectId: string) {
     // Im lặng: trang tự gom lỗi/conflict thành một toast tổng kết (khớp cơ chế `meta.silent` của MutationCache).
     meta: { silent: true },
     mutationFn: (v: { items: Array<{ id: string; version: number }>; patch: BulkIssuePatch }) =>
-      api.patch<BulkUpdateIssuesResult>('/issues/bulk', { projectId, ...v }).then((r) => r.data),
+      runBulkInChunks(v.items, (items) =>
+        api
+          .patch<BulkUpdateIssuesResult>('/issues/bulk', { projectId, items, patch: v.patch })
+          .then((r) => r.data),
+      ),
     onSettled: invalidate,
   });
 }

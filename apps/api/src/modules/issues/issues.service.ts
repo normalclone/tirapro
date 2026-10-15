@@ -712,17 +712,21 @@ export class IssuesService {
 
     for (const { before, after } of changed) {
       const dto = this.toDto(after);
+      const changedFields = changedFieldsOf(before, after);
       if (before.statusId !== after.statusId) {
         this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, {
           issue: dto,
           actorId: userId,
           fromStatusId: before.statusId,
         });
-      } else {
+      }
+      // Đổi thêm assignee/priority/sprint cùng lúc với status: vẫn phải có ISSUE_UPDATED
+      // (thông báo "được giao việc", trigger automation). TRACKED_FIELDS không chứa status.
+      if (changedFields.length > 0) {
         this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
           issue: dto,
           actorId: userId,
-          changedFields: changedFieldsOf(before, after),
+          changedFields,
         });
       }
     }
