@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
-
 export interface ProgramProjectRef {
   id: string;
   key: string;
@@ -99,7 +98,8 @@ function useInvalidatePortfolio() {
 export function useCreateProgram() {
   const invalidate = useInvalidatePortfolio();
   return useMutation({
-    mutationFn: (input: ProgramInput) => api.post<ProgramDto>('/programs', input).then((r) => r.data),
+    mutationFn: (input: ProgramInput) =>
+      api.post<ProgramDto>('/programs', input).then((r) => r.data),
     onSuccess: invalidate,
   });
 }

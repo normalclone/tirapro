@@ -80,7 +80,12 @@ export function TriagePage() {
         {inboxCount > 0 && (
           <Badge className="bg-primary-subtle text-primary tabular">{inboxCount}</Badge>
         )}
-        <Button size="sm" className="ml-auto" onClick={() => setReportOpen(true)} disabled={!projectId}>
+        <Button
+          size="sm"
+          className="ml-auto"
+          onClick={() => setReportOpen(true)}
+          disabled={!projectId}
+        >
           <Bug className="h-4 w-4" />
           Báo lỗi
         </Button>
@@ -108,142 +113,153 @@ export function TriagePage() {
           </div>
         ) : (
           <div className={pageContainer('sm')}>
-          <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
-            {issues.map((issue) => {
-              const pending = accept.isPending || decline.isPending || snooze.isPending;
-              return (
-                <li
-                  key={issue.id}
-                  className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-surface-2"
-                >
-                  {issue.occurrenceCount > 1 && (
-                    <span
-                      className="tabular inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface-3 px-1.5 py-0.5 text-xs font-medium text-ink"
-                      title={`Lặp lại ${issue.occurrenceCount} lần`}
-                    >
-                      <Repeat2 className="h-3 w-3" />×{issue.occurrenceCount}
-                    </span>
-                  )}
-
-                  <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
-
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/issue/${issue.key}`)}
-                    className="min-w-0 flex-1 truncate text-left text-sm text-ink-strong hover:underline"
-                    title={issue.summary}
+            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+              {issues.map((issue) => {
+                const pending = accept.isPending || decline.isPending || snooze.isPending;
+                return (
+                  <li
+                    key={issue.id}
+                    className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-surface-2"
                   >
-                    {issue.summary}
-                  </button>
-
-                  {issue.severity && (
-                    <span
-                      className="hidden shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium sm:inline-flex"
-                      style={{
-                        color: issue.severity.color ?? 'var(--ink)',
-                        background: issue.severity.color ? `color-mix(in oklch, ${issue.severity.color} 14%, transparent)` : 'var(--surface-2)',
-                      }}
-                      title={`Mức độ: ${issue.severity.name}`}
-                    >
-                      {issue.severity.name}
-                    </span>
-                  )}
-
-                  {issue.priority && (
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ background: issue.priority.color ?? 'var(--faint)' }}
-                      title={`Ưu tiên: ${issue.priority.name}`}
-                    />
-                  )}
-
-                  <span className="hidden shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted md:inline">
-                    {issue.type.name}
-                  </span>
-
-                  <span className="shrink-0">
-                    {issue.assignee && (
-                      <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={22} />
+                    {issue.occurrenceCount > 1 && (
+                      <span
+                        className="tabular inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface-3 px-1.5 py-0.5 text-xs font-medium text-ink"
+                        title={`Lặp lại ${issue.occurrenceCount} lần`}
+                      >
+                        <Repeat2 className="h-3 w-3" />×{issue.occurrenceCount}
+                      </span>
                     )}
-                  </span>
 
-                  {canTriage && (
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => onAccept(issue)}
-                        disabled={pending}
-                        title="Nhận công việc này vào dự án"
+                    <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
+
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/issue/${issue.key}`)}
+                      className="min-w-0 flex-1 truncate text-left text-sm text-ink-strong hover:underline"
+                      title={issue.summary}
+                    >
+                      {issue.summary}
+                    </button>
+
+                    {issue.severity && (
+                      <span
+                        className="hidden shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium sm:inline-flex"
+                        style={{
+                          color: issue.severity.color ?? 'var(--ink)',
+                          background: issue.severity.color
+                            ? `color-mix(in oklch, ${issue.severity.color} 14%, transparent)`
+                            : 'var(--surface-2)',
+                        }}
+                        title={`Mức độ: ${issue.severity.name}`}
                       >
-                        <Check className="h-4 w-4" />
-                        Nhận
-                      </Button>
+                        {issue.severity.name}
+                      </span>
+                    )}
 
-                      <div className="relative">
+                    {issue.priority && (
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: issue.priority.color ?? 'var(--faint)' }}
+                        title={`Ưu tiên: ${issue.priority.name}`}
+                      />
+                    )}
+
+                    <span className="hidden shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted md:inline">
+                      {issue.type.name}
+                    </span>
+
+                    <span className="shrink-0">
+                      {issue.assignee && (
+                        <Avatar
+                          name={issue.assignee.displayName}
+                          src={issue.assignee.avatarUrl}
+                          size={22}
+                        />
+                      )}
+                    </span>
+
+                    {canTriage && (
+                      <div className="flex shrink-0 items-center gap-1">
                         <Button
-                          variant="secondary"
+                          variant="primary"
                           size="sm"
-                          onClick={() => setSnoozingId(snoozingId === issue.id ? null : issue.id)}
+                          onClick={() => onAccept(issue)}
                           disabled={pending}
-                          aria-haspopup="menu"
-                          aria-expanded={snoozingId === issue.id}
-                          title="Tạm hoãn"
+                          title="Nhận công việc này vào dự án"
                         >
-                          <Clock className="h-4 w-4" />
-                          Tạm hoãn
+                          <Check className="h-4 w-4" />
+                          Nhận
                         </Button>
-                        {snoozingId === issue.id && (
-                          <>
-                            <button
-                              type="button"
-                              className="fixed inset-0 z-10 cursor-default"
-                              aria-label="Đóng"
-                              onClick={() => setSnoozingId(null)}
-                            />
-                            <div
-                              role="menu"
-                              className="absolute right-0 top-full z-20 mt-1 w-32 overflow-hidden rounded-md border border-border bg-surface py-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
-                            >
-                              {SNOOZE_CHOICES.map((c) => (
-                                <button
-                                  key={c.days}
-                                  type="button"
-                                  role="menuitem"
-                                  onClick={() => onSnooze(issue, c.days, c.label)}
-                                  className="block w-full px-3 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2"
-                                >
-                                  {c.label}
-                                </button>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
 
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onDecline(issue)}
-                        disabled={pending}
-                        className="text-muted hover:text-ink"
-                        title="Từ chối công việc này"
-                      >
-                        <X className="h-4 w-4" />
-                        Từ chối
-                      </Button>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                        <div className="relative">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setSnoozingId(snoozingId === issue.id ? null : issue.id)}
+                            disabled={pending}
+                            aria-haspopup="menu"
+                            aria-expanded={snoozingId === issue.id}
+                            title="Tạm hoãn"
+                          >
+                            <Clock className="h-4 w-4" />
+                            Tạm hoãn
+                          </Button>
+                          {snoozingId === issue.id && (
+                            <>
+                              <button
+                                type="button"
+                                className="fixed inset-0 z-10 cursor-default"
+                                aria-label="Đóng"
+                                onClick={() => setSnoozingId(null)}
+                              />
+                              <div
+                                role="menu"
+                                className="absolute right-0 top-full z-20 mt-1 w-32 overflow-hidden rounded-md border border-border bg-surface py-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
+                              >
+                                {SNOOZE_CHOICES.map((c) => (
+                                  <button
+                                    key={c.days}
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => onSnooze(issue, c.days, c.label)}
+                                    className="block w-full px-3 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2"
+                                  >
+                                    {c.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onDecline(issue)}
+                          disabled={pending}
+                          className="text-muted hover:text-ink"
+                          title="Từ chối công việc này"
+                        >
+                          <X className="h-4 w-4" />
+                          Từ chối
+                        </Button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         )}
       </div>
 
       {projectId && (
-        <ReportIssueModal projectKey={key} projectId={projectId} open={reportOpen} onClose={() => setReportOpen(false)} />
+        <ReportIssueModal
+          projectKey={key}
+          projectId={projectId}
+          open={reportOpen}
+          onClose={() => setReportOpen(false)}
+        />
       )}
     </div>
   );

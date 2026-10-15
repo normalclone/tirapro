@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowDown, ArrowUp, BookOpen, ChevronDown, ChevronRight, FileText, PanelLeft, Pencil, Plus,
-  Search, Trash2, X,
+  ArrowDown,
+  ArrowUp,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  PanelLeft,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
@@ -16,8 +26,15 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import {
-  WIKI_SCOPE_SHARED, useCreateWikiPage, useDeleteWikiPage, useMoveWikiPage, useUpdateWikiPage,
-  useWikiPage, useWikiSearch, useWikiTree, type WikiNode,
+  WIKI_SCOPE_SHARED,
+  useCreateWikiPage,
+  useDeleteWikiPage,
+  useMoveWikiPage,
+  useUpdateWikiPage,
+  useWikiPage,
+  useWikiSearch,
+  useWikiTree,
+  type WikiNode,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { LOCALE } from '@/lib/locale';
@@ -29,7 +46,11 @@ interface Slot {
   parentId: string | null;
 }
 
-function indexTree(nodes: WikiNode[], parentId: string | null, out: Map<string, Slot>): Map<string, Slot> {
+function indexTree(
+  nodes: WikiNode[],
+  parentId: string | null,
+  out: Map<string, Slot>,
+): Map<string, Slot> {
   nodes.forEach((n, index) => {
     out.set(n.id, { siblings: nodes, index, parentId });
     if (n.children.length) indexTree(n.children, n.id, out);
@@ -38,7 +59,13 @@ function indexTree(nodes: WikiNode[], parentId: string | null, out: Map<string, 
 }
 
 const dateTime = (iso: string) =>
-  new Date(iso).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  new Date(iso).toLocaleString(LOCALE, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
 /**
  * Tài liệu nội bộ (wiki): cây trang bên trái, nội dung markdown bên phải.
@@ -69,7 +96,10 @@ export function WikiPage() {
   const [draftTitle, setDraftTitle] = useState('');
   const [draftBody, setDraftBody] = useState('');
 
-  const slots = useMemo(() => indexTree(tree.data ?? [], null, new Map<string, Slot>()), [tree.data]);
+  const slots = useMemo(
+    () => indexTree(tree.data ?? [], null, new Map<string, Slot>()),
+    [tree.data],
+  );
 
   // Chọn sẵn trang đầu tiên để màn không bao giờ trống khi đã có dữ liệu.
   useEffect(() => {
@@ -165,7 +195,13 @@ export function WikiPage() {
   }
 
   async function destroy(id: string, title: string) {
-    if (!(await confirm({ title: `Xoá trang “${title}”? Các trang con không bị xoá theo, chúng sẽ được đưa lên cấp trên.`, destructive: true }))) return;
+    if (
+      !(await confirm({
+        title: `Xoá trang “${title}”? Các trang con không bị xoá theo, chúng sẽ được đưa lên cấp trên.`,
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await remove.mutateAsync(id);
       if (selectedId === id) setSelectedId(null);
@@ -179,7 +215,10 @@ export function WikiPage() {
     <div className="flex h-full flex-col">
       <div className="space-y-2 border-b border-border p-3">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" aria-hidden />
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
+            aria-hidden
+          />
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -212,13 +251,12 @@ export function WikiPage() {
         {searching ? (
           <QueryBoundary
             query={search}
-            skeleton={
-              <TreeSkeleton />
-            }
+            skeleton={<TreeSkeleton />}
             empty={(d) => !d.length}
             emptyState={
               <p className="px-2 py-6 text-center text-sm text-muted">
-                Không có trang nào khớp “{q.trim()}”. Thử từ khoá ngắn hơn, hoặc đổi phạm vi sang “Tất cả tài liệu”.
+                Không có trang nào khớp “{q.trim()}”. Thử từ khoá ngắn hơn, hoặc đổi phạm vi sang
+                “Tất cả tài liệu”.
               </p>
             }
           >
@@ -235,7 +273,11 @@ export function WikiPage() {
                       )}
                     >
                       <span className="block truncate text-sm text-ink">{hit.title}</span>
-                      {hit.snippet && <span className="mt-0.5 block truncate text-xs text-faint">{hit.snippet}</span>}
+                      {hit.snippet && (
+                        <span className="mt-0.5 block truncate text-xs text-faint">
+                          {hit.snippet}
+                        </span>
+                      )}
                     </button>
                   </li>
                 ))}
@@ -245,13 +287,14 @@ export function WikiPage() {
         ) : (
           <QueryBoundary
             query={tree}
-            skeleton={
-              <TreeSkeleton />
-            }
+            skeleton={<TreeSkeleton />}
             empty={(d) => !d.length}
             emptyState={
               <p className="px-2 py-6 text-center text-sm text-muted">
-                Chưa có trang nào ở phạm vi này. {canManage ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.' : 'Hãy đổi phạm vi hoặc chờ người phụ trách thêm tài liệu.'}
+                Chưa có trang nào ở phạm vi này.{' '}
+                {canManage
+                  ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.'
+                  : 'Hãy đổi phạm vi hoặc chờ người phụ trách thêm tài liệu.'}
               </p>
             }
           >
@@ -280,7 +323,13 @@ export function WikiPage() {
 
       {canManage && (
         <div className="border-t border-border p-2">
-          <Button size="sm" variant="secondary" className="w-full" loading={create.isPending} onClick={() => void addPage(null)}>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="w-full"
+            loading={create.isPending}
+            onClick={() => void addPage(null)}
+          >
             <Plus className="h-4 w-4" /> Tạo trang mới
           </Button>
         </div>
@@ -291,15 +340,24 @@ export function WikiPage() {
   return (
     <div className={pageContainer('xl')}>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Wiki — tài liệu nội bộ</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+          Wiki — tài liệu nội bộ
+        </h1>
         <p className="mt-1 text-sm text-muted">
-          Nơi lưu quy trình, hướng dẫn và biên bản họp. Viết bằng Markdown, xếp thành cây trang, dùng chung cho cả tổ chức hoặc riêng từng dự án.
+          Nơi lưu quy trình, hướng dẫn và biên bản họp. Viết bằng Markdown, xếp thành cây trang,
+          dùng chung cho cả tổ chức hoặc riêng từng dự án.
         </p>
       </header>
 
       <div className="mb-3 lg:hidden">
-        <Button size="sm" variant="secondary" onClick={() => setTreeOpen((v) => !v)} aria-expanded={treeOpen}>
-          <PanelLeft className="h-4 w-4" /> {treeOpen ? 'Ẩn danh sách trang' : 'Hiện danh sách trang'}
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => setTreeOpen((v) => !v)}
+          aria-expanded={treeOpen}
+        >
+          <PanelLeft className="h-4 w-4" />{' '}
+          {treeOpen ? 'Ẩn danh sách trang' : 'Hiện danh sách trang'}
         </Button>
       </div>
 
@@ -319,8 +377,18 @@ export function WikiPage() {
               <EmptyState
                 icon={<BookOpen className="h-6 w-6" />}
                 title="Chưa chọn trang nào"
-                description={canManage ? 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái, hoặc tạo trang mới để bắt đầu.' : 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái để đọc.'}
-                action={canManage ? <Button size="sm" onClick={() => void addPage(null)}><Plus className="h-4 w-4" /> Tạo trang mới</Button> : undefined}
+                description={
+                  canManage
+                    ? 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái, hoặc tạo trang mới để bắt đầu.'
+                    : 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái để đọc.'
+                }
+                action={
+                  canManage ? (
+                    <Button size="sm" onClick={() => void addPage(null)}>
+                      <Plus className="h-4 w-4" /> Tạo trang mới
+                    </Button>
+                  ) : undefined
+                }
               />
             </div>
           ) : (
@@ -338,7 +406,10 @@ export function WikiPage() {
               {(pg) => (
                 <article className="p-6">
                   {pg.breadcrumb.length > 0 && (
-                    <nav aria-label="Đường dẫn trang" className="mb-2 flex flex-wrap items-center gap-1 text-xs text-faint">
+                    <nav
+                      aria-label="Đường dẫn trang"
+                      className="mb-2 flex flex-wrap items-center gap-1 text-xs text-faint"
+                    >
                       {pg.breadcrumb.map((b) => (
                         <span key={b.id} className="flex items-center gap-1">
                           <button
@@ -374,18 +445,27 @@ export function WikiPage() {
                         placeholder="Viết nội dung ở đây. Hỗ trợ Markdown cơ bản: # tiêu đề, **đậm**, - gạch đầu dòng…"
                       />
                       <div className="flex items-center gap-2">
-                        <span className="mr-auto text-xs text-faint" title="Markdown là cách viết chữ đậm, tiêu đề, danh sách bằng ký hiệu — ví dụ **đậm** hoặc # Tiêu đề.">
+                        <span
+                          className="mr-auto text-xs text-faint"
+                          title="Markdown là cách viết chữ đậm, tiêu đề, danh sách bằng ký hiệu — ví dụ **đậm** hoặc # Tiêu đề."
+                        >
                           Hỗ trợ Markdown cơ bản · Ctrl/⌘+Enter để lưu · Esc để huỷ
                         </span>
-                        <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Huỷ</Button>
-                        <Button size="sm" loading={update.isPending} onClick={() => void save()}>Lưu trang</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+                          Huỷ
+                        </Button>
+                        <Button size="sm" loading={update.isPending} onClick={() => void save()}>
+                          Lưu trang
+                        </Button>
                       </div>
                     </div>
                   ) : (
                     <>
                       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <h2 className="truncate text-xl font-semibold tracking-tight text-ink-strong">{pg.title}</h2>
+                          <h2 className="truncate text-xl font-semibold tracking-tight text-ink-strong">
+                            {pg.title}
+                          </h2>
                           <p className="mt-1 text-xs text-faint">
                             Sửa lần cuối {dateTime(pg.updatedAt)}
                             {pg.updatedBy ? ` · ${pg.updatedBy.displayName}` : ''}
@@ -393,7 +473,15 @@ export function WikiPage() {
                         </div>
                         {canManage && (
                           <div className="flex shrink-0 flex-wrap items-center gap-2">
-                            <Button size="sm" variant="secondary" onClick={() => { setDraftTitle(pg.title); setDraftBody(pg.body); setEditing(true); }}>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                setDraftTitle(pg.title);
+                                setDraftBody(pg.body);
+                                setEditing(true);
+                              }}
+                            >
                               <Pencil className="h-4 w-4" /> Sửa trang
                             </Button>
                             <Button
@@ -422,7 +510,8 @@ export function WikiPage() {
                         <MarkdownView text={pg.body} />
                       ) : (
                         <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-faint">
-                          Trang này chưa có nội dung.{canManage ? ' Bấm “Sửa trang” để bắt đầu viết.' : ''}
+                          Trang này chưa có nội dung.
+                          {canManage ? ' Bấm “Sửa trang” để bắt đầu viết.' : ''}
                         </p>
                       )}
                     </>
@@ -448,7 +537,16 @@ function TreeSkeleton() {
 }
 
 function TreeRow({
-  node, depth, selectedId, expanded, canManage, onOpen, onToggle, onAddChild, onShift, slots,
+  node,
+  depth,
+  selectedId,
+  expanded,
+  canManage,
+  onOpen,
+  onToggle,
+  onAddChild,
+  onShift,
+  slots,
 }: {
   node: WikiNode;
   depth: number;
@@ -484,7 +582,11 @@ function TreeRow({
             aria-expanded={isOpen}
             className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
           >
-            {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {isOpen ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
           </button>
         ) : (
           <span className="grid h-6 w-6 shrink-0 place-items-center text-faint" aria-hidden>

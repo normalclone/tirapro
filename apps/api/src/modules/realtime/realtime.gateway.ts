@@ -77,7 +77,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * User còn ACTIVE và (trừ system admin) còn là thành viên workspace. Không có workspace trong token
    * thì chỉ cần ACTIVE (khi đó chỉ vào được room user của chính mình). Lỗi DB → từ chối (fail closed).
    */
-  private async hasAccess(userId: string, workspaceId: string | null | undefined): Promise<boolean> {
+  private async hasAccess(
+    userId: string,
+    workspaceId: string | null | undefined,
+  ): Promise<boolean> {
     try {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
@@ -91,7 +94,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       });
       return membership != null;
     } catch (err) {
-      this.logger.warn(`Kiểm membership realtime thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(
+        `Kiểm membership realtime thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return false;
     }
   }
@@ -114,7 +119,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage(WS_EVENTS.UNSUBSCRIBE)
-  async onUnsubscribe(@MessageBody() target: RoomTarget, @ConnectedSocket() client: TypedSocket): Promise<void> {
+  async onUnsubscribe(
+    @MessageBody() target: RoomTarget,
+    @ConnectedSocket() client: TypedSocket,
+  ): Promise<void> {
     const room = this.roomName(target);
     if (!room) return;
     await client.leave(room);
@@ -131,8 +139,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Chỉ phát lại `presence:state` cho room project khi `viewing` đổi thật.
    */
   @SubscribeMessage(WS_EVENTS.PRESENCE_VIEW)
-  async onPresenceView(@MessageBody() body: { room?: string | null }, @ConnectedSocket() client: TypedSocket): Promise<void> {
-    const viewing = typeof body?.room === 'string' && ISSUE_ROOM_RE.test(body.room) ? body.room : null;
+  async onPresenceView(
+    @MessageBody() body: { room?: string | null },
+    @ConnectedSocket() client: TypedSocket,
+  ): Promise<void> {
+    const viewing =
+      typeof body?.room === 'string' && ISSUE_ROOM_RE.test(body.room) ? body.room : null;
     const data = client.data as { userId?: string; viewing?: string | null };
     const userId = data.userId;
     if (!userId) return;
@@ -147,30 +159,49 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           res = await this.presence.setViewing(room, userId, viewing);
         }
         if (res?.changed) {
-          this.server.to(room).emit(WS_EVENTS.PRESENCE_STATE, { room, users: await this.presence.state(room) });
+          this.server
+            .to(room)
+            .emit(WS_EVENTS.PRESENCE_STATE, { room, users: await this.presence.state(room) });
         }
       } catch (err) {
-        this.logger.warn(`presence:view thất bại: ${err instanceof Error ? err.message : String(err)}`);
+        this.logger.warn(
+          `presence:view thất bại: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
   }
 
   @SubscribeMessage(WS_EVENTS.TYPING_START)
-  async onTypingStart(@MessageBody() body: { room?: string }, @ConnectedSocket() client: TypedSocket): Promise<void> {
+  async onTypingStart(
+    @MessageBody() body: { room?: string },
+    @ConnectedSocket() client: TypedSocket,
+  ): Promise<void> {
     await this.relayTyping(client, body?.room, true);
   }
 
   @SubscribeMessage(WS_EVENTS.TYPING_STOP)
-  async onTypingStop(@MessageBody() body: { room?: string }, @ConnectedSocket() client: TypedSocket): Promise<void> {
+  async onTypingStop(
+    @MessageBody() body: { room?: string },
+    @ConnectedSocket() client: TypedSocket,
+  ): Promise<void> {
     await this.relayTyping(client, body?.room, false);
   }
 
   /** Relay `typing` tới room issue trừ người gửi; chỉ khi socket đã subscribe (đã kiểm quyền) room đó. */
-  private async relayTyping(client: TypedSocket, room: string | undefined, typing: boolean): Promise<void> {
+  private async relayTyping(
+    client: TypedSocket,
+    room: string | undefined,
+    typing: boolean,
+  ): Promise<void> {
     if (typeof room !== 'string' || !ISSUE_ROOM_RE.test(room) || !client.rooms?.has(room)) return;
     const profile = await this.profileOf(client);
     if (!profile) return;
-    client.to(room).emit(WS_EVENTS.TYPING, { room, userId: profile.userId, displayName: profile.displayName, typing });
+    client.to(room).emit(WS_EVENTS.TYPING, {
+      room,
+      userId: profile.userId,
+      displayName: profile.displayName,
+      typing,
+    });
   }
 
   // ---------- Presence ----------
@@ -191,10 +222,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         select: { displayName: true, avatarUrl: true },
       });
       if (!user) return null;
-      data.profile = { userId: data.userId, displayName: user.displayName, avatarUrl: user.avatarUrl ?? null };
+      data.profile = {
+        userId: data.userId,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl ?? null,
+      };
       return data.profile;
     } catch (err) {
-      this.logger.warn(`Đọc hồ sơ cho presence thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(
+        `Đọc hồ sơ cho presence thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return null;
     }
   }
@@ -207,11 +244,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       const already = Array.isArray(data.rooms) && data.rooms.includes(room);
       if (!already) data.rooms = [...(data.rooms ?? []), room];
       let user = await this.presence.join(room, profile);
-      if (data.viewing) user = (await this.presence.setViewing(room, profile.userId, data.viewing))?.user ?? user;
+      if (data.viewing)
+        user = (await this.presence.setViewing(room, profile.userId, data.viewing))?.user ?? user;
       if (!already) client.to(room).emit(WS_EVENTS.PRESENCE_JOIN, { room, user });
       client.emit(WS_EVENTS.PRESENCE_STATE, { room, users: await this.presence.state(room) });
     } catch (err) {
-      this.logger.warn(`Presence join thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(
+        `Presence join thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -219,7 +259,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Rời presence. Nếu cùng user còn socket khác (tab khác) trong room thì GIỮ entry để không làm
    * họ biến mất khỏi danh sách; `fromDisconnect` chỉ để bỏ qua việc kiểm tra thất bại.
    */
-  private async leavePresence(client: TypedSocket, room: string, fromDisconnect = false): Promise<void> {
+  private async leavePresence(
+    client: TypedSocket,
+    room: string,
+    fromDisconnect = false,
+  ): Promise<void> {
     const data = client.data as { userId?: string; rooms?: string[] };
     if (!Array.isArray(data.rooms) || !data.rooms.includes(room) || !data.userId) return;
     data.rooms = data.rooms.filter((r) => r !== room);
@@ -228,14 +272,23 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       await this.presence.leave(room, data.userId);
       this.server?.to(room).emit(WS_EVENTS.PRESENCE_LEAVE, { room, userId: data.userId });
     } catch (err) {
-      if (!fromDisconnect) this.logger.warn(`Presence leave thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      if (!fromDisconnect)
+        this.logger.warn(
+          `Presence leave thất bại: ${err instanceof Error ? err.message : String(err)}`,
+        );
     }
   }
 
-  private async hasOtherSocketOfUser(room: string, userId: string, selfId: string): Promise<boolean> {
+  private async hasOtherSocketOfUser(
+    room: string,
+    userId: string,
+    selfId: string,
+  ): Promise<boolean> {
     try {
       const sockets = await this.server.in(room).fetchSockets();
-      return sockets.some((s) => s.id !== selfId && (s.data as { userId?: string }).userId === userId);
+      return sockets.some(
+        (s) => s.id !== selfId && (s.data as { userId?: string }).userId === userId,
+      );
     } catch {
       return false;
     }
@@ -259,7 +312,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   /** Trả tên room nếu client được phép vào, ngược lại null. */
-  private async authorizeRoom(target: RoomTarget | undefined, client: TypedSocket): Promise<string | null> {
+  private async authorizeRoom(
+    target: RoomTarget | undefined,
+    client: TypedSocket,
+  ): Promise<string | null> {
     const room = this.roomName(target);
     if (!room || !target) return null;
     const { userId, workspaceId } = client.data as { userId?: string; workspaceId?: string | null };
@@ -279,7 +335,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           });
           return project ? room : null;
         } catch (err) {
-          this.logger.warn(`Kiểm quyền subscribe project thất bại: ${err instanceof Error ? err.message : String(err)}`);
+          this.logger.warn(
+            `Kiểm quyền subscribe project thất bại: ${err instanceof Error ? err.message : String(err)}`,
+          );
           return null;
         }
       }
@@ -292,7 +350,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           });
           return issue ? room : null;
         } catch (err) {
-          this.logger.warn(`Kiểm quyền subscribe issue thất bại: ${err instanceof Error ? err.message : String(err)}`);
+          this.logger.warn(
+            `Kiểm quyền subscribe issue thất bại: ${err instanceof Error ? err.message : String(err)}`,
+          );
           return null;
         }
       }
@@ -321,7 +381,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         if ((s.data as { userId?: string }).userId === p.userId) s.disconnect(true);
       }
     } catch (err) {
-      this.logger.warn(`Ngắt socket của member bị gỡ thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(
+        `Ngắt socket của member bị gỡ thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -348,7 +410,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @OnEvent(DOMAIN_EVENTS.ISSUE_DELETED)
   onIssueDeleted(p: { issueId: string; projectId?: string }) {
     if (!p.projectId) return;
-    this.toProject(p.projectId, WS_EVENTS.ISSUE_DELETED, { issueId: p.issueId, projectId: p.projectId });
+    this.toProject(p.projectId, WS_EVENTS.ISSUE_DELETED, {
+      issueId: p.issueId,
+      projectId: p.projectId,
+    });
   }
 
   @OnEvent(DOMAIN_EVENTS.COMMENT_ADDED)
@@ -359,7 +424,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @OnEvent(DOMAIN_EVENTS.NOTIFICATION_CREATED)
   onNotificationCreated(p: { recipientId?: string; notification: NotificationDto }) {
     if (!p?.recipientId || !this.server) return;
-    this.server.to(rooms.user(p.recipientId)).emit(WS_EVENTS.NOTIFICATION_NEW, { notification: p.notification });
+    this.server
+      .to(rooms.user(p.recipientId))
+      .emit(WS_EVENTS.NOTIFICATION_NEW, { notification: p.notification });
   }
 
   @OnEvent(DOMAIN_EVENTS.SPRINT_STARTED)
@@ -379,6 +446,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   private emitSprintUpdated(p: { sprintId: string; projectId?: string }) {
     if (!p?.sprintId || !p.projectId) return;
-    this.toProject(p.projectId, WS_EVENTS.SPRINT_UPDATED, { sprintId: p.sprintId, projectId: p.projectId });
+    this.toProject(p.projectId, WS_EVENTS.SPRINT_UPDATED, {
+      sprintId: p.sprintId,
+      projectId: p.projectId,
+    });
   }
 }

@@ -124,7 +124,9 @@ export function QueryBuilder({
   const { data: users } = useWorkspaceUsers();
   const { data: fields } = useFilterFields();
 
-  const [query, setQuery] = useState<SimpleQuery>(() => tryParseToSimpleQuery(value) ?? EMPTY_QUERY);
+  const [query, setQuery] = useState<SimpleQuery>(
+    () => tryParseToSimpleQuery(value) ?? EMPTY_QUERY,
+  );
   const [complex, setComplex] = useState(
     () => value.trim() !== '' && tryParseToSimpleQuery(value) === null,
   );
@@ -262,7 +264,9 @@ export function QueryBuilder({
             onChange={(v) =>
               commit({
                 ...query,
-                sort: v ? { field: v as JqlFieldName, direction: query.sort?.direction ?? 'DESC' } : null,
+                sort: v
+                  ? { field: v as JqlFieldName, direction: query.sort?.direction ?? 'DESC' }
+                  : null,
               })
             }
             options={[
@@ -276,7 +280,10 @@ export function QueryBuilder({
             <Segmented
               value={query.sort.direction}
               onChange={(v) =>
-                commit({ ...query, sort: { field: query.sort!.field, direction: v as 'ASC' | 'DESC' } })
+                commit({
+                  ...query,
+                  sort: { field: query.sort!.field, direction: v as 'ASC' | 'DESC' },
+                })
               }
               options={[
                 { value: 'DESC', label: 'Giảm' },
@@ -497,7 +504,10 @@ function DateValueControl({ value, onChange }: { value: string; onChange: (v: st
   const absolute = isAbsoluteDate(value);
   // Token tương đối lạ (gõ tay trong JQL) vẫn hiện được nhờ thêm tạm vào danh sách.
   const presets =
-    value && !absolute && !RELATIVE_DATE_PRESETS.some((p) => p.value === value) && isRelativeDateToken(value)
+    value &&
+    !absolute &&
+    !RELATIVE_DATE_PRESETS.some((p) => p.value === value) &&
+    isRelativeDateToken(value)
       ? [{ value, label: value }, ...RELATIVE_DATE_PRESETS]
       : RELATIVE_DATE_PRESETS;
 

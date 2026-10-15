@@ -10,13 +10,35 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useWorkspaceUsers } from '@/features/members/api';
-import { useCreateRaidItem, useUpdateRaidItem, type RaidItemDto, type RaidKind, type RaidStatus } from './api';
 import {
-  IMPACT_LABELS, PROBABILITY_LABELS, RAID_KINDS, RAID_LEVEL_LEGEND, RAID_LEVEL_META, RAID_STATUS_OPTIONS,
-  SCALE, raidLevelOf,
+  useCreateRaidItem,
+  useUpdateRaidItem,
+  type RaidItemDto,
+  type RaidKind,
+  type RaidStatus,
+} from './api';
+import {
+  IMPACT_LABELS,
+  PROBABILITY_LABELS,
+  RAID_KINDS,
+  RAID_LEVEL_LEGEND,
+  RAID_LEVEL_META,
+  RAID_STATUS_OPTIONS,
+  SCALE,
+  raidLevelOf,
 } from './constants';
 
-function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-muted">
@@ -30,7 +52,11 @@ function Field({ label, hint, htmlFor, children }: { label: string; hint?: strin
 
 /** Bộ chọn 1..5 dạng nút — mỗi nút có nhãn chữ để không phải đoán ý nghĩa con số. */
 function ScalePicker({
-  value, onChange, labels, ariaLabel, idPrefix,
+  value,
+  onChange,
+  labels,
+  ariaLabel,
+  idPrefix,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -51,7 +77,9 @@ function ScalePicker({
           onClick={() => onChange(n)}
           className={cn(
             'h-9 flex-1 rounded-md border text-sm font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            value === n ? 'border-primary bg-primary text-primary-fg' : 'border-border bg-bg text-muted hover:bg-surface-2',
+            value === n
+              ? 'border-primary bg-primary text-primary-fg'
+              : 'border-border bg-bg text-muted hover:bg-surface-2',
           )}
         >
           {n}
@@ -63,7 +91,10 @@ function ScalePicker({
 
 /** Modal tạo/sửa một mục trong danh sách rủi ro & vướng mắc. */
 export function RaidEditorModal({
-  open, item, defaultKind, onClose,
+  open,
+  item,
+  defaultKind,
+  onClose,
 }: {
   open: boolean;
   item?: RaidItemDto | null;
@@ -169,7 +200,9 @@ export function RaidEditorModal({
       footer={
         <>
           <span className="mr-auto text-xs text-faint">Ctrl/Cmd + Enter để lưu</span>
-          <Button variant="ghost" onClick={onClose}>Hủy</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Hủy
+          </Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
             {editing ? 'Lưu thay đổi' : `Thêm ${kindMeta?.label.toLowerCase() ?? 'mục'}`}
           </Button>
@@ -178,7 +211,11 @@ export function RaidEditorModal({
     >
       <div className="space-y-4">
         <Field label="Loại" hint="(chọn đúng loại để lọc và báo cáo cho chuẩn)">
-          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Loại rủi ro hoặc vướng mắc">
+          <div
+            className="flex flex-wrap gap-1.5"
+            role="radiogroup"
+            aria-label="Loại rủi ro hoặc vướng mắc"
+          >
             {RAID_KINDS.map((k) => (
               <button
                 key={k.value}
@@ -189,7 +226,9 @@ export function RaidEditorModal({
                 onClick={() => setKind(k.value)}
                 className={cn(
                   'h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                  kind === k.value ? 'border-primary bg-primary text-primary-fg' : 'border-border bg-bg text-muted hover:bg-surface-2',
+                  kind === k.value
+                    ? 'border-primary bg-primary text-primary-fg'
+                    : 'border-border bg-bg text-muted hover:bg-surface-2',
                 )}
               >
                 {k.label}
@@ -221,7 +260,10 @@ export function RaidEditorModal({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Xác suất xảy ra" hint={`(${probability} — ${PROBABILITY_LABELS[probability]})`}>
+          <Field
+            label="Xác suất xảy ra"
+            hint={`(${probability} — ${PROBABILITY_LABELS[probability]})`}
+          >
             <ScalePicker
               value={probability}
               onChange={setProbability}
@@ -241,10 +283,15 @@ export function RaidEditorModal({
           </Field>
         </div>
 
-        <div className="flex items-center gap-2 rounded-md border border-border bg-bg px-3 py-2" title={RAID_LEVEL_LEGEND}>
+        <div
+          className="flex items-center gap-2 rounded-md border border-border bg-bg px-3 py-2"
+          title={RAID_LEVEL_LEGEND}
+        >
           <span className="text-sm text-muted">Điểm rủi ro</span>
           <span className="text-sm font-semibold tabular-nums text-ink-strong">{score}</span>
-          <span className="text-xs text-faint">= {probability} × {impact}</span>
+          <span className="text-xs text-faint">
+            = {probability} × {impact}
+          </span>
           <Badge className={cn('ml-auto', level.badge)}>{level.label}</Badge>
         </div>
 
@@ -259,7 +306,12 @@ export function RaidEditorModal({
             />
           </Field>
           <Field label="Hạn xử lý" hint="(tùy chọn — ngày cần xong)" htmlFor="raid-due">
-            <Input id="raid-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <Input
+              id="raid-due"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
           </Field>
           <Field label="Dự án" hint="(để trống = ảnh hưởng cả tổ chức)" htmlFor="raid-project">
             <SearchSelect
@@ -272,7 +324,11 @@ export function RaidEditorModal({
               searchPlaceholder="Tìm dự án…"
             />
           </Field>
-          <Field label="Người phụ trách" hint="(tùy chọn — người theo dõi và xử lý)" htmlFor="raid-owner">
+          <Field
+            label="Người phụ trách"
+            hint="(tùy chọn — người theo dõi và xử lý)"
+            htmlFor="raid-owner"
+          >
             <PeoplePicker
               id="raid-owner"
               value={ownerId}
@@ -284,7 +340,11 @@ export function RaidEditorModal({
           </Field>
         </div>
 
-        <Field label="Cách xử lý" hint="(tùy chọn — làm gì để bớt nguy hiểm)" htmlFor="raid-mitigation">
+        <Field
+          label="Cách xử lý"
+          hint="(tùy chọn — làm gì để bớt nguy hiểm)"
+          htmlFor="raid-mitigation"
+        >
           <Input
             id="raid-mitigation"
             value={mitigation}

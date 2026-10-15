@@ -18,7 +18,8 @@ export function render(payload: Record<string, unknown>): RenderedMail {
       bodyHtml: `<p style="margin:0;font-size:14px;line-height:1.6;">${escapeHtml(intro)}</p>`,
       ctaLabel: 'Đặt lại mật khẩu',
       ctaUrl: resetUrl,
-      footer: 'Liên kết dùng được một lần và hết hạn sau 1 giờ. Nếu bạn không yêu cầu, hãy bỏ qua thư này — mật khẩu của bạn không thay đổi.',
+      footer:
+        'Liên kết dùng được một lần và hết hạn sau 1 giờ. Nếu bạn không yêu cầu, hãy bỏ qua thư này — mật khẩu của bạn không thay đổi.',
     }),
     text: `${intro}\n\nĐặt lại mật khẩu: ${resetUrl}\n\nLiên kết dùng được một lần và hết hạn sau 1 giờ. Nếu bạn không yêu cầu, hãy bỏ qua thư này — mật khẩu của bạn không thay đổi.\n`,
   };

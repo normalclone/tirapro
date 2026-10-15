@@ -10,7 +10,8 @@ import { cn } from '@/lib/utils';
 /* ----------------------------- Render markdown cơ bản ----------------------------- */
 
 // Token inline: ảnh, liên kết, đậm, mã, nghiêng (* hoặc _).
-const INLINE = /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|`([^`]+)`|\*([^*]+)\*|_([^_]+)_/g;
+const INLINE =
+  /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|`([^`]+)`|\*([^*]+)\*|_([^_]+)_/g;
 
 // Chống XSS lưu trữ: chỉ cho phép scheme an toàn. Liên kết chặn javascript:/data:;
 // riêng ảnh cho thêm data:image vì thẻ ảnh không chạy được mã từ nguồn này.
@@ -29,18 +30,51 @@ function renderInline(text: string): ReactNode[] {
     if (m.index > last) out.push(text.slice(last, m.index));
     if (m[1] !== undefined && m[2] !== undefined) {
       const src = safeImg(m[2]);
-      out.push(src
-        ? <img key={k++} src={src} alt={m[1] || 'Ảnh trong mô tả'} loading="lazy" className="my-2 block max-h-96 max-w-full rounded-md border border-border" />
-        : <span key={k++} className="text-faint">{m[1] || '[Đường dẫn ảnh không hợp lệ]'}</span>);
+      out.push(
+        src ? (
+          <img
+            key={k++}
+            src={src}
+            alt={m[1] || 'Ảnh trong mô tả'}
+            loading="lazy"
+            className="my-2 block max-h-96 max-w-full rounded-md border border-border"
+          />
+        ) : (
+          <span key={k++} className="text-faint">
+            {m[1] || '[Đường dẫn ảnh không hợp lệ]'}
+          </span>
+        ),
+      );
     } else if (m[3] !== undefined && m[4] !== undefined) {
       const href = safeHref(m[4]);
-      out.push(href
-        ? <a key={k++} href={href} target="_blank" rel="noreferrer nofollow" onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">{m[3]}</a>
-        : <span key={k++}>{m[3]}</span>);
+      out.push(
+        href ? (
+          <a
+            key={k++}
+            href={href}
+            target="_blank"
+            rel="noreferrer nofollow"
+            onClick={(e) => e.stopPropagation()}
+            className="text-primary hover:underline"
+          >
+            {m[3]}
+          </a>
+        ) : (
+          <span key={k++}>{m[3]}</span>
+        ),
+      );
     } else if (m[5] !== undefined) {
-      out.push(<strong key={k++} className="font-semibold text-ink-strong">{m[5]}</strong>);
+      out.push(
+        <strong key={k++} className="font-semibold text-ink-strong">
+          {m[5]}
+        </strong>,
+      );
     } else if (m[6] !== undefined) {
-      out.push(<code key={k++} className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[0.85em]">{m[6]}</code>);
+      out.push(
+        <code key={k++} className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[0.85em]">
+          {m[6]}
+        </code>,
+      );
     } else {
       out.push(<em key={k++}>{m[7] ?? m[8]}</em>);
     }
@@ -62,7 +96,9 @@ export function MarkdownView({ text }: { text: string }) {
       const items = list;
       blocks.push(
         <ul key={key++} className="my-1 list-disc space-y-0.5 pl-5">
-          {items.map((it, i) => <li key={i}>{renderInline(it)}</li>)}
+          {items.map((it, i) => (
+            <li key={i}>{renderInline(it)}</li>
+          ))}
         </ul>,
       );
     }
@@ -71,16 +107,35 @@ export function MarkdownView({ text }: { text: string }) {
 
   for (const line of lines) {
     const li = /^\s*[-*]\s+(.*)$/.exec(line);
-    if (li) { (list ??= []).push(li[1] ?? ''); continue; }
+    if (li) {
+      (list ??= []).push(li[1] ?? '');
+      continue;
+    }
     flushList();
     const h = /^(#{1,3})\s+(.*)$/.exec(line);
     if (h) {
-      const size = h[1]!.length === 1 ? 'text-base font-semibold' : h[1]!.length === 2 ? 'text-sm font-semibold' : 'text-sm font-medium';
-      blocks.push(<p key={key++} className={cn('mt-2 text-ink-strong', size)}>{renderInline(h[2] ?? '')}</p>);
+      const size =
+        h[1]!.length === 1
+          ? 'text-base font-semibold'
+          : h[1]!.length === 2
+            ? 'text-sm font-semibold'
+            : 'text-sm font-medium';
+      blocks.push(
+        <p key={key++} className={cn('mt-2 text-ink-strong', size)}>
+          {renderInline(h[2] ?? '')}
+        </p>,
+      );
       continue;
     }
-    if (line.trim() === '') { blocks.push(<div key={key++} className="h-2" />); continue; }
-    blocks.push(<p key={key++} className="leading-relaxed">{renderInline(line)}</p>);
+    if (line.trim() === '') {
+      blocks.push(<div key={key++} className="h-2" />);
+      continue;
+    }
+    blocks.push(
+      <p key={key++} className="leading-relaxed">
+        {renderInline(line)}
+      </p>,
+    );
   }
   flushList();
 
@@ -89,7 +144,15 @@ export function MarkdownView({ text }: { text: string }) {
 
 /* ----------------------------- Editor Markdown cơ bản (dùng lại) ----------------------------- */
 
-function ToolBtn({ onClick, title, children }: { onClick: () => void; title: string; children: ReactNode }) {
+function ToolBtn({
+  onClick,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  children: ReactNode;
+}) {
   return (
     <button
       type="button"
@@ -126,7 +189,9 @@ export function MarkdownEditor({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  function apply(fn: (val: string, s: number, e: number) => { value: string; selStart: number; selEnd: number }) {
+  function apply(
+    fn: (val: string, s: number, e: number) => { value: string; selStart: number; selEnd: number },
+  ) {
     const ta = ref.current;
     if (!ta) return;
     const r = fn(ta.value, ta.selectionStart, ta.selectionEnd);
@@ -140,13 +205,21 @@ export function MarkdownEditor({
   const wrap = (marker: string, ph: string) =>
     apply((val, s, e) => {
       const sel = val.slice(s, e) || ph;
-      return { value: val.slice(0, s) + marker + sel + marker + val.slice(e), selStart: s + marker.length, selEnd: s + marker.length + sel.length };
+      return {
+        value: val.slice(0, s) + marker + sel + marker + val.slice(e),
+        selStart: s + marker.length,
+        selEnd: s + marker.length + sel.length,
+      };
     });
 
   const linePrefix = (prefix: string) =>
     apply((val, s, e) => {
       const ls = val.lastIndexOf('\n', s - 1) + 1;
-      return { value: val.slice(0, ls) + prefix + val.slice(ls), selStart: s + prefix.length, selEnd: e + prefix.length };
+      return {
+        value: val.slice(0, ls) + prefix + val.slice(ls),
+        selStart: s + prefix.length,
+        selEnd: e + prefix.length,
+      };
     });
 
   const insert = (text: string) =>
@@ -161,7 +234,11 @@ export function MarkdownEditor({
     if (!url) return;
     apply((val, s, e) => {
       const md = `[${val.slice(s, e) || 'liên kết'}](${url})`;
-      return { value: val.slice(0, s) + md + val.slice(e), selStart: s + md.length, selEnd: s + md.length };
+      return {
+        value: val.slice(0, s) + md + val.slice(e),
+        selStart: s + md.length,
+        selEnd: s + md.length,
+      };
     });
   }
 
@@ -173,15 +250,29 @@ export function MarkdownEditor({
   return (
     <div className="overflow-hidden rounded-md border border-border bg-surface focus-within:border-primary">
       <div className="flex flex-wrap items-center gap-0.5 border-b border-border p-1">
-        <ToolBtn title="Bôi đậm chữ đang chọn" onClick={() => wrap('**', 'văn bản')}><Bold className="h-4 w-4" /></ToolBtn>
-        <ToolBtn title="In nghiêng chữ đang chọn" onClick={() => wrap('*', 'văn bản')}><Italic className="h-4 w-4" /></ToolBtn>
-        <ToolBtn title="Định dạng chữ đang chọn thành đoạn mã" onClick={() => wrap('`', 'code')}><Code className="h-4 w-4" /></ToolBtn>
+        <ToolBtn title="Bôi đậm chữ đang chọn" onClick={() => wrap('**', 'văn bản')}>
+          <Bold className="h-4 w-4" />
+        </ToolBtn>
+        <ToolBtn title="In nghiêng chữ đang chọn" onClick={() => wrap('*', 'văn bản')}>
+          <Italic className="h-4 w-4" />
+        </ToolBtn>
+        <ToolBtn title="Định dạng chữ đang chọn thành đoạn mã" onClick={() => wrap('`', 'code')}>
+          <Code className="h-4 w-4" />
+        </ToolBtn>
         <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-        <ToolBtn title="Biến dòng hiện tại thành tiêu đề mục" onClick={() => linePrefix('## ')}><Heading2 className="h-4 w-4" /></ToolBtn>
-        <ToolBtn title="Biến dòng hiện tại thành gạch đầu dòng" onClick={() => linePrefix('- ')}><List className="h-4 w-4" /></ToolBtn>
+        <ToolBtn title="Biến dòng hiện tại thành tiêu đề mục" onClick={() => linePrefix('## ')}>
+          <Heading2 className="h-4 w-4" />
+        </ToolBtn>
+        <ToolBtn title="Biến dòng hiện tại thành gạch đầu dòng" onClick={() => linePrefix('- ')}>
+          <List className="h-4 w-4" />
+        </ToolBtn>
         <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-        <ToolBtn title="Chèn liên kết tới một đường dẫn" onClick={insertLink}><Link2 className="h-4 w-4" /></ToolBtn>
-        <ToolBtn title="Chèn ảnh từ một đường dẫn" onClick={insertImage}><ImageIcon className="h-4 w-4" /></ToolBtn>
+        <ToolBtn title="Chèn liên kết tới một đường dẫn" onClick={insertLink}>
+          <Link2 className="h-4 w-4" />
+        </ToolBtn>
+        <ToolBtn title="Chèn ảnh từ một đường dẫn" onClick={insertImage}>
+          <ImageIcon className="h-4 w-4" />
+        </ToolBtn>
       </div>
       <textarea
         ref={ref}
@@ -191,8 +282,14 @@ export function MarkdownEditor({
         autoFocus={autoFocus}
         placeholder={placeholder}
         onKeyDown={(e) => {
-          if (onSubmit && (e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); onSubmit(); }
-          if (onCancel && e.key === 'Escape') { e.preventDefault(); onCancel(); }
+          if (onSubmit && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            onSubmit();
+          }
+          if (onCancel && e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+          }
         }}
         className="block w-full resize-y bg-transparent px-3 py-2 text-sm text-ink outline-none placeholder:text-faint"
       />
@@ -209,10 +306,18 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(issue.description ?? '');
 
-  useEffect(() => { if (!editing) setDraft(issue.description ?? ''); }, [issue.description, editing]);
+  useEffect(() => {
+    if (!editing) setDraft(issue.description ?? '');
+  }, [issue.description, editing]);
 
-  function start() { setDraft(issue.description ?? ''); setEditing(true); }
-  function cancel() { setEditing(false); setDraft(issue.description ?? ''); }
+  function start() {
+    setDraft(issue.description ?? '');
+    setEditing(true);
+  }
+  function cancel() {
+    setEditing(false);
+    setDraft(issue.description ?? '');
+  }
   function save() {
     const next = draft.trim() === '' ? null : draft;
     setEditing(false);
@@ -226,11 +331,24 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
   if (editing) {
     return (
       <div className="space-y-2">
-        <MarkdownEditor value={draft} onChange={setDraft} onSubmit={save} onCancel={cancel} autoFocus rows={8} />
+        <MarkdownEditor
+          value={draft}
+          onChange={setDraft}
+          onSubmit={save}
+          onCancel={cancel}
+          autoFocus
+          rows={8}
+        />
         <div className="flex items-center gap-2">
-          <span className="mr-auto text-xs text-faint">Viết được Markdown · ⌘/Ctrl+Enter để lưu · Esc để huỷ</span>
-          <Button size="sm" variant="ghost" onClick={cancel}>Huỷ</Button>
-          <Button size="sm" onClick={save} loading={patch.isPending}>Lưu</Button>
+          <span className="mr-auto text-xs text-faint">
+            Viết được Markdown · ⌘/Ctrl+Enter để lưu · Esc để huỷ
+          </span>
+          <Button size="sm" variant="ghost" onClick={cancel}>
+            Huỷ
+          </Button>
+          <Button size="sm" onClick={save} loading={patch.isPending}>
+            Lưu
+          </Button>
         </div>
       </div>
     );
@@ -253,7 +371,12 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
       onClick={start}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); start(); } }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          start();
+        }
+      }}
       title="Bấm để sửa mô tả"
       className="cursor-text rounded-md border border-border bg-surface p-3 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
     >

@@ -1,7 +1,24 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DOMAIN_EVENTS, ERROR_CODES, PERMISSIONS, type AutomationEventMeta, type BulkUpdateIssuesResult, type IssueDto } from '@tirapro/types';
-import { rankBetween, initialRanks, RankGapError, issueTypePrefix, type BulkUpdateIssuesInput, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput } from '@tirapro/shared';
+import {
+  DOMAIN_EVENTS,
+  ERROR_CODES,
+  PERMISSIONS,
+  type AutomationEventMeta,
+  type BulkUpdateIssuesResult,
+  type IssueDto,
+} from '@tirapro/types';
+import {
+  rankBetween,
+  initialRanks,
+  RankGapError,
+  issueTypePrefix,
+  type BulkUpdateIssuesInput,
+  type CreateIssueInput,
+  type MoveIssueInput,
+  type TransitionIssueInput,
+  type UpdateIssueInput,
+} from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
@@ -33,7 +50,10 @@ const issueInclude = {
 type IssueRow = Prisma.IssueGetPayload<{ include: typeof issueInclude }>;
 
 /** Dòng issue kèm `project.archivedAt` — dùng cho mọi thao tác ghi để chặn dự án đã lưu trữ. */
-const issueWriteInclude = { ...issueInclude, project: { select: { archivedAt: true } } } satisfies Prisma.IssueInclude;
+const issueWriteInclude = {
+  ...issueInclude,
+  project: { select: { archivedAt: true } },
+} satisfies Prisma.IssueInclude;
 type IssueWriteRow = Prisma.IssueGetPayload<{ include: typeof issueWriteInclude }>;
 
 /** Cột board có giới hạn WIP đang được áp cho một lần chuyển trạng thái. */
@@ -47,12 +67,25 @@ interface WipColumn {
 
 /** Trường issue mà `update()` có thể đổi — dùng để báo `changedFields` cho automation (trigger ISSUE_UPDATED). */
 const TRACKED_FIELDS = [
-  'summary', 'description', 'priorityId', 'assigneeId', 'storyPoints', 'sprintId', 'resolutionId',
-  'typeId', 'dueDate', 'startDate', 'parentId', 'epicId', 'originalEstimate', 'remainingEstimate',
+  'summary',
+  'description',
+  'priorityId',
+  'assigneeId',
+  'storyPoints',
+  'sprintId',
+  'resolutionId',
+  'typeId',
+  'dueDate',
+  'startDate',
+  'parentId',
+  'epicId',
+  'originalEstimate',
+  'remainingEstimate',
 ] as const;
 
 function changedFieldsOf(before: IssueRow, after: IssueRow): string[] {
-  const same = (a: unknown, b: unknown) => (a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b);
+  const same = (a: unknown, b: unknown) =>
+    a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b;
   return TRACKED_FIELDS.filter((f) => !same(before[f], after[f]));
 }
 
@@ -88,7 +121,10 @@ export class IssuesService {
     if (issue.reporterId === userId || issue.createdById === userId) return;
     const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, issue.projectId);
     if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.WORKSPACE_ADMIN)) return;
-    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isSystemAdmin: true } });
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
     if (u?.isSystemAdmin) return;
     throw new ForbiddenAppException('Chỉ người tạo hoặc quản trị mới được sửa Story points/Hạn');
   }
@@ -98,41 +134,95 @@ export class IssuesService {
     userId: string,
     issue: { reporterId: string | null; assigneeId: string | null; createdById: string | null },
   ): void {
-    if (issue.reporterId === userId || issue.assigneeId === userId || issue.createdById === userId) return;
-    throw new ForbiddenAppException('Bạn chỉ được sửa công việc do mình tạo, báo cáo hoặc được giao — hãy nhờ người phụ trách hoặc quản trị viên dự án');
+    if (issue.reporterId === userId || issue.assigneeId === userId || issue.createdById === userId)
+      return;
+    throw new ForbiddenAppException(
+      'Bạn chỉ được sửa công việc do mình tạo, báo cáo hoặc được giao — hãy nhờ người phụ trách hoặc quản trị viên dự án',
+    );
   }
 
   /** Cùng quy ước với PermissionsGuard: system admin, hoặc có `issue:transition` / `issue:transition:own`. */
-  private async assertCanTransition(userId: string, workspaceId: string, projectId: string): Promise<void> {
+  private async assertCanTransition(
+    userId: string,
+    workspaceId: string,
+    projectId: string,
+  ): Promise<void> {
     const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
-    if (perms.has(PERMISSIONS.ISSUE_TRANSITION) || perms.has(`${PERMISSIONS.ISSUE_TRANSITION}:own`)) return;
-    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isSystemAdmin: true } });
+    if (perms.has(PERMISSIONS.ISSUE_TRANSITION) || perms.has(`${PERMISSIONS.ISSUE_TRANSITION}:own`))
+      return;
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
     if (u?.isSystemAdmin) return;
-    throw new ForbiddenAppException('Bạn không có quyền chuyển trạng thái công việc — hãy bỏ phần đổi trạng thái hoặc nhờ quản trị cấp quyền');
+    throw new ForbiddenAppException(
+      'Bạn không có quyền chuyển trạng thái công việc — hãy bỏ phần đổi trạng thái hoặc nhờ quản trị cấp quyền',
+    );
   }
 
   /** Đảm bảo metadata/quan hệ (nếu truyền) thuộc đúng workspace — chống gán/liên kết chéo tenant. */
   private async assertMetaInWorkspace(
     workspaceId: string,
     m: {
-      typeId?: string | null; priorityId?: string | null; sprintId?: string | null;
-      resolutionId?: string | null; parentId?: string | null; epicId?: string | null;
+      typeId?: string | null;
+      priorityId?: string | null;
+      sprintId?: string | null;
+      resolutionId?: string | null;
+      parentId?: string | null;
+      epicId?: string | null;
     },
     db: Prisma.TransactionClient = this.prisma,
   ): Promise<void> {
     const jobs: Array<Promise<{ id: string } | null>> = [];
-    if (m.typeId) jobs.push(db.issueType.findFirst({ where: { id: m.typeId, workspaceId }, select: { id: true } }));
-    if (m.priorityId) jobs.push(db.priority.findFirst({ where: { id: m.priorityId, workspaceId }, select: { id: true } }));
-    if (m.resolutionId) jobs.push(db.resolution.findFirst({ where: { id: m.resolutionId, workspaceId }, select: { id: true } }));
-    if (m.sprintId) jobs.push(db.sprint.findFirst({ where: { id: m.sprintId, deletedAt: null, project: { workspaceId } }, select: { id: true } }));
-    if (m.parentId) jobs.push(db.issue.findFirst({ where: { id: m.parentId, workspaceId, deletedAt: null }, select: { id: true } }));
-    if (m.epicId) jobs.push(db.issue.findFirst({ where: { id: m.epicId, workspaceId, deletedAt: null }, select: { id: true } }));
+    if (m.typeId)
+      jobs.push(
+        db.issueType.findFirst({ where: { id: m.typeId, workspaceId }, select: { id: true } }),
+      );
+    if (m.priorityId)
+      jobs.push(
+        db.priority.findFirst({ where: { id: m.priorityId, workspaceId }, select: { id: true } }),
+      );
+    if (m.resolutionId)
+      jobs.push(
+        db.resolution.findFirst({
+          where: { id: m.resolutionId, workspaceId },
+          select: { id: true },
+        }),
+      );
+    if (m.sprintId)
+      jobs.push(
+        db.sprint.findFirst({
+          where: { id: m.sprintId, deletedAt: null, project: { workspaceId } },
+          select: { id: true },
+        }),
+      );
+    if (m.parentId)
+      jobs.push(
+        db.issue.findFirst({
+          where: { id: m.parentId, workspaceId, deletedAt: null },
+          select: { id: true },
+        }),
+      );
+    if (m.epicId)
+      jobs.push(
+        db.issue.findFirst({
+          where: { id: m.epicId, workspaceId, deletedAt: null },
+          select: { id: true },
+        }),
+      );
     if (jobs.length && (await Promise.all(jobs)).some((r) => r == null)) {
-      throw new NotFoundAppException('Loại công việc, độ ưu tiên, sprint, kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý');
+      throw new NotFoundAppException(
+        'Loại công việc, độ ưu tiên, sprint, kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+      );
     }
   }
 
-  async create(workspaceId: string, userId: string, input: CreateIssueInput, opts?: AutomationEventMeta): Promise<IssueDto> {
+  async create(
+    workspaceId: string,
+    userId: string,
+    input: CreateIssueInput,
+    opts?: AutomationEventMeta,
+  ): Promise<IssueDto> {
     const dto = await this.createCore(null, workspaceId, userId, input);
     this.emitCreated(dto, userId, input.clientId, opts);
     return dto;
@@ -154,7 +244,12 @@ export class IssuesService {
   }
 
   emitCreated(dto: IssueDto, actorId: string, clientId?: string, meta?: AutomationEventMeta): void {
-    this.events.emit(DOMAIN_EVENTS.ISSUE_CREATED, { issue: dto, actorId, clientId, ...withMeta(meta) });
+    this.events.emit(DOMAIN_EVENTS.ISSUE_CREATED, {
+      issue: dto,
+      actorId,
+      clientId,
+      ...withMeta(meta),
+    });
   }
 
   private async createCore(
@@ -167,14 +262,28 @@ export class IssuesService {
     const db: Prisma.TransactionClient = outerTx ?? this.prisma;
     const project = await db.project.findFirst({
       where: { id: input.projectId, workspaceId, deletedAt: null },
-      select: { id: true, key: true, defaultWorkflowId: true, leadId: true, defaultAssigneeMode: true, archivedAt: true },
+      select: {
+        id: true,
+        key: true,
+        defaultWorkflowId: true,
+        leadId: true,
+        defaultAssigneeMode: true,
+        archivedAt: true,
+      },
     });
     if (!project) throw new NotFoundAppException('Dự án');
     assertNotArchived(project.archivedAt);
-    await this.assertMetaInWorkspace(workspaceId, {
-      typeId: input.typeId, priorityId: input.priorityId, sprintId: input.sprintId,
-      parentId: input.parentId, epicId: input.epicId,
-    }, db);
+    await this.assertMetaInWorkspace(
+      workspaceId,
+      {
+        typeId: input.typeId,
+        priorityId: input.priorityId,
+        sprintId: input.sprintId,
+        parentId: input.parentId,
+        epicId: input.epicId,
+      },
+      db,
+    );
 
     // Status: input hoặc trạng thái initial của workflow project
     let statusId = input.statusId;
@@ -183,14 +292,18 @@ export class IssuesService {
         where: { workflowId: project.defaultWorkflowId ?? '', isInitial: true },
         select: { id: true },
       });
-      if (!initial) throw new BusinessRuleException('Project chưa cấu hình workflow/trạng thái khởi đầu');
+      if (!initial)
+        throw new BusinessRuleException('Project chưa cấu hình workflow/trạng thái khởi đầu');
       statusId = initial.id;
     }
 
     // Priority mặc định của workspace nếu không truyền
     let priorityId = input.priorityId ?? undefined;
     if (!priorityId) {
-      const def = await db.priority.findFirst({ where: { workspaceId, isDefault: true }, select: { id: true } });
+      const def = await db.priority.findFirst({
+        where: { workspaceId, isDefault: true },
+        select: { id: true },
+      });
       priorityId = def?.id;
     }
 
@@ -220,8 +333,9 @@ export class IssuesService {
         where: { id: input.typeId },
         select: { key: true, name: true },
       });
-      // allow-deleted: đếm cả issue đã xoá để số thứ tự theo loại không sinh trùng key
-      const typeSeq = (await tx.issue.count({ where: { projectId: project.id, typeId: input.typeId } })) + 1;
+      const typeSeq =
+        // allow-deleted: đếm cả issue đã xoá để số thứ tự theo loại không sinh trùng key
+        (await tx.issue.count({ where: { projectId: project.id, typeId: input.typeId } })) + 1;
       const key = `${project.key}-${issueTypePrefix(type?.key ?? null, type?.name ?? '')}-${typeSeq}`;
       const created = await tx.issue.create({
         data: {
@@ -251,8 +365,12 @@ export class IssuesService {
       if (input.labelIds?.length) {
         // Nhãn phải thuộc đúng dự án (⇒ đúng workspace) — chống gắn nhãn chéo tenant/chéo dự án.
         const ids = [...new Set(input.labelIds)];
-        const valid = await tx.label.findMany({ where: { id: { in: ids }, projectId: project.id }, select: { id: true } });
-        if (valid.length !== ids.length) throw new NotFoundAppException('Nhãn không thuộc dự án này');
+        const valid = await tx.label.findMany({
+          where: { id: { in: ids }, projectId: project.id },
+          select: { id: true },
+        });
+        if (valid.length !== ids.length)
+          throw new NotFoundAppException('Nhãn không thuộc dự án này');
         await tx.issueLabel.createMany({
           data: ids.map((labelId) => ({ issueId: created.id, labelId })),
           skipDuplicates: true,
@@ -261,9 +379,14 @@ export class IssuesService {
       // History: trạng thái khởi tạo
       await tx.issueHistory.create({
         data: {
-          issueId: created.id, projectId: project.id, sprintId: created.sprintId,
-          field: 'STATUS', newValue: created.status.name, newCategory: created.status.category,
-          actorId: userId, occurredAt: new Date(),
+          issueId: created.id,
+          projectId: project.id,
+          sprintId: created.sprintId,
+          field: 'STATUS',
+          newValue: created.status.name,
+          newCategory: created.status.category,
+          actorId: userId,
+          occurredAt: new Date(),
         },
       });
       return created;
@@ -272,7 +395,12 @@ export class IssuesService {
     return this.toDto(issue);
   }
 
-  async list(workspaceId: string, filter: IssueListFilter, cursor: string | undefined, limit: number): Promise<PageResult<IssueDto>> {
+  async list(
+    workspaceId: string,
+    filter: IssueListFilter,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<PageResult<IssueDto>> {
     const where: Prisma.IssueWhereInput = {
       workspaceId,
       deletedAt: null,
@@ -290,7 +418,11 @@ export class IssuesService {
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
-    return cursorPage(rows.map((r) => this.toDto(r)), limit, (i) => i.id);
+    return cursorPage(
+      rows.map((r) => this.toDto(r)),
+      limit,
+      (i) => i.id,
+    );
   }
 
   /**
@@ -333,7 +465,7 @@ export class IssuesService {
     const finalOrder: Prisma.IssueOrderByWithRelationInput[] = orderBy.length
       ? [...orderBy, { id: 'asc' }]
       : [{ updatedAt: 'desc' }, { id: 'asc' }];
-// allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`); queryOrdered chỉ nhận scope đó
+    // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`); queryOrdered chỉ nhận scope đó
     const rows = await this.prisma.issue.findMany({
       where,
       include: issueInclude,
@@ -341,11 +473,18 @@ export class IssuesService {
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
-    return cursorPage(rows.map((r) => this.toDto(r)), limit, (i) => i.id);
+    return cursorPage(
+      rows.map((r) => this.toDto(r)),
+      limit,
+      (i) => i.id,
+    );
   }
 
   async getByKey(workspaceId: string, key: string): Promise<IssueDto> {
-    const issue = await this.prisma.issue.findFirst({ where: { workspaceId, key, deletedAt: null }, include: issueInclude });
+    const issue = await this.prisma.issue.findFirst({
+      where: { workspaceId, key, deletedAt: null },
+      include: issueInclude,
+    });
     if (!issue) throw new NotFoundAppException('Công việc');
     return this.toDto(issue);
   }
@@ -356,18 +495,30 @@ export class IssuesService {
    * quy tắc đã do quản trị tạo).
    */
   async update(
-    workspaceId: string, userId: string, id: string, input: UpdateIssueInput, opts?: AutomationEventMeta, ownOnly?: boolean,
+    workspaceId: string,
+    userId: string,
+    id: string,
+    input: UpdateIssueInput,
+    opts?: AutomationEventMeta,
+    ownOnly?: boolean,
   ): Promise<IssueDto> {
     const current = await this.requireIssue(workspaceId, id);
     if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, {
-      typeId: input.typeId, priorityId: input.priorityId, sprintId: input.sprintId,
-      resolutionId: input.resolutionId, parentId: input.parentId, epicId: input.epicId,
+      typeId: input.typeId,
+      priorityId: input.priorityId,
+      sprintId: input.sprintId,
+      resolutionId: input.resolutionId,
+      parentId: input.parentId,
+      epicId: input.epicId,
     });
 
     // Field-level: Story points / Hạn chỉ người tạo hoặc admin sửa được.
-    if ((input.storyPoints !== undefined || input.dueDate !== undefined) && opts?.automationDepth === undefined) {
+    if (
+      (input.storyPoints !== undefined || input.dueDate !== undefined) &&
+      opts?.automationDepth === undefined
+    ) {
       await this.assertCanEditRestrictedFields(userId, workspaceId, current);
     }
 
@@ -381,11 +532,17 @@ export class IssuesService {
     if (input.resolutionId !== undefined) data.resolutionId = input.resolutionId ?? null;
     if (input.typeId !== undefined && input.typeId) data.typeId = input.typeId;
     if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
-    if (input.startDate !== undefined) data.startDate = input.startDate ? new Date(input.startDate) : null;
-    if (input.originalEstimate !== undefined) data.originalEstimate = input.originalEstimate ?? null;
-    if (input.remainingEstimate !== undefined) data.remainingEstimate = input.remainingEstimate ?? null;
+    if (input.startDate !== undefined)
+      data.startDate = input.startDate ? new Date(input.startDate) : null;
+    if (input.originalEstimate !== undefined)
+      data.originalEstimate = input.originalEstimate ?? null;
+    if (input.remainingEstimate !== undefined)
+      data.remainingEstimate = input.remainingEstimate ?? null;
     if (input.parentId !== undefined) {
-      if (input.parentId === id) throw new BusinessRuleException('Một công việc không thể là việc cha của chính nó — hãy chọn một công việc khác làm việc cha');
+      if (input.parentId === id)
+        throw new BusinessRuleException(
+          'Một công việc không thể là việc cha của chính nó — hãy chọn một công việc khác làm việc cha',
+        );
       if (input.parentId) await this.assertNoParentCycle(workspaceId, id, input.parentId);
       data.parentId = input.parentId ?? null;
     }
@@ -397,7 +554,10 @@ export class IssuesService {
     });
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
-      issue: dto, actorId: userId, changedFields: changedFieldsOf(current, updated), ...withMeta(opts),
+      issue: dto,
+      actorId: userId,
+      changedFields: changedFieldsOf(current, updated),
+      ...withMeta(opts),
     });
     return dto;
   }
@@ -408,7 +568,12 @@ export class IssuesService {
    * Item không thuộc dự án/không gian làm việc, hoặc chuyển trạng thái sai workflow → lỗi cho cả yêu cầu, chưa ghi gì.
    * Sự kiện chỉ phát sau khi commit.
    */
-  async bulkUpdate(workspaceId: string, userId: string, input: BulkUpdateIssuesInput, ownOnly?: boolean): Promise<BulkUpdateIssuesResult> {
+  async bulkUpdate(
+    workspaceId: string,
+    userId: string,
+    input: BulkUpdateIssuesInput,
+    ownOnly?: boolean,
+  ): Promise<BulkUpdateIssuesResult> {
     const { projectId, items, patch } = input;
     // Đổi trạng thái chỉ đi qua quyền chuyển trạng thái (giống POST :id/transition), không đi chung quyền sửa.
     if (patch.statusId) await this.assertCanTransition(userId, workspaceId, projectId);
@@ -420,19 +585,25 @@ export class IssuesService {
     if (rows.length !== items.length) throw new NotFoundAppException('Công việc');
     const byId = new Map(rows.map((r) => [r.id, r]));
     if (ownOnly) for (const r of rows) this.assertOwnsIssue(userId, r); // một việc của người khác → 403 cả lô, chưa ghi gì
-    await this.assertMetaInWorkspace(workspaceId, { priorityId: patch.priorityId, sprintId: patch.sprintId });
+    await this.assertMetaInWorkspace(workspaceId, {
+      priorityId: patch.priorityId,
+      sprintId: patch.sprintId,
+    });
 
     // Chuyển trạng thái: kiểm tra workflow đúng như transition() trước khi ghi bất cứ thứ gì.
     let toDone = false;
     if (patch.statusId) {
       const workflowId = await this.workflowIdOf(projectId);
       for (const r of rows) {
-        if (r.statusId !== patch.statusId) await this.assertTransitionAllowed(workflowId, r.statusId, patch.statusId);
+        if (r.statusId !== patch.statusId)
+          await this.assertTransitionAllowed(workflowId, r.statusId, patch.statusId);
       }
       toDone = (await this.statusCategory(patch.statusId)) === 'DONE';
     }
     // Giới hạn WIP của cột đích (nếu web gửi boardId); kiểm lại trong transaction sau khi khoá cột.
-    const wip = patch.statusId ? await this.resolveWipColumn(input.boardId, projectId, patch.statusId) : null;
+    const wip = patch.statusId
+      ? await this.resolveWipColumn(input.boardId, projectId, patch.statusId)
+      : null;
 
     const conflicts: BulkUpdateIssuesResult['conflicts'] = [];
     const changed: Array<{ before: IssueRow; after: IssueRow }> = [];
@@ -444,7 +615,14 @@ export class IssuesService {
           const b = byId.get(i.id)!;
           return b.version === i.version && !wip.statusIds.includes(b.statusId);
         }).length;
-        if (incoming > 0) await this.enforceWip(tx, wip, { userId, workspaceId, projectId, incoming, force: input.force });
+        if (incoming > 0)
+          await this.enforceWip(tx, wip, {
+            userId,
+            workspaceId,
+            projectId,
+            incoming,
+            force: input.force,
+          });
       }
       for (const item of items) {
         const before = byId.get(item.id)!;
@@ -460,9 +638,12 @@ export class IssuesService {
           data.resolutionId = toDone ? undefined : null;
           data.resolvedAt = toDone ? new Date() : null;
         }
-        if (patch.assigneeId !== undefined && patch.assigneeId !== before.assigneeId) data.assigneeId = patch.assigneeId;
-        if (patch.priorityId !== undefined && patch.priorityId !== before.priorityId) data.priorityId = patch.priorityId;
-        if (patch.sprintId !== undefined && patch.sprintId !== before.sprintId) data.sprintId = patch.sprintId;
+        if (patch.assigneeId !== undefined && patch.assigneeId !== before.assigneeId)
+          data.assigneeId = patch.assigneeId;
+        if (patch.priorityId !== undefined && patch.priorityId !== before.priorityId)
+          data.priorityId = patch.priorityId;
+        if (patch.sprintId !== undefined && patch.sprintId !== before.sprintId)
+          data.sprintId = patch.sprintId;
         if (Object.keys(data).length === 0) {
           result.push(before); // không có gì khác đi — coi như đã đạt, không tăng version
           continue;
@@ -484,15 +665,29 @@ export class IssuesService {
     for (const { before, after } of changed) {
       const dto = this.toDto(after);
       if (before.statusId !== after.statusId) {
-        this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, { issue: dto, actorId: userId, fromStatusId: before.statusId });
+        this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, {
+          issue: dto,
+          actorId: userId,
+          fromStatusId: before.statusId,
+        });
       } else {
-        this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId: userId, changedFields: changedFieldsOf(before, after) });
+        this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+          issue: dto,
+          actorId: userId,
+          changedFields: changedFieldsOf(before, after),
+        });
       }
     }
     return { updated: result.map((r) => this.toDto(r)), conflicts };
   }
 
-  async transition(workspaceId: string, userId: string, id: string, input: TransitionIssueInput, opts?: AutomationEventMeta): Promise<IssueDto> {
+  async transition(
+    workspaceId: string,
+    userId: string,
+    id: string,
+    input: TransitionIssueInput,
+    opts?: AutomationEventMeta,
+  ): Promise<IssueDto> {
     const current = await this.requireIssue(workspaceId, id);
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, { resolutionId: input.resolutionId });
@@ -503,10 +698,22 @@ export class IssuesService {
     await this.assertTransitionAllowed(workflowId, current.statusId, input.toStatusId);
 
     const isDone = (await this.statusCategory(input.toStatusId)) === 'DONE';
-    const wip = await this.resolveWipColumn(input.boardId, current.projectId, input.toStatusId, current.statusId);
+    const wip = await this.resolveWipColumn(
+      input.boardId,
+      current.projectId,
+      input.toStatusId,
+      current.statusId,
+    );
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (wip) await this.enforceWip(tx, wip, { userId, workspaceId, projectId: current.projectId, incoming: 1, force: input.force });
+      if (wip)
+        await this.enforceWip(tx, wip, {
+          userId,
+          workspaceId,
+          projectId: current.projectId,
+          incoming: 1,
+          force: input.force,
+        });
       const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
         statusId: input.toStatusId,
         updatedById: userId,
@@ -517,27 +724,52 @@ export class IssuesService {
       return row;
     });
     const dto = this.toDto(updated);
-    this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, { issue: dto, actorId: userId, fromStatusId: current.statusId, ...withMeta(opts) });
+    this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, {
+      issue: dto,
+      actorId: userId,
+      fromStatusId: current.statusId,
+      ...withMeta(opts),
+    });
     return dto;
   }
 
-  async move(workspaceId: string, userId: string, id: string, input: MoveIssueInput): Promise<IssueDto> {
+  async move(
+    workspaceId: string,
+    userId: string,
+    id: string,
+    input: MoveIssueInput,
+  ): Promise<IssueDto> {
     const current = await this.requireIssue(workspaceId, id);
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, { sprintId: input.sprintId });
 
     const rank = await this.resolveRank(current.projectId, this.prisma, null, id, async () => ({
       prev: input.afterId ? await this.rankOf(workspaceId, current.projectId, input.afterId) : null,
-      next: input.beforeId ? await this.rankOf(workspaceId, current.projectId, input.beforeId) : null,
+      next: input.beforeId
+        ? await this.rankOf(workspaceId, current.projectId, input.beforeId)
+        : null,
     }));
 
     // Chỉ kiểm WIP khi thật sự đổi sang trạng thái khác (kéo trong cùng cột/xếp lại thứ tự thì không chiếm thêm chỗ).
-    const wip = input.statusId && input.statusId !== current.statusId
-      ? await this.resolveWipColumn(input.boardId, current.projectId, input.statusId, current.statusId)
-      : null;
+    const wip =
+      input.statusId && input.statusId !== current.statusId
+        ? await this.resolveWipColumn(
+            input.boardId,
+            current.projectId,
+            input.statusId,
+            current.statusId,
+          )
+        : null;
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (wip) await this.enforceWip(tx, wip, { userId, workspaceId, projectId: current.projectId, incoming: 1, force: input.force });
+      if (wip)
+        await this.enforceWip(tx, wip, {
+          userId,
+          workspaceId,
+          projectId: current.projectId,
+          incoming: 1,
+          force: input.force,
+        });
       const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
         rank,
         statusId: input.statusId ?? current.statusId,
@@ -545,13 +777,20 @@ export class IssuesService {
         updatedById: userId,
       });
       // Kéo sang cột/trạng thái khác cũng là đổi trạng thái: ghi lịch sử để CFD/burndown không hụt.
-      if (row.statusId !== current.statusId) await this.recordStatusChange(tx, userId, current, row);
+      if (row.statusId !== current.statusId)
+        await this.recordStatusChange(tx, userId, current, row);
       return row;
     });
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.ISSUE_MOVED, {
-      issueId: id, projectId: updated.projectId, fromStatusId: current.statusId,
-      toStatusId: updated.statusId, rank, sprintId: updated.sprintId, version: updated.version, actorId: userId,
+      issueId: id,
+      projectId: updated.projectId,
+      fromStatusId: current.statusId,
+      toStatusId: updated.statusId,
+      rank,
+      sprintId: updated.sprintId,
+      version: updated.version,
+      actorId: userId,
     });
     return dto;
   }
@@ -565,14 +804,21 @@ export class IssuesService {
       data: { deletedAt: new Date(), updatedById: userId, version: { increment: 1 } },
     });
     if (count === 0) throw new NotFoundAppException('Công việc');
-    this.events.emit(DOMAIN_EVENTS.ISSUE_DELETED, { issueId: id, projectId: current.projectId, actorId: userId });
+    this.events.emit(DOMAIN_EVENTS.ISSUE_DELETED, {
+      issueId: id,
+      projectId: current.projectId,
+      actorId: userId,
+    });
     return { success: true };
   }
 
   // ---------- helpers ----------
   /** Issue dùng cho thao tác GHI: dự án đã lưu trữ thì từ chối ngay. */
   private async requireIssue(workspaceId: string, id: string): Promise<IssueWriteRow> {
-    const issue = await this.prisma.issue.findFirst({ where: { id, workspaceId, deletedAt: null }, include: issueWriteInclude });
+    const issue = await this.prisma.issue.findFirst({
+      where: { id, workspaceId, deletedAt: null },
+      include: issueWriteInclude,
+    });
     if (!issue) throw new NotFoundAppException('Công việc');
     assertNotArchived(issue.project.archivedAt);
     return issue;
@@ -591,13 +837,29 @@ export class IssuesService {
   ): Promise<WipColumn | null> {
     if (!boardId) return null;
     const col = await this.prisma.boardColumn.findFirst({
-      where: { boardId, board: { projectId, deletedAt: null }, statuses: { some: { statusId: toStatusId } } },
-      select: { id: true, name: true, wipLimit: true, board: { select: { type: true } }, statuses: { select: { statusId: true } } },
+      where: {
+        boardId,
+        board: { projectId, deletedAt: null },
+        statuses: { some: { statusId: toStatusId } },
+      },
+      select: {
+        id: true,
+        name: true,
+        wipLimit: true,
+        board: { select: { type: true } },
+        statuses: { select: { statusId: true } },
+      },
     });
     if (!col || col.wipLimit == null) return null;
     const statusIds = col.statuses.map((s) => s.statusId);
     if (fromStatusId && statusIds.includes(fromStatusId)) return null;
-    return { id: col.id, name: col.name, wipLimit: col.wipLimit, statusIds, boardType: col.board.type };
+    return {
+      id: col.id,
+      name: col.name,
+      wipLimit: col.wipLimit,
+      statusIds,
+      boardType: col.board.type,
+    };
   }
 
   /**
@@ -609,17 +871,31 @@ export class IssuesService {
   private async enforceWip(
     tx: Prisma.TransactionClient,
     wip: WipColumn,
-    ctx: { userId: string; workspaceId: string; projectId: string; incoming: number; force?: boolean },
+    ctx: {
+      userId: string;
+      workspaceId: string;
+      projectId: string;
+      incoming: number;
+      force?: boolean;
+    },
   ): Promise<void> {
     await tx.$queryRaw`SELECT "id" FROM "BoardColumn" WHERE "id" = ${wip.id} FOR UPDATE`;
     let sprintFilter: { sprintId: string } | Record<string, never> = {};
     if (wip.boardType === 'SCRUM') {
-      const active = await tx.sprint.findFirst({ where: { projectId: ctx.projectId, state: 'ACTIVE', deletedAt: null }, select: { id: true } });
+      const active = await tx.sprint.findFirst({
+        where: { projectId: ctx.projectId, state: 'ACTIVE', deletedAt: null },
+        select: { id: true },
+      });
       if (!active) return;
       sprintFilter = { sprintId: active.id };
     }
     const current = await tx.issue.count({
-      where: { projectId: ctx.projectId, deletedAt: null, statusId: { in: wip.statusIds }, ...sprintFilter },
+      where: {
+        projectId: ctx.projectId,
+        deletedAt: null,
+        statusId: { in: wip.statusIds },
+        ...sprintFilter,
+      },
     });
     if (current + ctx.incoming <= wip.wipLimit) return;
     if (!ctx.force) {
@@ -634,21 +910,36 @@ export class IssuesService {
   }
 
   /** "Vẫn chuyển" qua giới hạn WIP chỉ dành cho quản trị dự án (project/workspace admin, system admin). */
-  private async assertCanForceWip(userId: string, workspaceId: string, projectId: string): Promise<void> {
+  private async assertCanForceWip(
+    userId: string,
+    workspaceId: string,
+    projectId: string,
+  ): Promise<void> {
     const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
     if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.WORKSPACE_ADMIN)) return;
-    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isSystemAdmin: true } });
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
     if (u?.isSystemAdmin) return;
-    throw new ForbiddenAppException('Cột đã đạt giới hạn WIP — chỉ quản trị dự án mới được chọn "Vẫn chuyển"; hãy hoàn thành bớt việc trong cột trước');
+    throw new ForbiddenAppException(
+      'Cột đã đạt giới hạn WIP — chỉ quản trị dự án mới được chọn "Vẫn chuyển"; hãy hoàn thành bớt việc trong cột trước',
+    );
   }
 
   /** Chặn vòng lặp cây: đi ngược từ parent mới lên gốc, không được gặp lại chính issue con. */
-  private async assertNoParentCycle(workspaceId: string, childId: string, newParentId: string): Promise<void> {
+  private async assertNoParentCycle(
+    workspaceId: string,
+    childId: string,
+    newParentId: string,
+  ): Promise<void> {
     let cur: string | null = newParentId;
     let depth = 0;
     while (cur && depth < 200) {
       if (cur === childId) {
-        throw new BusinessRuleException('Không thể chọn việc con (hoặc việc cháu) làm việc cha vì sẽ tạo vòng lặp — hãy chọn một công việc ngoài nhánh này');
+        throw new BusinessRuleException(
+          'Không thể chọn việc con (hoặc việc cháu) làm việc cha vì sẽ tạo vòng lặp — hãy chọn một công việc ngoài nhánh này',
+        );
       }
       const p: { parentId: string | null } | null = await this.prisma.issue.findFirst({
         where: { id: cur, workspaceId, deletedAt: null },
@@ -660,12 +951,19 @@ export class IssuesService {
   }
 
   private async workflowIdOf(projectId: string): Promise<string> {
-    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { defaultWorkflowId: true } });
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { defaultWorkflowId: true },
+    });
     return project?.defaultWorkflowId ?? '';
   }
 
   /** Chỉ cho chuyển sang `toStatusId` nếu workflow có transition từ trạng thái hiện tại (hoặc từ "bất kỳ"). */
-  private async assertTransitionAllowed(workflowId: string, fromStatusId: string, toStatusId: string): Promise<void> {
+  private async assertTransitionAllowed(
+    workflowId: string,
+    fromStatusId: string,
+    toStatusId: string,
+  ): Promise<void> {
     const allowed = await this.prisma.workflowTransition.findFirst({
       where: { workflowId, toStatusId, OR: [{ fromStatusId }, { fromStatusId: null }] },
       select: { id: true },
@@ -674,16 +972,29 @@ export class IssuesService {
   }
 
   private async statusCategory(statusId: string) {
-    return (await this.prisma.status.findUnique({ where: { id: statusId }, select: { category: true } }))?.category;
+    return (
+      await this.prisma.status.findUnique({ where: { id: statusId }, select: { category: true } })
+    )?.category;
   }
 
-  private async recordStatusChange(tx: Prisma.TransactionClient, userId: string, before: IssueRow, after: IssueRow) {
+  private async recordStatusChange(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    before: IssueRow,
+    after: IssueRow,
+  ) {
     await tx.issueHistory.create({
       data: {
-        issueId: after.id, projectId: after.projectId, sprintId: after.sprintId,
-        field: 'STATUS', oldValue: before.status.name, newValue: after.status.name,
-        oldCategory: before.status.category, newCategory: after.status.category,
-        actorId: userId, occurredAt: new Date(),
+        issueId: after.id,
+        projectId: after.projectId,
+        sprintId: after.sprintId,
+        field: 'STATUS',
+        oldValue: before.status.name,
+        newValue: after.status.name,
+        oldCategory: before.status.category,
+        newCategory: after.status.category,
+        actorId: userId,
+        occurredAt: new Date(),
       },
     });
   }
@@ -701,24 +1012,41 @@ export class IssuesService {
       data: { ...data, version: { increment: 1 } },
     });
     if (count === 0) {
-      const cur = await tx.issue.findFirst({ where: { id, workspaceId, deletedAt: null }, select: { version: true } });
+      const cur = await tx.issue.findFirst({
+        where: { id, workspaceId, deletedAt: null },
+        select: { version: true },
+      });
       if (!cur) throw new NotFoundAppException('Công việc');
-      throw new VersionConflictException('Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại', { version: cur.version });
+      throw new VersionConflictException(
+        'Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại',
+        { version: cur.version },
+      );
     }
-// allow-deleted: dòng vừa được updateMany (có deletedAt: null) trong cùng transaction — đọc lại chính nó
+    // allow-deleted: dòng vừa được updateMany (có deletedAt: null) trong cùng transaction — đọc lại chính nó
     return tx.issue.findFirstOrThrow({ where: { id }, include: issueInclude });
   }
 
   private assertVersion(currentVersion: number, inputVersion: number) {
     if (currentVersion !== inputVersion) {
-      throw new VersionConflictException('Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại', { version: currentVersion });
+      throw new VersionConflictException(
+        'Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại',
+        { version: currentVersion },
+      );
     }
   }
 
   /** Rank của issue làm mốc — phải còn sống và cùng workspace/project, nếu không thì báo lỗi thay vì lặng lẽ xếp xuống cuối. */
   private async rankOf(workspaceId: string, projectId: string, id: string): Promise<string> {
-    const r = await this.prisma.issue.findFirst({ where: { id, workspaceId, projectId, deletedAt: null }, select: { rank: true } });
-    if (!r) throw new AppException(ERROR_CODES.NOT_FOUND, 'Công việc làm mốc không tồn tại — hãy tải lại trang', HttpStatus.NOT_FOUND);
+    const r = await this.prisma.issue.findFirst({
+      where: { id, workspaceId, projectId, deletedAt: null },
+      select: { rank: true },
+    });
+    if (!r)
+      throw new AppException(
+        ERROR_CODES.NOT_FOUND,
+        'Công việc làm mốc không tồn tại — hãy tải lại trang',
+        HttpStatus.NOT_FOUND,
+      );
     return r.rank;
   }
 
@@ -745,7 +1073,9 @@ export class IssuesService {
       return rankBetween(again.prev, again.next);
     } catch (e) {
       if (!(e instanceof RankGapError)) throw e;
-      throw new BusinessRuleException('Không xác định được vị trí thả — hãy tải lại trang rồi thử kéo thả lại');
+      throw new BusinessRuleException(
+        'Không xác định được vị trí thả — hãy tải lại trang rồi thử kéo thả lại',
+      );
     }
   }
 
@@ -763,9 +1093,17 @@ export class IssuesService {
     movedId: string | null,
   ): Promise<void> {
     const body = async (tx: Prisma.TransactionClient) => {
-      await tx.project.update({ where: { id: projectId }, data: { updatedAt: new Date() }, select: { id: true } });
-// allow-deleted: đánh lại rank cho mọi issue của dự án kể cả đã xoá mềm để thứ tự không trùng khi khôi phục
-      const rows = await tx.issue.findMany({ where: { projectId }, orderBy: [{ rank: 'asc' }, { id: 'asc' }], select: { id: true } });
+      await tx.project.update({
+        where: { id: projectId },
+        data: { updatedAt: new Date() },
+        select: { id: true },
+      });
+      // allow-deleted: đánh lại rank cho mọi issue của dự án kể cả đã xoá mềm để thứ tự không trùng khi khôi phục
+      const rows = await tx.issue.findMany({
+        where: { projectId },
+        orderBy: [{ rank: 'asc' }, { id: 'asc' }],
+        select: { id: true },
+      });
       if (!rows.length) return;
       const ids = rows.map((r) => r.id);
       const ranks = initialRanks(rows.length);
@@ -791,13 +1129,44 @@ export class IssuesService {
     }
   }
 
-  private async recordChanges(tx: Prisma.TransactionClient, userId: string, before: IssueRow, after: IssueRow) {
+  private async recordChanges(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    before: IssueRow,
+    after: IssueRow,
+  ) {
     const rows: Prisma.IssueHistoryCreateManyInput[] = [];
-    const base = { issueId: after.id, projectId: after.projectId, sprintId: after.sprintId, actorId: userId, occurredAt: new Date() };
-    if (before.assigneeId !== after.assigneeId) rows.push({ ...base, field: 'ASSIGNEE', oldValue: before.assigneeId, newValue: after.assigneeId });
-    if (before.priorityId !== after.priorityId) rows.push({ ...base, field: 'PRIORITY', oldValue: before.priority?.name, newValue: after.priority?.name });
-    if (before.storyPoints !== after.storyPoints) rows.push({ ...base, field: 'STORY_POINTS', oldValue: String(before.storyPoints ?? ''), newValue: String(after.storyPoints ?? ''), pointsDelta: (after.storyPoints ?? 0) - (before.storyPoints ?? 0) });
-    if (before.sprintId !== after.sprintId) rows.push({ ...base, field: 'SPRINT', oldValue: before.sprintId, newValue: after.sprintId });
+    const base = {
+      issueId: after.id,
+      projectId: after.projectId,
+      sprintId: after.sprintId,
+      actorId: userId,
+      occurredAt: new Date(),
+    };
+    if (before.assigneeId !== after.assigneeId)
+      rows.push({
+        ...base,
+        field: 'ASSIGNEE',
+        oldValue: before.assigneeId,
+        newValue: after.assigneeId,
+      });
+    if (before.priorityId !== after.priorityId)
+      rows.push({
+        ...base,
+        field: 'PRIORITY',
+        oldValue: before.priority?.name,
+        newValue: after.priority?.name,
+      });
+    if (before.storyPoints !== after.storyPoints)
+      rows.push({
+        ...base,
+        field: 'STORY_POINTS',
+        oldValue: String(before.storyPoints ?? ''),
+        newValue: String(after.storyPoints ?? ''),
+        pointsDelta: (after.storyPoints ?? 0) - (before.storyPoints ?? 0),
+      });
+    if (before.sprintId !== after.sprintId)
+      rows.push({ ...base, field: 'SPRINT', oldValue: before.sprintId, newValue: after.sprintId });
     if (rows.length) await tx.issueHistory.createMany({ data: rows });
   }
 
@@ -806,9 +1175,34 @@ export class IssuesService {
       id: i.id,
       key: i.key,
       summary: i.summary,
-      type: { id: i.type.id, name: i.type.name, key: i.type.key, iconUrl: i.type.iconUrl, color: i.type.color, hierarchyLevel: i.type.hierarchyLevel, isSubtask: i.type.isSubtask },
-      status: { id: i.status.id, workflowId: i.status.workflowId, name: i.status.name, category: i.status.category, color: i.status.color, order: i.status.order, isInitial: i.status.isInitial },
-      priority: i.priority ? { id: i.priority.id, name: i.priority.name, iconKey: i.priority.iconKey, color: i.priority.color, rank: i.priority.rank, isDefault: i.priority.isDefault } : null,
+      type: {
+        id: i.type.id,
+        name: i.type.name,
+        key: i.type.key,
+        iconUrl: i.type.iconUrl,
+        color: i.type.color,
+        hierarchyLevel: i.type.hierarchyLevel,
+        isSubtask: i.type.isSubtask,
+      },
+      status: {
+        id: i.status.id,
+        workflowId: i.status.workflowId,
+        name: i.status.name,
+        category: i.status.category,
+        color: i.status.color,
+        order: i.status.order,
+        isInitial: i.status.isInitial,
+      },
+      priority: i.priority
+        ? {
+            id: i.priority.id,
+            name: i.priority.name,
+            iconKey: i.priority.iconKey,
+            color: i.priority.color,
+            rank: i.priority.rank,
+            isDefault: i.priority.isDefault,
+          }
+        : null,
       assignee: i.assignee ? toUserDto(i.assignee) : null,
       workspaceId: i.workspaceId,
       projectId: i.projectId,
@@ -827,15 +1221,36 @@ export class IssuesService {
       timeSpent: i.timeSpent,
       dueDate: iso(i.dueDate),
       startDate: iso(i.startDate),
-      resolution: i.resolution ? { id: i.resolution.id, name: i.resolution.name, description: i.resolution.description, rank: i.resolution.rank } : null,
+      resolution: i.resolution
+        ? {
+            id: i.resolution.id,
+            name: i.resolution.name,
+            description: i.resolution.description,
+            rank: i.resolution.rank,
+          }
+        : null,
       resolvedAt: iso(i.resolvedAt),
-      severity: i.severity ? { id: i.severity.id, name: i.severity.name, description: i.severity.description, color: i.severity.color, rank: i.severity.rank, isDefault: i.severity.isDefault } : null,
+      severity: i.severity
+        ? {
+            id: i.severity.id,
+            name: i.severity.name,
+            description: i.severity.description,
+            color: i.severity.color,
+            rank: i.severity.rank,
+            isDefault: i.severity.isDefault,
+          }
+        : null,
       triageState: i.triageState,
       triageSnoozeUntil: iso(i.triageSnoozeUntil),
       occurrenceCount: i.occurrenceCount,
       rank: i.rank,
       version: i.version,
-      labels: i.labels.map((l) => ({ id: l.label.id, projectId: l.label.projectId, name: l.label.name, color: l.label.color })),
+      labels: i.labels.map((l) => ({
+        id: l.label.id,
+        projectId: l.label.projectId,
+        name: l.label.name,
+        color: l.label.color,
+      })),
       createdAt: i.createdAt.toISOString(),
       updatedAt: i.updatedAt.toISOString(),
     };

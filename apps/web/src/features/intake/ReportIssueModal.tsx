@@ -61,14 +61,21 @@ export function ReportIssueModal({
   return (
     <Dialog
       open
-      onOpenChange={(o) => { if (!o) onClose(); }}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
       title="Báo lỗi / sự cố"
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>
             Hủy
           </Button>
-          <Button type="submit" form="report-issue-form" loading={report.isPending} disabled={!canSubmit}>
+          <Button
+            type="submit"
+            form="report-issue-form"
+            loading={report.isPending}
+            disabled={!canSubmit}
+          >
             Gửi
           </Button>
         </>

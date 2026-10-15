@@ -57,7 +57,9 @@ function fieldIcon(field: string): LucideIcon {
 function ValueChip({ children, color }: { children: ReactNode; color?: string }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 text-[0.8125rem] font-medium text-ink-strong">
-      {color && <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} aria-hidden />}
+      {color && (
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} aria-hidden />
+      )}
       {children}
     </span>
   );
@@ -103,11 +105,7 @@ function actionPhrase(a: ProjectActivityItem): ReactNode {
           </>
         );
       }
-      return (
-        <>
-          đã bỏ giao{oldV ? <span className="text-muted"> (trước là {oldV})</span> : null}
-        </>
-      );
+      return <>đã bỏ giao{oldV ? <span className="text-muted"> (trước là {oldV})</span> : null}</>;
     case 'PRIORITY':
       return (
         <>
@@ -129,11 +127,7 @@ function actionPhrase(a: ProjectActivityItem): ReactNode {
           </>
         );
       }
-      return (
-        <>
-          đã đưa ra khỏi sprint{oldV ? <span className="text-muted"> {oldV}</span> : null}
-        </>
-      );
+      return <>đã đưa ra khỏi sprint{oldV ? <span className="text-muted"> {oldV}</span> : null}</>;
     case 'TYPE':
       return (
         <>
@@ -166,7 +160,9 @@ function dayLabel(iso: string): string {
 }
 
 /** Gộp các mục theo ngày (đã sort desc từ server), giữ thứ tự. */
-function groupByDay(items: ProjectActivityItem[]): { key: string; label: string; items: ProjectActivityItem[] }[] {
+function groupByDay(
+  items: ProjectActivityItem[],
+): { key: string; label: string; items: ProjectActivityItem[] }[] {
   const groups: { key: string; label: string; items: ProjectActivityItem[] }[] = [];
   for (const it of items) {
     const key = new Date(it.occurredAt).toDateString();
@@ -199,8 +195,7 @@ function TimelineEvent({ a }: { a: ProjectActivityItem }) {
       <div className="min-w-0 flex-1 pt-0.5">
         <p className="text-sm leading-relaxed text-ink">
           <span className="font-medium text-ink-strong">{a.actor?.displayName ?? 'Hệ thống'}</span>{' '}
-          {actionPhrase(a)}{' '}
-          <span className="text-muted">·</span>{' '}
+          {actionPhrase(a)} <span className="text-muted">·</span>{' '}
           <Link
             to={`/issue/${a.issueKey}`}
             className="font-mono text-[0.8125rem] font-medium text-primary underline-offset-2 hover:underline"
@@ -216,11 +211,7 @@ function TimelineEvent({ a }: { a: ProjectActivityItem }) {
             {a.issueSummary}
           </Link>
         </p>
-        <time
-          className="mt-0.5 block text-xs text-faint"
-          dateTime={a.occurredAt}
-          title={abs}
-        >
+        <time className="mt-0.5 block text-xs text-faint" dateTime={a.occurredAt} title={abs}>
           {rel}
         </time>
       </div>

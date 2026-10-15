@@ -1,15 +1,43 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, CalendarClock, ChevronRight, Flame, FolderKanban, History, Inbox, Info, TrendingUp } from 'lucide-react';
 import {
-  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  AlertTriangle,
+  CalendarClock,
+  ChevronRight,
+  Flame,
+  FolderKanban,
+  History,
+  Inbox,
+  Info,
+  TrendingUp,
+} from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
 import type { IssueDto, StatusCategory } from '@tirapro/types';
 import { useProjects } from '../projects/api';
 import {
-  useMyIssues, useWorkspaceOverview,
-  type OverviewAttention, type OverviewForecast, type OverviewProject, type OverviewSlice,
-  type OverviewTotals, type OverviewTrendPoint, type OverviewWarning,
+  useMyIssues,
+  useWorkspaceOverview,
+  type OverviewAttention,
+  type OverviewForecast,
+  type OverviewProject,
+  type OverviewSlice,
+  type OverviewTotals,
+  type OverviewTrendPoint,
+  type OverviewWarning,
 } from './api';
 import { useAuth } from '@/stores/auth';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -125,9 +153,7 @@ function AdminOverview() {
     <section className="mb-12">
       <div className="mb-3 flex items-baseline justify-between gap-4">
         <h2 className="text-base font-semibold text-ink-strong">Tổng quan chung</h2>
-        {data && (
-          <span className="text-xs text-faint tabular">{data.projectCount} dự án</span>
-        )}
+        {data && <span className="text-xs text-faint tabular">{data.projectCount} dự án</span>}
       </div>
 
       {isLoading && (
@@ -207,8 +233,14 @@ function AdminOverview() {
 /* ------------------------------------------------------------------ */
 
 const WARN_STYLE: Record<OverviewWarning['level'], { box: string; icon: ReactNode }> = {
-  danger: { box: 'border-danger/30 bg-danger/5 text-danger', icon: <AlertTriangle className="h-4 w-4" /> },
-  warning: { box: 'border-warning/30 bg-warning/5 text-warning', icon: <AlertTriangle className="h-4 w-4" /> },
+  danger: {
+    box: 'border-danger/30 bg-danger/5 text-danger',
+    icon: <AlertTriangle className="h-4 w-4" />,
+  },
+  warning: {
+    box: 'border-warning/30 bg-warning/5 text-warning',
+    icon: <AlertTriangle className="h-4 w-4" />,
+  },
   info: { box: 'border-border bg-surface text-muted', icon: <Info className="h-4 w-4" /> },
 };
 
@@ -219,7 +251,10 @@ function WarningCards({ warnings }: { warnings: OverviewWarning[] }) {
       {warnings.map((w, i) => {
         const s = WARN_STYLE[w.level];
         return (
-          <div key={i} className={cn('flex items-start gap-2 rounded-lg border px-3 py-2 text-sm', s.box)}>
+          <div
+            key={i}
+            className={cn('flex items-start gap-2 rounded-lg border px-3 py-2 text-sm', s.box)}
+          >
             <span className="mt-0.5 shrink-0">{s.icon}</span>
             <span className={w.level === 'info' ? 'text-ink' : ''}>{w.text}</span>
           </div>
@@ -254,19 +289,37 @@ function AttentionCard({ items }: { items: OverviewAttention[] }) {
         <Flame className="h-4 w-4 text-danger" /> Cần chú ý
       </h3>
       {items.length === 0 ? (
-        <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-muted">Không có việc nào cần chú ý gấp 👍</p>
+        <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-muted">
+          Không có việc nào cần chú ý gấp 👍
+        </p>
       ) : (
         <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
           {items.map((it) => (
             <li key={it.key}>
-              <Link to={`/issue/${it.key}`} className="flex items-center gap-2.5 px-3 py-2 transition-colors hover:bg-surface-2">
-                <span className={cn('mt-0.5 h-2 w-2 shrink-0 rounded-full', it.level === 'danger' ? 'bg-danger' : 'bg-warning')} aria-hidden />
+              <Link
+                to={`/issue/${it.key}`}
+                className="flex items-center gap-2.5 px-3 py-2 transition-colors hover:bg-surface-2"
+              >
+                <span
+                  className={cn(
+                    'mt-0.5 h-2 w-2 shrink-0 rounded-full',
+                    it.level === 'danger' ? 'bg-danger' : 'bg-warning',
+                  )}
+                  aria-hidden
+                />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
                     <span className="shrink-0 font-mono text-xs text-muted">{it.key}</span>
                     <span className="min-w-0 flex-1 truncate text-sm text-ink">{it.summary}</span>
                   </span>
-                  <span className={cn('text-xs', it.level === 'danger' ? 'text-danger' : 'text-warning')}>{it.reason}</span>
+                  <span
+                    className={cn(
+                      'text-xs',
+                      it.level === 'danger' ? 'text-danger' : 'text-warning',
+                    )}
+                  >
+                    {it.reason}
+                  </span>
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
               </Link>
@@ -284,12 +337,43 @@ function TrendChart({ trend }: { trend: OverviewTrendPoint[] }) {
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={trend} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} stroke="var(--border)" tickLine={false} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted)' }} stroke="var(--border)" width={32} tickLine={false} axisLine={false} />
+        <XAxis
+          dataKey="label"
+          tick={{ fontSize: 11, fill: 'var(--muted)' }}
+          stroke="var(--border)"
+          tickLine={false}
+        />
+        <YAxis
+          allowDecimals={false}
+          tick={{ fontSize: 11, fill: 'var(--muted)' }}
+          stroke="var(--border)"
+          width={32}
+          tickLine={false}
+          axisLine={false}
+        />
         <Tooltip contentStyle={TOOLTIP_STYLE} />
-        <Legend verticalAlign="top" height={24} iconType="plainline" wrapperStyle={{ fontSize: 11 }} />
-        <Line type="monotone" dataKey="created" name="Tạo mới" stroke="var(--status-progress)" strokeWidth={2} dot={false} />
-        <Line type="monotone" dataKey="resolved" name="Đã xử lý" stroke="var(--status-done)" strokeWidth={2} dot={false} />
+        <Legend
+          verticalAlign="top"
+          height={24}
+          iconType="plainline"
+          wrapperStyle={{ fontSize: 11 }}
+        />
+        <Line
+          type="monotone"
+          dataKey="created"
+          name="Tạo mới"
+          stroke="var(--status-progress)"
+          strokeWidth={2}
+          dot={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="resolved"
+          name="Đã xử lý"
+          stroke="var(--status-done)"
+          strokeWidth={2}
+          dot={false}
+        />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -330,11 +414,26 @@ function StatusDonut({ totals }: { totals: OverviewTotals }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <PieChart>
-        <Pie data={data} dataKey="value" nameKey="name" innerRadius="58%" outerRadius="82%" paddingAngle={2} stroke="none">
-          {data.map((d) => <Cell key={d.name} fill={d.color} />)}
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          innerRadius="58%"
+          outerRadius="82%"
+          paddingAngle={2}
+          stroke="none"
+        >
+          {data.map((d) => (
+            <Cell key={d.name} fill={d.color} />
+          ))}
         </Pie>
         <Tooltip contentStyle={TOOLTIP_STYLE} />
-        <Legend verticalAlign="bottom" height={24} iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+        <Legend
+          verticalAlign="bottom"
+          height={24}
+          iconType="circle"
+          wrapperStyle={{ fontSize: 11 }}
+        />
       </PieChart>
     </ResponsiveContainer>
   );
@@ -345,12 +444,27 @@ function SliceBar({ slices }: { slices: OverviewSlice[] }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={slices} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
-        <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted)' }} stroke="var(--border)" interval={0} tickLine={false} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted)' }} stroke="var(--border)" width={32} tickLine={false} axisLine={false} />
+        <XAxis
+          dataKey="name"
+          tick={{ fontSize: 11, fill: 'var(--muted)' }}
+          stroke="var(--border)"
+          interval={0}
+          tickLine={false}
+        />
+        <YAxis
+          allowDecimals={false}
+          tick={{ fontSize: 11, fill: 'var(--muted)' }}
+          stroke="var(--border)"
+          width={32}
+          tickLine={false}
+          axisLine={false}
+        />
         <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={TOOLTIP_STYLE} />
         {/* `name` bắt buộc: thiếu nó thì tooltip hiện tên khoá dữ liệu ("count") thay vì tiếng Việt. */}
         <Bar dataKey="count" name="Số công việc" radius={[4, 4, 0, 0]} maxBarSize={48}>
-          {slices.map((s) => <Cell key={s.name} fill={s.color ?? 'var(--primary)'} />)}
+          {slices.map((s) => (
+            <Cell key={s.name} fill={s.color ?? 'var(--primary)'} />
+          ))}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
@@ -374,11 +488,7 @@ const SM_COLS: Record<number, string> = {
   5: 'sm:grid-cols-5',
 };
 
-function StatRow({
-  stats,
-}: {
-  stats: { label: string; value: number; tone?: StatTone }[];
-}) {
+function StatRow({ stats }: { stats: { label: string; value: number; tone?: StatTone }[] }) {
   const oddCount = stats.length % 2 === 1; // mobile 2 cột → ô cuối lẻ cần span 2 cho kín
   return (
     <div
@@ -451,10 +561,7 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
   return (
     <li>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-surface-2">
-        <Link
-          to={`/p/${p.key}/board`}
-          className="group flex min-w-0 flex-1 items-center gap-2.5"
-        >
+        <Link to={`/p/${p.key}/board`} className="group flex min-w-0 flex-1 items-center gap-2.5">
           <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-primary-subtle font-mono text-[11px] font-bold text-primary">
             {p.key.slice(0, 3)}
           </span>
@@ -470,7 +577,9 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
         <span className="hidden w-40 shrink-0 md:block">
           {p.sprint && due ? (
             <>
-              <span className="block truncate text-sm text-ink" title={p.sprint.name}>{p.sprint.name}</span>
+              <span className="block truncate text-sm text-ink" title={p.sprint.name}>
+                {p.sprint.name}
+              </span>
               <span className={cn('block text-[11px] tabular', due.className)}>{due.text}</span>
             </>
           ) : (
@@ -611,7 +720,12 @@ function PersonalOverview() {
         {dueSoon.length > 0 && (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
             {dueSoon.map((issue) => (
-              <MyIssueRow key={issue.id} issue={issue} projectKey={keyById.get(issue.projectId)} showDue />
+              <MyIssueRow
+                key={issue.id}
+                issue={issue}
+                projectKey={keyById.get(issue.projectId)}
+                showDue
+              />
             ))}
           </ul>
         )}
@@ -707,4 +821,3 @@ function MyIssueRow({
     </li>
   );
 }
-

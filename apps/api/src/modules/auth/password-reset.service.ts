@@ -11,7 +11,8 @@ export const PASSWORD_RESET_TTL_MS = 60 * 60_000;
 /** Mỗi tài khoản tối đa một thư đặt lại mỗi 60 giây — không để người lạ bom hộp thư của người khác. */
 const RESEND_COOLDOWN_MS = 60_000;
 
-const INVALID_LINK = 'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã được dùng — hãy yêu cầu liên kết mới';
+const INVALID_LINK =
+  'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã được dùng — hãy yêu cầu liên kết mới';
 const EXPIRED_LINK = 'Liên kết đặt lại mật khẩu đã hết hạn — hãy yêu cầu liên kết mới';
 
 @Injectable()
@@ -53,10 +54,18 @@ export class PasswordResetService {
         data: { usedAt: now },
       });
       await tx.passwordResetToken.create({
-        data: { userId: user.id, tokenHash, expiresAt: new Date(now.getTime() + PASSWORD_RESET_TTL_MS) },
+        data: {
+          userId: user.id,
+          tokenHash,
+          expiresAt: new Date(now.getTime() + PASSWORD_RESET_TTL_MS),
+        },
       });
       await this.mail.enqueue(
-        { to: user.email, template: 'password-reset', payload: { displayName: user.displayName, resetUrl } },
+        {
+          to: user.email,
+          template: 'password-reset',
+          payload: { displayName: user.displayName, resetUrl },
+        },
         tx,
       );
     });
@@ -64,7 +73,9 @@ export class PasswordResetService {
 
   /** Đặt mật khẩu mới bằng token: dùng một lần, còn hạn; xong thì đăng xuất mọi phiên của user. */
   async resetPassword(input: { token: string; newPassword: string }): Promise<void> {
-    const row = await this.prisma.passwordResetToken.findUnique({ where: { tokenHash: hashOneTimeToken(input.token) } });
+    const row = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash: hashOneTimeToken(input.token) },
+    });
     if (!row || row.usedAt) throw new BusinessRuleException(INVALID_LINK);
     if (row.expiresAt.getTime() <= Date.now()) throw new BusinessRuleException(EXPIRED_LINK);
 

@@ -2,11 +2,7 @@ import { Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/request';
-import {
-  GuidesService,
-  type GuideListItemDto,
-  type GuideStateDto,
-} from './guides.service';
+import { GuidesService, type GuideListItemDto, type GuideStateDto } from './guides.service';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 import { PERMISSIONS } from '@tirapro/types';
@@ -46,10 +42,7 @@ export class GuidesController {
   // Tiến độ hướng dẫn của chính người dùng — chỉ cần xác thực.
   @AuthOnly()
   @Post(':key/seen')
-  async seen(
-    @CurrentUser() user: AuthUser,
-    @Param('key') key: string,
-  ): Promise<{ ok: true }> {
+  async seen(@CurrentUser() user: AuthUser, @Param('key') key: string): Promise<{ ok: true }> {
     return this.guides.markSeen(user, key);
   }
 
@@ -57,10 +50,7 @@ export class GuidesController {
   // Tiến độ hướng dẫn của chính người dùng — chỉ cần xác thực.
   @AuthOnly()
   @Post(':key/complete')
-  async complete(
-    @CurrentUser() user: AuthUser,
-    @Param('key') key: string,
-  ): Promise<{ ok: true }> {
+  async complete(@CurrentUser() user: AuthUser, @Param('key') key: string): Promise<{ ok: true }> {
     return this.guides.markComplete(user, key);
   }
 }

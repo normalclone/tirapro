@@ -32,7 +32,15 @@ interface FormState {
 }
 
 function emptyForm(projectId: string, from: string, to: string): FormState {
-  return { id: null, userId: '', projectId, percent: '100', startDate: from, endDate: to, note: '' };
+  return {
+    id: null,
+    userId: '',
+    projectId,
+    percent: '100',
+    startDate: from,
+    endDate: to,
+    note: '',
+  };
 }
 
 /** Phân bổ: ai dành bao nhiêu phần trăm thời gian cho dự án nào, trong khoảng nào. */
@@ -96,9 +104,12 @@ export function AllocationsPanel({
     const percent = Number(form.percent);
     if (!form.userId) return toast.error('Hãy chọn người được phân bổ');
     if (!form.projectId) return toast.error('Hãy chọn dự án');
-    if (!Number.isFinite(percent) || percent < 1 || percent > 200) return toast.error('Tỉ lệ thời gian phải từ 1% đến 200%');
-    if (!form.startDate || !form.endDate) return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
-    if (form.endDate < form.startDate) return toast.error('Ngày kết thúc phải bằng hoặc sau ngày bắt đầu');
+    if (!Number.isFinite(percent) || percent < 1 || percent > 200)
+      return toast.error('Tỉ lệ thời gian phải từ 1% đến 200%');
+    if (!form.startDate || !form.endDate)
+      return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
+    if (form.endDate < form.startDate)
+      return toast.error('Ngày kết thúc phải bằng hoặc sau ngày bắt đầu');
 
     const payload = {
       userId: form.userId,
@@ -108,8 +119,13 @@ export function AllocationsPanel({
       endDate: form.endDate,
       note: form.note.trim() || null,
     };
-    const done = { onSuccess: () => { setForm(null); toast.success(form.id ? 'Đã cập nhật phân bổ' : 'Đã thêm phân bổ'); },
-      onError: (e: unknown) => toast.error(apiErrorMessage(e)) };
+    const done = {
+      onSuccess: () => {
+        setForm(null);
+        toast.success(form.id ? 'Đã cập nhật phân bổ' : 'Đã thêm phân bổ');
+      },
+      onError: (e: unknown) => toast.error(apiErrorMessage(e)),
+    };
 
     if (form.id) update.mutate({ id: form.id, ...payload }, done);
     else create.mutate(payload, done);
@@ -118,7 +134,10 @@ export function AllocationsPanel({
   function confirmDelete() {
     if (!pendingDelete) return;
     remove.mutate(pendingDelete.id, {
-      onSuccess: () => { setPendingDelete(null); toast.success('Đã xoá phân bổ'); },
+      onSuccess: () => {
+        setPendingDelete(null);
+        toast.success('Đã xoá phân bổ');
+      },
       onError: (e) => toast.error(apiErrorMessage(e)),
     });
   }
@@ -129,8 +148,8 @@ export function AllocationsPanel({
         <div>
           <h2 className="text-base font-semibold text-ink-strong">Phân bổ người vào dự án</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Ai dành bao nhiêu phần trăm thời gian cho dự án nào. Đang hiện các phân bổ có ngày rơi vào khoảng{' '}
-            {shortDay(from)} – {shortDay(to)}.
+            Ai dành bao nhiêu phần trăm thời gian cho dự án nào. Đang hiện các phân bổ có ngày rơi
+            vào khoảng {shortDay(from)} – {shortDay(to)}.
           </p>
         </div>
         {canManage && !form && (
@@ -208,7 +227,9 @@ export function AllocationsPanel({
             <Button size="sm" loading={saving} onClick={submit}>
               {form.id ? 'Lưu thay đổi' : 'Thêm phân bổ'}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setForm(null)}>Huỷ</Button>
+            <Button size="sm" variant="ghost" onClick={() => setForm(null)}>
+              Huỷ
+            </Button>
           </div>
         </div>
       )}
@@ -218,7 +239,9 @@ export function AllocationsPanel({
           <QueryError error={list.error} onRetry={() => void list.refetch()} />
         ) : list.isLoading ? (
           <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
           </div>
         ) : !list.data || list.data.length === 0 ? (
           <EmptyState
@@ -229,23 +252,47 @@ export function AllocationsPanel({
                 ? 'Phân bổ ghi lại một người dành bao nhiêu phần trăm thời gian cho dự án nào. Thêm phân bổ để bảng khối lượng tính đúng; ai chưa phân bổ thì tạm tính 100%.'
                 : 'Phân bổ ghi lại một người dành bao nhiêu phần trăm thời gian cho dự án nào. Ai chưa được phân bổ thì tạm tính 100%.'
             }
-            action={canManage && !form ? <Button size="sm" onClick={startCreate}><Plus className="h-4 w-4" aria-hidden /> Thêm phân bổ</Button> : undefined}
+            action={
+              canManage && !form ? (
+                <Button size="sm" onClick={startCreate}>
+                  <Plus className="h-4 w-4" aria-hidden /> Thêm phân bổ
+                </Button>
+              ) : undefined
+            }
           />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs font-medium text-muted">
-                  <th scope="col" className="py-2 pr-3">Thành viên</th>
-                  <th scope="col" className="py-2 pr-3">Dự án</th>
-                  <th scope="col" className="py-2 pr-3 text-right" title="Phần thời gian làm việc dành cho dự án này.">
+                  <th scope="col" className="py-2 pr-3">
+                    Thành viên
+                  </th>
+                  <th scope="col" className="py-2 pr-3">
+                    Dự án
+                  </th>
+                  <th
+                    scope="col"
+                    className="py-2 pr-3 text-right"
+                    title="Phần thời gian làm việc dành cho dự án này."
+                  >
                     Tỉ lệ thời gian
                   </th>
-                  <th scope="col" className="py-2 pr-3" title="Phân bổ chỉ có hiệu lực trong khoảng ngày này.">
+                  <th
+                    scope="col"
+                    className="py-2 pr-3"
+                    title="Phân bổ chỉ có hiệu lực trong khoảng ngày này."
+                  >
                     Hiệu lực
                   </th>
-                  <th scope="col" className="py-2 pr-3">Ghi chú</th>
-                  {canManage && <th scope="col" className="py-2 text-right">Thao tác</th>}
+                  <th scope="col" className="py-2 pr-3">
+                    Ghi chú
+                  </th>
+                  {canManage && (
+                    <th scope="col" className="py-2 text-right">
+                      Thao tác
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -262,7 +309,10 @@ export function AllocationsPanel({
                       <span className="ml-1.5 font-mono text-xs text-faint">{a.project.key}</span>
                     </td>
                     <td
-                      className={cn('py-2.5 pr-3 text-right tabular-nums', a.percent > 100 ? 'font-medium text-warning' : 'text-ink')}
+                      className={cn(
+                        'py-2.5 pr-3 text-right tabular-nums',
+                        a.percent > 100 ? 'font-medium text-warning' : 'text-ink',
+                      )}
                       title={
                         a.percent > 100
                           ? 'Trên 100% nghĩa là người này được kỳ vọng làm thêm ngoài giờ cho dự án.'
@@ -274,11 +324,19 @@ export function AllocationsPanel({
                     <td className="whitespace-nowrap py-2.5 pr-3 tabular-nums text-muted">
                       {shortDay(a.startDate)} – {shortDay(a.endDate)}
                     </td>
-                    <td className="max-w-[16rem] truncate py-2.5 pr-3 text-muted">{a.note ?? '—'}</td>
+                    <td className="max-w-[16rem] truncate py-2.5 pr-3 text-muted">
+                      {a.note ?? '—'}
+                    </td>
                     {canManage && (
                       <td className="py-2.5 text-right">
                         <span className="inline-flex items-center gap-1">
-                          <Button variant="ghost" size="icon" title="Sửa" aria-label={`Sửa phân bổ của ${a.user.displayName}`} onClick={() => startEdit(a)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Sửa"
+                            aria-label={`Sửa phân bổ của ${a.user.displayName}`}
+                            onClick={() => startEdit(a)}
+                          >
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <Button
@@ -318,10 +376,20 @@ export function AllocationsPanel({
   );
 }
 
-function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-xs font-medium text-muted">{label}</label>
+      <label htmlFor={htmlFor} className="text-xs font-medium text-muted">
+        {label}
+      </label>
       {children}
     </div>
   );

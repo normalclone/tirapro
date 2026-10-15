@@ -167,8 +167,8 @@ export class ActivityService {
           })
         : Promise.resolve([]),
       sprintIds.size
-        // allow-deleted: chỉ tra tên để hiển thị lịch sử — sprint đã xoá vẫn phải hiện đúng tên
-        ? this.prisma.sprint.findMany({
+        ? // allow-deleted: chỉ tra tên để hiển thị lịch sử — sprint đã xoá vẫn phải hiện đúng tên
+          this.prisma.sprint.findMany({
             where: { id: { in: [...sprintIds] } },
             select: { id: true, name: true },
           })

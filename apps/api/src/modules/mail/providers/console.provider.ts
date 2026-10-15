@@ -11,7 +11,9 @@ export class ConsoleMailProvider implements MailProvider {
   constructor(private readonly from: string) {}
 
   send(msg: MailMessage): Promise<void> {
-    this.logger.log(`[email giả lập] từ: ${this.from} | tới: ${msg.to} | chủ đề: ${msg.subject}\n${msg.text}`);
+    this.logger.log(
+      `[email giả lập] từ: ${this.from} | tới: ${msg.to} | chủ đề: ${msg.subject}\n${msg.text}`,
+    );
     return Promise.resolve();
   }
 }

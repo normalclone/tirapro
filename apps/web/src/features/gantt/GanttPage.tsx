@@ -83,7 +83,15 @@ function dependencyPath(dep: DependencyDto, from: BarBox, to: BarBox) {
 }
 
 /** Ô chú thích nhỏ ở thanh công cụ. `hint` là câu giải nghĩa hiện khi rê chuột. */
-function LegendItem({ swatch, label, hint }: { swatch: React.ReactNode; label: string; hint?: string }) {
+function LegendItem({
+  swatch,
+  label,
+  hint,
+}: {
+  swatch: React.ReactNode;
+  label: string;
+  hint?: string;
+}) {
   return (
     <span className="flex items-center gap-1.5 whitespace-nowrap" title={hint}>
       {swatch}
@@ -97,7 +105,13 @@ export function GanttPage() {
   const navigate = useNavigate();
   const canManagePlan = useAuth((s) => s.can('plan:manage'));
 
-  const { data: project, isLoading: lp, isError: pe, error: pErr, refetch: refetchProject } = useProject(key);
+  const {
+    data: project,
+    isLoading: lp,
+    isError: pe,
+    error: pErr,
+    refetch: refetchProject,
+  } = useProject(key);
   const projectId = project?.id;
   const issuesQ = useProjectIssues(projectId);
   const { data: issues, isLoading: li } = issuesQ;
@@ -123,7 +137,8 @@ export function GanttPage() {
     [scheduleQ.data],
   );
   const baselineById = useMemo(
-    () => new Map<string, BaselineItemDto>((baselineQ.data?.items ?? []).map((i) => [i.issueId, i])),
+    () =>
+      new Map<string, BaselineItemDto>((baselineQ.data?.items ?? []).map((i) => [i.issueId, i])),
     [baselineQ.data],
   );
 
@@ -171,12 +186,20 @@ export function GanttPage() {
       });
     }
 
-    spans.sort((a, b) => a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime());
+    spans.sort(
+      (a, b) => a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime(),
+    );
 
     const empty = {
-      spans, days: [] as Date[], months: [] as { label: string; span: number }[],
-      minD: today, totalDays: 0, today, noDate,
-      layout: new Map<string, BarBox>(), msPoints: [] as { m: MilestoneDto; x: number }[],
+      spans,
+      days: [] as Date[],
+      months: [] as { label: string; span: number }[],
+      minD: today,
+      totalDays: 0,
+      today,
+      noDate,
+      layout: new Map<string, BarBox>(),
+      msPoints: [] as { m: MilestoneDto; x: number }[],
     };
     if (spans.length === 0) return empty;
 
@@ -204,7 +227,12 @@ export function GanttPage() {
     while (i < days.length) {
       const m = days[i]!;
       let j = i;
-      while (j < days.length && days[j]!.getMonth() === m.getMonth() && days[j]!.getFullYear() === m.getFullYear()) j++;
+      while (
+        j < days.length &&
+        days[j]!.getMonth() === m.getMonth() &&
+        days[j]!.getFullYear() === m.getFullYear()
+      )
+        j++;
       months.push({ label: format(m, 'MM/yyyy'), span: j - i });
       i = j;
     }
@@ -266,8 +294,15 @@ export function GanttPage() {
     }
     if (compareOn && s.baseStart && s.baseEnd) {
       const delta = differenceInCalendarDays(s.end, s.baseEnd);
-      const drift = delta === 0 ? 'đúng kế hoạch' : delta > 0 ? `chậm ${delta} ngày so với kế hoạch` : `sớm ${-delta} ngày so với kế hoạch`;
-      parts.push(`Kế hoạch gốc: ${format(s.baseStart, 'dd/MM')} → ${format(s.baseEnd, 'dd/MM')} (${drift})`);
+      const drift =
+        delta === 0
+          ? 'đúng kế hoạch'
+          : delta > 0
+            ? `chậm ${delta} ngày so với kế hoạch`
+            : `sớm ${-delta} ngày so với kế hoạch`;
+      parts.push(
+        `Kế hoạch gốc: ${format(s.baseStart, 'dd/MM')} → ${format(s.baseEnd, 'dd/MM')} (${drift})`,
+      );
     }
     return parts.join('\n');
   }
@@ -354,14 +389,24 @@ export function GanttPage() {
             <LegendItem
               label="Kế hoạch gốc"
               hint="Thanh mờ viền đứt = ngày đã chốt trong kế hoạch gốc. Thanh đặc lệch sang phải nghĩa là việc đang chậm hơn kế hoạch."
-              swatch={<span className="h-2.5 w-5 rounded-sm border border-dashed border-[var(--border-strong)]" aria-hidden />}
+              swatch={
+                <span
+                  className="h-2.5 w-5 rounded-sm border border-dashed border-[var(--border-strong)]"
+                  aria-hidden
+                />
+              }
             />
           )}
           {hasInferred && (
             <LegendItem
               label="Ngày dự kiến"
               hint="Việc chưa được đặt ngày. Hệ thống tạm suy ra ngày từ các phụ thuộc đã khai báo."
-              swatch={<span className="h-2.5 w-5 rounded-sm border border-dashed border-[var(--faint)] opacity-70" aria-hidden />}
+              swatch={
+                <span
+                  className="h-2.5 w-5 rounded-sm border border-dashed border-[var(--faint)] opacity-70"
+                  aria-hidden
+                />
+              }
             />
           )}
           {milestones.length > 0 && (
@@ -379,7 +424,8 @@ export function GanttPage() {
           className="border-b border-border px-6 py-2 text-xs text-faint"
           title="Đặt ngày bắt đầu hoặc hạn cho những việc này, hoặc nối chúng vào một việc khác, thì chúng sẽ hiện trên biểu đồ."
         >
-          {model.noDate} công việc chưa hiện ở đây vì chưa có ngày bắt đầu/hạn và cũng không nối với việc nào
+          {model.noDate} công việc chưa hiện ở đây vì chưa có ngày bắt đầu/hạn và cũng không nối với
+          việc nào
         </div>
       )}
 
@@ -387,7 +433,10 @@ export function GanttPage() {
         {pe || issuesQ.isError ? (
           <QueryError
             error={pErr ?? issuesQ.error}
-            onRetry={() => { void refetchProject(); if (!pe) void issuesQ.refetch(); }}
+            onRetry={() => {
+              void refetchProject();
+              if (!pe) void issuesQ.refetch();
+            }}
           />
         ) : isLoading ? (
           <div className="space-y-2">
@@ -467,11 +516,22 @@ export function GanttPage() {
                           title={`Cột mốc: ${m.name}\nNgày phải đạt: ${format(new Date(m.dueDate), 'dd/MM/yyyy')}${m.completedAt ? '\nĐã đạt' : '\nChưa đạt'}`}
                         >
                           <span
-                            className={cn('-ml-[5px] h-2.5 w-2.5 shrink-0 rotate-45 border', m.completedAt && 'opacity-60')}
-                            style={{ background: m.completedAt ? 'transparent' : color, borderColor: color }}
+                            className={cn(
+                              '-ml-[5px] h-2.5 w-2.5 shrink-0 rotate-45 border',
+                              m.completedAt && 'opacity-60',
+                            )}
+                            style={{
+                              background: m.completedAt ? 'transparent' : color,
+                              borderColor: color,
+                            }}
                             aria-hidden
                           />
-                          <span className={cn('whitespace-nowrap text-[11px] font-medium text-ink', m.completedAt && 'text-muted line-through')}>
+                          <span
+                            className={cn(
+                              'whitespace-nowrap text-[11px] font-medium text-ink',
+                              m.completedAt && 'text-muted line-through',
+                            )}
+                          >
                             {m.name}
                           </span>
                           <span className="whitespace-nowrap text-[11px] tabular text-faint">
@@ -523,7 +583,12 @@ export function GanttPage() {
                         const { d, head } = dependencyPath(dep, from, to);
                         return (
                           <g key={dep.id} opacity={critical ? 0.95 : 0.7}>
-                            <path d={d} fill="none" stroke={color} strokeWidth={critical ? 1.6 : 1.2} />
+                            <path
+                              d={d}
+                              fill="none"
+                              stroke={color}
+                              strokeWidth={critical ? 1.6 : 1.2}
+                            />
                             <polygon points={head} fill={color} />
                           </g>
                         );
@@ -544,10 +609,16 @@ export function GanttPage() {
                   const baseLeft = s.baseStart ? offset(s.baseStart) * DAY_W : 0;
                   const baseWidth =
                     s.baseStart && s.baseEnd
-                      ? Math.max((offset(s.baseEnd) - offset(s.baseStart) + 1) * DAY_W - 4, DAY_W - 4)
+                      ? Math.max(
+                          (offset(s.baseEnd) - offset(s.baseStart) + 1) * DAY_W - 4,
+                          DAY_W - 4,
+                        )
                       : 0;
                   return (
-                    <div key={issue.id} className="flex border-b border-border last:border-b-0 hover:bg-surface-2">
+                    <div
+                      key={issue.id}
+                      className="flex border-b border-border last:border-b-0 hover:bg-surface-2"
+                    >
                       <button
                         type="button"
                         onClick={() => navigate(`/issue/${issue.key}`)}
@@ -562,7 +633,9 @@ export function GanttPage() {
                           />
                         )}
                         <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
-                        <span className="min-w-0 flex-1 truncate text-sm text-ink">{issue.summary}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                          {issue.summary}
+                        </span>
                       </button>
                       <div className="relative" style={{ width: trackW, height: ROW_H }}>
                         {compareOn && baseWidth > 0 && (

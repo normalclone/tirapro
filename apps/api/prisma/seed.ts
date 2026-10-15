@@ -60,7 +60,9 @@ async function seedPermissionsAndRoles() {
       .map((permissionId) => ({ roleId: role.id, permissionId }));
     if (rows.length) await prisma.rolePermission.createMany({ data: rows, skipDuplicates: true });
   }
-  console.log(`  ✓ ${PERMISSION_CATALOG.length} permissions, ${names.length} roles (catalog đầy đủ: Lead/BA/PO/SM/Dev/Tester/Designer/DevOps/Reviewer/Stakeholder...)`);
+  console.log(
+    `  ✓ ${PERMISSION_CATALOG.length} permissions, ${names.length} roles (catalog đầy đủ: Lead/BA/PO/SM/Dev/Tester/Designer/DevOps/Reviewer/Stakeholder...)`,
+  );
   return roleByName;
 }
 
@@ -70,7 +72,12 @@ const ACCOUNTS = [
   { email: 'admin@projira.dev', displayName: 'An Quản Trị', isSystemAdmin: true, role: 'admin' },
   { email: 'ba@tirapro.dev', displayName: 'Bình (BA)', isSystemAdmin: false, role: 'ba' },
   { email: 'dev@tirapro.dev', displayName: 'Dũng (Dev)', isSystemAdmin: false, role: 'dev' },
-  { email: 'tester@tirapro.dev', displayName: 'Trang (Tester)', isSystemAdmin: false, role: 'tester' },
+  {
+    email: 'tester@tirapro.dev',
+    displayName: 'Trang (Tester)',
+    isSystemAdmin: false,
+    role: 'tester',
+  },
 ] as const;
 
 async function seedDemoUsers() {
@@ -80,7 +87,12 @@ async function seedDemoUsers() {
     const row = await prisma.user.upsert({
       where: { email: u.email },
       update: { displayName: u.displayName, isSystemAdmin: u.isSystemAdmin, passwordHash: hash },
-      create: { email: u.email, displayName: u.displayName, isSystemAdmin: u.isSystemAdmin, passwordHash: hash },
+      create: {
+        email: u.email,
+        displayName: u.displayName,
+        isSystemAdmin: u.isSystemAdmin,
+        passwordHash: hash,
+      },
     });
     byRole[u.role] = row.id;
   }
@@ -95,8 +107,13 @@ async function bootstrapWorkspaceConfig(workspaceId: string) {
   for (const t of DEFAULT_ISSUE_TYPES) {
     const row = await prisma.issueType.create({
       data: {
-        workspaceId, name: t.name, key: t.key as any, color: t.color,
-        hierarchyLevel: t.hierarchyLevel, isSubtask: !!t.isSubtask, isSystem: true,
+        workspaceId,
+        name: t.name,
+        key: t.key as any,
+        color: t.color,
+        hierarchyLevel: t.hierarchyLevel,
+        isSubtask: !!t.isSubtask,
+        isSystem: true,
       },
     });
     issueTypes.set(t.name, { id: row.id, key: (t.key as string) ?? null });
@@ -104,47 +121,101 @@ async function bootstrapWorkspaceConfig(workspaceId: string) {
   const priorities = new Map<string, string>();
   for (const p of DEFAULT_PRIORITIES) {
     const row = await prisma.priority.create({
-      data: { workspaceId, name: p.name, iconKey: p.iconKey, color: p.color, rank: p.rank, isDefault: !!p.isDefault, isSystem: true },
+      data: {
+        workspaceId,
+        name: p.name,
+        iconKey: p.iconKey,
+        color: p.color,
+        rank: p.rank,
+        isDefault: !!p.isDefault,
+        isSystem: true,
+      },
     });
     priorities.set(p.name, row.id);
   }
   for (const s of DEFAULT_SEVERITIES) {
     await prisma.severity.create({
-      data: { workspaceId, name: s.name, description: s.description, color: s.color, rank: s.rank, isDefault: !!s.isDefault, isSystem: true },
+      data: {
+        workspaceId,
+        name: s.name,
+        description: s.description,
+        color: s.color,
+        rank: s.rank,
+        isDefault: !!s.isDefault,
+        isSystem: true,
+      },
     });
   }
   for (const r of DEFAULT_RESOLUTIONS) {
     await prisma.resolution.create({
-      data: { workspaceId, name: r.name, description: r.description, rank: r.rank, isDefault: !!r.isDefault, isSystem: true },
+      data: {
+        workspaceId,
+        name: r.name,
+        description: r.description,
+        rank: r.rank,
+        isDefault: !!r.isDefault,
+        isSystem: true,
+      },
     });
   }
   for (const l of DEFAULT_LINK_TYPES) {
     await prisma.linkType.create({
-      data: { workspaceId, name: l.name, outwardName: l.outwardName, inwardName: l.inwardName, isSystem: true },
+      data: {
+        workspaceId,
+        name: l.name,
+        outwardName: l.outwardName,
+        inwardName: l.inwardName,
+        isSystem: true,
+      },
     });
   }
   for (const tpl of DEFAULT_WORKFLOW_TEMPLATES) {
     const wf = await prisma.workflow.create({
-      data: { workspaceId, projectId: null, isTemplate: true, isDefault: !!tpl.isDefault, name: tpl.name, description: tpl.description },
+      data: {
+        workspaceId,
+        projectId: null,
+        isTemplate: true,
+        isDefault: !!tpl.isDefault,
+        name: tpl.name,
+        description: tpl.description,
+      },
     });
     await createStatusesAndTransitions(wf.id, tpl);
   }
-  console.log('  ✓ bootstrap config (issue types, priorities, severities, resolutions, link types, workflow)');
+  console.log(
+    '  ✓ bootstrap config (issue types, priorities, severities, resolutions, link types, workflow)',
+  );
   return { issueTypes, priorities };
 }
 
-async function createStatusesAndTransitions(workflowId: string, tpl: (typeof DEFAULT_WORKFLOW_TEMPLATES)[number]) {
+async function createStatusesAndTransitions(
+  workflowId: string,
+  tpl: (typeof DEFAULT_WORKFLOW_TEMPLATES)[number],
+) {
   const statusByName = new Map<string, string>();
   for (const s of tpl.statuses) {
     const st = await prisma.status.create({
-      data: { workflowId, name: s.name, category: s.category as any, color: s.color, order: s.order, isInitial: !!s.isInitial },
+      data: {
+        workflowId,
+        name: s.name,
+        category: s.category as any,
+        color: s.color,
+        order: s.order,
+        isInitial: !!s.isInitial,
+      },
     });
     statusByName.set(s.name, st.id);
   }
   let order = 0;
   for (const t of tpl.transitions) {
     await prisma.workflowTransition.create({
-      data: { workflowId, name: t.name, fromStatusId: t.from ? statusByName.get(t.from) ?? null : null, toStatusId: statusByName.get(t.to)!, order: order++ },
+      data: {
+        workflowId,
+        name: t.name,
+        fromStatusId: t.from ? (statusByName.get(t.from) ?? null) : null,
+        toStatusId: statusByName.get(t.to)!,
+        order: order++,
+      },
     });
   }
   return statusByName;
@@ -251,7 +322,15 @@ function buildSpecs(): GenSpec[] {
   const specs: GenSpec[] = [];
   const epics = ['Thanh toán & đơn hàng', 'Đăng nhập & bảo mật', 'Hiệu năng & ổn định'];
   for (const e of epics) {
-    specs.push({ type: 'Epic', summary: e, status: 'To Do', sprint: null, assignee: 'ba', reporter: 'ba', priority: 'High' });
+    specs.push({
+      type: 'Epic',
+      summary: e,
+      status: 'To Do',
+      sprint: null,
+      assignee: 'ba',
+      reporter: 'ba',
+      priority: 'High',
+    });
   }
 
   // Story: gắn epic, phần lớn ở Sprint active / backlog
@@ -269,11 +348,31 @@ function buildSpecs(): GenSpec[] {
     ['Đa ngôn ngữ (i18n)', 'Hiệu năng & ổn định', 'TODO', null, 5],
     ['Onboarding người dùng mới', 'Đăng nhập & bảo mật', 'TODO', null, 3],
   ];
-  const sPrio: GenSpec['priority'][] = ['High', 'Medium', 'High', 'Highest', 'Medium', 'Low', 'Medium', 'High', 'Medium', 'Low', 'Medium', 'Low'];
+  const sPrio: GenSpec['priority'][] = [
+    'High',
+    'Medium',
+    'High',
+    'Highest',
+    'Medium',
+    'Low',
+    'Medium',
+    'High',
+    'Medium',
+    'Low',
+    'Medium',
+    'Low',
+  ];
   stories.forEach(([summary, epic, cat, sprint, points], i) => {
     specs.push({
-      type: 'Story', summary, status: catToStatus(cat), sprint, parentSummary: epic,
-      assignee: cat === 'DONE' ? 'dev' : i % 2 ? 'dev' : 'ba', reporter: 'ba', priority: sPrio[i] ?? 'Medium', points,
+      type: 'Story',
+      summary,
+      status: catToStatus(cat),
+      sprint,
+      parentSummary: epic,
+      assignee: cat === 'DONE' ? 'dev' : i % 2 ? 'dev' : 'ba',
+      reporter: 'ba',
+      priority: sPrio[i] ?? 'Medium',
+      points,
       due: sprint === 'active' && cat !== 'DONE' ? [1, -2, 5, 3][i % 4] : undefined,
     });
   });
@@ -292,9 +391,14 @@ function buildSpecs(): GenSpec[] {
   ];
   tasks.forEach(([summary, cat, sprint, points], i) => {
     specs.push({
-      type: 'Task', summary, status: catToStatus(cat), sprint,
-      assignee: 'dev', reporter: i % 3 === 0 ? 'admin' : 'ba',
-      priority: (['Medium', 'Low', 'High', 'Medium'] as const)[i % 4], points,
+      type: 'Task',
+      summary,
+      status: catToStatus(cat),
+      sprint,
+      assignee: 'dev',
+      reporter: i % 3 === 0 ? 'admin' : 'ba',
+      priority: (['Medium', 'Low', 'High', 'Medium'] as const)[i % 4],
+      points,
     });
   });
 
@@ -312,9 +416,15 @@ function buildSpecs(): GenSpec[] {
   ];
   bugs.forEach(([summary, cat, sprint, points, due], i) => {
     specs.push({
-      type: 'Bug', summary, status: catToStatus(cat), sprint,
+      type: 'Bug',
+      summary,
+      status: catToStatus(cat),
+      sprint,
       assignee: cat === 'TODO' && !sprint ? null : i % 2 ? 'dev' : 'tester',
-      reporter: 'tester', priority: (['High', 'Highest', 'Medium', 'High'] as const)[i % 4], points, due,
+      reporter: 'tester',
+      priority: (['High', 'Highest', 'Medium', 'High'] as const)[i % 4],
+      points,
+      due,
     });
   });
 
@@ -329,8 +439,15 @@ function buildSpecs(): GenSpec[] {
   ];
   subs.forEach(([summary, parent, cat], i) => {
     specs.push({
-      type: 'Sub-task', summary, status: catToStatus(cat), sprint: 'active', parentSummary: parent,
-      assignee: i % 2 ? 'dev' : 'tester', reporter: 'dev', priority: 'Medium', points: i % 2 ? 2 : 1,
+      type: 'Sub-task',
+      summary,
+      status: catToStatus(cat),
+      sprint: 'active',
+      parentSummary: parent,
+      assignee: i % 2 ? 'dev' : 'tester',
+      reporter: 'dev',
+      priority: 'Medium',
+      points: i % 2 ? 2 : 1,
     });
   });
 
@@ -351,15 +468,42 @@ function catToStatus(c: Cat): string {
 
 async function seedTeams(workspaceId: string, u: Record<string, string>) {
   const teams = [
-    { name: 'Frontend', key: 'frontend', color: '#16a34a', description: 'Giao diện web & trải nghiệm người dùng', leadId: u.dev, memberIds: [u.dev, u.tester] },
-    { name: 'Backend', key: 'backend', color: '#2563eb', description: 'API, dữ liệu & tích hợp', leadId: u.dev, memberIds: [u.dev, u.admin] },
-    { name: 'QA & Kiểm thử', key: 'qa', color: '#a855f7', description: 'Kiểm thử, chất lượng & hồi quy', leadId: u.tester, memberIds: [u.tester, u.ba] },
+    {
+      name: 'Frontend',
+      key: 'frontend',
+      color: '#16a34a',
+      description: 'Giao diện web & trải nghiệm người dùng',
+      leadId: u.dev,
+      memberIds: [u.dev, u.tester],
+    },
+    {
+      name: 'Backend',
+      key: 'backend',
+      color: '#2563eb',
+      description: 'API, dữ liệu & tích hợp',
+      leadId: u.dev,
+      memberIds: [u.dev, u.admin],
+    },
+    {
+      name: 'QA & Kiểm thử',
+      key: 'qa',
+      color: '#a855f7',
+      description: 'Kiểm thử, chất lượng & hồi quy',
+      leadId: u.tester,
+      memberIds: [u.tester, u.ba],
+    },
   ];
   for (const t of teams) {
     await prisma.team.create({
       data: {
-        workspaceId, name: t.name, key: t.key, color: t.color, description: t.description, leadId: t.leadId,
-        createdById: u.admin, updatedById: u.admin,
+        workspaceId,
+        name: t.name,
+        key: t.key,
+        color: t.color,
+        description: t.description,
+        leadId: t.leadId,
+        createdById: u.admin,
+        updatedById: u.admin,
         members: { create: [...new Set(t.memberIds)].map((userId) => ({ userId })) },
       },
     });
@@ -391,7 +535,10 @@ async function main() {
   const addWsMember = (userId: string, roleNames: SystemRoleName[]) =>
     prisma.workspaceMembership.create({
       data: {
-        workspaceId: ws.id, userId, roleId: rid(roleNames[0]!), joinedAt: new Date(),
+        workspaceId: ws.id,
+        userId,
+        roleId: rid(roleNames[0]!),
+        joinedAt: new Date(),
         roles: { create: roleNames.map((n) => ({ roleId: rid(n) })) },
       },
     });
@@ -403,13 +550,22 @@ async function main() {
   const { issueTypes, priorities } = await bootstrapWorkspaceConfig(ws.id);
 
   const project = await prisma.project.create({
-    data: { workspaceId: ws.id, key: 'DEMO', name: 'Demo App', type: 'SCRUM', description: 'Sản phẩm thương mại điện tử mẫu để khám phá Tirapro', leadId: u.admin },
+    data: {
+      workspaceId: ws.id,
+      key: 'DEMO',
+      name: 'Demo App',
+      type: 'SCRUM',
+      description: 'Sản phẩm thương mại điện tử mẫu để khám phá Tirapro',
+      leadId: u.admin,
+    },
   });
   // Cấp dự án: demo multi-role thực tế (1 người kiêm nhiều vai trò).
   const addProjMember = (userId: string, roleNames: SystemRoleName[]) =>
     prisma.projectMembership.create({
       data: {
-        projectId: project.id, userId, roleId: rid(roleNames[0]!),
+        projectId: project.id,
+        userId,
+        roleId: rid(roleNames[0]!),
         roles: { create: roleNames.map((n) => ({ roleId: rid(n) })) },
       },
     });
@@ -421,47 +577,102 @@ async function main() {
 
   const scrumTpl = DEFAULT_WORKFLOW_TEMPLATES.find((t) => t.boardType === 'SCRUM')!;
   const projectWf = await prisma.workflow.create({
-    data: { workspaceId: ws.id, projectId: project.id, isTemplate: false, isDefault: true, name: scrumTpl.name, description: scrumTpl.description },
+    data: {
+      workspaceId: ws.id,
+      projectId: project.id,
+      isTemplate: false,
+      isDefault: true,
+      name: scrumTpl.name,
+      description: scrumTpl.description,
+    },
   });
   const statusByName = await createStatusesAndTransitions(projectWf.id, scrumTpl);
-  await prisma.project.update({ where: { id: project.id }, data: { defaultWorkflowId: projectWf.id } });
+  await prisma.project.update({
+    where: { id: project.id },
+    data: { defaultWorkflowId: projectWf.id },
+  });
 
-  const board = await prisma.board.create({ data: { projectId: project.id, name: 'Demo Board', type: 'SCRUM' } });
+  const board = await prisma.board.create({
+    data: { projectId: project.id, name: 'Demo Board', type: 'SCRUM' },
+  });
   let colOrder = 0;
   for (const s of scrumTpl.statuses) {
-    const col = await prisma.boardColumn.create({ data: { boardId: board.id, name: s.name, order: colOrder++ } });
-    await prisma.boardColumnStatus.create({ data: { columnId: col.id, statusId: statusByName.get(s.name)! } });
+    const col = await prisma.boardColumn.create({
+      data: { boardId: board.id, name: s.name, order: colOrder++ },
+    });
+    await prisma.boardColumnStatus.create({
+      data: { columnId: col.id, statusId: statusByName.get(s.name)! },
+    });
   }
 
   const now = new Date();
   const sprintClosed = await prisma.sprint.create({
     data: {
-      projectId: project.id, boardId: board.id, name: 'Sprint 1 — Nền tảng', state: 'CLOSED', sequence: 1,
-      goal: 'Hạ tầng đăng nhập, CI/CD, tìm kiếm', startDate: new Date(now.getTime() - 28 * day),
-      endDate: new Date(now.getTime() - 14 * day), completeDate: new Date(now.getTime() - 14 * day),
+      projectId: project.id,
+      boardId: board.id,
+      name: 'Sprint 1 — Nền tảng',
+      state: 'CLOSED',
+      sequence: 1,
+      goal: 'Hạ tầng đăng nhập, CI/CD, tìm kiếm',
+      startDate: new Date(now.getTime() - 28 * day),
+      endDate: new Date(now.getTime() - 14 * day),
+      completeDate: new Date(now.getTime() - 14 * day),
     },
   });
   const sprintActive = await prisma.sprint.create({
     data: {
-      projectId: project.id, boardId: board.id, name: 'Sprint 2 — Thanh toán', state: 'ACTIVE', sequence: 2,
-      goal: 'Hoàn thiện giỏ hàng, thanh toán VNPay, realtime', startDate: new Date(now.getTime() - 4 * day),
+      projectId: project.id,
+      boardId: board.id,
+      name: 'Sprint 2 — Thanh toán',
+      state: 'ACTIVE',
+      sequence: 2,
+      goal: 'Hoàn thiện giỏ hàng, thanh toán VNPay, realtime',
+      startDate: new Date(now.getTime() - 4 * day),
       endDate: new Date(now.getTime() + 10 * day),
     },
   });
   await prisma.sprint.create({
-    data: { projectId: project.id, boardId: board.id, name: 'Sprint 3 — Quản trị', state: 'FUTURE', sequence: 3, goal: 'Trang quản trị & báo cáo' },
+    data: {
+      projectId: project.id,
+      boardId: board.id,
+      name: 'Sprint 3 — Quản trị',
+      state: 'FUTURE',
+      sequence: 3,
+      goal: 'Trang quản trị & báo cáo',
+    },
   });
 
   // Snapshots cho Sprint đã đóng (velocity/burndown)
   for (const s of [
-    { kind: 'START', at: 28, committedPoints: 18, completedPoints: 0, remainingPoints: 18, committedCount: 5, completedCount: 0 },
-    { kind: 'CLOSE', at: 14, committedPoints: 18, completedPoints: 16, remainingPoints: 2, committedCount: 5, completedCount: 4 },
+    {
+      kind: 'START',
+      at: 28,
+      committedPoints: 18,
+      completedPoints: 0,
+      remainingPoints: 18,
+      committedCount: 5,
+      completedCount: 0,
+    },
+    {
+      kind: 'CLOSE',
+      at: 14,
+      committedPoints: 18,
+      completedPoints: 16,
+      remainingPoints: 2,
+      committedCount: 5,
+      completedCount: 4,
+    },
   ] as const) {
     await prisma.sprintSnapshot.create({
       data: {
-        sprintId: sprintClosed.id, kind: s.kind as any, snapshotAt: new Date(now.getTime() - s.at * day),
-        committedPoints: s.committedPoints, completedPoints: s.completedPoints, remainingPoints: s.remainingPoints,
-        committedCount: s.committedCount, completedCount: s.completedCount,
+        sprintId: sprintClosed.id,
+        kind: s.kind as any,
+        snapshotAt: new Date(now.getTime() - s.at * day),
+        committedPoints: s.committedPoints,
+        completedPoints: s.completedPoints,
+        remainingPoints: s.remainingPoints,
+        committedCount: s.committedCount,
+        completedCount: s.completedCount,
       },
     });
   }
@@ -469,13 +680,15 @@ async function main() {
   // ── Sinh issue mã theo loại ──
   const userId = (r: GenSpec['assignee']) => (r ? u[r] : null);
   const prioId = (n: GenSpec['priority']) => priorities.get(n)!;
-  const sprintId = (s: GenSpec['sprint']) => (s === 'closed' ? sprintClosed.id : s === 'active' ? sprintActive.id : null);
+  const sprintId = (s: GenSpec['sprint']) =>
+    s === 'closed' ? sprintClosed.id : s === 'active' ? sprintActive.id : null;
 
   const specs = buildSpecs();
   // Phân bổ một phần "In Progress" của sprint đang chạy sang "In Review" (dev xong, chờ QA) cho thật.
   let rev = 0;
   for (const s of specs) {
-    if (s.status === 'In Progress' && s.sprint === 'active' && rev++ % 2 === 1) s.status = 'In Review';
+    if (s.status === 'In Progress' && s.sprint === 'active' && rev++ % 2 === 1)
+      s.status = 'In Review';
   }
   const ranks = initialRanks(specs.length);
   const typeSeq: Record<string, number> = {};
@@ -496,18 +709,32 @@ async function main() {
     number += 1;
     const isDone = spec.status === 'Done';
     const statusCat = scrumTpl.statuses.find((s) => s.name === spec.status)!.category;
-    const parentId = spec.parentSummary ? idBySummary.get(spec.parentSummary) ?? null : null;
+    const parentId = spec.parentSummary ? (idBySummary.get(spec.parentSummary) ?? null) : null;
 
     const issue = await prisma.issue.create({
       data: {
-        workspaceId: ws.id, projectId: project.id, number, key,
-        typeId: t.id, statusId: statusByName.get(spec.status)!, priorityId: prioId(spec.priority),
-        summary: spec.summary, description: spec.description ?? null,
-        reporterId: userId(spec.reporter), assigneeId: userId(spec.assignee),
-        parentId, sprintId: sprintId(spec.sprint), storyPoints: spec.points ?? null, rank: ranks[i]!,
+        workspaceId: ws.id,
+        projectId: project.id,
+        number,
+        key,
+        typeId: t.id,
+        statusId: statusByName.get(spec.status)!,
+        priorityId: prioId(spec.priority),
+        summary: spec.summary,
+        description: spec.description ?? null,
+        reporterId: userId(spec.reporter),
+        assigneeId: userId(spec.assignee),
+        parentId,
+        sprintId: sprintId(spec.sprint),
+        storyPoints: spec.points ?? null,
+        rank: ranks[i]!,
         dueDate: spec.due != null ? new Date(now.getTime() + spec.due * day) : null,
         resolvedAt: isDone ? new Date(now.getTime() - 2 * day) : null,
-        createdById: userId(spec.reporter), createdAt: spec.sprint === 'closed' ? new Date(now.getTime() - 24 * day) : new Date(now.getTime() - 3 * day),
+        createdById: userId(spec.reporter),
+        createdAt:
+          spec.sprint === 'closed'
+            ? new Date(now.getTime() - 24 * day)
+            : new Date(now.getTime() - 3 * day),
       },
     });
     idBySummary.set(spec.summary, issue.id);
@@ -515,8 +742,12 @@ async function main() {
     // History trạng thái (nguồn report). DONE có thêm mốc lùi để burndown giảm thật.
     await prisma.issueHistory.create({
       data: {
-        issueId: issue.id, projectId: project.id, sprintId: sprintId(spec.sprint),
-        field: 'STATUS', newValue: spec.status, newCategory: statusCat as any,
+        issueId: issue.id,
+        projectId: project.id,
+        sprintId: sprintId(spec.sprint),
+        field: 'STATUS',
+        newValue: spec.status,
+        newCategory: statusCat as any,
         actorId: userId(spec.reporter) ?? u.admin,
         occurredAt: isDone ? new Date(now.getTime() - 2 * day) : new Date(now.getTime() - 3 * day),
       },
@@ -528,13 +759,20 @@ async function main() {
   // ── Labels + đính ──
   const labelByName = new Map<string, string>();
   for (const l of [
-    { name: 'backend', color: '#2563eb' }, { name: 'frontend', color: '#16a34a' },
-    { name: 'urgent', color: '#dc2626' }, { name: 'tech-debt', color: '#a16207' },
+    { name: 'backend', color: '#2563eb' },
+    { name: 'frontend', color: '#16a34a' },
+    { name: 'urgent', color: '#dc2626' },
+    { name: 'tech-debt', color: '#a16207' },
   ]) {
-    const row = await prisma.label.create({ data: { projectId: project.id, name: l.name, color: l.color } });
+    const row = await prisma.label.create({
+      data: { projectId: project.id, name: l.name, color: l.color },
+    });
     labelByName.set(l.name, row.id);
   }
-  const allIssues = await prisma.issue.findMany({ where: { projectId: project.id }, select: { id: true, key: true, summary: true, type: { select: { key: true } } } });
+  const allIssues = await prisma.issue.findMany({
+    where: { projectId: project.id },
+    select: { id: true, key: true, summary: true, type: { select: { key: true } } },
+  });
   for (const iss of allIssues) {
     const labels: string[] = [];
     if (iss.type.key === 'BUG') labels.push('urgent');
@@ -542,24 +780,57 @@ async function main() {
     if (/dark|i18n|layout|onboarding|board|UI|tìm kiếm/i.test(iss.summary)) labels.push('frontend');
     if (/dead code|tech|monitoring|backup/i.test(iss.summary)) labels.push('tech-debt');
     for (const name of [...new Set(labels)]) {
-      await prisma.issueLabel.create({ data: { issueId: iss.id, labelId: labelByName.get(name)! } });
+      await prisma.issueLabel.create({
+        data: { issueId: iss.id, labelId: labelByName.get(name)! },
+      });
     }
   }
 
   // ── Comments như thật (BA hỏi → Dev trả lời → Tester xác nhận) ──
   const find = (kw: RegExp) => allIssues.find((i) => kw.test(i.summary));
   const commentSpecs: Array<{ kw: RegExp; author: string; body: string }> = [
-    { kw: /VNPay/i, author: u.ba, body: 'Cần làm rõ luồng hoàn tiền (refund) khi đơn bị huỷ. @Dũng xem giúp spec nhé.' },
-    { kw: /VNPay/i, author: u.dev, body: 'OK, mình tách webhook xử lý refund thành sub-task riêng. Đang tích hợp SDK.' },
-    { kw: /Safari/i, author: u.tester, body: 'Tái hiện trên iOS 17 Safari: bấm đăng nhập không có phản hồi. Đính kèm video.' },
-    { kw: /Safari/i, author: u.dev, body: 'Do cookie SameSite, mình đã chỉnh sang Lax. Nhờ @Trang verify lại bản staging.' },
-    { kw: /Giỏ hàng mất/i, author: u.tester, body: 'Lặp lại 3/5 lần khi mạng chậm. Ưu tiên cao vì ảnh hưởng doanh thu.' },
-    { kw: /realtime/i, author: u.ba, body: 'Phạm vi v1: chỉ cần presence + badge số. Bảng thông báo đầy đủ để Sprint sau.' },
-    { kw: /2FA/i, author: u.dev, body: 'Dùng TOTP (Google Authenticator). Cần thêm màn cấu hình + mã khôi phục.' },
+    {
+      kw: /VNPay/i,
+      author: u.ba,
+      body: 'Cần làm rõ luồng hoàn tiền (refund) khi đơn bị huỷ. @Dũng xem giúp spec nhé.',
+    },
+    {
+      kw: /VNPay/i,
+      author: u.dev,
+      body: 'OK, mình tách webhook xử lý refund thành sub-task riêng. Đang tích hợp SDK.',
+    },
+    {
+      kw: /Safari/i,
+      author: u.tester,
+      body: 'Tái hiện trên iOS 17 Safari: bấm đăng nhập không có phản hồi. Đính kèm video.',
+    },
+    {
+      kw: /Safari/i,
+      author: u.dev,
+      body: 'Do cookie SameSite, mình đã chỉnh sang Lax. Nhờ @Trang verify lại bản staging.',
+    },
+    {
+      kw: /Giỏ hàng mất/i,
+      author: u.tester,
+      body: 'Lặp lại 3/5 lần khi mạng chậm. Ưu tiên cao vì ảnh hưởng doanh thu.',
+    },
+    {
+      kw: /realtime/i,
+      author: u.ba,
+      body: 'Phạm vi v1: chỉ cần presence + badge số. Bảng thông báo đầy đủ để Sprint sau.',
+    },
+    {
+      kw: /2FA/i,
+      author: u.dev,
+      body: 'Dùng TOTP (Google Authenticator). Cần thêm màn cấu hình + mã khôi phục.',
+    },
   ];
   for (const c of commentSpecs) {
     const iss = find(c.kw);
-    if (iss) await prisma.comment.create({ data: { issueId: iss.id, authorId: c.author, bodyFormat: 'MARKDOWN', body: c.body } });
+    if (iss)
+      await prisma.comment.create({
+        data: { issueId: iss.id, authorId: c.author, bodyFormat: 'MARKDOWN', body: c.body },
+      });
   }
 
   // ── Notifications cho admin (chuông) ──
@@ -572,8 +843,13 @@ async function main() {
     if (iss) {
       await prisma.notification.create({
         data: {
-          recipientId: u.admin, workspaceId: ws.id, type: n.type as any, issueId: iss.id, actorId: n.actor,
-          payload: { key: iss.key, summary: iss.summary } as unknown as Prisma.InputJsonValue, readAt: null,
+          recipientId: u.admin,
+          workspaceId: ws.id,
+          type: n.type as any,
+          issueId: iss.id,
+          actorId: n.actor,
+          payload: { key: iss.key, summary: iss.summary } as unknown as Prisma.InputJsonValue,
+          readAt: null,
         },
       });
     }

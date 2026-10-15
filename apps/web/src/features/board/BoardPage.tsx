@@ -6,7 +6,13 @@ import type { BoardColumnDto, BoardDto, IssueDto, SwimlaneBy } from '@tirapro/ty
 import { useProject } from '@/features/projects/api';
 import { byPriorityThenStatus } from '@/lib/issueOrder';
 import { buildProgressMap } from '@/lib/issueTree';
-import { isWipLimitError, useBoardIssues, useBoards, useTransitionIssue, type TransitionVars } from './api';
+import {
+  isWipLimitError,
+  useBoardIssues,
+  useBoards,
+  useTransitionIssue,
+  type TransitionVars,
+} from './api';
 import { BoardSettingsDialog, SWIMLANE_LABEL } from './BoardSettingsDialog';
 import { BoardDnd } from './BoardDnd';
 import { Column } from './Column';
@@ -26,7 +32,10 @@ import { AssigneeFilter, applyAssigneeFilter } from '@/features/quick-filters/As
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 
 /** Phân bổ 1 tập công việc vào các cột của bảng (đã sort trong cột). */
-function distribute(board: { columns: BoardColumnDto[] }, list: IssueDto[]): Map<string, IssueDto[]> {
+function distribute(
+  board: { columns: BoardColumnDto[] },
+  list: IssueDto[],
+): Map<string, IssueDto[]> {
   const map = new Map<string, IssueDto[]>();
   for (const col of board.columns) map.set(col.id, []);
   for (const issue of list) {
@@ -37,7 +46,14 @@ function distribute(board: { columns: BoardColumnDto[] }, list: IssueDto[]): Map
   return map;
 }
 
-interface Lane { key: string; name: string; avatarUrl: string | null; issues: IssueDto[]; kind: SwimlaneBy; empty?: boolean }
+interface Lane {
+  key: string;
+  name: string;
+  avatarUrl: string | null;
+  issues: IssueDto[];
+  kind: SwimlaneBy;
+  empty?: boolean;
+}
 
 const NO_LANE = '__none__';
 /** Mảng rỗng dùng chung để `Column` memo không thấy prop đổi tham chiếu. */
@@ -49,9 +65,19 @@ function buildLanes(by: SwimlaneBy, list: IssueDto[], all: IssueDto[]): Lane[] |
   const byId = new Map(all.map((i) => [i.id, i]));
   const hasChildren = new Set(all.map((i) => i.parentId).filter((x): x is string => !!x));
   const groups = new Map<string, Lane & { order: number }>();
-  const add = (key: string, name: string, avatarUrl: string | null, issue: IssueDto, order = 0, empty = false) => {
+  const add = (
+    key: string,
+    name: string,
+    avatarUrl: string | null,
+    issue: IssueDto,
+    order = 0,
+    empty = false,
+  ) => {
     let g = groups.get(key);
-    if (!g) { g = { key, name, avatarUrl, issues: [], kind: by, order, empty }; groups.set(key, g); }
+    if (!g) {
+      g = { key, name, avatarUrl, issues: [], kind: by, order, empty };
+      groups.set(key, g);
+    }
     g.issues.push(issue);
   };
   for (const i of list) {
@@ -69,7 +95,8 @@ function buildLanes(by: SwimlaneBy, list: IssueDto[], all: IssueDto[]): Lane[] |
       // parent: việc con ở cùng hàng với việc cha; việc cha không có con và việc lẻ vào hàng "việc độc lập"
       const parentId = i.parentId ?? (hasChildren.has(i.id) ? i.id : null);
       const parent = parentId ? byId.get(parentId) : undefined;
-      if (parentId) add(parentId, parent ? `${parent.key} · ${parent.summary}` : 'Việc cha khác', null, i);
+      if (parentId)
+        add(parentId, parent ? `${parent.key} · ${parent.summary}` : 'Việc cha khác', null, i);
       else add(NO_LANE, 'Việc độc lập (không có việc cha/con)', null, i, 0, true);
     }
   }
@@ -84,16 +111,31 @@ function buildLanes(by: SwimlaneBy, list: IssueDto[], all: IssueDto[]): Lane[] |
  * Số việc tính vào giới hạn WIP của cột — CÙNG quy tắc với máy chủ: bảng Scrum chỉ đếm việc của sprint đang chạy
  * (không có sprint chạy = 0), bảng Kanban đếm cả dự án. Đếm trên tập CHƯA lọc để bộ lọc nhanh không làm lệch.
  */
-function wipCount(col: BoardColumnDto, all: IssueDto[], board: BoardDto, activeSprintId: string | null): number {
+function wipCount(
+  col: BoardColumnDto,
+  all: IssueDto[],
+  board: BoardDto,
+  activeSprintId: string | null,
+): number {
   if (board.type === 'SCRUM' && !activeSprintId) return 0;
-  return all.filter((i) => col.statusIds.includes(i.status.id) && (board.type !== 'SCRUM' || i.sprintId === activeSprintId)).length;
+  return all.filter(
+    (i) =>
+      col.statusIds.includes(i.status.id) &&
+      (board.type !== 'SCRUM' || i.sprintId === activeSprintId),
+  ).length;
 }
 
 /** Nội dung bảng công việc (cột kéo-thả). Header/nav dự án + popup tạo việc nằm ở ProjectLayout. */
 export function BoardPage() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
-  const { data: project, isLoading: lp, isError: pe, error: pErr, refetch: refetchProject } = useProject(key);
+  const {
+    data: project,
+    isLoading: lp,
+    isError: pe,
+    error: pErr,
+    refetch: refetchProject,
+  } = useProject(key);
   const boardsQ = useBoards(project?.id);
   const projectIssuesQ = useProjectIssues(project?.id);
   const sprintsQ = useProjectSprints(project?.id);
@@ -115,7 +157,9 @@ export function BoardPage() {
   const refetchBoardIssues = boardIssuesQ.refetch;
   useEffect(() => {
     if (!hasFilter) return;
-    const t = setTimeout(() => { void refetchBoardIssues(); }, 400);
+    const t = setTimeout(() => {
+      void refetchBoardIssues();
+    }, 400);
     return () => clearTimeout(t);
   }, [hasFilter, projectStamp, refetchBoardIssues]);
   const transition = useTransitionIssue(project?.id ?? '');
@@ -131,7 +175,11 @@ export function BoardPage() {
   const assigneeOptions = useAssigneeOptions(project?.id);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Cột đầy WIP + người có quyền → hỏi "Vẫn chuyển?" (giữ nguyên biến để gửi lại kèm force).
-  const [wipPrompt, setWipPrompt] = useState<{ vars: TransitionVars; col: BoardColumnDto; issueKey: string } | null>(null);
+  const [wipPrompt, setWipPrompt] = useState<{
+    vars: TransitionVars;
+    col: BoardColumnDto;
+    issueKey: string;
+  } | null>(null);
   const swimlaneBy: SwimlaneBy = board?.swimlaneBy ?? 'none';
   const activeSprintId = (sprintsQ.data ?? []).find((sp) => sp.state === 'ACTIVE')?.id ?? null;
 
@@ -142,13 +190,19 @@ export function BoardPage() {
     try {
       const p = JSON.parse(localStorage.getItem(`tirapro:boardPrefs:${pid}`) || '{}');
       setAssignee(typeof p.assignee === 'string' ? p.assignee : '');
-    } catch { setAssignee(''); }
+    } catch {
+      setAssignee('');
+    }
   }, [project?.id]);
   const changeAssignee = (v: string) => {
     setAssignee(v);
     const pid = project?.id;
     if (!pid) return;
-    try { localStorage.setItem(`tirapro:boardPrefs:${pid}`, JSON.stringify({ assignee: v })); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(`tirapro:boardPrefs:${pid}`, JSON.stringify({ assignee: v }));
+    } catch {
+      /* ignore */
+    }
   };
 
   // Lọc: bộ lọc nhanh (AND) + người phụ trách. Đếm cột/làn dựa trên tập này.
@@ -158,7 +212,10 @@ export function BoardPage() {
   }, [issues, quickFilters, currentUserId, assignee]);
 
   // Làn (swimlane) theo cấu hình của bảng.
-  const lanes = useMemo(() => buildLanes(swimlaneBy, filteredIssues, issues ?? []), [swimlaneBy, filteredIssues, issues]);
+  const lanes = useMemo(
+    () => buildLanes(swimlaneBy, filteredIssues, issues ?? []),
+    [swimlaneBy, filteredIssues, issues],
+  );
 
   // Phân bổ việc vào cột MỘT lần cho cả bảng phẳng lẫn mọi làn; mảng của cột không đổi nội dung thì giữ nguyên
   // tham chiếu để `Column` (memo) khỏi vẽ lại khi chỉ có cột khác thay đổi.
@@ -175,7 +232,8 @@ export function BoardPage() {
     const run = (prefix: string, list: IssueDto[]) => {
       const out = new Map<string, IssueDto[]>();
       if (!board) return out;
-      for (const [colId, arr] of distribute(board, list)) out.set(colId, stable(`${prefix}::${colId}`, arr));
+      for (const [colId, arr] of distribute(board, list))
+        out.set(colId, stable(`${prefix}::${colId}`, arr));
       return out;
     };
     const byCol = lanes ? new Map<string, IssueDto[]>() : run('', filteredIssues);
@@ -189,7 +247,9 @@ export function BoardPage() {
   const wipByCol = useMemo(() => {
     const m = new Map<string, number>();
     if (!board) return m;
-    for (const col of board.columns) if (col.wipLimit != null) m.set(col.id, wipCount(col, projectIssues ?? [], board, activeSprintId));
+    for (const col of board.columns)
+      if (col.wipLimit != null)
+        m.set(col.id, wipCount(col, projectIssues ?? [], board, activeSprintId));
     return m;
   }, [board, projectIssues, activeSprintId]);
 
@@ -201,7 +261,10 @@ export function BoardPage() {
   function onWipBlocked(err: unknown, vars: TransitionVars, col: BoardColumnDto, issueKey: string) {
     void apiErrorMessage(err); // đánh dấu đã xử lý → MutationCache không toast thêm lần hai
     if (canForceWip) setWipPrompt({ vars, col, issueKey });
-    else toast.error(`Cột “${col.name}” đã đạt giới hạn ${col.wipLimit ?? ''} việc đang làm — hãy hoàn thành bớt việc trong cột này trước, hoặc nhờ quản trị dự án cho phép vượt giới hạn.`);
+    else
+      toast.error(
+        `Cột “${col.name}” đã đạt giới hạn ${col.wipLimit ?? ''} việc đang làm — hãy hoàn thành bớt việc trong cột này trước, hoặc nhờ quản trị dự án cho phép vượt giới hạn.`,
+      );
   }
 
   /** Chuyển trạng thái kèm Hoàn tác; `force` chỉ gửi khi người dùng đã xác nhận "Vẫn chuyển". */
@@ -209,9 +272,19 @@ export function BoardPage() {
     if (!board) return;
     const fromStatusId = issue.status.id;
     const fromStatusName = issue.status.name;
-    const vars: TransitionVars = { id: issue.id, toStatusId, version: issue.version, statusName: col.name, boardId: board.id, ...(force ? { force: true } : {}) };
+    const vars: TransitionVars = {
+      id: issue.id,
+      toStatusId,
+      version: issue.version,
+      statusName: col.name,
+      boardId: board.id,
+      ...(force ? { force: true } : {}),
+    };
     transition.mutate(vars, {
-      onError: (err) => (isWipLimitError(err) ? onWipBlocked(err, vars, col, issue.key) : toast.error(apiErrorMessage(err))),
+      onError: (err) =>
+        isWipLimitError(err)
+          ? onWipBlocked(err, vars, col, issue.key)
+          : toast.error(apiErrorMessage(err)),
       onSuccess: (updated) =>
         toast.success(`Đã chuyển ${issue.key} sang “${col.name}”`, {
           duration: 4000,
@@ -220,7 +293,12 @@ export function BoardPage() {
             onClick: () =>
               // Quay về cột cũ không làm cột đích đầy thêm nên không gửi boardId (không cần kiểm WIP).
               transition.mutate(
-                { id: issue.id, toStatusId: fromStatusId, version: updated.version, statusName: fromStatusName },
+                {
+                  id: issue.id,
+                  toStatusId: fromStatusId,
+                  version: updated.version,
+                  statusName: fromStatusName,
+                },
                 { onError: (err) => toast.error(apiErrorMessage(err)) },
               ),
           },
@@ -232,10 +310,16 @@ export function BoardPage() {
     if (!wipPrompt) return;
     const { vars, col, issueKey } = wipPrompt;
     setWipPrompt(null);
-    transition.mutate({ ...vars, force: true }, {
-      onError: (err) => toast.error(apiErrorMessage(err)),
-      onSuccess: () => toast.success(`Đã chuyển ${issueKey} sang “${col.name}” (vượt giới hạn WIP)`, { duration: 4000 }),
-    });
+    transition.mutate(
+      { ...vars, force: true },
+      {
+        onError: (err) => toast.error(apiErrorMessage(err)),
+        onSuccess: () =>
+          toast.success(`Đã chuyển ${issueKey} sang “${col.name}” (vượt giới hạn WIP)`, {
+            duration: 4000,
+          }),
+      },
+    );
   }
 
   async function onMove(issueId: string, overId: string) {
@@ -254,7 +338,11 @@ export function BoardPage() {
 
     // Thả sang làn khác chỉ có nghĩa "đổi người" khi bảng chia làn theo người; các kiểu chia khác chỉ đổi cột.
     const targetAssignee: string | null = laneKey === NO_LANE ? null : laneKey;
-    const assigneeChanged = grouped && swimlaneBy === 'assignee' && canAssign && targetAssignee !== (issue.assigneeId ?? null);
+    const assigneeChanged =
+      grouped &&
+      swimlaneBy === 'assignee' &&
+      canAssign &&
+      targetAssignee !== (issue.assigneeId ?? null);
 
     if (!assigneeChanged) {
       if (statusChanged) runTransition(issue, col, targetStatusId);
@@ -265,19 +353,33 @@ export function BoardPage() {
     // có thể kèm đổi trạng thái nếu thả sang cột khác.
     let version = issue.version;
     try {
-      const updated = await updateIssue.mutateAsync({ id: issue.id, key: issue.key, patch: { assigneeId: targetAssignee }, version });
+      const updated = await updateIssue.mutateAsync({
+        id: issue.id,
+        key: issue.key,
+        patch: { assigneeId: targetAssignee },
+        version,
+      });
       version = updated.data.version;
     } catch (err) {
       toast.error(apiErrorMessage(err));
       return;
     }
     if (statusChanged && board) {
-      const vars: TransitionVars = { id: issue.id, toStatusId: targetStatusId, version, statusName: col.name, boardId: board.id };
+      const vars: TransitionVars = {
+        id: issue.id,
+        toStatusId: targetStatusId,
+        version,
+        statusName: col.name,
+        boardId: board.id,
+      };
       try {
         await transition.mutateAsync(vars);
       } catch (err) {
         if (isWipLimitError(err)) {
-          toast.success(`Đã giao ${issue.key} cho ${assigneeOptions.find((o) => o.id === targetAssignee)?.name ?? 'người khác'}`, { duration: 3000 });
+          toast.success(
+            `Đã giao ${issue.key} cho ${assigneeOptions.find((o) => o.id === targetAssignee)?.name ?? 'người khác'}`,
+            { duration: 3000 },
+          );
           onWipBlocked(err, vars, col, issue.key);
         } else {
           toast.error(apiErrorMessage(err));
@@ -285,13 +387,20 @@ export function BoardPage() {
         return;
       }
     }
-    const who = targetAssignee == null ? 'bỏ người phụ trách' : `giao cho ${assigneeOptions.find((o) => o.id === targetAssignee)?.name ?? 'người khác'}`;
+    const who =
+      targetAssignee == null
+        ? 'bỏ người phụ trách'
+        : `giao cho ${assigneeOptions.find((o) => o.id === targetAssignee)?.name ?? 'người khác'}`;
     const parts = [statusChanged ? `sang “${col.name}”` : '', `· ${who}`].filter(Boolean).join(' ');
     toast.success(`Đã cập nhật ${issue.key} ${parts}`.trim(), { duration: 3000 });
   }
 
   if (pe) {
-    return <div className="p-6"><QueryError error={pErr} onRetry={() => refetchProject()} /></div>;
+    return (
+      <div className="p-6">
+        <QueryError error={pErr} onRetry={() => refetchProject()} />
+      </div>
+    );
   }
 
   if (boardsQ.isError || projectIssuesQ.isError || (hasFilter && boardIssuesQ.isError)) {
@@ -299,7 +408,11 @@ export function BoardPage() {
       <div className="p-6">
         <QueryError
           error={boardsQ.error ?? projectIssuesQ.error ?? boardIssuesQ.error}
-          onRetry={() => { void boardsQ.refetch(); void projectIssuesQ.refetch(); if (hasFilter) void boardIssuesQ.refetch(); }}
+          onRetry={() => {
+            void boardsQ.refetch();
+            void projectIssuesQ.refetch();
+            if (hasFilter) void boardIssuesQ.refetch();
+          }}
         />
       </div>
     );
@@ -308,7 +421,11 @@ export function BoardPage() {
   if (lp || lb || li) {
     return (
       <div className="p-6">
-        <div className="flex gap-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-72 w-[21.6rem] shrink-0" />)}</div>
+        <div className="flex gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-72 w-[21.6rem] shrink-0" />
+          ))}
+        </div>
         <DelayedSpinner />
       </div>
     );
@@ -335,9 +452,11 @@ export function BoardPage() {
           {swimlaneBy !== 'none' && (
             <span
               className="inline-flex h-7 items-center gap-1.5 rounded-full border border-transparent bg-primary-subtle px-2.5 text-xs font-medium text-primary"
-              title={swimlaneBy === 'assignee'
-                ? 'Bảng đang chia hàng theo người phụ trách. Kéo việc sang hàng khác để giao cho người đó.'
-                : `Bảng đang chia hàng: ${SWIMLANE_LABEL[swimlaneBy].toLowerCase()}.`}
+              title={
+                swimlaneBy === 'assignee'
+                  ? 'Bảng đang chia hàng theo người phụ trách. Kéo việc sang hàng khác để giao cho người đó.'
+                  : `Bảng đang chia hàng: ${SWIMLANE_LABEL[swimlaneBy].toLowerCase()}.`
+              }
             >
               <Layers className="h-3.5 w-3.5" /> {SWIMLANE_LABEL[swimlaneBy]}
             </span>
@@ -353,7 +472,12 @@ export function BoardPage() {
           <div className="ml-auto flex items-center gap-2">
             <PresenceAvatars room="project" projectId={project?.id} />
             {canManageBoard && (
-              <Button variant="secondary" size="sm" onClick={() => setSettingsOpen(true)} title="Cột, giới hạn WIP, bộ lọc và cách chia hàng của bảng">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setSettingsOpen(true)}
+                title="Cột, giới hạn WIP, bộ lọc và cách chia hàng của bảng"
+              >
                 <Settings className="h-4 w-4" /> Cài đặt bảng
               </Button>
             )}
@@ -363,7 +487,9 @@ export function BoardPage() {
         {lanes ? (
           <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4">
             {lanes.length === 0 ? (
-              <p className="py-10 text-center text-sm text-faint">Không có việc nào khớp bộ lọc. Tắt bớt bộ lọc phía trên để xem thêm.</p>
+              <p className="py-10 text-center text-sm text-faint">
+                Không có việc nào khớp bộ lọc. Tắt bớt bộ lọc phía trên để xem thêm.
+              </p>
             ) : (
               lanes.map((lane, laneIdx) => {
                 const cols = laneCols.get(lane.key);
@@ -372,12 +498,16 @@ export function BoardPage() {
                     <div className="mb-2 flex items-center gap-2">
                       {lane.kind === 'assignee' ? (
                         lane.empty ? (
-                          <span className="grid h-6 w-6 place-items-center rounded-full bg-surface-2 text-faint"><UserRound className="h-3.5 w-3.5" /></span>
+                          <span className="grid h-6 w-6 place-items-center rounded-full bg-surface-2 text-faint">
+                            <UserRound className="h-3.5 w-3.5" />
+                          </span>
                         ) : (
                           <Avatar name={lane.name} src={lane.avatarUrl} size={24} />
                         )
                       ) : (
-                        <span className="grid h-6 w-6 place-items-center rounded-md bg-surface-2 text-faint"><Layers className="h-3.5 w-3.5" /></span>
+                        <span className="grid h-6 w-6 place-items-center rounded-md bg-surface-2 text-faint">
+                          <Layers className="h-3.5 w-3.5" />
+                        </span>
                       )}
                       <span className="text-sm font-semibold text-ink-strong">{lane.name}</span>
                       <span
@@ -433,7 +563,12 @@ export function BoardPage() {
       </div>
 
       {settingsOpen && project?.id && (
-        <BoardSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} projectId={project.id} board={board} />
+        <BoardSettingsDialog
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          projectId={project.id}
+          board={board}
+        />
       )}
       <ConfirmDialog
         open={!!wipPrompt}

@@ -1,11 +1,23 @@
 import { useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
-import { Boxes, Tag, Tags, Download, Image as ImageIcon, Users, SlidersHorizontal } from 'lucide-react';
+import {
+  Boxes,
+  Tag,
+  Tags,
+  Download,
+  Image as ImageIcon,
+  Users,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
-import { useProject, useUploadProjectAvatar, useRemoveProjectAvatar } from '@/features/projects/api';
+import {
+  useProject,
+  useUploadProjectAvatar,
+  useRemoveProjectAvatar,
+} from '@/features/projects/api';
 import { GeneralSection } from './GeneralSection';
 import { SectionCard } from './SectionCard';
 import { MembersSection } from './MembersSection';
@@ -103,7 +115,9 @@ export function ProjectConfigPage() {
               </>
             )}
             {active === 'members' && <MembersSection projectId={projectId} />}
-            {active === 'components' && <ComponentsSection projectId={projectId} canAdmin={canAdmin} />}
+            {active === 'components' && (
+              <ComponentsSection projectId={projectId} canAdmin={canAdmin} />
+            )}
             {active === 'versions' && <VersionsSection projectId={projectId} canAdmin={canAdmin} />}
             {active === 'labels' && <LabelsSection projectId={projectId} canAdmin={canAdmin} />}
             {active === 'data' && <DataSection projectId={projectId} canImport={canImport} />}
@@ -113,7 +127,6 @@ export function ProjectConfigPage() {
     </div>
   );
 }
-
 
 /* ------------------------------------------------------------------ */
 /* Section — Ảnh dự án                                                  */

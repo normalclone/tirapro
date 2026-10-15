@@ -11,12 +11,7 @@ import { QueryError } from '@/components/ui/QueryError';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import {
-  useAdminUsers,
-  useCreateAdminUser,
-  useUpdateAdminUser,
-  type AdminUser,
-} from './api';
+import { useAdminUsers, useCreateAdminUser, useUpdateAdminUser, type AdminUser } from './api';
 
 /** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập không gian làm việc. */
 export function AdminUsersPage() {
@@ -42,7 +37,8 @@ export function AdminUsersPage() {
             <ShieldCheck className="h-6 w-6 text-primary" /> Tài khoản
           </h1>
           <p className="mt-1 text-sm text-muted">
-            Tạo tài khoản và cấp quyền: được lập không gian làm việc mới, hoặc quản trị toàn hệ thống.
+            Tạo tài khoản và cấp quyền: được lập không gian làm việc mới, hoặc quản trị toàn hệ
+            thống.
           </p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -53,7 +49,11 @@ export function AdminUsersPage() {
       {isError ? (
         <QueryError error={error} onRetry={() => void refetch()} />
       ) : isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full" />
+          ))}
+        </div>
       ) : !users || users.length === 0 ? (
         <EmptyState title="Chưa có tài khoản" description="Tạo tài khoản đầu tiên cho hệ thống." />
       ) : (
@@ -64,9 +64,13 @@ export function AdminUsersPage() {
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 truncate text-sm font-medium text-ink">
                   {u.displayName}
-                  {u.isSystemAdmin && <Badge className="bg-primary-subtle text-primary">Admin hệ thống</Badge>}
+                  {u.isSystemAdmin && (
+                    <Badge className="bg-primary-subtle text-primary">Admin hệ thống</Badge>
+                  )}
                 </p>
-                <p className="truncate text-xs text-faint">{u.email} · {u.workspaceCount} không gian làm việc</p>
+                <p className="truncate text-xs text-faint">
+                  {u.email} · {u.workspaceCount} không gian làm việc
+                </p>
               </div>
               <div className="flex shrink-0 items-center gap-4">
                 <Toggle
@@ -93,7 +97,17 @@ export function AdminUsersPage() {
 }
 
 /** Switch nhỏ có nhãn — bật/tắt một quyền của user. */
-function Toggle({ label, on, disabled, onChange }: { label: string; on: boolean; disabled?: boolean; onChange: () => void }) {
+function Toggle({
+  label,
+  on,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  on: boolean;
+  disabled?: boolean;
+  onChange: () => void;
+}) {
   return (
     <label className={cn('flex items-center gap-2 text-xs', disabled && 'opacity-50')}>
       <span className="text-muted">{label}</span>
@@ -109,7 +123,12 @@ function Toggle({ label, on, disabled, onChange }: { label: string; on: boolean;
           on ? 'bg-primary' : 'bg-surface-3',
         )}
       >
-        <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', on ? 'translate-x-4' : 'translate-x-0.5')} />
+        <span
+          className={cn(
+            'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
+            on ? 'translate-x-4' : 'translate-x-0.5',
+          )}
+        />
       </button>
     </label>
   );
@@ -129,7 +148,13 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     if (!email.trim() || !displayName.trim() || create.isPending) return;
     create.mutate(
-      { email: email.trim(), displayName: displayName.trim(), password: password.trim() || undefined, canCreateWorkspace, isSystemAdmin },
+      {
+        email: email.trim(),
+        displayName: displayName.trim(),
+        password: password.trim() || undefined,
+        canCreateWorkspace,
+        isSystemAdmin,
+      },
       {
         onSuccess: (u) => {
           toast.success(`Đã tạo tài khoản ${u.email}`);
@@ -143,52 +168,117 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
 
   async function copyTemp() {
     if (!tempPassword) return;
-    try { await navigator.clipboard.writeText(tempPassword); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* ignore */ }
+    try {
+      await navigator.clipboard.writeText(tempPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Tạo tài khoản" size="md">
-    {tempPassword ? (
-      <div className="space-y-3">
-        <p className="text-sm text-ink">Đã tạo tài khoản. Gửi mật khẩu tạm này cho người dùng:</p>
-        <div className="flex items-center gap-2">
-          <Input readOnly value={tempPassword} className="font-mono" onFocus={(e) => e.currentTarget.select()} />
-          <Button type="button" variant="secondary" size="icon" onClick={() => void copyTemp()} aria-label="Sao chép">
-            {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-          </Button>
+    <Dialog
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title="Tạo tài khoản"
+      size="md"
+    >
+      {tempPassword ? (
+        <div className="space-y-3">
+          <p className="text-sm text-ink">Đã tạo tài khoản. Gửi mật khẩu tạm này cho người dùng:</p>
+          <div className="flex items-center gap-2">
+            <Input
+              readOnly
+              value={tempPassword}
+              className="font-mono"
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              onClick={() => void copyTemp()}
+              aria-label="Sao chép"
+            >
+              {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={onClose}>
+              Xong
+            </Button>
+          </div>
         </div>
-        <div className="flex justify-end"><Button size="sm" onClick={onClose}>Xong</Button></div>
-      </div>
-    ) : (
-      <form onSubmit={submit} className="space-y-4">
-        <label className="block space-y-1.5">
-          <span className="text-sm font-medium text-ink">Email</span>
-          <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ten@congty.com" />
-        </label>
-        <label className="block space-y-1.5">
-          <span className="text-sm font-medium text-ink">Tên hiển thị</span>
-          <Input required value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Nguyễn Văn A" />
-        </label>
-        <label className="block space-y-1.5">
-          <span className="text-sm font-medium text-ink">Mật khẩu <span className="font-normal text-faint">(bỏ trống = sinh tạm)</span></span>
-          <Input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Tối thiểu 6 ký tự" />
-        </label>
-        <div className="flex items-center gap-6">
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input type="checkbox" checked={canCreateWorkspace} onChange={(e) => setCanCreate(e.target.checked)} className="h-4 w-4 rounded border-border" />
-            Được lập không gian làm việc mới
+      ) : (
+        <form onSubmit={submit} className="space-y-4">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-ink">Email</span>
+            <Input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="ten@congty.com"
+            />
           </label>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input type="checkbox" checked={isSystemAdmin} onChange={(e) => setIsAdmin(e.target.checked)} className="h-4 w-4 rounded border-border" />
-            Admin hệ thống
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-ink">Tên hiển thị</span>
+            <Input
+              required
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Nguyễn Văn A"
+            />
           </label>
-        </div>
-        <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="ghost" size="sm" onClick={onClose}>Huỷ</Button>
-          <Button type="submit" size="sm" loading={create.isPending} disabled={!email.trim() || !displayName.trim()}>Tạo tài khoản</Button>
-        </div>
-      </form>
-    )}
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-ink">
+              Mật khẩu <span className="font-normal text-faint">(bỏ trống = sinh tạm)</span>
+            </span>
+            <Input
+              type="text"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Tối thiểu 6 ký tự"
+            />
+          </label>
+          <div className="flex items-center gap-6">
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={canCreateWorkspace}
+                onChange={(e) => setCanCreate(e.target.checked)}
+                className="h-4 w-4 rounded border-border"
+              />
+              Được lập không gian làm việc mới
+            </label>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={isSystemAdmin}
+                onChange={(e) => setIsAdmin(e.target.checked)}
+                className="h-4 w-4 rounded border-border"
+              />
+              Admin hệ thống
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+              Huỷ
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              loading={create.isPending}
+              disabled={!email.trim() || !displayName.trim()}
+            >
+              Tạo tài khoản
+            </Button>
+          </div>
+        </form>
+      )}
     </Dialog>
   );
 }

@@ -20,7 +20,11 @@ const OFFSET = 8;
 const TIP_ID = 'instant-tooltip';
 
 /** Phần tử đang được cất `title` để chặn tooltip gốc; `hide()` trả lại. */
-interface Stash { el: HTMLElement; title: string | null; describedBy: string | null }
+interface Stash {
+  el: HTMLElement;
+  title: string | null;
+  describedBy: string | null;
+}
 
 interface TipState {
   text: string;
@@ -43,7 +47,9 @@ function readTip(el: HTMLElement): { text: string; title: string | null } {
 
 /** Bỏ token `TIP_ID` khỏi `aria-describedby` (giữ nguyên các id khác nếu có). */
 function dropDescribedBy(el: HTMLElement) {
-  const rest = (el.getAttribute('aria-describedby') ?? '').split(/\s+/).filter((t) => t && t !== TIP_ID);
+  const rest = (el.getAttribute('aria-describedby') ?? '')
+    .split(/\s+/)
+    .filter((t) => t && t !== TIP_ID);
   if (rest.length) el.setAttribute('aria-describedby', rest.join(' '));
   else el.removeAttribute('aria-describedby');
 }

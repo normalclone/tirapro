@@ -9,7 +9,12 @@ import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/pr
 import { QueryError } from '@/components/ui/QueryError';
 import { pageContainer } from '@/components/layout/page';
 import { categoryColor } from '@/lib/statusColor';
-import { buildIssueTree, buildProgressMap, type IssueTreeNode, type SubtreeProgress } from '@/lib/issueTree';
+import {
+  buildIssueTree,
+  buildProgressMap,
+  type IssueTreeNode,
+  type SubtreeProgress,
+} from '@/lib/issueTree';
 import { cn } from '@/lib/utils';
 
 /**
@@ -23,7 +28,11 @@ const GRID_COLS = 'grid grid-cols-[minmax(0,1fr)_9rem_11rem_6rem_4.5rem] items-c
 const INDENT_STEP = 20;
 
 /** Làm phẳng cây thành danh sách hàng hiển thị, tôn trọng node đang thu gọn. */
-function flatten(nodes: IssueTreeNode[], collapsed: Set<string>, out: IssueTreeNode[] = []): IssueTreeNode[] {
+function flatten(
+  nodes: IssueTreeNode[],
+  collapsed: Set<string>,
+  out: IssueTreeNode[] = [],
+): IssueTreeNode[] {
   for (const n of nodes) {
     out.push(n);
     if (n.children.length && !collapsed.has(n.issue.id)) flatten(n.children, collapsed, out);
@@ -45,7 +54,13 @@ function collectParentIds(nodes: IssueTreeNode[], out: Set<string> = new Set()):
 export function TreePage() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
-  const { data: project, isLoading: lp, isError: pe, error: pErr, refetch: refetchProject } = useProject(key);
+  const {
+    data: project,
+    isLoading: lp,
+    isError: pe,
+    error: pErr,
+    refetch: refetchProject,
+  } = useProject(key);
   const issuesQ = useProjectIssues(project?.id);
   const { data: issues, isLoading: li } = issuesQ;
   const isLoading = lp || li;
@@ -78,7 +93,10 @@ export function TreePage() {
           <div className={pageContainer('lg')}>
             <QueryError
               error={pErr ?? issuesQ.error}
-              onRetry={() => { void refetchProject(); if (!pe) void issuesQ.refetch(); }}
+              onRetry={() => {
+                void refetchProject();
+                if (!pe) void issuesQ.refetch();
+              }}
             />
           </div>
         ) : isLoading ? (
@@ -98,51 +116,51 @@ export function TreePage() {
           </div>
         ) : (
           <div className={pageContainer('lg')}>
-          <div className="overflow-hidden rounded-lg border border-border bg-surface">
-            {/* Hàng tiêu đề cột — dính khi cuộn để luôn biết đang xem cột nào */}
-            <div
-              className={cn(
-                GRID_COLS,
-                'sticky top-0 z-10 border-b border-border bg-surface-2 px-3 py-2',
-                'text-[11px] font-medium uppercase tracking-wide text-faint',
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={toggleAll}
-                  disabled={parentIds.size === 0}
-                  aria-label={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
-                  title={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
-                  className="grid h-5 w-5 shrink-0 place-items-center rounded text-faint hover:bg-surface-3 hover:text-ink disabled:pointer-events-none disabled:opacity-40"
-                >
-                  {allCollapsed ? (
-                    <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden />
-                  ) : (
-                    <ChevronsDownUp className="h-3.5 w-3.5" aria-hidden />
-                  )}
-                </button>
-                <span>Tiêu đề</span>
+            <div className="overflow-hidden rounded-lg border border-border bg-surface">
+              {/* Hàng tiêu đề cột — dính khi cuộn để luôn biết đang xem cột nào */}
+              <div
+                className={cn(
+                  GRID_COLS,
+                  'sticky top-0 z-10 border-b border-border bg-surface-2 px-3 py-2',
+                  'text-[11px] font-medium uppercase tracking-wide text-faint',
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleAll}
+                    disabled={parentIds.size === 0}
+                    aria-label={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
+                    title={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
+                    className="grid h-5 w-5 shrink-0 place-items-center rounded text-faint hover:bg-surface-3 hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    {allCollapsed ? (
+                      <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden />
+                    ) : (
+                      <ChevronsDownUp className="h-3.5 w-3.5" aria-hidden />
+                    )}
+                  </button>
+                  <span>Tiêu đề</span>
+                </div>
+                <span>Trạng thái</span>
+                <span>Người phụ trách</span>
+                <span>Ưu tiên</span>
+                <span className="text-right tabular">Điểm</span>
               </div>
-              <span>Trạng thái</span>
-              <span>Người phụ trách</span>
-              <span>Ưu tiên</span>
-              <span className="text-right tabular">Điểm</span>
-            </div>
 
-            <ul className="divide-y divide-border">
-              {rows.map((node) => (
-                <TreeRow
-                  key={node.issue.id}
-                  node={node}
-                  progress={progressById.get(node.issue.id)}
-                  collapsed={collapsed.has(node.issue.id)}
-                  onToggle={() => toggle(node.issue.id)}
-                  onOpen={() => navigate(`/issue/${node.issue.key}`)}
-                />
-              ))}
-            </ul>
-          </div>
+              <ul className="divide-y divide-border">
+                {rows.map((node) => (
+                  <TreeRow
+                    key={node.issue.id}
+                    node={node}
+                    progress={progressById.get(node.issue.id)}
+                    collapsed={collapsed.has(node.issue.id)}
+                    onToggle={() => toggle(node.issue.id)}
+                    onOpen={() => navigate(`/issue/${node.issue.key}`)}
+                  />
+                ))}
+              </ul>
+            </div>
           </div>
         )}
       </div>
@@ -170,7 +188,10 @@ function TreeRow({
   return (
     <li
       onClick={onOpen}
-      className={cn(GRID_COLS, 'group cursor-pointer px-3 py-2 transition-colors hover:bg-surface-2')}
+      className={cn(
+        GRID_COLS,
+        'group cursor-pointer px-3 py-2 transition-colors hover:bg-surface-2',
+      )}
     >
       {/* Cột 1 — Tiêu đề: thụt lề theo cấp + chevron + loại + key + summary + tiến độ con */}
       <div className="flex min-w-0 items-center gap-2">
@@ -186,7 +207,10 @@ function TreeRow({
             aria-expanded={!collapsed}
             className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted hover:bg-surface-3 hover:text-ink"
           >
-            <ChevronRight className={cn('h-4 w-4 transition-transform', !collapsed && 'rotate-90')} aria-hidden />
+            <ChevronRight
+              className={cn('h-4 w-4 transition-transform', !collapsed && 'rotate-90')}
+              aria-hidden
+            />
           </button>
         ) : (
           <span className="h-5 w-5 shrink-0" aria-hidden />
@@ -208,8 +232,12 @@ function TreeRow({
             {issue.type.name}
           </span>
           <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
-          <span className="min-w-0 flex-1 truncate text-sm text-ink group-hover:text-ink-strong">{issue.summary}</span>
-          {showProgress && <TaskProgress progress={progress} compact className="hidden w-24 shrink-0 lg:block" />}
+          <span className="min-w-0 flex-1 truncate text-sm text-ink group-hover:text-ink-strong">
+            {issue.summary}
+          </span>
+          {showProgress && (
+            <TaskProgress progress={progress} compact className="hidden w-24 shrink-0 lg:block" />
+          )}
           <DueBadge issue={issue} warnOnly className="shrink-0" />
         </button>
       </div>
@@ -254,7 +282,10 @@ function TreeRow({
 
       {/* Cột 5 — Story points (số căn phải, chữ số tabular) */}
       <span
-        className={cn('text-right text-sm tabular', issue.storyPoints != null ? 'text-ink-strong' : 'text-faint')}
+        className={cn(
+          'text-right text-sm tabular',
+          issue.storyPoints != null ? 'text-ink-strong' : 'text-faint',
+        )}
       >
         {issue.storyPoints ?? '—'}
       </span>

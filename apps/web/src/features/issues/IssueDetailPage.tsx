@@ -1,7 +1,23 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ArrowLeft, ChevronRight, Copy, GitCommit, GitPullRequest, GitBranch, Hash, History, Link2, ListTree, MessageSquare, MoreHorizontal, Trash2, UserPlus, Workflow } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronRight,
+  Copy,
+  GitCommit,
+  GitPullRequest,
+  GitBranch,
+  Hash,
+  History,
+  Link2,
+  ListTree,
+  MessageSquare,
+  MoreHorizontal,
+  Trash2,
+  UserPlus,
+  Workflow,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useDevLinks, useIssue } from './api';
 import { useCreateIssue } from './create-api';
@@ -18,7 +34,14 @@ import { LinksPanel } from '@/features/issue-widgets/LinksPanel';
 import { ChecklistPanel } from '@/features/issue-extras/ChecklistPanel';
 import { IssueSlaBadge } from '@/features/sla/IssueSlaBadge';
 import { WatchButton } from '@/features/issue-widgets/WatchButton';
-import { IssuePeoplePanel, IssueDatesPanel, IssueSprintSubtitle, IssueStoryPointsInline, IssueTypeSelect, IssuePrioritySelect } from '@/features/issue-edit/IssueProperties';
+import {
+  IssuePeoplePanel,
+  IssueDatesPanel,
+  IssueSprintSubtitle,
+  IssueStoryPointsInline,
+  IssueTypeSelect,
+  IssuePrioritySelect,
+} from '@/features/issue-edit/IssueProperties';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { CommentsSection } from '@/features/issue-edit/CommentsSection';
 import { computeNextStatuses } from './nextStatuses';
@@ -57,7 +80,15 @@ const WorkflowViewDialog = lazy(() =>
  * Khu nằm dưới màn hình đầu tiên: chỉ dựng (và nhờ đó chỉ gọi API) khi cuộn tới gần. Khung giữ chỗ có chiều cao tối thiểu
  * để trang không giật khi nội dung hiện ra. `id` giữ nguyên cho liên kết nhảy tới khu này.
  */
-function LazyPanel({ children, id, minHeight = 80 }: { children: ReactNode; id?: string; minHeight?: number }) {
+function LazyPanel({
+  children,
+  id,
+  minHeight = 80,
+}: {
+  children: ReactNode;
+  id?: string;
+  minHeight?: number;
+}) {
   const { ref, inView } = useInView<HTMLDivElement>();
   return (
     <div ref={ref} id={id} style={inView ? undefined : { minHeight }}>
@@ -106,7 +137,10 @@ export function IssueDetailPage() {
 
   // Chỉ các trạng thái ở BƯỚC KẾ TIẾP — chuyển tiếp hợp lệ từ trạng thái hiện tại theo workflow.
   const currentStatusId = issue?.status.id;
-  const nextStatuses = useMemo(() => computeNextStatuses(workflows, currentStatusId), [workflows, currentStatusId]);
+  const nextStatuses = useMemo(
+    () => computeNextStatuses(workflows, currentStatusId),
+    [workflows, currentStatusId],
+  );
 
   const [editingSummary, setEditingSummary] = useState(false);
   const [summary, setSummary] = useState('');
@@ -114,7 +148,9 @@ export function IssueDetailPage() {
   const [wfOpen, setWfOpen] = useState(false);
   const [wfSeen, setWfSeen] = useState(false); // đã từng mở → giữ dialog trong cây để hiệu ứng đóng chạy được
   const [confirmDelete, setConfirmDelete] = useState(false);
-  useEffect(() => { if (issue) setSummary(issue.summary); }, [issue?.id]);
+  useEffect(() => {
+    if (issue) setSummary(issue.summary);
+  }, [issue?.id]);
 
   function changeStatus(toStatusId: string) {
     if (!issue || toStatusId === issue.status.id) return;
@@ -122,7 +158,10 @@ export function IssueDetailPage() {
     transition.mutate(
       { id: issue.id, key: issue.key, toStatusId, version: issue.version, statusName: toName },
       {
-        onSuccess: () => toast.success(toName ? `Đã chuyển sang “${toName}”` : 'Đã đổi trạng thái', { duration: 2000 }),
+        onSuccess: () =>
+          toast.success(toName ? `Đã chuyển sang “${toName}”` : 'Đã đổi trạng thái', {
+            duration: 2000,
+          }),
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
     );
@@ -143,7 +182,9 @@ export function IssueDetailPage() {
       });
       toast.success(`Đã tạo bản sao: ${created.key}`);
       navigate(`/issue/${created.key}`);
-    } catch (e) { toast.error(apiErrorMessage(e)); }
+    } catch (e) {
+      toast.error(apiErrorMessage(e));
+    }
   }
 
   // Phím tắt 1..9 = chuyển nhanh sang trạng thái ở bước kế tiếp.
@@ -155,16 +196,28 @@ export function IssueDetailPage() {
       if (!issue || e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       const tag = el?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable)
+        return;
       // Chặn khi còn overlay/menu Radix đang mở ở đâu đó trên trang.
       if (document.querySelector('[data-radix-popper-content-wrapper],[role="dialog"]')) return;
       // i = gán cho tôi, y = sao chép liên kết.
-      if (e.key === 'i' || e.key === 'I') { e.preventDefault(); assignToMe(); return; }
-      if (e.key === 'y' || e.key === 'Y') { e.preventDefault(); copyLink(); return; }
+      if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault();
+        assignToMe();
+        return;
+      }
+      if (e.key === 'y' || e.key === 'Y') {
+        e.preventDefault();
+        copyLink();
+        return;
+      }
       const n = Number(e.key);
       if (!Number.isInteger(n) || n < 1 || n > nextStatuses.length) return;
       const opt = nextStatuses[n - 1];
-      if (opt) { e.preventDefault(); changeStatus(opt.id); }
+      if (opt) {
+        e.preventDefault();
+        changeStatus(opt.id);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -172,15 +225,23 @@ export function IssueDetailPage() {
   }, [shortcutsEnabled, nextStatuses, issue?.status.id, issue?.version]);
 
   function copyLink() {
-    navigator.clipboard?.writeText(window.location.href)
+    navigator.clipboard
+      ?.writeText(window.location.href)
       .then(() => toast.success('Đã sao chép liên kết. Dán vào chat hoặc email để chia sẻ.'))
-      .catch(() => toast.error('Trình duyệt chặn sao chép — hãy chép thủ công đường dẫn trên thanh địa chỉ.'));
+      .catch(() =>
+        toast.error('Trình duyệt chặn sao chép — hãy chép thủ công đường dẫn trên thanh địa chỉ.'),
+      );
   }
 
   function copyKey() {
-    navigator.clipboard?.writeText(key)
+    navigator.clipboard
+      ?.writeText(key)
       .then(() => toast.success(`Đã sao chép mã ${key}`))
-      .catch(() => toast.error('Trình duyệt chặn sao chép — hãy chép thủ công mã hiển thị trên thanh điều hướng.'));
+      .catch(() =>
+        toast.error(
+          'Trình duyệt chặn sao chép — hãy chép thủ công mã hiển thị trên thanh điều hướng.',
+        ),
+      );
   }
 
   const isMine = !!issue && !!me && issue.assigneeId === me.id;
@@ -188,7 +249,10 @@ export function IssueDetailPage() {
     if (!issue || !me || issue.assigneeId === me.id) return;
     updateIssue.mutate(
       { id: issue.id, key: issue.key, patch: { assigneeId: me.id }, version: issue.version },
-      { onSuccess: () => toast.success('Đã giao việc này cho bạn', { duration: 2000 }), onError: (e) => toast.error(apiErrorMessage(e)) },
+      {
+        onSuccess: () => toast.success('Đã giao việc này cho bạn', { duration: 2000 }),
+        onError: (e) => toast.error(apiErrorMessage(e)),
+      },
     );
   }
 
@@ -200,7 +264,9 @@ export function IssueDetailPage() {
   function jumpToComments() {
     setActivityTab('comments');
     requestAnimationFrame(() =>
-      document.getElementById('issue-activity')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      document
+        .getElementById('issue-activity')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
     );
   }
 
@@ -211,12 +277,19 @@ export function IssueDetailPage() {
     function onFocusComment() {
       setActivityTab('comments');
       requestAnimationFrame(() =>
-        document.getElementById('issue-activity')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+        document
+          .getElementById('issue-activity')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
       );
       let tries = 0;
       const attempt = () => {
-        const box = document.querySelector<HTMLTextAreaElement>('#issue-activity textarea[placeholder^="Viết bình luận"]');
-        if (box) { box.focus({ preventScroll: true }); return; }
+        const box = document.querySelector<HTMLTextAreaElement>(
+          '#issue-activity textarea[placeholder^="Viết bình luận"]',
+        );
+        if (box) {
+          box.focus({ preventScroll: true });
+          return;
+        }
         if (++tries < 25) timer = window.setTimeout(attempt, 80);
       };
       attempt();
@@ -236,11 +309,21 @@ export function IssueDetailPage() {
       !!me?.isSystemAdmin);
 
   async function saveSummary() {
-    if (!issue || summary.trim() === issue.summary) { setEditingSummary(false); return; }
-    try {
-      await updateIssue.mutateAsync({ id: issue.id, key: issue.key, patch: { summary: summary.trim() }, version: issue.version });
+    if (!issue || summary.trim() === issue.summary) {
       setEditingSummary(false);
-    } catch (e) { toast.error(apiErrorMessage(e)); }
+      return;
+    }
+    try {
+      await updateIssue.mutateAsync({
+        id: issue.id,
+        key: issue.key,
+        patch: { summary: summary.trim() },
+        version: issue.version,
+      });
+      setEditingSummary(false);
+    } catch (e) {
+      toast.error(apiErrorMessage(e));
+    }
   }
 
   async function onDelete() {
@@ -250,7 +333,9 @@ export function IssueDetailPage() {
       setConfirmDelete(false);
       toast.success(`Đã xoá công việc ${issue.key}`);
       navigate(projectKey ? `/p/${projectKey}/board` : '/');
-    } catch (e) { toast.error(apiErrorMessage(e)); }
+    } catch (e) {
+      toast.error(apiErrorMessage(e));
+    }
   }
 
   return (
@@ -266,18 +351,29 @@ export function IssueDetailPage() {
               <ArrowLeft className="h-4 w-4" />
               Quay lại
             </Button>
-            <nav className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-muted" aria-label="Breadcrumb">
+            <nav
+              className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-muted"
+              aria-label="Breadcrumb"
+            >
               <WorkspaceName />
               <span className="text-faint">/</span>
               {project ? (
-                <Link to={`/p/${project.key}/board`} className="truncate hover:text-ink">{project.name}</Link>
+                <Link to={`/p/${project.key}/board`} className="truncate hover:text-ink">
+                  {project.name}
+                </Link>
               ) : (
                 <span className="font-mono">{projectKey}</span>
               )}
               {parent && (
                 <>
                   <span className="text-faint">/</span>
-                  <Link to={`/issue/${parent.key}`} className="truncate font-mono hover:text-ink" title={`Việc cha: ${parent.summary}`}>{parent.key}</Link>
+                  <Link
+                    to={`/issue/${parent.key}`}
+                    className="truncate font-mono hover:text-ink"
+                    title={`Việc cha: ${parent.summary}`}
+                  >
+                    {parent.key}
+                  </Link>
                 </>
               )}
               <span className="text-faint">/</span>
@@ -314,8 +410,13 @@ export function IssueDetailPage() {
                   </div>
                   {editingSummary ? (
                     <Input
-                      autoFocus value={summary} onChange={(e) => setSummary(e.target.value)}
-                      onBlur={saveSummary} onKeyDown={(e) => { if (e.key === 'Enter') void saveSummary(); }}
+                      autoFocus
+                      value={summary}
+                      onChange={(e) => setSummary(e.target.value)}
+                      onBlur={saveSummary}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void saveSummary();
+                      }}
                       className="h-10 text-2xl font-semibold tracking-tight"
                     />
                   ) : (
@@ -335,16 +436,25 @@ export function IssueDetailPage() {
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                   <IssueSprintSubtitle issue={issue} />
-                  <span className="text-faint" aria-hidden>·</span>
+                  <span className="text-faint" aria-hidden>
+                    ·
+                  </span>
                   <IssueStoryPointsInline issue={issue} canEditRestricted={canEditRestricted} />
-                  <span className="text-faint" aria-hidden>·</span>
+                  <span className="text-faint" aria-hidden>
+                    ·
+                  </span>
                   <IssueLabelsPicker issue={issue} inline />
                 </div>
               </div>
 
               {/* Thanh nút thao tác dưới tiêu đề */}
               <div className="mb-6 flex flex-wrap items-center gap-2">
-                <button type="button" className={TOOLBAR_BTN} title="Xuống khu bình luận để trao đổi về việc này" onClick={jumpToComments}>
+                <button
+                  type="button"
+                  className={TOOLBAR_BTN}
+                  title="Xuống khu bình luận để trao đổi về việc này"
+                  onClick={jumpToComments}
+                >
                   <MessageSquare className="h-4 w-4" /> Bình luận
                 </button>
 
@@ -366,14 +476,24 @@ export function IssueDetailPage() {
                   <Copy className="h-4 w-4" /> Tạo bản sao
                 </button>
                 {me && !isMine && (
-                  <button type="button" className={TOOLBAR_BTN} onClick={assignToMe} disabled={updateIssue.isPending} title="Đặt bạn làm người phụ trách · phím i">
+                  <button
+                    type="button"
+                    className={TOOLBAR_BTN}
+                    onClick={assignToMe}
+                    disabled={updateIssue.isPending}
+                    title="Đặt bạn làm người phụ trách · phím i"
+                  >
                     <UserPlus className="h-4 w-4" /> Gán cho tôi
                   </button>
                 )}
 
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger asChild>
-                    <button type="button" className={TOOLBAR_BTN} title="Thao tác khác với công việc này">
+                    <button
+                      type="button"
+                      className={TOOLBAR_BTN}
+                      title="Thao tác khác với công việc này"
+                    >
                       <MoreHorizontal className="h-4 w-4" /> Thêm
                     </button>
                   </DropdownMenu.Trigger>
@@ -406,12 +526,21 @@ export function IssueDetailPage() {
                     className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm font-medium text-ink"
                     title="Trạng thái hiện tại của công việc"
                   >
-                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: CATEGORY_COLOR[issue.status.category] ?? 'var(--faint)' }} aria-hidden />
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{
+                        background: CATEGORY_COLOR[issue.status.category] ?? 'var(--faint)',
+                      }}
+                      aria-hidden
+                    />
                     {issue.status.name}
                   </span>
                   <button
                     type="button"
-                    onClick={() => { setWfSeen(true); setWfOpen(true); }}
+                    onClick={() => {
+                      setWfSeen(true);
+                      setWfOpen(true);
+                    }}
                     aria-label="Xem quy trình"
                     title="Xem quy trình: các trạng thái có thể có và bước chuyển hợp lệ"
                     className="grid h-8 w-8 place-items-center rounded-md text-faint transition-colors hover:bg-surface-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
@@ -427,10 +556,18 @@ export function IssueDetailPage() {
                           type="button"
                           disabled={transition.isPending}
                           onClick={() => changeStatus(o.id)}
-                          title={i < 9 ? `Chuyển sang “${o.name}” · phím tắt ${i + 1}` : `Chuyển sang “${o.name}”`}
+                          title={
+                            i < 9
+                              ? `Chuyển sang “${o.name}” · phím tắt ${i + 1}`
+                              : `Chuyển sang “${o.name}”`
+                          }
                           className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
                         >
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: CATEGORY_COLOR[o.category] ?? 'var(--faint)' }} aria-hidden />
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ background: CATEGORY_COLOR[o.category] ?? 'var(--faint)' }}
+                            aria-hidden
+                          />
                           {o.name}
                           {i < 9 && (
                             <kbd
@@ -456,9 +593,13 @@ export function IssueDetailPage() {
                   </div>
 
                   {/* Danh sách bước nhỏ — nhẹ hơn việc con, chỉ để tick cho xong */}
-                  <LazyPanel><ChecklistPanel issueId={issue.id} /></LazyPanel>
+                  <LazyPanel>
+                    <ChecklistPanel issueId={issue.id} />
+                  </LazyPanel>
 
-                  <LazyPanel><IssueRelations issue={issue} /></LazyPanel>
+                  <LazyPanel>
+                    <IssueRelations issue={issue} />
+                  </LazyPanel>
 
                   {/* Thành phần & phiên bản + các trường do dự án tự thêm */}
                   <IssueComponentsPicker issue={issue} />
@@ -466,18 +607,40 @@ export function IssueDetailPage() {
 
                   {devLinks && devLinks.length > 0 && (
                     <div>
-                      <p className="mb-2 text-sm font-medium text-muted" title="Nhánh, commit và pull request trên kho mã có nhắc tới mã công việc này">
+                      <p
+                        className="mb-2 text-sm font-medium text-muted"
+                        title="Nhánh, commit và pull request trên kho mã có nhắc tới mã công việc này"
+                      >
                         Liên kết code ({devLinks.length})
                       </p>
                       <div className="space-y-1.5">
                         {devLinks.map((d) => {
-                          const Icon = d.type === 'PULL_REQUEST' ? GitPullRequest : d.type === 'BRANCH' ? GitBranch : GitCommit;
+                          const Icon =
+                            d.type === 'PULL_REQUEST'
+                              ? GitPullRequest
+                              : d.type === 'BRANCH'
+                                ? GitBranch
+                                : GitCommit;
                           return (
-                            <a key={d.id} href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-sm transition-colors hover:bg-surface-2">
+                            <a
+                              key={d.id}
+                              href={d.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-sm transition-colors hover:bg-surface-2"
+                            >
                               <Icon className="h-4 w-4 shrink-0 text-muted" />
-                              <span className="min-w-0 flex-1 truncate text-ink">{d.title || d.externalId}</span>
-                              {d.branch && <span className="shrink-0 font-mono text-xs text-faint">{d.branch}</span>}
-                              {d.authorName && <span className="shrink-0 text-xs text-muted">{d.authorName}</span>}
+                              <span className="min-w-0 flex-1 truncate text-ink">
+                                {d.title || d.externalId}
+                              </span>
+                              {d.branch && (
+                                <span className="shrink-0 font-mono text-xs text-faint">
+                                  {d.branch}
+                                </span>
+                              )}
+                              {d.authorName && (
+                                <span className="shrink-0 text-xs text-muted">{d.authorName}</span>
+                              )}
                             </a>
                           );
                         })}
@@ -485,8 +648,12 @@ export function IssueDetailPage() {
                     </div>
                   )}
 
-                  <LazyPanel minHeight={64}><LinksPanel issueId={issue.id} /></LazyPanel>
-                  <LazyPanel minHeight={64}><AttachmentsPanel issueId={issue.id} /></LazyPanel>
+                  <LazyPanel minHeight={64}>
+                    <LinksPanel issueId={issue.id} />
+                  </LazyPanel>
+                  <LazyPanel minHeight={64}>
+                    <AttachmentsPanel issueId={issue.id} />
+                  </LazyPanel>
 
                   {/* Hoạt động: tab Bình luận / Lịch sử */}
                   <LazyPanel id="issue-activity" minHeight={160}>
@@ -499,7 +666,9 @@ export function IssueDetailPage() {
                   <div className="space-y-5 lg:sticky lg:top-4">
                     <IssuePeoplePanel issue={issue} />
                     <IssueDatesPanel issue={issue} canEditRestricted={canEditRestricted} />
-                    <LazyPanel minHeight={96}><WorklogPanel issue={issue} /></LazyPanel>
+                    <LazyPanel minHeight={96}>
+                      <WorklogPanel issue={issue} />
+                    </LazyPanel>
                   </div>
                 </aside>
               </div>
@@ -533,7 +702,15 @@ export function IssueDetailPage() {
 }
 
 /** Khu hoạt động với tab Bình luận / Lịch sử (controlled). */
-function ActivityTabs({ issue, tab, onTab }: { issue: IssueDto; tab: 'comments' | 'history'; onTab: (t: 'comments' | 'history') => void }) {
+function ActivityTabs({
+  issue,
+  tab,
+  onTab,
+}: {
+  issue: IssueDto;
+  tab: 'comments' | 'history';
+  onTab: (t: 'comments' | 'history') => void;
+}) {
   const tabCls = (active: boolean) =>
     cn(
       'flex items-center gap-1.5 border-b-2 px-1 pb-2 text-sm font-medium transition-colors',
@@ -542,14 +719,26 @@ function ActivityTabs({ issue, tab, onTab }: { issue: IssueDto; tab: 'comments' 
   return (
     <div>
       <div className="mb-4 flex items-center gap-5 border-b border-border">
-        <button type="button" className={tabCls(tab === 'comments')} onClick={() => onTab('comments')}>
+        <button
+          type="button"
+          className={tabCls(tab === 'comments')}
+          onClick={() => onTab('comments')}
+        >
           <MessageSquare className="h-4 w-4" /> Bình luận
         </button>
-        <button type="button" className={tabCls(tab === 'history')} onClick={() => onTab('history')}>
+        <button
+          type="button"
+          className={tabCls(tab === 'history')}
+          onClick={() => onTab('history')}
+        >
           <History className="h-4 w-4" /> Lịch sử
         </button>
       </div>
-      {tab === 'comments' ? <CommentsSection issue={issue} /> : <ActivityPanel issueId={issue.id} />}
+      {tab === 'comments' ? (
+        <CommentsSection issue={issue} />
+      ) : (
+        <ActivityPanel issueId={issue.id} />
+      )}
     </div>
   );
 }

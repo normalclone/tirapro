@@ -13,6 +13,9 @@ const PREFIX_BY_KEY: Record<string, string> = {
 
 export function issueTypePrefix(typeKey: string | null | undefined, typeName: string): string {
   if (typeKey && PREFIX_BY_KEY[typeKey]) return PREFIX_BY_KEY[typeKey];
-  const fromName = (typeName || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase();
+  const fromName = (typeName || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .slice(0, 4)
+    .toUpperCase();
   return fromName || 'ISSUE';
 }

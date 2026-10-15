@@ -53,7 +53,9 @@ export async function withCronLock(
   try {
     acquired = await client.set(key, token, 'EX', ttlSec, 'NX');
   } catch (err) {
-    logger.warn(`Không lấy được khoá cron ${name} (Redis lỗi: ${(err as Error).message}) — chạy trực tiếp.`);
+    logger.warn(
+      `Không lấy được khoá cron ${name} (Redis lỗi: ${(err as Error).message}) — chạy trực tiếp.`,
+    );
     await fn();
     return true;
   }
@@ -67,7 +69,9 @@ export async function withCronLock(
     return true;
   } finally {
     await client.eval(RELEASE_SCRIPT, 1, key, token).catch((err: Error) => {
-      logger.warn(`Không nhả được khoá cron ${name}: ${err.message} (sẽ tự hết hạn sau ${ttlSec}s).`);
+      logger.warn(
+        `Không nhả được khoá cron ${name}: ${err.message} (sẽ tự hết hạn sau ${ttlSec}s).`,
+      );
     });
   }
 }

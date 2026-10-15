@@ -28,7 +28,12 @@ export class MembersService {
     const rows = await this.prisma.workspaceMembership.findMany({
       where: { workspaceId },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, joinedAt: true, user: { select: USER_DTO_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+      select: {
+        id: true,
+        joinedAt: true,
+        user: { select: USER_DTO_SELECT },
+        roles: { select: { role: { select: { id: true, name: true, color: true } } } },
+      },
     });
     return rows.map((m) => this.toMemberDto(m));
   }
@@ -44,7 +49,10 @@ export class MembersService {
     const ids = await this.validateRoles(workspaceId, roleIds, 'WORKSPACE');
     await this.prisma.workspaceMembership.create({
       data: {
-        workspaceId, userId, roleId: ids[0]!, joinedAt: new Date(),
+        workspaceId,
+        userId,
+        roleId: ids[0]!,
+        joinedAt: new Date(),
         roles: { create: ids.map((roleId) => ({ roleId })) },
       },
     });
@@ -61,8 +69,13 @@ export class MembersService {
     const ids = await this.validateRoles(workspaceId, roleIds, 'WORKSPACE');
     await this.prisma.$transaction([
       this.prisma.workspaceMembershipRole.deleteMany({ where: { membershipId: membership.id } }),
-      this.prisma.workspaceMembershipRole.createMany({ data: ids.map((roleId) => ({ membershipId: membership.id, roleId })) }),
-      this.prisma.workspaceMembership.update({ where: { id: membership.id }, data: { roleId: ids[0]! } }),
+      this.prisma.workspaceMembershipRole.createMany({
+        data: ids.map((roleId) => ({ membershipId: membership.id, roleId })),
+      }),
+      this.prisma.workspaceMembership.update({
+        where: { id: membership.id },
+        data: { roleId: ids[0]! },
+      }),
     ]);
     await this.rbac.invalidate(userId, workspaceId);
     return this.getWorkspaceMember(workspaceId, userId);
@@ -72,9 +85,15 @@ export class MembersService {
   async addWorkspaceMany(workspaceId: string, userIds: string[], roleIds: string[]) {
     const ids = await this.validateRoles(workspaceId, roleIds, 'WORKSPACE');
     const unique = [...new Set(userIds)];
-    const existUsers = await this.prisma.user.findMany({ where: { id: { in: unique } }, select: { id: true } });
+    const existUsers = await this.prisma.user.findMany({
+      where: { id: { in: unique } },
+      select: { id: true },
+    });
     const valid = new Set(existUsers.map((u) => u.id));
-    const already = await this.prisma.workspaceMembership.findMany({ where: { workspaceId, userId: { in: [...valid] } }, select: { userId: true } });
+    const already = await this.prisma.workspaceMembership.findMany({
+      where: { workspaceId, userId: { in: [...valid] } },
+      select: { userId: true },
+    });
     const alreadySet = new Set(already.map((a) => a.userId));
     const toAdd = [...valid].filter((u) => !alreadySet.has(u));
     if (toAdd.length) {
@@ -82,7 +101,12 @@ export class MembersService {
       // thêm cùng một người không làm cả lô thất bại; vai trò chỉ gán cho membership chưa có vai trò nào.
       await this.prisma.$transaction(async (tx) => {
         await tx.workspaceMembership.createMany({
-          data: toAdd.map((userId) => ({ workspaceId, userId, roleId: ids[0]!, joinedAt: new Date() })),
+          data: toAdd.map((userId) => ({
+            workspaceId,
+            userId,
+            roleId: ids[0]!,
+            joinedAt: new Date(),
+          })),
           skipDuplicates: true,
         });
         const fresh = await tx.workspaceMembership.findMany({
@@ -101,12 +125,20 @@ export class MembersService {
 
   async removeWorkspace(workspaceId: string, userId: string, actingUserId: string) {
     if (userId === actingUserId) throw new ForbiddenAppException('Không thể tự gỡ chính mình');
-    const ws = await this.prisma.workspace.findUnique({ where: { id: workspaceId }, select: { ownerId: true } });
-    if (ws?.ownerId === userId) throw new ForbiddenAppException('Không thể gỡ chủ sở hữu của không gian làm việc — hãy chuyển quyền sở hữu cho người khác trước');
+    const ws = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { ownerId: true },
+    });
+    if (ws?.ownerId === userId)
+      throw new ForbiddenAppException(
+        'Không thể gỡ chủ sở hữu của không gian làm việc — hãy chuyển quyền sở hữu cho người khác trước',
+      );
     // Một transaction: gỡ membership + xoá ghi đè vai trò dự án của workspace này + thu hồi API key.
     // Thiếu bước nào thì người bị gỡ vẫn giữ được quyền qua key/ghi đè dự án còn sót.
     const revokedPrefixes = await this.prisma.$transaction(async (tx) => {
-      await tx.workspaceMembership.delete({ where: { workspaceId_userId: { workspaceId, userId } } });
+      await tx.workspaceMembership.delete({
+        where: { workspaceId_userId: { workspaceId, userId } },
+      });
       await tx.projectMembership.deleteMany({ where: { userId, project: { workspaceId } } });
       return this.apiKeys.revokeAllForUser(workspaceId, userId, tx);
     });
@@ -139,11 +171,20 @@ export class MembersService {
       this.prisma.workspaceMembership.findMany({
         where: { workspaceId },
         orderBy: { createdAt: 'asc' },
-        select: { id: true, joinedAt: true, user: { select: USER_DTO_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+        select: {
+          id: true,
+          joinedAt: true,
+          user: { select: USER_DTO_SELECT },
+          roles: { select: { role: { select: { id: true, name: true, color: true } } } },
+        },
       }),
       this.prisma.projectMembership.findMany({
         where: { projectId },
-        select: { id: true, userId: true, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+        select: {
+          id: true,
+          userId: true,
+          roles: { select: { role: { select: { id: true, name: true, color: true } } } },
+        },
       }),
       this.prisma.role.findMany({
         where: { scope: 'PROJECT', OR: [{ workspaceId }, { workspaceId: null }] },
@@ -156,7 +197,10 @@ export class MembersService {
     return wsRows.map((m) => {
       const ov = overrideByUser.get(m.user.id);
       if (ov) {
-        return { ...this.toMemberDto({ id: ov.id, user: m.user, roles: ov.roles }), isOverride: true };
+        return {
+          ...this.toMemberDto({ id: ov.id, user: m.user, roles: ov.roles }),
+          isOverride: true,
+        };
       }
       // Vai trò mặc định theo vai trò workspace của người này.
       const defaults: { id: string; name: string; color: string | null }[] = [];
@@ -195,7 +239,10 @@ export class MembersService {
       where: { workspaceId_userId: { workspaceId, userId } },
       select: { id: true },
     });
-    if (!isMember) throw new ForbiddenAppException('Người dùng chưa thuộc không gian làm việc này — hãy mời họ vào trước');
+    if (!isMember)
+      throw new ForbiddenAppException(
+        'Người dùng chưa thuộc không gian làm việc này — hãy mời họ vào trước',
+      );
 
     const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
     const existing = await this.prisma.projectMembership.findUnique({
@@ -205,7 +252,12 @@ export class MembersService {
     if (existing) return this.setProjectRoles(workspaceId, projectId, userId, roleIds);
 
     await this.prisma.projectMembership.create({
-      data: { projectId, userId, roleId: ids[0]!, roles: { create: ids.map((roleId) => ({ roleId })) } },
+      data: {
+        projectId,
+        userId,
+        roleId: ids[0]!,
+        roles: { create: ids.map((roleId) => ({ roleId })) },
+      },
     });
     await this.rbac.invalidate(userId, workspaceId);
     return this.getProjectMember(projectId, userId);
@@ -228,22 +280,38 @@ export class MembersService {
     const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
     await this.prisma.$transaction([
       this.prisma.projectMembershipRole.deleteMany({ where: { membershipId: membership.id } }),
-      this.prisma.projectMembershipRole.createMany({ data: ids.map((roleId) => ({ membershipId: membership.id, roleId })) }),
-      this.prisma.projectMembership.update({ where: { id: membership.id }, data: { roleId: ids[0]! } }),
+      this.prisma.projectMembershipRole.createMany({
+        data: ids.map((roleId) => ({ membershipId: membership.id, roleId })),
+      }),
+      this.prisma.projectMembership.update({
+        where: { id: membership.id },
+        data: { roleId: ids[0]! },
+      }),
     ]);
     await this.rbac.invalidate(userId, workspaceId);
     return this.getProjectMember(projectId, userId);
   }
 
   /** Thêm NHIỀU người vào dự án cùng bộ vai trò; chỉ nhận người ĐÃ thuộc workspace, bỏ qua người đã ở dự án. */
-  async addProjectMany(workspaceId: string, projectId: string, userIds: string[], roleIds: string[]) {
+  async addProjectMany(
+    workspaceId: string,
+    projectId: string,
+    userIds: string[],
+    roleIds: string[],
+  ) {
     await this.requireProject(workspaceId, projectId);
     const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
     const unique = [...new Set(userIds)];
-    const wsMembers = await this.prisma.workspaceMembership.findMany({ where: { workspaceId, userId: { in: unique } }, select: { userId: true } });
+    const wsMembers = await this.prisma.workspaceMembership.findMany({
+      where: { workspaceId, userId: { in: unique } },
+      select: { userId: true },
+    });
     const wsSet = new Set(wsMembers.map((m) => m.userId));
     const valid = unique.filter((u) => wsSet.has(u));
-    const already = await this.prisma.projectMembership.findMany({ where: { projectId, userId: { in: valid } }, select: { userId: true } });
+    const already = await this.prisma.projectMembership.findMany({
+      where: { projectId, userId: { in: valid } },
+      select: { userId: true },
+    });
     const alreadySet = new Set(already.map((a) => a.userId));
     const toAdd = valid.filter((u) => !alreadySet.has(u));
     if (toAdd.length) {
@@ -271,7 +339,12 @@ export class MembersService {
   private async getWorkspaceMember(workspaceId: string, userId: string) {
     const m = await this.prisma.workspaceMembership.findUniqueOrThrow({
       where: { workspaceId_userId: { workspaceId, userId } },
-      select: { id: true, joinedAt: true, user: { select: USER_DTO_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+      select: {
+        id: true,
+        joinedAt: true,
+        user: { select: USER_DTO_SELECT },
+        roles: { select: { role: { select: { id: true, name: true, color: true } } } },
+      },
     });
     return this.toMemberDto(m);
   }
@@ -279,27 +352,42 @@ export class MembersService {
   private async getProjectMember(projectId: string, userId: string) {
     const m = await this.prisma.projectMembership.findUniqueOrThrow({
       where: { projectId_userId: { projectId, userId } },
-      select: { id: true, user: { select: USER_DTO_SELECT }, roles: { select: { role: { select: { id: true, name: true, color: true } } } } },
+      select: {
+        id: true,
+        user: { select: USER_DTO_SELECT },
+        roles: { select: { role: { select: { id: true, name: true, color: true } } } },
+      },
     });
     return this.toMemberDto(m);
   }
 
   /** Mỗi role phải tồn tại (system hoặc của workspace) và đúng scope của cấp đang gán. */
-  private async validateRoles(workspaceId: string, roleIds: string[], scope: RoleScope): Promise<string[]> {
+  private async validateRoles(
+    workspaceId: string,
+    roleIds: string[],
+    scope: RoleScope,
+  ): Promise<string[]> {
     const unique = [...new Set(roleIds)];
     const found = await this.prisma.role.findMany({
       where: { id: { in: unique }, scope, OR: [{ workspaceId }, { workspaceId: null }] },
       select: { id: true },
     });
     if (found.length !== unique.length) {
-      throw new ForbiddenAppException(`Một số vai trò không hợp lệ cho cấp ${scope === 'PROJECT' ? 'dự án' : 'không gian làm việc'}`);
+      throw new ForbiddenAppException(
+        `Một số vai trò không hợp lệ cho cấp ${scope === 'PROJECT' ? 'dự án' : 'không gian làm việc'}`,
+      );
     }
     // Giữ thứ tự gốc (roleIds[0] = vai trò chính).
     const set = new Set(found.map((r) => r.id));
     return unique.filter((id) => set.has(id));
   }
 
-  private toMemberDto(m: { id: string; joinedAt?: Date | null; user: UserDtoSource; roles: RoleRefRow[] }) {
+  private toMemberDto(m: {
+    id: string;
+    joinedAt?: Date | null;
+    user: UserDtoSource;
+    roles: RoleRefRow[];
+  }) {
     return {
       membershipId: m.id,
       user: toUserDto(m.user),

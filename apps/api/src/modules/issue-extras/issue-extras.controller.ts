@@ -7,8 +7,12 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { IssueExtrasService } from './issue-extras.service';
 import {
-  setParticipantsSchema, addChecklistSchema, updateChecklistSchema,
-  type SetParticipantsInput, type AddChecklistInput, type UpdateChecklistInput,
+  setParticipantsSchema,
+  addChecklistSchema,
+  updateChecklistSchema,
+  type SetParticipantsInput,
+  type AddChecklistInput,
+  type UpdateChecklistInput,
 } from './issue-extras.schemas';
 
 @ApiTags('issues')

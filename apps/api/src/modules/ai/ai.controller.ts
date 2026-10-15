@@ -2,8 +2,12 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import {
-  generateIssuesSchema, sprintPlanSchema, suggestAssigneeSchema,
-  type GenerateIssuesInput, type SprintPlanInput, type SuggestAssigneeInput,
+  generateIssuesSchema,
+  sprintPlanSchema,
+  suggestAssigneeSchema,
+  type GenerateIssuesInput,
+  type SprintPlanInput,
+  type SuggestAssigneeInput,
 } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -49,14 +53,22 @@ export class AiController {
   @ProjectRef('issue', 'id')
   @Post('issues/:id/summary')
   @Permissions(PERMISSIONS.AI_USE)
-  async summarize(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
+  async summarize(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+  ) {
     return this.ai.summarizeIssue(workspaceId, user.id, id);
   }
 
   @ProjectRef('issue', 'id')
   @Post('issues/:id/suggest')
   @Permissions(PERMISSIONS.AI_USE)
-  async suggest(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
+  async suggest(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+  ) {
     return this.ai.suggest(workspaceId, user.id, id);
   }
 

@@ -24,7 +24,9 @@ export function ConnectLayout() {
           'lg:w-64 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
         )}
       >
-        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">Kết nối &amp; tự động hoá</h1>
+        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">
+          Kết nối &amp; tự động hoá
+        </h1>
         {CONNECT_NAV.map((item) => (
           <NavLink
             key={item.to}
@@ -32,7 +34,9 @@ export function ConnectLayout() {
             className={({ isActive }) =>
               cn(
                 'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                isActive ? 'bg-primary-subtle text-primary' : 'text-muted hover:bg-surface-2 hover:text-ink',
+                isActive
+                  ? 'bg-primary-subtle text-primary'
+                  : 'text-muted hover:bg-surface-2 hover:text-ink',
               )
             }
           >

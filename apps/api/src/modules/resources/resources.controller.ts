@@ -6,10 +6,20 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ResourcesService } from './resources.service';
 import {
-  createAllocationSchema, updateAllocationSchema, listAllocationsQuerySchema,
-  createTimeOffSchema, updateTimeOffSchema, listTimeOffQuerySchema, workloadQuerySchema,
-  type CreateAllocationInput, type UpdateAllocationInput, type ListAllocationsQuery,
-  type CreateTimeOffInput, type UpdateTimeOffInput, type ListTimeOffQuery, type WorkloadQuery,
+  createAllocationSchema,
+  updateAllocationSchema,
+  listAllocationsQuerySchema,
+  createTimeOffSchema,
+  updateTimeOffSchema,
+  listTimeOffQuerySchema,
+  workloadQuerySchema,
+  type CreateAllocationInput,
+  type UpdateAllocationInput,
+  type ListAllocationsQuery,
+  type CreateTimeOffInput,
+  type UpdateTimeOffInput,
+  type ListTimeOffQuery,
+  type WorkloadQuery,
 } from './resources.schemas';
 
 @ApiTags('resources')

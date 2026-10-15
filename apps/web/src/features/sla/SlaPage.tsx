@@ -16,8 +16,17 @@ import { cn } from '@/lib/utils';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { LOCALE } from '@/lib/locale';
 import {
-  useSlaBoard, useSlaPolicies, useCreateSlaPolicy, useUpdateSlaPolicy, useDeleteSlaPolicy, fmtMins,
-  type SlaPolicyDto, type SlaBoardRow, SLA_SOON_MINS, SLA_SOON_LABEL } from './api';
+  useSlaBoard,
+  useSlaPolicies,
+  useCreateSlaPolicy,
+  useUpdateSlaPolicy,
+  useDeleteSlaPolicy,
+  fmtMins,
+  type SlaPolicyDto,
+  type SlaBoardRow,
+  SLA_SOON_MINS,
+  SLA_SOON_LABEL,
+} from './api';
 
 /** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Quản trị). */
 export function SlaBoardPage() {
@@ -26,8 +35,8 @@ export function SlaBoardPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Thời gian xử lý</h1>
         <p className="mt-1 text-sm text-muted">
-          Các công việc đang chạy đồng hồ đếm ngược theo cam kết thời gian xử lý.
-          Việc sắp tới hạn tô vàng, việc đã quá hạn tô đỏ — hãy xử lý từ trên xuống.
+          Các công việc đang chạy đồng hồ đếm ngược theo cam kết thời gian xử lý. Việc sắp tới hạn
+          tô vàng, việc đã quá hạn tô đỏ — hãy xử lý từ trên xuống.
         </p>
       </header>
       <SlaBoard />
@@ -41,10 +50,12 @@ export function SlaPoliciesPage() {
   return (
     <div className={pageContainer('sm')}>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Cam kết thời gian xử lý</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+          Cam kết thời gian xử lý
+        </h1>
         <p className="mt-1 text-sm text-muted">
-          Đặt thời hạn phải phản hồi và phải xử lý xong cho từng nhóm công việc.
-          Hệ thống bấm giờ ngay khi công việc được tạo và cảnh báo khi sắp trễ.
+          Đặt thời hạn phải phản hồi và phải xử lý xong cho từng nhóm công việc. Hệ thống bấm giờ
+          ngay khi công việc được tạo và cảnh báo khi sắp trễ.
         </p>
       </header>
       <SlaPolicies canManage={canManage} />
@@ -58,7 +69,11 @@ function SlaBoard() {
     <QueryBoundary
       query={boardQuery}
       skeleton={
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
       }
       empty={(d) => d.length === 0}
       emptyState={
@@ -81,12 +96,19 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
   return (
     <section className="rounded-lg border border-border bg-surface">
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
-        <h2 className="text-base font-semibold text-ink-strong" title="Đồng hồ chạy từ lúc công việc được tạo cho tới khi xử lý xong.">
+        <h2
+          className="text-base font-semibold text-ink-strong"
+          title="Đồng hồ chạy từ lúc công việc được tạo cho tới khi xử lý xong."
+        >
           Đang chạy đồng hồ
         </h2>
         <span className="text-sm text-muted">{rows.length} công việc</span>
         {breached > 0 && <Badge className="bg-danger/10 text-danger">{breached} đã quá hạn</Badge>}
-        {soon > 0 && <Badge className="bg-warning/15 text-warning">{soon} {SLA_SOON_LABEL}</Badge>}
+        {soon > 0 && (
+          <Badge className="bg-warning/15 text-warning">
+            {soon} {SLA_SOON_LABEL}
+          </Badge>
+        )}
       </div>
       <ul className="divide-y divide-border">
         {rows.map((r) => {
@@ -94,22 +116,37 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
           const soonRow = !late && r.remainingMins <= SLA_SOON_MINS;
           return (
             <li key={r.issueId} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-3">
-              <Link to={`/issue/${r.key}`} className="shrink-0 font-mono text-xs text-primary hover:underline">{r.key}</Link>
+              <Link
+                to={`/issue/${r.key}`}
+                className="shrink-0 font-mono text-xs text-primary hover:underline"
+              >
+                {r.key}
+              </Link>
               <span className="min-w-0 flex-1 truncate text-sm text-ink">{r.summary}</span>
               {r.priority && (
                 <span className="hidden shrink-0 items-center gap-1 text-xs text-muted sm:flex">
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: r.priority.color ?? 'var(--faint)' }} />
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ background: r.priority.color ?? 'var(--faint)' }}
+                  />
                   {r.priority.name}
                 </span>
               )}
-              <span className="hidden shrink-0 text-xs text-faint md:inline" title="Cam kết thời gian xử lý đang áp dụng cho công việc này.">
+              <span
+                className="hidden shrink-0 text-xs text-faint md:inline"
+                title="Cam kết thời gian xử lý đang áp dụng cho công việc này."
+              >
                 {r.policyName}
               </span>
               {!r.responded && <Badge className="bg-surface-2 text-muted">chưa phản hồi</Badge>}
               <span
                 className={cn(
                   'shrink-0 rounded px-1.5 py-0.5 text-xs font-medium',
-                  late ? 'bg-danger/10 text-danger' : soonRow ? 'bg-warning/15 text-warning' : 'bg-surface-2 text-muted',
+                  late
+                    ? 'bg-danger/10 text-danger'
+                    : soonRow
+                      ? 'bg-warning/15 text-warning'
+                      : 'bg-surface-2 text-muted',
                 )}
                 title={
                   late
@@ -117,14 +154,26 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
                     : `Thời gian còn lại trước khi phải xử lý xong, hạn là ${new Date(r.resolveDueAt).toLocaleString(LOCALE)}.`
                 }
               >
-                {late ? <span className="inline-flex items-center gap-1"><TriangleAlert className="h-3 w-3" /> quá hạn {fmtMins(r.remainingMins)}</span> : `còn ${fmtMins(r.remainingMins)}`}
+                {late ? (
+                  <span className="inline-flex items-center gap-1">
+                    <TriangleAlert className="h-3 w-3" /> quá hạn {fmtMins(r.remainingMins)}
+                  </span>
+                ) : (
+                  `còn ${fmtMins(r.remainingMins)}`
+                )}
               </span>
               {r.assignee ? (
-                <span className="flex shrink-0 items-center gap-1.5" title={`Người xử lý: ${r.assignee.displayName}`}>
+                <span
+                  className="flex shrink-0 items-center gap-1.5"
+                  title={`Người xử lý: ${r.assignee.displayName}`}
+                >
                   <Avatar name={r.assignee.displayName} src={r.assignee.avatarUrl} size={20} />
                 </span>
               ) : (
-                <span className="shrink-0 text-[11px] text-faint" title="Chưa ai nhận việc này — hãy giao người để đồng hồ có chủ.">
+                <span
+                  className="shrink-0 text-[11px] text-faint"
+                  title="Chưa ai nhận việc này — hãy giao người để đồng hồ có chủ."
+                >
                   Chưa giao
                 </span>
               )}
@@ -163,7 +212,12 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
         resolveMins: Math.max(1, Math.round(Number(resolveH) * 60)),
       },
       {
-        onSuccess: () => { toast.success('Đã tạo cam kết'); setOpen(false); setName(''); setProjectId(''); },
+        onSuccess: () => {
+          toast.success('Đã tạo cam kết');
+          setOpen(false);
+          setName('');
+          setProjectId('');
+        },
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
     );
@@ -174,16 +228,26 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
         <div>
           <h2 className="text-base font-semibold text-ink-strong">Danh sách cam kết</h2>
-          <p className="mt-0.5 text-sm text-muted">Mỗi cam kết áp cho một dự án cụ thể, hoặc cho mọi dự án nếu bạn không chọn dự án nào.</p>
+          <p className="mt-0.5 text-sm text-muted">
+            Mỗi cam kết áp cho một dự án cụ thể, hoặc cho mọi dự án nếu bạn không chọn dự án nào.
+          </p>
         </div>
-        {canManage && <Button size="sm" onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Thêm cam kết</Button>}
+        {canManage && (
+          <Button size="sm" onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4" /> Thêm cam kết
+          </Button>
+        )}
       </div>
 
       <div className="p-5">
         <QueryBoundary
           query={policiesQuery}
           skeleton={
-            <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
           }
           empty={() => list.length === 0}
           emptyState={
@@ -201,29 +265,53 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
           {() => (
             <ul className="divide-y divide-border">
               {list.map((p: SlaPolicyDto) => (
-                <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-3 first:pt-0 last:pb-0">
+                <li
+                  key={p.id}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-3 first:pt-0 last:pb-0"
+                >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-ink-strong">{p.name}</span>
+                    <span className="block truncate text-sm font-medium text-ink-strong">
+                      {p.name}
+                    </span>
                     <span className="block truncate text-xs text-muted">
                       {p.project ? `Dự án ${p.project.key}` : 'Mọi dự án'}
                       {p.priority ? ` · ${p.priority.name}` : ''}
                     </span>
                   </span>
-                  <span className="shrink-0 text-xs text-muted" title="Tính từ lúc công việc được tạo, phải có phản hồi đầu tiên trong khoảng này.">
+                  <span
+                    className="shrink-0 text-xs text-muted"
+                    title="Tính từ lúc công việc được tạo, phải có phản hồi đầu tiên trong khoảng này."
+                  >
                     Phản hồi trong <b className="text-ink">{fmtMins(p.responseMins)}</b>
                   </span>
-                  <span className="shrink-0 text-xs text-muted" title="Tính từ lúc công việc được tạo, phải xử lý xong trong khoảng này.">
+                  <span
+                    className="shrink-0 text-xs text-muted"
+                    title="Tính từ lúc công việc được tạo, phải xử lý xong trong khoảng này."
+                  >
                     Xử lý xong trong <b className="text-ink">{fmtMins(p.resolveMins)}</b>
                   </span>
-                  <Badge className={p.active ? 'bg-success/10 text-success' : 'bg-surface-2 text-muted'}>{p.active ? 'Đang áp dụng' : 'Đang tắt'}</Badge>
+                  <Badge
+                    className={p.active ? 'bg-success/10 text-success' : 'bg-surface-2 text-muted'}
+                  >
+                    {p.active ? 'Đang áp dụng' : 'Đang tắt'}
+                  </Badge>
                   {canManage && (
                     <div className="flex shrink-0 items-center gap-1">
                       <Button
                         size="sm"
                         variant="ghost"
-                        title={p.active ? 'Ngừng bấm giờ cho công việc mới khớp cam kết này' : 'Bấm giờ trở lại cho công việc mới khớp cam kết này'}
+                        title={
+                          p.active
+                            ? 'Ngừng bấm giờ cho công việc mới khớp cam kết này'
+                            : 'Bấm giờ trở lại cho công việc mới khớp cam kết này'
+                        }
                         aria-label={p.active ? `Tắt cam kết ${p.name}` : `Bật cam kết ${p.name}`}
-                        onClick={() => update.mutate({ id: p.id, active: !p.active }, { onError: (e) => toast.error(apiErrorMessage(e)) })}
+                        onClick={() =>
+                          update.mutate(
+                            { id: p.id, active: !p.active },
+                            { onError: (e) => toast.error(apiErrorMessage(e)) },
+                          )
+                        }
                       >
                         {p.active ? 'Tắt' : 'Bật'}
                       </Button>
@@ -234,7 +322,13 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
                         title="Xoá cam kết"
                         aria-label={`Xoá cam kết ${p.name}`}
                         onClick={async () => {
-                          if (!(await confirm({ title: `Xoá cam kết “${p.name}”? Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.`, destructive: true }))) return;
+                          if (
+                            !(await confirm({
+                              title: `Xoá cam kết “${p.name}”? Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.`,
+                              destructive: true,
+                            }))
+                          )
+                            return;
                           remove.mutate(p.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
                         }}
                       >
@@ -256,8 +350,12 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
         onSubmit={submit}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Huỷ</Button>
-            <Button onClick={submit} loading={create.isPending} disabled={!name.trim()}>Tạo cam kết</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Huỷ
+            </Button>
+            <Button onClick={submit} loading={create.isPending} disabled={!name.trim()}>
+              Tạo cam kết
+            </Button>
           </>
         }
       >
@@ -273,18 +371,25 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-muted">Dự án <span className="font-normal text-faint">(để trống = áp cho mọi dự án)</span></label>
+            <label className="mb-1.5 block text-sm font-medium text-muted">
+              Dự án <span className="font-normal text-faint">(để trống = áp cho mọi dự án)</span>
+            </label>
             <SearchSelect
               value={projectId}
               onChange={setProjectId}
-              options={[{ value: '', label: 'Mọi dự án' }, ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key }))]}
+              options={[
+                { value: '', label: 'Mọi dự án' },
+                ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
+              ]}
               placeholder="Mọi dự án"
               searchPlaceholder="Tìm dự án…"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-muted">Phải phản hồi trong (giờ)</label>
+              <label className="mb-1.5 block text-sm font-medium text-muted">
+                Phải phản hồi trong (giờ)
+              </label>
               <Input
                 type="number"
                 min={0.5}
@@ -295,7 +400,9 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-muted">Phải xử lý xong trong (giờ)</label>
+              <label className="mb-1.5 block text-sm font-medium text-muted">
+                Phải xử lý xong trong (giờ)
+              </label>
               <Input
                 type="number"
                 min={1}

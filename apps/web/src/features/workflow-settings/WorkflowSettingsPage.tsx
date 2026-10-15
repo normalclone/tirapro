@@ -126,7 +126,8 @@ export function WorkflowSettingsPage() {
           Cấu hình quy trình
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Quản lý các bước một công việc đi qua: có những trạng thái nào và được chuyển từ trạng thái nào sang trạng thái nào.
+          Quản lý các bước một công việc đi qua: có những trạng thái nào và được chuyển từ trạng
+          thái nào sang trạng thái nào.
         </p>
       </header>
 
@@ -183,9 +184,7 @@ export function WorkflowSettingsPage() {
                     key={wf.id}
                     workflow={wf}
                     expanded={wf.id === selectedId}
-                    onToggle={() =>
-                      setSelectedId((cur) => (cur === wf.id ? null : wf.id))
-                    }
+                    onToggle={() => setSelectedId((cur) => (cur === wf.id ? null : wf.id))}
                     onDelete={() => void handleDeleteWorkflow(wf)}
                     deleting={deleteWorkflow.isPending}
                   />
@@ -199,10 +198,7 @@ export function WorkflowSettingsPage() {
             <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
               <div className="space-y-3">
                 <div>
-                  <label
-                    htmlFor="wf-name"
-                    className="mb-1 block text-xs font-medium text-muted"
-                  >
+                  <label htmlFor="wf-name" className="mb-1 block text-xs font-medium text-muted">
                     Tên quy trình
                   </label>
                   <Input
@@ -218,10 +214,7 @@ export function WorkflowSettingsPage() {
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="wf-desc"
-                    className="mb-1 block text-xs font-medium text-muted"
-                  >
+                  <label htmlFor="wf-desc" className="mb-1 block text-xs font-medium text-muted">
                     Mô tả (tuỳ chọn)
                   </label>
                   <Input
@@ -232,10 +225,7 @@ export function WorkflowSettingsPage() {
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="wf-project"
-                    className="mb-1 block text-xs font-medium text-muted"
-                  >
+                  <label htmlFor="wf-project" className="mb-1 block text-xs font-medium text-muted">
                     Project ID (tuỳ chọn)
                   </label>
                   <Input
@@ -293,7 +283,9 @@ function WorkflowRow({
     <li
       className={cn(
         'flex items-center gap-3 rounded-md border px-3 py-2.5 transition-colors',
-        expanded ? 'border-primary bg-primary-subtle' : 'border-border bg-surface hover:bg-surface-2',
+        expanded
+          ? 'border-primary bg-primary-subtle'
+          : 'border-border bg-surface hover:bg-surface-2',
       )}
     >
       <button
@@ -309,12 +301,8 @@ function WorkflowRow({
           )}
         />
         <span className="truncate text-sm font-medium text-ink">{workflow.name}</span>
-        {workflow.isDefault && (
-          <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>
-        )}
-        {workflow.isTemplate && (
-          <Badge className="bg-surface-2 text-muted">Template</Badge>
-        )}
+        {workflow.isDefault && <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>}
+        {workflow.isTemplate && <Badge className="bg-surface-2 text-muted">Template</Badge>}
       </button>
       <Button
         variant="ghost"
@@ -476,10 +464,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                   aria-hidden
                 />
                 <span className="truncate text-sm font-medium text-ink">{s.name}</span>
-                <Badge
-                  className="bg-surface-2 text-muted"
-                  dotColor={CATEGORY_VAR[s.category]}
-                >
+                <Badge className="bg-surface-2 text-muted" dotColor={CATEGORY_VAR[s.category]}>
                   {CATEGORY_LABEL[s.category]}
                 </Badge>
                 {s.isInitial && (
@@ -524,10 +509,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
           <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[10rem] flex-1">
-                <label
-                  htmlFor="st-name"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="st-name" className="mb-1 block text-xs font-medium text-muted">
                   Tên
                 </label>
                 <Input
@@ -543,10 +525,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                 />
               </div>
               <div className="w-40">
-                <label
-                  htmlFor="st-category"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="st-category" className="mb-1 block text-xs font-medium text-muted">
                   Phân loại
                 </label>
                 <select
@@ -563,10 +542,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                 </select>
               </div>
               <div>
-                <label
-                  htmlFor="st-color"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="st-color" className="mb-1 block text-xs font-medium text-muted">
                   Màu
                 </label>
                 <input
@@ -581,12 +557,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                 <Button size="sm" onClick={submitAdd} loading={addStatus.isPending}>
                   Lưu
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={resetAdd}
-                  disabled={addStatus.isPending}
-                >
+                <Button size="sm" variant="ghost" onClick={resetAdd} disabled={addStatus.isPending}>
                   Huỷ
                 </Button>
               </div>
@@ -594,12 +565,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
           </div>
         ) : (
           statuses.length > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="mt-4"
-              onClick={() => setAdding(true)}
-            >
+            <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
               <Plus className="h-4 w-4" />
               Thêm trạng thái
             </Button>
@@ -634,7 +600,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
   const statusName = useMemo(() => {
     const map = new Map<string, string>();
     for (const s of workflow.statuses) map.set(s.id, s.name);
-    return (id: string | null) => (id == null ? '(bất kỳ)' : map.get(id) ?? '(không rõ)');
+    return (id: string | null) => (id == null ? '(bất kỳ)' : (map.get(id) ?? '(không rõ)'));
   }, [workflow.statuses]);
 
   const transitions = useMemo(
@@ -756,10 +722,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
           <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[10rem] flex-1">
-                <label
-                  htmlFor="tr-name"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="tr-name" className="mb-1 block text-xs font-medium text-muted">
                   Tên
                 </label>
                 <Input
@@ -775,10 +738,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
                 />
               </div>
               <div className="w-40">
-                <label
-                  htmlFor="tr-from"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="tr-from" className="mb-1 block text-xs font-medium text-muted">
                   Từ
                 </label>
                 <SearchSelect
@@ -797,10 +757,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
                 />
               </div>
               <div className="w-40">
-                <label
-                  htmlFor="tr-to"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="tr-to" className="mb-1 block text-xs font-medium text-muted">
                   Đến
                 </label>
                 <SearchSelect
@@ -834,12 +791,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
         ) : (
           !noStatuses &&
           transitions.length > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="mt-4"
-              onClick={() => setAdding(true)}
-            >
+            <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
               <Plus className="h-4 w-4" />
               Thêm bước chuyển
             </Button>

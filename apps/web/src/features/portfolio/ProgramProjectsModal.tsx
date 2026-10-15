@@ -54,14 +54,18 @@ export function ProgramProjectsModal({
       size="md"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void save()} loading={setProjects.isPending}>Lưu thay đổi</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button onClick={() => void save()} loading={setProjects.isPending}>
+            Lưu thay đổi
+          </Button>
         </>
       }
     >
       <p className="mb-2 text-sm text-muted">
-        Mỗi dự án chỉ thuộc một chương trình. Dự án bạn bỏ chọn sẽ chuyển về nhóm “Chưa thuộc chương trình”,
-        dữ liệu của dự án không bị ảnh hưởng.
+        Mỗi dự án chỉ thuộc một chương trình. Dự án bạn bỏ chọn sẽ chuyển về nhóm “Chưa thuộc chương
+        trình”, dữ liệu của dự án không bị ảnh hưởng.
       </p>
       <RoleMultiSelect
         options={options}

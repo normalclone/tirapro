@@ -95,7 +95,11 @@ export class AuthController {
     const token = (req.cookies?.[REFRESH_COOKIE] as string) ?? '';
     // Access token cũ (có thể đã hết hạn) cho biết workspace đang làm việc — refresh phải giữ nguyên nó.
     const preferredWorkspaceId = this.tokens.workspaceFromExpiredAccess(req.headers.authorization);
-    const { refreshToken, ...rest } = await this.auth.refresh(token, this.meta(req), preferredWorkspaceId);
+    const { refreshToken, ...rest } = await this.auth.refresh(
+      token,
+      this.meta(req),
+      preferredWorkspaceId,
+    );
     // refreshToken = null khi đây là lượt refresh đồng thời (tab khác đã xoay) — giữ nguyên cookie hiện có.
     if (refreshToken) this.setRefreshCookie(res, refreshToken);
     return rest;
@@ -108,7 +112,12 @@ export class AuthController {
     await this.auth.logout(req.cookies?.[REFRESH_COOKIE] as string);
     // Xoá cookie phải khớp thuộc tính lúc set (secure/sameSite) thì trình duyệt mới chấp nhận.
     const isProd = !!this.config.get<boolean>('isProd');
-    res.clearCookie(REFRESH_COOKIE, { path: '/', secure: isProd, sameSite: isProd ? 'none' : 'lax', httpOnly: true });
+    res.clearCookie(REFRESH_COOKIE, {
+      path: '/',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      httpOnly: true,
+    });
     return { success: true };
   }
 
@@ -159,7 +168,9 @@ export class AuthController {
     @Body(new ZodValidationPipe(createInviteSchema)) dto: CreateInviteInput,
   ) {
     if (!user.workspaceId) {
-      throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
+      throw new ForbiddenAppException(
+        'Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại',
+      );
     }
     return this.invites.createInvite(user.workspaceId, user.id, dto);
   }
@@ -177,7 +188,9 @@ export class AuthController {
   @HttpCode(200)
   @Throttle({ default: { limit: 5, ttl: 900_000 } })
   @Post('forgot-password')
-  async forgotPassword(@Body(new ZodValidationPipe(forgotPasswordSchema)) dto: ForgotPasswordInput) {
+  async forgotPassword(
+    @Body(new ZodValidationPipe(forgotPasswordSchema)) dto: ForgotPasswordInput,
+  ) {
     await this.passwordReset.requestReset(dto.email);
     return { success: true };
   }

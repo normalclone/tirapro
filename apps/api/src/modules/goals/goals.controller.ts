@@ -7,8 +7,15 @@ import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { GoalsService } from './goals.service';
 import {
-  createGoalSchema, updateGoalSchema, createKeyResultSchema, updateKeyResultSchema, goalIssuesSchema,
-  type CreateGoalInput, type UpdateGoalInput, type CreateKeyResultInput, type UpdateKeyResultInput,
+  createGoalSchema,
+  updateGoalSchema,
+  createKeyResultSchema,
+  updateKeyResultSchema,
+  goalIssuesSchema,
+  type CreateGoalInput,
+  type UpdateGoalInput,
+  type CreateKeyResultInput,
+  type UpdateKeyResultInput,
   type GoalIssuesInput,
 } from './goals.schemas';
 

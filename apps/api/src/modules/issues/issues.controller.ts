@@ -1,8 +1,16 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
-  bulkUpdateIssuesSchema, createIssueSchema, moveIssueSchema, transitionIssueSchema, updateIssueSchema,
-  type BulkUpdateIssuesInput, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput,
+  bulkUpdateIssuesSchema,
+  createIssueSchema,
+  moveIssueSchema,
+  transitionIssueSchema,
+  updateIssueSchema,
+  type BulkUpdateIssuesInput,
+  type CreateIssueInput,
+  type MoveIssueInput,
+  type TransitionIssueInput,
+  type UpdateIssueInput,
 } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -111,7 +119,11 @@ export class IssuesController {
   @Permissions(PERMISSIONS.ISSUE_DELETE)
   @ProjectRef('issue', 'id')
   @Delete(':id')
-  async remove(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
+  async remove(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+  ) {
     return this.issues.softDelete(workspaceId, user.id, id);
   }
 }

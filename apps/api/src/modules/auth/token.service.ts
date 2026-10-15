@@ -33,7 +33,12 @@ export class TokenService {
   signAccess(user: { id: string; email: string }, workspaceId: string | null) {
     const expiresIn = this.config.get<string>('jwt.accessExpiresIn') ?? '15m';
     const accessToken = this.jwt.sign(
-      { sub: user.id, email: user.email, workspaceId, jti: createId() } satisfies AccessTokenPayload,
+      {
+        sub: user.id,
+        email: user.email,
+        workspaceId,
+        jti: createId(),
+      } satisfies AccessTokenPayload,
       { secret: this.config.get<string>('jwt.accessSecret'), expiresIn },
     );
     return { accessToken, expiresIn: this.toSeconds(expiresIn) };
@@ -71,9 +76,16 @@ export class TokenService {
    *   thắng) — bên gọi vẫn cấp access token mới.
    * - Còn lại (token revoke từ lâu, đăng xuất, hết hạn, hoặc không có kế nhiệm) => reuse: revoke cả family.
    */
-  async rotateRefresh(token: string, meta: RefreshMeta): Promise<{ userId: string; newToken: string | null }> {
+  async rotateRefresh(
+    token: string,
+    meta: RefreshMeta,
+  ): Promise<{ userId: string; newToken: string | null }> {
     const [, raw] = token.split('.', 2);
-    if (!raw) throw new UnauthorizedException({ code: ERROR_CODES.UNAUTHENTICATED, message: 'Refresh token không hợp lệ' });
+    if (!raw)
+      throw new UnauthorizedException({
+        code: ERROR_CODES.UNAUTHENTICATED,
+        message: 'Refresh token không hợp lệ',
+      });
     const tokenHash = this.hashToken(raw);
     const now = new Date();
 
@@ -83,12 +95,22 @@ export class TokenService {
     });
     if (count === 0) {
       const row = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
-      if (!row) throw new UnauthorizedException({ code: ERROR_CODES.UNAUTHENTICATED, message: 'Refresh token không tồn tại' });
+      if (!row)
+        throw new UnauthorizedException({
+          code: ERROR_CODES.UNAUTHENTICATED,
+          message: 'Refresh token không tồn tại',
+        });
 
       if (row.revokedAt && now.getTime() - row.revokedAt.getTime() <= REFRESH_GRACE_MS) {
         // Kế nhiệm = token mới hơn trong family còn sống (đăng xuất revoke cả family nên không bao giờ có kế nhiệm sống).
         const successor = await this.prisma.refreshToken.findFirst({
-          where: { family: row.family, id: { not: row.id }, createdAt: { gt: row.createdAt }, revokedAt: null, expiresAt: { gt: now } },
+          where: {
+            family: row.family,
+            id: { not: row.id },
+            createdAt: { gt: row.createdAt },
+            revokedAt: null,
+            expiresAt: { gt: now },
+          },
           select: { id: true },
         });
         if (successor) return { userId: row.userId, newToken: null };
@@ -98,7 +120,10 @@ export class TokenService {
         where: { family: row.family, revokedAt: null },
         data: { revokedAt: now },
       });
-      throw new UnauthorizedException({ code: ERROR_CODES.UNAUTHENTICATED, message: 'Phiên đăng nhập đã hết hạn — hãy đăng nhập lại' });
+      throw new UnauthorizedException({
+        code: ERROR_CODES.UNAUTHENTICATED,
+        message: 'Phiên đăng nhập đã hết hạn — hãy đăng nhập lại',
+      });
     }
 
     const row = await this.prisma.refreshToken.findUniqueOrThrow({ where: { tokenHash } });
@@ -127,7 +152,9 @@ export class TokenService {
   async revokeFamilyByToken(token: string): Promise<void> {
     const [, raw] = token.split('.', 2);
     if (!raw) return;
-    const row = await this.prisma.refreshToken.findUnique({ where: { tokenHash: this.hashToken(raw) } });
+    const row = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash: this.hashToken(raw) },
+    });
     if (row) {
       await this.prisma.refreshToken.updateMany({
         where: { family: row.family, revokedAt: null },

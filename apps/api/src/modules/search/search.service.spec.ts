@@ -2,17 +2,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { SearchService } from './search.service';
 
 function makeService(rows: Array<{ id: string; rank: number }> | Error) {
-  const queryRaw = vi.fn(() => (rows instanceof Error ? Promise.reject(rows) : Promise.resolve(rows)));
+  const queryRaw = vi.fn(() =>
+    rows instanceof Error ? Promise.reject(rows) : Promise.resolve(rows),
+  );
   const issues = { query: vi.fn().mockResolvedValue({ data: [], meta: {} }) };
   const prisma = { $queryRaw: queryRaw };
   return { service: new SearchService(issues as never, prisma as never), issues, queryRaw };
 }
 
-const missingColumn = Object.assign(new Error('Raw query failed'), { code: 'P2010', meta: { code: '42703' } });
+const missingColumn = Object.assign(new Error('Raw query failed'), {
+  code: 'P2010',
+  meta: { code: '42703' },
+});
 
 describe('SearchService.search', () => {
   it('mode=text: full-text -> query(rawIds) giữ thứ tự rank, không orderBy', async () => {
-    const { service, issues } = makeService([{ id: 'I2', rank: 1 }, { id: 'I1', rank: 0.5 }]);
+    const { service, issues } = makeService([
+      { id: 'I2', rank: 1 },
+      { id: 'I1', rank: 0.5 },
+    ]);
     await service.search('W1', 'U1', { mode: 'text', q: 'đăng nhập', limit: 8 });
     expect(issues.query).toHaveBeenCalledWith('W1', {}, [], undefined, 8, ['I2', 'I1']);
   });
@@ -33,7 +41,10 @@ describe('SearchService.search', () => {
   });
 
   it('JQL text ~ trên chuỗi AND, không ORDER BY -> where id in + rawIds theo rank', async () => {
-    const { service, issues } = makeService([{ id: 'I2', rank: 1 }, { id: 'I1', rank: 0.5 }]);
+    const { service, issues } = makeService([
+      { id: 'I2', rank: 1 },
+      { id: 'I1', rank: 0.5 },
+    ]);
     await service.search('W1', 'U1', { jql: 'text ~ "foo"', limit: 50 });
     const call = issues.query.mock.calls[0] as unknown[];
     expect(call[1]).toEqual({ id: { in: ['I2', 'I1'] } });

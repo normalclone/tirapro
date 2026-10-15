@@ -175,7 +175,8 @@ export const keys = {
    * Cả hai chung tiền tố ['project-lookups', pid] → `projectMeta.all(pid)` làm mới cả hai sau khi sửa.
    */
   projectConfig: {
-    components: (projectId: string) => ['project-lookups', projectId, 'config', 'components'] as const,
+    components: (projectId: string) =>
+      ['project-lookups', projectId, 'config', 'components'] as const,
     versions: (projectId: string) => ['project-lookups', projectId, 'config', 'versions'] as const,
     labels: (projectId: string) => ['project-lookups', projectId, 'config', 'labels'] as const,
     importJobs: ['import-jobs'] as const,

@@ -17,7 +17,11 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
   const { data: issues = [] } = useProjectIssues(issue.projectId);
 
   const children = useMemo(
-    () => issues.filter((i) => i.parentId === issue.id).slice().sort(byPriorityThenStatus),
+    () =>
+      issues
+        .filter((i) => i.parentId === issue.id)
+        .slice()
+        .sort(byPriorityThenStatus),
     [issues, issue.id],
   );
   const progress = useMemo(() => subtreeProgress(issues, issue.id), [issues, issue.id]);
@@ -29,7 +33,12 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
     <section className="rounded-lg border border-border bg-surface">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
         <ListTree className="h-4 w-4 text-muted" aria-hidden />
-        <h2 className="text-sm font-medium text-ink-strong" title="Những việc nhỏ được tách ra từ việc này. Xong hết việc con thì việc cha mới coi là xong.">Việc con ({children.length})</h2>
+        <h2
+          className="text-sm font-medium text-ink-strong"
+          title="Những việc nhỏ được tách ra từ việc này. Xong hết việc con thì việc cha mới coi là xong."
+        >
+          Việc con ({children.length})
+        </h2>
         {progress.total > 0 && (
           <span className="ml-auto tabular text-xs text-muted">{progress.pct}% hoàn thành</span>
         )}

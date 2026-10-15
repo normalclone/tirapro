@@ -34,23 +34,41 @@ function dateInputToIso(v: string): string {
   return new Date(`${v}T00:00:00.000Z`).toISOString();
 }
 
-function Section({ title, icon, count, children }: {
-  title: string; icon: React.ReactNode; count: number; children: React.ReactNode;
+function Section({
+  title,
+  icon,
+  count,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  count: number;
+  children: React.ReactNode;
 }) {
   return (
     <section className="border-b border-border last:border-b-0">
       <h3 className="flex items-center gap-2 px-5 pb-2 pt-4 text-xs font-semibold uppercase tracking-wide text-faint">
-        <span className="text-muted" aria-hidden>{icon}</span>
+        <span className="text-muted" aria-hidden>
+          {icon}
+        </span>
         {title}
-        <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-muted">{count}</span>
+        <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-muted">
+          {count}
+        </span>
       </h3>
       <div className="px-5 pb-5">{children}</div>
     </section>
   );
 }
 
-function DependencySection({ projectId, issues, canManage }: {
-  projectId: string; issues: IssueDto[]; canManage: boolean;
+function DependencySection({
+  projectId,
+  issues,
+  canManage,
+}: {
+  projectId: string;
+  issues: IssueDto[];
+  canManage: boolean;
 }) {
   const depsQuery = useDependencies(projectId);
   const { data: deps } = depsQuery;
@@ -96,11 +114,19 @@ function DependencySection({ projectId, issues, canManage }: {
   const canAdd = !!predecessorId && !!successorId && !sameIssue && !create.isPending;
 
   return (
-    <Section title="Phụ thuộc giữa các việc" icon={<Link2 className="h-4 w-4" />} count={deps?.length ?? 0}>
+    <Section
+      title="Phụ thuộc giữa các việc"
+      icon={<Link2 className="h-4 w-4" />}
+      count={deps?.length ?? 0}
+    >
       <QueryBoundary
         query={depsQuery}
         skeleton={
-          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
+          </div>
         }
         empty={(d) => d.length === 0}
         emptyState={
@@ -108,7 +134,8 @@ function DependencySection({ projectId, issues, canManage }: {
             className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted"
             title="Đường găng là chuỗi việc quyết định ngày kết thúc dự án — trễ một việc trong chuỗi là trễ cả dự án."
           >
-            Chưa khai báo phụ thuộc nào. Nối hai việc để hệ thống biết việc nào phải xong trước, và tính được đường găng.
+            Chưa khai báo phụ thuộc nào. Nối hai việc để hệ thống biết việc nào phải xong trước, và
+            tính được đường găng.
           </p>
         }
       >
@@ -117,9 +144,14 @@ function DependencySection({ projectId, issues, canManage }: {
             {deps.map((d) => (
               <li key={d.id} className="flex items-center gap-2 px-3 py-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-ink" title={`${d.predecessor.summary} → ${d.successor.summary}`}>
+                  <p
+                    className="truncate text-sm text-ink"
+                    title={`${d.predecessor.summary} → ${d.successor.summary}`}
+                  >
                     <span className="font-mono text-xs text-muted">{d.predecessor.key}</span>
-                    <span className="mx-1.5 text-faint" aria-hidden>&rarr;</span>
+                    <span className="mx-1.5 text-faint" aria-hidden>
+                      &rarr;
+                    </span>
                     <span className="font-mono text-xs text-muted">{d.successor.key}</span>
                   </p>
                   <p className="truncate text-xs text-faint" title={DEPENDENCY_TYPE_HINTS[d.type]}>
@@ -149,7 +181,11 @@ function DependencySection({ projectId, issues, canManage }: {
       {canManage && (
         <div className="mt-3 space-y-2 rounded-md border border-border bg-surface-2 p-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted" htmlFor="dep-pred" title="Việc phải làm xong (hoặc bắt đầu) trước.">
+            <label
+              className="mb-1 block text-xs font-medium text-muted"
+              htmlFor="dep-pred"
+              title="Việc phải làm xong (hoặc bắt đầu) trước."
+            >
               Việc làm trước
             </label>
             <SearchSelect
@@ -163,7 +199,11 @@ function DependencySection({ projectId, issues, canManage }: {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted" htmlFor="dep-succ" title="Việc phải chờ việc ở trên.">
+            <label
+              className="mb-1 block text-xs font-medium text-muted"
+              htmlFor="dep-succ"
+              title="Việc phải chờ việc ở trên."
+            >
               Việc làm sau
             </label>
             <SearchSelect
@@ -178,14 +218,22 @@ function DependencySection({ projectId, issues, canManage }: {
           </div>
           <div className="flex gap-2">
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs font-medium text-muted" htmlFor="dep-type" title={DEPENDENCY_TYPE_HINTS[type]}>
+              <label
+                className="mb-1 block text-xs font-medium text-muted"
+                htmlFor="dep-type"
+                title={DEPENDENCY_TYPE_HINTS[type]}
+              >
                 Kiểu ràng buộc
               </label>
               <SearchSelect
                 id="dep-type"
                 value={type}
                 onChange={(v) => setType(v as DependencyType)}
-                options={DEPENDENCY_TYPES.map((t) => ({ value: t, label: DEPENDENCY_TYPE_LABELS[t], hint: t }))}
+                options={DEPENDENCY_TYPES.map((t) => ({
+                  value: t,
+                  label: DEPENDENCY_TYPE_LABELS[t],
+                  hint: t,
+                }))}
                 ariaLabel="Kiểu ràng buộc giữa hai việc"
               />
             </div>
@@ -207,8 +255,18 @@ function DependencySection({ projectId, issues, canManage }: {
               />
             </div>
           </div>
-          {sameIssue && <p className="text-xs text-danger">Một công việc không thể phụ thuộc vào chính nó — hãy chọn hai việc khác nhau.</p>}
-          <Button size="sm" className="w-full" onClick={() => void add()} loading={create.isPending} disabled={!canAdd}>
+          {sameIssue && (
+            <p className="text-xs text-danger">
+              Một công việc không thể phụ thuộc vào chính nó — hãy chọn hai việc khác nhau.
+            </p>
+          )}
+          <Button
+            size="sm"
+            className="w-full"
+            onClick={() => void add()}
+            loading={create.isPending}
+            disabled={!canAdd}
+          >
             <Plus className="h-4 w-4" /> Thêm phụ thuộc
           </Button>
         </div>
@@ -244,7 +302,8 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
     update.mutate(
       { id: m.id, completedAt: m.completedAt ? null : new Date().toISOString() },
       {
-        onSuccess: () => toast.success(m.completedAt ? 'Đã bỏ đánh dấu đã đạt' : 'Đã đánh dấu cột mốc đã đạt'),
+        onSuccess: () =>
+          toast.success(m.completedAt ? 'Đã bỏ đánh dấu đã đạt' : 'Đã đánh dấu cột mốc đã đạt'),
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
     );
@@ -262,12 +321,17 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
       <QueryBoundary
         query={milestonesQuery}
         skeleton={
-          <div className="space-y-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
+          <div className="space-y-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
+          </div>
         }
         empty={(d) => d.length === 0}
         emptyState={
           <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted">
-            Chưa có cột mốc nào. Cột mốc là ngày quan trọng phải chốt — bàn giao, nghiệm thu; thêm vào để nó hiện thành hình thoi trên biểu đồ lịch trình.
+            Chưa có cột mốc nào. Cột mốc là ngày quan trọng phải chốt — bàn giao, nghiệm thu; thêm
+            vào để nó hiện thành hình thoi trên biểu đồ lịch trình.
           </p>
         }
       >
@@ -281,8 +345,18 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
                   aria-hidden
                 />
                 <div className="min-w-0 flex-1">
-                  <p className={cn('truncate text-sm text-ink', m.completedAt && 'line-through text-muted')}>{m.name}</p>
-                  <p className="text-xs text-faint" title={m.completedAt ? 'Cột mốc này đã đạt.' : 'Ngày phải đạt cột mốc này.'}>
+                  <p
+                    className={cn(
+                      'truncate text-sm text-ink',
+                      m.completedAt && 'line-through text-muted',
+                    )}
+                  >
+                    {m.name}
+                  </p>
+                  <p
+                    className="text-xs text-faint"
+                    title={m.completedAt ? 'Cột mốc này đã đạt.' : 'Ngày phải đạt cột mốc này.'}
+                  >
                     {format(new Date(m.dueDate), 'dd/MM/yyyy')}
                     {m.completedAt && ' · Đã đạt'}
                   </p>
@@ -292,7 +366,10 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
                     <Button
                       variant="ghost"
                       size="icon"
-                      className={cn('shrink-0 text-muted hover:text-success', m.completedAt && 'text-success')}
+                      className={cn(
+                        'shrink-0 text-muted hover:text-success',
+                        m.completedAt && 'text-success',
+                      )}
                       title={m.completedAt ? 'Bỏ đánh dấu đã đạt' : 'Đánh dấu cột mốc đã đạt'}
                       aria-label={`${m.completedAt ? 'Bỏ đánh dấu đã đạt' : 'Đánh dấu đã đạt'} cột mốc ${m.name}`}
                       aria-pressed={!!m.completedAt}
@@ -321,12 +398,16 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
       {canManage && (
         <div className="mt-3 space-y-2 rounded-md border border-border bg-surface-2 p-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted" htmlFor="ms-name">Tên cột mốc</label>
+            <label className="mb-1 block text-xs font-medium text-muted" htmlFor="ms-name">
+              Tên cột mốc
+            </label>
             <Input
               id="ms-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') void add(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void add();
+              }}
               placeholder="Ví dụ: Bàn giao bản beta"
               maxLength={120}
               className="text-sm"
@@ -334,8 +415,16 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
           </div>
           <div className="flex items-end gap-2">
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs font-medium text-muted" htmlFor="ms-date">Ngày phải đạt</label>
-              <Input id="ms-date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="text-sm" />
+              <label className="mb-1 block text-xs font-medium text-muted" htmlFor="ms-date">
+                Ngày phải đạt
+              </label>
+              <Input
+                id="ms-date"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="text-sm"
+              />
             </div>
             <div className="flex shrink-0 gap-1.5 pb-1.5">
               {MILESTONE_COLORS.map((c, i) => (
@@ -348,7 +437,9 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
                   aria-pressed={color === c}
                   className={cn(
                     'h-5 w-5 rotate-45 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                    color === c ? 'ring-2 ring-ink-strong ring-offset-2 ring-offset-surface-2' : 'hover:scale-110',
+                    color === c
+                      ? 'ring-2 ring-ink-strong ring-offset-2 ring-offset-surface-2'
+                      : 'hover:scale-110',
                   )}
                   style={{ background: c }}
                 />
@@ -374,7 +465,13 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
  * Ngăn kéo quản lý lịch trình: phụ thuộc giữa các việc + cột mốc.
  * Chỉ hiện form thêm/xoá khi người dùng có quyền `plan:manage`.
  */
-export function PlanningPanel({ open, projectId, issues, canManage, onClose }: {
+export function PlanningPanel({
+  open,
+  projectId,
+  issues,
+  canManage,
+  onClose,
+}: {
   open: boolean;
   projectId: string;
   issues: IssueDto[];
@@ -408,7 +505,13 @@ export function PlanningPanel({ open, projectId, issues, canManage, onClose }: {
       >
         <header className="flex items-center gap-2 border-b border-border px-5 py-3">
           <span className="text-sm font-medium text-ink-strong">Phụ thuộc &amp; cột mốc</span>
-          <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-auto"
+            onClick={onClose}
+            aria-label="Đóng"
+          >
             <X className="h-4 w-4" />
           </Button>
         </header>

@@ -22,7 +22,9 @@ const AUDIT_ACTIONS: { value: string; label: string }[] = [
 ];
 
 const fmtUptime = (s: number) => {
-  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  const d = Math.floor(s / 86400),
+    h = Math.floor((s % 86400) / 3600),
+    m = Math.floor((s % 3600) / 60);
   if (d > 0) return `${d}n ${h}g`;
   if (h > 0) return `${h}g ${m}p`;
   return `${m}p`;
@@ -33,8 +35,21 @@ const prettyAction = (a: string) => a.replace(/_/g, ' ').toLowerCase();
 export function AdminSystemPage() {
   const [limit, setLimit] = useState<number>(AUDIT_STEPS[0]);
   const [action, setAction] = useState('');
-  const { data: health, isLoading: hLoading, isError: hError, error: hErr, refetch: hRefetch } = useAdminHealth();
-  const { data: audit, isLoading: aLoading, isError: aError, error: aErr, refetch: aRefetch, isFetching: aFetching } = useAdminAudit(limit, action || undefined);
+  const {
+    data: health,
+    isLoading: hLoading,
+    isError: hError,
+    error: hErr,
+    refetch: hRefetch,
+  } = useAdminHealth();
+  const {
+    data: audit,
+    isLoading: aLoading,
+    isError: aError,
+    error: aErr,
+    refetch: aRefetch,
+    isFetching: aFetching,
+  } = useAdminAudit(limit, action || undefined);
 
   // Còn nữa để tải nếu số dòng trả về vừa đúng limit và chưa chạm bậc cao nhất.
   const canLoadMore = (audit?.length ?? 0) >= limit && limit < AUDIT_STEPS[AUDIT_STEPS.length - 1]!;
@@ -44,7 +59,9 @@ export function AdminSystemPage() {
     <div className={pageContainer('lg')}>
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Hệ thống</h1>
-        <p className="mt-1 text-sm text-muted">Tình trạng dịch vụ (tự làm mới) &amp; nhật ký kiểm toán toàn hệ thống.</p>
+        <p className="mt-1 text-sm text-muted">
+          Tình trạng dịch vụ (tự làm mới) &amp; nhật ký kiểm toán toàn hệ thống.
+        </p>
       </header>
 
       {/* Health */}
@@ -57,13 +74,37 @@ export function AdminSystemPage() {
         ) : (
           <>
             <div className="mb-3 flex flex-wrap gap-2">
-              <StatusPill tone={health.db ? 'ok' : 'down'} label="Database" note={health.db ? (health.dbLatencyMs != null ? `${health.dbLatencyMs}ms` : 'ok') : 'lỗi'} />
-              <StatusPill tone={health.redis ? 'ok' : health.redisConfigured ? 'down' : 'warn'} label="Redis" note={health.redis ? 'ok' : health.redisConfigured ? 'mất kết nối' : 'không cấu hình'} />
-              <StatusPill tone={health.ai ? 'ok' : 'warn'} label="AI" note={health.ai ? 'bật' : 'heuristic'} />
+              <StatusPill
+                tone={health.db ? 'ok' : 'down'}
+                label="Database"
+                note={
+                  health.db
+                    ? health.dbLatencyMs != null
+                      ? `${health.dbLatencyMs}ms`
+                      : 'ok'
+                    : 'lỗi'
+                }
+              />
+              <StatusPill
+                tone={health.redis ? 'ok' : health.redisConfigured ? 'down' : 'warn'}
+                label="Redis"
+                note={
+                  health.redis ? 'ok' : health.redisConfigured ? 'mất kết nối' : 'không cấu hình'
+                }
+              />
+              <StatusPill
+                tone={health.ai ? 'ok' : 'warn'}
+                label="AI"
+                note={health.ai ? 'bật' : 'heuristic'}
+              />
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <StatTile label="Uptime" value={fmtUptime(health.uptimeSec)} />
-              <StatTile label="RAM (RSS)" value={`${health.memoryRssMb} MB`} sub={`heap ${health.heapUsedMb} MB`} />
+              <StatTile
+                label="RAM (RSS)"
+                value={`${health.memoryRssMb} MB`}
+                sub={`heap ${health.heapUsedMb} MB`}
+              />
               <StatTile label="Phiên bản" value={health.release} />
               <StatTile label="Môi trường" value={health.nodeEnv} />
             </div>
@@ -86,7 +127,9 @@ export function AdminSystemPage() {
               className="rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-ink focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               {AUDIT_ACTIONS.map((a) => (
-                <option key={a.value} value={a.value}>{a.label}</option>
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
               ))}
             </select>
           </label>
@@ -94,9 +137,17 @@ export function AdminSystemPage() {
         {aError ? (
           <QueryError error={aErr} onRetry={() => void aRefetch()} />
         ) : aLoading ? (
-          <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
         ) : !audit || audit.length === 0 ? (
-          <EmptyState icon={<ScrollText className="h-6 w-6" />} title="Chưa có nhật ký" description="Nhật ký ghi lại ai đã làm gì trên hệ thống. Khi có người tạo/sửa công việc hay chuyển trạng thái, các thao tác đó sẽ hiện ở đây." />
+          <EmptyState
+            icon={<ScrollText className="h-6 w-6" />}
+            title="Chưa có nhật ký"
+            description="Nhật ký ghi lại ai đã làm gì trên hệ thống. Khi có người tạo/sửa công việc hay chuyển trạng thái, các thao tác đó sẽ hiện ở đây."
+          />
         ) : (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
             {audit.map((e) => (
@@ -108,15 +159,29 @@ export function AdminSystemPage() {
                   <span className="ml-2 text-muted">{e.entityType}</span>
                   {e.field && <span className="ml-1 text-faint">· {e.field}</span>}
                 </div>
-                {e.workspace && <span className="hidden shrink-0 text-xs text-faint sm:block">{e.workspace.name}</span>}
-                <time className="shrink-0 text-xs text-faint" title={new Date(e.createdAt).toLocaleString(LOCALE)}>{relTime(e.createdAt)}</time>
+                {e.workspace && (
+                  <span className="hidden shrink-0 text-xs text-faint sm:block">
+                    {e.workspace.name}
+                  </span>
+                )}
+                <time
+                  className="shrink-0 text-xs text-faint"
+                  title={new Date(e.createdAt).toLocaleString(LOCALE)}
+                >
+                  {relTime(e.createdAt)}
+                </time>
               </li>
             ))}
           </ul>
         )}
         {!aError && audit && audit.length > 0 && canLoadMore && (
           <div className="mt-3 flex justify-center">
-            <Button variant="secondary" size="sm" onClick={() => setLimit(nextLimit)} loading={aFetching}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setLimit(nextLimit)}
+              loading={aFetching}
+            >
               Tải thêm ({nextLimit})
             </Button>
           </div>

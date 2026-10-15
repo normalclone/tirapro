@@ -24,13 +24,20 @@ function toLocalInput(date: Date): string {
 }
 
 const when = (iso: string) =>
-  new Date(iso).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  new Date(iso).toLocaleString(LOCALE, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
 /** "2.5" nghĩa là 2,5 giờ → "2h 30m"; chuỗi có đơn vị giữ nguyên. Dùng cho gợi ý ngay khi gõ. */
 function previewOf(text: string): { ok: boolean; label: string } {
   if (!text.trim()) return { ok: false, label: '' };
   const sec = parseDuration(text);
-  if (sec === null || sec <= 0) return { ok: false, label: 'Chưa đọc được — hãy gõ dạng 2h 30m, 90m hoặc 1d (1d = 8 giờ)' };
+  if (sec === null || sec <= 0)
+    return { ok: false, label: 'Chưa đọc được — hãy gõ dạng 2h 30m, 90m hoặc 1d (1d = 8 giờ)' };
   return { ok: true, label: `= ${formatDuration(sec)}` };
 }
 
@@ -65,7 +72,8 @@ export function WorklogPanel({ issue }: { issue: IssueDto }) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       const tag = el?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable)
+        return;
       if (document.querySelector('[data-radix-popper-content-wrapper],[role="dialog"]')) return;
       e.preventDefault();
       setEditing(null);
@@ -83,13 +91,24 @@ export function WorklogPanel({ issue }: { issue: IssueDto }) {
     setEditingEstimate(false);
     const text = raw.trim();
     const sec = text === '' ? null : parseDuration(text);
-    if (text !== '' && (sec === null || sec <= 0)) return void toast.error('Ước lượng chưa đúng — hãy nhập dạng 2d 4h, 90m hoặc 1d (1d = 8 giờ)');
+    if (text !== '' && (sec === null || sec <= 0))
+      return void toast.error(
+        'Ước lượng chưa đúng — hãy nhập dạng 2d 4h, 90m hoặc 1d (1d = 8 giờ)',
+      );
     if (sec === original) return;
     // Đổi ước lượng gốc thì ước lượng còn lại tính lại theo tổng đã làm.
-    patchIssue.mutate({
-      id: issue.id, key: issue.key, version: issue.version,
-      patch: { originalEstimate: sec, remainingEstimate: sec === null ? null : Math.max(0, sec - spent) },
-    }, { onSuccess: () => toast.success('Đã cập nhật ước lượng', { duration: 2000 }) });
+    patchIssue.mutate(
+      {
+        id: issue.id,
+        key: issue.key,
+        version: issue.version,
+        patch: {
+          originalEstimate: sec,
+          remainingEstimate: sec === null ? null : Math.max(0, sec - spent),
+        },
+      },
+      { onSuccess: () => toast.success('Đã cập nhật ước lượng', { duration: 2000 }) },
+    );
   }
 
   function canModify(w: WorklogDto) {
@@ -97,12 +116,24 @@ export function WorklogPanel({ issue }: { issue: IssueDto }) {
   }
 
   return (
-    <section aria-label="Theo dõi thời gian" className="rounded-lg border border-border bg-surface p-4">
+    <section
+      aria-label="Theo dõi thời gian"
+      className="rounded-lg border border-border bg-surface p-4"
+    >
       <header className="mb-3 flex items-center gap-2">
         <Clock className="h-4 w-4 text-muted" aria-hidden />
         <h2 className="text-sm font-semibold text-ink-strong">Thời gian</h2>
         {canLog && !formOpen && (
-          <Button size="sm" variant="secondary" className="ml-auto" onClick={() => { setEditing(null); setFormOpen(true); }} title="Ghi thời gian đã làm (phím w)">
+          <Button
+            size="sm"
+            variant="secondary"
+            className="ml-auto"
+            onClick={() => {
+              setEditing(null);
+              setFormOpen(true);
+            }}
+            title="Ghi thời gian đã làm (phím w)"
+          >
             <Plus className="h-4 w-4" /> Ghi thời gian
           </Button>
         )}
@@ -125,11 +156,18 @@ export function WorklogPanel({ issue }: { issue: IssueDto }) {
             }}
           />
         ) : canEstimate ? (
-          <button type="button" className="rounded px-1 hover:bg-surface-2 hover:text-ink" onClick={() => setEditingEstimate(true)} title="Sửa ước lượng gốc">
+          <button
+            type="button"
+            className="rounded px-1 hover:bg-surface-2 hover:text-ink"
+            onClick={() => setEditingEstimate(true)}
+            title="Sửa ước lượng gốc"
+          >
             {original ? `Ước lượng gốc: ${formatDuration(original)}` : 'Đặt ước lượng gốc'}
           </button>
         ) : (
-          <span>{original ? `Ước lượng gốc: ${formatDuration(original)}` : 'Chưa có ước lượng gốc'}</span>
+          <span>
+            {original ? `Ước lượng gốc: ${formatDuration(original)}` : 'Chưa có ước lượng gốc'}
+          </span>
         )}
       </div>
 
@@ -138,9 +176,18 @@ export function WorklogPanel({ issue }: { issue: IssueDto }) {
           key={editing?.id ?? 'new'}
           initial={editing}
           busy={add.isPending || update.isPending}
-          onCancel={() => { setFormOpen(false); setEditing(null); }}
+          onCancel={() => {
+            setFormOpen(false);
+            setEditing(null);
+          }}
           onSubmit={(v) => {
-            const done = () => { setFormOpen(false); setEditing(null); toast.success(editing ? 'Đã cập nhật worklog' : 'Đã ghi thời gian', { duration: 2000 }); };
+            const done = () => {
+              setFormOpen(false);
+              setEditing(null);
+              toast.success(editing ? 'Đã cập nhật worklog' : 'Đã ghi thời gian', {
+                duration: 2000,
+              });
+            };
             if (editing) update.mutate({ id: editing.id, ...v }, { onSuccess: done });
             else add.mutate({ ...v, timeSpent: v.timeSpent ?? '' }, { onSuccess: done });
           }}
@@ -152,27 +199,57 @@ export function WorklogPanel({ issue }: { issue: IssueDto }) {
           query={worklogsQuery}
           skeleton={<Skeleton className="h-10 w-full" />}
           empty={(d) => !d.items.length}
-          emptyState={<p className="text-sm text-muted">Chưa ai ghi thời gian cho việc này.{canLog ? ' Bấm “Ghi thời gian” hoặc phím w.' : ''}</p>}
+          emptyState={
+            <p className="text-sm text-muted">
+              Chưa ai ghi thời gian cho việc này.{canLog ? ' Bấm “Ghi thời gian” hoặc phím w.' : ''}
+            </p>
+          }
         >
           {(worklogs) => (
             <ul className="divide-y divide-border">
               {worklogs.items.map((w) => (
-                <li key={w.id} className="group flex items-start gap-2.5 py-2.5 first:pt-0 last:pb-0">
+                <li
+                  key={w.id}
+                  className="group flex items-start gap-2.5 py-2.5 first:pt-0 last:pb-0"
+                >
                   <Avatar name={w.author.displayName} src={w.author.avatarUrl} size={22} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-ink">
                       <span className="font-medium">{w.author.displayName}</span>{' '}
-                      <span className="font-semibold tabular-nums text-ink-strong">{formatDuration(w.timeSpentSec)}</span>
+                      <span className="font-semibold tabular-nums text-ink-strong">
+                        {formatDuration(w.timeSpentSec)}
+                      </span>
                     </p>
                     <p className="text-xs text-faint">{when(w.startedAt)}</p>
-                    {w.comment && <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted">{w.comment}</p>}
+                    {w.comment && (
+                      <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted">
+                        {w.comment}
+                      </p>
+                    )}
                   </div>
                   {canModify(w) && (
                     <div className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Sửa worklog" aria-label="Sửa worklog" onClick={() => { setEditing(w); setFormOpen(true); }}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Sửa worklog"
+                        aria-label="Sửa worklog"
+                        onClick={() => {
+                          setEditing(w);
+                          setFormOpen(true);
+                        }}
+                      >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted hover:text-danger" title="Xoá worklog" aria-label="Xoá worklog" onClick={() => setDeleting(w)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted hover:text-danger"
+                        title="Xoá worklog"
+                        aria-label="Xoá worklog"
+                        onClick={() => setDeleting(w)}
+                      >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -187,14 +264,21 @@ export function WorklogPanel({ issue }: { issue: IssueDto }) {
       <ConfirmDialog
         open={!!deleting}
         title="Xoá bản ghi thời gian này?"
-        description={deleting ? `${formatDuration(deleting.timeSpentSec)} của ${deleting.author.displayName} sẽ bị xoá và ước lượng còn lại được tính lại.` : undefined}
+        description={
+          deleting
+            ? `${formatDuration(deleting.timeSpentSec)} của ${deleting.author.displayName} sẽ bị xoá và ước lượng còn lại được tính lại.`
+            : undefined
+        }
         confirmLabel="Xoá"
         loading={remove.isPending}
         onCancel={() => setDeleting(null)}
         onConfirm={() => {
           if (!deleting) return;
           remove.mutate(deleting.id, {
-            onSuccess: () => { setDeleting(null); toast.success('Đã xoá worklog', { duration: 2000 }); },
+            onSuccess: () => {
+              setDeleting(null);
+              toast.success('Đã xoá worklog', { duration: 2000 });
+            },
             onError: (e) => toast.error(apiErrorMessage(e)),
           });
         }}
@@ -204,9 +288,22 @@ export function WorklogPanel({ issue }: { issue: IssueDto }) {
 }
 
 /** Thanh tiến độ: phần đã làm / ước lượng gốc; vượt ước lượng đổi sang màu cảnh báo. */
-function Progress({ spent, original, remaining }: { spent: number; original: number | null; remaining: number | null }) {
+function Progress({
+  spent,
+  original,
+  remaining,
+}: {
+  spent: number;
+  original: number | null;
+  remaining: number | null;
+}) {
   const over = original !== null && original > 0 && spent > original;
-  const pct = original && original > 0 ? Math.min(100, Math.round((spent / original) * 100)) : spent > 0 ? 100 : 0;
+  const pct =
+    original && original > 0
+      ? Math.min(100, Math.round((spent / original) * 100))
+      : spent > 0
+        ? 100
+        : 0;
   return (
     <div>
       <div
@@ -217,14 +314,28 @@ function Progress({ spent, original, remaining }: { spent: number; original: num
         aria-label="Tiến độ thời gian"
         className="h-2 overflow-hidden rounded-full bg-surface-3"
       >
-        <div className={cn('h-full rounded-full transition-[width] duration-300', over ? 'bg-warning' : 'bg-primary')} style={{ width: `${pct}%` }} />
+        <div
+          className={cn(
+            'h-full rounded-full transition-[width] duration-300',
+            over ? 'bg-warning' : 'bg-primary',
+          )}
+          style={{ width: `${pct}%` }}
+        />
       </div>
       <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
         <Stat label="Đã làm" value={spent > 0 ? formatDuration(spent) : '0m'} />
         <Stat label="Ước lượng" value={original ? formatDuration(original) : '—'} />
-        <Stat label="Còn lại" value={remaining !== null ? formatDuration(remaining) : '—'} warn={over} />
+        <Stat
+          label="Còn lại"
+          value={remaining !== null ? formatDuration(remaining) : '—'}
+          warn={over}
+        />
       </dl>
-      {over && <p className="mt-1.5 text-xs text-warning">Đã vượt ước lượng gốc {formatDuration(spent - (original ?? 0))}.</p>}
+      {over && (
+        <p className="mt-1.5 text-xs text-warning">
+          Đã vượt ước lượng gốc {formatDuration(spent - (original ?? 0))}.
+        </p>
+      )}
     </div>
   );
 }
@@ -233,7 +344,9 @@ function Stat({ label, value, warn }: { label: string; value: string; warn?: boo
   return (
     <div>
       <dt className="text-faint">{label}</dt>
-      <dd className={cn('font-semibold tabular-nums', warn ? 'text-warning' : 'text-ink')}>{value}</dd>
+      <dd className={cn('font-semibold tabular-nums', warn ? 'text-warning' : 'text-ink')}>
+        {value}
+      </dd>
     </div>
   );
 }
@@ -246,7 +359,10 @@ interface FormValues {
 }
 
 function WorklogForm({
-  initial, busy, onSubmit, onCancel,
+  initial,
+  busy,
+  onSubmit,
+  onCancel,
 }: {
   initial: WorklogDto | null;
   busy: boolean;
@@ -254,13 +370,17 @@ function WorklogForm({
   onCancel: () => void;
 }) {
   const [time, setTime] = useState(initial ? formatDuration(initial.timeSpentSec) : '');
-  const [startedAt, setStartedAt] = useState(toLocalInput(initial ? new Date(initial.startedAt) : new Date()));
+  const [startedAt, setStartedAt] = useState(
+    toLocalInput(initial ? new Date(initial.startedAt) : new Date()),
+  );
   const [comment, setComment] = useState(initial?.comment ?? '');
   const [mode, setMode] = useState<'auto' | 'leave' | 'set'>('auto');
   const [setValue, setSetValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   const preview = previewOf(time);
   const setPreview = mode === 'set' ? previewOf(setValue) : null;
@@ -279,32 +399,67 @@ function WorklogForm({
   return (
     <form
       className="mt-4 space-y-3 rounded-md border border-border bg-bg p-3"
-      onSubmit={(e) => { e.preventDefault(); submit(); }}
-      onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onCancel();
+      }}
       aria-label={initial ? 'Sửa worklog' : 'Ghi thời gian'}
     >
       <div>
-        <label htmlFor="wl-time" className="mb-1 block text-xs font-medium text-muted">Thời gian đã làm</label>
-        <Input id="wl-time" ref={inputRef} value={time} onChange={(e) => setTime(e.target.value)} placeholder="2h 30m" maxLength={40} aria-describedby="wl-time-hint" />
+        <label htmlFor="wl-time" className="mb-1 block text-xs font-medium text-muted">
+          Thời gian đã làm
+        </label>
+        <Input
+          id="wl-time"
+          ref={inputRef}
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+          placeholder="2h 30m"
+          maxLength={40}
+          aria-describedby="wl-time-hint"
+        />
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {QUICK.map((q) => (
-            <button key={q} type="button" onClick={() => setTime(q)} className="rounded-full border border-border px-2 py-0.5 text-xs text-muted hover:bg-surface-2 hover:text-ink">
+            <button
+              key={q}
+              type="button"
+              onClick={() => setTime(q)}
+              className="rounded-full border border-border px-2 py-0.5 text-xs text-muted hover:bg-surface-2 hover:text-ink"
+            >
               {q}
             </button>
           ))}
-          <span id="wl-time-hint" className={cn('text-xs', preview.ok ? 'text-success' : time.trim() ? 'text-danger' : 'text-faint')}>
+          <span
+            id="wl-time-hint"
+            className={cn(
+              'text-xs',
+              preview.ok ? 'text-success' : time.trim() ? 'text-danger' : 'text-faint',
+            )}
+          >
             {preview.label || 'Gõ 2h 30m, 90m hoặc 1d (1d = 8 giờ)'}
           </span>
         </div>
       </div>
 
       <div>
-        <label htmlFor="wl-start" className="mb-1 block text-xs font-medium text-muted">Bắt đầu lúc</label>
-        <Input id="wl-start" type="datetime-local" value={startedAt} onChange={(e) => setStartedAt(e.target.value)} />
+        <label htmlFor="wl-start" className="mb-1 block text-xs font-medium text-muted">
+          Bắt đầu lúc
+        </label>
+        <Input
+          id="wl-start"
+          type="datetime-local"
+          value={startedAt}
+          onChange={(e) => setStartedAt(e.target.value)}
+        />
       </div>
 
       <div>
-        <label htmlFor="wl-comment" className="mb-1 block text-xs font-medium text-muted">Ghi chú (không bắt buộc)</label>
+        <label htmlFor="wl-comment" className="mb-1 block text-xs font-medium text-muted">
+          Ghi chú (không bắt buộc)
+        </label>
         <textarea
           id="wl-comment"
           value={comment}
@@ -319,21 +474,42 @@ function WorklogForm({
       <fieldset>
         <legend className="mb-1 text-xs font-medium text-muted">Ước lượng còn lại</legend>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
-          {([['auto', 'Tự trừ'], ['leave', 'Giữ nguyên'], ['set', 'Đặt thành…']] as const).map(([v, label]) => (
+          {(
+            [
+              ['auto', 'Tự trừ'],
+              ['leave', 'Giữ nguyên'],
+              ['set', 'Đặt thành…'],
+            ] as const
+          ).map(([v, label]) => (
             <label key={v} className="flex items-center gap-1.5 text-ink">
-              <input type="radio" name="wl-adjust" checked={mode === v} onChange={() => setMode(v)} />
+              <input
+                type="radio"
+                name="wl-adjust"
+                checked={mode === v}
+                onChange={() => setMode(v)}
+              />
               {label}
             </label>
           ))}
           {mode === 'set' && (
-            <Input className="h-8 w-28" value={setValue} onChange={(e) => setSetValue(e.target.value)} placeholder="vd 4h" aria-label="Ước lượng còn lại mới" />
+            <Input
+              className="h-8 w-28"
+              value={setValue}
+              onChange={(e) => setSetValue(e.target.value)}
+              placeholder="vd 4h"
+              aria-label="Ước lượng còn lại mới"
+            />
           )}
         </div>
       </fieldset>
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Huỷ</Button>
-        <Button type="submit" size="sm" loading={busy} disabled={!canSave}>{initial ? 'Lưu' : 'Ghi thời gian'}</Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          Huỷ
+        </Button>
+        <Button type="submit" size="sm" loading={busy} disabled={!canSave}>
+          {initial ? 'Lưu' : 'Ghi thời gian'}
+        </Button>
       </div>
     </form>
   );

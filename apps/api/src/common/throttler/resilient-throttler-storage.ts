@@ -1,6 +1,6 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
 import { Logger } from '@nestjs/common';
-import type { ThrottlerStorage} from '@nestjs/throttler';
+import type { ThrottlerStorage } from '@nestjs/throttler';
 import { ThrottlerStorageService } from '@nestjs/throttler';
 
 type Increment = ThrottlerStorage['increment'];
@@ -29,14 +29,22 @@ export class ResilientThrottlerStorage implements ThrottlerStorage, OnApplicatio
   ): Promise<IncrementResult> {
     if (this.redisStorage && this.isRedisUp()) {
       try {
-        const result = await this.redisStorage.increment(key, ttl, limit, blockDuration, throttlerName);
+        const result = await this.redisStorage.increment(
+          key,
+          ttl,
+          limit,
+          blockDuration,
+          throttlerName,
+        );
         // Redis đã phục hồi → cho phép cảnh báo lại ở đợt sự cố kế tiếp.
         this.warnedFallback = false;
         return result;
       } catch (err) {
         if (!this.warnedFallback) {
           this.warnedFallback = true;
-          this.logger.warn(`Redis lỗi (${(err as Error).message}) — rate-limit tạm dùng bộ nhớ của node.`);
+          this.logger.warn(
+            `Redis lỗi (${(err as Error).message}) — rate-limit tạm dùng bộ nhớ của node.`,
+          );
         }
       }
     }

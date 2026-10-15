@@ -7,7 +7,9 @@ import { invalidateIssue, optimisticPatchIssue, rollbackIssue, writeIssue } from
 export function useProjectSprints(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.sprints.byProject(projectId ?? ''),
-    queryFn: projectId ? async () => (await api.get<SprintDto[]>(`/sprints?projectId=${projectId}`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<SprintDto[]>(`/sprints?projectId=${projectId}`)).data
+      : skipToken,
   });
 }
 
@@ -45,7 +47,11 @@ export function useCompleteSprint(projectId: string) {
   const invalidate = useInvalidateBacklog(projectId);
   return useMutation({
     mutationFn: (v: { sprintId: string; moveIncompleteTo?: MoveIncompleteTo }) =>
-      api.post<SprintDto>(`/sprints/${v.sprintId}/complete`, { moveIncompleteTo: v.moveIncompleteTo ?? 'backlog' }).then((r) => r.data),
+      api
+        .post<SprintDto>(`/sprints/${v.sprintId}/complete`, {
+          moveIncompleteTo: v.moveIncompleteTo ?? 'backlog',
+        })
+        .then((r) => r.data),
     onSuccess: invalidate,
   });
 }
@@ -54,8 +60,15 @@ export function useCompleteSprint(projectId: string) {
 export function useUpdateSprint(projectId: string) {
   const invalidate = useInvalidateBacklog(projectId);
   return useMutation({
-    mutationFn: (v: { id: string; patch: { name?: string; goal?: string | null; startDate?: string | null; endDate?: string | null } }) =>
-      api.patch<SprintDto>(`/sprints/${v.id}`, v.patch).then((r) => r.data),
+    mutationFn: (v: {
+      id: string;
+      patch: {
+        name?: string;
+        goal?: string | null;
+        startDate?: string | null;
+        endDate?: string | null;
+      };
+    }) => api.patch<SprintDto>(`/sprints/${v.id}`, v.patch).then((r) => r.data),
     onSuccess: invalidate,
   });
 }

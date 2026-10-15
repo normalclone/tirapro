@@ -41,13 +41,19 @@ export class IssueExtrasService {
         select: { userId: true },
       });
       if (members.length !== unique.length) {
-        throw new ForbiddenAppException('Một số người dùng không thuộc không gian làm việc này — hãy chọn lại từ danh sách thành viên');
+        throw new ForbiddenAppException(
+          'Một số người dùng không thuộc không gian làm việc này — hãy chọn lại từ danh sách thành viên',
+        );
       }
     }
     await this.prisma.$transaction([
       this.prisma.issueParticipant.deleteMany({ where: { issueId } }),
       ...(unique.length
-        ? [this.prisma.issueParticipant.createMany({ data: unique.map((userId) => ({ issueId, userId })) })]
+        ? [
+            this.prisma.issueParticipant.createMany({
+              data: unique.map((userId) => ({ issueId, userId })),
+            }),
+          ]
         : []),
     ]);
     return this.listParticipants(workspaceId, issueId);
@@ -84,7 +90,10 @@ export class IssueExtrasService {
   ) {
     await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
-    const item = await this.prisma.checklistItem.findFirst({ where: { id: itemId, issueId }, select: { id: true } });
+    const item = await this.prisma.checklistItem.findFirst({
+      where: { id: itemId, issueId },
+      select: { id: true },
+    });
     if (!item) throw new NotFoundAppException('Mục checklist');
     return this.prisma.checklistItem.update({
       where: { id: itemId },

@@ -7,13 +7,7 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { api, apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import {
-  useCreateLink,
-  useDeleteLink,
-  useIssueLinks,
-  useLinkTypes,
-  type IssueLink,
-} from './api';
+import { useCreateLink, useDeleteLink, useIssueLinks, useLinkTypes, type IssueLink } from './api';
 
 export function LinksPanel({ issueId }: { issueId: string }) {
   const { data: links } = useIssueLinks(issueId);
@@ -57,7 +51,8 @@ export function LinksPanel({ issueId }: { issueId: string }) {
   }
 
   async function onDelete(link: IssueLink) {
-    if (!(await confirm({ title: `Xóa liên kết tới ${link.otherIssue.key}?`, destructive: true }))) return;
+    if (!(await confirm({ title: `Xóa liên kết tới ${link.otherIssue.key}?`, destructive: true })))
+      return;
     try {
       await deleteLink.mutateAsync(link.id);
     } catch (e) {
@@ -156,7 +151,9 @@ export function LinksPanel({ issueId }: { issueId: string }) {
           >
             <Link2 className="h-4 w-4 shrink-0 text-muted" />
             <span className="shrink-0 text-xs text-muted">{link.relationName}</span>
-            <span className="shrink-0 font-mono text-xs text-ink-strong">{link.otherIssue.key}</span>
+            <span className="shrink-0 font-mono text-xs text-ink-strong">
+              {link.otherIssue.key}
+            </span>
             <span className="min-w-0 flex-1 truncate text-ink">{link.otherIssue.summary}</span>
             <button
               type="button"

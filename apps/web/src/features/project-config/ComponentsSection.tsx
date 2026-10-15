@@ -6,7 +6,14 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { apiErrorMessage } from '@/lib/api';
-import { useComponents, useCreateComponent, useUpdateComponent, useDeleteComponent, type Component, type ComponentUpdateInput } from './api';
+import {
+  useComponents,
+  useCreateComponent,
+  useUpdateComponent,
+  useDeleteComponent,
+  type Component,
+  type ComponentUpdateInput,
+} from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
 
@@ -14,7 +21,13 @@ import { SectionCard } from './SectionCard';
 /* Section — Components                                                 */
 /* ------------------------------------------------------------------ */
 
-export function ComponentsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: boolean }) {
+export function ComponentsSection({
+  projectId,
+  canAdmin,
+}: {
+  projectId?: string;
+  canAdmin: boolean;
+}) {
   const confirm = useConfirm();
   const componentsQuery = useComponents(projectId);
   const { data } = componentsQuery;
@@ -56,7 +69,13 @@ export function ComponentsSection({ projectId, canAdmin }: { projectId?: string;
   }
 
   async function handleDelete(c: Component) {
-    if (!(await confirm({ title: `Xoá thành phần "${c.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
+    if (
+      !(await confirm({
+        title: `Xoá thành phần "${c.name}"? Hành động này không thể hoàn tác.`,
+        destructive: true,
+      }))
+    )
+      return;
     remove.mutate(c.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -143,64 +162,65 @@ export function ComponentsSection({ projectId, canAdmin }: { projectId?: string;
         )}
       </QueryBoundary>
 
-      {canAdmin && (adding ? (
-        <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[10rem] flex-1">
-              <label htmlFor="comp-name" className="mb-1 block text-xs font-medium text-muted">
-                Tên
-              </label>
-              <Input
-                id="comp-name"
-                value={name}
-                autoFocus
-                placeholder="VD: Thanh toán"
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitAdd();
-                  if (e.key === 'Escape') resetAdd();
-                }}
-              />
-            </div>
-            <div className="min-w-[12rem] flex-1">
-              <label htmlFor="comp-desc" className="mb-1 block text-xs font-medium text-muted">
-                Mô tả
-              </label>
-              <Input
-                id="comp-desc"
-                value={description}
-                placeholder="Tuỳ chọn"
-                onChange={(e) => setDescription(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitAdd();
-                  if (e.key === 'Escape') resetAdd();
-                }}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={submitAdd} loading={create.isPending}>
-                Lưu
-              </Button>
-              <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
-                Huỷ
-              </Button>
+      {canAdmin &&
+        (adding ? (
+          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[10rem] flex-1">
+                <label htmlFor="comp-name" className="mb-1 block text-xs font-medium text-muted">
+                  Tên
+                </label>
+                <Input
+                  id="comp-name"
+                  value={name}
+                  autoFocus
+                  placeholder="VD: Thanh toán"
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitAdd();
+                    if (e.key === 'Escape') resetAdd();
+                  }}
+                />
+              </div>
+              <div className="min-w-[12rem] flex-1">
+                <label htmlFor="comp-desc" className="mb-1 block text-xs font-medium text-muted">
+                  Mô tả
+                </label>
+                <Input
+                  id="comp-desc"
+                  value={description}
+                  placeholder="Tuỳ chọn"
+                  onChange={(e) => setDescription(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitAdd();
+                    if (e.key === 'Escape') resetAdd();
+                  }}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={submitAdd} loading={create.isPending}>
+                  Lưu
+                </Button>
+                <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
+                  Huỷ
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        components.length > 0 && (
-          <Button
-            variant="secondary"
-            size="sm"
-            className="mt-4"
-            onClick={() => setAdding(true)}
-            disabled={!projectId}
-          >
-            <Plus className="h-4 w-4" />
-            Thêm thành phần
-          </Button>
-        )
-      ))}
+        ) : (
+          components.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-4"
+              onClick={() => setAdding(true)}
+              disabled={!projectId}
+            >
+              <Plus className="h-4 w-4" />
+              Thêm thành phần
+            </Button>
+          )
+        ))}
     </SectionCard>
   );
 }

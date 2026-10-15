@@ -8,14 +8,25 @@ import type { CreateRoleInput, UpdateRoleInput } from './roles.schemas';
 const VALID_KEYS = new Set<string>(PERMISSION_CATALOG.map((p) => p.key));
 
 type RoleRow = {
-  id: string; workspaceId: string | null; name: string; scope: RoleScope; isSystem: boolean;
-  description: string | null; color: string | null;
+  id: string;
+  workspaceId: string | null;
+  name: string;
+  scope: RoleScope;
+  isSystem: boolean;
+  description: string | null;
+  color: string | null;
   permissions: { permission: { key: string } }[];
   _count: { wsMembershipRoles: number; projMembershipRoles: number };
 };
 
 const ROLE_SELECT = {
-  id: true, workspaceId: true, name: true, scope: true, isSystem: true, description: true, color: true,
+  id: true,
+  workspaceId: true,
+  name: true,
+  scope: true,
+  isSystem: true,
+  description: true,
+  color: true,
   permissions: { select: { permission: { select: { key: true } } } },
   _count: { select: { wsMembershipRoles: true, projMembershipRoles: true } },
 } as const;
@@ -44,8 +55,12 @@ export class RolesService {
     const permIds = await this.permIds(input.permissionKeys);
     const role = await this.prisma.role.create({
       data: {
-        workspaceId, name: input.name.trim(), scope: input.scope, isSystem: false,
-        description: input.description ?? null, color: input.color ?? null,
+        workspaceId,
+        name: input.name.trim(),
+        scope: input.scope,
+        isSystem: false,
+        description: input.description ?? null,
+        color: input.color ?? null,
         permissions: { create: permIds.map((permissionId) => ({ permissionId })) },
       },
       select: ROLE_SELECT,
@@ -73,7 +88,9 @@ export class RolesService {
     const role = await this.assertCustom(workspaceId, id);
     const count = role._count.wsMembershipRoles + role._count.projMembershipRoles;
     if (count > 0) {
-      throw new ForbiddenAppException(`Vai trò đang gán cho ${count} thành viên — gỡ khỏi họ trước khi xoá`);
+      throw new ForbiddenAppException(
+        `Vai trò đang gán cho ${count} thành viên — gỡ khỏi họ trước khi xoá`,
+      );
     }
     await this.prisma.role.delete({ where: { id } });
     await this.rbac.invalidateWorkspace(workspaceId);
@@ -84,9 +101,13 @@ export class RolesService {
   private toDto(r: RoleRow) {
     const meta = SYSTEM_ROLE_META[r.name as keyof typeof SYSTEM_ROLE_META];
     return {
-      id: r.id, workspaceId: r.workspaceId, name: r.name, scope: r.scope, isSystem: r.isSystem,
-      description: r.description ?? (r.isSystem ? meta?.description ?? null : null),
-      color: r.color ?? (r.isSystem ? meta?.color ?? null : null),
+      id: r.id,
+      workspaceId: r.workspaceId,
+      name: r.name,
+      scope: r.scope,
+      isSystem: r.isSystem,
+      description: r.description ?? (r.isSystem ? (meta?.description ?? null) : null),
+      color: r.color ?? (r.isSystem ? (meta?.color ?? null) : null),
       permissionKeys: r.permissions.map((p) => p.permission.key),
       memberCount: r._count.wsMembershipRoles + r._count.projMembershipRoles,
     };
@@ -95,7 +116,12 @@ export class RolesService {
   private async assertCustom(workspaceId: string, id: string) {
     const role = await this.prisma.role.findUnique({
       where: { id },
-      select: { id: true, isSystem: true, workspaceId: true, _count: { select: { wsMembershipRoles: true, projMembershipRoles: true } } },
+      select: {
+        id: true,
+        isSystem: true,
+        workspaceId: true,
+        _count: { select: { wsMembershipRoles: true, projMembershipRoles: true } },
+      },
     });
     if (!role) throw new NotFoundAppException('Vai trò');
     if (role.isSystem || role.workspaceId !== workspaceId) {
@@ -107,7 +133,10 @@ export class RolesService {
   private async permIds(keys: string[]): Promise<string[]> {
     const valid = [...new Set(keys)].filter((k) => VALID_KEYS.has(k));
     if (!valid.length) return [];
-    const rows = await this.prisma.permission.findMany({ where: { key: { in: valid } }, select: { id: true } });
+    const rows = await this.prisma.permission.findMany({
+      where: { key: { in: valid } },
+      select: { id: true },
+    });
     return rows.map((r) => r.id);
   }
 }

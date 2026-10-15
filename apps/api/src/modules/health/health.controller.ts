@@ -71,7 +71,9 @@ export class HealthController {
     try {
       await Promise.race([
         this.prisma.$queryRaw`SELECT 1`,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), READY_TIMEOUT_MS).unref()),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('DB timeout')), READY_TIMEOUT_MS).unref(),
+        ),
       ]);
       return true;
     } catch {
@@ -88,7 +90,9 @@ export class HealthController {
             SELECT 1 FROM information_schema.columns
             WHERE table_schema = current_schema() AND table_name = 'Issue' AND column_name = 'searchVector'
           ) AS ok`,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('DB timeout')), READY_TIMEOUT_MS).unref()),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('DB timeout')), READY_TIMEOUT_MS).unref(),
+        ),
       ]);
       return rows[0]?.ok ?? null;
     } catch {
@@ -104,7 +108,9 @@ export class HealthController {
     try {
       await Promise.race([
         client.ping(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), READY_TIMEOUT_MS).unref()),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Redis timeout')), READY_TIMEOUT_MS).unref(),
+        ),
       ]);
       return true;
     } catch {

@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Plus, FolderPlus, Search, Sparkles, Bug, Eye, EyeOff, X, Settings2, Check } from 'lucide-react';
+import {
+  Plus,
+  FolderPlus,
+  Search,
+  Sparkles,
+  Bug,
+  Eye,
+  EyeOff,
+  X,
+  Settings2,
+  Check,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useProject, useProjects } from '@/features/projects/api';
 import { useIssue } from '@/features/issues/api';
@@ -54,7 +65,8 @@ export function FloatingActions() {
   const { data: projects } = useProjects();
   const { data: projectByKey } = useProject(projectKey);
   // Trên /p/:key dùng key; trên trang issue resolve project theo projectId của issue.
-  const project = projectByKey ?? (issue ? projects?.find((p) => p.id === issue.projectId) ?? null : null);
+  const project =
+    projectByKey ?? (issue ? (projects?.find((p) => p.id === issue.projectId) ?? null) : null);
   const issueId = issue?.id ?? '';
   const { data: watchState } = useWatchState(issueId);
   const watchToggle = useToggleWatch(issueId);
@@ -107,18 +119,43 @@ export function FloatingActions() {
         else toast.error('Chưa có dự án nào — hãy tạo một dự án trước, rồi thêm công việc vào đó.');
       }),
     },
-    hasProject && aiEnabled && enabled.ai && { key: 'ai', icon: <Sparkles className="h-5 w-5 text-primary" />, label: 'Tạo bằng AI', onClick: run(() => setGenAi(true)) },
-    hasProject && enabled.report && { key: 'report', icon: <Bug className="h-5 w-5" />, label: 'Báo lỗi', onClick: run(() => setReport(true)) },
-    onIssue && enabled.watch && {
-      key: 'watch',
-      icon: watching ? <Eye className="h-5 w-5 text-primary" /> : <EyeOff className="h-5 w-5" />,
-      label: watching ? 'Bỏ theo dõi' : 'Theo dõi',
-      onClick: run(() =>
-        watchToggle.mutateAsync(watching).catch((e: unknown) => toast.error(apiErrorMessage(e))),
-      ),
+    hasProject &&
+      aiEnabled &&
+      enabled.ai && {
+        key: 'ai',
+        icon: <Sparkles className="h-5 w-5 text-primary" />,
+        label: 'Tạo bằng AI',
+        onClick: run(() => setGenAi(true)),
+      },
+    hasProject &&
+      enabled.report && {
+        key: 'report',
+        icon: <Bug className="h-5 w-5" />,
+        label: 'Báo lỗi',
+        onClick: run(() => setReport(true)),
+      },
+    onIssue &&
+      enabled.watch && {
+        key: 'watch',
+        icon: watching ? <Eye className="h-5 w-5 text-primary" /> : <EyeOff className="h-5 w-5" />,
+        label: watching ? 'Bỏ theo dõi' : 'Theo dõi',
+        onClick: run(() =>
+          watchToggle.mutateAsync(watching).catch((e: unknown) => toast.error(apiErrorMessage(e))),
+        ),
+      },
+    enabled.project && {
+      key: 'project',
+      icon: <FolderPlus className="h-5 w-5" />,
+      label: 'Tạo dự án',
+      onClick: run(() => setCreateProject(true)),
     },
-    enabled.project && { key: 'project', icon: <FolderPlus className="h-5 w-5" />, label: 'Tạo dự án', onClick: run(() => setCreateProject(true)) },
-    enabled.command && { key: 'command', icon: <Search className="h-5 w-5" />, label: 'Lệnh nhanh', kbd: '⌘K', onClick: run(() => window.dispatchEvent(new Event('tirapro:command'))) },
+    enabled.command && {
+      key: 'command',
+      icon: <Search className="h-5 w-5" />,
+      label: 'Lệnh nhanh',
+      kbd: '⌘K',
+      onClick: run(() => window.dispatchEvent(new Event('tirapro:command'))),
+    },
   ].filter(Boolean) as QuickAction[];
 
   return (
@@ -141,7 +178,9 @@ export function FloatingActions() {
               'motion-reduce:animate-none motion-reduce:zoom-in-100',
             )}
           >
-            <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-faint">Tuỳ biến nút nổi</p>
+            <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-faint">
+              Tuỳ biến nút nổi
+            </p>
             <ul>
               {ACTION_META.map((m) => (
                 <li key={m.key}>
@@ -158,7 +197,9 @@ export function FloatingActions() {
                     <span
                       className={cn(
                         'grid h-4 w-4 shrink-0 place-items-center rounded border',
-                        enabled[m.key] ? 'border-primary bg-primary text-primary-fg' : 'border-border',
+                        enabled[m.key]
+                          ? 'border-primary bg-primary text-primary-fg'
+                          : 'border-border',
                       )}
                     >
                       {enabled[m.key] && <Check className="h-3 w-3" />}
@@ -237,9 +278,19 @@ export function FloatingActions() {
       <CreateProjectModal open={createProject} onClose={() => setCreateProject(false)} />
       {hasProject && (
         <>
-          <ReportIssueModal projectKey={project.key} projectId={project.id} open={report} onClose={() => setReport(false)} />
+          <ReportIssueModal
+            projectKey={project.key}
+            projectId={project.id}
+            open={report}
+            onClose={() => setReport(false)}
+          />
           {aiEnabled && (
-            <GenerateIssuesDialog projectKey={project.key} projectId={project.id} open={genAi} onClose={() => setGenAi(false)} />
+            <GenerateIssuesDialog
+              projectKey={project.key}
+              projectId={project.id}
+              open={genAi}
+              onClose={() => setGenAi(false)}
+            />
           )}
         </>
       )}
@@ -269,7 +320,16 @@ interface ActionButtonProps {
  * trạng thái đích nên không tái khởi động hiệu ứng. So le bằng transition-delay.
  * Có fallback `motion-reduce`: hiện/ẩn tức thời, không transform.
  */
-function ActionButton({ onClick, label, icon, kbd, index, closing, dashed, muted }: ActionButtonProps) {
+function ActionButton({
+  onClick,
+  label,
+  icon,
+  kbd,
+  index,
+  closing,
+  dashed,
+  muted,
+}: ActionButtonProps) {
   const [shown, setShown] = useState(false);
   useEffect(() => {
     const id = requestAnimationFrame(() => setShown(true));
@@ -301,7 +361,9 @@ function ActionButton({ onClick, label, icon, kbd, index, closing, dashed, muted
         )}
       >
         {label}
-        {kbd && <kbd className="rounded bg-surface-2 px-1 font-mono text-[10px] text-muted">{kbd}</kbd>}
+        {kbd && (
+          <kbd className="rounded bg-surface-2 px-1 font-mono text-[10px] text-muted">{kbd}</kbd>
+        )}
       </span>
       <span
         className={cn(

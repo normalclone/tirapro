@@ -3,10 +3,7 @@ import { FixVersionType, VersionStatus } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { assertIssueWritable } from '../../common/project-writable';
-import {
-  BusinessRuleException,
-  NotFoundAppException,
-} from '../../common/exceptions/app.exception';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 
 type ComponentRow = Prisma.ComponentGetPayload<true>;
 type VersionRow = Prisma.VersionGetPayload<true>;
@@ -120,10 +117,7 @@ export class ComponentsService {
     }
   }
 
-  async removeComponent(
-    workspaceId: string,
-    componentId: string,
-  ): Promise<{ success: true }> {
+  async removeComponent(workspaceId: string, componentId: string): Promise<{ success: true }> {
     await this.requireComponent(workspaceId, componentId);
     await this.prisma.component.delete({ where: { id: componentId } });
     return { success: true };
@@ -239,10 +233,7 @@ export class ComponentsService {
     }
   }
 
-  async removeVersion(
-    workspaceId: string,
-    versionId: string,
-  ): Promise<{ success: true }> {
+  async removeVersion(workspaceId: string, versionId: string): Promise<{ success: true }> {
     await this.requireVersion(workspaceId, versionId);
     await this.prisma.version.delete({ where: { id: versionId } });
     return { success: true };

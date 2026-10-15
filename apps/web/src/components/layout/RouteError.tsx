@@ -20,10 +20,15 @@ export function RouteError() {
   return (
     <div role="alert" className="grid h-full min-h-[50vh] place-items-center p-6">
       <div className="w-full max-w-md text-center">
-        <span className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-danger/10 text-danger" aria-hidden>
+        <span
+          className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-danger/10 text-danger"
+          aria-hidden
+        >
           <AlertTriangle className="h-5 w-5" />
         </span>
-        <h1 className="mt-3 text-lg font-semibold text-ink-strong">Có lỗi khi hiển thị trang này</h1>
+        <h1 className="mt-3 text-lg font-semibold text-ink-strong">
+          Có lỗi khi hiển thị trang này
+        </h1>
         <p className="mt-1 text-sm text-muted">
           Hãy bấm “Tải lại” để thử lần nữa. Nếu vẫn lỗi, quay về trang chính rồi báo quản trị viên.
         </p>

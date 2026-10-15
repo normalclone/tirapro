@@ -7,7 +7,15 @@ import { Button } from '@/components/ui/Button';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
-import { useImportJobs, useImportCsv, useImportJson, downloadProjectExport, type ImportJob, type ImportStatus, type ImportResult } from './api';
+import {
+  useImportJobs,
+  useImportCsv,
+  useImportJson,
+  downloadProjectExport,
+  type ImportJob,
+  type ImportStatus,
+  type ImportResult,
+} from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
 import { LOCALE } from '@/lib/locale';
@@ -137,97 +145,99 @@ export function DataSection({ projectId, canImport }: { projectId?: string; canI
 
         {/* Xuất */}
         {canImport && (
-        <>
-        <div>
-          <h3 className="text-sm font-medium text-ink-strong">Xuất dữ liệu</h3>
-          <p className="mt-0.5 text-sm text-muted">
-            Tải toàn bộ công việc và cấu hình dự án về dưới dạng tệp JSON.
-          </p>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="mt-3"
-            onClick={handleExport}
-            loading={exporting}
-            disabled={!projectId}
-          >
-            <Download className="h-4 w-4" />
-            Tải JSON
-          </Button>
-        </div>
+          <>
+            <div>
+              <h3 className="text-sm font-medium text-ink-strong">Xuất dữ liệu</h3>
+              <p className="mt-0.5 text-sm text-muted">
+                Tải toàn bộ công việc và cấu hình dự án về dưới dạng tệp JSON.
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-3"
+                onClick={handleExport}
+                loading={exporting}
+                disabled={!projectId}
+              >
+                <Download className="h-4 w-4" />
+                Tải JSON
+              </Button>
+            </div>
 
-        <hr className="border-border" />
+            <hr className="border-border" />
 
-        {/* Nhập */}
-        <div>
-          <h3 className="text-sm font-medium text-ink-strong">Nhập dữ liệu</h3>
+            {/* Nhập */}
+            <div>
+              <h3 className="text-sm font-medium text-ink-strong">Nhập dữ liệu</h3>
 
-          <div className="mt-3">
-            <label htmlFor="import-csv" className="mb-1 block text-xs font-medium text-muted">
-              Dán CSV
-            </label>
-            <textarea
-              id="import-csv"
-              value={csv}
-              rows={5}
-              spellCheck={false}
-              placeholder={`${CSV_HEADER_HINT}\nĐăng nhập lỗi,Bug,Không vào được,High,3`}
-              onChange={(e) => setCsv(e.target.value)}
-              className={cn(
-                'w-full rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-ink',
-                'placeholder:text-faint transition-colors duration-150 resize-y',
-                'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                'disabled:opacity-50',
-              )}
-              disabled={!projectId || importing}
-            />
-            <p className="mt-1 text-xs text-faint">
-              Cột: <span className="font-mono">{CSV_HEADER_HINT}</span>
-            </p>
-            <Button
-              size="sm"
-              className="mt-3"
-              onClick={handleImportCsv}
-              loading={importCsv.isPending}
-              disabled={!projectId || importJson.isPending}
-            >
-              <Upload className="h-4 w-4" />
-              Nhập CSV
-            </Button>
-          </div>
+              <div className="mt-3">
+                <label htmlFor="import-csv" className="mb-1 block text-xs font-medium text-muted">
+                  Dán CSV
+                </label>
+                <textarea
+                  id="import-csv"
+                  value={csv}
+                  rows={5}
+                  spellCheck={false}
+                  placeholder={`${CSV_HEADER_HINT}\nĐăng nhập lỗi,Bug,Không vào được,High,3`}
+                  onChange={(e) => setCsv(e.target.value)}
+                  className={cn(
+                    'w-full rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-ink',
+                    'placeholder:text-faint transition-colors duration-150 resize-y',
+                    'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                    'disabled:opacity-50',
+                  )}
+                  disabled={!projectId || importing}
+                />
+                <p className="mt-1 text-xs text-faint">
+                  Cột: <span className="font-mono">{CSV_HEADER_HINT}</span>
+                </p>
+                <Button
+                  size="sm"
+                  className="mt-3"
+                  onClick={handleImportCsv}
+                  loading={importCsv.isPending}
+                  disabled={!projectId || importJson.isPending}
+                >
+                  <Upload className="h-4 w-4" />
+                  Nhập CSV
+                </Button>
+              </div>
 
-          <div className="mt-5">
-            <span className="mb-1 block text-xs font-medium text-muted">Tải lên JSON export</span>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json,.json"
-              onChange={handleImportJsonFile}
-              disabled={!projectId || importing}
-              className="sr-only"
-            />
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              loading={importJson.isPending}
-              disabled={!projectId || importCsv.isPending}
-            >
-              <Upload className="h-4 w-4" />
-              Chọn file JSON…
-            </Button>
-          </div>
-        </div>
+              <div className="mt-5">
+                <span className="mb-1 block text-xs font-medium text-muted">
+                  Tải lên JSON export
+                </span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={handleImportJsonFile}
+                  disabled={!projectId || importing}
+                  className="sr-only"
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  loading={importJson.isPending}
+                  disabled={!projectId || importCsv.isPending}
+                >
+                  <Upload className="h-4 w-4" />
+                  Chọn file JSON…
+                </Button>
+              </div>
+            </div>
 
-        {canAdminImport && (
-          <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
-            Chuyển từ Jira sang?{' '}
-            <Link to="/settings/import" className="text-primary hover:underline">
-              Nhập từ Jira (CSV) với ghép loại, trạng thái, người dùng
-            </Link>
-          </p>
-        )}
-        </>
+            {canAdminImport && (
+              <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
+                Chuyển từ Jira sang?{' '}
+                <Link to="/settings/import" className="text-primary hover:underline">
+                  Nhập từ Jira (CSV) với ghép loại, trạng thái, người dùng
+                </Link>
+              </p>
+            )}
+          </>
         )}
 
         {canImport && <hr className="border-border" />}
@@ -249,9 +259,7 @@ export function DataSection({ projectId, canImport }: { projectId?: string; canI
               </div>
             }
             empty={() => jobs.length === 0}
-            emptyState={
-              <p className="mt-3 text-sm text-muted">Chưa có lần nhập nào.</p>
-            }
+            emptyState={<p className="mt-3 text-sm text-muted">Chưa có lần nhập nào.</p>}
           >
             {(jobList) => (
               <ul className="mt-3 divide-y divide-border">

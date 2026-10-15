@@ -14,8 +14,7 @@ export interface CreateProjectInput {
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: CreateProjectInput) =>
-      api.post<ProjectDto>('/projects', v).then((r) => r.data),
+    mutationFn: (v: CreateProjectInput) => api.post<ProjectDto>('/projects', v).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.projects.all });
     },

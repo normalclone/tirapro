@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { SWIMLANE_BY, type BoardDto, type IssueDto, type SwimlaneBy } from '@tirapro/types';
-import { JqlParseError, parseJql, type SetBoardColumnsInput, type UpdateBoardInput } from '@tirapro/shared';
+import {
+  JqlParseError,
+  parseJql,
+  type SetBoardColumnsInput,
+  type UpdateBoardInput,
+} from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
@@ -69,7 +74,8 @@ export class BoardsService {
         try {
           parseJql(jql);
         } catch (e) {
-          if (e instanceof JqlParseError) throw new BusinessRuleException(`Bộ lọc JQL không hợp lệ: ${e.message}`);
+          if (e instanceof JqlParseError)
+            throw new BusinessRuleException(`Bộ lọc JQL không hợp lệ: ${e.message}`);
           throw e;
         }
       }
@@ -77,8 +83,12 @@ export class BoardsService {
     }
     if (input.swimlaneBy !== undefined) {
       // Giữ các khoá khác trong swimlaneConfig (nếu sau này có thêm), chỉ đổi `by`.
-      const prev = board.swimlaneConfig && typeof board.swimlaneConfig === 'object' && !Array.isArray(board.swimlaneConfig)
-        ? (board.swimlaneConfig as Record<string, unknown>) : {};
+      const prev =
+        board.swimlaneConfig &&
+        typeof board.swimlaneConfig === 'object' &&
+        !Array.isArray(board.swimlaneConfig)
+          ? (board.swimlaneConfig as Record<string, unknown>)
+          : {};
       data.swimlaneConfig = { ...prev, by: input.swimlaneBy };
     }
     await this.prisma.board.update({ where: { id: boardId }, data, select: { id: true } });
@@ -90,7 +100,11 @@ export class BoardsService {
    * trạng thái đó sẽ biến mất khỏi board. Ghi trong một transaction: xoá cột bị bỏ, cập nhật cột cũ theo `id`,
    * tạo cột mới, ghi lại liên kết cột-trạng thái; `order` theo thứ tự mảng.
    */
-  async setColumns(workspaceId: string, boardId: string, input: SetBoardColumnsInput): Promise<BoardDto> {
+  async setColumns(
+    workspaceId: string,
+    boardId: string,
+    input: SetBoardColumnsInput,
+  ): Promise<BoardDto> {
     const board = await this.require(workspaceId, boardId);
     const { columns } = input;
 
@@ -109,7 +123,9 @@ export class BoardsService {
       }
     }
     if (unknown.size) {
-      throw new BusinessRuleException('Có trạng thái không thuộc workflow của dự án này — hãy tải lại trang rồi chọn lại');
+      throw new BusinessRuleException(
+        'Có trạng thái không thuộc workflow của dự án này — hãy tải lại trang rồi chọn lại',
+      );
     }
     const missing = statuses.filter((s) => !seen.has(s.id)).map((s) => s.name);
     const duplicated = statuses.filter((s) => (seen.get(s.id) ?? 0) > 1).map((s) => s.name);
@@ -136,14 +152,18 @@ export class BoardsService {
     await this.prisma.$transaction(async (tx) => {
       await tx.boardColumn.deleteMany({ where: { boardId, id: { notIn: keepIds } } });
       // Đổi tên tạm trước để hoán đổi/dịch tên giữa các cột không vấp unique [boardId, name] giữa chừng.
-      for (const id of keepIds) await tx.boardColumn.update({ where: { id }, data: { name: `~${id}` } });
+      for (const id of keepIds)
+        await tx.boardColumn.update({ where: { id }, data: { name: `~${id}` } });
       const links: Prisma.BoardColumnStatusCreateManyInput[] = [];
       for (let order = 0; order < columns.length; order++) {
         const c = columns[order]!;
         const data = { name: c.name.trim(), order, wipLimit: c.wipLimit ?? null };
         let columnId = c.id;
         if (columnId) await tx.boardColumn.update({ where: { id: columnId }, data });
-        else columnId = (await tx.boardColumn.create({ data: { boardId, ...data }, select: { id: true } })).id;
+        else
+          columnId = (
+            await tx.boardColumn.create({ data: { boardId, ...data }, select: { id: true } })
+          ).id;
         for (const statusId of c.statusIds) links.push({ columnId, statusId });
       }
       await tx.boardColumnStatus.deleteMany({ where: { columnId: { in: keepIds } } });
@@ -171,12 +191,20 @@ export class BoardsService {
     if (!board.filterJql?.trim()) {
       return this.issues.list(workspaceId, { projectId: board.projectId }, cursor, limit);
     }
-    return this.search.search(workspaceId, userId, { mode: 'jql', jql: board.filterJql, projectId: board.projectId, cursor, limit });
+    return this.search.search(workspaceId, userId, {
+      mode: 'jql',
+      jql: board.filterJql,
+      projectId: board.projectId,
+      cursor,
+      limit,
+    });
   }
 
   private toDto(b: BoardRow): BoardDto {
     const cfg = b.swimlaneConfig as { by?: unknown } | null;
-    const by = (SWIMLANE_BY as readonly unknown[]).includes(cfg?.by) ? (cfg!.by as SwimlaneBy) : 'none';
+    const by = (SWIMLANE_BY as readonly unknown[]).includes(cfg?.by)
+      ? (cfg!.by as SwimlaneBy)
+      : 'none';
     return {
       id: b.id,
       projectId: b.projectId,

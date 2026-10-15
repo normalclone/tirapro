@@ -14,51 +14,151 @@ import { AcceptInvitePage } from '@/features/auth/AcceptInvitePage';
 import { ProjectLayout, ProjectsIndexRedirect } from '@/features/projects/ProjectLayout';
 
 // ── Lazy-load các trang nặng/không-phải-màn-đầu để giảm bundle ban đầu (mobile nhanh hơn) ──
-const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })));
-const MembersPage = lazy(() => import('@/features/members/MembersPage').then((m) => ({ default: m.MembersPage })));
-const AccountPage = lazy(() => import('@/features/members/AccountPage').then((m) => ({ default: m.AccountPage })));
-const ProjectActivityPage = lazy(() => import('@/features/intake/ProjectActivityPage').then((m) => ({ default: m.ProjectActivityPage })));
-const BoardPage = lazy(() => import('@/features/board/BoardPage').then((m) => ({ default: m.BoardPage })));
-const BacklogPage = lazy(() => import('@/features/backlog/BacklogPage').then((m) => ({ default: m.BacklogPage })));
-const TriagePage = lazy(() => import('@/features/triage/TriagePage').then((m) => ({ default: m.TriagePage })));
-const ReportsPage = lazy(() => import('@/features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })));
-const GanttPage = lazy(() => import('@/features/gantt/GanttPage').then((m) => ({ default: m.GanttPage })));
-const TreePage = lazy(() => import('@/features/tree/TreePage').then((m) => ({ default: m.TreePage })));
-const ProjectConfigPage = lazy(() => import('@/features/project-config/ProjectConfigPage').then((m) => ({ default: m.ProjectConfigPage })));
-const IssueDetailPage = lazy(() => import('@/features/issues/IssueDetailPage').then((m) => ({ default: m.IssueDetailPage })));
-const FiltersPage = lazy(() => import('@/features/saved-filters/FiltersPage').then((m) => ({ default: m.FiltersPage })));
-const IntegrationsPage = lazy(() => import('@/features/integrations/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })));
-const WorkflowSettingsPage = lazy(() => import('@/features/workflow-settings/WorkflowSettingsPage').then((m) => ({ default: m.WorkflowSettingsPage })));
-const ApiKeysPage = lazy(() => import('@/features/api-keys/ApiKeysPage').then((m) => ({ default: m.ApiKeysPage })));
-const RolesPage = lazy(() => import('@/features/settings/RolesPage').then((m) => ({ default: m.RolesPage })));
-const DocumentationPage = lazy(() => import('@/features/docs/DocumentationPage').then((m) => ({ default: m.DocumentationPage })));
-const SettingsLayout = lazy(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsLayout })));
-const SettingsGeneralPage = lazy(() => import('@/features/settings/SettingsGeneralPage').then((m) => ({ default: m.SettingsGeneralPage })));
-const SettingsNotificationsPage = lazy(() => import('@/features/settings/SettingsNotificationsPage').then((m) => ({ default: m.SettingsNotificationsPage })));
-const SettingsSeveritiesPage = lazy(() => import('@/features/settings/SettingsSeveritiesPage').then((m) => ({ default: m.SettingsSeveritiesPage })));
-const SettingsPrioritiesPage = lazy(() => import('@/features/settings/SettingsPrioritiesPage').then((m) => ({ default: m.SettingsPrioritiesPage })));
-const ImportPage = lazy(() => import('@/features/import/ImportPage').then((m) => ({ default: m.ImportPage })));
-const SettingsFieldsPage = lazy(() => import('@/features/settings/SettingsFieldsPage').then((m) => ({ default: m.SettingsFieldsPage })));
-const AdminLayout = lazy(() => import('@/features/admin/AdminLayout').then((m) => ({ default: m.AdminLayout })));
-const AdminOverviewPage = lazy(() => import('@/features/admin/AdminOverviewPage').then((m) => ({ default: m.AdminOverviewPage })));
-const AdminWorkspacesPage = lazy(() => import('@/features/admin/AdminWorkspacesPage').then((m) => ({ default: m.AdminWorkspacesPage })));
-const AdminUsersPage = lazy(() => import('@/features/admin/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })));
-const AdminConfigPage = lazy(() => import('@/features/admin/AdminConfigPage').then((m) => ({ default: m.AdminConfigPage })));
-const AdminSystemPage = lazy(() => import('@/features/admin/AdminSystemPage').then((m) => ({ default: m.AdminSystemPage })));
-const PortfolioPage = lazy(() => import('@/features/portfolio/PortfolioPage').then((m) => ({ default: m.PortfolioPage })));
-const ClientsPage = lazy(() => import('@/features/clients/ClientsPage').then((m) => ({ default: m.ClientsPage })));
-const GoalsPage = lazy(() => import('@/features/goals/GoalsPage').then((m) => ({ default: m.GoalsPage })));
-const RaidPage = lazy(() => import('@/features/raid/RaidPage').then((m) => ({ default: m.RaidPage })));
-const ResourcesPage = lazy(() => import('@/features/resources/ResourcesPage').then((m) => ({ default: m.ResourcesPage })));
-const SlaBoardPage = lazy(() => import('@/features/sla/SlaPage').then((m) => ({ default: m.SlaBoardPage })));
-const SlaPoliciesPage = lazy(() => import('@/features/sla/SlaPage').then((m) => ({ default: m.SlaPoliciesPage })));
-const ManageLayout = lazy(() => import('@/features/manage/ManageLayout').then((m) => ({ default: m.ManageLayout })));
-const ConnectLayout = lazy(() => import('@/features/connect/ConnectLayout').then((m) => ({ default: m.ConnectLayout })));
-const WikiPage = lazy(() => import('@/features/wiki/WikiPage').then((m) => ({ default: m.WikiPage })));
-const AutomationPage = lazy(() => import('@/features/automation/AutomationPage').then((m) => ({ default: m.AutomationPage })));
+const DashboardPage = lazy(() =>
+  import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
+);
+const MembersPage = lazy(() =>
+  import('@/features/members/MembersPage').then((m) => ({ default: m.MembersPage })),
+);
+const AccountPage = lazy(() =>
+  import('@/features/members/AccountPage').then((m) => ({ default: m.AccountPage })),
+);
+const ProjectActivityPage = lazy(() =>
+  import('@/features/intake/ProjectActivityPage').then((m) => ({ default: m.ProjectActivityPage })),
+);
+const BoardPage = lazy(() =>
+  import('@/features/board/BoardPage').then((m) => ({ default: m.BoardPage })),
+);
+const BacklogPage = lazy(() =>
+  import('@/features/backlog/BacklogPage').then((m) => ({ default: m.BacklogPage })),
+);
+const TriagePage = lazy(() =>
+  import('@/features/triage/TriagePage').then((m) => ({ default: m.TriagePage })),
+);
+const ReportsPage = lazy(() =>
+  import('@/features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })),
+);
+const GanttPage = lazy(() =>
+  import('@/features/gantt/GanttPage').then((m) => ({ default: m.GanttPage })),
+);
+const TreePage = lazy(() =>
+  import('@/features/tree/TreePage').then((m) => ({ default: m.TreePage })),
+);
+const ProjectConfigPage = lazy(() =>
+  import('@/features/project-config/ProjectConfigPage').then((m) => ({
+    default: m.ProjectConfigPage,
+  })),
+);
+const IssueDetailPage = lazy(() =>
+  import('@/features/issues/IssueDetailPage').then((m) => ({ default: m.IssueDetailPage })),
+);
+const FiltersPage = lazy(() =>
+  import('@/features/saved-filters/FiltersPage').then((m) => ({ default: m.FiltersPage })),
+);
+const IntegrationsPage = lazy(() =>
+  import('@/features/integrations/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })),
+);
+const WorkflowSettingsPage = lazy(() =>
+  import('@/features/workflow-settings/WorkflowSettingsPage').then((m) => ({
+    default: m.WorkflowSettingsPage,
+  })),
+);
+const ApiKeysPage = lazy(() =>
+  import('@/features/api-keys/ApiKeysPage').then((m) => ({ default: m.ApiKeysPage })),
+);
+const RolesPage = lazy(() =>
+  import('@/features/settings/RolesPage').then((m) => ({ default: m.RolesPage })),
+);
+const DocumentationPage = lazy(() =>
+  import('@/features/docs/DocumentationPage').then((m) => ({ default: m.DocumentationPage })),
+);
+const SettingsLayout = lazy(() =>
+  import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsLayout })),
+);
+const SettingsGeneralPage = lazy(() =>
+  import('@/features/settings/SettingsGeneralPage').then((m) => ({
+    default: m.SettingsGeneralPage,
+  })),
+);
+const SettingsNotificationsPage = lazy(() =>
+  import('@/features/settings/SettingsNotificationsPage').then((m) => ({
+    default: m.SettingsNotificationsPage,
+  })),
+);
+const SettingsSeveritiesPage = lazy(() =>
+  import('@/features/settings/SettingsSeveritiesPage').then((m) => ({
+    default: m.SettingsSeveritiesPage,
+  })),
+);
+const SettingsPrioritiesPage = lazy(() =>
+  import('@/features/settings/SettingsPrioritiesPage').then((m) => ({
+    default: m.SettingsPrioritiesPage,
+  })),
+);
+const ImportPage = lazy(() =>
+  import('@/features/import/ImportPage').then((m) => ({ default: m.ImportPage })),
+);
+const SettingsFieldsPage = lazy(() =>
+  import('@/features/settings/SettingsFieldsPage').then((m) => ({ default: m.SettingsFieldsPage })),
+);
+const AdminLayout = lazy(() =>
+  import('@/features/admin/AdminLayout').then((m) => ({ default: m.AdminLayout })),
+);
+const AdminOverviewPage = lazy(() =>
+  import('@/features/admin/AdminOverviewPage').then((m) => ({ default: m.AdminOverviewPage })),
+);
+const AdminWorkspacesPage = lazy(() =>
+  import('@/features/admin/AdminWorkspacesPage').then((m) => ({ default: m.AdminWorkspacesPage })),
+);
+const AdminUsersPage = lazy(() =>
+  import('@/features/admin/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })),
+);
+const AdminConfigPage = lazy(() =>
+  import('@/features/admin/AdminConfigPage').then((m) => ({ default: m.AdminConfigPage })),
+);
+const AdminSystemPage = lazy(() =>
+  import('@/features/admin/AdminSystemPage').then((m) => ({ default: m.AdminSystemPage })),
+);
+const PortfolioPage = lazy(() =>
+  import('@/features/portfolio/PortfolioPage').then((m) => ({ default: m.PortfolioPage })),
+);
+const ClientsPage = lazy(() =>
+  import('@/features/clients/ClientsPage').then((m) => ({ default: m.ClientsPage })),
+);
+const GoalsPage = lazy(() =>
+  import('@/features/goals/GoalsPage').then((m) => ({ default: m.GoalsPage })),
+);
+const RaidPage = lazy(() =>
+  import('@/features/raid/RaidPage').then((m) => ({ default: m.RaidPage })),
+);
+const ResourcesPage = lazy(() =>
+  import('@/features/resources/ResourcesPage').then((m) => ({ default: m.ResourcesPage })),
+);
+const SlaBoardPage = lazy(() =>
+  import('@/features/sla/SlaPage').then((m) => ({ default: m.SlaBoardPage })),
+);
+const SlaPoliciesPage = lazy(() =>
+  import('@/features/sla/SlaPage').then((m) => ({ default: m.SlaPoliciesPage })),
+);
+const ManageLayout = lazy(() =>
+  import('@/features/manage/ManageLayout').then((m) => ({ default: m.ManageLayout })),
+);
+const ConnectLayout = lazy(() =>
+  import('@/features/connect/ConnectLayout').then((m) => ({ default: m.ConnectLayout })),
+);
+const WikiPage = lazy(() =>
+  import('@/features/wiki/WikiPage').then((m) => ({ default: m.WikiPage })),
+);
+const AutomationPage = lazy(() =>
+  import('@/features/automation/AutomationPage').then((m) => ({ default: m.AutomationPage })),
+);
 // Overlay luôn mount trong shell nhưng không cần cho first paint → lazy (fallback null, mở mới tải).
-const CommandPalette = lazy(() => import('@/features/command/CommandPalette').then((m) => ({ default: m.CommandPalette })));
-const CreateIssueModal = lazy(() => import('@/features/issues/CreateIssueModal').then((m) => ({ default: m.CreateIssueModal })));
+const CommandPalette = lazy(() =>
+  import('@/features/command/CommandPalette').then((m) => ({ default: m.CommandPalette })),
+);
+const CreateIssueModal = lazy(() =>
+  import('@/features/issues/CreateIssueModal').then((m) => ({ default: m.CreateIssueModal })),
+);
 
 /** Loader gọn cho vùng nội dung khi chunk đang tải. */
 function PageLoading() {
@@ -100,7 +200,14 @@ export const router = createBrowserRouter([
   { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/invite/accept', element: <AcceptInvitePage /> },
   // Trang tài liệu — công khai, độc lập, KHÔNG cần đăng nhập, có sidebar riêng.
-  { path: '/documentation', element: <Suspense fallback={<PageLoading />}><DocumentationPage /></Suspense> },
+  {
+    path: '/documentation',
+    element: (
+      <Suspense fallback={<PageLoading />}>
+        <DocumentationPage />
+      </Suspense>
+    ),
+  },
   {
     path: '/',
     element: <RequireAuth />,

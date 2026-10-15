@@ -9,8 +9,14 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AutomationService } from './automation.service';
 import {
-  createRecurringSchema, createTemplateSchema, updateRecurringSchema, updateTemplateSchema,
-  type CreateRecurringInput, type CreateTemplateInput, type UpdateRecurringInput, type UpdateTemplateInput,
+  createRecurringSchema,
+  createTemplateSchema,
+  updateRecurringSchema,
+  updateTemplateSchema,
+  type CreateRecurringInput,
+  type CreateTemplateInput,
+  type UpdateRecurringInput,
+  type UpdateTemplateInput,
 } from './automation.schemas';
 
 @ApiTags('automation')
@@ -59,7 +65,11 @@ export class AutomationController {
   @ProjectRef('automationTemplate', 'id')
   @Delete('templates/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
-  async removeTemplate(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
+  async removeTemplate(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+  ) {
     return this.automation.removeTemplate(workspaceId, id, user.id);
   }
 
@@ -105,14 +115,22 @@ export class AutomationController {
   @ProjectRef('recurringIssue', 'id')
   @Post('recurring/:id/run-now')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
-  async runNow(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
+  async runNow(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+  ) {
     return this.automation.runNow(workspaceId, id, user.id);
   }
 
   @ProjectRef('recurringIssue', 'id')
   @Delete('recurring/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
-  async removeRecurring(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
+  async removeRecurring(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+  ) {
     return this.automation.removeRecurring(workspaceId, id, user.id);
   }
 }

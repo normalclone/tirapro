@@ -76,7 +76,11 @@ export class AiService {
   }
 
   // ---------- NL → issues (preview) ----------
-  async generateIssues(workspaceId: string, userId: string, input: GenerateIssuesInput): Promise<AiGenerateIssuesResult> {
+  async generateIssues(
+    workspaceId: string,
+    userId: string,
+    input: GenerateIssuesInput,
+  ): Promise<AiGenerateIssuesResult> {
     const project = await this.prisma.project.findFirst({
       where: { id: input.projectId, workspaceId, deletedAt: null },
       select: { id: true, key: true, name: true },
@@ -98,7 +102,11 @@ export class AiService {
     if (data?.issues?.length) {
       return { source: 'claude', issues: data.issues.slice(0, 25) };
     }
-    return { source: 'heuristic', ...(reason ? { reason } : {}), issues: this.heuristicIssues(input.text) };
+    return {
+      source: 'heuristic',
+      ...(reason ? { reason } : {}),
+      issues: this.heuristicIssues(input.text),
+    };
   }
 
   private heuristicIssues(text: string): AiGeneratedIssue[] {
@@ -122,7 +130,11 @@ export class AiService {
   }
 
   // ---------- Tóm tắt issue ----------
-  async summarizeIssue(workspaceId: string, userId: string, issueId: string): Promise<AiSummaryResult> {
+  async summarizeIssue(
+    workspaceId: string,
+    userId: string,
+    issueId: string,
+  ): Promise<AiSummaryResult> {
     const issue = await this.loadIssue(workspaceId, issueId);
     const comments = await this.prisma.comment.findMany({
       where: { issueId: issue.id, deletedAt: null },
@@ -138,7 +150,9 @@ export class AiService {
       `Mô tả: ${stripText(issue.description) || '(trống)'}`;
     const commentsCtx =
       `Bình luận (${comments.length}):\n` +
-      comments.map((c) => `- ${c.author?.displayName ?? 'Ẩn danh'}: ${stripText(c.body)}`).join('\n');
+      comments
+        .map((c) => `- ${c.author?.displayName ?? 'Ẩn danh'}: ${stripText(c.body)}`)
+        .join('\n');
 
     const { data: out, reason } = await this.claude.complete({
       ctx: { workspaceId, userId, feature: 'summarize' },
@@ -156,7 +170,9 @@ export class AiService {
       `**${issue.key}** — ${issue.summary}`,
       `Trạng thái: ${issue.status?.name ?? '—'}${issue.assignee ? `, phụ trách ${issue.assignee.displayName}` : ''}.`,
       `Có ${comments.length} bình luận.`,
-      issue.description ? `Mô tả: ${stripText(issue.description).slice(0, 200)}…` : 'Chưa có mô tả.',
+      issue.description
+        ? `Mô tả: ${stripText(issue.description).slice(0, 200)}…`
+        : 'Chưa có mô tả.',
     ];
     return { source: 'heuristic', ...(reason ? { reason } : {}), summary: lines.join('\n') };
   }
@@ -168,7 +184,11 @@ export class AiService {
       `Issue ${issue.key}: ${issue.summary}\nLoại: ${issue.type?.name ?? '—'}\n` +
       `Mô tả: ${stripText(issue.description) || '(trống)'}`;
 
-    const { data: out, reason } = await this.claude.extract<{ priority?: string; storyPoints?: number; rationale: string }>({
+    const { data: out, reason } = await this.claude.extract<{
+      priority?: string;
+      storyPoints?: number;
+      rationale: string;
+    }>({
       ctx: { workspaceId, userId, feature: 'suggest' },
       model: this.claude.modelFast,
       system:
@@ -180,7 +200,12 @@ export class AiService {
       maxTokens: 600,
     });
     if (out?.rationale) {
-      return { source: 'claude', priority: out.priority, storyPoints: out.storyPoints, rationale: out.rationale };
+      return {
+        source: 'claude',
+        priority: out.priority,
+        storyPoints: out.storyPoints,
+        rationale: out.rationale,
+      };
     }
 
     // Heuristic: ưu tiên theo từ khoá, điểm theo độ dài mô tả

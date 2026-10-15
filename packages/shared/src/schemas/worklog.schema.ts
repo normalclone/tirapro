@@ -20,7 +20,14 @@ export const durationStringSchema = z
  */
 export const adjustRemainingSchema = z.union([
   z.enum(['auto', 'leave']),
-  z.object({ set: z.string().trim().min(1).max(40).refine((s) => parseDuration(s) !== null, 'Thời gian còn lại không hợp lệ') }),
+  z.object({
+    set: z
+      .string()
+      .trim()
+      .min(1)
+      .max(40)
+      .refine((s) => parseDuration(s) !== null, 'Thời gian còn lại không hợp lệ'),
+  }),
 ]);
 
 export const createWorklogSchema = z.object({
@@ -37,7 +44,10 @@ export const updateWorklogSchema = z
     comment: z.string().max(5000).optional().nullable(),
     adjustRemaining: adjustRemainingSchema.optional(),
   })
-  .refine((v) => v.timeSpent !== undefined || v.startedAt !== undefined || v.comment !== undefined, 'Hãy sửa ít nhất một trường');
+  .refine(
+    (v) => v.timeSpent !== undefined || v.startedAt !== undefined || v.comment !== undefined,
+    'Hãy sửa ít nhất một trường',
+  );
 
 export const deleteWorklogQuerySchema = z.object({
   adjustRemaining: z.enum(['auto', 'leave']).optional(),

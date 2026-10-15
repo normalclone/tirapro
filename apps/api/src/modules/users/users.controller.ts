@@ -15,7 +15,12 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { changePasswordSchema, updateProfileSchema, type ChangePasswordInput, type UpdateProfileInput } from '@tirapro/shared';
+import {
+  changePasswordSchema,
+  updateProfileSchema,
+  type ChangePasswordInput,
+  type UpdateProfileInput,
+} from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';

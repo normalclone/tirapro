@@ -26,12 +26,16 @@ describe('RequestIdMiddleware', () => {
 
   it('guard điền userId/workspaceId vào đúng store của request', () => {
     const req = makeReq();
-    new RequestIdMiddleware().use(req, { setHeader: vi.fn() } as never, (() => {
-      const store = getStore()!;
-      store.userId = 'u1';
-      store.workspaceId = 'w1';
-      expect(getStore()).toMatchObject({ userId: 'u1', workspaceId: 'w1' });
-    }) as never);
+    new RequestIdMiddleware().use(
+      req,
+      { setHeader: vi.fn() } as never,
+      (() => {
+        const store = getStore()!;
+        store.userId = 'u1';
+        store.workspaceId = 'w1';
+        expect(getStore()).toMatchObject({ userId: 'u1', workspaceId: 'w1' });
+      }) as never,
+    );
   });
 });
 
@@ -40,6 +44,8 @@ describe('resolveRequestId', () => {
     expect(resolveRequestId({ headers: { 'x-request-id': 'rid-1' } } as never)).toBe('rid-1');
     const generated = resolveRequestId({ headers: {} } as never);
     expect(generated.length).toBeGreaterThan(8);
-    expect(resolveRequestId({ headers: { 'x-request-id': 'x'.repeat(65) } } as never)).not.toBe('x'.repeat(65));
+    expect(resolveRequestId({ headers: { 'x-request-id': 'x'.repeat(65) } } as never)).not.toBe(
+      'x'.repeat(65),
+    );
   });
 });

@@ -6,10 +6,16 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ClientsService } from './clients.service';
 import {
-  createClientSchema, updateClientSchema, setClientProjectsSchema,
-  createContractSchema, updateContractSchema,
-  type CreateClientInput, type UpdateClientInput, type SetClientProjectsInput,
-  type CreateContractInput, type UpdateContractInput,
+  createClientSchema,
+  updateClientSchema,
+  setClientProjectsSchema,
+  createContractSchema,
+  updateContractSchema,
+  type CreateClientInput,
+  type UpdateClientInput,
+  type SetClientProjectsInput,
+  type CreateContractInput,
+  type UpdateContractInput,
 } from './clients.schemas';
 
 @ApiTags('clients')

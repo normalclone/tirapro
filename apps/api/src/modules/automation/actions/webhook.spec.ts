@@ -9,28 +9,60 @@ const hostOf = (u: string) => new URL(u).hostname;
 
 describe('isPrivateAddress', () => {
   it.each([
-    '127.0.0.1', '10.1.2.3', '192.168.0.5', '172.20.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0',
-    '192.0.0.8', '198.18.0.1', '224.0.0.1', '240.0.0.1', '255.255.255.255',
-    '::', '::1', 'fd00::1', 'fc00::1', 'fe80::1', 'fec0::1', '64:ff9b::7f00:1', 'ff02::1', '::7f00:1',
-    '::ffff:10.0.0.1', '::ffff:7f00:1', '::ffff:a9fe:a9fe', '::ffff:a00:1',
+    '127.0.0.1',
+    '10.1.2.3',
+    '192.168.0.5',
+    '172.20.1.1',
+    '169.254.169.254',
+    '100.64.0.1',
+    '0.0.0.0',
+    '192.0.0.8',
+    '198.18.0.1',
+    '224.0.0.1',
+    '240.0.0.1',
+    '255.255.255.255',
+    '::',
+    '::1',
+    'fd00::1',
+    'fc00::1',
+    'fe80::1',
+    'fec0::1',
+    '64:ff9b::7f00:1',
+    'ff02::1',
+    '::7f00:1',
+    '::ffff:10.0.0.1',
+    '::ffff:7f00:1',
+    '::ffff:a9fe:a9fe',
+    '::ffff:a00:1',
   ])('%s là nội bộ/đặc biệt', (ip) => {
     expect(isPrivateAddress(ip)).toBe(true);
   });
 
-  it.each(['8.8.8.8', '1.1.1.1', '172.32.0.1', '100.128.0.1', '2606:4700::1111', '::ffff:8.8.8.8', '::ffff:808:808'])(
-    '%s là công khai',
-    (ip) => {
-      expect(isPrivateAddress(ip)).toBe(false);
-    },
-  );
+  it.each([
+    '8.8.8.8',
+    '1.1.1.1',
+    '172.32.0.1',
+    '100.128.0.1',
+    '2606:4700::1111',
+    '::ffff:8.8.8.8',
+    '::ffff:808:808',
+  ])('%s là công khai', (ip) => {
+    expect(isPrivateAddress(ip)).toBe(false);
+  });
 
   it('chuỗi không phải IP bị coi là chặn', () => {
     expect(isPrivateAddress('không phải ip')).toBe(true);
   });
 
   it.each([
-    'http://[::ffff:127.0.0.1]/', 'http://[::ffff:169.254.169.254]/', 'http://[::ffff:10.0.0.1]/',
-    'http://127.1/', 'http://0x7f000001/', 'http://2130706433/', 'http://[::1]/', 'http://[::ffff:c0a8:1]/',
+    'http://[::ffff:127.0.0.1]/',
+    'http://[::ffff:169.254.169.254]/',
+    'http://[::ffff:10.0.0.1]/',
+    'http://127.1/',
+    'http://0x7f000001/',
+    'http://2130706433/',
+    'http://[::1]/',
+    'http://[::ffff:c0a8:1]/',
   ])('URL %s sau chuẩn hoá vẫn bị chặn', (u) => {
     expect(isPrivateAddress(hostOf(u))).toBe(true);
   });
@@ -38,16 +70,28 @@ describe('isPrivateAddress', () => {
 
 describe('resolveSafeTarget', () => {
   it.each([
-    'http://localhost/', 'http://127.1/', 'http://0x7f000001/', 'http://2130706433/',
-    'http://[::ffff:127.0.0.1]/', 'http://[::ffff:169.254.169.254]/', 'http://[::ffff:10.0.0.1]/', 'http://10.0.0.1:8080/x',
+    'http://localhost/',
+    'http://127.1/',
+    'http://0x7f000001/',
+    'http://2130706433/',
+    'http://[::ffff:127.0.0.1]/',
+    'http://[::ffff:169.254.169.254]/',
+    'http://[::ffff:10.0.0.1]/',
+    'http://10.0.0.1:8080/x',
   ])('chặn %s', async (u) => {
     await expect(resolveSafeTarget(u)).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
   });
 
   it('chặn URL chứa user:pass và giao thức lạ', async () => {
-    await expect(resolveSafeTarget('http://user:pw@8.8.8.8/')).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
-    await expect(resolveSafeTarget('ftp://8.8.8.8/')).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
-    await expect(resolveSafeTarget('không phải url')).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+    await expect(resolveSafeTarget('http://user:pw@8.8.8.8/')).rejects.toMatchObject({
+      code: 'BUSINESS_RULE_VIOLATION',
+    });
+    await expect(resolveSafeTarget('ftp://8.8.8.8/')).rejects.toMatchObject({
+      code: 'BUSINESS_RULE_VIOLATION',
+    });
+    await expect(resolveSafeTarget('không phải url')).rejects.toMatchObject({
+      code: 'BUSINESS_RULE_VIOLATION',
+    });
   });
 
   it('IP công khai được chấp nhận và trả đúng địa chỉ để ghim', async () => {
@@ -79,11 +123,24 @@ describe('pinnedLookup — chống DNS rebinding', () => {
 
 describe('runWebhook — kết nối thật tới máy chủ cục bộ (bật ALLOW_PRIVATE)', () => {
   const ctx = {
-    dryRun: false, trigger: 'ISSUE_CREATED', rule: { id: 'r1', name: 'R' },
-    issue: { id: 'i1', key: 'P-1', summary: 's', projectId: 'p1', status: { name: 'Todo' }, priority: null, assigneeId: null },
+    dryRun: false,
+    trigger: 'ISSUE_CREATED',
+    rule: { id: 'r1', name: 'R' },
+    issue: {
+      id: 'i1',
+      key: 'P-1',
+      summary: 's',
+      projectId: 'p1',
+      status: { name: 'Todo' },
+      priority: null,
+      assigneeId: null,
+    },
   } as never;
 
-  async function withServer(status: number, fn: (url: string, seen: { headers?: IncomingHttpHeaders; body?: string }) => Promise<void>) {
+  async function withServer(
+    status: number,
+    fn: (url: string, seen: { headers?: IncomingHttpHeaders; body?: string }) => Promise<void>,
+  ) {
     const seen: { headers?: IncomingHttpHeaders; body?: string } = {};
     const server = createServer((req, res) => {
       let body = '';
@@ -91,7 +148,10 @@ describe('runWebhook — kết nối thật tới máy chủ cục bộ (bật A
       req.on('end', () => {
         seen.headers = req.headers;
         seen.body = body;
-        res.writeHead(status, status >= 300 && status < 400 ? { Location: 'http://127.0.0.1:1/' } : {});
+        res.writeHead(
+          status,
+          status >= 300 && status < 400 ? { Location: 'http://127.0.0.1:1/' } : {},
+        );
         res.end('ok');
       });
     });
@@ -107,8 +167,12 @@ describe('runWebhook — kết nối thật tới máy chủ cục bộ (bật A
 
   it('gửi POST có chữ ký HMAC đúng', async () => {
     await withServer(200, async (url, seen) => {
-      await expect(runWebhook(ctx, { type: 'webhook', url, secret: 'k' })).resolves.toMatch(/HTTP 200/);
-      const expected = `sha256=${createHmac('sha256', 'k').update(seen.body ?? '').digest('hex')}`;
+      await expect(runWebhook(ctx, { type: 'webhook', url, secret: 'k' })).resolves.toMatch(
+        /HTTP 200/,
+      );
+      const expected = `sha256=${createHmac('sha256', 'k')
+        .update(seen.body ?? '')
+        .digest('hex')}`;
       expect(seen.headers?.['x-tirapro-signature']).toBe(expected);
     });
   });

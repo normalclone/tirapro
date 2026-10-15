@@ -13,9 +13,19 @@ import { NotFoundAppException } from '../../common/exceptions/app.exception';
 type Category = 'TODO' | 'IN_PROGRESS' | 'DONE';
 
 /** Dòng kết quả $queryRaw — count(*) của Postgres trả về bigint, nên `n` phải qua Number(). */
-interface CfdRow { day: string; category: Category; n: bigint | number }
-interface DayCountRow { day: string; n: bigint | number }
-interface WeekRow { idx: number; n: bigint | number }
+interface CfdRow {
+  day: string;
+  category: Category;
+  n: bigint | number;
+}
+interface DayCountRow {
+  day: string;
+  n: bigint | number;
+}
+interface WeekRow {
+  idx: number;
+  n: bigint | number;
+}
 
 @Injectable()
 export class AnalyticsService {
@@ -51,8 +61,16 @@ export class AnalyticsService {
     // Mọi số liệu tính bằng aggregate SQL (groupBy/count/$queryRaw) — không kéo từng issue về app.
     const baseWhere: Prisma.IssueWhereInput = { workspaceId, deletedAt: null };
     const openStatus: Prisma.IssueWhereInput = { status: { category: { not: 'DONE' } } };
-    const overdueWhere: Prisma.IssueWhereInput = { ...baseWhere, ...openStatus, dueDate: { lt: now } };
-    const unassignedOpenWhere: Prisma.IssueWhereInput = { ...baseWhere, ...openStatus, assigneeId: null };
+    const overdueWhere: Prisma.IssueWhereInput = {
+      ...baseWhere,
+      ...openStatus,
+      dueDate: { lt: now },
+    };
+    const unassignedOpenWhere: Prisma.IssueWhereInput = {
+      ...baseWhere,
+      ...openStatus,
+      assigneeId: null,
+    };
     const highPriWhere: Prisma.IssueWhereInput = { priority: { rank: { gte: HIGH_RANK } } };
     const dueSoonWhere: Prisma.IssueWhereInput = {
       ...baseWhere,
@@ -62,36 +80,72 @@ export class AnalyticsService {
     const attentionSelect = { key: true, summary: true, projectId: true, dueDate: true } as const;
 
     const [
-      statusGroups, typeGroups, prioGroups, overdueGroups,
-      createdWeeks, resolvedWeeks, resolvedLast14,
-      unassignedNotDone, highPriUnassigned, dueSoon,
-      overdueTop, highPriTop, dueSoonTop,
+      statusGroups,
+      typeGroups,
+      prioGroups,
+      overdueGroups,
+      createdWeeks,
+      resolvedWeeks,
+      resolvedLast14,
+      unassignedNotDone,
+      highPriUnassigned,
+      dueSoon,
+      overdueTop,
+      highPriTop,
+      dueSoonTop,
     ] = await Promise.all([
-      this.prisma.issue.groupBy({ by: ['projectId', 'statusId'], where: baseWhere, _count: { _all: true } }),
-      this.prisma.issue.groupBy({ by: ['projectId', 'typeId'], where: baseWhere, _count: { _all: true } }),
+      this.prisma.issue.groupBy({
+        by: ['projectId', 'statusId'],
+        where: baseWhere,
+        _count: { _all: true },
+      }),
+      this.prisma.issue.groupBy({
+        by: ['projectId', 'typeId'],
+        where: baseWhere,
+        _count: { _all: true },
+      }),
       this.prisma.issue.groupBy({ by: ['priorityId'], where: baseWhere, _count: { _all: true } }),
       this.prisma.issue.groupBy({ by: ['projectId'], where: overdueWhere, _count: { _all: true } }),
       this.weekBuckets('createdAt', workspaceId, now),
       this.weekBuckets('resolvedAt', workspaceId, now),
-      this.prisma.issue.count({ where: { ...baseWhere, resolvedAt: { gte: new Date(now.getTime() - 14 * DAY) } } }),
+      this.prisma.issue.count({
+        where: { ...baseWhere, resolvedAt: { gte: new Date(now.getTime() - 14 * DAY) } },
+      }),
       this.prisma.issue.count({ where: unassignedOpenWhere }),
       this.prisma.issue.count({ where: { ...unassignedOpenWhere, ...highPriWhere } }),
       this.prisma.issue.count({ where: dueSoonWhere }),
       // Danh sách "cần chú ý": mỗi nhóm chỉ lấy 8 dòng đầu (kết quả cuối cắt 8 nên không cần nhiều hơn).
-      this.prisma.issue.findMany({ where: overdueWhere, orderBy: { dueDate: 'asc' }, take: 8, select: attentionSelect }),
+      this.prisma.issue.findMany({
+        where: overdueWhere,
+        orderBy: { dueDate: 'asc' },
+        take: 8,
+        select: attentionSelect,
+      }),
       this.prisma.issue.findMany({
         // Quá hạn đã nằm ở nhóm trên → nhóm này chỉ lấy việc chưa quá hạn (nhánh `else if` của bản cũ).
-        where: { ...unassignedOpenWhere, ...highPriWhere, OR: [{ dueDate: null }, { dueDate: { gte: now } }] },
-        orderBy: { createdAt: 'asc' }, take: 8, select: attentionSelect,
+        where: {
+          ...unassignedOpenWhere,
+          ...highPriWhere,
+          OR: [{ dueDate: null }, { dueDate: { gte: now } }],
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 8,
+        select: attentionSelect,
       }),
       this.prisma.issue.findMany({
         // Loại việc "ưu tiên cao, chưa gán" (đã nằm ở nhóm trên). Viết bằng OR dương, không dùng NOT,
         // vì NOT trên quan hệ priority có thể loại nhầm dòng priorityId NULL (NULL IN (...) → NULL).
         where: {
           ...dueSoonWhere,
-          OR: [{ assigneeId: { not: null } }, { priorityId: null }, { priority: { rank: { lt: HIGH_RANK } } }],
+          OR: [
+            { assigneeId: { not: null } },
+            { priorityId: null },
+            { priority: { rank: { lt: HIGH_RANK } } },
+          ],
         },
-        orderBy: { dueDate: 'asc' }, take: 8, select: attentionSelect,
+        orderBy: { dueDate: 'asc' },
+        take: 8,
+        select: attentionSelect,
       }),
     ]);
 
@@ -105,7 +159,9 @@ export class AnalyticsService {
         select: { id: true, key: true, name: true, color: true },
       }),
       this.prisma.priority.findMany({
-        where: { id: { in: prioGroups.map((g) => g.priorityId).filter((x): x is string => x !== null) } },
+        where: {
+          id: { in: prioGroups.map((g) => g.priorityId).filter((x): x is string => x !== null) },
+        },
         select: { id: true, name: true, color: true, rank: true },
       }),
     ]);
@@ -149,11 +205,19 @@ export class AnalyticsService {
       typeMap.set(type.name, row);
     }
 
-    const prioMap = new Map<string, { name: string; color: string | null; rank: number; count: number }>();
+    const prioMap = new Map<
+      string,
+      { name: string; color: string | null; rank: number; count: number }
+    >();
     for (const g of prioGroups) {
       const p = g.priorityId ? prioById.get(g.priorityId) : undefined;
       const name = p?.name ?? 'Chưa đặt';
-      const row = prioMap.get(name) ?? { name, color: p?.color ?? null, rank: p?.rank ?? -1, count: 0 };
+      const row = prioMap.get(name) ?? {
+        name,
+        color: p?.color ?? null,
+        rank: p?.rank ?? -1,
+        count: 0,
+      };
       row.count += g._count._all;
       prioMap.set(name, row);
     }
@@ -178,12 +242,21 @@ export class AnalyticsService {
       projectCount: projects.length,
       totals,
       projects: projects.map((p) => ({
-        id: p.id, key: p.key, name: p.name, ...byProject.get(p.id)!,
+        id: p.id,
+        key: p.key,
+        name: p.name,
+        ...byProject.get(p.id)!,
         sprint: sprintByProject.get(p.id) ?? null,
       })),
       byType: [...typeMap.values()].sort((a, b) => b.count - a.count),
-      byPriority: [...prioMap.values()].sort((a, b) => b.rank - a.rank).map(({ rank: _rank, ...r }) => r),
-      trend: buckets.map((b, j) => ({ label: weekLabel(j), created: b.created, resolved: b.resolved })),
+      byPriority: [...prioMap.values()]
+        .sort((a, b) => b.rank - a.rank)
+        .map(({ rank: _rank, ...r }) => r),
+      trend: buckets.map((b, j) => ({
+        label: weekLabel(j),
+        created: b.created,
+        resolved: b.resolved,
+      })),
       warnings,
       forecast,
       attention,
@@ -202,26 +275,54 @@ export class AnalyticsService {
     const openStatus: Prisma.IssueWhereInput = { status: { category: { not: 'DONE' } } };
     const sumPoints = { storyPoints: true } as const;
 
-    const [statusGroups, typeGroups, prioGroups, assigneeGroups, overdueGroups, highPriUnassigned, dueSoon] =
-      await Promise.all([
-        this.prisma.issue.groupBy({ by: ['statusId'], where: baseWhere, _count: { _all: true }, _sum: sumPoints }),
-        this.prisma.issue.groupBy({ by: ['typeId'], where: baseWhere, _count: { _all: true } }),
-        this.prisma.issue.groupBy({ by: ['priorityId'], where: baseWhere, _count: { _all: true } }),
-        this.prisma.issue.groupBy({ by: ['assigneeId', 'statusId'], where: baseWhere, _count: { _all: true }, _sum: sumPoints }),
-        this.prisma.issue.groupBy({
-          by: ['assigneeId'],
-          where: { ...baseWhere, ...openStatus, dueDate: { lt: now } },
-          _count: { _all: true },
-        }),
-        this.prisma.issue.count({
-          where: { ...baseWhere, ...openStatus, assigneeId: null, priority: { rank: { gte: HIGH_RANK } } },
-        }),
-        this.prisma.issue.count({
-          where: { ...baseWhere, ...openStatus, dueDate: { gte: now, lte: new Date(now.getTime() + 3 * DAY) } },
-        }),
-      ]);
+    const [
+      statusGroups,
+      typeGroups,
+      prioGroups,
+      assigneeGroups,
+      overdueGroups,
+      highPriUnassigned,
+      dueSoon,
+    ] = await Promise.all([
+      this.prisma.issue.groupBy({
+        by: ['statusId'],
+        where: baseWhere,
+        _count: { _all: true },
+        _sum: sumPoints,
+      }),
+      this.prisma.issue.groupBy({ by: ['typeId'], where: baseWhere, _count: { _all: true } }),
+      this.prisma.issue.groupBy({ by: ['priorityId'], where: baseWhere, _count: { _all: true } }),
+      this.prisma.issue.groupBy({
+        by: ['assigneeId', 'statusId'],
+        where: baseWhere,
+        _count: { _all: true },
+        _sum: sumPoints,
+      }),
+      this.prisma.issue.groupBy({
+        by: ['assigneeId'],
+        where: { ...baseWhere, ...openStatus, dueDate: { lt: now } },
+        _count: { _all: true },
+      }),
+      this.prisma.issue.count({
+        where: {
+          ...baseWhere,
+          ...openStatus,
+          assigneeId: null,
+          priority: { rank: { gte: HIGH_RANK } },
+        },
+      }),
+      this.prisma.issue.count({
+        where: {
+          ...baseWhere,
+          ...openStatus,
+          dueDate: { gte: now, lte: new Date(now.getTime() + 3 * DAY) },
+        },
+      }),
+    ]);
 
-    const assigneeIds = [...new Set(assigneeGroups.map((g) => g.assigneeId).filter((x): x is string => x !== null))];
+    const assigneeIds = [
+      ...new Set(assigneeGroups.map((g) => g.assigneeId).filter((x): x is string => x !== null)),
+    ];
     const [statuses, types, priorities, users] = await Promise.all([
       this.prisma.status.findMany({
         where: { id: { in: [...new Set(statusGroups.map((g) => g.statusId))] } },
@@ -232,10 +333,15 @@ export class AnalyticsService {
         select: { id: true, name: true, color: true },
       }),
       this.prisma.priority.findMany({
-        where: { id: { in: prioGroups.map((g) => g.priorityId).filter((x): x is string => x !== null) } },
+        where: {
+          id: { in: prioGroups.map((g) => g.priorityId).filter((x): x is string => x !== null) },
+        },
         select: { id: true, name: true, color: true, rank: true },
       }),
-      this.prisma.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, displayName: true } }),
+      this.prisma.user.findMany({
+        where: { id: { in: assigneeIds } },
+        select: { id: true, displayName: true },
+      }),
     ]);
     const statusById = new Map(statuses.map((s) => [s.id, s]));
     const typeById = new Map(types.map((t) => [t.id, t]));
@@ -243,11 +349,22 @@ export class AnalyticsService {
     const userById = new Map(users.map((u) => [u.id, u]));
     const pointsOf = (g: { _sum: { storyPoints: number | null } }) => g._sum.storyPoints ?? 0;
 
-    const totals = { total: 0, todo: 0, inProgress: 0, done: 0, overdue: 0, unassigned: 0, points: 0 };
+    const totals = {
+      total: 0,
+      todo: 0,
+      inProgress: 0,
+      done: 0,
+      overdue: 0,
+      unassigned: 0,
+      points: 0,
+    };
     for (const g of overdueGroups) totals.overdue += g._count._all;
 
     // Phân bố theo trạng thái thực (mang màu theo category để nhất quán với board).
-    const statusMap = new Map<string, { name: string; category: Category; count: number; order: number }>();
+    const statusMap = new Map<
+      string,
+      { name: string; category: Category; count: number; order: number }
+    >();
     for (const g of statusGroups) {
       const st = statusById.get(g.statusId);
       if (!st) continue;
@@ -257,7 +374,12 @@ export class AnalyticsService {
       if (st.category === 'TODO') totals.todo += n;
       else if (st.category === 'IN_PROGRESS') totals.inProgress += n;
       else totals.done += n;
-      const row = statusMap.get(st.name) ?? { name: st.name, category: st.category, count: 0, order: st.order };
+      const row = statusMap.get(st.name) ?? {
+        name: st.name,
+        category: st.category,
+        count: 0,
+        order: st.order,
+      };
       row.count += n;
       statusMap.set(st.name, row);
     }
@@ -272,11 +394,19 @@ export class AnalyticsService {
       typeMap.set(t.name, row);
     }
 
-    const prioMap = new Map<string, { name: string; color: string | null; rank: number; count: number }>();
+    const prioMap = new Map<
+      string,
+      { name: string; color: string | null; rank: number; count: number }
+    >();
     for (const g of prioGroups) {
       const p = g.priorityId ? prioById.get(g.priorityId) : undefined;
       const name = p?.name ?? 'Chưa đặt';
-      const row = prioMap.get(name) ?? { name, color: p?.color ?? null, rank: p?.rank ?? -1, count: 0 };
+      const row = prioMap.get(name) ?? {
+        name,
+        color: p?.color ?? null,
+        rank: p?.rank ?? -1,
+        count: 0,
+      };
       row.count += g._count._all;
       prioMap.set(name, row);
     }
@@ -299,7 +429,15 @@ export class AnalyticsService {
       const u = g.assigneeId ? userById.get(g.assigneeId) : undefined;
       const row =
         assigneeMap.get(aKey) ??
-        ({ id: u?.id ?? null, name: u?.displayName ?? 'Chưa gán', total: 0, inProgress: 0, done: 0, overdue: 0, points: 0 } satisfies AssigneeRow);
+        ({
+          id: u?.id ?? null,
+          name: u?.displayName ?? 'Chưa gán',
+          total: 0,
+          inProgress: 0,
+          done: 0,
+          overdue: 0,
+          points: 0,
+        } satisfies AssigneeRow);
       row.total += n;
       row.points += pointsOf(g);
       if (cat === 'IN_PROGRESS') row.inProgress += n;
@@ -386,7 +524,8 @@ export class AnalyticsService {
     const snapByDay = new Map<string, number>();
     // START chỉ làm mốc cam kết (bên dưới), KHÔNG làm điểm "còn lại" của ngày: ngày đầu/hôm nay chưa có DAILY thì
     // lịch sử mới phản ánh tiến độ đã làm trong ngày (START luôn = toàn bộ cam kết, che mất tiến độ).
-    for (const sn of snaps) if (sn.kind !== 'START') snapByDay.set(dayKey(sn.snapshotAt), sn.remainingPoints);
+    for (const sn of snaps)
+      if (sn.kind !== 'START') snapByDay.set(dayKey(sn.snapshotAt), sn.remainingPoints);
     // Mốc "cam kết" của đường lý tưởng = điểm lúc START (nếu có), không bị lệch khi việc bị đẩy ra sau này.
     const startSnap = snaps.find((x) => x.kind === 'START' && x.committedPoints > 0);
     const baseline = startSnap ? startSnap.committedPoints : committed;
@@ -403,7 +542,8 @@ export class AnalyticsService {
       }
       const ideal = days.length > 1 ? baseline * (1 - idx / (days.length - 1)) : 0;
       const snapped = snapByDay.get(date);
-      const remaining = snapped !== undefined ? Math.max(snapped, 0) : Math.max(committed - done, 0);
+      const remaining =
+        snapped !== undefined ? Math.max(snapped, 0) : Math.max(committed - done, 0);
       return { date, ideal: round(ideal), remaining: round(remaining) };
     });
 
@@ -429,17 +569,15 @@ export class AnalyticsService {
       },
     });
 
-    const entries = sprints
-      .reverse()
-      .map((s) => {
-        const snap = s.snapshots[0];
-        return {
-          sprintId: s.id,
-          sprintName: s.name,
-          committed: round(snap?.committedPoints ?? 0),
-          completed: round(snap?.completedPoints ?? 0),
-        };
-      });
+    const entries = sprints.reverse().map((s) => {
+      const snap = s.snapshots[0];
+      return {
+        sprintId: s.id,
+        sprintName: s.name,
+        committed: round(snap?.committedPoints ?? 0),
+        completed: round(snap?.completedPoints ?? 0),
+      };
+    });
     const averageCompleted = entries.length
       ? round(entries.reduce((a, e) => a + e.completed, 0) / entries.length)
       : 0;
@@ -458,7 +596,12 @@ export class AnalyticsService {
    * hiệu lực tại/sau đầu kỳ nên phần lịch sử cũ đã bị thay thế không phải join. Issue chưa từng có sự kiện
    * STATUS không xuất hiện; issue xoá mềm vẫn được tính (giống bản cũ).
    */
-  async cfd(workspaceId: string, projectId: string, fromStr?: string, toStr?: string): Promise<CfdReport> {
+  async cfd(
+    workspaceId: string,
+    projectId: string,
+    fromStr?: string,
+    toStr?: string,
+  ): Promise<CfdReport> {
     await this.requireProject(workspaceId, projectId);
     const { from, to } = range(fromStr, toStr);
     const days = eachDay(from, to);
@@ -595,8 +738,19 @@ function attentionRows(
   g: { overdueTop: AttentionIssue[]; highPriTop: AttentionIssue[]; dueSoonTop: AttentionIssue[] },
 ) {
   const DAY = 24 * 3600 * 1000;
-  const rows: { key: string; summary: string; projectKey: string; reason: string; level: 'danger' | 'warning'; sort: number }[] = [];
-  const base = (i: AttentionIssue) => ({ key: i.key, summary: i.summary, projectKey: keyByProject.get(i.projectId) ?? '' });
+  const rows: {
+    key: string;
+    summary: string;
+    projectKey: string;
+    reason: string;
+    level: 'danger' | 'warning';
+    sort: number;
+  }[] = [];
+  const base = (i: AttentionIssue) => ({
+    key: i.key,
+    summary: i.summary,
+    projectKey: keyByProject.get(i.projectId) ?? '',
+  });
   for (const i of g.overdueTop) {
     const days = Math.ceil((now.getTime() - i.dueDate!.getTime()) / DAY);
     rows.push({ ...base(i), reason: `Quá hạn ${days} ngày`, level: 'danger', sort: 1000 + days });
@@ -606,9 +760,17 @@ function attentionRows(
   }
   for (const i of g.dueSoonTop) {
     const dueInDays = (i.dueDate!.getTime() - now.getTime()) / DAY;
-    rows.push({ ...base(i), reason: `Sắp đến hạn (${Math.ceil(dueInDays)} ngày)`, level: 'warning', sort: 300 - dueInDays });
+    rows.push({
+      ...base(i),
+      reason: `Sắp đến hạn (${Math.ceil(dueInDays)} ngày)`,
+      level: 'warning',
+      sort: 300 - dueInDays,
+    });
   }
-  return rows.sort((a, b) => b.sort - a.sort).slice(0, 8).map(({ sort: _s, ...r }) => r);
+  return rows
+    .sort((a, b) => b.sort - a.sort)
+    .slice(0, 8)
+    .map(({ sort: _s, ...r }) => r);
 }
 
 /** Cảnh báo + dự báo bằng chữ cho màn tổng quan (văn bản cho người dùng, giữ nguyên nội dung cũ). */
@@ -624,28 +786,51 @@ function narrate(
 
   // Cảnh báo (bằng chữ, có mức độ)
   const warnings: { level: 'danger' | 'warning' | 'info'; text: string }[] = [];
-  if (totals.overdue > 0) warnings.push({ level: 'danger', text: `${totals.overdue} công việc đã quá hạn cần xử lý ngay.` });
-  if (highPriUnassigned > 0) warnings.push({ level: 'warning', text: `${highPriUnassigned} công việc ưu tiên cao chưa có người làm.` });
-  if (dueSoon > 0) warnings.push({ level: 'warning', text: `${dueSoon} việc sắp đến hạn trong 3 ngày tới.` });
-  if (unassignedNotDone > 0) warnings.push({ level: 'info', text: `${unassignedNotDone} việc chưa gán người thực hiện.` });
-  if (warnings.length === 0) warnings.push({ level: 'info', text: 'Không có cảnh báo — tiến độ đang trong tầm kiểm soát.' });
+  if (totals.overdue > 0)
+    warnings.push({
+      level: 'danger',
+      text: `${totals.overdue} công việc đã quá hạn cần xử lý ngay.`,
+    });
+  if (highPriUnassigned > 0)
+    warnings.push({
+      level: 'warning',
+      text: `${highPriUnassigned} công việc ưu tiên cao chưa có người làm.`,
+    });
+  if (dueSoon > 0)
+    warnings.push({ level: 'warning', text: `${dueSoon} việc sắp đến hạn trong 3 ngày tới.` });
+  if (unassignedNotDone > 0)
+    warnings.push({ level: 'info', text: `${unassignedNotDone} việc chưa gán người thực hiện.` });
+  if (warnings.length === 0)
+    warnings.push({ level: 'info', text: 'Không có cảnh báo — tiến độ đang trong tầm kiểm soát.' });
 
   // Dự báo (bằng chữ)
   const forecast: { label: string; text: string }[] = [];
-  forecast.push({ label: 'Tiến độ', text: `Đã hoàn thành ${totals.done}/${totals.total} việc (${completionRate}%). Còn ${notDone} việc chưa xong.` });
+  forecast.push({
+    label: 'Tiến độ',
+    text: `Đã hoàn thành ${totals.done}/${totals.total} việc (${completionRate}%). Còn ${notDone} việc chưa xong.`,
+  });
   if (notDone > 0) {
     if (weekly >= 1) {
       const etaWeeks = Math.ceil(notDone / weekly);
-      forecast.push({ label: 'Dự kiến hoàn tất', text: `Nhịp xử lý gần đây ~${weekly.toFixed(1)} việc/tuần → dự kiến cần ~${etaWeeks} tuần nữa để xong nếu giữ nhịp.` });
+      forecast.push({
+        label: 'Dự kiến hoàn tất',
+        text: `Nhịp xử lý gần đây ~${weekly.toFixed(1)} việc/tuần → dự kiến cần ~${etaWeeks} tuần nữa để xong nếu giữ nhịp.`,
+      });
     } else {
-      forecast.push({ label: 'Cảnh báo tiến độ', text: `14 ngày qua gần như không có việc nào hoàn tất trong khi còn ${notDone} việc tồn — tiến độ đang chững, nên rà soát nguồn lực/độ ưu tiên.` });
+      forecast.push({
+        label: 'Cảnh báo tiến độ',
+        text: `14 ngày qua gần như không có việc nào hoàn tất trong khi còn ${notDone} việc tồn — tiến độ đang chững, nên rà soát nguồn lực/độ ưu tiên.`,
+      });
     }
   } else if (totals.total > 0) {
     forecast.push({ label: 'Dự kiến hoàn tất', text: 'Tất cả việc đã hoàn thành 🎉' });
   }
   if (notDone > 0 && totals.overdue > 0) {
     const r = Math.round((totals.overdue / notDone) * 100);
-    forecast.push({ label: 'Rủi ro trễ hạn', text: `${r}% việc chưa xong đang quá hạn — ưu tiên nhóm quá hạn để tránh dồn ứ.` });
+    forecast.push({
+      label: 'Rủi ro trễ hạn',
+      text: `${r}% việc chưa xong đang quá hạn — ưu tiên nhóm quá hạn để tránh dồn ứ.`,
+    });
   }
   return { warnings, forecast };
 }

@@ -1,4 +1,10 @@
-import { skipToken, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  skipToken,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -52,7 +58,6 @@ interface ReportIssueInput {
   typeId?: string;
 }
 
-
 /**
  * Kiểm tra trùng lặp theo tiêu đề. Chỉ chạy khi đã gõ ≥4 ký tự.
  * Query keyed theo summary → tự cache theo từng chuỗi; staleTime nhỏ giữ kết quả tươi.
@@ -86,7 +91,6 @@ export function useReportIssue(projectId: string) {
     },
   });
 }
-
 
 const ACTIVITY_PAGE_SIZE = 40;
 

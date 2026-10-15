@@ -19,7 +19,16 @@ function serve(total: number) {
     const n = Math.min(100, total - start);
     const data = mk(start, n);
     const hasNextPage = start + n < total;
-    return Promise.resolve({ data: { data, pageInfo: { hasNextPage, endCursor: data.length ? data[data.length - 1]!.id : null, limit: 100 } } });
+    return Promise.resolve({
+      data: {
+        data,
+        pageInfo: {
+          hasNextPage,
+          endCursor: data.length ? data[data.length - 1]!.id : null,
+          limit: 100,
+        },
+      },
+    });
   });
 }
 
@@ -35,7 +44,10 @@ describe('fetchAllProjectIssues', () => {
     expect(list).toHaveLength(250);
     expect(get).toHaveBeenCalledTimes(3);
     expect(get.mock.calls[1]![0]).toContain('cursor=i99');
-    expect(qc.getQueryData<IssueListMeta>(keys.issues.byProjectMeta('p1'))).toEqual({ truncated: false, loaded: 250 });
+    expect(qc.getQueryData<IssueListMeta>(keys.issues.byProjectMeta('p1'))).toEqual({
+      truncated: false,
+      loaded: 250,
+    });
   });
 
   it('chạm HARD_CAP thì dừng và đánh dấu truncated', async () => {

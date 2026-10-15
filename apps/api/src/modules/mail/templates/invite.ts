@@ -20,7 +20,8 @@ export function render(payload: Record<string, unknown>): RenderedMail {
       bodyHtml: `<p style="margin:0;font-size:14px;line-height:1.6;">${escapeHtml(intro)}</p>`,
       ctaLabel: 'Chấp nhận lời mời',
       ctaUrl: acceptUrl,
-      footer: 'Liên kết dùng được một lần và hết hạn sau 7 ngày. Nếu bạn không mong đợi thư này, cứ bỏ qua nó.',
+      footer:
+        'Liên kết dùng được một lần và hết hạn sau 7 ngày. Nếu bạn không mong đợi thư này, cứ bỏ qua nó.',
     }),
     text: `${intro}\n\nChấp nhận lời mời: ${acceptUrl}\n\nLiên kết dùng được một lần và hết hạn sau 7 ngày. Nếu bạn không mong đợi thư này, cứ bỏ qua nó.\n`,
   };

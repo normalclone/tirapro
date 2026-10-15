@@ -91,7 +91,6 @@ export interface ImportJob {
   completedAt?: string | null;
 }
 
-
 /* ------------------------------------------------------------------ */
 /* Components                                                          */
 /* ------------------------------------------------------------------ */
@@ -99,8 +98,9 @@ export interface ImportJob {
 export function useComponents(projectId?: string) {
   return useQuery({
     queryKey: keys.projectConfig.components(projectId ?? ''),
-    queryFn: projectId ? async () =>
-      (await api.get<Component[]>(`/projects/${projectId}/components`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<Component[]>(`/projects/${projectId}/components`)).data
+      : skipToken,
   });
 }
 
@@ -143,8 +143,9 @@ export function useDeleteComponent(projectId: string) {
 export function useVersions(projectId?: string) {
   return useQuery({
     queryKey: keys.projectConfig.versions(projectId ?? ''),
-    queryFn: projectId ? async () =>
-      (await api.get<Version[]>(`/projects/${projectId}/versions`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<Version[]>(`/projects/${projectId}/versions`)).data
+      : skipToken,
   });
 }
 
@@ -187,7 +188,9 @@ export function useDeleteVersion(projectId: string) {
 export function useLabels(projectId?: string) {
   return useQuery({
     queryKey: keys.projectConfig.labels(projectId ?? ''),
-    queryFn: projectId ? async () => (await api.get<Label[]>(`/projects/${projectId}/labels`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<Label[]>(`/projects/${projectId}/labels`)).data
+      : skipToken,
   });
 }
 

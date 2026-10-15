@@ -3,13 +3,15 @@ import type { IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
-
 /** Hộp phân loại: issue đang chờ triage của dự án. */
 export function useTriageInbox(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.triage.inbox(projectId ?? ''),
-    queryFn: projectId ? async () =>
-      (await api.get<ListResponse<IssueDto>>(`/triage?projectId=${projectId}&limit=100`)).data.data : skipToken,
+    queryFn: projectId
+      ? async () =>
+          (await api.get<ListResponse<IssueDto>>(`/triage?projectId=${projectId}&limit=100`)).data
+            .data
+      : skipToken,
   });
 }
 
@@ -17,7 +19,9 @@ export function useTriageInbox(projectId: string | undefined) {
 export function useTriageCount(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.triage.count(projectId ?? ''),
-    queryFn: projectId ? async () => (await api.get<{ count: number }>(`/triage/count?projectId=${projectId}`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<{ count: number }>(`/triage/count?projectId=${projectId}`)).data
+      : skipToken,
   });
 }
 
@@ -37,7 +41,9 @@ function useTriageMutation<TVars>(
     onMutate: async (vars: TVars & { issueId: string }) => {
       await qc.cancelQueries({ queryKey: inboxKey });
       const prev = qc.getQueryData<IssueDto[]>(inboxKey);
-      qc.setQueryData<IssueDto[]>(inboxKey, (old) => (old ?? []).filter((i) => i.id !== vars.issueId));
+      qc.setQueryData<IssueDto[]>(inboxKey, (old) =>
+        (old ?? []).filter((i) => i.id !== vars.issueId),
+      );
       return { prev };
     },
     onError: (_e, _v, ctx) => {

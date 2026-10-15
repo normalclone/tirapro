@@ -45,12 +45,7 @@ function InvitePanelInner() {
             </p>
           </div>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setByEmail((v) => !v)}
-        >
+        <Button type="button" variant="ghost" size="sm" onClick={() => setByEmail((v) => !v)}>
           {byEmail ? (
             <>
               <UserPlus className="h-4 w-4" />
@@ -94,10 +89,7 @@ function AddExistingUser() {
   const effectiveRoleIds = roleIds.length > 0 ? roleIds : defaultRoleIds;
 
   // Loại người đã ở trong không gian làm việc khỏi pool.
-  const memberUserIds = useMemo(
-    () => new Set((members ?? []).map((m) => m.user.id)),
-    [members],
-  );
+  const memberUserIds = useMemo(() => new Set((members ?? []).map((m) => m.user.id)), [members]);
   const addableUsers = (users ?? []).filter((u) => !memberUserIds.has(u.id));
   const userSelectOptions = addableUsers.map((u) => ({
     value: u.id,
@@ -227,7 +219,11 @@ function InviteByEmail() {
       { email: email.trim(), roleId: roleId || undefined },
       {
         onSuccess: (data) => {
-          toast.success(data.acceptUrl ? `Đã tạo lời mời cho ${email.trim()}` : `Đã gửi thư mời tới ${email.trim()}`);
+          toast.success(
+            data.acceptUrl
+              ? `Đã tạo lời mời cho ${email.trim()}`
+              : `Đã gửi thư mời tới ${email.trim()}`,
+          );
           setEmail('');
           setRoleId('');
           setCopied(false);
@@ -291,8 +287,8 @@ function InviteByEmail() {
         <div className="border-t border-border px-5 py-4">
           <p className="text-sm font-medium text-ink-strong">Liên kết nhận lời mời</p>
           <p className="mt-0.5 text-sm text-muted">
-            Hệ thống chưa gửi email thật, nên hãy chuyển liên kết này cho người được mời. Liên kết dùng được một lần và
-            hết hạn sau 7 ngày.
+            Hệ thống chưa gửi email thật, nên hãy chuyển liên kết này cho người được mời. Liên kết
+            dùng được một lần và hết hạn sau 7 ngày.
           </p>
           <div className="mt-2 flex items-center gap-2">
             <Input

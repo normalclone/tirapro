@@ -2,8 +2,11 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import {
-  createWorklogSchema, deleteWorklogQuerySchema, updateWorklogSchema,
-  type CreateWorklogInput, type UpdateWorklogInput,
+  createWorklogSchema,
+  deleteWorklogQuerySchema,
+  updateWorklogSchema,
+  type CreateWorklogInput,
+  type UpdateWorklogInput,
 } from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -56,7 +59,8 @@ export class WorklogsController {
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-    @Query(new ZodValidationPipe(deleteWorklogQuerySchema)) query: { adjustRemaining?: 'auto' | 'leave' },
+    @Query(new ZodValidationPipe(deleteWorklogQuerySchema))
+    query: { adjustRemaining?: 'auto' | 'leave' },
   ) {
     return this.worklogs.remove(workspaceId, user.id, id, query.adjustRemaining);
   }

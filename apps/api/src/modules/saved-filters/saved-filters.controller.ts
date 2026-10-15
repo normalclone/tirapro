@@ -65,7 +65,11 @@ export class SavedFiltersController {
 
   @Permissions(PERMISSIONS.FILTER_MANAGE)
   @Delete(':id')
-  async remove(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
+  async remove(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+  ) {
     return this.filters.softDelete(workspaceId, user.id, id);
   }
 

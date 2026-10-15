@@ -8,7 +8,10 @@ import { RedisService } from '../../infra/redis/redis.service';
 type ResolverDelegate = { findFirst(args: { where: object; select: object }): Promise<unknown> };
 
 const projectIdOnly = { projectId: true } as const;
-const viaProject = (value: string, workspaceId: string) => ({ id: value, project: { workspaceId } });
+const viaProject = (value: string, workspaceId: string) => ({
+  id: value,
+  project: { workspaceId },
+});
 const inWorkspace = (value: string, workspaceId: string) => ({ id: value, workspaceId });
 const ownProjectId = (row: { projectId: string | null }) => row.projectId;
 
@@ -29,13 +32,33 @@ const RESOURCE_RESOLVERS: Record<
   sprint: { model: 'sprint', where: viaProject, select: projectIdOnly, project: ownProjectId },
   board: { model: 'board', where: viaProject, select: projectIdOnly, project: ownProjectId },
   label: { model: 'label', where: viaProject, select: projectIdOnly, project: ownProjectId },
-  component: { model: 'component', where: viaProject, select: projectIdOnly, project: ownProjectId },
+  component: {
+    model: 'component',
+    where: viaProject,
+    select: projectIdOnly,
+    project: ownProjectId,
+  },
   version: { model: 'version', where: viaProject, select: projectIdOnly, project: ownProjectId },
-  recurringIssue: { model: 'recurringIssue', where: viaProject, select: projectIdOnly, project: ownProjectId },
+  recurringIssue: {
+    model: 'recurringIssue',
+    where: viaProject,
+    select: projectIdOnly,
+    project: ownProjectId,
+  },
   // Tài nguyên cấp workspace, dự án là tuỳ chọn (null = áp quyền workspace).
   raid: { model: 'raidItem', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
-  automationTemplate: { model: 'issueTemplate', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
-  automationRule: { model: 'automationRule', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  automationTemplate: {
+    model: 'issueTemplate',
+    where: inWorkspace,
+    select: projectIdOnly,
+    project: ownProjectId,
+  },
+  automationRule: {
+    model: 'automationRule',
+    where: inWorkspace,
+    select: projectIdOnly,
+    project: ownProjectId,
+  },
   // Worklog đi qua issue cha.
   worklog: {
     model: 'workLog',
@@ -43,8 +66,18 @@ const RESOURCE_RESOLVERS: Record<
     select: { issue: { select: projectIdOnly } },
     project: (row: { issue: { projectId: string } }) => row.issue.projectId,
   },
-  customField: { model: 'customField', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
-  repository: { model: 'codeRepository', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  customField: {
+    model: 'customField',
+    where: inWorkspace,
+    select: projectIdOnly,
+    project: ownProjectId,
+  },
+  repository: {
+    model: 'codeRepository',
+    where: inWorkspace,
+    select: projectIdOnly,
+    project: ownProjectId,
+  },
   comment: {
     model: 'comment',
     where: (value, workspaceId) => ({ id: value, issue: { workspaceId } }),
@@ -58,9 +91,14 @@ const RESOURCE_RESOLVERS: Record<
       id: value,
       OR: [{ issue: { workspaceId } }, { comment: { issue: { workspaceId } } }],
     }),
-    select: { issue: { select: projectIdOnly }, comment: { select: { issue: { select: projectIdOnly } } } },
-    project: (row: { issue: { projectId: string } | null; comment: { issue: { projectId: string } } | null }) =>
-      row.issue?.projectId ?? row.comment?.issue.projectId ?? null,
+    select: {
+      issue: { select: projectIdOnly },
+      comment: { select: { issue: { select: projectIdOnly } } },
+    },
+    project: (row: {
+      issue: { projectId: string } | null;
+      comment: { issue: { projectId: string } } | null;
+    }) => row.issue?.projectId ?? row.comment?.issue.projectId ?? null,
   },
   // Hai đầu có thể khác dự án: lấy đầu thuộc workspace hiện tại (ưu tiên đầu nguồn).
   issueLink: {
@@ -178,7 +216,10 @@ export class RbacService {
    * Map ở `DEFAULT_PROJECT_ROLE_BY_WS_ROLE` (@tirapro/types) — vai trò không có
    * trong map (vd vai trò tuỳ biến) thì không tự cấp quyền dự án.
    */
-  private async defaultProjectRoleIds(workspaceId: string, wsRoleNames: string[]): Promise<string[]> {
+  private async defaultProjectRoleIds(
+    workspaceId: string,
+    wsRoleNames: string[],
+  ): Promise<string[]> {
     const mapped: string[] = [];
     for (const n of wsRoleNames) {
       const target = DEFAULT_PROJECT_ROLE_BY_WS_ROLE[n];
@@ -187,7 +228,11 @@ export class RbacService {
     const wanted = [...new Set(mapped)];
     if (wanted.length === 0) return [];
     const rows = await this.prisma.role.findMany({
-      where: { name: { in: wanted }, scope: 'PROJECT', OR: [{ workspaceId }, { workspaceId: null }] },
+      where: {
+        name: { in: wanted },
+        scope: 'PROJECT',
+        OR: [{ workspaceId }, { workspaceId: null }],
+      },
       select: { id: true },
     });
     return rows.map((r) => r.id);
@@ -205,7 +250,9 @@ export class RbacService {
     value: string,
   ): Promise<{ projectId: string | null } | null> {
     const r = RESOURCE_RESOLVERS[kind];
-    const delegate = (this.prisma as unknown as Record<string, ResolverDelegate | undefined>)[r.model];
+    const delegate = (this.prisma as unknown as Record<string, ResolverDelegate | undefined>)[
+      r.model
+    ];
     if (!delegate) throw new Error(`Loại tài nguyên không hỗ trợ: ${String(kind)}`);
     const row = await delegate.findFirst({ where: r.where(value, workspaceId), select: r.select });
     if (!row) return null;

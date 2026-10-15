@@ -3,17 +3,36 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import type {
-  CreateClientInput, UpdateClientInput, CreateContractInput, UpdateContractInput,
+  CreateClientInput,
+  UpdateClientInput,
+  CreateContractInput,
+  UpdateContractInput,
 } from './clients.schemas';
 
 const CONTRACT_SELECT = {
-  id: true, clientId: true, projectId: true, name: true, code: true, value: true, currency: true,
-  startDate: true, endDate: true, note: true, createdAt: true,
+  id: true,
+  clientId: true,
+  projectId: true,
+  name: true,
+  code: true,
+  value: true,
+  currency: true,
+  startDate: true,
+  endDate: true,
+  note: true,
+  createdAt: true,
   project: { select: { id: true, key: true, name: true } },
 } satisfies Prisma.ContractSelect;
 
 const CLIENT_SELECT = {
-  id: true, workspaceId: true, name: true, contactName: true, email: true, phone: true, note: true, createdAt: true,
+  id: true,
+  workspaceId: true,
+  name: true,
+  contactName: true,
+  email: true,
+  phone: true,
+  note: true,
+  createdAt: true,
   projects: {
     where: { deletedAt: null },
     orderBy: { name: 'asc' as const },
@@ -23,9 +42,17 @@ const CLIENT_SELECT = {
 } satisfies Prisma.ClientSelect;
 
 type ContractRow = {
-  id: string; clientId: string; projectId: string | null; name: string; code: string | null;
-  value: number | null; currency: string; startDate: Date | null; endDate: Date | null;
-  note: string | null; createdAt: Date;
+  id: string;
+  clientId: string;
+  projectId: string | null;
+  name: string;
+  code: string | null;
+  value: number | null;
+  currency: string;
+  startDate: Date | null;
+  endDate: Date | null;
+  note: string | null;
+  createdAt: Date;
   project: { id: string; key: string; name: string } | null;
 };
 
@@ -48,7 +75,10 @@ export class ClientsService {
   }
 
   async get(workspaceId: string, id: string) {
-    const c = await this.prisma.client.findFirst({ where: { id, workspaceId }, select: CLIENT_SELECT });
+    const c = await this.prisma.client.findFirst({
+      where: { id, workspaceId },
+      select: CLIENT_SELECT,
+    });
     if (!c) throw new NotFoundAppException('Khách hàng');
     return this.toDto(c);
   }
@@ -106,7 +136,12 @@ export class ClientsService {
         data: { clientId: null },
       }),
       ...(ids.length
-        ? [this.prisma.project.updateMany({ where: { workspaceId, id: { in: ids } }, data: { clientId: id } })]
+        ? [
+            this.prisma.project.updateMany({
+              where: { workspaceId, id: { in: ids } },
+              data: { clientId: id },
+            }),
+          ]
         : []),
     ]);
     return this.get(workspaceId, id);
@@ -144,7 +179,12 @@ export class ClientsService {
     return this.toContractDto(created);
   }
 
-  async updateContract(workspaceId: string, clientId: string, contractId: string, dto: UpdateContractInput) {
+  async updateContract(
+    workspaceId: string,
+    clientId: string,
+    contractId: string,
+    dto: UpdateContractInput,
+  ) {
     await this.requireContract(workspaceId, clientId, contractId);
     const data: Prisma.ContractUpdateInput = {};
     if (dto.name !== undefined && dto.name !== null) {
@@ -162,7 +202,11 @@ export class ClientsService {
       const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
       data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
     }
-    const updated = await this.prisma.contract.update({ where: { id: contractId }, data, select: CONTRACT_SELECT });
+    const updated = await this.prisma.contract.update({
+      where: { id: contractId },
+      data,
+      select: CONTRACT_SELECT,
+    });
     return this.toContractDto(updated);
   }
 
@@ -175,14 +219,20 @@ export class ClientsService {
   // ───────────────────────── helpers ─────────────────────────
 
   private async require(workspaceId: string, id: string) {
-    const c = await this.prisma.client.findFirst({ where: { id, workspaceId }, select: { id: true } });
+    const c = await this.prisma.client.findFirst({
+      where: { id, workspaceId },
+      select: { id: true },
+    });
     if (!c) throw new NotFoundAppException('Khách hàng');
     return c;
   }
 
   private async requireContract(workspaceId: string, clientId: string, contractId: string) {
     await this.require(workspaceId, clientId);
-    const c = await this.prisma.contract.findFirst({ where: { id: contractId, clientId }, select: { id: true } });
+    const c = await this.prisma.contract.findFirst({
+      where: { id: contractId, clientId },
+      select: { id: true },
+    });
     if (!c) throw new NotFoundAppException('Hợp đồng');
     return c;
   }
@@ -202,11 +252,17 @@ export class ClientsService {
       where: { id: { in: ids }, workspaceId, deletedAt: null },
       select: { id: true },
     });
-    if (found.length !== ids.length) throw new BusinessRuleException('Một số dự án không thuộc không gian làm việc này — hãy bỏ chọn những dự án đó');
+    if (found.length !== ids.length)
+      throw new BusinessRuleException(
+        'Một số dự án không thuộc không gian làm việc này — hãy bỏ chọn những dự án đó',
+      );
     return ids;
   }
 
-  private async resolveProject(workspaceId: string, projectId: string | null): Promise<string | null> {
+  private async resolveProject(
+    workspaceId: string,
+    projectId: string | null,
+  ): Promise<string | null> {
     if (!projectId) return null;
     const [id] = await this.validateProjects(workspaceId, [projectId]);
     return id ?? null;
@@ -229,8 +285,14 @@ export class ClientsService {
   }
 
   private toDto(c: {
-    id: string; workspaceId: string; name: string; contactName: string | null; email: string | null;
-    phone: string | null; note: string | null; createdAt: Date;
+    id: string;
+    workspaceId: string;
+    name: string;
+    contactName: string | null;
+    email: string | null;
+    phone: string | null;
+    note: string | null;
+    createdAt: Date;
     projects: { id: string; key: string; name: string; isArchived: boolean }[];
     contracts: ContractRow[];
   }) {

@@ -6,10 +6,22 @@ import { useProjectMeta } from '@/features/ai/api';
 import type { IssuePayload } from './api';
 
 /** Nhãn + trường nhập + câu gợi ý, dùng chung cho các hộp thoại của trang Tự động hoá. */
-export function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: ReactNode }) {
+export function Field({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  htmlFor?: string;
+  children: ReactNode;
+}) {
   return (
     <div>
-      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-muted">{label}</label>
+      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-muted">
+        {label}
+      </label>
       {children}
       {hint && <p className="mt-1 text-xs text-faint">{hint}</p>}
     </div>
@@ -38,7 +50,11 @@ export function IssueDefaultsFields({
   const uid = useId();
   const set = (patch: Partial<IssuePayload>) => onChange({ ...value, ...patch });
 
-  const typeOptions = (meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name, color: t.color }));
+  const typeOptions = (meta?.issueTypes ?? []).map((t) => ({
+    value: t.id,
+    label: t.name,
+    color: t.color,
+  }));
   const priorityOptions = [
     { value: '', label: 'Theo mặc định chung' },
     ...(meta?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, color: p.color })),
@@ -83,7 +99,10 @@ export function IssueDefaultsFields({
         />
       </Field>
 
-      <Field label="Mô tả điền sẵn" hint="Ví dụ: các bước cần làm, thông tin phải thu thập. Người tạo việc vẫn sửa được.">
+      <Field
+        label="Mô tả điền sẵn"
+        hint="Ví dụ: các bước cần làm, thông tin phải thu thập. Người tạo việc vẫn sửa được."
+      >
         <MarkdownEditor
           value={value.description ?? ''}
           onChange={(v) => set({ description: v })}

@@ -17,7 +17,11 @@ export function useAssigneeOptions(projectId?: string): PersonOption[] {
 
   return useMemo(() => {
     const roleByUser = new Map<string, string[]>();
-    for (const m of members ?? []) roleByUser.set(m.user.id, m.roles.map((r) => r.name));
+    for (const m of members ?? [])
+      roleByUser.set(
+        m.user.id,
+        m.roles.map((r) => r.name),
+      );
 
     const teamByUser = new Map<string, { name: string; color?: string | null }[]>();
     for (const t of teams ?? []) {
@@ -36,7 +40,16 @@ export function useAssigneeOptions(projectId?: string): PersonOption[] {
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
-      return { id: u.id, name: u.displayName, avatarUrl: u.avatarUrl, email: u.email, position, roleNames, teams: userTeams, search };
+      return {
+        id: u.id,
+        name: u.displayName,
+        avatarUrl: u.avatarUrl,
+        email: u.email,
+        position,
+        roleNames,
+        teams: userTeams,
+        search,
+      };
     });
   }, [users, members, teams]);
 }

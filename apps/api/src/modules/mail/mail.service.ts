@@ -56,13 +56,21 @@ export class MailService {
     });
   }
 
-  private async enqueueNotification(db: Prisma.TransactionClient | PrismaService, input: EnqueueInput): Promise<void> {
+  private async enqueueNotification(
+    db: Prisma.TransactionClient | PrismaService,
+    input: EnqueueInput,
+  ): Promise<void> {
     const newItems = toItems(input.payload);
 
     for (let attempt = 0; attempt < DIGEST_CAS_RETRIES; attempt++) {
       // Còn trong cửa sổ = chưa tới giờ gửi (scheduledAt > now) và chưa bị cron nhặt (PENDING).
       const pending = await db.emailOutbox.findFirst({
-        where: { to: input.to, template: 'notification', status: 'PENDING', scheduledAt: { gt: new Date() } },
+        where: {
+          to: input.to,
+          template: 'notification',
+          status: 'PENDING',
+          scheduledAt: { gt: new Date() },
+        },
         orderBy: { createdAt: 'desc' },
         select: { id: true, payload: true },
       });
@@ -72,14 +80,25 @@ export class MailService {
       const all = [...toItems(oldPayload), ...newItems];
       // Chặn digest phình vô hạn: giữ NOTIFICATION_DIGEST_MAX_ITEMS mục mới nhất, ghi số mục cũ đã bỏ vào `dropped`.
       const overflow = Math.max(0, all.length - NOTIFICATION_DIGEST_MAX_ITEMS);
-      const merged: { items: typeof all; dropped?: number } = { items: overflow ? all.slice(overflow) : all };
+      const merged: { items: typeof all; dropped?: number } = {
+        items: overflow ? all.slice(overflow) : all,
+      };
       const dropped = toDropped(oldPayload) + overflow;
       if (dropped > 0) merged.dropped = dropped;
       const rendered = renderNotification(merged);
       // So sánh-và-ghi: chỉ ghi nếu payload chưa bị ai đổi và cron chưa nhặt hàng này; thua thì đọc lại thử tiếp.
       const { count } = await db.emailOutbox.updateMany({
-        where: { id: pending.id, status: 'PENDING', payload: { equals: pending.payload as Prisma.InputJsonValue } },
-        data: { payload: merged as unknown as Prisma.InputJsonValue, subject: rendered.subject, html: rendered.html, text: rendered.text },
+        where: {
+          id: pending.id,
+          status: 'PENDING',
+          payload: { equals: pending.payload as Prisma.InputJsonValue },
+        },
+        data: {
+          payload: merged as unknown as Prisma.InputJsonValue,
+          subject: rendered.subject,
+          html: rendered.html,
+          text: rendered.text,
+        },
       });
       if (count === 1) return;
     }

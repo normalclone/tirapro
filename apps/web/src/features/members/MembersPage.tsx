@@ -53,7 +53,11 @@ export function MembersPage() {
         </p>
       </header>
 
-      <div className="mb-6 flex gap-1 border-b border-border" role="tablist" aria-label="Thành viên & nhóm">
+      <div
+        className="mb-6 flex gap-1 border-b border-border"
+        role="tablist"
+        aria-label="Thành viên & nhóm"
+      >
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -62,7 +66,9 @@ export function MembersPage() {
             onClick={() => setTab(t.id)}
             className={cn(
               '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              tab === t.id ? 'border-primary text-ink-strong' : 'border-transparent text-muted hover:text-ink',
+              tab === t.id
+                ? 'border-primary text-ink-strong'
+                : 'border-transparent text-muted hover:text-ink',
             )}
           >
             {t.label}
@@ -73,60 +79,70 @@ export function MembersPage() {
       {tab === 'teams' ? (
         <TeamsPanel />
       ) : (
-      <div className="space-y-8">
-        <InvitePanel />
+        <div className="space-y-8">
+          <InvitePanel />
 
-        <section className="rounded-lg border border-border bg-surface">
-          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-            <h2 className="text-base font-semibold text-ink-strong">Danh sách thành viên</h2>
-            <div className="flex items-center gap-3">
-              {members && members.length > 0 && (
-                <span className="text-sm text-muted" title={`Không gian làm việc hiện có ${members.length} người`}>{members.length} người</span>
-              )}
-              {canManage && (
-                <Button size="sm" variant="secondary" title="Chọn nhiều người có sẵn trong hệ thống và thêm cùng lúc" onClick={() => setBulkOpen(true)}>
-                  <UserPlus className="h-4 w-4" /> Thêm nhiều người
-                </Button>
-              )}
+          <section className="rounded-lg border border-border bg-surface">
+            <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+              <h2 className="text-base font-semibold text-ink-strong">Danh sách thành viên</h2>
+              <div className="flex items-center gap-3">
+                {members && members.length > 0 && (
+                  <span
+                    className="text-sm text-muted"
+                    title={`Không gian làm việc hiện có ${members.length} người`}
+                  >
+                    {members.length} người
+                  </span>
+                )}
+                {canManage && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    title="Chọn nhiều người có sẵn trong hệ thống và thêm cùng lúc"
+                    onClick={() => setBulkOpen(true)}
+                  >
+                    <UserPlus className="h-4 w-4" /> Thêm nhiều người
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="p-5">
-            <QueryBoundary
-              query={membersQuery}
-              skeleton={
-                <div className="space-y-2.5">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              }
-              empty={(d) => d.length === 0}
-              emptyState={
-                <EmptyState
-                  icon={<Users className="h-6 w-6" />}
-                  title="Chưa có thành viên nào"
-                  description="Đây là danh sách người được vào không gian làm việc này. Mời người đầu tiên bằng ô nhập email phía trên."
-                />
-              }
-            >
-              {(members) => (
-                <ul className="divide-y divide-border">
-                  {members.map((m) => (
-                    <MemberRow
-                      key={m.membershipId}
-                      member={m}
-                      canManage={canManage}
-                      isSelf={m.user.id === currentUserId}
-                      roleOptions={wsRoles ?? []}
-                    />
-                  ))}
-                </ul>
-              )}
-            </QueryBoundary>
-          </div>
-        </section>
-      </div>
+            <div className="p-5">
+              <QueryBoundary
+                query={membersQuery}
+                skeleton={
+                  <div className="space-y-2.5">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                }
+                empty={(d) => d.length === 0}
+                emptyState={
+                  <EmptyState
+                    icon={<Users className="h-6 w-6" />}
+                    title="Chưa có thành viên nào"
+                    description="Đây là danh sách người được vào không gian làm việc này. Mời người đầu tiên bằng ô nhập email phía trên."
+                  />
+                }
+              >
+                {(members) => (
+                  <ul className="divide-y divide-border">
+                    {members.map((m) => (
+                      <MemberRow
+                        key={m.membershipId}
+                        member={m}
+                        canManage={canManage}
+                        isSelf={m.user.id === currentUserId}
+                        roleOptions={wsRoles ?? []}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </QueryBoundary>
+            </div>
+          </section>
+        </div>
       )}
 
       <AddPeopleDialog mode="workspace" open={bulkOpen} onClose={() => setBulkOpen(false)} />
@@ -154,7 +170,8 @@ function MemberRow({
   async function handleRemove() {
     const ok = await confirm({
       title: `Gỡ ${user.displayName} khỏi không gian làm việc?`,
-      description: 'Họ sẽ mất quyền vào mọi dự án ở đây. Việc đã giao cho họ vẫn giữ nguyên. Bạn có thể mời lại sau.',
+      description:
+        'Họ sẽ mất quyền vào mọi dự án ở đây. Việc đã giao cho họ vẫn giữ nguyên. Bạn có thể mời lại sau.',
       confirmLabel: 'Gỡ',
       destructive: true,
     });
@@ -173,7 +190,10 @@ function MemberRow({
         <p className="truncate text-xs text-faint">{user.email}</p>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-1.5" title="Vai trò quyết định người này được xem và làm gì ở đây">
+      <div
+        className="flex flex-wrap items-center justify-end gap-1.5"
+        title="Vai trò quyết định người này được xem và làm gì ở đây"
+      >
         {member.roles.length > 0 ? (
           member.roles.map((r) => <RoleBadge key={r.id} name={r.name} color={r.color} />)
         ) : (
@@ -191,7 +211,12 @@ function MemberRow({
             saving={setRoles.isPending}
             onSave={(roleIds) => setRoles.mutateAsync({ userId: user.id, roleIds })}
             trigger={
-              <Button variant="ghost" size="icon" title={`Đổi vai trò chung của ${user.displayName}`} aria-label={`Sửa vai trò của ${user.displayName}`}>
+              <Button
+                variant="ghost"
+                size="icon"
+                title={`Đổi vai trò chung của ${user.displayName}`}
+                aria-label={`Sửa vai trò của ${user.displayName}`}
+              >
                 <Pencil className="h-4 w-4" />
               </Button>
             }

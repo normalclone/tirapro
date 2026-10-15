@@ -16,7 +16,11 @@ function fakeClient(status = 'ready'): FakeClient {
   return { status, on: vi.fn(), once: vi.fn(), off: vi.fn(), disconnect: vi.fn() };
 }
 
-function makeAdapter(opts: { useRedisAdapter: boolean; available: boolean; clientStatus?: string }) {
+function makeAdapter(opts: {
+  useRedisAdapter: boolean;
+  available: boolean;
+  clientStatus?: string;
+}) {
   const clients: FakeClient[] = [];
   const redis = {
     isAvailable: vi.fn().mockReturnValue(opts.available),
@@ -34,7 +38,8 @@ function makeAdapter(opts: { useRedisAdapter: boolean; available: boolean; clien
     }),
   };
   const app = {
-    get: (token: unknown) => (token === ConfigService ? config : token === RedisService ? redis : undefined),
+    get: (token: unknown) =>
+      token === ConfigService ? config : token === RedisService ? redis : undefined,
     getHttpServer: () => ({}),
   };
   return { adapter: new RedisIoAdapter(app as never), redis, clients };
@@ -73,7 +78,10 @@ describe('RedisIoAdapter.connectToRedis', () => {
     const { adapter, redis } = makeAdapter({ useRedisAdapter: true, available: true });
     expect(await adapter.connectToRedis(0)).toBe(true);
     expect(redis.duplicate).toHaveBeenCalledTimes(2);
-    expect(redis.duplicate).toHaveBeenCalledWith({ enableOfflineQueue: true, retryStrategy: pubSubRetryStrategy });
+    expect(redis.duplicate).toHaveBeenCalledWith({
+      enableOfflineQueue: true,
+      retryStrategy: pubSubRetryStrategy,
+    });
   });
 
   it('retryStrategy của pub/sub không bao giờ trả null (backoff trần 10 giây)', () => {
@@ -84,7 +92,11 @@ describe('RedisIoAdapter.connectToRedis', () => {
   });
 
   it('client pub/sub chưa kịp ready thì đóng chúng và giảm cấp về in-memory', async () => {
-    const { adapter, clients } = makeAdapter({ useRedisAdapter: true, available: true, clientStatus: 'connecting' });
+    const { adapter, clients } = makeAdapter({
+      useRedisAdapter: true,
+      available: true,
+      clientStatus: 'connecting',
+    });
     expect(await adapter.connectToRedis(10)).toBe(false);
     expect(clients).toHaveLength(2);
     for (const c of clients) expect(c.disconnect).toHaveBeenCalledTimes(1);
@@ -105,7 +117,10 @@ describe('RedisIoAdapter.createIOServer', () => {
     const { adapter } = makeAdapter({ useRedisAdapter: true, available: true });
     await adapter.connectToRedis(0);
 
-    const result = adapter.createIOServer(4000, { path: '/realtime', cors: { origin: true } } as never);
+    const result = adapter.createIOServer(4000, {
+      path: '/realtime',
+      cors: { origin: true },
+    } as never);
 
     expect(result).toBe(server);
     expect(base).toHaveBeenCalledWith(

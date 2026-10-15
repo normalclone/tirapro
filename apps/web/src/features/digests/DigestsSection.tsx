@@ -97,7 +97,13 @@ export function DigestsSection() {
   }
 
   async function handleDelete(digest: Digest) {
-    if (!(await confirm({ title: `Xoá báo cáo "${digest.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
+    if (
+      !(await confirm({
+        title: `Xoá báo cáo "${digest.name}"? Hành động này không thể hoàn tác.`,
+        destructive: true,
+      }))
+    )
+      return;
     remove.mutate(digest.id, {
       onSuccess: () => toast.success('Đã xoá báo cáo.'),
       onError: (e) => toast.error(apiErrorMessage(e)),
@@ -280,9 +286,7 @@ function DigestRow({
         if (res.sent) {
           toast.success(text ? truncate(text) : 'Đã gửi báo cáo.');
         } else {
-          toast.info(
-            text ? truncate(text) : 'Đã tạo bản tổng hợp nhưng chưa gửi (chưa có kênh).',
-          );
+          toast.info(text ? truncate(text) : 'Đã tạo bản tổng hợp nhưng chưa gửi (chưa có kênh).');
         }
       },
       onError: (e) => toast.error(apiErrorMessage(e)),

@@ -60,21 +60,33 @@ export function BulkActionBar({
         'animate-in fade-in slide-in-from-bottom-2 duration-200',
       )}
     >
-      <span className="text-sm font-medium text-ink-strong" aria-live="polite" title="Các thao tác bên phải sẽ áp cho tất cả việc đang chọn. Nhấn Esc để bỏ chọn.">
+      <span
+        className="text-sm font-medium text-ink-strong"
+        aria-live="polite"
+        title="Các thao tác bên phải sẽ áp cho tất cả việc đang chọn. Nhấn Esc để bỏ chọn."
+      >
         Đã chọn <span className="tabular">{count}</span> việc
       </span>
 
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {canAssign && (
           <>
-            <Button size="sm" variant="secondary" title="Đặt bạn làm người phụ trách các việc đang chọn" loading={busy} onClick={onAssignToMe}>
+            <Button
+              size="sm"
+              variant="secondary"
+              title="Đặt bạn làm người phụ trách các việc đang chọn"
+              loading={busy}
+              onClick={onAssignToMe}
+            >
               <UserCheck className="h-4 w-4" />
               Gán cho tôi
             </Button>
 
             <PeoplePicker
               value=""
-              onChange={(v) => { if (v) onAssignTo(v); }}
+              onChange={(v) => {
+                if (v) onAssignTo(v);
+              }}
               options={assigneeOptions}
               includeEmpty={false}
               ariaLabel="Chọn người phụ trách mới cho các việc đang chọn"
@@ -94,7 +106,9 @@ export function BulkActionBar({
         {canManageBacklog && (
           <SearchSelect
             value=""
-            onChange={(v) => { if (v) onMoveToSprint(v === BACKLOG_OPTION ? null : v); }}
+            onChange={(v) => {
+              if (v) onMoveToSprint(v === BACKLOG_OPTION ? null : v);
+            }}
             options={sprintOptions}
             placeholder="Chuyển sprint"
             searchPlaceholder="Tìm sprint…"
@@ -111,7 +125,13 @@ export function BulkActionBar({
           />
         )}
 
-        <Button size="sm" variant="ghost" title="Bỏ chọn tất cả · phím Esc" onClick={onClear} disabled={busy}>
+        <Button
+          size="sm"
+          variant="ghost"
+          title="Bỏ chọn tất cả · phím Esc"
+          onClick={onClear}
+          disabled={busy}
+        >
           <X className="h-4 w-4" />
           Bỏ chọn
         </Button>

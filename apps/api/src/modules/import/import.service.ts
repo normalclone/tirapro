@@ -155,9 +155,7 @@ export class ImportService {
       ]);
 
       const typeByName = new Map(types.map((t) => [t.name.toLowerCase(), t.id]));
-      const priorityByName = new Map(
-        priorities.map((p) => [p.name.toLowerCase(), p.id]),
-      );
+      const priorityByName = new Map(priorities.map((p) => [p.name.toLowerCase(), p.id]));
       const defaultTypeId = typeByName.get('task') ?? types[0]?.id;
 
       // 5. Chuẩn bị input cho từng dòng (lỗi dữ liệu của dòng không làm hỏng cả lần import),
@@ -173,10 +171,11 @@ export class ImportService {
         if (!summary) continue; // bỏ qua dòng không có tiêu đề.
 
         try {
-          const typeId =
-            this.lookup(typeByName, get('type', 'issue type')) ?? defaultTypeId;
+          const typeId = this.lookup(typeByName, get('type', 'issue type')) ?? defaultTypeId;
           if (!typeId) {
-            throw new Error('Không tìm thấy loại công việc phù hợp — hãy kiểm tra cột loại trong tệp hoặc thêm loại công việc đó vào cấu hình');
+            throw new Error(
+              'Không tìm thấy loại công việc phù hợp — hãy kiểm tra cột loại trong tệp hoặc thêm loại công việc đó vào cấu hình',
+            );
           }
 
           const description = get('description');
@@ -208,8 +207,7 @@ export class ImportService {
       // 6. Cập nhật ImportJob.
       const total = rows.length;
       const failed = errors.length;
-      const status: 'COMPLETED' | 'FAILED' =
-        created === 0 && failed > 0 ? 'FAILED' : 'COMPLETED';
+      const status: 'COMPLETED' | 'FAILED' = created === 0 && failed > 0 ? 'FAILED' : 'COMPLETED';
 
       await this.prisma.importJob.update({
         where: { id: job.id },
@@ -310,13 +308,9 @@ export class ImportService {
       ]);
 
       const typeByName = new Map(types.map((t) => [t.name.toLowerCase(), t.id]));
-      const priorityByName = new Map(
-        priorities.map((p) => [p.name.toLowerCase(), p.id]),
-      );
+      const priorityByName = new Map(priorities.map((p) => [p.name.toLowerCase(), p.id]));
       // Map label theo tên (lowercase) → id; tạo mới khi thiếu (unique [projectId,name]).
-      const labelByName = new Map(
-        projectLabels.map((l) => [l.name.toLowerCase(), l.id]),
-      );
+      const labelByName = new Map(projectLabels.map((l) => [l.name.toLowerCase(), l.id]));
       const userByEmail = new Map(users.map((u) => [u.email.toLowerCase(), u.id]));
       const defaultTypeId = typeByName.get('task') ?? types[0]?.id;
 
@@ -335,7 +329,9 @@ export class ImportService {
         try {
           const typeId = this.lookup(typeByName, issue.type ?? '') ?? defaultTypeId;
           if (!typeId) {
-            throw new Error('Không tìm thấy loại công việc phù hợp — hãy kiểm tra cột loại trong tệp hoặc thêm loại công việc đó vào cấu hình');
+            throw new Error(
+              'Không tìm thấy loại công việc phù hợp — hãy kiểm tra cột loại trong tệp hoặc thêm loại công việc đó vào cấu hình',
+            );
           }
 
           const priorityId = this.lookup(priorityByName, issue.priority ?? '');
@@ -351,8 +347,7 @@ export class ImportService {
               descriptionFormat: 'MARKDOWN',
               priorityId: priorityId ?? undefined,
               assigneeId: assigneeId ?? undefined,
-              storyPoints:
-                typeof issue.storyPoints === 'number' ? issue.storyPoints : undefined,
+              storyPoints: typeof issue.storyPoints === 'number' ? issue.storyPoints : undefined,
             },
             after: async (tx, createdIssue, labelCache) => {
               // 4a. Gắn label: resolve-or-create theo project (cache), chống trùng.
@@ -399,8 +394,7 @@ export class ImportService {
 
       // 5. Cập nhật ImportJob.
       const failed = total - created;
-      const status: 'COMPLETED' | 'FAILED' =
-        created === 0 && total > 0 ? 'FAILED' : 'COMPLETED';
+      const status: 'COMPLETED' | 'FAILED' = created === 0 && total > 0 ? 'FAILED' : 'COMPLETED';
 
       await this.prisma.importJob.update({
         where: { id: job.id },
@@ -607,7 +601,9 @@ export class ImportService {
           await this.reportProgress(hooks, 1);
           continue;
         }
-        this.logger.warn(`Lô import ${start}-${start + chunk.length - 1} lỗi, chạy lại từng dòng: ${this.errMessage(chunkErr)}`);
+        this.logger.warn(
+          `Lô import ${start}-${start + chunk.length - 1} lỗi, chạy lại từng dòng: ${this.errMessage(chunkErr)}`,
+        );
         for (const it of chunk) {
           try {
             await runBatch([it]);

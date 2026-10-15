@@ -10,7 +10,8 @@ import { generateOneTimeToken, hashOneTimeToken } from './auth-token';
 
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60_000;
 
-const INVALID_INVITE = 'Lời mời không hợp lệ hoặc đã được dùng — hãy nhờ quản trị viên gửi lời mời mới';
+const INVALID_INVITE =
+  'Lời mời không hợp lệ hoặc đã được dùng — hãy nhờ quản trị viên gửi lời mời mới';
 const EXPIRED_INVITE = 'Lời mời đã hết hạn — hãy nhờ quản trị viên gửi lời mời mới';
 
 @Injectable()
@@ -36,7 +37,10 @@ export class InviteService {
     const roleId = await this.resolveRoleId(workspaceId, input.roleId);
 
     const [workspace, inviter, existingUser] = await Promise.all([
-      this.prisma.workspace.findFirst({ where: { id: workspaceId, deletedAt: null }, select: { name: true } }),
+      this.prisma.workspace.findFirst({
+        where: { id: workspaceId, deletedAt: null },
+        select: { name: true },
+      }),
       this.prisma.user.findUnique({ where: { id: invitedById }, select: { displayName: true } }),
       this.prisma.user.findUnique({ where: { email }, select: { id: true } }),
     ]);
@@ -47,7 +51,8 @@ export class InviteService {
         where: { workspaceId_userId: { workspaceId, userId: existingUser.id } },
         select: { id: true },
       });
-      if (member) throw new BusinessRuleException('Người này đã là thành viên của không gian làm việc');
+      if (member)
+        throw new BusinessRuleException('Người này đã là thành viên của không gian làm việc');
     }
 
     const { token, tokenHash } = generateOneTimeToken();
@@ -60,14 +65,25 @@ export class InviteService {
         data: { expiresAt: now },
       });
       const created = await tx.inviteToken.create({
-        data: { workspaceId, email, roleId, tokenHash, invitedById, expiresAt: new Date(now.getTime() + INVITE_TTL_MS) },
+        data: {
+          workspaceId,
+          email,
+          roleId,
+          tokenHash,
+          invitedById,
+          expiresAt: new Date(now.getTime() + INVITE_TTL_MS),
+        },
         select: { id: true },
       });
       await this.mail.enqueue(
         {
           to: email,
           template: 'invite',
-          payload: { workspaceName: workspace.name, inviterName: inviter?.displayName ?? 'Một đồng nghiệp', acceptUrl },
+          payload: {
+            workspaceName: workspace.name,
+            inviterName: inviter?.displayName ?? 'Một đồng nghiệp',
+            acceptUrl,
+          },
         },
         tx,
       );
@@ -89,12 +105,17 @@ export class InviteService {
     displayName: string;
     password: string;
   }): Promise<{ userId: string; workspaceId: string; existingUser: boolean }> {
-    const invite = await this.prisma.inviteToken.findUnique({ where: { tokenHash: hashOneTimeToken(input.token) } });
+    const invite = await this.prisma.inviteToken.findUnique({
+      where: { tokenHash: hashOneTimeToken(input.token) },
+    });
     if (!invite || invite.acceptedAt) throw new BusinessRuleException(INVALID_INVITE);
     if (invite.expiresAt.getTime() <= Date.now()) throw new BusinessRuleException(EXPIRED_INVITE);
 
     // Workspace đã xoá mềm thì lời mời vô hiệu — kiểm trước khi băm mật khẩu và trước khi giành token.
-    const ws = await this.prisma.workspace.findFirst({ where: { id: invite.workspaceId, deletedAt: null }, select: { id: true } });
+    const ws = await this.prisma.workspace.findFirst({
+      where: { id: invite.workspaceId, deletedAt: null },
+      select: { id: true },
+    });
     if (!ws) throw new BusinessRuleException(INVALID_INVITE);
 
     // Băm ngoài transaction để không giữ kết nối DB trong lúc argon2 chạy.
@@ -109,14 +130,25 @@ export class InviteService {
       if (claim.count !== 1) throw new BusinessRuleException(INVALID_INVITE);
 
       const role = await tx.role.findFirst({
-        where: { id: invite.roleId, OR: [{ workspaceId: invite.workspaceId }, { workspaceId: null }] },
+        where: {
+          id: invite.roleId,
+          OR: [{ workspaceId: invite.workspaceId }, { workspaceId: null }],
+        },
         select: { id: true },
       });
-      if (!role) throw new BusinessRuleException('Vai trò trong lời mời không còn tồn tại — hãy nhờ quản trị viên gửi lời mời mới');
+      if (!role)
+        throw new BusinessRuleException(
+          'Vai trò trong lời mời không còn tồn tại — hãy nhờ quản trị viên gửi lời mời mới',
+        );
 
-      const existing = await tx.user.findUnique({ where: { email: invite.email }, select: { id: true, status: true } });
+      const existing = await tx.user.findUnique({
+        where: { email: invite.email },
+        select: { id: true, status: true },
+      });
       if (existing?.status === 'DEACTIVATED') {
-        throw new BusinessRuleException('Tài khoản này đã bị vô hiệu hoá — hãy liên hệ quản trị viên');
+        throw new BusinessRuleException(
+          'Tài khoản này đã bị vô hiệu hoá — hãy liên hệ quản trị viên',
+        );
       }
       const userId =
         existing?.id ??
@@ -135,7 +167,10 @@ export class InviteService {
       if (!member) {
         await tx.workspaceMembership.create({
           data: {
-            workspaceId: invite.workspaceId, userId, roleId: role.id, joinedAt: now,
+            workspaceId: invite.workspaceId,
+            userId,
+            roleId: role.id,
+            joinedAt: now,
             roles: { create: [{ roleId: role.id }] },
           },
         });
@@ -158,7 +193,12 @@ export class InviteService {
       return found.id;
     }
     const memberRole = await this.prisma.role.findFirst({
-      where: { name: SYSTEM_ROLES.WORKSPACE_MEMBER, scope: 'WORKSPACE', workspaceId: null, isSystem: true },
+      where: {
+        name: SYSTEM_ROLES.WORKSPACE_MEMBER,
+        scope: 'WORKSPACE',
+        workspaceId: null,
+        isSystem: true,
+      },
       select: { id: true },
     });
     if (!memberRole) throw new Error('System role chưa được seed (chạy pnpm db:seed)');

@@ -4,7 +4,12 @@ import { SWIMLANE_BY } from '@tirapro/types';
 /** Sửa thông tin board. `filterJql` rỗng/null = bỏ bộ lọc. */
 export const updateBoardSchema = z
   .object({
-    name: z.string().trim().min(1, 'Tên bảng không được để trống').max(120, 'Tên bảng tối đa 120 ký tự').optional(),
+    name: z
+      .string()
+      .trim()
+      .min(1, 'Tên bảng không được để trống')
+      .max(120, 'Tên bảng tối đa 120 ký tự')
+      .optional(),
     filterJql: z.string().max(5_000, 'Bộ lọc JQL quá dài').nullable().optional(),
     swimlaneBy: z.enum(SWIMLANE_BY).optional(),
   })
@@ -19,9 +24,19 @@ export const setBoardColumnsSchema = z.object({
     .array(
       z.object({
         id: z.string().min(1).optional(),
-        name: z.string().trim().min(1, 'Tên cột không được để trống').max(60, 'Tên cột tối đa 60 ký tự'),
+        name: z
+          .string()
+          .trim()
+          .min(1, 'Tên cột không được để trống')
+          .max(60, 'Tên cột tối đa 60 ký tự'),
         statusIds: z.array(z.string().min(1)).min(1, 'Mỗi cột cần ít nhất một trạng thái'),
-        wipLimit: z.number().int('Giới hạn WIP phải là số nguyên').min(1, 'Giới hạn WIP tối thiểu là 1').max(999).nullable().optional(),
+        wipLimit: z
+          .number()
+          .int('Giới hạn WIP phải là số nguyên')
+          .min(1, 'Giới hạn WIP tối thiểu là 1')
+          .max(999)
+          .nullable()
+          .optional(),
       }),
     )
     .min(1, 'Bảng cần ít nhất một cột')

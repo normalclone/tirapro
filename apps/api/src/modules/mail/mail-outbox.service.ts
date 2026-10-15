@@ -42,10 +42,17 @@ export class MailOutboxService implements OnApplicationShutdown {
   /** Xử lý một lô; trả số thư gửi thành công (phục vụ test). */
   async processBatch(now: Date = new Date()): Promise<number> {
     // Hàng SENDING treo = một lần gửi đã thất bại không rõ kết quả: tính là một lần thử, đủ 5 lần thì FAILED.
-    const stuck = { status: 'SENDING' as const, scheduledAt: { lt: new Date(now.getTime() - STUCK_SENDING_MS) } };
+    const stuck = {
+      status: 'SENDING' as const,
+      scheduledAt: { lt: new Date(now.getTime() - STUCK_SENDING_MS) },
+    };
     await this.prisma.emailOutbox.updateMany({
       where: { ...stuck, attempts: { gte: MAX_ATTEMPTS - 1 } },
-      data: { status: 'FAILED', attempts: { increment: 1 }, lastError: 'Treo ở trạng thái đang gửi quá lâu' },
+      data: {
+        status: 'FAILED',
+        attempts: { increment: 1 },
+        lastError: 'Treo ở trạng thái đang gửi quá lâu',
+      },
     });
     await this.prisma.emailOutbox.updateMany({
       where: stuck,
@@ -74,12 +81,19 @@ export class MailOutboxService implements OnApplicationShutdown {
 
   private async deliver(row: EmailOutbox, now: Date): Promise<boolean> {
     try {
-      await this.provider.send({ to: row.to, subject: row.subject, html: row.html, text: row.text });
+      await this.provider.send({
+        to: row.to,
+        subject: row.subject,
+        html: row.html,
+        text: row.text,
+      });
     } catch (err) {
       const attempts = row.attempts + 1;
       const failed = attempts >= MAX_ATTEMPTS;
       const message = (err instanceof Error ? err.message : String(err)).slice(0, 1000);
-      this.logger.warn(`Gửi thư ${row.id} (${row.template}) lỗi lần ${attempts}/${MAX_ATTEMPTS}: ${message}`);
+      this.logger.warn(
+        `Gửi thư ${row.id} (${row.template}) lỗi lần ${attempts}/${MAX_ATTEMPTS}: ${message}`,
+      );
       await this.prisma.emailOutbox.update({
         where: { id: row.id },
         data: {
@@ -95,13 +109,23 @@ export class MailOutboxService implements OnApplicationShutdown {
     }
     await this.prisma.emailOutbox.update({
       where: { id: row.id },
-      data: { status: 'SENT', sentAt: new Date(), attempts: row.attempts + 1, lastError: null, ...this.redaction(row.template) },
+      data: {
+        status: 'SENT',
+        sentAt: new Date(),
+        attempts: row.attempts + 1,
+        lastError: null,
+        ...this.redaction(row.template),
+      },
     });
     return true;
   }
 
   /** Thư mời / đặt lại mật khẩu chứa token thô trong html/text/payload → xoá khi đã xong (chỉ còn sha256 ở bảng token). */
-  private redaction(template: string): Pick<Prisma.EmailOutboxUpdateInput, 'html' | 'text' | 'payload'> {
-    return SENSITIVE_TEMPLATES.includes(template as MailTemplate) ? { html: REDACTED, text: REDACTED, payload: {} } : {};
+  private redaction(
+    template: string,
+  ): Pick<Prisma.EmailOutboxUpdateInput, 'html' | 'text' | 'payload'> {
+    return SENSITIVE_TEMPLATES.includes(template as MailTemplate)
+      ? { html: REDACTED, text: REDACTED, payload: {} }
+      : {};
   }
 }

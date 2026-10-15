@@ -2,7 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CommentDto, IssueDto, UserDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
-import { invalidateIssue, optimisticPatchIssue, rollbackIssue, scalarIssuePatch, writeIssue } from '@/lib/optimistic';
+import {
+  invalidateIssue,
+  optimisticPatchIssue,
+  rollbackIssue,
+  scalarIssuePatch,
+  writeIssue,
+} from '@/lib/optimistic';
 
 /** Thành viên của không gian làm việc — dùng cho dropdown người làm (assignee). */
 export function useWorkspaceUsers() {
@@ -38,7 +44,8 @@ export function usePatchIssue(key: string, projectId?: string) {
 export function useDeleteIssue() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; key: string; projectId: string }) => api.delete(`/issues/${v.id}`),
+    mutationFn: (v: { id: string; key: string; projectId: string }) =>
+      api.delete(`/issues/${v.id}`),
     onSuccess: (_res, v) => {
       qc.setQueryData<IssueDto[]>(keys.issues.byProject(v.projectId), (old) =>
         old ? old.filter((i) => i.id !== v.id) : undefined,

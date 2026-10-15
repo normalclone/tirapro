@@ -1,11 +1,25 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AutomationRuleDto, AutomationRuleTestResultDto, AutomationRunDto, RuleTrigger } from '@tirapro/types';
-import type { CreateRuleInput, RuleAction, RuleCondition, TriggerConfig, UpdateRuleInput } from '@tirapro/shared';
+import type {
+  AutomationRuleDto,
+  AutomationRuleTestResultDto,
+  AutomationRunDto,
+  RuleTrigger,
+} from '@tirapro/types';
+import type {
+  CreateRuleInput,
+  RuleAction,
+  RuleCondition,
+  TriggerConfig,
+  UpdateRuleInput,
+} from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /** Quy tắc với `conditions`/`actions`/`triggerConfig` đã gán kiểu (BE đã kiểm bằng zod khi lưu). */
-export interface AutomationRule extends Omit<AutomationRuleDto, 'conditions' | 'actions' | 'triggerConfig'> {
+export interface AutomationRule extends Omit<
+  AutomationRuleDto,
+  'conditions' | 'actions' | 'triggerConfig'
+> {
   conditions: RuleCondition[];
   actions: RuleAction[];
   triggerConfig: TriggerConfig;
@@ -19,7 +33,11 @@ export function useRules(scope: string | undefined) {
     queryKey: keys.automation.rules(scope ?? ''),
     queryFn: scope
       ? async () =>
-          (await api.get<AutomationRule[]>('/automation/rules', { params: scope === ALL_RULES ? undefined : { projectId: scope } })).data
+          (
+            await api.get<AutomationRule[]>('/automation/rules', {
+              params: scope === ALL_RULES ? undefined : { projectId: scope },
+            })
+          ).data
       : skipToken,
   });
 }
@@ -32,7 +50,8 @@ function useInvalidateRules() {
 export function useCreateRule() {
   const invalidate = useInvalidateRules();
   return useMutation({
-    mutationFn: (input: CreateRuleInput) => api.post<AutomationRule>('/automation/rules', input).then((r) => r.data),
+    mutationFn: (input: CreateRuleInput) =>
+      api.post<AutomationRule>('/automation/rules', input).then((r) => r.data),
     onSuccess: invalidate,
   });
 }
@@ -57,7 +76,9 @@ export function useDeleteRule() {
 export function useRuleRuns(ruleId: string | undefined) {
   return useQuery({
     queryKey: keys.automation.ruleRuns(ruleId ?? ''),
-    queryFn: ruleId ? async () => (await api.get<AutomationRunDto[]>(`/automation/rules/${ruleId}/runs`)).data : skipToken,
+    queryFn: ruleId
+      ? async () => (await api.get<AutomationRunDto[]>(`/automation/rules/${ruleId}/runs`)).data
+      : skipToken,
   });
 }
 
@@ -65,7 +86,9 @@ export function useRuleRuns(ruleId: string | undefined) {
 export function useTestRule(ruleId: string) {
   return useMutation({
     mutationFn: (issueKey: string) =>
-      api.post<AutomationRuleTestResultDto>(`/automation/rules/${ruleId}/test`, { issueKey }).then((r) => r.data),
+      api
+        .post<AutomationRuleTestResultDto>(`/automation/rules/${ruleId}/test`, { issueKey })
+        .then((r) => r.data),
   });
 }
 
@@ -80,13 +103,27 @@ export const TRIGGER_LABELS: Record<RuleTrigger, string> = {
 };
 
 export const FIELD_LABELS: Record<string, string> = {
-  statusId: 'Trạng thái', priorityId: 'Độ ưu tiên', assigneeId: 'Người làm', reporterId: 'Người báo cáo',
-  typeId: 'Loại công việc', sprintId: 'Sprint', resolutionId: 'Kết quả xử lý', storyPoints: 'Điểm ước lượng',
-  summary: 'Tiêu đề', labelIds: 'Nhãn', dueDate: 'Hạn',
+  statusId: 'Trạng thái',
+  priorityId: 'Độ ưu tiên',
+  assigneeId: 'Người làm',
+  reporterId: 'Người báo cáo',
+  typeId: 'Loại công việc',
+  sprintId: 'Sprint',
+  resolutionId: 'Kết quả xử lý',
+  storyPoints: 'Điểm ước lượng',
+  summary: 'Tiêu đề',
+  labelIds: 'Nhãn',
+  dueDate: 'Hạn',
 };
 
 export const OP_LABELS: Record<string, string> = {
-  eq: 'là', neq: 'không phải', in: 'là một trong', nin: 'không nằm trong', empty: 'đang trống', notEmpty: 'đã có giá trị', contains: 'chứa',
+  eq: 'là',
+  neq: 'không phải',
+  in: 'là một trong',
+  nin: 'không nằm trong',
+  empty: 'đang trống',
+  notEmpty: 'đã có giá trị',
+  contains: 'chứa',
 };
 
 export const ACTION_LABELS: Record<RuleAction['type'], string> = {
@@ -102,8 +139,13 @@ export const ACTION_LABELS: Record<RuleAction['type'], string> = {
 };
 
 /** Tóm tắt một quy tắc thành câu "Khi… nếu… thì…" cho danh sách. */
-export function summarizeRule(r: Pick<AutomationRule, 'trigger' | 'triggerConfig' | 'conditions' | 'actions'>): string {
-  const when = r.trigger === 'SCHEDULED' && r.triggerConfig.cron ? `Theo lịch ${r.triggerConfig.cron} (UTC)` : TRIGGER_LABELS[r.trigger];
+export function summarizeRule(
+  r: Pick<AutomationRule, 'trigger' | 'triggerConfig' | 'conditions' | 'actions'>,
+): string {
+  const when =
+    r.trigger === 'SCHEDULED' && r.triggerConfig.cron
+      ? `Theo lịch ${r.triggerConfig.cron} (UTC)`
+      : TRIGGER_LABELS[r.trigger];
   const iff = r.conditions.length ? ` · nếu ${r.conditions.length} điều kiện` : '';
   const then = r.actions.map((a) => ACTION_LABELS[a.type]).join(', ');
   return `${when}${iff} · thì ${then || '—'}`;

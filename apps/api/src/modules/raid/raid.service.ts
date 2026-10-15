@@ -71,7 +71,10 @@ export class RaidService {
   }
 
   async get(workspaceId: string, id: string) {
-    const row = await this.prisma.raidItem.findFirst({ where: { id, workspaceId }, select: RAID_SELECT });
+    const row = await this.prisma.raidItem.findFirst({
+      where: { id, workspaceId },
+      select: RAID_SELECT,
+    });
     if (!row) throw new NotFoundAppException('Mục rủi ro');
     return this.toDto(row);
   }
@@ -115,12 +118,14 @@ export class RaidService {
     if (dto.status !== undefined && dto.status !== null) data.status = dto.status;
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.mitigation !== undefined) data.mitigation = dto.mitigation;
-    if (dto.probability !== undefined && dto.probability !== null) data.probability = dto.probability;
+    if (dto.probability !== undefined && dto.probability !== null)
+      data.probability = dto.probability;
     if (dto.impact !== undefined && dto.impact !== null) data.impact = dto.impact;
     if (dto.dueDate !== undefined) data.dueDate = this.parseDate(dto.dueDate ?? null);
     if (dto.projectId !== undefined) {
       const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
-      if (projectId && projectId !== item.projectId) await assertProjectWritable(this.prisma, projectId);
+      if (projectId && projectId !== item.projectId)
+        await assertProjectWritable(this.prisma, projectId);
       data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
     }
     if (dto.ownerId !== undefined) {
@@ -142,7 +147,10 @@ export class RaidService {
   // ───────────────────────── helpers ─────────────────────────
 
   private async requireItem(workspaceId: string, id: string) {
-    const row = await this.prisma.raidItem.findFirst({ where: { id, workspaceId }, select: { id: true, projectId: true } });
+    const row = await this.prisma.raidItem.findFirst({
+      where: { id, workspaceId },
+      select: { id: true, projectId: true },
+    });
     if (!row) throw new NotFoundAppException('Mục rủi ro');
     return row;
   }
@@ -154,7 +162,10 @@ export class RaidService {
     return d;
   }
 
-  private async resolveProject(workspaceId: string, projectId: string | null): Promise<string | null> {
+  private async resolveProject(
+    workspaceId: string,
+    projectId: string | null,
+  ): Promise<string | null> {
     if (!projectId) return null;
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
@@ -170,7 +181,10 @@ export class RaidService {
       where: { workspaceId, userId: ownerId },
       select: { userId: true },
     });
-    if (!m) throw new ForbiddenAppException('Chủ sở hữu không thuộc không gian làm việc này — hãy chọn một thành viên khác');
+    if (!m)
+      throw new ForbiddenAppException(
+        'Chủ sở hữu không thuộc không gian làm việc này — hãy chọn một thành viên khác',
+      );
     return m.userId;
   }
 

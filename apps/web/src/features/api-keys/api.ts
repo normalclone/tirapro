@@ -21,20 +21,23 @@ export interface CreateApiKeyInput {
   expiresInDays?: number;
 }
 
-
 /** Envelope list backend: { success, data, pageInfo, meta }. */
 interface ListEnvelope<T> {
   data: T[];
 }
 
 export function useApiKeys() {
-  return useQuery({ queryKey: keys.apiKeys.all, queryFn: async () => (await api.get<ListEnvelope<ApiKey>>('/api-keys')).data.data });
+  return useQuery({
+    queryKey: keys.apiKeys.all,
+    queryFn: async () => (await api.get<ListEnvelope<ApiKey>>('/api-keys')).data.data,
+  });
 }
 
 export function useCreateApiKey() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: CreateApiKeyInput) => (await api.post<CreatedApiKey>('/api-keys', input)).data,
+    mutationFn: async (input: CreateApiKeyInput) =>
+      (await api.post<CreatedApiKey>('/api-keys', input)).data,
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apiKeys.all }),
   });
 }

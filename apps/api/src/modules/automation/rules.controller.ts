@@ -2,8 +2,13 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import {
-  createRuleSchema, listRulesQuerySchema, testRuleSchema, updateRuleSchema,
-  type CreateRuleInput, type TestRuleInput, type UpdateRuleInput,
+  createRuleSchema,
+  listRulesQuerySchema,
+  testRuleSchema,
+  updateRuleSchema,
+  type CreateRuleInput,
+  type TestRuleInput,
+  type UpdateRuleInput,
 } from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -75,7 +80,11 @@ export class RulesController {
   @ProjectRef('automationRule', 'id')
   @Permissions(PERMISSIONS.AUTOMATION_MANAGE)
   @Get(':id/runs')
-  async runs(@WorkspaceId() workspaceId: string, @Param('id') id: string, @Query('cursor') cursor?: string) {
+  async runs(
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+    @Query('cursor') cursor?: string,
+  ) {
     return this.rules.runs(workspaceId, id, cursor);
   }
 
@@ -89,6 +98,10 @@ export class RulesController {
     @Body(new ZodValidationPipe(testRuleSchema)) dto: TestRuleInput,
   ) {
     const rule = await this.rules.require(workspaceId, id);
-    return this.engine.dryRun(workspaceId, { ...rule, lastRunAt: rule.lastRunAt?.toISOString() ?? null }, dto.issueKey);
+    return this.engine.dryRun(
+      workspaceId,
+      { ...rule, lastRunAt: rule.lastRunAt?.toISOString() ?? null },
+      dto.issueKey,
+    );
   }
 }

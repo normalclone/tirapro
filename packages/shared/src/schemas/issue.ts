@@ -57,7 +57,10 @@ export const bulkUpdateIssuesSchema = z.object({
     .array(z.object({ id: z.string().min(1), version: z.number().int().nonnegative() }))
     .min(1, 'Hãy chọn ít nhất một công việc')
     .max(100, 'Mỗi lần chỉ sửa tối đa 100 công việc')
-    .refine((items) => new Set(items.map((i) => i.id)).size === items.length, 'Có công việc bị chọn trùng'),
+    .refine(
+      (items) => new Set(items.map((i) => i.id)).size === items.length,
+      'Có công việc bị chọn trùng',
+    ),
   patch: z
     .object({
       statusId: z.string().min(1).optional(),

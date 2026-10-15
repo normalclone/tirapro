@@ -4,7 +4,6 @@ import { keys } from '@/lib/queryKeys';
 
 /** ---- Workflow admin (workflows / statuses / transitions) ---- */
 
-
 export type StatusCategory = 'TODO' | 'IN_PROGRESS' | 'DONE';
 
 export interface WorkflowStatus {

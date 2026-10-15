@@ -2,10 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CronExpressionParser } from 'cron-parser';
 import type { AutomationRule, Prisma } from '@prisma/client';
 import {
-  type AutomationRuleDto, type AutomationRunDto, type AutomationRunStepDto, type RuleTrigger,
+  type AutomationRuleDto,
+  type AutomationRunDto,
+  type AutomationRunStepDto,
+  type RuleTrigger,
 } from '@tirapro/types';
 import {
-  parseJql, JqlParseError, type CreateRuleInput, type RuleCondition, type UpdateRuleInput,
+  parseJql,
+  JqlParseError,
+  type CreateRuleInput,
+  type RuleCondition,
+  type UpdateRuleInput,
 } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
@@ -18,7 +25,9 @@ const RUNS_PAGE = 50;
 type RuleRow = AutomationRule;
 
 /** Hình dạng quy tắc dùng ở engine — chỉ các cột cần, Date đã serialize được qua Redis. */
-export type CachedRule = Omit<RuleRow, 'lastRunAt' | 'createdAt' | 'updatedAt'> & { lastRunAt: string | null };
+export type CachedRule = Omit<RuleRow, 'lastRunAt' | 'createdAt' | 'updatedAt'> & {
+  lastRunAt: string | null;
+};
 
 /**
  * CRUD quy tắc automation + cache danh sách quy tắc đang bật theo workspace
@@ -37,9 +46,15 @@ export class RulesService {
   /* ------------------------------ cache ------------------------------ */
 
   /** Quy tắc ĐANG BẬT của workspace áp cho `trigger` + dự án của issue (rule.projectId null = cả workspace). */
-  async activeFor(workspaceId: string, trigger: RuleTrigger, projectId: string): Promise<CachedRule[]> {
+  async activeFor(
+    workspaceId: string,
+    trigger: RuleTrigger,
+    projectId: string,
+  ): Promise<CachedRule[]> {
     const all = await this.enabledRules(workspaceId);
-    return all.filter((r) => r.trigger === trigger && (r.projectId === null || r.projectId === projectId));
+    return all.filter(
+      (r) => r.trigger === trigger && (r.projectId === null || r.projectId === projectId),
+    );
   }
 
   private async enabledRules(workspaceId: string): Promise<CachedRule[]> {
@@ -60,7 +75,10 @@ export class RulesService {
       where: { workspaceId, enabled: true },
       orderBy: { createdAt: 'asc' },
     });
-    const rules: CachedRule[] = rows.map((r) => ({ ...r, lastRunAt: r.lastRunAt?.toISOString() ?? null }));
+    const rules: CachedRule[] = rows.map((r) => ({
+      ...r,
+      lastRunAt: r.lastRunAt?.toISOString() ?? null,
+    }));
     if (client) client.set(key, JSON.stringify(rules), 'EX', CACHE_TTL_SEC).catch(() => undefined);
     else this.memory.set(workspaceId, { at: Date.now(), rules });
     return rules;
@@ -91,7 +109,11 @@ export class RulesService {
     return this.toDto(await this.require(workspaceId, id));
   }
 
-  async create(workspaceId: string, userId: string, input: CreateRuleInput): Promise<AutomationRuleDto> {
+  async create(
+    workspaceId: string,
+    userId: string,
+    input: CreateRuleInput,
+  ): Promise<AutomationRuleDto> {
     if (input.projectId) await this.assertProject(workspaceId, input.projectId);
     this.assertSemantics(input.trigger, input.triggerConfig, input.conditions);
     const row = await this.prisma.automationRule.create({
@@ -111,9 +133,13 @@ export class RulesService {
     return this.toDto(row);
   }
 
-  async update(workspaceId: string, id: string, input: UpdateRuleInput): Promise<AutomationRuleDto> {
+  async update(
+    workspaceId: string,
+    id: string,
+    input: UpdateRuleInput,
+  ): Promise<AutomationRuleDto> {
     const current = await this.require(workspaceId, id);
-    const trigger = (input.trigger ?? current.trigger);
+    const trigger = input.trigger ?? current.trigger;
     const triggerConfig = input.triggerConfig ?? (current.triggerConfig as Record<string, unknown>);
     const conditions = input.conditions ?? (current.conditions as unknown as RuleCondition[]);
     this.assertSemantics(trigger, triggerConfig, conditions);
@@ -124,7 +150,9 @@ export class RulesService {
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
         ...(input.trigger !== undefined ? { trigger: input.trigger } : {}),
         ...(input.triggerConfig !== undefined ? { triggerConfig: input.triggerConfig } : {}),
-        ...(input.conditions !== undefined ? { conditions: input.conditions as Prisma.InputJsonValue } : {}),
+        ...(input.conditions !== undefined
+          ? { conditions: input.conditions as Prisma.InputJsonValue }
+          : {}),
         ...(input.actions !== undefined ? { actions: input.actions } : {}),
       },
     });
@@ -150,8 +178,8 @@ export class RulesService {
     });
     const issueIds = [...new Set(rows.map((r) => r.issueId).filter((x): x is string => !!x))];
     const keys = issueIds.length
-      // allow-deleted: chỉ tra mã để hiển thị lịch sử chạy — issue đã xoá vẫn phải hiện đúng mã
-      ? await this.prisma.issue.findMany({
+      ? // allow-deleted: chỉ tra mã để hiển thị lịch sử chạy — issue đã xoá vẫn phải hiện đúng mã
+        await this.prisma.issue.findMany({
           where: { id: { in: issueIds }, workspaceId },
           select: { id: true, key: true },
         })
@@ -179,30 +207,45 @@ export class RulesService {
   /* ----------------------------- validation --------------------------- */
 
   private async assertProject(workspaceId: string, projectId: string): Promise<void> {
-    const p = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, deletedAt: null }, select: { id: true } });
+    const p = await this.prisma.project.findFirst({
+      where: { id: projectId, workspaceId, deletedAt: null },
+      select: { id: true },
+    });
     if (!p) throw new NotFoundAppException('Dự án');
   }
 
   /** Các ràng buộc zod không kiểm được: cron hợp lệ, SCHEDULED có JQL, JQL parse được. */
-  private assertSemantics(trigger: RuleTrigger, triggerConfig: { cron?: string }, conditions: RuleCondition[]): void {
+  private assertSemantics(
+    trigger: RuleTrigger,
+    triggerConfig: { cron?: string },
+    conditions: RuleCondition[],
+  ): void {
     for (const c of conditions) {
       if (!('jql' in c)) continue;
       try {
         parseJql(c.jql);
       } catch (e) {
-        if (e instanceof JqlParseError) throw new BusinessRuleException(`JQL trong điều kiện chưa đúng: ${e.message}`);
+        if (e instanceof JqlParseError)
+          throw new BusinessRuleException(`JQL trong điều kiện chưa đúng: ${e.message}`);
         throw e;
       }
     }
     if (trigger !== 'SCHEDULED') return;
-    if (!triggerConfig.cron) throw new BusinessRuleException('Quy tắc theo lịch cần biểu thức cron, ví dụ "0 9 * * 1-5" (9 giờ sáng các ngày trong tuần)');
+    if (!triggerConfig.cron)
+      throw new BusinessRuleException(
+        'Quy tắc theo lịch cần biểu thức cron, ví dụ "0 9 * * 1-5" (9 giờ sáng các ngày trong tuần)',
+      );
     try {
       CronExpressionParser.parse(triggerConfig.cron, { tz: 'UTC' });
     } catch {
-      throw new BusinessRuleException('Biểu thức cron chưa đúng — cần 5 trường: phút giờ ngày tháng thứ (giờ UTC)');
+      throw new BusinessRuleException(
+        'Biểu thức cron chưa đúng — cần 5 trường: phút giờ ngày tháng thứ (giờ UTC)',
+      );
     }
     if (!conditions.some((c) => 'jql' in c)) {
-      throw new BusinessRuleException('Quy tắc theo lịch cần một điều kiện JQL để chọn các công việc cần xử lý');
+      throw new BusinessRuleException(
+        'Quy tắc theo lịch cần một điều kiện JQL để chọn các công việc cần xử lý',
+      );
     }
   }
 

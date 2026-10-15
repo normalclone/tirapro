@@ -56,8 +56,10 @@ export class SystemSettingsService implements OnModuleInit {
     const next: SystemFlags = { ...this.cache };
     if (typeof patch.signupEnabled === 'boolean') next.signupEnabled = patch.signupEnabled;
     if (typeof patch.aiKillSwitch === 'boolean') next.aiKillSwitch = patch.aiKillSwitch;
-    if (typeof patch.integrationsEnabled === 'boolean') next.integrationsEnabled = patch.integrationsEnabled;
-    if (typeof patch.maintenanceBanner === 'string') next.maintenanceBanner = patch.maintenanceBanner.slice(0, 500);
+    if (typeof patch.integrationsEnabled === 'boolean')
+      next.integrationsEnabled = patch.integrationsEnabled;
+    if (typeof patch.maintenanceBanner === 'string')
+      next.maintenanceBanner = patch.maintenanceBanner.slice(0, 500);
     this.cache = next;
     try {
       await fs.mkdir(dirname(this.file), { recursive: true });

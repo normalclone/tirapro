@@ -43,7 +43,8 @@ export function withStrictObjects(schema: unknown): Record<string, unknown> {
     if (!node || typeof node !== 'object') return node;
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(node as Record<string, unknown>)) out[k] = walk(v);
-    if (out.type === 'object' && out.additionalProperties === undefined) out.additionalProperties = false;
+    if (out.type === 'object' && out.additionalProperties === undefined)
+      out.additionalProperties = false;
     return out;
   };
   return walk(schema) as Record<string, unknown>;
@@ -77,11 +78,14 @@ export class ClaudeService {
     this.modelPrimary = ai.modelPrimary;
     this.modelFast = ai.modelFast;
     const key = ai.anthropicApiKey?.trim();
-    this.client = ai.enabled && key
-      ? new Anthropic({ apiKey: key, timeout: CLAUDE_TIMEOUT_MS, maxRetries: CLAUDE_MAX_RETRIES })
-      : null;
+    this.client =
+      ai.enabled && key
+        ? new Anthropic({ apiKey: key, timeout: CLAUDE_TIMEOUT_MS, maxRetries: CLAUDE_MAX_RETRIES })
+        : null;
     if (!this.client) {
-      this.logger.warn('Claude chưa cấu hình (thiếu ANTHROPIC_API_KEY hoặc AI tắt) → dùng heuristic.');
+      this.logger.warn(
+        'Claude chưa cấu hình (thiếu ANTHROPIC_API_KEY hoặc AI tắt) → dùng heuristic.',
+      );
     }
   }
 

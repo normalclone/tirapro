@@ -45,7 +45,8 @@ export function useNotifications() {
 export function useUnreadCount() {
   return useQuery({
     queryKey: keys.notifications.unread,
-    queryFn: async () => (await api.get<{ count: number }>('/notifications/unread-count')).data.count,
+    queryFn: async () =>
+      (await api.get<{ count: number }>('/notifications/unread-count')).data.count,
     refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
   });

@@ -75,14 +75,26 @@ export function Dialog({
             className,
           )}
         >
-          <div className={cn('shrink-0 px-5 pt-4 pr-14', children == null || children === false ? 'pb-3' : 'pb-1', hideTitle && 'sr-only')}>
-            <RadixDialog.Title className="text-base font-semibold text-ink-strong">{title}</RadixDialog.Title>
+          <div
+            className={cn(
+              'shrink-0 px-5 pt-4 pr-14',
+              children == null || children === false ? 'pb-3' : 'pb-1',
+              hideTitle && 'sr-only',
+            )}
+          >
+            <RadixDialog.Title className="text-base font-semibold text-ink-strong">
+              {title}
+            </RadixDialog.Title>
             {description && (
-              <RadixDialog.Description className="mt-1 text-sm text-muted">{description}</RadixDialog.Description>
+              <RadixDialog.Description className="mt-1 text-sm text-muted">
+                {description}
+              </RadixDialog.Description>
             )}
           </div>
           {children != null && children !== false && (
-            <div className={cn('min-h-0 flex-1 overflow-y-auto px-5 py-3', bodyClassName)}>{children}</div>
+            <div className={cn('min-h-0 flex-1 overflow-y-auto px-5 py-3', bodyClassName)}>
+              {children}
+            </div>
           )}
           {footer && (
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3">

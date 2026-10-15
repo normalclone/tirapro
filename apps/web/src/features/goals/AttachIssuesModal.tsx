@@ -14,7 +14,15 @@ import { QueryBoundary } from '@/components/ui/QueryBoundary';
  * Chọn công việc (issue/epic) để gắn vào mục tiêu. Tìm theo mã hoặc tiêu đề, chọn nhiều
  * rồi gắn một lượt. Công việc đã gắn hiện dấu tích và không chọn lại được.
  */
-export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal: GoalDto | null; onClose: () => void }) {
+export function AttachIssuesModal({
+  open,
+  goal,
+  onClose,
+}: {
+  open: boolean;
+  goal: GoalDto | null;
+  onClose: () => void;
+}) {
   const [term, setTerm] = useState('');
   const [debounced, setDebounced] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
@@ -65,10 +73,18 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
       footer={
         <>
           <span className="mr-auto text-xs text-faint">
-            {picked.length > 0 ? `Đã chọn ${picked.length} công việc` : 'Chọn một hoặc nhiều công việc'}
+            {picked.length > 0
+              ? `Đã chọn ${picked.length} công việc`
+              : 'Chọn một hoặc nhiều công việc'}
           </span>
-          <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void submit()} loading={attach.isPending} disabled={picked.length === 0}>
+          <Button variant="ghost" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button
+            onClick={() => void submit()}
+            loading={attach.isPending}
+            disabled={picked.length === 0}
+          >
             Gắn vào mục tiêu
           </Button>
         </>
@@ -76,7 +92,10 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
     >
       <div className="border-b border-border px-5 py-3">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" aria-hidden />
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
+            aria-hidden
+          />
           <Input
             value={term}
             onChange={(e) => setTerm(e.target.value)}
@@ -98,7 +117,9 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
           query={resultsQuery}
           skeleton={
             <div className="space-y-2 p-3">
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
             </div>
           }
           empty={(d) => d.length === 0}
@@ -128,7 +149,13 @@ export function AttachIssuesModal({ open, goal, onClose }: { open: boolean; goal
                         selected && 'bg-primary-subtle',
                       )}
                     >
-                      <Check className={cn('h-4 w-4 shrink-0 text-primary', selected || already ? 'opacity-100' : 'opacity-0')} aria-hidden />
+                      <Check
+                        className={cn(
+                          'h-4 w-4 shrink-0 text-primary',
+                          selected || already ? 'opacity-100' : 'opacity-0',
+                        )}
+                        aria-hidden
+                      />
                       <span className="shrink-0 font-mono text-xs text-muted">{r.key}</span>
                       <span className="min-w-0 flex-1 truncate text-sm text-ink">{r.summary}</span>
                       {already && <span className="shrink-0 text-xs text-faint">Đã gắn</span>}

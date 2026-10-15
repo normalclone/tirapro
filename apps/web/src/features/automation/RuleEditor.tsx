@@ -1,10 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type SelectHTMLAttributes } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type SelectHTMLAttributes,
+} from 'react';
 import { Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { SYSTEM_ROLES, type RuleTrigger } from '@tirapro/types';
 import {
-  RULE_CONDITION_FIELDS, RULE_TRIGGERS, createRuleSchema,
-  type CreateRuleInput, type RuleAction, type RuleCondition,
+  RULE_CONDITION_FIELDS,
+  RULE_TRIGGERS,
+  createRuleSchema,
+  type CreateRuleInput,
+  type RuleAction,
+  type RuleCondition,
 } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
@@ -19,7 +30,15 @@ import { QueryBuilder } from '@/features/saved-filters/QueryBuilder';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { cn } from '@/lib/utils';
 import { Field } from './IssueDefaultsFields';
-import { ACTION_LABELS, FIELD_LABELS, OP_LABELS, TRIGGER_LABELS, useCreateRule, useUpdateRule, type AutomationRule } from './rules-api';
+import {
+  ACTION_LABELS,
+  FIELD_LABELS,
+  OP_LABELS,
+  TRIGGER_LABELS,
+  useCreateRule,
+  useUpdateRule,
+  type AutomationRule,
+} from './rules-api';
 
 /* ------------------------------ bản nháp ------------------------------ */
 
@@ -67,7 +86,14 @@ const uid = () => `d${++seq}`;
 
 /** Trường điều kiện hiển thị trong UI (kết quả xử lý chưa có danh sách chọn nên ẩn). */
 const UI_FIELDS = RULE_CONDITION_FIELDS.filter((f) => f !== 'resolutionId');
-const ID_FIELDS: FieldName[] = ['statusId', 'priorityId', 'assigneeId', 'reporterId', 'typeId', 'sprintId'];
+const ID_FIELDS: FieldName[] = [
+  'statusId',
+  'priorityId',
+  'assigneeId',
+  'reporterId',
+  'typeId',
+  'sprintId',
+];
 const NUMERIC_OPS: Op[] = ['eq', 'neq', 'empty', 'notEmpty'];
 const OPS_BY_KIND = {
   id: ['eq', 'neq', 'in', 'nin', 'empty', 'notEmpty'] as Op[],
@@ -76,12 +102,27 @@ const OPS_BY_KIND = {
   number: NUMERIC_OPS,
   date: ['eq', 'empty', 'notEmpty'] as Op[],
 };
-const kindOf = (f: FieldName) => (ID_FIELDS.includes(f) ? 'id' : f === 'labelIds' ? 'labels' : f === 'summary' ? 'text' : f === 'storyPoints' ? 'number' : 'date');
+const kindOf = (f: FieldName) =>
+  ID_FIELDS.includes(f)
+    ? 'id'
+    : f === 'labelIds'
+      ? 'labels'
+      : f === 'summary'
+        ? 'text'
+        : f === 'storyPoints'
+          ? 'number'
+          : 'date';
 
 /** Trường của issue mà quy tắc ISSUE_UPDATED có thể lọc theo "vừa đổi". */
 const UPDATE_FIELD_CHOICES: Array<[string, string]> = [
-  ['summary', 'Tiêu đề'], ['description', 'Mô tả'], ['priorityId', 'Độ ưu tiên'], ['assigneeId', 'Người làm'],
-  ['storyPoints', 'Điểm ước lượng'], ['sprintId', 'Sprint'], ['dueDate', 'Hạn'], ['typeId', 'Loại công việc'],
+  ['summary', 'Tiêu đề'],
+  ['description', 'Mô tả'],
+  ['priorityId', 'Độ ưu tiên'],
+  ['assigneeId', 'Người làm'],
+  ['storyPoints', 'Điểm ước lượng'],
+  ['sprintId', 'Sprint'],
+  ['dueDate', 'Hạn'],
+  ['typeId', 'Loại công việc'],
   ['timeSpent', 'Thời gian đã làm'],
 ];
 
@@ -92,15 +133,45 @@ const CRON_PRESETS: Array<[string, string]> = [
 ];
 
 const newAction = (type: ActionType = 'assign'): ActionDraft => ({
-  id: uid(), type, field: 'priorityId', value: '', mode: 'lead', userId: '', toStatusId: '', labelId: '', body: '',
-  userIds: [], roles: [], message: '', url: '', secret: '', summary: '', typeId: '',
+  id: uid(),
+  type,
+  field: 'priorityId',
+  value: '',
+  mode: 'lead',
+  userId: '',
+  toStatusId: '',
+  labelId: '',
+  body: '',
+  userIds: [],
+  roles: [],
+  message: '',
+  url: '',
+  secret: '',
+  summary: '',
+  typeId: '',
 });
 
-const newCondition = (): CondDraft => ({ id: uid(), kind: 'field', field: 'priorityId', op: 'eq', value: '', values: [] });
+const newCondition = (): CondDraft => ({
+  id: uid(),
+  kind: 'field',
+  field: 'priorityId',
+  op: 'eq',
+  value: '',
+  values: [],
+});
 
 function fromRule(rule: AutomationRule | null, defaultProjectId: string): Draft {
   if (!rule) {
-    return { name: '', projectId: defaultProjectId, trigger: 'ISSUE_CREATED', toStatusId: '', fields: [], cron: '', conditions: [], actions: [newAction()] };
+    return {
+      name: '',
+      projectId: defaultProjectId,
+      trigger: 'ISSUE_CREATED',
+      toStatusId: '',
+      fields: [],
+      cron: '',
+      conditions: [],
+      actions: [newAction()],
+    };
   }
   return {
     name: rule.name,
@@ -112,20 +183,35 @@ function fromRule(rule: AutomationRule | null, defaultProjectId: string): Draft 
     conditions: rule.conditions.map((c): CondDraft => {
       if ('jql' in c) return { id: uid(), kind: 'jql', jql: c.jql, raw: false };
       const list = Array.isArray(c.value) ? c.value.map(String) : [];
-      return { id: uid(), kind: 'field', field: c.field, op: c.op, value: typeof c.value === 'string' || typeof c.value === 'number' ? String(c.value) : '', values: list };
+      return {
+        id: uid(),
+        kind: 'field',
+        field: c.field,
+        op: c.op,
+        value: typeof c.value === 'string' || typeof c.value === 'number' ? String(c.value) : '',
+        values: list,
+      };
     }),
     actions: rule.actions.map((a): ActionDraft => {
       const d = newAction(a.type);
       switch (a.type) {
-        case 'setField': return { ...d, field: a.field, value: a.value === null ? '' : String(a.value) };
-        case 'assign': return { ...d, mode: a.mode, userId: a.userId ?? '' };
-        case 'transition': return { ...d, toStatusId: a.toStatusId };
+        case 'setField':
+          return { ...d, field: a.field, value: a.value === null ? '' : String(a.value) };
+        case 'assign':
+          return { ...d, mode: a.mode, userId: a.userId ?? '' };
+        case 'transition':
+          return { ...d, toStatusId: a.toStatusId };
         case 'addLabel':
-        case 'removeLabel': return { ...d, labelId: a.labelId };
-        case 'addComment': return { ...d, body: a.body };
-        case 'notify': return { ...d, userIds: a.userIds ?? [], roles: a.roles ?? [], message: a.message };
-        case 'webhook': return { ...d, url: a.url, secret: a.secret ?? '' };
-        case 'createSubtask': return { ...d, summary: a.summary, typeId: a.typeId };
+        case 'removeLabel':
+          return { ...d, labelId: a.labelId };
+        case 'addComment':
+          return { ...d, body: a.body };
+        case 'notify':
+          return { ...d, userIds: a.userIds ?? [], roles: a.roles ?? [], message: a.message };
+        case 'webhook':
+          return { ...d, url: a.url, secret: a.secret ?? '' };
+        case 'createSubtask':
+          return { ...d, summary: a.summary, typeId: a.typeId };
       }
     }),
   };
@@ -144,26 +230,46 @@ function toAction(a: ActionDraft): unknown {
   switch (a.type) {
     case 'setField': {
       const empty = a.value.trim() === '';
-      const value = empty ? null : a.field === 'storyPoints' ? Number(a.value) : a.field === 'dueDate' ? new Date(a.value).toISOString() : a.value;
+      const value = empty
+        ? null
+        : a.field === 'storyPoints'
+          ? Number(a.value)
+          : a.field === 'dueDate'
+            ? new Date(a.value).toISOString()
+            : a.value;
       return { type: 'setField', field: a.field, value };
     }
-    case 'assign': return { type: 'assign', mode: a.mode, ...(a.mode === 'user' ? { userId: a.userId } : {}) };
-    case 'transition': return { type: 'transition', toStatusId: a.toStatusId };
+    case 'assign':
+      return { type: 'assign', mode: a.mode, ...(a.mode === 'user' ? { userId: a.userId } : {}) };
+    case 'transition':
+      return { type: 'transition', toStatusId: a.toStatusId };
     case 'addLabel':
-    case 'removeLabel': return { type: a.type, labelId: a.labelId };
-    case 'addComment': return { type: 'addComment', body: a.body };
-    case 'notify': return { type: 'notify', userIds: a.userIds, roles: a.roles, message: a.message };
-    case 'webhook': return { type: 'webhook', url: a.url.trim(), ...(a.secret ? { secret: a.secret } : {}) };
-    case 'createSubtask': return { type: 'createSubtask', summary: a.summary, typeId: a.typeId };
+    case 'removeLabel':
+      return { type: a.type, labelId: a.labelId };
+    case 'addComment':
+      return { type: 'addComment', body: a.body };
+    case 'notify':
+      return { type: 'notify', userIds: a.userIds, roles: a.roles, message: a.message };
+    case 'webhook':
+      return { type: 'webhook', url: a.url.trim(), ...(a.secret ? { secret: a.secret } : {}) };
+    case 'createSubtask':
+      return { type: 'createSubtask', summary: a.summary, typeId: a.typeId };
   }
 }
 
 function toPayload(d: Draft): unknown {
   const triggerConfig =
-    d.trigger === 'ISSUE_TRANSITIONED' ? (d.toStatusId ? { toStatusId: d.toStatusId } : {})
-    : d.trigger === 'ISSUE_UPDATED' ? (d.fields.length ? { fields: d.fields } : {})
-    : d.trigger === 'SCHEDULED' ? { cron: d.cron.trim() }
-    : {};
+    d.trigger === 'ISSUE_TRANSITIONED'
+      ? d.toStatusId
+        ? { toStatusId: d.toStatusId }
+        : {}
+      : d.trigger === 'ISSUE_UPDATED'
+        ? d.fields.length
+          ? { fields: d.fields }
+          : {}
+        : d.trigger === 'SCHEDULED'
+          ? { cron: d.cron.trim() }
+          : {};
   return {
     name: d.name,
     projectId: d.projectId || null,
@@ -198,10 +304,23 @@ function useOptions(projectId: string): Options {
     const real = (workflows ?? []).filter((w) => !w.isTemplate);
     const multi = real.length > 1;
     return {
-      priorities: (meta?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, color: p.color })),
+      priorities: (meta?.priorities ?? []).map((p) => ({
+        value: p.id,
+        label: p.name,
+        color: p.color,
+      })),
       types: (meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name, color: t.color })),
-      subtaskTypes: (meta?.issueTypes ?? []).filter((t) => t.isSubtask).map((t) => ({ value: t.id, label: t.name, color: t.color })),
-      statuses: real.flatMap((w) => w.statuses.map((s) => ({ value: s.id, label: s.name, color: s.color, hint: multi ? w.name : undefined }))),
+      subtaskTypes: (meta?.issueTypes ?? [])
+        .filter((t) => t.isSubtask)
+        .map((t) => ({ value: t.id, label: t.name, color: t.color })),
+      statuses: real.flatMap((w) =>
+        w.statuses.map((s) => ({
+          value: s.id,
+          label: s.name,
+          color: s.color,
+          hint: multi ? w.name : undefined,
+        })),
+      ),
       users: (users ?? []).map((u) => ({ value: u.id, label: u.displayName, hint: u.email })),
       labels: (labels ?? []).map((l) => ({ value: l.id, label: l.name, color: l.color })),
       sprints: (sprints ?? []).map((s) => ({ value: s.id, label: s.name })),
@@ -211,14 +330,21 @@ function useOptions(projectId: string): Options {
 
 function optionsForField(f: FieldName, o: Options): SearchSelectOption[] {
   switch (f) {
-    case 'statusId': return o.statuses;
-    case 'priorityId': return o.priorities;
+    case 'statusId':
+      return o.statuses;
+    case 'priorityId':
+      return o.priorities;
     case 'assigneeId':
-    case 'reporterId': return o.users;
-    case 'typeId': return o.types;
-    case 'sprintId': return o.sprints;
-    case 'labelIds': return o.labels;
-    default: return [];
+    case 'reporterId':
+      return o.users;
+    case 'typeId':
+      return o.types;
+    case 'sprintId':
+      return o.sprints;
+    case 'labelIds':
+      return o.labels;
+    default:
+      return [];
   }
 }
 
@@ -231,12 +357,28 @@ function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>
   return <select className={cn(selectCls, className)} {...props} />;
 }
 
-function Card({ children, onRemove, label }: { children: ReactNode; onRemove?: () => void; label: string }) {
+function Card({
+  children,
+  onRemove,
+  label,
+}: {
+  children: ReactNode;
+  onRemove?: () => void;
+  label: string;
+}) {
   return (
     <div className="relative rounded-md border border-border bg-bg p-3 pr-10">
       {children}
       {onRemove && (
-        <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-7 w-7 text-muted hover:text-danger" onClick={onRemove} aria-label={`Xoá ${label}`} title={`Xoá ${label}`}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute right-1 top-1 h-7 w-7 text-muted hover:text-danger"
+          onClick={onRemove}
+          aria-label={`Xoá ${label}`}
+          title={`Xoá ${label}`}
+        >
           <X className="h-4 w-4" />
         </Button>
       )}
@@ -247,7 +389,12 @@ function Card({ children, onRemove, label }: { children: ReactNode; onRemove?: (
 function StepHeader({ n, title, hint }: { n: number; title: string; hint: string }) {
   return (
     <div className="mb-3 flex items-start gap-3">
-      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-fg" aria-hidden>{n}</span>
+      <span
+        className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-fg"
+        aria-hidden
+      >
+        {n}
+      </span>
       <div>
         <h3 className="text-sm font-semibold text-ink-strong">{title}</h3>
         <p className="text-xs text-muted">{hint}</p>
@@ -257,14 +404,38 @@ function StepHeader({ n, title, hint }: { n: number; title: string; hint: string
 }
 
 /** Chọn nhiều giá trị bằng hộp tick (danh sách ngắn: người, nhãn, vai trò…). */
-function MultiPick({ options, value, onChange, empty, ariaLabel }: { options: SearchSelectOption[]; value: string[]; onChange: (v: string[]) => void; empty: string; ariaLabel: string }) {
+function MultiPick({
+  options,
+  value,
+  onChange,
+  empty,
+  ariaLabel,
+}: {
+  options: SearchSelectOption[];
+  value: string[];
+  onChange: (v: string[]) => void;
+  empty: string;
+  ariaLabel: string;
+}) {
   if (!options.length) return <p className="text-xs text-faint">{empty}</p>;
-  const toggle = (v: string) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+  const toggle = (v: string) =>
+    onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
   return (
-    <div role="group" aria-label={ariaLabel} className="max-h-36 overflow-y-auto rounded-md border border-border bg-surface p-1.5">
+    <div
+      role="group"
+      aria-label={ariaLabel}
+      className="max-h-36 overflow-y-auto rounded-md border border-border bg-surface p-1.5"
+    >
       {options.map((o) => (
-        <label key={o.value} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-ink hover:bg-surface-2">
-          <input type="checkbox" checked={value.includes(o.value)} onChange={() => toggle(o.value)} />
+        <label
+          key={o.value}
+          className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-ink hover:bg-surface-2"
+        >
+          <input
+            type="checkbox"
+            checked={value.includes(o.value)}
+            onChange={() => toggle(o.value)}
+          />
           <span className="truncate">{o.label}</span>
           {o.hint && <span className="ml-auto truncate text-xs text-faint">{o.hint}</span>}
         </label>
@@ -273,18 +444,42 @@ function MultiPick({ options, value, onChange, empty, ariaLabel }: { options: Se
   );
 }
 
-function ConditionCard({ c, opts, onChange }: { c: CondDraft; opts: Options; onChange: (c: CondDraft) => void }) {
+function ConditionCard({
+  c,
+  opts,
+  onChange,
+}: {
+  c: CondDraft;
+  opts: Options;
+  onChange: (c: CondDraft) => void;
+}) {
   if (c.kind === 'jql') {
     return (
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted">Công việc phải khớp bộ lọc JQL</p>
         {c.raw ? (
           <>
-            <Input className="font-mono text-sm" value={c.jql} onChange={(e) => onChange({ ...c, jql: e.target.value })} placeholder='priority = High AND status = "In Progress"' aria-label="Câu lệnh JQL" />
-            <button type="button" className="text-xs text-primary hover:underline" onClick={() => onChange({ ...c, raw: false })}>Dùng bộ dựng trực quan</button>
+            <Input
+              className="font-mono text-sm"
+              value={c.jql}
+              onChange={(e) => onChange({ ...c, jql: e.target.value })}
+              placeholder='priority = High AND status = "In Progress"'
+              aria-label="Câu lệnh JQL"
+            />
+            <button
+              type="button"
+              className="text-xs text-primary hover:underline"
+              onClick={() => onChange({ ...c, raw: false })}
+            >
+              Dùng bộ dựng trực quan
+            </button>
           </>
         ) : (
-          <QueryBuilder value={c.jql} onChange={(jql) => onChange({ ...c, jql })} onEditAsJql={() => onChange({ ...c, raw: true })} />
+          <QueryBuilder
+            value={c.jql}
+            onChange={(jql) => onChange({ ...c, jql })}
+            onEditAsJql={() => onChange({ ...c, raw: true })}
+          />
         )}
       </div>
     );
@@ -301,19 +496,50 @@ function ConditionCard({ c, opts, onChange }: { c: CondDraft; opts: Options; onC
         value={c.field}
         onChange={(e) => {
           const field = e.target.value as FieldName;
-          onChange({ ...c, field, op: OPS_BY_KIND[kindOf(field)].includes(c.op) ? c.op : OPS_BY_KIND[kindOf(field)][0]!, value: '', values: [] });
+          onChange({
+            ...c,
+            field,
+            op: OPS_BY_KIND[kindOf(field)].includes(c.op) ? c.op : OPS_BY_KIND[kindOf(field)][0]!,
+            value: '',
+            values: [],
+          });
         }}
       >
-        {UI_FIELDS.map((f) => <option key={f} value={f}>{FIELD_LABELS[f]}</option>)}
+        {UI_FIELDS.map((f) => (
+          <option key={f} value={f}>
+            {FIELD_LABELS[f]}
+          </option>
+        ))}
       </Select>
-      <Select aria-label="Phép so sánh" value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as Op, values: [] })}>
-        {ops.map((o) => <option key={o} value={o}>{OP_LABELS[o]}</option>)}
+      <Select
+        aria-label="Phép so sánh"
+        value={c.op}
+        onChange={(e) => onChange({ ...c, op: e.target.value as Op, values: [] })}
+      >
+        {ops.map((o) => (
+          <option key={o} value={o}>
+            {OP_LABELS[o]}
+          </option>
+        ))}
       </Select>
       {needsValue ? (
         multi ? (
-          <MultiPick options={options} value={c.values} onChange={(values) => onChange({ ...c, values })} empty="Chưa có lựa chọn — hãy chọn phạm vi dự án ở bước 1." ariaLabel="Các giá trị" />
+          <MultiPick
+            options={options}
+            value={c.values}
+            onChange={(values) => onChange({ ...c, values })}
+            empty="Chưa có lựa chọn — hãy chọn phạm vi dự án ở bước 1."
+            ariaLabel="Các giá trị"
+          />
         ) : options.length || ID_FIELDS.includes(c.field) || c.field === 'labelIds' ? (
-          <SearchSelect value={c.value} onChange={(value) => onChange({ ...c, value })} options={options} placeholder="Chọn…" searchPlaceholder="Tìm…" ariaLabel="Giá trị" />
+          <SearchSelect
+            value={c.value}
+            onChange={(value) => onChange({ ...c, value })}
+            options={options}
+            placeholder="Chọn…"
+            searchPlaceholder="Tìm…"
+            ariaLabel="Giá trị"
+          />
         ) : (
           <Input
             aria-label="Giá trị"
@@ -330,21 +556,47 @@ function ConditionCard({ c, opts, onChange }: { c: CondDraft; opts: Options; onC
   );
 }
 
-function ActionCard({ a, opts, scoped, onChange }: { a: ActionDraft; opts: Options; scoped: boolean; onChange: (a: ActionDraft) => void }) {
+function ActionCard({
+  a,
+  opts,
+  scoped,
+  onChange,
+}: {
+  a: ActionDraft;
+  opts: Options;
+  scoped: boolean;
+  onChange: (a: ActionDraft) => void;
+}) {
   const set = (patch: Partial<ActionDraft>) => onChange({ ...a, ...patch });
-  const types = (Object.keys(ACTION_LABELS) as ActionType[]).filter((t) => scoped || (t !== 'addLabel' && t !== 'removeLabel'));
+  const types = (Object.keys(ACTION_LABELS) as ActionType[]).filter(
+    (t) => scoped || (t !== 'addLabel' && t !== 'removeLabel'),
+  );
   return (
     <div className="space-y-2">
-      <Select aria-label="Loại hành động" value={a.type} onChange={(e) => onChange({ ...newAction(e.target.value as ActionType), id: a.id })}>
-        {types.map((t) => <option key={t} value={t}>{ACTION_LABELS[t]}</option>)}
+      <Select
+        aria-label="Loại hành động"
+        value={a.type}
+        onChange={(e) => onChange({ ...newAction(e.target.value as ActionType), id: a.id })}
+      >
+        {types.map((t) => (
+          <option key={t} value={t}>
+            {ACTION_LABELS[t]}
+          </option>
+        ))}
       </Select>
 
       {a.type === 'setField' && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[10rem_1fr]">
-          <Select aria-label="Trường cần đặt" value={a.field} onChange={(e) => set({ field: e.target.value as ActionDraft['field'], value: '' })}>
+          <Select
+            aria-label="Trường cần đặt"
+            value={a.field}
+            onChange={(e) => set({ field: e.target.value as ActionDraft['field'], value: '' })}
+          >
             <option value="priorityId">Độ ưu tiên</option>
             <option value="assigneeId">Người làm</option>
-            <option value="sprintId" disabled={!scoped}>Sprint{scoped ? '' : ' (chọn dự án trước)'}</option>
+            <option value="sprintId" disabled={!scoped}>
+              Sprint{scoped ? '' : ' (chọn dự án trước)'}
+            </option>
             <option value="dueDate">Hạn</option>
             <option value="storyPoints">Điểm ước lượng</option>
           </Select>
@@ -352,37 +604,76 @@ function ActionCard({ a, opts, scoped, onChange }: { a: ActionDraft; opts: Optio
             <SearchSelect
               value={a.value}
               onChange={(value) => set({ value })}
-              options={[{ value: '', label: 'Để trống (gỡ giá trị)' }, ...(a.field === 'priorityId' ? opts.priorities : a.field === 'assigneeId' ? opts.users : opts.sprints)]}
+              options={[
+                { value: '', label: 'Để trống (gỡ giá trị)' },
+                ...(a.field === 'priorityId'
+                  ? opts.priorities
+                  : a.field === 'assigneeId'
+                    ? opts.users
+                    : opts.sprints),
+              ]}
               placeholder="Chọn giá trị…"
               searchPlaceholder="Tìm…"
               ariaLabel="Giá trị mới"
             />
           ) : (
-            <Input aria-label="Giá trị mới" type={a.field === 'dueDate' ? 'date' : 'number'} min={0} value={a.value} onChange={(e) => set({ value: e.target.value })} placeholder="Để trống = gỡ giá trị" />
+            <Input
+              aria-label="Giá trị mới"
+              type={a.field === 'dueDate' ? 'date' : 'number'}
+              min={0}
+              value={a.value}
+              onChange={(e) => set({ value: e.target.value })}
+              placeholder="Để trống = gỡ giá trị"
+            />
           )}
         </div>
       )}
 
       {a.type === 'assign' && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[14rem_1fr]">
-          <Select aria-label="Cách giao" value={a.mode} onChange={(e) => set({ mode: e.target.value as ActionDraft['mode'] })}>
+          <Select
+            aria-label="Cách giao"
+            value={a.mode}
+            onChange={(e) => set({ mode: e.target.value as ActionDraft['mode'] })}
+          >
             <option value="lead">Trưởng dự án (lead)</option>
             <option value="reporter">Người báo cáo</option>
             <option value="roundRobin">Luân phiên giữa các thành viên</option>
             <option value="user">Một người cụ thể</option>
           </Select>
           {a.mode === 'user' && (
-            <SearchSelect value={a.userId} onChange={(userId) => set({ userId })} options={opts.users} placeholder="Chọn người…" searchPlaceholder="Tìm người…" ariaLabel="Người được giao" />
+            <SearchSelect
+              value={a.userId}
+              onChange={(userId) => set({ userId })}
+              options={opts.users}
+              placeholder="Chọn người…"
+              searchPlaceholder="Tìm người…"
+              ariaLabel="Người được giao"
+            />
           )}
         </div>
       )}
 
       {a.type === 'transition' && (
-        <SearchSelect value={a.toStatusId} onChange={(toStatusId) => set({ toStatusId })} options={opts.statuses} placeholder="Chuyển sang trạng thái…" searchPlaceholder="Tìm trạng thái…" ariaLabel="Trạng thái đích" />
+        <SearchSelect
+          value={a.toStatusId}
+          onChange={(toStatusId) => set({ toStatusId })}
+          options={opts.statuses}
+          placeholder="Chuyển sang trạng thái…"
+          searchPlaceholder="Tìm trạng thái…"
+          ariaLabel="Trạng thái đích"
+        />
       )}
 
       {(a.type === 'addLabel' || a.type === 'removeLabel') && (
-        <SearchSelect value={a.labelId} onChange={(labelId) => set({ labelId })} options={opts.labels} placeholder="Chọn nhãn…" searchPlaceholder="Tìm nhãn…" ariaLabel="Nhãn" />
+        <SearchSelect
+          value={a.labelId}
+          onChange={(labelId) => set({ labelId })}
+          options={opts.labels}
+          placeholder="Chọn nhãn…"
+          searchPlaceholder="Tìm nhãn…"
+          ariaLabel="Nhãn"
+        />
       )}
 
       {a.type === 'addComment' && (
@@ -396,32 +687,80 @@ function ActionCard({ a, opts, scoped, onChange }: { a: ActionDraft; opts: Optio
             onChange={(e) => set({ body: e.target.value })}
             placeholder="Ví dụ: {{actor.displayName}} vừa cập nhật {{issue.key}}"
           />
-          <p className="mt-1 text-xs text-faint">Chèn được {'{{issue.key}}'}, {'{{issue.summary}}'}, {'{{actor.displayName}}'}.</p>
+          <p className="mt-1 text-xs text-faint">
+            Chèn được {'{{issue.key}}'}, {'{{issue.summary}}'}, {'{{actor.displayName}}'}.
+          </p>
         </div>
       )}
 
       {a.type === 'notify' && (
         <div className="space-y-2">
-          <Input aria-label="Nội dung thông báo" value={a.message} onChange={(e) => set({ message: e.target.value })} placeholder="Nội dung thông báo (hỗ trợ {{issue.key}})" maxLength={500} />
+          <Input
+            aria-label="Nội dung thông báo"
+            value={a.message}
+            onChange={(e) => set({ message: e.target.value })}
+            placeholder="Nội dung thông báo (hỗ trợ {{issue.key}})"
+            maxLength={500}
+          />
           <p className="text-xs font-medium text-muted">Người nhận</p>
-          <MultiPick options={opts.users} value={a.userIds} onChange={(userIds) => set({ userIds })} empty="Chưa tải được danh sách thành viên." ariaLabel="Người nhận" />
+          <MultiPick
+            options={opts.users}
+            value={a.userIds}
+            onChange={(userIds) => set({ userIds })}
+            empty="Chưa tải được danh sách thành viên."
+            ariaLabel="Người nhận"
+          />
           <p className="text-xs font-medium text-muted">Hoặc mọi người có vai trò</p>
-          <MultiPick options={Object.values(SYSTEM_ROLES).map((r) => ({ value: r, label: r }))} value={a.roles} onChange={(roles) => set({ roles })} empty="" ariaLabel="Vai trò nhận" />
+          <MultiPick
+            options={Object.values(SYSTEM_ROLES).map((r) => ({ value: r, label: r }))}
+            value={a.roles}
+            onChange={(roles) => set({ roles })}
+            empty=""
+            ariaLabel="Vai trò nhận"
+          />
         </div>
       )}
 
       {a.type === 'webhook' && (
         <div className="space-y-2">
-          <Input aria-label="Địa chỉ webhook" value={a.url} onChange={(e) => set({ url: e.target.value })} placeholder="https://example.com/hooks/tirapro" />
-          <Input aria-label="Khoá bí mật (không bắt buộc)" type="password" autoComplete="off" value={a.secret} onChange={(e) => set({ secret: e.target.value })} placeholder="Khoá bí mật để ký (không bắt buộc)" />
-          <p className="text-xs text-faint">Hệ thống gửi POST JSON, chờ tối đa 5 giây, không thử lại. Có khoá thì kèm chữ ký HMAC-SHA256 ở header X-Tirapro-Signature. Địa chỉ nội bộ bị chặn.</p>
+          <Input
+            aria-label="Địa chỉ webhook"
+            value={a.url}
+            onChange={(e) => set({ url: e.target.value })}
+            placeholder="https://example.com/hooks/tirapro"
+          />
+          <Input
+            aria-label="Khoá bí mật (không bắt buộc)"
+            type="password"
+            autoComplete="off"
+            value={a.secret}
+            onChange={(e) => set({ secret: e.target.value })}
+            placeholder="Khoá bí mật để ký (không bắt buộc)"
+          />
+          <p className="text-xs text-faint">
+            Hệ thống gửi POST JSON, chờ tối đa 5 giây, không thử lại. Có khoá thì kèm chữ ký
+            HMAC-SHA256 ở header X-Tirapro-Signature. Địa chỉ nội bộ bị chặn.
+          </p>
         </div>
       )}
 
       {a.type === 'createSubtask' && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_12rem]">
-          <Input aria-label="Tiêu đề việc con" value={a.summary} onChange={(e) => set({ summary: e.target.value })} placeholder="Tiêu đề việc con (hỗ trợ {{issue.key}})" maxLength={255} />
-          <SearchSelect value={a.typeId} onChange={(typeId) => set({ typeId })} options={opts.subtaskTypes} placeholder="Loại việc con…" searchPlaceholder="Tìm loại…" ariaLabel="Loại việc con" />
+          <Input
+            aria-label="Tiêu đề việc con"
+            value={a.summary}
+            onChange={(e) => set({ summary: e.target.value })}
+            placeholder="Tiêu đề việc con (hỗ trợ {{issue.key}})"
+            maxLength={255}
+          />
+          <SearchSelect
+            value={a.typeId}
+            onChange={(typeId) => set({ typeId })}
+            options={opts.subtaskTypes}
+            placeholder="Loại việc con…"
+            searchPlaceholder="Tìm loại…"
+            ariaLabel="Loại việc con"
+          />
         </div>
       )}
     </div>
@@ -435,7 +774,10 @@ function ActionCard({ a, opts, scoped, onChange }: { a: ActionDraft; opts: Optio
  * `rule = null` là tạo mới. Dựng trên `Dialog` dùng chung (size xl).
  */
 export function RuleEditor({
-  open, rule, defaultProjectId, onClose,
+  open,
+  rule,
+  defaultProjectId,
+  onClose,
 }: {
   open: boolean;
   rule: AutomationRule | null;
@@ -464,7 +806,11 @@ export function RuleEditor({
     const parsed = createRuleSchema.safeParse(toPayload(draft));
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      setError(issue ? `${issue.message}${issue.path.length ? ` (${issue.path.join(' › ')})` : ''}` : 'Quy tắc chưa hợp lệ');
+      setError(
+        issue
+          ? `${issue.message}${issue.path.length ? ` (${issue.path.join(' › ')})` : ''}`
+          : 'Quy tắc chưa hợp lệ',
+      );
       bodyRef.current?.parentElement?.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -494,25 +840,54 @@ export function RuleEditor({
       }}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={busy}>Huỷ</Button>
-          <Button onClick={submit} loading={busy}>{rule ? 'Lưu thay đổi' : 'Tạo quy tắc'}</Button>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Huỷ
+          </Button>
+          <Button onClick={submit} loading={busy}>
+            {rule ? 'Lưu thay đổi' : 'Tạo quy tắc'}
+          </Button>
         </>
       }
     >
       <div ref={bodyRef} className="space-y-6">
-        {error && <p role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+        {error && (
+          <p
+            role="alert"
+            className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+          >
+            {error}
+          </p>
+        )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Tên quy tắc" htmlFor="rule-name">
-            <Input id="rule-name" value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="Ví dụ: Việc khẩn giao cho lead" maxLength={120} autoFocus />
+            <Input
+              id="rule-name"
+              value={draft.name}
+              onChange={(e) => set({ name: e.target.value })}
+              placeholder="Ví dụ: Việc khẩn giao cho lead"
+              maxLength={120}
+              autoFocus
+            />
           </Field>
-          <Field label="Phạm vi" htmlFor="rule-scope" hint={rule ? 'Không đổi được phạm vi sau khi tạo.' : 'Chọn dự án để dùng nhãn/sprint của dự án đó.'}>
+          <Field
+            label="Phạm vi"
+            htmlFor="rule-scope"
+            hint={
+              rule
+                ? 'Không đổi được phạm vi sau khi tạo.'
+                : 'Chọn dự án để dùng nhãn/sprint của dự án đó.'
+            }
+          >
             <SearchSelect
               id="rule-scope"
               value={draft.projectId}
               onChange={(projectId) => set({ projectId })}
               disabled={!!rule}
-              options={[{ value: '', label: 'Toàn bộ không gian làm việc' }, ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key }))]}
+              options={[
+                { value: '', label: 'Toàn bộ không gian làm việc' },
+                ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
+              ]}
               searchPlaceholder="Tìm dự án…"
               ariaLabel="Phạm vi quy tắc"
             />
@@ -522,25 +897,68 @@ export function RuleEditor({
         <section aria-label="Khi">
           <StepHeader n={1} title="Khi…" hint="Sự kiện làm quy tắc chạy." />
           <div className="space-y-3">
-            <Select aria-label="Sự kiện kích hoạt" value={draft.trigger} onChange={(e) => set({ trigger: e.target.value as RuleTrigger })}>
-              {RULE_TRIGGERS.map((t) => <option key={t} value={t}>{TRIGGER_LABELS[t]}</option>)}
+            <Select
+              aria-label="Sự kiện kích hoạt"
+              value={draft.trigger}
+              onChange={(e) => set({ trigger: e.target.value as RuleTrigger })}
+            >
+              {RULE_TRIGGERS.map((t) => (
+                <option key={t} value={t}>
+                  {TRIGGER_LABELS[t]}
+                </option>
+              ))}
             </Select>
             {draft.trigger === 'ISSUE_TRANSITIONED' && (
-              <Field label="Chỉ khi chuyển đến trạng thái" hint="Bỏ trống để chạy ở mọi lần đổi trạng thái.">
-                <SearchSelect value={draft.toStatusId} onChange={(toStatusId) => set({ toStatusId })} options={[{ value: '', label: 'Bất kỳ trạng thái nào' }, ...opts.statuses]} searchPlaceholder="Tìm trạng thái…" ariaLabel="Trạng thái đích" />
+              <Field
+                label="Chỉ khi chuyển đến trạng thái"
+                hint="Bỏ trống để chạy ở mọi lần đổi trạng thái."
+              >
+                <SearchSelect
+                  value={draft.toStatusId}
+                  onChange={(toStatusId) => set({ toStatusId })}
+                  options={[{ value: '', label: 'Bất kỳ trạng thái nào' }, ...opts.statuses]}
+                  searchPlaceholder="Tìm trạng thái…"
+                  ariaLabel="Trạng thái đích"
+                />
               </Field>
             )}
             {draft.trigger === 'ISSUE_UPDATED' && (
-              <Field label="Chỉ khi các trường này vừa đổi" hint="Không chọn gì = chạy ở mọi lần sửa.">
-                <MultiPick options={UPDATE_FIELD_CHOICES.map(([value, label]) => ({ value, label }))} value={draft.fields} onChange={(fields) => set({ fields })} empty="" ariaLabel="Các trường theo dõi" />
+              <Field
+                label="Chỉ khi các trường này vừa đổi"
+                hint="Không chọn gì = chạy ở mọi lần sửa."
+              >
+                <MultiPick
+                  options={UPDATE_FIELD_CHOICES.map(([value, label]) => ({ value, label }))}
+                  value={draft.fields}
+                  onChange={(fields) => set({ fields })}
+                  empty=""
+                  ariaLabel="Các trường theo dõi"
+                />
               </Field>
             )}
             {draft.trigger === 'SCHEDULED' && (
-              <Field label="Lịch chạy (cron, giờ UTC)" htmlFor="rule-cron" hint="5 trường: phút giờ ngày tháng thứ. Cần thêm một điều kiện JQL ở bước 2 để chọn công việc (tối đa 500 việc mỗi lần).">
-                <Input id="rule-cron" className="font-mono" value={draft.cron} onChange={(e) => set({ cron: e.target.value })} placeholder="0 9 * * 1-5" />
+              <Field
+                label="Lịch chạy (cron, giờ UTC)"
+                htmlFor="rule-cron"
+                hint="5 trường: phút giờ ngày tháng thứ. Cần thêm một điều kiện JQL ở bước 2 để chọn công việc (tối đa 500 việc mỗi lần)."
+              >
+                <Input
+                  id="rule-cron"
+                  className="font-mono"
+                  value={draft.cron}
+                  onChange={(e) => set({ cron: e.target.value })}
+                  placeholder="0 9 * * 1-5"
+                />
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {CRON_PRESETS.map(([cron, label]) => (
-                    <button key={cron} type="button" onClick={() => set({ cron })} className="rounded-full border border-border px-2 py-0.5 text-xs text-muted hover:bg-surface-2 hover:text-ink">{label}</button>
+                    <button
+                      key={cron}
+                      type="button"
+                      onClick={() => set({ cron })}
+                      className="rounded-full border border-border px-2 py-0.5 text-xs text-muted hover:bg-surface-2 hover:text-ink"
+                    >
+                      {label}
+                    </button>
                   ))}
                 </div>
               </Field>
@@ -549,18 +967,49 @@ export function RuleEditor({
         </section>
 
         <section aria-label="Nếu">
-          <StepHeader n={2} title="Nếu… (không bắt buộc)" hint="Mọi điều kiện đều phải đúng thì hành động mới chạy." />
+          <StepHeader
+            n={2}
+            title="Nếu… (không bắt buộc)"
+            hint="Mọi điều kiện đều phải đúng thì hành động mới chạy."
+          />
           <div className="space-y-2">
             {draft.conditions.map((c, i) => (
-              <Card key={c.id} label={`điều kiện ${i + 1}`} onRemove={() => set({ conditions: draft.conditions.filter((x) => x.id !== c.id) })}>
-                <ConditionCard c={c} opts={opts} onChange={(next) => set({ conditions: draft.conditions.map((x) => (x.id === c.id ? next : x)) })} />
+              <Card
+                key={c.id}
+                label={`điều kiện ${i + 1}`}
+                onRemove={() => set({ conditions: draft.conditions.filter((x) => x.id !== c.id) })}
+              >
+                <ConditionCard
+                  c={c}
+                  opts={opts}
+                  onChange={(next) =>
+                    set({ conditions: draft.conditions.map((x) => (x.id === c.id ? next : x)) })
+                  }
+                />
               </Card>
             ))}
             <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" variant="secondary" onClick={() => set({ conditions: [...draft.conditions, newCondition()] })}>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => set({ conditions: [...draft.conditions, newCondition()] })}
+              >
                 <Plus className="h-4 w-4" /> Thêm điều kiện
               </Button>
-              <Button type="button" size="sm" variant="secondary" onClick={() => set({ conditions: [...draft.conditions, { id: uid(), kind: 'jql', jql: '', raw: false }] })}>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() =>
+                  set({
+                    conditions: [
+                      ...draft.conditions,
+                      { id: uid(), kind: 'jql', jql: '', raw: false },
+                    ],
+                  })
+                }
+              >
                 <Plus className="h-4 w-4" /> Thêm điều kiện JQL
               </Button>
             </div>
@@ -568,14 +1017,38 @@ export function RuleEditor({
         </section>
 
         <section aria-label="Thì">
-          <StepHeader n={3} title="Thì…" hint="Các hành động chạy lần lượt từ trên xuống; gặp lỗi thì dừng." />
+          <StepHeader
+            n={3}
+            title="Thì…"
+            hint="Các hành động chạy lần lượt từ trên xuống; gặp lỗi thì dừng."
+          />
           <div className="space-y-2">
             {draft.actions.map((a, i) => (
-              <Card key={a.id} label={`hành động ${i + 1}`} onRemove={draft.actions.length > 1 ? () => set({ actions: draft.actions.filter((x) => x.id !== a.id) }) : undefined}>
-                <ActionCard a={a} opts={opts} scoped={scoped} onChange={(next) => set({ actions: draft.actions.map((x) => (x.id === a.id ? next : x)) })} />
+              <Card
+                key={a.id}
+                label={`hành động ${i + 1}`}
+                onRemove={
+                  draft.actions.length > 1
+                    ? () => set({ actions: draft.actions.filter((x) => x.id !== a.id) })
+                    : undefined
+                }
+              >
+                <ActionCard
+                  a={a}
+                  opts={opts}
+                  scoped={scoped}
+                  onChange={(next) =>
+                    set({ actions: draft.actions.map((x) => (x.id === a.id ? next : x)) })
+                  }
+                />
               </Card>
             ))}
-            <Button type="button" size="sm" variant="secondary" onClick={() => set({ actions: [...draft.actions, newAction('addComment')] })}>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => set({ actions: [...draft.actions, newAction('addComment')] })}
+            >
               <Plus className="h-4 w-4" /> Thêm hành động
             </Button>
           </div>

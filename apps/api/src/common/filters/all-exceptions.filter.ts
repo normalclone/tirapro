@@ -55,7 +55,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
       code = this.codeFromStatus(statusCode, code);
     } else if (exception instanceof Error) {
       // Lỗi không lường trước: ở production không lộ message nội bộ (SQL, đường dẫn, stack...) ra client.
-      message = process.env.NODE_ENV === 'production' ? INTERNAL_ERROR_MESSAGE : exception.message || message;
+      message =
+        process.env.NODE_ENV === 'production'
+          ? INTERNAL_ERROR_MESSAGE
+          : exception.message || message;
     } else if (process.env.NODE_ENV === 'production') {
       message = INTERNAL_ERROR_MESSAGE;
     }

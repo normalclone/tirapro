@@ -297,8 +297,8 @@ export class DigestsService implements OnApplicationShutdown {
   @Cron(CronExpression.EVERY_DAY_AT_8AM)
   async runScheduled(): Promise<void> {
     // Khoá Redis để nhiều node API không gửi trùng digest.
-    await withCronLock(this.redis, 'digests:scheduled', 1800, () => this.sendScheduled()).catch((err) =>
-      this.warn('runScheduled.lock', err),
+    await withCronLock(this.redis, 'digests:scheduled', 1800, () => this.sendScheduled()).catch(
+      (err) => this.warn('runScheduled.lock', err),
     );
   }
 
@@ -359,7 +359,9 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   private warn(context: string, err: unknown): void {
-    this.logger.warn(`Digest (${context}) lỗi: ${err instanceof Error ? err.message : String(err)}`);
+    this.logger.warn(
+      `Digest (${context}) lỗi: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 

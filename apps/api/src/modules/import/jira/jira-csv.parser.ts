@@ -56,30 +56,73 @@ export interface JiraParseResult {
 
 /** Cột importer đọc (so khớp không phân biệt hoa/thường). */
 const USED_COLUMNS = new Set([
-  'summary', 'issue key', 'issue id', 'issue type', 'status', 'priority', 'resolution',
-  'assignee', 'assignee id', 'reporter', 'reporter id', 'creator', 'creator id',
-  'created', 'updated', 'resolved', 'due date', 'labels', 'sprint',
-  'parent', 'parent id', 'custom field (epic link)', 'description', 'comment',
-  'story points', 'custom field (story points)', 'story point estimate', 'custom field (story point estimate)',
-  'time spent', 'original estimate', 'project key',
+  'summary',
+  'issue key',
+  'issue id',
+  'issue type',
+  'status',
+  'priority',
+  'resolution',
+  'assignee',
+  'assignee id',
+  'reporter',
+  'reporter id',
+  'creator',
+  'creator id',
+  'created',
+  'updated',
+  'resolved',
+  'due date',
+  'labels',
+  'sprint',
+  'parent',
+  'parent id',
+  'custom field (epic link)',
+  'description',
+  'comment',
+  'story points',
+  'custom field (story points)',
+  'story point estimate',
+  'custom field (story point estimate)',
+  'time spent',
+  'original estimate',
+  'project key',
 ]);
 
 /** Cột chuẩn của Jira mà ta cố ý bỏ qua — không đáng báo "cột lạ". */
 const IGNORED_COLUMNS = new Set([
-  'project name', 'project type', 'project lead', 'project lead id', 'project description', 'project url',
-  'parent summary', 'status category', 'status category changed', 'last viewed',
-  'remaining estimate', 'custom field (epic name)', 'custom field (epic status)',
-  'custom field (rank)', 'security level', 'votes', 'watchers',
+  'project name',
+  'project type',
+  'project lead',
+  'project lead id',
+  'project description',
+  'project url',
+  'parent summary',
+  'status category',
+  'status category changed',
+  'last viewed',
+  'remaining estimate',
+  'custom field (epic name)',
+  'custom field (epic status)',
+  'custom field (rank)',
+  'security level',
+  'votes',
+  'watchers',
 ]);
 
 const STORY_POINT_COLUMNS = [
-  'custom field (story points)', 'story points', 'custom field (story point estimate)', 'story point estimate',
+  'custom field (story points)',
+  'story points',
+  'custom field (story point estimate)',
+  'story point estimate',
 ];
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
-const DATE_RE = /^(\d{1,2})\/([A-Za-z]{3,})\/(\d{2}|\d{4})(?:\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?)?$/;
-const COMMENT_RE = /^(\d{1,2}\/[A-Za-z]{3,}\/\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:[AaPp][Mm])?)?);([^;]*);([\s\S]*)$/;
+const DATE_RE =
+  /^(\d{1,2})\/([A-Za-z]{3,})\/(\d{2}|\d{4})(?:\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?)?$/;
+const COMMENT_RE =
+  /^(\d{1,2}\/[A-Za-z]{3,}\/\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:[AaPp][Mm])?)?);([^;]*);([\s\S]*)$/;
 
 /**
  * Đọc ngày của Jira (`15/Oct/26 9:30 AM`, `15/Oct/2026 09:30`, `15/Oct/26`) hoặc ISO.
@@ -109,7 +152,8 @@ export function parseJiraDate(raw: string): Date | null {
   if (hour > 23 || minute > 59) return null;
   const d = new Date(Date.UTC(year, month, day, hour, minute));
   // Date.UTC tự "tràn" ngày (31/Feb → 3/Mar) → so lại để loại ngày không tồn tại.
-  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month || d.getUTCDate() !== day) return null;
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month || d.getUTCDate() !== day)
+    return null;
   return d;
 }
 
@@ -154,14 +198,20 @@ export function parseJiraCsv(input: string | Buffer): JiraParseResult {
   const lower = header.map((h) => h.toLowerCase());
   const indexesOf = (name: string): number[] => {
     const out: number[] = [];
-    lower.forEach((h, i) => { if (h === name) out.push(i); });
+    lower.forEach((h, i) => {
+      if (h === name) out.push(i);
+    });
     return out;
   };
   if (!lower.includes('summary')) {
-    throw new Error('Tệp không có cột "Summary" — hãy xuất từ Jira bằng "Export issues → CSV (tất cả các trường)"');
+    throw new Error(
+      'Tệp không có cột "Summary" — hãy xuất từ Jira bằng "Export issues → CSV (tất cả các trường)"',
+    );
   }
   if (!lower.includes('issue key')) {
-    throw new Error('Tệp không có cột "Issue key" — hãy xuất từ Jira bằng "Export issues → CSV (tất cả các trường)"');
+    throw new Error(
+      'Tệp không có cột "Issue key" — hãy xuất từ Jira bằng "Export issues → CSV (tất cả các trường)"',
+    );
   }
 
   const unknownColumns: string[] = [];
@@ -183,7 +233,9 @@ export function parseJiraCsv(input: string | Buffer): JiraParseResult {
     return '';
   };
   const all = (cells: string[], name: string): string[] =>
-    indexesOf(name).map((i) => (cells[i] ?? '').trim()).filter(Boolean);
+    indexesOf(name)
+      .map((i) => (cells[i] ?? '').trim())
+      .filter(Boolean);
 
   const issues: JiraIssueRow[] = [];
   const accountNames = new Map<string, string>();
@@ -218,7 +270,9 @@ export function parseJiraCsv(input: string | Buffer): JiraParseResult {
       epicRef: first(cells, 'custom field (epic link)'),
       description: (cells[descIdx[0] ?? -1] ?? '').trim(),
       storyPoints: parseNumber(spIdx.map((i) => (cells[i] ?? '').trim()).find(Boolean) ?? ''),
-      comments: all(cells, 'comment').map(parseComment).filter((c): c is JiraComment => c !== null),
+      comments: all(cells, 'comment')
+        .map(parseComment)
+        .filter((c): c is JiraComment => c !== null),
       timeSpent: parseNumber(first(cells, 'time spent')),
       originalEstimate: parseNumber(first(cells, 'original estimate')),
       projectKey: first(cells, 'project key') || projectKeyOf(key),
@@ -234,7 +288,10 @@ export function parseJiraCsv(input: string | Buffer): JiraParseResult {
 }
 
 /** Tên dùng làm khoá mapping cho một tác giả comment (accountId → tên nếu biết, không thì chính accountId). */
-export function commentAuthorName(parsed: Pick<JiraParseResult, 'accountNames'>, authorRef: string | null): string | null {
+export function commentAuthorName(
+  parsed: Pick<JiraParseResult, 'accountNames'>,
+  authorRef: string | null,
+): string | null {
   if (!authorRef) return null;
   return parsed.accountNames.get(authorRef) ?? authorRef;
 }

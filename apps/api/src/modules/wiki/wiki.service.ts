@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import {
-  BusinessRuleException,
-  NotFoundAppException,
-} from '../../common/exceptions/app.exception';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import type { CreateWikiPageInput, MoveWikiPageInput, UpdateWikiPageInput } from './wiki.schemas';
 
 /** Giá trị `projectId` đặc biệt trên query: chỉ lấy tài liệu chung của workspace. */
@@ -147,7 +144,11 @@ export class WikiService {
     };
   }
 
-  async create(workspaceId: string, dto: CreateWikiPageInput, actingUserId: string): Promise<WikiPageDto> {
+  async create(
+    workspaceId: string,
+    dto: CreateWikiPageInput,
+    actingUserId: string,
+  ): Promise<WikiPageDto> {
     const title = dto.title.trim();
     if (!title) throw new BusinessRuleException('Tiêu đề bắt buộc');
 
@@ -176,7 +177,12 @@ export class WikiService {
     return this.get(workspaceId, created.id);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateWikiPageInput, actingUserId: string): Promise<WikiPageDto> {
+  async update(
+    workspaceId: string,
+    id: string,
+    dto: UpdateWikiPageInput,
+    actingUserId: string,
+  ): Promise<WikiPageDto> {
     await this.requirePage(workspaceId, id);
     const title = dto.title?.trim();
     if (dto.title !== undefined && !title) throw new BusinessRuleException('Tiêu đề bắt buộc');
@@ -196,7 +202,12 @@ export class WikiService {
    * Chặn chu trình (không cho chuyển vào chính nó hoặc con cháu của nó);
    * đánh lại `order` liên tục 0..n cho nhóm anh em cũ và mới.
    */
-  async move(workspaceId: string, id: string, dto: MoveWikiPageInput, actingUserId: string): Promise<WikiNodeDto[]> {
+  async move(
+    workspaceId: string,
+    id: string,
+    dto: MoveWikiPageInput,
+    actingUserId: string,
+  ): Promise<WikiNodeDto[]> {
     const page = await this.requirePage(workspaceId, id);
     const nextParentId = dto.parentId === undefined ? page.parentId : dto.parentId;
 
@@ -204,7 +215,9 @@ export class WikiService {
     if (nextParentId) {
       const parent = await this.requirePage(workspaceId, nextParentId);
       if (parent.projectId !== page.projectId) {
-        throw new BusinessRuleException('Chỉ chuyển được trong cùng phạm vi — trang chung của không gian làm việc, hoặc trong cùng một dự án');
+        throw new BusinessRuleException(
+          'Chỉ chuyển được trong cùng phạm vi — trang chung của không gian làm việc, hoặc trong cùng một dự án',
+        );
       }
       if (await this.isDescendant(workspaceId, nextParentId, id)) {
         throw new BusinessRuleException('Không thể chuyển trang vào trang con của chính nó');
@@ -222,7 +235,11 @@ export class WikiService {
       select: { id: true },
     });
     const target = Math.min(Math.max(dto.order ?? siblings.length, 0), siblings.length);
-    const ordered = [...siblings.slice(0, target).map((s) => s.id), id, ...siblings.slice(target).map((s) => s.id)];
+    const ordered = [
+      ...siblings.slice(0, target).map((s) => s.id),
+      id,
+      ...siblings.slice(target).map((s) => s.id),
+    ];
 
     await this.prisma.$transaction([
       this.prisma.wikiPage.update({
@@ -235,7 +252,8 @@ export class WikiService {
     ]);
 
     // Nhóm anh em cũ có thể thủng số thứ tự → đánh lại cho gọn.
-    if (page.parentId !== nextParentId) await this.renumber(workspaceId, page.projectId, page.parentId);
+    if (page.parentId !== nextParentId)
+      await this.renumber(workspaceId, page.projectId, page.parentId);
 
     return this.tree(workspaceId, page.projectId ?? SCOPE_WORKSPACE);
   }
@@ -244,7 +262,10 @@ export class WikiService {
   async remove(workspaceId: string, id: string): Promise<{ success: true }> {
     const page = await this.requirePage(workspaceId, id);
     await this.prisma.$transaction([
-      this.prisma.wikiPage.updateMany({ where: { parentId: id }, data: { parentId: page.parentId } }),
+      this.prisma.wikiPage.updateMany({
+        where: { parentId: id },
+        data: { parentId: page.parentId },
+      }),
       this.prisma.wikiPage.delete({ where: { id } }),
     ]);
     await this.renumber(workspaceId, page.projectId, page.parentId);
@@ -277,7 +298,11 @@ export class WikiService {
     return p;
   }
 
-  private async nextOrder(workspaceId: string, projectId: string | null, parentId: string | null): Promise<number> {
+  private async nextOrder(
+    workspaceId: string,
+    projectId: string | null,
+    parentId: string | null,
+  ): Promise<number> {
     const last = await this.prisma.wikiPage.findFirst({
       where: { workspaceId, projectId, parentId },
       orderBy: { order: 'desc' },
@@ -286,19 +311,29 @@ export class WikiService {
     return (last?.order ?? -1) + 1;
   }
 
-  private async renumber(workspaceId: string, projectId: string | null, parentId: string | null): Promise<void> {
+  private async renumber(
+    workspaceId: string,
+    projectId: string | null,
+    parentId: string | null,
+  ): Promise<void> {
     const rows = await this.prisma.wikiPage.findMany({
       where: { workspaceId, projectId, parentId },
       orderBy: [{ order: 'asc' }, { title: 'asc' }],
       select: { id: true },
     });
     await this.prisma.$transaction(
-      rows.map((r, idx) => this.prisma.wikiPage.update({ where: { id: r.id }, data: { order: idx } })),
+      rows.map((r, idx) =>
+        this.prisma.wikiPage.update({ where: { id: r.id }, data: { order: idx } }),
+      ),
     );
   }
 
   /** `candidateId` có nằm trong nhánh con của `rootId` không (đi ngược lên theo parent). */
-  private async isDescendant(workspaceId: string, candidateId: string, rootId: string): Promise<boolean> {
+  private async isDescendant(
+    workspaceId: string,
+    candidateId: string,
+    rootId: string,
+  ): Promise<boolean> {
     let cursor: string | null = candidateId;
     for (let depth = 0; cursor && depth < 100; depth += 1) {
       const row: { parentId: string | null } | null = await this.prisma.wikiPage.findFirst({
@@ -311,7 +346,10 @@ export class WikiService {
     return false;
   }
 
-  private async ancestors(workspaceId: string, parentId: string | null): Promise<{ id: string; title: string }[]> {
+  private async ancestors(
+    workspaceId: string,
+    parentId: string | null,
+  ): Promise<{ id: string; title: string }[]> {
     const chain: { id: string; title: string }[] = [];
     let cursor = parentId;
     for (let depth = 0; cursor && depth < 100; depth += 1) {
@@ -355,7 +393,10 @@ export class WikiService {
     const idx = body.toLowerCase().indexOf(term.toLowerCase());
     if (idx < 0) return '';
     const start = Math.max(0, idx - 60);
-    const text = body.slice(start, start + 160).replace(/\s+/g, ' ').trim();
+    const text = body
+      .slice(start, start + 160)
+      .replace(/\s+/g, ' ')
+      .trim();
     return `${start > 0 ? '…' : ''}${text}${start + 160 < body.length ? '…' : ''}`;
   }
 }

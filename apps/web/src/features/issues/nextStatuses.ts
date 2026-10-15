@@ -9,7 +9,10 @@ export interface NextStatus {
 const NONE: NextStatus[] = [];
 
 /** Các trạng thái ở BƯỚC KẾ TIẾP — chuyển tiếp hợp lệ từ trạng thái hiện tại theo workflow. */
-export function computeNextStatuses(workflows: Workflow[] | undefined, currentStatusId: string | undefined): NextStatus[] {
+export function computeNextStatuses(
+  workflows: Workflow[] | undefined,
+  currentStatusId: string | undefined,
+): NextStatus[] {
   if (!currentStatusId) return NONE;
   const wf = (workflows ?? []).find((w) => w.statuses.some((s) => s.id === currentStatusId));
   if (!wf) return NONE;

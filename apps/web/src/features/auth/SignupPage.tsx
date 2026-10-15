@@ -43,7 +43,9 @@ export function SignupPage() {
     <div className="grid h-full place-items-center px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex items-center gap-2.5">
-          <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-fg text-lg font-bold">T</div>
+          <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-fg text-lg font-bold">
+            T
+          </div>
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Tạo tài khoản</h1>
             <p className="text-sm text-muted">Bắt đầu với Tirapro trong vài giây.</p>
@@ -56,34 +58,80 @@ export function SignupPage() {
               <Lock className="h-5 w-5" aria-hidden />
             </div>
             <p className="text-sm font-medium text-ink">Đăng ký công khai đang tắt</p>
-            <p className="mt-1 text-sm text-muted">Vui lòng liên hệ quản trị viên để được cấp tài khoản.</p>
+            <p className="mt-1 text-sm text-muted">
+              Vui lòng liên hệ quản trị viên để được cấp tài khoản.
+            </p>
           </div>
         ) : (
-        <form onSubmit={onSubmit} className="space-y-3">
-          <div className="space-y-1.5">
-            <label htmlFor="displayName" className="text-sm font-medium text-ink">Tên hiển thị</label>
-            <Input id="displayName" type="text" autoComplete="name" placeholder="Nguyễn Văn A" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="email" className="text-sm font-medium text-ink">Email</label>
-            <Input id="email" type="email" autoComplete="email" placeholder="ten@congty.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="password" className="text-sm font-medium text-ink">Mật khẩu</label>
-            <Input id="password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            <p className="text-xs text-faint">Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và chữ số.</p>
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="workspaceName" className="text-sm font-medium text-ink">Tên không gian làm việc</label>
-            <Input id="workspaceName" type="text" autoComplete="organization" placeholder="Công ty của tôi" value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)} />
-          </div>
-          <Button type="submit" loading={loading} className="w-full">Đăng ký</Button>
-        </form>
+          <form onSubmit={onSubmit} className="space-y-3">
+            <div className="space-y-1.5">
+              <label htmlFor="displayName" className="text-sm font-medium text-ink">
+                Tên hiển thị
+              </label>
+              <Input
+                id="displayName"
+                type="text"
+                autoComplete="name"
+                placeholder="Nguyễn Văn A"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="text-sm font-medium text-ink">
+                Email
+              </label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                placeholder="ten@congty.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="text-sm font-medium text-ink">
+                Mật khẩu
+              </label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <p className="text-xs text-faint">
+                Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và chữ số.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="workspaceName" className="text-sm font-medium text-ink">
+                Tên không gian làm việc
+              </label>
+              <Input
+                id="workspaceName"
+                type="text"
+                autoComplete="organization"
+                placeholder="Công ty của tôi"
+                value={workspaceName}
+                onChange={(e) => setWorkspaceName(e.target.value)}
+              />
+            </div>
+            <Button type="submit" loading={loading} className="w-full">
+              Đăng ký
+            </Button>
+          </form>
         )}
 
         <p className="mt-4 text-center text-sm text-muted">
           Đã có tài khoản?{' '}
-          <Link to="/login" className="font-medium text-primary hover:underline">Đăng nhập</Link>
+          <Link to="/login" className="font-medium text-primary hover:underline">
+            Đăng nhập
+          </Link>
         </p>
       </div>
     </div>

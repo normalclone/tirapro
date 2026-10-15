@@ -45,11 +45,17 @@ export function SprintAssistantDialog({
   }, [open, sprint.goal, resetPlan]);
 
   const capacityNum = capacity.trim() === '' ? undefined : Number(capacity);
-  const capacityInvalid = capacityNum !== undefined && (!Number.isFinite(capacityNum) || capacityNum <= 0);
+  const capacityInvalid =
+    capacityNum !== undefined && (!Number.isFinite(capacityNum) || capacityNum <= 0);
 
   function run() {
     plan.mutate(
-      { projectId, sprintId: sprint.id, capacityPoints: capacityNum, goal: goal.trim() || undefined },
+      {
+        projectId,
+        sprintId: sprint.id,
+        capacityPoints: capacityNum,
+        goal: goal.trim() || undefined,
+      },
       {
         onSuccess: (r) => {
           setResult(r);
@@ -61,7 +67,8 @@ export function SprintAssistantDialog({
 
   const chosen = result?.picks.filter((p) => ticked.has(p.issueId)) ?? [];
   const chosenPoints = chosen.reduce((s, p) => s + p.storyPoints, 0);
-  const overCapacity = !!result && result.capacityPoints > 0 && chosenPoints > result.capacityPoints;
+  const overCapacity =
+    !!result && result.capacityPoints > 0 && chosenPoints > result.capacityPoints;
 
   async function apply() {
     if (chosen.length === 0) return;
@@ -71,9 +78,12 @@ export function SprintAssistantDialog({
         patch: { sprintId: sprint.id },
       });
       if (conflicts.length > 0) {
-        toast.warning(`Đã đưa ${updated.length} việc vào “${sprint.name}”, còn ${conflicts.length} việc chưa được`, {
-          description: 'Người khác vừa sửa những việc đó. Hãy đề xuất lại để lấy bản mới nhất.',
-        });
+        toast.warning(
+          `Đã đưa ${updated.length} việc vào “${sprint.name}”, còn ${conflicts.length} việc chưa được`,
+          {
+            description: 'Người khác vừa sửa những việc đó. Hãy đề xuất lại để lấy bản mới nhất.',
+          },
+        );
       } else {
         toast.success(`Đã đưa ${updated.length} việc vào “${sprint.name}”.`);
       }
@@ -86,17 +96,28 @@ export function SprintAssistantDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(o) => { if (!o) onClose(); }}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
       title={`Trợ lý lập sprint — ${sprint.name}`}
       description="Đề xuất việc trong Backlog vừa với năng lực của đội. Bạn xem lại và bỏ tick việc nào không muốn đưa vào."
       size="lg"
       footer={
         <>
           <p className={cn('mr-auto', overCapacity ? 'text-sm text-danger' : 'text-sm text-muted')}>
-            {result ? `Đã chọn ${chosen.length} việc · ${chosenPoints} điểm${overCapacity ? ' — vượt năng lực' : ''}` : ''}
+            {result
+              ? `Đã chọn ${chosen.length} việc · ${chosenPoints} điểm${overCapacity ? ' — vượt năng lực' : ''}`
+              : ''}
           </p>
-          <Button variant="ghost" size="sm" onClick={onClose}>Đóng</Button>
-          <Button size="sm" onClick={() => void apply()} loading={bulkUpdate.isPending} disabled={chosen.length === 0}>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Đóng
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => void apply()}
+            loading={bulkUpdate.isPending}
+            disabled={chosen.length === 0}
+          >
             Đưa vào sprint
           </Button>
         </>
@@ -117,8 +138,15 @@ export function SprintAssistantDialog({
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-muted">Mục tiêu sprint (tuỳ chọn, để AI chọn việc khớp mục tiêu)</span>
-            <Input value={goal} maxLength={500} onChange={(e) => setGoal(e.target.value)} placeholder="Ví dụ: Hoàn thiện luồng thanh toán" />
+            <span className="mb-1 block text-muted">
+              Mục tiêu sprint (tuỳ chọn, để AI chọn việc khớp mục tiêu)
+            </span>
+            <Input
+              value={goal}
+              maxLength={500}
+              onChange={(e) => setGoal(e.target.value)}
+              placeholder="Ví dụ: Hoàn thiện luồng thanh toán"
+            />
           </label>
         </div>
         {capacityInvalid && <p className="text-sm text-danger">Năng lực phải là số lớn hơn 0.</p>}
@@ -164,13 +192,21 @@ function PlanResult({
     <section aria-live="polite" className="space-y-3">
       <p className="text-sm text-muted">
         Năng lực <b className="text-ink">{result.capacityPoints}</b> điểm
-        {result.velocityAvg > 0 && <> · velocity trung bình <b className="text-ink">{result.velocityAvg}</b></>}
+        {result.velocityAvg > 0 && (
+          <>
+            {' '}
+            · velocity trung bình <b className="text-ink">{result.velocityAvg}</b>
+          </>
+        )}
         {' · '}
-        {result.source === 'claude' ? 'Chọn bởi AI theo mục tiêu' : 'Chọn theo độ ưu tiên và hạn chót'}
+        {result.source === 'claude'
+          ? 'Chọn bởi AI theo mục tiêu'
+          : 'Chọn theo độ ưu tiên và hạn chót'}
       </p>
       {result.reason && (
         <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-muted">
-          AI đang bận nên kết quả dưới đây chỉ theo độ ưu tiên và hạn chót. Bạn có thể bấm “Đề xuất lại”.
+          AI đang bận nên kết quả dưới đây chỉ theo độ ưu tiên và hạn chót. Bạn có thể bấm “Đề xuất
+          lại”.
         </p>
       )}
       {result.capacityPoints <= 0 && (
@@ -179,7 +215,9 @@ function PlanResult({
         </p>
       )}
       {result.picks.length === 0 && result.capacityPoints > 0 && (
-        <p className="text-sm text-muted">Backlog chưa có việc đã ước lượng điểm nào vừa với năng lực này.</p>
+        <p className="text-sm text-muted">
+          Backlog chưa có việc đã ước lượng điểm nào vừa với năng lực này.
+        </p>
       )}
       {result.picks.length > 0 && (
         <ul className="divide-y divide-border rounded-lg border border-border">
@@ -199,7 +237,9 @@ function PlanResult({
                   </span>
                   <span className="mt-0.5 block text-xs text-muted">{p.reason}</span>
                 </span>
-                <span className="shrink-0 rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium">{p.storyPoints} điểm</span>
+                <span className="shrink-0 rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium">
+                  {p.storyPoints} điểm
+                </span>
               </label>
             </li>
           ))}
@@ -207,8 +247,12 @@ function PlanResult({
       )}
       {(result.leftovers > 0 || result.unestimated > 0) && (
         <p className="text-xs text-muted">
-          {result.leftovers > 0 && <>Còn {result.leftovers} việc đã ước lượng chưa vừa năng lực. </>}
-          {result.unestimated > 0 && <>{result.unestimated} việc chưa có điểm nên bị bỏ qua — hãy ước lượng trước.</>}
+          {result.leftovers > 0 && (
+            <>Còn {result.leftovers} việc đã ước lượng chưa vừa năng lực. </>
+          )}
+          {result.unestimated > 0 && (
+            <>{result.unestimated} việc chưa có điểm nên bị bỏ qua — hãy ước lượng trước.</>
+          )}
         </p>
       )}
     </section>

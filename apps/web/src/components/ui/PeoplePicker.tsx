@@ -78,7 +78,13 @@ export function PeoplePicker({
   }
 
   return (
-    <Popover.Root open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(''); }}>
+    <Popover.Root
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setQ('');
+      }}
+    >
       <Popover.Trigger asChild>
         <button
           type="button"
@@ -119,7 +125,10 @@ export function PeoplePicker({
               autoFocus
               className="h-8 text-sm"
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && filtered.length > 0) { e.preventDefault(); pick(filtered[0]!.id); }
+                if (e.key === 'Enter' && filtered.length > 0) {
+                  e.preventDefault();
+                  pick(filtered[0]!.id);
+                }
               }}
             />
           </div>
@@ -131,9 +140,18 @@ export function PeoplePicker({
                   role="option"
                   aria-selected={value === ''}
                   onClick={() => pick('')}
-                  className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted transition-colors hover:bg-surface-2', value === '' && 'bg-surface-2')}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted transition-colors hover:bg-surface-2',
+                    value === '' && 'bg-surface-2',
+                  )}
                 >
-                  <Check className={cn('h-4 w-4 shrink-0 text-primary', value === '' ? 'opacity-100' : 'opacity-0')} aria-hidden />
+                  <Check
+                    className={cn(
+                      'h-4 w-4 shrink-0 text-primary',
+                      value === '' ? 'opacity-100' : 'opacity-0',
+                    )}
+                    aria-hidden
+                  />
                   {emptyLabel}
                 </button>
               </li>
@@ -147,16 +165,27 @@ export function PeoplePicker({
                     role="option"
                     aria-selected={active}
                     onClick={() => pick(o.id)}
-                    className={cn('flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-2', active && 'bg-surface-2')}
+                    className={cn(
+                      'flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-2',
+                      active && 'bg-surface-2',
+                    )}
                   >
-                    <Check className={cn('mt-1.5 h-4 w-4 shrink-0 text-primary', active ? 'opacity-100' : 'opacity-0')} aria-hidden />
+                    <Check
+                      className={cn(
+                        'mt-1.5 h-4 w-4 shrink-0 text-primary',
+                        active ? 'opacity-100' : 'opacity-0',
+                      )}
+                      aria-hidden
+                    />
                     <Avatar name={o.name} src={o.avatarUrl} size={28} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm text-ink">{o.name}</span>
                       {(o.position || (o.teams && o.teams.length > 0)) && (
                         <span className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-muted">
                           {o.position && <span className="truncate">{o.position}</span>}
-                          {o.teams?.map((t) => <MiniTeam key={t.name} name={t.name} color={t.color} />)}
+                          {o.teams?.map((t) => (
+                            <MiniTeam key={t.name} name={t.name} color={t.color} />
+                          ))}
                         </span>
                       )}
                     </span>
@@ -164,7 +193,9 @@ export function PeoplePicker({
                 </li>
               );
             })}
-            {filtered.length === 0 && <li className="px-2 py-3 text-center text-sm text-muted">Không tìm thấy</li>}
+            {filtered.length === 0 && (
+              <li className="px-2 py-3 text-center text-sm text-muted">Không tìm thấy</li>
+            )}
           </ul>
         </Popover.Content>
       </Popover.Portal>

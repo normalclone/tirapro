@@ -12,7 +12,16 @@ import { cn } from '@/lib/utils';
 import { useCreateProgram, useUpdateProgram, type ProgramDto } from './api';
 
 /** Bảng màu nhãn chương trình — cùng hệ với nhãn nhóm để đọc nhanh trên dòng thời gian. */
-const PROGRAM_COLORS = ['#2563eb', '#16a34a', '#a855f7', '#f59e0b', '#dc2626', '#0d9488', '#db2777', '#6366f1'];
+const PROGRAM_COLORS = [
+  '#2563eb',
+  '#16a34a',
+  '#a855f7',
+  '#f59e0b',
+  '#dc2626',
+  '#0d9488',
+  '#db2777',
+  '#6366f1',
+];
 
 /** Tên tiếng Việt của từng màu — để tooltip và trình đọc màn hình không đọc mã hex. */
 const COLOR_NAMES: Record<string, string> = {
@@ -35,7 +44,17 @@ function toDateInput(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-muted">
@@ -83,7 +102,10 @@ export function ProgramEditorModal({
   }, [open, program]);
 
   const ownerOptions = useMemo(
-    () => [{ value: '', label: 'Chưa chỉ định' }, ...(users ?? []).map((u) => ({ value: u.id, label: u.displayName }))],
+    () => [
+      { value: '', label: 'Chưa chỉ định' },
+      ...(users ?? []).map((u) => ({ value: u.id, label: u.displayName })),
+    ],
     [users],
   );
   const projectOptions = useMemo(
@@ -133,7 +155,9 @@ export function ProgramEditorModal({
       size="md"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Hủy</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Hủy
+          </Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
             {editing ? 'Lưu thay đổi' : 'Tạo chương trình'}
           </Button>
@@ -142,7 +166,14 @@ export function ProgramEditorModal({
     >
       <div className="space-y-4">
         <Field label="Tên chương trình" htmlFor="program-name">
-          <Input id="program-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Chuyển đổi số 2026" autoFocus maxLength={120} />
+          <Input
+            id="program-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="VD: Chuyển đổi số 2026"
+            autoFocus
+            maxLength={120}
+          />
         </Field>
 
         <Field label="Màu nhãn" hint="(để nhận ra chương trình trên dòng thời gian)">
@@ -157,7 +188,9 @@ export function ProgramEditorModal({
                 aria-pressed={color === c}
                 className={cn(
                   'h-7 w-7 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                  color === c ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink-strong' : 'hover:scale-110',
+                  color === c
+                    ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink-strong'
+                    : 'hover:scale-110',
                 )}
                 style={{ background: c }}
               />
@@ -166,7 +199,13 @@ export function ProgramEditorModal({
         </Field>
 
         <Field label="Mô tả" hint="(tùy chọn)" htmlFor="program-desc">
-          <Input id="program-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Chương trình này hướng tới điều gì?" maxLength={1000} />
+          <Input
+            id="program-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Chương trình này hướng tới điều gì?"
+            maxLength={1000}
+          />
         </Field>
 
         <Field label="Người phụ trách" hint="(tùy chọn)">
@@ -182,10 +221,20 @@ export function ProgramEditorModal({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Ngày bắt đầu" hint="(tùy chọn)" htmlFor="program-start">
-            <Input id="program-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <Input
+              id="program-start"
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
           </Field>
           <Field label="Ngày mục tiêu" hint="(tùy chọn — ngày muốn xong)" htmlFor="program-target">
-            <Input id="program-target" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+            <Input
+              id="program-target"
+              type="date"
+              value={targetDate}
+              onChange={(e) => setTargetDate(e.target.value)}
+            />
           </Field>
         </div>
         {dateOrderInvalid && (
@@ -194,7 +243,10 @@ export function ProgramEditorModal({
           </p>
         )}
 
-        <Field label="Dự án thuộc chương trình" hint="(bỏ chọn một dự án = tách dự án đó khỏi chương trình)">
+        <Field
+          label="Dự án thuộc chương trình"
+          hint="(bỏ chọn một dự án = tách dự án đó khỏi chương trình)"
+        >
           <RoleMultiSelect
             options={projectOptions}
             value={projectIds}

@@ -26,7 +26,10 @@ const KIND_META: Record<TimeOffKind, { label: string; className: string }> = {
   OTHER: { label: 'Khác', className: 'bg-surface-2 text-muted' },
 };
 
-const KIND_OPTIONS = (Object.keys(KIND_META) as TimeOffKind[]).map((k) => ({ value: k, label: KIND_META[k].label }));
+const KIND_OPTIONS = (Object.keys(KIND_META) as TimeOffKind[]).map((k) => ({
+  value: k,
+  label: KIND_META[k].label,
+}));
 
 interface FormState {
   id: string | null;
@@ -39,11 +42,27 @@ interface FormState {
 }
 
 function emptyForm(from: string, to: string): FormState {
-  return { id: null, scope: 'person', userId: '', kind: 'LEAVE', startDate: from, endDate: from <= to ? from : to, note: '' };
+  return {
+    id: null,
+    scope: 'person',
+    userId: '',
+    kind: 'LEAVE',
+    startDate: from,
+    endDate: from <= to ? from : to,
+    note: '',
+  };
 }
 
 /** Nghỉ phép cá nhân và ngày lễ chung — trừ thẳng vào số giờ làm được của mỗi người. */
-export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from: string; to: string }) {
+export function TimeOffPanel({
+  canManage,
+  from,
+  to,
+}: {
+  canManage: boolean;
+  from: string;
+  to: string;
+}) {
   const list = useTimeOffs({ from, to });
   const { data: users } = useWorkspaceUsers();
   const create = useCreateTimeOff();
@@ -81,9 +100,12 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
 
   function submit() {
     if (!form) return;
-    if (form.scope === 'person' && !form.userId) return toast.error('Hãy chọn người nghỉ, hoặc đổi phạm vi sang “Cả tổ chức”');
-    if (!form.startDate || !form.endDate) return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
-    if (form.endDate < form.startDate) return toast.error('Ngày kết thúc phải bằng hoặc sau ngày bắt đầu');
+    if (form.scope === 'person' && !form.userId)
+      return toast.error('Hãy chọn người nghỉ, hoặc đổi phạm vi sang “Cả tổ chức”');
+    if (!form.startDate || !form.endDate)
+      return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
+    if (form.endDate < form.startDate)
+      return toast.error('Ngày kết thúc phải bằng hoặc sau ngày bắt đầu');
 
     const payload = {
       userId: form.scope === 'workspace' ? null : form.userId,
@@ -93,7 +115,10 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
       note: form.note.trim() || null,
     };
     const done = {
-      onSuccess: () => { setForm(null); toast.success(form.id ? 'Đã cập nhật ngày nghỉ' : 'Đã thêm ngày nghỉ'); },
+      onSuccess: () => {
+        setForm(null);
+        toast.success(form.id ? 'Đã cập nhật ngày nghỉ' : 'Đã thêm ngày nghỉ');
+      },
       onError: (e: unknown) => toast.error(apiErrorMessage(e)),
     };
     if (form.id) update.mutate({ id: form.id, ...payload }, done);
@@ -103,7 +128,10 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
   function confirmDelete() {
     if (!pendingDelete) return;
     remove.mutate(pendingDelete.id, {
-      onSuccess: () => { setPendingDelete(null); toast.success('Đã xoá ngày nghỉ'); },
+      onSuccess: () => {
+        setPendingDelete(null);
+        toast.success('Đã xoá ngày nghỉ');
+      },
       onError: (e) => toast.error(apiErrorMessage(e)),
     });
   }
@@ -114,8 +142,8 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
         <div>
           <h2 className="text-base font-semibold text-ink-strong">Nghỉ phép & ngày lễ</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Ngày nghỉ được trừ thẳng khỏi số giờ làm được, nên bảng khối lượng không tính nhầm.
-            Đang hiện khoảng {shortDay(from)} – {shortDay(to)}.
+            Ngày nghỉ được trừ thẳng khỏi số giờ làm được, nên bảng khối lượng không tính nhầm. Đang
+            hiện khoảng {shortDay(from)} – {shortDay(to)}.
           </p>
         </div>
         {canManage && !form && (
@@ -132,7 +160,13 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
               <SearchSelect
                 id="off-scope"
                 value={form.scope}
-                onChange={(v) => setForm({ ...form, scope: v as FormState['scope'], kind: v === 'workspace' ? 'HOLIDAY' : form.kind })}
+                onChange={(v) =>
+                  setForm({
+                    ...form,
+                    scope: v as FormState['scope'],
+                    kind: v === 'workspace' ? 'HOLIDAY' : form.kind,
+                  })
+                }
                 options={[
                   { value: 'person', label: 'Một thành viên nghỉ' },
                   { value: 'workspace', label: 'Cả tổ chức nghỉ — ngày lễ chung' },
@@ -163,18 +197,40 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
               />
             </Field>
             <Field label="Từ ngày" htmlFor="off-start">
-              <Input id="off-start" type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="text-sm" />
+              <Input
+                id="off-start"
+                type="date"
+                value={form.startDate}
+                onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                className="text-sm"
+              />
             </Field>
             <Field label="Đến ngày" htmlFor="off-end">
-              <Input id="off-end" type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} className="text-sm" />
+              <Input
+                id="off-end"
+                type="date"
+                value={form.endDate}
+                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                className="text-sm"
+              />
             </Field>
             <Field label="Ghi chú" htmlFor="off-note">
-              <Input id="off-note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Ví dụ: nghỉ cưới" className="text-sm" />
+              <Input
+                id="off-note"
+                value={form.note}
+                onChange={(e) => setForm({ ...form, note: e.target.value })}
+                placeholder="Ví dụ: nghỉ cưới"
+                className="text-sm"
+              />
             </Field>
           </div>
           <div className="mt-3 flex items-center gap-2">
-            <Button size="sm" loading={saving} onClick={submit}>{form.id ? 'Lưu thay đổi' : 'Thêm ngày nghỉ'}</Button>
-            <Button size="sm" variant="ghost" onClick={() => setForm(null)}>Huỷ</Button>
+            <Button size="sm" loading={saving} onClick={submit}>
+              {form.id ? 'Lưu thay đổi' : 'Thêm ngày nghỉ'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setForm(null)}>
+              Huỷ
+            </Button>
           </div>
         </div>
       )}
@@ -184,26 +240,40 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
           <QueryError error={list.error} onRetry={() => void list.refetch()} />
         ) : list.isLoading ? (
           <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
           </div>
         ) : !list.data || list.data.length === 0 ? (
           <EmptyState
             icon={<CalendarOff className="h-6 w-6" />}
             title="Không có ngày nghỉ nào trong khoảng này"
             description="Nghỉ phép và ngày lễ được trừ khỏi số giờ làm được. Khai báo ngay để bảng khối lượng không tính nhầm."
-            action={canManage && !form ? <Button size="sm" onClick={() => setForm(emptyForm(from, to))}><Plus className="h-4 w-4" aria-hidden /> Thêm ngày nghỉ</Button> : undefined}
+            action={
+              canManage && !form ? (
+                <Button size="sm" onClick={() => setForm(emptyForm(from, to))}>
+                  <Plus className="h-4 w-4" aria-hidden /> Thêm ngày nghỉ
+                </Button>
+              ) : undefined
+            }
           />
         ) : (
           <ul className="divide-y divide-border">
             {list.data.map((t) => (
-              <li key={t.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+              <li
+                key={t.id}
+                className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"
+              >
                 {t.user ? (
                   <span className="flex min-w-0 flex-1 items-center gap-2">
                     <Avatar name={t.user.displayName} src={t.user.avatarUrl} size={26} />
                     <span className="truncate text-sm text-ink">{t.user.displayName}</span>
                   </span>
                 ) : (
-                  <span className="min-w-0 flex-1 text-sm text-ink" title="Ngày lễ chung — trừ số giờ làm được của tất cả thành viên.">
+                  <span
+                    className="min-w-0 flex-1 text-sm text-ink"
+                    title="Ngày lễ chung — trừ số giờ làm được của tất cả thành viên."
+                  >
                     Cả tổ chức
                   </span>
                 )}
@@ -218,7 +288,13 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
 
                 {canManage && (
                   <span className="ml-auto inline-flex items-center gap-1">
-                    <Button variant="ghost" size="icon" title="Sửa" aria-label="Sửa ngày nghỉ" onClick={() => startEdit(t)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Sửa"
+                      aria-label="Sửa ngày nghỉ"
+                      onClick={() => startEdit(t)}
+                    >
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button
@@ -255,10 +331,20 @@ export function TimeOffPanel({ canManage, from, to }: { canManage: boolean; from
   );
 }
 
-function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-xs font-medium text-muted">{label}</label>
+      <label htmlFor={htmlFor} className="text-xs font-medium text-muted">
+        {label}
+      </label>
       {children}
     </div>
   );

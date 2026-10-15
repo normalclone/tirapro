@@ -1,27 +1,53 @@
 /* Gõ nhanh trong tiêu đề: !ưu-tiên @người #sprint ~điểm ^hạn — parse + gợi ý + chip xác nhận. */
 
 export function normalize(s: string): string {
-  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/đ/g, 'd').toLowerCase();
+  return s
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/đ/g, 'd')
+    .toLowerCase();
 }
 const pad = (n: number) => String(n).padStart(2, '0');
-const toLocal = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const toLocal = (d: Date) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 export function parseDue(val: string): string | undefined {
   const v = normalize(val);
-  const at17 = (d: Date) => { d.setHours(17, 0, 0, 0); return toLocal(d); };
+  const at17 = (d: Date) => {
+    d.setHours(17, 0, 0, 0);
+    return toLocal(d);
+  };
   if (v === 'nay' || v === 'homnay') return at17(new Date());
-  if (v === 'mai' || v === 'ngaymai') { const d = new Date(); d.setDate(d.getDate() + 1); return at17(d); }
-  if (v === 'mot' || v === 'ngaymot' || v === 'kia') { const d = new Date(); d.setDate(d.getDate() + 2); return at17(d); }
+  if (v === 'mai' || v === 'ngaymai') {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return at17(d);
+  }
+  if (v === 'mot' || v === 'ngaymot' || v === 'kia') {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return at17(d);
+  }
   const off = /^(\d+)(d|ng|ngay|w|tuan|m|thang)$/.exec(v);
   if (off) {
-    const n = Number(off[1]); const unit = off[2]!;
+    const n = Number(off[1]);
+    const unit = off[2]!;
     const d = new Date();
     if (unit === 'w' || unit === 'tuan') d.setDate(d.getDate() + n * 7);
     else if (unit === 'm' || unit === 'thang') d.setMonth(d.getMonth() + n);
     else d.setDate(d.getDate() + n);
     return at17(d);
   }
-  const wd: Record<string, number> = { t2: 1, t3: 2, t4: 3, t5: 4, t6: 5, t7: 6, cn: 0, chunhat: 0 };
+  const wd: Record<string, number> = {
+    t2: 1,
+    t3: 2,
+    t4: 3,
+    t5: 4,
+    t6: 5,
+    t7: 6,
+    cn: 0,
+    chunhat: 0,
+  };
   if (v in wd) {
     const d = new Date();
     let add = (wd[v]! - d.getDay() + 7) % 7;
@@ -44,18 +70,35 @@ export interface TokenCtx {
   users: { id: string; displayName: string; avatarUrl?: string | null }[];
   sprints: { id: string; name: string; state: string }[];
 }
-export interface TokenResult { clean: string; priorityId?: string; assigneeId?: string; sprintId?: string; points?: number; dueLocal?: string }
+export interface TokenResult {
+  clean: string;
+  priorityId?: string;
+  assigneeId?: string;
+  sprintId?: string;
+  points?: number;
+  dueLocal?: string;
+}
 
-interface Named { id: string; name: string }
+interface Named {
+  id: string;
+  name: string;
+}
 
 /** Khớp 1 từ: bằng đúng > bắt đầu bằng > chứa (để "!high" ra High chứ không phải Highest). */
-export function bestMatch<T>(items: T[], val: string, key: (t: T) => string, strip = false): T | undefined {
+export function bestMatch<T>(
+  items: T[],
+  val: string,
+  key: (t: T) => string,
+  strip = false,
+): T | undefined {
   const norm = (s: string) => (strip ? normalize(s).replace(/\s/g, '') : normalize(s));
   const nv = norm(val);
   if (!nv) return undefined;
-  return items.find((i) => norm(key(i)) === nv)
-    ?? items.find((i) => norm(key(i)).startsWith(nv))
-    ?? items.find((i) => norm(key(i)).includes(nv));
+  return (
+    items.find((i) => norm(key(i)) === nv) ??
+    items.find((i) => norm(key(i)).startsWith(nv)) ??
+    items.find((i) => norm(key(i)).includes(nv))
+  );
 }
 
 /**
@@ -99,7 +142,10 @@ function matchToken(
   }
   if (sym === '^') {
     const m = /^(\S+)/.exec(rest);
-    if (m) { const due = parseDue(m[1]!); if (due) return { due, length: m[1]!.length }; }
+    if (m) {
+      const due = parseDue(m[1]!);
+      if (due) return { due, length: m[1]!.length };
+    }
     return null;
   }
   const list = sym === '!' ? lists.priorities : sym === '@' ? lists.users : lists.sprints;
@@ -118,9 +164,19 @@ function matchToken(
 /** Loại token — dùng để tô sáng inline & phân nhánh khi áp trường. */
 export type TokenKind = 'assignee' | 'priority' | 'sprint' | 'points' | 'due';
 
-const SYM_KIND: Record<string, TokenKind> = { '!': 'priority', '@': 'assignee', '#': 'sprint', '~': 'points', '^': 'due' };
+const SYM_KIND: Record<string, TokenKind> = {
+  '!': 'priority',
+  '@': 'assignee',
+  '#': 'sprint',
+  '~': 'points',
+  '^': 'due',
+};
 
-interface TokenSpan { start: number; end: number; kind: TokenKind }
+interface TokenSpan {
+  start: number;
+  end: number;
+  kind: TokenKind;
+}
 
 /** Quét 1 lần: vừa suy ra các trường (result), vừa ghi lại các đoạn token khớp (spans, gồm cả symbol). */
 function scanTokens(text: string, ctx: TokenCtx): { result: TokenResult; spans: TokenSpan[] } {
@@ -129,7 +185,9 @@ function scanTokens(text: string, ctx: TokenCtx): { result: TokenResult; spans: 
   const lists = {
     priorities: ctx.priorities.map((p) => ({ id: p.id, name: p.name })),
     users: ctx.users.map((u) => ({ id: u.id, name: u.displayName })),
-    sprints: ctx.sprints.filter((s) => s.state !== 'CLOSED').map((s) => ({ id: s.id, name: s.name })),
+    sprints: ctx.sprints
+      .filter((s) => s.state !== 'CLOSED')
+      .map((s) => ({ id: s.id, name: s.name })),
   };
   let out = '';
   let i = 0;
@@ -163,7 +221,10 @@ export function parseTitleTokens(text: string, ctx: TokenCtx): TokenResult {
   return scanTokens(text, ctx).result;
 }
 
-export interface DisplaySegment { text: string; kind: TokenKind | null }
+export interface DisplaySegment {
+  text: string;
+  kind: TokenKind | null;
+}
 
 /** Chia chuỗi thành các đoạn để tô sáng inline: đoạn token đã nhận (kind) xen kẽ chữ thường (null). */
 export function tokenSegments(text: string, ctx: TokenCtx): DisplaySegment[] {
@@ -179,10 +240,13 @@ export function tokenSegments(text: string, ctx: TokenCtx): DisplaySegment[] {
   return out;
 }
 
-
 /* ---------- Gợi ý (autocomplete) cho token đang gõ ---------- */
 
-export interface ActiveToken { sym: string; partial: string; start: number }
+export interface ActiveToken {
+  sym: string;
+  partial: string;
+  start: number;
+}
 
 /** Token đang gõ ngay trước con trỏ (nếu có): symbol đứng đầu từ/khoảng trắng, phần gõ dở chưa có khoảng trắng. */
 export function activeTokenAt(value: string, caret: number): ActiveToken | null {
@@ -192,7 +256,12 @@ export function activeTokenAt(value: string, caret: number): ActiveToken | null 
   return { sym: m[2]!, partial: m[3] ?? '', start: caret - (m[3]?.length ?? 0) - 1 };
 }
 
-export interface Suggestion { id: string; label: string; hint?: string; insert: string }
+export interface Suggestion {
+  id: string;
+  label: string;
+  hint?: string;
+  insert: string;
+}
 
 /** Danh sách gợi ý cho token đang gõ (chỉ !/@/# có danh sách). Chèn TÊN ĐẦY ĐỦ khi chọn. */
 export function suggestFor(sym: string, partial: string, ctx: TokenCtx): Suggestion[] {
@@ -202,16 +271,28 @@ export function suggestFor(sym: string, partial: string, ctx: TokenCtx): Suggest
     return !nv || n.includes(strip ? nv.replace(/\s/g, '') : nv);
   };
   if (sym === '!') {
-    return ctx.priorities.filter((p) => match(p.name)).slice(0, 6)
+    return ctx.priorities
+      .filter((p) => match(p.name))
+      .slice(0, 6)
       .map((p) => ({ id: p.id, label: p.name, insert: `!${p.name}` }));
   }
   if (sym === '@') {
-    return ctx.users.filter((u) => match(u.displayName)).slice(0, 6)
+    return ctx.users
+      .filter((u) => match(u.displayName))
+      .slice(0, 6)
       .map((u) => ({ id: u.id, label: u.displayName, insert: `@${u.displayName}` }));
   }
   if (sym === '#') {
-    return ctx.sprints.filter((s) => s.state !== 'CLOSED').filter((s) => match(s.name, true)).slice(0, 6)
-      .map((s) => ({ id: s.id, label: s.name, hint: s.state === 'ACTIVE' ? 'đang chạy' : undefined, insert: `#${s.name}` }));
+    return ctx.sprints
+      .filter((s) => s.state !== 'CLOSED')
+      .filter((s) => match(s.name, true))
+      .slice(0, 6)
+      .map((s) => ({
+        id: s.id,
+        label: s.name,
+        hint: s.state === 'ACTIVE' ? 'đang chạy' : undefined,
+        insert: `#${s.name}`,
+      }));
   }
   return [];
 }

@@ -57,12 +57,18 @@ export function QuickAddRow({
       className={cn('flex items-center gap-1.5', compact ? 'px-2 pb-2' : 'px-2 py-1.5', className)}
     >
       <span className="grid h-5 w-5 shrink-0 place-items-center text-faint">
-        {create.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Plus className="h-3.5 w-3.5" aria-hidden />}
+        {create.isPending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+        ) : (
+          <Plus className="h-3.5 w-3.5" aria-hidden />
+        )}
       </span>
       <input
         value={summary}
         onChange={(e) => setSummary(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Escape') setSummary(''); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') setSummary('');
+        }}
         placeholder={placeholder}
         aria-label="Thêm nhanh việc mới"
         disabled={!defaultTypeId || create.isPending}

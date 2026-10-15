@@ -69,8 +69,13 @@ export class PlanningService {
       where: { projectId },
       orderBy: { createdAt: 'asc' },
       select: {
-        id: true, projectId: true, predecessorId: true, successorId: true,
-        type: true, lagDays: true, createdAt: true,
+        id: true,
+        projectId: true,
+        predecessorId: true,
+        successorId: true,
+        type: true,
+        lagDays: true,
+        createdAt: true,
         predecessor: { select: ISSUE_REF_SELECT },
         successor: { select: ISSUE_REF_SELECT },
       },
@@ -92,7 +97,9 @@ export class PlanningService {
     await this.requireProject(workspaceId, projectId);
     await assertProjectWritable(this.prisma, projectId);
     if (dto.predecessorId === dto.successorId) {
-      throw new BusinessRuleException('Một công việc không thể phụ thuộc vào chính nó — hãy chọn công việc khác');
+      throw new BusinessRuleException(
+        'Một công việc không thể phụ thuộc vào chính nó — hãy chọn công việc khác',
+      );
     }
     await this.requireIssues(projectId, [dto.predecessorId, dto.successorId]);
 
@@ -121,7 +128,10 @@ export class PlanningService {
   async removeDependency(workspaceId: string, projectId: string, id: string) {
     await this.requireProject(workspaceId, projectId);
     await assertProjectWritable(this.prisma, projectId);
-    const dep = await this.prisma.issueDependency.findFirst({ where: { id, projectId }, select: { id: true } });
+    const dep = await this.prisma.issueDependency.findFirst({
+      where: { id, projectId },
+      select: { id: true },
+    });
     if (!dep) throw new NotFoundAppException('Phụ thuộc');
     await this.prisma.issueDependency.delete({ where: { id } });
     return { success: true };
@@ -155,13 +165,25 @@ export class PlanningService {
     return this.toMilestoneDto(row);
   }
 
-  async updateMilestone(workspaceId: string, projectId: string, id: string, dto: UpdateMilestoneInput) {
+  async updateMilestone(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+    dto: UpdateMilestoneInput,
+  ) {
     await this.requireProject(workspaceId, projectId);
-    const cur = await this.prisma.milestone.findFirst({ where: { id, projectId }, select: { id: true } });
+    const cur = await this.prisma.milestone.findFirst({
+      where: { id, projectId },
+      select: { id: true },
+    });
     if (!cur) throw new NotFoundAppException('Cột mốc');
 
     const data: {
-      name?: string; dueDate?: Date; description?: string | null; color?: string | null; completedAt?: Date | null;
+      name?: string;
+      dueDate?: Date;
+      description?: string | null;
+      color?: string | null;
+      completedAt?: Date | null;
     } = {};
     if (dto.name !== undefined) {
       const name = dto.name.trim();
@@ -171,7 +193,8 @@ export class PlanningService {
     if (dto.dueDate !== undefined) data.dueDate = new Date(dto.dueDate);
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.color !== undefined) data.color = dto.color;
-    if (dto.completedAt !== undefined) data.completedAt = dto.completedAt ? new Date(dto.completedAt) : null;
+    if (dto.completedAt !== undefined)
+      data.completedAt = dto.completedAt ? new Date(dto.completedAt) : null;
 
     const row = await this.prisma.milestone.update({ where: { id }, data });
     return this.toMilestoneDto(row);
@@ -179,7 +202,10 @@ export class PlanningService {
 
   async removeMilestone(workspaceId: string, projectId: string, id: string) {
     await this.requireProject(workspaceId, projectId);
-    const cur = await this.prisma.milestone.findFirst({ where: { id, projectId }, select: { id: true } });
+    const cur = await this.prisma.milestone.findFirst({
+      where: { id, projectId },
+      select: { id: true },
+    });
     if (!cur) throw new NotFoundAppException('Cột mốc');
     await this.prisma.milestone.delete({ where: { id } });
     return { success: true };
@@ -193,7 +219,11 @@ export class PlanningService {
       where: { projectId },
       orderBy: { capturedAt: 'desc' },
       select: {
-        id: true, projectId: true, name: true, capturedAt: true, createdById: true,
+        id: true,
+        projectId: true,
+        name: true,
+        capturedAt: true,
+        createdById: true,
         _count: { select: { items: true } },
       },
     });
@@ -208,7 +238,12 @@ export class PlanningService {
   }
 
   /** Chụp ảnh startDate/dueDate của MỌI issue chưa xoá trong dự án. */
-  async createBaseline(workspaceId: string, projectId: string, dto: CreateBaselineInput, actingUserId: string) {
+  async createBaseline(
+    workspaceId: string,
+    projectId: string,
+    dto: CreateBaselineInput,
+    actingUserId: string,
+  ) {
     await this.requireProject(workspaceId, projectId);
     const issues = await this.prisma.issue.findMany({
       where: { projectId, deletedAt: null },
@@ -236,10 +271,16 @@ export class PlanningService {
     const b = await this.prisma.planBaseline.findFirst({
       where: { id, projectId },
       select: {
-        id: true, projectId: true, name: true, capturedAt: true, createdById: true,
+        id: true,
+        projectId: true,
+        name: true,
+        capturedAt: true,
+        createdById: true,
         items: {
           select: {
-            issueId: true, startDate: true, dueDate: true,
+            issueId: true,
+            startDate: true,
+            dueDate: true,
             issue: { select: ISSUE_REF_SELECT },
           },
         },
@@ -279,7 +320,14 @@ export class PlanningService {
       this.prisma.issue.findMany({
         where: { projectId, deletedAt: null },
         orderBy: [{ startDate: 'asc' }, { dueDate: 'asc' }, { number: 'asc' }],
-        select: { id: true, key: true, summary: true, startDate: true, dueDate: true, storyPoints: true },
+        select: {
+          id: true,
+          key: true,
+          summary: true,
+          startDate: true,
+          dueDate: true,
+          storyPoints: true,
+        },
       }),
       this.prisma.issueDependency.findMany({
         where: { projectId },
@@ -335,11 +383,20 @@ export class PlanningService {
       } else {
         duration = fallbackDuration(i.storyPoints);
       }
-      if (anchor !== null) projectStartDay = projectStartDay === null ? anchor : Math.min(projectStartDay, anchor);
+      if (anchor !== null)
+        projectStartDay = projectStartDay === null ? anchor : Math.min(projectStartDay, anchor);
       nodes.set(i.id, {
-        id: i.id, key: i.key, summary: i.summary,
-        startDate: i.startDate, dueDate: i.dueDate,
-        anchor, duration, es: 0, ef: 0, ls: 0, lf: 0,
+        id: i.id,
+        key: i.key,
+        summary: i.summary,
+        startDate: i.startDate,
+        dueDate: i.dueDate,
+        anchor,
+        duration,
+        es: 0,
+        ef: 0,
+        ls: 0,
+        lf: 0,
       });
     }
     const originDay = projectStartDay ?? toDayNumber(new Date());
@@ -348,9 +405,11 @@ export class PlanningService {
     const outgoing = new Map<string, CpmEdge[]>();
     for (const e of edges) {
       const inList = incoming.get(e.successorId);
-      if (inList) inList.push(e); else incoming.set(e.successorId, [e]);
+      if (inList) inList.push(e);
+      else incoming.set(e.successorId, [e]);
       const outList = outgoing.get(e.predecessorId);
-      if (outList) outList.push(e); else outgoing.set(e.predecessorId, [e]);
+      if (outList) outList.push(e);
+      else outgoing.set(e.predecessorId, [e]);
     }
 
     const order = this.topoOrder([...nodes.keys()], incoming, outgoing);
@@ -422,25 +481,37 @@ export class PlanningService {
   /** Ràng buộc bắt đầu sớm nhất của `succ` do cạnh `e` từ `pred` áp đặt. */
   private earliestStartFrom(pred: CpmNode, succ: CpmNode, e: CpmEdge): number {
     switch (e.type) {
-      case 'SS': return pred.es + e.lagDays;
-      case 'FF': return pred.ef + e.lagDays - succ.duration + 1;
-      case 'SF': return pred.es + e.lagDays - succ.duration + 1;
-      default: return pred.ef + 1 + e.lagDays; // FS
+      case 'SS':
+        return pred.es + e.lagDays;
+      case 'FF':
+        return pred.ef + e.lagDays - succ.duration + 1;
+      case 'SF':
+        return pred.es + e.lagDays - succ.duration + 1;
+      default:
+        return pred.ef + 1 + e.lagDays; // FS
     }
   }
 
   /** Ràng buộc kết thúc muộn nhất của `pred` do cạnh `e` tới `succ` áp đặt. */
   private latestFinishFrom(succ: CpmNode, pred: CpmNode, e: CpmEdge): number {
     switch (e.type) {
-      case 'SS': return succ.ls - e.lagDays + pred.duration - 1;
-      case 'FF': return succ.lf - e.lagDays;
-      case 'SF': return succ.lf - e.lagDays + pred.duration - 1;
-      default: return succ.ls - 1 - e.lagDays; // FS
+      case 'SS':
+        return succ.ls - e.lagDays + pred.duration - 1;
+      case 'FF':
+        return succ.lf - e.lagDays;
+      case 'SF':
+        return succ.lf - e.lagDays + pred.duration - 1;
+      default:
+        return succ.ls - 1 - e.lagDays; // FS
     }
   }
 
   /** Kahn topological sort; phần còn lại (nếu có chu trình sót) được nối vào cuối. */
-  private topoOrder(ids: string[], incoming: Map<string, CpmEdge[]>, outgoing: Map<string, CpmEdge[]>): string[] {
+  private topoOrder(
+    ids: string[],
+    incoming: Map<string, CpmEdge[]>,
+    outgoing: Map<string, CpmEdge[]>,
+  ): string[] {
     const indeg = new Map<string, number>();
     for (const id of ids) indeg.set(id, (incoming.get(id) ?? []).length);
     const queue = ids.filter((id) => (indeg.get(id) ?? 0) === 0);
@@ -483,7 +554,11 @@ export class PlanningService {
    * Chặn CHU TRÌNH: cạnh mới là predecessor → successor, nên chỉ cần kiểm tra
    * predecessor có nằm phía sau successor trong đồ thị hiện tại hay không.
    */
-  private async assertNoCycle(projectId: string, predecessorId: string, successorId: string): Promise<void> {
+  private async assertNoCycle(
+    projectId: string,
+    predecessorId: string,
+    successorId: string,
+  ): Promise<void> {
     const edges = await this.prisma.issueDependency.findMany({
       where: { projectId },
       select: { predecessorId: true, successorId: true },
@@ -499,7 +574,9 @@ export class PlanningService {
     while (stack.length > 0) {
       const cur = stack.pop()!;
       if (cur === predecessorId) {
-        throw new BusinessRuleException('Phụ thuộc này tạo thành chu trình — công việc trước đang phụ thuộc (trực tiếp hoặc gián tiếp) vào công việc sau');
+        throw new BusinessRuleException(
+          'Phụ thuộc này tạo thành chu trình — công việc trước đang phụ thuộc (trực tiếp hoặc gián tiếp) vào công việc sau',
+        );
       }
       for (const n of next.get(cur) ?? []) {
         if (!seen.has(n)) {
@@ -511,8 +588,15 @@ export class PlanningService {
   }
 
   private toMilestoneDto(m: {
-    id: string; projectId: string; name: string; description: string | null;
-    dueDate: Date; completedAt: Date | null; color: string | null; createdAt: Date; updatedAt: Date;
+    id: string;
+    projectId: string;
+    name: string;
+    description: string | null;
+    dueDate: Date;
+    completedAt: Date | null;
+    color: string | null;
+    createdAt: Date;
+    updatedAt: Date;
   }) {
     return {
       id: m.id,

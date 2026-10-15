@@ -3,12 +3,22 @@ import { create } from 'zustand';
 /** Các tác vụ nhanh có thể bật/tắt trên nút nổi. */
 export type QuickActionKey = 'issue' | 'ai' | 'report' | 'watch' | 'project' | 'command';
 
-export const QUICK_ACTION_KEYS: QuickActionKey[] = ['issue', 'ai', 'report', 'watch', 'project', 'command'];
+export const QUICK_ACTION_KEYS: QuickActionKey[] = [
+  'issue',
+  'ai',
+  'report',
+  'watch',
+  'project',
+  'command',
+];
 
 const STORAGE = 'tirapro-quick-actions';
 
 function initial(): Record<QuickActionKey, boolean> {
-  const base = Object.fromEntries(QUICK_ACTION_KEYS.map((k) => [k, true])) as Record<QuickActionKey, boolean>;
+  const base = Object.fromEntries(QUICK_ACTION_KEYS.map((k) => [k, true])) as Record<
+    QuickActionKey,
+    boolean
+  >;
   if (typeof localStorage === 'undefined') return base;
   try {
     const raw = localStorage.getItem(STORAGE);

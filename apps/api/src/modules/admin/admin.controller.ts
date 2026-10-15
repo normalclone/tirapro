@@ -5,7 +5,12 @@ import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AdminService } from './admin.service';
-import { createUserSchema, updateUserSchema, type CreateUserInput, type UpdateUserInput } from './admin.schemas';
+import {
+  createUserSchema,
+  updateUserSchema,
+  type CreateUserInput,
+  type UpdateUserInput,
+} from './admin.schemas';
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 /** Quản trị tài khoản hệ thống — CHỈ admin hệ thống (isSystemAdmin). */
@@ -17,7 +22,8 @@ export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
   private assertSysAdmin(user: AuthUser): void {
-    if (!user.isSystemAdmin) throw new ForbiddenAppException('Chỉ admin hệ thống mới được quản trị tài khoản');
+    if (!user.isSystemAdmin)
+      throw new ForbiddenAppException('Chỉ admin hệ thống mới được quản trị tài khoản');
   }
 
   @Get()
@@ -27,7 +33,10 @@ export class AdminController {
   }
 
   @Post()
-  async create(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(createUserSchema)) dto: CreateUserInput) {
+  async create(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(createUserSchema)) dto: CreateUserInput,
+  ) {
     this.assertSysAdmin(user);
     return this.admin.create(dto);
   }

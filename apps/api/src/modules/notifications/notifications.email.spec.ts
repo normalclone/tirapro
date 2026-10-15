@@ -11,7 +11,11 @@ describe('effectiveEmailPrefs', () => {
   });
 
   it('khoá hợp lệ ghi đè mặc định, khoá sai kiểu bị bỏ qua', () => {
-    expect(effectiveEmailPrefs({ notifications: { email: { comment: true, mention: 'yes', transition: true } } })).toEqual({
+    expect(
+      effectiveEmailPrefs({
+        notifications: { email: { comment: true, mention: 'yes', transition: true } },
+      }),
+    ).toEqual({
       mention: true,
       assigned: true,
       comment: true,
@@ -33,17 +37,35 @@ function setup(settings: unknown) {
     },
     notification: {
       create: vi.fn(() =>
-        Promise.resolve({ id: 'n1', type: 'COMMENT_ADDED', issueId: null, commentId: null, actorId: 'a1', payload: {}, readAt: null, createdAt: new Date() }),
+        Promise.resolve({
+          id: 'n1',
+          type: 'COMMENT_ADDED',
+          issueId: null,
+          commentId: null,
+          actorId: 'a1',
+          payload: {},
+          readAt: null,
+          createdAt: new Date(),
+        }),
       ),
     },
   };
   const events = { emit: vi.fn() };
   const mail = { enqueue: vi.fn((_a: unknown) => Promise.resolve()) };
   const config = { get: vi.fn(() => 'http://localhost:5173') };
-  const service = new NotificationsService(prisma as never, events as never, mail as never, config as never);
+  const service = new NotificationsService(
+    prisma as never,
+    events as never,
+    mail as never,
+    config as never,
+  );
   const create = (type: string) =>
     (service as unknown as { create: (i: unknown) => Promise<void> }).create({
-      recipientId: 'r1', workspaceId: 'w1', type, actorId: 'a1', payload: { key: 'TP-1', summary: 'Sửa lỗi', statusName: 'Done' },
+      recipientId: 'r1',
+      workspaceId: 'w1',
+      type,
+      actorId: 'a1',
+      payload: { key: 'TP-1', summary: 'Sửa lỗi', statusName: 'Done' },
     });
   return { create, prisma, mail, events };
 }
@@ -54,7 +76,11 @@ describe('NotificationsService.create — email theo tuỳ chọn', () => {
     await create('COMMENT_ADDED');
     expect(prisma.notification.create).toHaveBeenCalledTimes(1);
     expect(mail.enqueue).toHaveBeenCalledTimes(1);
-    const arg = mail.enqueue.mock.calls[0]![0] as { to: string; template: string; payload: { title: string; url: string } };
+    const arg = mail.enqueue.mock.calls[0]![0] as {
+      to: string;
+      template: string;
+      payload: { title: string; url: string };
+    };
     expect(arg).toMatchObject({ to: 'r@x.vn', template: 'notification' });
     expect(arg.payload.title).toContain('Minh');
     expect(arg.payload.url).toBe('http://localhost:5173/issue/TP-1');

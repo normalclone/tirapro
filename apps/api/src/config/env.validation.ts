@@ -65,7 +65,10 @@ export const envSchema = z.object({
   MAIL_DRIVER: z.enum(['console', 'smtp']).default('console'),
   MAIL_FROM: z.string().default('Tirapro <no-reply@tirapro.local>'),
   // Gốc URL của web — dùng dựng liên kết trong thư (mời, đặt lại mật khẩu). Không có dấu "/" cuối.
-  APP_WEB_URL: z.string().url('APP_WEB_URL phải là URL hợp lệ, vd http://localhost:5173').default('http://localhost:5173'),
+  APP_WEB_URL: z
+    .string()
+    .url('APP_WEB_URL phải là URL hợp lệ, vd http://localhost:5173')
+    .default('http://localhost:5173'),
   SMTP_HOST: z.string().optional().default(''),
   SMTP_PORT: z.coerce.number().int().default(587),
   SMTP_USER: z.string().optional().default(''),
@@ -88,13 +91,18 @@ export const envSchema = z.object({
     .string()
     .optional()
     .default('')
-    .refine((v) => v === '' || v.length >= 32, 'INTEGRATION_ENCRYPTION_KEY_PREVIOUS để trống hoặc tối thiểu 32 ký tự'),
+    .refine(
+      (v) => v === '' || v.length >= 32,
+      'INTEGRATION_ENCRYPTION_KEY_PREVIOUS để trống hoặc tối thiểu 32 ký tự',
+    ),
 });
 
 export type Env = z.infer<typeof envSchema>;
 
 /** Lỗi cấu hình chỉ áp dụng ở production (fail-fast khi khởi động). Trả danh sách thông báo. */
-export function productionConfigProblems(env: Pick<Env, 'NODE_ENV' | 'INTEGRATION_ENCRYPTION_KEY'>): string[] {
+export function productionConfigProblems(
+  env: Pick<Env, 'NODE_ENV' | 'INTEGRATION_ENCRYPTION_KEY'>,
+): string[] {
   if (env.NODE_ENV !== 'production') return [];
   const problems: string[] = [];
   const key = env.INTEGRATION_ENCRYPTION_KEY;
@@ -116,7 +124,9 @@ export function validateEnv(config: Record<string, unknown>): Env {
   }
   const problems = productionConfigProblems(parsed.data);
   if (problems.length) {
-    throw new Error(`❌ Cấu hình production không an toàn:\n${problems.map((p) => ` - ${p}`).join('\n')}`);
+    throw new Error(
+      `❌ Cấu hình production không an toàn:\n${problems.map((p) => ` - ${p}`).join('\n')}`,
+    );
   }
   return parsed.data;
 }

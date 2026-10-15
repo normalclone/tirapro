@@ -56,10 +56,7 @@ export class AttachmentsController {
   ): Promise<StreamableFile> {
     const { stream, fileName, mimeType } = await this.attachments.download(workspaceId, id);
     res.setHeader('Content-Type', mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(fileName)}"`,
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
     return new StreamableFile(stream);
   }
 

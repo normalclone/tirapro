@@ -8,7 +8,17 @@ import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
 import { useProjects } from '@/features/projects/api';
 import { useCreateClient, useUpdateClient, type ClientDto } from './api';
 
-function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-muted">
@@ -98,7 +108,9 @@ export function ClientEditorModal({
       size="md"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Hủy</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Hủy
+          </Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
             {editing ? 'Lưu thay đổi' : 'Thêm khách hàng'}
           </Button>
@@ -107,15 +119,38 @@ export function ClientEditorModal({
     >
       <div className="space-y-4">
         <Field label="Tên khách hàng" htmlFor="client-name">
-          <Input id="client-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Công ty CP ABC" autoFocus maxLength={160} />
+          <Input
+            id="client-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="VD: Công ty CP ABC"
+            autoFocus
+            maxLength={160}
+          />
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Người liên hệ" hint="(tùy chọn — đầu mối bên khách hàng)" htmlFor="client-contact">
-            <Input id="client-contact" value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="VD: Trần Thu Hà" maxLength={120} />
+          <Field
+            label="Người liên hệ"
+            hint="(tùy chọn — đầu mối bên khách hàng)"
+            htmlFor="client-contact"
+          >
+            <Input
+              id="client-contact"
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+              placeholder="VD: Trần Thu Hà"
+              maxLength={120}
+            />
           </Field>
           <Field label="Điện thoại" hint="(tùy chọn)" htmlFor="client-phone">
-            <Input id="client-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="09xx xxx xxx" maxLength={40} />
+            <Input
+              id="client-phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="09xx xxx xxx"
+              maxLength={40}
+            />
           </Field>
         </div>
 
@@ -137,10 +172,19 @@ export function ClientEditorModal({
         </Field>
 
         <Field label="Ghi chú" hint="(tùy chọn)" htmlFor="client-note">
-          <Input id="client-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Lưu ý khi làm việc, thói quen phản hồi…" maxLength={1000} />
+          <Input
+            id="client-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Lưu ý khi làm việc, thói quen phản hồi…"
+            maxLength={1000}
+          />
         </Field>
 
-        <Field label="Dự án của khách hàng" hint="(bỏ chọn một dự án = gỡ liên kết với khách hàng này)">
+        <Field
+          label="Dự án của khách hàng"
+          hint="(bỏ chọn một dự án = gỡ liên kết với khách hàng này)"
+        >
           <RoleMultiSelect
             options={projectOptions}
             value={projectIds}

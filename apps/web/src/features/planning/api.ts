@@ -110,7 +110,9 @@ export interface ScheduleDto {
 export function useDependencies(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.planning.dependencies(projectId ?? ''),
-    queryFn: projectId ? async () => (await api.get<DependencyDto[]>(`/planning/${projectId}/dependencies`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<DependencyDto[]>(`/planning/${projectId}/dependencies`)).data
+      : skipToken,
   });
 }
 
@@ -126,8 +128,12 @@ function useInvalidateSchedule(projectId: string) {
 export function useCreateDependency(projectId: string) {
   const invalidate = useInvalidateSchedule(projectId);
   return useMutation({
-    mutationFn: (input: { predecessorId: string; successorId: string; type?: DependencyType; lagDays?: number }) =>
-      api.post<DependencyDto>(`/planning/${projectId}/dependencies`, input).then((r) => r.data),
+    mutationFn: (input: {
+      predecessorId: string;
+      successorId: string;
+      type?: DependencyType;
+      lagDays?: number;
+    }) => api.post<DependencyDto>(`/planning/${projectId}/dependencies`, input).then((r) => r.data),
     onSuccess: invalidate,
   });
 }
@@ -135,7 +141,8 @@ export function useCreateDependency(projectId: string) {
 export function useDeleteDependency(projectId: string) {
   const invalidate = useInvalidateSchedule(projectId);
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/planning/${projectId}/dependencies/${id}`).then((r) => r.data),
+    mutationFn: (id: string) =>
+      api.delete(`/planning/${projectId}/dependencies/${id}`).then((r) => r.data),
     onSuccess: invalidate,
   });
 }
@@ -145,7 +152,9 @@ export function useDeleteDependency(projectId: string) {
 export function useMilestones(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.planning.milestones(projectId ?? ''),
-    queryFn: projectId ? async () => (await api.get<MilestoneDto[]>(`/planning/${projectId}/milestones`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<MilestoneDto[]>(`/planning/${projectId}/milestones`)).data
+      : skipToken,
   });
 }
 
@@ -178,7 +187,8 @@ export function useUpdateMilestone(projectId: string) {
 export function useDeleteMilestone(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/planning/${projectId}/milestones/${id}`).then((r) => r.data),
+    mutationFn: (id: string) =>
+      api.delete(`/planning/${projectId}/milestones/${id}`).then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.planning.milestones(projectId) }),
   });
 }
@@ -188,7 +198,9 @@ export function useDeleteMilestone(projectId: string) {
 export function useBaselines(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.planning.baselines(projectId ?? ''),
-    queryFn: projectId ? async () => (await api.get<BaselineSummaryDto[]>(`/planning/${projectId}/baselines`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<BaselineSummaryDto[]>(`/planning/${projectId}/baselines`)).data
+      : skipToken,
   });
 }
 
@@ -197,7 +209,8 @@ export function useBaseline(projectId: string | undefined, baselineId: string | 
     queryKey: keys.planning.baseline(projectId ?? '', baselineId ?? ''),
     queryFn:
       projectId && baselineId
-        ? async () => (await api.get<BaselineDto>(`/planning/${projectId}/baselines/${baselineId}`)).data
+        ? async () =>
+            (await api.get<BaselineDto>(`/planning/${projectId}/baselines/${baselineId}`)).data
         : skipToken,
   });
 }
@@ -216,6 +229,8 @@ export function useCreateBaseline(projectId: string) {
 export function useSchedule(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.planning.schedule(projectId ?? ''),
-    queryFn: projectId ? async () => (await api.get<ScheduleDto>(`/planning/${projectId}/schedule`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<ScheduleDto>(`/planning/${projectId}/schedule`)).data
+      : skipToken,
   });
 }

@@ -8,7 +8,12 @@ import { keys } from '@/lib/queryKeys';
 export function useProjects(includeArchived = false) {
   return useQuery({
     queryKey: includeArchived ? keys.projects.withArchived : keys.projects.all,
-    queryFn: async () => (await api.get<ProjectDto[]>('/projects', { params: includeArchived ? { includeArchived: true } : undefined })).data,
+    queryFn: async () =>
+      (
+        await api.get<ProjectDto[]>('/projects', {
+          params: includeArchived ? { includeArchived: true } : undefined,
+        })
+      ).data,
   });
 }
 
@@ -54,7 +59,8 @@ export interface ProjectPatch {
 
 export function useUpdateProject(key: string, projectId: string | undefined) {
   return useMutation({
-    mutationFn: async (patch: ProjectPatch) => (await api.patch<ProjectDto>(`/projects/${projectId}`, patch)).data,
+    mutationFn: async (patch: ProjectPatch) =>
+      (await api.patch<ProjectDto>(`/projects/${projectId}`, patch)).data,
     onSuccess: () => invalidateProject(key),
   });
 }
@@ -63,7 +69,8 @@ export function useUpdateProject(key: string, projectId: string | undefined) {
 export function useArchiveProject(key: string, projectId: string | undefined) {
   return useMutation({
     mutationFn: async (archive: boolean) =>
-      (await api.post<ProjectDto>(`/projects/${projectId}/${archive ? 'archive' : 'unarchive'}`)).data,
+      (await api.post<ProjectDto>(`/projects/${projectId}/${archive ? 'archive' : 'unarchive'}`))
+        .data,
     onSuccess: () => invalidateProject(key),
   });
 }

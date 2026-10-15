@@ -65,7 +65,9 @@ export function AssigneeSuggestButton({
           {suggest.isError && (
             <div className="space-y-2 p-2 text-sm">
               <p className="text-danger">{apiErrorMessage(suggest.error)}</p>
-              <button type="button" onClick={load} className="text-primary hover:underline">Thử lại</button>
+              <button type="button" onClick={load} className="text-primary hover:underline">
+                Thử lại
+              </button>
             </div>
           )}
           {data && data.suggestions.length === 0 && (
@@ -87,10 +89,16 @@ export function AssigneeSuggestButton({
                       <Avatar name={s.displayName} src={s.avatarUrl} size={24} />
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-medium text-ink-strong">{s.displayName}</span>
-                          <span className="shrink-0 text-xs text-muted" title="Mức độ phù hợp">{Math.round(s.score * 100)}%</span>
+                          <span className="truncate text-sm font-medium text-ink-strong">
+                            {s.displayName}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted" title="Mức độ phù hợp">
+                            {Math.round(s.score * 100)}%
+                          </span>
                         </span>
-                        <span className="mt-0.5 block text-xs text-muted">{s.reasons.slice(0, 2).join(' · ')}</span>
+                        <span className="mt-0.5 block text-xs text-muted">
+                          {s.reasons.slice(0, 2).join(' · ')}
+                        </span>
                       </span>
                     </button>
                   </li>

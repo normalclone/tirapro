@@ -6,7 +6,12 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { SlaService } from './sla.service';
-import { createSlaPolicySchema, updateSlaPolicySchema, type CreateSlaPolicyInput, type UpdateSlaPolicyInput } from './sla.schemas';
+import {
+  createSlaPolicySchema,
+  updateSlaPolicySchema,
+  type CreateSlaPolicyInput,
+  type UpdateSlaPolicyInput,
+} from './sla.schemas';
 
 @ApiTags('sla')
 @Controller('sla')

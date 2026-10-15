@@ -1,6 +1,11 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { JiraImportRunInput } from '@tirapro/shared';
-import type { ImportJobDto, JiraAnalyzeResult, JiraDryRunResult, JiraImportTargets } from '@tirapro/types';
+import type {
+  ImportJobDto,
+  JiraAnalyzeResult,
+  JiraDryRunResult,
+  JiraImportTargets,
+} from '@tirapro/types';
 import { api } from '@/lib/api';
 
 /** Khoá cache riêng của tính năng nhập dữ liệu (không dùng chung với module khác). */
@@ -28,7 +33,11 @@ export function useJiraTargets(projectId: string) {
   return useQuery({
     queryKey: importKeys.targets(projectId),
     queryFn: async () =>
-      (await api.get<JiraImportTargets>('/import/jira/targets', { params: projectId ? { projectId } : undefined })).data,
+      (
+        await api.get<JiraImportTargets>('/import/jira/targets', {
+          params: projectId ? { projectId } : undefined,
+        })
+      ).data,
   });
 }
 
@@ -48,7 +57,9 @@ export function useImportJob(jobId: string | null) {
     queryFn: async () => (await api.get<ImportJobDto>(`/import/jobs/${jobId}`)).data,
     refetchInterval: (q) => {
       const status = q.state.data?.status;
-      return status === 'PENDING' || status === 'RUNNING' || status === undefined ? JOB_POLL_MS : false;
+      return status === 'PENDING' || status === 'RUNNING' || status === undefined
+        ? JOB_POLL_MS
+        : false;
     },
   });
 }

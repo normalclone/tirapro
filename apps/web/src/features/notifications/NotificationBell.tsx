@@ -152,10 +152,7 @@ function NotificationRow({ item, onActivate }: { item: NotificationItem; onActiv
         </span>
 
         {unread && (
-          <span
-            className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary"
-            aria-label="Chưa đọc"
-          />
+          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="Chưa đọc" />
         )}
       </button>
     </li>

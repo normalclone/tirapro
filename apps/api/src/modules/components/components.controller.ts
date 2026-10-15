@@ -83,10 +83,7 @@ export class ComponentsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/components')
-  async listComponents(
-    @WorkspaceId() workspaceId: string,
-    @Param('projectId') projectId: string,
-  ) {
+  async listComponents(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
     return this.components.listComponents(workspaceId, projectId);
   }
 
@@ -150,10 +147,7 @@ export class ComponentsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/versions')
-  async listVersions(
-    @WorkspaceId() workspaceId: string,
-    @Param('projectId') projectId: string,
-  ) {
+  async listVersions(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
     return this.components.listVersions(workspaceId, projectId);
   }
 

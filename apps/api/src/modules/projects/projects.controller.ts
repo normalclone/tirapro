@@ -14,7 +14,12 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { createProjectSchema, updateProjectSchema, type CreateProjectInput, type UpdateProjectInput } from '@tirapro/shared';
+import {
+  createProjectSchema,
+  updateProjectSchema,
+  type CreateProjectInput,
+  type UpdateProjectInput,
+} from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -31,7 +36,10 @@ export class ProjectsController {
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get()
-  async list(@WorkspaceId() workspaceId: string, @Query('includeArchived') includeArchived?: string) {
+  async list(
+    @WorkspaceId() workspaceId: string,
+    @Query('includeArchived') includeArchived?: string,
+  ) {
     return this.projects.list(workspaceId, includeArchived === 'true');
   }
 
@@ -75,14 +83,22 @@ export class ProjectsController {
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('param', 'id')
   @Post(':id/archive')
-  async archive(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser, @Param('id') id: string) {
+  async archive(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
     return this.projects.archive(workspaceId, id, user.id);
   }
 
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('param', 'id')
   @Post(':id/unarchive')
-  async unarchive(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser, @Param('id') id: string) {
+  async unarchive(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
     return this.projects.unarchive(workspaceId, id, user.id);
   }
 
@@ -90,7 +106,11 @@ export class ProjectsController {
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   @ProjectRef('param', 'id')
   @Delete(':id')
-  async remove(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser, @Param('id') id: string) {
+  async remove(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
     return this.projects.remove(workspaceId, id, user.id);
   }
 

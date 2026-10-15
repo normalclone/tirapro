@@ -1,6 +1,11 @@
 import { Body, Controller, Get, Param, Patch, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { setBoardColumnsSchema, updateBoardSchema, type SetBoardColumnsInput, type UpdateBoardInput } from '@tirapro/shared';
+import {
+  setBoardColumnsSchema,
+  updateBoardSchema,
+  type SetBoardColumnsInput,
+  type UpdateBoardInput,
+} from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';

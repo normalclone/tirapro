@@ -30,26 +30,48 @@ const selectClass = cn(
 // Nhớ dự án/loại đã dùng gần nhất để prefill lần sau (tăng tốc nhập liệu).
 const LAST_KEY = 'tirapro:createIssue:last';
 function loadLast(): { projectKey?: string; typeId?: string } {
-  try { return JSON.parse(localStorage.getItem(LAST_KEY) || '{}'); } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(LAST_KEY) || '{}');
+  } catch {
+    return {};
+  }
 }
 function saveLast(v: { projectKey?: string; typeId?: string }) {
-  try { localStorage.setItem(LAST_KEY, JSON.stringify(v)); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(LAST_KEY, JSON.stringify(v));
+  } catch {
+    /* ignore */
+  }
 }
 
 // Bản nháp tiêu đề/mô tả theo dự án — khôi phục khi mở lại, xoá khi tạo thành công (UX_CONVENTIONS §3/§17).
-interface Draft { summary?: string; description?: string }
+interface Draft {
+  summary?: string;
+  description?: string;
+}
 const DRAFT_KEY = (projectKey: string) => `tirapro:createIssue:draft:${projectKey || '_'}`;
 function loadDraft(projectKey: string): Draft {
-  try { return JSON.parse(localStorage.getItem(DRAFT_KEY(projectKey)) || '{}'); } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(DRAFT_KEY(projectKey)) || '{}');
+  } catch {
+    return {};
+  }
 }
 function saveDraft(projectKey: string, d: Draft) {
   try {
-    if (!d.summary?.trim() && !d.description?.trim()) localStorage.removeItem(DRAFT_KEY(projectKey));
+    if (!d.summary?.trim() && !d.description?.trim())
+      localStorage.removeItem(DRAFT_KEY(projectKey));
     else localStorage.setItem(DRAFT_KEY(projectKey), JSON.stringify(d));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 function clearDraft(projectKey: string) {
-  try { localStorage.removeItem(DRAFT_KEY(projectKey)); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(DRAFT_KEY(projectKey));
+  } catch {
+    /* ignore */
+  }
 }
 
 /* --------- Mẫu mô tả gợi sẵn theo loại công việc --------- */
@@ -62,7 +84,19 @@ const TEMPLATE_VALUES = Object.values(TEMPLATES);
 const isTemplate = (s: string) => TEMPLATE_VALUES.includes(s);
 
 /** Nhãn + gợi ý ngắn cho một ô nhập. `title` = giải nghĩa thuật ngữ (hiện khi rê chuột vào nhãn). */
-function Field({ label, hint, title, className, children }: { label: string; hint?: string; title?: string; className?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  title,
+  className,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  title?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className={className}>
       <label className="mb-1.5 block text-sm font-medium text-muted" title={title}>
@@ -96,7 +130,10 @@ export function CreateIssueModal() {
   const [busy, setBusy] = useState(false);
   const prevTypeRef = useRef('');
 
-  const selProject = useMemo(() => (projects ?? []).find((p) => p.key === selKey), [projects, selKey]);
+  const selProject = useMemo(
+    () => (projects ?? []).find((p) => p.key === selKey),
+    [projects, selKey],
+  );
   const selId = selProject?.id ?? '';
 
   const { data: meta } = useProjectMeta(open && selKey ? selKey : undefined);
@@ -113,10 +150,19 @@ export function CreateIssueModal() {
     const key = preset.projectKey ?? loadLast().projectKey ?? projects?.[0]?.key ?? '';
     const draft = loadDraft(key);
     setSelKey(key);
-    setTypeId(''); setSummary(draft.summary ?? ''); setDescription(draft.description ?? ''); setPriorityId('');
-    setAssigneeId(''); setSprintId(''); setPoints(''); setDue(''); setFiles([]); setBusy(false);
+    setTypeId('');
+    setSummary(draft.summary ?? '');
+    setDescription(draft.description ?? '');
+    setPriorityId('');
+    setAssigneeId('');
+    setSprintId('');
+    setPoints('');
+    setDue('');
+    setFiles([]);
+    setBusy(false);
     prevTypeRef.current = '';
-    if (draft.summary || draft.description) toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
+    if (draft.summary || draft.description)
+      toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -130,8 +176,10 @@ export function CreateIssueModal() {
   // Mặc định loại: sub-task nếu tạo sub-task, ngược lại ưu tiên loại đã dùng gần nhất.
   const defaultTypeId = useMemo(() => {
     if (!meta) return '';
-    if (preset.subtask) return meta.issueTypes.find((t) => t.isSubtask)?.id ?? meta.issueTypes[0]?.id ?? '';
-    const lastId = last.typeId && meta.issueTypes.some((t) => t.id === last.typeId) ? last.typeId : undefined;
+    if (preset.subtask)
+      return meta.issueTypes.find((t) => t.isSubtask)?.id ?? meta.issueTypes[0]?.id ?? '';
+    const lastId =
+      last.typeId && meta.issueTypes.some((t) => t.id === last.typeId) ? last.typeId : undefined;
     return lastId ?? meta.issueTypes.find((t) => !t.isSubtask)?.id ?? meta.issueTypes[0]?.id ?? '';
   }, [meta, preset.subtask, last.typeId]);
   useEffect(() => {
@@ -145,7 +193,10 @@ export function CreateIssueModal() {
       { value: '', label: 'Backlog — chưa xếp vào sprint' },
       ...(sprints ?? [])
         .filter((s) => s.state !== 'CLOSED')
-        .map((s) => ({ value: s.id, label: s.state === 'ACTIVE' ? `${s.name} · đang chạy` : s.name })),
+        .map((s) => ({
+          value: s.id,
+          label: s.state === 'ACTIVE' ? `${s.name} · đang chạy` : s.name,
+        })),
     ],
     [sprints],
   );
@@ -180,7 +231,8 @@ export function CreateIssueModal() {
   if (!open) return null;
 
   const trimmed = summary.trim();
-  const canSubmit = !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
+  const canSubmit =
+    !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
   const title = preset.subtask ? 'Tạo việc con' : 'Tạo công việc';
 
   async function doCreate() {
@@ -188,7 +240,10 @@ export function CreateIssueModal() {
     // Áp token gõ nhanh còn sót (nếu chưa blur) — token thắng giá trị đang chọn. Chỉ lược token khi TẠO.
     const tk = parseTitleTokens(summary, tokenCtx);
     const finalSummary = tk.clean.trim();
-    if (!finalSummary) { toast.error('Hãy nhập tiêu đề mô tả việc cần làm'); return null; }
+    if (!finalSummary) {
+      toast.error('Hãy nhập tiêu đề mô tả việc cần làm');
+      return null;
+    }
     setBusy(true);
     try {
       const created = await create.mutateAsync({
@@ -202,14 +257,22 @@ export function CreateIssueModal() {
         parentId: preset.parentId ?? undefined,
         storyPoints: tk.points ?? (points ? Number(points) : undefined),
         sprintId: (tk.sprintId ?? sprintId) || undefined,
-        dueDate: tk.dueLocal ? new Date(tk.dueLocal).toISOString() : (due ? new Date(due).toISOString() : undefined),
+        dueDate: tk.dueLocal
+          ? new Date(tk.dueLocal).toISOString()
+          : due
+            ? new Date(due).toISOString()
+            : undefined,
       });
       // Tải các tệp đính kèm song song → không dừng vì 1 tệp lỗi; báo rõ N/M nếu có lỗi.
       if (files.length > 0) {
-        const results = await Promise.allSettled(files.map((f) => uploadAttachmentFile(created.id, f)));
+        const results = await Promise.allSettled(
+          files.map((f) => uploadAttachmentFile(created.id, f)),
+        );
         const failed = results.filter((r) => r.status === 'rejected').length;
         if (failed > 0) {
-          const failedNames = files.filter((_, i) => results[i]!.status === 'rejected').map((f) => f.name);
+          const failedNames = files
+            .filter((_, i) => results[i]!.status === 'rejected')
+            .map((f) => f.name);
           toast.error(`${failed}/${files.length} tệp chưa tải lên được`, {
             description: `${failedNames.join(', ')} — công việc đã được tạo, hãy mở nó ra và đính kèm lại các tệp này.`,
             duration: 6000,
@@ -241,21 +304,31 @@ export function CreateIssueModal() {
     const created = await doCreate();
     if (!created) return;
     toast.success(`Đã tạo ${created.key} — mời bạn nhập việc tiếp theo`);
-    setSummary(''); setDescription(''); setFiles([]); setPoints(''); setDue('');
+    setSummary('');
+    setDescription('');
+    setFiles([]);
+    setPoints('');
+    setDue('');
     requestAnimationFrame(() => document.getElementById('ci-summary')?.focus());
   }
 
   return (
     <Dialog
       open
-      onOpenChange={(o) => { if (!o) close(); }}
+      onOpenChange={(o) => {
+        if (!o) close();
+      }}
       title={title}
       size="xl"
       onSubmit={() => void submitCreate()}
       footer={
         <>
-          <span className="mr-auto hidden text-xs text-faint sm:block">⌘/Ctrl + Enter để tạo nhanh</span>
-          <Button type="button" variant="ghost" onClick={close}>Hủy</Button>
+          <span className="mr-auto hidden text-xs text-faint sm:block">
+            ⌘/Ctrl + Enter để tạo nhanh
+          </span>
+          <Button type="button" variant="ghost" onClick={close}>
+            Hủy
+          </Button>
           <Button
             type="button"
             variant="secondary"
@@ -266,13 +339,23 @@ export function CreateIssueModal() {
           >
             Tạo &amp; nhập tiếp
           </Button>
-          <Button type="submit" form="create-issue-form" loading={create.isPending || busy} disabled={!canSubmit}>{title}</Button>
+          <Button
+            type="submit"
+            form="create-issue-form"
+            loading={create.isPending || busy}
+            disabled={!canSubmit}
+          >
+            {title}
+          </Button>
         </>
       }
     >
       <form
         id="create-issue-form"
-        onSubmit={(e) => { e.preventDefault(); void submitCreate(); }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submitCreate();
+        }}
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Dự án">
@@ -282,8 +365,12 @@ export function CreateIssueModal() {
                 // Đổi dự án → nạp bản nháp của DỰ ÁN MỚI (không mang chữ dự án cũ sang, không đè nháp dự án mới).
                 const d = loadDraft(v);
                 setSelKey(v);
-                setTypeId(''); setPriorityId(''); setSprintId(''); setAssigneeId('');
-                setSummary(d.summary ?? ''); setDescription(d.description ?? '');
+                setTypeId('');
+                setPriorityId('');
+                setSprintId('');
+                setAssigneeId('');
+                setSummary(d.summary ?? '');
+                setDescription(d.description ?? '');
               }}
               placeholder="Chọn dự án…"
               searchPlaceholder="Tìm dự án…"
@@ -298,7 +385,11 @@ export function CreateIssueModal() {
               disabled={!meta}
               className={selectClass}
               ariaLabel="Loại việc"
-              options={(meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name, color: t.color }))}
+              options={(meta?.issueTypes ?? []).map((t) => ({
+                value: t.id,
+                label: t.name,
+                color: t.color,
+              }))}
             />
           </Field>
 
@@ -312,17 +403,35 @@ export function CreateIssueModal() {
               ctx={tokenCtx}
               placeholder="Việc cần làm là gì? VD: Sửa lỗi không đăng nhập được trên Safari"
             />
-            <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-faint" title="Gõ thẳng các ký hiệu này trong tiêu đề để điền nhanh các trường bên dưới — không cần bấm chuột.">
+            <p
+              className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-faint"
+              title="Gõ thẳng các ký hiệu này trong tiêu đề để điền nhanh các trường bên dưới — không cần bấm chuột."
+            >
               <span>Gõ nhanh ngay trong tiêu đề:</span>
-              <span><code className="rounded bg-surface-2 px-1 text-ink">!ưu-tiên</code></span>
-              <span><code className="rounded bg-surface-2 px-1 text-ink">@người</code></span>
-              <span><code className="rounded bg-surface-2 px-1 text-ink">#sprint</code></span>
-              <span><code className="rounded bg-surface-2 px-1 text-ink">~điểm</code></span>
-              <span><code className="rounded bg-surface-2 px-1 text-ink">^hạn</code> (mai · t6 · 3d · 2w · 15/8)</span>
+              <span>
+                <code className="rounded bg-surface-2 px-1 text-ink">!ưu-tiên</code>
+              </span>
+              <span>
+                <code className="rounded bg-surface-2 px-1 text-ink">@người</code>
+              </span>
+              <span>
+                <code className="rounded bg-surface-2 px-1 text-ink">#sprint</code>
+              </span>
+              <span>
+                <code className="rounded bg-surface-2 px-1 text-ink">~điểm</code>
+              </span>
+              <span>
+                <code className="rounded bg-surface-2 px-1 text-ink">^hạn</code> (mai · t6 · 3d · 2w
+                · 15/8)
+              </span>
             </p>
           </Field>
 
-          <Field label="Người phụ trách" hint="(tùy chọn)" title="Người chịu trách nhiệm làm việc này. Để trống nếu chưa biết giao cho ai.">
+          <Field
+            label="Người phụ trách"
+            hint="(tùy chọn)"
+            title="Người chịu trách nhiệm làm việc này. Để trống nếu chưa biết giao cho ai."
+          >
             <PeoplePicker
               value={assigneeId}
               onChange={setAssigneeId}
@@ -331,30 +440,86 @@ export function CreateIssueModal() {
               options={assignees}
             />
           </Field>
-          <Field label="Ưu tiên" hint="(tùy chọn)" title="Việc này gấp đến mức nào so với các việc khác">
+          <Field
+            label="Ưu tiên"
+            hint="(tùy chọn)"
+            title="Việc này gấp đến mức nào so với các việc khác"
+          >
             <SearchSelect
               value={priorityId}
               onChange={setPriorityId}
               disabled={!meta}
               className={selectClass}
-              options={[{ value: '', label: '—' }, ...(meta?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, color: p.color }))]}
+              options={[
+                { value: '', label: '—' },
+                ...(meta?.priorities ?? []).map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                  color: p.color,
+                })),
+              ]}
             />
           </Field>
 
-          <Field label="Sprint" hint="(tùy chọn)" title="Sprint là đợt làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Backlog — danh sách chờ.">
-            <SearchSelect value={sprintId} onChange={setSprintId} disabled={!selId} className={selectClass} ariaLabel="Sprint" options={sprintOptions} />
+          <Field
+            label="Sprint"
+            hint="(tùy chọn)"
+            title="Sprint là đợt làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Backlog — danh sách chờ."
+          >
+            <SearchSelect
+              value={sprintId}
+              onChange={setSprintId}
+              disabled={!selId}
+              className={selectClass}
+              ariaLabel="Sprint"
+              options={sprintOptions}
+            />
           </Field>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Điểm ước lượng" hint="(tùy chọn)" title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint.">
-              <Input type="number" min={0} inputMode="numeric" value={points} onChange={(e) => setPoints(e.target.value)} placeholder="VD: 3" className="text-sm" aria-label="Điểm ước lượng" />
+            <Field
+              label="Điểm ước lượng"
+              hint="(tùy chọn)"
+              title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint."
+            >
+              <Input
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={points}
+                onChange={(e) => setPoints(e.target.value)}
+                placeholder="VD: 3"
+                className="text-sm"
+                aria-label="Điểm ước lượng"
+              />
             </Field>
-            <Field label="Hạn hoàn thành" hint="(tùy chọn)" title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng.">
-              <Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} className="text-sm" aria-label="Hạn hoàn thành" />
+            <Field
+              label="Hạn hoàn thành"
+              hint="(tùy chọn)"
+              title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
+            >
+              <Input
+                type="datetime-local"
+                value={due}
+                onChange={(e) => setDue(e.target.value)}
+                className="text-sm"
+                aria-label="Hạn hoàn thành"
+              />
             </Field>
           </div>
 
-          <Field label="Mô tả" hint="(tùy chọn)" className="sm:col-span-2" title="Viết đủ để người khác làm được mà không cần hỏi lại bạn.">
-            <MarkdownEditor value={description} onChange={setDescription} onSubmit={() => void submitCreate()} rows={10} placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))" />
+          <Field
+            label="Mô tả"
+            hint="(tùy chọn)"
+            className="sm:col-span-2"
+            title="Viết đủ để người khác làm được mà không cần hỏi lại bạn."
+          >
+            <MarkdownEditor
+              value={description}
+              onChange={setDescription}
+              onSubmit={() => void submitCreate()}
+              rows={10}
+              placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))"
+            />
           </Field>
 
           <Field label="Tệp đính kèm" hint="(tùy chọn)" className="sm:col-span-2">
@@ -377,32 +542,57 @@ function fmtSize(n: number): string {
 }
 
 /** Vùng chọn/kéo-thả tệp (giữ cục bộ tới khi công việc được tạo rồi mới tải lên). */
-function FileDrop({ files, onAdd, onRemove }: { files: File[]; onAdd: (f: File[]) => void; onRemove: (i: number) => void }) {
+function FileDrop({
+  files,
+  onAdd,
+  onRemove,
+}: {
+  files: File[];
+  onAdd: (f: File[]) => void;
+  onRemove: (i: number) => void;
+}) {
   const [over, setOver] = useState(false);
   return (
     <div>
       <label
-        onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setOver(true);
+        }}
         onDragLeave={() => setOver(false)}
-        onDrop={(e) => { e.preventDefault(); setOver(false); onAdd(Array.from(e.dataTransfer.files)); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          onAdd(Array.from(e.dataTransfer.files));
+        }}
         className={cn(
           'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed px-3 py-5 text-center text-sm transition-colors',
-          over ? 'border-primary bg-primary-subtle/40 text-ink' : 'border-border text-muted hover:border-primary hover:text-ink',
+          over
+            ? 'border-primary bg-primary-subtle/40 text-ink'
+            : 'border-border text-muted hover:border-primary hover:text-ink',
         )}
       >
         <Paperclip className="h-4 w-4" aria-hidden />
-        <span>Kéo thả tệp vào đây hoặc <span className="font-medium text-primary">bấm để chọn tệp</span></span>
+        <span>
+          Kéo thả tệp vào đây hoặc <span className="font-medium text-primary">bấm để chọn tệp</span>
+        </span>
         <input
           type="file"
           multiple
           className="hidden"
-          onChange={(e) => { if (e.target.files?.length) onAdd(Array.from(e.target.files)); e.currentTarget.value = ''; }}
+          onChange={(e) => {
+            if (e.target.files?.length) onAdd(Array.from(e.target.files));
+            e.currentTarget.value = '';
+          }}
         />
       </label>
       {files.length > 0 && (
         <ul className="mt-2 space-y-1">
           {files.map((f, i) => (
-            <li key={i} className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm">
+            <li
+              key={i}
+              className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm"
+            >
               <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
               <span className="min-w-0 flex-1 truncate text-ink">{f.name}</span>
               <span className="shrink-0 text-xs text-faint tabular">{fmtSize(f.size)}</span>

@@ -13,7 +13,14 @@ const optionalText = (max: number) => z.string().trim().max(max).nullable().opti
 export const createClientSchema = z.object({
   name: z.string().trim().min(1, 'Tên khách hàng bắt buộc').max(160),
   contactName: optionalText(120),
-  email: z.string().trim().max(160).email('Email không hợp lệ').or(z.literal('')).nullable().optional(),
+  email: z
+    .string()
+    .trim()
+    .max(160)
+    .email('Email không hợp lệ')
+    .or(z.literal(''))
+    .nullable()
+    .optional(),
   phone: optionalText(40),
   note: optionalText(1000),
   projectIds: z.array(z.string().min(1)).max(500).optional(),

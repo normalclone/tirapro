@@ -423,17 +423,19 @@ function CreateFilterModal({
   return (
     <Dialog
       open={open}
-      onOpenChange={(o) => { if (!o) onClose(); }}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
       title="Tạo bộ lọc"
       size="lg"
       footer={
         <>
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Hủy
-            </Button>
-            <Button type="submit" form="create-filter-form" loading={saving} disabled={!canSubmit}>
-              Lưu bộ lọc
-            </Button>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button type="submit" form="create-filter-form" loading={saving} disabled={!canSubmit}>
+            Lưu bộ lọc
+          </Button>
         </>
       }
     >
@@ -448,9 +450,7 @@ function CreateFilterModal({
             ]}
           />
           <span className="text-xs text-faint">
-            {mode === 'simple'
-              ? 'Cho người mới — sinh JQL tự động'
-              : 'Cho người thạo cú pháp'}
+            {mode === 'simple' ? 'Cho người mới — sinh JQL tự động' : 'Cho người thạo cú pháp'}
           </span>
         </div>
 

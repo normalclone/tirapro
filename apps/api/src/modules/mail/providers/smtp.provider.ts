@@ -23,7 +23,9 @@ export class SmtpMailProvider implements MailProvider {
 
   send(_msg: MailMessage): Promise<void> {
     return Promise.reject(
-      new Error('Gửi qua SMTP chưa được hỗ trợ trong bản này (chưa cài thư viện gửi thư) — hãy dùng MAIL_DRIVER=console.'),
+      new Error(
+        'Gửi qua SMTP chưa được hỗ trợ trong bản này (chưa cài thư viện gửi thư) — hãy dùng MAIL_DRIVER=console.',
+      ),
     );
   }
 }

@@ -4,17 +4,37 @@ import { SprintAssistantService } from './sprint-assistant.service';
 const sprint = { id: 's1', projectId: 'p1', state: 'FUTURE', name: 'Sprint 5' };
 let n = 0;
 const row = (points: number | null, over: Record<string, unknown> = {}) => ({
-  id: `i${++n}`, key: `TP-${n}`, summary: `Việc ${n}`, storyPoints: points, version: 1,
-  dueDate: null, rank: `0|${String(n).padStart(3, '0')}`, priority: { rank: 3 }, ...over,
+  id: `i${++n}`,
+  key: `TP-${n}`,
+  summary: `Việc ${n}`,
+  storyPoints: points,
+  version: 1,
+  dueDate: null,
+  rank: `0|${String(n).padStart(3, '0')}`,
+  priority: { rank: 3 },
+  ...over,
 });
 
-function make(backlog: unknown[], opts: { closes?: number[]; claude?: Record<string, unknown>; sprintRow?: unknown } = {}) {
+function make(
+  backlog: unknown[],
+  opts: { closes?: number[]; claude?: Record<string, unknown>; sprintRow?: unknown } = {},
+) {
   const prisma = {
-    sprint: { findFirst: vi.fn().mockResolvedValue(opts.sprintRow === undefined ? sprint : opts.sprintRow) },
-    sprintSnapshot: { findMany: vi.fn().mockResolvedValue((opts.closes ?? []).map((p) => ({ completedPoints: p }))) },
+    sprint: {
+      findFirst: vi.fn().mockResolvedValue(opts.sprintRow === undefined ? sprint : opts.sprintRow),
+    },
+    sprintSnapshot: {
+      findMany: vi.fn().mockResolvedValue((opts.closes ?? []).map((p) => ({ completedPoints: p }))),
+    },
     issue: { findMany: vi.fn().mockResolvedValue(backlog) },
   };
-  const claude = { modelFast: 'fast-m', modelPrimary: 'primary-m', available: () => false, extract: vi.fn(), ...opts.claude };
+  const claude = {
+    modelFast: 'fast-m',
+    modelPrimary: 'primary-m',
+    available: () => false,
+    extract: vi.fn(),
+    ...opts.claude,
+  };
   return { svc: new SprintAssistantService(prisma as never, claude as never), prisma, claude };
 }
 const input = { projectId: 'p1', sprintId: 's1' };
@@ -36,7 +56,11 @@ describe('SprintAssistantService', () => {
     n = 0;
     const { svc, prisma } = make([row(null), row(5), row(0), row(8)], { closes: [10, 12, 14] });
     const out = await svc.plan('ws1', 'me', input);
-    expect(prisma.sprintSnapshot.findMany.mock.calls[0]![0]).toMatchObject({ where: { kind: 'CLOSE' }, orderBy: { snapshotAt: 'desc' }, take: 3 });
+    expect(prisma.sprintSnapshot.findMany.mock.calls[0]![0]).toMatchObject({
+      where: { kind: 'CLOSE' },
+      orderBy: { snapshotAt: 'desc' },
+      take: 3,
+    });
     expect(out.velocityAvg).toBe(12);
     expect(out.capacityPoints).toBe(12);
     expect(out.picks.map((p) => p.storyPoints)).toEqual([5]); // 5+8=13 > 12
@@ -68,18 +92,37 @@ describe('SprintAssistantService', () => {
 
   it('sprint không thuộc dự án → 404; sprint đã đóng → lỗi nghiệp vụ', async () => {
     await expect(make([], { sprintRow: null }).svc.plan('ws1', 'me', input)).rejects.toThrow();
-    await expect(make([], { sprintRow: { ...sprint, state: 'CLOSED' } }).svc.plan('ws1', 'me', input)).rejects.toThrow();
+    await expect(
+      make([], { sprintRow: { ...sprint, state: 'CLOSED' } }).svc.plan('ws1', 'me', input),
+    ).rejects.toThrow();
   });
 
   it('Claude (có goal): dùng model fast, tôn trọng capacity, bỏ id lạ/trùng, source claude', async () => {
     n = 0;
     const backlog = [row(8), row(5), row(5), row(3), row(13)];
     const extract = vi.fn().mockResolvedValue({
-      data: { picks: [{ id: 'c4', reason: 'Khớp mục tiêu' }, { id: 'c4', reason: 'trùng' }, { id: 'zz', reason: 'lạ' }, { id: 'c1', reason: 'Quan trọng' }, { id: 'c5', reason: 'quá lớn' }, { id: 'c2', reason: 'Hỗ trợ' }] },
+      data: {
+        picks: [
+          { id: 'c4', reason: 'Khớp mục tiêu' },
+          { id: 'c4', reason: 'trùng' },
+          { id: 'zz', reason: 'lạ' },
+          { id: 'c1', reason: 'Quan trọng' },
+          { id: 'c5', reason: 'quá lớn' },
+          { id: 'c2', reason: 'Hỗ trợ' },
+        ],
+      },
     });
     const { svc } = make(backlog, { claude: { available: () => true, extract } });
-    const out = await svc.plan('ws1', 'me', { ...input, capacityPoints: 20, goal: 'Hoàn thiện thanh toán' });
-    const arg = extract.mock.calls[0]![0] as { model: string; ctx: { feature: string }; prompt: string };
+    const out = await svc.plan('ws1', 'me', {
+      ...input,
+      capacityPoints: 20,
+      goal: 'Hoàn thiện thanh toán',
+    });
+    const arg = extract.mock.calls[0]![0] as {
+      model: string;
+      ctx: { feature: string };
+      prompt: string;
+    };
     expect(arg.model).toBe('fast-m');
     expect(arg.ctx.feature).toBe('sprint-plan');
     expect(arg.prompt).toContain('Hoàn thiện thanh toán');
@@ -94,14 +137,26 @@ describe('SprintAssistantService', () => {
     n = 0;
     const backlog = [row(8), row(5)];
     const timeout = vi.fn().mockResolvedValue({ data: null, reason: 'timeout' });
-    const a = await make(backlog, { claude: { available: () => true, extract: timeout } }).svc.plan('ws1', 'me', { ...input, capacityPoints: 20, goal: 'x' });
+    const a = await make(backlog, { claude: { available: () => true, extract: timeout } }).svc.plan(
+      'ws1',
+      'me',
+      { ...input, capacityPoints: 20, goal: 'x' },
+    );
     expect(a.source).toBe('heuristic');
     expect(a.reason).toBe('timeout');
     const boom = vi.fn().mockRejectedValue(new Error('x'));
-    const b = await make(backlog, { claude: { available: () => true, extract: boom } }).svc.plan('ws1', 'me', { ...input, capacityPoints: 20, goal: 'x' });
+    const b = await make(backlog, { claude: { available: () => true, extract: boom } }).svc.plan(
+      'ws1',
+      'me',
+      { ...input, capacityPoints: 20, goal: 'x' },
+    );
     expect(b.reason).toBe('error');
     const noGoal = vi.fn();
-    const c = await make(backlog, { claude: { available: () => true, extract: noGoal } }).svc.plan('ws1', 'me', { ...input, capacityPoints: 20 });
+    const c = await make(backlog, { claude: { available: () => true, extract: noGoal } }).svc.plan(
+      'ws1',
+      'me',
+      { ...input, capacityPoints: 20 },
+    );
     expect(c.source).toBe('heuristic');
     expect(noGoal).not.toHaveBeenCalled();
   });

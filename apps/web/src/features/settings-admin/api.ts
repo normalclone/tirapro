@@ -4,7 +4,6 @@ import { keys } from '@/lib/queryKeys';
 
 /** ---- Độ ưu tiên (priorities) ---- */
 
-
 export interface Priority {
   id: string;
   name: string;
@@ -69,7 +68,6 @@ export function useDeletePriority() {
 }
 
 /** ---- Trường tuỳ chỉnh (custom field definitions) ---- */
-
 
 export type CustomFieldType =
   | 'TEXT'

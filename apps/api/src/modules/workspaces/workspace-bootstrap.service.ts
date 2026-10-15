@@ -34,32 +34,75 @@ export class WorkspaceBootstrapService {
     }
     for (const p of DEFAULT_PRIORITIES) {
       await tx.priority.create({
-        data: { workspaceId, name: p.name, iconKey: p.iconKey, color: p.color, rank: p.rank, isDefault: !!p.isDefault, isSystem: true },
+        data: {
+          workspaceId,
+          name: p.name,
+          iconKey: p.iconKey,
+          color: p.color,
+          rank: p.rank,
+          isDefault: !!p.isDefault,
+          isSystem: true,
+        },
       });
     }
     for (const s of DEFAULT_SEVERITIES) {
       await tx.severity.create({
-        data: { workspaceId, name: s.name, description: s.description, color: s.color, rank: s.rank, isDefault: !!s.isDefault, isSystem: true },
+        data: {
+          workspaceId,
+          name: s.name,
+          description: s.description,
+          color: s.color,
+          rank: s.rank,
+          isDefault: !!s.isDefault,
+          isSystem: true,
+        },
       });
     }
     for (const r of DEFAULT_RESOLUTIONS) {
       await tx.resolution.create({
-        data: { workspaceId, name: r.name, description: r.description, rank: r.rank, isDefault: !!r.isDefault, isSystem: true },
+        data: {
+          workspaceId,
+          name: r.name,
+          description: r.description,
+          rank: r.rank,
+          isDefault: !!r.isDefault,
+          isSystem: true,
+        },
       });
     }
     for (const l of DEFAULT_LINK_TYPES) {
       await tx.linkType.create({
-        data: { workspaceId, name: l.name, outwardName: l.outwardName, inwardName: l.inwardName, isSystem: true },
+        data: {
+          workspaceId,
+          name: l.name,
+          outwardName: l.outwardName,
+          inwardName: l.inwardName,
+          isSystem: true,
+        },
       });
     }
     for (const tpl of DEFAULT_WORKFLOW_TEMPLATES) {
       const wf = await tx.workflow.create({
-        data: { workspaceId, projectId: null, isTemplate: true, isDefault: !!tpl.isDefault, name: tpl.name, description: tpl.description },
+        data: {
+          workspaceId,
+          projectId: null,
+          isTemplate: true,
+          isDefault: !!tpl.isDefault,
+          name: tpl.name,
+          description: tpl.description,
+        },
       });
       const statusByName = new Map<string, string>();
       for (const st of tpl.statuses) {
         const row = await tx.status.create({
-          data: { workflowId: wf.id, name: st.name, category: st.category, color: st.color, order: st.order, isInitial: !!st.isInitial },
+          data: {
+            workflowId: wf.id,
+            name: st.name,
+            category: st.category,
+            color: st.color,
+            order: st.order,
+            isInitial: !!st.isInitial,
+          },
         });
         statusByName.set(st.name, row.id);
       }

@@ -13,17 +13,25 @@ describe('validateEnv — khoá mã hoá', () => {
   });
 
   it('prod: thiếu khoá (dùng mặc định) → fail-fast', () => {
-    expect(() => validateEnv({ ...base, NODE_ENV: 'production' })).toThrow(/INTEGRATION_ENCRYPTION_KEY/);
+    expect(() => validateEnv({ ...base, NODE_ENV: 'production' })).toThrow(
+      /INTEGRATION_ENCRYPTION_KEY/,
+    );
   });
 
   it('prod: khoá mặc định đặt tường minh → fail-fast', () => {
     expect(() =>
-      validateEnv({ ...base, NODE_ENV: 'production', INTEGRATION_ENCRYPTION_KEY: DEFAULT_INTEGRATION_ENCRYPTION_KEY }),
+      validateEnv({
+        ...base,
+        NODE_ENV: 'production',
+        INTEGRATION_ENCRYPTION_KEY: DEFAULT_INTEGRATION_ENCRYPTION_KEY,
+      }),
     ).toThrow(/INTEGRATION_ENCRYPTION_KEY/);
   });
 
   it('khoá ngắn hơn 32 ký tự → lỗi', () => {
-    expect(() => validateEnv({ ...base, NODE_ENV: 'production', INTEGRATION_ENCRYPTION_KEY: 'ngan' })).toThrow();
+    expect(() =>
+      validateEnv({ ...base, NODE_ENV: 'production', INTEGRATION_ENCRYPTION_KEY: 'ngan' }),
+    ).toThrow();
   });
 
   it('prod: khoá riêng đủ dài → ok', () => {
@@ -46,8 +54,13 @@ describe('validateEnv — khoá mã hoá cũ', () => {
 
   it('không đặt / để trống → ok; có đặt nhưng ngắn hơn 32 ký tự → lỗi', () => {
     expect(validateEnv({ ...base }).INTEGRATION_ENCRYPTION_KEY_PREVIOUS).toBe('');
-    expect(validateEnv({ ...base, INTEGRATION_ENCRYPTION_KEY_PREVIOUS: '' }).INTEGRATION_ENCRYPTION_KEY_PREVIOUS).toBe('');
-    expect(() => validateEnv({ ...base, INTEGRATION_ENCRYPTION_KEY_PREVIOUS: 'ngan' })).toThrow(/INTEGRATION_ENCRYPTION_KEY_PREVIOUS/);
+    expect(
+      validateEnv({ ...base, INTEGRATION_ENCRYPTION_KEY_PREVIOUS: '' })
+        .INTEGRATION_ENCRYPTION_KEY_PREVIOUS,
+    ).toBe('');
+    expect(() => validateEnv({ ...base, INTEGRATION_ENCRYPTION_KEY_PREVIOUS: 'ngan' })).toThrow(
+      /INTEGRATION_ENCRYPTION_KEY_PREVIOUS/,
+    );
   });
 });
 

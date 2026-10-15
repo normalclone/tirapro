@@ -85,7 +85,11 @@ export class TelegramService {
       );
     }
     const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', TelegramService.deriveKey(this.encryptionKey), iv);
+    const cipher = crypto.createCipheriv(
+      'aes-256-gcm',
+      TelegramService.deriveKey(this.encryptionKey),
+      iv,
+    );
     const ciphertext = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
     const tag = cipher.getAuthTag();
     return `${iv.toString('hex')}:${tag.toString('hex')}:${ciphertext.toString('hex')}`;
@@ -100,7 +104,10 @@ export class TelegramService {
         Buffer.from(parts[0], 'hex'),
       );
       decipher.setAuthTag(Buffer.from(parts[1], 'hex'));
-      const plain = Buffer.concat([decipher.update(Buffer.from(parts[2], 'hex')), decipher.final()]);
+      const plain = Buffer.concat([
+        decipher.update(Buffer.from(parts[2], 'hex')),
+        decipher.final(),
+      ]);
       return plain.toString('utf8');
     } catch {
       return null;

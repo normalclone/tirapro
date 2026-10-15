@@ -17,7 +17,10 @@ export type { StepLog } from './issue-patch';
  * rollback chéo giữa issue/comment/webhook), bước lỗi và các bước sau được ghi rõ trong log.
  * Trả `{ logs, failed }`; `failed` = true nếu có bước lỗi.
  */
-export async function runActions(ctx: ActionContext, actions: RuleAction[]): Promise<{ logs: StepLog[]; failed: boolean }> {
+export async function runActions(
+  ctx: ActionContext,
+  actions: RuleAction[],
+): Promise<{ logs: StepLog[]; failed: boolean }> {
   const logs: StepLog[] = [];
   let i = 0;
   while (i < actions.length) {
@@ -40,7 +43,12 @@ export async function runActions(ctx: ActionContext, actions: RuleAction[]): Pro
       if (batch.length) for (const b of batch) logs.push({ step: `${b.type}`, ok: false, message });
       else logs.push({ step: action.type, ok: false, message });
       const skipped = actions.length - i;
-      if (skipped > 0) logs.push({ step: 'Dừng', ok: false, message: `Bỏ qua ${skipped} hành động còn lại do lỗi ở bước trước` });
+      if (skipped > 0)
+        logs.push({
+          step: 'Dừng',
+          ok: false,
+          message: `Bỏ qua ${skipped} hành động còn lại do lỗi ở bước trước`,
+        });
       return { logs, failed: true };
     }
   }
@@ -49,14 +57,23 @@ export async function runActions(ctx: ActionContext, actions: RuleAction[]): Pro
 
 function runSingle(ctx: ActionContext, a: RuleAction): Promise<string> {
   switch (a.type) {
-    case 'transition': return runTransition(ctx, a);
+    case 'transition':
+      return runTransition(ctx, a);
     case 'addLabel':
-    case 'removeLabel': return runLabel(ctx, a);
-    case 'addComment': return runAddComment(ctx, a);
-    case 'notify': return runNotify(ctx, a);
-    case 'webhook': return runWebhook(ctx, a);
-    case 'createSubtask': return runCreateSubtask(ctx, a);
-    default: return Promise.reject(new Error(`Hành động không được hỗ trợ: ${(a as { type: string }).type}`));
+    case 'removeLabel':
+      return runLabel(ctx, a);
+    case 'addComment':
+      return runAddComment(ctx, a);
+    case 'notify':
+      return runNotify(ctx, a);
+    case 'webhook':
+      return runWebhook(ctx, a);
+    case 'createSubtask':
+      return runCreateSubtask(ctx, a);
+    default:
+      return Promise.reject(
+        new Error(`Hành động không được hỗ trợ: ${(a as { type: string }).type}`),
+      );
   }
 }
 

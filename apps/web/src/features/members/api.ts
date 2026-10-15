@@ -5,7 +5,6 @@ import { queryClient } from '@/lib/queryClient';
 import { useAuth } from '@/stores/auth';
 import { keys } from '@/lib/queryKeys';
 
-
 /** Thân request cập nhật hồ sơ cá nhân (PATCH /users/me). */
 export interface UpdateProfileInput {
   displayName?: string;
@@ -27,7 +26,6 @@ export function useWorkspaceUsers() {
     queryFn: async () => (await api.get<UserDto[]>('/users')).data,
   });
 }
-
 
 /**
  * Toàn bộ user trong hệ thống (pool do system admin quản lý ở nơi khác) — để chọn
@@ -135,7 +133,9 @@ export function useAddMembersBulk() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ userIds, roleIds }: { userIds: string[]; roleIds: string[] }) =>
-      api.post<{ added: number; skipped: number }>('/members/bulk', { userIds, roleIds }).then((r) => r.data),
+      api
+        .post<{ added: number; skipped: number }>('/members/bulk', { userIds, roleIds })
+        .then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.members.workspace });
       void qc.invalidateQueries({ queryKey: keys.users.workspace });
@@ -177,8 +177,9 @@ export function useRemoveMember() {
 export function useProjectMembers(projectId?: string) {
   return useQuery({
     queryKey: keys.members.project(projectId ?? ''),
-    queryFn: projectId ? async () =>
-      (await api.get<MemberDto[]>(`/projects/${projectId}/members`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<MemberDto[]>(`/projects/${projectId}/members`)).data
+      : skipToken,
   });
 }
 
@@ -201,7 +202,12 @@ export function useAddProjectMembersBulk(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ userIds, roleIds }: { userIds: string[]; roleIds: string[] }) =>
-      api.post<{ added: number; skipped: number }>(`/projects/${projectId}/members/bulk`, { userIds, roleIds }).then((r) => r.data),
+      api
+        .post<{
+          added: number;
+          skipped: number;
+        }>(`/projects/${projectId}/members/bulk`, { userIds, roleIds })
+        .then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.members.project(projectId) }),
   });
 }

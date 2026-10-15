@@ -17,7 +17,11 @@ export class WatchersController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/watch')
-  async watch(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
+  async watch(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('issueId') issueId: string,
+  ) {
     return this.watchers.watch(workspaceId, user.id, issueId);
   }
 
@@ -25,7 +29,11 @@ export class WatchersController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/watch')
-  async unwatch(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
+  async unwatch(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('issueId') issueId: string,
+  ) {
     return this.watchers.unwatch(workspaceId, user.id, issueId);
   }
 
@@ -33,7 +41,11 @@ export class WatchersController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/watchers')
-  async list(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
+  async list(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('issueId') issueId: string,
+  ) {
     return this.watchers.list(workspaceId, user.id, issueId);
   }
 
@@ -41,7 +53,11 @@ export class WatchersController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/watch')
-  async isWatching(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
+  async isWatching(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('issueId') issueId: string,
+  ) {
     return this.watchers.isWatching(workspaceId, user.id, issueId);
   }
 }

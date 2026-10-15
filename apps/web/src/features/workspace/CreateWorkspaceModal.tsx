@@ -21,13 +21,7 @@ function useCreateWorkspace() {
   });
 }
 
-export function CreateWorkspaceModal({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
+export function CreateWorkspaceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useCreateWorkspace();
   const switchWs = useSwitchWorkspace();
 
@@ -63,7 +57,9 @@ export function CreateWorkspaceModal({
   return (
     <Dialog
       open
-      onOpenChange={(o) => { if (!o) onClose(); }}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
       title="Tạo không gian làm việc"
       footer={
         <>
@@ -90,7 +86,8 @@ export function CreateWorkspaceModal({
             className="text-sm"
           />
           <p className="mt-1.5 text-xs text-faint">
-            Đây là nơi riêng để chứa dự án và thành viên — thường ứng với một công ty hoặc một phòng ban. Tạo xong, bạn sẽ được chuyển sang ngay.
+            Đây là nơi riêng để chứa dự án và thành viên — thường ứng với một công ty hoặc một phòng
+            ban. Tạo xong, bạn sẽ được chuyển sang ngay.
           </p>
         </div>
       </form>

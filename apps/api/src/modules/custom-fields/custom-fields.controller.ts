@@ -7,9 +7,7 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import {
-  CustomFieldsService,
-} from './custom-fields.service';
+import { CustomFieldsService } from './custom-fields.service';
 
 /** Body tạo custom field. SELECT/MULTI_SELECT có thể kèm options. */
 export const createCustomFieldSchema = z.object({
@@ -18,7 +16,9 @@ export const createCustomFieldSchema = z.object({
   projectId: z.string().min(1).optional(),
   isRequired: z.boolean().optional(),
   order: z.number().int().optional(),
-  options: z.array(z.object({ value: z.string().min(1, 'Lựa chọn không được để trống') })).optional(),
+  options: z
+    .array(z.object({ value: z.string().min(1, 'Lựa chọn không được để trống') }))
+    .optional(),
 });
 export type CreateCustomFieldBody = z.infer<typeof createCustomFieldSchema>;
 

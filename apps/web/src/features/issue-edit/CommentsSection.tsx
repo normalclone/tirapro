@@ -59,7 +59,9 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
           />
         ))}
         {comments?.length === 0 && (
-          <p className="text-sm text-faint">Chưa có bình luận nào. Viết vài dòng bên dưới để trao đổi với cả nhóm về việc này.</p>
+          <p className="text-sm text-faint">
+            Chưa có bình luận nào. Viết vài dòng bên dưới để trao đổi với cả nhóm về việc này.
+          </p>
         )}
       </div>
 
@@ -146,7 +148,10 @@ function CommentRow({
               value={body}
               onChange={setBody}
               onSubmit={() => void save()}
-              onCancel={() => { setBody(comment.body); setEditing(false); }}
+              onCancel={() => {
+                setBody(comment.body);
+                setEditing(false);
+              }}
               autoFocus
               rows={3}
             />
@@ -155,7 +160,10 @@ function CommentRow({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setBody(comment.body); setEditing(false); }}
+                onClick={() => {
+                  setBody(comment.body);
+                  setEditing(false);
+                }}
               >
                 Huỷ
               </Button>

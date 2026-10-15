@@ -32,16 +32,16 @@ export class SprintSnapshotCron {
     // Khoá Redis để nhiều node API không chụp trùng.
     await withCronLock(this.redis, 'sprint-daily', 600, async () => {
       await this.snapshotActiveSprints();
-    }).catch((err: Error) =>
-      this.logger.warn(`Snapshot sprint hằng ngày lỗi: ${err.message}`),
-    );
+    }).catch((err: Error) => this.logger.warn(`Snapshot sprint hằng ngày lỗi: ${err.message}`));
   }
 
   /** Trả số snapshot đã ghi. Mỗi sprint bọc try/catch riêng — một sprint lỗi không chặn các sprint khác. */
   async snapshotActiveSprints(now: Date = new Date()): Promise<number> {
     // Ngày được chụp = ngày UTC ngay trước `now`.
     const dayEnd = endOfUtcDay(new Date(now.getTime() - 24 * 3_600_000));
-    const dayStart = new Date(Date.UTC(dayEnd.getUTCFullYear(), dayEnd.getUTCMonth(), dayEnd.getUTCDate()));
+    const dayStart = new Date(
+      Date.UTC(dayEnd.getUTCFullYear(), dayEnd.getUTCMonth(), dayEnd.getUTCDate()),
+    );
     const active = await this.prisma.sprint.findMany({
       where: { state: 'ACTIVE', deletedAt: null, project: { deletedAt: null } },
       select: { id: true, startDate: true },
@@ -56,7 +56,9 @@ export class SprintSnapshotCron {
           select: { id: true },
         });
         if (existing) continue;
-        await this.prisma.$transaction((tx) => this.sprints.snapshot(tx, sprint.id, 'DAILY', dayEnd));
+        await this.prisma.$transaction((tx) =>
+          this.sprints.snapshot(tx, sprint.id, 'DAILY', dayEnd),
+        );
         written++;
       } catch (err) {
         this.logger.warn(`Snapshot DAILY sprint ${sprint.id} lỗi: ${(err as Error).message}`);

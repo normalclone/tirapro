@@ -76,11 +76,14 @@ export class CustomFieldsService {
     return rows.map((r) => this.toDefinitionView(r));
   }
 
-  async createDefinition(workspaceId: string, input: CreateCustomFieldInput): Promise<FieldDefinitionView> {
+  async createDefinition(
+    workspaceId: string,
+    input: CreateCustomFieldInput,
+  ): Promise<FieldDefinitionView> {
     if (input.projectId) await this.requireProject(workspaceId, input.projectId);
 
     const isSelect = SELECT_TYPES.has(input.type);
-    const rawOptions = isSelect ? input.options ?? [] : [];
+    const rawOptions = isSelect ? (input.options ?? []) : [];
     // Khử trùng lặp value (option unique [customFieldId, value]).
     const seen = new Set<string>();
     const options = rawOptions
@@ -265,7 +268,8 @@ export class CustomFieldsService {
   }
 
   private asString(field: FieldRow, value: unknown): string {
-    if (typeof value !== 'string') throw this.invalid(`Field "${field.name}" cần giá trị dạng chuỗi`);
+    if (typeof value !== 'string')
+      throw this.invalid(`Field "${field.name}" cần giá trị dạng chuỗi`);
     if (field.type === CustomFieldType.URL && value.length > 0) {
       try {
         new URL(value);
@@ -278,7 +282,8 @@ export class CustomFieldsService {
 
   private asNumber(value: unknown): number {
     const n = typeof value === 'string' ? Number(value) : value;
-    if (typeof n !== 'number' || Number.isNaN(n)) throw this.invalid('Giá trị phải là một số hợp lệ');
+    if (typeof n !== 'number' || Number.isNaN(n))
+      throw this.invalid('Giá trị phải là một số hợp lệ');
     return n;
   }
 

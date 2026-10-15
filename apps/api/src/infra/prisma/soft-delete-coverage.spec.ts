@@ -10,7 +10,14 @@ import { SOFT_DELETE_MODELS } from './prisma.service';
  * `where` dựng sẵn thành biến). Truy vấn cố ý lấy cả bản đã xoá thì chú thích dòng trên:
  *   // allow-deleted: <lý do>
  */
-const READ_METHODS = new Set(['findMany', 'findFirst', 'findFirstOrThrow', 'count', 'aggregate', 'groupBy']);
+const READ_METHODS = new Set([
+  'findMany',
+  'findFirst',
+  'findFirstOrThrow',
+  'count',
+  'aggregate',
+  'groupBy',
+]);
 const SRC = join(__dirname, '..', '..');
 
 function listSources(dir: string): string[] {
@@ -18,7 +25,8 @@ function listSources(dir: string): string[] {
   for (const name of readdirSync(dir)) {
     const full = join(dir, name);
     if (statSync(full).isDirectory()) out.push(...listSources(full));
-    else if (name.endsWith('.ts') && !name.endsWith('.spec.ts') && !name.endsWith('.d.ts')) out.push(full);
+    else if (name.endsWith('.ts') && !name.endsWith('.spec.ts') && !name.endsWith('.d.ts'))
+      out.push(full);
   }
   return out;
 }
@@ -60,21 +68,38 @@ function findViolations(): string[] {
               // `where` dựng sẵn (biến, hoặc `this.xxxWhere(...)`) → chấp nhận nếu hàm chứa lời gọi /
               // hàm dựng where có nhắc deletedAt.
               const whereProp = arg.properties.find(
-                (p) => (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && p.name.getText() === 'where',
+                (p) =>
+                  (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) &&
+                  p.name.getText() === 'where',
               );
-              const init = whereProp && ts.isPropertyAssignment(whereProp) ? whereProp.initializer : whereProp?.name;
+              const init =
+                whereProp && ts.isPropertyAssignment(whereProp)
+                  ? whereProp.initializer
+                  : whereProp?.name;
               // `where: { ...baseWhere, x }` — spread một where dựng sẵn cũng được coi như biến.
               const spreadsBuilt =
-                !!init && ts.isObjectLiteralExpression(init) &&
-                init.properties.some((p) => ts.isSpreadAssignment(p) && ts.isIdentifier(p.expression));
+                !!init &&
+                ts.isObjectLiteralExpression(init) &&
+                init.properties.some(
+                  (p) => ts.isSpreadAssignment(p) && ts.isIdentifier(p.expression),
+                );
               if (init && (ts.isIdentifier(init) || spreadsBuilt)) {
                 let fn: ts.Node | undefined = node.parent;
                 while (fn && !ts.isFunctionLike(fn)) fn = fn.parent;
                 ok = !!fn && /\bdeletedAt\b/.test(fn.getText());
-              } else if (init && ts.isCallExpression(init) && ts.isPropertyAccessExpression(init.expression)) {
+              } else if (
+                init &&
+                ts.isCallExpression(init) &&
+                ts.isPropertyAccessExpression(init.expression)
+              ) {
                 const builder = init.expression.name.text;
                 ts.forEachChild(sf, function find(n: ts.Node): void {
-                  if (ts.isMethodDeclaration(n) && n.name.getText() === builder && /\bdeletedAt\b/.test(n.getText())) ok = true;
+                  if (
+                    ts.isMethodDeclaration(n) &&
+                    n.name.getText() === builder &&
+                    /\bdeletedAt\b/.test(n.getText())
+                  )
+                    ok = true;
                   ts.forEachChild(n, find);
                 });
               }
@@ -99,6 +124,9 @@ describe('soft-delete coverage', () => {
 
   it('mọi truy vấn đọc trên model soft-delete đều lọc deletedAt', () => {
     const violations = findViolations();
-    expect(violations, `Thiếu lọc deletedAt (hoặc chú thích // allow-deleted: lý do):\n${violations.join('\n')}`).toEqual([]);
+    expect(
+      violations,
+      `Thiếu lọc deletedAt (hoặc chú thích // allow-deleted: lý do):\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 });

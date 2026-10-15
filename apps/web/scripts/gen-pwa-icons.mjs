@@ -18,7 +18,11 @@ const svg = await readFile(new URL('favicon.svg', publicDir), 'utf8');
 
 async function launch() {
   /** @type {Array<Parameters<typeof chromium.launch>[0]>} */
-  const attempts = [{ headless: true }, { channel: 'chrome', headless: true }, { channel: 'msedge', headless: true }];
+  const attempts = [
+    { headless: true },
+    { channel: 'chrome', headless: true },
+    { channel: 'msedge', headless: true },
+  ];
   let lastError;
   for (const opts of attempts) {
     try {
@@ -27,17 +31,27 @@ async function launch() {
       lastError = e;
     }
   }
-  throw new Error(`Không mở được trình duyệt để vẽ icon: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
+  throw new Error(
+    `Không mở được trình duyệt để vẽ icon: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
 }
 
 const browser = await launch();
 try {
   for (const size of SIZES) {
-    const page = await browser.newPage({ viewport: { width: size, height: size }, deviceScaleFactor: 1 });
-    const html = `<!doctype html><html><body style="margin:0;background:transparent">`
-      + `<div style="width:${size}px;height:${size}px">${svg.replace('<svg ', `<svg width="${size}" height="${size}" `)}</div></body></html>`;
+    const page = await browser.newPage({
+      viewport: { width: size, height: size },
+      deviceScaleFactor: 1,
+    });
+    const html =
+      `<!doctype html><html><body style="margin:0;background:transparent">` +
+      `<div style="width:${size}px;height:${size}px">${svg.replace('<svg ', `<svg width="${size}" height="${size}" `)}</div></body></html>`;
     await page.setContent(html);
-    const png = await page.screenshot({ type: 'png', omitBackground: true, clip: { x: 0, y: 0, width: size, height: size } });
+    const png = await page.screenshot({
+      type: 'png',
+      omitBackground: true,
+      clip: { x: 0, y: 0, width: size, height: size },
+    });
     const out = new URL(`icon-${size}.png`, publicDir);
     await writeFile(out, png);
     console.log(`Đã ghi ${fileURLToPath(out)} (${png.length} byte)`);

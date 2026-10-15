@@ -1,4 +1,4 @@
-import type { INestApplicationContext} from '@nestjs/common';
+import type { INestApplicationContext } from '@nestjs/common';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IoAdapter } from '@nestjs/platform-socket.io';
@@ -84,7 +84,9 @@ export class RedisIoAdapter extends IoAdapter {
 
     const ready = await Promise.all([waitReady(pub, waitMs), waitReady(sub, waitMs)]);
     if (!ready.every(Boolean)) {
-      this.logger.warn('Client pub/sub của Redis adapter không kết nối được — realtime chạy in-memory.');
+      this.logger.warn(
+        'Client pub/sub của Redis adapter không kết nối được — realtime chạy in-memory.',
+      );
       this.disconnectClients();
       return false;
     }

@@ -32,8 +32,12 @@ export class AdminSystemService {
       db,
       dbLatencyMs,
       redis: this.redis.isAvailable(),
-      redisConfigured: !!this.config.get<string>('redis.url') || !!this.config.get<string>('redis.host'),
-      ai: !!this.config.get<boolean>('ai.enabled') && !!this.config.get<string>('ai.anthropicApiKey') && !this.settings.flags().aiKillSwitch,
+      redisConfigured:
+        !!this.config.get<string>('redis.url') || !!this.config.get<string>('redis.host'),
+      ai:
+        !!this.config.get<boolean>('ai.enabled') &&
+        !!this.config.get<string>('ai.anthropicApiKey') &&
+        !this.settings.flags().aiKillSwitch,
       uptimeSec: Math.round(process.uptime()),
       memoryRssMb: Math.round(mem.rss / 1_048_576),
       heapUsedMb: Math.round(mem.heapUsed / 1_048_576),
@@ -52,7 +56,13 @@ export class AdminSystemService {
       orderBy: { createdAt: 'desc' },
       take: params.limit,
       select: {
-        id: true, action: true, entityType: true, entityId: true, field: true, actorId: true, createdAt: true,
+        id: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        field: true,
+        actorId: true,
+        createdAt: true,
         workspace: { select: { id: true, name: true } },
       },
     });
@@ -74,7 +84,7 @@ export class AdminSystemService {
       field: r.field,
       createdAt: r.createdAt.toISOString(),
       workspace: r.workspace,
-      actor: r.actorId ? actorMap.get(r.actorId) ?? null : null,
+      actor: r.actorId ? (actorMap.get(r.actorId) ?? null) : null,
     }));
     return offsetPage(data, 1, Math.max(1, data.length), data.length);
   }

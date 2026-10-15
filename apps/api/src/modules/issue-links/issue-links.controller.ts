@@ -24,10 +24,7 @@ export class IssueLinksController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/links')
-  async listForIssue(
-    @WorkspaceId() workspaceId: string,
-    @Param('issueId') issueId: string,
-  ) {
+  async listForIssue(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
     return this.links.listForIssue(workspaceId, issueId);
   }
 

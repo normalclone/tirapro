@@ -31,7 +31,13 @@ const GROUPS: { title: string; items: { keys: string[]; label: string }[] }[] = 
  */
 export function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }} title="Phím tắt">
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title="Phím tắt"
+    >
       <div className="space-y-5 py-1">
         {GROUPS.map((group) => (
           <section key={group.title}>

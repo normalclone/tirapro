@@ -81,7 +81,6 @@ export interface GoalFilter {
   status?: ObjectiveStatus | '';
 }
 
-
 function cleanParams(filter: GoalFilter): Record<string, string> {
   const p: Record<string, string> = {};
   if (filter.period) p.period = filter.period;
@@ -154,7 +153,11 @@ function recalcProgress(goal: GoalDto): GoalDto {
   const krProgress = goal.keyResults.length
     ? Math.round(goal.keyResults.reduce((s, kr) => s + kr.progress, 0) / goal.keyResults.length)
     : null;
-  return { ...goal, keyResultProgress: krProgress, progress: krProgress ?? goal.issueProgress ?? 0 };
+  return {
+    ...goal,
+    keyResultProgress: krProgress,
+    progress: krProgress ?? goal.issueProgress ?? 0,
+  };
 }
 
 /**
@@ -165,7 +168,9 @@ export function useUpdateKeyResult() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({
-      goalId, keyResultId, ...input
+      goalId,
+      keyResultId,
+      ...input
     }: { goalId: string; keyResultId: string } & Partial<Omit<KeyResultInput, 'id'>>) =>
       (await api.put<GoalDto>(`/goals/${goalId}/key-results/${keyResultId}`, input)).data,
     onMutate: async ({ goalId, keyResultId, currentValue }) => {
@@ -178,9 +183,12 @@ export function useUpdateKeyResult() {
           keyResults: g.keyResults.map((kr) => {
             if (kr.id !== keyResultId) return kr;
             const span = kr.targetValue - kr.startValue;
-            const ratio = span === 0
-              ? (currentValue >= kr.targetValue ? 1 : 0)
-              : Math.min(1, Math.max(0, (currentValue - kr.startValue) / span));
+            const ratio =
+              span === 0
+                ? currentValue >= kr.targetValue
+                  ? 1
+                  : 0
+                : Math.min(1, Math.max(0, (currentValue - kr.startValue) / span));
             return { ...kr, currentValue, progress: Math.round(ratio * 100) };
           }),
         }),

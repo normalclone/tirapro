@@ -27,14 +27,23 @@ export class MailAdminController {
     @CurrentUser() user: AuthUser,
     @Query(new ZodValidationPipe(listQuerySchema)) query: ListQuery,
   ): Promise<MailOutboxItemDto[]> {
-    if (!user.isSystemAdmin) throw new ForbiddenAppException('Chỉ admin hệ thống mới xem được hộp thư đi');
+    if (!user.isSystemAdmin)
+      throw new ForbiddenAppException('Chỉ admin hệ thống mới xem được hộp thư đi');
     const rows = await this.prisma.emailOutbox.findMany({
       where: query.status ? { status: query.status } : {},
       orderBy: { createdAt: 'desc' },
       take: query.limit,
       select: {
-        id: true, to: true, subject: true, template: true, status: true, attempts: true,
-        lastError: true, scheduledAt: true, sentAt: true, createdAt: true,
+        id: true,
+        to: true,
+        subject: true,
+        template: true,
+        status: true,
+        attempts: true,
+        lastError: true,
+        scheduledAt: true,
+        sentAt: true,
+        createdAt: true,
       },
     });
     return rows.map((r) => ({
