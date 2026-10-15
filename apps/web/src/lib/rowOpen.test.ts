@@ -4,6 +4,7 @@ import {
   isModifiedClick,
   peekSearch,
   rowKeyAction,
+  rowRootProps,
   wantsNewTab,
 } from './rowOpen';
 
@@ -85,5 +86,18 @@ describe('peekSearch', () => {
     expect(peekSearch('?q=a&peek=OLD', 'NEW-1')).toBe('?q=a&peek=NEW-1');
     expect(peekSearch('?q=a&peek=OLD', null)).toBe('?q=a');
     expect(peekSearch('?peek=OLD', null)).toBe('');
+  });
+});
+
+describe('rowRootProps', () => {
+  it('dòng không kéo được vẫn focus được và mở được', () => {
+    const p = rowRootProps({ draggable: false, hasOpen: true });
+    expect(p).toMatchObject({ tabIndex: 0, role: 'button', 'aria-disabled': true });
+  });
+  it('dòng kéo được: giữ thuộc tính dnd (không ghi đè tabIndex/role của dnd-kit)', () => {
+    expect(rowRootProps({ draggable: true, hasOpen: true })).toEqual({});
+  });
+  it('không có onOpen: không thêm gì cho dòng không kéo', () => {
+    expect(rowRootProps({ draggable: false, hasOpen: false })).toEqual({ 'aria-disabled': true });
   });
 });

@@ -53,3 +53,11 @@ export function peekSearch(search: string, key: string | null): string {
   const s = p.toString();
   return s ? `?${s}` : '';
 }
+
+/** Thuộc tính bổ sung cho gốc dòng tuỳ khả năng kéo/mở (phần dnd-kit đã có tabIndex/role qua `attributes`). */
+export function rowRootProps(o: { draggable: boolean; hasOpen: boolean }): Record<string, unknown> {
+  if (o.draggable) return {};
+  return o.hasOpen
+    ? { 'aria-disabled': true, tabIndex: 0, role: 'button' }
+    : { 'aria-disabled': true };
+}

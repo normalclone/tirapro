@@ -13,7 +13,6 @@
       "entry": ["scripts/*.mjs"],
       "ignore": [
         "src/features/ai/AiIssuePanel.tsx", // chưa nối vào UI; xoá hay nối là quyết định riêng
-        "src/features/issues/peek/{IssueKeyLink,useIssuePeek}.*", // B1: hạ tầng xem nhanh, B3 sẽ nối vào Việc chờ — xoá dòng này khi B3 dùng
       ],
     },
     "apps/mcp": {},
