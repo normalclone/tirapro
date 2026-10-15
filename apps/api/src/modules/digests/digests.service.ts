@@ -36,6 +36,8 @@ export interface UpdateDigestInput {
 }
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+/** Cửa sổ chống gửi đôi cho cron: bằng TTL khoá cron (1800s). */
+const DIGEST_DEDUPE_MS = 30 * 60 * 1000;
 
 @Injectable()
 export class DigestsService implements OnApplicationShutdown {
@@ -317,6 +319,7 @@ export class DigestsService implements OnApplicationShutdown {
       projectId: string | null;
       channelId: string | null;
       schedule: DigestSchedule;
+      lastRunAt: Date | null;
     }>;
     try {
       subs = await this.prisma.reportSubscription.findMany({
@@ -332,6 +335,7 @@ export class DigestsService implements OnApplicationShutdown {
           projectId: true,
           channelId: true,
           schedule: true,
+          lastRunAt: true,
         },
       });
     } catch (err) {
@@ -341,13 +345,29 @@ export class DigestsService implements OnApplicationShutdown {
 
     for (const sub of subs) {
       if (this.stopping) break; // app đang tắt
+      const now = new Date();
+      // Node khác vừa gửi (đồng hồ lệch nên khoá cron đã nhả trước khi cron node này chạy).
+      if (sub.lastRunAt && now.getTime() - sub.lastRunAt.getTime() < DIGEST_DEDUPE_MS) continue;
       try {
-        const text = await this.buildDigest(sub.workspaceId, sub.projectId ?? undefined);
-        await this.send(sub.channelId, text);
-        await this.prisma.reportSubscription.update({
-          where: { id: sub.id },
-          data: { lastRunAt: new Date() },
+        // Compare-and-set: chỉ một node thắng; node thua thấy count 0.
+        const claimed = await this.prisma.reportSubscription.updateMany({
+          where: { id: sub.id, lastRunAt: sub.lastRunAt },
+          data: { lastRunAt: now },
         });
+        if (claimed.count === 0) continue;
+        try {
+          const text = await this.buildDigest(sub.workspaceId, sub.projectId ?? undefined);
+          await this.send(sub.channelId, text);
+        } catch (err) {
+          // Chưa gửi được: trả lại để lượt sau (hoặc chạy tay) còn chạy được.
+          await this.prisma.reportSubscription
+            .updateMany({
+              where: { id: sub.id, lastRunAt: now },
+              data: { lastRunAt: sub.lastRunAt },
+            })
+            .catch(() => undefined);
+          throw err;
+        }
       } catch (err) {
         this.warn(`runScheduled.sub:${sub.id}`, err);
       }
