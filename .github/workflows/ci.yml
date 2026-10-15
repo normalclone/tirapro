@@ -20,3 +20,44 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: node scripts/gen-enums.mjs --check
+  db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: { pg: [16, 18] }
+    services:
+      postgres:
+        image: pgvector/pgvector:pg${{ matrix.pg }}
+        env: { POSTGRES_USER: tirapro, POSTGRES_PASSWORD: tirapro, POSTGRES_DB: tirapro }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tirapro" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tirapro:tirapro@localhost:5432/tirapro
+      DIRECT_URL: postgresql://tirapro:tirapro@localhost:5432/tirapro
+      SHADOW_DATABASE_URL: postgresql://tirapro:tirapro@localhost:5432/tirapro_shadow
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @tirapro/api db:generate
+      - name: migrate deploy trên DB trống
+        run: pnpm --filter @tirapro/api db:migrate:deploy
+      - name: migration không được lệch schema.prisma
+        run: |
+          PGPASSWORD=tirapro psql -h localhost -U tirapro -d postgres -c 'CREATE DATABASE tirapro_shadow'
+          pnpm --filter @tirapro/api exec prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "$SHADOW_DATABASE_URL" --exit-code
+      - name: db:raw (pgvector/FTS) chạy 2 lần, phải idempotent
+        run: |
+          pnpm --filter @tirapro/api db:raw
+          pnpm --filter @tirapro/api db:raw
+      - name: cột raw tồn tại
+        run: |
+          echo 'SELECT "searchVector" FROM "Issue" LIMIT 0; SELECT "embedding" FROM "IssueEmbedding" LIMIT 0;' \
+            | pnpm --filter @tirapro/api exec prisma db execute --stdin --schema prisma/schema.prisma
