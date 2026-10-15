@@ -136,7 +136,6 @@ export function StartSprintDialog({
             <DateInput
               id="start-sprint-end"
               value={end}
-              min={start || undefined}
               onChange={(iso) => {
                 setEnd(iso);
                 setWeeks(null);

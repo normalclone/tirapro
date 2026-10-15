@@ -91,7 +91,7 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
           searchPlaceholder="Tìm sprint…"
           className="w-64 max-w-full"
         />
-        <p className="min-w-0 flex-1 text-sm text-muted">
+        <p className="order-last w-full min-w-0 text-sm text-muted sm:order-none sm:w-auto sm:flex-1">
           <span>{SPRINT_STATE_LABEL[sprint.state]}</span>
           {time.range && <span> · {time.range}</span>}
           {sprint.goal && <span className="truncate"> · Mục tiêu: {sprint.goal}</span>}
@@ -252,5 +252,10 @@ export function SprintSummaryCards({ summary }: { summary: SprintSummaryReport }
           : 'Chưa có sprint đã đóng để so',
     },
   ];
-  return <StatStrip items={items} className="sm:grid-cols-3 xl:grid-cols-5" />;
+  return (
+    <StatStrip
+      items={items}
+      className="lg:grid-cols-5 max-lg:[&>:last-child:nth-child(odd)]:col-span-2"
+    />
+  );
 }

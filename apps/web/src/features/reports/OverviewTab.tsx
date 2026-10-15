@@ -138,7 +138,12 @@ function SummaryStats({
     { label: 'Story points', value: totals.points },
     { label: 'Hoàn tất', value: `${completionRate}%`, tone: 'done' },
   ];
-  return <StatStrip items={items} className="sm:grid-cols-4 xl:grid-cols-7" />;
+  return (
+    <StatStrip
+      items={items}
+      className="sm:grid-cols-4 xl:grid-cols-7 max-sm:[&>:last-child:nth-child(odd)]:col-span-2"
+    />
+  );
 }
 
 /* ------------------------------------------------------------------ */
