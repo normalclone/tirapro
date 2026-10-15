@@ -11,6 +11,7 @@ import {
   unmatchedHint,
   type ActiveToken,
   type Suggestion,
+  type UnmatchedToken,
   type TokenCtx,
 } from './titleTokens';
 
@@ -222,52 +223,73 @@ export function TokenTitleInput({
         />
 
         {open && items.length > 0 && (
-          <ul
-            className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100"
-            role="listbox"
-          >
-            {items.map((s, i) => (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={i === idx}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onMouseEnter={() => setIdx(i)}
-                  onClick={() => accept(s)}
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-ink transition-colors',
-                    i === idx ? 'bg-surface-2' : 'hover:bg-surface-2',
-                  )}
-                >
-                  <span className="font-mono text-[11px] text-faint">{s.insert.charAt(0)}</span>
-                  <span className="min-w-0 flex-1 truncate">{s.label}</span>
-                  {s.hint && (
-                    <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted">
-                      {s.hint}
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <SuggestionList items={items} idx={idx} onHover={setIdx} onPick={accept} />
         )}
       </div>
 
-      {warns.length > 0 && (
-        <p role="status" className="mt-1 flex items-start gap-1.5 text-xs text-warning-ink">
-          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-          <span>
-            Chưa nhận ra{' '}
-            {warns.map((w) => (
-              <code key={w.start} className="mx-0.5 rounded bg-surface-2 px-1">
-                {w.text}
-              </code>
-            ))}{' '}
-            — {unmatchedHint(warns)}.
-          </span>
-        </p>
-      )}
+      <UnmatchedWarning warns={warns} />
     </div>
+  );
+}
+
+function UnmatchedWarning({ warns }: { warns: UnmatchedToken[] }) {
+  if (warns.length === 0) return null;
+  return (
+    <p role="status" className="mt-1 flex items-start gap-1.5 text-xs text-warning-ink">
+      <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+      <span>
+        Chưa nhận ra{' '}
+        {warns.map((w) => (
+          <code key={w.start} className="mx-0.5 rounded bg-surface-2 px-1">
+            {w.text}
+          </code>
+        ))}{' '}
+        — {unmatchedHint(warns)}.
+      </span>
+    </p>
+  );
+}
+
+function SuggestionList({
+  items,
+  idx,
+  onHover,
+  onPick,
+}: {
+  items: Suggestion[];
+  idx: number;
+  onHover: (i: number) => void;
+  onPick: (s: Suggestion) => void;
+}) {
+  return (
+    <ul
+      className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100"
+      role="listbox"
+    >
+      {items.map((s, i) => (
+        <li key={s.id}>
+          <button
+            type="button"
+            role="option"
+            aria-selected={i === idx}
+            onMouseDown={(e) => e.preventDefault()}
+            onMouseEnter={() => onHover(i)}
+            onClick={() => onPick(s)}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-ink transition-colors',
+              i === idx ? 'bg-surface-2' : 'hover:bg-surface-2',
+            )}
+          >
+            <span className="font-mono text-[11px] text-faint">{s.insert.charAt(0)}</span>
+            <span className="min-w-0 flex-1 truncate">{s.label}</span>
+            {s.hint && (
+              <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted">
+                {s.hint}
+              </span>
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }

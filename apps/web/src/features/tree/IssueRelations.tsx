@@ -20,7 +20,7 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
 
   const children = useMemo(
     () => childrenForPanel(issues, issue).sort(byPriorityThenStatus),
-    [issues, issue.id],
+    [issues, issue],
   );
   const isEpic = isEpicIssue(issue);
   const progress = useMemo(() => subtreeProgress(issues, issue.id), [issues, issue.id]);
