@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { iso } from '../../common/mappers/date';
+import { assertNotArchived } from '../../common/project-writable';
 import { MediaService } from '../media/media.service';
 
 @Injectable()
@@ -176,6 +177,7 @@ export class ProjectsService {
     input: UpdateProjectInput,
   ): Promise<ProjectDto> {
     const cur = await this.requireProject(workspaceId, projectId);
+    assertNotArchived(cur.archivedAt);
     const data: Prisma.ProjectUncheckedUpdateInput = { updatedById: userId };
     if (input.name !== undefined && input.name !== cur.name) {
       const dup = await this.prisma.project.findFirst({

@@ -3,6 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertProjectIdWritable } from '../../common/project-writable';
 import type { CreateSlaPolicyInput, UpdateSlaPolicyInput } from './sla.schemas';
 
 /**
@@ -41,6 +42,7 @@ export class SlaService {
   }
 
   async create(workspaceId: string, dto: CreateSlaPolicyInput) {
+    await assertProjectIdWritable(this.prisma, dto.projectId);
     await this.prisma.slaPolicy.create({
       data: {
         workspaceId,
@@ -58,9 +60,11 @@ export class SlaService {
   async update(workspaceId: string, id: string, dto: UpdateSlaPolicyInput) {
     const found = await this.prisma.slaPolicy.findFirst({
       where: { id, workspaceId },
-      select: { id: true },
+      select: { id: true, projectId: true },
     });
     if (!found) throw new NotFoundAppException('Cam kết thời gian xử lý');
+    await assertProjectIdWritable(this.prisma, found.projectId);
+    if (dto.projectId !== undefined) await assertProjectIdWritable(this.prisma, dto.projectId);
     await this.prisma.slaPolicy.update({
       where: { id },
       data: {
@@ -76,6 +80,11 @@ export class SlaService {
   }
 
   async remove(workspaceId: string, id: string) {
+    const found = await this.prisma.slaPolicy.findFirst({
+      where: { id, workspaceId },
+      select: { projectId: true },
+    });
+    if (found) await assertProjectIdWritable(this.prisma, found.projectId);
     await this.prisma.slaPolicy.deleteMany({ where: { id, workspaceId } });
     return { success: true };
   }

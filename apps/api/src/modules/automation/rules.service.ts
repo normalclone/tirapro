@@ -17,6 +17,7 @@ import {
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertProjectIdWritable } from '../../common/project-writable';
 import { TelegramService } from '../integrations/telegram.service';
 import { maskWebhookActions, openSecret, sealWebhookActions } from './webhook-secret';
 
@@ -118,6 +119,7 @@ export class RulesService {
     input: CreateRuleInput,
   ): Promise<AutomationRuleDto> {
     if (input.projectId) await this.assertProject(workspaceId, input.projectId);
+    await assertProjectIdWritable(this.prisma, input.projectId);
     this.assertSemantics(input.trigger, input.triggerConfig, input.conditions);
     const row = await this.prisma.automationRule.create({
       data: {
@@ -142,6 +144,7 @@ export class RulesService {
     input: UpdateRuleInput,
   ): Promise<AutomationRuleDto> {
     const current = await this.require(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, current.projectId);
     const trigger = input.trigger ?? current.trigger;
     const triggerConfig = input.triggerConfig ?? (current.triggerConfig as Record<string, unknown>);
     const conditions = input.conditions ?? (current.conditions as unknown as RuleCondition[]);
@@ -173,6 +176,8 @@ export class RulesService {
   }
 
   async remove(workspaceId: string, id: string): Promise<{ success: true }> {
+    const row = await this.require(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, row.projectId);
     const { count } = await this.prisma.automationRule.deleteMany({ where: { id, workspaceId } });
     if (count === 0) throw new NotFoundAppException('Quy tắc');
     await this.invalidate(workspaceId);

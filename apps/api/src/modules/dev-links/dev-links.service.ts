@@ -3,6 +3,7 @@ import { Prisma, DevLinkType, DevLinkState, IntegrationType } from '@prisma/clie
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { verifyGithubSignature, verifyGitlabToken } from './webhook-signature';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { WRITABLE_PROJECT_FILTER } from '../../common/project-writable';
 
 /** Thông tin xác thực kèm webhook (header + body gốc để tính HMAC). */
 export interface WebhookAuth {
@@ -340,7 +341,8 @@ export class DevLinksService {
 
   private async findIssue(workspaceId: string, key: string): Promise<{ id: string } | null> {
     return this.prisma.issue.findFirst({
-      where: { workspaceId, key, deletedAt: null },
+      // Dự án đã lưu trữ là chỉ đọc: webhook bỏ qua im lặng (không 4xx — Git provider khỏi đánh dấu webhook hỏng).
+      where: { workspaceId, key, deletedAt: null, project: WRITABLE_PROJECT_FILTER },
       select: { id: true },
     });
   }

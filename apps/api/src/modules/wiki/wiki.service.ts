@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertNotArchived, assertProjectIdWritable } from '../../common/project-writable';
 import type { CreateWikiPageInput, MoveWikiPageInput, UpdateWikiPageInput } from './wiki.schemas';
 
 /** Giá trị `projectId` đặc biệt trên query: chỉ lấy tài liệu chung của workspace. */
@@ -155,7 +156,7 @@ export class WikiService {
     let projectId = dto.projectId ?? null;
     const parentId = dto.parentId ?? null;
     if (parentId) {
-      const parent = await this.requirePage(workspaceId, parentId);
+      const parent = await this.requireWritablePage(workspaceId, parentId);
       projectId = parent.projectId; // trang con luôn cùng phạm vi với trang cha
     } else if (projectId) {
       await this.requireProject(workspaceId, projectId);
@@ -183,7 +184,7 @@ export class WikiService {
     dto: UpdateWikiPageInput,
     actingUserId: string,
   ): Promise<WikiPageDto> {
-    await this.requirePage(workspaceId, id);
+    await this.requireWritablePage(workspaceId, id);
     const title = dto.title?.trim();
     if (dto.title !== undefined && !title) throw new BusinessRuleException('Tiêu đề bắt buộc');
     await this.prisma.wikiPage.update({
@@ -208,7 +209,7 @@ export class WikiService {
     dto: MoveWikiPageInput,
     actingUserId: string,
   ): Promise<WikiNodeDto[]> {
-    const page = await this.requirePage(workspaceId, id);
+    const page = await this.requireWritablePage(workspaceId, id);
     const nextParentId = dto.parentId === undefined ? page.parentId : dto.parentId;
 
     if (nextParentId === id) throw new BusinessRuleException('Không thể chuyển trang vào chính nó');
@@ -260,7 +261,7 @@ export class WikiService {
 
   /** Xoá trang; các trang con được nâng lên làm con của trang cha (không mất dữ liệu). */
   async remove(workspaceId: string, id: string): Promise<{ success: true }> {
-    const page = await this.requirePage(workspaceId, id);
+    const page = await this.requireWritablePage(workspaceId, id);
     await this.prisma.$transaction([
       this.prisma.wikiPage.updateMany({
         where: { parentId: id },
@@ -289,12 +290,20 @@ export class WikiService {
     return page;
   }
 
+  /** Như `requirePage` nhưng cho thao tác ghi: trang của dự án đã lưu trữ là chỉ đọc. */
+  private async requireWritablePage(workspaceId: string, id: string) {
+    const page = await this.requirePage(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, page.projectId);
+    return page;
+  }
+
   private async requireProject(workspaceId: string, projectId: string) {
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
+    assertNotArchived(p.archivedAt);
     return p;
   }
 

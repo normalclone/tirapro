@@ -117,3 +117,25 @@ describe('ProjectsService — lưu trữ / sửa / xoá', () => {
     );
   });
 });
+
+describe('ProjectsService — dự án lưu trữ là chỉ đọc (cài đặt chung)', () => {
+  const archivedRow = () => row({ archivedAt: new Date('2026-10-10T00:00:00Z'), isArchived: true });
+
+  it('update() trên dự án đã lưu trữ => 422 PROJECT_ARCHIVED_MESSAGE, không ghi', async () => {
+    const { service, prisma } = make({ cur: archivedRow() });
+    await expect(
+      service.update('w1', 'p1', 'u1', { description: 'Mô tả mới' }),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('lưu trữ') as unknown,
+    });
+    expect(prisma.project.update).not.toHaveBeenCalled();
+  });
+
+  it('unarchive()/remove() KHÔNG bị chặn (vòng đời dự án)', async () => {
+    const { service, prisma } = make({ cur: archivedRow() });
+    await service.unarchive('w1', 'p1', 'u1');
+    await service.remove('w1', 'p1', 'u1');
+    expect(prisma.project.updateMany).toHaveBeenCalledTimes(2);
+  });
+});

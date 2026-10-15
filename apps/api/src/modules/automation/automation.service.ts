@@ -5,6 +5,7 @@ import { PERMISSIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { withCronLock } from '../../common/cron-lock';
+import { assertNotArchived, assertProjectIdWritable } from '../../common/project-writable';
 import {
   BusinessRuleException,
   ForbiddenAppException,
@@ -143,7 +144,8 @@ export class AutomationService implements OnApplicationShutdown {
     if (!name) throw new BusinessRuleException('Tên mẫu bắt buộc');
     const projectId = dto.projectId ?? null;
     if (projectId) {
-      await this.requireProject(workspaceId, projectId);
+      const p = await this.requireProject(workspaceId, projectId);
+      assertNotArchived(p.archivedAt);
       await this.assertProjectAdmin(actingUserId, workspaceId, projectId);
     }
 
@@ -167,6 +169,7 @@ export class AutomationService implements OnApplicationShutdown {
     actingUserId: string,
   ): Promise<IssueTemplateDto> {
     const cur = await this.getTemplate(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     if (cur.projectId) await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     const data: Prisma.IssueTemplateUpdateInput = {};
 
@@ -178,7 +181,8 @@ export class AutomationService implements OnApplicationShutdown {
     if (dto.description !== undefined) data.description = dto.description ?? null;
     if (dto.projectId !== undefined) {
       if (dto.projectId) {
-        await this.requireProject(workspaceId, dto.projectId);
+        const target = await this.requireProject(workspaceId, dto.projectId);
+        assertNotArchived(target.archivedAt);
         await this.assertProjectAdmin(actingUserId, workspaceId, dto.projectId);
         data.project = { connect: { id: dto.projectId } };
       } else {
@@ -197,6 +201,7 @@ export class AutomationService implements OnApplicationShutdown {
     actingUserId: string,
   ): Promise<{ success: true }> {
     const cur = await this.getTemplate(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     if (cur.projectId) await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     await this.prisma.issueTemplate.delete({ where: { id } });
     return { success: true };
@@ -232,7 +237,8 @@ export class AutomationService implements OnApplicationShutdown {
   ): Promise<RecurringIssueDto> {
     const name = dto.name.trim();
     if (!name) throw new BusinessRuleException('Tên việc lặp lại bắt buộc');
-    await this.requireProject(workspaceId, dto.projectId);
+    const project = await this.requireProject(workspaceId, dto.projectId);
+    assertNotArchived(project.archivedAt);
     await this.assertProjectAdmin(actingUserId, workspaceId, dto.projectId);
 
     const payload = this.cleanPayload(dto.payload);
@@ -271,6 +277,7 @@ export class AutomationService implements OnApplicationShutdown {
     actingUserId: string,
   ): Promise<RecurringIssueDto> {
     const cur = await this.getRecurring(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     const data: Prisma.RecurringIssueUpdateInput = {};
 
@@ -319,6 +326,7 @@ export class AutomationService implements OnApplicationShutdown {
     actingUserId: string,
   ): Promise<{ success: true }> {
     const cur = await this.getRecurring(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     await this.prisma.recurringIssue.delete({ where: { id } });
     return { success: true };
@@ -331,9 +339,12 @@ export class AutomationService implements OnApplicationShutdown {
   async runNow(workspaceId: string, id: string, actingUserId: string) {
     const rec = await this.prisma.recurringIssue.findFirst({
       where: { id, project: { workspaceId, deletedAt: null } },
-      include: { project: { select: { id: true, workspaceId: true, leadId: true } } },
+      include: {
+        project: { select: { id: true, workspaceId: true, leadId: true, archivedAt: true } },
+      },
     });
     if (!rec) throw new NotFoundAppException('Việc lặp lại');
+    assertNotArchived(rec.project.archivedAt);
     await this.assertProjectAdmin(actingUserId, workspaceId, rec.projectId);
 
     const payload = this.parsePayload(rec.payload);
@@ -382,7 +393,9 @@ export class AutomationService implements OnApplicationShutdown {
     }>;
     try {
       due = await this.prisma.recurringIssue.findMany({
-        where: { active: true, nextRunAt: { lte: now } },
+        // Dự án lưu trữ là chỉ đọc: không quét (khỏi tạo issue rồi bắt 422 mỗi vòng). Khôi phục dự án → bản ghi
+        // quá hạn chạy MỘT lần như mọi việc lặp lại bị trễ, không bù từng kỳ.
+        where: { active: true, nextRunAt: { lte: now }, project: { archivedAt: null } },
         take: 200,
         select: {
           id: true,
@@ -486,7 +499,7 @@ export class AutomationService implements OnApplicationShutdown {
   private async requireProject(workspaceId: string, projectId: string) {
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return p;

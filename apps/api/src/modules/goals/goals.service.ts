@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { ObjectiveStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertNotArchived } from '../../common/project-writable';
 import type {
   CreateGoalInput,
   CreateKeyResultInput,
@@ -297,9 +298,11 @@ export class GoalsService {
   private async requireObjective(workspaceId: string, id: string) {
     const row = await this.prisma.objective.findFirst({
       where: { id, workspaceId },
-      select: { id: true, projectId: true },
+      select: { id: true, projectId: true, project: { select: { archivedAt: true } } },
     });
     if (!row) throw new NotFoundAppException('Mục tiêu');
+    // Mọi lời gọi đều là thao tác ghi (đọc đi qua `get`): mục tiêu của dự án lưu trữ là chỉ đọc.
+    assertNotArchived(row.project?.archivedAt);
     return row;
   }
 
@@ -310,9 +313,10 @@ export class GoalsService {
     if (!projectId) return null;
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
+    assertNotArchived(p.archivedAt);
     return p.id;
   }
 

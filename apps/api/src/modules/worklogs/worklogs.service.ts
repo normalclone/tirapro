@@ -15,6 +15,7 @@ import {
   ForbiddenAppException,
   NotFoundAppException,
 } from '../../common/exceptions/app.exception';
+import { assertIssueWritable } from '../../common/project-writable';
 import { RbacService } from '../rbac/rbac.service';
 import { IssuesService } from '../issues/issues.service';
 
@@ -181,6 +182,8 @@ export class WorklogsService {
     issueId: string,
     userId: string,
   ): Promise<IssueTimeState> {
+    // Dự án đã lưu trữ là chỉ đọc (BUG-5) — kiểm TRƯỚC khi bump version; ném trong $transaction thì rollback sạch.
+    await assertIssueWritable(tx, issueId);
     const { count } = await tx.issue.updateMany({
       where: { id: issueId, workspaceId, deletedAt: null },
       data: { version: { increment: 1 }, updatedById: userId },

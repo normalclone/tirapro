@@ -16,6 +16,7 @@ function setup(
     logs?: Array<{ id: string; authorId: string; timeSpent: number }>;
     perms?: string[];
     isSystemAdmin?: boolean;
+    archived?: boolean;
   } = {},
 ) {
   const issue: IssueState & { projectId: string; sprintId: string | null; key: string } = {
@@ -41,6 +42,9 @@ function setup(
     issue: {
       updateMany: vi.fn((_args: unknown) => Promise.resolve({ count: 1 })),
       findFirst: vi.fn(() => Promise.resolve({ ...issue })),
+      findUnique: vi.fn(() =>
+        Promise.resolve({ project: { archivedAt: opts.archived ? new Date() : null } }),
+      ),
       update: vi.fn(({ data }: { data: Partial<IssueState> }) => {
         Object.assign(issue, data);
         return Promise.resolve({});
@@ -247,5 +251,27 @@ describe('WorklogsService — giới hạn', () => {
     await expect(service.create('w1', 'u1', 'i1', { timeSpent: '1h' })).rejects.toMatchObject({
       code: 'BUSINESS_RULE_VIOLATION',
     });
+  });
+});
+
+describe('WorklogsService — dự án lưu trữ là chỉ đọc (BUG-5)', () => {
+  it('create/update/remove trên dự án đã lưu trữ => 422, không ghi, không phát sự kiện', async () => {
+    const { service, tx, events } = setup(
+      {},
+      { archived: true, logs: [{ id: 'w1', authorId: 'u1', timeSpent: 600 }] },
+    );
+    await expect(service.create('w1', 'u1', 'i1', { timeSpent: '1h' })).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('lưu trữ') as unknown,
+    });
+    await expect(service.update('w1', 'u1', 'w1', { timeSpent: '2h' })).rejects.toMatchObject({
+      status: 422,
+    });
+    await expect(service.remove('w1', 'u1', 'w1')).rejects.toMatchObject({ status: 422 });
+    expect(tx.workLog.create).not.toHaveBeenCalled();
+    expect(tx.workLog.update).not.toHaveBeenCalled();
+    expect(tx.workLog.delete).not.toHaveBeenCalled();
+    expect(tx.issue.updateMany).not.toHaveBeenCalled(); // lockIssue chưa bump version
+    expect(events.emit).not.toHaveBeenCalled();
   });
 });
