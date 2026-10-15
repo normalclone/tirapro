@@ -72,7 +72,16 @@ function issueRow(over: Record<string, unknown> = {}) {
 }
 
 function makeService(tx: Record<string, unknown>, prismaExtra: Record<string, unknown> = {}) {
-  const prisma = { $transaction: (fn: (t: unknown) => unknown) => fn(tx), ...tx, ...prismaExtra };
+  // Mặc định mọi assignee đều là thành viên workspace; ca "người ngoài" ghi đè workspaceMembership qua prismaExtra.
+  const base = {
+    workspaceMembership: { findFirst: vi.fn(() => Promise.resolve({ userId: 'u2' })) },
+  };
+  const prisma = {
+    $transaction: (fn: (t: unknown) => unknown) => fn(tx),
+    ...base,
+    ...tx,
+    ...prismaExtra,
+  };
   const events = { emit: vi.fn() };
   const rbac = { getEffectivePermissions: vi.fn() };
   const service = new IssuesService(prisma as never, events as never, rbac as never);
@@ -520,57 +529,56 @@ describe('IssuesService.query — rawIds (full-text)', () => {
   });
 });
 
+/** Cột "Doing" (statusIds s2, s4) có giới hạn `limit`, đang có `count` việc; issue đang ở s1 (ngoài cột). */
+function wipTx(
+  opts: {
+    limit?: number | null;
+    count?: number;
+    boardType?: 'SCRUM' | 'KANBAN';
+    activeSprint?: boolean;
+    issue?: Record<string, unknown>;
+    column?: boolean;
+  } = {},
+) {
+  const limit = opts.limit === undefined ? 2 : opts.limit;
+  const issue = issueRow(opts.issue ?? {});
+  return {
+    boardColumn: {
+      findFirst: vi.fn(() =>
+        Promise.resolve(
+          opts.column === false
+            ? null
+            : {
+                id: 'c2',
+                name: 'Doing',
+                wipLimit: limit,
+                board: { type: opts.boardType ?? 'KANBAN' },
+                statuses: [{ statusId: 's2' }, { statusId: 's4' }],
+              },
+        ),
+      ),
+    },
+    sprint: {
+      findFirst: vi.fn(() => Promise.resolve(opts.activeSprint === false ? null : { id: 'sp1' })),
+    },
+    $queryRaw: vi.fn(() => Promise.resolve([])),
+    issue: {
+      findFirst: vi.fn(() => Promise.resolve(issue)),
+      findMany: vi.fn(() => Promise.resolve([issue])),
+      count: vi.fn((_args: { where: Record<string, unknown> }) => Promise.resolve(opts.count ?? 2)),
+      updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+      findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 4, statusId: 's2' }))),
+    },
+    issueHistory: { createMany: vi.fn(), create: vi.fn() },
+    project: {
+      findUnique: vi.fn(() => Promise.resolve({ defaultWorkflowId: 'wf', archivedAt: null })),
+    },
+    workflowTransition: { findFirst: vi.fn(() => Promise.resolve({ id: 'tr' })) },
+    status: { findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })) },
+  };
+}
+
 describe('IssuesService — giới hạn WIP của cột board', () => {
-  /** Cột "Doing" (statusIds s2, s4) có giới hạn `limit`, đang có `count` việc; issue đang ở s1 (ngoài cột). */
-  function wipTx(
-    opts: {
-      limit?: number | null;
-      count?: number;
-      boardType?: 'SCRUM' | 'KANBAN';
-      activeSprint?: boolean;
-      issue?: Record<string, unknown>;
-      column?: boolean;
-    } = {},
-  ) {
-    const limit = opts.limit === undefined ? 2 : opts.limit;
-    const issue = issueRow(opts.issue ?? {});
-    return {
-      boardColumn: {
-        findFirst: vi.fn(() =>
-          Promise.resolve(
-            opts.column === false
-              ? null
-              : {
-                  id: 'c2',
-                  name: 'Doing',
-                  wipLimit: limit,
-                  board: { type: opts.boardType ?? 'KANBAN' },
-                  statuses: [{ statusId: 's2' }, { statusId: 's4' }],
-                },
-          ),
-        ),
-      },
-      sprint: {
-        findFirst: vi.fn(() => Promise.resolve(opts.activeSprint === false ? null : { id: 'sp1' })),
-      },
-      $queryRaw: vi.fn(() => Promise.resolve([])),
-      issue: {
-        findFirst: vi.fn(() => Promise.resolve(issue)),
-        findMany: vi.fn(() => Promise.resolve([issue])),
-        count: vi.fn((_args: { where: Record<string, unknown> }) =>
-          Promise.resolve(opts.count ?? 2),
-        ),
-        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
-        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 4, statusId: 's2' }))),
-      },
-      issueHistory: { createMany: vi.fn(), create: vi.fn() },
-      project: {
-        findUnique: vi.fn(() => Promise.resolve({ defaultWorkflowId: 'wf', archivedAt: null })),
-      },
-      workflowTransition: { findFirst: vi.fn(() => Promise.resolve({ id: 'tr' })) },
-      status: { findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })) },
-    };
-  }
   const input = { version: 3, toStatusId: 's2', boardId: 'b1' };
 
   it('transition vào cột đã đầy, không force => WIP_LIMIT_REACHED (422), không ghi, không emit', async () => {
@@ -741,6 +749,232 @@ describe('IssuesService — giới hạn WIP của cột board', () => {
   });
 });
 
+describe('IssuesService.move — workflow, resolution, sự kiện', () => {
+  const emitted = (events: { emit: ReturnType<typeof vi.fn> }) =>
+    events.emit.mock.calls.map((c) => c[0] as string);
+
+  it('đổi trạng thái sai workflow => 409 INVALID_TRANSITION, không ghi, không emit, chưa tính rank', async () => {
+    const tx = wipTx({ count: 0 });
+    const transitionFind = vi.fn((_args: { where: unknown }) => Promise.resolve(null));
+    tx.workflowTransition.findFirst = transitionFind as never; // ép kiểu: mock gốc luôn trả {id}
+    const { service, events } = makeService(tx);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2', afterId: 'a' }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(transitionFind.mock.calls[0]![0]).toMatchObject({
+      where: { workflowId: 'wf', toStatusId: 's2' },
+    });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+    // Chưa tính rank: không tra issue mốc `afterId`, không rebalance.
+    expect(tx.issue.findFirst).toHaveBeenCalledTimes(1);
+    expect(tx.issue.findMany).not.toHaveBeenCalled();
+  });
+
+  it('đổi trạng thái hợp lệ => emit ISSUE_MOVED rồi ISSUE_TRANSITIONED (có fromStatusId), history STATUS', async () => {
+    const tx = wipTx({ count: 0 });
+    const { service, events } = makeService(tx);
+    await service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2' });
+    expect(emitted(events)).toEqual([DOMAIN_EVENTS.ISSUE_MOVED, DOMAIN_EVENTS.ISSUE_TRANSITIONED]);
+    expect(events.emit).toHaveBeenLastCalledWith(
+      DOMAIN_EVENTS.ISSUE_TRANSITIONED,
+      expect.objectContaining({ actorId: 'u1', fromStatusId: 's1' }),
+    );
+    const payload = events.emit.mock.calls[1]![1] as { issue: { id: string } };
+    expect(payload.issue.id).toBe('i1');
+    expect(tx.issueHistory.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('sang trạng thái DONE => resolvedAt được đặt, resolutionId giữ nguyên (undefined); rời DONE => cả hai về null', async () => {
+    const done = wipTx({ count: 0 });
+    done.status.findUnique = vi.fn(() => Promise.resolve({ category: 'DONE' }));
+    await makeService(done).service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2' });
+    const d1 = done.issue.updateMany.mock.calls[0] as unknown as [
+      { data: Record<string, unknown> },
+    ];
+    expect(d1[0].data.resolvedAt).toBeInstanceOf(Date);
+    expect(d1[0].data.resolutionId).toBeUndefined();
+
+    const open = wipTx({ count: 0 });
+    await makeService(open).service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2' });
+    const d2 = open.issue.updateMany.mock.calls[0] as unknown as [
+      { data: Record<string, unknown> },
+    ];
+    expect(d2[0].data).toMatchObject({ resolvedAt: null, resolutionId: null });
+  });
+
+  it('không đổi trạng thái (xếp lại thứ tự / cùng statusId) => không tra workflow, chỉ emit ISSUE_MOVED', async () => {
+    const tx = wipTx({ count: 0 });
+    tx.issue.findFirstOrThrow = vi.fn(() => Promise.resolve(issueRow({ version: 4 })));
+    const { service, events } = makeService(tx);
+    await service.move('w1', 'u1', 'i1', { version: 3 });
+    await service.move('w1', 'u1', 'i1', { version: 3, statusId: 's1' });
+    expect(tx.workflowTransition.findFirst).not.toHaveBeenCalled();
+    expect(emitted(events)).toEqual([DOMAIN_EVENTS.ISSUE_MOVED, DOMAIN_EVENTS.ISSUE_MOVED]);
+    const data = (
+      tx.issue.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect('resolvedAt' in data).toBe(false); // xếp lại thứ tự không đụng resolution
+  });
+});
+
+describe('IssuesService — assignee phải là thành viên, sprint phải cùng dự án', () => {
+  const noMember = () => ({
+    workspaceMembership: { findFirst: vi.fn(() => Promise.resolve(null)) },
+  });
+
+  it('update(assigneeId) người ngoài workspace => 422, chưa ghi', async () => {
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow())),
+        updateMany: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+    const extra = noMember();
+    const { service } = makeService(tx, extra);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, assigneeId: 'xx' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(extra.workspaceMembership.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { workspaceId: 'w1', userId: 'xx', user: { status: { not: 'DEACTIVATED' } } },
+      }),
+    );
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('update(assigneeId: null) không cần kiểm thành viên', async () => {
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow({ assigneeId: 'u2' }))),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 4 }))),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+    const extra = noMember();
+    const { service } = makeService(tx, extra);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, assigneeId: null }),
+    ).resolves.toBeDefined();
+    expect(extra.workspaceMembership.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('create(assigneeId) người ngoài workspace => 422, chưa ghi', async () => {
+    const tx = {
+      project: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({
+            id: 'p1',
+            key: 'P',
+            defaultWorkflowId: 'wf',
+            leadId: null,
+            defaultAssigneeMode: 'NONE',
+            archivedAt: null,
+          }),
+        ),
+      },
+      issueType: { findFirst: vi.fn(() => Promise.resolve({ id: 't1' })) },
+      issue: { create: vi.fn() },
+    };
+    const { service } = makeService(tx, noMember());
+    await expect(
+      service.create('w1', 'u1', {
+        projectId: 'p1',
+        typeId: 't1',
+        summary: 's',
+        descriptionFormat: 'MARKDOWN',
+        assigneeId: 'xx',
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.create).not.toHaveBeenCalled();
+  });
+
+  it('bulkUpdate(patch.assigneeId) người ngoài workspace => 422, không ghi gì', async () => {
+    const tx = {
+      issue: {
+        findMany: vi.fn(() => Promise.resolve([issueRow({ id: 'a' })])),
+        updateMany: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+      },
+      project: { findUnique: vi.fn(() => Promise.resolve({ archivedAt: null })) },
+    };
+    const txSpy = vi.fn();
+    const { service } = makeService(tx, { ...noMember(), $transaction: txSpy });
+    await expect(
+      service.bulkUpdate('w1', 'u1', {
+        projectId: 'p1',
+        items: [{ id: 'a', version: 3 }],
+        patch: { assigneeId: 'xx' },
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(txSpy).not.toHaveBeenCalled();
+  });
+
+  it('move(sprintId) kiểm sprint theo CHÍNH dự án của issue; sprint dự án khác => 404, không ghi', async () => {
+    const tx = wipTx({ count: 0 });
+    const sprintFind = vi.fn((_args: { where: unknown }) => Promise.resolve(null)); // không có sprint sp9 trong dự án p1
+    tx.sprint.findFirst = sprintFind as never;
+    const { service } = makeService(tx);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp9' }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(sprintFind.mock.calls[0]![0]).toMatchObject({
+      where: { id: 'sp9', projectId: 'p1', deletedAt: null },
+    });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('update(sprintId) cũng ràng buộc cùng dự án (projectId của issue hiện tại)', async () => {
+    const sprintFind = vi.fn(() => Promise.resolve(null));
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow())),
+        updateMany: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+      },
+      sprint: { findFirst: sprintFind },
+    };
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, sprintId: 'sp9' }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect((sprintFind.mock.calls[0] as unknown as [{ where: unknown }])[0].where).toMatchObject({
+      id: 'sp9',
+      projectId: 'p1',
+    });
+  });
+
+  it('bulkUpdate(sprintId) ràng buộc sprint theo projectId của lô', async () => {
+    const sprintFind = vi.fn(() => Promise.resolve(null));
+    const tx = {
+      issue: {
+        findMany: vi.fn(() => Promise.resolve([issueRow({ id: 'a' })])),
+        updateMany: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+      },
+      project: { findUnique: vi.fn(() => Promise.resolve({ archivedAt: null })) },
+      sprint: { findFirst: sprintFind },
+    };
+    const { service } = makeService(tx);
+    await expect(
+      service.bulkUpdate('w1', 'u1', {
+        projectId: 'p1',
+        items: [{ id: 'a', version: 3 }],
+        patch: { sprintId: 'sp9' },
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect((sprintFind.mock.calls[0] as unknown as [{ where: unknown }])[0].where).toMatchObject({
+      id: 'sp9',
+      projectId: 'p1',
+    });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('IssuesService — :own (issue:edit:own)', () => {
   function ownTx(row: Record<string, unknown>) {
     return {
@@ -884,5 +1118,125 @@ describe('IssuesService — :own (issue:edit:own)', () => {
       true,
     );
     expect(res.updated).toHaveLength(2);
+  });
+});
+
+describe('IssuesService.bulkUpdate — :own trên tập lẫn', () => {
+  it('bulkUpdate(statusId) chỉ có issue:transition:own trên tập LẪN (của mình + của người khác) -> 403 cả lô, không ghi việc nào', async () => {
+    const tx = {
+      issue: {
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            issueRow({ id: 'a', reporterId: 'u9', createdById: 'u9' }), // của u9
+            issueRow({ id: 'b', reporterId: 'u1', createdById: 'u1' }), // của người khác
+          ]),
+        ),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+      project: {
+        findUnique: vi.fn(() => Promise.resolve({ archivedAt: null, defaultWorkflowId: 'wf' })),
+      },
+      workflowTransition: { findFirst: vi.fn(() => Promise.resolve({ id: 'tr' })) },
+      status: { findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })) },
+      user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) },
+    };
+    const txSpy = vi.fn();
+    const { service, rbac, events } = makeService(tx, { $transaction: txSpy });
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition:own']));
+    await expect(
+      service.bulkUpdate('w1', 'u9', {
+        projectId: 'p1',
+        items: [
+          { id: 'a', version: 3 },
+          { id: 'b', version: 3 },
+        ],
+        patch: { statusId: 's2' },
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(tx.issueHistory.create).not.toHaveBeenCalled();
+    expect(txSpy).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('IssuesService — assignee không đổi / tài khoản vô hiệu hoá', () => {
+  const noMember = () => ({
+    workspaceMembership: { findFirst: vi.fn(() => Promise.resolve(null)) },
+  });
+
+  it('update gửi lại assigneeId cũ (người đã rời workspace) => KHÔNG kiểm thành viên, không 422', async () => {
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow({ assigneeId: 'gone' }))),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(() =>
+          Promise.resolve(issueRow({ version: 4, assigneeId: 'gone' })),
+        ),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+    const extra = noMember();
+    const { service } = makeService(tx, extra);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới', assigneeId: 'gone' }),
+    ).resolves.toBeDefined();
+    expect(extra.workspaceMembership.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('gán MỚI cho tài khoản DEACTIVATED => điều kiện where loại DEACTIVATED, 422 khi không khớp', async () => {
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow())),
+        updateMany: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+    const extra = noMember(); // thành viên có user DEACTIVATED không khớp where → findFirst trả null
+    const { service } = makeService(tx, extra);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, assigneeId: 'off' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(extra.workspaceMembership.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { workspaceId: 'w1', userId: 'off', user: { status: { not: 'DEACTIVATED' } } },
+      }),
+    );
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('bulkUpdate: mọi hàng đã giữ assignee đó => bỏ qua kiểm; có hàng đổi => kiểm và 422', async () => {
+    const mk = (rows: Array<Record<string, unknown>>) => ({
+      issue: {
+        findMany: vi.fn(() => Promise.resolve(rows)),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(issueRow({ id: where.id, version: 4, assigneeId: 'gone' })),
+        ),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+      project: { findUnique: vi.fn(() => Promise.resolve({ archivedAt: null })) },
+    });
+    const input = {
+      projectId: 'p1',
+      items: [{ id: 'a', version: 3 }],
+      patch: { assigneeId: 'gone' },
+    };
+    const same = noMember();
+    await makeService(mk([issueRow({ id: 'a', assigneeId: 'gone' })]), same).service.bulkUpdate(
+      'w1',
+      'u1',
+      input,
+    );
+    expect(same.workspaceMembership.findFirst).not.toHaveBeenCalled();
+
+    const diff = mk([issueRow({ id: 'a', assigneeId: null })]);
+    await expect(
+      makeService(diff, noMember()).service.bulkUpdate('w1', 'u1', input),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(diff.issue.updateMany).not.toHaveBeenCalled();
   });
 });

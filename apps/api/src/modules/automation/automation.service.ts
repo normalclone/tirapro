@@ -562,6 +562,14 @@ export class AutomationService implements OnApplicationShutdown {
     payload: IssuePayload,
   ) {
     const summary = this.applyTokens(payload.summary || fallbackSummary, new Date()).slice(0, 255);
+    // Việc do hệ thống tạo: assignee đã rời workspace/bị vô hiệu hoá → tạo KHÔNG gán, không để 422 làm hỏng việc tạo.
+    let assigneeId = payload.assigneeId ?? null;
+    if (assigneeId && !(await this.issues.isAssignableMember(workspaceId, assigneeId))) {
+      this.logger.warn(
+        `[automation] tạo việc "${summary}": người được giao ${assigneeId} không còn là thành viên hoạt động của workspace ${workspaceId} — tạo không gán`,
+      );
+      assigneeId = null;
+    }
     return this.issues.create(workspaceId, actorId, {
       projectId,
       typeId: payload.typeId!,
@@ -569,7 +577,7 @@ export class AutomationService implements OnApplicationShutdown {
       description: payload.description ? this.applyTokens(payload.description, new Date()) : null,
       descriptionFormat: 'MARKDOWN',
       priorityId: payload.priorityId ?? null,
-      assigneeId: payload.assigneeId ?? null,
+      assigneeId,
       labelIds: payload.labelIds ?? [],
       storyPoints: payload.storyPoints ?? null,
     });

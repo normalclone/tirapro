@@ -170,6 +170,8 @@ export class IssuesService {
       resolutionId?: string | null;
       parentId?: string | null;
       epicId?: string | null;
+      /** Dự án của issue/lô: có thì `sprintId` phải thuộc CHÍNH dự án này (không chỉ cùng workspace). */
+      projectId?: string;
     },
     db: Prisma.TransactionClient = this.prisma,
   ): Promise<void> {
@@ -192,7 +194,12 @@ export class IssuesService {
     if (m.sprintId)
       jobs.push(
         db.sprint.findFirst({
-          where: { id: m.sprintId, deletedAt: null, project: { workspaceId } },
+          where: {
+            id: m.sprintId,
+            deletedAt: null,
+            project: { workspaceId },
+            ...(m.projectId ? { projectId: m.projectId } : {}),
+          },
           select: { id: true },
         }),
       );
@@ -212,9 +219,39 @@ export class IssuesService {
       );
     if (jobs.length && (await Promise.all(jobs)).some((r) => r == null)) {
       throw new NotFoundAppException(
-        'Loại công việc, độ ưu tiên, sprint, kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+        'Loại công việc, độ ưu tiên, sprint (phải cùng dự án), kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
       );
     }
+  }
+
+  /** Có thể gán mới cho user này không: là thành viên workspace và tài khoản chưa bị vô hiệu hoá. */
+  async isAssignableMember(
+    workspaceId: string,
+    userId: string,
+    db: Prisma.TransactionClient = this.prisma,
+  ): Promise<boolean> {
+    const member = await db.workspaceMembership.findFirst({
+      where: { workspaceId, userId, user: { status: { not: 'DEACTIVATED' } } },
+      select: { userId: true },
+    });
+    return !!member;
+  }
+
+  /**
+   * Gán MỚI: người được giao phải là thành viên workspace còn hoạt động — chặn gán user của tenant khác
+   * hay tài khoản đã vô hiệu hoá. `null`/rỗng (bỏ gán) luôn hợp lệ. Chỉ gọi khi assignee thật sự đổi:
+   * việc cũ còn giữ người đã rời workspace thì không được làm hỏng các sửa không liên quan.
+   */
+  private async assertAssigneeInWorkspace(
+    workspaceId: string,
+    assigneeId: string | null | undefined,
+    db: Prisma.TransactionClient = this.prisma,
+  ): Promise<void> {
+    if (!assigneeId) return;
+    if (!(await this.isAssignableMember(workspaceId, assigneeId, db)))
+      throw new BusinessRuleException(
+        'Người được giao không thuộc không gian làm việc này — hãy chọn một thành viên khác',
+      );
   }
 
   async create(
@@ -281,9 +318,11 @@ export class IssuesService {
         sprintId: input.sprintId,
         parentId: input.parentId,
         epicId: input.epicId,
+        projectId: project.id,
       },
       db,
     );
+    await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId, db);
 
     // Status: input hoặc trạng thái initial của workflow project
     let statusId = input.statusId;
@@ -512,7 +551,10 @@ export class IssuesService {
       resolutionId: input.resolutionId,
       parentId: input.parentId,
       epicId: input.epicId,
+      projectId: current.projectId,
     });
+    if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
+      await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
 
     // Field-level: Story points / Hạn chỉ người tạo hoặc admin sửa được.
     if (
@@ -590,7 +632,11 @@ export class IssuesService {
     await this.assertMetaInWorkspace(workspaceId, {
       priorityId: patch.priorityId,
       sprintId: patch.sprintId,
+      projectId,
     });
+    // Chỉ kiểm khi có hàng thật sự đổi assignee (hàng đã giữ đúng assignee đó thì bỏ qua).
+    if (patch.assigneeId !== undefined && rows.some((r) => r.assigneeId !== patch.assigneeId))
+      await this.assertAssigneeInWorkspace(workspaceId, patch.assigneeId);
 
     // Chuyển trạng thái: kiểm tra workflow đúng như transition() trước khi ghi bất cứ thứ gì.
     let toDone = false;
@@ -747,7 +793,23 @@ export class IssuesService {
     const current = await this.requireIssue(workspaceId, id);
     if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
-    await this.assertMetaInWorkspace(workspaceId, { sprintId: input.sprintId });
+    await this.assertMetaInWorkspace(workspaceId, {
+      sprintId: input.sprintId,
+      projectId: current.projectId,
+    });
+
+    // Kéo sang cột khác là đổi trạng thái: đi đúng workflow như transition()/bulkUpdate(). Kiểm TRƯỚC resolveRank
+    // để không rebalance rank rồi mới báo lỗi; kéo cùng cột/xếp lại thứ tự không đụng workflow.
+    const statusChanged = !!input.statusId && input.statusId !== current.statusId;
+    let toDone = false;
+    if (statusChanged) {
+      await this.assertTransitionAllowed(
+        await this.workflowIdOf(current.projectId),
+        current.statusId,
+        input.statusId!,
+      );
+      toDone = (await this.statusCategory(input.statusId!)) === 'DONE';
+    }
 
     const rank = await this.resolveRank(current.projectId, this.prisma, null, id, async () => ({
       prev: input.afterId ? await this.rankOf(workspaceId, current.projectId, input.afterId) : null,
@@ -757,15 +819,14 @@ export class IssuesService {
     }));
 
     // Chỉ kiểm WIP khi thật sự đổi sang trạng thái khác (kéo trong cùng cột/xếp lại thứ tự thì không chiếm thêm chỗ).
-    const wip =
-      input.statusId && input.statusId !== current.statusId
-        ? await this.resolveWipColumn(
-            input.boardId,
-            current.projectId,
-            input.statusId,
-            current.statusId,
-          )
-        : null;
+    const wip = statusChanged
+      ? await this.resolveWipColumn(
+          input.boardId,
+          current.projectId,
+          input.statusId!,
+          current.statusId,
+        )
+      : null;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (wip)
@@ -781,6 +842,10 @@ export class IssuesService {
         statusId: input.statusId ?? current.statusId,
         sprintId: input.sprintId !== undefined ? input.sprintId : current.sprintId,
         updatedById: userId,
+        // Cùng quy ước bulkUpdate: sang DONE giữ resolutionId (move không nhận resolutionId), rời DONE xoá cả hai.
+        ...(statusChanged
+          ? { resolutionId: toDone ? undefined : null, resolvedAt: toDone ? new Date() : null }
+          : {}),
       });
       // Kéo sang cột/trạng thái khác cũng là đổi trạng thái: ghi lịch sử để CFD/burndown không hụt.
       if (row.statusId !== current.statusId)
@@ -798,6 +863,13 @@ export class IssuesService {
       version: updated.version,
       actorId: userId,
     });
+    // ISSUE_MOVED lo rank/board realtime; ISSUE_TRANSITIONED cho automation, SLA, thông báo, watcher, tích hợp.
+    if (statusChanged)
+      this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, {
+        issue: dto,
+        actorId: userId,
+        fromStatusId: current.statusId,
+      });
     return dto;
   }
 

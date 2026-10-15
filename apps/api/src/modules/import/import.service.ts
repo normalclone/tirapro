@@ -302,7 +302,9 @@ export class ImportService {
           where: { projectId },
           select: { id: true, name: true },
         }),
+        // Chỉ thành viên workspace: người ngoài (hoặc tenant khác) coi như email không khớp → không có assignee.
         this.prisma.user.findMany({
+          where: { workspaceMemberships: { some: { workspaceId } } },
           select: { id: true, email: true },
         }),
       ]);

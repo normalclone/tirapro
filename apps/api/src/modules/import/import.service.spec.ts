@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ImportService } from './import.service';
 
-function setup(failSummary?: string) {
+function setup(failSummary?: string, members: Array<{ id: string; email: string }> = []) {
   const tx = {};
   const prisma = {
     $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
@@ -12,10 +12,17 @@ function setup(failSummary?: string) {
     },
     issueType: { findMany: vi.fn(() => Promise.resolve([{ id: 't1', name: 'Task' }])) },
     priority: { findMany: vi.fn(() => Promise.resolve([])) },
+    label: { findMany: vi.fn(() => Promise.resolve([])) },
+    user: { findMany: vi.fn(() => Promise.resolve(members)) },
   };
   const issues = {
     createWithin: vi.fn(
-      async (_tx: unknown, _w: string, _u: string, input: { summary: string }) => {
+      async (
+        _tx: unknown,
+        _w: string,
+        _u: string,
+        input: { summary: string; assigneeId?: string },
+      ) => {
         await Promise.resolve();
         if (input.summary === failSummary) throw new Error('lỗi DB giả lập');
         return { id: `id-${input.summary}` };
@@ -49,5 +56,26 @@ describe('ImportService — ghi theo lô', () => {
     // lô 1 + lô 2 (lỗi) + 100 lần chạy lại từng dòng + lô 3
     expect(prisma.$transaction).toHaveBeenCalledTimes(103);
     expect(issues.emitCreated).toHaveBeenCalledTimes(249);
+  });
+});
+
+describe('ImportService.importJson — assignee chỉ là thành viên workspace', () => {
+  it('chỉ nạp user thuộc workspace; email không phải thành viên => không có assignee, lô vẫn chạy', async () => {
+    const { service, prisma, issues } = setup(undefined, [{ id: 'u2', email: 'Member@x.vn' }]);
+    const res = await service.importJson('w1', 'u1', {
+      projectId: 'p1',
+      data: {
+        issues: [
+          { summary: 'a', assignee: 'member@x.vn' },
+          { summary: 'b', assignee: 'outsider@other.vn' },
+        ],
+      },
+    });
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { workspaceMemberships: { some: { workspaceId: 'w1' } } } }),
+    );
+    expect(res).toMatchObject({ created: 2, failed: 0 });
+    const assignees = issues.createWithin.mock.calls.map((c) => c[3].assigneeId);
+    expect(assignees).toEqual(['u2', undefined]);
   });
 });
