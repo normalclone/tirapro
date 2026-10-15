@@ -359,3 +359,17 @@ describe('BoardsService.update', () => {
     );
   });
 });
+
+describe('BoardsService — dự án đã xoá mềm = board không tồn tại (I3)', () => {
+  it('get/setColumns/update/listForProject tra board với project.deletedAt = null; không khớp => 404', async () => {
+    const { service, prisma } = make(null, { lockedColumnIds: [] });
+    await expect(service.get('w1', 'b1')).rejects.toMatchObject({ status: 404 });
+    await expect(
+      service.setColumns('w1', 'b1', { columns: [col('A', ['s1', 's2', 's3'])] }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(service.update('w1', 'b1', { name: 'x' })).rejects.toMatchObject({ status: 404 });
+    for (const call of prisma.board.findFirst.mock.calls as unknown as [{ where: unknown }][])
+      expect(call[0].where).toMatchObject({ project: { workspaceId: 'w1', deletedAt: null } });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});

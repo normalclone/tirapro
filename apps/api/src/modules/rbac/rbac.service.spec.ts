@@ -103,14 +103,14 @@ describe('RbacService.resolveProjectId', () => {
     await expect(svc.resolveProjectId('W1', 'issue', 'I-cua-du-an-da-xoa')).resolves.toBeNull();
   });
 
-  it.each(['sprint', 'board', 'label', 'component'] as const)(
-    '%s: lọc qua project.workspaceId',
+  it.each(['sprint', 'board', 'label', 'component', 'version', 'recurringIssue'] as const)(
+    '%s: lọc qua project.workspaceId và loại dự án đã xoá mềm (guard 404)',
     async (kind) => {
       const { svc, prisma } = setup();
       prisma[kind].findFirst.mockResolvedValue({ projectId: 'P9' });
       await expect(svc.resolveProjectId('W1', kind, 'X1')).resolves.toEqual({ projectId: 'P9' });
       expect(prisma[kind].findFirst).toHaveBeenCalledWith({
-        where: { id: 'X1', project: { workspaceId: 'W1' } },
+        where: { id: 'X1', project: { workspaceId: 'W1', deletedAt: null } },
         select: { projectId: true },
       });
     },
@@ -189,7 +189,7 @@ describe('RbacService.resolveProjectId', () => {
     prisma.version.findFirst.mockResolvedValue({ projectId: 'P3' });
     await expect(svc.resolveProjectId('W1', 'version', 'V1')).resolves.toEqual({ projectId: 'P3' });
     expect(prisma.version.findFirst).toHaveBeenCalledWith({
-      where: { id: 'V1', project: { workspaceId: 'W1' } },
+      where: { id: 'V1', project: { workspaceId: 'W1', deletedAt: null } },
       select: { projectId: true },
     });
   });
@@ -223,7 +223,7 @@ describe('RbacService.resolveProjectId', () => {
       projectId: 'P5',
     });
     expect(prisma.recurringIssue.findFirst).toHaveBeenCalledWith({
-      where: { id: 'R1', project: { workspaceId: 'W1' } },
+      where: { id: 'R1', project: { workspaceId: 'W1', deletedAt: null } },
       select: { projectId: true },
     });
   });

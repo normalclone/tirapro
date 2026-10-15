@@ -8,9 +8,10 @@ import { RedisService } from '../../infra/redis/redis.service';
 type ResolverDelegate = { findFirst(args: { where: object; select: object }): Promise<unknown> };
 
 const projectIdOnly = { projectId: true } as const;
+// Sprint/board/nhãn/... của dự án đã xoá mềm = không tồn tại (guard trả 404, không cho start/complete/setColumns...).
 const viaProject = (value: string, workspaceId: string) => ({
   id: value,
-  project: { workspaceId },
+  project: { workspaceId, deletedAt: null },
 });
 // Issue của dự án đã xoá mềm = không tồn tại (mọi route theo issue id → guard trả 404).
 const issueInLiveProject = (value: string, workspaceId: string) => ({

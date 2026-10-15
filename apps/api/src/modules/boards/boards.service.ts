@@ -39,7 +39,7 @@ export class BoardsService {
 
   async listForProject(workspaceId: string, projectId: string): Promise<BoardDto[]> {
     const boards = await this.prisma.board.findMany({
-      where: { projectId, deletedAt: null, project: { workspaceId } },
+      where: { projectId, deletedAt: null, project: { workspaceId, deletedAt: null } },
       include: boardInclude,
       orderBy: { createdAt: 'asc' },
     });
@@ -48,7 +48,7 @@ export class BoardsService {
 
   async get(workspaceId: string, boardId: string): Promise<BoardDto> {
     const board = await this.prisma.board.findFirst({
-      where: { id: boardId, deletedAt: null, project: { workspaceId } },
+      where: { id: boardId, deletedAt: null, project: { workspaceId, deletedAt: null } },
       include: boardInclude,
     });
     if (!board) throw new NotFoundAppException('Bảng việc');
@@ -58,7 +58,7 @@ export class BoardsService {
   /** Board dùng cho thao tác GHI: dự án đã lưu trữ thì từ chối ngay. */
   private async require(workspaceId: string, boardId: string) {
     const board = await this.prisma.board.findFirst({
-      where: { id: boardId, deletedAt: null, project: { workspaceId } },
+      where: { id: boardId, deletedAt: null, project: { workspaceId, deletedAt: null } },
       include: boardWriteInclude,
     });
     if (!board) throw new NotFoundAppException('Bảng việc');
@@ -214,7 +214,7 @@ export class BoardsService {
     limit: number,
   ): Promise<PageResult<IssueDto>> {
     const board = await this.prisma.board.findFirst({
-      where: { id: boardId, deletedAt: null, project: { workspaceId } },
+      where: { id: boardId, deletedAt: null, project: { workspaceId, deletedAt: null } },
       select: { projectId: true, filterJql: true },
     });
     if (!board) throw new NotFoundAppException('Bảng việc');

@@ -20,7 +20,7 @@ export class SprintsService {
 
   async listForProject(workspaceId: string, projectId: string): Promise<SprintDto[]> {
     const sprints = await this.prisma.sprint.findMany({
-      where: { projectId, deletedAt: null, project: { workspaceId } },
+      where: { projectId, deletedAt: null, project: { workspaceId, deletedAt: null } },
       orderBy: [{ state: 'asc' }, { sequence: 'desc' }],
     });
     if (sprints.length === 0) return [];
@@ -374,7 +374,7 @@ export class SprintsService {
 
   private async requireSprint(workspaceId: string, sprintId: string) {
     const s = await this.prisma.sprint.findFirst({
-      where: { id: sprintId, deletedAt: null, project: { workspaceId } },
+      where: { id: sprintId, deletedAt: null, project: { workspaceId, deletedAt: null } },
       include: { project: { select: { archivedAt: true } } },
     });
     if (!s) throw new NotFoundAppException('Đợt làm việc (sprint)');
