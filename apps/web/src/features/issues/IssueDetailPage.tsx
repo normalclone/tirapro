@@ -11,6 +11,7 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
+  Archive,
   ArrowLeft,
   ChevronRight,
   Copy,
@@ -32,7 +33,7 @@ import { useDevLinks, useIssue } from './api';
 import { useCreateIssue } from './create-api';
 import { useProjects } from '@/features/projects/api';
 import { ProjectRail } from '@/features/projects/ProjectRail';
-import { useCan, useCanEditIssue } from '@/features/projects/permissions';
+import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useMyWorkspaces } from '@/features/workspace/api';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { useDeleteIssue } from '@/features/issue-edit/api';
@@ -131,12 +132,13 @@ export function IssueDetailPage() {
   const openCreate = useCreateIssueModal((s) => s.openCreate);
 
   const { data: issue, isLoading, isError } = useIssue(key);
-  const can = useCan(issue?.projectId);
+  const can = useCanIn(issue?.projectId);
   const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
   const canTransition = can('issue:transition');
   const { data: devLinks } = useDevLinks(issue?.id);
   // Mã issue theo LOẠI (BUG-4…) → KHÔNG suy ra project key từ chuỗi; resolve theo projectId.
-  const { data: projects } = useProjects();
+  // Kể cả dự án đã lưu trữ (danh sách mặc định chỉ có dự án hoạt động → breadcrumb trống, "Tạo việc con" sai dự án).
+  const { data: projects } = useProjects(true);
   const project = projects?.find((p) => p.id === issue?.projectId) ?? null;
   const projectKey = project?.key ?? '';
   // Trang chi tiết nằm ngoài ProjectLayout → tự nhận realtime của project chứa issue này.
@@ -444,6 +446,17 @@ export function IssueDetailPage() {
               </button>
             </nav>
           </div>
+
+          {project?.archivedAt && (
+            <div
+              role="status"
+              className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border bg-warning/10 px-3 py-2 text-sm text-ink"
+            >
+              <Archive className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+              <span className="font-medium">Dự án đã lưu trữ — chỉ đọc.</span>
+              <span className="text-muted">Không sửa, chuyển trạng thái hay bình luận được.</span>
+            </div>
+          )}
 
           {isError && (
             <EmptyState

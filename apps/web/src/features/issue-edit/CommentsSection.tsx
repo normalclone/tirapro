@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import type { CommentDto, IssueDto } from '@tirapro/types';
 import { useAddComment, useComments } from '@/features/issues/api';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
+import { useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { Avatar } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
@@ -22,6 +23,9 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   const currentUser = useAuth((s) => s.user);
   const { data: comments } = useComments(issue.id);
   const addComment = useAddComment(issue.id);
+  const can = useCanIn(issue.projectId); // dự án lưu trữ / không có quyền → chỉ đọc
+  const canComment = can('comment:create');
+  const canEditOwn = can('comment:edit:own');
   const [draft, setDraft] = useState('');
   const { notifyTyping, stopTyping } = useTypingEmitter(issue.id);
 
@@ -55,37 +59,41 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             key={c.id}
             comment={c}
             issueId={issue.id}
-            canEdit={!!currentUser && c.author?.id === currentUser.id}
+            canEdit={canEditOwn && !!currentUser && c.author?.id === currentUser.id}
           />
         ))}
         {comments?.length === 0 && (
           <p className="text-sm text-faint">
-            Chưa có bình luận nào. Viết vài dòng bên dưới để trao đổi với cả nhóm về việc này.
+            {canComment
+              ? 'Chưa có bình luận nào. Viết vài dòng bên dưới để trao đổi với cả nhóm về việc này.'
+              : 'Chưa có bình luận nào.'}
           </p>
         )}
       </div>
 
-      <div className="mt-3 space-y-2">
-        <MarkdownEditor
-          value={draft}
-          onChange={onDraftChange}
-          onSubmit={() => void submit()}
-          rows={3}
-          placeholder="Viết bình luận… (viết được Markdown · ⌘/Ctrl+Enter để gửi)"
-        />
-        <TypingIndicator issueId={issue.id} />
-        <div className="flex items-center gap-2">
-          <span className="mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
-          <Button
-            size="sm"
-            loading={addComment.isPending}
-            disabled={!draft.trim()}
-            onClick={() => void submit()}
-          >
-            Gửi bình luận
-          </Button>
+      {canComment && (
+        <div className="mt-3 space-y-2">
+          <MarkdownEditor
+            value={draft}
+            onChange={onDraftChange}
+            onSubmit={() => void submit()}
+            rows={3}
+            placeholder="Viết bình luận… (viết được Markdown · ⌘/Ctrl+Enter để gửi)"
+          />
+          <TypingIndicator issueId={issue.id} />
+          <div className="flex items-center gap-2">
+            <span className="mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
+            <Button
+              size="sm"
+              loading={addComment.isPending}
+              disabled={!draft.trim()}
+              onClick={() => void submit()}
+            >
+              Gửi bình luận
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

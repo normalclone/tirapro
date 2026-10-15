@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
-import { useCan, useCanEditIssue } from '@/features/projects/permissions';
+import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useUpdateIssue } from './api';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useAddWorklog, useDeleteWorklog, useUpdateWorklog, useWorklogs } from './worklog-api';
@@ -49,7 +49,7 @@ function previewOf(text: string): { ok: boolean; label: string } {
  */
 export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequest?: number }) {
   const me = useAuth((s) => s.user);
-  const can = useCan(issue.projectId);
+  const can = useCanIn(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
   const worklogsQuery = useWorklogs(issue.id);
   const { data } = worklogsQuery;

@@ -22,7 +22,13 @@ vi.mock('@/stores/auth', () => {
   return { useAuth };
 });
 import { useAuth } from '@/stores/auth';
-import { useCan, useCanEditIssue, useProjectCan } from './permissions';
+import {
+  useCan,
+  useCanEditIssue,
+  useCanIn,
+  useProjectArchived,
+  useProjectCan,
+} from './permissions';
 
 /** Vẽ một component dò, trả kết quả `can(perm)` ở lần vẽ đầu (cache đã nạp sẵn nên useQuery trả đồng bộ). */
 function probe(qc: QueryClient, projectId: string | undefined, perm: string) {
@@ -165,5 +171,68 @@ describe('useProjectCan', () => {
   });
   it('chưa có project → như useCan(undefined)', () => {
     expect(probeProject(qc, undefined, 'issue:create')).toBe(false);
+  });
+});
+
+describe('dự án lưu trữ tra theo projectId (trang issue, panel, Cmd+K)', () => {
+  const ARCHIVED = '2026-10-10T00:00:00.000Z';
+  const proj = (id: string, archivedAt: string | null) => ({
+    id,
+    key: id.toUpperCase(),
+    archivedAt,
+  });
+  let qc: QueryClient;
+  function render<T>(use: () => T): T {
+    let result: T | undefined;
+    function Probe() {
+      result = use();
+      return null;
+    }
+    renderToString(createElement(QueryClientProvider, { client: qc }, createElement(Probe)));
+    return result as T;
+  }
+  beforeEach(() => {
+    qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000 } } });
+    useAuth.setState({
+      user: { id: 'u1', isSystemAdmin: false } as never,
+      permissions: ['project:view'],
+    });
+    qc.setQueryData(keys.projects.permissions('p1'), {
+      projectId: 'p1',
+      permissions: ['issue:edit', 'issue:transition', 'comment:create', 'report:view'],
+    });
+    qc.setQueryData(keys.projects.permissions('p2'), {
+      projectId: 'p2',
+      permissions: ['issue:edit', 'issue:transition'],
+    });
+    // Danh sách KÈM lưu trữ: p1 hoạt động, p2 đã lưu trữ.
+    qc.setQueryData(keys.projects.withArchived, [proj('p1', null), proj('p2', ARCHIVED)]);
+  });
+
+  it('useProjectArchived: đúng theo danh sách; không có id / chưa tải → false', () => {
+    expect(render(() => useProjectArchived('p2'))).toBe(true);
+    expect(render(() => useProjectArchived('p1'))).toBe(false);
+    expect(render(() => useProjectArchived(undefined))).toBe(false);
+    qc.removeQueries({ queryKey: keys.projects.withArchived });
+    expect(render(() => useProjectArchived('p2'))).toBe(false);
+  });
+  it('useCanIn: dự án hoạt động như useCan; lưu trữ → ghi tắt, đọc còn', () => {
+    expect(render(() => useCanIn('p1'))('issue:transition')).toBe(true);
+    expect(render(() => useCanIn('p1'))('comment:create')).toBe(true);
+    expect(render(() => useCanIn('p2'))('issue:transition')).toBe(false);
+    expect(render(() => useCanIn('p2'))('project:view')).toBe(true);
+  });
+  it('useCanIn: system admin cũng chỉ đọc khi dự án lưu trữ', () => {
+    useAuth.setState({ user: { id: 'a', isSystemAdmin: true } as never, permissions: [] });
+    expect(render(() => useCanIn('p2'))('issue:edit')).toBe(false);
+    expect(render(() => useCanIn('p1'))('issue:edit')).toBe(true);
+  });
+  it('useCanEditIssue: dự án lưu trữ → không sửa được kể cả có issue:edit', () => {
+    const issue = { reporterId: 'u1', assigneeId: null };
+    expect(render(() => useCanEditIssue('p1'))(issue)).toBe(true);
+    expect(render(() => useCanEditIssue('p2'))(issue)).toBe(false);
+  });
+  it('useCan thô KHÔNG đổi (dùng cho quản trị dự án như khôi phục dự án lưu trữ)', () => {
+    expect(render(() => useCan('p2'))('issue:edit')).toBe(true);
   });
 });
