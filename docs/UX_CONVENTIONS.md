@@ -23,7 +23,7 @@
 - **Cmd/Ctrl+K** command palette: điều hướng + mọi hành động (tạo issue, đổi project, mở report,
   bắt đầu tour, toggle theme...). Tìm kiếm fuzzy.
 - Phím tắt toàn cục: `c` tạo issue, `/` focus search, `g b` go board, `g l` backlog, `g d` dashboard,
-  `j/k` di chuyển, `e` edit, `a` assign, `m` move, `?` mở bảng phím tắt. Hiện hint trong tooltip.
+  `j/k` di chuyển, `e` edit, `a` assign, `m` bình luận, `?` mở bảng phím tắt. Hiện hint trong tooltip.
 - Mọi dialog: `Esc` đóng, `Enter`/`Cmd+Enter` submit, focus-trap, focus về nơi mở.
 
 ## 3. Ít ma sát khi nhập liệu
@@ -125,6 +125,33 @@
 - **Motion tokens** (single source, đã ở DESIGN.md): chỉ animate transform/opacity, duration <150–240ms **bất đối xứng** (enter chậm hơn exit), ease-out; reduced-motion → crossfade/instant.
 - **Saved views + nhớ trạng thái** (Tesler's Law): nhớ filter/sort/board/theme gần nhất per user; sort default đẩy overdue lên đầu.
 
+## 19. Thuật ngữ (một khái niệm = một từ)
+Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng Anh. Mọi chuỗi hiển thị (web, API, digest, thông báo) theo bảng này; hằng số dùng chung ở `apps/web/src/lib/terms.ts` (`TERM`, `STATUS_CATEGORY_LABEL`).
+
+| Khái niệm | Chữ dùng | Ghi chú |
+|---|---|---|
+| Issue | **Công việc** / **việc** (khi chật chỗ) | Tuyệt đối không "issue", "vấn đề", "ticket", "task" làm danh từ chung. `Task` chỉ là TÊN LOẠI. |
+| Backlog | **Việc chờ** | Tab, tiêu đề khu, nút "Về Việc chờ". |
+| Board | **Bảng việc** | "Board" chỉ còn trong tên riêng / URL. |
+| Sprint, Epic | **Sprint**, **Epic** | Giữ nguyên; không "đợt làm việc". |
+| Nhóm trạng thái | **To Do / In Progress / Done** | Không "Cần làm / Đang làm / Hoàn thành". "Hoàn thành" chỉ làm động từ (nút "Hoàn thành sprint"). |
+| Trạng thái (tên) | To Do / In Progress / In Review / Done | Theo cấu hình workflow. |
+| Ưu tiên | Highest / High / Medium / Low / Lowest | Theo cấu hình. |
+| Severity | **Mức nghiêm trọng** | Theo tên cấu hình. |
+| Burndown, Velocity, Cumulative Flow | Giữ nguyên | |
+| Story points | **điểm** | |
+| Project | **Dự án** | |
+| Workspace | **Không gian làm việc** | |
+| Cổng quản lý cấp công ty | **Danh mục** | Trước đây "Quản trị". |
+| `/admin` | **Quản trị hệ thống** | |
+| Workflow | **Quy trình** | |
+| Component / Version | **Thành phần** / **Phiên bản** | |
+| RAID | **Rủi ro & vướng mắc** | |
+| Assignee / Reporter | **Người phụ trách** / **Người báo cáo** | |
+| Triage | **Việc mới vào** | Đúng tên tab hiện có. |
+| Loại liên kết | `blocks`, `is blocked by`, `relates to`, `duplicates`, `clones`, `is caused by`, `is tested by` | Giữ tiếng Anh; loại mới theo bảng này. |
+| Ngày / giờ | `dd/MM/yyyy`, `HH:mm` (24h) | Thời gian tương đối tiếng Việt ("khoảng 5 giờ trước"). |
+
 ## Definition of Done (UX) cho mỗi màn
 - [ ] Có thể hoàn thành task chính **chỉ bằng bàn phím**.
 - [ ] Hành động chính ≤ 2 click / hoặc 1 lệnh Cmd+K.
@@ -143,3 +170,4 @@
 - [ ] Perf budget đạt (p95 < 100ms tương tác; first-paint < 1s/1.000 issue).
 - [ ] Tính năng mới qua "thuế tĩnh lặng" (không làm màn chính ồn hơn).
 - [ ] `/impeccable critique` không còn P0/P1.
+- [ ] Chuỗi hiển thị đúng bảng thuật ngữ §19; ngày dd/MM/yyyy; thời gian tương đối tiếng Việt.
