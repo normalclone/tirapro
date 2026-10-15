@@ -12,7 +12,6 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
-  useDndContext,
   useDroppable,
   type Announcements,
   type DragEndEvent,
@@ -50,6 +49,8 @@ import { Badge, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/pri
 import { QueryError } from '@/components/ui/QueryError';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
 import { apiErrorMessage } from '@/lib/api';
+import { activeDrag, useActiveDragId } from '@/lib/activeDrag';
+import { dropContainer, useIsDropContainer } from '@/lib/dropContainer';
 import { dropHint } from '@/lib/dropHint';
 import { hintOf, placementFromDnd, type Placement } from '@/lib/rankDrop';
 import { applyPendingOrder, sortByRank } from '@/lib/rankOrder';
@@ -215,6 +216,7 @@ export function BacklogPage() {
   const progressMap = useMemo(() => buildProgressMap(issues ?? []), [issues]);
 
   function onDragStart(e: DragStartEvent) {
+    activeDrag.set(String(e.active.id));
     setDragging((issues ?? []).find((i) => i.id === e.active.id) ?? null);
   }
 
@@ -225,7 +227,7 @@ export function BacklogPage() {
 
   async function onDragEnd(e: DragEndEvent) {
     setDragging(null);
-    dropHint.set(null);
+    clearDragFeedback();
     const issue = (issues ?? []).find((i) => i.id === e.active.id);
     const p = placementFromDnd(e);
     if (!issue || !p || !canDragIssue(issue)) return;
@@ -285,11 +287,16 @@ export function BacklogPage() {
   }
 
   // Trang rời đi (DndContext unmount) giữa lúc kéo: không để lại đường kẻ chèn của lần kéo dở.
-  useEffect(() => () => dropHint.set(null), []);
-  const onDragMove = (e: DragMoveEvent) => dropHint.set(hintOf(placementFromDnd(e)));
+  useEffect(() => clearDragFeedback, []);
+  // Vạch chèn + viền khu đích đi qua store nhỏ (không qua `useDndContext`, vốn đổi mỗi nhịp con trỏ và vẽ lại mọi khu).
+  const onDragMove = (e: DragMoveEvent) => {
+    const p = placementFromDnd(e);
+    dropHint.set(hintOf(p));
+    dropContainer.set(p?.crossContainer ? p.containerId : null);
+  };
   const onDragCancel = () => {
     setDragging(null);
-    dropHint.set(null);
+    clearDragFeedback();
   };
 
   const announcements = useMemo<Announcements>(() => {
@@ -827,6 +834,13 @@ export function BacklogPage() {
   );
 }
 
+/** Dọn mọi phản hồi kéo-thả toàn cục (vạch chèn, viền khu đích, id việc đang kéo). */
+function clearDragFeedback() {
+  dropHint.set(null);
+  dropContainer.set(null);
+  activeDrag.set(null);
+}
+
 /** Danh sách dài hơn ngưỡng này thì chỉ vẽ các dòng đang trong khung nhìn. */
 const VIRTUALIZE_AFTER = 50;
 const ROW_ESTIMATE = 40;
@@ -847,8 +861,8 @@ function VirtualRows({
 }) {
   const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
   const [margin, setMargin] = useState(0);
-  const { active } = useDndContext();
-  const activeIndex = active ? issues.findIndex((i) => i.id === active.id) : -1;
+  const activeId = useActiveDragId();
+  const activeIndex = activeId ? issues.findIndex((i) => i.id === activeId) : -1;
 
   // Khoảng cách từ đỉnh nội dung cuộn tới đầu danh sách (các khu phía trên đổi chiều cao thì đo lại ở lần vẽ sau).
   const measureMargin = useCallback(() => {
@@ -928,13 +942,6 @@ function VirtualRows({
   );
 }
 
-/** `data.current` của dnd-kit là `any` — chỉ đọc `sortable.containerId`, có kiểu. */
-const sortableContainerOf = (data: unknown): string | undefined => {
-  const id = (data as { sortable?: { containerId?: string | number } } | undefined)?.sortable
-    ?.containerId;
-  return id === undefined ? undefined : String(id);
-};
-
 function Section({
   id,
   title,
@@ -991,11 +998,8 @@ function Section({
   // `container.items` để khu trống / thả vào đáy khu vẫn tính được thứ tự đích (xem `placementFromDnd`).
   const data = useMemo(() => ({ container: { items: ids } }), [ids]);
   const { setNodeRef } = useDroppable({ id, disabled: readOnly, data });
-  const { active, over } = useDndContext();
-  const fromContainer = active ? sortableContainerOf(active.data.current) : undefined;
-  const overContainer = over ? (sortableContainerOf(over.data.current) ?? String(over.id)) : null;
-  // Viền nổi chỉ khi kéo TỪ khu khác sang (cùng khu đã có dịch chỗ live).
-  const highlight = !!active && !readOnly && overContainer === id && fromContainer !== id;
+  // Viền nổi chỉ khi kéo TỪ khu khác sang (cùng khu đã có dịch chỗ live); store `dropContainer` do `onDragMove` cập nhật.
+  const highlight = useIsDropContainer(id) && !readOnly;
   const showQuickAdd =
     !readOnly && canCreate && projectKey && projectId && quickAddSprintId !== undefined;
   const canSelect = !!selectable && !readOnly;
