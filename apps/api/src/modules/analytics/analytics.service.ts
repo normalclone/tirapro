@@ -511,7 +511,7 @@ export class AnalyticsService {
     const history = await this.prisma.issueHistory.findMany({
       where: { sprintId, field: 'STATUS' },
       orderBy: { occurredAt: 'asc' },
-      select: { issueId: true, oldCategory: true, newCategory: true, occurredAt: true },
+      select: { issueId: true, newCategory: true, occurredAt: true },
     });
 
     // Snapshot DAILY/CLOSE (+ START làm mốc): nguồn chính cho "còn lại" mỗi ngày; ngày chưa có snapshot (trước khi có cron,
@@ -530,15 +530,21 @@ export class AnalyticsService {
     const startSnap = snaps.find((x) => x.kind === 'START' && x.committedPoints > 0);
     const baseline = startSnap ? startSnap.committedPoints : committed;
 
+    // Cố ý KHÔNG dùng oldCategory/delta (giống CFD): chuỗi STATUS có thể đứt nên chỉ tin newCategory của sự kiện
+    // cuối cùng — issue đang DONE hay không — và chỉ cộng/trừ điểm khi trạng thái boolean đó thật sự đổi.
     let done = 0;
+    const doneNow = new Map<string, boolean>();
     let h = 0;
     const series = days.map((date, idx) => {
       const endOfDay = new Date(`${date}T23:59:59.999Z`);
       while (h < history.length && history[h]!.occurredAt <= endOfDay) {
         const ev = history[h++]!;
+        if (!ev.newCategory) continue;
+        const isDone = ev.newCategory === 'DONE';
+        if (isDone === (doneNow.get(ev.issueId) ?? false)) continue;
+        doneNow.set(ev.issueId, isDone);
         const pts = points.get(ev.issueId) ?? 0;
-        if (ev.newCategory === 'DONE' && ev.oldCategory !== 'DONE') done += pts;
-        else if (ev.oldCategory === 'DONE' && ev.newCategory !== 'DONE') done -= pts;
+        done += isDone ? pts : -pts;
       }
       const ideal = days.length > 1 ? baseline * (1 - idx / (days.length - 1)) : 0;
       const snapped = snapByDay.get(date);
