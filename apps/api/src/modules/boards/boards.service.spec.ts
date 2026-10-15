@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { BoardsService } from './boards.service';
 
 /** expect.stringContaining có kiểu any — bọc lại để không phát sinh cảnh báo lint. */
@@ -49,9 +50,13 @@ function boardRow(over: Record<string, unknown> = {}) {
   };
 }
 
-function make(board: unknown = boardRow()) {
+function make(board: unknown = boardRow(), opts: { lockedColumnIds?: string[] } = {}) {
+  const liveIds =
+    opts.lockedColumnIds ?? (board as { columns: Array<{ id: string }> }).columns.map((c) => c.id);
   const tx = {
+    $queryRaw: vi.fn(() => Promise.resolve([{ id: 'b1' }])),
     boardColumn: {
+      findMany: vi.fn(() => Promise.resolve(liveIds.map((id) => ({ id })))),
       deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
       update: vi.fn(() => Promise.resolve({})),
       create: vi.fn((args: { data: { name: string } }) =>
@@ -195,6 +200,66 @@ describe('BoardsService.setColumns', () => {
     ]);
     const links = tx.boardColumnStatus.createMany.mock.calls[0]![0].data;
     expect(links.map((l) => l.columnId)).toEqual(['new-Một', 'new-Một', 'new-Hai']);
+  });
+});
+
+describe('BoardsService.setColumns — khoá board và xung đột', () => {
+  it('khoá dòng Board (FOR UPDATE) là câu đầu tiên trong transaction, trước mọi ghi', async () => {
+    const { service, tx } = make();
+    await service.setColumns('w1', 'b1', {
+      columns: [
+        col('Todo', ['s1'], { id: 'c1' }),
+        col('Doing', ['s2'], { id: 'c2' }),
+        col('Done', ['s3'], { id: 'c3' }),
+      ],
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]!).toBeLessThan(
+      tx.boardColumn.deleteMany.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('cột client tham chiếu đã bị người khác xoá (so với bản đọc lại sau khoá) => lỗi rõ ràng, không ghi', async () => {
+    const { service, tx } = make(boardRow(), { lockedColumnIds: ['c1', 'c3'] }); // c2 đã bị xoá
+    await expect(
+      service.setColumns('w1', 'b1', {
+        columns: [col('A', ['s1', 's2'], { id: 'c1' }), col('B', ['s3'], { id: 'c2' })],
+      }),
+    ).rejects.toMatchObject({ status: 422, message: has('vừa được người khác thay đổi') });
+    expect(tx.boardColumn.update).not.toHaveBeenCalled();
+    expect(tx.boardColumn.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('P2002 khi ghi cột => thông báo tên trùng thay vì 500', async () => {
+    const { service, tx } = make();
+    tx.boardColumn.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }),
+    );
+    await expect(
+      service.setColumns('w1', 'b1', {
+        columns: [
+          col('Todo', ['s1'], { id: 'c1' }),
+          col('Doing', ['s2'], { id: 'c2' }),
+          col('Done', ['s3'], { id: 'c3' }),
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 422, message: has('trùng') });
+  });
+
+  it('P2025 khi ghi cột => thông báo bảng vừa thay đổi thay vì 500', async () => {
+    const { service, tx } = make();
+    tx.boardColumn.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('gone', { code: 'P2025', clientVersion: 'x' }),
+    );
+    await expect(
+      service.setColumns('w1', 'b1', {
+        columns: [
+          col('Todo', ['s1'], { id: 'c1' }),
+          col('Doing', ['s2'], { id: 'c2' }),
+          col('Done', ['s3'], { id: 'c3' }),
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 422, message: has('vừa được người khác thay đổi') });
   });
 });
 

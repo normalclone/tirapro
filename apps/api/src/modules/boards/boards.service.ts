@@ -24,6 +24,9 @@ const boardWriteInclude = {
   project: { select: { archivedAt: true, defaultWorkflowId: true } },
 } satisfies Prisma.BoardInclude;
 
+const CHANGED_BY_OTHER =
+  'Bảng vừa được người khác thay đổi — hãy tải lại trang rồi chỉnh lại các cột';
+
 type BoardRow = Prisma.BoardGetPayload<{ include: typeof boardInclude }>;
 
 @Injectable()
@@ -149,26 +152,48 @@ export class BoardsService {
       keepIds.push(c.id);
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.boardColumn.deleteMany({ where: { boardId, id: { notIn: keepIds } } });
-      // Đổi tên tạm trước để hoán đổi/dịch tên giữa các cột không vấp unique [boardId, name] giữa chừng.
-      for (const id of keepIds)
-        await tx.boardColumn.update({ where: { id }, data: { name: `~${id}` } });
-      const links: Prisma.BoardColumnStatusCreateManyInput[] = [];
-      for (let order = 0; order < columns.length; order++) {
-        const c = columns[order]!;
-        const data = { name: c.name.trim(), order, wipLimit: c.wipLimit ?? null };
-        let columnId = c.id;
-        if (columnId) await tx.boardColumn.update({ where: { id: columnId }, data });
-        else
-          columnId = (
-            await tx.boardColumn.create({ data: { boardId, ...data }, select: { id: true } })
-          ).id;
-        for (const statusId of c.statusIds) links.push({ columnId, statusId });
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Khoá dòng Board làm câu đầu tiên: các setColumns đồng thời xếp hàng, người sau thấy kết quả của người trước.
+        await tx.$queryRaw`SELECT "id" FROM "Board" WHERE "id" = ${boardId} FOR UPDATE`;
+        const live = new Set(
+          (await tx.boardColumn.findMany({ where: { boardId }, select: { id: true } })).map(
+            (c) => c.id,
+          ),
+        );
+        for (const id of keepIds) {
+          if (!live.has(id)) throw new BusinessRuleException(CHANGED_BY_OTHER);
+        }
+        await tx.boardColumn.deleteMany({ where: { boardId, id: { notIn: keepIds } } });
+        // Đổi tên tạm trước để hoán đổi/dịch tên giữa các cột không vấp unique [boardId, name] giữa chừng.
+        for (const id of keepIds)
+          await tx.boardColumn.update({ where: { id }, data: { name: `~${id}` } });
+        const links: Prisma.BoardColumnStatusCreateManyInput[] = [];
+        for (let order = 0; order < columns.length; order++) {
+          const c = columns[order]!;
+          const data = { name: c.name.trim(), order, wipLimit: c.wipLimit ?? null };
+          let columnId = c.id;
+          if (columnId) await tx.boardColumn.update({ where: { id: columnId }, data });
+          else
+            columnId = (
+              await tx.boardColumn.create({ data: { boardId, ...data }, select: { id: true } })
+            ).id;
+          for (const statusId of c.statusIds) links.push({ columnId, statusId });
+        }
+        await tx.boardColumnStatus.deleteMany({ where: { columnId: { in: keepIds } } });
+        await tx.boardColumnStatus.createMany({ data: links });
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        if (e.code === 'P2002') {
+          throw new BusinessRuleException(
+            'Tên cột bị trùng nhau (hoặc vừa có người tạo cột cùng tên) — hãy đặt mỗi cột một tên khác nhau rồi lưu lại',
+          );
+        }
+        if (e.code === 'P2025') throw new BusinessRuleException(CHANGED_BY_OTHER);
       }
-      await tx.boardColumnStatus.deleteMany({ where: { columnId: { in: keepIds } } });
-      await tx.boardColumnStatus.createMany({ data: links });
-    });
+      throw e;
+    }
     return this.get(workspaceId, boardId);
   }
 
