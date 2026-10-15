@@ -11,7 +11,10 @@
     },
     "apps/web": {
       "entry": ["scripts/*.mjs"],
-      "ignore": ["src/features/ai/AiIssuePanel.tsx"], // chưa nối vào UI; xoá hay nối là quyết định riêng
+      "ignore": [
+        "src/features/ai/AiIssuePanel.tsx", // chưa nối vào UI; xoá hay nối là quyết định riêng
+        "src/components/ui/DateInput.tsx", // U4 tạo thành phần; U22 áp vào các form — gỡ dòng này khi U22 merge
+      ],
     },
     "apps/mcp": {},
     "packages/*": {},
