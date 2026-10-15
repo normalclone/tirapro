@@ -144,10 +144,16 @@ function ProjectRow({ project }: { project: RollupProject }) {
         title={
           project.overdueCount > 0
             ? 'Số công việc chưa xong mà đã qua hạn hoàn thành'
-            : 'Không có công việc nào quá hạn'
+            : project.targetDate
+              ? 'Không có công việc nào quá hạn'
+              : undefined
         }
       >
-        {project.overdueCount > 0 ? `${project.overdueCount} quá hạn` : 'đúng hạn'}
+        {project.overdueCount > 0
+          ? `${project.overdueCount} quá hạn`
+          : project.targetDate
+            ? 'đúng hạn'
+            : ''}
       </span>
     </li>
   );
@@ -348,14 +354,14 @@ export function PortfolioPage() {
   return (
     <div className={pageContainer('xl')}>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-[16rem] max-w-2xl flex-1">
           <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Danh mục dự án</h1>
           <p className="mt-1 text-sm text-muted">
             Gom các dự án liên quan vào một chương trình để xem tiến độ chung, việc quá hạn và mốc
             thời gian ở một chỗ, thay vì mở từng dự án.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {rollup && totals && totals.projectCount > 0 && (
             <ExportMenu
               items={[
