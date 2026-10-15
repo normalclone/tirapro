@@ -25,6 +25,13 @@ import {
   type CreateRoleInput,
 } from '@/features/roles/api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { RoleMatrixTable } from './RoleMatrixTable';
+
+type RolesTab = 'list' | 'matrix';
+const ROLES_TABS: { id: RolesTab; label: string }[] = [
+  { id: 'list', label: 'Danh sách' },
+  { id: 'matrix', label: 'So sánh vai trò' },
+];
 
 /** Bộ màu OKLCH gợi ý cho vai trò tuỳ chỉnh (đồng bộ tông với system role). */
 const PRESET_COLORS = [
@@ -57,6 +64,7 @@ export function RolesPage() {
   const rolesQuery = useRoles();
   const { data: roles } = rolesQuery;
 
+  const [tab, setTab] = useState<RolesTab>('list');
   const [editing, setEditing] = useState<RoleDto | null>(null);
   const [creatingScope, setCreatingScope] = useState<RoleScope | null>(null);
   // Hộp thoại luôn mount để có hiệu ứng đóng; mỗi lần mở là một `session` mới → form khởi tạo lại.
@@ -101,47 +109,79 @@ export function RolesPage() {
         )}
       </header>
 
-      <QueryBoundary
-        query={rolesQuery}
-        skeleton={
-          <div className="space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </div>
-        }
-        empty={(d) => d.length === 0}
-        emptyState={
-          <EmptyState
-            icon={<Shield className="h-6 w-6" />}
-            title="Chưa có vai trò"
-            description="Tạo vai trò đầu tiên để phân quyền cho thành viên."
-            action={
-              canManage ? (
-                <Button size="sm" onClick={() => openCreate('WORKSPACE')}>
-                  <Plus className="h-4 w-4" />
-                  Tạo vai trò
-                </Button>
-              ) : undefined
-            }
-          />
-        }
+      <div
+        className="mb-6 flex gap-1 border-b border-border"
+        role="tablist"
+        aria-label="Vai trò & quyền"
       >
-        {() => (
-          <div className="space-y-8">
-            {(['WORKSPACE', 'PROJECT'] as const).map((scope) => (
-              <RoleGroup
-                key={scope}
-                scope={scope}
-                roles={grouped[scope]}
-                canManage={canManage}
-                onOpen={openEdit}
-                onCreate={() => openCreate(scope)}
-              />
-            ))}
-          </div>
-        )}
-      </QueryBoundary>
+        {ROLES_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`roles-tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls="roles-tabpanel"
+            onClick={() => setTab(t.id)}
+            className={cn(
+              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+              tab === t.id
+                ? 'border-primary text-ink-strong'
+                : 'border-transparent text-muted hover:text-ink',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div id="roles-tabpanel" role="tabpanel" aria-labelledby={`roles-tab-${tab}`}>
+        <QueryBoundary
+          query={rolesQuery}
+          skeleton={
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          }
+          empty={(d) => d.length === 0}
+          emptyState={
+            <EmptyState
+              icon={<Shield className="h-6 w-6" />}
+              title="Chưa có vai trò"
+              description="Tạo vai trò đầu tiên để phân quyền cho thành viên."
+              action={
+                canManage ? (
+                  <Button size="sm" onClick={() => openCreate('WORKSPACE')}>
+                    <Plus className="h-4 w-4" />
+                    Tạo vai trò
+                  </Button>
+                ) : undefined
+              }
+            />
+          }
+        >
+          {(all) =>
+            tab === 'matrix' ? (
+              <RoleMatrixTable roles={all} />
+            ) : (
+              <div className="space-y-8">
+                {(['WORKSPACE', 'PROJECT'] as const).map((scope) => (
+                  <RoleGroup
+                    key={scope}
+                    scope={scope}
+                    roles={grouped[scope]}
+                    canManage={canManage}
+                    onOpen={openEdit}
+                    onCreate={() => openCreate(scope)}
+                  />
+                ))}
+              </div>
+            )
+          }
+        </QueryBoundary>
+      </div>
 
       <RoleDialog
         key={session}
