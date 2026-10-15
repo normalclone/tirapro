@@ -55,6 +55,7 @@ import {
   IssueTypeSelect,
   IssuePrioritySelect,
   IssueSeveritySelect,
+  IssueResolutionSelect,
 } from '@/features/issue-edit/IssueProperties';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { CommentsSection } from '@/features/issue-edit/CommentsSection';
@@ -193,6 +194,11 @@ export function IssueDetailPage() {
     toLabel: string;
   } | null>(null);
   const [pendingOpen, setPendingOpen] = useState(false);
+  // Đổi sang việc khác (Back/Forward, mở từ Cmd+K…) → bỏ hộp đang mở, kẻo xác nhận nhầm sang việc mới.
+  useEffect(() => {
+    setPendingOpen(false);
+    setPending(null);
+  }, [issue?.id]);
   const { data: meta } = useProjectMeta(projectKey || undefined);
   const resolutions = meta?.resolutions ?? [];
   useEffect(() => {
@@ -226,7 +232,12 @@ export function IssueDetailPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [canLogWork, hasIssue]);
 
-  function changeStatus(toStatusId: string, extra?: { resolutionId?: string; comment?: string }) {
+  function changeStatus(
+    toStatusId: string,
+    extra?: { resolutionId?: string; comment?: string },
+    /** Hộp thoại chỉ đóng khi thành công — lỗi (409…) giữ hộp mở cùng chữ đã gõ. */
+    onDone?: () => void,
+  ) {
     if (!issue || toStatusId === issue.status.id) return;
     const toName = nextStatuses.find((s) => s.id === toStatusId)?.name;
     const from = { statusId: issue.status.id, statusName: issue.status.name };
@@ -241,12 +252,24 @@ export function IssueDetailPage() {
       },
       {
         onSuccess: (updated) => {
+          onDone?.();
           // Hoàn tác (nếu có) quay về trạng thái cũ; khi rời Done máy chủ tự xoá Resolution, còn hoàn tác vào lại Done thì
           // máy chủ gán lại mặc định (có thể khác lựa chọn trước đó) — chấp nhận.
           toast.success(
             toName ? `Đã chuyển sang “${toName}”` : 'Đã đổi trạng thái',
             transitionToastOptions({ workflows, from, toStatusId, updated, transition }),
           );
+          // Máy chủ đã chuyển nhưng không lưu được lý do thành bình luận: nói rõ và cho chép lại để không mất chữ.
+          if (extra?.comment && updated.reasonSaved === false) {
+            const text = extra.comment;
+            toast.error('Đã chuyển trạng thái nhưng chưa ghi được lý do thành bình luận', {
+              duration: 12000,
+              action: {
+                label: 'Chép lý do',
+                onClick: () => void navigator.clipboard?.writeText(text).catch(() => undefined),
+              },
+            });
+          }
         },
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
@@ -567,6 +590,7 @@ export function IssueDetailPage() {
                     <IssueTypeSelect issue={issue} />
                     <IssuePrioritySelect issue={issue} />
                     <IssueSeveritySelect issue={issue} />
+                    <IssueResolutionSelect issue={issue} />
                   </div>
                   {editingSummary ? (
                     <Input
@@ -866,16 +890,16 @@ export function IssueDetailPage() {
                   open={pendingOpen}
                   kind={pending.kind}
                   issueKey={issue.key}
+                  projectId={issue.projectId}
                   fromName={pending.fromName}
                   toName={pending.toName}
                   toLabel={pending.toLabel}
                   resolutions={resolutions}
                   defaultResolutionId={defaultResolutionId(resolutions)}
                   loading={transition.isPending}
-                  onConfirm={(v) => {
-                    setPendingOpen(false);
-                    changeStatus(pending.toStatusId, v);
-                  }}
+                  onConfirm={(v) =>
+                    changeStatus(pending.toStatusId, v, () => setPendingOpen(false))
+                  }
                   onCancel={() => setPendingOpen(false)}
                 />
               )}

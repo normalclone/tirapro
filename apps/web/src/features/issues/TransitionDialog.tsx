@@ -4,6 +4,8 @@ import { CheckCircle2, RotateCcw, Undo2 } from 'lucide-react';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
+import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
+import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { appendReason, type TransitionKind } from './transitionKind';
 
 export type DialogTransitionKind = Exclude<TransitionKind, 'forward'>;
@@ -24,6 +26,8 @@ interface Props {
   open: boolean;
   kind: DialogTransitionKind;
   issueKey: string;
+  /** Dự án của công việc — để gợi ý @mention trong ô lý do. */
+  projectId: string;
   fromName: string;
   toName: string;
   /** Tên hành động của transition (vd "Hoàn thành", "Mở lại") — dùng làm nhãn nút xác nhận. */
@@ -46,6 +50,7 @@ export function TransitionDialog({
   open,
   kind,
   issueKey,
+  projectId,
   fromName,
   toName,
   toLabel,
@@ -59,6 +64,7 @@ export function TransitionDialog({
   const [resolutionId, setResolutionId] = useState<string | null>(defaultResolutionId);
   const [comment, setComment] = useState('');
   const body = useRef<HTMLDivElement>(null);
+  const people = useAssigneeOptions(projectId);
 
   const confirm = () => {
     if (loading) return;
@@ -148,20 +154,21 @@ export function TransitionDialog({
             </div>
           </fieldset>
         )}
-        <div>
-          <label htmlFor="transition-comment" className="mb-1.5 block text-sm font-medium text-ink">
+        {/* Đang gõ @: chừa chỗ cho popup gợi ý (thân hộp cuộn, popup nằm trong dòng chảy) kẻo bị cắt. */}
+        <div className={cn(/(^|\s)@\S*$/.test(comment) && 'pb-40')}>
+          <p className="mb-1.5 text-sm font-medium text-ink">
             {isClose ? 'Ghi chú (tuỳ chọn)' : 'Lý do (tuỳ chọn)'}
-          </label>
-          <textarea
-            id="transition-comment"
+          </p>
+          <MarkdownEditor
             value={comment}
-            maxLength={5000}
+            onChange={(v) => setComment(v.slice(0, 5000))}
             rows={3}
-            onChange={(e) => setComment(e.target.value)}
+            mentionPeople={people}
             placeholder={
-              isClose ? 'Ghi chú sẽ được lưu thành bình luận' : 'Lý do sẽ được lưu thành bình luận'
+              isClose
+                ? 'Ghi chú sẽ được lưu thành bình luận (gõ @ để nhắc người)'
+                : 'Lý do sẽ được lưu thành bình luận (gõ @ để nhắc người)'
             }
-            className="w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-base text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
           />
           {!isClose && (
             <div className="mt-2 flex flex-wrap gap-1.5">

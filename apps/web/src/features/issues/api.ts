@@ -5,7 +5,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query';
-import type { CommentDto, IssueDto, ListResponse } from '@tirapro/types';
+import type { CommentDto, IssueDto, IssueTransitionResultDto, ListResponse } from '@tirapro/types';
 import { extractMentionIds } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -193,7 +193,7 @@ export function useTransitionDetail(projectId: string | undefined) {
   return useMutation({
     mutationFn: (v: TransitionVars) =>
       api
-        .post<IssueDto>(`/issues/${v.id}/transition`, {
+        .post<IssueTransitionResultDto>(`/issues/${v.id}/transition`, {
           toStatusId: v.toStatusId,
           version: v.version,
           resolutionId: v.resolutionId,
