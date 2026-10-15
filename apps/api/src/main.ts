@@ -43,7 +43,7 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: config.get<string[]>('api.corsOrigin') ?? true,
     credentials: true,
-    exposedHeaders: ['X-Request-Id'],
+    exposedHeaders: ['X-Request-Id', 'Content-Disposition', 'X-Export-Truncated'],
   });
 
   const ioAdapter = new RedisIoAdapter(app);

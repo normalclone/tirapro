@@ -8,17 +8,21 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { ExportMenu } from '@/components/ui/ExportMenu';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
+import { downloadText } from '@/lib/download';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { ProgramEditorModal } from './ProgramEditorModal';
 import { ProgramProjectsModal } from './ProgramProjectsModal';
 import { RoadmapTimeline } from './RoadmapTimeline';
+import { portfolioCsv } from './exportCsv';
 import {
   usePrograms,
   useProgramRollup,
@@ -351,11 +355,29 @@ export function PortfolioPage() {
             thời gian ở một chỗ, thay vì mở từng dự án.
           </p>
         </div>
-        {canManage && (
-          <Button size="sm" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Tạo chương trình
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {rollup && totals && totals.projectCount > 0 && (
+            <ExportMenu
+              items={[
+                {
+                  id: 'csv',
+                  label: 'Tải CSV',
+                  hint: 'Mỗi dự án một dòng, mở được bằng Excel',
+                  run: () =>
+                    downloadText(
+                      `tirapro-danh-muc-${format(new Date(), 'yyyyMMdd')}.csv`,
+                      portfolioCsv(rollup),
+                    ),
+                },
+              ]}
+            />
+          )}
+          {canManage && (
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Tạo chương trình
+            </Button>
+          )}
+        </div>
       </header>
 
       {totals && totals.projectCount > 0 && (

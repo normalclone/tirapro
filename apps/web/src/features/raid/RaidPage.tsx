@@ -1,17 +1,21 @@
 import { useMemo, useState } from 'react';
 import { Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { ExportMenu } from '@/components/ui/ExportMenu';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { DueBadge } from '@/components/ui/DueBadge';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
+import { downloadText } from '@/lib/download';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useProjects } from '@/features/projects/api';
 import { RaidEditorModal } from './RaidEditorModal';
+import { raidCsv } from './exportCsv';
 import {
   useDeleteRaidItem,
   useRaidItems,
@@ -352,11 +356,28 @@ export function RaidPage() {
             Điểm rủi ro = xác suất × mức ảnh hưởng, mục đáng lo nhất luôn nằm trên cùng.
           </p>
         </div>
-        {canManage && (
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            disabled={rows.length === 0}
+            items={[
+              {
+                id: 'csv',
+                label: 'Tải CSV',
+                hint: 'Đúng danh sách đang xem (theo bộ lọc)',
+                run: () =>
+                  downloadText(
+                    `tirapro-rui-ro-${format(new Date(), 'yyyyMMdd')}.csv`,
+                    raidCsv(rows),
+                  ),
+              },
+            ]}
+          />
+          {canManage && (
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
+            </Button>
+          )}
+        </div>
       </header>
 
       <div
