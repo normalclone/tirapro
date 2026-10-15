@@ -115,6 +115,7 @@ export function DateInput({
   const latest = useRef(value);
   const inputRef = useRef<HTMLInputElement>(null);
   const pickerRef = useRef<HTMLInputElement>(null);
+  const pointerType = useRef('');
   const errId = useId();
   const once = useCommitOnce(onCommit);
 
@@ -219,9 +220,17 @@ export function DateInput({
             aria-label="Chọn ngày từ lịch"
             disabled={disabled}
             // Không để nút nhận focus: Safari không focus button → relatedTarget=null làm blur giả, bắn commit sớm.
+            // Chỉ chuột mới chuyển focus vào ô chữ; cảm ứng/bút thì không (tránh bật bàn phím cùng lịch).
+            onPointerDown={(e) => {
+              pointerType.current = e.pointerType;
+            }}
             onMouseDown={(e) => {
               e.preventDefault();
-              inputRef.current?.focus();
+              const touchLike =
+                pointerType.current === 'touch' ||
+                pointerType.current === 'pen' ||
+                (pointerType.current === '' && window.matchMedia?.('(pointer: coarse)').matches);
+              if (!touchLike) inputRef.current?.focus();
             }}
             onClick={openPicker}
             className="absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"

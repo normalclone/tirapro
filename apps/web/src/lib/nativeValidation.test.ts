@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { viValidationMessage } from './nativeValidation';
+import { shouldTranslateInvalid, viValidationMessage } from './nativeValidation';
 
 const ok = {
   valueMissing: false,
@@ -63,5 +63,16 @@ describe('viValidationMessage', () => {
   });
   it('hợp lệ → rỗng (không đè thông điệp của trình duyệt)', () => {
     expect(viValidationMessage(ok, { type: 'text' })).toBe('');
+  });
+});
+
+describe('shouldTranslateInvalid', () => {
+  it('ô thường: luôn dịch', () => {
+    expect(shouldTranslateInvalid(false, false)).toBe(true);
+    expect(shouldTranslateInvalid(false, true)).toBe(true);
+  });
+  it('ô tự quản lý: dịch lỗi gốc (required trống) nhưng giữ lỗi tuỳ biến của nó', () => {
+    expect(shouldTranslateInvalid(true, false)).toBe(true);
+    expect(shouldTranslateInvalid(true, true)).toBe(false);
   });
 });

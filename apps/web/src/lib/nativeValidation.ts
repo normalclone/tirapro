@@ -56,6 +56,14 @@ function isControl(t: EventTarget | null): t is FormControl {
   return !!t && typeof (t as FormControl).setCustomValidity === 'function';
 }
 
+/**
+ * Có nên dịch lỗi native của ô này không. Ô tự quản lý (`data-custom-validity`) chỉ được bỏ qua khi nó
+ * đang có lỗi tuỳ biến của chính nó (`customError`); lỗi gốc như `required` để trống vẫn dịch tiếng Việt.
+ */
+export function shouldTranslateInvalid(selfManaged: boolean, customError: boolean): boolean {
+  return !(selfManaged && customError);
+}
+
 /** Ô tự đặt `customValidity` (có `data-custom-validity`) — bộ dịch không được đè/xoá. */
 function isSelfManaged(el: FormControl): boolean {
   return el.hasAttribute('data-custom-validity');
@@ -63,14 +71,19 @@ function isSelfManaged(el: FormControl): boolean {
 
 /**
  * Cài bộ dịch validation native cho toàn tài liệu. Trả hàm gỡ.
- * Ô mang thuộc tính `data-custom-validity` tự quản lý `setCustomValidity` (vd `DateInput`) nên bị bỏ qua hoàn toàn.
+ * Ô mang thuộc tính `data-custom-validity` tự quản lý `setCustomValidity` (vd `DateInput`): lỗi tuỳ biến của nó
+ * được giữ nguyên, nhưng lỗi gốc (vd `required` để trống) vẫn được dịch như ô thường.
  * Thông điệp tuỳ biến được xoá khi người dùng sửa ô (`input`/`change`) và trước mỗi lần bấm nút gửi,
  * để ô không kẹt trạng thái lỗi cũ khi giá trị đổi bằng code.
  */
 export function installViValidation(doc: Document = document): () => void {
+  /** Ô tự quản lý mà bộ dịch đã đặt thông điệp → được xoá như ô thường khi người dùng sửa. */
+  const translated = new WeakSet<FormControl>();
+  const mayClear = (el: FormControl) => !isSelfManaged(el) || translated.has(el);
   const onInvalid = (e: Event) => {
     const el = e.target;
-    if (!isControl(el) || isSelfManaged(el)) return;
+    if (!isControl(el) || !shouldTranslateInvalid(isSelfManaged(el), el.validity.customError))
+      return;
     el.setCustomValidity(''); // đo lại validity gốc
     const i = el as HTMLInputElement;
     const msg = viValidationMessage(el.validity, {
@@ -80,10 +93,16 @@ export function installViValidation(doc: Document = document): () => void {
       min: i.min || undefined,
       max: i.max || undefined,
     });
-    if (msg) el.setCustomValidity(msg);
+    if (msg) {
+      el.setCustomValidity(msg);
+      if (isSelfManaged(el)) translated.add(el);
+    }
   };
   const clear = (e: Event) => {
-    if (isControl(e.target) && !isSelfManaged(e.target)) e.target.setCustomValidity('');
+    if (isControl(e.target) && mayClear(e.target)) {
+      e.target.setCustomValidity('');
+      translated.delete(e.target);
+    }
   };
   const clearForm = (e: Event) => {
     const target = e.target instanceof Element ? e.target : null;
@@ -92,7 +111,10 @@ export function installViValidation(doc: Document = document): () => void {
     );
     if (!btn || btn.type !== 'submit') return;
     for (const c of Array.from(btn.form?.elements ?? [])) {
-      if (isControl(c) && !isSelfManaged(c)) c.setCustomValidity('');
+      if (isControl(c) && mayClear(c)) {
+        c.setCustomValidity('');
+        translated.delete(c);
+      }
     }
   };
   doc.addEventListener('invalid', onInvalid, true);
