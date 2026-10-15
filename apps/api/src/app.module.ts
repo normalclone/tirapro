@@ -40,7 +40,8 @@ import { MediaModule } from './modules/media/media.module';
 import { ExportModule } from './modules/export/export.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { GuidesModule } from './modules/guides/guides.module';
-import { DevModule } from './modules/dev/dev.module';
+import { buildHealthPaths, isHealthPath } from './common/health-paths';
+import { DevLinksModule } from './modules/dev-links/dev-links.module';
 import { TriageModule } from './modules/triage/triage.module';
 import { DigestsModule } from './modules/digests/digests.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
@@ -69,9 +70,6 @@ import { AdminModule } from './modules/admin/admin.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
 import { ApiKeyModule } from './modules/api-keys/api-key.module';
 
-/** Đường dẫn probe sức khoẻ (khớp CHÍNH XÁC theo pathname) — không ghi log mỗi lần LB/k8s gọi. */
-const HEALTH_PATHS = new Set(['/api/v1/health', '/api/v1/health/live', '/api/v1/health/ready']);
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -89,6 +87,11 @@ const HEALTH_PATHS = new Set(['/api/v1/health', '/api/v1/health/live', '/api/v1/
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const isProd = config.get<boolean>('isProd') === true;
+        // Không ghi log mỗi lần LB/k8s gọi probe; đường dẫn theo cùng prefix/version với main.ts.
+        const healthPaths = buildHealthPaths(
+          config.get<string>('api.globalPrefix') ?? 'api',
+          config.get<string>('api.version') ?? 'v1',
+        );
         return {
           pinoHttp: {
             level: process.env.LOG_LEVEL ?? (isProd ? 'info' : 'debug'),
@@ -100,7 +103,7 @@ const HEALTH_PATHS = new Set(['/api/v1/health', '/api/v1/health/live', '/api/v1/
             // Không ghi token/cookie vào log.
             redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-api-key"]'],
             transport: isProd ? undefined : { target: 'pino-pretty' },
-            autoLogging: { ignore: (req) => HEALTH_PATHS.has((req.url ?? '').split('?')[0] ?? '') },
+            autoLogging: { ignore: (req) => isHealthPath(req.url, healthPaths) },
           },
         };
       },
@@ -152,7 +155,7 @@ const HEALTH_PATHS = new Set(['/api/v1/health', '/api/v1/health/live', '/api/v1/
     ExportModule,
     IntegrationsModule,
     GuidesModule,
-    DevModule,
+    DevLinksModule,
     TriageModule,
     DigestsModule,
     CustomFieldsModule,

@@ -135,14 +135,17 @@ const devLinkSelect = {
 type DevLinkRow = Prisma.IssueDevLinkGetPayload<{ select: typeof devLinkSelect }>;
 
 @Injectable()
-export class DevService {
-  private readonly logger = new Logger(DevService.name);
+export class DevLinksService {
+  private readonly logger = new Logger(DevLinksService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
   // ---------------------------- Repositories ----------------------------
 
-  async createRepository(workspaceId: string, input: CreateRepositoryInput): Promise<RepositoryDto> {
+  async createRepository(
+    workspaceId: string,
+    input: CreateRepositoryInput,
+  ): Promise<RepositoryDto> {
     // Integration phải thuộc workspace của user.
     const integration = await this.prisma.integration.findFirst({
       where: { id: input.integrationId, workspaceId },
@@ -237,7 +240,9 @@ export class DevService {
 
     // Bắt buộc có secret: webhook công khai mà không xác thực thì ai cũng gắn được dev-link.
     if (!repo.webhookSecret) {
-      throw new BadRequestException('Repo chưa cấu hình secret — hãy đặt webhook secret cho repo rồi gửi lại');
+      throw new BadRequestException(
+        'Repo chưa cấu hình secret — hãy đặt webhook secret cho repo rồi gửi lại',
+      );
     }
     const valid =
       repo.provider === IntegrationType.GITLAB
@@ -368,9 +373,7 @@ export class DevService {
     });
 
     const metadata =
-      data.metadata !== undefined
-        ? (data.metadata as unknown as Prisma.InputJsonValue)
-        : undefined;
+      data.metadata !== undefined ? (data.metadata as unknown as Prisma.InputJsonValue) : undefined;
 
     if (existing) {
       // Cập nhật trạng thái/title nếu PR đổi (merged, đổi tên...). Không tính là "linked" mới.

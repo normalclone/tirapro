@@ -1164,7 +1164,7 @@ Codes: `VALIDATION_ERROR(400)`, `JQL_PARSE_ERROR(400)`, `UNAUTHENTICATED/TOKEN_E
 | 33 | Seed v2 | Xong | `db:seed` + `db:seed:rich`; backfill embeddings chưa |
 | 34 | CI + README | Một phần | CI có (lint/typecheck/test); **chưa có README.md gốc**, chưa có e2e; có `apps/api/Dockerfile` |
 
-**Việc dọn dẹp còn treo (follow-up):** đổi tên thư mục `apps/api/src/modules/dev` → `dev-links` (module này là tích hợp GitHub/GitLab dev-links; REST path `/dev/...` giữ nguyên). Chưa đổi vì đang có nhiều task cùng sửa controller — làm sau khi các nhánh đó đã merge.
+**Đã đổi tên module `dev` → `dev-links`** (`apps/api/src/modules/dev-links`; REST path `/dev/...` giữ nguyên).
 
 ---
 
