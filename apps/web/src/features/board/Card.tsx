@@ -1,11 +1,13 @@
-import { memo, type HTMLAttributes, type Ref } from 'react';
-import { useDraggable } from '@dnd-kit/core';
+import { memo, type CSSProperties, type HTMLAttributes, type Ref } from 'react';
+import { useSortable } from '@dnd-kit/sortable';
 import type { IssueDto } from '@tirapro/types';
 import { DueBadge, dueBorderClass } from '@/components/ui/DueBadge';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { Avatar } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
+import { useDropEdge } from '@/lib/dropHint';
+import { SORT_TRANSITION } from '@/lib/sortableDnd';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
 
 /** Roving focus giữa các card bằng phím mũi tên (theo data-lane/col/row). */
@@ -36,7 +38,7 @@ const LabelChip = memo(function LabelChip({ name, color }: { name: string; color
 
 /**
  * Phần giao diện thuần của thẻ — dùng cho cả thẻ kéo được (`Card`) lẫn bản trôi theo chuột (`DragOverlay`).
- * Bản overlay KHÔNG gọi `useDraggable` để không đăng ký trùng id với thẻ gốc trong dnd-kit.
+ * Bản overlay KHÔNG gọi `useSortable` để không đăng ký trùng id với thẻ gốc trong dnd-kit.
  */
 export function CardBody({
   issue,
@@ -44,6 +46,8 @@ export function CardBody({
   overlay,
   isDragging,
   canDrag = true,
+  style,
+  dropEdge,
   rootRef,
   rootProps,
 }: {
@@ -53,6 +57,10 @@ export function CardBody({
   isDragging?: boolean;
   /** false = không có quyền chuyển cột: không hiện con trỏ nắm/kéo, cuộn cảm ứng bình thường. */
   canDrag?: boolean;
+  /** Dịch chỗ khi các thẻ khác tránh đường (transform/transition của sortable). */
+  style?: CSSProperties;
+  /** Đường kẻ chèn khi một thẻ từ cột khác đang rê tới: ngay trước/sau thẻ này. */
+  dropEdge?: 'before' | 'after' | null;
   rootRef?: Ref<HTMLDivElement>;
   rootProps?: HTMLAttributes<HTMLDivElement>;
 }) {
@@ -61,13 +69,14 @@ export function CardBody({
     <div
       ref={rootRef}
       {...rootProps}
+      style={style}
       className={cn(
-        'rounded-md border bg-surface p-2.5 shadow-sm transition-shadow',
+        'relative rounded-md border bg-surface p-2.5 shadow-sm transition-shadow',
         canDrag ? 'cursor-grab touch-none active:cursor-grabbing' : 'cursor-pointer',
         dueBorderClass(issue) || 'border-border',
         'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
         isDragging && 'opacity-40',
-        overlay && 'rotate-1 shadow-lg',
+        overlay && 'shadow-lg',
       )}
     >
       <div className="mb-1.5 flex items-center gap-2">
@@ -145,6 +154,16 @@ export function CardBody({
           </span>
         </div>
       )}
+
+      {dropEdge && (
+        <span
+          aria-hidden
+          className={cn(
+            'pointer-events-none absolute inset-x-0 h-0.5 rounded-full bg-primary',
+            dropEdge === 'before' ? '-top-[5px]' : '-bottom-[5px]',
+          )}
+        />
+      )}
     </div>
   );
 }
@@ -174,10 +193,20 @@ export const Card = memo(
     rowIdx = 0,
     canDrag,
   }: CardProps) {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    // Không quyền kéo: thẻ vẫn là droppable để người có quyền thả gần nó (chỉ tắt phần draggable).
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
       id: issue.id,
-      disabled: !canDrag,
+      disabled: { draggable: !canDrag },
+      transition: SORT_TRANSITION,
+      attributes: { roleDescription: canDrag ? 'thẻ việc có thể kéo' : 'thẻ việc' },
     });
+    const dropEdge = useDropEdge(issue.id);
+    const style: CSSProperties = {
+      transform: transform
+        ? `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0)`
+        : undefined,
+      transition,
+    };
 
     function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
       if (isDragging) return; // đang kéo bằng bàn phím: mũi tên thuộc về dnd-kit, không dời focus
@@ -209,6 +238,8 @@ export const Card = memo(
         progress={progress}
         isDragging={isDragging}
         canDrag={canDrag}
+        style={style}
+        dropEdge={dropEdge}
         rootRef={setNodeRef}
         rootProps={{
           ...listeners,

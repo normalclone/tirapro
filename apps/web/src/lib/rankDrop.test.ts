@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computePlacement, placementFromDnd } from './rankDrop';
+import { computePlacement, hintOf, placementFromDnd, type Placement } from './rankDrop';
 
 const base = { activeId: 'b', fromContainer: 'c1', fromItems: ['a', 'b', 'c', 'd'] };
 
@@ -140,5 +140,41 @@ describe('placementFromDnd', () => {
         over: null,
       }),
     ).toBeNull();
+  });
+});
+
+describe('hintOf', () => {
+  const p = (over: Partial<Placement>): Placement => ({
+    containerId: 'c',
+    index: 0,
+    total: 1,
+    afterId: null,
+    beforeId: null,
+    origin: { afterId: null, beforeId: null },
+    crossContainer: true,
+    unchanged: false,
+    ...over,
+  });
+  it('chỉ hiện khi sang container khác; ưu tiên đường kẻ trên thẻ mốc phía dưới', () => {
+    expect(hintOf(p({ afterId: 'x', beforeId: 'y' }))).toEqual({ id: 'y', edge: 'before' });
+    expect(hintOf(p({ afterId: 'x' }))).toEqual({ id: 'x', edge: 'after' });
+    expect(hintOf(p({}))).toBeNull();
+    expect(hintOf(p({ crossContainer: false, afterId: 'x' }))).toBeNull();
+    expect(hintOf(null)).toBeNull();
+  });
+});
+
+describe('computePlacement — origin khi thẻ không có trong danh sách nguồn', () => {
+  it('không có mốc cũ (không lấy nhầm thẻ đầu danh sách làm beforeId)', () => {
+    const p = computePlacement({
+      activeId: 'z',
+      fromContainer: 'c1',
+      fromItems: ['a', 'b'],
+      toContainer: 'c2',
+      toItems: ['x'],
+      overId: 'x',
+      below: true,
+    });
+    expect(p.origin).toEqual({ afterId: null, beforeId: null });
   });
 });

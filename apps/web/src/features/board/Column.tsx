@@ -1,9 +1,11 @@
-import { memo } from 'react';
-import { useDroppable } from '@dnd-kit/core';
+import { memo, useMemo } from 'react';
+import { useDndContext, useDroppable } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { BoardColumnDto, IssueDto } from '@tirapro/types';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
 import { categoryColor } from '@/lib/statusColor';
 import { cn } from '@/lib/utils';
+import { sortableContainerOf } from '@/lib/sortableDnd';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
 import { Card } from './Card';
 
@@ -40,7 +42,15 @@ function ColumnImpl({
   grouped = false,
   wipUsed = 0,
 }: ColumnProps) {
-  const { setNodeRef, isOver } = useDroppable({ id: droppableId ?? col.id });
+  const containerId = droppableId ?? col.id;
+  const ids = useMemo(() => issues.map((i) => i.id), [issues]);
+  const data = useMemo(() => ({ container: { items: ids } }), [ids]);
+  const { setNodeRef } = useDroppable({ id: containerId, data });
+  // Viền nổi chỉ khi thẻ từ cột KHÁC đang rê tới (cùng cột thì các thẻ dịch chỗ là đủ).
+  const { active, over } = useDndContext();
+  const fromContainer = sortableContainerOf(active);
+  const overContainer = over ? (sortableContainerOf(over) ?? String(over.id)) : null;
+  const highlight = !!active && overContainer === containerId && fromContainer !== containerId;
   const dot = issues[0] ? categoryColor(issues[0].status.category) : 'var(--status-todo)';
   const columnStatusId = col.statusIds[0];
   return (
@@ -49,7 +59,7 @@ function ColumnImpl({
       className={cn(
         'flex w-[21.6rem] shrink-0 flex-col rounded-lg bg-surface-3 transition-colors',
         grouped && 'self-start',
-        isOver && 'ring-2 ring-[var(--ring)]',
+        highlight && 'ring-2 ring-[var(--ring)]',
       )}
     >
       <div className="sticky top-0 flex items-center gap-2 px-3 py-2.5">
@@ -83,18 +93,20 @@ function ColumnImpl({
           grouped && 'min-h-[3rem]',
         )}
       >
-        {issues.map((issue, rowIdx) => (
-          <Card
-            key={issue.id}
-            issue={issue}
-            progress={progressMap.get(issue.id)}
-            onOpen={onOpen}
-            laneIdx={laneIdx}
-            colIdx={colIdx}
-            rowIdx={rowIdx}
-            canDrag={canDrag}
-          />
-        ))}
+        <SortableContext id={containerId} items={ids} strategy={verticalListSortingStrategy}>
+          {issues.map((issue, rowIdx) => (
+            <Card
+              key={issue.id}
+              issue={issue}
+              progress={progressMap.get(issue.id)}
+              onOpen={onOpen}
+              laneIdx={laneIdx}
+              colIdx={colIdx}
+              rowIdx={rowIdx}
+              canDrag={canDrag}
+            />
+          ))}
+        </SortableContext>
         {issues.length === 0 && (
           <p className="px-2 py-6 text-center text-xs text-faint">
             Chưa có việc nào. Kéo việc vào đây hoặc thêm mới bên dưới.

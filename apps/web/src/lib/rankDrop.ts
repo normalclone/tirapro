@@ -33,8 +33,17 @@ const arrayMove = <T>(a: T[], from: number, to: number): T[] => {
 
 const neighbors = (list: string[], id: string) => {
   const i = list.indexOf(id);
+  if (i < 0) return { afterId: null, beforeId: null }; // không có trong danh sách: đừng lấy list[0] làm "mốc dưới"
   return { afterId: list[i - 1] ?? null, beforeId: list[i + 1] ?? null };
 };
+
+/** Đường kẻ chèn khi kéo sang container khác: ngay trước thẻ phía dưới, hoặc ngay sau thẻ phía trên. */
+export function hintOf(p: Placement | null): { id: string; edge: 'before' | 'after' } | null {
+  if (!p || !p.crossContainer) return null;
+  if (p.beforeId) return { id: p.beforeId, edge: 'before' };
+  if (p.afterId) return { id: p.afterId, edge: 'after' };
+  return null;
+}
 
 export function computePlacement(i: DropInput): Placement {
   const cross = i.fromContainer !== i.toContainer;

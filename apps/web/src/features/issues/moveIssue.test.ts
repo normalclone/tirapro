@@ -112,4 +112,21 @@ describe('moveMutationOptions', () => {
     expect(qc.getQueryState(keys.issues.byProject('p1'))?.isInvalidated).toBe(true);
     expect(toastInfo).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['403 FORBIDDEN', axiosErr(403, 'FORBIDDEN')],
+    ['422 WIP_LIMIT_REACHED', axiosErr(422, 'WIP_LIMIT_REACHED')],
+    ['lỗi mạng (không có response)', new Error('Network Error')],
+  ])(
+    '%s: rollback rồi nạp lại danh sách + chi tiết (cache không được giữ rank sai)',
+    async (_n, err) => {
+      qc.setQueryData<IssueDto>(keys.issues.byKey('P-a'), issue('a'));
+      post.mockRejectedValue(err);
+      await run(vars({ sprintId: 'sp1' })).catch(() => undefined);
+      expect(listA()).toMatchObject({ version: 3, sprintId: null });
+      expect(qc.getQueryState(keys.issues.byProject('p1'))?.isInvalidated).toBe(true);
+      expect(qc.getQueryState(keys.issues.byKey('P-a'))?.isInvalidated).toBe(true);
+      expect(toastInfo).not.toHaveBeenCalled();
+    },
+  );
 });

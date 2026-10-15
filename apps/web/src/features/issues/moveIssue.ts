@@ -84,14 +84,13 @@ export function moveMutationOptions(qc: QueryClient, projectId: string) {
     },
     onError: (e: unknown, v: MoveVars, snap: IssueSnapshot | undefined) => {
       rollbackIssue(qc, snap);
-      const stale = isRankStaleError(e);
-      if (stale || apiErrorCode(e) === 'VERSION_CONFLICT') {
-        invalidateIssue(qc, projectId, snap?.issueKey ?? v.key);
-        // Mốc cũ: thông báo của ERROR_MESSAGES hứa "danh sách đã được nạp lại" → nạp lại THẬT cả danh sách dự án
-        // (rank của nhiều issue đã đổi). Một toast nhẹ, id cố định để nhiều lỗi liên tiếp chỉ hiện một; gọi
-        // apiErrorMessage đánh dấu lỗi đã báo nên MutationCache không toast đôi.
-        if (stale) toast.info(apiErrorMessage(e), { id: 'rank-stale' });
-      }
+      // MỌI lỗi đều nạp lại: kéo cùng một việc hai lần liên tiếp rồi lần sau lỗi (mạng/403/…) — rollback chỉ trả bản
+      // trước lần vá đó (rank đã đổi bởi lần trước, có thể cũng chưa lên server) nên cache có thể giữ rank sai.
+      invalidateIssue(qc, projectId, snap?.issueKey ?? v.key);
+      // Mốc cũ: thông báo của ERROR_MESSAGES hứa "danh sách đã được nạp lại" → danh sách dự án được nạp lại THẬT
+      // (rank của nhiều issue đã đổi). Một toast nhẹ, id cố định để nhiều lỗi liên tiếp chỉ hiện một; gọi
+      // apiErrorMessage đánh dấu lỗi đã báo nên MutationCache không toast đôi.
+      if (isRankStaleError(e)) toast.info(apiErrorMessage(e), { id: 'rank-stale' });
     },
   };
 }
