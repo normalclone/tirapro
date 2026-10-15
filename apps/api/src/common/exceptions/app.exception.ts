@@ -47,6 +47,15 @@ export class BusinessRuleException extends AppException {
   }
 }
 
+/** Email đã có tài khoản dùng được — mã riêng để client nhận ra mà không so khớp câu chữ. */
+export class EmailAlreadyRegisteredException extends AppException {
+  constructor(
+    message = 'Email này đã có tài khoản — hãy chọn người đó trong danh sách để thêm vào không gian làm việc',
+  ) {
+    super(ERROR_CODES.EMAIL_ALREADY_REGISTERED, message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
 /** Mốc kéo-thả (afterId/beforeId) của client đã lỗi thời — thứ tự hai mốc bị đảo. Client tải lại danh sách rồi thả lại. */
 export class RankNeighborsStaleException extends AppException {
   constructor(message = 'Thứ tự công việc vừa thay đổi — hãy tải lại danh sách rồi kéo thả lại') {

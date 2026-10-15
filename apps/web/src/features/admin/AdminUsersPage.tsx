@@ -11,6 +11,7 @@ import { QueryError } from '@/components/ui/QueryError';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import { passwordPolicyError } from '@/features/members/passwordPolicy';
 import { useAdminUsers, useCreateAdminUser, useUpdateAdminUser, type AdminUser } from './api';
 
@@ -151,7 +152,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
   const [canCreateWorkspace, setCanCreate] = useState(false);
   const [isSystemAdmin, setIsAdmin] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
 
   const passwordError = passwordPolicyError(password);
 
@@ -177,17 +178,6 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
     );
   }
 
-  async function copyTemp() {
-    if (!tempPassword) return;
-    try {
-      await navigator.clipboard.writeText(tempPassword);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* ignore */
-    }
-  }
-
   return (
     <Dialog
       open={open}
@@ -211,7 +201,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
               type="button"
               variant="secondary"
               size="icon"
-              onClick={() => void copyTemp()}
+              onClick={() => void copy(tempPassword ?? '')}
               aria-label="Sao chép"
             >
               {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}

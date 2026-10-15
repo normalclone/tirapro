@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Check, Copy, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { SYSTEM_ROLES } from '@tirapro/types';
+import { ERROR_CODES } from '@tirapro/types';
 import { Avatar } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { apiErrorMessage } from '@/lib/api';
+import { apiErrorCode, apiErrorMessage } from '@/lib/api';
+import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import { useAuth } from '@/stores/auth';
-import { useRoles } from '@/features/roles/api';
 import {
   useAddMember,
   useAllUsers,
@@ -18,9 +18,7 @@ import {
   type CreateMemberAccountResult,
 } from './api';
 import { PASSWORD_POLICY_HINT, passwordPolicyError } from './passwordPolicy';
-
-/** Thông điệp BE khi email đã có tài khoản (xem `MembersService.createAccount`). */
-const EXISTING_EMAIL_RE = /đã có tài khoản/;
+import { useWorkspaceRoleChoice } from './useWorkspaceRoleChoice';
 
 /**
  * Thẻ "Thêm thành viên" — MỘT hộp: chọn người có sẵn trong hệ thống (pool chung) HOẶC bấm
@@ -71,6 +69,8 @@ export function AddMemberPanel() {
 /* Chọn người dùng có sẵn                                              */
 /* ------------------------------------------------------------------ */
 
+type PoolUser = NonNullable<ReturnType<typeof useAllUsers>['data']>[number];
+
 function AddExistingUser({
   prefillEmail,
   onCreateNew,
@@ -78,27 +78,23 @@ function AddExistingUser({
   prefillEmail: string;
   onCreateNew: () => void;
 }) {
-  const [search] = useState(prefillEmail);
+  // `search` chỉ dùng để tìm đúng người khi quay về từ "email đã tồn tại", rồi trả về rỗng để pool không bị đóng băng.
+  const [search, setSearch] = useState(prefillEmail);
   const [userId, setUserId] = useState('');
-  const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [prefilledUser, setPrefilledUser] = useState<PoolUser | null>(null);
 
   const { data: members } = useWorkspaceMembers();
   const { data: users, isLoading: usersLoading } = useAllUsers(search);
-  const { data: wsRoles } = useRoles('WORKSPACE');
   const addMember = useAddMember();
-
-  const roleOptions = (wsRoles ?? []).map((r) => ({ id: r.id, name: r.name, color: r.color }));
-
-  // Mặc định chọn vai trò "Workspace Member" khi có danh sách vai trò.
-  const defaultRoleIds = useMemo(() => {
-    const member = (wsRoles ?? []).find((r) => r.name === SYSTEM_ROLES.WORKSPACE_MEMBER);
-    return member ? [member.id] : [];
-  }, [wsRoles]);
-  const effectiveRoleIds = roleIds.length > 0 ? roleIds : defaultRoleIds;
+  const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles } = useWorkspaceRoleChoice();
 
   // Loại người đã ở trong không gian làm việc khỏi pool.
   const memberUserIds = useMemo(() => new Set((members ?? []).map((m) => m.user.id)), [members]);
   const addableUsers = (users ?? []).filter((u) => !memberUserIds.has(u.id));
+  // Người được chọn sẵn luôn có trong danh sách lựa chọn dù pool đã trở về không lọc.
+  if (prefilledUser && !addableUsers.some((u) => u.id === prefilledUser.id)) {
+    addableUsers.unshift(prefilledUser);
+  }
   const userSelectOptions = addableUsers.map((u) => ({
     value: u.id,
     label: u.displayName,
@@ -111,17 +107,22 @@ function AddExistingUser({
     ? addableUsers.find((u) => u.email.toLowerCase() === prefillEmail.toLowerCase())
     : undefined;
   useEffect(() => {
-    if (prefilled) setUserId(prefilled.id);
+    if (!prefilled) return;
+    setUserId(prefilled.id);
+    setPrefilledUser(prefilled);
+    setSearch('');
   }, [prefilled]);
   const prefillIsMember =
     !!prefillEmail &&
     !usersLoading &&
     !prefilled &&
+    !prefilledUser &&
     (members ?? []).some((m) => m.user.email.toLowerCase() === prefillEmail.toLowerCase());
 
   function reset() {
     setUserId('');
-    setRoleIds([]);
+    resetRoles();
+    setPrefilledUser(null);
   }
 
   function submit() {
@@ -145,8 +146,16 @@ function AddExistingUser({
     );
   }
 
+  // Cmd/Ctrl+Enter thêm người (UX_CONVENTIONS).
+  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      if (userId && effectiveRoleIds.length > 0 && !addMember.isPending) submit();
+    }
+  }
+
   return (
-    <div className="space-y-4 p-5">
+    <div className="space-y-4 p-5" onKeyDown={onKeyDown}>
       {prefillEmail && (
         <p className="rounded-md bg-primary-subtle px-3 py-2 text-sm text-ink" role="status">
           {prefillIsMember
@@ -240,17 +249,13 @@ function CreateAccountForm({
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
-  const [roleIds, setRoleIds] = useState<string[]>([]);
   const [created, setCreated] = useState<CreateMemberAccountResult | null>(null);
 
-  const { data: wsRoles } = useRoles('WORKSPACE');
+  const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles } = useWorkspaceRoleChoice();
   const create = useCreateMemberAccount();
-  const roleOptions = (wsRoles ?? []).map((r) => ({ id: r.id, name: r.name, color: r.color }));
-  const defaultRoleIds = useMemo(() => {
-    const member = (wsRoles ?? []).find((r) => r.name === SYSTEM_ROLES.WORKSPACE_MEMBER);
-    return member ? [member.id] : [];
-  }, [wsRoles]);
-  const effectiveRoleIds = roleIds.length > 0 ? roleIds : defaultRoleIds;
+  // Mật khẩu tạm không được nằm lại trong MutationCache sau khi rời form ("chỉ hiện một lần").
+  const resetCreate = create.reset;
+  useEffect(() => resetCreate, [resetCreate]);
   const passwordError = passwordPolicyError(password);
   const canSubmit =
     !!email.trim() && !!displayName.trim() && effectiveRoleIds.length > 0 && !passwordError;
@@ -272,11 +277,10 @@ function CreateAccountForm({
           setCreated(res);
         },
         onError: (err) => {
-          const message = apiErrorMessage(err);
-          if (EXISTING_EMAIL_RE.test(message)) {
+          if (apiErrorCode(err) === ERROR_CODES.EMAIL_ALREADY_REGISTERED) {
             toast.info('Email này đã có tài khoản — chọn người đó trong danh sách.');
             onEmailExists(cleanEmail);
-          } else toast.error(message);
+          } else toast.error(apiErrorMessage(err));
         },
       },
     );
@@ -295,11 +299,12 @@ function CreateAccountForm({
       <CreatedAccountNotice
         result={created}
         onDone={() => {
+          create.reset(); // xoá mật khẩu tạm khỏi bộ nhớ đệm mutation
           setCreated(null);
           setEmail('');
           setDisplayName('');
           setPassword('');
-          setRoleIds([]);
+          resetRoles();
         }}
       />
     );
@@ -387,20 +392,8 @@ function CreatedAccountNotice({
   result: CreateMemberAccountResult;
   onDone: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard('Đã sao chép mật khẩu tạm');
   const { tempPassword, member } = result;
-
-  async function copy() {
-    if (!tempPassword) return;
-    try {
-      await navigator.clipboard.writeText(tempPassword);
-      setCopied(true);
-      toast.success('Đã sao chép mật khẩu tạm');
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      toast.error('Không sao chép được, hãy chọn và sao chép thủ công');
-    }
-  }
 
   return (
     <div className="space-y-3 p-5" role="status">
@@ -425,7 +418,7 @@ function CreatedAccountNotice({
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => void copy()}
+              onClick={() => void copy(tempPassword)}
               aria-label="Sao chép mật khẩu tạm"
             >
               {copied ? (

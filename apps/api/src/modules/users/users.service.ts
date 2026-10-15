@@ -2,7 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import type { Request } from 'express';
 import type { UpdateProfileInput } from '@tirapro/shared';
-import { ERROR_CODES } from '@tirapro/types';
+import { ERROR_CODES, type PoolUserDto } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { insensitiveContains } from '../../common/like';
 import { AppException, NotFoundAppException } from '../../common/exceptions/app.exception';
@@ -89,7 +89,16 @@ export class UsersService {
       take: 100,
       orderBy: { displayName: 'asc' },
     });
-    return users.map((u) => this.toDto(u));
+    // Pool chung chỉ trả những trường picker cần — không lộ ai là admin hệ thống, lastSeenAt, múi giờ…
+    return users.map(
+      (u): PoolUserDto => ({
+        id: u.id,
+        email: u.email,
+        displayName: u.displayName,
+        avatarUrl: u.avatarUrl,
+        status: u.status,
+      }),
+    );
   }
 
   /** Chỉ tra được người dùng cùng workspace — không lộ email/hồ sơ của user ngoài workspace. */

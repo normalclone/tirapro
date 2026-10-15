@@ -41,6 +41,9 @@ export interface UserDto {
   createdAt: ISODate;
 }
 
+/** Người dùng trong pool chung (picker "thêm thành viên") — chỉ những trường picker cần. */
+export type PoolUserDto = Pick<UserDto, 'id' | 'email' | 'displayName' | 'avatarUrl' | 'status'>;
+
 export interface WorkspaceDto {
   id: ID;
   name: string;

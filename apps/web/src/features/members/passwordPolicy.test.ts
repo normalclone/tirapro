@@ -20,6 +20,11 @@ describe('passwordPolicyError', () => {
     expect(passwordPolicyError('   ')).toBeNull();
   });
 
+  it('kiểm trên chuỗi đã trim (khớp chuỗi gửi lên server)', () => {
+    expect(passwordPolicyError(' Password1 ')).toBeNull();
+    expect(passwordPolicyError(' Pass1 ')).not.toBeNull(); // sau trim chỉ 5 ký tự
+  });
+
   it('hint hiển thị khớp thông điệp lỗi', () => {
     expect(PASSWORD_POLICY_HINT).toContain('8 ký tự');
   });

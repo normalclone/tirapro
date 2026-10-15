@@ -46,4 +46,30 @@ describe('UsersService — escape ký tự đại diện LIKE khi tìm người 
       email: { not: 'automation@tirapro.local' },
     });
   });
+
+  it('listAllUsers: DTO pool chỉ gồm id/email/tên/avatar/trạng thái', async () => {
+    const row = {
+      id: 'u1',
+      email: 'a@x.vn',
+      displayName: 'An',
+      avatarUrl: null,
+      status: 'ACTIVE',
+      isSystemAdmin: true,
+      lastSeenAt: new Date(),
+      timezone: 'UTC',
+      locale: 'vi',
+      createdAt: new Date(),
+      passwordHash: 'secret',
+    };
+    const findMany = vi.fn(() => Promise.resolve([row]));
+    const service = new UsersService({ user: { findMany } } as never, {} as never);
+    const out = await service.listAllUsers();
+    expect(Object.keys(out[0]!).sort()).toEqual([
+      'avatarUrl',
+      'displayName',
+      'email',
+      'id',
+      'status',
+    ]);
+  });
 });

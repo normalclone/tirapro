@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { MemberDto, UserDto } from '@tirapro/types';
+import type { MemberDto, PoolUserDto, UserDto } from '@tirapro/types';
 import { api, type Ack } from '@/lib/api';
 import { queryClient } from '@/lib/queryClient';
 import { useAuth } from '@/stores/auth';
@@ -37,7 +37,8 @@ export function useAllUsers(search?: string, enabled = true) {
     queryKey: keys.users.all(q),
     queryFn: enabled
       ? async () =>
-          (await api.get<UserDto[]>('/users/all', { params: q ? { search: q } : undefined })).data
+          (await api.get<PoolUserDto[]>('/users/all', { params: q ? { search: q } : undefined }))
+            .data
       : skipToken,
   });
 }
@@ -138,6 +139,8 @@ export interface CreateMemberAccountResult {
 export function useCreateMemberAccount() {
   const qc = useQueryClient();
   return useMutation({
+    // Kết quả chứa mật khẩu tạm "chỉ hiện một lần" → không giữ trong MutationCache (gcTime 0 + reset() khi đóng khung).
+    gcTime: 0,
     mutationFn: (input: {
       email: string;
       displayName: string;
