@@ -3,9 +3,8 @@ import { NavLink } from 'react-router-dom';
 import { Archive, Plus } from 'lucide-react';
 import { useProjects } from './api';
 import { CreateProjectModal } from './CreateProjectModal';
+import { useShowArchived } from './showArchived';
 import { cn } from '@/lib/utils';
-
-const SHOW_ARCHIVED_KEY = 'tirapro:showArchivedProjects';
 
 /**
  * Rail dự án (submenu trái) — danh sách dự án + nút tạo dự án.
@@ -15,24 +14,9 @@ const SHOW_ARCHIVED_KEY = 'tirapro:showArchivedProjects';
  *  view      — segment view để link sang (board/backlog/…); mặc định "board".
  */
 export function ProjectRail({ activeKey, view = 'board' }: { activeKey: string; view?: string }) {
-  // Chọn "Hiện đã lưu trữ" được nhớ theo trình duyệt (chỉ là tiện ích, không có cũng chạy).
-  const [showArchived, setShowArchived] = useState(() => {
-    try {
-      return localStorage.getItem(SHOW_ARCHIVED_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
+  const [showArchived, toggleArchived] = useShowArchived();
   const { data: projects } = useProjects(showArchived);
   const [createProject, setCreateProject] = useState(false);
-  const toggleArchived = (v: boolean) => {
-    setShowArchived(v);
-    try {
-      localStorage.setItem(SHOW_ARCHIVED_KEY, v ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
-  };
 
   return (
     <>

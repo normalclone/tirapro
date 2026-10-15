@@ -14,11 +14,14 @@ import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { AcceptInvitePage } from '@/features/auth/AcceptInvitePage';
 // ProjectLayout dùng nhiều (board/backlog/reports…) → eager để đổi tab không nháy toàn trang;
 // nội dung con của nó lazy, có Suspense riêng bên trong ProjectLayout.
-import { ProjectLayout, ProjectsIndexRedirect } from '@/features/projects/ProjectLayout';
+import { ProjectLayout } from '@/features/projects/ProjectLayout';
 
 // ── Lazy-load các trang nặng/không-phải-màn-đầu để giảm bundle ban đầu (mobile nhanh hơn) ──
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
+);
+const ProjectsPage = lazy(() =>
+  import('@/features/projects/ProjectsPage').then((m) => ({ default: m.ProjectsPage })),
 );
 const MembersPage = lazy(() =>
   import('@/features/members/MembersPage').then((m) => ({ default: m.MembersPage })),
@@ -220,7 +223,7 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <DashboardPage /> },
-      { path: 'projects', element: <ProjectsIndexRedirect /> },
+      { path: 'projects', element: <ProjectsPage /> },
       { path: 'members', element: <MembersPage /> },
       { path: 'account', element: <AccountPage /> },
       {

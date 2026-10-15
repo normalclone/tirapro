@@ -1,13 +1,5 @@
 import { Suspense, useEffect, useState } from 'react';
-import {
-  Link,
-  Navigate,
-  NavLink,
-  Outlet,
-  useLocation,
-  useNavigate,
-  useParams,
-} from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   Activity,
@@ -25,7 +17,6 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useProject, useProjects } from './api';
-import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectRail } from './ProjectRail';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
 import { Button } from '@/components/ui/Button';
@@ -280,44 +271,4 @@ export function ProjectLayout() {
       )}
     </div>
   );
-}
-
-/** /projects → mở lại view gần nhất (hoặc board của dự án đầu tiên). */
-export function ProjectsIndexRedirect() {
-  const { data: projects } = useProjects();
-  const [createOpen, setCreateOpen] = useState(false);
-
-  if (!projects) {
-    return (
-      <div className="grid h-full place-items-center text-sm text-muted">
-        <span className="animate-pulse">Đang tải…</span>
-      </div>
-    );
-  }
-  if (projects.length === 0) {
-    return (
-      <div className="grid h-full place-items-center p-8 text-center">
-        <div>
-          <p className="text-sm text-muted">Chưa có dự án nào.</p>
-          <Button size="sm" className="mt-3" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" /> Tạo dự án
-          </Button>
-        </div>
-        <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} />
-      </div>
-    );
-  }
-  let saved: { key?: string; view?: string } = {};
-  try {
-    saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}') as {
-      key?: string;
-      view?: string;
-    };
-  } catch {
-    /* ignore */
-  }
-  const target =
-    saved.key && projects.some((p) => p.key === saved.key) ? saved.key : projects[0]!.key;
-  const view = saved.view || 'board';
-  return <Navigate to={`/p/${target}/${view}`} replace />;
 }
