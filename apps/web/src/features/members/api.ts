@@ -67,7 +67,7 @@ export function useUpdateProfile() {
 export function useChangePassword() {
   return useMutation({
     mutationFn: async (input: ChangePasswordInput) =>
-      (await api.post('/users/me/change-password', input)).data,
+      (await api.post<{ success: boolean }>('/users/me/change-password', input)).data,
   });
 }
 
@@ -95,7 +95,7 @@ export function useUploadUserAvatar() {
 export function useRemoveUserAvatar() {
   const bootstrap = useAuth((s) => s.bootstrap);
   return useMutation({
-    mutationFn: async () => (await api.delete('/users/me/avatar')).data,
+    mutationFn: async () => (await api.delete<UserDto>('/users/me/avatar')).data,
     onSuccess: () => refreshUserEverywhere(bootstrap),
   });
 }
@@ -162,7 +162,7 @@ export function useSetMemberRoles() {
 export function useRemoveMember() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (userId: string) => api.delete(`/members/${userId}`).then((r) => r.data),
+    mutationFn: (userId: string) => api.delete<void>(`/members/${userId}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.members.workspace });
       void qc.invalidateQueries({ queryKey: keys.users.workspace });
@@ -237,7 +237,7 @@ export function useRemoveProjectMember(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (userId: string) =>
-      api.delete(`/projects/${projectId}/members/${userId}`).then((r) => r.data),
+      api.delete<void>(`/projects/${projectId}/members/${userId}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
       void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });

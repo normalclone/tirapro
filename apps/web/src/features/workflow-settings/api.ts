@@ -106,7 +106,7 @@ export function useUpdateWorkflow() {
 export function useDeleteWorkflow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/workflows/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/workflows/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.workflows });
     },
@@ -140,7 +140,7 @@ export function useUpdateStatus() {
 export function useDeleteStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/statuses/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/statuses/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.workflows });
     },
@@ -165,7 +165,7 @@ export function useAddTransition() {
 export function useDeleteTransition() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/transitions/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/transitions/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.workflows });
     },

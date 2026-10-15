@@ -103,7 +103,7 @@ export function useDeleteTemplate() {
   return useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId?: string | null }) =>
       api
-        .delete(`/automation/templates/${id}`, { params: scopeParams(projectId) })
+        .delete<void>(`/automation/templates/${id}`, { params: scopeParams(projectId) })
         .then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.templates }),
   });
@@ -157,7 +157,7 @@ export function useDeleteRecurring() {
   return useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId: string }) =>
       api
-        .delete(`/automation/recurring/${id}`, { params: scopeParams(projectId) })
+        .delete<void>(`/automation/recurring/${id}`, { params: scopeParams(projectId) })
         .then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.recurring }),
   });

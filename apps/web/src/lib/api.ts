@@ -19,7 +19,7 @@ async function doRefresh(): Promise<string | null> {
   try {
     // Gửi kèm access token cũ (có thể đã hết hạn) để server giữ nguyên workspace đang làm việc.
     const old = getAccessToken();
-    const res = await axios.post(
+    const res = await axios.post<{ accessToken?: string }>(
       `${BASE_URL}/auth/refresh`,
       {},
       { withCredentials: true, headers: old ? { Authorization: `Bearer ${old}` } : undefined },

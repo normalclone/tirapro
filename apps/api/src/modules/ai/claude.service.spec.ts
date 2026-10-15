@@ -1,15 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { ClaudeService, withStrictObjects } from './claude.service';
 
+type CreateParams = Anthropic.MessageCreateParamsNonStreaming;
+type CreateMock = Mock<(params: CreateParams) => Promise<unknown>>;
+
 const CTX = { workspaceId: 'ws1', userId: 'u1', feature: 'summarize' };
 
-function make(
-  opts: { create?: ReturnType<typeof vi.fn>; killSwitch?: boolean; quotaError?: Error } = {},
-) {
-  const create = opts.create ?? vi.fn();
-  const logCreate = vi.fn().mockResolvedValue({});
+function make(opts: { create?: CreateMock; killSwitch?: boolean; quotaError?: Error } = {}) {
+  const create = opts.create ?? vi.fn<(params: CreateParams) => Promise<unknown>>();
+  const logCreate = vi
+    .fn<(arg: { data: Record<string, unknown> }) => Promise<unknown>>()
+    .mockResolvedValue({});
   const quota = {
     assertWithinQuota: vi
       .fn()
@@ -38,6 +41,8 @@ function make(
   return { svc, create, logCreate, quota };
 }
 
+const mockCreate = () => vi.fn<(params: CreateParams) => Promise<unknown>>();
+
 const okMessage = (text: string) => ({
   content: [{ type: 'text', text }],
   usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 2 },
@@ -47,7 +52,7 @@ const okMessage = (text: string) => ({
 describe('ClaudeService', () => {
   it('complete: gọi model được truyền vào, ghi AiGenerationLog sau khi thành công', async () => {
     const { svc, create, logCreate } = make({
-      create: vi.fn().mockResolvedValue(okMessage(' xin chào ')),
+      create: mockCreate().mockResolvedValue(okMessage(' xin chào ')),
     });
     const out = await svc.complete({ ctx: CTX, model: svc.modelFast, system: 's', prompt: 'p' });
     expect(out).toEqual({ data: 'xin chào' });
@@ -65,7 +70,7 @@ describe('ClaudeService', () => {
   });
 
   it('extract: dùng output_config.format (không ép tool_choice), parse JSON', async () => {
-    const { svc, create } = make({ create: vi.fn().mockResolvedValue(okMessage('{"a":1}')) });
+    const { svc, create } = make({ create: mockCreate().mockResolvedValue(okMessage('{"a":1}')) });
     const out = await svc.extract<{ a: number }>({
       ctx: CTX,
       system: 's',
@@ -75,12 +80,13 @@ describe('ClaudeService', () => {
     expect(out.data).toEqual({ a: 1 });
     const params = create.mock.calls[0]![0];
     expect(params.tool_choice).toBeUndefined();
-    expect(params.output_config.format.type).toBe('json_schema');
-    expect(params.output_config.format.schema.additionalProperties).toBe(false);
+    const format = params.output_config?.format;
+    expect(format?.type).toBe('json_schema');
+    expect(format?.schema.additionalProperties).toBe(false);
   });
 
   it('extract: JSON hỏng (cụt) → data null, reason error', async () => {
-    const { svc } = make({ create: vi.fn().mockResolvedValue(okMessage('{"a":')) });
+    const { svc } = make({ create: mockCreate().mockResolvedValue(okMessage('{"a":')) });
     expect(
       await svc.extract({ ctx: CTX, system: 's', prompt: 'p', schema: { type: 'object' } }),
     ).toEqual({
@@ -91,7 +97,7 @@ describe('ClaudeService', () => {
 
   it('quá thời gian chờ → heuristic kèm reason timeout, không ghi log', async () => {
     const { svc, logCreate } = make({
-      create: vi.fn().mockRejectedValue(new Anthropic.APIConnectionTimeoutError()),
+      create: mockCreate().mockRejectedValue(new Anthropic.APIConnectionTimeoutError()),
     });
     expect(await svc.complete({ ctx: CTX, system: 's', prompt: 'p' })).toEqual({
       data: null,
@@ -102,7 +108,7 @@ describe('ClaudeService', () => {
 
   it('AuthenticationError → 500 AI_MISCONFIGURED', async () => {
     const err = new Anthropic.AuthenticationError(401, { type: 'error' }, 'bad key', new Headers());
-    const { svc } = make({ create: vi.fn().mockRejectedValue(err) });
+    const { svc } = make({ create: mockCreate().mockRejectedValue(err) });
     await expect(svc.complete({ ctx: CTX, system: 's', prompt: 'p' })).rejects.toMatchObject({
       code: 'AI_MISCONFIGURED',
       status: 500,
@@ -111,7 +117,7 @@ describe('ClaudeService', () => {
 
   it('RateLimitError → 503 AI_RATE_LIMITED', async () => {
     const err = new Anthropic.RateLimitError(429, { type: 'error' }, 'slow down', new Headers());
-    const { svc } = make({ create: vi.fn().mockRejectedValue(err) });
+    const { svc } = make({ create: mockCreate().mockRejectedValue(err) });
     await expect(svc.complete({ ctx: CTX, system: 's', prompt: 'p' })).rejects.toMatchObject({
       code: 'AI_RATE_LIMITED',
       status: 503,
@@ -134,7 +140,7 @@ describe('ClaudeService', () => {
   });
 
   it('lỗi ghi log không làm hỏng kết quả', async () => {
-    const { svc, logCreate } = make({ create: vi.fn().mockResolvedValue(okMessage('ok')) });
+    const { svc, logCreate } = make({ create: mockCreate().mockResolvedValue(okMessage('ok')) });
     logCreate.mockRejectedValue(new Error('db down'));
     expect(await svc.complete({ ctx: CTX, system: 's', prompt: 'p' })).toEqual({ data: 'ok' });
   });

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AiService } from './ai.service';
+import type { ClaudeService } from './claude.service';
+
+type CompleteArg = Parameters<ClaudeService['complete']>[0];
+type ExtractArg = Parameters<ClaudeService['extract']>[0];
 
 const issue = {
   id: 'i1',
@@ -30,7 +34,9 @@ function make(claude: Record<string, unknown>) {
 
 describe('AiService', () => {
   it('summarize: dùng model fast, bọc <issue>/<comments>, system nói rõ là dữ liệu', async () => {
-    const complete = vi.fn().mockResolvedValue({ data: 'tóm tắt' });
+    const complete = vi
+      .fn<(arg: CompleteArg) => Promise<{ data: string }>>()
+      .mockResolvedValue({ data: 'tóm tắt' });
     const svc = make({ complete });
     const out = await svc.summarizeIssue('ws1', 'u1', 'i1');
     expect(out).toEqual({ source: 'claude', summary: 'tóm tắt' });
@@ -46,7 +52,9 @@ describe('AiService', () => {
   });
 
   it('suggest: dùng model fast; timeout → heuristic kèm reason (additive)', async () => {
-    const extract = vi.fn().mockResolvedValue({ data: null, reason: 'timeout' });
+    const extract = vi
+      .fn<(arg: ExtractArg) => Promise<{ data: null; reason?: string }>>()
+      .mockResolvedValue({ data: null, reason: 'timeout' });
     const out = await make({ extract }).suggest('ws1', 'u1', 'i1');
     expect(extract.mock.calls[0]![0].model).toBe('fast-m');
     expect(out.source).toBe('heuristic');
@@ -55,7 +63,9 @@ describe('AiService', () => {
   });
 
   it('generateIssues: dùng model primary, bọc <user_request>; không key → heuristic không có reason', async () => {
-    const extract = vi.fn().mockResolvedValue({ data: null });
+    const extract = vi
+      .fn<(arg: ExtractArg) => Promise<{ data: null; reason?: string }>>()
+      .mockResolvedValue({ data: null });
     const out = await make({ extract }).generateIssues('ws1', 'u1', {
       projectId: 'p1',
       text: 'Sửa lỗi đăng nhập. Thêm trang hồ sơ',

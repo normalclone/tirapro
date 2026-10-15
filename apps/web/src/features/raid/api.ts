@@ -97,7 +97,7 @@ export function useUpdateRaidItem() {
 export function useDeleteRaidItem() {
   const invalidate = useInvalidateRaid();
   return useMutation({
-    mutationFn: async (id: string) => (await api.delete(`/raid/${id}`)).data,
+    mutationFn: async (id: string) => (await api.delete<void>(`/raid/${id}`)).data,
     onSuccess: invalidate,
   });
 }

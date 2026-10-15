@@ -5,15 +5,19 @@ import { AllExceptionsFilter, INTERNAL_ERROR_MESSAGE } from './all-exceptions.fi
 // Lỗi 500 trong test sẽ in stack ra console — tắt cho gọn.
 Logger.overrideLogger(false);
 
+interface ErrBody {
+  error: { code?: string; message: string; requestId?: string };
+}
+
 function run(exception: unknown) {
-  const json = vi.fn();
-  const res = { status: vi.fn().mockReturnThis(), json };
+  const json = vi.fn<(b: ErrBody) => void>();
+  const res = { status: vi.fn<(c: number) => unknown>().mockReturnThis(), json };
   const req = { id: 'req-123', method: 'GET', url: '/x' };
   const host = {
     switchToHttp: () => ({ getResponse: () => res, getRequest: () => req }),
   };
   new AllExceptionsFilter().catch(exception, host as never);
-  return { status: res.status.mock.calls[0]?.[0], body: json.mock.calls[0]?.[0] };
+  return { status: res.status.mock.calls[0]?.[0], body: json.mock.calls[0]![0] };
 }
 
 describe('AllExceptionsFilter', () => {

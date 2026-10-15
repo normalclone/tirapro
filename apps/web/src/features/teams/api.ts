@@ -40,7 +40,7 @@ export function useUpdateTeam() {
 export function useDeleteTeam() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/teams/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/teams/${id}`).then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.teams.all }),
   });
 }

@@ -29,13 +29,13 @@ export const useAuth = create<AuthState>((set, get) => ({
   permissions: [],
 
   async login(email, password) {
-    const res = await api.post('/auth/login', { email, password });
+    const res = await api.post<{ accessToken: string }>('/auth/login', { email, password });
     setAccessToken(res.data.accessToken);
     await loadMe(set);
   },
 
   async register(input) {
-    const res = await api.post('/auth/register', input);
+    const res = await api.post<{ accessToken: string }>('/auth/register', input);
     setAccessToken(res.data.accessToken);
     await loadMe(set);
   },

@@ -10,9 +10,11 @@ const MAX = 8;
 
 function load(): RecentIssue[] {
   try {
-    const raw = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+    const raw = JSON.parse(localStorage.getItem(LS_KEY) || '[]') as unknown;
     return Array.isArray(raw)
-      ? raw.filter((x) => x && typeof x.key === 'string').slice(0, MAX)
+      ? (raw as Partial<RecentIssue>[])
+          .filter((x): x is RecentIssue => !!x && typeof x.key === 'string')
+          .slice(0, MAX)
       : [];
   } catch {
     return [];

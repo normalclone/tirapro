@@ -2,8 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { AiQuotaService } from './ai-quota.service';
 
+interface AggregateArg {
+  where: { workspaceId: string; success: boolean; createdAt: { gte: Date } };
+}
+
 function make(used: { inputTokens: number | null; outputTokens: number | null }, quota = 1000) {
-  const aggregate = vi.fn().mockResolvedValue({ _sum: used });
+  const aggregate = vi
+    .fn<(arg: AggregateArg) => Promise<{ _sum: typeof used }>>()
+    .mockResolvedValue({ _sum: used });
   const prisma = { aiGenerationLog: { aggregate } };
   const config = { get: vi.fn().mockReturnValue({ monthlyQuotaPerWorkspace: quota }) };
   const svc = new AiQuotaService(prisma as never, config as never);

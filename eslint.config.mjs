@@ -65,11 +65,6 @@ export default tseslint.config(
     },
   },
   {
-    // MCP server là client JSON mỏng gọi REST bằng fetch, chưa có kiểu cho phản hồi → any còn nhiều.
-    files: ['apps/mcp/src/**/*.ts'],
-    rules: { '@typescript-eslint/no-explicit-any': 'warn' },
-  },
-  {
     files: ['apps/web/src/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
     rules: {

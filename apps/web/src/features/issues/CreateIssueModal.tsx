@@ -31,7 +31,10 @@ const selectClass = cn(
 const LAST_KEY = 'tirapro:createIssue:last';
 function loadLast(): { projectKey?: string; typeId?: string } {
   try {
-    return JSON.parse(localStorage.getItem(LAST_KEY) || '{}');
+    return JSON.parse(localStorage.getItem(LAST_KEY) || '{}') as {
+      projectKey?: string;
+      typeId?: string;
+    };
   } catch {
     return {};
   }
@@ -52,7 +55,7 @@ interface Draft {
 const DRAFT_KEY = (projectKey: string) => `tirapro:createIssue:draft:${projectKey || '_'}`;
 function loadDraft(projectKey: string): Draft {
   try {
-    return JSON.parse(localStorage.getItem(DRAFT_KEY(projectKey)) || '{}');
+    return JSON.parse(localStorage.getItem(DRAFT_KEY(projectKey)) || '{}') as Draft;
   } catch {
     return {};
   }

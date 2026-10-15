@@ -94,7 +94,7 @@ export function useUpdateSlaPolicy() {
 export function useDeleteSlaPolicy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/sla/policies/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/sla/policies/${id}`).then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policies }),
   });
 }

@@ -4,6 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { Tira } from './tira.js';
+import type { IssueRef, ProjectLite, ProjectMeta, UserLite } from './types.js';
 
 // 127.0.0.1 thay vì localhost: tránh Node/undici phân giải IPv6 ::1 (API chỉ nghe IPv4 ở dev Windows).
 const API_URL = process.env.TIRAPRO_API_URL ?? 'http://127.0.0.1:4000/api/v1';
@@ -71,7 +72,7 @@ function buildServer(tira: Tira): McpServer {
   const server = new McpServer({ name: 'tirapro-mcp', version: '0.1.0' });
 
   const findProject = async (key: string) => {
-    const projects: any[] = await tira.get('/projects');
+    const projects = await tira.get<ProjectLite[]>('/projects');
     const p = projects.find((x) => norm(x.key) === norm(key));
     if (!p) throw new Error(`Không tìm thấy dự án "${key}"`);
     return p;
@@ -90,18 +91,28 @@ function buildServer(tira: Tira): McpServer {
     },
     async ({ projectKey }) => {
       try {
-        const [projects, users] = await Promise.all([tira.get('/projects'), tira.get('/users')]);
-        const ctx: any = {
-          projects: projects.map((p: any) => ({ key: p.key, name: p.name })),
-          members: users.map((u: any) => ({ displayName: u.displayName, email: u.email })),
+        const [projects, users] = await Promise.all([
+          tira.get<ProjectLite[]>('/projects'),
+          tira.get<UserLite[]>('/users'),
+        ]);
+        const ctx: {
+          projects: { key: string; name: string }[];
+          members: { displayName: string; email: string }[];
+          issueKeyFormat: string;
+          project?: { key: string; issueTypes: string[]; priorities: string[] };
+        } = {
+          projects: projects.map((p) => ({ key: p.key, name: p.name })),
+          members: users.map((u) => ({ displayName: u.displayName, email: u.email })),
           issueKeyFormat: '{DỰ_ÁN}-{LOẠI}-{số}, vd DEMO-BUG-1',
         };
         if (projectKey) {
-          const meta = await tira.get(`/projects/${encodeURIComponent(projectKey)}/meta`);
+          const meta = await tira.get<ProjectMeta>(
+            `/projects/${encodeURIComponent(projectKey)}/meta`,
+          );
           ctx.project = {
             key: projectKey,
-            issueTypes: meta.issueTypes.map((t: any) => t.name),
-            priorities: meta.priorities.map((p: any) => p.name),
+            issueTypes: meta.issueTypes.map((t) => t.name),
+            priorities: meta.priorities.map((p) => p.name),
           };
         }
         return asText(ctx);
@@ -191,18 +202,18 @@ function buildServer(tira: Tira): McpServer {
       try {
         const [proj, meta] = await Promise.all([
           findProject(a.projectKey),
-          tira.get(`/projects/${encodeURIComponent(a.projectKey)}/meta`),
+          tira.get<ProjectMeta>(`/projects/${encodeURIComponent(a.projectKey)}/meta`),
         ]);
         const t = meta.issueTypes.find(
-          (x: any) => norm(x.name) === norm(a.type) || norm(x.key ?? '') === norm(a.type),
+          (x) => norm(x.name) === norm(a.type) || norm(x.key ?? '') === norm(a.type),
         );
         if (!t) throw new Error(`Loại không hợp lệ: ${a.type}`);
         let priorityId: string | undefined;
         if (a.priority)
-          priorityId = meta.priorities.find((x: any) => norm(x.name) === norm(a.priority!))?.id;
+          priorityId = meta.priorities.find((x) => norm(x.name) === norm(a.priority!))?.id;
         let assigneeId: string | undefined;
         if (a.assigneeEmail) {
-          const users: any[] = await tira.get('/users');
+          const users = await tira.get<UserLite[]>('/users');
           assigneeId = users.find((u) => norm(u.email) === norm(a.assigneeEmail!))?.id;
         }
         // clientMutationId: id sinh mỗi lần gọi để backend/realtime dedup (map vào field clientId đã hỗ trợ).
@@ -231,8 +242,10 @@ function buildServer(tira: Tira): McpServer {
     { key: z.string(), summary: z.string().optional(), description: z.string().optional() },
     async (a) => {
       try {
-        const issue = await tira.get(`/issues/${encodeURIComponent(a.key)}`);
-        const patch: any = { version: issue.version };
+        const issue = await tira.get<IssueRef>(`/issues/${encodeURIComponent(a.key)}`);
+        const patch: { version: number; summary?: string; description?: string } = {
+          version: issue.version,
+        };
         if (a.summary !== undefined) patch.summary = a.summary;
         if (a.description !== undefined) patch.description = a.description;
         return asText(await tira.patch(`/issues/${issue.id}`, patch));
@@ -248,7 +261,7 @@ function buildServer(tira: Tira): McpServer {
     { issueKey: z.string(), body: z.string() },
     async (a) => {
       try {
-        const issue = await tira.get(`/issues/${encodeURIComponent(a.issueKey)}`);
+        const issue = await tira.get<IssueRef>(`/issues/${encodeURIComponent(a.issueKey)}`);
         return asText(
           await tira.post(`/issues/${issue.id}/comments`, { body: a.body, bodyFormat: 'MARKDOWN' }),
         );

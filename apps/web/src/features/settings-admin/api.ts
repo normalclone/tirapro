@@ -60,7 +60,7 @@ export function useUpdatePriority() {
 export function useDeletePriority() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/priorities/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/priorities/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.priorities });
     },
@@ -141,7 +141,7 @@ export function useUpdateCustomField() {
 export function useDeleteCustomField() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/custom-fields/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/custom-fields/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.customFields });
     },

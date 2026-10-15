@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import type Redis from 'ioredis';
-import type { ServerOptions } from 'socket.io';
+import type { Server, ServerOptions } from 'socket.io';
 import { RedisService } from '../../infra/redis/redis.service';
 
 /** CORS cho socket.io lấy từ cấu hình `api.corsOrigin` (cùng nguồn với REST), không mở toang `origin: true`. */
@@ -109,11 +109,11 @@ export class RedisIoAdapter extends IoAdapter {
     this.adapterConstructor = null;
   }
 
-  override createIOServer(port: number, options?: ServerOptions) {
+  override createIOServer(port: number, options?: ServerOptions): Server {
     const server = super.createIOServer(port, {
       ...options,
       cors: buildSocketCors(this.config.get<string[]>('api.corsOrigin')),
-    });
+    }) as Server;
     if (this.adapterConstructor) server.adapter(this.adapterConstructor);
     return server;
   }

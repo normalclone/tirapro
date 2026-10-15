@@ -70,7 +70,7 @@ export function useUpdateRole() {
 export function useDeleteRole() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/roles/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/roles/${id}`).then((r) => r.data),
     onSuccess: () => {
       invalidateAllRoles(qc);
       toast.success('Đã xoá vai trò');
