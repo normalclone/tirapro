@@ -616,7 +616,7 @@ export class IssuesService {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return cursorPage(
-      rows.map((r) => this.toDto(r)),
+      rows.map((r) => this.toListDto(r)),
       limit,
       (i) => i.id,
     );
@@ -649,7 +649,7 @@ export class IssuesService {
         const position = new Map(rawIds.map((id, i) => [id, i]));
         const sorted = rows
           .sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0))
-          .map((r) => this.toDto(r));
+          .map((r) => this.toListDto(r));
         // Con trỏ không còn trong danh sách (kết quả tìm đổi giữa hai lần gọi) → trang rỗng, KHÔNG quay về trang đầu
         // (client nạp tiếp tự động sẽ lặp vô hạn). Con trỏ còn trong rawIds nhưng issue đã biến mất vẫn tiếp tục đúng chỗ.
         const cursorPos = cursor ? (position.get(cursor) ?? -1) : -1;
@@ -681,7 +681,9 @@ export class IssuesService {
         where: { AND: [scope, { id: { in: rank } }] },
         include: issueInclude,
       });
-      const sorted = rows.sort((a, b) => pos.get(a.id)! - pos.get(b.id)!).map((r) => this.toDto(r));
+      const sorted = rows
+        .sort((a, b) => pos.get(a.id)! - pos.get(b.id)!)
+        .map((r) => this.toListDto(r));
       const after = cursorRanked ? pos.get(cursor)! : -1;
       out.push(...sorted.filter((i) => pos.get(i.id)! > after).slice(0, limit + 1));
     }
@@ -694,7 +696,7 @@ export class IssuesService {
         take: limit + 1 - out.length,
         ...(cursor && !cursorRanked ? { cursor: { id: cursor }, skip: 1 } : {}),
       });
-      out.push(...rest.map((r) => this.toDto(r)));
+      out.push(...rest.map((r) => this.toListDto(r)));
     }
     return cursorPage(out, limit, (i) => i.id);
   }
@@ -722,7 +724,7 @@ export class IssuesService {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return cursorPage(
-      rows.map((r) => this.toDto(r)),
+      rows.map((r) => this.toListDto(r)),
       limit,
       (i) => i.id,
     );
@@ -770,7 +772,7 @@ export class IssuesService {
       rows.push(...unset);
     }
     return cursorPage(
-      rows.map((r) => this.toDto(r)),
+      rows.map((r) => this.toListDto(r)),
       limit,
       (i) => i.id,
     );
@@ -1430,6 +1432,12 @@ export class IssuesService {
     if (before.sprintId !== after.sprintId)
       rows.push({ ...base, field: 'SPRINT', oldValue: before.sprintId, newValue: after.sprintId });
     if (rows.length) await tx.issueHistory.createMany({ data: rows });
+  }
+
+  /** DTO cho danh sách/tìm kiếm/board/Việc chờ: không kèm văn bản tiêu chí (tới 20k ký tự/dòng), chỉ `acceptanceProgress`. */
+  private toListDto(i: IssueRow): IssueDto {
+    const { acceptanceCriteria: _text, ...rest } = this.toDto(i);
+    return rest;
   }
 
   private toDto(i: IssueRow): IssueDto {

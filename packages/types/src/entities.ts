@@ -274,8 +274,8 @@ export interface IssueDto extends IssueSummaryDto {
   number: number;
   description: string | null;
   descriptionFormat: RichTextFormat;
-  /** Tiêu chí chấp nhận (Markdown, ô tick `- [ ]`). */
-  acceptanceCriteria: string | null;
+  /** Tiêu chí chấp nhận (Markdown, ô tick `- [ ]`). Chỉ có ở chi tiết công việc và kết quả mutation; danh sách chỉ trả `acceptanceProgress`. */
+  acceptanceCriteria?: string | null;
   /** Số tiêu chí đã đạt, tính từ `acceptanceCriteria`; null khi không có mục tick. */
   acceptanceProgress: { done: number; total: number } | null;
   reporter?: UserDto | null;
