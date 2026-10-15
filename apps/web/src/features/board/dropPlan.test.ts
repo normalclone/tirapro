@@ -16,10 +16,10 @@ describe('planDrop', () => {
     expect(planDrop({ resKind: 'stay', assigneeChanged: false, unchanged: true })).toBe('ignore');
     expect(planDrop({ resKind: 'stay', assigneeChanged: false, unchanged: false })).toBe('reorder');
   });
-  it('sang cột khác (có/không có đường chuyển) => status (bị chặn thì BoardPage báo lỗi như cũ)', () => {
+  it('sang cột khác có đường chuyển => status; quy trình chặn => blocked', () => {
     expect(planDrop({ resKind: 'move', assigneeChanged: false, unchanged: false })).toBe('status');
     expect(planDrop({ resKind: 'blocked', assigneeChanged: false, unchanged: false })).toBe(
-      'status',
+      'blocked',
     );
   });
   it('đổi người (hàng khác của swimlane theo người) luôn đi đường cũ', () => {
@@ -75,6 +75,33 @@ describe('decideDrop', () => {
     expect(decideDrop(issue, place({ containerId: 'c0', crossContainer: true }), ctx())).toBeNull();
     expect(decideDrop(issue, place({ containerId: 'zz' }), ctx())).toBeNull();
   });
+  it('sang cột mà quy trình không cho chuyển tới => blocked (có plan để báo, không vạch/viền)', () => {
+    const st = (id: string, order: number) => ({
+      id,
+      name: id,
+      category: 'TODO' as const,
+      color: null,
+      order,
+      isInitial: order === 0,
+    });
+    // s1 → (không có đường nào) → s2
+    const workflows = [
+      {
+        id: 'wf',
+        name: 'wf',
+        description: null,
+        isTemplate: false,
+        isDefault: true,
+        projectId: 'p1',
+        statuses: [st('s1', 0), st('s2', 1)],
+        transitions: [],
+      },
+    ];
+    const p = place({ containerId: 'c2', crossContainer: true });
+    const d = decideDrop(issue, p, ctx({ workflows }));
+    expect(d?.plan).toBe('blocked');
+    expect(dropFeedback(d!.plan, p)).toEqual({ hint: null, container: null });
+  });
   it('làn khác cùng cột, làn không phải người => ignore (không vạch chèn)', () => {
     const d = decideDrop(
       issue,
@@ -121,6 +148,9 @@ describe('dropFeedback', () => {
     expect(dropFeedback(null, cross)).toEqual({ hint: null, container: null });
     expect(dropFeedback('status', null)).toEqual({ hint: null, container: null });
   });
+  it('blocked (quy trình không cho chuyển) => không vạch, không viền', () => {
+    expect(dropFeedback('blocked', cross)).toEqual({ hint: null, container: null });
+  });
   it('assign: có viền hàng đích nhưng KHÔNG có vạch (vị trí bị bỏ)', () => {
     expect(dropFeedback('assign', cross)).toEqual({ hint: null, container: 'c2' });
   });
@@ -138,6 +168,12 @@ describe('dropMessage', () => {
     );
     expect(dropMessage('end', { ...base, plan: 'ignore', p: cross })).toBe(
       'Đã thả P-1, giữ nguyên vị trí.',
+    );
+    expect(dropMessage('over', { ...base, plan: 'blocked', p: cross })).toBe(
+      'P-1: không chuyển được sang cột “Doing” — quy trình không cho phép.',
+    );
+    expect(dropMessage('end', { ...base, plan: 'blocked', p: cross })).toContain(
+      'quy trình không cho phép, giữ nguyên vị trí',
     );
     expect(dropMessage('over', { ...base, plan: 'assign', p: cross })).toContain(
       'đổi người phụ trách',

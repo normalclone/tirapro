@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -57,6 +57,9 @@ export function BoardDnd({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  // `dropHint`/`dropContainer` là store toàn cục: unmount giữa lúc kéo (đổi trang, đóng board) mà không dọn thì vạch chèn/viền cột
+  // "kẹt" lại và hiện ở lần mở board sau, vì dnd-kit không phát `onDragCancel` khi context bị gỡ.
+  useEffect(() => clearFeedback, []);
 
   const issueById = useMemo(() => new Map((issues ?? []).map((i) => [i.id, i])), [issues]);
   const dragging = draggingId ? (issueById.get(draggingId) ?? null) : null;

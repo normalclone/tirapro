@@ -3,7 +3,8 @@ import type { Workflow } from '@/features/workflow-settings/api';
 import { hintOf, type Placement } from '@/lib/rankDrop';
 import { resolveDropStatuses, type DropResolution } from './dropTarget';
 
-export type DropPlan = 'ignore' | 'reorder' | 'status' | 'assign';
+/** `blocked` = thả sang cột mà quy trình không cho chuyển tới (không đổi gì; phản hồi là thông báo lỗi, không vạch/viền). */
+export type DropPlan = 'ignore' | 'reorder' | 'status' | 'assign' | 'blocked';
 
 /** Khoá làn của việc không có người/ưu tiên/epic/cha. */
 export const NO_LANE = '__none__';
@@ -21,6 +22,7 @@ export function planDrop(a: {
 }): DropPlan {
   if (a.assigneeChanged) return 'assign';
   if (a.resKind === 'stay') return a.unchanged || a.crossContainer ? 'ignore' : 'reorder';
+  if (a.resKind === 'blocked') return 'blocked';
   return 'status';
 }
 
@@ -76,12 +78,13 @@ export function decideDrop(issue: IssueDto, p: Placement, ctx: DropContext): Dro
   return { plan, col, res, targetAssignee, wantsReassign, assigneeChanged };
 }
 
-/** Phản hồi trực quan lúc kéo theo KẾT QUẢ thả thật: không đổi gì ⇒ không đường kẻ, không viền; đổi người ⇒ không có vị trí. */
+/** Phản hồi trực quan lúc kéo theo KẾT QUẢ thả thật: không đổi gì hoặc bị quy trình chặn ⇒ không đường kẻ, không viền; đổi người ⇒ không có vị trí. */
 export function dropFeedback(
   plan: DropPlan | null,
   p: Placement | null,
 ): { hint: ReturnType<typeof hintOf>; container: string | null } {
-  if (!p || !plan || plan === 'ignore') return { hint: null, container: null };
+  if (!p || !plan || plan === 'ignore' || plan === 'blocked')
+    return { hint: null, container: null };
   return {
     hint: plan === 'assign' ? null : hintOf(p),
     container: p.crossContainer ? p.containerId : null,
@@ -108,6 +111,10 @@ export function dropMessage(
     return end
       ? `Đã thả ${key}, giữ nguyên vị trí.`
       : `${key}: thả ở đây không đổi gì, giữ nguyên vị trí.`;
+  if (plan === 'blocked')
+    return end
+      ? `Đã thả ${key}: không chuyển được sang cột “${colName}” — quy trình không cho phép, giữ nguyên vị trí.`
+      : `${key}: không chuyển được sang cột “${colName}” — quy trình không cho phép.`;
   if (plan === 'assign')
     return end
       ? `Đã thả ${key} vào hàng khác trong cột “${colName}”, đổi người phụ trách.`

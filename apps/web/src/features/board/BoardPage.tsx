@@ -455,10 +455,14 @@ export function BoardPage() {
       void runReorder(issue, p);
       return;
     }
+    if (plan === 'blocked') {
+      if (wantsReassign) toast.info('Bạn không có quyền đổi người phụ trách việc này.');
+      toast.error(blockedMsg);
+      return;
+    }
     if (plan === 'status') {
       if (wantsReassign) toast.info('Bạn không có quyền đổi người phụ trách việc này.');
-      if (res.kind === 'blocked') toast.error(blockedMsg);
-      else if (only) void runMove(issue, col, only.id, p, { statusName: labelFor(only) });
+      if (only) void runMove(issue, col, only.id, p, { statusName: labelFor(only) });
       else if (res.kind === 'move')
         setPick({ issue, col, options: res.options, version: null, placement: p });
       return;
