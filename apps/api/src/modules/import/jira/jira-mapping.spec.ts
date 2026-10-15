@@ -12,7 +12,9 @@ import {
 } from './jira-mapping';
 
 const csv = (rows: string[]) =>
-  parseJiraCsv(['Summary,Issue key,Issue id,Issue Type,Parent,Custom field (Epic Link)', ...rows].join('\n'));
+  parseJiraCsv(
+    ['Summary,Issue key,Issue id,Issue Type,Parent,Custom field (Epic Link)', ...rows].join('\n'),
+  );
 const isEpic = (r: { issueType: string }) => isEpicTypeName(r.issueType);
 const isSub = (r: { issueType: string }) => isSubtaskTypeName(r.issueType);
 
@@ -71,8 +73,21 @@ describe('mapping helpers', () => {
 
 describe('findMissingMapping — khoá prototype', () => {
   it('tên Jira "constructor"/"__proto__" không được coi là đã ghép', () => {
-    const analysis = { issueTypes: ['constructor'], statuses: ['__proto__'], priorities: ['toString'] };
-    const miss = findMissingMapping(analysis, { issueTypes: {}, statuses: {}, priorities: {}, users: {} });
-    expect(miss).toEqual({ issueTypes: ['constructor'], statuses: ['__proto__'], priorities: ['toString'] });
+    const analysis = {
+      issueTypes: ['constructor'],
+      statuses: ['__proto__'],
+      priorities: ['toString'],
+    };
+    const miss = findMissingMapping(analysis, {
+      issueTypes: {},
+      statuses: {},
+      priorities: {},
+      users: {},
+    });
+    expect(miss).toEqual({
+      issueTypes: ['constructor'],
+      statuses: ['__proto__'],
+      priorities: ['toString'],
+    });
   });
 });

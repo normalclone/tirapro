@@ -65,8 +65,17 @@ export function AttachmentsPanel({ issueId }: { issueId: string }) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-medium text-muted">Tệp đính kèm{items.length ? ` (${items.length})` : ''}</p>
-        <input ref={inputRef} type="file" className="sr-only" onChange={onPick} aria-hidden="true" tabIndex={-1} />
+        <p className="text-sm font-medium text-muted">
+          Tệp đính kèm{items.length ? ` (${items.length})` : ''}
+        </p>
+        <input
+          ref={inputRef}
+          type="file"
+          className="sr-only"
+          onChange={onPick}
+          aria-hidden="true"
+          tabIndex={-1}
+        />
         <Button
           variant="secondary"
           size="sm"
@@ -93,7 +102,9 @@ export function AttachmentsPanel({ issueId }: { issueId: string }) {
                 <span className="min-w-0 flex-1 truncate text-ink" title={a.fileName}>
                   {a.fileName}
                 </span>
-                <span className="shrink-0 tabular text-xs text-faint">{formatBytes(a.sizeBytes)}</span>
+                <span className="shrink-0 tabular text-xs text-faint">
+                  {formatBytes(a.sizeBytes)}
+                </span>
 
                 {confirming ? (
                   <span className="flex shrink-0 items-center gap-1">

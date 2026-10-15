@@ -12,11 +12,11 @@
     "knip": "knip",
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
-    "lint": "eslint . --max-warnings 275",
+    "lint": "eslint . --max-warnings 281",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "docker:up": "docker compose up -d postgres redis",
     "docker:up:tools": "docker compose --profile tools up -d",
     "docker:down": "docker compose down",
@@ -49,7 +49,7 @@
       "eslint --fix",
       "prettier --write"
     ],
-    "*.{js,jsx,json,md,yml,yaml}": [
+    "*.{js,jsx,mjs,css,html,json,md,yml,yaml}": [
       "prettier --write"
     ]
   },

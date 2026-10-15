@@ -67,7 +67,8 @@ export function countWorkingDays(from: Date, to: Date, maxDays = 400): number {
 /** Nhãn tuần ngắn gọn cho UI: `24/07 – 30/07`. */
 export function weekLabel(monday: Date): string {
   const end = addDays(monday, 6);
-  const dm = (d: Date) => `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  const dm = (d: Date) =>
+    `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
   return `${dm(monday)} – ${dm(end)}`;
 }
 

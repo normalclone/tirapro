@@ -22,7 +22,13 @@ function focusCommentBox() {
  * theo dõi / bỏ theo dõi, thêm bình luận. Dùng lại đúng hook của trang chi tiết nên dữ liệu lấy từ cache
  * (không gọi thêm API); chỉ dựng khi đang xem một công việc nên các truy vấn không chạy ở màn khác.
  */
-export function IssueContextGroup({ issueKey, runAction }: { issueKey: string; runAction: (fn: () => void) => void }) {
+export function IssueContextGroup({
+  issueKey,
+  runAction,
+}: {
+  issueKey: string;
+  runAction: (fn: () => void) => void;
+}) {
   const me = useAuth((s) => s.user);
   const { data: issue } = useIssue(issueKey);
   const { data: workflows } = useWorkflows();
@@ -39,7 +45,12 @@ export function IssueContextGroup({ issueKey, runAction }: { issueKey: string; r
   async function assignToMe() {
     if (!issue || !me || issue.assigneeId === me.id) return;
     try {
-      await updateIssue.mutateAsync({ id: issue.id, key: issue.key, patch: { assigneeId: me.id }, version: issue.version });
+      await updateIssue.mutateAsync({
+        id: issue.id,
+        key: issue.key,
+        patch: { assigneeId: me.id },
+        version: issue.version,
+      });
       toast.success('Đã giao việc này cho bạn', { duration: 2000 });
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -49,7 +60,13 @@ export function IssueContextGroup({ issueKey, runAction }: { issueKey: string; r
   async function changeStatus(toStatusId: string, toName: string) {
     if (!issue) return;
     try {
-      await transition.mutateAsync({ id: issue.id, key: issue.key, toStatusId, version: issue.version, statusName: toName });
+      await transition.mutateAsync({
+        id: issue.id,
+        key: issue.key,
+        toStatusId,
+        version: issue.version,
+        statusName: toName,
+      });
       toast.success(`Đã chuyển sang “${toName}”`, { duration: 2000 });
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -90,7 +107,13 @@ export function IssueContextGroup({ issueKey, runAction }: { issueKey: string; r
       {watch && (
         <ActionItem
           value={`${watch.watching ? 'bo theo doi unwatch' : 'theo doi watch'} ${issue.key}`}
-          icon={watch.watching ? <BellOff className={ICON} aria-hidden="true" /> : <Bell className={ICON} aria-hidden="true" />}
+          icon={
+            watch.watching ? (
+              <BellOff className={ICON} aria-hidden="true" />
+            ) : (
+              <Bell className={ICON} aria-hidden="true" />
+            )
+          }
           label={watch.watching ? 'Bỏ theo dõi' : 'Theo dõi'}
           onSelect={() => runAction(() => void toggleWatching(watch.watching))}
         />

@@ -2,15 +2,33 @@ import { describe, expect, it, vi } from 'vitest';
 import { RulesService } from './rules.service';
 
 const row = (over: Record<string, unknown> = {}) => ({
-  id: 'r1', workspaceId: 'w1', projectId: null, name: 'r', enabled: true, trigger: 'ISSUE_CREATED',
-  triggerConfig: {}, conditions: [], actions: [{ type: 'assign', mode: 'lead' }], createdById: 'u1',
-  lastRunAt: null, runCount: 0, createdAt: new Date(), updatedAt: new Date(), ...over,
+  id: 'r1',
+  workspaceId: 'w1',
+  projectId: null,
+  name: 'r',
+  enabled: true,
+  trigger: 'ISSUE_CREATED',
+  triggerConfig: {},
+  conditions: [],
+  actions: [{ type: 'assign', mode: 'lead' }],
+  createdById: 'u1',
+  lastRunAt: null,
+  runCount: 0,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...over,
 });
 
 function setup() {
   const prisma = {
     automationRule: {
-      findMany: vi.fn(() => Promise.resolve([row(), row({ id: 'r2', projectId: 'p2' }), row({ id: 'r3', trigger: 'COMMENT_ADDED' })])),
+      findMany: vi.fn(() =>
+        Promise.resolve([
+          row(),
+          row({ id: 'r2', projectId: 'p2' }),
+          row({ id: 'r3', trigger: 'COMMENT_ADDED' }),
+        ]),
+      ),
       findFirst: vi.fn(() => Promise.resolve(row())),
       create: vi.fn(({ data }: { data: Record<string, unknown> }) => Promise.resolve(row(data))),
       updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
@@ -39,7 +57,13 @@ describe('RulesService', () => {
   it('create/update cũng xoá cache', async () => {
     const { service, prisma } = setup();
     await service.activeFor('w1', 'ISSUE_CREATED', 'p1');
-    await service.create('w1', 'u1', { name: 'n', trigger: 'ISSUE_CREATED', triggerConfig: {}, conditions: [], actions: [{ type: 'assign', mode: 'lead' }] });
+    await service.create('w1', 'u1', {
+      name: 'n',
+      trigger: 'ISSUE_CREATED',
+      triggerConfig: {},
+      conditions: [],
+      actions: [{ type: 'assign', mode: 'lead' }],
+    });
     await service.activeFor('w1', 'ISSUE_CREATED', 'p1');
     await service.update('w1', 'r1', { enabled: false });
     await service.activeFor('w1', 'ISSUE_CREATED', 'p1');
@@ -48,17 +72,51 @@ describe('RulesService', () => {
 
   it('SCHEDULED: cần cron hợp lệ và điều kiện JQL', async () => {
     const { service } = setup();
-    const base = { name: 'n', trigger: 'SCHEDULED' as const, actions: [{ type: 'assign' as const, mode: 'lead' as const }] };
-    await expect(service.create('w1', 'u1', { ...base, triggerConfig: {}, conditions: [{ jql: 'priority = High' }] })).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
-    await expect(service.create('w1', 'u1', { ...base, triggerConfig: { cron: 'bậy bạ' }, conditions: [{ jql: 'priority = High' }] })).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
-    await expect(service.create('w1', 'u1', { ...base, triggerConfig: { cron: '0 9 * * 1-5' }, conditions: [] })).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
-    await expect(service.create('w1', 'u1', { ...base, triggerConfig: { cron: '0 9 * * 1-5' }, conditions: [{ jql: 'priority = High' }] })).resolves.toMatchObject({ trigger: 'SCHEDULED' });
+    const base = {
+      name: 'n',
+      trigger: 'SCHEDULED' as const,
+      actions: [{ type: 'assign' as const, mode: 'lead' as const }],
+    };
+    await expect(
+      service.create('w1', 'u1', {
+        ...base,
+        triggerConfig: {},
+        conditions: [{ jql: 'priority = High' }],
+      }),
+    ).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+    await expect(
+      service.create('w1', 'u1', {
+        ...base,
+        triggerConfig: { cron: 'bậy bạ' },
+        conditions: [{ jql: 'priority = High' }],
+      }),
+    ).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+    await expect(
+      service.create('w1', 'u1', {
+        ...base,
+        triggerConfig: { cron: '0 9 * * 1-5' },
+        conditions: [],
+      }),
+    ).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+    await expect(
+      service.create('w1', 'u1', {
+        ...base,
+        triggerConfig: { cron: '0 9 * * 1-5' },
+        conditions: [{ jql: 'priority = High' }],
+      }),
+    ).resolves.toMatchObject({ trigger: 'SCHEDULED' });
   });
 
   it('JQL sai cú pháp bị từ chối khi lưu', async () => {
     const { service } = setup();
     await expect(
-      service.create('w1', 'u1', { name: 'n', trigger: 'ISSUE_CREATED', triggerConfig: {}, conditions: [{ jql: 'priority = = =' }], actions: [{ type: 'assign', mode: 'lead' }] }),
+      service.create('w1', 'u1', {
+        name: 'n',
+        trigger: 'ISSUE_CREATED',
+        triggerConfig: {},
+        conditions: [{ jql: 'priority = = =' }],
+        actions: [{ type: 'assign', mode: 'lead' }],
+      }),
     ).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
   });
 });

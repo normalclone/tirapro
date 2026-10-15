@@ -4,7 +4,6 @@ import type { PermissionKey, RoleDto, RoleScope } from '@tirapro/types';
 import { api, apiErrorMessage } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
-
 /** Thân request tạo vai trò tuỳ chỉnh. */
 export interface CreateRoleInput {
   name: string;
@@ -42,8 +41,7 @@ function invalidateAllRoles(qc: ReturnType<typeof useQueryClient>) {
 export function useCreateRole() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateRoleInput) =>
-      api.post<RoleDto>('/roles', input).then((r) => r.data),
+    mutationFn: (input: CreateRoleInput) => api.post<RoleDto>('/roles', input).then((r) => r.data),
     onSuccess: (role) => {
       invalidateAllRoles(qc);
       toast.success(`Đã tạo vai trò "${role.name}"`);

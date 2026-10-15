@@ -1,8 +1,20 @@
-import { skipToken, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import {
+  skipToken,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 import type { CommentDto, IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
-import { invalidateIssue, optimisticPatchIssue, rollbackIssue, scalarIssuePatch, writeIssue } from '@/lib/optimistic';
+import {
+  invalidateIssue,
+  optimisticPatchIssue,
+  rollbackIssue,
+  scalarIssuePatch,
+  writeIssue,
+} from '@/lib/optimistic';
 import { statusPatch, type TransitionVars } from '@/features/board/api';
 
 export interface DevLinkItem {
@@ -23,7 +35,9 @@ export interface DevLinkItem {
 export function useDevLinks(issueId: string | undefined) {
   return useQuery({
     queryKey: keys.issues.devLinks(issueId ?? ''),
-    queryFn: issueId ? async () => (await api.get<DevLinkItem[]>(`/issues/${issueId}/dev-links`)).data : skipToken,
+    queryFn: issueId
+      ? async () => (await api.get<DevLinkItem[]>(`/issues/${issueId}/dev-links`)).data
+      : skipToken,
   });
 }
 
@@ -45,14 +59,19 @@ export interface IssueListMeta {
  * Đi theo cursor (`pageInfo.endCursor`) đến hết hoặc đến HARD_CAP. Dữ liệu cache vẫn là `IssueDto[]`;
  * cờ cắt ghi vào query phụ `byProjectMeta` (đọc bằng `useIssueListTruncated`).
  */
-export async function fetchAllProjectIssues(qc: QueryClient, projectId: string): Promise<IssueDto[]> {
+export async function fetchAllProjectIssues(
+  qc: QueryClient,
+  projectId: string,
+): Promise<IssueDto[]> {
   const all: IssueDto[] = [];
   let cursor: string | null = null;
   let truncated = false;
   for (;;) {
     const qs = new URLSearchParams({ projectId, limit: String(PAGE_LIMIT) });
     if (cursor) qs.set('cursor', cursor);
-    const res: ListResponse<IssueDto> = (await api.get<ListResponse<IssueDto>>(`/issues?${qs.toString()}`)).data;
+    const res: ListResponse<IssueDto> = (
+      await api.get<ListResponse<IssueDto>>(`/issues?${qs.toString()}`)
+    ).data;
     all.push(...res.data);
     const info = res.pageInfo;
     const next = 'hasNextPage' in info && info.hasNextPage ? info.endCursor : null;
@@ -91,7 +110,10 @@ export function useIssueListTruncated(projectId: string | undefined): IssueListM
  * Không dùng `skipToken` ở đây: nó sẽ ghi đè `queryFn` của query dùng chung và làm invalidate bỏ qua query này.
  * `select` cắt đúng phần cần nên chỉ vẽ lại khi phần đó đổi, không phải mỗi lần realtime vá việc khác.
  */
-export function useCachedProjectIssue<T>(projectId: string | undefined, pick: (list: IssueDto[]) => T) {
+export function useCachedProjectIssue<T>(
+  projectId: string | undefined,
+  pick: (list: IssueDto[]) => T,
+) {
   const qc = useQueryClient();
   return useQuery({
     queryKey: keys.issues.byProject(projectId ?? ''),
@@ -111,14 +133,17 @@ export function useIssue(key: string | null) {
 export function useComments(issueId: string | undefined) {
   return useQuery({
     queryKey: keys.issues.comments(issueId ?? ''),
-    queryFn: issueId ? async () => (await api.get<CommentDto[]>(`/issues/${issueId}/comments`)).data : skipToken,
+    queryFn: issueId
+      ? async () => (await api.get<CommentDto[]>(`/issues/${issueId}/comments`)).data
+      : skipToken,
   });
 }
 
 export function useAddComment(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: string) => api.post<CommentDto>(`/issues/${issueId}/comments`, { body, bodyFormat: 'MARKDOWN' }),
+    mutationFn: (body: string) =>
+      api.post<CommentDto>(`/issues/${issueId}/comments`, { body, bodyFormat: 'MARKDOWN' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.issues.comments(issueId) }),
   });
 }

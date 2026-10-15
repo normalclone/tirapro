@@ -55,7 +55,6 @@ export interface RaidFilter {
   projectId?: string;
 }
 
-
 function cleanParams(filter: RaidFilter): Record<string, string> {
   const p: Record<string, string> = {};
   if (filter.kind) p.kind = filter.kind;
@@ -68,7 +67,8 @@ function cleanParams(filter: RaidFilter): Record<string, string> {
 export function useRaidItems(filter: RaidFilter) {
   return useQuery({
     queryKey: keys.raid.list(filter),
-    queryFn: async () => (await api.get<RaidItemDto[]>('/raid', { params: cleanParams(filter) })).data,
+    queryFn: async () =>
+      (await api.get<RaidItemDto[]>('/raid', { params: cleanParams(filter) })).data,
   });
 }
 

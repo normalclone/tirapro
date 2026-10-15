@@ -9,11 +9,15 @@ describe('mail providers', () => {
 
   it('SMTP đủ cấu hình nhưng chưa có thư viện gửi → send báo lỗi rõ ràng (outbox sẽ thử lại)', async () => {
     const p = new SmtpMailProvider({ host: 'smtp.local', port: 587 });
-    await expect(p.send({ to: 'a@x.vn', subject: 's', html: 'h', text: 't' })).rejects.toThrow(/chưa được hỗ trợ/);
+    await expect(p.send({ to: 'a@x.vn', subject: 's', html: 'h', text: 't' })).rejects.toThrow(
+      /chưa được hỗ trợ/,
+    );
   });
 
   it('console: send resolve, không gửi thật', async () => {
     const p = new ConsoleMailProvider('Tirapro <no-reply@tirapro.local>');
-    await expect(p.send({ to: 'a@x.vn', subject: 's', html: 'h', text: 't' })).resolves.toBeUndefined();
+    await expect(
+      p.send({ to: 'a@x.vn', subject: 's', html: 'h', text: 't' }),
+    ).resolves.toBeUndefined();
   });
 });

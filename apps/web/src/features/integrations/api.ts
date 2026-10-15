@@ -74,7 +74,6 @@ export interface TestResult {
 /* Query keys                                                         */
 /* ------------------------------------------------------------------ */
 
-
 /* ------------------------------------------------------------------ */
 /* Telegram integrations                                              */
 /* ------------------------------------------------------------------ */
@@ -122,8 +121,9 @@ export function useTestIntegration() {
 export function useChannels(integrationId: string) {
   return useQuery({
     queryKey: keys.integrations.channels(integrationId),
-    queryFn: integrationId ? async () =>
-      (await api.get<Channel[]>(`/integrations/${integrationId}/channels`)).data : skipToken,
+    queryFn: integrationId
+      ? async () => (await api.get<Channel[]>(`/integrations/${integrationId}/channels`)).data
+      : skipToken,
   });
 }
 

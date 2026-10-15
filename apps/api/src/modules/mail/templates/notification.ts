@@ -32,7 +32,9 @@ export function render(payload: Record<string, unknown>): RenderedMail {
       subject: first.title,
       html: layout({
         heading: first.title,
-        bodyHtml: first.body ? `<p style="margin:0;font-size:14px;line-height:1.6;">${escapeHtml(first.body)}</p>` : '',
+        bodyHtml: first.body
+          ? `<p style="margin:0;font-size:14px;line-height:1.6;">${escapeHtml(first.body)}</p>`
+          : '',
         ctaLabel: 'Mở trong Tirapro',
         ctaUrl,
         footer: 'Bạn nhận thư này vì đã bật thông báo qua email. Tắt ở Cài đặt → Thông báo.',
@@ -49,7 +51,9 @@ export function render(payload: Record<string, unknown>): RenderedMail {
     })
     .join('');
   const total = items.length + dropped;
-  const droppedHtml = dropped ? `<li style="margin:0 0 10px;color:#6b7280;">… và ${dropped} thông báo cũ hơn không hiển thị</li>` : '';
+  const droppedHtml = dropped
+    ? `<li style="margin:0 0 10px;color:#6b7280;">… và ${dropped} thông báo cũ hơn không hiển thị</li>`
+    : '';
   return {
     subject: `Bạn có ${total} thông báo mới trên Tirapro`,
     html: layout({
@@ -60,7 +64,9 @@ export function render(payload: Record<string, unknown>): RenderedMail {
       footer: 'Bạn nhận thư này vì đã bật thông báo qua email. Tắt ở Cài đặt → Thông báo.',
     }),
     text:
-      items.map((it) => `- ${it.title}${it.body ? ` — ${it.body}` : ''}\n  ${safeUrl(it.url)}`).join('\n') +
+      items
+        .map((it) => `- ${it.title}${it.body ? ` — ${it.body}` : ''}\n  ${safeUrl(it.url)}`)
+        .join('\n') +
       (dropped ? `\n… và ${dropped} thông báo cũ hơn không hiển thị` : '') +
       '\n\nTắt thông báo qua email ở Cài đặt → Thông báo.\n',
   };

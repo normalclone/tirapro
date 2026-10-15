@@ -41,19 +41,26 @@ export interface SlaBoardRow {
   resolveBreached: boolean;
 }
 
-
 export function useSlaPolicies() {
-  return useQuery({ queryKey: keys.sla.policies, queryFn: async () => (await api.get<SlaPolicyDto[]>('/sla/policies')).data });
+  return useQuery({
+    queryKey: keys.sla.policies,
+    queryFn: async () => (await api.get<SlaPolicyDto[]>('/sla/policies')).data,
+  });
 }
 
 export function useSlaBoard() {
-  return useQuery({ queryKey: keys.sla.board, queryFn: async () => (await api.get<SlaBoardRow[]>('/sla/board')).data });
+  return useQuery({
+    queryKey: keys.sla.board,
+    queryFn: async () => (await api.get<SlaBoardRow[]>('/sla/board')).data,
+  });
 }
 
 export function useIssueSla(issueId?: string) {
   return useQuery({
     queryKey: keys.issues.sla(issueId ?? ''),
-    queryFn: issueId ? async () => (await api.get<IssueSlaDto | null>(`/sla/issue/${issueId}`)).data : skipToken,
+    queryFn: issueId
+      ? async () => (await api.get<IssueSlaDto | null>(`/sla/issue/${issueId}`)).data
+      : skipToken,
   });
 }
 
@@ -69,7 +76,8 @@ export interface SlaPolicyInput {
 export function useCreateSlaPolicy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: SlaPolicyInput) => api.post<SlaPolicyDto[]>('/sla/policies', input).then((r) => r.data),
+    mutationFn: (input: SlaPolicyInput) =>
+      api.post<SlaPolicyDto[]>('/sla/policies', input).then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policies }),
   });
 }

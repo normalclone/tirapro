@@ -1,5 +1,12 @@
 import type { Prisma } from '@prisma/client';
-import type { JqlFieldName, JqlNode, JqlOperator, JqlOrderBy, JqlQueryAst, JqlValue } from '@tirapro/shared';
+import type {
+  JqlFieldName,
+  JqlNode,
+  JqlOperator,
+  JqlOrderBy,
+  JqlQueryAst,
+  JqlValue,
+} from '@tirapro/shared';
 
 export interface JqlCompileContext {
   currentUserId: string;
@@ -19,7 +26,12 @@ export function collectFulltextTerms(node: JqlNode | null): string[] {
       walk(n.right);
     } else if (n.type === 'not') {
       walk(n.node);
-    } else if (n.field === 'text' && n.operator === '~' && n.value.kind === 'string' && n.value.value.trim()) {
+    } else if (
+      n.field === 'text' &&
+      n.operator === '~' &&
+      n.value.kind === 'string' &&
+      n.value.value.trim()
+    ) {
       out.add(n.value.value);
     }
   };
@@ -35,7 +47,10 @@ export function primaryFulltextTerm(node: JqlNode | null): string | null {
   const walk = (n: JqlNode): string | null => {
     if (n.type === 'logical') return n.op === 'AND' ? (walk(n.left) ?? walk(n.right)) : null;
     if (n.type === 'not') return null;
-    return n.field === 'text' && n.operator === '~' && n.value.kind === 'string' && n.value.value.trim()
+    return n.field === 'text' &&
+      n.operator === '~' &&
+      n.value.kind === 'string' &&
+      n.value.value.trim()
       ? n.value.value
       : null;
   };
@@ -66,13 +81,21 @@ const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
   created: { kind: 'date', column: 'createdAt' },
   updated: { kind: 'date', column: 'updatedAt' },
   due: { kind: 'date', column: 'dueDate' },
-  resolution: { kind: 'relationName', relation: 'resolution', field: 'name', idColumn: 'resolutionId' },
+  resolution: {
+    kind: 'relationName',
+    relation: 'resolution',
+    field: 'name',
+    idColumn: 'resolutionId',
+  },
   storyPoints: { kind: 'number', column: 'storyPoints' },
 };
 
 type Where = Prisma.IssueWhereInput;
 
-export function compileJql(ast: JqlQueryAst, ctx: JqlCompileContext): { where: Where; orderBy: Prisma.IssueOrderByWithRelationInput[] } {
+export function compileJql(
+  ast: JqlQueryAst,
+  ctx: JqlCompileContext,
+): { where: Where; orderBy: Prisma.IssueOrderByWithRelationInput[] } {
   return {
     where: ast.where ? compileNode(ast.where, ctx) : {},
     orderBy: ast.orderBy.map((o) => compileOrder(o)),
@@ -102,13 +125,22 @@ function compileOrder(o: JqlOrderBy): Prisma.IssueOrderByWithRelationInput {
   return { updatedAt: dir };
 }
 
-function compileComparison(field: JqlFieldName, op: JqlOperator, value: JqlValue, ctx: JqlCompileContext): Where {
+function compileComparison(
+  field: JqlFieldName,
+  op: JqlOperator,
+  value: JqlValue,
+  ctx: JqlCompileContext,
+): Where {
   const cfg = FIELD_MAP[field];
   switch (cfg.kind) {
     case 'relationName':
     case 'enumRel': {
-      if (op === 'IS') return cfg.idColumn ? { [cfg.idColumn]: null } : { [cfg.relation!]: { is: null } };
-      if (op === 'IS NOT') return cfg.idColumn ? { NOT: { [cfg.idColumn]: null } } : { [cfg.relation!]: { isNot: null } };
+      if (op === 'IS')
+        return cfg.idColumn ? { [cfg.idColumn]: null } : { [cfg.relation!]: { is: null } };
+      if (op === 'IS NOT')
+        return cfg.idColumn
+          ? { NOT: { [cfg.idColumn]: null } }
+          : { [cfg.relation!]: { isNot: null } };
       const f = stringFilter(op, value, ctx);
       return { [cfg.relation!]: { [cfg.field!]: f } };
     }
@@ -142,7 +174,8 @@ function compileComparison(field: JqlFieldName, op: JqlOperator, value: JqlValue
       // labels
       if (op === 'IS') return { labels: { none: {} } };
       if (op === 'IS NOT') return { labels: { some: {} } };
-      const names = op === 'IN' || op === 'NOT IN' ? listStrings(value, ctx) : [scalarString(value, ctx)];
+      const names =
+        op === 'IN' || op === 'NOT IN' ? listStrings(value, ctx) : [scalarString(value, ctx)];
       const rel = { label: { name: { in: names } } };
       return op === 'NOT IN' || op === '!=' ? { labels: { none: rel } } : { labels: { some: rel } };
     }
@@ -246,7 +279,11 @@ function listNumbers(v: JqlValue): number[] {
   return [scalarNumber(v)];
 }
 
-function stringFilter(op: JqlOperator, value: JqlValue, ctx: JqlCompileContext): Prisma.StringFilter | string {
+function stringFilter(
+  op: JqlOperator,
+  value: JqlValue,
+  ctx: JqlCompileContext,
+): Prisma.StringFilter | string {
   if (op === 'IN') return { in: listStrings(value, ctx) };
   if (op === 'NOT IN') return { notIn: listStrings(value, ctx) };
   const v = scalarString(value, ctx);

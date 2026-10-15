@@ -32,9 +32,15 @@ function setRoom(room: string, users: PresenceUser[]): void {
 
 const onState = (p: { room: string; users: PresenceUser[] }) => setRoom(p.room, p.users);
 const onJoin = (p: { room: string; user: PresenceUser }) =>
-  setRoom(p.room, [...(state.get(p.room) ?? EMPTY).filter((u) => u.userId !== p.user.userId), p.user]);
+  setRoom(p.room, [
+    ...(state.get(p.room) ?? EMPTY).filter((u) => u.userId !== p.user.userId),
+    p.user,
+  ]);
 const onLeave = (p: { room: string; userId: string }) =>
-  setRoom(p.room, (state.get(p.room) ?? EMPTY).filter((u) => u.userId !== p.userId));
+  setRoom(
+    p.room,
+    (state.get(p.room) ?? EMPTY).filter((u) => u.userId !== p.userId),
+  );
 /** Mất kết nối → danh sách cũ không còn đáng tin; subscribe lại sẽ nhận `presence:state` mới. */
 const onDisconnect = () => {
   state.clear();
@@ -103,7 +109,7 @@ export function usePresence(projectId: string | undefined, issueId?: string): Pr
 
   const users = useSyncExternalStore(
     subscribeStore,
-    () => (room ? state.get(room) ?? EMPTY : EMPTY),
+    () => (room ? (state.get(room) ?? EMPTY) : EMPTY),
     () => EMPTY,
   );
 
@@ -171,9 +177,14 @@ export function useTypers(issueId: string | undefined): Typer[] {
       if (!p.typing) return drop(p.userId);
       const prev = timers.get(p.userId);
       if (prev) clearTimeout(prev);
-      timers.set(p.userId, setTimeout(() => drop(p.userId), TYPING_EXPIRE_MS));
+      timers.set(
+        p.userId,
+        setTimeout(() => drop(p.userId), TYPING_EXPIRE_MS),
+      );
       setTypers((cur) =>
-        cur.some((x) => x.userId === p.userId) ? cur : [...cur, { userId: p.userId, displayName: p.displayName }],
+        cur.some((x) => x.userId === p.userId)
+          ? cur
+          : [...cur, { userId: p.userId, displayName: p.displayName }],
       );
     };
     s.on('typing', onTyping);
@@ -192,7 +203,10 @@ export function useTypers(issueId: string | undefined): Typer[] {
  * Cho composer bình luận: gọi `notifyTyping()` mỗi lần gõ (tự giới hạn 2s/lần), `stopTyping()` khi gửi/xoá hết.
  * Ngừng gõ 2s hoặc rời trang thì tự gửi `typing:stop`.
  */
-export function useTypingEmitter(issueId: string | undefined): { notifyTyping: () => void; stopTyping: () => void } {
+export function useTypingEmitter(issueId: string | undefined): {
+  notifyTyping: () => void;
+  stopTyping: () => void;
+} {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastStart = useRef(0);
   const active = useRef(false);

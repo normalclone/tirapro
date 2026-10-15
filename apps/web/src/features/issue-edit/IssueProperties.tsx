@@ -40,7 +40,9 @@ function PanelSection({ title, children }: { title: string; children: ReactNode 
 function InfoRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
-      <span className="shrink-0 text-muted" title={hint}>{label}</span>
+      <span className="shrink-0 text-muted" title={hint}>
+        {label}
+      </span>
       <span className="min-w-0 truncate text-right text-ink">{children}</span>
     </div>
   );
@@ -48,7 +50,12 @@ function InfoRow({ label, hint, children }: { label: string; hint?: string; chil
 
 /** Badge độ ưu tiên (tô theo màu ưu tiên). */
 function PriorityBadge({ priority }: { priority: IssueDto['priority'] }) {
-  if (!priority) return <span className="text-sm text-faint" title="Chưa đặt mức ưu tiên. Bấm để chọn.">—</span>;
+  if (!priority)
+    return (
+      <span className="text-sm text-faint" title="Chưa đặt mức ưu tiên. Bấm để chọn.">
+        —
+      </span>
+    );
   const c = priority.color || 'var(--faint)';
   return (
     <span
@@ -56,7 +63,11 @@ function PriorityBadge({ priority }: { priority: IssueDto['priority'] }) {
       style={{ backgroundColor: `color-mix(in oklch, ${c} 16%, transparent)`, color: c }}
       title={`Mức ưu tiên: ${priority.name}. Bấm để đổi.`}
     >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: c }} aria-hidden />
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{ backgroundColor: c }}
+        aria-hidden
+      />
       {priority.name}
     </span>
   );
@@ -104,7 +115,11 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
       ariaLabel="Loại việc"
       value={issue.type.id}
       disabled={patch.isPending}
-      options={(meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name, color: t.color }))}
+      options={(meta?.issueTypes ?? []).map((t) => ({
+        value: t.id,
+        label: t.name,
+        color: t.color,
+      }))}
       onChange={(v) => {
         if (v === issue.type.id) return;
         patch.mutate(
@@ -133,7 +148,10 @@ export function IssuePrioritySelect({ issue }: { issue: IssueDto }) {
       ariaLabel="Ưu tiên"
       value={issue.priority?.id ?? ''}
       disabled={patch.isPending}
-      options={[{ value: '', label: '—' }, ...(meta?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, color: p.color }))]}
+      options={[
+        { value: '', label: '—' },
+        ...(meta?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, color: p.color })),
+      ]}
       onChange={(v) => {
         const next = v || null;
         if (next === (issue.priority?.id ?? null)) return;
@@ -162,7 +180,10 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
       { value: '', label: 'Backlog — chưa xếp vào sprint' },
       ...(sprints ?? [])
         .filter((s) => s.state !== 'CLOSED')
-        .map((s) => ({ value: s.id, label: s.state === 'ACTIVE' ? `${s.name} · đang chạy` : s.name })),
+        .map((s) => ({
+          value: s.id,
+          label: s.state === 'ACTIVE' ? `${s.name} · đang chạy` : s.name,
+        })),
     ],
     [sprints],
   );
@@ -175,7 +196,10 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
       options={sprintOptions}
       className={`${INLINE_TRIGGER} -ml-1 text-sm text-muted`}
       renderTrigger={(sel) => (
-        <span className="truncate" title="Sprint: đợt làm việc ngắn, thường 1–2 tuần. Bấm để chuyển việc sang đợt khác.">
+        <span
+          className="truncate"
+          title="Sprint: đợt làm việc ngắn, thường 1–2 tuần. Bấm để chuyển việc sang đợt khác."
+        >
           {sel?.label ?? 'Backlog — chưa xếp vào sprint'}
         </span>
       )}
@@ -187,7 +211,12 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
           { id: issue.id, sprintId: next, version: issue.version },
           {
             onSuccess: () =>
-              toast.success(next ? `Đã chuyển sang ${nextName ?? 'sprint đã chọn'}` : 'Đã đưa về Backlog (danh sách chờ)', { duration: 1800 }),
+              toast.success(
+                next
+                  ? `Đã chuyển sang ${nextName ?? 'sprint đã chọn'}`
+                  : 'Đã đưa về Backlog (danh sách chờ)',
+                { duration: 1800 },
+              ),
             onError: (e) => toast.error(apiErrorMessage(e)),
           },
         );
@@ -197,14 +226,21 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
 }
 
 /** Điểm ước lượng dạng label mờ ("N điểm"), bấm mới sửa; khoá nếu không có quyền. */
-export function IssueStoryPointsInline({ issue, canEditRestricted }: { issue: IssueDto; canEditRestricted: boolean }) {
+export function IssueStoryPointsInline({
+  issue,
+  canEditRestricted,
+}: {
+  issue: IssueDto;
+  canEditRestricted: boolean;
+}) {
   const patch = useUpdateIssue(issue.projectId);
   const [editing, setEditing] = useState(false);
 
   function save(raw: string) {
     setEditing(false);
     const next = raw.trim() === '' ? null : Number(raw);
-    if (next !== null && Number.isNaN(next)) return toast.error('Điểm ước lượng phải là một con số, ví dụ 3');
+    if (next !== null && Number.isNaN(next))
+      return toast.error('Điểm ước lượng phải là một con số, ví dụ 3');
     if (next !== issue.storyPoints) {
       patch.mutate(
         { id: issue.id, key: issue.key, patch: { storyPoints: next }, version: issue.version },
@@ -236,7 +272,14 @@ export function IssueStoryPointsInline({ issue, canEditRestricted }: { issue: Is
   const text = issue.storyPoints != null ? `${issue.storyPoints} điểm` : null;
   const tip = 'Điểm ước lượng — con số ước chừng độ lớn của việc, càng lớn càng tốn công.';
   if (!canEditRestricted) {
-    return <span className="text-sm text-muted" title={`${tip} Chỉ người tạo việc hoặc quản trị mới sửa được.`}>{text ?? '—'}</span>;
+    return (
+      <span
+        className="text-sm text-muted"
+        title={`${tip} Chỉ người tạo việc hoặc quản trị mới sửa được.`}
+      >
+        {text ?? '—'}
+      </span>
+    );
   }
   return (
     <button
@@ -264,7 +307,9 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
       <div className="divide-y divide-border">
         {/* Người phụ trách — inline, bấm để chọn */}
         <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
-          <span className="shrink-0 text-muted" title="Người chịu trách nhiệm làm xong việc này">Người phụ trách</span>
+          <span className="shrink-0 text-muted" title="Người chịu trách nhiệm làm xong việc này">
+            Người phụ trách
+          </span>
           <div className="flex min-w-0 items-center gap-1">
             {canSuggest && (
               <AssigneeSuggestButton
@@ -274,7 +319,12 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
                 onPick={(userId) => {
                   if (userId === (issue.assignee?.id ?? null)) return;
                   patch.mutate(
-                    { id: issue.id, key: issue.key, patch: { assigneeId: userId }, version: issue.version },
+                    {
+                      id: issue.id,
+                      key: issue.key,
+                      patch: { assigneeId: userId },
+                      version: issue.version,
+                    },
                     { onError: (e) => toast.error(apiErrorMessage(e)) },
                   );
                 }}
@@ -290,7 +340,12 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
                 const next = v || null;
                 if (next !== (issue.assignee?.id ?? null)) {
                   patch.mutate(
-                    { id: issue.id, key: issue.key, patch: { assigneeId: next }, version: issue.version },
+                    {
+                      id: issue.id,
+                      key: issue.key,
+                      patch: { assigneeId: next },
+                      version: issue.version,
+                    },
                     { onError: (e) => toast.error(apiErrorMessage(e)) },
                   );
                 }
@@ -299,11 +354,20 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
               renderTrigger={() =>
                 issue.assignee ? (
                   <span className="flex items-center gap-1.5">
-                    <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={18} />
+                    <Avatar
+                      name={issue.assignee.displayName}
+                      src={issue.assignee.avatarUrl}
+                      size={18}
+                    />
                     <span className="truncate">{issue.assignee.displayName}</span>
                   </span>
                 ) : (
-                  <span className="text-faint" title="Chưa có ai nhận việc này. Bấm để chọn người phụ trách.">Chưa gán</span>
+                  <span
+                    className="text-faint"
+                    title="Chưa có ai nhận việc này. Bấm để chọn người phụ trách."
+                  >
+                    Chưa gán
+                  </span>
                 )
               }
             />
@@ -316,7 +380,9 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
               <Avatar name={issue.reporter.displayName} src={issue.reporter.avatarUrl} size={18} />
               <span className="truncate">{issue.reporter.displayName}</span>
             </span>
-          ) : '—'}
+          ) : (
+            '—'
+          )}
         </InfoRow>
 
         {/* Người tham gia — nhiều người cùng theo việc này (ngoài người phụ trách và người tạo). */}
@@ -330,7 +396,13 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
 /* Mốc thời gian (cột phải — Hạn / Tạo / Cập nhật / Hoàn tất)         */
 /* ------------------------------------------------------------------ */
 
-export function IssueDatesPanel({ issue, canEditRestricted }: { issue: IssueDto; canEditRestricted: boolean }) {
+export function IssueDatesPanel({
+  issue,
+  canEditRestricted,
+}: {
+  issue: IssueDto;
+  canEditRestricted: boolean;
+}) {
   return (
     <PanelSection title="Mốc thời gian">
       <div className="divide-y divide-border">
@@ -360,21 +432,30 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
   // Màu theo hạn: quá hạn = đỏ đậm nổi bật, sắp đến hạn = vàng, còn lại = bình thường.
   const st = dueState(issue);
   const toneCls =
-    st === 'overdue' ? 'bg-danger/10 font-semibold text-danger'
-    : st === 'soon' ? 'font-medium text-warning'
-    : 'text-ink';
+    st === 'overdue'
+      ? 'bg-danger/10 font-semibold text-danger'
+      : st === 'soon'
+        ? 'font-medium text-warning'
+        : 'text-ink';
   // Giải nghĩa màu cho người mới: vì sao ngày này lại đỏ / vàng.
   const toneTip =
-    st === 'overdue' ? 'Đã quá hạn mà việc chưa xong'
-    : st === 'soon' ? 'Sắp tới hạn (còn không quá 2 ngày)'
-    : null;
+    st === 'overdue'
+      ? 'Đã quá hạn mà việc chưa xong'
+      : st === 'soon'
+        ? 'Sắp tới hạn (còn không quá 2 ngày)'
+        : null;
 
   function save(raw: string) {
     setEditing(false);
     const cur = issue.dueDate ? toLocalInput(issue.dueDate) : '';
     if (raw === cur) return;
     patch.mutate(
-      { id: issue.id, key: issue.key, patch: { dueDate: raw ? new Date(raw).toISOString() : null }, version: issue.version },
+      {
+        id: issue.id,
+        key: issue.key,
+        patch: { dueDate: raw ? new Date(raw).toISOString() : null },
+        version: issue.version,
+      },
       { onError: (e) => toast.error(apiErrorMessage(e)) },
     );
   }
@@ -383,7 +464,12 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
     <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
       <span className="flex shrink-0 items-center gap-1 text-muted" title="Mốc việc này phải xong">
         Hạn
-        {!canEdit && <Lock className="h-3 w-3 text-faint" aria-label="Chỉ người tạo việc hoặc quản trị mới sửa được hạn" />}
+        {!canEdit && (
+          <Lock
+            className="h-3 w-3 text-faint"
+            aria-label="Chỉ người tạo việc hoặc quản trị mới sửa được hạn"
+          />
+        )}
       </span>
       {editing && canEdit ? (
         <Input
@@ -404,7 +490,10 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
           type="button"
           onClick={() => setEditing(true)}
           title={toneTip ? `${toneTip} — bấm để đổi hạn` : 'Bấm để đặt hoặc đổi hạn'}
-          className={cn('rounded px-1.5 py-0.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]', display ? toneCls : 'text-faint')}
+          className={cn(
+            'rounded px-1.5 py-0.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+            display ? toneCls : 'text-faint',
+          )}
         >
           {display ?? 'Đặt hạn'}
         </button>

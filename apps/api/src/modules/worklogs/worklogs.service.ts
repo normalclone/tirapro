@@ -2,9 +2,19 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 import { DOMAIN_EVENTS, PERMISSIONS, type WorklogDto, type WorklogListDto } from '@tirapro/types';
-import { formatDuration, parseDuration, type AdjustRemainingInput, type CreateWorklogInput, type UpdateWorklogInput } from '@tirapro/shared';
+import {
+  formatDuration,
+  parseDuration,
+  type AdjustRemainingInput,
+  type CreateWorklogInput,
+  type UpdateWorklogInput,
+} from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { BusinessRuleException, ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  ForbiddenAppException,
+  NotFoundAppException,
+} from '../../common/exceptions/app.exception';
 import { RbacService } from '../rbac/rbac.service';
 import { IssuesService } from '../issues/issues.service';
 
@@ -63,13 +73,24 @@ export class WorklogsService {
     };
   }
 
-  async create(workspaceId: string, userId: string, issueId: string, input: CreateWorklogInput): Promise<WorklogDto> {
+  async create(
+    workspaceId: string,
+    userId: string,
+    issueId: string,
+    input: CreateWorklogInput,
+  ): Promise<WorklogDto> {
     const sec = this.requireDuration(input.timeSpent);
     const startedAt = input.startedAt ? new Date(input.startedAt) : new Date();
     const { row, issue } = await this.prisma.$transaction(async (tx) => {
       const state = await this.lockIssue(tx, workspaceId, issueId, userId);
       const created = await tx.workLog.create({
-        data: { issueId, authorId: userId, timeSpent: sec, startedAt, comment: input.comment ?? null },
+        data: {
+          issueId,
+          authorId: userId,
+          timeSpent: sec,
+          startedAt,
+          comment: input.comment ?? null,
+        },
         include: worklogInclude,
       });
       await this.recompute(tx, issueId, userId, state, input.adjustRemaining);
@@ -79,7 +100,12 @@ export class WorklogsService {
     return this.toDto(row);
   }
 
-  async update(workspaceId: string, userId: string, id: string, input: UpdateWorklogInput): Promise<WorklogDto> {
+  async update(
+    workspaceId: string,
+    userId: string,
+    id: string,
+    input: UpdateWorklogInput,
+  ): Promise<WorklogDto> {
     const current = await this.requireWorklog(workspaceId, id);
     await this.assertCanModify(userId, workspaceId, current);
     const sec = input.timeSpent !== undefined ? this.requireDuration(input.timeSpent) : undefined;
@@ -97,7 +123,14 @@ export class WorklogsService {
       await this.recompute(tx, current.issueId, userId, state, input.adjustRemaining);
       return { row: updated, issue: state };
     });
-    await this.publish(workspaceId, userId, issue, DOMAIN_EVENTS.WORKLOG_UPDATED, current.issueId, id);
+    await this.publish(
+      workspaceId,
+      userId,
+      issue,
+      DOMAIN_EVENTS.WORKLOG_UPDATED,
+      current.issueId,
+      id,
+    );
     return this.toDto(row);
   }
 
@@ -115,7 +148,14 @@ export class WorklogsService {
       await this.recompute(tx, current.issueId, userId, state, adjustRemaining);
       return state;
     });
-    await this.publish(workspaceId, userId, issue, DOMAIN_EVENTS.WORKLOG_DELETED, current.issueId, id);
+    await this.publish(
+      workspaceId,
+      userId,
+      issue,
+      DOMAIN_EVENTS.WORKLOG_DELETED,
+      current.issueId,
+      id,
+    );
     return { success: true };
   }
 
@@ -124,7 +164,9 @@ export class WorklogsService {
   private requireDuration(text: string): number {
     const sec = parseDuration(text);
     if (sec === null || sec <= 0) {
-      throw new BusinessRuleException('Thời gian không hợp lệ — hãy nhập dạng 2h 30m, 90m hoặc 1d (1d = 8 giờ)');
+      throw new BusinessRuleException(
+        'Thời gian không hợp lệ — hãy nhập dạng 2h 30m, 90m hoặc 1d (1d = 8 giờ)',
+      );
     }
     return sec;
   }
@@ -133,7 +175,12 @@ export class WorklogsService {
    * Khoá hàng issue bằng một UPDATE (tăng version) — hai worklog ghi đồng thời trên cùng issue
    * sẽ xếp hàng ở đây nên tổng `timeSpent` luôn tính trên dữ liệu đã commit của nhau.
    */
-  private async lockIssue(tx: Prisma.TransactionClient, workspaceId: string, issueId: string, userId: string): Promise<IssueTimeState> {
+  private async lockIssue(
+    tx: Prisma.TransactionClient,
+    workspaceId: string,
+    issueId: string,
+    userId: string,
+  ): Promise<IssueTimeState> {
     const { count } = await tx.issue.updateMany({
       where: { id: issueId, workspaceId, deletedAt: null },
       data: { version: { increment: 1 }, updatedById: userId },
@@ -141,7 +188,14 @@ export class WorklogsService {
     if (count === 0) throw new NotFoundAppException('Công việc');
     const state = await tx.issue.findFirst({
       where: { id: issueId, workspaceId, deletedAt: null },
-      select: { key: true, projectId: true, sprintId: true, originalEstimate: true, remainingEstimate: true, timeSpent: true },
+      select: {
+        key: true,
+        projectId: true,
+        sprintId: true,
+        originalEstimate: true,
+        remainingEstimate: true,
+        timeSpent: true,
+      },
     });
     if (!state) throw new NotFoundAppException('Công việc');
     return state;
@@ -157,16 +211,27 @@ export class WorklogsService {
   ): Promise<void> {
     const agg = await tx.workLog.aggregate({ where: { issueId }, _sum: { timeSpent: true } });
     const total = agg._sum.timeSpent ?? 0;
-    if (total > MAX_ISSUE_TIME_SEC) throw new BusinessRuleException('Tổng thời gian ghi nhận của công việc vượt giới hạn cho phép — hãy kiểm tra lại các bản ghi');
+    if (total > MAX_ISSUE_TIME_SEC)
+      throw new BusinessRuleException(
+        'Tổng thời gian ghi nhận của công việc vượt giới hạn cho phép — hãy kiểm tra lại các bản ghi',
+      );
     const remaining = this.nextRemaining(adjust ?? 'auto', state, total);
     const before = state.timeSpent ?? 0;
-    await tx.issue.update({ where: { id: issueId }, data: { timeSpent: total, remainingEstimate: remaining } });
+    await tx.issue.update({
+      where: { id: issueId },
+      data: { timeSpent: total, remainingEstimate: remaining },
+    });
     if (before !== total) {
       await tx.issueHistory.create({
         data: {
-          issueId, projectId: state.projectId, sprintId: state.sprintId, field: 'TIME_SPENT',
-          oldValue: formatDuration(before), newValue: formatDuration(total),
-          actorId: userId, occurredAt: new Date(),
+          issueId,
+          projectId: state.projectId,
+          sprintId: state.sprintId,
+          field: 'TIME_SPENT',
+          oldValue: formatDuration(before),
+          newValue: formatDuration(total),
+          actorId: userId,
+          occurredAt: new Date(),
         },
       });
     }
@@ -174,11 +239,16 @@ export class WorklogsService {
     state.remainingEstimate = remaining;
   }
 
-  private nextRemaining(adjust: AdjustRemainingInput, state: IssueTimeState, total: number): number | null {
+  private nextRemaining(
+    adjust: AdjustRemainingInput,
+    state: IssueTimeState,
+    total: number,
+  ): number | null {
     if (adjust === 'leave') return state.remainingEstimate;
     if (typeof adjust === 'object') {
       const sec = parseDuration(adjust.set);
-      if (sec === null) throw new BusinessRuleException('Thời gian còn lại không hợp lệ — hãy nhập dạng 2h 30m');
+      if (sec === null)
+        throw new BusinessRuleException('Thời gian còn lại không hợp lệ — hãy nhập dạng 2h 30m');
       return sec;
     }
     // auto: không có ước lượng gốc thì không có gì để trừ
@@ -202,11 +272,20 @@ export class WorklogsService {
     worklog: { authorId: string; issue: { projectId: string } },
   ): Promise<void> {
     if (worklog.authorId === userId) return;
-    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, worklog.issue.projectId);
+    const perms = await this.rbac.getEffectivePermissions(
+      userId,
+      workspaceId,
+      worklog.issue.projectId,
+    );
     if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.WORKSPACE_ADMIN)) return;
-    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isSystemAdmin: true } });
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
     if (u?.isSystemAdmin) return;
-    throw new ForbiddenAppException('Chỉ người ghi worklog hoặc quản trị dự án mới sửa/xoá được — hãy nhờ họ chỉnh giúp');
+    throw new ForbiddenAppException(
+      'Chỉ người ghi worklog hoặc quản trị dự án mới sửa/xoá được — hãy nhờ họ chỉnh giúp',
+    );
   }
 
   /** Sau commit: báo realtime/automation rằng issue đổi (version, timeSpent) và worklog đổi. Lỗi ở đây không làm hỏng yêu cầu. */
@@ -220,7 +299,11 @@ export class WorklogsService {
   ): Promise<void> {
     try {
       const dto = await this.issues.getByKey(workspaceId, state.key);
-      this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId, changedFields: ['timeSpent', 'remainingEstimate'] });
+      this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+        issue: dto,
+        actorId,
+        changedFields: ['timeSpent', 'remainingEstimate'],
+      });
       this.events.emit(event, { worklogId, issueId, projectId: state.projectId, actorId });
     } catch (err) {
       this.logger.warn(`Không phát được sự kiện worklog ${worklogId}: ${(err as Error).message}`);

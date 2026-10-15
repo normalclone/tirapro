@@ -18,7 +18,9 @@ function readStored(): Set<QuickFilterId> {
     const raw = JSON.parse(localStorage.getItem(LS_KEY) || '[]') as unknown;
     if (!Array.isArray(raw)) return new Set();
     const valid = new Set(QUICK_FILTERS.map((f) => f.id));
-    return new Set(raw.filter((v): v is QuickFilterId => typeof v === 'string' && valid.has(v as QuickFilterId)));
+    return new Set(
+      raw.filter((v): v is QuickFilterId => typeof v === 'string' && valid.has(v as QuickFilterId)),
+    );
   } catch {
     return new Set();
   }

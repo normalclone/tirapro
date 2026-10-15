@@ -275,7 +275,11 @@ class Parser {
       // Ngày tương đối: -7d, 30d, -1w, 2m, 1y (m = tháng).
       const rel = /^([+-]?\d+)([dwmy])$/i.exec(t.value);
       if (rel) {
-        return { kind: 'relativeDate', amount: parseInt(rel[1]!, 10), unit: rel[2]!.toLowerCase() as RelativeDateUnit };
+        return {
+          kind: 'relativeDate',
+          amount: parseInt(rel[1]!, 10),
+          unit: rel[2]!.toLowerCase() as RelativeDateUnit,
+        };
       }
       // Hàm: currentUser(), now(), startOfWeek()… (ngoặc tuỳ chọn).
       const fn = JQL_FUNCTIONS.find((f) => f.toLowerCase() === t.value.toLowerCase());

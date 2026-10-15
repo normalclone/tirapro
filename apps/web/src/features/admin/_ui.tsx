@@ -54,11 +54,26 @@ export function StatusPill({ tone, label, note }: { tone: Tone; label: string; n
 }
 
 /** Ô số liệu: nhãn nhỏ + giá trị lớn + dòng phụ tuỳ chọn. */
-export function StatTile({ label, value, sub, accent }: { label: string; value: ReactNode; sub?: ReactNode; accent?: boolean }) {
+export function StatTile({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+  accent?: boolean;
+}) {
   return (
     <div className="rounded-lg border border-border bg-surface px-4 py-3.5">
       <div className="text-xs font-medium text-faint">{label}</div>
-      <div className={cn('mt-1 text-2xl font-semibold tabular-nums tracking-tight', accent ? 'text-primary' : 'text-ink-strong')}>
+      <div
+        className={cn(
+          'mt-1 text-2xl font-semibold tabular-nums tracking-tight',
+          accent ? 'text-primary' : 'text-ink-strong',
+        )}
+      >
         {value}
       </div>
       {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}

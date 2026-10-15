@@ -29,18 +29,11 @@ function suggestKey(name: string): string {
     .map((w) => w.replace(/[^A-Za-z0-9]/g, ''))
     .filter(Boolean);
   if (words.length === 0) return '';
-  const raw =
-    words.length > 1 ? words.map((w) => w[0]).join('') : words[0]!;
+  const raw = words.length > 1 ? words.map((w) => w[0]).join('') : words[0]!;
   return raw.toUpperCase().slice(0, 10);
 }
 
-export function CreateProjectModal({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
+export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
   const create = useCreateProject();
 
@@ -98,14 +91,21 @@ export function CreateProjectModal({
   return (
     <Dialog
       open
-      onOpenChange={(o) => { if (!o) onClose(); }}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
       title="Tạo dự án"
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>
             Hủy
           </Button>
-          <Button type="submit" form="create-project-form" loading={create.isPending} disabled={!canSubmit}>
+          <Button
+            type="submit"
+            form="create-project-form"
+            loading={create.isPending}
+            disabled={!canSubmit}
+          >
             Tạo dự án
           </Button>
         </>

@@ -106,14 +106,20 @@ export function GenerateIssuesDialog({
   return (
     <Dialog
       open
-      onOpenChange={(o) => { if (!o) onClose(); }}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
       title="Tạo công việc bằng AI"
       size="lg"
       footer={
         rows ? (
           <>
             <span className="mr-auto text-xs text-muted">{selectedCount} đã chọn</span>
-            <Button loading={creating} onClick={() => void createSelected()} disabled={!selectedCount || !meta}>
+            <Button
+              loading={creating}
+              onClick={() => void createSelected()}
+              disabled={!selectedCount || !meta}
+            >
               Tạo {selectedCount} công việc
             </Button>
           </>
@@ -122,7 +128,9 @@ export function GenerateIssuesDialog({
     >
       <div className="space-y-4">
         <div>
-          <p className="mb-1.5 text-sm text-muted">Mô tả yêu cầu — AI sẽ tách thành các công việc nhỏ.</p>
+          <p className="mb-1.5 text-sm text-muted">
+            Mô tả yêu cầu — AI sẽ tách thành các công việc nhỏ.
+          </p>
           <textarea
             autoFocus
             value={text}
@@ -132,7 +140,12 @@ export function GenerateIssuesDialog({
             className="w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus-visible:border-primary"
           />
           <div className="mt-2 flex items-center gap-2">
-            <Button size="sm" loading={generate.isPending} onClick={() => void analyze()} disabled={text.trim().length < 3}>
+            <Button
+              size="sm"
+              loading={generate.isPending}
+              onClick={() => void analyze()}
+              disabled={text.trim().length < 3}
+            >
               <Wand2 className="h-4 w-4" />
               Phân tích
             </Button>
@@ -148,9 +161,14 @@ export function GenerateIssuesDialog({
 
         {rows && (
           <div className="space-y-2">
-            <p className="text-sm font-medium text-muted">Đề xuất ({rows.length}) — bỏ chọn / sửa trước khi tạo</p>
+            <p className="text-sm font-medium text-muted">
+              Đề xuất ({rows.length}) — bỏ chọn / sửa trước khi tạo
+            </p>
             {rows.map((row, idx) => (
-              <div key={idx} className="flex items-start gap-2 rounded-md border border-border bg-bg p-2.5">
+              <div
+                key={idx}
+                className="flex items-start gap-2 rounded-md border border-border bg-bg p-2.5"
+              >
                 <input
                   type="checkbox"
                   checked={row.selected}
@@ -159,7 +177,11 @@ export function GenerateIssuesDialog({
                   aria-label="Chọn"
                 />
                 <div className="min-w-0 flex-1 space-y-1.5">
-                  <Input value={row.summary} onChange={(e) => patch(idx, { summary: e.target.value })} className="h-8 text-sm" />
+                  <Input
+                    value={row.summary}
+                    onChange={(e) => patch(idx, { summary: e.target.value })}
+                    className="h-8 text-sm"
+                  />
                   <div className="flex items-center gap-2">
                     <SearchSelect
                       value={resolveTypeId(row.type)}
@@ -167,7 +189,10 @@ export function GenerateIssuesDialog({
                         const name = meta?.issueTypes.find((t) => t.id === v)?.name;
                         patch(idx, { type: name });
                       }}
-                      options={(meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name }))}
+                      options={(meta?.issueTypes ?? []).map((t) => ({
+                        value: t.id,
+                        label: t.name,
+                      }))}
                       ariaLabel="Loại công việc"
                       className="w-40"
                     />
@@ -176,7 +201,9 @@ export function GenerateIssuesDialog({
                         {row.storyPoints} pts
                       </span>
                     )}
-                    {row.description && <span className="truncate text-xs text-faint">{row.description}</span>}
+                    {row.description && (
+                      <span className="truncate text-xs text-faint">{row.description}</span>
+                    )}
                   </div>
                 </div>
               </div>

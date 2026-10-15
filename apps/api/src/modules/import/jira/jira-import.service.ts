@@ -4,11 +4,19 @@ import { createId } from '@paralleldrive/cuid2';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import type { Prisma } from '@prisma/client';
-import { JIRA_CREATE, jiraAnalyzeIdSchema, type JiraImportOptions, type JiraImportRunInput } from '@tirapro/shared';
+import {
+  JIRA_CREATE,
+  jiraAnalyzeIdSchema,
+  type JiraImportOptions,
+  type JiraImportRunInput,
+} from '@tirapro/shared';
 import type { CreateIssueInput } from '@tirapro/shared';
 import type { JiraAnalyzeResult, JiraDryRunResult, JiraImportTargets } from '@tirapro/types';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
-import { BusinessRuleException, NotFoundAppException } from '../../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  NotFoundAppException,
+} from '../../../common/exceptions/app.exception';
 import { ProjectsService } from '../../projects/projects.service';
 import { ImportService, type PreparedItem } from '../import.service';
 import {
@@ -79,7 +87,8 @@ interface AnalyzeMeta {
   userId: string;
 }
 
-const EXPIRED_MESSAGE = 'Phiên phân tích đã hết hạn (giữ tối đa 1 giờ) hoặc không tồn tại — hãy tải lại tệp CSV để phân tích lại';
+const EXPIRED_MESSAGE =
+  'Phiên phân tích đã hết hạn (giữ tối đa 1 giờ) hoặc không tồn tại — hãy tải lại tệp CSV để phân tích lại';
 
 @Injectable()
 export class JiraImportService {
@@ -100,11 +109,23 @@ export class JiraImportService {
   // ---------------------------------------------------------------- bước 1: analyze
 
   /** Lưu tệp, parse và trả tóm tắt để dựng bảng mapping. */
-  async analyze(workspaceId: string, userId: string, file: Express.Multer.File | undefined): Promise<JiraAnalyzeResult> {
-    if (!file?.buffer?.length) throw new BusinessRuleException('Thiếu tệp CSV — hãy chọn tệp export từ Jira rồi thử lại');
-    if (file.size > JIRA_MAX_UPLOAD_BYTES) throw new BusinessRuleException('Tệp vượt quá 25MB — hãy xuất Jira theo từng project hoặc khoảng thời gian nhỏ hơn');
-    const looksCsv = /\.csv$/i.test(file.originalname ?? '') || /csv|excel|text\/plain/i.test(file.mimetype ?? '');
-    if (!looksCsv) throw new BusinessRuleException('Chỉ nhận tệp .csv — hãy xuất Jira bằng "Export issues → CSV"');
+  async analyze(
+    workspaceId: string,
+    userId: string,
+    file: Express.Multer.File | undefined,
+  ): Promise<JiraAnalyzeResult> {
+    if (!file?.buffer?.length)
+      throw new BusinessRuleException('Thiếu tệp CSV — hãy chọn tệp export từ Jira rồi thử lại');
+    if (file.size > JIRA_MAX_UPLOAD_BYTES)
+      throw new BusinessRuleException(
+        'Tệp vượt quá 25MB — hãy xuất Jira theo từng project hoặc khoảng thời gian nhỏ hơn',
+      );
+    const looksCsv =
+      /\.csv$/i.test(file.originalname ?? '') || /csv|excel|text\/plain/i.test(file.mimetype ?? '');
+    if (!looksCsv)
+      throw new BusinessRuleException(
+        'Chỉ nhận tệp .csv — hãy xuất Jira bằng "Export issues → CSV"',
+      );
 
     let parsed: JiraParseResult;
     try {
@@ -112,7 +133,10 @@ export class JiraImportService {
     } catch (err) {
       throw new BusinessRuleException(this.errMessage(err));
     }
-    if (parsed.issues.length === 0) throw new BusinessRuleException('Tệp không có issue nào — hãy kiểm tra lại bộ lọc khi xuất từ Jira');
+    if (parsed.issues.length === 0)
+      throw new BusinessRuleException(
+        'Tệp không có issue nào — hãy kiểm tra lại bộ lọc khi xuất từ Jira',
+      );
 
     await this.purgeExpired();
     const analyzeId = createId();
@@ -138,7 +162,11 @@ export class JiraImportService {
         orderBy: { hierarchyLevel: 'asc' },
         select: { id: true, name: true, isSubtask: true },
       }),
-      this.prisma.priority.findMany({ where: { workspaceId }, orderBy: { rank: 'desc' }, select: { id: true, name: true } }),
+      this.prisma.priority.findMany({
+        where: { workspaceId },
+        orderBy: { rank: 'desc' },
+        select: { id: true, name: true },
+      }),
       this.prisma.workspaceMembership.findMany({
         where: { workspaceId },
         select: { user: { select: { id: true, displayName: true, email: true } } },
@@ -148,7 +176,10 @@ export class JiraImportService {
     if (projectId) {
       const project = projects.find((p) => p.id === projectId);
       if (!project) throw new NotFoundAppException('Dự án');
-      const full = await this.prisma.project.findUnique({ where: { id: projectId }, select: { defaultWorkflowId: true } });
+      const full = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { defaultWorkflowId: true },
+      });
       if (full?.defaultWorkflowId) {
         statuses = await this.prisma.status.findMany({
           where: { workflowId: full.defaultWorkflowId },
@@ -162,7 +193,9 @@ export class JiraImportService {
       issueTypes,
       priorities,
       statuses,
-      members: members.map((m) => m.user).sort((a, b) => a.displayName.localeCompare(b.displayName)),
+      members: members
+        .map((m) => m.user)
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
     };
   }
 
@@ -196,7 +229,10 @@ export class JiraImportService {
         where: { workspaceId, key: input.newProject.key, deletedAt: null },
         select: { id: true },
       });
-      if (dup) throw new BusinessRuleException(`Mã dự án "${input.newProject.key}" đã tồn tại trong không gian làm việc này — hãy chọn mã khác`);
+      if (dup)
+        throw new BusinessRuleException(
+          `Mã dự án "${input.newProject.key}" đã tồn tại trong không gian làm việc này — hãy chọn mã khác`,
+        );
     }
 
     const catalog = await this.loadCatalog(workspaceId);
@@ -219,7 +255,9 @@ export class JiraImportService {
         sprints: input.options.importSprints ? plan.sprintNames.length : 0,
         labels: plan.labels,
         comments: input.options.importComments ? plan.comments : 0,
-        warnings: [...plan.links.entries()].flatMap(([r, l]) => l.warnings.map((w) => this.line(r, w, true))),
+        warnings: [...plan.links.entries()].flatMap(([r, l]) =>
+          l.warnings.map((w) => this.line(r, w, true)),
+        ),
       };
     }
 
@@ -244,7 +282,14 @@ export class JiraImportService {
     });
 
     const ctx: RunContext = {
-      workspaceId, userId, jobId: job.id, analyzeId: input.analyzeId, parsed, input, catalog, existingProject,
+      workspaceId,
+      userId,
+      jobId: job.id,
+      analyzeId: input.analyzeId,
+      parsed,
+      input,
+      catalog,
+      existingProject,
     };
     const task = this.execute(ctx).finally(() => this.running.delete(job.id));
     this.running.set(job.id, task);
@@ -272,10 +317,17 @@ export class JiraImportService {
         workflowId = ctx.existingProject.defaultWorkflowId;
       } else {
         const np = input.newProject!;
-        const created = await this.projects.create(workspaceId, userId, { key: np.key, name: np.name, type: 'SCRUM' });
+        const created = await this.projects.create(workspaceId, userId, {
+          key: np.key,
+          name: np.name,
+          type: 'SCRUM',
+        });
         projectId = created.id;
         projectKey = np.key;
-        const p = await this.prisma.project.findUnique({ where: { id: projectId }, select: { defaultWorkflowId: true } });
+        const p = await this.prisma.project.findUnique({
+          where: { id: projectId },
+          select: { defaultWorkflowId: true },
+        });
         workflowId = p?.defaultWorkflowId ?? null;
       }
       await this.prisma.importJob.update({
@@ -285,18 +337,34 @@ export class JiraImportService {
 
       // 2. Đổi mapping thành id thật (tạo mới loại/ưu tiên/trạng thái khi người dùng chọn "Tạo mới").
       const typeIds = await this.resolveTypes(workspaceId, input.mapping.issueTypes, ctx.catalog);
-      const priorityIds = await this.resolvePriorities(workspaceId, input.mapping.priorities, ctx.catalog);
-      const { statusIds, categories } = await this.resolveStatuses(projectId, workflowId, input.mapping.statuses);
+      const priorityIds = await this.resolvePriorities(
+        workspaceId,
+        input.mapping.priorities,
+        ctx.catalog,
+      );
+      const { statusIds, categories } = await this.resolveStatuses(
+        projectId,
+        workflowId,
+        input.mapping.statuses,
+      );
 
       // 3. Sprint.
       const plan = this.plan(parsed, input, ctx.catalog);
-      const sprintIds = opts.importSprints ? await this.ensureSprints(projectId, parsed, plan.sprintNames) : new Map<string, string>();
+      const sprintIds = opts.importSprints
+        ? await this.ensureSprints(projectId, parsed, plan.sprintNames)
+        : new Map<string, string>();
 
       // 4. Cache label theo project + tra cứu user/resolution.
-      const labelRows = await this.prisma.label.findMany({ where: { projectId }, select: { id: true, name: true } });
+      const labelRows = await this.prisma.label.findMany({
+        where: { projectId },
+        select: { id: true, name: true },
+      });
       const labelCache = new Map(labelRows.map((l) => [l.name.toLowerCase(), l.id]));
-      const resolutionByName = new Map(ctx.catalog.resolutions.map((r) => [r.name.toLowerCase(), r.id]));
-      const userFor = (name: string): string | undefined => ownValue(input.mapping.users, name) || undefined; // '' = để trống như null
+      const resolutionByName = new Map(
+        ctx.catalog.resolutions.map((r) => [r.name.toLowerCase(), r.id]),
+      );
+      const userFor = (name: string): string | undefined =>
+        ownValue(input.mapping.users, name) || undefined; // '' = để trống như null
 
       // 5. Ghi theo tầng; mỗi tầng chia lô 100 dòng/transaction trong ImportService.
       const idByRow = new Map<JiraIssueRow, string>();
@@ -310,7 +378,10 @@ export class JiraImportService {
           processed += n;
           await this.prisma.importJob.update({
             where: { id: jobId },
-            data: { processedItems: processed, progress: total ? Math.min(99, Math.floor((processed / total) * 100)) : 0 },
+            data: {
+              processedItems: processed,
+              progress: total ? Math.min(99, Math.floor((processed / total) * 100)) : 0,
+            },
           });
         },
       };
@@ -319,29 +390,58 @@ export class JiraImportService {
         const items: PreparedItem[] = [];
         for (const row of layer) {
           const links = plan.links.get(row)!;
-          for (const w of links.warnings) { errorLines.push(this.line(row, w, true)); counters.warnings++; }
+          for (const w of links.warnings) {
+            errorLines.push(this.line(row, w, true));
+            counters.warnings++;
+          }
           const parentId = links.parent ? idByRow.get(links.parent) : undefined;
           const epicId = links.epic ? idByRow.get(links.epic) : undefined;
           if (links.parent && !parentId) {
-            errorLines.push(this.line(row, `Việc cha ${links.parent.key} không được tạo — tạo không có việc cha`, true));
+            errorLines.push(
+              this.line(
+                row,
+                `Việc cha ${links.parent.key} không được tạo — tạo không có việc cha`,
+                true,
+              ),
+            );
             counters.warnings++;
           }
           if (links.epic && !epicId) {
-            errorLines.push(this.line(row, `Epic ${links.epic.key} không được tạo — tạo không gắn epic`, true));
+            errorLines.push(
+              this.line(row, `Epic ${links.epic.key} không được tạo — tạo không gắn epic`, true),
+            );
             counters.warnings++;
           }
-          items.push(this.buildItem({
-            row, projectId, parentId, epicId, typeId: typeIds.get(row.issueType)!,
-            statusId: statusIds.get(row.status)!, category: categories.get(row.status) ?? 'IN_PROGRESS',
-            priorityId: row.priority ? priorityIds.get(row.priority) : undefined,
-            sprintId: opts.importSprints ? sprintIds.get(row.sprints[row.sprints.length - 1] ?? '') : undefined,
-            assigneeId: row.assignee ? userFor(row.assignee) : undefined,
-            reporterId: row.reporter ? userFor(row.reporter) : undefined,
-            resolutionByName, options: opts, parsed, userFor,
-            onCreated: (dto) => idByRow.set(row, dto.id),
-          }));
+          items.push(
+            this.buildItem({
+              row,
+              projectId,
+              parentId,
+              epicId,
+              typeId: typeIds.get(row.issueType)!,
+              statusId: statusIds.get(row.status)!,
+              category: categories.get(row.status) ?? 'IN_PROGRESS',
+              priorityId: row.priority ? priorityIds.get(row.priority) : undefined,
+              sprintId: opts.importSprints
+                ? sprintIds.get(row.sprints[row.sprints.length - 1] ?? '')
+                : undefined,
+              assigneeId: row.assignee ? userFor(row.assignee) : undefined,
+              reporterId: row.reporter ? userFor(row.reporter) : undefined,
+              resolutionByName,
+              options: opts,
+              parsed,
+              userFor,
+              onCreated: (dto) => idByRow.set(row, dto.id),
+            }),
+          );
         }
-        const written = await this.importService.createIssuesInChunks(workspaceId, userId, items, labelCache, hooks);
+        const written = await this.importService.createIssuesInChunks(
+          workspaceId,
+          userId,
+          items,
+          labelCache,
+          hooks,
+        );
         counters.created += written.created;
         counters.labels += written.labels;
         counters.comments += written.comments;
@@ -353,7 +453,8 @@ export class JiraImportService {
       }
 
       // 6. Tổng kết.
-      const status: 'COMPLETED' | 'FAILED' = counters.created === 0 && total > 0 ? 'FAILED' : 'COMPLETED';
+      const status: 'COMPLETED' | 'FAILED' =
+        counters.created === 0 && total > 0 ? 'FAILED' : 'COMPLETED';
       await this.prisma.importJob.update({
         where: { id: jobId },
         data: {
@@ -362,11 +463,16 @@ export class JiraImportService {
           processedItems: processed,
           completedAt: new Date(),
           result: {
-            projectId, projectKey,
-            created: counters.created, failed: counters.failed, warnings: counters.warnings,
-            epics: plan.epics, subtasks: plan.subtasks,
+            projectId,
+            projectKey,
+            created: counters.created,
+            failed: counters.failed,
+            warnings: counters.warnings,
+            epics: plan.epics,
+            subtasks: plan.subtasks,
             sprints: opts.importSprints ? plan.sprintNames.length : 0,
-            labels: counters.labels, comments: counters.comments,
+            labels: counters.labels,
+            comments: counters.comments,
           },
           errorLog: this.joinLog(errorLines),
         },
@@ -380,7 +486,9 @@ export class JiraImportService {
           data: { status: 'FAILED', errorLog: message, completedAt: new Date() },
         });
       } catch (updateErr) {
-        this.logger.error(`Không ghi được trạng thái FAILED của job ${jobId}: ${this.errMessage(updateErr)}`);
+        this.logger.error(
+          `Không ghi được trạng thái FAILED của job ${jobId}: ${this.errMessage(updateErr)}`,
+        );
       }
     } finally {
       await this.removeFiles(ctx.analyzeId);
@@ -445,7 +553,10 @@ export class JiraImportService {
           timeSpent: row.timeSpent !== null ? Math.round(row.timeSpent) : null,
           originalEstimate: row.originalEstimate !== null ? Math.round(row.originalEstimate) : null,
           resolvedAt: done ? (row.resolved ?? row.updated ?? null) : null,
-          resolutionId: done && row.resolution ? (a.resolutionByName.get(row.resolution.toLowerCase()) ?? null) : null,
+          resolutionId:
+            done && row.resolution
+              ? (a.resolutionByName.get(row.resolution.toLowerCase()) ?? null)
+              : null,
         };
         if (row.created) data.createdAt = row.created;
         if (row.updated) data.updatedAt = row.updated;
@@ -455,7 +566,9 @@ export class JiraImportService {
         // 2. Label (resolve-or-create theo project, dùng cache của lô).
         const labelIds = new Set<string>();
         for (const name of row.labels) {
-          labelIds.add(await this.importService.resolveOrCreateLabel(tx, a.projectId, name, labelCache));
+          labelIds.add(
+            await this.importService.resolveOrCreateLabel(tx, a.projectId, name, labelCache),
+          );
         }
         if (labelIds.size) {
           await tx.issueLabel.createMany({
@@ -470,7 +583,8 @@ export class JiraImportService {
           const rows: Prisma.CommentCreateManyInput[] = row.comments.map((c) => {
             const name = commentAuthorName(a.parsed, c.authorRef);
             const authorId = name ? a.userFor(name) : undefined;
-            const body = !authorId && name ? `_(Bình luận từ Jira của ${name})_\n\n${c.body}` : c.body;
+            const body =
+              !authorId && name ? `_(Bình luận từ Jira của ${name})_\n\n${c.body}` : c.body;
             return {
               issueId: issue.id,
               authorId: authorId ?? null,
@@ -489,11 +603,18 @@ export class JiraImportService {
 
   // ---------------------------------------------------------------- mapping → id
 
-  private async resolveTypes(workspaceId: string, mapping: Record<string, string>, catalog: Catalog): Promise<Map<string, string>> {
+  private async resolveTypes(
+    workspaceId: string,
+    mapping: Record<string, string>,
+    catalog: Catalog,
+  ): Promise<Map<string, string>> {
     const byName = new Map(catalog.types.map((t) => [t.name.toLowerCase(), t.id]));
     const out = new Map<string, string>();
     for (const [jiraName, target] of Object.entries(mapping)) {
-      if (target !== JIRA_CREATE) { out.set(jiraName, target); continue; }
+      if (target !== JIRA_CREATE) {
+        out.set(jiraName, target);
+        continue;
+      }
       let id = byName.get(jiraName.toLowerCase());
       if (!id) {
         const created = await this.prisma.issueType.create({
@@ -508,11 +629,18 @@ export class JiraImportService {
     return out;
   }
 
-  private async resolvePriorities(workspaceId: string, mapping: Record<string, string>, catalog: Catalog): Promise<Map<string, string>> {
+  private async resolvePriorities(
+    workspaceId: string,
+    mapping: Record<string, string>,
+    catalog: Catalog,
+  ): Promise<Map<string, string>> {
     const byName = new Map(catalog.priorities.map((p) => [p.name.toLowerCase(), p.id]));
     const out = new Map<string, string>();
     for (const [jiraName, target] of Object.entries(mapping)) {
-      if (target !== JIRA_CREATE) { out.set(jiraName, target); continue; }
+      if (target !== JIRA_CREATE) {
+        out.set(jiraName, target);
+        continue;
+      }
       let id = byName.get(jiraName.toLowerCase());
       if (!id) {
         const created = await this.prisma.priority.create({
@@ -536,7 +664,10 @@ export class JiraImportService {
     workflowId: string | null,
     mapping: Record<string, string>,
   ): Promise<{ statusIds: Map<string, string>; categories: Map<string, Category> }> {
-    if (!workflowId) throw new BusinessRuleException('Project chưa cấu hình workflow — hãy tạo workflow cho project trước khi nhập');
+    if (!workflowId)
+      throw new BusinessRuleException(
+        'Project chưa cấu hình workflow — hãy tạo workflow cho project trước khi nhập',
+      );
     const existing = await this.prisma.status.findMany({
       where: { workflowId },
       select: { id: true, name: true, category: true },
@@ -556,7 +687,10 @@ export class JiraImportService {
       let status = byName.get(jiraName.toLowerCase());
       if (!status) {
         if (nextOrder === null) {
-          const agg = await this.prisma.status.aggregate({ where: { workflowId }, _max: { order: true } });
+          const agg = await this.prisma.status.aggregate({
+            where: { workflowId },
+            _max: { order: true },
+          });
           nextOrder = (agg._max.order ?? -1) + 1;
         }
         const category = inferStatusCategory(jiraName);
@@ -579,12 +713,25 @@ export class JiraImportService {
 
   /** Thêm cột (cùng tên trạng thái) vào từng board của project để trạng thái mới hiện trên board. */
   private async addToBoards(projectId: string, name: string, statusId: string): Promise<void> {
-    const boards = await this.prisma.board.findMany({ where: { projectId, deletedAt: null }, select: { id: true } });
+    const boards = await this.prisma.board.findMany({
+      where: { projectId, deletedAt: null },
+      select: { id: true },
+    });
     for (const b of boards) {
-      let col = await this.prisma.boardColumn.findFirst({ where: { boardId: b.id, name }, select: { id: true } });
+      let col = await this.prisma.boardColumn.findFirst({
+        where: { boardId: b.id, name },
+        select: { id: true },
+      });
       if (!col) {
-        const last = await this.prisma.boardColumn.findFirst({ where: { boardId: b.id }, orderBy: { order: 'desc' }, select: { order: true } });
-        col = await this.prisma.boardColumn.create({ data: { boardId: b.id, name, order: (last?.order ?? -1) + 1 }, select: { id: true } });
+        const last = await this.prisma.boardColumn.findFirst({
+          where: { boardId: b.id },
+          orderBy: { order: 'desc' },
+          select: { order: true },
+        });
+        col = await this.prisma.boardColumn.create({
+          data: { boardId: b.id, name, order: (last?.order ?? -1) + 1 },
+          select: { id: true },
+        });
       }
       await this.prisma.boardColumnStatus.upsert({
         where: { columnId_statusId: { columnId: col.id, statusId } },
@@ -595,25 +742,51 @@ export class JiraImportService {
   }
 
   /** Sprint CLOSED theo tên (dùng lại sprint cùng tên đã có); ngày = khoảng tạo→cập nhật của các issue trong sprint. */
-  private async ensureSprints(projectId: string, parsed: JiraParseResult, names: string[]): Promise<Map<string, string>> {
+  private async ensureSprints(
+    projectId: string,
+    parsed: JiraParseResult,
+    names: string[],
+  ): Promise<Map<string, string>> {
     const out = new Map<string, string>();
     if (!names.length) return out;
-    const existing = await this.prisma.sprint.findMany({ where: { projectId, deletedAt: null }, select: { id: true, name: true } });
+    const existing = await this.prisma.sprint.findMany({
+      where: { projectId, deletedAt: null },
+      select: { id: true, name: true },
+    });
     const byName = new Map(existing.map((s) => [s.name.toLowerCase(), s.id]));
     // allow-deleted: sequence phải tính cả sprint đã xoá để không trùng số thứ tự (unique projectId+sequence)
-    const last = await this.prisma.sprint.findFirst({ where: { projectId }, orderBy: { sequence: 'desc' }, select: { sequence: true } });
+    const last = await this.prisma.sprint.findFirst({
+      where: { projectId },
+      orderBy: { sequence: 'desc' },
+      select: { sequence: true },
+    });
     let sequence = last?.sequence ?? 0;
 
     for (const name of names) {
       const known = byName.get(name.toLowerCase());
-      if (known) { out.set(name, known); continue; }
+      if (known) {
+        out.set(name, known);
+        continue;
+      }
       const rows = parsed.issues.filter((r) => r.sprints.includes(name));
-      const starts = rows.map((r) => r.created?.getTime()).filter((t): t is number => t !== undefined);
-      const ends = rows.map((r) => (r.resolved ?? r.updated)?.getTime()).filter((t): t is number => t !== undefined);
+      const starts = rows
+        .map((r) => r.created?.getTime())
+        .filter((t): t is number => t !== undefined);
+      const ends = rows
+        .map((r) => (r.resolved ?? r.updated)?.getTime())
+        .filter((t): t is number => t !== undefined);
       const startDate = starts.length ? new Date(Math.min(...starts)) : null;
       const endDate = ends.length ? new Date(Math.max(...ends)) : null;
       const sprint = await this.prisma.sprint.create({
-        data: { projectId, name, state: 'CLOSED', sequence: ++sequence, startDate, endDate, completeDate: endDate },
+        data: {
+          projectId,
+          name,
+          state: 'CLOSED',
+          sequence: ++sequence,
+          startDate,
+          endDate,
+          completeDate: endDate,
+        },
         select: { id: true },
       });
       out.set(name, sprint.id);
@@ -625,10 +798,16 @@ export class JiraImportService {
 
   private async loadCatalog(workspaceId: string): Promise<Catalog> {
     const [types, priorities, resolutions, members] = await Promise.all([
-      this.prisma.issueType.findMany({ where: { workspaceId }, select: { id: true, name: true, key: true, isSubtask: true } }),
+      this.prisma.issueType.findMany({
+        where: { workspaceId },
+        select: { id: true, name: true, key: true, isSubtask: true },
+      }),
       this.prisma.priority.findMany({ where: { workspaceId }, select: { id: true, name: true } }),
       this.prisma.resolution.findMany({ where: { workspaceId }, select: { id: true, name: true } }),
-      this.prisma.workspaceMembership.findMany({ where: { workspaceId }, select: { userId: true } }),
+      this.prisma.workspaceMembership.findMany({
+        where: { workspaceId },
+        select: { userId: true },
+      }),
     ]);
     return { types, priorities, resolutions, memberIds: new Set(members.map((m) => m.userId)) };
   }
@@ -648,35 +827,53 @@ export class JiraImportService {
       if (id !== JIRA_CREATE && !typeIds.has(id)) bad.push(`loại "${name}" → ${id} không tồn tại`);
     }
     for (const [name, id] of Object.entries(input.mapping.priorities)) {
-      if (id !== JIRA_CREATE && !priorityIds.has(id)) bad.push(`ưu tiên "${name}" → ${id} không tồn tại`);
+      if (id !== JIRA_CREATE && !priorityIds.has(id))
+        bad.push(`ưu tiên "${name}" → ${id} không tồn tại`);
     }
     for (const [name, id] of Object.entries(input.mapping.statuses)) {
       if (id === JIRA_CREATE) continue;
-      if (!hasProject) bad.push(`trạng thái "${name}": project mới chưa có trạng thái nào để chọn — hãy chọn "Tạo mới"`);
-      else if (!statusIds.has(id)) bad.push(`trạng thái "${name}" → ${id} không thuộc workflow của dự án`);
+      if (!hasProject)
+        bad.push(
+          `trạng thái "${name}": project mới chưa có trạng thái nào để chọn — hãy chọn "Tạo mới"`,
+        );
+      else if (!statusIds.has(id))
+        bad.push(`trạng thái "${name}" → ${id} không thuộc workflow của dự án`);
     }
     for (const [name, id] of Object.entries(input.mapping.users)) {
-      if (id !== null && id !== '' && !catalog.memberIds.has(id)) bad.push(`người dùng "${name}" → ${id} không phải thành viên workspace`);
+      if (id !== null && id !== '' && !catalog.memberIds.has(id))
+        bad.push(`người dùng "${name}" → ${id} không phải thành viên workspace`);
     }
-    if (bad.length) throw new BusinessRuleException(`Mapping có giá trị không hợp lệ — hãy chọn lại: ${bad.join('; ')}`);
+    if (bad.length)
+      throw new BusinessRuleException(
+        `Mapping có giá trị không hợp lệ — hãy chọn lại: ${bad.join('; ')}`,
+      );
   }
 
   /** Phân loại epic/subtask, resolve cha/epic và chia tầng; đếm số liệu cho dry-run. */
-  private plan(parsed: JiraParseResult, input: JiraImportRunInput, catalog: Pick<Catalog, 'types'>): Plan {
+  private plan(
+    parsed: JiraParseResult,
+    input: JiraImportRunInput,
+    catalog: Pick<Catalog, 'types'>,
+  ): Plan {
     const typeById = new Map(catalog.types.map((t) => [t.id, t]));
     const mapped = (r: JiraIssueRow) => {
       const target = ownValue(input.mapping.issueTypes, r.issueType);
       return target && target !== JIRA_CREATE ? typeById.get(target) : undefined;
     };
-    const isEpic = (r: JiraIssueRow): boolean => isEpicTypeName(r.issueType) || mapped(r)?.key === 'EPIC';
-    const isSubtask = (r: JiraIssueRow): boolean => isSubtaskTypeName(r.issueType) || mapped(r)?.isSubtask === true;
+    const isEpic = (r: JiraIssueRow): boolean =>
+      isEpicTypeName(r.issueType) || mapped(r)?.key === 'EPIC';
+    const isSubtask = (r: JiraIssueRow): boolean =>
+      isSubtaskTypeName(r.issueType) || mapped(r)?.isSubtask === true;
 
     const rows = parsed.issues;
     const links = resolveLinks(rows, isEpic, isSubtask);
     const layers = layerIssues(rows, links, isEpic, isSubtask);
     const sprintNames = [...new Set(rows.flatMap((r) => r.sprints))];
     return {
-      links, layers, isEpic, isSubtask,
+      links,
+      layers,
+      isEpic,
+      isSubtask,
       epics: rows.filter(isEpic).length,
       subtasks: rows.filter(isSubtask).length,
       sprintNames,
@@ -693,7 +890,8 @@ export class JiraImportService {
 
   /** Đọc + parse tệp đã analyze; kiểm tra thuộc workspace và chưa hết hạn. */
   private async load(workspaceId: string, analyzeId: string): Promise<JiraParseResult> {
-    if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success) throw new BusinessRuleException(EXPIRED_MESSAGE);
+    if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success)
+      throw new BusinessRuleException(EXPIRED_MESSAGE);
     const csvPath = path.join(this.dir(), `${analyzeId}.csv`);
     try {
       const [stat, metaRaw] = await Promise.all([
@@ -741,7 +939,10 @@ export class JiraImportService {
 
   // ---------------------------------------------------------------- helpers
 
-  private configWith(input: JiraImportRunInput, extra: Record<string, string>): Prisma.InputJsonValue {
+  private configWith(
+    input: JiraImportRunInput,
+    extra: Record<string, string>,
+  ): Prisma.InputJsonValue {
     return {
       format: 'jira-csv',
       analyzeId: input.analyzeId,

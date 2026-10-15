@@ -11,7 +11,11 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useRoles } from '@/features/roles/api';
 import { EditRolesPopover } from '@/features/members/EditRolesPopover';
-import { useProjectMembers, useRemoveProjectMember, useSetProjectMemberRoles } from '@/features/members/api';
+import {
+  useProjectMembers,
+  useRemoveProjectMember,
+  useSetProjectMemberRoles,
+} from '@/features/members/api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
 
@@ -104,7 +108,11 @@ export function MembersSection({ projectId }: { projectId?: string }) {
                         'rounded px-1.5 py-0.5 text-[10px] font-medium',
                         m.isOverride ? 'bg-primary-subtle text-primary' : 'bg-surface-2 text-faint',
                       )}
-                      title={m.isOverride ? 'Vai trò đặt riêng cho dự án này' : 'Vai trò mặc định suy từ vai trò chung'}
+                      title={
+                        m.isOverride
+                          ? 'Vai trò đặt riêng cho dự án này'
+                          : 'Vai trò mặc định suy từ vai trò chung'
+                      }
                     >
                       {m.isOverride ? 'riêng' : 'mặc định'}
                     </span>
@@ -117,7 +125,12 @@ export function MembersSection({ projectId }: { projectId?: string }) {
                         saving={setRoles.isPending}
                         onSave={(ids) => setRoles.mutateAsync({ userId: m.user.id, roleIds: ids })}
                         trigger={
-                          <Button variant="ghost" size="icon" title="Đặt vai trò riêng cho dự án" aria-label={`Đặt vai trò riêng cho ${m.user.displayName}`}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Đặt vai trò riêng cho dự án"
+                            aria-label={`Đặt vai trò riêng cho ${m.user.displayName}`}
+                          >
                             <Pencil className="h-4 w-4" />
                           </Button>
                         }
@@ -139,7 +152,9 @@ export function MembersSection({ projectId }: { projectId?: string }) {
                 </li>
               ))}
               {shown.length === 0 && (
-                <li className="py-6 text-center text-sm text-muted">Không tìm thấy ai khớp “{q}”.</li>
+                <li className="py-6 text-center text-sm text-muted">
+                  Không tìm thấy ai khớp “{q}”.
+                </li>
               )}
             </ul>
           </>

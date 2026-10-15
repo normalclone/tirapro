@@ -2,7 +2,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { MailOutboxService } from './mail-outbox.service';
 
 function row(over: Record<string, unknown> = {}) {
-  return { id: 'm1', to: 'a@x.vn', subject: 's', html: '<p>h</p>', text: 't', template: 'invite', payload: {}, status: 'PENDING', attempts: 0, ...over };
+  return {
+    id: 'm1',
+    to: 'a@x.vn',
+    subject: 's',
+    html: '<p>h</p>',
+    text: 't',
+    template: 'invite',
+    payload: {},
+    status: 'PENDING',
+    attempts: 0,
+    ...over,
+  };
 }
 
 function setup(rows: unknown[], sendImpl: () => Promise<void> = () => Promise.resolve()) {
@@ -13,7 +24,11 @@ function setup(rows: unknown[], sendImpl: () => Promise<void> = () => Promise.re
   };
   const provider = { send: vi.fn(sendImpl) };
   const redis = { isAvailable: () => false, getClient: () => null };
-  return { service: new MailOutboxService({ emailOutbox } as never, redis as never, provider), emailOutbox, provider };
+  return {
+    service: new MailOutboxService({ emailOutbox } as never, redis as never, provider),
+    emailOutbox,
+    provider,
+  };
 }
 
 describe('MailOutboxService.processBatch', () => {
@@ -21,7 +36,12 @@ describe('MailOutboxService.processBatch', () => {
     const { service, emailOutbox, provider } = setup([row()]);
     const sent = await service.processBatch();
     expect(sent).toBe(1);
-    expect(provider.send).toHaveBeenCalledWith({ to: 'a@x.vn', subject: 's', html: '<p>h</p>', text: 't' });
+    expect(provider.send).toHaveBeenCalledWith({
+      to: 'a@x.vn',
+      subject: 's',
+      html: '<p>h</p>',
+      text: 't',
+    });
     const upd = emailOutbox.update.mock.calls[0]![0] as { data: Record<string, unknown> };
     expect(upd.data).toMatchObject({ status: 'SENT', payload: {} });
     expect(upd.data.html).not.toContain('<p>h</p>');
@@ -37,15 +57,21 @@ describe('MailOutboxService.processBatch', () => {
 
   it('lỗi → attempts+1, lastError, hẹn lại sau 2^attempts phút, vẫn PENDING', async () => {
     const now = new Date('2026-10-16T10:00:00Z');
-    const { service, emailOutbox } = setup([row({ attempts: 1 })], () => Promise.reject(new Error('smtp down')));
+    const { service, emailOutbox } = setup([row({ attempts: 1 })], () =>
+      Promise.reject(new Error('smtp down')),
+    );
     expect(await service.processBatch(now)).toBe(0);
-    const upd = emailOutbox.update.mock.calls[0]![0] as { data: { attempts: number; lastError: string; status: string; scheduledAt: Date } };
+    const upd = emailOutbox.update.mock.calls[0]![0] as {
+      data: { attempts: number; lastError: string; status: string; scheduledAt: Date };
+    };
     expect(upd.data).toMatchObject({ attempts: 2, lastError: 'smtp down', status: 'PENDING' });
     expect(upd.data.scheduledAt.getTime()).toBe(now.getTime() + 4 * 60_000);
   });
 
   it('lỗi lần thứ 5 → FAILED', async () => {
-    const { service, emailOutbox } = setup([row({ attempts: 4 })], () => Promise.reject(new Error('x')));
+    const { service, emailOutbox } = setup([row({ attempts: 4 })], () =>
+      Promise.reject(new Error('x')),
+    );
     await service.processBatch();
     const upd = emailOutbox.update.mock.calls[0]![0] as { data: { status: string } };
     expect(upd.data.status).toBe('FAILED');
@@ -54,7 +80,9 @@ describe('MailOutboxService.processBatch', () => {
   it('hàng SENDING treo → tăng attempts (đủ 5 lần thì FAILED)', async () => {
     const { service, emailOutbox } = setup([]);
     await service.processBatch();
-    const [failed, retry] = emailOutbox.updateMany.mock.calls.map((c) => c[0] as { where: Record<string, unknown>; data: Record<string, unknown> });
+    const [failed, retry] = emailOutbox.updateMany.mock.calls.map(
+      (c) => c[0] as { where: Record<string, unknown>; data: Record<string, unknown> },
+    );
     expect(failed!.where).toMatchObject({ status: 'SENDING', attempts: { gte: 4 } });
     expect(failed!.data).toMatchObject({ status: 'FAILED', attempts: { increment: 1 } });
     expect(retry!.data).toMatchObject({ status: 'PENDING', attempts: { increment: 1 } });

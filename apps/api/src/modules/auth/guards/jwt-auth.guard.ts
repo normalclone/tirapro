@@ -1,4 +1,9 @@
-import { ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { OPTIONAL_AUTH_KEY } from '../../../common/decorators/optional-auth.decorator';
@@ -14,7 +19,8 @@ function extractApiKey(req: AuthedRequest): string | null {
   const x = req.headers['x-api-key'];
   if (typeof x === 'string' && x.startsWith('tira_')) return x;
   const auth = req.headers['authorization'];
-  if (typeof auth === 'string' && auth.startsWith('Bearer tira_')) return auth.slice('Bearer '.length);
+  if (typeof auth === 'string' && auth.startsWith('Bearer tira_'))
+    return auth.slice('Bearer '.length);
   return null;
 }
 
@@ -51,7 +57,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   private async authenticate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest<AuthedRequest & { apiKey?: { id: string; scopes: string[] } }>();
+    const req = context
+      .switchToHttp()
+      .getRequest<AuthedRequest & { apiKey?: { id: string; scopes: string[] } }>();
     const raw = extractApiKey(req);
     if (raw) {
       const ctx = await this.apiKeys.validate(raw);

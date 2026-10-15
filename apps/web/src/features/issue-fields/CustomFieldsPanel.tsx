@@ -88,7 +88,14 @@ function FieldEditor({
   switch (field.type) {
     case 'TEXT':
     case 'URL':
-      return <TextField id={id} value={asString(value)} type={field.type === 'URL' ? 'url' : 'text'} onSave={onSave} />;
+      return (
+        <TextField
+          id={id}
+          value={asString(value)}
+          type={field.type === 'URL' ? 'url' : 'text'}
+          onSave={onSave}
+        />
+      );
 
     case 'NUMBER':
       return <NumberField id={id} value={asString(value)} onSave={onSave} />;
@@ -100,7 +107,14 @@ function FieldEditor({
       return <DateField id={id} value={asString(value).slice(0, 10)} type="date" onSave={onSave} />;
 
     case 'DATETIME':
-      return <DateField id={id} value={toDatetimeLocal(asString(value))} type="datetime-local" onSave={onSave} />;
+      return (
+        <DateField
+          id={id}
+          value={toDatetimeLocal(asString(value))}
+          type="datetime-local"
+          onSave={onSave}
+        />
+      );
 
     case 'CHECKBOX':
       return (
@@ -121,17 +135,35 @@ function FieldEditor({
           value={typeof value === 'string' ? value : ''}
           disabled={saving}
           onChange={(v) => onSave(v === '' ? null : v)}
-          options={[{ value: '', label: '—' }, ...options.map((o) => ({ value: o.id, label: o.value }))]}
+          options={[
+            { value: '', label: '—' },
+            ...options.map((o) => ({ value: o.id, label: o.value })),
+          ]}
           className="w-full"
         />
       );
 
     case 'MULTI_SELECT':
-      return <MultiSelectField value={asStringArray(value)} options={options} saving={saving} onSave={onSave} />;
+      return (
+        <MultiSelectField
+          value={asStringArray(value)}
+          options={options}
+          saving={saving}
+          onSave={onSave}
+        />
+      );
 
     case 'USER':
       // TODO user picker
-      return <TextField id={id} value={asString(value)} type="text" placeholder="ID người dùng" onSave={onSave} />;
+      return (
+        <TextField
+          id={id}
+          value={asString(value)}
+          type="text"
+          placeholder="ID người dùng"
+          onSave={onSave}
+        />
+      );
 
     default:
       return null;
@@ -177,7 +209,15 @@ function TextField({
   );
 }
 
-function NumberField({ id, value, onSave }: { id: string; value: string; onSave: (value: unknown) => void }) {
+function NumberField({
+  id,
+  value,
+  onSave,
+}: {
+  id: string;
+  value: string;
+  onSave: (value: unknown) => void;
+}) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const commit = () => {
@@ -202,7 +242,15 @@ function NumberField({ id, value, onSave }: { id: string; value: string; onSave:
   );
 }
 
-function TextAreaField({ id, value, onSave }: { id: string; value: string; onSave: (value: unknown) => void }) {
+function TextAreaField({
+  id,
+  value,
+  onSave,
+}: {
+  id: string;
+  value: string;
+  onSave: (value: unknown) => void;
+}) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const commit = () => {

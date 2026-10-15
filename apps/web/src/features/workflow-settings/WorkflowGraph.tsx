@@ -89,14 +89,25 @@ function buildNodes(wf: Workflow, saved: PosMap, onDelete: (id: string) => void)
   const auto = autoLayout(wf);
   const at = (id: string) => saved[id] ?? auto[id] ?? { x: 0, y: 0 };
   const nodes: Node<NodeData>[] = [
-    { id: ANY_ID, type: 'wf', position: at(ANY_ID), data: { label: 'Bất kỳ trạng thái', isAny: true } },
+    {
+      id: ANY_ID,
+      type: 'wf',
+      position: at(ANY_ID),
+      data: { label: 'Bất kỳ trạng thái', isAny: true },
+    },
   ];
   for (const s of wf.statuses) {
     nodes.push({
       id: s.id,
       type: 'wf',
       position: at(s.id),
-      data: { label: s.name, category: s.category, color: s.color, isInitial: s.isInitial, onDelete },
+      data: {
+        label: s.name,
+        category: s.category,
+        color: s.color,
+        isInitial: s.isInitial,
+        onDelete,
+      },
     });
   }
   return nodes;
@@ -109,7 +120,12 @@ function buildEdges(wf: Workflow): Edge[] {
     target: t.toStatusId,
     label: t.name,
     type: 'smoothstep',
-    markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: 'var(--border-strong)' },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 16,
+      height: 16,
+      color: 'var(--border-strong)',
+    },
     style: { stroke: 'var(--border-strong)', strokeWidth: 1.5 },
     labelStyle: { fill: 'var(--muted)', fontSize: 11, fontWeight: 500 },
     labelBgStyle: { fill: 'var(--surface)', fillOpacity: 0.9 },
@@ -128,7 +144,11 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
         )}
       >
         {data.label}
-        <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-faint" />
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-faint"
+        />
       </div>
     );
   }
@@ -139,16 +159,27 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
         selected && 'border-primary ring-2 ring-[var(--ring)]',
       )}
     >
-      <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-[var(--border-strong)]" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-[var(--border-strong)]"
+      />
       <div className="flex items-center gap-2">
         <span
           className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ background: data.color || (data.category ? CATEGORY_VAR[data.category] : 'var(--faint)') }}
+          style={{
+            background:
+              data.color || (data.category ? CATEGORY_VAR[data.category] : 'var(--faint)'),
+          }}
           aria-hidden
         />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-strong">{data.label}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-strong">
+          {data.label}
+        </span>
         {data.isInitial && (
-          <span className="rounded bg-primary-subtle px-1 py-0.5 text-[10px] font-medium text-primary">Khởi tạo</span>
+          <span className="rounded bg-primary-subtle px-1 py-0.5 text-[10px] font-medium text-primary">
+            Khởi tạo
+          </span>
         )}
       </div>
       {data.category && (
@@ -163,7 +194,11 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
       >
         <Trash2 className="h-3 w-3" aria-hidden />
       </button>
-      <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-primary" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-primary"
+      />
     </div>
   );
 }
@@ -234,10 +269,13 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
         toast.info('Chuyển tiếp này đã tồn tại.');
         return;
       }
-      const fromName = c.source === ANY_ID ? 'Bất kỳ' : statusById.get(c.source)?.name ?? '';
+      const fromName = c.source === ANY_ID ? 'Bất kỳ' : (statusById.get(c.source)?.name ?? '');
       const toName = statusById.get(c.target)?.name ?? '';
       addTransition.mutate(
-        { workflowId: workflow.id, input: { name: `${fromName} → ${toName}`, fromStatusId: fromId, toStatusId: c.target } },
+        {
+          workflowId: workflow.id,
+          input: { name: `${fromName} → ${toName}`, fromStatusId: fromId, toStatusId: c.target },
+        },
         { onError: (e) => toast.error(apiErrorMessage(e)) },
       );
     },
@@ -246,14 +284,18 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
 
   const onEdgesDelete = useCallback(
     (removed: Edge[]) => {
-      for (const e of removed) deleteTransition.mutate(e.id, { onError: (err) => toast.error(apiErrorMessage(err)) });
+      for (const e of removed)
+        deleteTransition.mutate(e.id, { onError: (err) => toast.error(apiErrorMessage(err)) });
     },
     [deleteTransition],
   );
 
   const onNodeDragStop = useCallback(
     (_e: unknown, node: Node) => {
-      posRef.current = { ...posRef.current, [node.id]: { x: Math.round(node.position.x), y: Math.round(node.position.y) } };
+      posRef.current = {
+        ...posRef.current,
+        [node.id]: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
+      };
       savePos(workflow.id, posRef.current);
     },
     [workflow.id],
@@ -291,7 +333,8 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
         </Panel>
         <Panel position="bottom-right">
           <p className="rounded-md border border-border bg-surface/90 px-2.5 py-1.5 text-xs text-muted shadow-sm">
-            Kéo từ chấm phải của một trạng thái sang trạng thái khác để tạo chuyển tiếp · chọn mũi tên rồi Delete để xoá
+            Kéo từ chấm phải của một trạng thái sang trạng thái khác để tạo chuyển tiếp · chọn mũi
+            tên rồi Delete để xoá
           </p>
         </Panel>
       </ReactFlow>
@@ -301,7 +344,13 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
 
 const CATEGORIES: StatusCategory[] = ['TODO', 'IN_PROGRESS', 'DONE'];
 
-function AddStatusForm({ onAdd, adding }: { onAdd: (name: string, category: StatusCategory) => void; adding: boolean }) {
+function AddStatusForm({
+  onAdd,
+  adding,
+}: {
+  onAdd: (name: string, category: StatusCategory) => void;
+  adding: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<StatusCategory>('TODO');
@@ -358,7 +407,13 @@ function AddStatusForm({ onAdd, adding }: { onAdd: (name: string, category: Stat
       <Button size="sm" onClick={submit} loading={adding}>
         Thêm
       </Button>
-      <Button size="icon" variant="ghost" onClick={() => setOpen(false)} aria-label="Đóng" className="h-8 w-8">
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={() => setOpen(false)}
+        aria-label="Đóng"
+        className="h-8 w-8"
+      >
         <X className="h-4 w-4" />
       </Button>
     </div>

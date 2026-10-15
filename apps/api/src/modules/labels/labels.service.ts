@@ -3,10 +3,7 @@ import { LabelDto } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { assertIssueWritable } from '../../common/project-writable';
-import {
-  BusinessRuleException,
-  NotFoundAppException,
-} from '../../common/exceptions/app.exception';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 
 export interface CreateLabelInput {
   name: string;
@@ -33,11 +30,7 @@ export class LabelsService {
     return rows.map((r) => this.toDto(r));
   }
 
-  async create(
-    workspaceId: string,
-    projectId: string,
-    input: CreateLabelInput,
-  ): Promise<LabelDto> {
+  async create(workspaceId: string, projectId: string, input: CreateLabelInput): Promise<LabelDto> {
     await this.requireProject(workspaceId, projectId);
     try {
       const row = await this.prisma.label.create({
@@ -52,11 +45,7 @@ export class LabelsService {
     }
   }
 
-  async update(
-    workspaceId: string,
-    labelId: string,
-    input: UpdateLabelInput,
-  ): Promise<LabelDto> {
+  async update(workspaceId: string, labelId: string, input: UpdateLabelInput): Promise<LabelDto> {
     await this.requireLabel(workspaceId, labelId);
     const data: Prisma.LabelUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
@@ -78,11 +67,7 @@ export class LabelsService {
     return { success: true };
   }
 
-  async attach(
-    workspaceId: string,
-    issueId: string,
-    labelId: string,
-  ): Promise<{ ok: true }> {
+  async attach(workspaceId: string, issueId: string, labelId: string): Promise<{ ok: true }> {
     const issue = await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     const label = await this.prisma.label.findFirst({
@@ -101,11 +86,7 @@ export class LabelsService {
     return { ok: true };
   }
 
-  async detach(
-    workspaceId: string,
-    issueId: string,
-    labelId: string,
-  ): Promise<{ ok: true }> {
+  async detach(workspaceId: string, issueId: string, labelId: string): Promise<{ ok: true }> {
     await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     try {

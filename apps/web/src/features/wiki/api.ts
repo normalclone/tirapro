@@ -40,7 +40,6 @@ export interface WikiSearchHit {
 /** `projectId` truyền lên API: rỗng = mọi phạm vi, `none` = tài liệu dùng chung cho cả tổ chức. */
 export const WIKI_SCOPE_SHARED = 'none';
 
-
 /** Cây trang theo phạm vi (`scope` rỗng = tất cả). */
 export function useWikiTree(scope: string) {
   return useQuery({
@@ -112,8 +111,15 @@ export function useUpdateWikiPage() {
 export function useMoveWikiPage() {
   const invalidate = useInvalidateWiki();
   return useMutation({
-    mutationFn: ({ id, parentId, order }: { id: string; parentId?: string | null; order?: number }) =>
-      api.put<WikiNode[]>(`/wiki/${id}/move`, { parentId, order }).then((r) => r.data),
+    mutationFn: ({
+      id,
+      parentId,
+      order,
+    }: {
+      id: string;
+      parentId?: string | null;
+      order?: number;
+    }) => api.put<WikiNode[]>(`/wiki/${id}/move`, { parentId, order }).then((r) => r.data),
     onSuccess: (_data, vars) => invalidate(vars.id),
   });
 }

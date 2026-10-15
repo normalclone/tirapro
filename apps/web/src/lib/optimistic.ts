@@ -19,8 +19,18 @@ export type IssuePatch = Partial<IssueDto> | ((issue: IssueDto) => Partial<Issue
 
 /** Các field phẳng của IssueDto có thể vá lạc quan trực tiếp từ body PATCH (field quan hệ như priorityId cần object nên bỏ qua). */
 const SCALAR_FIELDS = [
-  'summary', 'description', 'descriptionFormat', 'storyPoints', 'originalEstimate', 'remainingEstimate',
-  'dueDate', 'startDate', 'sprintId', 'assigneeId', 'parentId', 'epicId',
+  'summary',
+  'description',
+  'descriptionFormat',
+  'storyPoints',
+  'originalEstimate',
+  'remainingEstimate',
+  'dueDate',
+  'startDate',
+  'sprintId',
+  'assigneeId',
+  'parentId',
+  'epicId',
 ] as const;
 
 /** Lọc body PATCH API thành phần vá lạc quan an toàn cho IssueDto. */
@@ -48,7 +58,9 @@ export async function optimisticPatchIssue(
   issueKey?: string,
 ): Promise<IssueSnapshot> {
   const listKey = projectId ? keys.issues.byProject(projectId) : undefined;
-  const prevListItem = listKey ? qc.getQueryData<IssueDto[]>(listKey)?.find((i) => i.id === id) : undefined;
+  const prevListItem = listKey
+    ? qc.getQueryData<IssueDto[]>(listKey)?.find((i) => i.id === id)
+    : undefined;
   const key = issueKey ?? prevListItem?.key;
   const detailKey = key ? keys.issues.byKey(key) : undefined;
 
@@ -60,7 +72,9 @@ export async function optimisticPatchIssue(
 
   const prevDetail = detailKey ? qc.getQueryData<IssueDto>(detailKey) : undefined;
   if (listKey) {
-    qc.setQueryData<IssueDto[]>(listKey, (old) => old?.map((i) => (i.id === id ? apply(i, patch) : i)));
+    qc.setQueryData<IssueDto[]>(listKey, (old) =>
+      old?.map((i) => (i.id === id ? apply(i, patch) : i)),
+    );
   }
   if (detailKey) {
     qc.setQueryData<IssueDto>(detailKey, (old) => (old && old.id === id ? apply(old, patch) : old));
@@ -78,7 +92,9 @@ export function rollbackIssue(qc: QueryClient, snap: IssueSnapshot | undefined):
   const { projectId, issueKey, issueId, prevListItem, prevDetail } = snap;
   if (projectId && prevListItem) {
     qc.setQueryData<IssueDto[]>(keys.issues.byProject(projectId), (old) =>
-      old?.map((i) => (i.id === issueId && i.version === prevListItem.version + 1 ? prevListItem : i)),
+      old?.map((i) =>
+        i.id === issueId && i.version === prevListItem.version + 1 ? prevListItem : i,
+      ),
     );
   }
   if (issueKey && prevDetail) {
@@ -89,7 +105,11 @@ export function rollbackIssue(qc: QueryClient, snap: IssueSnapshot | undefined):
 }
 
 /** Làm mới HẸP: chỉ danh sách project chứa issue + chi tiết issue đó (không quét mọi cache issue). */
-export function invalidateIssue(qc: QueryClient, projectId: string | undefined, issueKey: string | undefined): void {
+export function invalidateIssue(
+  qc: QueryClient,
+  projectId: string | undefined,
+  issueKey: string | undefined,
+): void {
   if (projectId) void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
   if (issueKey) void qc.invalidateQueries({ queryKey: keys.issues.byKey(issueKey) });
 }

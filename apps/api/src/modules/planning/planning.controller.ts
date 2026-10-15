@@ -8,8 +8,14 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { PlanningService } from './planning.service';
 import {
-  createBaselineSchema, createDependencySchema, createMilestoneSchema, updateMilestoneSchema,
-  type CreateBaselineInput, type CreateDependencyInput, type CreateMilestoneInput, type UpdateMilestoneInput,
+  createBaselineSchema,
+  createDependencySchema,
+  createMilestoneSchema,
+  updateMilestoneSchema,
+  type CreateBaselineInput,
+  type CreateDependencyInput,
+  type CreateMilestoneInput,
+  type UpdateMilestoneInput,
 } from './planning.schemas';
 
 /**
@@ -25,7 +31,10 @@ export class PlanningController {
 
   @Get(':projectId/dependencies')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
-  async listDependencies(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
+  async listDependencies(
+    @WorkspaceId() workspaceId: string,
+    @Param('projectId') projectId: string,
+  ) {
     return this.planning.listDependencies(workspaceId, projectId);
   }
 

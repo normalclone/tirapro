@@ -13,14 +13,23 @@ const hexColor = z
   .regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Màu phải là mã hex hợp lệ');
 
 const createLabelSchema = z.object({
-  name: z.string().trim().min(1, 'Tên nhãn không được để trống').max(50, 'Tên nhãn tối đa 50 ký tự'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Tên nhãn không được để trống')
+    .max(50, 'Tên nhãn tối đa 50 ký tự'),
   color: hexColor.optional(),
 });
 type CreateLabelDto = z.infer<typeof createLabelSchema>;
 
 const updateLabelSchema = z
   .object({
-    name: z.string().trim().min(1, 'Tên nhãn không được để trống').max(50, 'Tên nhãn tối đa 50 ký tự').optional(),
+    name: z
+      .string()
+      .trim()
+      .min(1, 'Tên nhãn không được để trống')
+      .max(50, 'Tên nhãn tối đa 50 ký tự')
+      .optional(),
     color: hexColor.optional(),
   })
   .refine((v) => v.name !== undefined || v.color !== undefined, {

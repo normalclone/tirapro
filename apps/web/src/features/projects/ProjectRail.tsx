@@ -17,13 +17,21 @@ const SHOW_ARCHIVED_KEY = 'tirapro:showArchivedProjects';
 export function ProjectRail({ activeKey, view = 'board' }: { activeKey: string; view?: string }) {
   // Chọn "Hiện đã lưu trữ" được nhớ theo trình duyệt (chỉ là tiện ích, không có cũng chạy).
   const [showArchived, setShowArchived] = useState(() => {
-    try { return localStorage.getItem(SHOW_ARCHIVED_KEY) === '1'; } catch { return false; }
+    try {
+      return localStorage.getItem(SHOW_ARCHIVED_KEY) === '1';
+    } catch {
+      return false;
+    }
   });
   const { data: projects } = useProjects(showArchived);
   const [createProject, setCreateProject] = useState(false);
   const toggleArchived = (v: boolean) => {
     setShowArchived(v);
-    try { localStorage.setItem(SHOW_ARCHIVED_KEY, v ? '1' : '0'); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(SHOW_ARCHIVED_KEY, v ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
   };
 
   return (
@@ -48,17 +56,23 @@ export function ProjectRail({ activeKey, view = 'board' }: { activeKey: string; 
               to={`/p/${p.key}/${view}`}
               className={cn(
                 'flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
-                p.key === activeKey ? 'bg-primary-subtle font-medium text-primary' : 'text-ink hover:bg-surface-2',
+                p.key === activeKey
+                  ? 'bg-primary-subtle font-medium text-primary'
+                  : 'text-ink hover:bg-surface-2',
               )}
             >
               <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-surface-2 font-mono text-[10px] font-bold text-muted">
                 {p.key.slice(0, 3)}
               </span>
               <span className="min-w-0 flex-1 truncate">{p.name}</span>
-              {p.archivedAt && <Archive className="h-3.5 w-3.5 shrink-0 text-faint" aria-label="Đã lưu trữ" />}
+              {p.archivedAt && (
+                <Archive className="h-3.5 w-3.5 shrink-0 text-faint" aria-label="Đã lưu trữ" />
+              )}
             </NavLink>
           ))}
-          {projects && projects.length === 0 && <p className="px-2 py-4 text-xs text-faint">Chưa có dự án.</p>}
+          {projects && projects.length === 0 && (
+            <p className="px-2 py-4 text-xs text-faint">Chưa có dự án.</p>
+          )}
         </nav>
         <label className="flex cursor-pointer items-center gap-2 border-t border-border px-3 py-2.5 text-xs text-muted">
           <input

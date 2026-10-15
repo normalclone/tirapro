@@ -1,9 +1,11 @@
- 
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import type { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { PERMISSIONS_KEY } from '../../common/decorators/permissions.decorator';
-import { PROJECT_REF_KEY, type ProjectRefMeta } from '../../common/decorators/project-ref.decorator';
+import {
+  PROJECT_REF_KEY,
+  type ProjectRefMeta,
+} from '../../common/decorators/project-ref.decorator';
 import { PermissionsGuard } from './permissions.guard';
 
 type Req = {
@@ -30,10 +32,16 @@ function setup(opts: {
     }),
   };
   const rbac = {
-    getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(opts.effective ?? ['issue:update']))),
-    resolveProjectId: vi.fn(() => Promise.resolve(opts.resolved === undefined ? { projectId: 'P-cua-I1' } : opts.resolved)),
+    getEffectivePermissions: vi.fn(() =>
+      Promise.resolve(new Set(opts.effective ?? ['issue:update'])),
+    ),
+    resolveProjectId: vi.fn(() =>
+      Promise.resolve(opts.resolved === undefined ? { projectId: 'P-cua-I1' } : opts.resolved),
+    ),
     assertProjectInWorkspace: vi.fn(() =>
-      opts.projectInWorkspace === false ? Promise.reject(new NotFoundAppException('Dự án')) : Promise.resolve(),
+      opts.projectInWorkspace === false
+        ? Promise.reject(new NotFoundAppException('Dự án'))
+        : Promise.resolve(),
     ),
   };
   const ctx = {
@@ -106,7 +114,11 @@ describe('PermissionsGuard', () => {
 
   it('route có tham số khác ngoài projectId: params.projectId vẫn được dùng, body bị bỏ qua', async () => {
     const { guard, rbac, ctx } = setup({
-      req: { user: { ...user }, params: { projectId: 'P1', id: 'X' }, body: { projectId: 'P-khac' } },
+      req: {
+        user: { ...user },
+        params: { projectId: 'P1', id: 'X' },
+        body: { projectId: 'P-khac' },
+      },
     });
     await guard.canActivate(ctx);
     expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('U1', 'W1', 'P1');
@@ -167,13 +179,20 @@ describe('PermissionsGuard', () => {
   });
 
   it('không có @ProjectRef: chỉ đọc params/body.projectId, bỏ qua query', async () => {
-    const a = setup({ req: { user: { ...user }, params: {}, body: {}, query: { projectId: 'P-khac' } } });
+    const a = setup({
+      req: { user: { ...user }, params: {}, body: {}, query: { projectId: 'P-khac' } },
+    });
     await a.guard.canActivate(a.ctx);
     expect(a.rbac.getEffectivePermissions).toHaveBeenCalledWith('U1', 'W1', null);
     expect(a.rbac.assertProjectInWorkspace).not.toHaveBeenCalled();
 
     const b = setup({
-      req: { user: { ...user }, params: { projectId: 'P1' }, body: {}, query: { projectId: 'P-khac' } },
+      req: {
+        user: { ...user },
+        params: { projectId: 'P1' },
+        body: {},
+        query: { projectId: 'P-khac' },
+      },
     });
     await b.guard.canActivate(b.ctx);
     expect(b.rbac.assertProjectInWorkspace).toHaveBeenCalledWith('P1', 'W1');

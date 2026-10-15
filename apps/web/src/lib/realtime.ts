@@ -12,7 +12,9 @@ import { acquireRoom, getSocket } from './socket';
 
 /** Chỉ sửa cache ĐÃ có (updater trả undefined thì react-query không tạo entry mới). */
 function patchList(qc: QueryClient, projectId: string, fn: (list: IssueDto[]) => IssueDto[]) {
-  qc.setQueryData<IssueDto[]>(keys.issues.byProject(projectId), (old) => (old ? fn(old) : undefined));
+  qc.setQueryData<IssueDto[]>(keys.issues.byProject(projectId), (old) =>
+    old ? fn(old) : undefined,
+  );
 }
 
 function patchDetail(qc: QueryClient, issueKey: string, fn: (old: IssueDto) => IssueDto) {
@@ -24,7 +26,9 @@ const getList = (qc: QueryClient, projectId: string) =>
 
 /** issue:created — thêm vào CUỐI danh sách nếu chưa có (event dội về sau khi mình tự tạo thì bỏ qua). */
 export function applyIssueCreated(qc: QueryClient, issue: IssueDto) {
-  patchList(qc, issue.projectId, (list) => (list.some((i) => i.id === issue.id) ? list : [...list, issue]));
+  patchList(qc, issue.projectId, (list) =>
+    list.some((i) => i.id === issue.id) ? list : [...list, issue],
+  );
 }
 
 /**
@@ -35,7 +39,9 @@ export function applyIssueUpdated(qc: QueryClient, issue: IssueDto) {
   patchList(qc, issue.projectId, (list) => {
     const cur = list.find((i) => i.id === issue.id);
     if (!cur) return [...list, issue];
-    return issue.version > cur.version ? list.map((i) => (i.id === issue.id ? { ...i, ...issue } : i)) : list;
+    return issue.version > cur.version
+      ? list.map((i) => (i.id === issue.id ? { ...i, ...issue } : i))
+      : list;
   });
   patchDetail(qc, issue.key, (old) => (issue.version > old.version ? { ...old, ...issue } : old));
 }

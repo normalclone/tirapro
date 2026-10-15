@@ -10,8 +10,13 @@ import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
 
 /** Roving focus giữa các card bằng phím mũi tên (theo data-lane/col/row). */
 function focusCard(lane: number, col: number, row: number): boolean {
-  const el = document.querySelector<HTMLElement>(`[data-board-card][data-lane="${lane}"][data-col="${col}"][data-row="${row}"]`);
-  if (el) { el.focus(); return true; }
+  const el = document.querySelector<HTMLElement>(
+    `[data-board-card][data-lane="${lane}"][data-col="${col}"][data-row="${row}"]`,
+  );
+  if (el) {
+    el.focus();
+    return true;
+  }
   return false;
 }
 
@@ -34,7 +39,12 @@ const LabelChip = memo(function LabelChip({ name, color }: { name: string; color
  * Bản overlay KHÔNG gọi `useDraggable` để không đăng ký trùng id với thẻ gốc trong dnd-kit.
  */
 export function CardBody({
-  issue, progress, overlay, isDragging, rootRef, rootProps,
+  issue,
+  progress,
+  overlay,
+  isDragging,
+  rootRef,
+  rootProps,
 }: {
   issue: IssueDto;
   progress?: SubtreeProgress;
@@ -75,30 +85,60 @@ export function CardBody({
 
       {labels.length > 0 && (
         <div className="mb-1.5 flex flex-wrap items-center gap-1">
-          {labels.slice(0, 3).map((l) => <LabelChip key={l.id} name={l.name} color={l.color} />)}
-          {labels.length > 3 && <span className="text-[10px] text-faint">+{labels.length - 3}</span>}
+          {labels.slice(0, 3).map((l) => (
+            <LabelChip key={l.id} name={l.name} color={l.color} />
+          ))}
+          {labels.length > 3 && (
+            <span className="text-[10px] text-faint">+{labels.length - 3}</span>
+          )}
         </div>
       )}
 
       <div className="flex items-center gap-2">
-        <span className="shrink-0 whitespace-nowrap font-mono text-xs text-muted" title={`Mã công việc ${issue.key}`}>{issue.key}</span>
-        {issue.priority && <span className="h-1.5 w-1.5 rounded-full" style={{ background: issue.priority.color ?? 'var(--faint)' }} title={`Mức ưu tiên: ${issue.priority.name}`} />}
+        <span
+          className="shrink-0 whitespace-nowrap font-mono text-xs text-muted"
+          title={`Mã công việc ${issue.key}`}
+        >
+          {issue.key}
+        </span>
+        {issue.priority && (
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: issue.priority.color ?? 'var(--faint)' }}
+            title={`Mức ưu tiên: ${issue.priority.name}`}
+          />
+        )}
         <div className="ml-auto flex min-w-0 items-center">
           {issue.assignee ? (
-            <span className="flex min-w-0 items-center gap-1" title={`Người phụ trách: ${issue.assignee.displayName}`}>
+            <span
+              className="flex min-w-0 items-center gap-1"
+              title={`Người phụ trách: ${issue.assignee.displayName}`}
+            >
               <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={18} />
-              <span className="max-w-[6.5rem] truncate text-xs text-muted">{issue.assignee.displayName}</span>
+              <span className="max-w-[6.5rem] truncate text-xs text-muted">
+                {issue.assignee.displayName}
+              </span>
             </span>
           ) : (
-            <span className="whitespace-nowrap text-[11px] text-faint" title="Chưa có ai nhận việc này">Chưa gán</span>
+            <span
+              className="whitespace-nowrap text-[11px] text-faint"
+              title="Chưa có ai nhận việc này"
+            >
+              Chưa gán
+            </span>
           )}
         </div>
       </div>
 
       {progress && progress.total > 0 && (
-        <div className="mt-2 flex items-center gap-1.5" title={`Việc con: đã xong ${progress.done}/${progress.total}`}>
+        <div
+          className="mt-2 flex items-center gap-1.5"
+          title={`Việc con: đã xong ${progress.done}/${progress.total}`}
+        >
           <TaskProgress progress={progress} compact className="flex-1" />
-          <span className="tabular shrink-0 text-[10px] text-faint">{progress.done}/{progress.total}</span>
+          <span className="tabular shrink-0 text-[10px] text-faint">
+            {progress.done}/{progress.total}
+          </span>
         </div>
       )}
     </div>
@@ -118,38 +158,62 @@ interface CardProps {
  * Thẻ công việc kéo được. `memo` với so sánh tiến độ theo giá trị: bản đồ tiến độ được dựng lại mỗi lần cache đổi
  * nhưng thẻ không có việc con đổi thì không cần vẽ lại.
  */
-export const Card = memo(function Card({ issue, progress, onOpen, laneIdx = 0, colIdx = 0, rowIdx = 0 }: CardProps) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: issue.id });
+export const Card = memo(
+  function Card({ issue, progress, onOpen, laneIdx = 0, colIdx = 0, rowIdx = 0 }: CardProps) {
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: issue.id });
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (isDragging) return; // đang kéo bằng bàn phím: mũi tên thuộc về dnd-kit, không dời focus
-    if (e.key === 'Enter') { onOpen(issue.key); return; }
-    if (e.key === ' ') { listeners?.onKeyDown?.(e); return; } // Space nhấc thẻ để kéo bằng bàn phím
-    const map: Record<string, [number, number]> = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
-    const d = map[e.key];
-    if (!d) return;
-    e.preventDefault();
-    const [dc, dr] = d;
-    if (!focusCard(laneIdx, colIdx + dc, rowIdx + dr) && dc !== 0) focusCard(laneIdx, colIdx + dc, 0);
-  }
+    function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+      if (isDragging) return; // đang kéo bằng bàn phím: mũi tên thuộc về dnd-kit, không dời focus
+      if (e.key === 'Enter') {
+        onOpen(issue.key);
+        return;
+      }
+      if (e.key === ' ') {
+        listeners?.onKeyDown?.(e);
+        return;
+      } // Space nhấc thẻ để kéo bằng bàn phím
+      const map: Record<string, [number, number]> = {
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+      };
+      const d = map[e.key];
+      if (!d) return;
+      e.preventDefault();
+      const [dc, dr] = d;
+      if (!focusCard(laneIdx, colIdx + dc, rowIdx + dr) && dc !== 0)
+        focusCard(laneIdx, colIdx + dc, 0);
+    }
 
-  return (
-    <CardBody
-      issue={issue}
-      progress={progress}
-      isDragging={isDragging}
-      rootRef={setNodeRef}
-      rootProps={{
-        ...listeners,
-        ...attributes,
-        ...({ 'data-board-card': true, 'data-lane': laneIdx, 'data-col': colIdx, 'data-row': rowIdx } as object),
-        onClick: () => onOpen(issue.key),
-        role: 'button',
-        tabIndex: 0,
-        onKeyDown,
-      }}
-    />
-  );
-}, (prev, next) =>
-  prev.issue === next.issue && prev.onOpen === next.onOpen && prev.laneIdx === next.laneIdx
-  && prev.colIdx === next.colIdx && prev.rowIdx === next.rowIdx && sameProgress(prev.progress, next.progress));
+    return (
+      <CardBody
+        issue={issue}
+        progress={progress}
+        isDragging={isDragging}
+        rootRef={setNodeRef}
+        rootProps={{
+          ...listeners,
+          ...attributes,
+          ...({
+            'data-board-card': true,
+            'data-lane': laneIdx,
+            'data-col': colIdx,
+            'data-row': rowIdx,
+          } as object),
+          onClick: () => onOpen(issue.key),
+          role: 'button',
+          tabIndex: 0,
+          onKeyDown,
+        }}
+      />
+    );
+  },
+  (prev, next) =>
+    prev.issue === next.issue &&
+    prev.onOpen === next.onOpen &&
+    prev.laneIdx === next.laneIdx &&
+    prev.colIdx === next.colIdx &&
+    prev.rowIdx === next.rowIdx &&
+    sameProgress(prev.progress, next.progress),
+);

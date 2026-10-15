@@ -91,7 +91,9 @@ export interface WorkspaceOverview {
 export function useWorkspaceOverview(enabled: boolean) {
   return useQuery({
     queryKey: keys.dashboard.workspaceOverview,
-    queryFn: enabled ? async () => (await api.get<WorkspaceOverview>('/reports/overview')).data : skipToken,
+    queryFn: enabled
+      ? async () => (await api.get<WorkspaceOverview>('/reports/overview')).data
+      : skipToken,
     staleTime: 30_000,
   });
 }

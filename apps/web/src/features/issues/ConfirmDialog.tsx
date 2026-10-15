@@ -41,7 +41,13 @@ export function ConfirmDialog({
           <Button variant="ghost" size="sm" onClick={onCancel} autoFocus={danger}>
             {cancelLabel}
           </Button>
-          <Button variant={danger ? 'danger' : 'primary'} size="sm" loading={loading} onClick={onConfirm} autoFocus={!danger}>
+          <Button
+            variant={danger ? 'danger' : 'primary'}
+            size="sm"
+            loading={loading}
+            onClick={onConfirm}
+            autoFocus={!danger}
+          >
             {confirmLabel}
           </Button>
         </>

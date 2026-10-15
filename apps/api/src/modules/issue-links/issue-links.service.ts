@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import {
-  BusinessRuleException,
-  NotFoundAppException,
-} from '../../common/exceptions/app.exception';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertIssueWritable } from '../../common/project-writable';
 
 /** Loại liên kết khả dụng trong workspace. */
@@ -84,7 +81,9 @@ export class IssueLinksService {
     input: CreateIssueLinkInput,
   ): Promise<CreatedLinkView> {
     if (input.targetIssueId === issueId) {
-      throw new BusinessRuleException('Không thể liên kết một công việc với chính nó — hãy chọn công việc khác');
+      throw new BusinessRuleException(
+        'Không thể liên kết một công việc với chính nó — hãy chọn công việc khác',
+      );
     }
 
     // Cả hai issue phải thuộc workspace của người dùng.

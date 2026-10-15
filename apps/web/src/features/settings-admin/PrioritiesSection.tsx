@@ -101,7 +101,13 @@ export function PrioritiesSection() {
   }
 
   async function handleDelete(p: Priority) {
-    if (!(await confirm({ title: `Xoá độ ưu tiên "${p.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
+    if (
+      !(await confirm({
+        title: `Xoá độ ưu tiên "${p.name}"? Hành động này không thể hoàn tác.`,
+        destructive: true,
+      }))
+    )
+      return;
     remove.mutate(p.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 

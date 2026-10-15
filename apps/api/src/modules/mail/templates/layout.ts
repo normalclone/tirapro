@@ -28,7 +28,13 @@ export function str(value: unknown, fallback = ''): string {
 /**
  * Khung HTML tối giản: một cột, không ảnh, một nút CTA. `bodyHtml` PHẢI đã được escape bởi nơi gọi.
  */
-export function layout(opts: { heading: string; bodyHtml: string; ctaLabel: string; ctaUrl: string; footer: string }): string {
+export function layout(opts: {
+  heading: string;
+  bodyHtml: string;
+  ctaLabel: string;
+  ctaUrl: string;
+  footer: string;
+}): string {
   const url = escapeHtml(safeUrl(opts.ctaUrl));
   return `<!doctype html>
 <html lang="vi">

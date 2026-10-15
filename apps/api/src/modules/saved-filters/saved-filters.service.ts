@@ -75,7 +75,11 @@ export class SavedFiltersService {
   }
 
   /** Tạo filter mới — validate JQL trước, ownerId = user hiện tại. */
-  async create(workspaceId: string, userId: string, input: CreateSavedFilterInput): Promise<SavedFilterDto> {
+  async create(
+    workspaceId: string,
+    userId: string,
+    input: CreateSavedFilterInput,
+  ): Promise<SavedFilterDto> {
     this.validateJql(input.jql);
     const row = await this.prisma.savedFilter.create({
       data: {
@@ -92,7 +96,12 @@ export class SavedFiltersService {
   }
 
   /** Cập nhật — chỉ chủ sở hữu; re-validate JQL nếu đổi. */
-  async update(workspaceId: string, userId: string, id: string, input: UpdateSavedFilterInput): Promise<SavedFilterDto> {
+  async update(
+    workspaceId: string,
+    userId: string,
+    id: string,
+    input: UpdateSavedFilterInput,
+  ): Promise<SavedFilterDto> {
     await this.requireOwned(workspaceId, userId, id);
     if (input.jql !== undefined) this.validateJql(input.jql);
 
@@ -118,9 +127,18 @@ export class SavedFiltersService {
   }
 
   /** Chạy filter: nạp (phải xem được) rồi ủy quyền cho SearchService chạy JQL. */
-  async run(workspaceId: string, userId: string, id: string, opts: RunSavedFilterOptions): Promise<PageResult<IssueDto>> {
+  async run(
+    workspaceId: string,
+    userId: string,
+    id: string,
+    opts: RunSavedFilterOptions,
+  ): Promise<PageResult<IssueDto>> {
     const filter = await this.requireVisible(workspaceId, userId, id);
-    return this.search.search(workspaceId, userId, { jql: filter.jql, cursor: opts.cursor, limit: opts.limit });
+    return this.search.search(workspaceId, userId, {
+      jql: filter.jql,
+      cursor: opts.cursor,
+      limit: opts.limit,
+    });
   }
 
   /** Điều kiện OR cho phạm vi xem: của mình / WORKSPACE / PROJECT. */
@@ -133,7 +151,11 @@ export class SavedFiltersService {
   }
 
   /** Nạp filter user xem được (của mình / WORKSPACE / PROJECT) — nếu không có thì 404. */
-  private async requireVisible(workspaceId: string, userId: string, id: string): Promise<SavedFilterRow> {
+  private async requireVisible(
+    workspaceId: string,
+    userId: string,
+    id: string,
+  ): Promise<SavedFilterRow> {
     const row = await this.prisma.savedFilter.findFirst({
       where: {
         id,
@@ -148,13 +170,18 @@ export class SavedFiltersService {
   }
 
   /** Nạp filter và đảm bảo user là chủ sở hữu (cho mutate) — 404 nếu không tồn tại, 403 nếu không phải chủ. */
-  private async requireOwned(workspaceId: string, userId: string, id: string): Promise<SavedFilterRow> {
+  private async requireOwned(
+    workspaceId: string,
+    userId: string,
+    id: string,
+  ): Promise<SavedFilterRow> {
     const row = await this.prisma.savedFilter.findFirst({
       where: { id, workspaceId, deletedAt: null },
       select: filterSelect,
     });
     if (!row) throw new NotFoundAppException('Bộ lọc');
-    if (row.ownerId !== userId) throw new ForbiddenAppException('Chỉ chủ sở hữu mới sửa được bộ lọc này');
+    if (row.ownerId !== userId)
+      throw new ForbiddenAppException('Chỉ chủ sở hữu mới sửa được bộ lọc này');
     return row;
   }
 

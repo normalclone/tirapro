@@ -7,7 +7,17 @@ import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { PlatformLogo } from './PlatformLogo';
-import { useIntegrations, useCreateTelegram, useDeleteIntegration, useChannels, useAddChannel, useDeleteChannel, useTestIntegration, type Integration, type IntegrationStatus } from './api';
+import {
+  useIntegrations,
+  useCreateTelegram,
+  useDeleteIntegration,
+  useChannels,
+  useAddChannel,
+  useDeleteChannel,
+  useTestIntegration,
+  type Integration,
+  type IntegrationStatus,
+} from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
 
@@ -74,7 +84,13 @@ export function TelegramSection() {
   }
 
   async function handleDelete(it: Integration) {
-    if (!(await confirm({ title: `Xoá kết nối "${it.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
+    if (
+      !(await confirm({
+        title: `Xoá kết nối "${it.name}"? Hành động này không thể hoàn tác.`,
+        destructive: true,
+      }))
+    )
+      return;
     remove.mutate(it.id, {
       onSuccess: () => toast.success('Đã xoá kết nối.'),
       onError: (e) => toast.error(apiErrorMessage(e)),
@@ -354,7 +370,10 @@ function ChannelList({ integrationId }: { integrationId: string }) {
       {/* Form thêm kênh */}
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <div className="min-w-[9rem] flex-1">
-          <label htmlFor={`ch-id-${integrationId}`} className="mb-1 block text-xs font-medium text-muted">
+          <label
+            htmlFor={`ch-id-${integrationId}`}
+            className="mb-1 block text-xs font-medium text-muted"
+          >
             chat_id
           </label>
           <Input
@@ -368,7 +387,10 @@ function ChannelList({ integrationId }: { integrationId: string }) {
           />
         </div>
         <div className="min-w-[9rem] flex-1">
-          <label htmlFor={`ch-title-${integrationId}`} className="mb-1 block text-xs font-medium text-muted">
+          <label
+            htmlFor={`ch-title-${integrationId}`}
+            className="mb-1 block text-xs font-medium text-muted"
+          >
             Tên hiển thị <span className="text-faint">(tùy chọn)</span>
           </label>
           <Input

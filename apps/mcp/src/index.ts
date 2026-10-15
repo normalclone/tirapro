@@ -19,7 +19,12 @@ function keyFrom(req: Request): string | null {
 }
 
 const asText = (data: unknown) => ({
-  content: [{ type: 'text' as const, text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }],
+  content: [
+    {
+      type: 'text' as const,
+      text: typeof data === 'string' ? data : JSON.stringify(data, null, 2),
+    },
+  ],
 });
 const asError = (e: unknown) => ({
   content: [{ type: 'text' as const, text: `Lỗi: ${e instanceof Error ? e.message : String(e)}` }],
@@ -73,12 +78,16 @@ function buildServer(tira: Tira): McpServer {
   };
 
   // ---- KHÁM PHÁ NGỮ CẢNH ----
-  server.tool('help', 'Hướng dẫn dùng các tool Tirapro: khái niệm & quy trình nên theo.', {}, () => asText(HELP_TEXT));
+  server.tool('help', 'Hướng dẫn dùng các tool Tirapro: khái niệm & quy trình nên theo.', {}, () =>
+    asText(HELP_TEXT),
+  );
 
   server.tool(
     'get_context',
     'Khám phá ngữ cảnh workspace (dự án, thành viên; kèm loại issue & độ ưu tiên nếu truyền projectKey). Nên gọi TRƯỚC khi tạo/sửa.',
-    { projectKey: z.string().optional().describe('Mã dự án để lấy loại issue/độ ưu tiên, vd DEMO') },
+    {
+      projectKey: z.string().optional().describe('Mã dự án để lấy loại issue/độ ưu tiên, vd DEMO'),
+    },
     async ({ projectKey }) => {
       try {
         const [projects, users] = await Promise.all([tira.get('/projects'), tira.get('/users')]);
@@ -96,19 +105,29 @@ function buildServer(tira: Tira): McpServer {
           };
         }
         return asText(ctx);
-      } catch (e) { return asError(e); }
+      } catch (e) {
+        return asError(e);
+      }
     },
   );
 
   // ---- READ ----
   server.tool('list_projects', 'Liệt kê tất cả dự án trong workspace.', {}, async () => {
-    try { return asText(await tira.get('/projects')); } catch (e) { return asError(e); }
+    try {
+      return asText(await tira.get('/projects'));
+    } catch (e) {
+      return asError(e);
+    }
   });
 
   server.tool(
     'list_issues',
     'Tìm/liệt kê issue (lọc theo dự án, từ khoá).',
-    { projectKey: z.string().optional().describe('Mã dự án, vd DEMO'), search: z.string().optional(), limit: z.number().int().min(1).max(100).optional() },
+    {
+      projectKey: z.string().optional().describe('Mã dự án, vd DEMO'),
+      search: z.string().optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+    },
     async ({ projectKey, search, limit }) => {
       try {
         const qs = new URLSearchParams();
@@ -116,20 +135,44 @@ function buildServer(tira: Tira): McpServer {
         if (search) qs.set('search', search);
         qs.set('limit', String(limit ?? 50));
         return asText(await tira.get(`/issues?${qs.toString()}`));
-      } catch (e) { return asError(e); }
+      } catch (e) {
+        return asError(e);
+      }
     },
   );
 
-  server.tool('get_issue', 'Xem chi tiết 1 issue theo key (vd DEMO-BUG-4).', { key: z.string() }, async ({ key }) => {
-    try { return asText(await tira.get(`/issues/${encodeURIComponent(key)}`)); } catch (e) { return asError(e); }
-  });
+  server.tool(
+    'get_issue',
+    'Xem chi tiết 1 issue theo key (vd DEMO-BUG-4).',
+    { key: z.string() },
+    async ({ key }) => {
+      try {
+        return asText(await tira.get(`/issues/${encodeURIComponent(key)}`));
+      } catch (e) {
+        return asError(e);
+      }
+    },
+  );
 
-  server.tool('list_sprints', 'Liệt kê sprint của một dự án.', { projectKey: z.string() }, async ({ projectKey }) => {
-    try { return asText(await tira.get(`/sprints?projectId=${(await findProject(projectKey)).id}`)); } catch (e) { return asError(e); }
-  });
+  server.tool(
+    'list_sprints',
+    'Liệt kê sprint của một dự án.',
+    { projectKey: z.string() },
+    async ({ projectKey }) => {
+      try {
+        return asText(await tira.get(`/sprints?projectId=${(await findProject(projectKey)).id}`));
+      } catch (e) {
+        return asError(e);
+      }
+    },
+  );
 
   server.tool('list_members', 'Liệt kê người dùng/thành viên.', {}, async () => {
-    try { return asText(await tira.get('/users')); } catch (e) { return asError(e); }
+    try {
+      return asText(await tira.get('/users'));
+    } catch (e) {
+      return asError(e);
+    }
   });
 
   // ---- WRITE (cần API key có scope 'write') ----
@@ -137,8 +180,12 @@ function buildServer(tira: Tira): McpServer {
     'create_issue',
     'Tạo issue mới. type = tên loại (Bug/Task/Story…); priority/assigneeEmail tuỳ chọn.',
     {
-      projectKey: z.string(), type: z.string(), summary: z.string(),
-      description: z.string().optional(), priority: z.string().optional(), assigneeEmail: z.string().optional(),
+      projectKey: z.string(),
+      type: z.string(),
+      summary: z.string(),
+      description: z.string().optional(),
+      priority: z.string().optional(),
+      assigneeEmail: z.string().optional(),
     },
     async (a) => {
       try {
@@ -146,10 +193,13 @@ function buildServer(tira: Tira): McpServer {
           findProject(a.projectKey),
           tira.get(`/projects/${encodeURIComponent(a.projectKey)}/meta`),
         ]);
-        const t = meta.issueTypes.find((x: any) => norm(x.name) === norm(a.type) || norm(x.key ?? '') === norm(a.type));
+        const t = meta.issueTypes.find(
+          (x: any) => norm(x.name) === norm(a.type) || norm(x.key ?? '') === norm(a.type),
+        );
         if (!t) throw new Error(`Loại không hợp lệ: ${a.type}`);
         let priorityId: string | undefined;
-        if (a.priority) priorityId = meta.priorities.find((x: any) => norm(x.name) === norm(a.priority!))?.id;
+        if (a.priority)
+          priorityId = meta.priorities.find((x: any) => norm(x.name) === norm(a.priority!))?.id;
         let assigneeId: string | undefined;
         if (a.assigneeEmail) {
           const users: any[] = await tira.get('/users');
@@ -157,12 +207,21 @@ function buildServer(tira: Tira): McpServer {
         }
         // clientMutationId: id sinh mỗi lần gọi để backend/realtime dedup (map vào field clientId đã hỗ trợ).
         const clientMutationId = randomUUID();
-        return asText(await tira.post('/issues', {
-          projectId: proj.id, typeId: t.id, summary: a.summary,
-          description: a.description ?? null, descriptionFormat: 'MARKDOWN', priorityId, assigneeId,
-          clientId: clientMutationId,
-        }));
-      } catch (e) { return asWriteError(e); }
+        return asText(
+          await tira.post('/issues', {
+            projectId: proj.id,
+            typeId: t.id,
+            summary: a.summary,
+            description: a.description ?? null,
+            descriptionFormat: 'MARKDOWN',
+            priorityId,
+            assigneeId,
+            clientId: clientMutationId,
+          }),
+        );
+      } catch (e) {
+        return asWriteError(e);
+      }
     },
   );
 
@@ -177,16 +236,27 @@ function buildServer(tira: Tira): McpServer {
         if (a.summary !== undefined) patch.summary = a.summary;
         if (a.description !== undefined) patch.description = a.description;
         return asText(await tira.patch(`/issues/${issue.id}`, patch));
-      } catch (e) { return asWriteError(e); }
+      } catch (e) {
+        return asWriteError(e);
+      }
     },
   );
 
-  server.tool('add_comment', 'Thêm bình luận (markdown) vào issue theo key.', { issueKey: z.string(), body: z.string() }, async (a) => {
-    try {
-      const issue = await tira.get(`/issues/${encodeURIComponent(a.issueKey)}`);
-      return asText(await tira.post(`/issues/${issue.id}/comments`, { body: a.body, bodyFormat: 'MARKDOWN' }));
-    } catch (e) { return asWriteError(e); }
-  });
+  server.tool(
+    'add_comment',
+    'Thêm bình luận (markdown) vào issue theo key.',
+    { issueKey: z.string(), body: z.string() },
+    async (a) => {
+      try {
+        const issue = await tira.get(`/issues/${encodeURIComponent(a.issueKey)}`);
+        return asText(
+          await tira.post(`/issues/${issue.id}/comments`, { body: a.body, bodyFormat: 'MARKDOWN' }),
+        );
+      } catch (e) {
+        return asWriteError(e);
+      }
+    },
+  );
 
   return server;
 }
@@ -202,22 +272,36 @@ app.get('/health', (_req, res) => {
 app.post('/mcp', async (req, res) => {
   const key = keyFrom(req);
   if (!key) {
-    res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Thiếu API key: Authorization: Bearer tira_…' }, id: null });
+    res.status(401).json({
+      jsonrpc: '2.0',
+      error: { code: -32001, message: 'Thiếu API key: Authorization: Bearer tira_…' },
+      id: null,
+    });
     return;
   }
   const server = buildServer(new Tira(API_URL, key));
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  res.on('close', () => { void transport.close(); void server.close(); });
+  res.on('close', () => {
+    void transport.close();
+    void server.close();
+  });
   try {
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
   } catch (e) {
-    if (!res.headersSent) res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: String(e) }, id: null });
+    if (!res.headersSent)
+      res
+        .status(500)
+        .json({ jsonrpc: '2.0', error: { code: -32603, message: String(e) }, id: null });
   }
 });
 
 const methodNotAllowed = (_req: Request, res: express.Response) =>
-  res.status(405).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Chỉ hỗ trợ POST (stateless).' }, id: null });
+  res.status(405).json({
+    jsonrpc: '2.0',
+    error: { code: -32000, message: 'Chỉ hỗ trợ POST (stateless).' },
+    id: null,
+  });
 app.get('/mcp', methodNotAllowed);
 app.delete('/mcp', methodNotAllowed);
 

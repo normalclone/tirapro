@@ -14,9 +14,16 @@ export function QueryError({
   message?: string;
   className?: string;
 }) {
-  const text = message ?? (error ? apiErrorMessage(error) : 'Không tải được dữ liệu. Kiểm tra kết nối rồi thử lại.');
+  const text =
+    message ??
+    (error ? apiErrorMessage(error) : 'Không tải được dữ liệu. Kiểm tra kết nối rồi thử lại.');
   return (
-    <div className={cn('flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-surface px-6 py-12 text-center', className)}>
+    <div
+      className={cn(
+        'flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-surface px-6 py-12 text-center',
+        className,
+      )}
+    >
       <span className="grid h-10 w-10 place-items-center rounded-full bg-danger/10 text-danger">
         <AlertTriangle className="h-5 w-5" aria-hidden />
       </span>

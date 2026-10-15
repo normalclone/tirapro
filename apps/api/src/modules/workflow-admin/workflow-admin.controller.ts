@@ -1,13 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
@@ -27,10 +18,7 @@ const nameSchema = z
   .min(1, 'Tên không được để trống')
   .max(80, 'Tên tối đa 80 ký tự');
 
-const descriptionSchema = z
-  .string()
-  .trim()
-  .max(500, 'Mô tả tối đa 500 ký tự');
+const descriptionSchema = z.string().trim().max(500, 'Mô tả tối đa 500 ký tự');
 
 const hexColor = z
   .string()
@@ -129,9 +117,7 @@ export class WorkflowAdminController {
     return this.workflows.listWorkflows(workspaceId, {
       projectId: projectId || undefined,
       isTemplate:
-        isTemplate === undefined
-          ? undefined
-          : isTemplate === 'true' || isTemplate === '1',
+        isTemplate === undefined ? undefined : isTemplate === 'true' || isTemplate === '1',
     });
   }
 

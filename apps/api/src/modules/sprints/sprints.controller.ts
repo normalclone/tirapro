@@ -1,8 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
-  completeSprintSchema, createSprintSchema, updateSprintSchema,
-  type CompleteSprintInput, type CreateSprintInput, type UpdateSprintInput,
+  completeSprintSchema,
+  createSprintSchema,
+  updateSprintSchema,
+  type CompleteSprintInput,
+  type CreateSprintInput,
+  type UpdateSprintInput,
 } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -72,7 +76,11 @@ export class SprintsController {
   @Permissions(PERMISSIONS.SPRINT_MANAGE)
   @ProjectRef('sprint', 'id')
   @Delete(':id')
-  async remove(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser, @Param('id') id: string) {
+  async remove(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
     return this.sprints.remove(workspaceId, id, user.id);
   }
 }

@@ -7,14 +7,28 @@ import { offsetPage } from '../../common/dto/page-result';
 import type { CreateUserInput, UpdateUserInput } from './admin.schemas';
 
 const USER_SELECT = {
-  id: true, email: true, displayName: true, avatarUrl: true, status: true,
-  isSystemAdmin: true, canCreateWorkspace: true, lastSeenAt: true, createdAt: true,
+  id: true,
+  email: true,
+  displayName: true,
+  avatarUrl: true,
+  status: true,
+  isSystemAdmin: true,
+  canCreateWorkspace: true,
+  lastSeenAt: true,
+  createdAt: true,
   _count: { select: { workspaceMemberships: true } },
 } as const;
 
 type Row = {
-  id: string; email: string; displayName: string; avatarUrl: string | null; status: string;
-  isSystemAdmin: boolean; canCreateWorkspace: boolean; lastSeenAt: Date | null; createdAt: Date;
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string | null;
+  status: string;
+  isSystemAdmin: boolean;
+  canCreateWorkspace: boolean;
+  lastSeenAt: Date | null;
+  createdAt: Date;
   _count: { workspaceMemberships: number };
 };
 
@@ -25,15 +39,24 @@ export class AdminService {
 
   private toDto(u: Row) {
     return {
-      id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl, status: u.status,
-      isSystemAdmin: u.isSystemAdmin, canCreateWorkspace: u.canCreateWorkspace,
+      id: u.id,
+      email: u.email,
+      displayName: u.displayName,
+      avatarUrl: u.avatarUrl,
+      status: u.status,
+      isSystemAdmin: u.isSystemAdmin,
+      canCreateWorkspace: u.canCreateWorkspace,
       workspaceCount: u._count.workspaceMemberships,
-      lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString(),
+      lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
+      createdAt: u.createdAt.toISOString(),
     };
   }
 
   async list() {
-    const rows = await this.prisma.user.findMany({ orderBy: { createdAt: 'asc' }, select: USER_SELECT });
+    const rows = await this.prisma.user.findMany({
+      orderBy: { createdAt: 'asc' },
+      select: USER_SELECT,
+    });
     const data = rows.map((r) => this.toDto(r as Row));
     // Danh sách "all-in-one" (không phân trang) — vẫn bọc envelope theo cross-cutting decision.
     return offsetPage(data, 1, Math.max(1, data.length), data.length);

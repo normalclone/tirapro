@@ -39,13 +39,13 @@ export interface IssueCustomField {
   value: CustomFieldValue;
 }
 
-
 /** Field tùy chỉnh + giá trị hiện tại của một issue. */
 export function useIssueCustomFields(issueId?: string) {
   return useQuery({
     queryKey: keys.issues.customFields(issueId ?? ''),
-    queryFn: issueId ? async () =>
-      (await api.get<IssueCustomField[]>(`/issues/${issueId}/custom-fields`)).data : skipToken,
+    queryFn: issueId
+      ? async () => (await api.get<IssueCustomField[]>(`/issues/${issueId}/custom-fields`)).data
+      : skipToken,
   });
 }
 

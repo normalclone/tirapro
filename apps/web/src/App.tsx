@@ -24,7 +24,13 @@ export function App() {
       <Toaster
         position="bottom-right"
         theme={theme}
-        toastOptions={{ style: { background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--border)' } }}
+        toastOptions={{
+          style: {
+            background: 'var(--surface)',
+            color: 'var(--ink)',
+            border: '1px solid var(--border)',
+          },
+        }}
       />
     </QueryClientProvider>
   );

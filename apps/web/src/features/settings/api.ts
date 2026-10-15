@@ -5,7 +5,6 @@ import { keys } from '@/lib/queryKeys';
 
 /** ---- Thông báo (notification preferences) ---- */
 
-
 export interface NotificationPrefsResponse {
   preferences: Record<string, boolean>;
   defaults: Record<string, boolean>;
@@ -36,7 +35,6 @@ export function useUpdateNotificationPrefs() {
 }
 
 /** ---- Mức độ nghiêm trọng (severities) ---- */
-
 
 export interface Severity {
   id: string;

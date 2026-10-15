@@ -48,9 +48,15 @@ describe('buildFulltextQuery', () => {
 
 describe('isMissingColumnError', () => {
   it('nhận mã 42703 ở các dạng lỗi Prisma/pg', () => {
-    expect(isMissingColumnError({ code: 'P2010', meta: { code: '42703', message: 'x' } })).toBe(true);
+    expect(isMissingColumnError({ code: 'P2010', meta: { code: '42703', message: 'x' } })).toBe(
+      true,
+    );
     expect(isMissingColumnError({ code: '42703' })).toBe(true);
-    expect(isMissingColumnError(new Error('Raw query failed. Code: `42703`. Message: column "searchVector" does not exist'))).toBe(true);
+    expect(
+      isMissingColumnError(
+        new Error('Raw query failed. Code: `42703`. Message: column "searchVector" does not exist'),
+      ),
+    ).toBe(true);
   });
   it('không nhận lỗi khác', () => {
     expect(isMissingColumnError(new Error('timeout'))).toBe(false);
@@ -61,11 +67,16 @@ describe('isMissingColumnError', () => {
 
 describe('FulltextSearcher.search', () => {
   it('truy vấn tham số hoá (không nối chuỗi) và trả ids theo thứ tự rank', async () => {
-    const prisma = makePrisma(() => Promise.resolve([
-      { id: 'I2', rank: 0.9 },
-      { id: 'I1', rank: 0.1 },
-    ]));
-    const res = await new FulltextSearcher(prisma as never).search('W1', "đăng nhập'; DROP TABLE x;--");
+    const prisma = makePrisma(() =>
+      Promise.resolve([
+        { id: 'I2', rank: 0.9 },
+        { id: 'I1', rank: 0.1 },
+      ]),
+    );
+    const res = await new FulltextSearcher(prisma as never).search(
+      'W1',
+      "đăng nhập'; DROP TABLE x;--",
+    );
     expect(res).toEqual({ ids: ['I2', 'I1'] });
     const { sql, values } = renderCall(prisma.$queryRaw.mock.calls[0]!);
     expect(sql).toContain("websearch_to_tsquery('simple'");
@@ -73,7 +84,9 @@ describe('FulltextSearcher.search', () => {
     expect(sql).not.toContain('DROP TABLE');
     expect(values).toContain("đăng nhập'; DROP TABLE x;--");
     expect(values).toContain('W1');
-    expect(values.some((v) => typeof v === 'string' && v.startsWith('%') && v.endsWith('%'))).toBe(true);
+    expect(values.some((v) => typeof v === 'string' && v.startsWith('%') && v.endsWith('%'))).toBe(
+      true,
+    );
   });
 
   it('thêm điều kiện projectId (bind) khi có', async () => {
@@ -92,7 +105,9 @@ describe('FulltextSearcher.search', () => {
 
   it('thiếu cột searchVector (42703) -> null để gọi dùng contains, chỉ cảnh báo một lần', async () => {
     const prisma = makePrisma(() =>
-      Promise.reject(Object.assign(new Error('Raw query failed'), { code: 'P2010', meta: { code: '42703' } })),
+      Promise.reject(
+        Object.assign(new Error('Raw query failed'), { code: 'P2010', meta: { code: '42703' } }),
+      ),
     );
     const logger = { warn: vi.fn() };
     const searcher = new FulltextSearcher(prisma as never, logger);
@@ -104,6 +119,8 @@ describe('FulltextSearcher.search', () => {
 
   it('lỗi DB khác được ném lại (không nuốt)', async () => {
     const prisma = makePrisma(() => Promise.reject(new Error('connection lost')));
-    await expect(new FulltextSearcher(prisma as never).search('W1', 'abc')).rejects.toThrow('connection lost');
+    await expect(new FulltextSearcher(prisma as never).search('W1', 'abc')).rejects.toThrow(
+      'connection lost',
+    );
   });
 });

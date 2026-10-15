@@ -5,7 +5,11 @@ import { SYSTEM_ROLES } from '@tirapro/types';
 import type { CreateWorkspaceInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { BusinessRuleException, ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  ForbiddenAppException,
+  NotFoundAppException,
+} from '../../common/exceptions/app.exception';
 import { MediaService } from '../media/media.service';
 import { WorkspaceBootstrapService } from './workspace-bootstrap.service';
 
@@ -18,14 +22,19 @@ export class WorkspacesService {
   ) {}
 
   /** Tạo workspace mới + clone catalog config + gán người tạo làm Workspace Admin. */
-  async create(userId: string, input: CreateWorkspaceInput): Promise<{ id: string; name: string; slug: string }> {
+  async create(
+    userId: string,
+    input: CreateWorkspaceInput,
+  ): Promise<{ id: string; name: string; slug: string }> {
     // Chỉ admin hệ thống hoặc user được cấp quyền mới tạo được workspace.
     const actor = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { isSystemAdmin: true, canCreateWorkspace: true },
     });
     if (!actor?.isSystemAdmin && !actor?.canCreateWorkspace) {
-      throw new ForbiddenAppException('Bạn không có quyền tạo không gian làm việc — hãy liên hệ quản trị hệ thống để được cấp quyền');
+      throw new ForbiddenAppException(
+        'Bạn không có quyền tạo không gian làm việc — hãy liên hệ quản trị hệ thống để được cấp quyền',
+      );
     }
     return this.prisma.$transaction(async (tx) => {
       const slug = await this.uniqueSlug(tx, input.name);
@@ -34,11 +43,18 @@ export class WorkspacesService {
       });
       await this.bootstrap.bootstrap(tx, ws.id);
       const adminRole = await tx.role.findFirst({
-        where: { name: SYSTEM_ROLES.WORKSPACE_ADMIN, scope: 'WORKSPACE', workspaceId: null, isSystem: true },
+        where: {
+          name: SYSTEM_ROLES.WORKSPACE_ADMIN,
+          scope: 'WORKSPACE',
+          workspaceId: null,
+          isSystem: true,
+        },
         select: { id: true },
       });
       if (!adminRole) throw new BusinessRuleException('Thiếu vai trò hệ thống WORKSPACE_ADMIN');
-      await tx.workspaceMembership.create({ data: { workspaceId: ws.id, userId, roleId: adminRole.id } });
+      await tx.workspaceMembership.create({
+        data: { workspaceId: ws.id, userId, roleId: adminRole.id },
+      });
       return { id: ws.id, name: ws.name, slug: ws.slug };
     });
   }
@@ -51,7 +67,10 @@ export class WorkspacesService {
     });
     if (!prev) throw new NotFoundAppException('Không gian làm việc');
     const avatarUrl = await this.media.saveAvatar(file, 'ws', req);
-    const ws = await this.prisma.workspace.update({ where: { id: workspaceId }, data: { avatarUrl } });
+    const ws = await this.prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { avatarUrl },
+    });
     await this.media.removeByUrl(prev.avatarUrl);
     return { id: ws.id, name: ws.name, slug: ws.slug, avatarUrl: ws.avatarUrl };
   }
@@ -63,7 +82,10 @@ export class WorkspacesService {
       select: { avatarUrl: true },
     });
     if (!prev) throw new NotFoundAppException('Không gian làm việc');
-    const ws = await this.prisma.workspace.update({ where: { id: workspaceId }, data: { avatarUrl: null } });
+    const ws = await this.prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { avatarUrl: null },
+    });
     await this.media.removeByUrl(prev.avatarUrl);
     return { id: ws.id, name: ws.name, slug: ws.slug, avatarUrl: ws.avatarUrl };
   }

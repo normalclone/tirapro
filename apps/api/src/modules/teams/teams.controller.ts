@@ -8,8 +8,14 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { TeamsService } from './teams.service';
 import {
-  createTeamSchema, updateTeamSchema, setTeamMembersSchema, assignTeamToProjectSchema,
-  type CreateTeamInput, type UpdateTeamInput, type SetTeamMembersInput, type AssignTeamToProjectInput,
+  createTeamSchema,
+  updateTeamSchema,
+  setTeamMembersSchema,
+  assignTeamToProjectSchema,
+  type CreateTeamInput,
+  type UpdateTeamInput,
+  type SetTeamMembersInput,
+  type AssignTeamToProjectInput,
 } from './teams.schemas';
 
 @ApiTags('teams')

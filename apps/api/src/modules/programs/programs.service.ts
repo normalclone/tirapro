@@ -91,7 +91,10 @@ export class ProgramsService {
   }
 
   async get(workspaceId: string, id: string) {
-    const p = await this.prisma.program.findFirst({ where: { id, workspaceId }, select: PROGRAM_SELECT });
+    const p = await this.prisma.program.findFirst({
+      where: { id, workspaceId },
+      select: PROGRAM_SELECT,
+    });
     if (!p) throw new NotFoundAppException('Chương trình');
     return this.toDto(p);
   }
@@ -155,7 +158,10 @@ export class ProgramsService {
         where: { id: { in: ids }, workspaceId, deletedAt: null },
         select: { id: true },
       });
-      if (found.length !== ids.length) throw new BusinessRuleException('Một số dự án không thuộc không gian làm việc này — hãy bỏ chọn những dự án đó');
+      if (found.length !== ids.length)
+        throw new BusinessRuleException(
+          'Một số dự án không thuộc không gian làm việc này — hãy bỏ chọn những dự án đó',
+        );
     }
     await this.prisma.$transaction([
       this.prisma.project.updateMany({
@@ -163,7 +169,12 @@ export class ProgramsService {
         data: { programId: null },
       }),
       ...(ids.length
-        ? [this.prisma.project.updateMany({ where: { workspaceId, id: { in: ids } }, data: { programId: id } })]
+        ? [
+            this.prisma.project.updateMany({
+              where: { workspaceId, id: { in: ids } },
+              data: { programId: id },
+            }),
+          ]
         : []),
     ]);
     return this.get(workspaceId, id);
@@ -173,13 +184,21 @@ export class ProgramsService {
    * Rollup toàn workspace: mỗi chương trình + nhóm "Chưa thuộc chương trình",
    * kèm số liệu issue của từng dự án con (tổng / xong / quá hạn / % tiến độ).
    */
-  async rollup(workspaceId: string): Promise<{ groups: RollupGroup[]; totals: RollupStats & { projectCount: number; programCount: number } }> {
+  async rollup(workspaceId: string): Promise<{
+    groups: RollupGroup[];
+    totals: RollupStats & { projectCount: number; programCount: number };
+  }> {
     const [programs, projects, statuses] = await Promise.all([
       this.prisma.program.findMany({
         where: { workspaceId },
         orderBy: [{ startDate: 'asc' }, { name: 'asc' }],
         select: {
-          id: true, name: true, color: true, description: true, startDate: true, targetDate: true,
+          id: true,
+          name: true,
+          color: true,
+          description: true,
+          startDate: true,
+          targetDate: true,
           owner: { select: { displayName: true } },
         },
       }),
@@ -187,7 +206,11 @@ export class ProgramsService {
         where: { workspaceId, deletedAt: null },
         orderBy: { name: 'asc' },
         select: {
-          id: true, key: true, name: true, isArchived: true, programId: true,
+          id: true,
+          key: true,
+          name: true,
+          isArchived: true,
+          programId: true,
           lead: { select: { displayName: true } },
         },
       }),
@@ -228,7 +251,10 @@ export class ProgramsService {
     const statsOf = new Map<string, RollupStats>();
     const ensure = (projectId: string): RollupStats => {
       let s = statsOf.get(projectId);
-      if (!s) { s = { ...EMPTY_STATS }; statsOf.set(projectId, s); }
+      if (!s) {
+        s = { ...EMPTY_STATS };
+        statsOf.set(projectId, s);
+      }
       return s;
     };
     for (const row of byStatus) {
@@ -303,14 +329,21 @@ export class ProgramsService {
 
     return {
       groups,
-      totals: { ...sum(rollupProjects), projectCount: projects.length, programCount: programs.length },
+      totals: {
+        ...sum(rollupProjects),
+        projectCount: projects.length,
+        programCount: programs.length,
+      },
     };
   }
 
   // ───────────────────────── helpers ─────────────────────────
 
   private async require(workspaceId: string, id: string) {
-    const p = await this.prisma.program.findFirst({ where: { id, workspaceId }, select: { id: true, name: true } });
+    const p = await this.prisma.program.findFirst({
+      where: { id, workspaceId },
+      select: { id: true, name: true },
+    });
     if (!p) throw new NotFoundAppException('Chương trình');
     return p;
   }
@@ -330,13 +363,22 @@ export class ProgramsService {
       where: { workspaceId, userId: ownerId },
       select: { userId: true },
     });
-    if (!m) throw new ForbiddenAppException('Người phụ trách không thuộc không gian làm việc này — hãy chọn một thành viên khác');
+    if (!m)
+      throw new ForbiddenAppException(
+        'Người phụ trách không thuộc không gian làm việc này — hãy chọn một thành viên khác',
+      );
     return ownerId;
   }
 
   private toDto(p: {
-    id: string; workspaceId: string; name: string; description: string | null; color: string | null;
-    startDate: Date | null; targetDate: Date | null; createdAt: Date;
+    id: string;
+    workspaceId: string;
+    name: string;
+    description: string | null;
+    color: string | null;
+    startDate: Date | null;
+    targetDate: Date | null;
+    createdAt: Date;
     owner: { id: string; displayName: string; avatarUrl: string | null } | null;
     projects: { id: string; key: string; name: string; isArchived: boolean }[];
   }) {
@@ -382,11 +424,17 @@ function sum(items: RollupStats[]): RollupStats {
 }
 
 function earliest(items: { startDate: string | null }[]): string | null {
-  const xs = items.map((i) => i.startDate).filter((v): v is string => !!v).sort();
+  const xs = items
+    .map((i) => i.startDate)
+    .filter((v): v is string => !!v)
+    .sort();
   return xs[0] ?? null;
 }
 
 function latest(items: { targetDate: string | null }[]): string | null {
-  const xs = items.map((i) => i.targetDate).filter((v): v is string => !!v).sort();
+  const xs = items
+    .map((i) => i.targetDate)
+    .filter((v): v is string => !!v)
+    .sort();
   return xs[xs.length - 1] ?? null;
 }

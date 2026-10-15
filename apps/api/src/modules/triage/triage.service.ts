@@ -4,7 +4,10 @@ import { DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto } from '../../common/mappers/user.mapper';
-import { NotFoundAppException, VersionConflictException } from '../../common/exceptions/app.exception';
+import {
+  NotFoundAppException,
+  VersionConflictException,
+} from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 import { assertIssueWritable } from '../../common/project-writable';
 
@@ -28,13 +31,52 @@ export interface TriageItemDto {
   key: string;
   summary: string;
   projectId: string;
-  type: { id: string; name: string; key: string | null; iconUrl: string | null; color: string | null; hierarchyLevel: number; isSubtask: boolean };
-  status: { id: string; workflowId: string; name: string; category: string; color: string | null; order: number; isInitial: boolean };
-  priority: { id: string; name: string; iconKey: string | null; color: string | null; rank: number; isDefault: boolean } | null;
-  severity: { id: string; name: string; description: string | null; color: string | null; rank: number; isDefault: boolean } | null;
-  assignee:
-    | { id: string; email: string; displayName: string; avatarUrl: string | null; timezone: string; locale: string; status: string; isSystemAdmin: boolean; lastSeenAt: string | null; createdAt: string }
-    | null;
+  type: {
+    id: string;
+    name: string;
+    key: string | null;
+    iconUrl: string | null;
+    color: string | null;
+    hierarchyLevel: number;
+    isSubtask: boolean;
+  };
+  status: {
+    id: string;
+    workflowId: string;
+    name: string;
+    category: string;
+    color: string | null;
+    order: number;
+    isInitial: boolean;
+  };
+  priority: {
+    id: string;
+    name: string;
+    iconKey: string | null;
+    color: string | null;
+    rank: number;
+    isDefault: boolean;
+  } | null;
+  severity: {
+    id: string;
+    name: string;
+    description: string | null;
+    color: string | null;
+    rank: number;
+    isDefault: boolean;
+  } | null;
+  assignee: {
+    id: string;
+    email: string;
+    displayName: string;
+    avatarUrl: string | null;
+    timezone: string;
+    locale: string;
+    status: string;
+    isSystemAdmin: boolean;
+    lastSeenAt: string | null;
+    createdAt: string;
+  } | null;
   occurrenceCount: number;
   triageState: TriageRow['triageState'];
   triageSnoozeUntil: string | null;
@@ -66,15 +108,16 @@ export class TriageService {
    * Bộ lọc inbox: chưa xóa, đang chờ (PENDING) hoặc snooze đã tới hạn (SNOOZED && until <= now),
    * trong workspace hiện tại, tùy chọn lọc theo project.
    */
-  private inboxWhere(workspaceId: string, projectId: string | undefined, now: Date): Prisma.IssueWhereInput {
+  private inboxWhere(
+    workspaceId: string,
+    projectId: string | undefined,
+    now: Date,
+  ): Prisma.IssueWhereInput {
     return {
       workspaceId,
       deletedAt: null,
       ...(projectId ? { projectId } : {}),
-      OR: [
-        { triageState: 'PENDING' },
-        { triageState: 'SNOOZED', triageSnoozeUntil: { lte: now } },
-      ],
+      OR: [{ triageState: 'PENDING' }, { triageState: 'SNOOZED', triageSnoozeUntil: { lte: now } }],
     };
   }
 
@@ -92,7 +135,11 @@ export class TriageService {
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
-    return cursorPage(rows.map((r) => this.toDto(r)), limit, (i) => i.id);
+    return cursorPage(
+      rows.map((r) => this.toDto(r)),
+      limit,
+      (i) => i.id,
+    );
   }
 
   /** Số lượng issue đang chờ triage (cùng bộ lọc với inbox). */
@@ -104,7 +151,12 @@ export class TriageService {
   }
 
   /** Chấp nhận issue vào backlog: ACCEPTED, xóa snooze, tùy chọn gán người thực hiện. */
-  async accept(workspaceId: string, userId: string, issueId: string, input: AcceptTriageInput): Promise<TriageItemDto> {
+  async accept(
+    workspaceId: string,
+    userId: string,
+    issueId: string,
+    input: AcceptTriageInput,
+  ): Promise<TriageItemDto> {
     const current = await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     this.assertVersion(current.version, input.version);
@@ -116,13 +168,20 @@ export class TriageService {
       updatedById: userId,
     };
     if (input.assigneeId !== undefined) {
-      data.assignee = input.assigneeId ? { connect: { id: input.assigneeId } } : { disconnect: true };
+      data.assignee = input.assigneeId
+        ? { connect: { id: input.assigneeId } }
+        : { disconnect: true };
     }
     return this.applyAndEmit(issueId, data, userId);
   }
 
   /** Từ chối issue: DECLINED (không vào backlog). */
-  async decline(workspaceId: string, userId: string, issueId: string, input: DeclineTriageInput): Promise<TriageItemDto> {
+  async decline(
+    workspaceId: string,
+    userId: string,
+    issueId: string,
+    input: DeclineTriageInput,
+  ): Promise<TriageItemDto> {
     const current = await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     this.assertVersion(current.version, input.version);
@@ -139,7 +198,12 @@ export class TriageService {
   }
 
   /** Tạm hoãn issue tới mốc thời gian: SNOOZED + triageSnoozeUntil. */
-  async snooze(workspaceId: string, userId: string, issueId: string, input: SnoozeTriageInput): Promise<TriageItemDto> {
+  async snooze(
+    workspaceId: string,
+    userId: string,
+    issueId: string,
+    input: SnoozeTriageInput,
+  ): Promise<TriageItemDto> {
     const current = await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     this.assertVersion(current.version, input.version);
@@ -157,8 +221,16 @@ export class TriageService {
   }
 
   // ---------- helpers ----------
-  private async applyAndEmit(issueId: string, data: Prisma.IssueUpdateInput, userId: string): Promise<TriageItemDto> {
-    const updated = await this.prisma.issue.update({ where: { id: issueId }, data, include: triageInclude });
+  private async applyAndEmit(
+    issueId: string,
+    data: Prisma.IssueUpdateInput,
+    userId: string,
+  ): Promise<TriageItemDto> {
+    const updated = await this.prisma.issue.update({
+      where: { id: issueId },
+      data,
+      include: triageInclude,
+    });
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId: userId });
     return dto;
@@ -175,7 +247,10 @@ export class TriageService {
 
   private assertVersion(currentVersion: number, inputVersion: number): void {
     if (currentVersion !== inputVersion) {
-      throw new VersionConflictException('Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại', { version: currentVersion });
+      throw new VersionConflictException(
+        'Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại',
+        { version: currentVersion },
+      );
     }
   }
 
@@ -185,10 +260,44 @@ export class TriageService {
       key: i.key,
       summary: i.summary,
       projectId: i.projectId,
-      type: { id: i.type.id, name: i.type.name, key: i.type.key, iconUrl: i.type.iconUrl, color: i.type.color, hierarchyLevel: i.type.hierarchyLevel, isSubtask: i.type.isSubtask },
-      status: { id: i.status.id, workflowId: i.status.workflowId, name: i.status.name, category: i.status.category, color: i.status.color, order: i.status.order, isInitial: i.status.isInitial },
-      priority: i.priority ? { id: i.priority.id, name: i.priority.name, iconKey: i.priority.iconKey, color: i.priority.color, rank: i.priority.rank, isDefault: i.priority.isDefault } : null,
-      severity: i.severity ? { id: i.severity.id, name: i.severity.name, description: i.severity.description, color: i.severity.color, rank: i.severity.rank, isDefault: i.severity.isDefault } : null,
+      type: {
+        id: i.type.id,
+        name: i.type.name,
+        key: i.type.key,
+        iconUrl: i.type.iconUrl,
+        color: i.type.color,
+        hierarchyLevel: i.type.hierarchyLevel,
+        isSubtask: i.type.isSubtask,
+      },
+      status: {
+        id: i.status.id,
+        workflowId: i.status.workflowId,
+        name: i.status.name,
+        category: i.status.category,
+        color: i.status.color,
+        order: i.status.order,
+        isInitial: i.status.isInitial,
+      },
+      priority: i.priority
+        ? {
+            id: i.priority.id,
+            name: i.priority.name,
+            iconKey: i.priority.iconKey,
+            color: i.priority.color,
+            rank: i.priority.rank,
+            isDefault: i.priority.isDefault,
+          }
+        : null,
+      severity: i.severity
+        ? {
+            id: i.severity.id,
+            name: i.severity.name,
+            description: i.severity.description,
+            color: i.severity.color,
+            rank: i.severity.rank,
+            isDefault: i.severity.isDefault,
+          }
+        : null,
       assignee: i.assignee ? toUserDto(i.assignee) : null,
       occurrenceCount: i.occurrenceCount,
       triageState: i.triageState,

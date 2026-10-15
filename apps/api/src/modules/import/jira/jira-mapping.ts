@@ -19,8 +19,12 @@ export function ownValue<T>(m: Record<string, T>, key: string): T | undefined {
 }
 
 /** Giá trị Jira còn chưa được ghép (loại/trạng thái/ưu tiên bắt buộc ghép; user thì có thể bỏ trống). */
-export function findMissingMapping(analysis: AnalysisLike, mapping: JiraMappingInput): MissingMapping {
-  const miss = (values: string[], m: Record<string, string>): string[] => values.filter((v) => !ownValue(m, v));
+export function findMissingMapping(
+  analysis: AnalysisLike,
+  mapping: JiraMappingInput,
+): MissingMapping {
+  const miss = (values: string[], m: Record<string, string>): string[] =>
+    values.filter((v) => !ownValue(m, v));
   return {
     issueTypes: miss(analysis.issueTypes, mapping.issueTypes),
     statuses: miss(analysis.statuses, mapping.statuses),
@@ -44,8 +48,14 @@ export function formatMissing(m: MissingMapping): string {
 /** Jira không xuất category của trạng thái → đoán theo tên để trạng thái mới tạo có nhóm hợp lý. */
 export function inferStatusCategory(name: string): 'TODO' | 'IN_PROGRESS' | 'DONE' {
   const n = name.toLowerCase();
-  if (/\b(done|closed|resolved|complete[d]?|finished|released|cancel+ed|won't|wont)\b|hoàn thành|đã xong|đóng/.test(n)) return 'DONE';
-  if (/\b(to ?do|open|backlog|new|created|selected|ready|reopened)\b|cần làm|mở|mới/.test(n)) return 'TODO';
+  if (
+    /\b(done|closed|resolved|complete[d]?|finished|released|cancel+ed|won't|wont)\b|hoàn thành|đã xong|đóng/.test(
+      n,
+    )
+  )
+    return 'DONE';
+  if (/\b(to ?do|open|backlog|new|created|selected|ready|reopened)\b|cần làm|mở|mới/.test(n))
+    return 'TODO';
   return 'IN_PROGRESS';
 }
 
@@ -98,7 +108,8 @@ export function resolveLinks(
 
     if (r.parentRef) {
       const hit = find(r.parentRef, r);
-      if (!hit) warnings.push(`Không tìm thấy việc cha "${r.parentRef}" trong tệp — tạo không có việc cha`);
+      if (!hit)
+        warnings.push(`Không tìm thấy việc cha "${r.parentRef}" trong tệp — tạo không có việc cha`);
       else if (isSubtask(r) || !isEpic(hit)) parent = hit;
       else epic = hit;
     }
@@ -134,7 +145,8 @@ export function layerIssues(
     const l = links.get(r);
     let d = 0;
     for (const dep of [l?.parent, l?.epic]) {
-      if (dep && isSubtask(dep) === isSubtask(r) && !visiting.has(dep)) d = Math.max(d, depth(dep) + 1); // gặp vòng thì bỏ cạnh đó
+      if (dep && isSubtask(dep) === isSubtask(r) && !visiting.has(dep))
+        d = Math.max(d, depth(dep) + 1); // gặp vòng thì bỏ cạnh đó
     }
     visiting.delete(r);
     level.set(r, d);

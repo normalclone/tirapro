@@ -61,7 +61,11 @@ export class WatchersService {
   }
 
   /** Bỏ theo dõi issue. Idempotent (xóa không có cũng coi như thành công). */
-  async unwatch(workspaceId: string, userId: string, issueId: string): Promise<{ watching: false }> {
+  async unwatch(
+    workspaceId: string,
+    userId: string,
+    issueId: string,
+  ): Promise<{ watching: false }> {
     await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     await this.prisma.issueWatcher.deleteMany({ where: { issueId, userId } });
@@ -89,7 +93,11 @@ export class WatchersService {
   }
 
   /** User hiện tại có đang theo dõi issue không. */
-  async isWatching(workspaceId: string, userId: string, issueId: string): Promise<{ watching: boolean }> {
+  async isWatching(
+    workspaceId: string,
+    userId: string,
+    issueId: string,
+  ): Promise<{ watching: boolean }> {
     await this.requireIssue(workspaceId, issueId);
     const found = await this.prisma.issueWatcher.findUnique({
       where: { issueId_userId: { issueId, userId } },
@@ -153,9 +161,7 @@ export class WatchersService {
       where: { issueId: issue.id },
       select: { userId: true },
     });
-    const recipients = watchers
-      .map((w) => w.userId)
-      .filter((userId) => userId !== actorId);
+    const recipients = watchers.map((w) => w.userId).filter((userId) => userId !== actorId);
     if (recipients.length === 0) return;
 
     const payload: Prisma.InputJsonValue = { key: issue.key, summary: issue.summary };

@@ -15,7 +15,11 @@ export function QuickFilterChips({
   className?: string;
 }) {
   return (
-    <div role="group" aria-label="Bộ lọc nhanh" className={cn('flex flex-wrap items-center gap-1.5', className)}>
+    <div
+      role="group"
+      aria-label="Bộ lọc nhanh"
+      className={cn('flex flex-wrap items-center gap-1.5', className)}
+    >
       {QUICK_FILTERS.map((f) => {
         const isOn = active.has(f.id);
         return (

@@ -2,7 +2,6 @@ import { skipToken, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
-
 /** Một mục lịch sử thay đổi của issue. */
 export interface ActivityItem {
   id: string;
@@ -20,6 +19,8 @@ export interface ActivityItem {
 export function useIssueActivity(issueId?: string) {
   return useQuery({
     queryKey: keys.issues.activity(issueId ?? ''),
-    queryFn: issueId ? async () => (await api.get<ActivityItem[]>(`/issues/${issueId}/activity`)).data : skipToken,
+    queryFn: issueId
+      ? async () => (await api.get<ActivityItem[]>(`/issues/${issueId}/activity`)).data
+      : skipToken,
   });
 }

@@ -2,7 +2,10 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { PermissionKey } from '@tirapro/types';
 import { PERMISSIONS_KEY } from '../../common/decorators/permissions.decorator';
-import { PROJECT_REF_KEY, type ProjectRefMeta } from '../../common/decorators/project-ref.decorator';
+import {
+  PROJECT_REF_KEY,
+  type ProjectRefMeta,
+} from '../../common/decorators/project-ref.decorator';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import type { AuthedRequest } from '../../common/types/request';
 import { RbacService } from './rbac.service';
@@ -26,7 +29,10 @@ export class PermissionsGuard implements CanActivate {
     const user = req.user;
     if (!user) throw new ForbiddenAppException('Chưa xác thực');
     if (user.isSystemAdmin) return true;
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
+    if (!user.workspaceId)
+      throw new ForbiddenAppException(
+        'Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại',
+      );
 
     const projectId = await this.resolveProject(context, req, user.workspaceId);
 
@@ -75,7 +81,8 @@ export class PermissionsGuard implements CanActivate {
     // Không khai báo @ProjectRef: dùng params.projectId. body.projectId CHỈ được tin khi route
     // không có tham số định danh nào khác (vd POST tạo mới) — nếu có `:id`, client không được
     // lái dự án bằng body (PUT /x/:id với body.projectId của dự án mình có quyền).
-    if (req.params?.projectId !== undefined) return this.checkedProjectId(req.params.projectId, workspaceId);
+    if (req.params?.projectId !== undefined)
+      return this.checkedProjectId(req.params.projectId, workspaceId);
     const hasOtherParams = Object.keys(req.params ?? {}).length > 0;
     if (hasOtherParams) return null;
     return this.checkedProjectId(req.body?.projectId, workspaceId);

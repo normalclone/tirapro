@@ -32,7 +32,10 @@ export function PresenceAvatars(props: Props) {
       {extra > 0 && (
         <span
           className="tabular z-0 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-surface-2 px-1 text-[10px] font-semibold text-muted ring-2 ring-surface"
-          title={users.slice(MAX_AVATARS).map((u) => u.displayName).join(', ')}
+          title={users
+            .slice(MAX_AVATARS)
+            .map((u) => u.displayName)
+            .join(', ')}
         >
           +{extra}
         </span>
@@ -45,7 +48,11 @@ function PresenceAvatar({ user, showDot }: { user: PresenceUser; showDot: boolea
   const viewing = showDot && !!user.viewing;
   return (
     <span className="relative inline-flex rounded-full ring-2 ring-surface">
-      <Avatar name={viewing ? `${user.displayName} — đang xem một công việc` : user.displayName} src={user.avatarUrl} size={24} />
+      <Avatar
+        name={viewing ? `${user.displayName} — đang xem một công việc` : user.displayName}
+        src={user.avatarUrl}
+        size={24}
+      />
       {viewing && (
         <span
           aria-hidden

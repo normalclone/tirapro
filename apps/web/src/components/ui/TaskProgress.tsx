@@ -29,11 +29,15 @@ export function TaskProgress({
       aria-valuemax={100}
       aria-label={`Tiến trình task con: ${progress.pct}%`}
     >
-      {progress.done > 0 && <span style={{ flexGrow: progress.done, background: 'var(--status-done)' }} />}
+      {progress.done > 0 && (
+        <span style={{ flexGrow: progress.done, background: 'var(--status-done)' }} />
+      )}
       {progress.inProgress > 0 && (
         <span style={{ flexGrow: progress.inProgress, background: 'var(--status-progress)' }} />
       )}
-      {progress.todo > 0 && <span style={{ flexGrow: progress.todo, background: 'var(--status-todo)' }} />}
+      {progress.todo > 0 && (
+        <span style={{ flexGrow: progress.todo, background: 'var(--status-todo)' }} />
+      )}
     </div>
   );
 

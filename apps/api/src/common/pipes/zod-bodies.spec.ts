@@ -10,7 +10,11 @@ describe('zod cho body còn thiếu', () => {
   });
 
   it('updateProfileSchema loại khoá lạ (không cho ghi isSystemAdmin…)', () => {
-    const r = updateProfileSchema.parse({ displayName: ' An ', isSystemAdmin: true, passwordHash: 'x' });
+    const r = updateProfileSchema.parse({
+      displayName: ' An ',
+      isSystemAdmin: true,
+      passwordHash: 'x',
+    });
     expect(r).toEqual({ displayName: 'An' });
     expect(updateProfileSchema.safeParse({ displayName: '' }).success).toBe(false);
     expect(updateProfileSchema.safeParse({ avatarUrl: null }).success).toBe(true);

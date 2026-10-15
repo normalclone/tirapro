@@ -4,7 +4,8 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 /** Khớp `node_modules/<tên gói>/` kể cả đường dẫn kiểu pnpm (`.pnpm/x@1/node_modules/<tên gói>/`). */
-const inPkg = (id: string, names: string) => new RegExp(`[\\\\/]node_modules[\\\\/](?:${names})[\\\\/]`).test(id);
+const inPkg = (id: string, names: string) =>
+  new RegExp(`[\\\\/]node_modules[\\\\/](?:${names})[\\\\/]`).test(id);
 
 /**
  * Tách vendor thành chunk ổn định để cache lâu dài và để bundle đầu nhỏ lại. recharts và reactflow vẫn chỉ được nạp
@@ -13,7 +14,13 @@ const inPkg = (id: string, names: string) => new RegExp(`[\\\\/]node_modules[\\\
 function manualChunks(id: string): string | undefined {
   if (!id.includes('node_modules')) return undefined;
   // clsx dùng chung với recharts: ghim vào đây, nếu không Rollup kéo nó vào chunk recharts và bundle đầu phải nạp recharts.
-  if (inPkg(id, 'react|react-dom|scheduler|react-router|react-router-dom|@remix-run[\\\\/]router|clsx')) return 'react';
+  if (
+    inPkg(
+      id,
+      'react|react-dom|scheduler|react-router|react-router-dom|@remix-run[\\\\/]router|clsx',
+    )
+  )
+    return 'react';
   if (inPkg(id, '@tanstack[\\\\/][^\\\\/]+')) return 'tanstack';
   if (inPkg(id, '@radix-ui[\\\\/][^\\\\/]+')) return 'radix';
   if (inPkg(id, '@dnd-kit[\\\\/][^\\\\/]+')) return 'dnd-kit';

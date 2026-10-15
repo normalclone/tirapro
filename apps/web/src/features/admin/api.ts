@@ -36,7 +36,6 @@ export type UpdateAdminUserInput = Partial<{
   status: 'ACTIVE' | 'DEACTIVATED';
 }>;
 
-
 export function useAdminUsers() {
   return useQuery({
     queryKey: keys.admin.users,
@@ -70,20 +69,39 @@ export interface AdminOverview {
   projects: number;
   issues: { total: number; done: number; open: number };
   attachments: { count: number; totalBytes: number };
-  ai: { requests: number; inputTokens: number; outputTokens: number; estCostUsd: number; successRate: number | null };
+  ai: {
+    requests: number;
+    inputTokens: number;
+    outputTokens: number;
+    estCostUsd: number;
+    successRate: number | null;
+  };
   activity: { last24h: number; last7d: number };
   degrade: {
-    db: boolean; redis: boolean; ai: boolean; aiConfigured: boolean;
-    embedding: boolean; embeddingProvider: string; storage: boolean; storageDriver: string;
+    db: boolean;
+    redis: boolean;
+    ai: boolean;
+    aiConfigured: boolean;
+    embedding: boolean;
+    embeddingProvider: string;
+    storage: boolean;
+    storageDriver: string;
   };
   generatedAt: string;
 }
 
 export interface AdminWorkspace {
-  id: string; name: string; slug: string; plan: 'FREE' | 'PRO' | 'ENTERPRISE';
-  archived: boolean; createdAt: string;
+  id: string;
+  name: string;
+  slug: string;
+  plan: 'FREE' | 'PRO' | 'ENTERPRISE';
+  archived: boolean;
+  createdAt: string;
   owner: { id: string; displayName: string; email: string; avatarUrl: string | null };
-  members: number; projects: number; issues: number; lastActivityAt: string | null;
+  members: number;
+  projects: number;
+  issues: number;
+  lastActivityAt: string | null;
 }
 
 export interface SystemFlags {
@@ -95,7 +113,13 @@ export interface SystemFlags {
 
 export interface AdminConfig {
   nodeEnv: string;
-  ai: { enabled: boolean; hasKey: boolean; modelPrimary: string | null; modelFast: string | null; monthlyQuotaPerWorkspace: number | null };
+  ai: {
+    enabled: boolean;
+    hasKey: boolean;
+    modelPrimary: string | null;
+    modelFast: string | null;
+    monthlyQuotaPerWorkspace: number | null;
+  };
   embedding: { provider: string; dim: number | null; hasKey: boolean };
   redis: { configured: boolean; available: boolean };
   storage: { driver: string; maxFileSizeMb: number | null; s3Bucket: string | null };
@@ -105,22 +129,43 @@ export interface AdminConfig {
 }
 
 export interface AdminHealth {
-  db: boolean; dbLatencyMs: number | null; redis: boolean; redisConfigured: boolean; ai: boolean;
-  uptimeSec: number; memoryRssMb: number; heapUsedMb: number; nodeEnv: string; release: string; timestamp: string;
+  db: boolean;
+  dbLatencyMs: number | null;
+  redis: boolean;
+  redisConfigured: boolean;
+  ai: boolean;
+  uptimeSec: number;
+  memoryRssMb: number;
+  heapUsedMb: number;
+  nodeEnv: string;
+  release: string;
+  timestamp: string;
 }
 
 export interface AuditEntry {
-  id: string; action: string; entityType: string; entityId: string; field: string | null; createdAt: string;
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  field: string | null;
+  createdAt: string;
   workspace: { id: string; name: string } | null;
   actor: { id: string; displayName: string; avatarUrl: string | null } | null;
 }
 
 export function useAdminOverview() {
-  return useQuery({ queryKey: keys.admin.overview, queryFn: async () => (await api.get<AdminOverview>('/admin/overview')).data });
+  return useQuery({
+    queryKey: keys.admin.overview,
+    queryFn: async () => (await api.get<AdminOverview>('/admin/overview')).data,
+  });
 }
 
 export function useAdminWorkspaces() {
-  return useQuery({ queryKey: keys.admin.workspaces, queryFn: async () => (await api.get<ListEnvelope<AdminWorkspace>>('/admin/workspaces')).data.data });
+  return useQuery({
+    queryKey: keys.admin.workspaces,
+    queryFn: async () =>
+      (await api.get<ListEnvelope<AdminWorkspace>>('/admin/workspaces')).data.data,
+  });
 }
 
 export interface PatchWorkspacePayload {
@@ -141,13 +186,17 @@ export function usePatchWorkspace() {
 }
 
 export function useAdminConfig() {
-  return useQuery({ queryKey: keys.admin.config, queryFn: async () => (await api.get<AdminConfig>('/admin/config')).data });
+  return useQuery({
+    queryKey: keys.admin.config,
+    queryFn: async () => (await api.get<AdminConfig>('/admin/config')).data,
+  });
 }
 
 export function useUpdateFlags() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (patch: Partial<SystemFlags>) => (await api.put<SystemFlags>('/admin/config/flags', patch)).data,
+    mutationFn: async (patch: Partial<SystemFlags>) =>
+      (await api.put<SystemFlags>('/admin/config/flags', patch)).data,
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.admin.config }),
   });
 }
@@ -166,7 +215,8 @@ export function useAdminAudit(limit = 50, action?: string) {
     queryFn: async () => {
       const qs = new URLSearchParams({ limit: String(limit) });
       if (action) qs.set('action', action);
-      return (await api.get<ListEnvelope<AuditEntry>>(`/admin/system/audit?${qs.toString()}`)).data.data;
+      return (await api.get<ListEnvelope<AuditEntry>>(`/admin/system/audit?${qs.toString()}`)).data
+        .data;
     },
   });
 }

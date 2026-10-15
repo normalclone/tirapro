@@ -1,7 +1,19 @@
 import { useDeferredValue, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
-import { ArrowRight, BookOpen, History, LayoutDashboard, LayoutGrid, ListTodo, Moon, Plus, Search, Sparkles, Sun } from 'lucide-react';
+import {
+  ArrowRight,
+  BookOpen,
+  History,
+  LayoutDashboard,
+  LayoutGrid,
+  ListTodo,
+  Moon,
+  Plus,
+  Search,
+  Sparkles,
+  Sun,
+} from 'lucide-react';
 import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { useTheme } from '@/stores/theme';
@@ -155,7 +167,9 @@ export function CommandPalette() {
           </Command.Group>
         )}
 
-        {issueRouteKey && <IssueContextGroup issueKey={safeDecode(issueRouteKey)} runAction={runAction} />}
+        {issueRouteKey && (
+          <IssueContextGroup issueKey={safeDecode(issueRouteKey)} runAction={runAction} />
+        )}
 
         <Command.Group
           heading="Hành động"
@@ -165,13 +179,19 @@ export function CommandPalette() {
             value="tao cong viec issue create"
             icon={<Plus className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
             label="Tạo công việc"
-            onSelect={() => runAction(() => openCreate({ projectKey: currentProjectKey(projects) ?? undefined }))}
+            onSelect={() =>
+              runAction(() => openCreate({ projectKey: currentProjectKey(projects) ?? undefined }))
+            }
           />
           <ActionItem
             value="doi giao dien theme sang toi"
-            icon={theme === 'dark'
-              ? <Sun className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
-              : <Moon className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
+            icon={
+              theme === 'dark' ? (
+                <Sun className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
+              ) : (
+                <Moon className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
+              )
+            }
             label={theme === 'dark' ? 'Chuyển giao diện sáng' : 'Chuyển giao diện tối'}
             onSelect={() => runAction(toggleTheme)}
           />
@@ -205,13 +225,17 @@ export function CommandPalette() {
                 value="di board bang hien tai"
                 icon={<LayoutGrid className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
                 label="Board dự án hiện tại"
-                onSelect={() => runAction(() => navigate(`/p/${currentProjectKey(projects)}/board`))}
+                onSelect={() =>
+                  runAction(() => navigate(`/p/${currentProjectKey(projects)}/board`))
+                }
               />
               <ActionItem
                 value="di backlog hien tai"
                 icon={<ListTodo className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
                 label="Backlog dự án hiện tại"
-                onSelect={() => runAction(() => navigate(`/p/${currentProjectKey(projects)}/backlog`))}
+                onSelect={() =>
+                  runAction(() => navigate(`/p/${currentProjectKey(projects)}/backlog`))
+                }
               />
             </>
           )}

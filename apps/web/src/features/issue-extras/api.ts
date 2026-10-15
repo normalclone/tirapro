@@ -12,12 +12,13 @@ export interface ChecklistItemDto {
   createdAt: string;
 }
 
-
 /** Người tham gia issue (ngoài người phụ trách & người báo cáo). */
 export function useParticipants(issueId?: string) {
   return useQuery({
     queryKey: keys.issues.participants(issueId ?? ''),
-    queryFn: issueId ? async () => (await api.get<UserDto[]>(`/issues/${issueId}/participants`)).data : skipToken,
+    queryFn: issueId
+      ? async () => (await api.get<UserDto[]>(`/issues/${issueId}/participants`)).data
+      : skipToken,
   });
 }
 
@@ -34,7 +35,9 @@ export function useSetParticipants(issueId: string) {
 export function useChecklist(issueId?: string) {
   return useQuery({
     queryKey: keys.issues.checklist(issueId ?? ''),
-    queryFn: issueId ? async () => (await api.get<ChecklistItemDto[]>(`/issues/${issueId}/checklist`)).data : skipToken,
+    queryFn: issueId
+      ? async () => (await api.get<ChecklistItemDto[]>(`/issues/${issueId}/checklist`)).data
+      : skipToken,
   });
 }
 
@@ -50,8 +53,18 @@ export function useAddChecklistItem(issueId: string) {
 export function useUpdateChecklistItem(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ itemId, ...patch }: { itemId: string; text?: string; done?: boolean; order?: number }) =>
-      api.patch<ChecklistItemDto>(`/issues/${issueId}/checklist/${itemId}`, patch).then((r) => r.data),
+    mutationFn: ({
+      itemId,
+      ...patch
+    }: {
+      itemId: string;
+      text?: string;
+      done?: boolean;
+      order?: number;
+    }) =>
+      api
+        .patch<ChecklistItemDto>(`/issues/${issueId}/checklist/${itemId}`, patch)
+        .then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.issues.checklist(issueId) }),
   });
 }
@@ -59,7 +72,8 @@ export function useUpdateChecklistItem(issueId: string) {
 export function useRemoveChecklistItem(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (itemId: string) => api.delete(`/issues/${issueId}/checklist/${itemId}`).then((r) => r.data),
+    mutationFn: (itemId: string) =>
+      api.delete(`/issues/${issueId}/checklist/${itemId}`).then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.issues.checklist(issueId) }),
   });
 }

@@ -16,12 +16,13 @@ export interface Attachment {
   createdAt: string;
 }
 
-
 /** Danh sách tệp đính kèm của issue. */
 export function useAttachments(issueId: string | undefined) {
   return useQuery({
     queryKey: keys.issues.attachments(issueId ?? ''),
-    queryFn: issueId ? async () => (await api.get<Attachment[]>(`/issues/${issueId}/attachments`)).data : skipToken,
+    queryFn: issueId
+      ? async () => (await api.get<Attachment[]>(`/issues/${issueId}/attachments`)).data
+      : skipToken,
   });
 }
 

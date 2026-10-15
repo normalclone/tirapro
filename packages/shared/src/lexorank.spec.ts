@@ -71,7 +71,14 @@ describe('rankBetween', () => {
     }
   });
   it('chèn giữa khi a là tiền tố của b có số 0 xen kẽ', () => {
-    for (const [a, b] of [['n', 'n01'], ['n', 'n0001'], ['n0', 'n1'], ['', '01'], ['zz', ''], ['', '0001']] as const) {
+    for (const [a, b] of [
+      ['n', 'n01'],
+      ['n', 'n0001'],
+      ['n0', 'n1'],
+      ['', '01'],
+      ['zz', ''],
+      ['', '0001'],
+    ] as const) {
       const r = rankBetween(a || null, b || null);
       expect(r > a && (b === '' || r < b)).toBe(true);
       expect(r.endsWith('0')).toBe(false);

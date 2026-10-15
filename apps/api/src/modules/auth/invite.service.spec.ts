@@ -24,17 +24,29 @@ function setup(driver: 'console' | 'smtp' = 'console') {
   const prisma = {
     $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
     role: { findFirst: vi.fn((_a: unknown) => Promise.resolve({ id: 'r1' })) },
-    workspace: { findFirst: vi.fn((_a: unknown) => Promise.resolve({ id: 'w1', name: 'Công ty A' } as unknown)) },
+    workspace: {
+      findFirst: vi.fn((_a: unknown) =>
+        Promise.resolve({ id: 'w1', name: 'Công ty A' } as unknown),
+      ),
+    },
     user: { findUnique: vi.fn((_a: unknown) => Promise.resolve(null as unknown)) },
     workspaceMembership: { findUnique: vi.fn((_a: unknown) => Promise.resolve(null as unknown)) },
     inviteToken: { findUnique: vi.fn((_a: unknown) => Promise.resolve(null as unknown)) },
   };
   const mail = { enqueue: vi.fn((_a: unknown, _t?: unknown) => Promise.resolve()) };
   const config = {
-    get: vi.fn((k: string) => (k === 'mail.appWebUrl' ? 'http://localhost:5173' : k === 'mail.driver' ? driver : undefined)),
+    get: vi.fn((k: string) =>
+      k === 'mail.appWebUrl' ? 'http://localhost:5173' : k === 'mail.driver' ? driver : undefined,
+    ),
   };
   const rbac = { invalidate: vi.fn(() => Promise.resolve()) };
-  return { service: new InviteService(prisma as never, mail as never, config as never, rbac as never), prisma, tx, mail, rbac };
+  return {
+    service: new InviteService(prisma as never, mail as never, config as never, rbac as never),
+    prisma,
+    tx,
+    mail,
+    rbac,
+  };
 }
 
 describe('InviteService.createInvite', () => {
@@ -42,7 +54,11 @@ describe('InviteService.createInvite', () => {
     const { service, tx, mail } = setup('console');
     const res = await service.createInvite('w1', 'admin1', { email: 'New@X.vn', roleId: 'r1' });
 
-    const stored = (tx.inviteToken.create.mock.calls[0]![0] as { data: { tokenHash: string; email: string; expiresAt: Date } }).data;
+    const stored = (
+      tx.inviteToken.create.mock.calls[0]![0] as {
+        data: { tokenHash: string; email: string; expiresAt: Date };
+      }
+    ).data;
     expect(stored.email).toBe('new@x.vn');
     const ttl = stored.expiresAt.getTime() - Date.now();
     expect(ttl).toBeGreaterThan(6.99 * 86400_000);
@@ -66,22 +82,38 @@ describe('InviteService.createInvite', () => {
     const { service, prisma } = setup();
     prisma.user.findUnique.mockResolvedValue({ id: 'u1' });
     prisma.workspaceMembership.findUnique.mockResolvedValue({ id: 'm1' });
-    await expect(service.createInvite('w1', 'admin1', { email: 'a@x.vn' })).rejects.toBeInstanceOf(BusinessRuleException);
+    await expect(service.createInvite('w1', 'admin1', { email: 'a@x.vn' })).rejects.toBeInstanceOf(
+      BusinessRuleException,
+    );
   });
 });
 
 describe('InviteService.acceptInvite', () => {
-  const valid = () => ({ id: 'inv1', workspaceId: 'w1', email: 'new@x.vn', roleId: 'r1', acceptedAt: null, expiresAt: new Date(Date.now() + 60_000) });
+  const valid = () => ({
+    id: 'inv1',
+    workspaceId: 'w1',
+    email: 'new@x.vn',
+    roleId: 'r1',
+    acceptedAt: null,
+    expiresAt: new Date(Date.now() + 60_000),
+  });
 
   it('token lạ → từ chối', async () => {
     const { service } = setup();
-    await expect(service.acceptInvite({ token: 'x'.repeat(30), displayName: 'A', password: 'Abcdef12' })).rejects.toBeInstanceOf(BusinessRuleException);
+    await expect(
+      service.acceptInvite({ token: 'x'.repeat(30), displayName: 'A', password: 'Abcdef12' }),
+    ).rejects.toBeInstanceOf(BusinessRuleException);
   });
 
   it('hết hạn → thông báo hết hạn', async () => {
     const { service, prisma } = setup();
-    prisma.inviteToken.findUnique.mockResolvedValue({ ...valid(), expiresAt: new Date(Date.now() - 1) });
-    const err = await service.acceptInvite({ token: 't'.repeat(30), displayName: 'A', password: 'Abcdef12' }).catch((e: unknown) => e);
+    prisma.inviteToken.findUnique.mockResolvedValue({
+      ...valid(),
+      expiresAt: new Date(Date.now() - 1),
+    });
+    const err = await service
+      .acceptInvite({ token: 't'.repeat(30), displayName: 'A', password: 'Abcdef12' })
+      .catch((e: unknown) => e);
     expect((err as BusinessRuleException).message).toContain('hết hạn');
   });
 
@@ -89,8 +121,13 @@ describe('InviteService.acceptInvite', () => {
     const { service, prisma, tx } = setup();
     prisma.inviteToken.findUnique.mockResolvedValue(valid());
     prisma.workspace.findFirst.mockResolvedValue(null);
-    await expect(service.acceptInvite({ token: 't'.repeat(30), displayName: 'An', password: 'Abcdef12' })).rejects.toBeInstanceOf(BusinessRuleException);
-    expect(prisma.workspace.findFirst).toHaveBeenCalledWith({ where: { id: 'w1', deletedAt: null }, select: { id: true } });
+    await expect(
+      service.acceptInvite({ token: 't'.repeat(30), displayName: 'An', password: 'Abcdef12' }),
+    ).rejects.toBeInstanceOf(BusinessRuleException);
+    expect(prisma.workspace.findFirst).toHaveBeenCalledWith({
+      where: { id: 'w1', deletedAt: null },
+      select: { id: true },
+    });
     expect(tx.inviteToken.updateMany).not.toHaveBeenCalled();
     expect(tx.user.create).not.toHaveBeenCalled();
   });
@@ -98,10 +135,18 @@ describe('InviteService.acceptInvite', () => {
   it('user mới → tạo user + membership, đánh dấu acceptedAt', async () => {
     const { service, prisma, tx, rbac } = setup();
     prisma.inviteToken.findUnique.mockResolvedValue(valid());
-    const res = await service.acceptInvite({ token: 't'.repeat(30), displayName: 'An', password: 'Abcdef12' });
+    const res = await service.acceptInvite({
+      token: 't'.repeat(30),
+      displayName: 'An',
+      password: 'Abcdef12',
+    });
     expect(res).toEqual({ userId: 'u-new', workspaceId: 'w1', existingUser: false });
-    expect(prisma.inviteToken.findUnique).toHaveBeenCalledWith({ where: { tokenHash: sha256('t'.repeat(30)) } });
-    const claim = tx.inviteToken.updateMany.mock.calls[0]![0] as { where: { id: string; acceptedAt: null } };
+    expect(prisma.inviteToken.findUnique).toHaveBeenCalledWith({
+      where: { tokenHash: sha256('t'.repeat(30)) },
+    });
+    const claim = tx.inviteToken.updateMany.mock.calls[0]![0] as {
+      where: { id: string; acceptedAt: null };
+    };
     expect(claim.where).toMatchObject({ id: 'inv1', acceptedAt: null });
     expect(tx.user.create).toHaveBeenCalledTimes(1);
     expect(tx.workspaceMembership.create).toHaveBeenCalledTimes(1);
@@ -112,7 +157,11 @@ describe('InviteService.acceptInvite', () => {
     const { service, prisma, tx } = setup();
     prisma.inviteToken.findUnique.mockResolvedValue(valid());
     tx.user.findUnique.mockResolvedValue({ id: 'u-old', status: 'ACTIVE' });
-    const res = await service.acceptInvite({ token: 't'.repeat(30), displayName: 'An', password: 'Abcdef12' });
+    const res = await service.acceptInvite({
+      token: 't'.repeat(30),
+      displayName: 'An',
+      password: 'Abcdef12',
+    });
     expect(res).toEqual({ userId: 'u-old', workspaceId: 'w1', existingUser: true });
     expect(tx.user.create).not.toHaveBeenCalled();
   });
@@ -121,7 +170,9 @@ describe('InviteService.acceptInvite', () => {
     const { service, prisma, tx } = setup();
     prisma.inviteToken.findUnique.mockResolvedValue(valid());
     tx.inviteToken.updateMany.mockResolvedValue({ count: 0 });
-    await expect(service.acceptInvite({ token: 't'.repeat(30), displayName: 'An', password: 'Abcdef12' })).rejects.toBeInstanceOf(BusinessRuleException);
+    await expect(
+      service.acceptInvite({ token: 't'.repeat(30), displayName: 'An', password: 'Abcdef12' }),
+    ).rejects.toBeInstanceOf(BusinessRuleException);
     expect(tx.user.create).not.toHaveBeenCalled();
   });
 });

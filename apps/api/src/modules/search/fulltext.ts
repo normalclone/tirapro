@@ -14,7 +14,12 @@ export interface FulltextQuery {
 
 /** Chuẩn hoá chuỗi tìm kiếm của người dùng; null nếu rỗng. Mọi giá trị đều được bind, không nối vào SQL. */
 export function buildFulltextQuery(raw: string): FulltextQuery | null {
-  const q = raw.replace(/\u0000/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_QUERY_LENGTH).trim();
+  const q = raw
+    .replace(/\u0000/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_QUERY_LENGTH)
+    .trim();
   if (!q) return null;
   const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`);
   return { q, like: `%${escaped}%` };
@@ -49,11 +54,17 @@ export class FulltextSearcher {
    * `{ ids }` (có thể rỗng), hoặc `null` khi cột `searchVector` chưa tồn tại — khi đó người gọi
    * phải rơi về `contains` (đã log cảnh báo đúng một lần). Lỗi khác được ném lại.
    */
-  async search(workspaceId: string, raw: string, opts: SearchOptions = {}): Promise<{ ids: string[] } | null> {
+  async search(
+    workspaceId: string,
+    raw: string,
+    opts: SearchOptions = {},
+  ): Promise<{ ids: string[] } | null> {
     const built = buildFulltextQuery(raw);
     if (!built) return { ids: [] };
     const limit = Math.min(Math.max(opts.limit ?? FULLTEXT_LIMIT, 1), FULLTEXT_LIMIT);
-    const projectFilter = opts.projectId ? Prisma.sql`AND i."projectId" = ${opts.projectId}` : Prisma.empty;
+    const projectFilter = opts.projectId
+      ? Prisma.sql`AND i."projectId" = ${opts.projectId}`
+      : Prisma.empty;
     try {
       const rows = await this.prisma.$queryRaw<{ id: string; rank: number }[]>`
         SELECT i."id", ts_rank(i."searchVector", q) AS rank

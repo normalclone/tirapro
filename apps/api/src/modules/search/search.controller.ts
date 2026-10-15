@@ -34,7 +34,14 @@ export class SearchController {
     if (mode !== undefined && mode !== 'jql' && mode !== 'text') {
       throw new BusinessRuleException('mode chỉ nhận "jql" hoặc "text" — hãy chọn một trong hai');
     }
-    return this.search.search(workspaceId, user.id, { mode, q, jql, projectId, cursor, limit: lim });
+    return this.search.search(workspaceId, user.id, {
+      mode,
+      q,
+      jql,
+      projectId,
+      cursor,
+      limit: lim,
+    });
   }
 
   /** Danh mục giá trị cho bộ dựng truy vấn trực quan (type/status/priority/sprint/label/resolution). */

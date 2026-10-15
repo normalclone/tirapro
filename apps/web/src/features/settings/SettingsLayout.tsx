@@ -1,11 +1,25 @@
 import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Building2, Shield, Bell, Flag, SignalHigh, ListChecks, GitBranch, KeyRound, AlarmClock, FileUp } from 'lucide-react';
+import {
+  Building2,
+  Shield,
+  Bell,
+  Flag,
+  SignalHigh,
+  ListChecks,
+  GitBranch,
+  KeyRound,
+  AlarmClock,
+  FileUp,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 
 /** Cài đặt được chia nhóm để dễ tìm: chung → con người → cách làm việc → nâng cao. */
-const SETTINGS_GROUPS: { group: string; items: { to: string; label: string; icon: ReactNode }[] }[] = [
+const SETTINGS_GROUPS: {
+  group: string;
+  items: { to: string; label: string; icon: ReactNode }[];
+}[] = [
   {
     group: 'Chung',
     items: [
@@ -23,17 +37,33 @@ const SETTINGS_GROUPS: { group: string; items: { to: string; label: string; icon
     group: 'Cách làm việc',
     items: [
       { to: '/settings/workflows', label: 'Quy trình', icon: <GitBranch className="h-4 w-4" /> },
-      { to: '/settings/priorities', label: 'Mức ưu tiên', icon: <SignalHigh className="h-4 w-4" /> },
+      {
+        to: '/settings/priorities',
+        label: 'Mức ưu tiên',
+        icon: <SignalHigh className="h-4 w-4" />,
+      },
       { to: '/settings/severities', label: 'Mức nghiêm trọng', icon: <Flag className="h-4 w-4" /> },
-      { to: '/settings/fields', label: 'Trường thông tin thêm', icon: <ListChecks className="h-4 w-4" /> },
+      {
+        to: '/settings/fields',
+        label: 'Trường thông tin thêm',
+        icon: <ListChecks className="h-4 w-4" />,
+      },
     ],
   },
   {
     group: 'Nâng cao',
     items: [
-      { to: '/settings/response-time', label: 'Cam kết thời gian', icon: <AlarmClock className="h-4 w-4" /> },
+      {
+        to: '/settings/response-time',
+        label: 'Cam kết thời gian',
+        icon: <AlarmClock className="h-4 w-4" />,
+      },
       { to: '/settings/import', label: 'Nhập dữ liệu', icon: <FileUp className="h-4 w-4" /> },
-      { to: '/settings/api', label: 'API & kết nối lập trình', icon: <KeyRound className="h-4 w-4" /> },
+      {
+        to: '/settings/api',
+        label: 'API & kết nối lập trình',
+        icon: <KeyRound className="h-4 w-4" />,
+      },
     ],
   },
 ];
@@ -50,12 +80,12 @@ export function SettingsLayout() {
           'lg:w-60 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
         )}
       >
-        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">
-          Cài đặt
-        </h1>
+        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">Cài đặt</h1>
         {SETTINGS_GROUPS.map((g) => (
           <div key={g.group} className="contents lg:block lg:pb-1">
-            <p className="hidden px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-faint lg:block">{g.group}</p>
+            <p className="hidden px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-faint lg:block">
+              {g.group}
+            </p>
             {g.items.map((item) => (
               <NavLink
                 key={item.to}
@@ -63,7 +93,9 @@ export function SettingsLayout() {
                 className={({ isActive }) =>
                   cn(
                     'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                    isActive ? 'bg-primary-subtle text-primary' : 'text-muted hover:bg-surface-2 hover:text-ink',
+                    isActive
+                      ? 'bg-primary-subtle text-primary'
+                      : 'text-muted hover:bg-surface-2 hover:text-ink',
                   )
                 }
               >

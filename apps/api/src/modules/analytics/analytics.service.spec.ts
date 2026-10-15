@@ -54,21 +54,29 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
     const groupBy = vi.fn((args: { by: string[]; where?: unknown }) => Promise.resolve(rows(args)));
     const count = vi.fn().mockResolvedValueOnce(2).mockResolvedValueOnce(4);
     const prisma = {
-      project: { findFirst: vi.fn(() => Promise.resolve(({ id: 'p1' }))) },
+      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
       issue: { groupBy, count },
       status: { findMany: vi.fn(() => Promise.resolve(statuses)) },
       issueType: {
-        findMany: vi.fn(() => Promise.resolve([
-          { id: 't-task', name: 'Task', color: '#0af' },
-          { id: 't-bug', name: 'Bug', color: '#f00' },
-        ])),
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            { id: 't-task', name: 'Task', color: '#0af' },
+            { id: 't-bug', name: 'Bug', color: '#f00' },
+          ]),
+        ),
       },
-      priority: { findMany: vi.fn(() => Promise.resolve([{ id: 'p-high', name: 'High', color: '#f80', rank: 4 }])) },
+      priority: {
+        findMany: vi.fn(() =>
+          Promise.resolve([{ id: 'p-high', name: 'High', color: '#f80', rank: 4 }]),
+        ),
+      },
       user: {
-        findMany: vi.fn(() => Promise.resolve([
-          { id: 'u1', displayName: 'An' },
-          { id: 'u2', displayName: 'Bình' },
-        ])),
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            { id: 'u1', displayName: 'An' },
+            { id: 'u2', displayName: 'Bình' },
+          ]),
+        ),
       },
     };
     return { service: new AnalyticsService(prisma as never), prisma, groupBy, count };
@@ -89,7 +97,15 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
   it('giữ nguyên hình dạng response cũ từ cùng một fixture', async () => {
     const { service } = make();
     const r = await service.projectReport('w1', 'p1');
-    expect(r.totals).toEqual({ total: 10, todo: 3, inProgress: 2, done: 5, overdue: 2, unassigned: 3, points: 26 });
+    expect(r.totals).toEqual({
+      total: 10,
+      todo: 3,
+      inProgress: 2,
+      done: 5,
+      overdue: 2,
+      unassigned: 3,
+      points: 26,
+    });
     expect(r.completionRate).toBe(50);
     expect(r.highPriUnassigned).toBe(2);
     expect(r.dueSoon).toBe(4);
@@ -162,44 +178,91 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
     };
     const groupBy = vi.fn((args: { by: string[]; where?: unknown }) => Promise.resolve(rows(args)));
     // Thứ tự count khớp thứ tự trong Promise.all của service.
-    const count = vi.fn()
+    const count = vi
+      .fn()
       .mockResolvedValueOnce(6) // resolvedLast14
       .mockResolvedValueOnce(3) // unassignedNotDone
       .mockResolvedValueOnce(1) // highPriUnassigned
       .mockResolvedValueOnce(2); // dueSoon
-    const findMany = vi.fn()
+    const findMany = vi
+      .fn()
       .mockResolvedValueOnce([
-        { key: 'A-1', summary: 'Trễ 2 ngày', projectId: 'p1', dueDate: new Date(NOW.getTime() - 1.5 * DAY) },
-        { key: 'A-2', summary: 'Trễ 5 ngày', projectId: 'p2', dueDate: new Date(NOW.getTime() - 5 * DAY) },
+        {
+          key: 'A-1',
+          summary: 'Trễ 2 ngày',
+          projectId: 'p1',
+          dueDate: new Date(NOW.getTime() - 1.5 * DAY),
+        },
+        {
+          key: 'A-2',
+          summary: 'Trễ 5 ngày',
+          projectId: 'p2',
+          dueDate: new Date(NOW.getTime() - 5 * DAY),
+        },
       ])
-      .mockResolvedValueOnce([{ key: 'A-3', summary: 'Ưu tiên cao', projectId: 'p1', dueDate: null }])
-      .mockResolvedValueOnce([{ key: 'A-4', summary: 'Sắp hạn', projectId: 'p2', dueDate: new Date(NOW.getTime() + 1.2 * DAY) }]);
-    const queryRaw = vi.fn()
-      .mockResolvedValueOnce([{ idx: 0, n: 3n }, { idx: 7, n: 1n }, { idx: 9, n: 50n }]) // created (idx 9 bị loại)
+      .mockResolvedValueOnce([
+        { key: 'A-3', summary: 'Ưu tiên cao', projectId: 'p1', dueDate: null },
+      ])
+      .mockResolvedValueOnce([
+        {
+          key: 'A-4',
+          summary: 'Sắp hạn',
+          projectId: 'p2',
+          dueDate: new Date(NOW.getTime() + 1.2 * DAY),
+        },
+      ]);
+    const queryRaw = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { idx: 0, n: 3n },
+        { idx: 7, n: 1n },
+        { idx: 9, n: 50n },
+      ]) // created (idx 9 bị loại)
       .mockResolvedValueOnce([{ idx: 0, n: 2n }]); // resolved
     const prisma = {
       project: {
-        findMany: vi.fn(() => Promise.resolve([
-          { id: 'p1', key: 'AAA', name: 'Alpha' },
-          { id: 'p2', key: 'BBB', name: 'Beta' },
-        ])),
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            { id: 'p1', key: 'AAA', name: 'Alpha' },
+            { id: 'p2', key: 'BBB', name: 'Beta' },
+          ]),
+        ),
       },
-      sprint: { findMany: vi.fn(() => Promise.resolve([{ projectId: 'p1', name: 'Sprint 1', endDate: new Date(NOW.getTime() + 2.5 * DAY), sequence: 1 }])) },
+      sprint: {
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            {
+              projectId: 'p1',
+              name: 'Sprint 1',
+              endDate: new Date(NOW.getTime() + 2.5 * DAY),
+              sequence: 1,
+            },
+          ]),
+        ),
+      },
       issue: { groupBy, count, findMany },
       status: {
-        findMany: vi.fn(() => Promise.resolve([
-          { id: 's-todo', category: 'TODO' },
-          { id: 's-prog', category: 'IN_PROGRESS' },
-          { id: 's-done', category: 'DONE' },
-        ])),
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            { id: 's-todo', category: 'TODO' },
+            { id: 's-prog', category: 'IN_PROGRESS' },
+            { id: 's-done', category: 'DONE' },
+          ]),
+        ),
       },
       issueType: {
-        findMany: vi.fn(() => Promise.resolve([
-          { id: 't-bug', key: 'BUG', name: 'Bug', color: '#f00' },
-          { id: 't-task', key: 'TASK', name: 'Task', color: '#0af' },
-        ])),
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            { id: 't-bug', key: 'BUG', name: 'Bug', color: '#f00' },
+            { id: 't-task', key: 'TASK', name: 'Task', color: '#0af' },
+          ]),
+        ),
       },
-      priority: { findMany: vi.fn(() => Promise.resolve([{ id: 'p-high', name: 'High', color: '#f80', rank: 4 }])) },
+      priority: {
+        findMany: vi.fn(() =>
+          Promise.resolve([{ id: 'p-high', name: 'High', color: '#f80', rank: 4 }]),
+        ),
+      },
       $queryRaw: queryRaw,
     };
     return { service: new AnalyticsService(prisma as never), prisma, queryRaw };
@@ -211,8 +274,30 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
     expect(r.projectCount).toBe(2);
     expect(r.totals).toEqual({ total: 10, todo: 6, inProgress: 1, done: 3, overdue: 2, bug: 6 });
     expect(r.projects).toEqual([
-      { id: 'p1', key: 'AAA', name: 'Alpha', total: 5, todo: 2, inProgress: 0, done: 3, overdue: 2, bug: 2, sprint: { name: 'Sprint 1', daysLeft: 3 } },
-      { id: 'p2', key: 'BBB', name: 'Beta', total: 1, todo: 0, inProgress: 1, done: 0, overdue: 0, bug: 0, sprint: null },
+      {
+        id: 'p1',
+        key: 'AAA',
+        name: 'Alpha',
+        total: 5,
+        todo: 2,
+        inProgress: 0,
+        done: 3,
+        overdue: 2,
+        bug: 2,
+        sprint: { name: 'Sprint 1', daysLeft: 3 },
+      },
+      {
+        id: 'p2',
+        key: 'BBB',
+        name: 'Beta',
+        total: 1,
+        todo: 0,
+        inProgress: 1,
+        done: 0,
+        overdue: 0,
+        bug: 0,
+        sprint: null,
+      },
     ]);
   });
 
@@ -237,10 +322,34 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
     expect(r.forecast[1]!.text).toContain('~3.0 việc/tuần');
     expect(r.forecast[1]!.text).toContain('~3 tuần');
     expect(r.attention).toEqual([
-      { key: 'A-2', summary: 'Trễ 5 ngày', projectKey: 'BBB', reason: 'Quá hạn 5 ngày', level: 'danger' },
-      { key: 'A-1', summary: 'Trễ 2 ngày', projectKey: 'AAA', reason: 'Quá hạn 2 ngày', level: 'danger' },
-      { key: 'A-3', summary: 'Ưu tiên cao', projectKey: 'AAA', reason: 'Ưu tiên cao, chưa gán người', level: 'warning' },
-      { key: 'A-4', summary: 'Sắp hạn', projectKey: 'BBB', reason: 'Sắp đến hạn (2 ngày)', level: 'warning' },
+      {
+        key: 'A-2',
+        summary: 'Trễ 5 ngày',
+        projectKey: 'BBB',
+        reason: 'Quá hạn 5 ngày',
+        level: 'danger',
+      },
+      {
+        key: 'A-1',
+        summary: 'Trễ 2 ngày',
+        projectKey: 'AAA',
+        reason: 'Quá hạn 2 ngày',
+        level: 'danger',
+      },
+      {
+        key: 'A-3',
+        summary: 'Ưu tiên cao',
+        projectKey: 'AAA',
+        reason: 'Ưu tiên cao, chưa gán người',
+        level: 'warning',
+      },
+      {
+        key: 'A-4',
+        summary: 'Sắp hạn',
+        projectKey: 'BBB',
+        reason: 'Sắp đến hạn (2 ngày)',
+        level: 'warning',
+      },
     ]);
   });
 
@@ -250,7 +359,8 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
     const bys = prisma.issue.groupBy.mock.calls.map((c) => c[0].by.join(','));
     expect(bys).toEqual(['projectId,statusId', 'projectId,typeId', 'priorityId', 'projectId']);
     // findMany của issue chỉ cho danh sách "cần chú ý" và luôn có take 8
-    for (const c of prisma.issue.findMany.mock.calls) expect((c[0] as { take: number }).take).toBe(8);
+    for (const c of prisma.issue.findMany.mock.calls)
+      expect((c[0] as { take: number }).take).toBe(8);
     expect(queryRaw).toHaveBeenCalledTimes(2);
     for (const call of queryRaw.mock.calls) {
       const sql = sqlOf(call);
@@ -266,7 +376,10 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 describe('AnalyticsService.cfd — sự kiện STATUS cuối cùng thắng', () => {
   function make(rows: unknown[]) {
     const queryRaw = vi.fn().mockResolvedValueOnce(rows);
-    const prisma = { project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) }, $queryRaw: queryRaw };
+    const prisma = {
+      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      $queryRaw: queryRaw,
+    };
     return { service: new AnalyticsService(prisma as never), queryRaw };
   }
 
@@ -284,9 +397,13 @@ describe('AnalyticsService.cfd — sự kiện STATUS cuối cùng thắng', () 
     expect(sql).not.toContain('p1');
     expect(paramsOf(call)).toContain('p1');
     // Biên thời gian đi qua helper UTC (Prisma.sql), không phải Date trần so với cột timestamp.
-    const sqlParams = paramsOf(call).filter((x) => typeof x === 'object' && x !== null && 'strings' in x);
+    const sqlParams = paramsOf(call).filter(
+      (x) => typeof x === 'object' && x !== null && 'strings' in x,
+    );
     expect(sqlParams.length).toBeGreaterThanOrEqual(3);
-    const dates = sqlParams.flatMap((x) => (x as unknown as { values: unknown[] }).values) as Date[];
+    const dates = sqlParams.flatMap(
+      (x) => (x as unknown as { values: unknown[] }).values,
+    ) as Date[];
     expect(dates.map((d) => d.toISOString())).toEqual(
       expect.arrayContaining(['2026-10-01T00:00:00.000Z', '2026-10-03T23:59:59.999Z']),
     );
@@ -338,10 +455,17 @@ describe('AnalyticsService.cfd — sự kiện STATUS cuối cùng thắng', () 
 
 describe('AnalyticsService.createdResolved — đếm theo ngày bằng SQL', () => {
   it('điền 0 cho ngày trống và chuyển bigint sang number', async () => {
-    const queryRaw = vi.fn()
-      .mockResolvedValueOnce([{ day: '2026-10-01', n: 2n }, { day: '2026-10-03', n: 1n }]) // created
+    const queryRaw = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { day: '2026-10-01', n: 2n },
+        { day: '2026-10-03', n: 1n },
+      ]) // created
       .mockResolvedValueOnce([{ day: '2026-10-02', n: 4n }]); // resolved
-    const prisma = { project: { findFirst: vi.fn(() => Promise.resolve(({ id: 'p1' }))) }, $queryRaw: queryRaw };
+    const prisma = {
+      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      $queryRaw: queryRaw,
+    };
     const service = new AnalyticsService(prisma as never);
     const r = await service.createdResolved('w1', 'p1', '2026-10-01', '2026-10-03');
     expect(r.series).toEqual([
@@ -361,18 +485,34 @@ describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính t
   function make(snaps: unknown[]) {
     const prisma = {
       sprint: {
-        findFirst: vi.fn(() => Promise.resolve({
-          id: 'sp1', name: 'Sprint 1', startDate: at('2026-10-01T09:00:00Z'), endDate: at('2026-10-04T09:00:00Z'),
-          completeDate: null, createdAt: at('2026-09-30T00:00:00Z'),
-          // hiện tại còn 2 issue (10 điểm) — 1 issue 5 điểm đã bị đẩy ra sprint khác sau này
-          issues: [{ id: 'a', storyPoints: 6 }, { id: 'b', storyPoints: 4 }],
-        })),
+        findFirst: vi.fn(() =>
+          Promise.resolve({
+            id: 'sp1',
+            name: 'Sprint 1',
+            startDate: at('2026-10-01T09:00:00Z'),
+            endDate: at('2026-10-04T09:00:00Z'),
+            completeDate: null,
+            createdAt: at('2026-09-30T00:00:00Z'),
+            // hiện tại còn 2 issue (10 điểm) — 1 issue 5 điểm đã bị đẩy ra sprint khác sau này
+            issues: [
+              { id: 'a', storyPoints: 6 },
+              { id: 'b', storyPoints: 4 },
+            ],
+          }),
+        ),
       },
       issueHistory: {
         // a (6 điểm) xong ngày 02
-        findMany: vi.fn(() => Promise.resolve([
-          { issueId: 'a', oldCategory: 'IN_PROGRESS', newCategory: 'DONE', occurredAt: at('2026-10-02T10:00:00Z') },
-        ])),
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            {
+              issueId: 'a',
+              oldCategory: 'IN_PROGRESS',
+              newCategory: 'DONE',
+              occurredAt: at('2026-10-02T10:00:00Z'),
+            },
+          ]),
+        ),
       },
       sprintSnapshot: { findMany: vi.fn(() => Promise.resolve(snaps)) },
     };
@@ -384,22 +524,42 @@ describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính t
     const r = await service.burndown('w1', 'sp1');
     expect(r.committedPoints).toBe(10);
     expect(r.series.map((x) => [x.date, x.remaining])).toEqual([
-      ['2026-10-01', 10], ['2026-10-02', 4], ['2026-10-03', 4], ['2026-10-04', 4],
+      ['2026-10-01', 10],
+      ['2026-10-02', 4],
+      ['2026-10-03', 4],
+      ['2026-10-04', 4],
     ]);
   });
 
   it('có START + DAILY => ngày có snapshot lấy remainingPoints, đường lý tưởng theo điểm lúc START; ngày thiếu rơi về lịch sử', async () => {
     const { service } = make([
-      { kind: 'START', snapshotAt: at('2026-10-01T09:00:00Z'), committedPoints: 15, remainingPoints: 15 },
+      {
+        kind: 'START',
+        snapshotAt: at('2026-10-01T09:00:00Z'),
+        committedPoints: 15,
+        remainingPoints: 15,
+      },
       // DAILY đóng dấu cuối ngày: ngày 01 còn 15, ngày 02 còn 9 (có việc 5 điểm bị đẩy ra nên khác lịch sử)
-      { kind: 'DAILY', snapshotAt: at('2026-10-01T23:59:59.999Z'), committedPoints: 15, remainingPoints: 15 },
-      { kind: 'DAILY', snapshotAt: at('2026-10-02T23:59:59.999Z'), committedPoints: 15, remainingPoints: 9 },
+      {
+        kind: 'DAILY',
+        snapshotAt: at('2026-10-01T23:59:59.999Z'),
+        committedPoints: 15,
+        remainingPoints: 15,
+      },
+      {
+        kind: 'DAILY',
+        snapshotAt: at('2026-10-02T23:59:59.999Z'),
+        committedPoints: 15,
+        remainingPoints: 9,
+      },
     ]);
     const r = await service.burndown('w1', 'sp1');
     expect(r.committedPoints).toBe(15);
     expect(r.series.map((x) => [x.date, x.remaining])).toEqual([
-      ['2026-10-01', 15], ['2026-10-02', 9],
-      ['2026-10-03', 4], ['2026-10-04', 4], // chưa có snapshot => lịch sử
+      ['2026-10-01', 15],
+      ['2026-10-02', 9],
+      ['2026-10-03', 4],
+      ['2026-10-04', 4], // chưa có snapshot => lịch sử
     ]);
     expect(r.series[0]!.ideal).toBe(15);
     expect(r.series[3]!.ideal).toBe(0);
@@ -407,7 +567,12 @@ describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính t
 
   it('ngày chưa có DAILY (vd hôm nay) dùng lịch sử, không bị START che tiến độ', async () => {
     const { service } = make([
-      { kind: 'START', snapshotAt: at('2026-10-01T09:00:00Z'), committedPoints: 10, remainingPoints: 10 },
+      {
+        kind: 'START',
+        snapshotAt: at('2026-10-01T09:00:00Z'),
+        committedPoints: 10,
+        remainingPoints: 10,
+      },
     ]);
     const r = await service.burndown('w1', 'sp1');
     // a (6 điểm) xong ngày 02 theo lịch sử; ngày 01 cũng từ lịch sử (=10), không phải START
@@ -416,8 +581,18 @@ describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính t
 
   it('CLOSE trong ngày thắng DAILY cũ hơn cùng ngày', async () => {
     const { service } = make([
-      { kind: 'START', snapshotAt: at('2026-10-01T09:00:00Z'), committedPoints: 10, remainingPoints: 10 },
-      { kind: 'CLOSE', snapshotAt: at('2026-10-03T12:00:00Z'), committedPoints: 10, remainingPoints: 3 },
+      {
+        kind: 'START',
+        snapshotAt: at('2026-10-01T09:00:00Z'),
+        committedPoints: 10,
+        remainingPoints: 10,
+      },
+      {
+        kind: 'CLOSE',
+        snapshotAt: at('2026-10-03T12:00:00Z'),
+        committedPoints: 10,
+        remainingPoints: 3,
+      },
     ]);
     const r = await service.burndown('w1', 'sp1');
     expect(r.series.find((x) => x.date === '2026-10-03')!.remaining).toBe(3);

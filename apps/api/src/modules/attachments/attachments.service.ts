@@ -6,10 +6,7 @@ import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import type { ReadStream } from 'node:fs';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import {
-  BusinessRuleException,
-  NotFoundAppException,
-} from '../../common/exceptions/app.exception';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertIssueWritable } from '../../common/project-writable';
 
 /** Cấu hình lưu trữ (mirror config.storage). */

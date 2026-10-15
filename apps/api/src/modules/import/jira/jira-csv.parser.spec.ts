@@ -98,7 +98,9 @@ describe('analyzeJira', () => {
 
   it('liệt kê user (assignee/reporter/creator + tác giả comment), gộp accountId về tên', () => {
     const names = analysis.users.map((u) => u.name);
-    expect(names).toEqual(expect.arrayContaining(['Nguyễn Văn An', 'Trần Thị Bình', 'Lê Minh Cường']));
+    expect(names).toEqual(
+      expect.arrayContaining(['Nguyễn Văn An', 'Trần Thị Bình', 'Lê Minh Cường']),
+    );
     // acc-ghost chỉ xuất hiện ở comment → hiện bằng accountId
     expect(names).toContain('acc-ghost');
     // acc-an đã gắn với "Nguyễn Văn An", không xuất hiện riêng
@@ -113,7 +115,8 @@ describe('analyzeJira', () => {
 
 describe('parseJiraCsv — biến thể', () => {
   it('chấp nhận BOM, tên cột Story Points thường, project key suy ra từ issue key', () => {
-    const csv = '\uFEFFSummary,Issue key,Issue id,Issue Type,Status,Story Points,Assignee\nA,ABC-7,1,Task,To Do,3,admin@x.vn\n';
+    const csv =
+      '\uFEFFSummary,Issue key,Issue id,Issue Type,Status,Story Points,Assignee\nA,ABC-7,1,Task,To Do,3,admin@x.vn\n';
     const p = parseJiraCsv(csv);
     expect(p.issues[0]).toMatchObject({ key: 'ABC-7', storyPoints: 3 });
     const a = analyzeJira(p);

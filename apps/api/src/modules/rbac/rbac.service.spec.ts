@@ -1,4 +1,3 @@
- 
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { describe, expect, it, vi } from 'vitest';
 import { RbacService } from './rbac.service';
@@ -14,7 +13,9 @@ function makeStream(batches: string[][]) {
 
 function setup(redis: 'ok' | 'down' = 'ok') {
   const client = {
-    scanStream: vi.fn((_opts: unknown) => makeStream([['rbac:W1:U1:-', 'rbac:W1:U1:P1'], [], ['rbac:W1:U1:P2']])),
+    scanStream: vi.fn((_opts: unknown) =>
+      makeStream([['rbac:W1:U1:-', 'rbac:W1:U1:P1'], [], ['rbac:W1:U1:P2']]),
+    ),
     unlink: vi.fn((..._keys: string[]) => Promise.resolve(1)),
     keys: vi.fn(),
     get: vi.fn(),
@@ -95,15 +96,18 @@ describe('RbacService.resolveProjectId', () => {
     });
   });
 
-  it.each(['sprint', 'board', 'label', 'component'] as const)('%s: lọc qua project.workspaceId', async (kind) => {
-    const { svc, prisma } = setup();
-    prisma[kind].findFirst.mockResolvedValue({ projectId: 'P9' });
-    await expect(svc.resolveProjectId('W1', kind, 'X1')).resolves.toEqual({ projectId: 'P9' });
-    expect(prisma[kind].findFirst).toHaveBeenCalledWith({
-      where: { id: 'X1', project: { workspaceId: 'W1' } },
-      select: { projectId: true },
-    });
-  });
+  it.each(['sprint', 'board', 'label', 'component'] as const)(
+    '%s: lọc qua project.workspaceId',
+    async (kind) => {
+      const { svc, prisma } = setup();
+      prisma[kind].findFirst.mockResolvedValue({ projectId: 'P9' });
+      await expect(svc.resolveProjectId('W1', kind, 'X1')).resolves.toEqual({ projectId: 'P9' });
+      expect(prisma[kind].findFirst).toHaveBeenCalledWith({
+        where: { id: 'X1', project: { workspaceId: 'W1' } },
+        select: { projectId: true },
+      });
+    },
+  );
 
   it('comment: đi qua issue.workspaceId, comment ngoài workspace -> null (guard sẽ NotFound)', async () => {
     const { svc, prisma } = setup();
@@ -123,27 +127,52 @@ describe('RbacService.resolveProjectId', () => {
 
   it('attachment: gắn trực tiếp vào issue hoặc qua comment', async () => {
     const { svc, prisma } = setup();
-    prisma.attachment.findFirst.mockResolvedValueOnce({ issue: { projectId: 'P1' }, comment: null });
-    await expect(svc.resolveProjectId('W1', 'attachment', 'A1')).resolves.toEqual({ projectId: 'P1' });
-    prisma.attachment.findFirst.mockResolvedValueOnce({ issue: null, comment: { issue: { projectId: 'P2' } } });
-    await expect(svc.resolveProjectId('W1', 'attachment', 'A2')).resolves.toEqual({ projectId: 'P2' });
+    prisma.attachment.findFirst.mockResolvedValueOnce({
+      issue: { projectId: 'P1' },
+      comment: null,
+    });
+    await expect(svc.resolveProjectId('W1', 'attachment', 'A1')).resolves.toEqual({
+      projectId: 'P1',
+    });
+    prisma.attachment.findFirst.mockResolvedValueOnce({
+      issue: null,
+      comment: { issue: { projectId: 'P2' } },
+    });
+    await expect(svc.resolveProjectId('W1', 'attachment', 'A2')).resolves.toEqual({
+      projectId: 'P2',
+    });
     prisma.attachment.findFirst.mockResolvedValueOnce(null);
     await expect(svc.resolveProjectId('W1', 'attachment', 'A3')).resolves.toBeNull();
   });
 
   it('issueLink: một trong hai đầu thuộc workspace; lấy projectId của đầu nguồn nếu có', async () => {
     const { svc, prisma } = setup();
-    prisma.issueLink.findFirst.mockResolvedValue({ source: { projectId: 'P1', workspaceId: 'W1' }, target: { projectId: 'P2', workspaceId: 'W1' } });
-    await expect(svc.resolveProjectId('W1', 'issueLink', 'L1')).resolves.toEqual({ projectId: 'P1' });
+    prisma.issueLink.findFirst.mockResolvedValue({
+      source: { projectId: 'P1', workspaceId: 'W1' },
+      target: { projectId: 'P2', workspaceId: 'W1' },
+    });
+    await expect(svc.resolveProjectId('W1', 'issueLink', 'L1')).resolves.toEqual({
+      projectId: 'P1',
+    });
     expect(prisma.issueLink.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'L1', OR: [{ source: { workspaceId: 'W1' } }, { target: { workspaceId: 'W1' } }] } }),
+      expect.objectContaining({
+        where: {
+          id: 'L1',
+          OR: [{ source: { workspaceId: 'W1' } }, { target: { workspaceId: 'W1' } }],
+        },
+      }),
     );
   });
 
   it('issueLink: đầu nguồn ở workspace khác thì dùng đầu đích trong workspace', async () => {
     const { svc, prisma } = setup();
-    prisma.issueLink.findFirst.mockResolvedValue({ source: { projectId: 'PX', workspaceId: 'W2' }, target: { projectId: 'P2', workspaceId: 'W1' } });
-    await expect(svc.resolveProjectId('W1', 'issueLink', 'L1')).resolves.toEqual({ projectId: 'P2' });
+    prisma.issueLink.findFirst.mockResolvedValue({
+      source: { projectId: 'PX', workspaceId: 'W2' },
+      target: { projectId: 'P2', workspaceId: 'W1' },
+    });
+    await expect(svc.resolveProjectId('W1', 'issueLink', 'L1')).resolves.toEqual({
+      projectId: 'P2',
+    });
   });
 
   it('version: lọc qua project.workspaceId', async () => {
@@ -161,24 +190,29 @@ describe('RbacService.resolveProjectId', () => {
     ['automationTemplate', 'issueTemplate'],
     ['customField', 'customField'],
     ['repository', 'codeRepository'],
-  ] as const)('%s: tài nguyên cấp workspace, projectId có thể null (không phải NotFound)', async (kind, model) => {
-    const { svc, prisma } = setup();
-    prisma[model].findFirst.mockResolvedValueOnce({ projectId: 'P4' });
-    await expect(svc.resolveProjectId('W1', kind, 'X1')).resolves.toEqual({ projectId: 'P4' });
-    expect(prisma[model].findFirst).toHaveBeenCalledWith({
-      where: { id: 'X1', workspaceId: 'W1' },
-      select: { projectId: true },
-    });
-    prisma[model].findFirst.mockResolvedValueOnce({ projectId: null });
-    await expect(svc.resolveProjectId('W1', kind, 'X2')).resolves.toEqual({ projectId: null });
-    prisma[model].findFirst.mockResolvedValueOnce(null);
-    await expect(svc.resolveProjectId('W1', kind, 'X3')).resolves.toBeNull();
-  });
+  ] as const)(
+    '%s: tài nguyên cấp workspace, projectId có thể null (không phải NotFound)',
+    async (kind, model) => {
+      const { svc, prisma } = setup();
+      prisma[model].findFirst.mockResolvedValueOnce({ projectId: 'P4' });
+      await expect(svc.resolveProjectId('W1', kind, 'X1')).resolves.toEqual({ projectId: 'P4' });
+      expect(prisma[model].findFirst).toHaveBeenCalledWith({
+        where: { id: 'X1', workspaceId: 'W1' },
+        select: { projectId: true },
+      });
+      prisma[model].findFirst.mockResolvedValueOnce({ projectId: null });
+      await expect(svc.resolveProjectId('W1', kind, 'X2')).resolves.toEqual({ projectId: null });
+      prisma[model].findFirst.mockResolvedValueOnce(null);
+      await expect(svc.resolveProjectId('W1', kind, 'X3')).resolves.toBeNull();
+    },
+  );
 
   it('recurringIssue: lọc qua project.workspaceId', async () => {
     const { svc, prisma } = setup();
     prisma.recurringIssue.findFirst.mockResolvedValue({ projectId: 'P5' });
-    await expect(svc.resolveProjectId('W1', 'recurringIssue', 'R1')).resolves.toEqual({ projectId: 'P5' });
+    await expect(svc.resolveProjectId('W1', 'recurringIssue', 'R1')).resolves.toEqual({
+      projectId: 'P5',
+    });
     expect(prisma.recurringIssue.findFirst).toHaveBeenCalledWith({
       where: { id: 'R1', project: { workspaceId: 'W1' } },
       select: { projectId: true },
@@ -188,7 +222,9 @@ describe('RbacService.resolveProjectId', () => {
   it('projectKey: tra dự án theo { key, workspaceId } (key viết hoa), trả id dự án', async () => {
     const { svc, prisma } = setup();
     prisma.project.findFirst.mockResolvedValueOnce({ id: 'P6' });
-    await expect(svc.resolveProjectId('W1', 'projectKey', 'abc')).resolves.toEqual({ projectId: 'P6' });
+    await expect(svc.resolveProjectId('W1', 'projectKey', 'abc')).resolves.toEqual({
+      projectId: 'P6',
+    });
     expect(prisma.project.findFirst).toHaveBeenCalledWith({
       where: { key: 'ABC', workspaceId: 'W1' },
       select: { id: true },
@@ -208,7 +244,9 @@ describe('RbacService.assertProjectInWorkspace', () => {
   it('NotFound khi dự án không thuộc workspace', async () => {
     const { svc, prisma } = setup();
     prisma.project.findFirst.mockResolvedValue(null);
-    await expect(svc.assertProjectInWorkspace('P1', 'W1')).rejects.toBeInstanceOf(NotFoundAppException);
+    await expect(svc.assertProjectInWorkspace('P1', 'W1')).rejects.toBeInstanceOf(
+      NotFoundAppException,
+    );
     expect(prisma.project.findFirst).toHaveBeenCalledWith({
       where: { id: 'P1', workspaceId: 'W1', deletedAt: null },
       select: { id: true },
@@ -225,11 +263,17 @@ describe('RbacService.assertProjectInWorkspace', () => {
 describe('RbacService.getEffectivePermissions', () => {
   it('membership dự án chỉ tính khi dự án thuộc workspace', async () => {
     const { svc, prisma } = setup('down');
-    prisma.workspaceMembership.findUnique.mockResolvedValueOnce({ roleId: 'R1', roles: [] } as never);
+    prisma.workspaceMembership.findUnique.mockResolvedValueOnce({
+      roleId: 'R1',
+      roles: [],
+    } as never);
     await svc.getEffectivePermissions('U1', 'W1', 'P1');
     expect(prisma.projectMembership.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { projectId_userId: { projectId: 'P1', userId: 'U1' }, project: { workspaceId: 'W1' } },
+        where: {
+          projectId_userId: { projectId: 'P1', userId: 'U1' },
+          project: { workspaceId: 'W1' },
+        },
       }),
     );
   });
@@ -237,8 +281,13 @@ describe('RbacService.getEffectivePermissions', () => {
   it('rỗng khi không còn membership workspace, kể cả khi còn ghi đè vai trò dự án', async () => {
     const { svc, prisma } = setup('down');
     prisma.workspaceMembership.findUnique.mockResolvedValue(null);
-    prisma.projectMembership.findUnique.mockResolvedValue({ roleId: 'RP', roles: [{ roleId: 'RP' }] } as never);
-    prisma.rolePermission.findMany.mockResolvedValue([{ permission: { key: 'issue:edit' } }] as never);
+    prisma.projectMembership.findUnique.mockResolvedValue({
+      roleId: 'RP',
+      roles: [{ roleId: 'RP' }],
+    } as never);
+    prisma.rolePermission.findMany.mockResolvedValue([
+      { permission: { key: 'issue:edit' } },
+    ] as never);
     const perms = await svc.getEffectivePermissions('U1', 'W1', 'P1');
     expect(perms.size).toBe(0);
     expect(prisma.rolePermission.findMany).not.toHaveBeenCalled();

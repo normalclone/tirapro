@@ -22,11 +22,14 @@ export class AuthService {
 
   async register(input: RegisterInput, meta: RefreshMeta) {
     if (!this.settings.flags().signupEnabled) {
-      throw new ForbiddenAppException('Đăng ký công khai đang tắt. Liên hệ admin hệ thống để được cấp tài khoản.');
+      throw new ForbiddenAppException(
+        'Đăng ký công khai đang tắt. Liên hệ admin hệ thống để được cấp tài khoản.',
+      );
     }
     const email = input.email.toLowerCase();
     const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) throw new ConflictException({ code: 'EMAIL_TAKEN', message: 'Email đã được đăng ký' });
+    if (existing)
+      throw new ConflictException({ code: 'EMAIL_TAKEN', message: 'Email đã được đăng ký' });
 
     const passwordHash = await argon2.hash(input.password);
     const wsName = input.workspaceName?.trim() || `Không gian của ${input.displayName}`;
@@ -41,7 +44,12 @@ export class AuthService {
       });
       await this.bootstrap.bootstrap(tx, ws.id);
       const adminRole = await tx.role.findFirst({
-        where: { name: SYSTEM_ROLES.WORKSPACE_ADMIN, scope: 'WORKSPACE', workspaceId: null, isSystem: true },
+        where: {
+          name: SYSTEM_ROLES.WORKSPACE_ADMIN,
+          scope: 'WORKSPACE',
+          workspaceId: null,
+          isSystem: true,
+        },
         select: { id: true },
       });
       if (!adminRole) throw new Error('System role chưa được seed (chạy pnpm db:seed)');
@@ -58,10 +66,17 @@ export class AuthService {
     const email = input.email.toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user || !user.passwordHash || user.status === 'DEACTIVATED') {
-      throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS', message: 'Email hoặc mật khẩu không đúng' });
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Email hoặc mật khẩu không đúng',
+      });
     }
     const ok = await argon2.verify(user.passwordHash, input.password);
-    if (!ok) throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS', message: 'Email hoặc mật khẩu không đúng' });
+    if (!ok)
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Email hoặc mật khẩu không đúng',
+      });
 
     const membership = await this.prisma.workspaceMembership.findFirst({
       where: { userId: user.id },
@@ -109,20 +124,37 @@ export class AuthService {
     const roleRefSelect = { role: { select: { id: true, name: true, color: true } } };
     const wsMemberships = await this.prisma.workspaceMembership.findMany({
       where: { userId },
-      select: { id: true, workspaceId: true, roleId: true, role: { select: { name: true, scope: true } }, roles: { select: roleRefSelect } },
+      select: {
+        id: true,
+        workspaceId: true,
+        roleId: true,
+        role: { select: { name: true, scope: true } },
+        roles: { select: roleRefSelect },
+      },
     });
     const projMemberships = await this.prisma.projectMembership.findMany({
       where: { userId },
-      select: { id: true, projectId: true, project: { select: { workspaceId: true } }, roleId: true, role: { select: { name: true, scope: true } }, roles: { select: roleRefSelect } },
+      select: {
+        id: true,
+        projectId: true,
+        project: { select: { workspaceId: true } },
+        roleId: true,
+        role: { select: { name: true, scope: true } },
+        roles: { select: roleRefSelect },
+      },
     });
     const permissions: PermissionKey[] = workspaceId
       ? ([...(await this.rbac.getEffectivePermissions(userId, workspaceId))] as PermissionKey[])
       : [];
     // Gộp vai trò chính + phụ (dedupe theo id), giữ roleName là vai trò chính.
-    const rolesOf = (primary: { roleId: string; role: { name: string } }, extra: { role: { id: string; name: string; color: string | null } }[]) => {
+    const rolesOf = (
+      primary: { roleId: string; role: { name: string } },
+      extra: { role: { id: string; name: string; color: string | null } }[],
+    ) => {
       const map = new Map<string, { id: string; name: string; color: string | null }>();
       for (const e of extra) map.set(e.role.id, e.role);
-      if (!map.has(primary.roleId)) map.set(primary.roleId, { id: primary.roleId, name: primary.role.name, color: null });
+      if (!map.has(primary.roleId))
+        map.set(primary.roleId, { id: primary.roleId, name: primary.role.name, color: null });
       return [...map.values()];
     };
     return {
@@ -130,12 +162,24 @@ export class AuthService {
       workspaceId,
       memberships: [
         ...wsMemberships.map((m) => ({
-          id: m.id, workspaceId: m.workspaceId, userId, roleId: m.roleId, roleName: m.role.name,
-          roles: rolesOf(m, m.roles), scope: m.role.scope, projectId: null,
+          id: m.id,
+          workspaceId: m.workspaceId,
+          userId,
+          roleId: m.roleId,
+          roleName: m.role.name,
+          roles: rolesOf(m, m.roles),
+          scope: m.role.scope,
+          projectId: null,
         })),
         ...projMemberships.map((m) => ({
-          id: m.id, workspaceId: m.project.workspaceId, userId, roleId: m.roleId, roleName: m.role.name,
-          roles: rolesOf(m, m.roles), scope: m.role.scope, projectId: m.projectId,
+          id: m.id,
+          workspaceId: m.project.workspaceId,
+          userId,
+          roleId: m.roleId,
+          roleName: m.role.name,
+          roles: rolesOf(m, m.roles),
+          scope: m.role.scope,
+          projectId: m.projectId,
         })),
       ],
       permissions,
@@ -171,7 +215,9 @@ export class AuthService {
       select: { id: true },
     });
     if (!membership) {
-      throw new ForbiddenAppException('Bạn không phải thành viên của không gian làm việc này — hãy liên hệ quản trị viên để được mời vào');
+      throw new ForbiddenAppException(
+        'Bạn không phải thành viên của không gian làm việc này — hãy liên hệ quản trị viên để được mời vào',
+      );
     }
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     return this.issueSession(user, workspaceId, meta);
@@ -189,18 +235,35 @@ export class AuthService {
   }
 
   private publicUser(u: {
-    id: string; email: string; displayName: string; avatarUrl: string | null;
-    timezone: string; locale: string; status: string; isSystemAdmin: boolean;
-    lastSeenAt: Date | null; createdAt: Date;
+    id: string;
+    email: string;
+    displayName: string;
+    avatarUrl: string | null;
+    timezone: string;
+    locale: string;
+    status: string;
+    isSystemAdmin: boolean;
+    lastSeenAt: Date | null;
+    createdAt: Date;
   }) {
     return {
-      id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl,
-      timezone: u.timezone, locale: u.locale, status: u.status, isSystemAdmin: u.isSystemAdmin,
-      lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString(),
+      id: u.id,
+      email: u.email,
+      displayName: u.displayName,
+      avatarUrl: u.avatarUrl,
+      timezone: u.timezone,
+      locale: u.locale,
+      status: u.status,
+      isSystemAdmin: u.isSystemAdmin,
+      lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
+      createdAt: u.createdAt.toISOString(),
     };
   }
 
-  private async uniqueSlug(tx: { workspace: { findUnique: (a: { where: { slug: string } }) => Promise<unknown> } }, name: string): Promise<string> {
+  private async uniqueSlug(
+    tx: { workspace: { findUnique: (a: { where: { slug: string } }) => Promise<unknown> } },
+    name: string,
+  ): Promise<string> {
     const base =
       name
         .toLowerCase()
@@ -213,7 +276,10 @@ export class AuthService {
     let i = 1;
     while (await tx.workspace.findUnique({ where: { slug } })) {
       slug = `${base}-${i++}`;
-      if (i > 50) { slug = `${base}-${createId().slice(0, 6)}`; break; }
+      if (i > 50) {
+        slug = `${base}-${createId().slice(0, 6)}`;
+        break;
+      }
     }
     return slug;
   }

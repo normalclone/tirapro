@@ -10,7 +10,7 @@ databases:
   - name: tirapro-db
     databaseName: tirapro
     plan: free # Free Postgres hết hạn sau ~30 ngày — nâng plan cho demo lâu dài
-    postgresMajorVersion: "16"
+    postgresMajorVersion: '16'
 
 services:
   # ---- Redis / Key Value (realtime adapter + cache + presence) ----
@@ -42,7 +42,7 @@ services:
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_VERSION
-        value: "22"
+        value: '22'
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
@@ -81,13 +81,13 @@ services:
     staticPublishPath: apps/web/dist
     envVars:
       - key: NODE_VERSION
-        value: "22"
+        value: '22'
       - key: VITE_API_URL
         sync: false # https://tirapro-api.onrender.com/api/v1
       - key: VITE_WS_URL
         sync: false # https://tirapro-api.onrender.com
       - key: VITE_ENABLE_PWA
-        value: "true"
+        value: 'true'
     routes:
       - type: rewrite
         source: /*

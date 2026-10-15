@@ -13,7 +13,10 @@ function make(current: string, previous = '') {
       return undefined;
     }),
   };
-  return new TelegramService(config as never, { flags: () => ({ integrationsEnabled: true }) } as never);
+  return new TelegramService(
+    config as never,
+    { flags: () => ({ integrationsEnabled: true }) } as never,
+  );
 }
 
 /** Mã hoá y hệt TelegramService.encrypt nhưng bằng khoá tuỳ ý (mô phỏng dữ liệu cũ). */
@@ -43,7 +46,9 @@ describe('TelegramService.decrypt', () => {
 
   it('không khoá nào giải được → null (KHÔNG trả ciphertext) và log lỗi', () => {
     const svc = make(NEW_KEY);
-    const logSpy = vi.spyOn((svc as unknown as { logger: { error: () => void } }).logger, 'error').mockImplementation(() => undefined);
+    const logSpy = vi
+      .spyOn((svc as unknown as { logger: { error: () => void } }).logger, 'error')
+      .mockImplementation(() => undefined);
     const enc = encryptWith(OLD_KEY, '123:ABC');
     expect(svc.decrypt(enc)).toBeNull();
     expect(logSpy).toHaveBeenCalledTimes(1);

@@ -60,7 +60,10 @@ export function GuideLauncher() {
       launching.current = true;
       let driver: (config?: Config) => Driver;
       try {
-        [{ driver }] = await Promise.all([import('driver.js'), import('driver.js/dist/driver.css')]);
+        [{ driver }] = await Promise.all([
+          import('driver.js'),
+          import('driver.js/dist/driver.css'),
+        ]);
       } catch {
         launching.current = false;
         return; // mất mạng khi tải thư viện: bỏ qua, người dùng bấm lại “Hướng dẫn màn này” sau
@@ -93,13 +96,17 @@ export function GuideLauncher() {
     if (autoStarted.current.has(screen)) return;
     autoStarted.current.add(screen);
     // Đợi 1 frame cho DOM (data-tour targets) render xong.
-    const t = window.setTimeout(() => { void runTour(primaryTour, { markSeen: true }); }, 350);
+    const t = window.setTimeout(() => {
+      void runTour(primaryTour, { markSeen: true });
+    }, 350);
     return () => window.clearTimeout(t);
   }, [primaryTour, screen, runTour]);
 
   // Bảng lệnh có thể yêu cầu chạy tour màn hiện tại (sự kiện dùng chung).
   useEffect(() => {
-    const onTour = () => { if (primaryTour) void runTour(primaryTour, { markSeen: !primaryTour.seen }); };
+    const onTour = () => {
+      if (primaryTour) void runTour(primaryTour, { markSeen: !primaryTour.seen });
+    };
     window.addEventListener('tirapro:tour', onTour);
     return () => window.removeEventListener('tirapro:tour', onTour);
   }, [primaryTour, runTour]);
@@ -113,7 +120,9 @@ export function GuideLauncher() {
         aria-label="Hướng dẫn màn này"
         title="Hướng dẫn màn này"
         disabled={!primaryTour}
-        onClick={() => { if (primaryTour) void runTour(primaryTour, { markSeen: !primaryTour.seen }); }}
+        onClick={() => {
+          if (primaryTour) void runTour(primaryTour, { markSeen: !primaryTour.seen });
+        }}
       >
         <HelpCircle className="h-4 w-4" />
       </Button>

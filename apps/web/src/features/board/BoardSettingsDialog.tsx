@@ -10,7 +10,12 @@ import { QueryBuilder, Segmented } from '@/features/saved-filters/QueryBuilder';
 import { apiErrorMessage } from '@/lib/api';
 import { categoryColor } from '@/lib/statusColor';
 import { cn } from '@/lib/utils';
-import { useProjectStatuses, useSetBoardColumns, useUpdateBoard, type BoardColumnInput } from './api';
+import {
+  useProjectStatuses,
+  useSetBoardColumns,
+  useUpdateBoard,
+  type BoardColumnInput,
+} from './api';
 
 export const SWIMLANE_LABEL: Record<SwimlaneBy, string> = {
   none: 'Không chia hàng',
@@ -48,7 +53,13 @@ interface DraftColumn {
 function toDraft(board: BoardDto): DraftColumn[] {
   return [...board.columns]
     .sort((a, b) => a.order - b.order)
-    .map((c) => ({ key: c.id, id: c.id, name: c.name, statusIds: [...c.statusIds], wip: c.wipLimit != null ? String(c.wipLimit) : '' }));
+    .map((c) => ({
+      key: c.id,
+      id: c.id,
+      name: c.name,
+      statusIds: [...c.statusIds],
+      wip: c.wipLimit != null ? String(c.wipLimit) : '',
+    }));
 }
 
 const sameColumns = (a: DraftColumn[], b: DraftColumn[]) =>
@@ -61,7 +72,10 @@ const sameColumns = (a: DraftColumn[], b: DraftColumn[]) =>
  * Mount mới mỗi lần mở (state khởi tạo từ `board`).
  */
 export function BoardSettingsDialog({
-  open, onClose, projectId, board,
+  open,
+  onClose,
+  projectId,
+  board,
 }: {
   open: boolean;
   onClose: () => void;
@@ -92,16 +106,24 @@ export function BoardSettingsDialog({
   const names = columns.map((c) => c.name.trim().toLowerCase());
   const problems: string[] = [];
   if (statusesQ.data) {
-    if (unassigned.length) problems.push(`Trạng thái chưa nằm trong cột nào: ${unassigned.map((s) => s.name).join(', ')}`);
+    if (unassigned.length)
+      problems.push(
+        `Trạng thái chưa nằm trong cột nào: ${unassigned.map((s) => s.name).join(', ')}`,
+      );
   }
   if (columns.some((c) => !c.name.trim())) problems.push('Có cột chưa đặt tên');
   if (new Set(names).size !== names.length) problems.push('Tên cột bị trùng nhau');
-  if (columns.some((c) => c.statusIds.length === 0)) problems.push('Mỗi cột cần ít nhất một trạng thái');
-  if (columns.some((c) => c.wip !== '' && !/^[1-9]\d{0,2}$/.test(c.wip))) problems.push('Giới hạn WIP phải là số nguyên từ 1 trở lên (bỏ trống nếu không giới hạn)');
+  if (columns.some((c) => c.statusIds.length === 0))
+    problems.push('Mỗi cột cần ít nhất một trạng thái');
+  if (columns.some((c) => c.wip !== '' && !/^[1-9]\d{0,2}$/.test(c.wip)))
+    problems.push('Giới hạn WIP phải là số nguyên từ 1 trở lên (bỏ trống nếu không giới hạn)');
   if (columns.length === 0) problems.push('Bảng cần ít nhất một cột');
 
   const columnsDirty = !sameColumns(columns, initialColumns);
-  const metaDirty = name.trim() !== board.name || (jql.trim() || null) !== (board.filterJql?.trim() || null) || swimlane !== board.swimlaneBy;
+  const metaDirty =
+    name.trim() !== board.name ||
+    (jql.trim() || null) !== (board.filterJql?.trim() || null) ||
+    swimlane !== board.swimlaneBy;
   const dirty = columnsDirty || metaDirty;
   const canSave = dirty && !saving && !!name.trim() && (!columnsDirty || problems.length === 0);
 
@@ -123,12 +145,16 @@ export function BoardSettingsDialog({
   };
   /** Gán trạng thái vào cột; nếu đang ở cột khác thì chuyển sang (một trạng thái chỉ ở một cột). */
   const assignStatus = (key: string, statusId: string) =>
-    setColumnsDraft((cs) => cs.map((c) => {
-      if (c.key === key) return { ...c, statusIds: [...c.statusIds, statusId] };
-      return { ...c, statusIds: c.statusIds.filter((s) => s !== statusId) };
-    }));
+    setColumnsDraft((cs) =>
+      cs.map((c) => {
+        if (c.key === key) return { ...c, statusIds: [...c.statusIds, statusId] };
+        return { ...c, statusIds: c.statusIds.filter((s) => s !== statusId) };
+      }),
+    );
   const unassignStatus = (key: string, statusId: string) =>
-    patchColumn(key, { statusIds: columns.find((c) => c.key === key)!.statusIds.filter((s) => s !== statusId) });
+    patchColumn(key, {
+      statusIds: columns.find((c) => c.key === key)!.statusIds.filter((s) => s !== statusId),
+    });
 
   async function save() {
     setJqlError(null);
@@ -136,7 +162,9 @@ export function BoardSettingsDialog({
       if (metaDirty) {
         await updateBoard.mutateAsync({
           ...(name.trim() !== board.name ? { name: name.trim() } : {}),
-          ...((jql.trim() || null) !== (board.filterJql?.trim() || null) ? { filterJql: jql.trim() || null } : {}),
+          ...((jql.trim() || null) !== (board.filterJql?.trim() || null)
+            ? { filterJql: jql.trim() || null }
+            : {}),
           ...(swimlane !== board.swimlaneBy ? { swimlaneBy: swimlane } : {}),
         });
       }
@@ -165,27 +193,47 @@ export function BoardSettingsDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(o) => { if (!o && !saving) onClose(); }}
+      onOpenChange={(o) => {
+        if (!o && !saving) onClose();
+      }}
       title="Cài đặt bảng"
       description="Chọn cột, giới hạn việc đang làm (WIP), bộ lọc và cách chia hàng cho bảng này."
       size="lg"
       footer={
         <>
           {columnsDirty && problems.length > 0 && (
-            <p className="min-w-0 flex-1 text-xs text-danger" role="alert">{problems[0]}</p>
+            <p className="min-w-0 flex-1 text-xs text-danger" role="alert">
+              {problems[0]}
+            </p>
           )}
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>Huỷ</Button>
-          <Button size="sm" onClick={() => void save()} loading={saving} disabled={!canSave}>Lưu</Button>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
+            Huỷ
+          </Button>
+          <Button size="sm" onClick={() => void save()} loading={saving} disabled={!canSave}>
+            Lưu
+          </Button>
         </>
       }
     >
       <div className="space-y-3">
         <div>
-          <label htmlFor="board-name" className="mb-1.5 block text-sm font-medium text-muted">Tên bảng</label>
-          <Input id="board-name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} className="text-sm" />
+          <label htmlFor="board-name" className="mb-1.5 block text-sm font-medium text-muted">
+            Tên bảng
+          </label>
+          <Input
+            id="board-name"
+            value={name}
+            maxLength={120}
+            onChange={(e) => setName(e.target.value)}
+            className="text-sm"
+          />
         </div>
 
-        <Segmented value={tab} onChange={(v) => setTab(v as Tab)} options={TABS.map((t) => ({ value: t.id, label: t.label }))} />
+        <Segmented
+          value={tab}
+          onChange={(v) => setTab(v as Tab)}
+          options={TABS.map((t) => ({ value: t.id, label: t.label }))}
+        />
 
         {tab === 'columns' && (
           <ColumnsTab
@@ -199,7 +247,14 @@ export function BoardSettingsDialog({
         )}
 
         {tab === 'filter' && (
-          <FilterTab jql={jql} setJql={setJql} jqlMode={jqlMode} setJqlMode={setJqlMode} jqlError={jqlError} setJqlError={setJqlError} />
+          <FilterTab
+            jql={jql}
+            setJql={setJql}
+            jqlMode={jqlMode}
+            setJqlMode={setJqlMode}
+            jqlError={jqlError}
+            setJqlError={setJqlError}
+          />
         )}
 
         {tab === 'swimlane' && <SwimlaneTab swimlane={swimlane} setSwimlane={setSwimlane} />}
@@ -219,7 +274,12 @@ interface ColumnOps {
 }
 
 function ColumnsTab({
-  statusesQ, statuses, statusById, columns, unassigned, ops,
+  statusesQ,
+  statuses,
+  statusById,
+  columns,
+  unassigned,
+  ops,
 }: {
   statusesQ: ReturnType<typeof useProjectStatuses>;
   statuses: StatusList;
@@ -261,13 +321,33 @@ function ColumnsTab({
                   className="h-8 w-16 px-2 text-center text-sm"
                 />
               </label>
-              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Đưa cột ${c.name || idx + 1} lên trước`} disabled={idx === 0} onClick={() => moveColumn(idx, -1)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label={`Đưa cột ${c.name || idx + 1} lên trước`}
+                disabled={idx === 0}
+                onClick={() => moveColumn(idx, -1)}
+              >
                 <ArrowUp className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Đưa cột ${c.name || idx + 1} ra sau`} disabled={idx === columns.length - 1} onClick={() => moveColumn(idx, 1)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label={`Đưa cột ${c.name || idx + 1} ra sau`}
+                disabled={idx === columns.length - 1}
+                onClick={() => moveColumn(idx, 1)}
+              >
                 <ArrowDown className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-danger" aria-label={`Xoá cột ${c.name || idx + 1}`} onClick={() => removeColumn(c.key)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-danger"
+                aria-label={`Xoá cột ${c.name || idx + 1}`}
+                onClick={() => removeColumn(c.key)}
+              >
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>
@@ -275,8 +355,15 @@ function ColumnsTab({
               {c.statusIds.map((sid) => {
                 const s = statusById.get(sid);
                 return (
-                  <span key={sid} className="inline-flex items-center gap-1 rounded-full bg-surface-2 py-0.5 pl-2 pr-1 text-xs text-ink">
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: s ? categoryColor(s.category) : 'var(--faint)' }} aria-hidden />
+                  <span
+                    key={sid}
+                    className="inline-flex items-center gap-1 rounded-full bg-surface-2 py-0.5 pl-2 pr-1 text-xs text-ink"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ background: s ? categoryColor(s.category) : 'var(--faint)' }}
+                      aria-hidden
+                    />
                     {s?.name ?? 'Trạng thái đã xoá'}
                     <button
                       type="button"
@@ -289,18 +376,31 @@ function ColumnsTab({
                   </span>
                 );
               })}
-              {c.statusIds.length === 0 && <span className="text-xs text-danger">Chưa có trạng thái nào — thêm ít nhất một.</span>}
+              {c.statusIds.length === 0 && (
+                <span className="text-xs text-danger">
+                  Chưa có trạng thái nào — thêm ít nhất một.
+                </span>
+              )}
               {addable.length > 0 && (
                 <select
                   aria-label={`Thêm trạng thái vào cột ${c.name || idx + 1}`}
                   value=""
-                  onChange={(e) => { if (e.target.value) assignStatus(c.key, e.target.value); }}
+                  onChange={(e) => {
+                    if (e.target.value) assignStatus(c.key, e.target.value);
+                  }}
                   className="h-7 rounded-md border border-dashed border-border bg-surface px-2 text-xs text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                 >
                   <option value="">+ Thêm trạng thái…</option>
                   {addable.map((s) => {
-                    const owner = columns.find((o) => o.key !== c.key && o.statusIds.includes(s.id));
-                    return <option key={s.id} value={s.id}>{s.name}{owner ? ` (chuyển từ “${owner.name || 'cột chưa đặt tên'}”)` : ''}</option>;
+                    const owner = columns.find(
+                      (o) => o.key !== c.key && o.statusIds.includes(s.id),
+                    );
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                        {owner ? ` (chuyển từ “${owner.name || 'cột chưa đặt tên'}”)` : ''}
+                      </option>
+                    );
                   })}
                 </select>
               )}
@@ -309,24 +409,32 @@ function ColumnsTab({
         );
       })}
 
-      <Button variant="secondary" size="sm" onClick={addColumn}><Plus className="h-4 w-4" /> Thêm cột</Button>
+      <Button variant="secondary" size="sm" onClick={addColumn}>
+        <Plus className="h-4 w-4" /> Thêm cột
+      </Button>
 
       {statusesQ.data && unassigned.length > 0 && (
         <p className="rounded-md bg-warning/10 px-3 py-2 text-sm text-ink" role="status">
-          Chưa nằm trong cột nào: <span className="font-medium">{unassigned.map((s) => s.name).join(', ')}</span>.
-          Việc ở các trạng thái này sẽ không hiện trên bảng — hãy thêm chúng vào một cột.
+          Chưa nằm trong cột nào:{' '}
+          <span className="font-medium">{unassigned.map((s) => s.name).join(', ')}</span>. Việc ở
+          các trạng thái này sẽ không hiện trên bảng — hãy thêm chúng vào một cột.
         </p>
       )}
       <p className="text-xs text-faint">
-        Giới hạn WIP là số việc tối đa nên có cùng lúc trong cột (bảng Scrum chỉ đếm việc của sprint đang chạy).
-        Khi cột đầy, chỉ quản trị dự án mới được chọn “Vẫn chuyển”.
+        Giới hạn WIP là số việc tối đa nên có cùng lúc trong cột (bảng Scrum chỉ đếm việc của sprint
+        đang chạy). Khi cột đầy, chỉ quản trị dự án mới được chọn “Vẫn chuyển”.
       </p>
     </div>
   );
 }
 
 function FilterTab({
-  jql, setJql, jqlMode, setJqlMode, jqlError, setJqlError,
+  jql,
+  setJql,
+  jqlMode,
+  setJqlMode,
+  jqlError,
+  setJqlError,
 }: {
   jql: string;
   setJql: (v: string) => void;
@@ -338,30 +446,55 @@ function FilterTab({
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted">
-        Chỉ hiện trên bảng những việc khớp bộ lọc (trong phạm vi dự án này). Để trống để hiện tất cả.
+        Chỉ hiện trên bảng những việc khớp bộ lọc (trong phạm vi dự án này). Để trống để hiện tất
+        cả.
       </p>
       <div className="flex items-center justify-between gap-2">
         <Segmented
           value={jqlMode}
           onChange={(v) => setJqlMode(v as 'simple' | 'jql')}
-          options={[{ value: 'simple', label: 'Đơn giản' }, { value: 'jql', label: 'JQL' }]}
+          options={[
+            { value: 'simple', label: 'Đơn giản' },
+            { value: 'jql', label: 'JQL' },
+          ]}
         />
         {jql.trim() && (
-          <Button variant="ghost" size="sm" onClick={() => { setJql(''); setJqlError(null); }}>Bỏ bộ lọc</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setJql('');
+              setJqlError(null);
+            }}
+          >
+            Bỏ bộ lọc
+          </Button>
         )}
       </div>
       {jqlMode === 'simple' ? (
-        <QueryBuilder value={jql} onChange={(v) => { setJql(v); setJqlError(null); }} onEditAsJql={() => setJqlMode('jql')} />
+        <QueryBuilder
+          value={jql}
+          onChange={(v) => {
+            setJql(v);
+            setJqlError(null);
+          }}
+          onEditAsJql={() => setJqlMode('jql')}
+        />
       ) : (
         <div className="flex flex-col gap-2">
-          <label htmlFor="board-jql" className="text-sm font-medium text-muted">Truy vấn JQL</label>
+          <label htmlFor="board-jql" className="text-sm font-medium text-muted">
+            Truy vấn JQL
+          </label>
           <textarea
             id="board-jql"
             value={jql}
-            onChange={(e) => { setJql(e.target.value); setJqlError(null); }}
+            onChange={(e) => {
+              setJql(e.target.value);
+              setJqlError(null);
+            }}
             rows={3}
             spellCheck={false}
-            placeholder='assignee = currentUser() AND priority = High'
+            placeholder="assignee = currentUser() AND priority = High"
             className={cn(
               'w-full resize-y rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-ink',
               'placeholder:text-faint focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
@@ -369,12 +502,22 @@ function FilterTab({
           />
         </div>
       )}
-      {jqlError && <p role="alert" className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">{jqlError}</p>}
+      {jqlError && (
+        <p role="alert" className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">
+          {jqlError}
+        </p>
+      )}
     </div>
   );
 }
 
-function SwimlaneTab({ swimlane, setSwimlane }: { swimlane: SwimlaneBy; setSwimlane: (v: SwimlaneBy) => void }) {
+function SwimlaneTab({
+  swimlane,
+  setSwimlane,
+}: {
+  swimlane: SwimlaneBy;
+  setSwimlane: (v: SwimlaneBy) => void;
+}) {
   return (
     <fieldset className="space-y-2">
       <legend className="mb-1 text-sm text-muted">Chia bảng thành các hàng (swimlane) theo:</legend>
@@ -383,7 +526,9 @@ function SwimlaneTab({ swimlane, setSwimlane }: { swimlane: SwimlaneBy; setSwiml
           key={opt}
           className={cn(
             'flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors',
-            swimlane === opt ? 'border-primary bg-primary-subtle' : 'border-border hover:bg-surface-2',
+            swimlane === opt
+              ? 'border-primary bg-primary-subtle'
+              : 'border-border hover:bg-surface-2',
           )}
         >
           <input

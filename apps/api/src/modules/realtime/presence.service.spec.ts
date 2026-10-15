@@ -54,8 +54,18 @@ describe.each([
     await service.join('project:P1', bob);
     const users = await service.state('project:P1');
     expect(users).toHaveLength(2);
-    expect(users).toContainEqual({ userId: 'U1', displayName: 'An', avatarUrl: null, viewing: null });
-    expect(users).toContainEqual({ userId: 'U2', displayName: 'Bình', avatarUrl: 'http://x/b.png', viewing: null });
+    expect(users).toContainEqual({
+      userId: 'U1',
+      displayName: 'An',
+      avatarUrl: null,
+      viewing: null,
+    });
+    expect(users).toContainEqual({
+      userId: 'U2',
+      displayName: 'Bình',
+      avatarUrl: 'http://x/b.png',
+      viewing: null,
+    });
   });
 
   it('state không lẫn room khác', async () => {
@@ -117,7 +127,11 @@ describe('PresenceService — Redis', () => {
     const { service, client } = makeService();
     await service.join('project:P1', alice);
     const raw = client.store.get('presence:project:P1')?.get('U1');
-    expect(JSON.parse(raw ?? '{}')).toMatchObject({ displayName: 'An', avatarUrl: null, viewing: null });
+    expect(JSON.parse(raw ?? '{}')).toMatchObject({
+      displayName: 'An',
+      avatarUrl: null,
+      viewing: null,
+    });
     expect(typeof (JSON.parse(raw ?? '{}') as { ts?: unknown }).ts).toBe('number');
     expect(client.expire).toHaveBeenCalledWith('presence:project:P1', expect.any(Number));
   });

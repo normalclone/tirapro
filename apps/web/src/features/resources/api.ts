@@ -99,7 +99,6 @@ export interface TimeOffInput {
 
 /* ─────────────────────────── Khoá cache ─────────────────────────── */
 
-
 function invalidateResources(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: keys.resources.workloadRoot });
   void qc.invalidateQueries({ queryKey: keys.resources.allocationsRoot });
@@ -117,7 +116,12 @@ export function useWorkload(params: { from: string; to: string; projectId?: stri
   });
 }
 
-export function useAllocations(params: { projectId?: string; userId?: string; from?: string; to?: string }) {
+export function useAllocations(params: {
+  projectId?: string;
+  userId?: string;
+  from?: string;
+  to?: string;
+}) {
   const p = {
     projectId: params.projectId || undefined,
     userId: params.userId || undefined,
@@ -126,14 +130,16 @@ export function useAllocations(params: { projectId?: string; userId?: string; fr
   };
   return useQuery({
     queryKey: keys.resources.allocations(p),
-    queryFn: async () => (await api.get<AllocationDto[]>('/resources/allocations', { params: p })).data,
+    queryFn: async () =>
+      (await api.get<AllocationDto[]>('/resources/allocations', { params: p })).data,
   });
 }
 
 export function useCreateAllocation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: AllocationInput) => api.post<AllocationDto>('/resources/allocations', input).then((r) => r.data),
+    mutationFn: (input: AllocationInput) =>
+      api.post<AllocationDto>('/resources/allocations', input).then((r) => r.data),
     onSuccess: () => invalidateResources(qc),
   });
 }
@@ -170,7 +176,8 @@ export function useTimeOffs(params: { userId?: string; from?: string; to?: strin
 export function useCreateTimeOff() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: TimeOffInput) => api.post<TimeOffDto>('/resources/time-off', input).then((r) => r.data),
+    mutationFn: (input: TimeOffInput) =>
+      api.post<TimeOffDto>('/resources/time-off', input).then((r) => r.data),
     onSuccess: () => invalidateResources(qc),
   });
 }

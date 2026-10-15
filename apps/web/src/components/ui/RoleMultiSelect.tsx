@@ -100,7 +100,12 @@ export function RoleMultiSelect({
               className="h-8 text-sm"
             />
           </div>
-          <ul className="max-h-64 overflow-y-auto p-1" role="listbox" aria-multiselectable aria-label={ariaLabel}>
+          <ul
+            className="max-h-64 overflow-y-auto p-1"
+            role="listbox"
+            aria-multiselectable
+            aria-label={ariaLabel}
+          >
             {filtered.map((o) => {
               const active = value.includes(o.id);
               const lockedLast = requireOne && active && value.length <= 1;
@@ -122,7 +127,9 @@ export function RoleMultiSelect({
                     <span
                       className={cn(
                         'grid h-4 w-4 shrink-0 place-items-center rounded border transition-colors',
-                        active ? 'border-primary bg-primary text-primary-fg' : 'border-border-strong',
+                        active
+                          ? 'border-primary bg-primary text-primary-fg'
+                          : 'border-border-strong',
                       )}
                       aria-hidden
                     >
@@ -133,7 +140,9 @@ export function RoleMultiSelect({
                       style={{ backgroundColor: o.color || 'var(--faint)' }}
                       aria-hidden
                     />
-                    <span className="min-w-0 flex-1 truncate" title={roleHint(o.name)}>{roleLabel(o.name)}</span>
+                    <span className="min-w-0 flex-1 truncate" title={roleHint(o.name)}>
+                      {roleLabel(o.name)}
+                    </span>
                   </button>
                 </li>
               );

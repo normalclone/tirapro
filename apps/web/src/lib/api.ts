@@ -35,7 +35,10 @@ async function doRefresh(): Promise<string | null> {
 
 /** Refresh access token dùng chung 1 promise (bootstrap + interceptor không refresh chồng → tránh xoay refresh-token 2 lần). */
 export function refreshAccessToken(): Promise<string | null> {
-  if (!refreshing) refreshing = doRefresh().finally(() => { refreshing = null; });
+  if (!refreshing)
+    refreshing = doRefresh().finally(() => {
+      refreshing = null;
+    });
   return refreshing;
 }
 
@@ -64,13 +67,15 @@ api.interceptors.response.use(
  * không chỉ báo có lỗi. Mã nào không có ở đây thì dùng message của máy chủ.
  */
 const ERROR_MESSAGES: Record<string, string> = {
-  VERSION_CONFLICT: 'Người khác vừa sửa mục này — hãy tải lại trang để xem bản mới nhất rồi thao tác lại.',
+  VERSION_CONFLICT:
+    'Người khác vừa sửa mục này — hãy tải lại trang để xem bản mới nhất rồi thao tác lại.',
   FORBIDDEN: 'Bạn không có quyền làm việc này. Liên hệ quản trị viên nếu cần được cấp quyền.',
   UNAUTHORIZED: 'Phiên đăng nhập đã hết hạn — hãy đăng nhập lại.',
   NOT_FOUND: 'Không tìm thấy dữ liệu. Có thể nó vừa bị xoá hoặc đường dẫn không đúng.',
   VALIDATION_ERROR: 'Thông tin nhập chưa hợp lệ — kiểm tra lại các ô được đánh dấu.',
   RATE_LIMITED: 'Bạn thao tác hơi nhanh. Chờ vài giây rồi thử lại.',
-  WORKFLOW_TRANSITION_INVALID: 'Quy trình không cho chuyển thẳng sang trạng thái này. Hãy chọn một trạng thái trong danh sách gợi ý.',
+  WORKFLOW_TRANSITION_INVALID:
+    'Quy trình không cho chuyển thẳng sang trạng thái này. Hãy chọn một trạng thái trong danh sách gợi ý.',
 };
 
 /**
@@ -78,13 +83,15 @@ const ERROR_MESSAGES: Record<string, string> = {
  * MutationCache dựa vào đây để không toast lần hai.
  */
 const describedErrors = new WeakSet<object>();
-export const wasErrorDescribed = (e: unknown): boolean => typeof e === 'object' && e !== null && describedErrors.has(e);
+export const wasErrorDescribed = (e: unknown): boolean =>
+  typeof e === 'object' && e !== null && describedErrors.has(e);
 
 /** Bóc lỗi envelope { error: { code, message } } thành câu người dùng đọc hiểu. */
 export function apiErrorMessage(e: unknown): string {
   if (typeof e === 'object' && e !== null) describedErrors.add(e);
   if (axios.isAxiosError(e)) {
-    const err = (e.response?.data as { error?: { code?: string; message?: string } } | undefined)?.error;
+    const err = (e.response?.data as { error?: { code?: string; message?: string } } | undefined)
+      ?.error;
     if (err?.code && ERROR_MESSAGES[err.code]) return ERROR_MESSAGES[err.code]!;
     if (err?.message) return err.message;
     // Không có phản hồi = mất mạng hoặc máy chủ chưa sẵn sàng.

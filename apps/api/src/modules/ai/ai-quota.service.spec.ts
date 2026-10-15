@@ -15,7 +15,9 @@ describe('AiQuotaService.assertWithinQuota', () => {
     const { svc } = make({ inputTokens: 600, outputTokens: 400 });
     const err = await svc.assertWithinQuota('ws1').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(BusinessRuleException);
-    expect((err as Error).message).toContain('Không gian làm việc đã dùng hết hạn mức AI tháng này');
+    expect((err as Error).message).toContain(
+      'Không gian làm việc đã dùng hết hạn mức AI tháng này',
+    );
   });
 
   it('cho qua khi còn dưới hạn mức', async () => {

@@ -37,7 +37,10 @@ function autoMap(names: string[], options: Array<{ id: string; name: string }>):
 }
 
 /** Gợi ý người dùng: khớp email, rồi tên hiển thị; không khớp thì để trống. */
-function autoMapUsers(users: JiraAnalyzeResult['users'], members: JiraImportTargets['members']): Mapping {
+function autoMapUsers(
+  users: JiraAnalyzeResult['users'],
+  members: JiraImportTargets['members'],
+): Mapping {
   const out: Mapping = {};
   for (const u of users) {
     const email = (u.email ?? '').toLowerCase();
@@ -56,7 +59,11 @@ function Stepper({ step }: { step: number }) {
         const done = i < step;
         const active = i === step;
         return (
-          <li key={label} className="flex items-center gap-2" aria-current={active ? 'step' : undefined}>
+          <li
+            key={label}
+            className="flex items-center gap-2"
+            aria-current={active ? 'step' : undefined}
+          >
             <span
               className={cn(
                 'flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold',
@@ -67,7 +74,9 @@ function Stepper({ step }: { step: number }) {
             >
               {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
             </span>
-            <span className={cn(active ? 'font-medium text-ink-strong' : 'text-muted')}>{label}</span>
+            <span className={cn(active ? 'font-medium text-ink-strong' : 'text-muted')}>
+              {label}
+            </span>
             {i < STEPS.length - 1 && <span className="mx-1 h-px w-6 bg-border" aria-hidden />}
           </li>
         );
@@ -101,8 +110,13 @@ function MappingTable({
       {hint && <p className="mt-0.5 text-xs text-muted">{hint}</p>}
       <div className="mt-2 divide-y divide-border rounded-md border border-border">
         {rows.map((name) => (
-          <div key={name} className="grid grid-cols-[1fr_1fr] items-center gap-3 px-3 py-2 sm:grid-cols-[2fr_3fr]">
-            <span className="truncate text-sm text-ink" title={name}>{name}</span>
+          <div
+            key={name}
+            className="grid grid-cols-[1fr_1fr] items-center gap-3 px-3 py-2 sm:grid-cols-[2fr_3fr]"
+          >
+            <span className="truncate text-sm text-ink" title={name}>
+              {name}
+            </span>
             <select
               aria-label={`${title}: ${name}`}
               className={selectClass}
@@ -119,10 +133,25 @@ function MappingTable({
   );
 }
 
-function Checkbox({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
+function Checkbox({
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  hint?: string;
+}) {
   return (
     <label className="flex cursor-pointer items-start gap-2 text-sm">
-      <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--primary)]" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <input
+        type="checkbox"
+        className="mt-0.5 h-4 w-4 accent-[var(--primary)]"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
       <span>
         <span className="text-ink">{label}</span>
         {hint && <span className="block text-xs text-muted">{hint}</span>}
@@ -166,11 +195,20 @@ export function JiraImportWizard() {
             key={analysis.analyzeId}
             analysis={analysis}
             onBack={() => setStep(0)}
-            onStarted={(id) => { setJobId(id); setStep(2); }}
+            onStarted={(id) => {
+              setJobId(id);
+              setStep(2);
+            }}
           />
         </div>
       )}
-      {step === 2 && <ProgressStep job={job.data} error={job.isError ? apiErrorMessage(job.error) : null} onReset={reset} />}
+      {step === 2 && (
+        <ProgressStep
+          job={job.data}
+          error={job.isError ? apiErrorMessage(job.error) : null}
+          onReset={reset}
+        />
+      )}
     </div>
   );
 }
@@ -201,12 +239,25 @@ function UploadStep({
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        Trong Jira: <span className="text-ink">Bộ lọc → Xem tất cả issue → Xuất → CSV (tất cả các trường)</span>.
-        Tệp tối đa 25MB; nếu lớn hơn, hãy xuất theo từng project hoặc khoảng thời gian.
+        Trong Jira:{' '}
+        <span className="text-ink">Bộ lọc → Xem tất cả issue → Xuất → CSV (tất cả các trường)</span>
+        . Tệp tối đa 25MB; nếu lớn hơn, hãy xuất theo từng project hoặc khoảng thời gian.
       </p>
-      <input ref={fileRef} type="file" accept=".csv,text/csv" className="sr-only" onChange={onPickFile} aria-label="Chọn tệp CSV Jira" />
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="sr-only"
+        onChange={onPickFile}
+        aria-label="Chọn tệp CSV Jira"
+      />
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()} loading={analyze.isPending}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => fileRef.current?.click()}
+          loading={analyze.isPending}
+        >
           <Upload className="h-4 w-4" />
           {analysis ? 'Chọn tệp khác…' : 'Chọn tệp CSV…'}
         </Button>
@@ -227,7 +278,8 @@ function UploadStep({
             <p className="mt-3 flex items-start gap-2 text-warning">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
-                {analysis.unknownColumns.length} cột sẽ không được nhập: {analysis.unknownColumns.join(', ')}
+                {analysis.unknownColumns.length} cột sẽ không được nhập:{' '}
+                {analysis.unknownColumns.join(', ')}
               </span>
             </p>
           )}
@@ -235,7 +287,9 @@ function UploadStep({
       )}
 
       <div className="flex justify-end">
-        <Button onClick={onNext} disabled={!analysis}>Tiếp tục</Button>
+        <Button onClick={onNext} disabled={!analysis}>
+          Tiếp tục
+        </Button>
       </div>
     </div>
   );
@@ -264,22 +318,43 @@ function ProjectPicker({
     <div>
       <h3 className="text-sm font-medium text-ink-strong">Project đích</h3>
       <div className="mt-2 grid gap-3 sm:grid-cols-2">
-        <select aria-label="Project đích" className={selectClass} value={choice} onChange={(e) => onChoice(e.target.value)}>
+        <select
+          aria-label="Project đích"
+          className={selectClass}
+          value={choice}
+          onChange={(e) => onChoice(e.target.value)}
+        >
           <option value={NEW_PROJECT}>Tạo project mới…</option>
           {projects.map((p) => (
-            <option key={p.id} value={p.id}>{p.key} — {p.name}</option>
+            <option key={p.id} value={p.id}>
+              {p.key} — {p.name}
+            </option>
           ))}
         </select>
       </div>
       {choice === NEW_PROJECT && (
         <div className="mt-3 grid gap-3 sm:grid-cols-[8rem_1fr]">
           <div>
-            <label htmlFor="jira-new-key" className="mb-1 block text-xs font-medium text-muted">Mã project</label>
-            <Input id="jira-new-key" value={newKey} maxLength={10} onChange={(e) => onNewKey(e.target.value.toUpperCase())} />
+            <label htmlFor="jira-new-key" className="mb-1 block text-xs font-medium text-muted">
+              Mã project
+            </label>
+            <Input
+              id="jira-new-key"
+              value={newKey}
+              maxLength={10}
+              onChange={(e) => onNewKey(e.target.value.toUpperCase())}
+            />
           </div>
           <div>
-            <label htmlFor="jira-new-name" className="mb-1 block text-xs font-medium text-muted">Tên project</label>
-            <Input id="jira-new-name" value={newName} maxLength={120} onChange={(e) => onNewName(e.target.value)} />
+            <label htmlFor="jira-new-name" className="mb-1 block text-xs font-medium text-muted">
+              Tên project
+            </label>
+            <Input
+              id="jira-new-name"
+              value={newName}
+              maxLength={120}
+              onChange={(e) => onNewName(e.target.value)}
+            />
           </div>
           {!valid && (
             <p className="text-xs text-danger sm:col-span-2">
@@ -322,14 +397,18 @@ function DryRunSummary({ result }: { result: JiraDryRunResult }) {
     <div className="rounded-md border border-border bg-surface-2 p-4 text-sm" role="status">
       <p className="font-medium text-ink-strong">Chạy thử: không có gì được ghi vào hệ thống</p>
       <p className="mt-1 text-muted">
-        Sẽ nhập {result.total} công việc ({result.epics} epic, {result.subtasks} việc con), {result.sprints} sprint,{' '}
-        {result.labels} nhãn, {result.comments} bình luận.
+        Sẽ nhập {result.total} công việc ({result.epics} epic, {result.subtasks} việc con),{' '}
+        {result.sprints} sprint, {result.labels} nhãn, {result.comments} bình luận.
       </p>
       {result.warnings.length > 0 && (
         <details className="mt-2">
-          <summary className="cursor-pointer text-warning">{result.warnings.length} cảnh báo</summary>
+          <summary className="cursor-pointer text-warning">
+            {result.warnings.length} cảnh báo
+          </summary>
           <ul className="mt-1 max-h-40 list-disc overflow-auto pl-5 text-xs text-muted">
-            {result.warnings.slice(0, 200).map((w) => <li key={w}>{w}</li>)}
+            {result.warnings.slice(0, 200).map((w) => (
+              <li key={w}>{w}</li>
+            ))}
           </ul>
         </details>
       )}
@@ -356,7 +435,11 @@ function MappingTables({
         value={maps.types[0]}
         onChange={(k, v) => maps.types[1]((m) => ({ ...m, [k]: v }))}
       >
-        {targets.issueTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        {targets.issueTypes.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
         <option value={JIRA_CREATE}>＋ Tạo mới theo tên Jira</option>
       </MappingTable>
 
@@ -372,7 +455,11 @@ function MappingTables({
         disabled={newProject}
         onChange={(k, v) => maps.statuses[1]((m) => ({ ...m, [k]: v }))}
       >
-        {targets.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        {targets.statuses.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
         <option value={JIRA_CREATE}>＋ Tạo mới / khớp theo tên</option>
       </MappingTable>
 
@@ -382,7 +469,11 @@ function MappingTables({
         value={maps.priorities[0]}
         onChange={(k, v) => maps.priorities[1]((m) => ({ ...m, [k]: v }))}
       >
-        {targets.priorities.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        {targets.priorities.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
         <option value={JIRA_CREATE}>＋ Tạo mới theo tên Jira</option>
       </MappingTable>
 
@@ -394,7 +485,11 @@ function MappingTables({
         onChange={(k, v) => maps.users[1]((m) => ({ ...m, [k]: v }))}
       >
         <option value={EMPTY}>— Để trống —</option>
-        {targets.members.map((m) => <option key={m.id} value={m.id}>{m.displayName} ({m.email})</option>)}
+        {targets.members.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.displayName} ({m.email})
+          </option>
+        ))}
       </MappingTable>
     </>
   );
@@ -427,7 +522,11 @@ function MappingStep({
     priorities: useState<Mapping>({}),
     users: useState<Mapping>({}),
   };
-  const [options, setOptions] = useState<Options>({ importComments: true, importSprints: true, keepJiraKey: true });
+  const [options, setOptions] = useState<Options>({
+    importComments: true,
+    importSprints: true,
+    keepJiraKey: true,
+  });
   const [dryRun, setDryRun] = useState<JiraDryRunResult | null>(null);
 
   const run = useJiraRun();
@@ -456,11 +555,19 @@ function MappingStep({
 
   function submit(isDry: boolean) {
     const userMap: Record<string, string | null> = {};
-    for (const [name, id] of Object.entries(maps.users[0])) userMap[name] = id === EMPTY ? null : id;
+    for (const [name, id] of Object.entries(maps.users[0]))
+      userMap[name] = id === EMPTY ? null : id;
     const body: JiraImportRunInput = {
       analyzeId: analysis.analyzeId,
-      ...(isNew ? { newProject: { key: newKey, name: newName.trim() } } : { projectId: projectChoice }),
-      mapping: { issueTypes: maps.types[0], statuses: maps.statuses[0], priorities: maps.priorities[0], users: userMap },
+      ...(isNew
+        ? { newProject: { key: newKey, name: newName.trim() } }
+        : { projectId: projectChoice }),
+      mapping: {
+        issueTypes: maps.types[0],
+        statuses: maps.statuses[0],
+        priorities: maps.priorities[0],
+        users: userMap,
+      },
       options: { ...options, dryRun: isDry },
     };
     run.mutate(body, {
@@ -490,12 +597,16 @@ function MappingStep({
 
       {targets.isLoading ? (
         <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
         </div>
       ) : targets.isError || !targetsData ? (
         <p className="text-sm text-danger">
           Không tải được danh sách để ghép: {apiErrorMessage(targets.error)}{' '}
-          <button type="button" className="underline" onClick={() => void targets.refetch()}>Thử lại</button>
+          <button type="button" className="underline" onClick={() => void targets.refetch()}>
+            Thử lại
+          </button>
         </p>
       ) : (
         <MappingTables analysis={analysis} targets={targetsData} newProject={isNew} maps={maps} />
@@ -505,12 +616,23 @@ function MappingStep({
       {dryRun && <DryRunSummary result={dryRun} />}
 
       <div className="flex flex-wrap justify-between gap-2">
-        <Button variant="ghost" onClick={onBack}>Quay lại</Button>
+        <Button variant="ghost" onClick={onBack}>
+          Quay lại
+        </Button>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => submit(true)} loading={busyDry} disabled={!projectValid || !targetsData || run.isPending}>
+          <Button
+            variant="secondary"
+            onClick={() => submit(true)}
+            loading={busyDry}
+            disabled={!projectValid || !targetsData || run.isPending}
+          >
             Chạy thử
           </Button>
-          <Button onClick={() => submit(false)} loading={busyReal} disabled={!projectValid || !targetsData || run.isPending}>
+          <Button
+            onClick={() => submit(false)}
+            loading={busyReal}
+            disabled={!projectValid || !targetsData || run.isPending}
+          >
             Bắt đầu nhập
           </Button>
         </div>
@@ -529,10 +651,19 @@ function ProgressStep({
   onReset: () => void;
 }) {
   if (error) {
-    return <p className="text-sm text-danger">Không theo dõi được tiến độ: {error}. Kiểm tra lại ở “Lịch sử nhập” của dự án.</p>;
+    return (
+      <p className="text-sm text-danger">
+        Không theo dõi được tiến độ: {error}. Kiểm tra lại ở “Lịch sử nhập” của dự án.
+      </p>
+    );
   }
   if (!job) {
-    return <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="h-4 w-4 animate-spin" />Đang khởi động…</p>;
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Đang khởi động…
+      </p>
+    );
   }
   const running = job.status === 'RUNNING' || job.status === 'PENDING';
   const summary = (job.result ?? {}) as JiraImportSummary;
@@ -555,15 +686,30 @@ function ProgressStep({
         <>
           <p className="flex items-center gap-2 text-sm text-ink">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Đang nhập {job.processedItems}/{job.totalItems ?? '…'} công việc. Bạn có thể rời trang — việc nhập vẫn chạy tiếp.
+            Đang nhập {job.processedItems}/{job.totalItems ?? '…'} công việc. Bạn có thể rời trang —
+            việc nhập vẫn chạy tiếp.
           </p>
-          <div className="h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuenow={job.progress} aria-valuemin={0} aria-valuemax={100}>
-            <div className="h-full bg-primary transition-all duration-300" style={{ width: `${job.progress}%` }} />
+          <div
+            className="h-2 overflow-hidden rounded-full bg-surface-2"
+            role="progressbar"
+            aria-valuenow={job.progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div
+              className="h-full bg-primary transition-all duration-300"
+              style={{ width: `${job.progress}%` }}
+            />
           </div>
         </>
       ) : (
         <>
-          <p className={cn('text-sm font-medium', job.status === 'COMPLETED' ? 'text-ink-strong' : 'text-danger')}>
+          <p
+            className={cn(
+              'text-sm font-medium',
+              job.status === 'COMPLETED' ? 'text-ink-strong' : 'text-danger',
+            )}
+          >
             {job.status === 'COMPLETED'
               ? `Đã nhập ${summary.created ?? 0}/${job.totalItems ?? 0} công việc${summary.failed ? `, ${summary.failed} dòng lỗi` : ''}.`
               : 'Nhập thất bại — không có công việc nào được tạo. Tải nhật ký lỗi để xem lý do.'}
@@ -578,7 +724,10 @@ function ProgressStep({
               ['Cảnh báo', summary.warnings],
               ['Lỗi', summary.failed],
             ].map(([label, n]) => (
-              <div key={String(label)} className="rounded-md border border-border bg-surface-2 px-3 py-2">
+              <div
+                key={String(label)}
+                className="rounded-md border border-border bg-surface-2 px-3 py-2"
+              >
                 <dt className="text-xs text-muted">{label}</dt>
                 <dd className="text-base font-semibold text-ink-strong">{n ?? 0}</dd>
               </div>
@@ -592,11 +741,16 @@ function ProgressStep({
               </Button>
             )}
             {job.status === 'COMPLETED' && summary.projectKey && (
-              <Link to={`/p/${summary.projectKey}/backlog`} className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-fg hover:bg-primary-hover">
+              <Link
+                to={`/p/${summary.projectKey}/backlog`}
+                className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-fg hover:bg-primary-hover"
+              >
                 Mở project {summary.projectKey}
               </Link>
             )}
-            <Button variant="ghost" size="sm" onClick={onReset}>Nhập tệp khác</Button>
+            <Button variant="ghost" size="sm" onClick={onReset}>
+              Nhập tệp khác
+            </Button>
           </div>
         </>
       )}

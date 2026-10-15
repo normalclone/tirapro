@@ -31,7 +31,8 @@ export class AdminConsoleController {
   ) {}
 
   private assertSysAdmin(user: AuthUser): void {
-    if (!user.isSystemAdmin) throw new ForbiddenAppException('Chỉ admin hệ thống mới truy cập được');
+    if (!user.isSystemAdmin)
+      throw new ForbiddenAppException('Chỉ admin hệ thống mới truy cập được');
   }
 
   @Get('overview')
@@ -47,7 +48,10 @@ export class AdminConsoleController {
   }
 
   @Put('config/flags')
-  async setFlags(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(updateFlagsSchema)) dto: UpdateFlagsInput) {
+  async setFlags(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(updateFlagsSchema)) dto: UpdateFlagsInput,
+  ) {
     this.assertSysAdmin(user);
     return this.settings.setFlags(dto);
   }

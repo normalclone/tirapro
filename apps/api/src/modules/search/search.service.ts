@@ -101,7 +101,11 @@ export class SearchService {
    * Tìm issue. `mode=text`: full-text trên `q`; mặc định: JQL (parse → compile → Prisma). `text ~ "..."`
    * trong JQL cũng đi qua full-text. Workspace scope ghép trong IssuesService.query.
    */
-  async search(workspaceId: string, currentUserId: string, opts: SearchOptions): Promise<PageResult<IssueDto>> {
+  async search(
+    workspaceId: string,
+    currentUserId: string,
+    opts: SearchOptions,
+  ): Promise<PageResult<IssueDto>> {
     if (opts.mode === 'text') return this.searchText(workspaceId, opts);
 
     let where: Prisma.IssueWhereInput = {};
@@ -123,12 +127,17 @@ export class SearchService {
       if (ids && !orderBy.length) rawIds = [...ids]; // không ORDER BY tường minh → xếp theo rank
     }
     if (opts.projectId) {
-      where = Object.keys(where).length ? { AND: [where, { projectId: opts.projectId }] } : { projectId: opts.projectId };
+      where = Object.keys(where).length
+        ? { AND: [where, { projectId: opts.projectId }] }
+        : { projectId: opts.projectId };
     }
     return this.issues.query(workspaceId, where, orderBy, opts.cursor, opts.limit, rawIds);
   }
 
-  private async searchText(workspaceId: string, opts: SearchOptions): Promise<PageResult<IssueDto>> {
+  private async searchText(
+    workspaceId: string,
+    opts: SearchOptions,
+  ): Promise<PageResult<IssueDto>> {
     const q = (opts.q ?? '').trim();
     if (!q) return this.issues.query(workspaceId, {}, [], opts.cursor, opts.limit, []);
     const res = await this.fulltext.search(workspaceId, q, { projectId: opts.projectId });
@@ -136,8 +145,12 @@ export class SearchService {
 
     // Chưa có searchVector → rơi về contains (không xếp rank).
     const like = { contains: q, mode: 'insensitive' as const };
-    const match: Prisma.IssueWhereInput = { OR: [{ summary: like }, { description: like }, { key: like }] };
-    const where: Prisma.IssueWhereInput = opts.projectId ? { AND: [match, { projectId: opts.projectId }] } : match;
+    const match: Prisma.IssueWhereInput = {
+      OR: [{ summary: like }, { description: like }, { key: like }],
+    };
+    const where: Prisma.IssueWhereInput = opts.projectId
+      ? { AND: [match, { projectId: opts.projectId }] }
+      : match;
     return this.issues.query(workspaceId, where, [], opts.cursor, opts.limit);
   }
 
@@ -147,7 +160,8 @@ export class SearchService {
       parseJql(jql);
       return { valid: true };
     } catch (e) {
-      if (e instanceof JqlParseError) return { valid: false, error: e.message, position: e.position };
+      if (e instanceof JqlParseError)
+        return { valid: false, error: e.message, position: e.position };
       throw e;
     }
   }
@@ -168,7 +182,8 @@ export class SearchService {
 function dedupeByName(rows: { name: string; color?: string | null }[]): FieldOption[] {
   const seen = new Map<string, FieldOption>();
   for (const r of rows) {
-    if (!seen.has(r.name)) seen.set(r.name, { value: r.name, label: r.name, color: r.color ?? null });
+    if (!seen.has(r.name))
+      seen.set(r.name, { value: r.name, label: r.name, color: r.color ?? null });
   }
   return [...seen.values()];
 }

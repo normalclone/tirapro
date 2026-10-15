@@ -9,7 +9,9 @@ import { invalidateIssue, optimisticPatchIssue, rollbackIssue } from '@/lib/opti
 export function useBoards(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.boards.byProject(projectId ?? ''),
-    queryFn: projectId ? async () => (await api.get<BoardDto[]>(`/boards?projectId=${projectId}`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<BoardDto[]>(`/boards?projectId=${projectId}`)).data
+      : skipToken,
   });
 }
 
@@ -21,7 +23,8 @@ export function useBoardIssues(boardId: string | undefined) {
   return useQuery({
     queryKey: keys.issues.byBoard(boardId ?? ''),
     queryFn: boardId
-      ? async () => (await api.get<ListResponse<IssueDto>>(`/boards/${boardId}/issues?limit=200`)).data.data
+      ? async () =>
+          (await api.get<ListResponse<IssueDto>>(`/boards/${boardId}/issues?limit=200`)).data.data
       : skipToken,
   });
 }
@@ -65,7 +68,8 @@ function useRefreshBoard(projectId: string) {
 export function useUpdateBoard(projectId: string, boardId: string) {
   const refresh = useRefreshBoard(projectId);
   return useMutation({
-    mutationFn: (patch: BoardPatch) => api.patch<BoardDto>(`/boards/${boardId}`, patch).then((r) => r.data),
+    mutationFn: (patch: BoardPatch) =>
+      api.patch<BoardDto>(`/boards/${boardId}`, patch).then((r) => r.data),
     onSuccess: () => refresh(boardId),
   });
 }
@@ -82,7 +86,11 @@ export function useSetBoardColumns(projectId: string, boardId: string) {
 
 /** Cột đã đầy giới hạn WIP (máy chủ trả mã `WIP_LIMIT_REACHED`)? */
 export function isWipLimitError(e: unknown): boolean {
-  return axios.isAxiosError(e) && (e.response?.data as { error?: { code?: string } } | undefined)?.error?.code === 'WIP_LIMIT_REACHED';
+  return (
+    axios.isAxiosError(e) &&
+    (e.response?.data as { error?: { code?: string } } | undefined)?.error?.code ===
+      'WIP_LIMIT_REACHED'
+  );
 }
 
 /** Biến của mutation chuyển trạng thái (dùng chung board + trang chi tiết). */
@@ -101,16 +109,25 @@ export interface TransitionVars {
 }
 
 /** Vá lạc quan trạng thái của issue (giữ category cũ; bản thật về sau sẽ thay). */
-export const statusPatch = (v: TransitionVars) => (i: IssueDto): Partial<IssueDto> => ({
-  status: { ...i.status, id: v.toStatusId, name: v.statusName ?? i.status.name },
-});
+export const statusPatch =
+  (v: TransitionVars) =>
+  (i: IssueDto): Partial<IssueDto> => ({
+    status: { ...i.status, id: v.toStatusId, name: v.statusName ?? i.status.name },
+  });
 
 /** Optimistic transition: di chuyển card sang cột mới NGAY, rollback nếu lỗi. */
 export function useTransitionIssue(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: TransitionVars) =>
-      api.post<IssueDto>(`/issues/${v.id}/transition`, { toStatusId: v.toStatusId, version: v.version, boardId: v.boardId, force: v.force }).then((r) => r.data),
+      api
+        .post<IssueDto>(`/issues/${v.id}/transition`, {
+          toStatusId: v.toStatusId,
+          version: v.version,
+          boardId: v.boardId,
+          force: v.force,
+        })
+        .then((r) => r.data),
     onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, statusPatch(v), v.key),
     onError: (_e, _v, snap) => rollbackIssue(qc, snap),
     onSettled: (_r, _e, v, snap) => invalidateIssue(qc, projectId, snap?.issueKey ?? v.key),

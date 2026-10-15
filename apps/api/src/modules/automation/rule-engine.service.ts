@@ -5,9 +5,21 @@ import { CronExpressionParser } from 'cron-parser';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import {
-  DOMAIN_EVENTS, type AutomationEventMeta, type AutomationRuleTestResultDto, type IssueDto, type RuleRunStatus, type RuleTrigger,
+  DOMAIN_EVENTS,
+  type AutomationEventMeta,
+  type AutomationRuleTestResultDto,
+  type IssueDto,
+  type RuleRunStatus,
+  type RuleTrigger,
 } from '@tirapro/types';
-import { parseJql, ruleActionSchema, ruleConditionSchema, triggerConfigSchema, type RuleCondition, type TriggerConfig } from '@tirapro/shared';
+import {
+  parseJql,
+  ruleActionSchema,
+  ruleConditionSchema,
+  triggerConfigSchema,
+  type RuleCondition,
+  type TriggerConfig,
+} from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { withCronLock } from '../../common/cron-lock';
@@ -98,7 +110,13 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     const user = await this.prisma.user.upsert({
       where: { email: SYSTEM_USER_EMAIL },
       update: {},
-      create: { email: SYSTEM_USER_EMAIL, displayName: 'Tirapro Automation', passwordHash: null, status: 'ACTIVE', isSystemAdmin: false },
+      create: {
+        email: SYSTEM_USER_EMAIL,
+        displayName: 'Tirapro Automation',
+        passwordHash: null,
+        status: 'ACTIVE',
+        isSystemAdmin: false,
+      },
       select: { id: true },
     });
     this.systemId = user.id;
@@ -139,30 +157,74 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
         if (this.stopping) return;
         if (!this.triggerMatches(rule, trigger, issue, p)) continue;
         if (depth >= MAX_AUTOMATION_DEPTH) {
-          await this.record(rule, issue.id, 'SKIPPED', [{ step: 'Chống vòng lặp', ok: true, message: `Chuỗi tự động hoá đã sâu ${depth} tầng (tối đa ${MAX_AUTOMATION_DEPTH}) nên không chạy tiếp` }], 0);
+          await this.record(
+            rule,
+            issue.id,
+            'SKIPPED',
+            [
+              {
+                step: 'Chống vòng lặp',
+                ok: true,
+                message: `Chuỗi tự động hoá đã sâu ${depth} tầng (tối đa ${MAX_AUTOMATION_DEPTH}) nên không chạy tiếp`,
+              },
+            ],
+            0,
+          );
           continue;
         }
         if (chain.includes(rule.id)) {
-          await this.record(rule, issue.id, 'SKIPPED', [{ step: 'Chống vòng lặp', ok: true, message: 'Quy tắc này đã chạy trong chính chuỗi sự kiện này — không chạy lại' }], 0);
+          await this.record(
+            rule,
+            issue.id,
+            'SKIPPED',
+            [
+              {
+                step: 'Chống vòng lặp',
+                ok: true,
+                message: 'Quy tắc này đã chạy trong chính chuỗi sự kiện này — không chạy lại',
+              },
+            ],
+            0,
+          );
           continue;
         }
-        await this.runRule({ rule, issue, depth, chain, triggerActorId: p.actorId ?? null, dryRun: false, trigger });
+        await this.runRule({
+          rule,
+          issue,
+          depth,
+          chain,
+          triggerActorId: p.actorId ?? null,
+          dryRun: false,
+          trigger,
+        });
       }
     } catch (err) {
-      this.logger.error(`Engine automation lỗi khi xử lý ${trigger}: ${(err as Error).message}`, (err as Error).stack);
+      this.logger.error(
+        `Engine automation lỗi khi xử lý ${trigger}: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
     }
   }
 
   private async issueOfEvent(p: EventPayload): Promise<IssueDto | null> {
     if (p.issue) return p.issue;
     if (!p.issueId) return null;
-    const row = await this.prisma.issue.findFirst({ where: { id: p.issueId, deletedAt: null }, select: { workspaceId: true } });
+    const row = await this.prisma.issue.findFirst({
+      where: { id: p.issueId, deletedAt: null },
+      select: { workspaceId: true },
+    });
     return row ? this.loadIssue(row.workspaceId, p.issueId) : null;
   }
 
-  private triggerMatches(rule: CachedRule, trigger: RuleTrigger, issue: IssueDto, p: EventPayload): boolean {
+  private triggerMatches(
+    rule: CachedRule,
+    trigger: RuleTrigger,
+    issue: IssueDto,
+    p: EventPayload,
+  ): boolean {
     const cfg = this.triggerConfigOf(rule);
-    if (trigger === 'ISSUE_TRANSITIONED' && cfg.toStatusId) return issue.status.id === cfg.toStatusId;
+    if (trigger === 'ISSUE_TRANSITIONED' && cfg.toStatusId)
+      return issue.status.id === cfg.toStatusId;
     if (trigger === 'ISSUE_UPDATED' && cfg.fields?.length) {
       return !!p.changedFields?.some((f) => cfg.fields!.includes(f));
     }
@@ -177,12 +239,33 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
   /* ------------------------------ chạy rule ------------------------------ */
 
   /** Chạy thử: đánh giá điều kiện + mô tả action, KHÔNG ghi/gửi gì và không ghi AutomationRun. */
-  async dryRun(workspaceId: string, rule: CachedRule, issueKey: string): Promise<AutomationRuleTestResultDto> {
+  async dryRun(
+    workspaceId: string,
+    rule: CachedRule,
+    issueKey: string,
+  ): Promise<AutomationRuleTestResultDto> {
     const issue = await this.issues.getByKey(workspaceId, issueKey);
     if (rule.projectId && rule.projectId !== issue.projectId) {
-      return { status: 'SKIPPED', log: [{ step: 'Phạm vi', ok: true, message: 'Công việc không thuộc dự án mà quy tắc này áp dụng' }] };
+      return {
+        status: 'SKIPPED',
+        log: [
+          {
+            step: 'Phạm vi',
+            ok: true,
+            message: 'Công việc không thuộc dự án mà quy tắc này áp dụng',
+          },
+        ],
+      };
     }
-    const outcome = await this.runRule({ rule, issue, depth: 0, chain: [], triggerActorId: null, dryRun: true, trigger: rule.trigger });
+    const outcome = await this.runRule({
+      rule,
+      issue,
+      depth: 0,
+      chain: [],
+      triggerActorId: null,
+      dryRun: true,
+      trigger: rule.trigger,
+    });
     return { status: outcome.status, log: outcome.log };
   }
 
@@ -197,16 +280,30 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
       const actions = actionsSchema.safeParse(rule.actions);
       if (!conditions.success || !actions.success) {
         status = 'FAILED';
-        log.push({ step: 'Cấu hình', ok: false, message: 'Cấu hình điều kiện/hành động của quy tắc không hợp lệ — hãy mở quy tắc và lưu lại' });
+        log.push({
+          step: 'Cấu hình',
+          ok: false,
+          message:
+            'Cấu hình điều kiện/hành động của quy tắc không hợp lệ — hãy mở quy tắc và lưu lại',
+        });
       } else {
         const systemId = await this.systemUserId();
         // Luôn dùng issue mới nhất: có thể đã đổi từ lúc sự kiện phát ra (hoặc do quy tắc đứng trước).
         const issue = (await this.loadIssue(input.issue.workspaceId, issueId)) ?? input.issue;
         issueId = issue.id;
-        const unmet = await this.firstUnmetCondition(conditions.data, issue, systemId, !!input.skipJql);
+        const unmet = await this.firstUnmetCondition(
+          conditions.data,
+          issue,
+          systemId,
+          !!input.skipJql,
+        );
         if (unmet) {
           status = 'SKIPPED';
-          log.push({ step: 'Điều kiện', ok: true, message: `Không thoả điều kiện: ${describeCondition(unmet)}` });
+          log.push({
+            step: 'Điều kiện',
+            ok: true,
+            message: `Không thoả điều kiện: ${describeCondition(unmet)}`,
+          });
         } else {
           const ctx = this.buildContext(input, issue, systemId);
           const result = await runActions(ctx, actions.data);
@@ -216,7 +313,11 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
       }
     } catch (err) {
       status = 'FAILED';
-      log.push({ step: 'Quy tắc', ok: false, message: (err instanceof Error ? err.message : String(err)).slice(0, 500) });
+      log.push({
+        step: 'Quy tắc',
+        ok: false,
+        message: (err instanceof Error ? err.message : String(err)).slice(0, 500),
+      });
     }
     if (!dryRun) await this.record(rule, issueId, status, log, Date.now() - started);
     return { status, log };
@@ -226,7 +327,12 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     const { rule } = input;
     let actorName: Promise<string> | null = null;
     const ctx: ActionContext = {
-      deps: { prisma: this.prisma, issues: this.issues, comments: this.comments, events: this.events },
+      deps: {
+        prisma: this.prisma,
+        issues: this.issues,
+        comments: this.comments,
+        events: this.events,
+      },
       workspaceId: issue.workspaceId,
       actorId: systemId,
       rule: { id: rule.id, name: rule.name },
@@ -243,7 +349,9 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
       },
       actorName: () => {
         actorName ??= input.triggerActorId
-          ? this.prisma.user.findUnique({ where: { id: input.triggerActorId }, select: { displayName: true } }).then((u) => u?.displayName ?? 'Ai đó')
+          ? this.prisma.user
+              .findUnique({ where: { id: input.triggerActorId }, select: { displayName: true } })
+              .then((u) => u?.displayName ?? 'Ai đó')
           : Promise.resolve('Tirapro Automation');
         return actorName;
       },
@@ -284,13 +392,28 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
   }
 
   /** Ghi AutomationRun + cập nhật thống kê quy tắc (SKIPPED không tính là một lần chạy). Lỗi ghi log chỉ cảnh báo. */
-  private async record(rule: CachedRule, issueId: string | null, status: RuleRunStatus, log: StepLog[], durationMs: number): Promise<void> {
+  private async record(
+    rule: CachedRule,
+    issueId: string | null,
+    status: RuleRunStatus,
+    log: StepLog[],
+    durationMs: number,
+  ): Promise<void> {
     try {
       await this.prisma.automationRun.create({
-        data: { ruleId: rule.id, issueId, status, log: log as unknown as Prisma.InputJsonValue, durationMs },
+        data: {
+          ruleId: rule.id,
+          issueId,
+          status,
+          log: log as unknown as Prisma.InputJsonValue,
+          durationMs,
+        },
       });
       if (status !== 'SKIPPED') {
-        await this.prisma.automationRule.update({ where: { id: rule.id }, data: { lastRunAt: new Date(), runCount: { increment: 1 } } });
+        await this.prisma.automationRule.update({
+          where: { id: rule.id },
+          data: { lastRunAt: new Date(), runCount: { increment: 1 } },
+        });
       }
     } catch (err) {
       this.logger.warn(`Không ghi được lần chạy của quy tắc ${rule.id}: ${(err as Error).message}`);
@@ -303,7 +426,9 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
   @Cron('* * * * *')
   async onMinute(): Promise<void> {
     try {
-      await withCronLock(this.redis, 'automation-scheduled-rules', 55, () => this.runScheduled(new Date()));
+      await withCronLock(this.redis, 'automation-scheduled-rules', 55, () =>
+        this.runScheduled(new Date()),
+      );
     } catch (err) {
       this.logger.error(`Cron quy tắc theo lịch lỗi: ${(err as Error).message}`);
     }
@@ -334,7 +459,10 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
 
   cronMatches(expression: string, minute: Date): boolean {
     try {
-      const it = CronExpressionParser.parse(expression, { currentDate: new Date(minute.getTime() + 30_000), tz: 'UTC' });
+      const it = CronExpressionParser.parse(expression, {
+        currentDate: new Date(minute.getTime() + 30_000),
+        tz: 'UTC',
+      });
       return it.prev().toDate().getTime() === minute.getTime();
     } catch {
       return false;
@@ -347,13 +475,31 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     const systemId = await this.systemUserId();
     const wheres: Prisma.IssueWhereInput[] = [];
     for (const c of parsed.data) {
-      if (isJqlCondition(c)) wheres.push(compileJql(parseJql(c.jql), { currentUserId: systemId }).where);
+      if (isJqlCondition(c))
+        wheres.push(compileJql(parseJql(c.jql), { currentUserId: systemId }).where);
     }
-    const where: Prisma.IssueWhereInput = { AND: [...wheres, ...(rule.projectId ? [{ projectId: rule.projectId }] : [])] };
-    const page = await this.issues.query(rule.workspaceId, where, [], undefined, SCHEDULED_ISSUE_LIMIT);
+    const where: Prisma.IssueWhereInput = {
+      AND: [...wheres, ...(rule.projectId ? [{ projectId: rule.projectId }] : [])],
+    };
+    const page = await this.issues.query(
+      rule.workspaceId,
+      where,
+      [],
+      undefined,
+      SCHEDULED_ISSUE_LIMIT,
+    );
     for (const issue of page.data) {
       if (this.stopping) return;
-      await this.runRule({ rule, issue, depth: 0, chain: [], triggerActorId: null, dryRun: false, trigger: 'SCHEDULED', skipJql: true });
+      await this.runRule({
+        rule,
+        issue,
+        depth: 0,
+        chain: [],
+        triggerActorId: null,
+        dryRun: false,
+        trigger: 'SCHEDULED',
+        skipJql: true,
+      });
     }
   }
 
@@ -363,8 +509,11 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     try {
       await withCronLock(this.redis, 'automation-prune-runs', 300, async () => {
         const before = new Date(Date.now() - RUN_RETENTION_DAYS * 86_400_000);
-        const { count } = await this.prisma.automationRun.deleteMany({ where: { createdAt: { lt: before } } });
-        if (count) this.logger.log(`Đã dọn ${count} lần chạy quy tắc cũ hơn ${RUN_RETENTION_DAYS} ngày`);
+        const { count } = await this.prisma.automationRun.deleteMany({
+          where: { createdAt: { lt: before } },
+        });
+        if (count)
+          this.logger.log(`Đã dọn ${count} lần chạy quy tắc cũ hơn ${RUN_RETENTION_DAYS} ngày`);
       });
     } catch (err) {
       this.logger.error(`Dọn lịch sử chạy lỗi: ${(err as Error).message}`);

@@ -2,10 +2,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { AssigneeSuggestService } from './assignee-suggest.service';
 
 const issue = {
-  id: 'i1', summary: 'Lỗi thanh toán', typeId: 't-bug', projectId: 'p1', parentId: 'parent1', epicId: null, assigneeId: null,
+  id: 'i1',
+  summary: 'Lỗi thanh toán',
+  typeId: 't-bug',
+  projectId: 'p1',
+  parentId: 'parent1',
+  epicId: null,
+  assigneeId: null,
   type: { name: 'Bug' },
-  labels: [{ labelId: 'l1' }], components: [{ componentId: 'c1' }],
-  sourceLinks: [{ targetIssueId: 'linked1' }], targetLinks: [],
+  labels: [{ labelId: 'l1' }],
+  components: [{ componentId: 'c1' }],
+  sourceLinks: [{ targetIssueId: 'linked1' }],
+  targetLinks: [],
 };
 
 const members = [
@@ -26,16 +34,29 @@ function make(opts: { claude?: Record<string, unknown>; issueRow?: unknown } = {
       groupBy: vi.fn().mockImplementation((args: { where: { status: { category: unknown } } }) =>
         Promise.resolve(
           args.where.status.category === 'DONE'
-            ? [{ assigneeId: 'uA', _count: { _all: 4 } }, { assigneeId: 'uB', _count: { _all: 2 } }]
-            : [{ assigneeId: 'uA', _count: { _all: 5 } }, { assigneeId: 'uB', _count: { _all: 1 } }],
-        )),
+            ? [
+                { assigneeId: 'uA', _count: { _all: 4 } },
+                { assigneeId: 'uB', _count: { _all: 2 } },
+              ]
+            : [
+                { assigneeId: 'uA', _count: { _all: 5 } },
+                { assigneeId: 'uB', _count: { _all: 1 } },
+              ],
+        ),
+      ),
       findMany: vi.fn().mockResolvedValue([]),
     },
     projectMembership: { findMany: vi.fn().mockResolvedValue(members) },
     comment: { findMany: vi.fn().mockResolvedValue([{ authorId: 'uB' }]) },
     issueHistory: { findMany: vi.fn().mockResolvedValue([]) },
   };
-  const claude = { modelFast: 'fast-m', modelPrimary: 'primary-m', available: () => false, extract: vi.fn(), ...opts.claude };
+  const claude = {
+    modelFast: 'fast-m',
+    modelPrimary: 'primary-m',
+    available: () => false,
+    extract: vi.fn(),
+    ...opts.claude,
+  };
   return { svc: new AssigneeSuggestService(prisma as never, claude as never), prisma, claude };
 }
 
@@ -60,7 +81,12 @@ describe('AssigneeSuggestService', () => {
   it('Claude: dùng model fast, ẩn danh u1..uN (không gửi email/id thật), map ngược và gộp reasons', async () => {
     // u1 = người điểm cao nhất (Bình), u2 = An
     const extract = vi.fn().mockResolvedValue({
-      data: { ranking: [{ id: 'u2', reason: 'Đã xử lý nhiều lỗi tương tự.' }, { id: 'u1', reason: 'Đang rảnh hơn.' }] },
+      data: {
+        ranking: [
+          { id: 'u2', reason: 'Đã xử lý nhiều lỗi tương tự.' },
+          { id: 'u1', reason: 'Đang rảnh hơn.' },
+        ],
+      },
     });
     const { svc } = make({ claude: { available: () => true, extract } });
     const out = await svc.suggest('ws1', 'me', { projectId: 'p1', issueId: 'i1' });
@@ -78,7 +104,11 @@ describe('AssigneeSuggestService', () => {
 
   it('Claude timeout → heuristic kèm reason', async () => {
     const extract = vi.fn().mockResolvedValue({ data: null, reason: 'timeout' });
-    const out = await make({ claude: { available: () => true, extract } }).svc.suggest('ws1', 'me', { projectId: 'p1', issueId: 'i1' });
+    const out = await make({ claude: { available: () => true, extract } }).svc.suggest(
+      'ws1',
+      'me',
+      { projectId: 'p1', issueId: 'i1' },
+    );
     expect(out.source).toBe('heuristic');
     expect(out.reason).toBe('timeout');
     expect(out.suggestions[0]!.userId).toBe('uB');
@@ -86,12 +116,20 @@ describe('AssigneeSuggestService', () => {
 
   it('Claude ném lỗi (hết hạn mức, khoá sai…) hoặc trả id lạ → vẫn trả heuristic, reason = error', async () => {
     const boom = vi.fn().mockRejectedValue(new Error('quota'));
-    const a = await make({ claude: { available: () => true, extract: boom } }).svc.suggest('ws1', 'me', { projectId: 'p1', issueId: 'i1' });
+    const a = await make({ claude: { available: () => true, extract: boom } }).svc.suggest(
+      'ws1',
+      'me',
+      { projectId: 'p1', issueId: 'i1' },
+    );
     expect(a.source).toBe('heuristic');
     expect(a.reason).toBe('error');
 
     const bogus = vi.fn().mockResolvedValue({ data: { ranking: [{ id: 'u99', reason: 'x' }] } });
-    const b = await make({ claude: { available: () => true, extract: bogus } }).svc.suggest('ws1', 'me', { projectId: 'p1', issueId: 'i1' });
+    const b = await make({ claude: { available: () => true, extract: bogus } }).svc.suggest(
+      'ws1',
+      'me',
+      { projectId: 'p1', issueId: 'i1' },
+    );
     expect(b.source).toBe('heuristic');
     expect(b.reason).toBe('error');
   });

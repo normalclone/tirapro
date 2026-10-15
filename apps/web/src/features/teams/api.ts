@@ -3,7 +3,6 @@ import type { TeamDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
-
 export interface TeamInput {
   name?: string;
   key?: string | null;
@@ -50,8 +49,21 @@ export function useDeleteTeam() {
 export function useAssignTeamToProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, projectId, roleIds }: { id: string; projectId: string; roleIds: string[] }) =>
-      api.post<{ success: boolean; added: number }>(`/teams/${id}/assign-project`, { projectId, roleIds }).then((r) => r.data),
+    mutationFn: ({
+      id,
+      projectId,
+      roleIds,
+    }: {
+      id: string;
+      projectId: string;
+      roleIds: string[];
+    }) =>
+      api
+        .post<{
+          success: boolean;
+          added: number;
+        }>(`/teams/${id}/assign-project`, { projectId, roleIds })
+        .then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.teams.all });
       void qc.invalidateQueries({ queryKey: keys.members.projectRoot });

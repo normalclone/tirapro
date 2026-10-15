@@ -46,7 +46,6 @@ export interface RunDigestResult {
 /* Query keys                                                         */
 /* ------------------------------------------------------------------ */
 
-
 /* ------------------------------------------------------------------ */
 /* Hooks                                                              */
 /* ------------------------------------------------------------------ */
@@ -98,8 +97,7 @@ export function useDeleteDigest() {
 export function useRunDigest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      api.post<RunDigestResult>(`/digests/${id}/run`).then((r) => r.data),
+    mutationFn: (id: string) => api.post<RunDigestResult>(`/digests/${id}/run`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.digests.all });
     },

@@ -78,7 +78,11 @@ export function DueBadge({
   return (
     <span
       className={cn('inline-flex items-center gap-1 text-xs font-medium', tone, className)}
-      title={st === 'soon' ? `Sắp đến hạn (${shortDate(issue.dueDate)})` : `Hạn ${shortDate(issue.dueDate)}`}
+      title={
+        st === 'soon'
+          ? `Sắp đến hạn (${shortDate(issue.dueDate)})`
+          : `Hạn ${shortDate(issue.dueDate)}`
+      }
     >
       <CalendarClock className="h-3 w-3" aria-hidden />
       {shortDate(issue.dueDate)}

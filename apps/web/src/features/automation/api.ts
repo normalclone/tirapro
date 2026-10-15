@@ -53,7 +53,6 @@ export interface RecurringIssue {
   updatedAt: string;
 }
 
-
 /**
  * Guard quyền của API đọc `projectId` từ params/body/query. Gửi kèm dự án của bản ghi để
  * quản trị DỰ ÁN (không phải quản trị chung) cũng thao tác được; máy chủ vẫn kiểm tra
@@ -90,7 +89,11 @@ export function useUpdateTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...input }: TemplateInput & { id: string }) =>
-      api.put<IssueTemplate>(`/automation/templates/${id}`, input, { params: scopeParams(input.projectId) }).then((r) => r.data),
+      api
+        .put<IssueTemplate>(`/automation/templates/${id}`, input, {
+          params: scopeParams(input.projectId),
+        })
+        .then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.templates }),
   });
 }
@@ -99,7 +102,9 @@ export function useDeleteTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId?: string | null }) =>
-      api.delete(`/automation/templates/${id}`, { params: scopeParams(projectId) }).then((r) => r.data),
+      api
+        .delete(`/automation/templates/${id}`, { params: scopeParams(projectId) })
+        .then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.templates }),
   });
 }
@@ -138,7 +143,11 @@ export function useUpdateRecurring() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, projectId, ...input }: RecurringInput & { id: string }) =>
-      api.put<RecurringIssue>(`/automation/recurring/${id}`, input, { params: scopeParams(projectId) }).then((r) => r.data),
+      api
+        .put<RecurringIssue>(`/automation/recurring/${id}`, input, {
+          params: scopeParams(projectId),
+        })
+        .then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.recurring }),
   });
 }
@@ -147,7 +156,9 @@ export function useDeleteRecurring() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId: string }) =>
-      api.delete(`/automation/recurring/${id}`, { params: scopeParams(projectId) }).then((r) => r.data),
+      api
+        .delete(`/automation/recurring/${id}`, { params: scopeParams(projectId) })
+        .then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.recurring }),
   });
 }
@@ -158,9 +169,10 @@ export function useRunRecurringNow() {
   return useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId: string }) =>
       api
-        .post<{ success: boolean; issue: { id: string; key: string } }>(
-          `/automation/recurring/${id}/run-now`, undefined, { params: scopeParams(projectId) },
-        )
+        .post<{
+          success: boolean;
+          issue: { id: string; key: string };
+        }>(`/automation/recurring/${id}/run-now`, undefined, { params: scopeParams(projectId) })
         .then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.automation.recurring });
@@ -171,7 +183,15 @@ export function useRunRecurringNow() {
 
 /* ------------------------------- Nhãn hiển thị -------------------------- */
 
-export const WEEKDAY_LABELS = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'] as const;
+export const WEEKDAY_LABELS = [
+  'Chủ nhật',
+  'Thứ 2',
+  'Thứ 3',
+  'Thứ 4',
+  'Thứ 5',
+  'Thứ 6',
+  'Thứ 7',
+] as const;
 
 export const FREQ_LABELS: Record<RecurrenceFreq, string> = {
   DAILY: 'Hằng ngày',
@@ -180,7 +200,9 @@ export const FREQ_LABELS: Record<RecurrenceFreq, string> = {
 };
 
 /** Mô tả lịch bằng tiếng Việt: "Mỗi tuần vào Thứ 2 lúc 8:00". */
-export function describeRecurrence(r: Pick<RecurringIssue, 'freq' | 'interval' | 'weekday' | 'monthDay' | 'hour'>): string {
+export function describeRecurrence(
+  r: Pick<RecurringIssue, 'freq' | 'interval' | 'weekday' | 'monthDay' | 'hour'>,
+): string {
   const at = `lúc ${r.hour}:00`;
   const n = Math.max(1, r.interval || 1);
   if (r.freq === 'DAILY') return n === 1 ? `Mỗi ngày ${at}` : `Mỗi ${n} ngày ${at}`;

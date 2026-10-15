@@ -41,7 +41,9 @@ export interface IssueLink {
 export function useWatchState(issueId: string) {
   return useQuery({
     queryKey: keys.issues.watch(issueId),
-    queryFn: issueId ? async () => (await api.get<WatchState>(`/issues/${issueId}/watch`)).data : skipToken,
+    queryFn: issueId
+      ? async () => (await api.get<WatchState>(`/issues/${issueId}/watch`)).data
+      : skipToken,
   });
 }
 
@@ -66,7 +68,9 @@ export function useToggleWatch(issueId: string) {
 export function useIssueLinks(issueId: string) {
   return useQuery({
     queryKey: keys.issues.links(issueId),
-    queryFn: issueId ? async () => (await api.get<IssueLink[]>(`/issues/${issueId}/links`)).data : skipToken,
+    queryFn: issueId
+      ? async () => (await api.get<IssueLink[]>(`/issues/${issueId}/links`)).data
+      : skipToken,
   });
 }
 

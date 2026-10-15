@@ -27,8 +27,7 @@ export function ChangePasswordPanel() {
   const allRulesPass = rulesPass.every(Boolean);
   const confirmMismatch = confirm.length > 0 && confirm !== next;
 
-  const canSubmit =
-    current.length > 0 && allRulesPass && next === confirm && !change.isPending;
+  const canSubmit = current.length > 0 && allRulesPass && next === confirm && !change.isPending;
 
   function reset() {
     setCurrent('');
@@ -133,7 +132,9 @@ export function ChangePasswordPanel() {
         )}
 
         {confirmMismatch && (
-          <p className="text-xs text-danger">Hai ô mật khẩu mới chưa giống nhau — nhập lại cho khớp.</p>
+          <p className="text-xs text-danger">
+            Hai ô mật khẩu mới chưa giống nhau — nhập lại cho khớp.
+          </p>
         )}
 
         <div className="flex items-center justify-between">

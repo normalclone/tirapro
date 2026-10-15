@@ -7,7 +7,9 @@ import { keys } from '@/lib/queryKeys';
 export function useWorklogs(issueId: string | undefined) {
   return useQuery({
     queryKey: keys.issues.worklogs(issueId ?? ''),
-    queryFn: issueId ? async () => (await api.get<WorklogListDto>(`/issues/${issueId}/worklogs`)).data : skipToken,
+    queryFn: issueId
+      ? async () => (await api.get<WorklogListDto>(`/issues/${issueId}/worklogs`)).data
+      : skipToken,
   });
 }
 

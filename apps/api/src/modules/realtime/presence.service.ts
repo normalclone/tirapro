@@ -102,7 +102,9 @@ export class PresenceService {
   private degrade(err: unknown): void {
     if (this.warnedFallback) return;
     this.warnedFallback = true;
-    this.logger.warn(`Presence: Redis lỗi, dùng bộ nhớ trong một node — ${err instanceof Error ? err.message : String(err)}`);
+    this.logger.warn(
+      `Presence: Redis lỗi, dùng bộ nhớ trong một node — ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   private async get(room: string, userId: string): Promise<StoredEntry | null> {
@@ -156,7 +158,12 @@ function parseEntry(json: string | null): StoredEntry | null {
   try {
     const v = JSON.parse(json) as Partial<StoredEntry>;
     if (typeof v.displayName !== 'string' || typeof v.ts !== 'number') return null;
-    return { displayName: v.displayName, avatarUrl: v.avatarUrl ?? null, viewing: v.viewing ?? null, ts: v.ts };
+    return {
+      displayName: v.displayName,
+      avatarUrl: v.avatarUrl ?? null,
+      viewing: v.viewing ?? null,
+      ts: v.ts,
+    };
   } catch {
     return null;
   }

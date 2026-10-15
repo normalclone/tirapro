@@ -42,21 +42,24 @@ describe('RBAC coverage', () => {
           if (typeof handler !== 'function') continue;
           if (Reflect.getMetadata(METHOD_METADATA, handler) === undefined) continue; // không có @Get/@Post…
           routes++;
-          const perms = (Reflect.getMetadata(PERMISSIONS_KEY, handler) ?? Reflect.getMetadata(PERMISSIONS_KEY, ctrl)) as
-            | unknown[]
-            | undefined;
+          const perms = (Reflect.getMetadata(PERMISSIONS_KEY, handler) ??
+            Reflect.getMetadata(PERMISSIONS_KEY, ctrl)) as unknown[] | undefined;
           // `@Permissions()` rỗng = guard cho qua mọi người → coi như thiếu khai báo.
           const emptyPerms = perms !== undefined && perms.length === 0;
           const declared =
             !emptyPerms &&
             ACCESS_KEYS.some(
-              (key) => Reflect.getMetadata(key, handler) !== undefined || Reflect.getMetadata(key, ctrl) !== undefined,
+              (key) =>
+                Reflect.getMetadata(key, handler) !== undefined ||
+                Reflect.getMetadata(key, ctrl) !== undefined,
             );
           if (!declared) missing.push(`${relative(root, file)} → ${ctrl.name}.${name}`);
         }
       }
     }
     expect(routes).toBeGreaterThanOrEqual(250); // chặn trường hợp quét hụt thư mục
-    expect(missing, `Route thiếu @Permissions/@Public/@AuthOnly:\n${missing.join('\n')}`).toEqual([]);
+    expect(missing, `Route thiếu @Permissions/@Public/@AuthOnly:\n${missing.join('\n')}`).toEqual(
+      [],
+    );
   });
 });

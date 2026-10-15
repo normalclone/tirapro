@@ -48,4 +48,7 @@ export function defaultProjectRefParam(kind: ProjectRefKind): string {
  * gửi ở query để cấp quyền — dùng decorator này thay vì để guard đoán.
  */
 export const ProjectRef = (kind: ProjectRefKind, param?: string) =>
-  SetMetadata(PROJECT_REF_KEY, { kind, param: param ?? defaultProjectRefParam(kind) } satisfies ProjectRefMeta);
+  SetMetadata(PROJECT_REF_KEY, {
+    kind,
+    param: param ?? defaultProjectRefParam(kind),
+  } satisfies ProjectRefMeta);

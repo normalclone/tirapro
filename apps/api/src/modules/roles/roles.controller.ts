@@ -5,7 +5,12 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { RolesService } from './roles.service';
-import { createRoleSchema, updateRoleSchema, type CreateRoleInput, type UpdateRoleInput } from './roles.schemas';
+import {
+  createRoleSchema,
+  updateRoleSchema,
+  type CreateRoleInput,
+  type UpdateRoleInput,
+} from './roles.schemas';
 
 @ApiTags('roles')
 @Controller('roles')
@@ -21,7 +26,10 @@ export class RolesController {
 
   @Post()
   @Permissions(PERMISSIONS.MEMBER_MANAGE)
-  async create(@WorkspaceId() workspaceId: string, @Body(new ZodValidationPipe(createRoleSchema)) dto: CreateRoleInput) {
+  async create(
+    @WorkspaceId() workspaceId: string,
+    @Body(new ZodValidationPipe(createRoleSchema)) dto: CreateRoleInput,
+  ) {
     return this.roles.create(workspaceId, dto);
   }
 

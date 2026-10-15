@@ -26,7 +26,6 @@ interface InviteInput {
   roleId?: string;
 }
 
-
 /** Danh sách không gian làm việc của người dùng hiện tại. */
 export function useMyWorkspaces() {
   return useQuery({

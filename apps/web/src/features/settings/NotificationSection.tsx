@@ -13,18 +13,34 @@ const NOTIFICATION_TYPES: { key: string; label: string; hint: string }[] = [
   { key: 'MENTIONED', label: 'Được nhắc đến (@)', hint: 'Khi ai đó @ bạn trong bình luận' },
   { key: 'COMMENT_ADDED', label: 'Bình luận mới', hint: 'Bình luận mới trên công việc liên quan' },
   { key: 'STATUS_CHANGED', label: 'Đổi trạng thái', hint: 'Công việc chuyển sang trạng thái khác' },
-  { key: 'ISSUE_UPDATED', label: 'Công việc được cập nhật', hint: 'Thông tin công việc được chỉnh sửa' },
+  {
+    key: 'ISSUE_UPDATED',
+    label: 'Công việc được cập nhật',
+    hint: 'Thông tin công việc được chỉnh sửa',
+  },
   { key: 'SPRINT_STARTED', label: 'Sprint bắt đầu', hint: 'Khi một sprint được khởi động' },
   { key: 'SPRINT_COMPLETED', label: 'Sprint hoàn thành', hint: 'Khi một sprint kết thúc' },
-  { key: 'WATCHING_UPDATE', label: 'Theo dõi cập nhật', hint: 'Cập nhật trên công việc bạn đang theo dõi' },
+  {
+    key: 'WATCHING_UPDATE',
+    label: 'Theo dõi cập nhật',
+    hint: 'Cập nhật trên công việc bạn đang theo dõi',
+  },
 ];
 
 /** Các loại thông báo có thể gửi qua email (khoá trùng `NotificationEmailPrefs`). */
 const EMAIL_TYPES: { key: keyof NotificationEmailPrefs; label: string; hint: string }[] = [
   { key: 'mention', label: 'Được nhắc đến (@)', hint: 'Gửi email khi ai đó @ bạn' },
   { key: 'assigned', label: 'Được giao việc', hint: 'Gửi email khi bạn được gán vào công việc' },
-  { key: 'comment', label: 'Bình luận mới', hint: 'Gửi email khi công việc của bạn có bình luận mới' },
-  { key: 'transition', label: 'Đổi trạng thái', hint: 'Gửi email khi công việc của bạn chuyển trạng thái' },
+  {
+    key: 'comment',
+    label: 'Bình luận mới',
+    hint: 'Gửi email khi công việc của bạn có bình luận mới',
+  },
+  {
+    key: 'transition',
+    label: 'Đổi trạng thái',
+    hint: 'Gửi email khi công việc của bạn chuyển trạng thái',
+  },
 ];
 
 export function NotificationSection() {
@@ -35,7 +51,10 @@ export function NotificationSection() {
   const effective = data?.preferences ?? {};
 
   function toggle(key: string, next: boolean) {
-    update.mutate({ preferences: { [key]: next } }, { onError: (e) => toast.error(apiErrorMessage(e)) });
+    update.mutate(
+      { preferences: { [key]: next } },
+      { onError: (e) => toast.error(apiErrorMessage(e)) },
+    );
   }
 
   function toggleEmail(key: keyof NotificationEmailPrefs, next: boolean) {
@@ -44,88 +63,100 @@ export function NotificationSection() {
 
   return (
     <div className="space-y-6">
-    <SectionCard
-      icon={<Bell className="h-4 w-4" />}
-      title="Thông báo"
-      description="Mặc định yên tĩnh — chỉ bật thông báo quan trọng."
-    >
-      <QueryBoundary
-        query={prefsQuery}
-        skeleton={
-          <div className="space-y-2.5">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
-            ))}
-          </div>
-        }
+      <SectionCard
+        icon={<Bell className="h-4 w-4" />}
+        title="Thông báo"
+        description="Mặc định yên tĩnh — chỉ bật thông báo quan trọng."
       >
-        {() => (
-          <ul className="divide-y divide-border">
-            {NOTIFICATION_TYPES.map(({ key, label, hint }) => {
-              const checked = effective[key] ?? false;
-              return (
-                <li key={key} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+        <QueryBoundary
+          query={prefsQuery}
+          skeleton={
+            <div className="space-y-2.5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          }
+        >
+          {() => (
+            <ul className="divide-y divide-border">
+              {NOTIFICATION_TYPES.map(({ key, label, hint }) => {
+                const checked = effective[key] ?? false;
+                return (
+                  <li
+                    key={key}
+                    className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="min-w-0">
+                      <label
+                        htmlFor={`notif-${key}`}
+                        className="block text-sm font-medium text-ink"
+                      >
+                        {label}
+                      </label>
+                      <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
+                    </div>
+                    <input
+                      id={`notif-${key}`}
+                      type="checkbox"
+                      checked={checked}
+                      disabled={update.isPending}
+                      onChange={(e) => toggle(key, e.target.checked)}
+                      className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </QueryBoundary>
+      </SectionCard>
+
+      <SectionCard
+        icon={<Mail className="h-4 w-4" />}
+        title="Thông báo qua email"
+        description="Các thông báo trong vòng 5 phút được gộp thành một email để hộp thư không bị ngập."
+      >
+        <QueryBoundary
+          query={prefsQuery}
+          skeleton={
+            <div className="space-y-2.5">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          }
+        >
+          {(prefs) => (
+            <ul className="divide-y divide-border">
+              {EMAIL_TYPES.map(({ key, label, hint }) => (
+                <li
+                  key={key}
+                  className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                >
                   <div className="min-w-0">
-                    <label htmlFor={`notif-${key}`} className="block text-sm font-medium text-ink">
+                    <label
+                      htmlFor={`notif-email-${key}`}
+                      className="block text-sm font-medium text-ink"
+                    >
                       {label}
                     </label>
                     <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
                   </div>
                   <input
-                    id={`notif-${key}`}
+                    id={`notif-email-${key}`}
                     type="checkbox"
-                    checked={checked}
+                    checked={prefs.email[key]}
                     disabled={update.isPending}
-                    onChange={(e) => toggle(key, e.target.checked)}
+                    onChange={(e) => toggleEmail(key, e.target.checked)}
                     className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
                   />
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </QueryBoundary>
-    </SectionCard>
-
-    <SectionCard
-      icon={<Mail className="h-4 w-4" />}
-      title="Thông báo qua email"
-      description="Các thông báo trong vòng 5 phút được gộp thành một email để hộp thư không bị ngập."
-    >
-      <QueryBoundary
-        query={prefsQuery}
-        skeleton={
-          <div className="space-y-2.5">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
-            ))}
-          </div>
-        }
-      >
-        {(prefs) => (
-          <ul className="divide-y divide-border">
-            {EMAIL_TYPES.map(({ key, label, hint }) => (
-              <li key={key} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
-                <div className="min-w-0">
-                  <label htmlFor={`notif-email-${key}`} className="block text-sm font-medium text-ink">
-                    {label}
-                  </label>
-                  <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
-                </div>
-                <input
-                  id={`notif-email-${key}`}
-                  type="checkbox"
-                  checked={prefs.email[key]}
-                  disabled={update.isPending}
-                  onChange={(e) => toggleEmail(key, e.target.checked)}
-                  className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </QueryBoundary>
-    </SectionCard>
+              ))}
+            </ul>
+          )}
+        </QueryBoundary>
+      </SectionCard>
     </div>
   );
 }

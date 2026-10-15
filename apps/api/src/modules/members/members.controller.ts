@@ -7,7 +7,14 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { MembersService } from './members.service';
-import { setRolesSchema, addProjectMemberSchema, addMembersBulkSchema, type SetRolesInput, type AddProjectMemberInput, type AddMembersBulkInput } from './members.schemas';
+import {
+  setRolesSchema,
+  addProjectMemberSchema,
+  addMembersBulkSchema,
+  type SetRolesInput,
+  type AddProjectMemberInput,
+  type AddMembersBulkInput,
+} from './members.schemas';
 
 @ApiTags('members')
 @Controller('members')
@@ -53,7 +60,11 @@ export class WorkspaceMembersController {
 
   @Delete(':userId')
   @Permissions(PERMISSIONS.MEMBER_MANAGE)
-  async remove(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('userId') userId: string) {
+  async remove(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('userId') userId: string,
+  ) {
     return this.members.removeWorkspace(workspaceId, userId, user.id);
   }
 }
@@ -108,7 +119,11 @@ export class ProjectMembersController {
    */
   @Delete(':userId')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
-  async clearOverride(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string, @Param('userId') userId: string) {
+  async clearOverride(
+    @WorkspaceId() workspaceId: string,
+    @Param('projectId') projectId: string,
+    @Param('userId') userId: string,
+  ) {
     return this.members.clearProjectOverride(workspaceId, projectId, userId);
   }
 }

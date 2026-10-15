@@ -6,22 +6,29 @@ function setup(failSummary?: string) {
   const prisma = {
     $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
     project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
-    importJob: { create: vi.fn(() => Promise.resolve({ id: 'job1' })), update: vi.fn(() => Promise.resolve({})) },
+    importJob: {
+      create: vi.fn(() => Promise.resolve({ id: 'job1' })),
+      update: vi.fn(() => Promise.resolve({})),
+    },
     issueType: { findMany: vi.fn(() => Promise.resolve([{ id: 't1', name: 'Task' }])) },
     priority: { findMany: vi.fn(() => Promise.resolve([])) },
   };
   const issues = {
-    createWithin: vi.fn(async (_tx: unknown, _w: string, _u: string, input: { summary: string }) => { await Promise.resolve();
-      if (input.summary === failSummary) throw new Error('lỗi DB giả lập');
-      return { id: `id-${input.summary}` };
-    }),
+    createWithin: vi.fn(
+      async (_tx: unknown, _w: string, _u: string, input: { summary: string }) => {
+        await Promise.resolve();
+        if (input.summary === failSummary) throw new Error('lỗi DB giả lập');
+        return { id: `id-${input.summary}` };
+      },
+    ),
     emitCreated: vi.fn(),
   };
   const service = new ImportService(prisma as never, issues as never);
   return { service, prisma, issues };
 }
 
-const csvOf = (n: number) => ['summary', ...Array.from({ length: n }, (_, i) => `row${i}`)].join('\n');
+const csvOf = (n: number) =>
+  ['summary', ...Array.from({ length: n }, (_, i) => `row${i}`)].join('\n');
 
 describe('ImportService — ghi theo lô', () => {
   it('250 dòng => 3 transaction (100/100/50), sự kiện phát sau commit cho từng issue', async () => {

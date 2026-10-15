@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
@@ -26,9 +35,7 @@ export type ImportCsvBody = z.infer<typeof importCsvSchema>;
  */
 export const importJsonSchema = z.object({
   projectId: z.string().min(1),
-  data: z
-    .object({ issues: z.array(z.any()) })
-    .passthrough(),
+  data: z.object({ issues: z.array(z.any()) }).passthrough(),
 });
 export type ImportJsonBody = z.infer<typeof importJsonSchema>;
 

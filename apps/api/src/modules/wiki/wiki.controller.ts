@@ -9,8 +9,12 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { WikiService } from './wiki.service';
 import {
-  createWikiPageSchema, moveWikiPageSchema, updateWikiPageSchema,
-  type CreateWikiPageInput, type MoveWikiPageInput, type UpdateWikiPageInput,
+  createWikiPageSchema,
+  moveWikiPageSchema,
+  updateWikiPageSchema,
+  type CreateWikiPageInput,
+  type MoveWikiPageInput,
+  type UpdateWikiPageInput,
 } from './wiki.schemas';
 
 @ApiTags('wiki')

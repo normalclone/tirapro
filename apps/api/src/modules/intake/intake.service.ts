@@ -44,7 +44,11 @@ export class IntakeService {
    * Báo cáo một issue (bug). Nếu đã tồn tại issue "sống" gần trùng tiêu đề trong cùng project
    * thì tăng occurrenceCount thay vì tạo mới (feed Triage inbox).
    */
-  async report(workspaceId: string, userId: string, input: ReportIssueInput): Promise<ReportResult> {
+  async report(
+    workspaceId: string,
+    userId: string,
+    input: ReportIssueInput,
+  ): Promise<ReportResult> {
     // 1. Xác minh project thuộc workspace hiện tại.
     const project = await this.prisma.project.findFirst({
       where: { id: input.projectId, workspaceId, deletedAt: null },
@@ -111,7 +115,11 @@ export class IntakeService {
   /**
    * Gợi ý các issue có thể trùng cho UI (tối đa 5): tiêu đề chuẩn hóa CHỨA truy vấn chuẩn hóa.
    */
-  async findDuplicates(workspaceId: string, projectId: string, summary: string): Promise<DuplicateSuggestion[]> {
+  async findDuplicates(
+    workspaceId: string,
+    projectId: string,
+    summary: string,
+  ): Promise<DuplicateSuggestion[]> {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
       select: { id: true },
@@ -151,7 +159,10 @@ export class IntakeService {
       orderBy: { hierarchyLevel: 'asc' },
       select: { id: true },
     });
-    if (!first) throw new BusinessRuleException('Không gian làm việc chưa có loại công việc nào — hãy vào Cấu hình để thêm ít nhất một loại công việc');
+    if (!first)
+      throw new BusinessRuleException(
+        'Không gian làm việc chưa có loại công việc nào — hãy vào Cấu hình để thêm ít nhất một loại công việc',
+      );
     return first.id;
   }
 }

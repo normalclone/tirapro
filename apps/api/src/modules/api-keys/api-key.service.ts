@@ -34,8 +34,14 @@ interface CachedCtx {
 }
 
 type KeyRow = {
-  id: string; name: string; prefix: string; scopes: string[];
-  lastUsedAt: Date | null; expiresAt: Date | null; revokedAt: Date | null; createdAt: Date;
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  lastUsedAt: Date | null;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
 };
 
 /**
@@ -72,7 +78,16 @@ export class ApiKeyService {
     const rows = await this.prisma.apiKey.findMany({
       where: { workspaceId },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, name: true, prefix: true, scopes: true, lastUsedAt: true, expiresAt: true, revokedAt: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        prefix: true,
+        scopes: true,
+        lastUsedAt: true,
+        expiresAt: true,
+        revokedAt: true,
+        createdAt: true,
+      },
     });
     const data = rows.map((r) => this.toDto(r));
     return offsetPage(data, 1, Math.max(1, data.length), data.length);
@@ -82,17 +97,31 @@ export class ApiKeyService {
     const { prefix, secret, full } = this.gen();
     const hash = hashApiKeySecret(secret);
     const scopes: ApiScope[] = input.write ? ['read', 'write'] : ['read'];
-    const expiresAt = input.expiresInDays ? new Date(Date.now() + input.expiresInDays * 86_400_000) : null;
+    const expiresAt = input.expiresInDays
+      ? new Date(Date.now() + input.expiresInDays * 86_400_000)
+      : null;
     const rec = await this.prisma.apiKey.create({
       data: { workspaceId, userId, name: input.name, prefix, hash, scopes, expiresAt },
-      select: { id: true, name: true, prefix: true, scopes: true, lastUsedAt: true, expiresAt: true, revokedAt: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        prefix: true,
+        scopes: true,
+        lastUsedAt: true,
+        expiresAt: true,
+        revokedAt: true,
+        createdAt: true,
+      },
     });
     // key đầy đủ chỉ trả về lần này
     return { ...this.toDto(rec), key: full };
   }
 
   async revoke(id: string, workspaceId: string) {
-    const found = await this.prisma.apiKey.findFirst({ where: { id, workspaceId }, select: { id: true, prefix: true } });
+    const found = await this.prisma.apiKey.findFirst({
+      where: { id, workspaceId },
+      select: { id: true, prefix: true },
+    });
     if (!found) throw new NotFoundAppException('Khoá API');
     await this.prisma.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
     await this.dropCache(found.prefix); // thu hồi có hiệu lực ngay, không đợi hết TTL
@@ -108,9 +137,15 @@ export class ApiKeyService {
     userId: string,
     db: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<string[]> {
-    const keys = await db.apiKey.findMany({ where: { workspaceId, userId, revokedAt: null }, select: { prefix: true } });
+    const keys = await db.apiKey.findMany({
+      where: { workspaceId, userId, revokedAt: null },
+      select: { prefix: true },
+    });
     if (keys.length === 0) return [];
-    await db.apiKey.updateMany({ where: { workspaceId, userId, revokedAt: null }, data: { revokedAt: new Date() } });
+    await db.apiKey.updateMany({
+      where: { workspaceId, userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
     return keys.map((k) => k.prefix);
   }
 
@@ -135,7 +170,13 @@ export class ApiKeyService {
     const key = await this.prisma.apiKey.findUnique({
       where: { prefix: prefix! },
       select: {
-        id: true, hash: true, scopes: true, workspaceId: true, userId: true, revokedAt: true, expiresAt: true,
+        id: true,
+        hash: true,
+        scopes: true,
+        workspaceId: true,
+        userId: true,
+        revokedAt: true,
+        expiresAt: true,
         user: { select: { email: true, displayName: true, status: true } },
       },
     });
@@ -178,7 +219,9 @@ export class ApiKeyService {
   private async writeCache(prefix: string, value: CachedCtx): Promise<void> {
     const client = this.redis.isAvailable() ? this.redis.getClient() : null;
     if (!client) return;
-    await client.set(cacheKey(prefix), JSON.stringify(value), 'EX', CACHE_TTL_SEC).catch(() => undefined);
+    await client
+      .set(cacheKey(prefix), JSON.stringify(value), 'EX', CACHE_TTL_SEC)
+      .catch(() => undefined);
   }
 
   private async dropCache(prefix: string): Promise<void> {
@@ -195,7 +238,13 @@ export class ApiKeyService {
     // Chỉ cập nhật khi cách lần trước > 1 phút để giảm ghi.
     await this.prisma.apiKey
       .updateMany({
-        where: { id, OR: [{ lastUsedAt: null }, { lastUsedAt: { lt: new Date(Date.now() - TOUCH_INTERVAL_MS) } }] },
+        where: {
+          id,
+          OR: [
+            { lastUsedAt: null },
+            { lastUsedAt: { lt: new Date(Date.now() - TOUCH_INTERVAL_MS) } },
+          ],
+        },
         data: { lastUsedAt: new Date() },
       })
       .catch(() => undefined);

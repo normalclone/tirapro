@@ -11,7 +11,15 @@ import { useRoles } from '@/features/roles/api';
 import { useAssignTeamToProject } from './api';
 
 /** Giao vai trò dự án cho cả nhóm: mỗi thành viên nhận (các) vai trò riêng đã chọn trong dự án đó. */
-export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: TeamDto | null; onClose: () => void }) {
+export function AssignTeamModal({
+  open,
+  team,
+  onClose,
+}: {
+  open: boolean;
+  team: TeamDto | null;
+  onClose: () => void;
+}) {
   const { data: projects } = useProjects();
   const { data: roles } = useRoles('PROJECT');
   const assign = useAssignTeamToProject();
@@ -19,7 +27,10 @@ export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: 
   const [projectId, setProjectId] = useState('');
   const [roleIds, setRoleIds] = useState<string[]>([]);
 
-  const roleOptions = useMemo(() => (roles ?? []).map((r) => ({ id: r.id, name: r.name, color: r.color })), [roles]);
+  const roleOptions = useMemo(
+    () => (roles ?? []).map((r) => ({ id: r.id, name: r.name, color: r.color })),
+    [roles],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -38,7 +49,9 @@ export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: 
     if (!canSave || !team) return;
     try {
       const res = await assign.mutateAsync({ id: team.id, projectId, roleIds });
-      toast.success(`Đã đặt vai trò riêng trong dự án cho ${res.added} thành viên của nhóm “${team.name}”`);
+      toast.success(
+        `Đã đặt vai trò riêng trong dự án cho ${res.added} thành viên của nhóm “${team.name}”`,
+      );
       onClose();
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -55,19 +68,29 @@ export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: 
       size="md"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void submit()} loading={busy} disabled={!canSave}>Đặt vai trò</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button onClick={() => void submit()} loading={busy} disabled={!canSave}>
+            Đặt vai trò
+          </Button>
         </>
       }
     >
       <div className="space-y-4">
         <p className="text-sm text-muted">
-          Mọi thành viên của không gian làm việc vốn đã có mặt trong dự án với <strong>vai trò mặc định</strong>. Thao tác này đặt{' '}
-          <strong>vai trò riêng</strong> cho {team.memberCount} thành viên của nhóm trong dự án bạn chọn — vai trò riêng
-          được dùng thay cho vai trò mặc định.
+          Mọi thành viên của không gian làm việc vốn đã có mặt trong dự án với{' '}
+          <strong>vai trò mặc định</strong>. Thao tác này đặt <strong>vai trò riêng</strong> cho{' '}
+          {team.memberCount} thành viên của nhóm trong dự án bạn chọn — vai trò riêng được dùng thay
+          cho vai trò mặc định.
         </p>
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-muted" title="Vai trò riêng chỉ áp dụng trong dự án này, không ảnh hưởng các dự án khác">Dự án</label>
+          <label
+            className="mb-1.5 block text-sm font-medium text-muted"
+            title="Vai trò riêng chỉ áp dụng trong dự án này, không ảnh hưởng các dự án khác"
+          >
+            Dự án
+          </label>
           <SearchSelect
             value={projectId}
             onChange={setProjectId}
@@ -77,10 +100,18 @@ export function AssignTeamModal({ open, team, onClose }: { open: boolean; team: 
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-muted" title="Vai trò quyết định các thành viên nhóm được xem và làm gì trong dự án này. Chọn được nhiều vai trò.">
+          <label
+            className="mb-1.5 block text-sm font-medium text-muted"
+            title="Vai trò quyết định các thành viên nhóm được xem và làm gì trong dự án này. Chọn được nhiều vai trò."
+          >
             Vai trò trong dự án
           </label>
-          <RoleMultiSelect options={roleOptions} value={roleIds} onChange={setRoleIds} placeholder="Chọn vai trò…" />
+          <RoleMultiSelect
+            options={roleOptions}
+            value={roleIds}
+            onChange={setRoleIds}
+            placeholder="Chọn vai trò…"
+          />
         </div>
       </div>
     </Dialog>

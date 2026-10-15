@@ -20,7 +20,8 @@ export function WorkspaceSwitcher() {
   const { data: workspaces = [] } = useMyWorkspaces();
   const switchWs = useSwitchWorkspace();
 
-  const active: MyWorkspace | undefined = workspaces.find((w) => w.id === activeId) ?? workspaces[0];
+  const active: MyWorkspace | undefined =
+    workspaces.find((w) => w.id === activeId) ?? workspaces[0];
   const label = active?.name ?? 'Tirapro';
 
   function pick(ws: MyWorkspace) {
@@ -46,7 +47,9 @@ export function WorkspaceSwitcher() {
             )}
           >
             <WsBadge name={active?.name ?? 'P'} src={active?.avatarUrl} variant="active" />
-            <span className="hidden min-w-0 truncate text-sm font-semibold tracking-tight text-ink-strong sm:block">{label}</span>
+            <span className="hidden min-w-0 truncate text-sm font-semibold tracking-tight text-ink-strong sm:block">
+              {label}
+            </span>
             <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden="true" />
           </button>
         </Popover.Trigger>
@@ -56,7 +59,11 @@ export function WorkspaceSwitcher() {
             sideOffset={6}
             className="z-dropdown w-[min(20rem,calc(100vw-1rem))] overflow-hidden rounded-lg border border-border bg-surface shadow-lg outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
           >
-            <ul className="max-h-80 overflow-y-auto py-1" role="listbox" aria-label="Danh sách không gian làm việc">
+            <ul
+              className="max-h-80 overflow-y-auto py-1"
+              role="listbox"
+              aria-label="Danh sách không gian làm việc"
+            >
               {workspaces.map((ws) => {
                 const isActive = ws.id === active?.id;
                 return (
@@ -76,10 +83,14 @@ export function WorkspaceSwitcher() {
                     >
                       <WsBadge name={ws.name} src={ws.avatarUrl} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-ink-strong">{ws.name}</span>
+                        <span className="block truncate text-sm font-medium text-ink-strong">
+                          {ws.name}
+                        </span>
                         <span className="block truncate text-[11px] text-muted">{ws.roleName}</span>
                       </span>
-                      {isActive && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />}
+                      {isActive && (
+                        <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                      )}
                     </button>
                   </li>
                 );
@@ -106,12 +117,22 @@ export function WorkspaceSwitcher() {
 }
 
 /** Ô vuông bo góc: hiện logo của không gian làm việc nếu có, không thì chữ cái đầu. */
-function WsBadge({ name, src, variant }: { name: string; src?: string | null; variant?: 'active' }) {
+function WsBadge({
+  name,
+  src,
+  variant,
+}: {
+  name: string;
+  src?: string | null;
+  variant?: 'active';
+}) {
   return (
     <span
       className={cn(
         'grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-md text-xs font-bold',
-        variant === 'active' ? 'bg-primary text-primary-fg' : 'bg-surface-2 font-semibold text-muted',
+        variant === 'active'
+          ? 'bg-primary text-primary-fg'
+          : 'bg-surface-2 font-semibold text-muted',
       )}
     >
       {src ? (

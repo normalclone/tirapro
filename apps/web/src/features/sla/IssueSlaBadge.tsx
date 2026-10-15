@@ -25,7 +25,13 @@ export function IssueSlaBadge({ issueId }: { issueId: string }) {
           ? 'border-warning/40 bg-warning/15 text-warning'
           : 'border-border bg-surface-2 text-muted';
 
-  const Icon = lateDone ? TriangleAlert : resolved ? CheckCircle2 : breached ? TriangleAlert : AlarmClock;
+  const Icon = lateDone
+    ? TriangleAlert
+    : resolved
+      ? CheckCircle2
+      : breached
+        ? TriangleAlert
+        : AlarmClock;
   const label = lateDone
     ? `Xong nhưng trễ hạn ${fmtMins(mins)}`
     : resolved
@@ -43,7 +49,10 @@ export function IssueSlaBadge({ issueId }: { issueId: string }) {
 
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium', tone)}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium',
+        tone,
+      )}
       title={title}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden />

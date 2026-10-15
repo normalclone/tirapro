@@ -7,13 +7,13 @@
     ".": { "ignoreDependencies": ["vitest"] }, // vitest cài ở từng workspace; bản gốc để IDE/npx nhận cùng phiên bản
     "apps/api": {
       "entry": ["src/main.ts", "prisma/*.mjs", "scripts/*.mjs"],
-      "ignoreDependencies": ["pino-pretty", "@nestjs/testing"] // pino-pretty nạp bằng chuỗi transport.target; @nestjs/testing dành cho spec DI tương lai
+      "ignoreDependencies": ["pino-pretty", "@nestjs/testing"], // pino-pretty nạp bằng chuỗi transport.target; @nestjs/testing dành cho spec DI tương lai
     },
     "apps/web": {
       "entry": ["scripts/*.mjs"],
-      "ignore": ["src/features/ai/AiIssuePanel.tsx"] // chưa nối vào UI; xoá hay nối là quyết định riêng
+      "ignore": ["src/features/ai/AiIssuePanel.tsx"], // chưa nối vào UI; xoá hay nối là quyết định riêng
     },
     "apps/mcp": {},
-    "packages/*": {}
-  }
+    "packages/*": {},
+  },
 }

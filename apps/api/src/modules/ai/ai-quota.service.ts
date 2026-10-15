@@ -17,7 +17,8 @@ export class AiQuotaService {
    * có thể vượt ngưỡng một chút (chấp nhận được cho hạn mức mềm theo tháng).
    */
   async assertWithinQuota(workspaceId: string): Promise<void> {
-    const quota = this.config.get<{ monthlyQuotaPerWorkspace?: number }>('ai')?.monthlyQuotaPerWorkspace ?? 0;
+    const quota =
+      this.config.get<{ monthlyQuotaPerWorkspace?: number }>('ai')?.monthlyQuotaPerWorkspace ?? 0;
     if (quota <= 0) return;
 
     const now = new Date();

@@ -24,7 +24,6 @@ export interface ScreenGuide {
   state: string | null;
 }
 
-
 /** Lấy guides cho 1 màn (screen pattern, vd `/p/:key/board`). */
 export function useScreenGuides(screen: string) {
   return useQuery({

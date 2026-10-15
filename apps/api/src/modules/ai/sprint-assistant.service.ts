@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { AiFallbackReason, AiSprintPick, AiSprintPlanResult, SprintPlanInput } from '@tirapro/shared';
+import type {
+  AiFallbackReason,
+  AiSprintPick,
+  AiSprintPlanResult,
+  SprintPlanInput,
+} from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ClaudeService } from './claude.service';
@@ -58,14 +63,25 @@ export class SprintAssistantService {
     private readonly claude: ClaudeService,
   ) {}
 
-  async plan(workspaceId: string, userId: string, input: SprintPlanInput): Promise<AiSprintPlanResult> {
+  async plan(
+    workspaceId: string,
+    userId: string,
+    input: SprintPlanInput,
+  ): Promise<AiSprintPlanResult> {
     const sprint = await this.prisma.sprint.findFirst({
-      where: { id: input.sprintId, projectId: input.projectId, deletedAt: null, project: { workspaceId } },
+      where: {
+        id: input.sprintId,
+        projectId: input.projectId,
+        deletedAt: null,
+        project: { workspaceId },
+      },
       select: { id: true, state: true },
     });
     if (!sprint) throw new NotFoundAppException('Sprint');
     if (sprint.state === 'CLOSED') {
-      throw new BusinessRuleException('Sprint này đã đóng. Hãy chọn một sprint chưa bắt đầu hoặc đang chạy để lập kế hoạch.');
+      throw new BusinessRuleException(
+        'Sprint này đã đóng. Hãy chọn một sprint chưa bắt đầu hoặc đang chạy để lập kế hoạch.',
+      );
     }
 
     const closes = await this.prisma.sprintSnapshot.findMany({
@@ -81,7 +97,10 @@ export class SprintAssistantService {
 
     const backlog = (await this.prisma.issue.findMany({
       where: {
-        workspaceId, projectId: input.projectId, sprintId: null, deletedAt: null,
+        workspaceId,
+        projectId: input.projectId,
+        sprintId: null,
+        deletedAt: null,
         status: { category: { not: 'DONE' } },
         // Epic là vỏ gom nhóm, subtask đi theo issue cha → không đưa thẳng vào sprint.
         type: { isSubtask: false },
@@ -89,13 +108,24 @@ export class SprintAssistantService {
       },
       orderBy: { rank: 'asc' },
       take: BACKLOG_LIMIT,
-      select: { id: true, key: true, summary: true, storyPoints: true, version: true, dueDate: true, rank: true, priority: { select: { rank: true } } },
+      select: {
+        id: true,
+        key: true,
+        summary: true,
+        storyPoints: true,
+        version: true,
+        dueDate: true,
+        rank: true,
+        priority: { select: { rank: true } },
+      },
     })) as BacklogRow[];
 
     const dueLimit = Date.now() + DUE_SOON_DAYS * 86_400_000;
     const unestimated = backlog.filter((i) => !(i.storyPoints && i.storyPoints > 0)).length;
     const ordered: Candidate[] = backlog
-      .filter((i): i is BacklogRow & { storyPoints: number } => !!i.storyPoints && i.storyPoints > 0)
+      .filter(
+        (i): i is BacklogRow & { storyPoints: number } => !!i.storyPoints && i.storyPoints > 0,
+      )
       .map((i) => ({ ...i, dueSoon: !!i.dueDate && i.dueDate.getTime() <= dueLimit }))
       .sort(
         (a, b) =>
@@ -106,8 +136,14 @@ export class SprintAssistantService {
 
     const heuristicPicks = this.greedy(ordered, capacity, (c) => this.heuristicReason(c));
     const base = { capacityPoints: capacity, velocityAvg, unestimated };
-    const result = (picks: AiSprintPick[], extra: { source: 'claude' | 'heuristic'; reason?: AiFallbackReason }) => ({
-      ...base, ...extra, picks, leftovers: ordered.length - picks.length,
+    const result = (
+      picks: AiSprintPick[],
+      extra: { source: 'claude' | 'heuristic'; reason?: AiFallbackReason },
+    ) => ({
+      ...base,
+      ...extra,
+      picks,
+      leftovers: ordered.length - picks.length,
     });
 
     const goal = input.goal?.trim();
@@ -115,14 +151,24 @@ export class SprintAssistantService {
       return result(heuristicPicks, { source: 'heuristic' });
     }
 
-    const claude = await this.pickWithClaude(workspaceId, userId, goal, capacity, ordered.slice(0, CLAUDE_CANDIDATES));
+    const claude = await this.pickWithClaude(
+      workspaceId,
+      userId,
+      goal,
+      capacity,
+      ordered.slice(0, CLAUDE_CANDIDATES),
+    );
     return claude.picks
       ? result(claude.picks, { source: 'claude' })
       : result(heuristicPicks, { source: 'heuristic', reason: claude.reason });
   }
 
   /** Duyệt theo thứ tự, lấy issue nào còn vừa năng lực (issue quá lớn bị bỏ qua chứ không chặn các issue sau). */
-  private greedy(list: Candidate[], capacity: number, reasonOf: (c: Candidate) => string): AiSprintPick[] {
+  private greedy(
+    list: Candidate[],
+    capacity: number,
+    reasonOf: (c: Candidate) => string,
+  ): AiSprintPick[] {
     const picks: AiSprintPick[] = [];
     let used = 0;
     for (const c of list) {
@@ -148,17 +194,23 @@ export class SprintAssistantService {
   ): Promise<{ picks?: AiSprintPick[]; reason?: AiFallbackReason }> {
     const byAlias = new Map(candidates.map((c, i) => [`c${i + 1}`, c]));
     const lines = candidates
-      .map((c, i) => `c${i + 1} | ${c.storyPoints} điểm | ưu tiên=${c.priority?.rank ?? 0}${c.dueSoon ? ' | sắp đến hạn' : ''} | ${c.summary}`)
+      .map(
+        (c, i) =>
+          `c${i + 1} | ${c.storyPoints} điểm | ưu tiên=${c.priority?.rank ?? 0}${c.dueSoon ? ' | sắp đến hạn' : ''} | ${c.summary}`,
+      )
       .join('\n');
     try {
-      const { data, reason } = await this.claude.extract<{ picks: { id: string; reason: string }[] }>({
+      const { data, reason } = await this.claude.extract<{
+        picks: { id: string; reason: string }[];
+      }>({
         ctx: { workspaceId, userId, feature: 'sprint-plan' },
         model: this.claude.modelFast,
         system:
           'Bạn là trợ lý lập kế hoạch sprint Agile. Từ danh sách ứng viên trong backlog (đã sắp theo độ ưu tiên) và mục tiêu sprint, ' +
           `chọn tập issue phù hợp nhất với mục tiêu sao cho tổng điểm không vượt ${capacity}. ` +
           'Ưu tiên issue sắp đến hạn hoặc có độ ưu tiên cao. Mỗi issue kèm lý do đúng một câu tiếng Việt. ' +
-          'Chỉ dùng mã c1…cN có trong danh sách; không bịa thông tin.' + DATA_NOT_INSTRUCTIONS,
+          'Chỉ dùng mã c1…cN có trong danh sách; không bịa thông tin.' +
+          DATA_NOT_INSTRUCTIONS,
         prompt: `Mục tiêu sprint:\n${wrap('user_request', goal)}\n\nNăng lực: ${capacity} điểm.\n\nỨng viên:\n${wrap('issue', lines)}`,
         schema: PLAN_SCHEMA,
         maxTokens: 2000,
@@ -173,7 +225,13 @@ export class SprintAssistantService {
         if (!c || seen.has(p.id) || used + c.storyPoints > capacity) continue;
         seen.add(p.id);
         used += c.storyPoints;
-        picks.push(toPick(c, (typeof p.reason === 'string' && p.reason.trim().slice(0, 300)) || 'Khớp mục tiêu sprint'));
+        picks.push(
+          toPick(
+            c,
+            (typeof p.reason === 'string' && p.reason.trim().slice(0, 300)) ||
+              'Khớp mục tiêu sprint',
+          ),
+        );
       }
       return picks.length ? { picks } : { reason: 'error' };
     } catch (e) {
@@ -184,5 +242,12 @@ export class SprintAssistantService {
 }
 
 function toPick(c: Candidate, reason: string): AiSprintPick {
-  return { issueId: c.id, key: c.key, summary: c.summary, storyPoints: c.storyPoints, version: c.version, reason };
+  return {
+    issueId: c.id,
+    key: c.key,
+    summary: c.summary,
+    storyPoints: c.storyPoints,
+    version: c.version,
+    reason,
+  };
 }

@@ -11,7 +11,13 @@ import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
 import { useRoles } from '@/features/roles/api';
 import { useTeams } from '@/features/teams/api';
 import { cn } from '@/lib/utils';
-import { useAllUsers, useWorkspaceMembers, useProjectMembers, useAddMembersBulk, useAddProjectMembersBulk } from './api';
+import {
+  useAllUsers,
+  useWorkspaceMembers,
+  useProjectMembers,
+  useAddMembersBulk,
+  useAddProjectMembersBulk,
+} from './api';
 
 interface Cand {
   id: string;
@@ -37,7 +43,10 @@ const STATUS_LABEL: Record<string, string> = {
  * Bộ lọc hiển thị theo DỮ LIỆU: chỉ hiện khi có giá trị để lọc.
  */
 export function AddPeopleDialog({
-  open, onClose, mode, projectId,
+  open,
+  onClose,
+  mode,
+  projectId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -63,8 +72,13 @@ export function AddPeopleDialog({
   useEffect(() => {
     if (!open) return;
     setSelected(new Set());
-    setQ(''); setTeamFilter(''); setRoleFilter(''); setStatusFilter('');
-    const def = (roles ?? []).find((r) => (isProject ? /developer|lập trình/i : /member|thành viên/i).test(r.name));
+    setQ('');
+    setTeamFilter('');
+    setRoleFilter('');
+    setStatusFilter('');
+    const def = (roles ?? []).find((r) =>
+      (isProject ? /developer|lập trình/i : /member|thành viên/i).test(r.name),
+    );
     setRoleIds(def ? [def.id] : roles?.[0] ? [roles[0].id] : []);
   }, [open, roles, isProject]);
 
@@ -81,12 +95,28 @@ export function AddPeopleDialog({
       }
       return (wsMembers ?? [])
         .filter((m) => !inProj.has(m.user.id))
-        .map((m) => ({ id: m.user.id, name: m.user.displayName, email: m.user.email, avatarUrl: m.user.avatarUrl, roleNames: m.roles.map((r) => r.name), teams: teamByUser.get(m.user.id) ?? [], status: m.user.status }));
+        .map((m) => ({
+          id: m.user.id,
+          name: m.user.displayName,
+          email: m.user.email,
+          avatarUrl: m.user.avatarUrl,
+          roleNames: m.roles.map((r) => r.name),
+          teams: teamByUser.get(m.user.id) ?? [],
+          status: m.user.status,
+        }));
     }
     const inWs = new Set((wsMembers ?? []).map((m) => m.user.id));
     return (allUsers ?? [])
       .filter((u) => !inWs.has(u.id))
-      .map((u) => ({ id: u.id, name: u.displayName, email: u.email, avatarUrl: u.avatarUrl, roleNames: [], teams: [], status: u.status }));
+      .map((u) => ({
+        id: u.id,
+        name: u.displayName,
+        email: u.email,
+        avatarUrl: u.avatarUrl,
+        roleNames: [],
+        teams: [],
+        status: u.status,
+      }));
   }, [isProject, allUsers, wsMembers, projMembers, teams]);
 
   const filtered = useMemo(() => {
@@ -107,7 +137,8 @@ export function AddPeopleDialog({
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
   }, [candidates]);
   const roleOpts = useMemo(
-    () => [...new Set(candidates.flatMap((c) => c.roleNames))].sort((a, b) => a.localeCompare(b, 'vi')),
+    () =>
+      [...new Set(candidates.flatMap((c) => c.roleNames))].sort((a, b) => a.localeCompare(b, 'vi')),
     [candidates],
   );
   const statusOpts = useMemo(
@@ -122,7 +153,12 @@ export function AddPeopleDialog({
   const canSubmit = selected.size > 0 && roleIds.length > 0 && !busy;
 
   function toggle(id: string) {
-    setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   }
   function toggleAll() {
     setSelected((prev) => {
@@ -137,8 +173,12 @@ export function AddPeopleDialog({
     if (!canSubmit) return;
     const userIds = [...selected];
     try {
-      const res = isProject ? await addProj.mutateAsync({ userIds, roleIds }) : await addWs.mutateAsync({ userIds, roleIds });
-      toast.success(`Đã thêm ${res.added} người${res.skipped ? ` · bỏ qua ${res.skipped} người vì đã có sẵn` : ''}`);
+      const res = isProject
+        ? await addProj.mutateAsync({ userIds, roleIds })
+        : await addWs.mutateAsync({ userIds, roleIds });
+      toast.success(
+        `Đã thêm ${res.added} người${res.skipped ? ` · bỏ qua ${res.skipped} người vì đã có sẵn` : ''}`,
+      );
       onClose();
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -150,18 +190,29 @@ export function AddPeopleDialog({
   return (
     <Dialog
       open
-      onOpenChange={(o) => { if (!o) onClose(); }}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
       title={isProject ? 'Thêm người vào dự án' : 'Thêm người vào không gian làm việc'}
       size="lg"
       bodyClassName="flex flex-col overflow-hidden p-0"
       footer={
         <>
-          <label className="mr-1 text-sm text-muted" title={`Vai trò quyết định những người này được xem và làm gì ${isProject ? 'trong dự án' : 'ở đây'}. Chọn được nhiều vai trò.`}>
+          <label
+            className="mr-1 text-sm text-muted"
+            title={`Vai trò quyết định những người này được xem và làm gì ${isProject ? 'trong dự án' : 'ở đây'}. Chọn được nhiều vai trò.`}
+          >
             Vai trò khi thêm:
           </label>
-          <div className="min-w-[14rem] flex-1"><RoleMultiSelect options={roleOptions} value={roleIds} onChange={setRoleIds} /></div>
-          <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void submit()} loading={busy} disabled={!canSubmit}>Thêm {selected.size > 0 ? `${selected.size} người` : ''}</Button>
+          <div className="min-w-[14rem] flex-1">
+            <RoleMultiSelect options={roleOptions} value={roleIds} onChange={setRoleIds} />
+          </div>
+          <Button variant="ghost" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button onClick={() => void submit()} loading={busy} disabled={!canSubmit}>
+            Thêm {selected.size > 0 ? `${selected.size} người` : ''}
+          </Button>
         </>
       }
     >
@@ -169,13 +220,23 @@ export function AddPeopleDialog({
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
         <div className="relative min-w-[12rem] flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm theo tên hoặc email…" aria-label="Tìm người để thêm" className="h-9 pl-8 text-sm" autoFocus />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Tìm theo tên hoặc email…"
+            aria-label="Tìm người để thêm"
+            className="h-9 pl-8 text-sm"
+            autoFocus
+          />
         </div>
         {teamOpts.length > 0 && (
           <SearchSelect
             value={teamFilter}
             onChange={setTeamFilter}
-            options={[{ value: '', label: 'Mọi nhóm' }, ...teamOpts.map((t) => ({ value: t.id, label: t.name, color: t.color }))]}
+            options={[
+              { value: '', label: 'Mọi nhóm' },
+              ...teamOpts.map((t) => ({ value: t.id, label: t.name, color: t.color })),
+            ]}
             placeholder="Mọi nhóm"
             searchPlaceholder="Tìm nhóm…"
             ariaLabel="Lọc theo nhóm"
@@ -186,7 +247,10 @@ export function AddPeopleDialog({
           <SearchSelect
             value={roleFilter}
             onChange={setRoleFilter}
-            options={[{ value: '', label: 'Mọi vai trò' }, ...roleOpts.map((n) => ({ value: n, label: n }))]}
+            options={[
+              { value: '', label: 'Mọi vai trò' },
+              ...roleOpts.map((n) => ({ value: n, label: n })),
+            ]}
             placeholder="Mọi vai trò"
             searchPlaceholder="Tìm vai trò…"
             ariaLabel="Lọc theo vai trò"
@@ -197,7 +261,10 @@ export function AddPeopleDialog({
           <SearchSelect
             value={statusFilter}
             onChange={setStatusFilter}
-            options={[{ value: '', label: 'Mọi trạng thái' }, ...statusOpts.map((s) => ({ value: s, label: STATUS_LABEL[s] ?? s }))]}
+            options={[
+              { value: '', label: 'Mọi trạng thái' },
+              ...statusOpts.map((s) => ({ value: s, label: STATUS_LABEL[s] ?? s })),
+            ]}
             placeholder="Mọi trạng thái"
             searchPlaceholder="Tìm trạng thái…"
             ariaLabel="Lọc theo trạng thái tài khoản"
@@ -217,7 +284,9 @@ export function AddPeopleDialog({
         >
           {allFilteredSelected ? 'Bỏ chọn tất cả' : `Chọn tất cả (${filtered.length})`}
         </button>
-        <span title="Số người sẽ được thêm khi bạn bấm nút xác nhận">Đã chọn <span className="tabular font-semibold text-ink">{selected.size}</span> người</span>
+        <span title="Số người sẽ được thêm khi bạn bấm nút xác nhận">
+          Đã chọn <span className="tabular font-semibold text-ink">{selected.size}</span> người
+        </span>
       </div>
       <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" role="listbox" aria-multiselectable>
         {filtered.map((c) => {
@@ -229,9 +298,17 @@ export function AddPeopleDialog({
                 role="option"
                 aria-selected={on}
                 onClick={() => toggle(c.id)}
-                className={cn('flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-surface-2', on && 'bg-primary-subtle/50')}
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-surface-2',
+                  on && 'bg-primary-subtle/50',
+                )}
               >
-                <span className={cn('grid h-4 w-4 shrink-0 place-items-center rounded border', on ? 'border-primary bg-primary text-primary-fg' : 'border-border-strong')}>
+                <span
+                  className={cn(
+                    'grid h-4 w-4 shrink-0 place-items-center rounded border',
+                    on ? 'border-primary bg-primary text-primary-fg' : 'border-border-strong',
+                  )}
+                >
                   {on && <Check className="h-3 w-3" />}
                 </span>
                 <Avatar name={c.name} src={c.avatarUrl} size={30} />
@@ -241,9 +318,25 @@ export function AddPeopleDialog({
                 </span>
                 {(c.roleNames.length > 0 || c.teams.length > 0) && (
                   <span className="hidden max-w-[45%] flex-wrap items-center justify-end gap-1 sm:flex">
-                    {c.roleNames.slice(0, 2).map((r) => <span key={r} className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted">{r}</span>)}
+                    {c.roleNames.slice(0, 2).map((r) => (
+                      <span
+                        key={r}
+                        className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted"
+                      >
+                        {r}
+                      </span>
+                    ))}
                     {c.teams.slice(0, 2).map((t) => (
-                      <span key={t.id} className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: `color-mix(in oklch, ${t.color || 'var(--faint)'} 16%, transparent)`, color: t.color || 'var(--faint)' }}>{t.name}</span>
+                      <span
+                        key={t.id}
+                        className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                        style={{
+                          backgroundColor: `color-mix(in oklch, ${t.color || 'var(--faint)'} 16%, transparent)`,
+                          color: t.color || 'var(--faint)',
+                        }}
+                      >
+                        {t.name}
+                      </span>
                     ))}
                   </span>
                 )}

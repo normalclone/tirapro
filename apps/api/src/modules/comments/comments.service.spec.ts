@@ -13,7 +13,9 @@ function make(authorId: string, archivedAt: Date | null = null) {
       findFirst: vi.fn().mockResolvedValue({ id: 'i1', projectId: 'p1' }),
       findUnique: vi.fn().mockResolvedValue({ project: { archivedAt } }),
     },
-    $transaction: vi.fn((fn: (t: unknown) => unknown) => fn({ comment: { create }, mention: { createMany: vi.fn() } })),
+    $transaction: vi.fn((fn: (t: unknown) => unknown) =>
+      fn({ comment: { create }, mention: { createMany: vi.fn() } }),
+    ),
   };
   const events = { emit: vi.fn() };
   const service = new CommentsService(prisma as never, events as never);
@@ -25,7 +27,9 @@ describe('CommentsService — dự án đã lưu trữ là chỉ đọc', () => 
 
   it('create(): dự án đã lưu trữ => BusinessRuleException, không ghi, không emit', async () => {
     const { service, create, events } = make('u1', archived);
-    await expect(service.create('w1', 'u1', 'i1', { body: 'x', bodyFormat: 'MARKDOWN' })).rejects.toMatchObject({
+    await expect(
+      service.create('w1', 'u1', 'i1', { body: 'x', bodyFormat: 'MARKDOWN' }),
+    ).rejects.toMatchObject({
       status: 422,
       message: 'Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi',
     });

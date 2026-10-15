@@ -27,7 +27,10 @@ export class ForbiddenAppException extends AppException {
 }
 
 export class VersionConflictException extends AppException {
-  constructor(message = 'Dữ liệu đã thay đổi bởi người khác', public readonly current?: unknown) {
+  constructor(
+    message = 'Dữ liệu đã thay đổi bởi người khác',
+    public readonly current?: unknown,
+  ) {
     super(ERROR_CODES.VERSION_CONFLICT, message, HttpStatus.CONFLICT);
   }
 }

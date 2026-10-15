@@ -1,4 +1,3 @@
- 
 import { UnauthorizedException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { JwtStrategy } from './jwt.strategy';
@@ -15,7 +14,9 @@ function setup(opts: { user?: Record<string, unknown> | null; membership?: unkno
       ),
     },
     workspaceMembership: {
-      findUnique: vi.fn(() => Promise.resolve(opts.membership === undefined ? { id: 'M1' } : opts.membership)),
+      findUnique: vi.fn(() =>
+        Promise.resolve(opts.membership === undefined ? { id: 'M1' } : opts.membership),
+      ),
     },
   };
   const config = { get: vi.fn(() => 'secret-test') };
@@ -33,13 +34,18 @@ describe('JwtStrategy.validate', () => {
     await expect(p).rejects.toBeInstanceOf(UnauthorizedException);
     await expect(p).rejects.toThrow(/đăng nhập lại/);
     expect(prisma.workspaceMembership.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId_userId: { workspaceId: 'W1', userId: 'U1' } } }),
+      expect.objectContaining({
+        where: { workspaceId_userId: { workspaceId: 'W1', userId: 'U1' } },
+      }),
     );
   });
 
   it('còn membership -> trả AuthUser', async () => {
     const { strategy } = setup({});
-    await expect(strategy.validate(payload)).resolves.toMatchObject({ id: 'U1', workspaceId: 'W1' });
+    await expect(strategy.validate(payload)).resolves.toMatchObject({
+      id: 'U1',
+      workspaceId: 'W1',
+    });
   });
 
   it('system admin được miễn kiểm membership', async () => {
@@ -47,7 +53,10 @@ describe('JwtStrategy.validate', () => {
       membership: null,
       user: { id: 'U1', email: 'a@b.c', displayName: 'A', isSystemAdmin: true, status: 'ACTIVE' },
     });
-    await expect(strategy.validate(payload)).resolves.toMatchObject({ isSystemAdmin: true, workspaceId: 'W1' });
+    await expect(strategy.validate(payload)).resolves.toMatchObject({
+      isSystemAdmin: true,
+      workspaceId: 'W1',
+    });
     expect(prisma.workspaceMembership.findUnique).not.toHaveBeenCalled();
   });
 

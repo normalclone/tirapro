@@ -7,7 +7,15 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useVersions, useCreateVersion, useUpdateVersion, useDeleteVersion, type Version, type VersionStatus, type VersionUpdateInput } from './api';
+import {
+  useVersions,
+  useCreateVersion,
+  useUpdateVersion,
+  useDeleteVersion,
+  type Version,
+  type VersionStatus,
+  type VersionUpdateInput,
+} from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
 
@@ -35,7 +43,13 @@ function toIso(value: string): string | undefined {
 /* Section — Phiên bản (Versions)                                      */
 /* ------------------------------------------------------------------ */
 
-export function VersionsSection({ projectId, canAdmin }: { projectId?: string; canAdmin: boolean }) {
+export function VersionsSection({
+  projectId,
+  canAdmin,
+}: {
+  projectId?: string;
+  canAdmin: boolean;
+}) {
   const confirm = useConfirm();
   const versionsQuery = useVersions(projectId);
   const { data } = versionsQuery;
@@ -83,7 +97,13 @@ export function VersionsSection({ projectId, canAdmin }: { projectId?: string; c
   }
 
   async function handleDelete(v: Version) {
-    if (!(await confirm({ title: `Xoá phiên bản "${v.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
+    if (
+      !(await confirm({
+        title: `Xoá phiên bản "${v.name}"? Hành động này không thể hoàn tác.`,
+        destructive: true,
+      }))
+    )
+      return;
     remove.mutate(v.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -184,74 +204,71 @@ export function VersionsSection({ projectId, canAdmin }: { projectId?: string; c
         )}
       </QueryBoundary>
 
-      {canAdmin && (adding ? (
-        <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[10rem] flex-1">
-              <label htmlFor="ver-name" className="mb-1 block text-xs font-medium text-muted">
-                Tên
-              </label>
-              <Input
-                id="ver-name"
-                value={name}
-                autoFocus
-                placeholder="VD: 1.0.0"
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitAdd();
-                  if (e.key === 'Escape') resetAdd();
-                }}
-              />
-            </div>
-            <div className="min-w-[12rem] flex-1">
-              <label htmlFor="ver-desc" className="mb-1 block text-xs font-medium text-muted">
-                Mô tả
-              </label>
-              <Input
-                id="ver-desc"
-                value={description}
-                placeholder="Tuỳ chọn"
-                onChange={(e) => setDescription(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitAdd();
-                  if (e.key === 'Escape') resetAdd();
-                }}
-              />
-            </div>
-            <div className="w-40">
-              <label htmlFor="ver-status" className="mb-1 block text-xs font-medium text-muted">
-                Trạng thái
-              </label>
-              <StatusSelect
-                id="ver-status"
-                value={status}
-                onChange={(s) => setStatus(s)}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={submitAdd} loading={create.isPending}>
-                Lưu
-              </Button>
-              <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
-                Huỷ
-              </Button>
+      {canAdmin &&
+        (adding ? (
+          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[10rem] flex-1">
+                <label htmlFor="ver-name" className="mb-1 block text-xs font-medium text-muted">
+                  Tên
+                </label>
+                <Input
+                  id="ver-name"
+                  value={name}
+                  autoFocus
+                  placeholder="VD: 1.0.0"
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitAdd();
+                    if (e.key === 'Escape') resetAdd();
+                  }}
+                />
+              </div>
+              <div className="min-w-[12rem] flex-1">
+                <label htmlFor="ver-desc" className="mb-1 block text-xs font-medium text-muted">
+                  Mô tả
+                </label>
+                <Input
+                  id="ver-desc"
+                  value={description}
+                  placeholder="Tuỳ chọn"
+                  onChange={(e) => setDescription(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitAdd();
+                    if (e.key === 'Escape') resetAdd();
+                  }}
+                />
+              </div>
+              <div className="w-40">
+                <label htmlFor="ver-status" className="mb-1 block text-xs font-medium text-muted">
+                  Trạng thái
+                </label>
+                <StatusSelect id="ver-status" value={status} onChange={(s) => setStatus(s)} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={submitAdd} loading={create.isPending}>
+                  Lưu
+                </Button>
+                <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
+                  Huỷ
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        versions.length > 0 && (
-          <Button
-            variant="secondary"
-            size="sm"
-            className="mt-4"
-            onClick={() => setAdding(true)}
-            disabled={!projectId}
-          >
-            <Plus className="h-4 w-4" />
-            Thêm phiên bản
-          </Button>
-        )
-      ))}
+        ) : (
+          versions.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-4"
+              onClick={() => setAdding(true)}
+              disabled={!projectId}
+            >
+              <Plus className="h-4 w-4" />
+              Thêm phiên bản
+            </Button>
+          )
+        ))}
     </SectionCard>
   );
 }

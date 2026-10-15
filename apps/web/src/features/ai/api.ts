@@ -12,20 +12,33 @@ import { keys } from '@/lib/queryKeys';
 
 export interface ProjectMeta {
   projectId: string;
-  issueTypes: { id: string; name: string; key: string | null; color: string | null; iconUrl: string | null; isSubtask: boolean }[];
-  priorities: { id: string; name: string; color: string | null; rank: number; isDefault: boolean }[];
+  issueTypes: {
+    id: string;
+    name: string;
+    key: string | null;
+    color: string | null;
+    iconUrl: string | null;
+    isSubtask: boolean;
+  }[];
+  priorities: {
+    id: string;
+    name: string;
+    color: string | null;
+    rank: number;
+    isDefault: boolean;
+  }[];
 }
-
 
 /** Config tạo issue (issue types + priorities) cho quick-add / AI generate. */
 export function useProjectMeta(key: string | undefined) {
   return useQuery({
     queryKey: keys.ai.projectMeta(key ?? ''),
-    queryFn: key ? async () => (await api.get<ProjectMeta>(`/projects/${key}/meta`)).data : skipToken,
+    queryFn: key
+      ? async () => (await api.get<ProjectMeta>(`/projects/${key}/meta`)).data
+      : skipToken,
     staleTime: 5 * 60_000,
   });
 }
-
 
 /** Khả năng AI hiện tại (Claude hay heuristic). Ít đổi → staleTime dài. */
 export function useAiCapabilities() {
@@ -73,7 +86,11 @@ export function useSuggestAssignee() {
 export function useSprintPlan() {
   return useMutation({
     meta: { silent: true },
-    mutationFn: (v: { projectId: string; sprintId: string; capacityPoints?: number; goal?: string }) =>
-      api.post<AiSprintPlanResult>('/ai/sprint-plan', v).then((r) => r.data),
+    mutationFn: (v: {
+      projectId: string;
+      sprintId: string;
+      capacityPoints?: number;
+      goal?: string;
+    }) => api.post<AiSprintPlanResult>('/ai/sprint-plan', v).then((r) => r.data),
   });
 }

@@ -2,7 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { z } from 'zod';
-import { DOMAIN_EVENTS, NotificationType as NotificationTypeEnum, type NotificationEmailPrefs } from '@tirapro/types';
+import {
+  DOMAIN_EVENTS,
+  NotificationType as NotificationTypeEnum,
+  type NotificationEmailPrefs,
+} from '@tirapro/types';
 import { Prisma, type Notification, type NotificationType } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
@@ -46,7 +50,9 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
  * Gộp tùy chọn đã lưu (trong `User.settings.notifications`) lên trên mặc định.
  * Bỏ qua mọi khóa lạ / giá trị không phải boolean để luôn trả về map đầy đủ & hợp lệ.
  */
-export function effectivePrefs(userSettings: Prisma.JsonValue | null | undefined): NotificationPrefs {
+export function effectivePrefs(
+  userSettings: Prisma.JsonValue | null | undefined,
+): NotificationPrefs {
   const result: NotificationPrefs = { ...DEFAULT_NOTIFICATION_PREFS };
   const stored = readNotificationsSettings(userSettings);
   for (const type of NOTIFICATION_TYPES) {
@@ -73,7 +79,9 @@ const emailPrefsSchema = z.object({
 });
 
 /** Đọc `settings.notifications.email` an toàn, luôn trả map đầy đủ. */
-export function effectiveEmailPrefs(userSettings: Prisma.JsonValue | null | undefined): NotificationEmailPrefs {
+export function effectiveEmailPrefs(
+  userSettings: Prisma.JsonValue | null | undefined,
+): NotificationEmailPrefs {
   const raw = readNotificationsSettings(userSettings).email;
   const obj = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   return emailPrefsSchema.parse(obj);
@@ -88,10 +96,13 @@ const EMAIL_KEY_BY_TYPE: Partial<Record<NotificationType, keyof NotificationEmai
 };
 
 /** Đọc nhánh `settings.notifications` an toàn (settings là Json tùy ý). */
-function readNotificationsSettings(userSettings: Prisma.JsonValue | null | undefined): Record<string, unknown> {
+function readNotificationsSettings(
+  userSettings: Prisma.JsonValue | null | undefined,
+): Record<string, unknown> {
   if (!userSettings || typeof userSettings !== 'object' || Array.isArray(userSettings)) return {};
   const notifications = (userSettings as Record<string, unknown>).notifications;
-  if (!notifications || typeof notifications !== 'object' || Array.isArray(notifications)) return {};
+  if (!notifications || typeof notifications !== 'object' || Array.isArray(notifications))
+    return {};
   return notifications as Record<string, unknown>;
 }
 
@@ -131,7 +142,6 @@ interface CommentAddedPayload {
   mentionIds?: string[];
 }
 
-
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -146,7 +156,11 @@ export class NotificationsService {
   // ---------- READ: luôn scope theo recipientId = user hiện tại ----------
 
   /** Thông báo của tôi, mới nhất trước, phân trang cursor. */
-  async listMine(recipientId: string, cursor: string | undefined, limit: number): Promise<PageResult<NotificationDto>> {
+  async listMine(
+    recipientId: string,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<PageResult<NotificationDto>> {
     const rows = await this.prisma.notification.findMany({
       where: { recipientId },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -345,7 +359,8 @@ export class NotificationsService {
       }
 
       // Người được nhắc tên đã nhận thông báo trực tiếp, không báo thêm "có bình luận mới".
-      if (!issue.assigneeId || issue.assigneeId === author || mentioned.has(issue.assigneeId)) return;
+      if (!issue.assigneeId || issue.assigneeId === author || mentioned.has(issue.assigneeId))
+        return;
       await this.create({
         recipientId: issue.assigneeId,
         workspaceId: issue.workspaceId,
@@ -390,7 +405,10 @@ export class NotificationsService {
     if (!recipient) return;
     const prefs = effectivePrefs(recipient.settings);
     const emailKey = EMAIL_KEY_BY_TYPE[input.type];
-    const emailOn = !!emailKey && recipient.status !== 'DEACTIVATED' && effectiveEmailPrefs(recipient.settings)[emailKey];
+    const emailOn =
+      !!emailKey &&
+      recipient.status !== 'DEACTIVATED' &&
+      effectiveEmailPrefs(recipient.settings)[emailKey];
     if (!prefs[input.type] && !emailOn) return;
 
     if (prefs[input.type]) {
@@ -422,11 +440,15 @@ export class NotificationsService {
   ): Promise<void> {
     try {
       const actor = input.actorId
-        ? await this.prisma.user.findUnique({ where: { id: input.actorId }, select: { displayName: true } })
+        ? await this.prisma.user.findUnique({
+            where: { id: input.actorId },
+            select: { displayName: true },
+          })
         : null;
       const key = typeof input.payload.key === 'string' ? input.payload.key : '';
       const summary = typeof input.payload.summary === 'string' ? input.payload.summary : '';
-      const statusName = typeof input.payload.statusName === 'string' ? input.payload.statusName : '';
+      const statusName =
+        typeof input.payload.statusName === 'string' ? input.payload.statusName : '';
       const who = actor?.displayName ?? 'Ai đó';
       const title: Record<string, string> = {
         MENTIONED: `${who} đã nhắc đến bạn${key ? ` trong ${key}` : ''}`,
@@ -438,7 +460,11 @@ export class NotificationsService {
       await this.mail.enqueue({
         to,
         template: 'notification',
-        payload: { title: title[input.type] ?? 'Thông báo mới', body: summary, url: key ? `${base}/issue/${key}` : base },
+        payload: {
+          title: title[input.type] ?? 'Thông báo mới',
+          body: summary,
+          url: key ? `${base}/issue/${key}` : base,
+        },
       });
     } catch (err) {
       this.logger.warn(`Xếp thư thông báo thất bại: ${this.errMsg(err)}`);

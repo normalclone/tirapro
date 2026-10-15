@@ -13,7 +13,11 @@ const MANAGE_NAV: { to: string; label: string; icon: ReactNode }[] = [
   { to: '/manage/goals', label: 'Mục tiêu', icon: <Target className="h-4 w-4" /> },
   { to: '/manage/risks', label: 'Rủi ro & vướng mắc', icon: <ShieldAlert className="h-4 w-4" /> },
   { to: '/manage/resources', label: 'Nhân lực', icon: <CalendarClock className="h-4 w-4" /> },
-  { to: '/manage/response-time', label: 'Thời gian xử lý', icon: <AlarmClock className="h-4 w-4" /> },
+  {
+    to: '/manage/response-time',
+    label: 'Thời gian xử lý',
+    icon: <AlarmClock className="h-4 w-4" />,
+  },
   { to: '/manage/clients', label: 'Khách hàng', icon: <Handshake className="h-4 w-4" /> },
 ];
 
@@ -36,7 +40,9 @@ export function ManageLayout() {
             className={({ isActive }) =>
               cn(
                 'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                isActive ? 'bg-primary-subtle text-primary' : 'text-muted hover:bg-surface-2 hover:text-ink',
+                isActive
+                  ? 'bg-primary-subtle text-primary'
+                  : 'text-muted hover:bg-surface-2 hover:text-ink',
               )
             }
           >

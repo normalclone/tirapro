@@ -8,7 +8,13 @@ import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { PlatformLogo, RepoProviderLogo } from './PlatformLogo';
-import { useRepositories, useCreateRepository, useDeleteRepository, type Repository, type RepositoryProvider } from './api';
+import {
+  useRepositories,
+  useCreateRepository,
+  useDeleteRepository,
+  type Repository,
+  type RepositoryProvider,
+} from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
 
@@ -297,7 +303,11 @@ function RepositoryRow({
           )}
           title="Sao chép đường dẫn webhook"
         >
-          {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-success" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
           <span className="sr-only">Sao chép đường dẫn webhook</span>
         </button>
       </div>

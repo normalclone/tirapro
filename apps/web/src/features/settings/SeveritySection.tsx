@@ -64,7 +64,13 @@ export function SeveritySection() {
   }
 
   async function handleDelete(s: Severity) {
-    if (!(await confirm({ title: `Xoá mức độ "${s.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
+    if (
+      !(await confirm({
+        title: `Xoá mức độ "${s.name}"? Hành động này không thể hoàn tác.`,
+        destructive: true,
+      }))
+    )
+      return;
     remove.mutate(s.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -124,7 +130,9 @@ export function SeveritySection() {
                   />
                   <span className="truncate text-sm font-medium text-ink">{s.name}</span>
                   <span className="font-mono text-xs text-faint">#{s.rank}</span>
-                  {s.isDefault && <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>}
+                  {s.isDefault && (
+                    <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>
+                  )}
                   {s.isSystem && <Badge className="bg-surface-2 text-muted">Hệ thống</Badge>}
 
                   {canManage && (
@@ -143,7 +151,12 @@ export function SeveritySection() {
                       )}
                       {!s.isSystem && (
                         <>
-                          <Button variant="ghost" size="icon" onClick={() => setEditingId(s.id)} title="Chỉnh sửa">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setEditingId(s.id)}
+                            title="Chỉnh sửa"
+                          >
                             <Pencil className="h-4 w-4" />
                             <span className="sr-only">Chỉnh sửa {s.name}</span>
                           </Button>
@@ -204,7 +217,13 @@ export function SeveritySection() {
               <label htmlFor="sev-rank" className="mb-1 block text-xs font-medium text-muted">
                 Rank
               </label>
-              <Input id="sev-rank" type="number" value={rank} placeholder="0" onChange={(e) => setRank(e.target.value)} />
+              <Input
+                id="sev-rank"
+                type="number"
+                value={rank}
+                placeholder="0"
+                onChange={(e) => setRank(e.target.value)}
+              />
             </div>
             <div className="flex items-center gap-2">
               <Button size="sm" onClick={submitAdd} loading={create.isPending}>
@@ -274,7 +293,13 @@ function SeverityEditRow({
         onChange={(e) => setColor(e.target.value)}
         className="h-9 w-12 cursor-pointer rounded-md border border-border bg-bg p-1"
       />
-      <Input type="number" aria-label="Rank" value={rank} onChange={(e) => setRank(e.target.value)} className="w-20" />
+      <Input
+        type="number"
+        aria-label="Rank"
+        value={rank}
+        onChange={(e) => setRank(e.target.value)}
+        className="w-20"
+      />
       <div className="flex items-center gap-1">
         <Button size="icon" onClick={save} loading={saving} title="Lưu">
           <Check className="h-4 w-4" />

@@ -132,7 +132,13 @@ export function CustomFieldsAdminSection() {
   }
 
   async function handleDelete(f: CustomField) {
-    if (!(await confirm({ title: `Xoá trường "${f.name}"? Trường sẽ bị ẩn khỏi mọi công việc.`, destructive: true }))) return;
+    if (
+      !(await confirm({
+        title: `Xoá trường "${f.name}"? Trường sẽ bị ẩn khỏi mọi công việc.`,
+        destructive: true,
+      }))
+    )
+      return;
     remove.mutate(f.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -207,9 +213,7 @@ export function CustomFieldsAdminSection() {
                 <li key={f.id} className="flex items-center gap-3 py-2.5 first:pt-0">
                   <span className="truncate text-sm font-medium text-ink">{f.name}</span>
                   <Badge className="bg-surface-2 text-muted">{TYPE_LABELS[f.type] ?? f.type}</Badge>
-                  {f.isRequired && (
-                    <Badge className="bg-danger/10 text-danger">Bắt buộc</Badge>
-                  )}
+                  {f.isRequired && <Badge className="bg-danger/10 text-danger">Bắt buộc</Badge>}
                   <span className="truncate text-xs text-faint">
                     {f.projectId ? `Dự án ${f.projectId}` : 'Toàn tổ chức'}
                   </span>

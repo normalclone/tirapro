@@ -11,11 +11,23 @@ import { useArchiveProject, useUpdateProject } from '@/features/projects/api';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-function Card({ icon, title, description, children }: { icon: React.ReactNode; title: string; description?: string; children: React.ReactNode }) {
+function Card({
+  icon,
+  title,
+  description,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="rounded-lg border border-border bg-surface">
       <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">{icon}</span>
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
+          {icon}
+        </span>
         <div>
           <h2 className="text-base font-semibold text-ink-strong">{title}</h2>
           {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
@@ -53,7 +65,9 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
     try {
       await update.mutateAsync({
         ...(name.trim() !== project.name ? { name: name.trim() } : {}),
-        ...(description.trim() !== (project.description ?? '') ? { description: description.trim() || null } : {}),
+        ...(description.trim() !== (project.description ?? '')
+          ? { description: description.trim() || null }
+          : {}),
         ...(leadId !== (project.leadId ?? '') ? { leadId: leadId || null } : {}),
         ...(assignMode !== project.defaultAssigneeMode ? { defaultAssigneeMode: assignMode } : {}),
       });
@@ -67,7 +81,9 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
     try {
       await archive.mutateAsync(next);
       setConfirmArchive(false);
-      toast.success(next ? `Đã lưu trữ dự án “${project.name}”` : `Đã khôi phục dự án “${project.name}”`);
+      toast.success(
+        next ? `Đã lưu trữ dự án “${project.name}”` : `Đã khôi phục dự án “${project.name}”`,
+      );
     } catch (e) {
       setConfirmArchive(false);
       toast.error(apiErrorMessage(e));
@@ -77,20 +93,54 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
   const field = 'mb-1.5 block text-sm font-medium text-muted';
   return (
     <>
-      <Card icon={<SlidersHorizontal className="h-4 w-4" />} title="Thông tin dự án" description={canAdmin ? 'Tên, mô tả và người phụ trách hiển thị cho cả nhóm.' : 'Chỉ quản trị dự án mới sửa được thông tin này.'}>
-        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (canSave) void save(); }}>
+      <Card
+        icon={<SlidersHorizontal className="h-4 w-4" />}
+        title="Thông tin dự án"
+        description={
+          canAdmin
+            ? 'Tên, mô tả và người phụ trách hiển thị cho cả nhóm.'
+            : 'Chỉ quản trị dự án mới sửa được thông tin này.'
+        }
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (canSave) void save();
+          }}
+        >
           <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
             <div>
-              <label htmlFor="proj-name" className={field}>Tên dự án</label>
-              <Input id="proj-name" value={name} maxLength={120} disabled={!canAdmin} onChange={(e) => setName(e.target.value)} className="text-sm" />
+              <label htmlFor="proj-name" className={field}>
+                Tên dự án
+              </label>
+              <Input
+                id="proj-name"
+                value={name}
+                maxLength={120}
+                disabled={!canAdmin}
+                onChange={(e) => setName(e.target.value)}
+                className="text-sm"
+              />
             </div>
             <div>
-              <label htmlFor="proj-key" className={field}>Mã dự án</label>
-              <Input id="proj-key" value={project.key} readOnly disabled className="font-mono text-sm" title="Mã dự án đã nằm trong mã mọi công việc nên không đổi được" />
+              <label htmlFor="proj-key" className={field}>
+                Mã dự án
+              </label>
+              <Input
+                id="proj-key"
+                value={project.key}
+                readOnly
+                disabled
+                className="font-mono text-sm"
+                title="Mã dự án đã nằm trong mã mọi công việc nên không đổi được"
+              />
             </div>
           </div>
           <div>
-            <label htmlFor="proj-desc" className={field}>Mô tả</label>
+            <label htmlFor="proj-desc" className={field}>
+              Mô tả
+            </label>
             <textarea
               id="proj-desc"
               value={description}
@@ -108,10 +158,19 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <span className={field}>Người phụ trách dự án</span>
-              <PeoplePicker value={leadId} onChange={setLeadId} options={people} emptyLabel="Chưa có" disabled={!canAdmin} ariaLabel="Người phụ trách dự án" />
+              <PeoplePicker
+                value={leadId}
+                onChange={setLeadId}
+                options={people}
+                emptyLabel="Chưa có"
+                disabled={!canAdmin}
+                ariaLabel="Người phụ trách dự án"
+              />
             </div>
             <div>
-              <label htmlFor="proj-assign" className={field}>Việc mới mặc định giao cho</label>
+              <label htmlFor="proj-assign" className={field}>
+                Việc mới mặc định giao cho
+              </label>
               <select
                 id="proj-assign"
                 value={assignMode}
@@ -126,7 +185,9 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
           </div>
           {canAdmin && (
             <div className="flex justify-end">
-              <Button type="submit" size="sm" loading={update.isPending} disabled={!canSave}>Lưu thay đổi</Button>
+              <Button type="submit" size="sm" loading={update.isPending} disabled={!canSave}>
+                Lưu thay đổi
+              </Button>
             </div>
           )}
         </form>
@@ -136,12 +197,19 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
         <Card
           icon={archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
           title={archived ? 'Dự án đã lưu trữ' : 'Lưu trữ dự án'}
-          description={archived
-            ? 'Dự án đang chỉ đọc và bị ẩn khỏi danh sách. Khôi phục để làm việc tiếp.'
-            : 'Dự án đã xong hoặc tạm dừng? Lưu trữ để ẩn khỏi danh sách và khoá chỉnh sửa. Dữ liệu được giữ nguyên, có thể khôi phục bất cứ lúc nào.'}
+          description={
+            archived
+              ? 'Dự án đang chỉ đọc và bị ẩn khỏi danh sách. Khôi phục để làm việc tiếp.'
+              : 'Dự án đã xong hoặc tạm dừng? Lưu trữ để ẩn khỏi danh sách và khoá chỉnh sửa. Dữ liệu được giữ nguyên, có thể khôi phục bất cứ lúc nào.'
+          }
         >
           {archived ? (
-            <Button variant="secondary" size="sm" loading={archive.isPending} onClick={() => void toggleArchive(false)}>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={archive.isPending}
+              onClick={() => void toggleArchive(false)}
+            >
               <ArchiveRestore className="h-4 w-4" /> Khôi phục dự án
             </Button>
           ) : (

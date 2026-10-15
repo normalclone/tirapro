@@ -4,7 +4,9 @@ import { z } from 'zod';
 export const JIRA_CREATE = '__create__';
 
 /** Mã ghi bởi `analyze` (cuid2, chữ thường + số) — chặn path traversal khi dùng làm tên file. */
-export const jiraAnalyzeIdSchema = z.string().regex(/^[a-z0-9]{8,40}$/, 'Mã phân tích không hợp lệ — hãy tải lại tệp');
+export const jiraAnalyzeIdSchema = z
+  .string()
+  .regex(/^[a-z0-9]{8,40}$/, 'Mã phân tích không hợp lệ — hãy tải lại tệp');
 
 export const jiraMappingSchema = z.object({
   /** Tên loại Jira → id IssueType hoặc `__create__`. */

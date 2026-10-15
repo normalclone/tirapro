@@ -21,27 +21,32 @@ export interface ProjectVersion {
 /** Loại liên kết phiên bản với issue. */
 export type VersionType = 'FIX' | 'AFFECTS';
 
-
 /* ------------------------------- Queries -------------------------------- */
 
 export function useProjectLabels(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.projectMeta.labels(projectId ?? ''),
-    queryFn: projectId ? async () => (await api.get<ProjectLabel[]>(`/projects/${projectId}/labels`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<ProjectLabel[]>(`/projects/${projectId}/labels`)).data
+      : skipToken,
   });
 }
 
 export function useProjectComponents(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.projectMeta.components(projectId ?? ''),
-    queryFn: projectId ? async () => (await api.get<ProjectComponent[]>(`/projects/${projectId}/components`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<ProjectComponent[]>(`/projects/${projectId}/components`)).data
+      : skipToken,
   });
 }
 
 export function useProjectVersions(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.projectMeta.versions(projectId ?? ''),
-    queryFn: projectId ? async () => (await api.get<ProjectVersion[]>(`/projects/${projectId}/versions`)).data : skipToken,
+    queryFn: projectId
+      ? async () => (await api.get<ProjectVersion[]>(`/projects/${projectId}/versions`)).data
+      : skipToken,
   });
 }
 
@@ -51,7 +56,11 @@ export function useProjectVersions(projectId: string | undefined) {
  * Gắn/gỡ nhãn cho issue. Sau khi thành công, làm mới query issue (để `issue.labels`
  * cập nhật) và danh sách issue trên board.
  */
-export function useToggleLabel(issueId: string, issueKeyStr: string, projectId: string | undefined) {
+export function useToggleLabel(
+  issueId: string,
+  issueKeyStr: string,
+  projectId: string | undefined,
+) {
   const qc = useQueryClient();
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: keys.issues.byKey(issueKeyStr) });

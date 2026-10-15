@@ -1,6 +1,11 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { createCommentSchema, updateCommentSchema, type CreateCommentInput, type UpdateCommentInput } from '@tirapro/shared';
+import {
+  createCommentSchema,
+  updateCommentSchema,
+  type CreateCommentInput,
+  type UpdateCommentInput,
+} from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
@@ -49,9 +54,14 @@ export class CommentsController {
   @Permissions(PERMISSIONS.COMMENT_EDIT_OWN)
   @ProjectRef('comment', 'id')
   @Delete('comments/:id')
-  async remove(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string, @Param('id') id: string) {
+  async remove(
+    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+  ) {
     // Guard chỉ đòi quyền sửa-của-mình; xoá bình luận của người khác cần thêm comment:delete.
-    const canDeleteAny = user.isSystemAdmin || (user.permissions?.includes(PERMISSIONS.COMMENT_DELETE) ?? false);
+    const canDeleteAny =
+      user.isSystemAdmin || (user.permissions?.includes(PERMISSIONS.COMMENT_DELETE) ?? false);
     return this.comments.softDelete(workspaceId, user.id, id, canDeleteAny);
   }
 }

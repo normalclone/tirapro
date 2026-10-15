@@ -26,7 +26,11 @@ function setup(membership: unknown = { id: 'M1' }, status = 'ACTIVE') {
     },
     workspaceMembership: { findUnique: vi.fn(() => Promise.resolve(membership)) },
   };
-  const client = { get: vi.fn(() => Promise.resolve(null)), set: vi.fn(() => Promise.resolve('OK')), del: vi.fn(() => Promise.resolve(1)) };
+  const client = {
+    get: vi.fn(() => Promise.resolve(null)),
+    set: vi.fn(() => Promise.resolve('OK')),
+    del: vi.fn(() => Promise.resolve(1)),
+  };
   const redis = { isAvailable: () => true, getClient: () => client };
   return { service: new ApiKeyService(prisma as never, redis as never), prisma, client };
 }

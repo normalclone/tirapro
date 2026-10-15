@@ -134,7 +134,11 @@ export class AutomationService implements OnApplicationShutdown {
     return this.toTemplateDto(row);
   }
 
-  async createTemplate(workspaceId: string, dto: CreateTemplateInput, actingUserId: string): Promise<IssueTemplateDto> {
+  async createTemplate(
+    workspaceId: string,
+    dto: CreateTemplateInput,
+    actingUserId: string,
+  ): Promise<IssueTemplateDto> {
     const name = dto.name.trim();
     if (!name) throw new BusinessRuleException('Tên mẫu bắt buộc');
     const projectId = dto.projectId ?? null;
@@ -156,7 +160,12 @@ export class AutomationService implements OnApplicationShutdown {
     return this.getTemplate(workspaceId, created.id);
   }
 
-  async updateTemplate(workspaceId: string, id: string, dto: UpdateTemplateInput, actingUserId: string): Promise<IssueTemplateDto> {
+  async updateTemplate(
+    workspaceId: string,
+    id: string,
+    dto: UpdateTemplateInput,
+    actingUserId: string,
+  ): Promise<IssueTemplateDto> {
     const cur = await this.getTemplate(workspaceId, id);
     if (cur.projectId) await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     const data: Prisma.IssueTemplateUpdateInput = {};
@@ -182,7 +191,11 @@ export class AutomationService implements OnApplicationShutdown {
     return this.getTemplate(workspaceId, id);
   }
 
-  async removeTemplate(workspaceId: string, id: string, actingUserId: string): Promise<{ success: true }> {
+  async removeTemplate(
+    workspaceId: string,
+    id: string,
+    actingUserId: string,
+  ): Promise<{ success: true }> {
     const cur = await this.getTemplate(workspaceId, id);
     if (cur.projectId) await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     await this.prisma.issueTemplate.delete({ where: { id } });
@@ -212,7 +225,11 @@ export class AutomationService implements OnApplicationShutdown {
     return this.toRecurringDto(row);
   }
 
-  async createRecurring(workspaceId: string, dto: CreateRecurringInput, actingUserId: string): Promise<RecurringIssueDto> {
+  async createRecurring(
+    workspaceId: string,
+    dto: CreateRecurringInput,
+    actingUserId: string,
+  ): Promise<RecurringIssueDto> {
     const name = dto.name.trim();
     if (!name) throw new BusinessRuleException('Tên việc lặp lại bắt buộc');
     await this.requireProject(workspaceId, dto.projectId);
@@ -220,7 +237,13 @@ export class AutomationService implements OnApplicationShutdown {
 
     const payload = this.cleanPayload(dto.payload);
     this.assertRunnable(payload);
-    const cfg = this.configOf({ freq: dto.freq, interval: dto.interval, weekday: dto.weekday ?? null, monthDay: dto.monthDay ?? null, hour: dto.hour });
+    const cfg = this.configOf({
+      freq: dto.freq,
+      interval: dto.interval,
+      weekday: dto.weekday ?? null,
+      monthDay: dto.monthDay ?? null,
+      hour: dto.hour,
+    });
 
     const created = await this.prisma.recurringIssue.create({
       data: {
@@ -241,7 +264,12 @@ export class AutomationService implements OnApplicationShutdown {
     return this.getRecurring(workspaceId, created.id);
   }
 
-  async updateRecurring(workspaceId: string, id: string, dto: UpdateRecurringInput, actingUserId: string): Promise<RecurringIssueDto> {
+  async updateRecurring(
+    workspaceId: string,
+    id: string,
+    dto: UpdateRecurringInput,
+    actingUserId: string,
+  ): Promise<RecurringIssueDto> {
     const cur = await this.getRecurring(workspaceId, id);
     await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     const data: Prisma.RecurringIssueUpdateInput = {};
@@ -260,8 +288,11 @@ export class AutomationService implements OnApplicationShutdown {
 
     // Đổi bất kỳ tham số lịch nào → tính lại mốc chạy kế tiếp.
     const scheduleTouched =
-      dto.freq !== undefined || dto.interval !== undefined || dto.weekday !== undefined ||
-      dto.monthDay !== undefined || dto.hour !== undefined;
+      dto.freq !== undefined ||
+      dto.interval !== undefined ||
+      dto.weekday !== undefined ||
+      dto.monthDay !== undefined ||
+      dto.hour !== undefined;
     if (scheduleTouched) {
       const cfg = this.configOf({
         freq: dto.freq ?? cur.freq,
@@ -282,7 +313,11 @@ export class AutomationService implements OnApplicationShutdown {
     return this.getRecurring(workspaceId, id);
   }
 
-  async removeRecurring(workspaceId: string, id: string, actingUserId: string): Promise<{ success: true }> {
+  async removeRecurring(
+    workspaceId: string,
+    id: string,
+    actingUserId: string,
+  ): Promise<{ success: true }> {
     const cur = await this.getRecurring(workspaceId, id);
     await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     await this.prisma.recurringIssue.delete({ where: { id } });
@@ -303,7 +338,13 @@ export class AutomationService implements OnApplicationShutdown {
 
     const payload = this.parsePayload(rec.payload);
     this.assertRunnable(payload);
-    const issue = await this.createIssueFrom(rec.project.workspaceId, rec.projectId, actingUserId, rec.name, payload);
+    const issue = await this.createIssueFrom(
+      rec.project.workspaceId,
+      rec.projectId,
+      actingUserId,
+      rec.name,
+      payload,
+    );
     await this.prisma.recurringIssue.update({ where: { id }, data: { lastRunAt: new Date() } });
     return { success: true, issue };
   }
@@ -318,9 +359,9 @@ export class AutomationService implements OnApplicationShutdown {
   @Cron(EVERY_15_MINUTES)
   async runDueRecurring(): Promise<void> {
     // Khoá Redis để nhiều node API không sinh trùng issue; TTL < chu kỳ 15 phút phòng node chết giữa chừng.
-    await withCronLock(this.redis, 'automation:recurring', 600, () => this.scanDueRecurring()).catch((err) =>
-      this.warn('cron.lock', err),
-    );
+    await withCronLock(this.redis, 'automation:recurring', 600, () =>
+      this.scanDueRecurring(),
+    ).catch((err) => this.warn('cron.lock', err));
   }
 
   private async scanDueRecurring(): Promise<void> {
@@ -344,8 +385,16 @@ export class AutomationService implements OnApplicationShutdown {
         where: { active: true, nextRunAt: { lte: now } },
         take: 200,
         select: {
-          id: true, projectId: true, name: true, freq: true, interval: true, weekday: true,
-          monthDay: true, hour: true, payload: true, createdById: true,
+          id: true,
+          projectId: true,
+          name: true,
+          freq: true,
+          interval: true,
+          weekday: true,
+          monthDay: true,
+          hour: true,
+          payload: true,
+          createdById: true,
           project: { select: { workspaceId: true, leadId: true, deletedAt: true } },
         },
       });
@@ -357,21 +406,40 @@ export class AutomationService implements OnApplicationShutdown {
     for (const rec of due) {
       if (this.stopping) break; // app đang tắt — các bản ghi còn lại để lượt sau
       const cfg = this.configOf({
-        freq: rec.freq as Freq, interval: rec.interval, weekday: rec.weekday,
-        monthDay: rec.monthDay, hour: rec.hour,
+        freq: rec.freq as Freq,
+        interval: rec.interval,
+        weekday: rec.weekday,
+        monthDay: rec.monthDay,
+        hour: rec.hour,
       });
       let ranOk = false;
       try {
         if (rec.project.deletedAt) {
           // Dự án đã xoá → tắt hẳn thay vì quét lại mỗi vòng.
-          await this.prisma.recurringIssue.update({ where: { id: rec.id }, data: { active: false } });
+          await this.prisma.recurringIssue.update({
+            where: { id: rec.id },
+            data: { active: false },
+          });
           continue;
         }
         const payload = this.parsePayload(rec.payload);
         this.assertRunnable(payload);
-        const actorId = await this.resolveActor(rec.createdById, rec.project.workspaceId, rec.project.leadId);
-        if (!actorId) throw new Error('Không xác định được người tạo công việc — hãy thêm ít nhất một thành viên vào không gian làm việc');
-        await this.createIssueFrom(rec.project.workspaceId, rec.projectId, actorId, rec.name, payload);
+        const actorId = await this.resolveActor(
+          rec.createdById,
+          rec.project.workspaceId,
+          rec.project.leadId,
+        );
+        if (!actorId)
+          throw new Error(
+            'Không xác định được người tạo công việc — hãy thêm ít nhất một thành viên vào không gian làm việc',
+          );
+        await this.createIssueFrom(
+          rec.project.workspaceId,
+          rec.projectId,
+          actorId,
+          rec.name,
+          payload,
+        );
         ranOk = true;
       } catch (err) {
         this.warn(`cron.recurring:${rec.id}`, err);
@@ -400,10 +468,17 @@ export class AutomationService implements OnApplicationShutdown {
    * đã có, ta kiểm tra lại quyền theo DỰ ÁN THẬT của bản ghi — chặn việc mượn `?projectId`
    * của dự án khác để leo quyền.
    */
-  private async assertProjectAdmin(userId: string, workspaceId: string, projectId: string): Promise<void> {
+  private async assertProjectAdmin(
+    userId: string,
+    workspaceId: string,
+    projectId: string,
+  ): Promise<void> {
     const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
     if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.WORKSPACE_ADMIN)) return;
-    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isSystemAdmin: true } });
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
     if (u?.isSystemAdmin) return;
     throw new ForbiddenAppException('Cần quyền quản trị dự án cho dự án này');
   }
@@ -418,7 +493,11 @@ export class AutomationService implements OnApplicationShutdown {
   }
 
   private configOf(input: {
-    freq: Freq; interval?: number | null; weekday?: number | null; monthDay?: number | null; hour?: number | null;
+    freq: Freq;
+    interval?: number | null;
+    weekday?: number | null;
+    monthDay?: number | null;
+    hour?: number | null;
   }): RecurrenceConfig {
     return {
       freq: input.freq,
@@ -449,11 +528,16 @@ export class AutomationService implements OnApplicationShutdown {
   }
 
   private assertRunnable(payload: IssuePayload): void {
-    if (!payload.typeId) throw new BusinessRuleException('Hãy chọn loại công việc mặc định cho việc lặp lại');
+    if (!payload.typeId)
+      throw new BusinessRuleException('Hãy chọn loại công việc mặc định cho việc lặp lại');
   }
 
   /** Người "tạo" issue tự động: người lập lịch → trưởng dự án → thành viên workspace bất kỳ. */
-  private async resolveActor(createdById: string | null, workspaceId: string, leadId: string | null): Promise<string | null> {
+  private async resolveActor(
+    createdById: string | null,
+    workspaceId: string,
+    leadId: string | null,
+  ): Promise<string | null> {
     for (const candidate of [createdById, leadId]) {
       if (!candidate) continue;
       const ok = await this.prisma.workspaceMembership.findFirst({

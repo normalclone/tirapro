@@ -73,7 +73,10 @@ export function ReportsPage() {
         <div className="p-6">
           <QueryError
             error={pErr ?? report.error}
-            onRetry={() => { void refetchProject(); if (!pe) void report.refetch(); }}
+            onRetry={() => {
+              void refetchProject();
+              if (!pe) void report.refetch();
+            }}
           />
         </div>
       </div>
@@ -111,7 +114,10 @@ export function ReportsPage() {
             {report.isLoading ? (
               <ChartSkeleton />
             ) : !report.data || report.data.byStatus.length === 0 ? (
-              <EmptyState title="Chưa có dữ liệu" description="Biểu đồ sẽ hiện khi dự án có công việc. Hãy tạo công việc đầu tiên ở Bảng hoặc Danh sách chờ." />
+              <EmptyState
+                title="Chưa có dữ liệu"
+                description="Biểu đồ sẽ hiện khi dự án có công việc. Hãy tạo công việc đầu tiên ở Bảng hoặc Danh sách chờ."
+              />
             ) : (
               <StatusDonut slices={report.data.byStatus} />
             )}
@@ -144,7 +150,10 @@ export function ReportsPage() {
             {report.isLoading ? (
               <ChartSkeleton />
             ) : !report.data || report.data.byAssignee.length === 0 ? (
-              <EmptyState title="Chưa có dữ liệu" description="Chưa công việc nào được giao cho ai. Hãy gán người phụ trách để xem khối lượng chia đều tới đâu." />
+              <EmptyState
+                title="Chưa có dữ liệu"
+                description="Chưa công việc nào được giao cho ai. Hãy gán người phụ trách để xem khối lượng chia đều tới đâu."
+              />
             ) : (
               <AssigneeBar rows={report.data.byAssignee} />
             )}
@@ -217,8 +226,18 @@ export function ReportsPage() {
                   <YAxis {...AXIS_PROPS} />
                   <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={TOOLTIP_STYLE} />
                   <Legend wrapperStyle={LEGEND_STYLE} />
-                  <Bar dataKey="committed" name="Cam kết" fill="var(--status-todo)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="completed" name="Hoàn thành" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                  <Bar
+                    dataKey="committed"
+                    name="Cam kết"
+                    fill="var(--status-todo)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="completed"
+                    name="Hoàn thành"
+                    fill="var(--primary)"
+                    radius={[4, 4, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -270,7 +289,10 @@ export function ReportsPage() {
             {createdResolved.isLoading ? (
               <ChartSkeleton />
             ) : !createdResolved.data || createdResolved.data.series.length === 0 ? (
-              <EmptyState title="Chưa có dữ liệu" description="Chưa có hoạt động trong khoảng này." />
+              <EmptyState
+                title="Chưa có dữ liệu"
+                description="Chưa có hoạt động trong khoảng này."
+              />
             ) : (
               <ResponsiveContainer width="100%" height={260}>
                 <LineChart data={createdResolved.data.series}>
@@ -340,9 +362,14 @@ function SummaryStats({
         const tone = s.tone ?? 'default';
         const highlight = tone === 'danger' && Number(s.value) > 0;
         return (
-          <div key={s.label} className={cn('px-4 py-2.5', highlight ? 'bg-danger/5' : 'bg-surface')}>
+          <div
+            key={s.label}
+            className={cn('px-4 py-2.5', highlight ? 'bg-danger/5' : 'bg-surface')}
+          >
             <p className="text-xs font-medium text-muted">{s.label}</p>
-            <p className={cn('mt-0.5 text-2xl font-semibold tabular', STAT_TONE[tone])}>{s.value}</p>
+            <p className={cn('mt-0.5 text-2xl font-semibold tabular', STAT_TONE[tone])}>
+              {s.value}
+            </p>
           </div>
         );
       })}
@@ -423,9 +450,21 @@ function AssigneeBar({ rows }: { rows: ReportAssignee[] }) {
         <YAxis type="category" dataKey="name" width={110} {...AXIS_PROPS} axisLine={false} />
         <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={TOOLTIP_STYLE} />
         <Legend wrapperStyle={LEGEND_STYLE} />
-        <Bar dataKey="remaining" name="Cần làm" stackId="a" fill="var(--status-todo)" radius={[3, 0, 0, 3]} />
+        <Bar
+          dataKey="remaining"
+          name="Cần làm"
+          stackId="a"
+          fill="var(--status-todo)"
+          radius={[3, 0, 0, 3]}
+        />
         <Bar dataKey="inProgress" name="Đang làm" stackId="a" fill="var(--status-progress)" />
-        <Bar dataKey="done" name="Hoàn thành" stackId="a" fill="var(--status-done)" radius={[0, 3, 3, 0]} />
+        <Bar
+          dataKey="done"
+          name="Hoàn thành"
+          stackId="a"
+          fill="var(--status-done)"
+          radius={[0, 3, 3, 0]}
+        />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -449,7 +488,12 @@ function AssigneeTable({ rows }: { rows: ReportAssignee[] }) {
           {rows.map((r) => (
             <tr key={r.id ?? '__unassigned__'} className="transition-colors hover:bg-surface-2">
               <td className="py-2 pr-2">
-                <span className={cn('truncate', r.id === null ? 'text-muted italic' : 'text-ink-strong')}>
+                <span
+                  className={cn(
+                    'truncate',
+                    r.id === null ? 'text-muted italic' : 'text-ink-strong',
+                  )}
+                >
                   {r.name}
                 </span>
               </td>

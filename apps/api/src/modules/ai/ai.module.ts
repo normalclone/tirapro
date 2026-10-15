@@ -8,7 +8,13 @@ import { SprintAssistantService } from './sprint-assistant.service';
 
 @Module({
   controllers: [AiController],
-  providers: [AiQuotaService, ClaudeService, AiService, AssigneeSuggestService, SprintAssistantService],
+  providers: [
+    AiQuotaService,
+    ClaudeService,
+    AiService,
+    AssigneeSuggestService,
+    SprintAssistantService,
+  ],
   exports: [ClaudeService, AiService],
 })
 export class AiModule {}

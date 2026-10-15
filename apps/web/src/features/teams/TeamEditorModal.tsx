@@ -12,7 +12,16 @@ import { cn } from '@/lib/utils';
 import { useCreateTeam, useUpdateTeam } from './api';
 
 /** Bảng màu nhãn nhóm (OKLCH-adjacent, WCAG-friendly trên nền sáng/tối). */
-const TEAM_COLORS = ['#2563eb', '#16a34a', '#a855f7', '#f59e0b', '#dc2626', '#0d9488', '#db2777', '#6366f1'];
+const TEAM_COLORS = [
+  '#2563eb',
+  '#16a34a',
+  '#a855f7',
+  '#f59e0b',
+  '#dc2626',
+  '#0d9488',
+  '#db2777',
+  '#6366f1',
+];
 
 /** Tên màu tiếng Việt cho aria-label (mã hex không đọc lên được cho người dùng trình đọc màn hình). */
 const TEAM_COLOR_NAMES: Record<string, string> = {
@@ -27,7 +36,17 @@ const TEAM_COLOR_NAMES: Record<string, string> = {
 };
 
 /** Nhãn + gợi ý cho một ô nhập. `title` = giải nghĩa khi rê chuột vào nhãn. */
-function Field({ label, hint, title, children }: { label: string; hint?: string; title?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  title,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  title?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <label className="mb-1.5 block text-sm font-medium text-muted" title={title}>
@@ -40,7 +59,15 @@ function Field({ label, hint, title, children }: { label: string; hint?: string;
 }
 
 /** Modal tạo/sửa nhóm: tên, màu, mô tả, thành viên & trưởng nhóm. */
-export function TeamEditorModal({ open, team, onClose }: { open: boolean; team?: TeamDto | null; onClose: () => void }) {
+export function TeamEditorModal({
+  open,
+  team,
+  onClose,
+}: {
+  open: boolean;
+  team?: TeamDto | null;
+  onClose: () => void;
+}) {
   const { data: users } = useWorkspaceUsers();
   const create = useCreateTeam();
   const update = useUpdateTeam();
@@ -61,12 +88,17 @@ export function TeamEditorModal({ open, team, onClose }: { open: boolean; team?:
     setLeadId(team?.lead?.id ?? '');
   }, [open, team]);
 
-  const userOptions = useMemo(() => (users ?? []).map((u) => ({ id: u.id, name: u.displayName })), [users]);
+  const userOptions = useMemo(
+    () => (users ?? []).map((u) => ({ id: u.id, name: u.displayName })),
+    [users],
+  );
   // Trưởng nhóm chọn trong số thành viên đã chọn (BE tự thêm lead vào nhóm nếu thiếu).
   const leadOptions = useMemo(
     () => [
       { value: '', label: 'Chưa có trưởng nhóm' },
-      ...(users ?? []).filter((u) => memberIds.includes(u.id)).map((u) => ({ value: u.id, label: u.displayName })),
+      ...(users ?? [])
+        .filter((u) => memberIds.includes(u.id))
+        .map((u) => ({ value: u.id, label: u.displayName })),
     ],
     [users, memberIds],
   );
@@ -83,7 +115,13 @@ export function TeamEditorModal({ open, team, onClose }: { open: boolean; team?:
 
   async function save() {
     if (!canSave) return;
-    const payload = { name: name.trim(), color, description: description.trim() || null, leadId: leadId || null, memberIds };
+    const payload = {
+      name: name.trim(),
+      color,
+      description: description.trim() || null,
+      leadId: leadId || null,
+      memberIds,
+    };
     try {
       if (editing && team) {
         await update.mutateAsync({ id: team.id, ...payload });
@@ -108,14 +146,25 @@ export function TeamEditorModal({ open, team, onClose }: { open: boolean; team?:
       size="md"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void save()} loading={busy} disabled={!canSave}>{editing ? 'Lưu' : 'Tạo nhóm'}</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
+            {editing ? 'Lưu' : 'Tạo nhóm'}
+          </Button>
         </>
       }
     >
       <div className="space-y-4">
         <Field label="Tên nhóm" title="Đặt theo chức năng để ai cũng đoán được nhóm làm gì">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Frontend, QA…" aria-label="Tên nhóm" autoFocus maxLength={60} />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="VD: Frontend, QA…"
+            aria-label="Tên nhóm"
+            autoFocus
+            maxLength={60}
+          />
         </Field>
 
         <Field label="Màu nhãn" title="Màu này giúp nhận ra nhóm trong các danh sách và bộ lọc">
@@ -128,19 +177,37 @@ export function TeamEditorModal({ open, team, onClose }: { open: boolean; team?:
                 aria-label={`Màu ${TEAM_COLOR_NAMES[c] ?? c}`}
                 title={`Màu ${TEAM_COLOR_NAMES[c] ?? c}`}
                 aria-pressed={color === c}
-                className={cn('h-7 w-7 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                  color === c ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink-strong' : 'hover:scale-110')}
+                className={cn(
+                  'h-7 w-7 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                  color === c
+                    ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink-strong'
+                    : 'hover:scale-110',
+                )}
                 style={{ background: c }}
               />
             ))}
           </div>
         </Field>
 
-        <Field label="Mô tả" hint="(tùy chọn)" title="Một câu để người khác biết nhóm này lo phần nào">
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="VD: Lo giao diện web và ứng dụng di động" aria-label="Mô tả nhóm" maxLength={500} />
+        <Field
+          label="Mô tả"
+          hint="(tùy chọn)"
+          title="Một câu để người khác biết nhóm này lo phần nào"
+        >
+          <Input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="VD: Lo giao diện web và ứng dụng di động"
+            aria-label="Mô tả nhóm"
+            maxLength={500}
+          />
         </Field>
 
-        <Field label="Thành viên" hint="(tùy chọn)" title="Chọn những người thuộc nhóm này. Thêm hay bớt lúc nào cũng được.">
+        <Field
+          label="Thành viên"
+          hint="(tùy chọn)"
+          title="Chọn những người thuộc nhóm này. Thêm hay bớt lúc nào cũng được."
+        >
           <RoleMultiSelect
             options={userOptions}
             value={memberIds}
@@ -151,7 +218,11 @@ export function TeamEditorModal({ open, team, onClose }: { open: boolean; team?:
           />
         </Field>
 
-        <Field label="Trưởng nhóm" hint="(chọn trong thành viên)" title="Người đứng đầu nhóm. Chỉ chọn được trong số thành viên đã thêm ở trên.">
+        <Field
+          label="Trưởng nhóm"
+          hint="(chọn trong thành viên)"
+          title="Người đứng đầu nhóm. Chỉ chọn được trong số thành viên đã thêm ở trên."
+        >
           <SearchSelect
             value={leadId}
             onChange={setLeadId}

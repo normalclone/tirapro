@@ -11,7 +11,12 @@ interface AuthState {
   workspaceId: string | null;
   permissions: PermissionKey[];
   login: (email: string, password: string) => Promise<void>;
-  register: (input: { email: string; password: string; displayName: string; workspaceName?: string }) => Promise<void>;
+  register: (input: {
+    email: string;
+    password: string;
+    displayName: string;
+    workspaceName?: string;
+  }) => Promise<void>;
   logout: () => Promise<void>;
   bootstrap: () => Promise<void>;
   can: (perm: PermissionKey) => boolean;
@@ -36,7 +41,11 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   async logout() {
-    try { await api.post('/auth/logout'); } catch { /* ignore */ }
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      /* ignore */
+    }
     setAccessToken(null);
     disconnectSocket(); // ngắt socket của phiên cũ → không giữ room/quyền của tài khoản trước
     queryClient.clear(); // xoá cache theo phiên → không rò dữ liệu sang tài khoản khác

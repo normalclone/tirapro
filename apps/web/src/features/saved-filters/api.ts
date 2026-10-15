@@ -39,7 +39,6 @@ export interface FilterFields {
   resolutions: FieldOption[];
 }
 
-
 /** Danh mục giá trị cho bộ dựng truy vấn trực quan (gom theo không gian làm việc). */
 export function useFilterFields() {
   return useQuery({
@@ -59,8 +58,11 @@ export function useRunJql(jql: string, enabled: boolean) {
     queryFn:
       enabled && jql.trim().length > 0
         ? async () =>
-            (await api.get<ListResponse<IssueDto>>(`/search?jql=${encodeURIComponent(jql)}&limit=100`)).data
-              .data
+            (
+              await api.get<ListResponse<IssueDto>>(
+                `/search?jql=${encodeURIComponent(jql)}&limit=100`,
+              )
+            ).data.data
         : skipToken,
     retry: false,
   });

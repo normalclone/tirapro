@@ -130,7 +130,10 @@ export function SearchSelect({
                     )}
                   >
                     <Check
-                      className={cn('h-4 w-4 shrink-0 text-primary', active ? 'opacity-100' : 'opacity-0')}
+                      className={cn(
+                        'h-4 w-4 shrink-0 text-primary',
+                        active ? 'opacity-100' : 'opacity-0',
+                      )}
                       aria-hidden
                     />
                     {o.color && (
@@ -141,7 +144,9 @@ export function SearchSelect({
                       />
                     )}
                     <span className="min-w-0 flex-1 truncate">{o.label}</span>
-                    {o.hint && <span className="shrink-0 font-mono text-xs text-faint">{o.hint}</span>}
+                    {o.hint && (
+                      <span className="shrink-0 font-mono text-xs text-faint">{o.hint}</span>
+                    )}
                   </button>
                 </li>
               );

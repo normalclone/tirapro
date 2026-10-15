@@ -1,9 +1,27 @@
 import { Suspense, useEffect, useState } from 'react';
-import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
+import {
+  Link,
+  Navigate,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
-  Activity, Archive, BarChart3, ChevronDown, GanttChartSquare, Inbox, LayoutGrid,
-  ListTodo, ListTree, Plus, Settings, Sparkles,
+  Activity,
+  Archive,
+  BarChart3,
+  ChevronDown,
+  GanttChartSquare,
+  Inbox,
+  LayoutGrid,
+  ListTodo,
+  ListTree,
+  Plus,
+  Settings,
+  Sparkles,
 } from 'lucide-react';
 import { useProject, useProjects } from './api';
 import { CreateProjectModal } from './CreateProjectModal';
@@ -54,11 +72,24 @@ export function ProjectLayout() {
 
   const seg = loc.pathname.split('/')[3] || 'board';
   // Segment thực sự là "view" (bỏ qua create/issue…) để rail link đúng + không ghi đè lastView.
-  const KNOWN_VIEWS = new Set(['board', 'backlog', 'gantt', 'tree', 'reports', 'triage', 'activity', 'config']);
+  const KNOWN_VIEWS = new Set([
+    'board',
+    'backlog',
+    'gantt',
+    'tree',
+    'reports',
+    'triage',
+    'activity',
+    'config',
+  ]);
   const view = KNOWN_VIEWS.has(seg) ? seg : 'board';
   useEffect(() => {
     if (key && KNOWN_VIEWS.has(seg)) {
-      try { localStorage.setItem(LAST_VIEW_KEY, JSON.stringify({ key, view: seg })); } catch { /* ignore */ }
+      try {
+        localStorage.setItem(LAST_VIEW_KEY, JSON.stringify({ key, view: seg }));
+      } catch {
+        /* ignore */
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, seg]);
@@ -87,30 +118,58 @@ export function ProjectLayout() {
                 className="h-8 max-w-[10rem] truncate rounded-md border border-border bg-surface pl-2.5 pr-7 text-sm font-medium text-ink transition-colors focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
                 {projects.map((p) => (
-                  <option key={p.id} value={p.key}>{p.name}</option>
+                  <option key={p.id} value={p.key}>
+                    {p.name}
+                  </option>
                 ))}
               </select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" aria-hidden />
+              <ChevronDown
+                className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint"
+                aria-hidden
+              />
             </div>
           )}
           {project?.avatarUrl && (
-            <img src={project.avatarUrl} alt={project.name} className="h-6 w-6 shrink-0 rounded-md object-cover" />
+            <img
+              src={project.avatarUrl}
+              alt={project.name}
+              className="h-6 w-6 shrink-0 rounded-md object-cover"
+            />
           )}
           <h1 className="text-lg font-semibold tracking-tight">{project?.name ?? key}</h1>
-          <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-muted">{project?.key ?? key}</span>
+          <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-muted">
+            {project?.key ?? key}
+          </span>
 
-          <Button size="sm" className="ml-2" onClick={() => openCreate({ projectKey: key })} disabled={!project?.id || !!project.archivedAt} title={project?.archivedAt ? 'Dự án đã lưu trữ — chỉ đọc' : undefined}>
+          <Button
+            size="sm"
+            className="ml-2"
+            onClick={() => openCreate({ projectKey: key })}
+            disabled={!project?.id || !!project.archivedAt}
+            title={project?.archivedAt ? 'Dự án đã lưu trữ — chỉ đọc' : undefined}
+          >
             <Plus className="h-4 w-4" /> Tạo công việc
           </Button>
           {aiEnabled && (
-            <Button variant="secondary" size="sm" onClick={() => setGenOpen(true)} disabled={!project?.id || !!project.archivedAt} data-tour="board-ai">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setGenOpen(true)}
+              disabled={!project?.id || !!project.archivedAt}
+              data-tour="board-ai"
+            >
               <Sparkles className="h-4 w-4 text-primary" /> Tạo bằng AI
             </Button>
           )}
 
           <div className="ml-auto flex items-center gap-1">
             {VIEWS.map((v) => (
-              <NavLink key={v.seg} to={`/p/${key}/${v.seg}`} className={({ isActive }) => tabCls(isActive)} data-tour={v.seg === 'backlog' ? 'board-backlog' : undefined}>
+              <NavLink
+                key={v.seg}
+                to={`/p/${key}/${v.seg}`}
+                className={({ isActive }) => tabCls(isActive)}
+                data-tour={v.seg === 'backlog' ? 'board-backlog' : undefined}
+              >
                 <v.icon className="h-4 w-4" />
                 {v.label}
               </NavLink>
@@ -149,27 +208,48 @@ export function ProjectLayout() {
         </div>
 
         {project?.archivedAt && (
-          <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border bg-warning/10 px-6 py-2 text-sm text-ink">
+          <div
+            role="status"
+            className="flex flex-wrap items-center gap-2 border-b border-border bg-warning/10 px-6 py-2 text-sm text-ink"
+          >
             <Archive className="h-4 w-4 shrink-0 text-muted" aria-hidden />
             <span className="font-medium">Dự án đã lưu trữ — chỉ đọc.</span>
             <span className="text-muted">
               Không tạo hay sửa được việc, sprint và bảng.{' '}
               {canAdminProject ? (
-                <Link to={`/p/${key}/config`} className="font-medium text-primary underline-offset-2 hover:underline">Khôi phục dự án trong Cấu hình</Link>
-              ) : 'Nhờ quản trị dự án khôi phục nếu cần làm việc tiếp.'}
+                <Link
+                  to={`/p/${key}/config`}
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  Khôi phục dự án trong Cấu hình
+                </Link>
+              ) : (
+                'Nhờ quản trị dự án khôi phục nếu cần làm việc tiếp.'
+              )}
             </span>
           </div>
         )}
 
         <div className="min-h-0 flex-1 overflow-auto">
-          <Suspense fallback={<div className="grid h-full min-h-[40vh] place-items-center py-20 text-sm text-muted"><span className="animate-pulse">Đang tải…</span></div>}>
+          <Suspense
+            fallback={
+              <div className="grid h-full min-h-[40vh] place-items-center py-20 text-sm text-muted">
+                <span className="animate-pulse">Đang tải…</span>
+              </div>
+            }
+          >
             <Outlet />
           </Suspense>
         </div>
       </div>
 
       {project?.id && aiEnabled && (
-        <GenerateIssuesDialog projectKey={key} projectId={project.id} open={genOpen} onClose={() => setGenOpen(false)} />
+        <GenerateIssuesDialog
+          projectKey={key}
+          projectId={project.id}
+          open={genOpen}
+          onClose={() => setGenOpen(false)}
+        />
       )}
     </div>
   );
@@ -181,22 +261,33 @@ export function ProjectsIndexRedirect() {
   const [createOpen, setCreateOpen] = useState(false);
 
   if (!projects) {
-    return <div className="grid h-full place-items-center text-sm text-muted"><span className="animate-pulse">Đang tải…</span></div>;
+    return (
+      <div className="grid h-full place-items-center text-sm text-muted">
+        <span className="animate-pulse">Đang tải…</span>
+      </div>
+    );
   }
   if (projects.length === 0) {
     return (
       <div className="grid h-full place-items-center p-8 text-center">
         <div>
           <p className="text-sm text-muted">Chưa có dự án nào.</p>
-          <Button size="sm" className="mt-3" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> Tạo dự án</Button>
+          <Button size="sm" className="mt-3" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" /> Tạo dự án
+          </Button>
         </div>
         <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} />
       </div>
     );
   }
   let saved: { key?: string; view?: string } = {};
-  try { saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}'); } catch { /* ignore */ }
-  const target = saved.key && projects.some((p) => p.key === saved.key) ? saved.key : projects[0]!.key;
+  try {
+    saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}');
+  } catch {
+    /* ignore */
+  }
+  const target =
+    saved.key && projects.some((p) => p.key === saved.key) ? saved.key : projects[0]!.key;
   const view = saved.view || 'board';
   return <Navigate to={`/p/${target}/${view}`} replace />;
 }

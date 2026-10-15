@@ -6,7 +6,14 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { apiErrorMessage } from '@/lib/api';
-import { useLabels, useCreateLabel, useUpdateLabel, useDeleteLabel, type Label, type LabelUpdateInput } from './api';
+import {
+  useLabels,
+  useCreateLabel,
+  useUpdateLabel,
+  useDeleteLabel,
+  type Label,
+  type LabelUpdateInput,
+} from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
 
@@ -58,7 +65,13 @@ export function LabelsSection({ projectId, canAdmin }: { projectId?: string; can
   }
 
   async function handleDelete(l: Label) {
-    if (!(await confirm({ title: `Xoá nhãn "${l.name}"? Hành động này không thể hoàn tác.`, destructive: true }))) return;
+    if (
+      !(await confirm({
+        title: `Xoá nhãn "${l.name}"? Hành động này không thể hoàn tác.`,
+        destructive: true,
+      }))
+    )
+      return;
     remove.mutate(l.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -143,62 +156,63 @@ export function LabelsSection({ projectId, canAdmin }: { projectId?: string; can
         )}
       </QueryBoundary>
 
-      {canAdmin && (adding ? (
-        <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[10rem] flex-1">
-              <label htmlFor="label-name" className="mb-1 block text-xs font-medium text-muted">
-                Tên
-              </label>
-              <Input
-                id="label-name"
-                value={name}
-                autoFocus
-                placeholder="VD: cần-xem-lại"
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitAdd();
-                  if (e.key === 'Escape') resetAdd();
-                }}
-              />
-            </div>
-            <div className="w-24">
-              <label htmlFor="label-color" className="mb-1 block text-xs font-medium text-muted">
-                Màu
-              </label>
-              <input
-                id="label-color"
-                type="color"
-                value={color}
-                aria-label="Màu nhãn"
-                onChange={(e) => setColor(e.target.value)}
-                className="h-9 w-full cursor-pointer rounded-md border border-border bg-bg px-1"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={submitAdd} loading={create.isPending}>
-                Lưu
-              </Button>
-              <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
-                Huỷ
-              </Button>
+      {canAdmin &&
+        (adding ? (
+          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[10rem] flex-1">
+                <label htmlFor="label-name" className="mb-1 block text-xs font-medium text-muted">
+                  Tên
+                </label>
+                <Input
+                  id="label-name"
+                  value={name}
+                  autoFocus
+                  placeholder="VD: cần-xem-lại"
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitAdd();
+                    if (e.key === 'Escape') resetAdd();
+                  }}
+                />
+              </div>
+              <div className="w-24">
+                <label htmlFor="label-color" className="mb-1 block text-xs font-medium text-muted">
+                  Màu
+                </label>
+                <input
+                  id="label-color"
+                  type="color"
+                  value={color}
+                  aria-label="Màu nhãn"
+                  onChange={(e) => setColor(e.target.value)}
+                  className="h-9 w-full cursor-pointer rounded-md border border-border bg-bg px-1"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={submitAdd} loading={create.isPending}>
+                  Lưu
+                </Button>
+                <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
+                  Huỷ
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        labels.length > 0 && (
-          <Button
-            variant="secondary"
-            size="sm"
-            className="mt-4"
-            onClick={() => setAdding(true)}
-            disabled={!projectId}
-          >
-            <Plus className="h-4 w-4" />
-            Thêm nhãn
-          </Button>
-        )
-      ))}
+        ) : (
+          labels.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-4"
+              onClick={() => setAdding(true)}
+              disabled={!projectId}
+            >
+              <Plus className="h-4 w-4" />
+              Thêm nhãn
+            </Button>
+          )
+        ))}
     </SectionCard>
   );
 }

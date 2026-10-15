@@ -15,14 +15,28 @@ export class UsersService {
   ) {}
 
   private toDto(u: {
-    id: string; email: string; displayName: string; avatarUrl: string | null;
-    timezone: string; locale: string; status: string; isSystemAdmin: boolean;
-    lastSeenAt: Date | null; createdAt: Date;
+    id: string;
+    email: string;
+    displayName: string;
+    avatarUrl: string | null;
+    timezone: string;
+    locale: string;
+    status: string;
+    isSystemAdmin: boolean;
+    lastSeenAt: Date | null;
+    createdAt: Date;
   }) {
     return {
-      id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl,
-      timezone: u.timezone, locale: u.locale, status: u.status, isSystemAdmin: u.isSystemAdmin,
-      lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString(),
+      id: u.id,
+      email: u.email,
+      displayName: u.displayName,
+      avatarUrl: u.avatarUrl,
+      timezone: u.timezone,
+      locale: u.locale,
+      status: u.status,
+      isSystemAdmin: u.isSystemAdmin,
+      lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
+      createdAt: u.createdAt.toISOString(),
     };
   }
 
@@ -32,7 +46,12 @@ export class UsersService {
       where: {
         workspaceId,
         user: search
-          ? { OR: [{ displayName: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }] }
+          ? {
+              OR: [
+                { displayName: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+              ],
+            }
           : undefined,
       },
       select: { user: true },
@@ -46,7 +65,12 @@ export class UsersService {
   async listAllUsers(search?: string) {
     const users = await this.prisma.user.findMany({
       where: search
-        ? { OR: [{ displayName: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }] }
+        ? {
+            OR: [
+              { displayName: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } },
+            ],
+          }
         : undefined,
       take: 100,
       orderBy: { displayName: 'asc' },
@@ -79,10 +103,18 @@ export class UsersService {
 
     const ok = await argon2.verify(user.passwordHash, input.currentPassword);
     if (!ok) {
-      throw new AppException(ERROR_CODES.VALIDATION_ERROR, 'Mật khẩu hiện tại không đúng', HttpStatus.BAD_REQUEST);
+      throw new AppException(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Mật khẩu hiện tại không đúng',
+        HttpStatus.BAD_REQUEST,
+      );
     }
     if (await argon2.verify(user.passwordHash, input.newPassword)) {
-      throw new AppException(ERROR_CODES.VALIDATION_ERROR, 'Mật khẩu mới phải khác mật khẩu hiện tại', HttpStatus.BAD_REQUEST);
+      throw new AppException(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Mật khẩu mới phải khác mật khẩu hiện tại',
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     const passwordHash = await argon2.hash(input.newPassword);

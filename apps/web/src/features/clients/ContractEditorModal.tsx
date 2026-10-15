@@ -32,7 +32,17 @@ function parseMoney(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-muted">
@@ -136,7 +146,9 @@ export function ContractEditorModal({
       size="md"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Hủy</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Hủy
+          </Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
             {editing ? 'Lưu thay đổi' : 'Thêm hợp đồng'}
           </Button>
@@ -145,12 +157,26 @@ export function ContractEditorModal({
     >
       <div className="space-y-4">
         <Field label="Tên hợp đồng" htmlFor="contract-name">
-          <Input id="contract-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Triển khai giai đoạn 1" autoFocus maxLength={160} />
+          <Input
+            id="contract-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="VD: Triển khai giai đoạn 1"
+            autoFocus
+            maxLength={160}
+          />
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Mã hợp đồng" hint="(tùy chọn — mã trên giấy tờ)" htmlFor="contract-code">
-            <Input id="contract-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="HD-2026-001" maxLength={60} className="font-mono" />
+            <Input
+              id="contract-code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="HD-2026-001"
+              maxLength={60}
+              className="font-mono"
+            />
           </Field>
           <Field label="Dự án liên quan" hint="(tùy chọn — dự án thực hiện hợp đồng)">
             <SearchSelect
@@ -176,7 +202,10 @@ export function ContractEditorModal({
               title="Gõ liền số, không cần dấu chấm — hệ thống tự định dạng bên dưới"
             />
             {parsedValue !== null && (
-              <p className="mt-1 text-xs text-faint" title="Số bạn vừa nhập, hiển thị theo định dạng tiền tệ">
+              <p
+                className="mt-1 text-xs text-faint"
+                title="Số bạn vừa nhập, hiển thị theo định dạng tiền tệ"
+              >
                 {formatMoney(parsedValue, currency)}
               </p>
             )}
@@ -195,10 +224,20 @@ export function ContractEditorModal({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Ngày bắt đầu" hint="(tùy chọn)" htmlFor="contract-start">
-            <Input id="contract-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <Input
+              id="contract-start"
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
           </Field>
           <Field label="Ngày kết thúc" hint="(tùy chọn)" htmlFor="contract-end">
-            <Input id="contract-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <Input
+              id="contract-end"
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
           </Field>
         </div>
         {dateOrderInvalid && (
@@ -208,7 +247,13 @@ export function ContractEditorModal({
         )}
 
         <Field label="Ghi chú" hint="(tùy chọn)" htmlFor="contract-note">
-          <Input id="contract-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Điều khoản thanh toán, phạm vi công việc…" maxLength={1000} />
+          <Input
+            id="contract-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Điều khoản thanh toán, phạm vi công việc…"
+            maxLength={1000}
+          />
         </Field>
       </div>
     </Dialog>

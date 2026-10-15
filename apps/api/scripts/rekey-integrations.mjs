@@ -16,7 +16,9 @@ const dryRun = process.argv.includes('--dry-run');
 const current = process.env.INTEGRATION_ENCRYPTION_KEY ?? '';
 const previous = process.env.INTEGRATION_ENCRYPTION_KEY_PREVIOUS ?? '';
 if (current.length < 32) {
-  console.error('Thiếu INTEGRATION_ENCRYPTION_KEY (tối thiểu 32 ký tự) — hãy đặt biến này rồi chạy lại.');
+  console.error(
+    'Thiếu INTEGRATION_ENCRYPTION_KEY (tối thiểu 32 ký tự) — hãy đặt biến này rồi chạy lại.',
+  );
   process.exit(1);
 }
 
@@ -43,9 +45,13 @@ function encrypt(plain) {
 const prisma = new PrismaClient();
 const stats = { ok: 0, rekeyed: 0, plaintext: 0, failed: 0 };
 try {
-  const rows = await prisma.integration.findMany({ where: { type: 'TELEGRAM' }, select: { id: true, config: true } });
+  const rows = await prisma.integration.findMany({
+    where: { type: 'TELEGRAM' },
+    select: { id: true, config: true },
+  });
   for (const row of rows) {
-    const cfg = row.config && typeof row.config === 'object' && !Array.isArray(row.config) ? row.config : {};
+    const cfg =
+      row.config && typeof row.config === 'object' && !Array.isArray(row.config) ? row.config : {};
     const token = typeof cfg.botToken === 'string' ? cfg.botToken : '';
     if (!token) continue;
     if (token.split(':').length !== 3) {
@@ -59,15 +65,22 @@ try {
     const plain = previous.length >= 32 ? tryDecrypt(token, previous) : null;
     if (plain === null) {
       stats.failed++;
-      console.error(`Tích hợp ${row.id}: không giải mã được bằng khoá hiện tại lẫn khoá cũ — cần nhập lại token.`);
+      console.error(
+        `Tích hợp ${row.id}: không giải mã được bằng khoá hiện tại lẫn khoá cũ — cần nhập lại token.`,
+      );
       continue;
     }
     if (!dryRun) {
-      await prisma.integration.update({ where: { id: row.id }, data: { config: { ...cfg, botToken: encrypt(plain) } } });
+      await prisma.integration.update({
+        where: { id: row.id },
+        data: { config: { ...cfg, botToken: encrypt(plain) } },
+      });
     }
     stats.rekeyed++;
   }
-  console.log(`${dryRun ? '[dry-run] ' : ''}đã đúng khoá: ${stats.ok} · mã hoá lại: ${stats.rekeyed} · plaintext cũ: ${stats.plaintext} · không giải được: ${stats.failed}`);
+  console.log(
+    `${dryRun ? '[dry-run] ' : ''}đã đúng khoá: ${stats.ok} · mã hoá lại: ${stats.rekeyed} · plaintext cũ: ${stats.plaintext} · không giải được: ${stats.failed}`,
+  );
   if (stats.failed > 0) process.exitCode = 2;
 } finally {
   await prisma.$disconnect();

@@ -54,8 +54,12 @@ export function ClientProjectsModal({
       size="md"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void save()} loading={setProjects.isPending}>Lưu thay đổi</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button onClick={() => void save()} loading={setProjects.isPending}>
+            Lưu thay đổi
+          </Button>
         </>
       }
     >

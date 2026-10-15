@@ -6,8 +6,12 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ProgramsService } from './programs.service';
 import {
-  createProgramSchema, updateProgramSchema, setProgramProjectsSchema,
-  type CreateProgramInput, type UpdateProgramInput, type SetProgramProjectsInput,
+  createProgramSchema,
+  updateProgramSchema,
+  setProgramProjectsSchema,
+  type CreateProgramInput,
+  type UpdateProgramInput,
+  type SetProgramProjectsInput,
 } from './programs.schemas';
 
 @ApiTags('programs')

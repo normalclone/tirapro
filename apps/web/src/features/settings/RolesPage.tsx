@@ -73,8 +73,8 @@ export function RolesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Vai trò</h1>
           <p className="mt-1 text-sm text-muted">
-            Vai trò gom các quyền lại để gán cho thành viên. Vai trò hệ thống là cố định; bạn
-            có thể tạo vai trò tuỳ chỉnh riêng.
+            Vai trò gom các quyền lại để gán cho thành viên. Vai trò hệ thống là cố định; bạn có thể
+            tạo vai trò tuỳ chỉnh riêng.
           </p>
         </div>
         {canManage && (
@@ -172,7 +172,9 @@ function RoleGroup({
       </div>
       <div className="p-2">
         {roles.length === 0 ? (
-          <p className="px-3 py-4 text-sm text-muted">Chưa có vai trò {SCOPE_LABEL[scope].toLowerCase()}.</p>
+          <p className="px-3 py-4 text-sm text-muted">
+            Chưa có vai trò {SCOPE_LABEL[scope].toLowerCase()}.
+          </p>
         ) : (
           <ul className="space-y-0.5">
             {roles.map((role) => (
@@ -254,14 +256,11 @@ function RoleDialog({
   const [scope, setScope] = useState<RoleScope>(role?.scope ?? initialScope);
   const [description, setDescription] = useState(role?.description ?? '');
   const [color, setColor] = useState<string>(role?.color ?? PRESET_COLORS[3]!);
-  const [perms, setPerms] = useState<Set<PermissionKey>>(
-    () => new Set(role?.permissionKeys ?? []),
-  );
+  const [perms, setPerms] = useState<Set<PermissionKey>>(() => new Set(role?.permissionKeys ?? []));
 
   // Checklist hiển thị theo scope của vai trò (chung ↔ dự án). Khi đổi scope
   // lúc tạo mới, loại bỏ các quyền không còn thuộc scope đó.
-  const visibleScopes: PermissionScope[] =
-    scope === 'WORKSPACE' ? ['WORKSPACE'] : ['PROJECT'];
+  const visibleScopes: PermissionScope[] = scope === 'WORKSPACE' ? ['WORKSPACE'] : ['PROJECT'];
 
   function setScopeAndPrune(next: RoleScope) {
     setScope(next);
@@ -323,12 +322,18 @@ function RoleDialog({
     deleteRole.mutate(role.id, { onSuccess: onClose });
   }
 
-  const title: string = isCreate ? 'Tạo vai trò' : readOnly ? (role?.name ?? '') : `Sửa "${role?.name}"`;
+  const title: string = isCreate
+    ? 'Tạo vai trò'
+    : readOnly
+      ? (role?.name ?? '')
+      : `Sửa "${role?.name}"`;
 
   return (
     <Dialog
       open
-      onOpenChange={(o) => { if (!o) onClose(); }}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
       title={title}
       hideTitle={readOnly}
       size="lg"
@@ -449,9 +454,7 @@ function RoleDialog({
           </>
         )}
 
-        {readOnly && role?.description && (
-          <p className="text-sm text-muted">{role.description}</p>
-        )}
+        {readOnly && role?.description && <p className="text-sm text-muted">{role.description}</p>}
 
         {/* Checklist quyền */}
         <div className="space-y-4">

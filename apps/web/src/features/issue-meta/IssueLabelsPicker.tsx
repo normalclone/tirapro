@@ -51,7 +51,11 @@ export function IssueLabelsPicker({ issue, inline }: { issue: IssueDto; inline?:
               key={label.id}
               className="group inline-flex items-center gap-1 rounded-full border border-border bg-surface-2 py-0.5 pl-2 pr-1 text-xs font-medium text-ink"
             >
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} aria-hidden="true" />
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                style={{ background: color }}
+                aria-hidden="true"
+              />
               <span className="max-w-[10rem] truncate">{label.name}</span>
               <button
                 type="button"
@@ -92,10 +96,16 @@ export function IssueLabelsPicker({ issue, inline }: { issue: IssueDto; inline?:
             >
               {available.length === 0 ? (
                 <p className="px-3 py-3 text-sm text-faint">
-                  {(projectLabels ?? []).length === 0 ? 'Dự án chưa có nhãn nào.' : 'Đã gắn hết nhãn.'}
+                  {(projectLabels ?? []).length === 0
+                    ? 'Dự án chưa có nhãn nào.'
+                    : 'Đã gắn hết nhãn.'}
                 </p>
               ) : (
-                <ul className="max-h-64 overflow-y-auto py-1" role="listbox" aria-label="Nhãn của dự án">
+                <ul
+                  className="max-h-64 overflow-y-auto py-1"
+                  role="listbox"
+                  aria-label="Nhãn của dự án"
+                >
                   {available.map((label) => (
                     <li key={label.id}>
                       <button

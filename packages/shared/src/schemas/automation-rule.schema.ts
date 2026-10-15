@@ -1,24 +1,55 @@
 import { z } from 'zod';
 
-export const RULE_TRIGGERS = ['ISSUE_CREATED', 'ISSUE_TRANSITIONED', 'ISSUE_UPDATED', 'COMMENT_ADDED', 'SCHEDULED'] as const;
+export const RULE_TRIGGERS = [
+  'ISSUE_CREATED',
+  'ISSUE_TRANSITIONED',
+  'ISSUE_UPDATED',
+  'COMMENT_ADDED',
+  'SCHEDULED',
+] as const;
 export const ruleTriggerSchema = z.enum(RULE_TRIGGERS);
 
 /** Trường issue mà điều kiện có thể so sánh. `labelIds` là mảng, các trường còn lại là giá trị đơn. */
 export const RULE_CONDITION_FIELDS = [
-  'statusId', 'priorityId', 'assigneeId', 'reporterId', 'typeId', 'sprintId',
-  'resolutionId', 'storyPoints', 'summary', 'labelIds', 'dueDate',
+  'statusId',
+  'priorityId',
+  'assigneeId',
+  'reporterId',
+  'typeId',
+  'sprintId',
+  'resolutionId',
+  'storyPoints',
+  'summary',
+  'labelIds',
+  'dueDate',
 ] as const;
-export const RULE_CONDITION_OPS = ['eq', 'neq', 'in', 'nin', 'empty', 'notEmpty', 'contains'] as const;
+export const RULE_CONDITION_OPS = [
+  'eq',
+  'neq',
+  'in',
+  'nin',
+  'empty',
+  'notEmpty',
+  'contains',
+] as const;
 
 export const fieldConditionSchema = z.object({
   field: z.enum(RULE_CONDITION_FIELDS),
   op: z.enum(RULE_CONDITION_OPS),
   value: z.unknown().optional(),
 });
-export const jqlConditionSchema = z.object({ jql: z.string().trim().min(1, 'JQL không được để trống').max(2000) });
+export const jqlConditionSchema = z.object({
+  jql: z.string().trim().min(1, 'JQL không được để trống').max(2000),
+});
 export const ruleConditionSchema = z.union([fieldConditionSchema, jqlConditionSchema]);
 
-export const SET_FIELD_NAMES = ['priorityId', 'assigneeId', 'sprintId', 'dueDate', 'storyPoints'] as const;
+export const SET_FIELD_NAMES = [
+  'priorityId',
+  'assigneeId',
+  'sprintId',
+  'dueDate',
+  'storyPoints',
+] as const;
 
 const setFieldAction = z.object({
   type: z.literal('setField'),
@@ -33,7 +64,10 @@ const assignAction = z.object({
 const transitionAction = z.object({ type: z.literal('transition'), toStatusId: z.string().min(1) });
 const addLabelAction = z.object({ type: z.literal('addLabel'), labelId: z.string().min(1) });
 const removeLabelAction = z.object({ type: z.literal('removeLabel'), labelId: z.string().min(1) });
-const addCommentAction = z.object({ type: z.literal('addComment'), body: z.string().trim().min(1).max(5000) });
+const addCommentAction = z.object({
+  type: z.literal('addComment'),
+  body: z.string().trim().min(1).max(5000),
+});
 const notifyAction = z.object({
   type: z.literal('notify'),
   userIds: z.array(z.string().min(1)).max(50).optional(),
@@ -42,7 +76,11 @@ const notifyAction = z.object({
 });
 const webhookAction = z.object({
   type: z.literal('webhook'),
-  url: z.string().url().max(2000).refine((u) => /^https?:\/\//i.test(u), 'Chỉ hỗ trợ http hoặc https'),
+  url: z
+    .string()
+    .url()
+    .max(2000)
+    .refine((u) => /^https?:\/\//i.test(u), 'Chỉ hỗ trợ http hoặc https'),
   secret: z.string().max(200).optional(),
 });
 const createSubtaskAction = z.object({
@@ -54,23 +92,34 @@ const createSubtaskAction = z.object({
 /** Zod 3 không cho discriminatedUnion chứa ZodEffects → kiểm tra chéo trường nằm ở superRefine của cả union. */
 export const ruleActionSchema = z
   .discriminatedUnion('type', [
-    setFieldAction, assignAction, transitionAction, addLabelAction, removeLabelAction,
-    addCommentAction, notifyAction, webhookAction, createSubtaskAction,
+    setFieldAction,
+    assignAction,
+    transitionAction,
+    addLabelAction,
+    removeLabelAction,
+    addCommentAction,
+    notifyAction,
+    webhookAction,
+    createSubtaskAction,
   ])
   .superRefine((a, ctx) => {
-    const bad = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    const bad = (path: string, message: string) =>
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
     if (a.type === 'setField') {
       if (a.field === 'storyPoints') {
-        if (a.value !== null && (typeof a.value !== 'number' || a.value < 0 || a.value > 1000)) bad('value', 'Story points phải là số từ 0 đến 1000');
+        if (a.value !== null && (typeof a.value !== 'number' || a.value < 0 || a.value > 1000))
+          bad('value', 'Story points phải là số từ 0 đến 1000');
       } else if (a.field === 'dueDate') {
-        if (a.value !== null && (typeof a.value !== 'string' || Number.isNaN(Date.parse(a.value)))) bad('value', 'Hạn phải là ngày hợp lệ');
+        if (a.value !== null && (typeof a.value !== 'string' || Number.isNaN(Date.parse(a.value))))
+          bad('value', 'Hạn phải là ngày hợp lệ');
       } else if (a.value !== null && (typeof a.value !== 'string' || !a.value)) {
         bad('value', 'Giá trị phải là một mã (id) hoặc để trống');
       }
     } else if (a.type === 'assign') {
       if (a.mode === 'user' && !a.userId) bad('userId', 'Hãy chọn người được giao');
     } else if (a.type === 'notify') {
-      if ((a.userIds?.length ?? 0) + (a.roles?.length ?? 0) === 0) bad('userIds', 'Hãy chọn người hoặc vai trò nhận thông báo');
+      if ((a.userIds?.length ?? 0) + (a.roles?.length ?? 0) === 0)
+        bad('userIds', 'Hãy chọn người hoặc vai trò nhận thông báo');
     }
   });
 
@@ -108,7 +157,9 @@ export const updateRuleSchema = z
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined), 'Hãy sửa ít nhất một trường');
 
-export const testRuleSchema = z.object({ issueKey: z.string().trim().min(1, 'Hãy nhập mã công việc, ví dụ DEMO-TASK-1') });
+export const testRuleSchema = z.object({
+  issueKey: z.string().trim().min(1, 'Hãy nhập mã công việc, ví dụ DEMO-TASK-1'),
+});
 
 export const listRulesQuerySchema = z.object({ projectId: z.string().optional() });
 
