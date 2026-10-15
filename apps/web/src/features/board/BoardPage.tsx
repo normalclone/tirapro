@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Layers, Settings, UserRound } from 'lucide-react';
+import { Layers, Settings, UserRound, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { BoardColumnDto, BoardDto, IssueDto, SwimlaneBy } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
@@ -16,15 +16,21 @@ import {
 import { BoardSettingsDialog, SWIMLANE_LABEL } from './BoardSettingsDialog';
 import { BoardDnd } from './BoardDnd';
 import { Column } from './Column';
+import { resolveDropStatuses } from './dropTarget';
+import { StatusPickDialog } from './StatusPickDialog';
+import { useSwimlaneOverride } from './swimlane';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { useProjectSprints } from '@/features/backlog/api';
 import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
 import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
+import type { NextStatus } from '@/features/issues/nextStatuses';
+import { useWorkflows } from '@/features/workflow-settings/api';
 import { PresenceAvatars } from '@/features/presence/PresenceAvatars';
 import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
 import { applyQuickFilters, useQuickFilters } from '@/features/quick-filters/useQuickFilters';
@@ -164,6 +170,7 @@ export function BoardPage() {
   }, [hasFilter, projectStamp, refetchBoardIssues]);
   const transition = useTransitionIssue(project?.id ?? '');
   const updateIssue = useUpdateIssue(project?.id);
+  const { data: workflows } = useWorkflows();
   const canTransition = useAuth((s) => s.can('issue:transition'));
   const canAssign = useAuth((s) => s.can('issue:assign'));
   const canCreate = useAuth((s) => s.can('issue:create'));
@@ -180,7 +187,19 @@ export function BoardPage() {
     col: BoardColumnDto;
     issueKey: string;
   } | null>(null);
-  const swimlaneBy: SwimlaneBy = board?.swimlaneBy ?? 'none';
+  // Thả vào cột gom nhiều trạng thái mà workflow cho >1 đích → hỏi chọn (`version` chỉ có khi vừa đổi người).
+  const [pick, setPick] = useState<{
+    issue: IssueDto;
+    col: BoardColumnDto;
+    options: NextStatus[];
+    /** `null` = chưa đổi người → lấy bản mới nhất của việc khi người dùng chọn (tránh 409 nếu thẻ đổi qua realtime). */
+    version: number | null;
+  } | null>(null);
+  const {
+    swimlaneBy,
+    override: swimlaneOverride,
+    toggleAssignee,
+  } = useSwimlaneOverride(board?.id, board?.swimlaneBy ?? 'none');
   const activeSprintId = (sprintsQ.data ?? []).find((sp) => sp.state === 'ACTIVE')?.id ?? null;
 
   // Nhớ lọc người THEO DỰ ÁN (localStorage). Nạp khi đổi dự án.
@@ -268,15 +287,22 @@ export function BoardPage() {
   }
 
   /** Chuyển trạng thái kèm Hoàn tác; `force` chỉ gửi khi người dùng đã xác nhận "Vẫn chuyển". */
-  function runTransition(issue: IssueDto, col: BoardColumnDto, toStatusId: string, force = false) {
+  function runTransition(
+    issue: IssueDto,
+    col: BoardColumnDto,
+    toStatusId: string,
+    force = false,
+    statusName = col.name,
+    version = issue.version,
+  ) {
     if (!board) return;
     const fromStatusId = issue.status.id;
     const fromStatusName = issue.status.name;
     const vars: TransitionVars = {
       id: issue.id,
       toStatusId,
-      version: issue.version,
-      statusName: col.name,
+      version,
+      statusName,
       boardId: board.id,
       ...(force ? { force: true } : {}),
     };
@@ -286,7 +312,7 @@ export function BoardPage() {
           ? onWipBlocked(err, vars, col, issue.key)
           : toast.error(apiErrorMessage(err)),
       onSuccess: (updated) =>
-        toast.success(`Đã chuyển ${issue.key} sang “${col.name}”`, {
+        toast.success(`Đã chuyển ${issue.key} sang “${statusName}”`, {
           duration: 4000,
           action: {
             label: 'Hoàn tác',
@@ -331,10 +357,15 @@ export function BoardPage() {
     const colId = grouped ? overId.split('::')[1]! : overId;
     const col = board?.columns.find((c) => c.id === colId);
     // Cột chưa gắn trạng thái nào thì không có đích để chuyển tới.
-    const targetStatusId = col?.statusIds[0];
-    if (!col || !targetStatusId) return;
+    if (!col || col.statusIds.length === 0) return;
 
-    const statusChanged = canTransition && !col.statusIds.includes(issue.status.id);
+    // Cột có thể gom nhiều trạng thái: chọn đích hợp lệ theo workflow (1 → chuyển luôn, >1 → hỏi, 0 → báo).
+    const res = canTransition
+      ? resolveDropStatuses(col, issue.status.id, workflows)
+      : ({ kind: 'stay' } as const);
+    const only = res.kind === 'move' && res.options.length === 1 ? res.options[0]! : null;
+    const labelFor = (o: NextStatus) => (col.statusIds.length > 1 ? o.name : col.name);
+    const blockedMsg = `Quy trình không cho chuyển “${issue.status.name}” sang cột “${col.name}”. Hãy chọn một trạng thái trong danh sách gợi ý.`;
 
     // Thả sang làn khác chỉ có nghĩa "đổi người" khi bảng chia làn theo người; các kiểu chia khác chỉ đổi cột.
     const targetAssignee: string | null = laneKey === NO_LANE ? null : laneKey;
@@ -345,7 +376,9 @@ export function BoardPage() {
       targetAssignee !== (issue.assigneeId ?? null);
 
     if (!assigneeChanged) {
-      if (statusChanged) runTransition(issue, col, targetStatusId);
+      if (res.kind === 'blocked') toast.error(blockedMsg);
+      else if (only) runTransition(issue, col, only.id, false, labelFor(only));
+      else if (res.kind === 'move') setPick({ issue, col, options: res.options, version: null });
       return;
     }
 
@@ -364,12 +397,27 @@ export function BoardPage() {
       toast.error(apiErrorMessage(err));
       return;
     }
-    if (statusChanged && board) {
+    const who =
+      targetAssignee == null
+        ? 'bỏ người phụ trách'
+        : `giao cho ${assigneeOptions.find((o) => o.id === targetAssignee)?.name ?? 'người khác'}`;
+    if (res.kind === 'blocked') {
+      toast.success(`Đã cập nhật ${issue.key} · ${who}`, { duration: 3000 });
+      toast.error(blockedMsg);
+      return;
+    }
+    if (res.kind === 'move' && !only) {
+      // Đã đổi người; còn phải chọn trạng thái đích.
+      toast.success(`Đã cập nhật ${issue.key} · ${who}`, { duration: 3000 });
+      setPick({ issue, col, options: res.options, version });
+      return;
+    }
+    if (only && board) {
       const vars: TransitionVars = {
         id: issue.id,
-        toStatusId: targetStatusId,
+        toStatusId: only.id,
         version,
-        statusName: col.name,
+        statusName: labelFor(only),
         boardId: board.id,
       };
       try {
@@ -387,11 +435,7 @@ export function BoardPage() {
         return;
       }
     }
-    const who =
-      targetAssignee == null
-        ? 'bỏ người phụ trách'
-        : `giao cho ${assigneeOptions.find((o) => o.id === targetAssignee)?.name ?? 'người khác'}`;
-    const parts = [statusChanged ? `sang “${col.name}”` : '', `· ${who}`].filter(Boolean).join(' ');
+    const parts = [only ? `sang “${labelFor(only)}”` : '', `· ${who}`].filter(Boolean).join(' ');
     toast.success(`Đã cập nhật ${issue.key} ${parts}`.trim(), { duration: 3000 });
   }
 
@@ -449,14 +493,24 @@ export function BoardPage() {
         <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3">
           <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
           <AssigneeFilter options={assigneeOptions} value={assignee} onChange={changeAssignee} />
-          {swimlaneBy !== 'none' && (
+          <button
+            type="button"
+            onClick={toggleAssignee}
+            aria-pressed={swimlaneBy === 'assignee'}
+            title={`Chia bảng thành hàng theo người phụ trách — chỉ áp cho bạn${swimlaneOverride === null ? '' : ' (đang khác cấu hình bảng)'}. Kéo việc sang hàng khác để giao cho người đó.`}
+            className={cn(
+              'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+              swimlaneBy === 'assignee'
+                ? 'border-transparent bg-primary-subtle text-primary'
+                : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
+            )}
+          >
+            <Users className="h-3.5 w-3.5" aria-hidden /> Nhóm theo người
+          </button>
+          {swimlaneBy !== 'none' && swimlaneBy !== 'assignee' && (
             <span
               className="inline-flex h-7 items-center gap-1.5 rounded-full border border-transparent bg-primary-subtle px-2.5 text-xs font-medium text-primary"
-              title={
-                swimlaneBy === 'assignee'
-                  ? 'Bảng đang chia hàng theo người phụ trách. Kéo việc sang hàng khác để giao cho người đó.'
-                  : `Bảng đang chia hàng: ${SWIMLANE_LABEL[swimlaneBy].toLowerCase()}.`
-              }
+              title={`Bảng đang chia hàng: ${SWIMLANE_LABEL[swimlaneBy].toLowerCase()}.`}
             >
               <Layers className="h-3.5 w-3.5" /> {SWIMLANE_LABEL[swimlaneBy]}
             </span>
@@ -580,6 +634,21 @@ export function BoardPage() {
         onConfirm={confirmForce}
         onCancel={() => setWipPrompt(null)}
       />
+      {pick && (
+        <StatusPickDialog
+          open
+          issueKey={pick.issue.key}
+          colName={pick.col.name}
+          options={pick.options}
+          onPick={(id, name) => {
+            const p = pick;
+            setPick(null);
+            const latest = (issues ?? []).find((i) => i.id === p.issue.id) ?? p.issue;
+            runTransition(latest, p.col, id, false, name, p.version ?? latest.version);
+          }}
+          onCancel={() => setPick(null)}
+        />
+      )}
     </BoardDnd>
   );
 }
