@@ -52,6 +52,8 @@ const SUMMARY_MAX = 255;
 const STALE_JOB_MS = 3 * 60 * 1000;
 /** Chu kỳ phát heartbeat khi job đang chạy (phải nhỏ hơn nhiều so với STALE_JOB_MS). */
 const HEARTBEAT_MS = 30 * 1000;
+/** Giá trị `config.format` của ImportJob do service này tạo (create + configWith). */
+const JIRA_JOB_FORMAT = 'jira-csv';
 
 type Category = 'TODO' | 'IN_PROGRESS' | 'DONE';
 
@@ -133,7 +135,7 @@ export class JiraImportService implements OnApplicationBootstrap {
   }
 
   /**
-   * Đánh FAILED mọi ImportJob `RUNNING` mà heartbeat (`updatedAt`) cũ hơn `staleMs`. Job đang chạy
+   * Đánh FAILED mọi ImportJob Jira `RUNNING` mà heartbeat (`updatedAt`) cũ hơn `staleMs`. Job đang chạy
    * thật ở bất kỳ node nào đều phát heartbeat (mỗi lô + mỗi ~30s) nên không bị đụng tới; job của
    * chính process này (`this.running`) luôn được loại trừ. Không requeue: issue đã tạo dở nên chạy
    * lại sẽ trùng. Một `updateMany` idempotent ⇒ nhiều node cùng quét cũng an toàn.
@@ -142,6 +144,9 @@ export class JiraImportService implements OnApplicationBootstrap {
     const { count } = await this.prisma.importJob.updateMany({
       where: {
         status: 'RUNNING',
+        // Chỉ job Jira (có heartbeat). Job CSV/JSON của ImportService chạy đồng bộ trong request,
+        // không heartbeat và không nằm trong `running` ⇒ quét nhầm sẽ đánh FAILED job đang chạy thật.
+        config: { path: ['format'], equals: JIRA_JOB_FORMAT },
         updatedAt: { lt: new Date(Date.now() - staleMs) },
         id: { notIn: [...this.running.keys()] },
       },
@@ -332,7 +337,7 @@ export class JiraImportService implements OnApplicationBootstrap {
           startedAt: new Date(),
           totalItems: parsed.issues.length,
           config: {
-            format: 'jira-csv',
+            format: JIRA_JOB_FORMAT,
             analyzeId: input.analyzeId,
             projectId: input.projectId ?? null,
             newProject: input.newProject ?? null,
@@ -993,8 +998,11 @@ export class JiraImportService implements OnApplicationBootstrap {
         path.join(this.dir(), `${analyzeId}.json`),
         path.join(this.dir(), `${analyzeId}.claimed`),
       );
-    } catch {
-      throw new BusinessRuleException(ALREADY_RUN_MESSAGE);
+    } catch (err) {
+      // ENOENT = tệp `.json` không còn ⇒ request khác đã claim. Lỗi khác (EACCES, EIO…) là sự cố thật.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT')
+        throw new BusinessRuleException(ALREADY_RUN_MESSAGE);
+      throw err;
     }
   }
 
@@ -1042,7 +1050,7 @@ export class JiraImportService implements OnApplicationBootstrap {
     extra: Record<string, string>,
   ): Prisma.InputJsonValue {
     return {
-      format: 'jira-csv',
+      format: JIRA_JOB_FORMAT,
       analyzeId: input.analyzeId,
       mapping: input.mapping,
       options: input.options,

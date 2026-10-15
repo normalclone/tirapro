@@ -1,6 +1,6 @@
 import { parse as streamParse } from 'csv-parse';
 import { parse } from 'csv-parse/sync';
-import { Readable } from 'node:stream';
+import { pipeline, Readable } from 'node:stream';
 import type { JiraAnalyzeResult } from '@tirapro/types';
 
 /** Một comment Jira đã tách (`dd/MMM/yy h:mm a;accountId;nội dung`). */
@@ -329,7 +329,9 @@ export async function parseJiraCsvAsync(input: string | Buffer): Promise<JiraPar
     for (let i = 0; i < buf.length; i += STREAM_CHUNK_BYTES)
       yield buf.subarray(i, i + STREAM_CHUNK_BYTES);
   };
-  const parser = Readable.from(chunks(), { objectMode: false }).pipe(streamParse(CSV_OPTS));
+  // `pipeline` huỷ nguồn khi parser lỗi/bị huỷ (pipe() thì để nguồn treo); lỗi tới tay ta qua `for await`.
+  const parser = streamParse(CSV_OPTS);
+  pipeline(Readable.from(chunks(), { objectMode: false }), parser, () => undefined);
   let builder: JiraRowBuilder | null = null;
   let n = 0;
   try {

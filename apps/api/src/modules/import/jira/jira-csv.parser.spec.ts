@@ -163,7 +163,7 @@ describe('parseJiraCsvAsync', () => {
     expect(ticks).toBeGreaterThan(3); // ≥ vài lần nhường event loop
   });
 
-  it('tệp ~25MB: khoảng im lặng dài nhất của event loop nhỏ hơn nhiều so với tổng thời gian parse', async () => {
+  it('tệp ~25MB: khoảng chặn event loop dài nhất < một nửa thời gian chặn của bản đồng bộ', async () => {
     const header = 'Summary,Issue key,Description\n';
     const desc = 'x'.repeat(200);
     const rows: string[] = [];
@@ -174,6 +174,11 @@ describe('parseJiraCsvAsync', () => {
       size += Buffer.byteLength(line) + 1;
     }
     const buf = Buffer.from(header + rows.join('\n'));
+    // Baseline: bản đồng bộ chặn event loop trọn vẹn bằng chừng này (đo cùng máy, cùng lúc).
+    const syncStart = performance.now();
+    parseJiraCsv(buf);
+    const syncBlock = performance.now() - syncStart;
+
     let last = performance.now();
     let maxGap = 0;
     const t = setInterval(() => {
@@ -181,15 +186,23 @@ describe('parseJiraCsvAsync', () => {
       maxGap = Math.max(maxGap, now - last);
       last = now;
     }, 1);
-    const start = performance.now();
     const r = await parseJiraCsvAsync(buf);
-    const total = performance.now() - start;
     clearInterval(t);
     maxGap = Math.max(maxGap, performance.now() - last);
     expect(r.issues).toHaveLength(rows.length);
-    console.log(
-      `[25MB] ${rows.length} dòng, parse ${total.toFixed(0)}ms, khoảng chặn lớn nhất ${maxGap.toFixed(0)}ms`,
-    );
-    expect(maxGap).toBeLessThan(Math.max(250, total / 4));
+    expect(maxGap).toBeLessThan(syncBlock / 2);
   }, 60_000);
+
+  it('CSV hỏng giữa luồng (quote không đóng / quote lạc) → reject, không treo', async () => {
+    const rows = Array.from({ length: 5000 }, (_, i) => `Việc ${i},P-${i}`);
+    const head = 'Summary,Issue key\n';
+    await expect(
+      parseJiraCsvAsync(head + rows.join('\n') + '\n"không đóng,P-x\nvà tiếp\n'),
+    ).rejects.toThrow();
+    await expect(
+      parseJiraCsvAsync(
+        head + rows.slice(0, 2500).join('\n') + '\nViệc "lạc,P-y\n' + rows.join('\n'),
+      ),
+    ).rejects.toThrow();
+  });
 });
