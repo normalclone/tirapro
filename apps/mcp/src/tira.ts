@@ -5,7 +5,7 @@ export class Tira {
     private readonly key: string,
   ) {}
 
-  private async req(path: string, init?: RequestInit): Promise<any> {
+  private async req<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${this.base}${path}`, {
       ...init,
       headers: {
@@ -15,29 +15,34 @@ export class Tira {
       },
     });
     const raw = await res.text();
-    let json: any = null;
+    let json: unknown = null;
     try {
       json = raw ? JSON.parse(raw) : null;
     } catch {
       json = raw;
     }
     if (!res.ok) {
-      const msg = json?.error?.message ?? json?.message ?? `HTTP ${res.status}`;
+      const errBody =
+        typeof json === 'object' && json !== null
+          ? (json as { error?: { message?: string }; message?: string })
+          : null;
+      const msg = errBody?.error?.message ?? errBody?.message ?? `HTTP ${res.status}`;
       const err = new Error(msg) as Error & { status?: number };
       err.status = res.status;
       throw err;
     }
-    if (json && typeof json === 'object' && 'success' in json && 'data' in json) return json.data;
-    return json;
+    if (json && typeof json === 'object' && 'success' in json && 'data' in json)
+      return (json as { data: T }).data;
+    return json as T;
   }
 
-  get(path: string) {
-    return this.req(path);
+  get<T>(path: string) {
+    return this.req<T>(path);
   }
-  post(path: string, body: unknown) {
-    return this.req(path, { method: 'POST', body: JSON.stringify(body) });
+  post<T>(path: string, body: unknown) {
+    return this.req<T>(path, { method: 'POST', body: JSON.stringify(body) });
   }
-  patch(path: string, body: unknown) {
-    return this.req(path, { method: 'PATCH', body: JSON.stringify(body) });
+  patch<T>(path: string, body: unknown) {
+    return this.req<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
   }
 }

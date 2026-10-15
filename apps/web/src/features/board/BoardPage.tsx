@@ -210,7 +210,9 @@ export function BoardPage() {
     const pid = project?.id;
     if (!pid) return;
     try {
-      const p = JSON.parse(localStorage.getItem(`tirapro:boardPrefs:${pid}`) || '{}');
+      const p = JSON.parse(localStorage.getItem(`tirapro:boardPrefs:${pid}`) || '{}') as {
+        assignee?: unknown;
+      };
       setAssignee(typeof p.assignee === 'string' ? p.assignee : '');
     } catch {
       setAssignee('');

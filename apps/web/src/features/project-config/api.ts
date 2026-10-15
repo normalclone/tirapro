@@ -129,7 +129,7 @@ export function useUpdateComponent(projectId: string) {
 export function useDeleteComponent(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/components/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/components/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
@@ -174,7 +174,7 @@ export function useUpdateVersion(projectId: string) {
 export function useDeleteVersion(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/versions/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/versions/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
@@ -219,7 +219,7 @@ export function useUpdateLabel(projectId: string) {
 export function useDeleteLabel(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/labels/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/labels/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },

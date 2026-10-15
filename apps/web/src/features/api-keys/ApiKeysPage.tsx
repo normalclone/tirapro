@@ -32,8 +32,7 @@ import { LOCALE } from '@/lib/locale';
 // Chỉ fallback localhost khi chạy dev; production để trống nếu thiếu env (không lộ URL localhost sai).
 const DEV_FALLBACK = import.meta.env.DEV;
 const REST_URL =
-  (import.meta.env.VITE_API_URL as string | undefined) ??
-  (DEV_FALLBACK ? 'http://localhost:4000/api/v1' : '');
+  import.meta.env.VITE_API_URL ?? (DEV_FALLBACK ? 'http://localhost:4000/api/v1' : '');
 const MCP_URL =
   (import.meta.env.VITE_MCP_URL as string | undefined) ??
   (DEV_FALLBACK ? 'http://localhost:4100/mcp' : '');
