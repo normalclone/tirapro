@@ -170,7 +170,7 @@ issues/
 | **BoardsModule** | Cấu hình Kanban/Scrum board (columns ↔ statuses, swimlanes, WIP limit), thứ tự thẻ | Issues, Sprints, Workflows | `board.column_updated` |
 | **SprintsModule** | Tạo/start/complete sprint, gán issue, capacity | Issues, Reports | `sprint.started/completed` |
 | **BacklogModule** | Sắp xếp backlog (rank/LexoRank), kéo issue vào sprint | Issues, Sprints | — |
-| **CommentsModule** | Comment + reply, **@mentions**, edit/delete (soft) | Notifications, Activity, AI (summary), Realtime | `comment.created`, `mention.created` |
+| **CommentsModule** | Comment + reply, **@mentions**, edit/delete (soft) | Notifications, Activity, AI (summary), Realtime | `comment.added`, `comment.updated`, `comment.deleted`, `mention.created` |
 | **AttachmentsModule** | Upload/download/xóa file đính kèm issue/comment (Multer + Storage) | StorageService | `attachment.added` |
 | **SearchModule** | Parser **JQL-like** → Prisma where; semantic search (gọi AI) | Issues, AI | — |
 | **ReportsModule** | Burndown, velocity, cumulative flow diagram (CFD) | Sprints, Issues, Activity | — |
@@ -793,7 +793,7 @@ export class RealtimeGateway implements OnGatewayConnection {
 - **Rooms**: `project:{id}`, `issue:{id}`, `board:{id}`, `user:{id}` (noti cá nhân). Client join khi mở view tương ứng.
 - **Scale-out**: `@socket.io/redis-adapter` (Redis pub/sub) cho multi-instance.
 - **Event bridge**: `RealtimeListener` `@OnEvent('issue.updated')` → `server.to(room('issue', id)).emit('issue:updated', payload)`. Decouple gateway khỏi business module.
-- **Contract events** (`@tirapro/contracts`): `issue:created|updated|moved|deleted`, `comment:created`, `board:column_changed`, `presence:update`, `notification:new`, `sprint:started|completed`.
+- **Contract events** (`@tirapro/contracts`): `issue:created|updated|moved|deleted`, `comment:added|updated|deleted` (room `project:{id}`), `board:column_changed`, `presence:update`, `notification:new`, `sprint:started|completed`.
 
 ### 17.3. Optimistic UI (giao tiếp FE)
 - Mutation REST thành công → backend emit event kèm `version` + `actorId`. FE bỏ qua echo của chính mình (so `actorId`/`requestId`) để tránh giật.
