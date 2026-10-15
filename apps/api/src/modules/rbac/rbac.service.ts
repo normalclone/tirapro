@@ -12,6 +12,12 @@ const viaProject = (value: string, workspaceId: string) => ({
   id: value,
   project: { workspaceId },
 });
+// Issue của dự án đã xoá mềm = không tồn tại (mọi route theo issue id → guard trả 404).
+const issueInLiveProject = (value: string, workspaceId: string) => ({
+  id: value,
+  workspaceId,
+  project: { deletedAt: null },
+});
 const inWorkspace = (value: string, workspaceId: string) => ({ id: value, workspaceId });
 const ownProjectId = (row: { projectId: string | null }) => row.projectId;
 
@@ -28,7 +34,12 @@ const RESOURCE_RESOLVERS: Record<
     project: (row: never, workspaceId: string) => string | null;
   }
 > = {
-  issue: { model: 'issue', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  issue: {
+    model: 'issue',
+    where: issueInLiveProject,
+    select: projectIdOnly,
+    project: ownProjectId,
+  },
   sprint: { model: 'sprint', where: viaProject, select: projectIdOnly, project: ownProjectId },
   board: { model: 'board', where: viaProject, select: projectIdOnly, project: ownProjectId },
   label: { model: 'label', where: viaProject, select: projectIdOnly, project: ownProjectId },

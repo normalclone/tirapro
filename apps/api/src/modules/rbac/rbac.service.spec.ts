@@ -91,9 +91,15 @@ describe('RbacService.resolveProjectId', () => {
     prisma.issue.findFirst.mockResolvedValue({ projectId: 'P1' });
     await expect(svc.resolveProjectId('W1', 'issue', 'I1')).resolves.toEqual({ projectId: 'P1' });
     expect(prisma.issue.findFirst).toHaveBeenCalledWith({
-      where: { id: 'I1', workspaceId: 'W1' },
+      where: { id: 'I1', workspaceId: 'W1', project: { deletedAt: null } },
       select: { projectId: true },
     });
+  });
+
+  it('issue của dự án đã xoá mềm => findFirst không khớp => resolveProjectId trả null (guard 404)', async () => {
+    const { svc, prisma } = setup();
+    prisma.issue.findFirst.mockResolvedValue(null);
+    await expect(svc.resolveProjectId('W1', 'issue', 'I-cua-du-an-da-xoa')).resolves.toBeNull();
   });
 
   it.each(['sprint', 'board', 'label', 'component'] as const)(

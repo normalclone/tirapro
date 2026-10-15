@@ -1240,3 +1240,42 @@ describe('IssuesService — assignee không đổi / tài khoản vô hiệu ho�
     expect(diff.issue.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('IssuesService — dự án đã xoá mềm', () => {
+  const projectFilter = { project: { deletedAt: null } };
+
+  it('getByKey: lọc project.deletedAt:null; không thấy => 404', async () => {
+    const findFirst = vi.fn(() => Promise.resolve(null));
+    const { service } = makeService({ issue: { findFirst } });
+    await expect(service.getByKey('w1', 'P-TASK-1')).rejects.toMatchObject({ status: 404 });
+    expect((findFirst.mock.calls[0] as unknown as [{ where: unknown }])[0].where).toMatchObject({
+      workspaceId: 'w1',
+      key: 'P-TASK-1',
+      deletedAt: null,
+      ...projectFilter,
+    });
+  });
+
+  it('list (không projectId): lọc project.deletedAt:null', async () => {
+    const findMany = vi.fn(() => Promise.resolve([]));
+    const { service } = makeService({ issue: { findMany } });
+    await service.list('w1', {}, undefined, 50);
+    expect((findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where).toMatchObject({
+      workspaceId: 'w1',
+      deletedAt: null,
+      ...projectFilter,
+    });
+  });
+
+  it('query (JQL/search) và query theo rawIds (full-text) đều ghép project.deletedAt:null vào scope', async () => {
+    const findMany = vi.fn(() => Promise.resolve([]));
+    const { service } = makeService({ issue: { findMany } });
+    await service.query('w1', {}, [], undefined, 10);
+    await service.query('w1', {}, [], undefined, 10, ['a']);
+    await service.query('w1', {}, [{ updatedAt: 'desc' }], undefined, 10, ['a']);
+    expect(findMany).toHaveBeenCalledTimes(3);
+    for (const call of findMany.mock.calls as unknown as Array<[{ where: unknown }]>) {
+      expect(JSON.stringify(call[0].where)).toContain('"project":{"deletedAt":null}');
+    }
+  });
+});
