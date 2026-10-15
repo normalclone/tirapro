@@ -3,6 +3,7 @@ import {
   Suspense,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentProps,
   type ComponentType,
@@ -213,6 +214,8 @@ export function IssueDetailPage() {
 
   // Phím `m` viết bình luận: cùng cách đăng ký với `w` (khu bình luận dựng lười nên bắt phím ở cấp trang).
   const canComment = can('comment:create');
+  const canCommentRef = useRef(canComment);
+  canCommentRef.current = canComment;
   useEffect(() => {
     if (!canComment || !hasIssue) return;
     function onKey(e: KeyboardEvent) {
@@ -373,10 +376,14 @@ export function IssueDetailPage() {
       const attempt = () => {
         const box = document.getElementById(COMMENT_INPUT_ID) as HTMLTextAreaElement | null;
         if (box) {
+          // Ô viết nằm CUỐI danh sách bình luận: cuộn tới giữa màn hình rồi mới focus (không để focus tự cuộn).
+          box.scrollIntoView({ behavior: 'smooth', block: 'center' });
           box.focus({ preventScroll: true });
           box.setSelectionRange(box.value.length, box.value.length); // gõ tiếp ở cuối bản nháp
           return;
         }
+        // Không có quyền thì không có ô — khỏi chờ đủ 2s (đợi chút phòng quyền chưa nạp xong).
+        if (tries >= 6 && !canCommentRef.current) return;
         if (++tries < 25) timer = window.setTimeout(attempt, 80);
       };
       attempt();
