@@ -37,3 +37,37 @@ export function resolveRulesScope(input: {
   const first = projects[0];
   return first ? { scope: first.id, canManage: false } : { scope: undefined, canManage: false };
 }
+
+/** Số dự án kiểm quyền `/permissions/me` mỗi đợt (tránh bắn một request cho MỌI dự án). */
+export const RULES_CHECK_BATCH = 5;
+
+/**
+ * Dự án cần tra quyền lúc này: quản trị workspace → không cần (có quyền ở mọi dự án); còn lại → `limit` dự án đầu của
+ * danh sách + dự án người dùng đã chọn. Tăng `limit` từng đợt (`shouldCheckMore`) cho tới khi gặp dự án có quyền.
+ */
+export function projectIdsToCheck(input: {
+  projects: { id: string }[] | undefined;
+  choice: string | null;
+  canWorkspace: boolean;
+  limit: number;
+}): string[] {
+  if (input.canWorkspace || !input.projects) return [];
+  const ids = input.projects.slice(0, input.limit).map((p) => p.id);
+  if (input.choice && input.choice !== ALL_RULES && !ids.includes(input.choice))
+    ids.push(input.choice);
+  return ids;
+}
+
+/** Đợt hiện tại đã tra xong hết mà chưa có dự án nào có quyền, còn dự án chưa tra → tra tiếp đợt sau. */
+export function shouldCheckMore(input: {
+  projects: { id: string }[] | undefined;
+  choice: string | null;
+  canWorkspace: boolean;
+  limit: number;
+  projectCan: ScopeCan;
+}): boolean {
+  const { projects, choice, canWorkspace, limit, projectCan } = input;
+  if (canWorkspace || choice || !projects || limit >= projects.length) return false;
+  const checked = projects.slice(0, limit);
+  return checked.every((p) => projectCan(p.id) === false);
+}

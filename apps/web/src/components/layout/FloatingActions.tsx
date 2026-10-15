@@ -84,8 +84,8 @@ export function FloatingActions() {
   const hasProject = !!project?.id;
   const onIssue = !!issueId;
   const watching = watchState?.watching ?? false;
-  // Tạo công việc = mở TRANG tạo (không còn popup). Dùng dự án hiện tại, fallback dự án đầu tiên.
-  // Dự án đang xem đã lưu trữ (không nằm trong danh sách hoạt động) → dự án hoạt động đầu tiên hoặc chặn.
+  // Tạo công việc = mở form tạo việc (popup toàn cục) vào dự án hiện tại. Dự án đang xem đã lưu trữ (không nằm trong danh
+  // sách hoạt động) → dự án hoạt động dùng gần nhất; không có thì mở form với ô Dự án trống để tự chọn; không còn dự án hoạt động nào → chặn.
   const { target: createTarget, access: createAccess, canCreate } = useCreateTarget();
 
   // Đóng có chuyển động: chạy animate-out rồi mới unmount. Fallback tức thời khi

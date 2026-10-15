@@ -84,7 +84,7 @@ function Stat({
         {value}
         {note && (
           <span
-            className="ml-1 text-[11px] font-normal text-faint"
+            className="ml-1 text-xs font-normal text-muted"
             title="Chưa đặt ước lượng còn lại — tính bằng ước lượng gốc trừ thời gian đã ghi."
           >
             {note}

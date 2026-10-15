@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -21,7 +21,12 @@ import { useProjectsCan } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { RuleEditor } from './RuleEditor';
 import { RuleRunLog } from './RuleRunLog';
-import { resolveRulesScope } from './rulesScope';
+import {
+  RULES_CHECK_BATCH,
+  projectIdsToCheck,
+  resolveRulesScope,
+  shouldCheckMore,
+} from './rulesScope';
 import {
   ALL_RULES,
   summarizeRule,
@@ -49,12 +54,29 @@ export function RulesPage() {
   const can = useAuth((s) => s.can);
   const canManageWorkspace = can('automation:manage');
   const { data: projects } = useProjects();
+  // Quản trị cấp workspace thấy tất cả (không tra quyền từng dự án); người chỉ quản trị một dự án bắt đầu từ dự án đầu tiên
+  // CÓ quyền — tra quyền theo từng đợt nhỏ thay vì bắn request cho mọi dự án.
+  const [scopeChoice, setScopeChoice] = useState<string | null>(null);
+  const [checkLimit, setCheckLimit] = useState(RULES_CHECK_BATCH);
   const projectCan = useProjectsCan(
-    (projects ?? []).map((p) => p.id),
+    projectIdsToCheck({
+      projects,
+      choice: scopeChoice,
+      canWorkspace: canManageWorkspace,
+      limit: checkLimit,
+    }),
     'automation:manage',
   );
-  // Quản trị cấp workspace thấy tất cả; người chỉ quản trị một dự án bắt đầu từ dự án đầu tiên CÓ quyền.
-  const [scopeChoice, setScopeChoice] = useState<string | null>(null);
+  const needMore = shouldCheckMore({
+    projects,
+    choice: scopeChoice,
+    canWorkspace: canManageWorkspace,
+    limit: checkLimit,
+    projectCan,
+  });
+  useEffect(() => {
+    if (needMore) setCheckLimit((l) => l + RULES_CHECK_BATCH);
+  }, [needMore]);
   const { scope, canManage } = resolveRulesScope({
     choice: scopeChoice,
     canWorkspace: canManageWorkspace,
@@ -75,7 +97,12 @@ export function RulesPage() {
   const projectName = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
   const scopeOptions = [
     ...(canManageWorkspace ? [{ value: ALL_RULES, label: 'Tất cả quy tắc' }] : []),
-    ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
+    ...(projects ?? []).map((p) =>
+      // Đã biết không có quyền → vô hiệu + nói rõ (chưa tra thì để chọn được, trang sẽ giải thích nếu thiếu quyền).
+      projectCan(p.id) === false
+        ? { value: p.id, label: p.name, hint: 'không có quyền', disabled: true }
+        : { value: p.id, label: p.name, hint: p.key },
+    ),
   ];
 
   function open(rule: AutomationRule | null) {
@@ -115,11 +142,19 @@ export function RulesPage() {
       <div>
         {noAccess ? (
           <div className="p-5">
-            <EmptyState
-              icon={<Lock className="h-6 w-6" />}
-              title="Bạn không có quyền quản lý quy tắc ở dự án này"
-              description="Quy tắc tự động chỉ dành cho người có quyền quản lý tự động hoá. Hãy chọn dự án khác ở ô phạm vi, hoặc nhờ quản trị dự án cấp quyền cho bạn."
-            />
+            {scope ? (
+              <EmptyState
+                icon={<Lock className="h-6 w-6" />}
+                title="Bạn không có quyền quản lý quy tắc ở dự án này"
+                description="Quy tắc tự động chỉ dành cho người có quyền quản lý tự động hoá. Hãy chọn dự án khác ở ô phạm vi, hoặc nhờ quản trị dự án cấp quyền cho bạn."
+              />
+            ) : (
+              <EmptyState
+                icon={<Lock className="h-6 w-6" />}
+                title="Bạn chưa thuộc dự án nào"
+                description="Quy tắc tự động gắn với dự án. Khi được thêm vào một dự án (hoặc tạo dự án mới), bạn sẽ quản lý quy tắc của dự án đó ở đây."
+              />
+            )}
           </div>
         ) : canManage === undefined || isLoading ? (
           <div className="space-y-2.5 p-5">

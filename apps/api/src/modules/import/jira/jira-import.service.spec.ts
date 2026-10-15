@@ -297,14 +297,32 @@ describe('JiraImportService.run — kiểm tra mapping', () => {
       }),
     );
     expect(res).toMatchObject({ dryRun: true, total: 20, epics: 2, subtasks: 6, sprints: 3 });
-    // P5: dry-run báo trước người phụ trách sẽ bị bỏ gán.
-    expect((res as { warnings: string[] }).warnings.join('\n')).toContain('Lê Minh Cường (4 việc)');
+    // P5: fullMapping để Lê Minh Cường "Để trống" có chủ đích → không cảnh báo.
+    expect((res as { warnings: string[] }).warnings.join('\n')).not.toContain('Lê Minh Cường');
     expect(prisma.importJob.create).not.toHaveBeenCalled();
     expect(projects.create).not.toHaveBeenCalled();
     expect(prisma.sprint.create).not.toHaveBeenCalled();
     expect(prisma.priority.create).not.toHaveBeenCalled();
     expect(prisma.status.create).not.toHaveBeenCalled();
     expect(importService.createIssuesInChunks).not.toHaveBeenCalled();
+  });
+});
+
+describe('JiraImportService.run — dry-run báo người phụ trách không khớp', () => {
+  it('key vắng trong mapping.users → dòng cảnh báo gộp trong warnings', async () => {
+    const { service } = setup();
+    const { analyzeId } = await service.analyze('w1', 'u1', file());
+    const users: Record<string, string | null> = { ...fullMapping().users };
+    delete users['Lê Minh Cường'];
+    const res = await service.run(
+      'w1',
+      'u1',
+      runInput(analyzeId, {
+        mapping: { ...fullMapping(), users },
+        options: { importComments: true, importSprints: true, keepJiraKey: false, dryRun: true },
+      }),
+    );
+    expect((res as { warnings: string[] }).warnings.join('\n')).toContain('Lê Minh Cường (4 việc)');
   });
 });
 
@@ -403,30 +421,54 @@ describe('JiraImportService.run — chạy thật', () => {
       subtasks: 6,
       sprints: 3,
     });
-    // Duy nhất cảnh báo gộp "người phụ trách không khớp" (4 việc của Lê Minh Cường, được để trống ở mapping).
-    expect(done.errorLog).toMatch(/^\[Cảnh báo\]: 4 việc/);
+    // Lê Minh Cường được chủ động chọn "Để trống" ở mapping → không cảnh báo, errorLog rỗng.
+    expect(done.errorLog).toBeNull();
   });
 
-  it('P5: người phụ trách không khớp thành viên → đếm skippedAssignees + một cảnh báo gộp trong báo cáo (không còn "Cảnh báo 0" im lặng)', async () => {
-    await runAndWait();
+  // Mapping người dùng mà Lê Minh Cường KHÔNG có khoá = không khớp thành viên nào (4 việc).
+  const unmatchedMapping = (): JiraImportRunInput['mapping'] => {
+    const users: Record<string, string | null> = { ...fullMapping().users };
+    delete users['Lê Minh Cường'];
+    return { ...fullMapping(), users };
+  };
+
+  it('P5: key vắng trong mapping.users = không khớp → đếm skippedAssignees + một cảnh báo gộp (không còn "Cảnh báo 0" im lặng)', async () => {
+    await runAndWait({ mapping: unmatchedMapping() });
     const done = lastUpdate();
     expect(done.result).toMatchObject({
       warnings: 1,
       skippedAssignees: 4,
       unmatchedAssignees: [{ name: 'Lê Minh Cường', count: 4 }],
       unmatchedAssigneesMore: 0,
+      blankedAssignees: 0,
     });
     expect(done.errorLog).toContain('Lê Minh Cường (4 việc)');
     expect(done.errorLog).toContain('KHÔNG có người phụ trách');
   });
 
-  it('P5: chỉ đếm việc ĐÃ tạo được — dòng lỗi không tính vào skippedAssignees', async () => {
+  it('P5: key null (chủ động "Để trống") → số trung tính blankedAssignees, KHÔNG tăng warnings/skippedAssignees, không vào errorLog', async () => {
+    await runAndWait(); // fullMapping: Lê Minh Cường = null
+    const done = lastUpdate();
+    expect(done.result).toMatchObject({
+      warnings: 0,
+      skippedAssignees: 0,
+      unmatchedAssignees: [],
+      blankedAssignees: 4,
+    });
+    expect(done.errorLog).toBeNull();
+  });
+
+  it('P5: chỉ đếm việc ĐÃ tạo được — dòng lỗi không tính vào skippedAssignees; dòng gộp nằm ĐẦU errorLog', async () => {
     const c = setup({ failSummaries: ['Cấu hình CI/CD'] }); // một việc của Lê Minh Cường bị lỗi
-    await runAndWait({}, c);
-    expect(lastUpdate(c).result).toMatchObject({
+    await runAndWait({ mapping: unmatchedMapping() }, c);
+    const done = lastUpdate(c);
+    expect(done.result).toMatchObject({
       skippedAssignees: 3,
       unmatchedAssignees: [{ name: 'Lê Minh Cường', count: 3 }],
     });
+    const lines = (done.errorLog as string).split('\n');
+    expect(lines[0]).toMatch(/^\[Cảnh báo\]: 3 việc/);
+    expect(lines.some((l) => l.includes('lỗi DB giả lập'))).toBe(true);
   });
 
   it('P5: mọi người phụ trách đều khớp → skippedAssignees 0, không cảnh báo, errorLog rỗng', async () => {

@@ -169,11 +169,6 @@ export function CreateIssueModal() {
     prevTypeRef.current = '';
     if (draft.summary || draft.description)
       toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
-    // Ô Dự án trống: đưa focus vào đó (sau khi Dialog tự focus ô đầu tiên).
-    if (preset.pickProject) {
-      const t = setTimeout(() => document.getElementById('ci-project')?.focus(), 60);
-      return () => clearTimeout(t);
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -328,6 +323,15 @@ export function CreateIssueModal() {
       onOpenChange={(o) => {
         if (!o) close();
       }}
+      // Ô Dự án trống (dự án hiện tại đã lưu trữ): focus thẳng vào ô đó thay vì ô tiêu đề.
+      onOpenAutoFocus={
+        preset.pickProject
+          ? (e) => {
+              e.preventDefault();
+              document.getElementById('ci-project')?.focus();
+            }
+          : undefined
+      }
       title={title}
       size="xl"
       onSubmit={() => void submitCreate()}
@@ -374,14 +378,18 @@ export function CreateIssueModal() {
               value={selKey}
               onChange={(v) => {
                 // Đổi dự án → nạp bản nháp của DỰ ÁN MỚI (không mang chữ dự án cũ sang, không đè nháp dự án mới).
-                const d = loadDraft(v);
+                // Riêng khi CHƯA có dự án (chọn lần đầu): giữ chữ đã gõ, chỉ nạp nháp nếu chưa gõ gì — không ghi đè.
+                const typed = !selKey && (summary.trim() !== '' || description.trim() !== '');
+                if (!typed) {
+                  const d = loadDraft(v);
+                  setSummary(d.summary ?? '');
+                  setDescription(d.description ?? '');
+                } else clearDraft(selKey); // nháp "chưa có dự án" đã chuyển sang dự án vừa chọn
                 setSelKey(v);
                 setTypeId('');
                 setPriorityId('');
                 setSprintId('');
                 setAssigneeId('');
-                setSummary(d.summary ?? '');
-                setDescription(d.description ?? '');
               }}
               placeholder="Chọn dự án…"
               searchPlaceholder="Tìm dự án…"

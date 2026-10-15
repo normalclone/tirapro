@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveRulesScope, type ScopeCan } from './rulesScope';
+import { projectIdsToCheck, resolveRulesScope, shouldCheckMore, type ScopeCan } from './rulesScope';
 
 const projects = [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }];
 const can =
@@ -61,5 +61,51 @@ describe('resolveRulesScope', () => {
     expect(
       resolveRulesScope({ ...base, canWorkspace: true, choice: 'p2', projectCan: can({}) }),
     ).toEqual({ scope: 'p2', canManage: true });
+  });
+});
+
+describe('projectIdsToCheck / shouldCheckMore — không bắn quyền cho mọi dự án', () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({ id: `p${i}` }));
+  it('quản trị workspace → không tra quyền dự án nào', () => {
+    expect(
+      projectIdsToCheck({ projects: many, choice: null, canWorkspace: true, limit: 5 }),
+    ).toEqual([]);
+  });
+  it('người thường → chỉ `limit` dự án đầu; thêm dự án đã chọn nếu nằm ngoài đợt', () => {
+    expect(
+      projectIdsToCheck({ projects: many, choice: null, canWorkspace: false, limit: 5 }),
+    ).toEqual(['p0', 'p1', 'p2', 'p3', 'p4']);
+    expect(
+      projectIdsToCheck({ projects: many, choice: 'p9', canWorkspace: false, limit: 2 }),
+    ).toEqual(['p0', 'p1', 'p9']);
+    expect(
+      projectIdsToCheck({ projects: many, choice: 'all', canWorkspace: false, limit: 2 }),
+    ).toEqual(['p0', 'p1']);
+    expect(
+      projectIdsToCheck({ projects: undefined, choice: null, canWorkspace: false, limit: 5 }),
+    ).toEqual([]);
+  });
+  const more = (m: Record<string, boolean | undefined>, limit = 5, choice: string | null = null) =>
+    shouldCheckMore({ projects: many, choice, canWorkspace: false, limit, projectCan: can(m) });
+  const allFalse = Object.fromEntries(many.map((p) => [p.id, false]));
+  it('đợt đã tra xong hết, không có quyền, còn dự án chưa tra → tra tiếp', () => {
+    expect(more(allFalse)).toBe(true);
+  });
+  it('còn dự án đang tải quyền, hoặc đã thấy dự án có quyền → chưa/không tra thêm', () => {
+    expect(more({ ...allFalse, p2: undefined })).toBe(false);
+    expect(more({ ...allFalse, p2: true })).toBe(false);
+  });
+  it('đã tra hết danh sách, đã chọn tay, hoặc quản trị workspace → dừng', () => {
+    expect(more(allFalse, 12)).toBe(false);
+    expect(more(allFalse, 5, 'p1')).toBe(false);
+    expect(
+      shouldCheckMore({
+        projects: many,
+        choice: null,
+        canWorkspace: true,
+        limit: 5,
+        projectCan: can(allFalse),
+      }),
+    ).toBe(false);
   });
 });

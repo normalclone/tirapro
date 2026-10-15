@@ -71,6 +71,8 @@ export interface JiraImportSummary extends Pick<ImportResult, 'skippedAssignees'
   unmatchedAssignees?: Array<{ name: string; count: number }>;
   /** Số tên khác không được liệt kê (vượt giới hạn). */
   unmatchedAssigneesMore?: number;
+  /** Số việc để trống người phụ trách theo lựa chọn "Để trống" của người dùng (trung tính, không cảnh báo). */
+  blankedAssignees?: number;
   projectKey?: string;
   created?: number;
   failed?: number;

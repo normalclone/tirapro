@@ -85,6 +85,23 @@ describe('resolveCreateTarget', () => {
   });
 });
 
+describe('resolveCreateTarget — recentKeys tính lười', () => {
+  const active = [{ key: 'DEMO' }, { key: 'QAI' }];
+  it('truyền hàm: KHÔNG gọi khi dự án hiện tại đang hoạt động / danh sách chưa tải / không còn dự án nào', () => {
+    const recent = vi.fn(() => ['QAI']);
+    resolveCreateTarget('DEMO', active, recent);
+    resolveCreateTarget('OLD', undefined, recent);
+    resolveCreateTarget(null, active, recent);
+    resolveCreateTarget('OLD', [], recent);
+    expect(recent).not.toHaveBeenCalled();
+  });
+  it('truyền hàm: gọi đúng một lần khi dự án hiện tại đã lưu trữ và dùng kết quả', () => {
+    const recent = vi.fn(() => ['QAI']);
+    expect(resolveCreateTarget('OLD', active, recent).projectKey).toBe('QAI');
+    expect(recent).toHaveBeenCalledOnce();
+  });
+});
+
 describe('createPresetFromTarget', () => {
   it('pickProject => preset không có projectKey', () => {
     expect(createPresetFromTarget({ pickProject: true })).toEqual({ pickProject: true });
@@ -111,6 +128,15 @@ describe('readRecentProjectKeys', () => {
     store.set(LAST_VIEW_KEY, JSON.stringify({ key: 'OLD', view: 'board' }));
     store.set(CREATE_LAST_KEY, JSON.stringify({ projectKey: 'AAA' }));
     expect(readRecentProjectKeys()).toEqual(['AAA', 'OLD']);
+  });
+  it('storage bị chặn (getItem ném lỗi) → trả mảng rỗng, không ném', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new DOMException('blocked', 'SecurityError');
+      },
+    });
+    expect(() => readRecentProjectKeys()).not.toThrow();
+    expect(readRecentProjectKeys()).toEqual([]);
   });
   it('JSON hỏng không ném lỗi', () => {
     store.set(LAST_VIEW_KEY, '{hỏng');

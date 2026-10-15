@@ -5,6 +5,8 @@ import {
   formatMissing,
   formatUnmatchedAssignees,
   MAX_UNMATCHED_LISTED,
+  MAX_UNMATCHED_NAME_LENGTH,
+  newAssigneeTally,
   inferPriorityRank,
   inferStatusCategory,
   isEpicTypeName,
@@ -12,6 +14,7 @@ import {
   layerIssues,
   resolveLinks,
   summarizeUnmatchedAssignees,
+  tallyAssignee,
 } from './jira-mapping';
 
 const csv = (rows: string[]) =>
@@ -125,5 +128,36 @@ describe('summarizeUnmatchedAssignees / formatUnmatchedAssignees', () => {
   it('câu cảnh báo nêu tên/email và số việc', () => {
     const u = summarizeUnmatchedAssignees(new Map([['cuong@x.com', 2]]))!;
     expect(formatUnmatchedAssignees(u)).toContain('cuong@x.com (2 việc)');
+  });
+});
+
+describe('tallyAssignee — không khớp ≠ chủ động để trống', () => {
+  const users = { An: 'u-an', Bình: null, Chi: '' };
+  it('key vắng → không khớp; null/rỗng → để trống có chủ đích; có id → không đếm', () => {
+    const t = newAssigneeTally();
+    for (const a of ['An', 'Bình', 'Chi', 'Dũng', 'Dũng', '']) tallyAssignee(t, a, users);
+    expect([...t.unmatched]).toEqual([['Dũng', 2]]);
+    expect(t.blank).toBe(2);
+  });
+  it('tên Jira trùng thuộc tính prototype (constructor) vẫn là "không khớp"', () => {
+    const t = newAssigneeTally();
+    tallyAssignee(t, 'constructor', users);
+    expect(t.unmatched.get('constructor')).toBe(1);
+  });
+});
+
+describe('summarizeUnmatchedAssignees — cắt tên dài', () => {
+  it(`mỗi tên/email cắt ≤ ${MAX_UNMATCHED_NAME_LENGTH} ký tự (thêm …), tên ngắn giữ nguyên`, () => {
+    const long = 'x'.repeat(500);
+    const u = summarizeUnmatchedAssignees(
+      new Map([
+        [long, 2],
+        ['An', 1],
+      ]),
+    )!;
+    expect(u.listed[0]!.name).toHaveLength(MAX_UNMATCHED_NAME_LENGTH);
+    expect(u.listed[0]!.name.endsWith('…')).toBe(true);
+    expect(u.listed[1]!.name).toBe('An');
+    expect(formatUnmatchedAssignees(u).length).toBeLessThan(400);
   });
 });

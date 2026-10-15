@@ -32,7 +32,7 @@ export function useCreateTarget(): {
   const target = resolveCreateTarget(
     issueProjectKey ?? currentProjectKey(active),
     active,
-    readRecentProjectKeys(),
+    readRecentProjectKeys,
   );
   const targetProject = target.projectKey
     ? active?.find((p) => p.key.toLowerCase() === target.projectKey!.toLowerCase())

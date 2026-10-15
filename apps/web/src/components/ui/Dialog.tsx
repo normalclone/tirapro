@@ -36,6 +36,8 @@ export interface DialogProps {
   headerExtra?: ReactNode;
   /** `right` = ngăn kéo cạnh phải, dùng cho panel phụ (PlanningPanel). */
   placement?: 'center' | 'right';
+  /** Tuỳ biến focus khi mở (gọi `e.preventDefault()` rồi tự focus phần tử mong muốn). */
+  onOpenAutoFocus?: (e: Event) => void;
 }
 
 const CENTER_CLASS = [
@@ -73,6 +75,7 @@ export function Dialog({
   iconTone = 'primary',
   headerExtra,
   placement = 'center',
+  onOpenAutoFocus,
 }: DialogProps) {
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!onSubmit) return;
@@ -91,6 +94,7 @@ export function Dialog({
           // Không có mô tả thì báo rõ cho Radix (tránh cảnh báo thiếu aria-describedby).
           {...(description ? {} : { 'aria-describedby': undefined })}
           onKeyDown={onKeyDown}
+          onOpenAutoFocus={onOpenAutoFocus}
           className={cn(
             placement === 'right' ? RIGHT_CLASS : [CENTER_CLASS, SIZE[size]],
             className,

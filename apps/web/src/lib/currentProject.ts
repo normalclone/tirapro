@@ -56,7 +56,9 @@ export const ARCHIVED_PICK_HINT = 'Dự án hiện tại đã lưu trữ — ch�
 export function resolveCreateTarget(
   currentKey: string | null,
   active: { key: string }[] | undefined,
-  recentKeys: readonly (string | null | undefined)[] = [],
+  recentKeys:
+    | readonly (string | null | undefined)[]
+    | (() => readonly (string | null | undefined)[]) = [],
 ): CreateTarget {
   // URL có thể gõ khác hoa/thường (`/p/demo`) trong khi API/danh sách dùng key in hoa.
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -69,7 +71,8 @@ export function resolveCreateTarget(
       block: true,
       notice: `Dự án “${currentKey}” không còn hoạt động — hãy khôi phục dự án hoặc tạo một dự án khác trước khi thêm việc.`,
     };
-  for (const k of recentKeys) {
+  // `recentKeys` có thể là hàm: chỉ đọc localStorage khi THỰC SỰ vào nhánh dự án lưu trữ (không mỗi lần vẽ).
+  for (const k of typeof recentKeys === 'function' ? recentKeys() : recentKeys) {
     const recent = k ? active.find((p) => same(p.key, k)) : undefined;
     if (recent)
       return {

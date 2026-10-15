@@ -166,15 +166,45 @@ export function layerIssues(
 
 /** Tối đa bao nhiêu người phụ trách không khớp được liệt kê trong báo cáo import (phần còn lại gộp "và N người khác"). */
 export const MAX_UNMATCHED_LISTED = 20;
+/** Độ dài tối đa của mỗi tên/email khi liệt kê (tên Jira có thể rất dài). */
+export const MAX_UNMATCHED_NAME_LENGTH = 80;
+
+/**
+ * Người phụ trách Jira của các việc đã nhập mà KHÔNG được gán:
+ *  - `unmatched`: tên/email KHÔNG có trong `mapping.users` (không khớp thành viên nào) → cần cảnh báo;
+ *  - `blank`: người dùng CHỦ ĐỘNG chọn "Để trống" (`null`/rỗng) → chỉ đếm trung tính, không cảnh báo.
+ */
+export interface AssigneeTally {
+  unmatched: Map<string, number>;
+  blank: number;
+}
+
+export const newAssigneeTally = (): AssigneeTally => ({ unmatched: new Map(), blank: 0 });
+
+/** Ghi nhận một việc: dùng chung cho dry-run (mọi dòng) và chạy thật (chỉ việc đã tạo được). */
+export function tallyAssignee(
+  tally: AssigneeTally,
+  assignee: string,
+  users: Record<string, string | null>,
+): void {
+  if (!assignee) return;
+  const target = ownValue(users, assignee);
+  if (target) return; // đã ghép → được gán
+  if (target === undefined) tally.unmatched.set(assignee, (tally.unmatched.get(assignee) ?? 0) + 1);
+  else tally.blank++;
+}
 
 export interface UnmatchedAssignees {
   /** Số việc không có người phụ trách vì tên/email Jira không khớp thành viên nào. */
   skipped: number;
-  /** Tên/email Jira không khớp, nhiều việc nhất trước (≤ `MAX_UNMATCHED_LISTED`). */
+  /** Tên/email Jira không khớp, nhiều việc nhất trước (≤ `MAX_UNMATCHED_LISTED`, mỗi tên cắt ≤ `MAX_UNMATCHED_NAME_LENGTH`). */
   listed: Array<{ name: string; count: number }>;
   /** Số tên khác nhau không được liệt kê vì vượt giới hạn. */
   more: number;
 }
+
+const clip = (s: string): string =>
+  s.length > MAX_UNMATCHED_NAME_LENGTH ? `${s.slice(0, MAX_UNMATCHED_NAME_LENGTH - 1)}…` : s;
 
 /**
  * Gom người phụ trách Jira không khớp thành viên nào (`counts`: tên/email → số việc). Rỗng → null.
@@ -190,7 +220,7 @@ export function summarizeUnmatchedAssignees(
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   return {
     skipped: sorted.reduce((s, x) => s + x.count, 0),
-    listed: sorted.slice(0, max),
+    listed: sorted.slice(0, max).map((x) => ({ name: clip(x.name), count: x.count })),
     more: Math.max(0, sorted.length - max),
   };
 }

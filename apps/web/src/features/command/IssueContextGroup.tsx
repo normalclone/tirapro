@@ -5,7 +5,8 @@ import { apiErrorMessage } from '@/lib/api';
 import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { useIssue, useTransitionDetail, useUpdateIssue } from '@/features/issues/api';
-import { canRevertTransition, computeNextStatuses } from '@/features/issues/nextStatuses';
+import { computeNextStatuses } from '@/features/issues/nextStatuses';
+import { transitionToastOptions } from '@/features/issues/statusUndo';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { useToggleWatch, useWatchState } from '@/features/issue-widgets/api';
 import { ActionItem } from './ActionItem';
@@ -74,26 +75,10 @@ export function IssueContextGroup({
         version: issue.version,
         statusName: toName,
       });
-      // "Hoàn tác" chỉ khi workflow cho phép bước ngược — nếu không bấm sẽ bị 409.
-      const canUndo = canRevertTransition(workflows, from.statusId, toStatusId);
-      toast.success(`Đã chuyển sang “${toName}”`, {
-        duration: canUndo ? 4000 : 2000,
-        action: canUndo
-          ? {
-              label: 'Hoàn tác',
-              onClick: () =>
-                void transition
-                  .mutateAsync({
-                    id: updated.id,
-                    key: updated.key,
-                    toStatusId: from.statusId,
-                    version: updated.version,
-                    statusName: from.statusName,
-                  })
-                  .catch((e) => toast.error(apiErrorMessage(e))),
-            }
-          : undefined,
-      });
+      toast.success(
+        `Đã chuyển sang “${toName}”`,
+        transitionToastOptions({ workflows, from, toStatusId, updated, transition }),
+      );
     } catch (e) {
       toast.error(apiErrorMessage(e));
     }
