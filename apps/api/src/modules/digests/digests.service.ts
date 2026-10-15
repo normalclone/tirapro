@@ -362,7 +362,9 @@ export class DigestsService implements OnApplicationShutdown {
           const text = await this.buildDigest(sub.workspaceId, sub.projectId ?? undefined);
           await this.send(sub.channelId, text);
         } catch (err) {
-          // Chưa gửi được: trả lại để lượt sau (hoặc chạy tay) còn chạy được.
+          // Chỉ là lưới an toàn cho lỗi BẤT NGỜ (vd buildDigest ném). send()/telegram.send tự nuốt lỗi
+          // gửi nên lỗi mạng KHÔNG đi vào đây => không retry trong ngày (hành vi cũ). Cơ chế là at-most-once:
+          // node chết sau khi claim thì digest ngày đó mất.
           await this.prisma.reportSubscription
             .updateMany({
               where: { id: sub.id, lastRunAt: now },
