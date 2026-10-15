@@ -44,6 +44,7 @@ import { useProjectIssues } from '@/features/issues/api';
 import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
+import { SprintTimeText } from '@/components/ui/SprintTimeText';
 import { Input } from '@/components/ui/Input';
 import { Badge, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
@@ -621,6 +622,11 @@ export function BacklogPage() {
                 id={sprint.id}
                 title={sprint.name}
                 badge={STATE_BADGE[sprint.state]}
+                meta={
+                  sprint.state === 'ACTIVE' ? (
+                    <SprintTimeText sprint={sprint} className="text-xs" />
+                  ) : undefined
+                }
                 points={pointsSum(sprintIssues)}
                 count={sprintIssues.length}
                 issues={sprintIssues}
@@ -954,6 +960,7 @@ function Section({
   id,
   title,
   badge,
+  meta,
   points,
   count,
   issues,
@@ -977,6 +984,8 @@ function Section({
   id: string;
   title: string;
   badge: { label: string; className: string } | null;
+  /** Thông tin phụ cạnh nhãn trạng thái (vd khoảng ngày + số ngày còn lại của sprint đang chạy). */
+  meta?: React.ReactNode;
   points: number;
   count: number;
   issues: IssueDto[];
@@ -1052,6 +1061,7 @@ function Section({
           {title}
         </h2>
         {badge && <Badge className={badge.className}>{badge.label}</Badge>}
+        {meta}
         <span
           className="tabular text-xs text-muted"
           title={`${count} việc đang hiển thị · tổng ${points} điểm ước lượng (mức độ lớn của việc)`}

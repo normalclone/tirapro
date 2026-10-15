@@ -33,6 +33,7 @@ import { useWorkflows } from '@/features/workflow-settings/api';
 import { PresenceAvatars } from '@/features/presence/PresenceAvatars';
 import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { SprintTimeText } from '@/components/ui/SprintTimeText';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
 import { useOpenSession } from '@/lib/useOpenSession';
@@ -651,10 +652,11 @@ export function BoardPage() {
           )}
           {isScrum && activeSprint && (
             <span
-              className="inline-flex h-7 max-w-[16rem] items-center truncate rounded-full border border-border px-2.5 text-xs text-muted"
-              title="Bảng Scrum chỉ hiện việc của sprint đang chạy"
+              className="inline-flex h-7 min-w-0 max-w-full items-center gap-1 rounded-full border border-border px-2.5 text-xs text-muted"
+              title={`Bảng Scrum chỉ hiện việc của sprint đang chạy${activeSprint.goal ? ` · Mục tiêu: ${activeSprint.goal}` : ''}`}
             >
-              Sprint: {activeSprint.name}
+              <span className="truncate">Sprint: {activeSprint.name}</span>
+              <SprintTimeText sprint={activeSprint} />
             </span>
           )}
           {hasFilter && (
