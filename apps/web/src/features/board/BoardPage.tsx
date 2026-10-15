@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Layers, Settings, UserRound } from 'lucide-react';
+import { Layers, Settings, UserRound, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { BoardColumnDto, BoardDto, IssueDto, SwimlaneBy } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
@@ -18,6 +18,7 @@ import { BoardDnd } from './BoardDnd';
 import { Column } from './Column';
 import { resolveDropStatuses } from './dropTarget';
 import { StatusPickDialog } from './StatusPickDialog';
+import { useSwimlaneOverride } from './swimlane';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { useProjectSprints } from '@/features/backlog/api';
 import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
@@ -29,6 +30,7 @@ import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/pr
 import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
 import { applyQuickFilters, useQuickFilters } from '@/features/quick-filters/useQuickFilters';
@@ -192,7 +194,11 @@ export function BoardPage() {
     options: NextStatus[];
     version: number;
   } | null>(null);
-  const swimlaneBy: SwimlaneBy = board?.swimlaneBy ?? 'none';
+  const {
+    swimlaneBy,
+    override: swimlaneOverride,
+    toggleAssignee,
+  } = useSwimlaneOverride(board?.id, board?.swimlaneBy ?? 'none');
   const activeSprintId = (sprintsQ.data ?? []).find((sp) => sp.state === 'ACTIVE')?.id ?? null;
 
   // Nhớ lọc người THEO DỰ ÁN (localStorage). Nạp khi đổi dự án.
@@ -487,14 +493,24 @@ export function BoardPage() {
         <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3">
           <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
           <AssigneeFilter options={assigneeOptions} value={assignee} onChange={changeAssignee} />
-          {swimlaneBy !== 'none' && (
+          <button
+            type="button"
+            onClick={toggleAssignee}
+            aria-pressed={swimlaneBy === 'assignee'}
+            title={`Chia bảng thành hàng theo người phụ trách — chỉ áp cho bạn${swimlaneOverride === null ? '' : ' (đang khác cấu hình bảng)'}. Kéo việc sang hàng khác để giao cho người đó.`}
+            className={cn(
+              'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+              swimlaneBy === 'assignee'
+                ? 'border-transparent bg-primary-subtle text-primary'
+                : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
+            )}
+          >
+            <Users className="h-3.5 w-3.5" aria-hidden /> Nhóm theo người
+          </button>
+          {swimlaneBy !== 'none' && swimlaneBy !== 'assignee' && (
             <span
               className="inline-flex h-7 items-center gap-1.5 rounded-full border border-transparent bg-primary-subtle px-2.5 text-xs font-medium text-primary"
-              title={
-                swimlaneBy === 'assignee'
-                  ? 'Bảng đang chia hàng theo người phụ trách. Kéo việc sang hàng khác để giao cho người đó.'
-                  : `Bảng đang chia hàng: ${SWIMLANE_LABEL[swimlaneBy].toLowerCase()}.`
-              }
+              title={`Bảng đang chia hàng: ${SWIMLANE_LABEL[swimlaneBy].toLowerCase()}.`}
             >
               <Layers className="h-3.5 w-3.5" /> {SWIMLANE_LABEL[swimlaneBy]}
             </span>
