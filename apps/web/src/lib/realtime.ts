@@ -103,6 +103,12 @@ export function applyIssueMoved(qc: QueryClient, p: IssueMovedPayload) {
 /* Hooks                                                               */
 /* ------------------------------------------------------------------ */
 
+/** Bình luận đổi (thêm/sửa/xoá) → nạp lại danh sách bình luận + hoạt động của đúng issue. */
+export function applyCommentChanged(qc: QueryClient, issueId: string) {
+  void qc.invalidateQueries({ queryKey: keys.issues.comments(issueId) });
+  void qc.invalidateQueries({ queryKey: keys.issues.activity(issueId) });
+}
+
 /**
  * Realtime cho MỘT project — mount một lần ở `ProjectLayout` (mọi tab Board/Backlog/Gantt/Tree
  * dùng chung cache `keys.issues.byProject`) và ở trang chi tiết issue (nằm ngoài layout project).
@@ -137,8 +143,7 @@ export function useProjectRealtime(projectId: string | undefined) {
     };
     const onComment = (p: { comment: { issueId: string } } | { issueId: string }) => {
       const issueId = 'comment' in p ? p.comment.issueId : p.issueId;
-      void qc.invalidateQueries({ queryKey: keys.issues.comments(issueId) });
-      void qc.invalidateQueries({ queryKey: keys.issues.activity(issueId) });
+      applyCommentChanged(qc, issueId);
     };
     const onSprint = (p: { sprintId: string; projectId: string }) => {
       if (p.projectId !== projectId) return;
