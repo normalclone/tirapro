@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { displayCustomFieldValue } from './displayValue';
 import {
   useIssueCustomFields,
   useSetCustomField,
@@ -12,7 +13,8 @@ import {
   type IssueCustomField,
 } from './api';
 
-export function CustomFieldsPanel({ issueId }: { issueId: string }) {
+/** `canEdit`: được sửa issue này (`useCanEditIssue`) — không thì hiện giá trị chỉ-đọc, không dựng ô nhập (tránh 403 khi lưu). */
+export function CustomFieldsPanel({ issueId, canEdit }: { issueId: string; canEdit: boolean }) {
   const { data } = useIssueCustomFields(issueId);
   const setField = useSetCustomField(issueId);
 
@@ -36,6 +38,7 @@ export function CustomFieldsPanel({ issueId }: { issueId: string }) {
             key={item.field.id}
             item={item}
             saving={setField.isPending}
+            canEdit={canEdit}
             onSave={(value) => void save(item.field.id, value)}
           />
         ))}
@@ -47,16 +50,21 @@ export function CustomFieldsPanel({ issueId }: { issueId: string }) {
 function FieldRow({
   item,
   saving,
+  canEdit,
   onSave,
 }: {
   item: IssueCustomField;
   saving: boolean;
+  canEdit: boolean;
   onSave: (value: unknown) => void;
 }) {
   const { field } = item;
   return (
     <>
-      <label className="flex items-start pt-1 text-muted" htmlFor={`cf-${field.id}`}>
+      <label
+        className="flex items-start pt-1 text-muted"
+        htmlFor={canEdit ? `cf-${field.id}` : undefined}
+      >
         {field.name}
         {field.isRequired && (
           <span className="ml-0.5 text-danger" aria-hidden>
@@ -65,7 +73,13 @@ function FieldRow({
         )}
       </label>
       <div className="min-w-0">
-        <FieldEditor field={field} value={item.value} saving={saving} onSave={onSave} />
+        {canEdit ? (
+          <FieldEditor field={field} value={item.value} saving={saving} onSave={onSave} />
+        ) : (
+          <span className="block whitespace-pre-wrap break-words pt-1 text-ink">
+            {displayCustomFieldValue(field, item.value) ?? <span className="text-faint">—</span>}
+          </span>
+        )}
       </div>
     </>
   );

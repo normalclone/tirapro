@@ -19,7 +19,8 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function AttachmentsPanel({ issueId }: { issueId: string }) {
+/** `canEdit`: được sửa issue này — không thì chỉ xem/tải xuống (không nút tải lên/xoá, tránh 403). */
+export function AttachmentsPanel({ issueId, canEdit }: { issueId: string; canEdit: boolean }) {
   const { data: attachments } = useAttachments(issueId);
   const upload = useUploadAttachment(issueId);
   const remove = useDeleteAttachment(issueId);
@@ -68,23 +69,27 @@ export function AttachmentsPanel({ issueId }: { issueId: string }) {
         <p className="text-sm font-medium text-muted">
           Tệp đính kèm{items.length ? ` (${items.length})` : ''}
         </p>
-        <input
-          ref={inputRef}
-          type="file"
-          className="sr-only"
-          onChange={onPick}
-          aria-hidden="true"
-          tabIndex={-1}
-        />
-        <Button
-          variant="secondary"
-          size="sm"
-          loading={upload.isPending}
-          onClick={() => inputRef.current?.click()}
-        >
-          {!upload.isPending && <Upload className="h-4 w-4" />}
-          Tải lên
-        </Button>
+        {canEdit && (
+          <>
+            <input
+              ref={inputRef}
+              type="file"
+              className="sr-only"
+              onChange={onPick}
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={upload.isPending}
+              onClick={() => inputRef.current?.click()}
+            >
+              {!upload.isPending && <Upload className="h-4 w-4" />}
+              Tải lên
+            </Button>
+          </>
+        )}
       </div>
 
       {items.length === 0 ? (
@@ -92,7 +97,7 @@ export function AttachmentsPanel({ issueId }: { issueId: string }) {
       ) : (
         <ul className="space-y-1.5">
           {items.map((a) => {
-            const confirming = confirmId === a.id;
+            const confirming = canEdit && confirmId === a.id;
             return (
               <li
                 key={a.id}
@@ -138,15 +143,17 @@ export function AttachmentsPanel({ issueId }: { issueId: string }) {
                     >
                       {downloadingId !== a.id && <Download className="h-4 w-4 text-muted" />}
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => setConfirmId(a.id)}
-                      aria-label={`Xoá ${a.fileName}`}
-                    >
-                      <Trash2 className="h-4 w-4 text-muted" />
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setConfirmId(a.id)}
+                        aria-label={`Xoá ${a.fileName}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted" />
+                      </Button>
+                    )}
                   </span>
                 )}
               </li>
