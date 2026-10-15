@@ -321,7 +321,7 @@ export enum ServerEvent {
   ISSUE_DELETED     = 'issue:deleted',
   ISSUE_ASSIGNED    = 'issue:assigned',
   // Comment
-  COMMENT_CREATED   = 'comment:created',
+  COMMENT_ADDED     = 'comment:added',
   COMMENT_UPDATED   = 'comment:updated',
   COMMENT_DELETED   = 'comment:deleted',
   // Attachment
@@ -355,9 +355,9 @@ export enum ServerEvent {
 | `issue:reordered` | `board`/`backlog` | reorder trong cột/backlog | `IssueReorderedPayload` |
 | `issue:deleted` | `project`,`board`,`backlog`,`issue` | IssuesService.remove | `{ issueId, projectId, actor }` |
 | `issue:assigned` | `issue`,`board`,`user:{assignee}` | assign | `IssueAssignedPayload` |
-| `comment:created` | `issue` | CommentsService.create | `CommentPayload` |
-| `comment:updated` | `issue` | CommentsService.update | `CommentPayload` |
-| `comment:deleted` | `issue` | CommentsService.remove | `{ commentId, issueId, actor }` |
+| `comment:added` | `project:{projectId}` | CommentsService.create | `{ comment: CommentDto }` |
+| `comment:updated` | `project:{projectId}` | CommentsService.update | `{ comment: CommentDto }` |
+| `comment:deleted` | `project:{projectId}` | CommentsService.softDelete | `{ commentId, issueId }` |
 | `attachment:added` | `issue` | AttachmentsService.add | `AttachmentPayload` |
 | `sprint:started` / `:completed` / `:updated` | `sprint`,`board`,`backlog` | SprintsService | `SprintPayload` |
 | `backlog:changed` | `backlog` | reorder/move sprint↔backlog | `BacklogChangedPayload` |
@@ -526,9 +526,10 @@ export class RealtimeBridge {
     );
   }
 
-  @OnEvent('comment.created', { async: true })
-  onComment(e: CommentCreatedEvent) {
-    this.rt.emitToRooms([Room.issue(e.comment.issueId)], ServerEvent.COMMENT_CREATED, { ...base(e), comment: e.comment });
+  @OnEvent('comment.added', { async: true })
+  onComment(e: CommentAddedEvent) {
+    // thực tế: room project:{e.projectId}, payload { comment } — xem api-contract §15.5
+    this.rt.emitToRooms([Room.project(e.projectId)], ServerEvent.COMMENT_ADDED, { ...base(e), comment: e.comment });
     // mention → notification cá nhân
     for (const uid of e.comment.mentions) {
       this.rt.emitToUser(uid, ServerEvent.NOTIFICATION, buildMentionNotif(e, uid));
@@ -900,7 +901,7 @@ services:
 | **Auth (JWT)** | Dùng chung `JwtService`, `JWT_ACCESS_SECRET`, claim shape (`sub/orgId/roles/tv`). Refresh qua REST, không qua socket. |
 | **RBAC** | `ProjectAccessService.canAccessProject(userId, projectId)` gọi trước mỗi subscribe. `resolveProjectId(scope, id)`. |
 | **Issues / Board / Backlog** | Phát domain event sau commit (`issue.created/updated/moved/...`). Cung cấp `version` (OCC) trên model Issue. Endpoint `PATCH /issues/:id/move` nhận `version`, trả 409 + `ConflictPayload` khi lệch. |
-| **Comments** | Phát `comment.created/updated/deleted` kèm `mentions[]`. Realtime route mention → `notification:new` cho `user:{id}`. |
+| **Comments** | Phát `comment:added/updated/deleted` (room `project:{projectId}`) kèm `mentions[]`. Realtime route mention → `notification:new` cho `user:{id}`. |
 | **Sprints** | Phát `sprint.started/completed/updated`, `backlog.changed`. |
 | **Notifications** | NotificationsService tạo bản ghi DB rồi phát event → Realtime đẩy `notification:new` tới personal room. Realtime KHÔNG quyết định nội dung notification. |
 | **Activity Log** | Phát `activity.new` → đẩy tới project/issue room cho activity feed realtime. |

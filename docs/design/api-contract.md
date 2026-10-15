@@ -403,8 +403,24 @@ Dùng **LexoRank** string. Khi `move`/`rank`, client gửi **hai mốc** `afterI
 
 - Thứ tự hai mốc bị đảo (client đang xem danh sách cũ) ⇒ `409 RANK_NEIGHBORS_STALE`; web tự tải lại danh sách (không rebalance cả dự án).
 - Chỉ khi khoảng rank cạn kiệt server mới rebalance dự án, rồi phát WS `project:ranks_rebalanced` (§15.4) để mọi client tải lại thứ tự.
-- Quyền của `POST /issues/{id}/move`: đổi sprint cần `issue:edit`; mốc rank cần `issue:edit` hoặc `backlog:manage`. Khi request đổi cả trạng thái thì mốc rank bị bỏ qua (giữ rank hiện tại), khi không đổi trạng thái mà gửi mốc thì cần quyền rank ở trên, thiếu ⇒ `403`.
+- **Ma trận quyền `POST /issues/{id}/move`** (route cần `issue:transition`; kiểm thêm theo nội dung request):
+
+  | Request | Quyền cần | Thiếu quyền |
+  |---|---|---|
+  | Có `sprintId` **đổi** sprint | `issue:edit` (hoặc `issue:edit:own` + là chủ issue; system admin luôn được) | `403` — **kể cả khi có đổi trạng thái** |
+  | Có mốc `afterId`/`beforeId` | `issue:edit` (đầy đủ) hoặc `backlog:manage` | có đổi `statusId` ⇒ **bỏ mốc** (giữ rank hiện tại, vẫn chuyển); không đổi status ⇒ `403` |
+  | Chỉ đổi `statusId` | `issue:transition` | `403` |
+
+  Nếu request không đổi sprint cũng không có mốc thì không cần quyền thêm. Role mặc định Tester/Reviewer/DevOps đều có `issue:edit` nên không bị ảnh hưởng; ma trận chỉ chạm role tuỳ biến thiếu `issue:edit`.
 - Role chỉ có quyền `:own` chỉ được move/rank issue của chính mình.
+
+### 7.4. Quy tắc tạo/sửa issue (đợt cuối)
+
+- **Sprint đã đóng (`CLOSED`) không nhận việc:** gán issue vào sprint CLOSED qua `POST /issues`, `PATCH /issues/{id}`, bulk, `POST /issues/{id}/move`, `POST /issues/{id}/rank` ⇒ `422 BUSINESS_RULE_VIOLATION`. Chỉ kiểm khi **đổi** sprint: bỏ gán (`sprintId: null`), gửi lại sprint hiện tại hay sửa field khác của issue đang ở sprint đã đóng vẫn hợp lệ. Import Jira (lịch sử) vẫn gắn được sprint đã đóng.
+- **`POST /issues` với `statusId`:** trạng thái phải thuộc workflow của dự án ⇒ `422` nếu ngoài workflow; chọn trạng thái **khác trạng thái khởi tạo** cần thêm `issue:transition` ⇒ `403` nếu thiếu. Không truyền `statusId` = trạng thái khởi tạo như cũ. Import Jira chỉ kiểm thuộc workflow, không đòi `issue:transition`.
+- **`epicId` (`POST /issues`, và `PATCH /issues/{id}` khi giá trị đổi; `null` gỡ epic):** epic không tồn tại/ngoài workspace ⇒ `404`; khác dự án ⇒ `422`; không phải loại Epic (`IssueType.key = 'EPIC'` hoặc `hierarchyLevel >= 1`) ⇒ `422`; trỏ vào chính issue ⇒ `422`; tạo chu trình trực tiếp/gián tiếp ⇒ `422`. Đường import Jira bỏ kiểm loại Epic nhưng giữ cùng dự án / không tự trỏ / không chu trình (và tạo loại Epic mới với `hierarchyLevel = 1`).
+- **Kết quả import JSON** (`POST /import/json` và `ImportJob.result`): thêm `skippedAssignees: number` — số issue đã tạo nhưng bị bỏ gán vì assignee không khớp thành viên dự án.
+- JQL `statusCategory`: xem bảng §16.3 (toán tử/giá trị sai ⇒ `422`).
 
 ---
 
@@ -491,7 +507,7 @@ class CommentDto {
   createdAt: string; updatedAt: string;
 }
 ```
-Tạo comment → emit WS `comment.added` (§9.x WS) + tạo notification cho watcher & mention (giao tiếp **Notifications**).
+Tạo comment → emit WS `comment:added` tới room `project:{projectId}` (§15.5) + tạo notification cho watcher & mention (giao tiếp **Notifications**).
 
 ### 9.2. Attachments — `/api/v1/issues/{issueId}/attachments`
 
@@ -829,7 +845,7 @@ assignee IS EMPTY AND status != Done
 | `project` | `projectId` / `project.key` | enum-like | `=`, `!=`, `IN` |
 | `type` | `type` | enum | `=`, `!=`, `IN` |
 | `status` | `status.name` (resolve → statusId) | string→id | `=`, `!=`, `IN` |
-| `statusCategory` | `status.category` | enum | `=`, `IN` |
+| `statusCategory` | `status.category` | enum | `=`, `!=`, `IN`, `NOT IN` — giá trị phải đúng enum (không phân biệt hoa/thường; "in progress"/"in-progress" nhận); toán tử khác hoặc giá trị sai ⇒ `422` |
 | `priority` | `priority` | ordered enum | `=`,`!=`,`>`,`>=`,`<`,`<=`,`IN` |
 | `assignee` | `assigneeId` (resolve email/currentUser) | id | `=`,`!=`,`IN`,`IS EMPTY` |
 | `reporter` | `reporterId` | id | `=`,`!=`,`IN` |
@@ -897,7 +913,9 @@ jql string
 export type WsServerEvent =
   | { event: 'issue.created'; data: IssueDto }
   | { event: 'issue.moved'; data: IssueMovedPayload }
-  | { event: 'comment.added'; data: CommentDto }
+  | { event: 'comment:added'; data: { comment: CommentDto } }      // room project:{projectId}
+  | { event: 'comment:updated'; data: { comment: CommentDto } }
+  | { event: 'comment:deleted'; data: { commentId: string; issueId: string } }
   | { event: 'presence.join'; data: { room: string; user: UserMiniDto } }
   | { event: 'typing'; data: { issueId: string; userId: string; isTyping: boolean } }
   // ...

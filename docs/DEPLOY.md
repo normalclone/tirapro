@@ -126,23 +126,26 @@ docker run --rm --env-file .env tirapro-api \
 
 Hai script là `node scripts/*.mjs` — chỉ cần `DATABASE_URL` + `INTEGRATION_ENCRYPTION_KEY` (+ `INTEGRATION_ENCRYPTION_KEY_PREVIOUS` cho rekey) trong **môi trường của tiến trình**; không cần pnpm hay mã nguồn.
 
-- **VPS (Phương án B):** nạp `.env` rồi chạy từ gốc repo:
+**Trước khi seal — kiểm khoá (bắt buộc ở lần đầu nếu DB chưa có secret/token nào đã mã hoá):** script tự đối chiếu khoá bằng một mẫu đã mã hoá sẵn (khoá webhook `enc:v1:…` hoặc token bot Telegram). Nếu DB không có mẫu nào, nó **dừng với exit 1** và đòi `--i-verified-key`. Cờ này là lời xác nhận của BẠN, nên chỉ thêm sau khi tự so khoá trong shell/env-file với `INTEGRATION_ENCRYPTION_KEY` của dịch vụ API đang chạy (Render: Dashboard → Environment; Docker/VPS: env của container/process API) — so mà không in khoá ra, vd `printf %s "$INTEGRATION_ENCRYPTION_KEY" | shasum -a 256` ở hai nơi phải ra cùng giá trị. `--dry-run` luôn chạy được và in cảnh báo này.
+
+- **VPS (Phương án B):** nạp `.env` rồi chạy từ gốc repo (đã kiểm khoá như trên):
   ```bash
   set -a; . ./.env; set +a
   pnpm --filter @tirapro/api run automation:seal-secrets -- --dry-run
-  pnpm --filter @tirapro/api run automation:seal-secrets
+  pnpm --filter @tirapro/api run automation:seal-secrets                    # exit 1 nếu chưa có mẫu đối chiếu khoá…
+  pnpm --filter @tirapro/api run automation:seal-secrets -- --i-verified-key # …thì chạy dòng này SAU khi đã tự kiểm khoá
   ```
 - **Docker:** image runtime có sẵn hai script ở `/app/scripts/`. Chạy như job một lần với **cùng env** của container API (đặc biệt cùng `INTEGRATION_ENCRYPTION_KEY`; nếu DB nằm ở máy host dùng `host.docker.internal` hoặc `--network host` thay cho `localhost` trong `DATABASE_URL`):
   ```bash
   docker run --rm --env-file .env tirapro-api node scripts/seal-webhook-secrets.mjs --dry-run
-  docker run --rm --env-file .env tirapro-api node scripts/seal-webhook-secrets.mjs --i-verified-key   # xem cảnh báo bên dưới
+  docker run --rm --env-file .env tirapro-api node scripts/seal-webhook-secrets.mjs   # exit 1 nếu DB chưa có mẫu đối chiếu khoá: tự kiểm khoá rồi thêm --i-verified-key (xem trên)
   docker run --rm --env-file .env tirapro-api node scripts/rekey-integrations.mjs --dry-run   # nếu đổi khoá
   ```
   Lưu ý `--env-file` của Docker: giá trị lấy **nguyên văn** (dấu nháy `"…"`/`'…'` trong file không bị bóc — bỏ nháy đi), và `localhost` trong `DATABASE_URL` là chính container chứ không phải máy host.
   (Kubernetes/ECS: tạo Job/one-off task dùng cùng image + `command: ["node","scripts/seal-webhook-secrets.mjs"]` + secret env của API.)
 - **Render (không Shell, Free):** không có chỗ chạy trực tiếp. Chọn một:
-  1. Chạy từ **máy của bạn** trỏ vào Postgres Render qua *External Database URL* (Dashboard → `tirapro-db` → Connect; cần mở IP cho phép) với đúng `INTEGRATION_ENCRYPTION_KEY` của dịch vụ API (Dashboard → Environment): `DATABASE_URL='<external-url>' INTEGRATION_ENCRYPTION_KEY='<key>' node apps/api/scripts/seal-webhook-secrets.mjs --dry-run` (cần `pnpm install` + `prisma generate` ở bản clone, hoặc dùng cách Docker ở trên với image build từ repo).
-  2. Gói trả phí có Shell/One-off Job: chạy `node apps/api/scripts/seal-webhook-secrets.mjs` trong đó.
+  1. Chạy từ **máy của bạn** trỏ vào Postgres Render qua *External Database URL* (Dashboard → `tirapro-db` → Connect; cần mở IP cho phép) với đúng `INTEGRATION_ENCRYPTION_KEY` của dịch vụ API (Dashboard → Environment): `DATABASE_URL='<external-url>' INTEGRATION_ENCRYPTION_KEY='<key>' node apps/api/scripts/seal-webhook-secrets.mjs --dry-run`, rồi chạy thật (không `--dry-run`; nếu thoát 1 vì chưa có mẫu đối chiếu khoá thì thêm `--i-verified-key` SAU khi đã so khoá với env của API) (cần `pnpm install` + `prisma generate` ở bản clone, hoặc dùng cách Docker ở trên với image build từ repo).
+  2. Gói trả phí có Shell/One-off Job: chạy `node apps/api/scripts/seal-webhook-secrets.mjs --dry-run` rồi bản thật trong đó (shell của chính dịch vụ API dùng đúng env của nó, nhưng vẫn cần `--i-verified-key` nếu chưa có mẫu đối chiếu — khoá khi đó đúng sẵn, bạn chỉ cần xác nhận).
   3. **Chấp nhận bỏ qua** `seal-secrets`: khoá cũ dạng chữ thường vẫn gửi webhook bình thường và tự được mã hoá khi người dùng lưu lại quy tắc. Chỉ mất lợi ích "không còn plaintext trong DB" cho đến lúc đó.
 
 ### Cảnh báo cho bước 4 (`seal-secrets`)
@@ -181,7 +184,7 @@ script một lần, **idempotent** (chạy lại không mã hoá hai lần, ch�
 
 ```bash
 pnpm --filter @tirapro/api run automation:seal-secrets -- --dry-run   # xem trước: bao nhiêu khoá sẽ được mã hoá
-pnpm --filter @tirapro/api run automation:seal-secrets                # ghi vào DB
+pnpm --filter @tirapro/api run automation:seal-secrets                # ghi vào DB (thêm -- --i-verified-key ở lần đầu nếu DB chưa có mẫu đã mã hoá, sau khi tự kiểm khoá)
 ```
 
 Cần `DATABASE_URL` và `INTEGRATION_ENCRYPTION_KEY` (đúng giá trị API đang dùng) trong môi trường — cách nạp biến và chạy trong Docker/Render: xem [Checklist triển khai](#checklist-triển-khai--nâng-cấp). Script không đổi schema,
