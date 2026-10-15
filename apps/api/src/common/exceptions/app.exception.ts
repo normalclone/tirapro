@@ -47,6 +47,13 @@ export class BusinessRuleException extends AppException {
   }
 }
 
+/** Mốc kéo-thả (afterId/beforeId) của client đã lỗi thời — thứ tự hai mốc bị đảo. Client tải lại danh sách rồi thả lại. */
+export class RankNeighborsStaleException extends AppException {
+  constructor(message = 'Thứ tự công việc vừa thay đổi — hãy tải lại danh sách rồi kéo thả lại') {
+    super(ERROR_CODES.RANK_NEIGHBORS_STALE, message, HttpStatus.CONFLICT);
+  }
+}
+
 /** Cột board đã đầy giới hạn WIP; client bắt code này để hỏi "Vẫn chuyển?" (chỉ quản trị dự án được ép). */
 export class WipLimitReachedException extends AppException {
   constructor(message: string) {

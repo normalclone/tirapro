@@ -45,6 +45,7 @@ export const WS_EVENTS = {
   ISSUE_UPDATED: 'issue:updated',
   ISSUE_MOVED: 'issue:moved',
   ISSUE_DELETED: 'issue:deleted',
+  PROJECT_RANKS_REBALANCED: 'project:ranks_rebalanced',
   COMMENT_ADDED: 'comment:added',
   COMMENT_UPDATED: 'comment:updated',
   COMMENT_DELETED: 'comment:deleted',

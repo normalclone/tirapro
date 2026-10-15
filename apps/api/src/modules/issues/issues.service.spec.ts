@@ -1240,3 +1240,70 @@ describe('IssuesService — assignee không đổi / tài khoản vô hiệu ho�
     expect(diff.issue.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('IssuesService.move — neighbor cũ (409) vs hết chỗ (rebalance)', () => {
+  /** tx tối thiểu cho move(): `ranks[id] = [trước, sau rebalance]`. */
+  function makeTx(ranks: Record<string, [string, string]>) {
+    let rebalanced = false;
+    let movedRank: unknown;
+    const tx = {
+      issue: {
+        findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
+          await Promise.resolve();
+          if (where.id === 'i1') return issueRow();
+          const r = ranks[where.id];
+          return r ? { rank: rebalanced ? r[1] : r[0] } : null;
+        }),
+        findMany: vi.fn(() => Promise.resolve([{ id: 'a' }, { id: 'i1' }, { id: 'b' }])),
+        updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          await Promise.resolve();
+          movedRank = data.rank;
+          return { count: 1 };
+        }),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ rank: movedRank, version: 4 }))),
+      },
+      project: {
+        update: vi.fn(async () => {
+          await Promise.resolve();
+          rebalanced = true;
+          return { id: 'p1' };
+        }),
+      },
+      $executeRaw: vi.fn(() => Promise.resolve(3)),
+    };
+    return tx;
+  }
+
+  it('hai mốc bị đảo thứ tự (client cũ) => 409 RANK_NEIGHBORS_STALE, KHÔNG rebalance, không ghi', async () => {
+    const tx = makeTx({ a: ['r', 'r'], b: ['i', 'i'] }); // after=a(r) nhưng before=b(i) ⇒ prev > next
+    const { service, events } = makeService(tx);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' }),
+    ).rejects.toMatchObject({ status: 409, code: 'RANK_NEIGHBORS_STALE' });
+    expect(tx.project.update).not.toHaveBeenCalled();
+    expect(tx.$executeRaw).not.toHaveBeenCalled();
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it("hai mốc trùng rank ('n','n') => vẫn là cạn chỗ: rebalance rồi tính lại", async () => {
+    const tx = makeTx({ a: ['n', 'i'], b: ['n', 'r'] });
+    const { service, events } = makeService(tx);
+    const dto = await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' });
+    expect(tx.project.update).toHaveBeenCalledTimes(1);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(dto.rank > 'i' && dto.rank < 'r').toBe(true);
+    expect(events.emit).toHaveBeenCalledWith(DOMAIN_EVENTS.PROJECT_RANKS_REBALANCED, {
+      projectId: 'p1',
+    });
+  });
+
+  it('sau rebalance hai mốc vẫn đảo (người khác vừa kéo) => 409 thay vì 422', async () => {
+    const tx = makeTx({ a: ['n', 'r'], b: ['n', 'i'] });
+    const { service } = makeService(tx);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' }),
+    ).rejects.toMatchObject({ status: 409, code: 'RANK_NEIGHBORS_STALE' });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+});

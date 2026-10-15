@@ -109,6 +109,18 @@ export function applyCommentChanged(qc: QueryClient, issueId: string) {
   void qc.invalidateQueries({ queryKey: keys.issues.activity(issueId) });
 }
 
+/** project:ranks_rebalanced — rank + version của cả dự án đã đổi: nạp lại danh sách và chi tiết đang giữ (tránh OCC sai). */
+export function applyRanksRebalanced(qc: QueryClient, projectId: string) {
+  void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
+  void qc.invalidateQueries({
+    predicate: (q) =>
+      q.queryKey[0] === keys.issues.all[0] &&
+      (q.queryKey[1] === 'board' ||
+        (q.queryKey[1] === 'key' &&
+          (q.state.data as IssueDto | undefined)?.projectId === projectId)),
+  });
+}
+
 /**
  * Realtime cho MỘT project — mount một lần ở `ProjectLayout` (mọi tab Board/Backlog/Gantt/Tree
  * dùng chung cache `keys.issues.byProject`) và ở trang chi tiết issue (nằm ngoài layout project).
@@ -141,6 +153,9 @@ export function useProjectRealtime(projectId: string | undefined) {
     const onDeleted = (p: { issueId: string; projectId: string }) => {
       if (p.projectId === projectId) applyIssueDeleted(qc, projectId, p.issueId);
     };
+    const onRebalanced = (p: { projectId: string }) => {
+      if (p.projectId === projectId) applyRanksRebalanced(qc, projectId);
+    };
     const onComment = (p: { comment: { issueId: string } } | { issueId: string }) => {
       const issueId = 'comment' in p ? p.comment.issueId : p.issueId;
       applyCommentChanged(qc, issueId);
@@ -156,6 +171,7 @@ export function useProjectRealtime(projectId: string | undefined) {
     s.on('issue:updated', onUpdated);
     s.on('issue:moved', onMoved);
     s.on('issue:deleted', onDeleted);
+    s.on('project:ranks_rebalanced', onRebalanced);
     s.on('comment:added', onComment);
     s.on('comment:updated', onComment);
     s.on('comment:deleted', onComment);
@@ -166,6 +182,7 @@ export function useProjectRealtime(projectId: string | undefined) {
       s.off('issue:updated', onUpdated);
       s.off('issue:moved', onMoved);
       s.off('issue:deleted', onDeleted);
+      s.off('project:ranks_rebalanced', onRebalanced);
       s.off('comment:added', onComment);
       s.off('comment:updated', onComment);
       s.off('comment:deleted', onComment);

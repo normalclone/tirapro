@@ -58,6 +58,8 @@ export const ERROR_CODES = {
   AI_UNAVAILABLE: 'AI_UNAVAILABLE',
   AI_MISCONFIGURED: 'AI_MISCONFIGURED',
   AI_RATE_LIMITED: 'AI_RATE_LIMITED',
+  /** Mốc kéo-thả (afterId/beforeId) của client đã cũ — thứ tự hai mốc đảo; client nạp lại danh sách rồi thả lại. */
+  RANK_NEIGHBORS_STALE: 'RANK_NEIGHBORS_STALE',
   CONFLICT: 'CONFLICT',
   INTERNAL: 'INTERNAL',
 } as const;

@@ -49,6 +49,7 @@ export interface ServerToClientEvents {
   'issue:updated': (p: { issue: IssueDto }) => void;
   'issue:moved': (p: IssueMovedPayload) => void;
   'issue:deleted': (p: { issueId: ID; projectId: ID }) => void;
+  'project:ranks_rebalanced': (p: { projectId: ID }) => void;
   'comment:added': (p: { comment: CommentDto }) => void;
   'comment:updated': (p: { comment: CommentDto }) => void;
   'comment:deleted': (p: { commentId: ID; issueId: ID }) => void;
