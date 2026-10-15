@@ -8,7 +8,8 @@ import { cn } from '@/lib/utils';
 import { useDropEdge } from '@/lib/dropHint';
 import { SORT_TRANSITION } from '@/lib/sortableDnd';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
-import { clickIsOnInteractive, rowKeyAction, rowRootProps, wantsNewTab } from '@/lib/rowOpen';
+import { openOnRowKey, rowRootProps } from '@/lib/rowOpen';
+import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
 
 /**
@@ -207,37 +208,9 @@ export const IssueRow = memo(
       transition,
     };
     const key = issue.key;
-    const openRow = (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!onOpen) return;
-      // Sự kiện từ portal (popover…) nổi lên theo cây React → bỏ; nút/link/ô nhập bên trong dòng tự xử lý.
-      if (
-        !e.currentTarget.contains(e.target as Node) ||
-        clickIsOnInteractive(e.target, e.currentTarget)
-      )
-        return;
-      if (wantsNewTab(e)) {
-        window.open(`/issue/${key}`, '_blank', 'noopener');
-        return;
-      }
-      onOpen(key);
-    };
+    const openProps = onOpen ? rowPeekProps(key, onOpen) : undefined;
     const rowKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-      const act = rowKeyAction({
-        key: e.key,
-        isDragging,
-        targetIsRow: e.target === e.currentTarget,
-        mod: e.metaKey || e.ctrlKey,
-      });
-      if (act === 'open' && onOpen) {
-        e.preventDefault();
-        onOpen(key);
-        return;
-      }
-      if (act === 'open-new-tab') {
-        e.preventDefault();
-        window.open(`/issue/${key}`, '_blank', 'noopener');
-        return;
-      }
+      if (openProps && openOnRowKey(e, { key, open: onOpen, isDragging })) return;
       // Space + mọi phím khác (và mọi phím khi đang kéo) vẫn về dnd-kit như cũ.
       if (draggable) listeners?.onKeyDown?.(e);
     };
@@ -262,7 +235,8 @@ export const IssueRow = memo(
             ...(draggable ? { ...listeners, ...attributes } : {}),
             ...rowRootProps({ draggable, hasOpen: !!onOpen }),
             'data-issue-key': key,
-            onClick: openRow,
+            onClick: openProps?.onClick,
+            onAuxClick: openProps?.onAuxClick,
             onKeyDown: rowKeyDown,
           } as HTMLAttributes<HTMLDivElement>
         }
