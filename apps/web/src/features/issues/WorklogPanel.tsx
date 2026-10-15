@@ -15,6 +15,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { useAddWorklog, useDeleteWorklog, useUpdateWorklog, useWorklogs } from './worklog-api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { LOCALE } from '@/lib/locale';
+import { timeProgress } from './timeProgress';
 
 const QUICK = ['30m', '1h', '2h', '1d'];
 
@@ -136,7 +137,12 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
         )}
       </header>
 
-      <Progress spent={spent} original={original} remaining={remaining} />
+      <Progress
+        spent={spent}
+        original={original}
+        remaining={remaining}
+        onEstimate={canEstimate ? () => setEditingEstimate(true) : undefined}
+      />
 
       <div className="mt-3 text-xs text-muted">
         {editingEstimate ? (
@@ -289,35 +295,35 @@ function Progress({
   spent,
   original,
   remaining,
+  onEstimate,
 }: {
   spent: number;
   original: number | null;
   remaining: number | null;
+  onEstimate?: () => void;
 }) {
-  const over = original !== null && original > 0 && spent > original;
-  const pct =
-    original && original > 0
-      ? Math.min(100, Math.round((spent / original) * 100))
-      : spent > 0
-        ? 100
-        : 0;
+  const { pct, over } = timeProgress(spent, original);
   return (
     <div>
       <div
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={pct}
+        {...(pct === null
+          ? { 'aria-valuetext': 'Chưa có ước lượng gốc' }
+          : { 'aria-valuenow': pct })}
         aria-label="Tiến độ thời gian"
         className="h-2 overflow-hidden rounded-full bg-surface-3"
       >
-        <div
-          className={cn(
-            'h-full rounded-full transition-[width] duration-300',
-            over ? 'bg-warning' : 'bg-primary',
-          )}
-          style={{ width: `${pct}%` }}
-        />
+        {pct !== null && (
+          <div
+            className={cn(
+              'h-full rounded-full transition-[width] duration-slow',
+              over ? 'bg-warning' : 'bg-primary',
+            )}
+            style={{ width: `${pct}%` }}
+          />
+        )}
       </div>
       <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
         <Stat label="Đã làm" value={spent > 0 ? formatDuration(spent) : '0m'} />
@@ -328,6 +334,20 @@ function Progress({
           warn={over}
         />
       </dl>
+      {pct === null && (
+        <p className="mt-1.5 text-xs text-muted">
+          Chưa có ước lượng gốc — đặt ước lượng để xem tiến độ.
+          {onEstimate && (
+            <button
+              type="button"
+              onClick={onEstimate}
+              className="ml-1 font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            >
+              Đặt ước lượng
+            </button>
+          )}
+        </p>
+      )}
       {over && (
         <p className="mt-1.5 text-xs text-warning">
           Đã vượt ước lượng gốc {formatDuration(spent - (original ?? 0))}.
