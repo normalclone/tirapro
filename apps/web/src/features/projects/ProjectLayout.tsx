@@ -29,7 +29,8 @@ import { ProjectRail } from './ProjectRail';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
 import { Button } from '@/components/ui/Button';
 import { useAi } from '@/stores/ai';
-import { useCan } from './permissions';
+import { useCan, useProjectPermissions } from './permissions';
+import { Skeleton } from '@/components/ui/primitives';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
 import { useProjectRealtime } from '@/lib/realtime';
@@ -60,8 +61,12 @@ export function ProjectLayout() {
   const navigate = useNavigate();
   const aiEnabled = useAi((s) => s.enabled);
   const openCreate = useCreateIssueModal((s) => s.openCreate);
-  const { data: project } = useProject(key);
-  const canAdminProject = useCan(project?.id)('project:admin');
+  const { data: project, isPending: projectPending } = useProject(key);
+  const permsPending = useProjectPermissions(project?.id).isPending;
+  const canProject = useCan(project?.id);
+  const canAdminProject = canProject('project:admin');
+  // Thô (không tính lưu trữ): dự án lưu trữ vẫn hiện nút nhưng tắt kèm giải thích; Viewer không có quyền tạo thì không thấy nút.
+  const canCreateIssue = canProject('issue:create');
   const { data: projects } = useProjects();
   // Một lần cho mọi tab của project: vá cache issue/sprint khi người khác thao tác.
   useProjectRealtime(project?.id);
@@ -139,25 +144,36 @@ export function ProjectLayout() {
             {project?.key ?? key}
           </span>
 
-          <Button
-            size="sm"
-            className="ml-2"
-            onClick={() => openCreate({ projectKey: key })}
-            disabled={!project?.id || !!project.archivedAt}
-            title={project?.archivedAt ? 'Dự án đã lưu trữ — chỉ đọc' : undefined}
-          >
-            <Plus className="h-4 w-4" /> Tạo công việc
-          </Button>
-          {aiEnabled && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setGenOpen(true)}
-              disabled={!project?.id || !!project.archivedAt}
-              data-tour="board-ai"
-            >
-              <Sparkles className="h-4 w-4 text-primary" /> Tạo bằng AI
-            </Button>
+          {(projectPending || (!!project?.id && permsPending)) && (
+            // Giữ chỗ cùng kích thước nút Tạo/AI trong lúc quyền đang tải → không nhảy bố cục khi nút hiện ra.
+            <Skeleton
+              aria-hidden
+              className={cn('ml-2 h-8 rounded-md', aiEnabled ? 'w-56' : 'w-32')}
+            />
+          )}
+          {canCreateIssue && (
+            <>
+              <Button
+                size="sm"
+                className="ml-2"
+                onClick={() => openCreate({ projectKey: key })}
+                disabled={!project?.id || !!project.archivedAt}
+                title={project?.archivedAt ? 'Dự án đã lưu trữ — chỉ đọc' : undefined}
+              >
+                <Plus className="h-4 w-4" /> Tạo công việc
+              </Button>
+              {aiEnabled && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setGenOpen(true)}
+                  disabled={!project?.id || !!project.archivedAt}
+                  data-tour="board-ai"
+                >
+                  <Sparkles className="h-4 w-4 text-primary" /> Tạo bằng AI
+                </Button>
+              )}
+            </>
           )}
 
           <div className="ml-auto flex items-center gap-1">

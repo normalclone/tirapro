@@ -13,7 +13,7 @@ import { QueryError } from '@/components/ui/QueryError';
 import { isOverdue } from '@/components/ui/DueBadge';
 import { categoryColor } from '@/lib/statusColor';
 import { apiErrorMessage } from '@/lib/api';
-import { useCan } from '@/features/projects/permissions';
+import { useCanIn } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
 import { PlanningPanel } from '@/features/planning/PlanningPanel';
 import {
@@ -111,7 +111,7 @@ export function GanttPage() {
     refetch: refetchProject,
   } = useProject(key);
   const projectId = project?.id;
-  const canManagePlan = useCan(projectId)('plan:manage');
+  const canManagePlan = useCanIn(projectId)('plan:manage');
   const issuesQ = useProjectIssues(projectId);
   const { data: issues, isLoading: li } = issuesQ;
   const isLoading = lp || li;

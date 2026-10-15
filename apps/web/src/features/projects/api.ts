@@ -5,8 +5,9 @@ import { queryClient } from '@/lib/queryClient';
 import { keys } from '@/lib/queryKeys';
 
 /** Danh sách dự án; mặc định ẩn dự án đã lưu trữ (`includeArchived` để hiện — cache riêng, cùng tiền tố `all`). */
-export function useProjects(includeArchived = false) {
+export function useProjects(includeArchived = false, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: includeArchived ? keys.projects.withArchived : keys.projects.all,
     queryFn: async () =>
       (

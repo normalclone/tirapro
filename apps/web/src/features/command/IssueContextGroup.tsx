@@ -2,6 +2,7 @@ import { Command } from 'cmdk';
 import { ArrowRightLeft, Bell, BellOff, MessageSquarePlus, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
+import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { useIssue, useTransitionDetail, useUpdateIssue } from '@/features/issues/api';
 import { computeNextStatuses } from '@/features/issues/nextStatuses';
@@ -36,6 +37,11 @@ export function IssueContextGroup({
   const transition = useTransitionDetail(issue?.projectId);
   const { data: watch } = useWatchState(issue?.id ?? '');
   const toggleWatch = useToggleWatch(issue?.id ?? '');
+  // Cùng quyền như trang chi tiết (kể cả dự án lưu trữ = chỉ đọc): không bày hành động mà API sẽ từ chối.
+  const can = useCanIn(issue?.projectId);
+  const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
+  const canTransition = can('issue:transition');
+  const canComment = can('comment:create');
 
   if (!issue) return null;
   const nextStatuses = computeNextStatuses(workflows, issue.status.id);
@@ -87,7 +93,7 @@ export function IssueContextGroup({
       heading="Công việc này"
       className="text-faint [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-faint"
     >
-      {me && issue.assigneeId !== me.id && (
+      {me && issue.assigneeId !== me.id && canEditThis && (
         <ActionItem
           value={`giao cho toi assign me ${issue.key}`}
           icon={<UserCheck className={ICON} aria-hidden="true" />}
@@ -95,15 +101,16 @@ export function IssueContextGroup({
           onSelect={() => runAction(() => void assignToMe())}
         />
       )}
-      {nextStatuses.map((s) => (
-        <ActionItem
-          key={s.id}
-          value={`doi trang thai chuyen ${s.name} ${issue.key}`}
-          icon={<ArrowRightLeft className={ICON} aria-hidden="true" />}
-          label={`Đổi trạng thái → ${s.name}`}
-          onSelect={() => runAction(() => void changeStatus(s.id, s.name))}
-        />
-      ))}
+      {canTransition &&
+        nextStatuses.map((s) => (
+          <ActionItem
+            key={s.id}
+            value={`doi trang thai chuyen ${s.name} ${issue.key}`}
+            icon={<ArrowRightLeft className={ICON} aria-hidden="true" />}
+            label={`Đổi trạng thái → ${s.name}`}
+            onSelect={() => runAction(() => void changeStatus(s.id, s.name))}
+          />
+        ))}
       {watch && (
         <ActionItem
           value={`${watch.watching ? 'bo theo doi unwatch' : 'theo doi watch'} ${issue.key}`}
@@ -118,12 +125,14 @@ export function IssueContextGroup({
           onSelect={() => runAction(() => void toggleWatching(watch.watching))}
         />
       )}
-      <ActionItem
-        value={`them binh luan comment ${issue.key}`}
-        icon={<MessageSquarePlus className={ICON} aria-hidden="true" />}
-        label="Thêm bình luận"
-        onSelect={() => runAction(focusCommentBox)}
-      />
+      {canComment && (
+        <ActionItem
+          value={`them binh luan comment ${issue.key}`}
+          icon={<MessageSquarePlus className={ICON} aria-hidden="true" />}
+          label="Thêm bình luận"
+          onSelect={() => runAction(focusCommentBox)}
+        />
+      )}
     </Command.Group>
   );
 }

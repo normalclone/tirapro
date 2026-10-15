@@ -4,6 +4,7 @@ import type { SprintDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
+import { isOverlayOpen, shouldClearSelectionOnEscape } from '@/lib/hotkeys';
 import { cn } from '@/lib/utils';
 
 /** id ảo cho lựa chọn "Backlog" trong picker chuyển sprint (sprintId thực = null). */
@@ -36,10 +37,11 @@ export function BulkActionBar({
   onMoveToSprint: (sprintId: string | null) => void;
   onClear: () => void;
 }) {
-  // Esc bỏ chọn (ngay cả khi focus không nằm trên thanh này).
+  // Esc bỏ chọn (ngay cả khi focus không nằm trên thanh này) — trừ khi Esc dành cho thứ khác: dialog/menu/popover đang mở
+  // (kể cả popover của chính thanh này), kéo-thả bằng phím, hoặc một handler khác đã xử lý.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClear();
+      if (shouldClearSelectionOnEscape(e, isOverlayOpen())) onClear();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

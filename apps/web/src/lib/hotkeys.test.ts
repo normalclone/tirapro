@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isDialogOpen, isOverlayOpen, isTypingTarget, isWorklogHotkey } from './hotkeys';
+import {
+  isDialogOpen,
+  isOverlayOpen,
+  isTypingTarget,
+  isWorklogHotkey,
+  shouldClearSelectionOnEscape,
+  shouldIgnoreGlobalHotkey,
+} from './hotkeys';
 
 const ev = (
   over: Partial<{ key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean }> = {},
@@ -81,5 +88,47 @@ describe('isTypingTarget', () => {
     expect(isTypingTarget(el({}))).toBe(false);
     expect(isTypingTarget(null)).toBe(false);
     expect(isTypingTarget({} as EventTarget)).toBe(false);
+  });
+});
+
+describe('shouldIgnoreGlobalHotkey (c / g / / / ?)', () => {
+  const k = { metaKey: false, ctrlKey: false, altKey: false };
+  it('bình thường → không bỏ qua', () => {
+    expect(shouldIgnoreGlobalHotkey(k, { typing: false, overlayOpen: false })).toBe(false);
+  });
+  it('đang gõ, có modifier hoặc lớp phủ mở → bỏ qua', () => {
+    expect(shouldIgnoreGlobalHotkey(k, { typing: true, overlayOpen: false })).toBe(true);
+    expect(
+      shouldIgnoreGlobalHotkey({ ...k, metaKey: true }, { typing: false, overlayOpen: false }),
+    ).toBe(true);
+    expect(shouldIgnoreGlobalHotkey(k, { typing: false, overlayOpen: true })).toBe(true);
+  });
+  it('DropdownMenu đang mở (role=menu, không phải dialog) → phím chữ là typeahead, bị bỏ qua', () => {
+    const menuOnly = {
+      querySelector: (sel: string) =>
+        sel.includes('[role="menu"][data-state="open"]') ? {} : null,
+    };
+    const overlayOpen = isOverlayOpen(menuOnly);
+    expect(isDialogOpen({ querySelector: () => null })).toBe(false);
+    expect(shouldIgnoreGlobalHotkey(k, { typing: false, overlayOpen })).toBe(true);
+  });
+});
+
+describe('shouldClearSelectionOnEscape (thanh thao tác hàng loạt)', () => {
+  it('Esc thường → xoá vùng chọn', () => {
+    expect(shouldClearSelectionOnEscape({ key: 'Escape', defaultPrevented: false }, false)).toBe(
+      true,
+    );
+  });
+  it('Esc đã được xử lý (popover/kéo-thả phím) hoặc lớp phủ đang mở → giữ vùng chọn', () => {
+    expect(shouldClearSelectionOnEscape({ key: 'Escape', defaultPrevented: true }, false)).toBe(
+      false,
+    );
+    expect(shouldClearSelectionOnEscape({ key: 'Escape', defaultPrevented: false }, true)).toBe(
+      false,
+    );
+  });
+  it('phím khác → không', () => {
+    expect(shouldClearSelectionOnEscape({ key: 'a', defaultPrevented: false }, false)).toBe(false);
   });
 });

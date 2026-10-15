@@ -1,6 +1,6 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import type { BoardDto, IssueDto, ListResponse, SwimlaneBy } from '@tirapro/types';
+import type { BoardDto, BoardType, IssueDto, ListResponse, SwimlaneBy } from '@tirapro/types';
 import { api } from '@/lib/api';
 import type { Workflow } from '@/features/workflow-settings/api';
 import { keys } from '@/lib/queryKeys';
@@ -53,6 +53,8 @@ export interface BoardPatch {
   name?: string;
   filterJql?: string | null;
   swimlaneBy?: SwimlaneBy;
+  /** Đổi loại bảng Scrum ↔ Kanban (`PATCH /boards/:id` `{ type }`). */
+  type?: BoardType;
 }
 
 /** Sau khi sửa bảng: làm mới danh sách bảng + việc của bảng lọc (bộ lọc/cột đổi thì tập việc đổi). */
@@ -64,7 +66,7 @@ function useRefreshBoard(projectId: string) {
   };
 }
 
-/** Sửa tên / bộ lọc JQL / swimlane. Dialog tự báo lỗi (apiErrorMessage) nên không toast chung hai lần. */
+/** Sửa tên / bộ lọc JQL / swimlane / loại bảng. Dialog tự báo lỗi (apiErrorMessage) nên không toast chung hai lần. */
 export function useUpdateBoard(projectId: string, boardId: string) {
   const refresh = useRefreshBoard(projectId);
   return useMutation({

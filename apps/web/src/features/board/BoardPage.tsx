@@ -18,7 +18,7 @@ import { BoardSettingsDialog, SWIMLANE_LABEL } from './BoardSettingsDialog';
 import { BoardDnd } from './BoardDnd';
 import { Column } from './Column';
 import { freshenBoardIssues } from './boardIssues';
-import { scopeBoardIssues } from './scope';
+import { noActiveSprintHint, scopeBoardIssues, swimlaneEmptyKind } from './scope';
 import { NO_LANE, decideDrop, type DropContext, type DropPlan } from './dropPlan';
 import { StatusPickDialog } from './StatusPickDialog';
 import { useSwimlaneOverride } from './swimlane';
@@ -196,6 +196,15 @@ export function BoardPage() {
   const canAssign = can('issue:assign');
   const canCreate = can('issue:create');
   const canManageBoard = can('board:manage');
+  const canManageSprint = can('sprint:manage');
+  const canManageBacklog = can('backlog:manage');
+  // Đổi thứ tự thẻ — đúng quyền mà API `/move` nhận cho mốc rank: `issue:edit` ĐẦY ĐỦ (không tính `:own`) HOẶC `backlog:manage`;
+  // chỉ có `issue:transition` thì đổi cột được, không đổi thứ tự.
+  const canEditFull = can('issue:edit');
+  const canRank = useCallback(
+    () => canManageBacklog || canEditFull,
+    [canManageBacklog, canEditFull],
+  );
   const canForceWip = can('project:admin') || can('workspace:admin');
   const currentUserId = useAuth((s) => s.user?.id);
   const { active: quickFilters, toggle: toggleQuickFilter } = useQuickFilters();
@@ -262,6 +271,11 @@ export function BoardPage() {
   const allIssues = useMemo(() => projectIssues ?? issues ?? EMPTY, [projectIssues, issues]);
 
   // Làn (swimlane) theo cấu hình của bảng.
+  const swimlaneEmpty = swimlaneEmptyKind({
+    isScrum,
+    scopedCount: scoped.length,
+    filtered: hasFilter || assignee !== '' || quickFilters.size > 0,
+  });
   const lanes = useMemo(
     () => buildLanes(swimlaneBy, filteredIssues, allIssues),
     [swimlaneBy, filteredIssues, allIssues],
@@ -334,13 +348,15 @@ export function BoardPage() {
   ) {
     if (!board) return;
     const statusName = o.statusName ?? col.name;
+    // Không có quyền xếp thứ tự → không gửi mốc (máy chủ giữ rank), kể cả khi Hoàn tác.
+    const ranked = canRank();
     const vars: MoveVars = {
       route: 'move',
       id: issue.id,
       key: issue.key,
       version: o.version ?? issue.version,
-      afterId: p.afterId,
-      beforeId: p.beforeId,
+      afterId: ranked ? p.afterId : null,
+      beforeId: ranked ? p.beforeId : null,
       statusId: toStatusId,
       statusName,
       boardId: board.id,
@@ -361,8 +377,8 @@ export function BoardPage() {
                 id: issue.id,
                 key: issue.key,
                 version: updated.version,
-                afterId: p.origin.afterId,
-                beforeId: p.origin.beforeId,
+                afterId: ranked ? p.origin.afterId : null,
+                beforeId: ranked ? p.origin.beforeId : null,
                 ...from,
               })
               .catch(() => undefined),
@@ -427,6 +443,7 @@ export function BoardPage() {
     swimlaneBy,
     canAssign,
     canEditIssue,
+    canRank,
   };
   const planOfRef = useRef<(issue: IssueDto, p: Placement) => DropPlan | null>(() => null);
   planOfRef.current = (issue, p) =>
@@ -440,7 +457,7 @@ export function BoardPage() {
     const d = decideDrop(issue, p, dropCtx);
     // Cột chưa gắn trạng thái nào thì không có đích để chuyển tới.
     if (!d) return;
-    const { col, res, plan, wantsReassign, assigneeChanged, targetAssignee } = d;
+    const { col, res, plan, wantsReassign, assigneeChanged, targetAssignee, rankDenied } = d;
     const only = res.kind === 'move' && res.options.length === 1 ? res.options[0]! : null;
     const labelFor = (o: NextStatus) => (col.statusIds.length > 1 ? o.name : col.name);
     const blockedMsg = `Quy trình không cho chuyển “${issue.status.name}” sang cột “${col.name}”. Hãy chọn một trạng thái trong danh sách gợi ý.`;
@@ -449,16 +466,24 @@ export function BoardPage() {
       // Thả sang hàng người khác nhưng không được đổi người phụ trách việc này → nói rõ thay vì lặng lẽ không làm gì.
       if (wantsReassign && !assigneeChanged)
         toast.info('Bạn không có quyền đổi người phụ trách việc này.');
+      else if (rankDenied)
+        toast.info(
+          'Bạn không có quyền đổi thứ tự thẻ trong cột — hãy kéo sang cột khác để đổi trạng thái.',
+        );
       return;
     }
     if (plan === 'reorder') {
       void runReorder(issue, p);
       return;
     }
-    if (plan === 'status') {
+    if (plan === 'blocked') {
       if (wantsReassign) toast.info('Bạn không có quyền đổi người phụ trách việc này.');
-      if (res.kind === 'blocked') toast.error(blockedMsg);
-      else if (only) void runMove(issue, col, only.id, p, { statusName: labelFor(only) });
+      toast.error(blockedMsg);
+      return;
+    }
+    if (plan === 'status' || plan === 'status-only') {
+      if (wantsReassign) toast.info('Bạn không có quyền đổi người phụ trách việc này.');
+      if (only) void runMove(issue, col, only.id, p, { statusName: labelFor(only) });
       else if (res.kind === 'move')
         setPick({ issue, col, options: res.options, version: null, placement: p });
       return;
@@ -661,16 +686,36 @@ export function BoardPage() {
           <div className="flex min-h-0 flex-1 items-center justify-center p-6">
             <EmptyState
               title="Chưa có sprint nào đang chạy"
-              description="Bảng Scrum chỉ hiện việc của sprint đang chạy. Lên kế hoạch và bắt đầu một sprint ở Backlog."
+              description={noActiveSprintHint({
+                canManageSprint,
+                archived: !!project?.archivedAt,
+              })}
               action={<Button onClick={() => navigate(`/p/${key}/backlog`)}>Mở Backlog</Button>}
             />
           </div>
         ) : lanes ? (
           <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4">
             {lanes.length === 0 ? (
-              <p className="py-10 text-center text-sm text-faint">
-                Không có việc nào khớp bộ lọc. Tắt bớt bộ lọc phía trên để xem thêm.
-              </p>
+              swimlaneEmpty === 'filtered' ? (
+                <p className="py-10 text-center text-sm text-faint">
+                  Không có việc nào khớp bộ lọc. Tắt bớt bộ lọc phía trên để xem thêm.
+                </p>
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <p className="text-sm text-faint">
+                    {swimlaneEmpty === 'sprint'
+                      ? 'Sprint này chưa có việc nào. Thêm việc từ Backlog.'
+                      : 'Bảng chưa có việc nào. Thêm việc từ Backlog.'}
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => navigate(`/p/${key}/backlog`)}
+                  >
+                    Mở Backlog
+                  </Button>
+                </div>
+              )
             ) : (
               lanes.map((lane, laneIdx) => {
                 const cols = laneCols.get(lane.key);
