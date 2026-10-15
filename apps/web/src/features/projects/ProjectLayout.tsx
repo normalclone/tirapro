@@ -280,7 +280,10 @@ export function ProjectsIndexRedirect() {
   }
   let saved: { key?: string; view?: string } = {};
   try {
-    saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}');
+    saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}') as {
+      key?: string;
+      view?: string;
+    };
   } catch {
     /* ignore */
   }

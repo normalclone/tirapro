@@ -87,7 +87,7 @@ export function useUpdateDigest() {
 export function useDeleteDigest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/digests/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/digests/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.digests.all });
     },

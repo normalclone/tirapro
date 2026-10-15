@@ -142,7 +142,7 @@ export function useDeleteDependency(projectId: string) {
   const invalidate = useInvalidateSchedule(projectId);
   return useMutation({
     mutationFn: (id: string) =>
-      api.delete(`/planning/${projectId}/dependencies/${id}`).then((r) => r.data),
+      api.delete<void>(`/planning/${projectId}/dependencies/${id}`).then((r) => r.data),
     onSuccess: invalidate,
   });
 }
@@ -188,7 +188,7 @@ export function useDeleteMilestone(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      api.delete(`/planning/${projectId}/milestones/${id}`).then((r) => r.data),
+      api.delete<void>(`/planning/${projectId}/milestones/${id}`).then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.planning.milestones(projectId) }),
   });
 }

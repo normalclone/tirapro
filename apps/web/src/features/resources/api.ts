@@ -156,7 +156,8 @@ export function useUpdateAllocation() {
 export function useDeleteAllocation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/resources/allocations/${id}`).then((r) => r.data),
+    mutationFn: (id: string) =>
+      api.delete<void>(`/resources/allocations/${id}`).then((r) => r.data),
     onSuccess: () => invalidateResources(qc),
   });
 }
@@ -194,7 +195,7 @@ export function useUpdateTimeOff() {
 export function useDeleteTimeOff() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/resources/time-off/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/resources/time-off/${id}`).then((r) => r.data),
     onSuccess: () => invalidateResources(qc),
   });
 }

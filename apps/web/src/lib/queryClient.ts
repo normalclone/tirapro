@@ -26,7 +26,7 @@ export const mutationCache = new MutationCache();
 mutationCache.subscribe((event) => {
   if (event.type !== 'updated' || event.action.type !== 'error') return;
   if (event.mutation.meta?.silent) return;
-  const error = event.action.error;
+  const error: unknown = event.action.error;
   setTimeout(() => {
     if (wasErrorDescribed(error)) return;
     const message = apiErrorMessage(error);

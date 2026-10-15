@@ -127,7 +127,7 @@ export function useMoveWikiPage() {
 export function useDeleteWikiPage() {
   const invalidate = useInvalidateWiki();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/wiki/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/wiki/${id}`).then((r) => r.data),
     onSuccess: () => invalidate(),
   });
 }

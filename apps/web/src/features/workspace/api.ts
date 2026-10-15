@@ -14,6 +14,14 @@ export interface MyWorkspace {
   roleName: string;
 }
 
+/** Phản hồi sau khi đổi/gỡ logo: thông tin rút gọn của không gian làm việc. */
+interface WorkspaceAvatarResult {
+  id: string;
+  name: string;
+  slug: string;
+  avatarUrl: string | null;
+}
+
 interface SwitchWorkspaceResponse {
   accessToken: string;
   expiresIn?: number;
@@ -67,7 +75,7 @@ export function useUploadWorkspaceAvatar(workspaceId: string) {
     mutationFn: async (file: File) => {
       const fd = new FormData();
       fd.append('file', file);
-      return (await api.post(`/workspaces/${workspaceId}/avatar`, fd)).data;
+      return (await api.post<WorkspaceAvatarResult>(`/workspaces/${workspaceId}/avatar`, fd)).data;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.workspaces.mine });
@@ -78,7 +86,8 @@ export function useUploadWorkspaceAvatar(workspaceId: string) {
 /** Gỡ logo/ảnh của không gian làm việc. */
 export function useRemoveWorkspaceAvatar(workspaceId: string) {
   return useMutation({
-    mutationFn: async () => (await api.delete(`/workspaces/${workspaceId}/avatar`)).data,
+    mutationFn: async () =>
+      (await api.delete<WorkspaceAvatarResult>(`/workspaces/${workspaceId}/avatar`)).data,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.workspaces.mine });
     },

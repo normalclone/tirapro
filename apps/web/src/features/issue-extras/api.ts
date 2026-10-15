@@ -73,7 +73,7 @@ export function useRemoveChecklistItem(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (itemId: string) =>
-      api.delete(`/issues/${issueId}/checklist/${itemId}`).then((r) => r.data),
+      api.delete<void>(`/issues/${issueId}/checklist/${itemId}`).then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.issues.checklist(issueId) }),
   });
 }

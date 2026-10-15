@@ -44,7 +44,7 @@ export function useUploadProjectAvatar(key: string) {
 /** Gỡ ảnh đại diện project. */
 export function useRemoveProjectAvatar(key: string) {
   return useMutation({
-    mutationFn: async () => (await api.delete(`/projects/${key}/avatar`)).data,
+    mutationFn: async () => (await api.delete<ProjectDto>(`/projects/${key}/avatar`)).data,
     onSuccess: () => invalidateProject(key),
   });
 }

@@ -96,7 +96,7 @@ export function useUpdateClient() {
 export function useDeleteClient() {
   const invalidate = useInvalidateClients();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/clients/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/clients/${id}`).then((r) => r.data),
     onSuccess: invalidate,
   });
 }
@@ -133,7 +133,7 @@ export function useDeleteContract() {
   const invalidate = useInvalidateClients();
   return useMutation({
     mutationFn: ({ clientId, id }: { clientId: string; id: string }) =>
-      api.delete(`/clients/${clientId}/contracts/${id}`).then((r) => r.data),
+      api.delete<void>(`/clients/${clientId}/contracts/${id}`).then((r) => r.data),
     onSuccess: invalidate,
   });
 }

@@ -133,7 +133,7 @@ export function useUpdateGoal() {
 export function useDeleteGoal() {
   const invalidate = useInvalidateGoals();
   return useMutation({
-    mutationFn: async (id: string) => (await api.delete(`/goals/${id}`)).data,
+    mutationFn: async (id: string) => (await api.delete<void>(`/goals/${id}`)).data,
     onSuccess: invalidate,
   });
 }

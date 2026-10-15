@@ -116,7 +116,7 @@ export function useUpdateProgram() {
 export function useDeleteProgram() {
   const invalidate = useInvalidatePortfolio();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/programs/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<void>(`/programs/${id}`).then((r) => r.data),
     onSuccess: invalidate,
   });
 }
