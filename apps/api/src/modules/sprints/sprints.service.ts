@@ -5,6 +5,7 @@ import type {
   CompleteSprintInput,
   CreateSprintInput,
   SprintClosePayload,
+  StartSprintInput,
   UpdateSprintInput,
 } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
@@ -12,6 +13,9 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { iso } from '../../common/mappers/date';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
+
+/** Ngày lịch (UTC) của một thời điểm, dạng số để so sánh. */
+const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 
 /** Số lần thử lại khi hai request tạo sprint tính trùng sequence. */
 const SEQUENCE_RETRIES = 3;
@@ -91,8 +95,31 @@ export class SprintsService {
     }
   }
 
-  async start(workspaceId: string, sprintId: string): Promise<SprintDto> {
+  /**
+   * Bắt đầu sprint. `input` (tuỳ chọn) chốt ngày bắt đầu/kết thúc và mục tiêu trong CÙNG giao dịch chuyển ACTIVE
+   * (không PATCH rồi start — hai request sẽ để sprint nửa vời nếu request sau lỗi). Kiểm `end >= start` TRƯỚC khi ghi.
+   */
+  async start(
+    workspaceId: string,
+    sprintId: string,
+    input: StartSprintInput = {},
+  ): Promise<SprintDto> {
     const sprint = await this.requireSprint(workspaceId, sprintId);
+    const startDate = input.startDate
+      ? new Date(input.startDate)
+      : (sprint.startDate ?? new Date());
+    const endDate =
+      input.endDate === undefined
+        ? sprint.endDate
+        : input.endDate === null
+          ? null
+          : new Date(input.endDate);
+    // So theo NGÀY (UTC): ngày kết thúc = hôm nay vẫn hợp lệ khi ngày bắt đầu là "bây giờ".
+    if (endDate && utcDay(endDate) < utcDay(startDate))
+      throw new BusinessRuleException('Ngày kết thúc phải sau ngày bắt đầu — hãy chọn lại ngày');
+    const data: Prisma.SprintUpdateManyMutationInput = { state: 'ACTIVE', startDate };
+    if (input.endDate !== undefined) data.endDate = endDate;
+    if (input.goal !== undefined) data.goal = input.goal?.trim() ? input.goal : null;
     const updated = await this.prisma.$transaction(async (tx) => {
       // Khoá dòng project để hai request start đồng thời trong cùng project phải xếp hàng.
       await tx.project.update({
@@ -115,7 +142,7 @@ export class SprintsService {
       // Chuyển trạng thái có điều kiện: chỉ thắng khi sprint vẫn còn FUTURE.
       const { count } = await tx.sprint.updateMany({
         where: { id: sprintId, state: 'FUTURE', deletedAt: null },
-        data: { state: 'ACTIVE', startDate: sprint.startDate ?? new Date() },
+        data,
       });
       if (count === 0) throw new BusinessRuleException('Chỉ sprint FUTURE mới start được');
       await this.snapshot(tx, sprintId, 'START');

@@ -143,6 +143,110 @@ describe('SprintsService.complete / start — transaction', () => {
   });
 });
 
+describe('SprintsService.start — ngày và mục tiêu trong cùng giao dịch', () => {
+  const D = (d: string) => new Date(`${d}T00:00:00.000Z`);
+
+  function startTx(sprint: Record<string, unknown> = {}) {
+    const futureRow = sprintRow({ state: 'FUTURE', ...sprint });
+    return {
+      project: { update: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      sprint: {
+        findFirst: vi.fn((args: { where: { state?: string } }) =>
+          Promise.resolve(args.where.state === 'ACTIVE' ? null : futureRow),
+        ),
+        updateMany: vi.fn((_args: { data: Record<string, unknown> }) =>
+          Promise.resolve({ count: 1 }),
+        ),
+        findUniqueOrThrow: vi.fn(() => Promise.resolve({ ...futureRow, state: 'ACTIVE' })),
+      },
+    };
+  }
+
+  function makeStart(tx: ReturnType<typeof startTx>) {
+    const made = make(tx);
+    vi.spyOn(made.service, 'snapshot').mockResolvedValue(undefined);
+    return made;
+  }
+
+  it('áp ngày bắt đầu, ngày kết thúc và mục tiêu cùng lúc chuyển ACTIVE', async () => {
+    const tx = startTx();
+    const { service, events } = makeStart(tx);
+    await service.start('w1', 's1', {
+      startDate: '2026-10-15T00:00:00.000Z',
+      endDate: '2026-10-29T00:00:00.000Z',
+      goal: 'G',
+    });
+    expect(tx.sprint.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.sprint.updateMany.mock.calls[0]![0].data).toEqual({
+      state: 'ACTIVE',
+      startDate: D('2026-10-15'),
+      endDate: D('2026-10-29'),
+      goal: 'G',
+    });
+    expect(events.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('ngày kết thúc trước ngày bắt đầu => BusinessRuleException, KHÔNG ghi gì', async () => {
+    const tx = startTx();
+    const { service, events } = makeStart(tx);
+    await expect(
+      service.start('w1', 's1', {
+        startDate: '2026-10-29T00:00:00.000Z',
+        endDate: '2026-10-15T00:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.sprint.updateMany).not.toHaveBeenCalled();
+    expect(tx.project.update).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('chỉ gửi endDate: so với ngày bắt đầu sẵn có của sprint', async () => {
+    const tx = startTx({ startDate: D('2026-10-20') });
+    const { service } = makeStart(tx);
+    await expect(
+      service.start('w1', 's1', { endDate: '2026-10-10T00:00:00.000Z' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.sprint.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('chỉ gửi startDate muộn hơn endDate sẵn có => lỗi', async () => {
+    const tx = startTx({ endDate: D('2026-10-10') });
+    const { service } = makeStart(tx);
+    await expect(
+      service.start('w1', 's1', { startDate: '2026-10-20T00:00:00.000Z' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.sprint.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('không body => hành vi cũ: giữ ngày sẵn có, thiếu thì bắt đầu hôm nay, không đụng endDate/goal', async () => {
+    const tx = startTx();
+    const { service } = makeStart(tx);
+    await service.start('w1', 's1');
+    expect(tx.sprint.updateMany.mock.calls[0]![0].data).toEqual({
+      state: 'ACTIVE',
+      startDate: anyDate,
+    });
+
+    const tx2 = startTx({ startDate: D('2026-10-01') });
+    await makeStart(tx2).service.start('w1', 's1', {});
+    expect(tx2.sprint.updateMany.mock.calls[0]![0].data).toEqual({
+      state: 'ACTIVE',
+      startDate: D('2026-10-01'),
+    });
+  });
+
+  it('null xoá endDate / mục tiêu; mục tiêu toàn khoảng trắng coi như xoá', async () => {
+    const tx = startTx({ endDate: D('2026-10-10'), goal: 'cũ' });
+    const { service } = makeStart(tx);
+    await service.start('w1', 's1', { endDate: null, goal: '   ' });
+    expect(tx.sprint.updateMany.mock.calls[0]![0].data).toMatchObject({
+      state: 'ACTIVE',
+      endDate: null,
+      goal: null,
+    });
+  });
+});
+
 describe('SprintsService.listForProject — groupBy thay cho kéo từng issue', () => {
   it('đếm + cộng điểm bằng một groupBy, sprint trống => 0/0', async () => {
     const sprintFindMany = vi.fn(() =>

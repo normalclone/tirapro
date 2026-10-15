@@ -37,8 +37,16 @@ export function useCreateSprint(projectId: string) {
 export function useStartSprint(projectId: string) {
   const invalidate = useInvalidateBacklog(projectId);
   return useMutation({
-    mutationFn: (sprintId: string) =>
-      api.post<SprintDto>(`/sprints/${sprintId}/start`).then((r) => r.data),
+    // Ngày/mục tiêu (tuỳ chọn) gửi cùng request để máy chủ áp trong MỘT giao dịch với việc chuyển ACTIVE.
+    mutationFn: (v: {
+      sprintId: string;
+      startDate?: string | null;
+      endDate?: string | null;
+      goal?: string | null;
+    }) => {
+      const { sprintId, ...body } = v;
+      return api.post<SprintDto>(`/sprints/${sprintId}/start`, body).then((r) => r.data);
+    },
     onSuccess: invalidate,
   });
 }

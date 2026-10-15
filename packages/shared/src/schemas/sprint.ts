@@ -20,5 +20,19 @@ export const completeSprintSchema = z.object({
     .default('backlog'),
 });
 
+/**
+ * Bắt đầu sprint: ngày và mục tiêu chốt NGAY trong hộp xác nhận, áp cùng giao dịch với việc chuyển ACTIVE.
+ * Mọi trường tuỳ chọn — thiếu body (client cũ) = như trước: giữ ngày sẵn có, thiếu ngày bắt đầu thì lấy hôm nay.
+ * `null` ở `endDate`/`goal` = xoá giá trị sẵn có.
+ */
+export const startSprintSchema = z
+  .object({
+    startDate: z.string().datetime().nullable().optional(),
+    endDate: z.string().datetime().nullable().optional(),
+    goal: z.string().max(1000).nullable().optional(),
+  })
+  .default({});
+
 export type UpdateSprintInput = z.infer<typeof updateSprintSchema>;
 export type CompleteSprintInput = z.infer<typeof completeSprintSchema>;
+export type StartSprintInput = z.infer<typeof startSprintSchema>;

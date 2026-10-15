@@ -3,9 +3,11 @@ import { ApiTags } from '@nestjs/swagger';
 import {
   completeSprintSchema,
   createSprintSchema,
+  startSprintSchema,
   updateSprintSchema,
   type CompleteSprintInput,
   type CreateSprintInput,
+  type StartSprintInput,
   type UpdateSprintInput,
 } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
@@ -44,8 +46,12 @@ export class SprintsController {
   @Permissions(PERMISSIONS.SPRINT_MANAGE)
   @ProjectRef('sprint', 'id')
   @Post(':id/start')
-  async start(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.sprints.start(workspaceId, id);
+  async start(
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(startSprintSchema)) dto: StartSprintInput,
+  ) {
+    return this.sprints.start(workspaceId, id, dto);
   }
 
   /** Hoàn thành sprint; body (tuỳ chọn) chọn nơi chuyển việc chưa xong, mặc định về backlog. */
