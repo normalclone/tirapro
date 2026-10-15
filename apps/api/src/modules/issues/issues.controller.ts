@@ -8,6 +8,7 @@ import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
+import { OwnOnly } from '../../common/decorators/own-only.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -65,8 +66,9 @@ export class IssuesController {
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(bulkUpdateIssuesSchema)) dto: BulkUpdateIssuesInput,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    return this.issues.bulkUpdate(workspaceId, user.id, dto);
+    return this.issues.bulkUpdate(workspaceId, user.id, dto, ownOnly);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
@@ -77,8 +79,9 @@ export class IssuesController {
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateIssueSchema)) dto: UpdateIssueInput,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    return this.issues.update(workspaceId, user.id, id, dto);
+    return this.issues.update(workspaceId, user.id, id, dto, undefined, ownOnly);
   }
 
   @Permissions(PERMISSIONS.ISSUE_TRANSITION)

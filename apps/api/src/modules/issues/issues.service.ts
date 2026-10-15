@@ -93,6 +93,15 @@ export class IssuesService {
     throw new ForbiddenAppException('Chỉ người tạo hoặc quản trị mới được sửa Story points/Hạn');
   }
 
+  /** Người chỉ có `issue:edit:own` chỉ sửa được việc mình báo cáo, được giao hoặc đã tạo. */
+  private assertOwnsIssue(
+    userId: string,
+    issue: { reporterId: string | null; assigneeId: string | null; createdById: string | null },
+  ): void {
+    if (issue.reporterId === userId || issue.assigneeId === userId || issue.createdById === userId) return;
+    throw new ForbiddenAppException('Bạn chỉ được sửa công việc do mình tạo, báo cáo hoặc được giao — hãy nhờ người phụ trách hoặc quản trị viên dự án');
+  }
+
   /** Cùng quy ước với PermissionsGuard: system admin, hoặc có `issue:transition` / `issue:transition:own`. */
   private async assertCanTransition(userId: string, workspaceId: string, projectId: string): Promise<void> {
     const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
@@ -346,8 +355,11 @@ export class IssuesService {
    * và bỏ qua kiểm tra "chỉ người tạo/quản trị sửa Story points/Hạn" (người dùng hệ thống không phải thành viên —
    * quy tắc đã do quản trị tạo).
    */
-  async update(workspaceId: string, userId: string, id: string, input: UpdateIssueInput, opts?: AutomationEventMeta): Promise<IssueDto> {
+  async update(
+    workspaceId: string, userId: string, id: string, input: UpdateIssueInput, opts?: AutomationEventMeta, ownOnly?: boolean,
+  ): Promise<IssueDto> {
     const current = await this.requireIssue(workspaceId, id);
+    if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, {
       typeId: input.typeId, priorityId: input.priorityId, sprintId: input.sprintId,
@@ -396,7 +408,7 @@ export class IssuesService {
    * Item không thuộc dự án/không gian làm việc, hoặc chuyển trạng thái sai workflow → lỗi cho cả yêu cầu, chưa ghi gì.
    * Sự kiện chỉ phát sau khi commit.
    */
-  async bulkUpdate(workspaceId: string, userId: string, input: BulkUpdateIssuesInput): Promise<BulkUpdateIssuesResult> {
+  async bulkUpdate(workspaceId: string, userId: string, input: BulkUpdateIssuesInput, ownOnly?: boolean): Promise<BulkUpdateIssuesResult> {
     const { projectId, items, patch } = input;
     // Đổi trạng thái chỉ đi qua quyền chuyển trạng thái (giống POST :id/transition), không đi chung quyền sửa.
     if (patch.statusId) await this.assertCanTransition(userId, workspaceId, projectId);
@@ -407,6 +419,7 @@ export class IssuesService {
     });
     if (rows.length !== items.length) throw new NotFoundAppException('Công việc');
     const byId = new Map(rows.map((r) => [r.id, r]));
+    if (ownOnly) for (const r of rows) this.assertOwnsIssue(userId, r); // một việc của người khác → 403 cả lô, chưa ghi gì
     await this.assertMetaInWorkspace(workspaceId, { priorityId: patch.priorityId, sprintId: patch.sprintId });
 
     // Chuyển trạng thái: kiểm tra workflow đúng như transition() trước khi ghi bất cứ thứ gì.

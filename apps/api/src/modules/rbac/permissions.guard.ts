@@ -22,6 +22,7 @@ export class PermissionsGuard implements CanActivate {
     if (!required || required.length === 0) return true; // chỉ cần đã xác thực
 
     const req = context.switchToHttp().getRequest<AuthedRequest>();
+    req.ownOnly = new Set(); // luôn đặt lại, không để lại giá trị từ lần chạy trước
     const user = req.user;
     if (!user) throw new ForbiddenAppException('Chưa xác thực');
     if (user.isSystemAdmin) return true;
@@ -34,6 +35,8 @@ export class PermissionsGuard implements CanActivate {
 
     const ok = required.every((p) => effective.has(p) || effective.has(`${p}:own`));
     if (!ok) throw new ForbiddenAppException('Bạn không có quyền thực hiện hành động này');
+    // Quyền chỉ thoả bằng `:own` → đánh dấu để service kiểm quyền sở hữu tài nguyên (guard không biết chủ sở hữu).
+    req.ownOnly = new Set(required.filter((p) => !effective.has(p)));
     return true;
   }
 

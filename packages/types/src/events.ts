@@ -20,6 +20,7 @@ export const DOMAIN_EVENTS = {
   SPRINT_COMPLETED: 'sprint.completed',
   SPRINT_UPDATED: 'sprint.updated',
   MEMBER_ROLE_CHANGED: 'member.role_changed',
+  MEMBER_REMOVED: 'member.removed', // payload { workspaceId, userId } — gateway ngắt socket của user khỏi workspace
   NOTIFICATION_CREATED: 'notification.created',
   MENTION_CREATED: 'mention.created',
   WORKLOG_CREATED: 'worklog.created',

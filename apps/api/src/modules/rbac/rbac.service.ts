@@ -141,11 +141,12 @@ export class RbacService {
       where: { workspaceId_userId: { workspaceId, userId } },
       select: { roleId: true, roles: { select: { role: { select: { id: true, name: true } } } } },
     });
+    // Không còn là thành viên workspace → KHÔNG quyền nào, kể cả khi còn sót bản ghi ghi đè vai trò dự án
+    // (người bị gỡ không được giữ quyền dự án qua API key hoặc token cũ).
+    if (!wsMembership) return new Set();
     const wsRoleNames: string[] = [];
-    if (wsMembership) {
-      roleIds.push(wsMembership.roleId, ...wsMembership.roles.map((r) => r.role.id));
-      wsRoleNames.push(...wsMembership.roles.map((r) => r.role.name));
-    }
+    roleIds.push(wsMembership.roleId, ...wsMembership.roles.map((r) => r.role.id));
+    wsRoleNames.push(...wsMembership.roles.map((r) => r.role.name));
 
     if (projectId) {
       const projMembership = await this.prisma.projectMembership.findUnique({
@@ -156,7 +157,7 @@ export class RbacService {
       if (projMembership) {
         // Có GHI ĐÈ vai trò riêng ở dự án này → dùng đúng vai trò đó.
         roleIds.push(projMembership.roleId, ...projMembership.roles.map((r) => r.roleId));
-      } else if (wsMembership) {
+      } else {
         // Không ghi đè → áp vai trò dự án MẶC ĐỊNH suy từ vai trò workspace
         // (thành viên tính trên workspace; mọi dự án dùng chung tập người dùng).
         roleIds.push(...(await this.defaultProjectRoleIds(workspaceId, wsRoleNames)));

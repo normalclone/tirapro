@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
@@ -98,6 +99,26 @@ export class ApiKeyService {
     return { ok: true as const };
   }
 
+  /**
+   * Thu hồi MỌI key còn hiệu lực của user trong workspace (khi gỡ thành viên). Nhận client giao dịch để
+   * chạy cùng transaction với việc xoá membership; trả về prefix để gọi `dropCaches` SAU khi commit.
+   */
+  async revokeAllForUser(
+    workspaceId: string,
+    userId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<string[]> {
+    const keys = await db.apiKey.findMany({ where: { workspaceId, userId, revokedAt: null }, select: { prefix: true } });
+    if (keys.length === 0) return [];
+    await db.apiKey.updateMany({ where: { workspaceId, userId, revokedAt: null }, data: { revokedAt: new Date() } });
+    return keys.map((k) => k.prefix);
+  }
+
+  /** Xoá cache xác thực của các key vừa thu hồi để có hiệu lực ngay, không đợi hết TTL. */
+  async dropCaches(prefixes: string[]): Promise<void> {
+    await Promise.all(prefixes.map((p) => this.dropCache(p)));
+  }
+
   /** Xác thực raw key → ngữ cảnh, hoặc null nếu không hợp lệ. */
   async validate(raw: string): Promise<ApiKeyContext | null> {
     const m = KEY_RE.exec(raw.trim());
@@ -121,6 +142,12 @@ export class ApiKeyService {
     if (!key || key.revokedAt) return null;
     if (key.expiresAt && key.expiresAt.getTime() < Date.now()) return null;
     if (key.user.status === 'DEACTIVATED') return null;
+    // Chủ key đã bị gỡ khỏi workspace thì key không còn dùng được (kể cả khi chưa kịp bị thu hồi).
+    const membership = await this.prisma.workspaceMembership.findUnique({
+      where: { workspaceId_userId: { workspaceId: key.workspaceId, userId: key.userId } },
+      select: { id: true },
+    });
+    if (!membership) return null;
     const ok = await verifyApiKeySecret(key.hash, secret!);
     if (!ok) return null;
     void this.touch(key.id, key.expiresAt); // lastUsedAt (fire-and-forget)

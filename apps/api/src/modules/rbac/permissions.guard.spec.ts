@@ -1,5 +1,6 @@
  
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import type { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { PERMISSIONS_KEY } from '../../common/decorators/permissions.decorator';
 import { PROJECT_REF_KEY, type ProjectRefMeta } from '../../common/decorators/project-ref.decorator';
@@ -7,6 +8,7 @@ import { PermissionsGuard } from './permissions.guard';
 
 type Req = {
   user?: unknown;
+  ownOnly?: Set<string>;
   params?: Record<string, string>;
   body?: Record<string, unknown>;
   query?: Record<string, string | string[]>;
@@ -42,7 +44,7 @@ function setup(opts: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const guard = new PermissionsGuard(reflector as any, rbac as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { guard, rbac, ctx: ctx as any };
+  return { guard, rbac, req: opts.req, ctx: ctx as unknown as ExecutionContext };
 }
 
 const user = { id: 'U1', workspaceId: 'W1', isSystemAdmin: false };
@@ -201,6 +203,35 @@ describe('PermissionsGuard', () => {
       req: { user: { ...user }, params: { id: 'I1' } },
     });
     await expect(own.guard.canActivate(own.ctx)).resolves.toBe(true);
+  });
+
+  it('đánh dấu req.ownOnly chỉ cho quyền thoả bằng :own; có quyền đầy đủ thì không đánh dấu', async () => {
+    const own = setup({
+      required: ['issue:edit'],
+      effective: ['issue:edit:own'],
+      ref: { kind: 'issue', param: 'id' },
+      req: { user: { ...user }, params: { id: 'I1' } },
+    });
+    await own.guard.canActivate(own.ctx);
+    expect([...own.req.ownOnly!]).toEqual(['issue:edit']);
+
+    const full = setup({
+      required: ['issue:edit'],
+      effective: ['issue:edit', 'issue:edit:own'],
+      ref: { kind: 'issue', param: 'id' },
+      req: { user: { ...user }, params: { id: 'I1' } },
+    });
+    await full.guard.canActivate(full.ctx);
+    expect(full.req.ownOnly!.size).toBe(0);
+
+    const mixed = setup({
+      required: ['issue:edit', 'comment:create'],
+      effective: ['issue:edit:own', 'comment:create'],
+      ref: { kind: 'issue', param: 'id' },
+      req: { user: { ...user }, params: { id: 'I1' } },
+    });
+    await mixed.guard.canActivate(mixed.ctx);
+    expect([...mixed.req.ownOnly!]).toEqual(['issue:edit']);
   });
 
   it('system admin được miễn; route không yêu cầu quyền thì qua', async () => {

@@ -13,12 +13,22 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 import { DOMAIN_EVENTS, WS_EVENTS, rooms } from '@tirapro/types';
-import type { RoomTarget, SubscribeAck } from '@tirapro/shared';
+import type { CommentDto, IssueDto, NotificationDto } from '@tirapro/types';
+import type {
+  ClientToServerEvents,
+  IssueMovedPayload,
+  RoomTarget,
+  ServerToClientEvents,
+  SubscribeAck,
+} from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { PresenceService, type PresenceProfile } from './presence.service';
 
 /** Room issue hợp lệ cho `presence:view` / `typing:*` (tên do client gửi nên phải kiểm dạng). */
 const ISSUE_ROOM_RE = /^issue:[A-Za-z0-9_-]+$/;
+
+type TypedServer = Server<ClientToServerEvents, ServerToClientEvents>;
+type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
 /**
  * Socket.io gateway: xác thực JWT ở handshake, kiểm quyền khi subscribe room, và RealtimeBridge
@@ -27,7 +37,7 @@ const ISSUE_ROOM_RE = /^issue:[A-Za-z0-9_-]+$/;
  */
 @WebSocketGateway({ path: '/realtime' })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
-  @WebSocketServer() server!: Server;
+  @WebSocketServer() server!: TypedServer;
   private readonly logger = new Logger(RealtimeGateway.name);
 
   constructor(
@@ -37,7 +47,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly presence: PresenceService,
   ) {}
 
-  handleConnection(client: Socket): void {
+  /**
+   * Xác thực JWT rồi kiểm lại với DB: user còn ACTIVE và (trừ system admin) vẫn là thành viên workspace
+   * trong token. Token còn hạn của người đã bị gỡ/khoá KHÔNG được nhận realtime. Thất bại → ngắt kết nối.
+   */
+  async handleConnection(client: TypedSocket): Promise<void> {
     try {
       const raw =
         (client.handshake.auth?.token as string) ||
@@ -45,12 +59,40 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       const payload = this.jwt.verify<{ sub: string; workspaceId: string | null }>(raw, {
         secret: this.config.get<string>('jwt.accessSecret'),
       });
+      // Gán ngay (đồng bộ) để subscribe đến sớm vẫn có danh tính; mỗi lần subscribe sẽ kiểm membership lại.
       client.data.userId = payload.sub;
       client.data.workspaceId = payload.workspaceId;
+      if (!(await this.hasAccess(payload.sub, payload.workspaceId))) {
+        client.disconnect(true);
+        return;
+      }
       void client.join(rooms.user(payload.sub));
       if (payload.workspaceId) void client.join(rooms.workspace(payload.workspaceId));
     } catch {
       client.disconnect(true);
+    }
+  }
+
+  /**
+   * User còn ACTIVE và (trừ system admin) còn là thành viên workspace. Không có workspace trong token
+   * thì chỉ cần ACTIVE (khi đó chỉ vào được room user của chính mình). Lỗi DB → từ chối (fail closed).
+   */
+  private async hasAccess(userId: string, workspaceId: string | null | undefined): Promise<boolean> {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { status: true, isSystemAdmin: true },
+      });
+      if (!user || user.status === 'DEACTIVATED') return false;
+      if (!workspaceId || user.isSystemAdmin) return true;
+      const membership = await this.prisma.workspaceMembership.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId } },
+        select: { id: true },
+      });
+      return membership != null;
+    } catch (err) {
+      this.logger.warn(`Kiểm membership realtime thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
     }
   }
 
@@ -61,7 +103,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage(WS_EVENTS.SUBSCRIBE)
   async onSubscribe(
     @MessageBody() target: RoomTarget,
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: TypedSocket,
   ): Promise<SubscribeAck> {
     const room = await this.authorizeRoom(target, client);
     if (!room) return { ok: false, error: 'FORBIDDEN' };
@@ -72,14 +114,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage(WS_EVENTS.UNSUBSCRIBE)
-  async onUnsubscribe(@MessageBody() target: RoomTarget, @ConnectedSocket() client: Socket): Promise<void> {
+  async onUnsubscribe(@MessageBody() target: RoomTarget, @ConnectedSocket() client: TypedSocket): Promise<void> {
     const room = this.roomName(target);
     if (!room) return;
     await client.leave(room);
     if (target.kind === 'project') await this.leavePresence(client, room);
   }
 
-  handleDisconnect(client: Socket): void {
+  handleDisconnect(client: TypedSocket): void {
     // Rời mọi room presence socket này đã vào (data.rooms) — không chặn việc ngắt kết nối.
     for (const room of this.presenceRooms(client)) void this.leavePresence(client, room, true);
   }
@@ -89,7 +131,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Chỉ phát lại `presence:state` cho room project khi `viewing` đổi thật.
    */
   @SubscribeMessage(WS_EVENTS.PRESENCE_VIEW)
-  async onPresenceView(@MessageBody() body: { room?: string | null }, @ConnectedSocket() client: Socket): Promise<void> {
+  async onPresenceView(@MessageBody() body: { room?: string | null }, @ConnectedSocket() client: TypedSocket): Promise<void> {
     const viewing = typeof body?.room === 'string' && ISSUE_ROOM_RE.test(body.room) ? body.room : null;
     const data = client.data as { userId?: string; viewing?: string | null };
     const userId = data.userId;
@@ -114,17 +156,17 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage(WS_EVENTS.TYPING_START)
-  async onTypingStart(@MessageBody() body: { room?: string }, @ConnectedSocket() client: Socket): Promise<void> {
+  async onTypingStart(@MessageBody() body: { room?: string }, @ConnectedSocket() client: TypedSocket): Promise<void> {
     await this.relayTyping(client, body?.room, true);
   }
 
   @SubscribeMessage(WS_EVENTS.TYPING_STOP)
-  async onTypingStop(@MessageBody() body: { room?: string }, @ConnectedSocket() client: Socket): Promise<void> {
+  async onTypingStop(@MessageBody() body: { room?: string }, @ConnectedSocket() client: TypedSocket): Promise<void> {
     await this.relayTyping(client, body?.room, false);
   }
 
   /** Relay `typing` tới room issue trừ người gửi; chỉ khi socket đã subscribe (đã kiểm quyền) room đó. */
-  private async relayTyping(client: Socket, room: string | undefined, typing: boolean): Promise<void> {
+  private async relayTyping(client: TypedSocket, room: string | undefined, typing: boolean): Promise<void> {
     if (typeof room !== 'string' || !ISSUE_ROOM_RE.test(room) || !client.rooms?.has(room)) return;
     const profile = await this.profileOf(client);
     if (!profile) return;
@@ -133,13 +175,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   // ---------- Presence ----------
   /** Các room project mà socket đang tham gia presence (theo dõi trong client.data.rooms). */
-  private presenceRooms(client: Socket): string[] {
+  private presenceRooms(client: TypedSocket): string[] {
     const rooms = (client.data as { rooms?: string[] }).rooms;
     return Array.isArray(rooms) ? [...rooms] : [];
   }
 
   /** Thông tin hiển thị của user (cache ở client.data.profile); null nếu không đọc được. */
-  private async profileOf(client: Socket): Promise<PresenceProfile | null> {
+  private async profileOf(client: TypedSocket): Promise<PresenceProfile | null> {
     const data = client.data as { userId?: string; profile?: PresenceProfile };
     if (data.profile) return data.profile;
     if (!data.userId) return null;
@@ -157,7 +199,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
   }
 
-  private async joinPresence(client: Socket, room: string): Promise<void> {
+  private async joinPresence(client: TypedSocket, room: string): Promise<void> {
     try {
       const profile = await this.profileOf(client);
       if (!profile) return;
@@ -177,7 +219,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Rời presence. Nếu cùng user còn socket khác (tab khác) trong room thì GIỮ entry để không làm
    * họ biến mất khỏi danh sách; `fromDisconnect` chỉ để bỏ qua việc kiểm tra thất bại.
    */
-  private async leavePresence(client: Socket, room: string, fromDisconnect = false): Promise<void> {
+  private async leavePresence(client: TypedSocket, room: string, fromDisconnect = false): Promise<void> {
     const data = client.data as { userId?: string; rooms?: string[] };
     if (!Array.isArray(data.rooms) || !data.rooms.includes(room) || !data.userId) return;
     data.rooms = data.rooms.filter((r) => r !== room);
@@ -217,10 +259,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   /** Trả tên room nếu client được phép vào, ngược lại null. */
-  private async authorizeRoom(target: RoomTarget | undefined, client: Socket): Promise<string | null> {
+  private async authorizeRoom(target: RoomTarget | undefined, client: TypedSocket): Promise<string | null> {
     const room = this.roomName(target);
     if (!room || !target) return null;
     const { userId, workspaceId } = client.data as { userId?: string; workspaceId?: string | null };
+    // Kiểm lại MỖI lần subscribe: member bị gỡ / user bị khoá sau lúc handshake thì không vào thêm room nào.
+    if (!userId || !(await this.hasAccess(userId, workspaceId))) return null;
     switch (target.kind) {
       case 'user':
         return userId && target.id === userId ? room : null;
@@ -258,43 +302,62 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   // ---------- RealtimeBridge: domain event -> broadcast ----------
-  private toProject(projectId: string | undefined, event: string, payload: unknown) {
+  private toProject<E extends keyof ServerToClientEvents>(
+    projectId: string | undefined,
+    event: E,
+    ...args: Parameters<ServerToClientEvents[E]>
+  ) {
     if (!projectId || !this.server) return;
-    this.server.to(rooms.project(projectId)).emit(event, payload);
+    this.server.to(rooms.project(projectId)).emit(event, ...args);
+  }
+
+  /** Member bị gỡ khỏi workspace → ngắt mọi socket của họ trong workspace đó (room ws:<id>), kể cả node khác. */
+  @OnEvent(DOMAIN_EVENTS.MEMBER_REMOVED)
+  async onMemberRemoved(p: { workspaceId?: string; userId?: string }) {
+    if (!p?.workspaceId || !p?.userId || !this.server) return;
+    try {
+      const sockets = await this.server.in(rooms.workspace(p.workspaceId)).fetchSockets();
+      for (const s of sockets) {
+        if ((s.data as { userId?: string }).userId === p.userId) s.disconnect(true);
+      }
+    } catch (err) {
+      this.logger.warn(`Ngắt socket của member bị gỡ thất bại: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_CREATED)
-  onIssueCreated(p: { issue: { projectId: string } }) {
+  onIssueCreated(p: { issue: IssueDto }) {
     this.toProject(p.issue?.projectId, WS_EVENTS.ISSUE_CREATED, { issue: p.issue });
   }
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
-  onIssueUpdated(p: { issue: { projectId: string } }) {
+  onIssueUpdated(p: { issue: IssueDto }) {
     this.toProject(p.issue?.projectId, WS_EVENTS.ISSUE_UPDATED, { issue: p.issue });
   }
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_TRANSITIONED)
-  onIssueTransitioned(p: { issue: { projectId: string } }) {
+  onIssueTransitioned(p: { issue: IssueDto }) {
     this.toProject(p.issue?.projectId, WS_EVENTS.ISSUE_UPDATED, { issue: p.issue });
   }
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_MOVED)
-  onIssueMoved(p: { projectId: string }) {
+  onIssueMoved(p: IssueMovedPayload) {
     this.toProject(p.projectId, WS_EVENTS.ISSUE_MOVED, p);
   }
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_DELETED)
   onIssueDeleted(p: { issueId: string; projectId?: string }) {
-    this.toProject(p.projectId, WS_EVENTS.ISSUE_DELETED, p);
+    if (!p.projectId) return;
+    this.toProject(p.projectId, WS_EVENTS.ISSUE_DELETED, { issueId: p.issueId, projectId: p.projectId });
   }
 
   @OnEvent(DOMAIN_EVENTS.COMMENT_ADDED)
-  onCommentAdded(p: { comment: unknown; projectId?: string; issueId: string }) {
+  onCommentAdded(p: { comment: CommentDto; projectId?: string; issueId: string }) {
     this.toProject(p.projectId, WS_EVENTS.COMMENT_ADDED, { comment: p.comment });
   }
 
   @OnEvent(DOMAIN_EVENTS.NOTIFICATION_CREATED)
-  onNotificationCreated(p: { recipientId?: string; notification: unknown }) {
+  onNotificationCreated(p: { recipientId?: string; notification: NotificationDto }) {
     if (!p?.recipientId || !this.server) return;
     this.server.to(rooms.user(p.recipientId)).emit(WS_EVENTS.NOTIFICATION_NEW, { notification: p.notification });
   }
@@ -315,7 +378,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   private emitSprintUpdated(p: { sprintId: string; projectId?: string }) {
-    if (!p?.sprintId) return;
+    if (!p?.sprintId || !p.projectId) return;
     this.toProject(p.projectId, WS_EVENTS.SPRINT_UPDATED, { sprintId: p.sprintId, projectId: p.projectId });
   }
 }

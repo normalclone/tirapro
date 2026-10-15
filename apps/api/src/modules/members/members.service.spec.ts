@@ -18,7 +18,7 @@ describe('MembersService.addWorkspaceMany', () => {
       workspaceMembership: tx.workspaceMembership,
     };
     const rbac = { invalidate: vi.fn(), invalidateWorkspace: vi.fn() };
-    return { service: new MembersService(prisma as never, rbac as never), prisma, tx, rbac };
+    return { service: new MembersService(prisma as never, rbac as never, { revokeAllForUser: vi.fn(), dropCaches: vi.fn() } as never, { emit: vi.fn() } as never), prisma, tx, rbac };
   }
 
   it('thêm cả lô trong một transaction và invalidate RBAC một lần cho workspace', async () => {
@@ -42,5 +42,53 @@ describe('MembersService.addWorkspaceMany', () => {
     expect(res).toEqual({ added: 0, skipped: 1 });
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(rbac.invalidateWorkspace).not.toHaveBeenCalled();
+  });
+});
+
+describe('MembersService.removeWorkspace', () => {
+  function setup() {
+    const tx = {
+      workspaceMembership: { delete: vi.fn(() => Promise.resolve({})) },
+      projectMembership: { deleteMany: vi.fn(() => Promise.resolve({ count: 2 })) },
+    };
+    const prisma = {
+      $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+      workspace: { findUnique: vi.fn(() => Promise.resolve({ ownerId: 'owner' })) },
+    };
+    const rbac = { invalidate: vi.fn(() => Promise.resolve()) };
+    const apiKeys = {
+      revokeAllForUser: vi.fn(() => Promise.resolve(['pfx1', 'pfx2'])),
+      dropCaches: vi.fn(() => Promise.resolve()),
+    };
+    const events = { emit: vi.fn() };
+    const service = new MembersService(prisma as never, rbac as never, apiKeys as never, events as never);
+    return { service, prisma, tx, rbac, apiKeys, events };
+  }
+
+  it('gỡ membership + xoá ghi đè dự án + thu hồi API key trong CÙNG transaction, rồi invalidate + phát sự kiện', async () => {
+    const { service, prisma, tx, rbac, apiKeys, events } = setup();
+    await expect(service.removeWorkspace('w1', 'u1', 'admin')).resolves.toEqual({ success: true });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.workspaceMembership.delete).toHaveBeenCalledWith({ where: { workspaceId_userId: { workspaceId: 'w1', userId: 'u1' } } });
+    expect(tx.projectMembership.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u1', project: { workspaceId: 'w1' } } });
+    expect(apiKeys.revokeAllForUser).toHaveBeenCalledWith('w1', 'u1', tx);
+    expect(apiKeys.dropCaches).toHaveBeenCalledWith(['pfx1', 'pfx2']);
+    expect(rbac.invalidate).toHaveBeenCalledWith('u1', 'w1');
+    expect(events.emit).toHaveBeenCalledWith('member.removed', { workspaceId: 'w1', userId: 'u1' });
+  });
+
+  it('transaction lỗi -> không invalidate, không phát sự kiện', async () => {
+    const { service, prisma, rbac, events } = setup();
+    prisma.$transaction.mockRejectedValue(new Error('boom'));
+    await expect(service.removeWorkspace('w1', 'u1', 'admin')).rejects.toThrow('boom');
+    expect(rbac.invalidate).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('không cho tự gỡ mình hoặc gỡ chủ sở hữu', async () => {
+    const { service, tx } = setup();
+    await expect(service.removeWorkspace('w1', 'admin', 'admin')).rejects.toThrow();
+    await expect(service.removeWorkspace('w1', 'owner', 'admin')).rejects.toThrow();
+    expect(tx.workspaceMembership.delete).not.toHaveBeenCalled();
   });
 });
