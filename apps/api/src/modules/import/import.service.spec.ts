@@ -78,4 +78,34 @@ describe('ImportService.importJson — assignee chỉ là thành viên workspace
     const assignees = issues.createWithin.mock.calls.map((c) => c[3].assigneeId);
     expect(assignees).toEqual(['u2', undefined]);
   });
+
+  it('FW2: assignee không khớp thành viên => đếm vào skippedAssignees (kết quả trả về + result của job); chỉ đếm dòng đã tạo được', async () => {
+    const { service, prisma } = setup('c', [{ id: 'u2', email: 'member@x.vn' }]);
+    const res = await service.importJson('w1', 'u1', {
+      projectId: 'p1',
+      data: {
+        issues: [
+          { summary: 'a', assignee: 'member@x.vn' },
+          { summary: 'b', assignee: 'outsider@other.vn' },
+          { summary: 'c', assignee: 'outsider2@other.vn' }, // dòng này lỗi khi ghi => không tính
+          { summary: 'd', assignee: '  ' },
+          { summary: 'e' },
+        ],
+      },
+    });
+    expect(res.skippedAssignees).toBe(1);
+    const updateArg = prisma.importJob.update.mock.calls.at(-1)![0] as unknown as {
+      data: { result: { skippedAssignees: number } };
+    };
+    expect(updateArg.data.result.skippedAssignees).toBe(1);
+  });
+
+  it('FW2: không có assignee nào bị bỏ => skippedAssignees = 0', async () => {
+    const { service } = setup(undefined, [{ id: 'u2', email: 'member@x.vn' }]);
+    const res = await service.importJson('w1', 'u1', {
+      projectId: 'p1',
+      data: { issues: [{ summary: 'a', assignee: 'member@x.vn' }, { summary: 'b' }] },
+    });
+    expect(res.skippedAssignees).toBe(0);
+  });
 });
