@@ -1,6 +1,6 @@
 import { formatDuration } from '@tirapro/shared';
 import { cn } from '@/lib/utils';
-import { timeProgress } from './timeProgress';
+import { displayRemaining, timeProgress } from './timeProgress';
 
 /** Thanh tiến độ: phần đã làm / ước lượng gốc; vượt ước lượng đổi sang màu cảnh báo. */
 export function TimeProgressBar({
@@ -16,6 +16,7 @@ export function TimeProgressBar({
   canEstimate: boolean;
 }) {
   const { pct, over } = timeProgress(spent, original);
+  const left = displayRemaining(spent, original, remaining);
   return (
     <div>
       <div
@@ -43,7 +44,8 @@ export function TimeProgressBar({
         <Stat label="Ước lượng" value={original ? formatDuration(original) : '—'} />
         <Stat
           label="Còn lại"
-          value={remaining !== null ? formatDuration(remaining) : '—'}
+          value={left.seconds !== null ? formatDuration(left.seconds) : '—'}
+          note={left.estimated ? 'ước tính' : undefined}
           warn={over}
         />
       </dl>
@@ -63,12 +65,31 @@ export function TimeProgressBar({
   );
 }
 
-function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+function Stat({
+  label,
+  value,
+  note,
+  warn,
+}: {
+  label: string;
+  value: string;
+  /** Chữ nhỏ cạnh giá trị (vd "ước tính"). */
+  note?: string;
+  warn?: boolean;
+}) {
   return (
     <div>
       <dt className="text-faint">{label}</dt>
       <dd className={cn('font-semibold tabular-nums', warn ? 'text-warning' : 'text-ink')}>
         {value}
+        {note && (
+          <span
+            className="ml-1 text-[11px] font-normal text-faint"
+            title="Chưa đặt ước lượng còn lại — tính bằng ước lượng gốc trừ thời gian đã ghi."
+          >
+            {note}
+          </span>
+        )}
       </dd>
     </div>
   );

@@ -28,3 +28,18 @@ describe('TimeProgressBar — chưa có ước lượng gốc', () => {
     expect(h).toContain('aria-valuenow="50"');
   });
 });
+
+describe('TimeProgressBar — Còn lại', () => {
+  const h2 = (original: number | null, remaining: number | null, spent = 3600) =>
+    renderToStaticMarkup(
+      createElement(TimeProgressBar, { spent, original, remaining, canEstimate: true }),
+    );
+  it('có gốc, chưa có còn lại: hiện giá trị tính ra kèm chữ nhỏ "ước tính", không "—" ở ô Còn lại', () => {
+    const h = h2(8 * 3600, null);
+    expect(h).toContain('7h');
+    expect(h).toContain('ước tính');
+  });
+  it('có còn lại đã lưu: không có chữ "ước tính"', () => {
+    expect(h2(8 * 3600, 5 * 3600)).not.toContain('ước tính');
+  });
+});
