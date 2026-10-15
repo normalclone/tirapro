@@ -20,6 +20,7 @@ import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { cursorPage, type PageResult } from '../../common/dto/page-result';
 import { MailService } from '../mail/mail.service';
 import { resolveMentionedMembers } from '../../common/mentions';
+import { COALESCE_TYPES, COALESCE_WINDOW_MS, mergeNotificationPayload } from './notification-merge';
 
 /** DTO trả về cho client — Date đã chuyển sang ISO string. */
 export interface NotificationDto {
@@ -153,7 +154,13 @@ interface CommentAddedPayload {
   newMentionIds?: string[];
 }
 
-interface NotificationInput {
+/** Tuỳ chọn khi tạo thông báo. */
+export interface PublishOptions {
+  /** Bỏ qua cài đặt in-app của người nhận (dùng cho người theo dõi). */
+  force?: boolean;
+}
+
+export interface NotificationInput {
   recipientId: string;
   workspaceId: string;
   type: NotificationType;
@@ -302,7 +309,7 @@ export class NotificationsService {
             select: { name: true },
           })
         : null;
-      await this.create({
+      await this.publish({
         recipientId: issue.assigneeId,
         workspaceId: issue.workspaceId,
         type: 'STATUS_CHANGED',
@@ -342,7 +349,7 @@ export class NotificationsService {
         await this.notifyAssigned(issue, actorId);
         return;
       }
-      await this.create({
+      await this.publish({
         recipientId: issue.assigneeId,
         workspaceId: issue.workspaceId,
         type: 'ISSUE_UPDATED',
@@ -385,7 +392,7 @@ export class NotificationsService {
       // Người được nhắc tên đã nhận thông báo trực tiếp, không báo thêm "có bình luận mới".
       if (!issue.assigneeId || issue.assigneeId === author || mentioned.has(issue.assigneeId))
         return;
-      await this.create({
+      await this.publish({
         recipientId: issue.assigneeId,
         workspaceId: issue.workspaceId,
         type: 'COMMENT_ADDED',
@@ -500,7 +507,7 @@ export class NotificationsService {
     );
     for (const recipientId of members) {
       mentioned.add(recipientId);
-      await this.create({
+      await this.publish({
         recipientId,
         workspaceId: issue.workspaceId,
         type: 'MENTIONED',
@@ -514,7 +521,7 @@ export class NotificationsService {
   }
 
   private notifyAssigned(issue: IssueEventShape, actorId: string): Promise<void> {
-    return this.create({
+    return this.publish({
       recipientId: issue.assigneeId as string,
       workspaceId: issue.workspaceId,
       type: 'ISSUE_ASSIGNED',
@@ -524,8 +531,13 @@ export class NotificationsService {
     });
   }
 
-  private async create(input: NotificationInput): Promise<void> {
-    const after = await this.createDeferred(input);
+  /**
+   * Điểm vào duy nhất để tạo thông báo in-app (+ email). Tôn trọng cài đặt người nhận, trừ khi `force`
+   * (người theo dõi là hành động chủ động nên bỏ qua cài đặt in-app). Loại "ồn" được gộp theo công việc trong
+   * 60 giây (xem `notification-merge.ts`).
+   */
+  async publish(input: NotificationInput, opts?: PublishOptions): Promise<void> {
+    const after = await this.createDeferred(input, this.prisma, opts);
     await after();
   }
 
@@ -536,6 +548,7 @@ export class NotificationsService {
   private async createDeferred(
     input: NotificationInput,
     db: Pick<Prisma.TransactionClient, 'notification'> = this.prisma,
+    opts?: PublishOptions,
   ): Promise<() => Promise<void>> {
     const noop = (): Promise<void> => Promise.resolve();
     // Quiet-by-default: tôn trọng tùy chọn của người nhận. In-app và email là hai tuỳ chọn độc lập.
@@ -550,29 +563,73 @@ export class NotificationsService {
       !!emailKey &&
       recipient.status !== 'DEACTIVATED' &&
       effectiveEmailPrefs(recipient.settings)[emailKey];
-    if (!prefs[input.type] && !emailOn) return noop;
+    const inApp = !!opts?.force || prefs[input.type];
+    if (!inApp && !emailOn) return noop;
     const payload = await this.withActor(input);
 
-    const created = prefs[input.type]
-      ? await db.notification.create({
-          data: {
+    let saved: Notification | null = null;
+    if (inApp) {
+      const since = new Date(Date.now() - COALESCE_WINDOW_MS);
+      // Theo dõi: đã được báo trực tiếp (loại khác) về cùng công việc trong cửa sổ → không báo thêm dòng "theo dõi".
+      if (input.type === 'WATCHING_UPDATE' && input.issueId) {
+        const direct = await db.notification.findFirst({
+          where: {
             recipientId: input.recipientId,
-            workspaceId: input.workspaceId,
-            type: input.type,
-            issueId: input.issueId ?? null,
-            commentId: input.commentId ?? null,
-            actorId: input.actorId ?? null,
-            payload: payload as Prisma.InputJsonValue,
+            issueId: input.issueId,
+            type: { not: 'WATCHING_UPDATE' },
+            readAt: null,
+            createdAt: { gte: since },
           },
-        })
-      : null;
+          select: { id: true },
+        });
+        if (direct) return noop;
+      }
+      const prev =
+        COALESCE_TYPES.has(input.type) && input.issueId
+          ? await db.notification.findFirst({
+              where: {
+                recipientId: input.recipientId,
+                issueId: input.issueId,
+                type: input.type,
+                readAt: null,
+                createdAt: { gte: since },
+              },
+              orderBy: { createdAt: 'desc' },
+            })
+          : null;
+      saved = prev
+        ? await db.notification.update({
+            where: { id: prev.id },
+            data: {
+              payload: mergeNotificationPayload(
+                prev.payload as NotificationPayload,
+                payload,
+              ) as Prisma.InputJsonValue,
+              commentId: input.commentId ?? prev.commentId,
+              actorId: input.actorId ?? prev.actorId,
+              createdAt: new Date(),
+            },
+          })
+        : await db.notification.create({
+            data: {
+              recipientId: input.recipientId,
+              workspaceId: input.workspaceId,
+              type: input.type,
+              issueId: input.issueId ?? null,
+              commentId: input.commentId ?? null,
+              actorId: input.actorId ?? null,
+              payload: payload as Prisma.InputJsonValue,
+            },
+          });
+    }
 
     return async () => {
-      if (created) {
-        // Báo cho gateway đẩy `notification:new` tới đúng người nhận (room user:<id>).
+      if (saved) {
+        // Báo cho gateway đẩy `notification:new` tới đúng người nhận (room user:<id>). Dòng đã gộp cũng được đẩy lại
+        // với DTO mới — FE chỉ cần làm mới danh sách.
         this.events.emit(DOMAIN_EVENTS.NOTIFICATION_CREATED, {
           recipientId: input.recipientId,
-          notification: this.toDto(created),
+          notification: this.toDto(saved),
         });
       }
       if (emailOn) await this.enqueueEmail(recipient.email, input.type, payload);

@@ -26,6 +26,19 @@ function setup(
       ),
     },
     notification: {
+      // Mặc định chưa có dòng nào để gộp / chưa có dòng trực tiếp.
+      findFirst: vi.fn((_a?: unknown): Promise<unknown> => Promise.resolve(null)),
+      update: vi.fn((a: { where: { id: string }; data: Record<string, unknown> }) =>
+        Promise.resolve({
+          id: a.where.id,
+          type: 'COMMENT_ADDED',
+          issueId: 'i1',
+          commentId: 'c1',
+          actorId: 'a1',
+          readAt: null,
+          ...a.data,
+        }),
+      ),
       create: vi.fn((a: { data: { type: string; recipientId: string } }) =>
         Promise.resolve({
           id: 'n',
@@ -358,5 +371,155 @@ describe('NotificationsService — payload giàu ngữ cảnh (A13)', () => {
     )[0]![0];
     expect(arg.payload.title).toBe('Minh nhắc đến bạn trong TP-1');
     expect(arg.payload.body).toBe('xem giúp @Ba');
+  });
+});
+
+describe('NotificationsService — gộp theo công việc trong 60 giây (A14)', () => {
+  const NOW = new Date('2026-10-16T10:00:00Z');
+  const old = (over: Record<string, unknown> = {}) => ({
+    id: 'n1',
+    type: 'COMMENT_ADDED',
+    payload: {
+      key: 'TP-1',
+      summary: 'Sửa lỗi',
+      count: 1,
+      actorName: 'Minh',
+      actors: [{ id: 'a1', name: 'Minh' }],
+      excerpt: 'một',
+    },
+    issueId: 'i1',
+    commentId: 'c1',
+    actorId: 'a1',
+    readAt: null,
+    createdAt: new Date(NOW.getTime() - 20_000),
+    ...over,
+  });
+  const comment = {
+    comment: { id: 'c2', authorId: 'a1', body: 'hai' },
+    issueId: 'i1',
+    actorId: 'a1',
+  };
+
+  it('có dòng chưa đọc cùng (người nhận, việc, loại) trong 60 s → cập nhật, không tạo mới, phát lại notification.created', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    try {
+      const { service, prisma } = setup();
+      const events = (service as unknown as { events: { emit: ReturnType<typeof vi.fn> } }).events;
+      prisma.notification.findFirst.mockResolvedValueOnce(old());
+      await service.onCommentAdded(comment);
+      expect(prisma.notification.create).not.toHaveBeenCalled();
+      expect(prisma.notification.update).toHaveBeenCalledTimes(1);
+      const upd = prisma.notification.update.mock.calls[0]![0];
+      expect(upd.where).toEqual({ id: 'n1' });
+      expect(upd.data).toMatchObject({
+        payload: { count: 2, excerpt: 'hai' },
+        commentId: 'c2',
+      });
+      expect(upd.data.createdAt).toEqual(NOW);
+      expect(events.emit).toHaveBeenCalledWith(
+        'notification.created',
+        expect.objectContaining({ recipientId: 'u2' }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('truy vấn gộp đúng điều kiện: người nhận, việc, loại, chưa đọc, trong 60 s', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    try {
+      const { service, prisma } = setup();
+      await service.onCommentAdded(comment);
+      const arg = prisma.notification.findFirst.mock.calls[0]![0] as {
+        where: { createdAt: { gte: Date } };
+      };
+      expect(arg.where).toEqual({
+        recipientId: 'u2',
+        issueId: 'i1',
+        type: 'COMMENT_ADDED',
+        readAt: null,
+        createdAt: { gte: new Date(NOW.getTime() - 60_000) },
+      });
+      expect(prisma.notification.create).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('MENTIONED hai lần liên tiếp → hai dòng riêng, không tìm dòng để gộp', async () => {
+    const { service, prisma } = setup(['u3']);
+    const body = { comment: { id: 'c1', authorId: 'a1', body: '@[Ba](user:u3)' }, issueId: 'i1' };
+    await service.onCommentAdded({ ...body, actorId: 'a1', mentionIds: ['u3'] });
+    await service.onCommentAdded({ ...body, actorId: 'a1', mentionIds: ['u3'] });
+    expect(
+      prisma.notification.create.mock.calls.filter((c) => c[0].data.type === 'MENTIONED'),
+    ).toHaveLength(2);
+    const types = prisma.notification.findFirst.mock.calls.map(
+      (c) => (c[0] as { where: { type: unknown } }).where.type,
+    );
+    expect(types).not.toContain('MENTIONED');
+  });
+
+  it('WATCHING_UPDATE bị bỏ khi người nhận vừa có dòng trực tiếp (loại khác) cho cùng việc', async () => {
+    const { service, prisma } = setup();
+    prisma.notification.findFirst.mockResolvedValueOnce({ id: 'direct' });
+    await service.publish(
+      {
+        recipientId: 'u2',
+        workspaceId: 'w1',
+        type: 'WATCHING_UPDATE',
+        issueId: 'i1',
+        actorId: 'a1',
+        payload: { key: 'TP-1', summary: 'Sửa lỗi' },
+      },
+      { force: true },
+    );
+    const where = (prisma.notification.findFirst.mock.calls[0]![0] as { where: unknown }).where;
+    expect(where).toMatchObject({
+      recipientId: 'u2',
+      issueId: 'i1',
+      type: { not: 'WATCHING_UPDATE' },
+      readAt: null,
+    });
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+    expect(prisma.notification.update).not.toHaveBeenCalled();
+  });
+
+  it('force: WATCHING_UPDATE tạo dòng dù người nhận tắt loại này (mặc định tắt)', async () => {
+    const { service, prisma } = setup();
+    await service.publish(
+      {
+        recipientId: 'u2',
+        workspaceId: 'w1',
+        type: 'WATCHING_UPDATE',
+        issueId: 'i1',
+        actorId: 'a1',
+        payload: { key: 'TP-1', summary: 'Sửa lỗi' },
+      },
+      { force: true },
+    );
+    expect(prisma.notification.create).toHaveBeenCalledTimes(1);
+    const noForce = setup();
+    await noForce.service.publish({
+      recipientId: 'u2',
+      workspaceId: 'w1',
+      type: 'WATCHING_UPDATE',
+      issueId: 'i1',
+      actorId: 'a1',
+      payload: {},
+    });
+    expect(noForce.prisma.notification.create).not.toHaveBeenCalled();
+  });
+
+  it('gộp không bỏ qua cài đặt: người nhận tắt COMMENT_ADDED (in-app) → không update/create', async () => {
+    const { service, prisma } = setup([], {
+      settings: { notifications: { COMMENT_ADDED: false } },
+    });
+    await service.onCommentAdded(comment);
+    expect(prisma.notification.findFirst).not.toHaveBeenCalled();
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+    expect(prisma.notification.update).not.toHaveBeenCalled();
   });
 });
