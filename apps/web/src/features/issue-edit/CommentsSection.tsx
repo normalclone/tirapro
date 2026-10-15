@@ -53,7 +53,9 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   }
 
   return (
-    <div>
+    // data-comments-loaded: phím tắt/nút "Bình luận" chờ danh sách nạp xong rồi mới cuộn tới ô viết (ô nằm cuối danh sách,
+    // cuộn sớm thì danh sách nạp về làm ô trôi xuống dưới màn hình).
+    <div data-comments-loaded={comments !== undefined}>
       <p className="mb-2 text-sm font-medium text-muted">
         Bình luận {comments?.length ? `(${comments.length})` : ''}
       </p>

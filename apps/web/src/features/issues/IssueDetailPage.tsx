@@ -367,15 +367,21 @@ export function IssueDetailPage() {
     let timer: number | undefined;
     function onFocusComment() {
       setActivityTab('comments');
-      requestAnimationFrame(() =>
+      const commentBox = () =>
+        document.getElementById(COMMENT_INPUT_ID) as HTMLTextAreaElement | null;
+      const loaded = (box: HTMLElement | null) => !!box?.closest('[data-comments-loaded="true"]');
+      // Cuộn tới đầu khu hoạt động để dựng khu lười/tab — bỏ qua nếu ô viết đã sẵn sàng (cuộn đầu khu sẽ đè cuộn tới ô).
+      requestAnimationFrame(() => {
+        if (loaded(commentBox())) return;
         document
           .getElementById('issue-activity')
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-      );
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
       let tries = 0;
       const attempt = () => {
-        const box = document.getElementById(COMMENT_INPUT_ID) as HTMLTextAreaElement | null;
-        if (box) {
+        const box = commentBox();
+        // Chờ danh sách bình luận nạp xong (ô nằm cuối danh sách); quá ~1.2s thì cứ focus (vd nạp lỗi).
+        if (box && (loaded(box) || tries >= 15)) {
           // Ô viết nằm CUỐI danh sách bình luận: cuộn tới giữa màn hình rồi mới focus (không để focus tự cuộn).
           box.scrollIntoView({ behavior: 'smooth', block: 'center' });
           box.focus({ preventScroll: true });
