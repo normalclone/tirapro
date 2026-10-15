@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { MarkdownEditor } from '@/features/issue-edit/DescriptionEditor';
+import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { useProjectMeta } from '@/features/ai/api';
 import type { IssuePayload } from './api';
 
