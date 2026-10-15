@@ -10,12 +10,15 @@ export const PERMISSION_GROUP_LABEL: Record<string, string> = {
   backlog: 'Sprint & bảng',
   workflow: 'Sprint & bảng',
   customfield: 'Sprint & bảng',
+  plan: 'Sprint & bảng',
+  automation: 'Sprint & bảng',
   member: 'Thành viên',
   team: 'Thành viên',
   workspace: 'Thành viên',
   report: 'Báo cáo',
   dashboard: 'Báo cáo',
   filter: 'Báo cáo',
+  digest: 'Báo cáo',
 };
 
 const OTHER_GROUP = 'Khác';

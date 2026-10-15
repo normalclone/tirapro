@@ -3,12 +3,17 @@ import { Check, Minus } from 'lucide-react';
 import {
   PERMISSION_CATALOG,
   SYSTEM_ROLES,
+  roleLabel,
   type PermissionScope,
   type RoleDto,
 } from '@tirapro/types';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { cn } from '@/lib/utils';
 import { buildRoleMatrix, type RoleMatrix } from './roleMatrix';
+
+/** Cột "Quyền": dính trái, hẹp trên điện thoại (nhãn xuống dòng) để còn chỗ cho các cột vai trò. */
+const FIRST_COL =
+  'sticky left-0 z-10 w-40 min-w-40 max-w-40 bg-surface px-4 sm:w-64 sm:min-w-64 sm:max-w-64';
 
 const SCOPES: { value: PermissionScope; label: string }[] = [
   { value: 'PROJECT', label: 'Cấp dự án' },
@@ -36,7 +41,18 @@ export function RoleMatrixTable({ roles }: { roles: RoleDto[] }) {
   });
   const captionId = useId();
 
-  const scoped = useMemo(() => roles.filter((r) => r.scope === scope), [roles, scope]);
+  const scoped = useMemo(
+    () =>
+      roles
+        .filter((r) => r.scope === scope)
+        // Vai trò hệ thống trước, rồi theo tên hiển thị tiếng Việt — thứ tự cột ổn định giữa các lần mở.
+        .sort(
+          (a, b) =>
+            Number(b.isSystem) - Number(a.isSystem) ||
+            roleLabel(a.name).localeCompare(roleLabel(b.name), 'vi'),
+        ),
+    [roles, scope],
+  );
   const selectedIds = useMemo(
     () =>
       picked[scope] ??
@@ -162,21 +178,28 @@ function MatrixGrid({
   const columns = matrix.columns;
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-      <table className="w-full min-w-max border-collapse text-sm">
+      <table className="w-full min-w-max border-separate border-spacing-0 text-sm">
         <caption id={captionId} className="sr-only">
           So sánh quyền giữa các vai trò —{' '}
           {scope === 'PROJECT' ? 'cấp dự án' : 'cấp không gian làm việc'}
         </caption>
         <thead>
-          <tr className="border-b border-border">
+          <tr>
             <th
               scope="col"
-              className="sticky left-0 z-10 min-w-48 bg-surface px-4 py-3 text-left text-xs font-medium text-muted"
+              className={cn(
+                FIRST_COL,
+                'border-b border-border py-3 text-left text-xs font-medium text-muted',
+              )}
             >
               Quyền
             </th>
             {matrix.columns.map((c) => (
-              <th key={c.id} scope="col" className="px-3 py-3 text-center align-bottom font-normal">
+              <th
+                key={c.id}
+                scope="col"
+                className="border-b border-border px-3 py-3 text-center align-bottom font-normal"
+              >
                 <div className="flex flex-col items-center gap-1">
                   <RoleBadge name={c.name} color={c.color} />
                   <span className="text-xs text-faint" title={`${c.memberCount ?? 0} thành viên`}>
@@ -198,25 +221,32 @@ function MatrixGrid({
           {matrix.rows.map((row, i) => (
             <Fragment key={row.key}>
               {matrix.rows[i - 1]?.group !== row.group && (
-                <tr className="bg-surface-2">
+                <tr>
+                  {/* Nhãn nhóm nằm trong ô dính trái (ô tràn cả bảng thì nhãn trôi mất khi cuộn ngang). */}
                   <th
-                    colSpan={columns.length + 1}
-                    scope="colgroup"
-                    className="sticky left-0 px-4 py-1.5 text-left text-xs font-semibold text-ink"
+                    scope="rowgroup"
+                    className="sticky left-0 z-10 w-40 min-w-40 max-w-40 border-b border-border bg-surface-2 px-4 py-1.5 text-left text-xs font-semibold text-ink sm:w-64 sm:min-w-64 sm:max-w-64"
                   >
                     {row.group}
                   </th>
+                  <td colSpan={columns.length} className="border-b border-border bg-surface-2" />
                 </tr>
               )}
-              <tr className="border-b border-border last:border-b-0">
+              <tr>
                 <th
                   scope="row"
-                  className="sticky left-0 z-10 bg-surface px-4 py-2 text-left font-normal text-ink"
+                  className={cn(
+                    FIRST_COL,
+                    'border-b border-border py-2 text-left font-normal text-ink',
+                  )}
                 >
                   {row.label}
                 </th>
                 {row.cells.map((has, ci) => (
-                  <td key={matrix.columns[ci]!.id} className="px-3 py-2 text-center">
+                  <td
+                    key={matrix.columns[ci]!.id}
+                    className="border-b border-border px-3 py-2 text-center"
+                  >
                     <span
                       role="img"
                       aria-label={has ? 'có' : 'không'}
