@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
-import { currentProjectKey } from './currentProject';
+import { currentProjectKey, resolveCreateTarget } from './currentProject';
 import { SHORTCUTS_EVENT } from '@/components/layout/ShortcutsDialog';
 import { isDialogOpen, isTypingTarget } from './hotkeys';
 
@@ -62,7 +63,15 @@ export function useGlobalHotkeys() {
           break;
         case 'c':
           e.preventDefault();
-          openCreate({ projectKey: currentProjectKey(projectsRef.current) ?? undefined });
+          {
+            // Dự án hiện tại đã lưu trữ → đổi sang dự án hoạt động đầu tiên (kèm báo) hoặc chỉ báo, không mở dialog trống.
+            const t = resolveCreateTarget(
+              currentProjectKey(projectsRef.current),
+              projectsRef.current,
+            );
+            if (t.notice) toast.info(t.notice);
+            if (!t.block) openCreate({ projectKey: t.projectKey });
+          }
           break;
         case '/':
           e.preventDefault();

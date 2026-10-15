@@ -34,7 +34,7 @@ import { useOpenSession } from '@/lib/useOpenSession';
 import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
-import { useCan, useCanEditIssue } from '@/features/projects/permissions';
+import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
 import { applyQuickFilters, useQuickFilters } from '@/features/quick-filters/useQuickFilters';
 import { AssigneeFilter, applyAssigneeFilter } from '@/features/quick-filters/AssigneeFilter';
@@ -174,7 +174,7 @@ export function BoardPage() {
   const transition = useTransitionIssue(project?.id ?? '');
   const updateIssue = useUpdateIssue(project?.id);
   const { data: workflows } = useWorkflows();
-  const can = useCan(project?.id);
+  const can = useProjectCan(project); // dự án lưu trữ: chỉ còn quyền đọc → không kéo/quick-add/cài đặt bảng
   const canEditIssue = useCanEditIssue(project?.id);
   const canTransition = can('issue:transition');
   const canAssign = can('issue:assign');

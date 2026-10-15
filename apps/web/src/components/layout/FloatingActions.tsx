@@ -23,6 +23,7 @@ import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
 import { ReportIssueModal } from '@/features/intake/ReportIssueModal';
 import { apiErrorMessage } from '@/lib/api';
+import { resolveCreateTarget } from '@/lib/currentProject';
 import { cn } from '@/lib/utils';
 
 function projectKeyFromPath(pathname: string): string {
@@ -83,7 +84,8 @@ export function FloatingActions() {
   const onIssue = !!issueId;
   const watching = watchState?.watching ?? false;
   // Tạo công việc = mở TRANG tạo (không còn popup). Dùng dự án hiện tại, fallback dự án đầu tiên.
-  const createTargetKey = project?.key ?? projects?.[0]?.key ?? '';
+  // Dự án đang xem đã lưu trữ (không nằm trong danh sách hoạt động) → dự án hoạt động đầu tiên hoặc chặn.
+  const createTarget = resolveCreateTarget(project?.key ?? projects?.[0]?.key ?? null, projects);
 
   // Đóng có chuyển động: chạy animate-out rồi mới unmount. Fallback tức thời khi
   // người dùng ưu tiên giảm chuyển động (đã có motion-reduce trên phần tử con).
@@ -115,7 +117,9 @@ export function FloatingActions() {
       icon: <Plus className="h-5 w-5" />,
       label: 'Tạo công việc',
       onClick: run(() => {
-        if (createTargetKey) openCreate({ projectKey: createTargetKey });
+        if (createTarget.notice) toast.info(createTarget.notice);
+        if (createTarget.block) return;
+        if (createTarget.projectKey) openCreate({ projectKey: createTarget.projectKey });
         else toast.error('Chưa có dự án nào — hãy tạo một dự án trước, rồi thêm công việc vào đó.');
       }),
     },
