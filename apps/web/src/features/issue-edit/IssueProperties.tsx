@@ -6,6 +6,7 @@ import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
 import { useCanEditIssue } from '@/features/projects/permissions';
 import { useProjectSprints, useMoveToSprint } from '@/features/backlog/api';
+import { BACKLOG_LABEL, buildSprintOptions } from './sprintOptions';
 import { useUpdateIssue } from '@/features/issues/api';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { ParticipantsRow } from '@/features/issue-extras/ParticipantsRow';
@@ -188,23 +189,15 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
   const canEdit = useCanEditIssue(issue.projectId)(issue);
 
   const sprintOptions = useMemo(
-    () => [
-      { value: '', label: 'Backlog — chưa xếp vào sprint' },
-      ...(sprints ?? [])
-        .filter((s) => s.state !== 'CLOSED')
-        .map((s) => ({
-          value: s.id,
-          label: s.state === 'ACTIVE' ? `${s.name} · đang chạy` : s.name,
-        })),
-    ],
-    [sprints],
+    () => buildSprintOptions(sprints, issue.sprintId ?? null),
+    [sprints, issue.sprintId],
   );
 
   if (!canEdit) {
     const current = sprintOptions.find((o) => o.value === (issue.sprintId ?? ''));
     return (
       <span className="truncate text-sm text-muted" title="Sprint chứa việc này">
-        {current?.label ?? 'Backlog — chưa xếp vào sprint'}
+        {current?.label ?? BACKLOG_LABEL}
       </span>
     );
   }
@@ -220,7 +213,7 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
           className="truncate"
           title="Sprint: đợt làm việc ngắn, thường 1–2 tuần. Bấm để chuyển việc sang đợt khác."
         >
-          {sel?.label ?? 'Backlog — chưa xếp vào sprint'}
+          {sel?.label ?? BACKLOG_LABEL}
         </span>
       )}
       onChange={(v) => {
