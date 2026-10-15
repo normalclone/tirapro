@@ -43,7 +43,7 @@ Tất cả đường dẫn tương đối gốc worktree `/Users/inrnee/tirapro-
 - Test web là vitest môi trường node, KHÔNG có jsdom/testing-library (`apps/web/package.json` devDependencies) → mọi logic phải tách thành hàm thuần để test; phần React kiểm bằng bước "Kiểm trực quan". Test API = `*.spec.ts` cạnh service (mock prisma bằng `vi.fn`, xem `modules/notifications/notifications.producers.spec.ts`), test web = `*.test.ts`, test `packages/shared` = `*.spec.ts`.
 - `packages/shared` được build ra `dist` — sau khi sửa phải `pnpm --filter @tirapro/shared build` trước khi chạy test/typecheck của `api`/`web`.
 - Không thêm dependency Markdown (`react-markdown`/`remark-gfm`/`marked`/`dompurify`). Lý do: renderer hiện có (`DescriptionEditor.tsx:11-144`) tự dựng React node, không dùng `dangerouslySetInnerHTML` nên an toàn XSS theo cấu trúc, và phần cần thêm (task list, bảng, danh sách số, trích dẫn) chỉ là ~150 dòng. Thêm thư viện kéo theo +~45 KB gzip vào bundle trang issue, phải sanitize lại, và vẫn phải tự viết plugin cho chip @mention và ép tick-ngược theo dòng.
-- Migration của nhóm A dùng dải tên `202610162xxxxx` (A6 = `20261016200000`, A8 = `20261016201000`, A11 = `20261016202000`, A18 = `20261016203000`, A20 = `20261016204000`) để không đụng nhóm khác; controller điều phối có quyền đổi nếu trùng.
+- Migration của nhóm A dùng dải tên `202610163xxxxx` (A6 = `20261016300000`, A8 = `20261016301000`, A11 = `20261016302000`, A18 = `20261016303000`, A20 = `20261016304000`) để không đụng nhóm khác; controller điều phối có quyền đổi nếu trùng.
 - Định dạng token @mention lưu trong Markdown: `@[Tên hiển thị](user:<userId>)` (xem A1). Mọi nơi hiển thị thuần văn bản (thông báo, email, AI, Telegram) phải đổi qua `mentionsToPlain`.
 
 ### Task A1: Thư viện thuần dùng chung — token @mention, task-list Markdown, trích đoạn, mã công việc
@@ -700,7 +700,7 @@ export function useTaskToggle(projectId: string | undefined, field: 'description
 **Hiện trạng:** không có chỗ cho tiêu chí chấp nhận; mẫu Story chỉ là chữ trong mô tả (`CreateIssueModal.tsx:83` `STORY: 'Bối cảnh:\n\nTiêu chí hoàn thành:\n- \n- '`). `IssueDto` (`packages/types/src/entities.ts:261-292`) không có trường này; `toDto` ở `issues.service.ts:1270-1340` là nơi duy nhất dựng `IssueDto` (đã grep `descriptionFormat:` — các nơi khác chỉ là input tạo issue).
 **Files:**
 - Modify: `apps/api/prisma/schema.prisma` (model `Issue`, gần trường `description`, dòng ~705) — `acceptanceCriteria String? @db.Text`.
-- Create: `apps/api/prisma/migrations/20261016200000_issue_acceptance_criteria/migration.sql` — `ALTER TABLE "Issue" ADD COLUMN "acceptanceCriteria" TEXT;`
+- Create: `apps/api/prisma/migrations/20261016300000_issue_acceptance_criteria/migration.sql` — `ALTER TABLE "Issue" ADD COLUMN "acceptanceCriteria" TEXT;`
 - Modify: `packages/shared/src/schemas/issue.ts:6-25` — `acceptanceCriteria: z.string().max(20_000).optional().nullable()` trong `createIssueSchema` (`updateIssueSchema` kế thừa qua `.partial()`).
 - Modify: `packages/types/src/entities.ts:261-292` — `acceptanceCriteria: string | null; acceptanceProgress: { done: number; total: number } | null;`.
 - Modify: `apps/api/src/modules/issues/issues.service.ts` — `TRACKED_FIELDS` (`:59-74`) thêm `'acceptanceCriteria'`; `createCore` data (`:524`) thêm trường; `update` (`:752`) thêm `if (input.acceptanceCriteria !== undefined) data.acceptanceCriteria = input.acceptanceCriteria?.trim() ? input.acceptanceCriteria : null;`; `toDto` (`:1305`) thêm `acceptanceCriteria: i.acceptanceCriteria, acceptanceProgress: countTasks(i.acceptanceCriteria)`.
@@ -802,7 +802,7 @@ describe('scalarIssuePatch — Tiêu chí chấp nhận', () => {
 - Modify: `apps/api/src/modules/rbac/rbac.service.ts:39-…` (`RESOURCE_RESOLVERS`) — `wikiPage: { model: 'wikiPage', where: inWorkspace, select: projectIdOnly, project: ownProjectId }` (dùng lại `inWorkspace`/`ownProjectId`, `:21-25`).
 - Modify: `apps/api/src/modules/wiki/wiki.controller.ts:48-85` — `@ProjectRef('body', 'projectId')` cho `POST`; `@ProjectRef('wikiPage', 'id')` cho `PUT :id`, `PUT :id/move`, `DELETE :id`; `DELETE :id` đổi sang `@Permissions(PERMISSIONS.PROJECT_ADMIN)` (không thêm khoá mới: Project Admin có `project:admin`, Workspace Admin có mọi khoá; trang chung `projectId = null` → chỉ tính quyền workspace nên chỉ Workspace Admin xoá được).
 - Modify: `apps/api/src/modules/wiki/wiki.service.ts:146-177` (`create`) — khi có `parentId`, `(dto.projectId ?? null)` phải bằng `parent.projectId`, sai → `BusinessRuleException`.
-- Create: `apps/api/prisma/migrations/20261016201000_wiki_project_permissions/migration.sql`.
+- Create: `apps/api/prisma/migrations/20261016301000_wiki_project_permissions/migration.sql`.
 - Test: `apps/api/src/modules/wiki/wiki.service.spec.ts`, `apps/api/src/modules/rbac/rbac.service.spec.ts` (thêm `wikiPage` vào `setup()` và `it.each` `:200-205`), `packages/types` không có spec → thêm ca vào `apps/api/src/modules/roles` nếu đã có spec về catalog (không có thì bỏ).
 **Interfaces:** Produces: quyền `wiki:manage` có hiệu lực theo dự án (FE dùng `useCan(projectId)('wiki:manage')`, A9). Consumes: không.
 **Quyết định thiết kế:**
@@ -956,7 +956,7 @@ it('update(): không gửi expectedUpdatedAt → vẫn dùng update thường (t
 **Hiện trạng:** `WikiPage.body` là Markdown tự do; không có liên kết nào giữa wiki và issue (`schema.prisma:1945-1965`); `WikiPageDto` không có công việc (`wiki.service.ts:44-60`); tìm trang theo mã chỉ qua `ILIKE` (`:93-111`) và theo một chiều.
 **Files:**
 - Modify: `apps/api/prisma/schema.prisma` — model mới `WikiPageIssue`, thêm quan hệ `issues WikiPageIssue[]` vào `WikiPage` (`:1945`) và `Issue` (`:699`).
-- Create: `apps/api/prisma/migrations/20261016202000_wiki_page_issue/migration.sql` — bảng + index + backfill.
+- Create: `apps/api/prisma/migrations/20261016302000_wiki_page_issue/migration.sql` — bảng + index + backfill.
 - Modify: `apps/api/src/modules/wiki/wiki.service.ts` — `syncIssueLinks`, `create`/`update` gọi sau khi ghi, `get` trả `issues`, `byIssue`.
 - Modify: `apps/api/src/modules/wiki/wiki.controller.ts` — `GET by-issue/:issueId` (đặt TRƯỚC `:id`, `@ProjectRef('issue','issueId')`, `@Permissions(PROJECT_VIEW)`).
 - Test: `apps/api/src/modules/wiki/wiki.service.spec.ts`.
@@ -1390,7 +1390,7 @@ describe('isCommentHotkey', () => {
 **Hiện trạng:** `WikiService.update` ghi đè thẳng `title/body` (`apps/api/src/modules/wiki/wiki.service.ts:179-205`), `create` chỉ tạo bản ghi (`:146-177`); không có bảng lịch sử (`schema.prisma:1945-1965`, model `WikiPage` chỉ có `updatedById/updatedAt`). Sau A8 mọi Thành viên viết được wiki nên một lần sửa nhầm là mất nội dung. Không có model nhật ký kiểm toán (`grep -n "AuditLog" schema.prisma` rỗng) — nhật ký kiểm toán quản trị là việc của nhóm khác (#26).
 **Files:**
 - Modify: `apps/api/prisma/schema.prisma` — model mới `WikiPageVersion`, quan hệ `versions WikiPageVersion[]` trong `WikiPage` (`:1945`).
-- Create: `apps/api/prisma/migrations/20261016203000_wiki_page_version/migration.sql` — bảng + unique + FK cascade + backfill phiên bản 1 cho trang đã có.
+- Create: `apps/api/prisma/migrations/20261016303000_wiki_page_version/migration.sql` — bảng + unique + FK cascade + backfill phiên bản 1 cho trang đã có.
 - Modify: `apps/api/src/modules/wiki/wiki.service.ts` — `snapshot()`, `create`/`update` ghi phiên bản trong cùng transaction, `listVersions`, `getVersion`, `restoreVersion`.
 - Modify: `apps/api/src/modules/wiki/wiki.controller.ts` — 3 route mới (khai báo TRƯỚC `@Get(':id')` không cần vì nhiều đoạn hơn, nhưng đặt cạnh `:id`).
 - Modify: `apps/api/src/modules/wiki/wiki.schemas.ts` — `restoreWikiVersionSchema = z.object({ expectedUpdatedAt: z.string().datetime() })` (bắt buộc ở khôi phục).
@@ -1552,7 +1552,7 @@ describe('diffLines', () => {
 **Hiện trạng:** `WikiService.remove` xoá cứng (`wiki.service.ts:261-274`: `wikiPage.delete`) — kể cả toàn bộ lịch sử A18 sẽ bị cascade; trang con được nâng lên cha của trang bị xoá (`updateMany parentId`) rồi `renumber`. Model `WikiPage` không có `deletedAt` (`schema.prisma:1945-1965`). Các model có xoá mềm khai báo trong `SOFT_DELETE_MODELS` (`apps/api/src/infra/prisma/prisma.service.ts:9`) và `infra/prisma/soft-delete-coverage.spec.ts` ép mọi truy vấn đọc phải lọc `deletedAt`.
 **Files:**
 - Modify: `apps/api/prisma/schema.prisma` — `deletedAt DateTime?`, `deletedById String?` trong `WikiPage`.
-- Create: `apps/api/prisma/migrations/20261016204000_wiki_soft_delete/migration.sql` — `ALTER TABLE "WikiPage" ADD COLUMN "deletedAt" TIMESTAMP(3), ADD COLUMN "deletedById" TEXT;` + `CREATE INDEX "WikiPage_workspaceId_deletedAt_idx" ON "WikiPage"("workspaceId","deletedAt");`
+- Create: `apps/api/prisma/migrations/20261016304000_wiki_soft_delete/migration.sql` — `ALTER TABLE "WikiPage" ADD COLUMN "deletedAt" TIMESTAMP(3), ADD COLUMN "deletedById" TEXT;` + `CREATE INDEX "WikiPage_workspaceId_deletedAt_idx" ON "WikiPage"("workspaceId","deletedAt");`
 - Modify: `apps/api/src/infra/prisma/prisma.service.ts:9` — thêm `'WikiPage'` vào `SOFT_DELETE_MODELS`.
 - Modify: `apps/api/src/modules/wiki/wiki.service.ts` — mọi truy vấn đọc `wikiPage` thêm `deletedAt: null`: `tree`, `search`, `get`, `requirePage` (⇒ `requireWritablePage`, `move`, `create` với cha), `ancestors`, `nextOrder`, `renumber`, `isDescendant`, danh sách anh em ở `move`, `byIssue`; `remove` thành xoá mềm; thêm `trash`, `undelete`.
 - Modify: `apps/api/src/modules/wiki/wiki.controller.ts` — `GET /wiki/trash?projectId=` (TRƯỚC `:id`; `@ProjectRef('query','projectId') @Permissions(PROJECT_ADMIN)`), `POST /wiki/:id/undelete` (`@ProjectRef('wikiPage','id') @Permissions(PROJECT_ADMIN)`); `DELETE :id` giữ `PROJECT_ADMIN` (A8).
@@ -1615,7 +1615,7 @@ File bị ≥ 2 task của nhóm A sửa (và nhóm khác nếu biết), kèm th
 | `apps/api/src/modules/notifications/notifications.service.ts` | A2 → A13 → A14 → A15 | #17 là của A; nhóm B (Việc chờ tôi) có thể đọc `Notification` | tuần tự bắt buộc |
 | `apps/api/src/modules/wiki/wiki.service.ts` | A8 → A9 → A10 → A11 → A18 → A20 | — | tuần tự bắt buộc; `setup()` của spec mở rộng ở A8 (A18/A20 thêm mock `wikiPageVersion`, `deletedAt`); A18 tách lõi ghi `writePage` dùng chung với A10 |
 | `apps/api/src/modules/wiki/wiki.controller.ts` | A8, A9, A11, A18, A20 | — | route `admins`, `trash` và `by-issue/:issueId` phải khai báo TRƯỚC `:id`; `DELETE` dùng `PROJECT_ADMIN` từ A8 |
-| `apps/api/prisma/schema.prisma` | A6, A11, A18, A20 | nhiều nhóm | thêm cột/model ở chỗ khác nhau; migration `20261016200000`, `…202000`, `…203000`, `…204000` (A18 trước A20: cùng bảng `WikiPage`) |
+| `apps/api/prisma/schema.prisma` | A6, A11, A18, A20 | nhiều nhóm | thêm cột/model ở chỗ khác nhau; migration `20261016300000`, `…202000`, `…203000`, `…204000` (A18 trước A20: cùng bảng `WikiPage`) |
 | `apps/api/src/infra/prisma/prisma.service.ts` (`SOFT_DELETE_MODELS`) | A20 | nhóm thêm model xoá mềm khác | thêm phần tử vào tập — xung đột cơ học |
 | `packages/types/src/permissions.ts` | A8 (BA/PO/SM/PA/Developer/Tester có `wiki:manage`) | #27 (rà quyền vai trò), Q/L (quyền mới) | A8 trước #27 hoặc hợp nhất từng dòng; migration vá `RolePermission` đặt tên riêng |
 | `packages/types/src/entities.ts` (`IssueDto`) | A6 | B (Epic), Q (Severity), L (startDate) | thêm trường — hợp nhất |
