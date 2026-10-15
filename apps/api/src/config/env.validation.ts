@@ -83,6 +83,12 @@ export const envSchema = z.object({
     .string()
     .min(32, 'INTEGRATION_ENCRYPTION_KEY tối thiểu 32 ký tự')
     .default(DEFAULT_INTEGRATION_ENCRYPTION_KEY),
+  // Khoá CŨ (optional) để vẫn giải mã được token đã mã hoá trước khi đổi khoá — xem docs/DEPLOY.md, mục "Nâng cấp / đổi khoá".
+  INTEGRATION_ENCRYPTION_KEY_PREVIOUS: z
+    .string()
+    .optional()
+    .default('')
+    .refine((v) => v === '' || v.length >= 32, 'INTEGRATION_ENCRYPTION_KEY_PREVIOUS để trống hoặc tối thiểu 32 ký tự'),
 });
 
 export type Env = z.infer<typeof envSchema>;

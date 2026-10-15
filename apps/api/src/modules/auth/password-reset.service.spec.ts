@@ -38,6 +38,14 @@ describe('PasswordResetService.requestReset', () => {
     expect(tx.passwordResetToken.create).not.toHaveBeenCalled();
   });
 
+  it('người dùng hệ thống automation → bỏ qua, không tra DB, không tạo token, không gửi thư', async () => {
+    const { service, prisma, mail, tx } = setup();
+    await expect(service.requestReset('Automation@tirapro.local')).resolves.toBeUndefined();
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(tx.passwordResetToken.create).not.toHaveBeenCalled();
+    expect(mail.enqueue).not.toHaveBeenCalled();
+  });
+
   it('email tồn tại → lưu sha256 của token (không lưu token thô) và enqueue link chứa token thô', async () => {
     const { service, prisma, mail, tx } = setup();
     prisma.user.findUnique.mockResolvedValue({ id: 'u1', email: 'a@x.vn', displayName: 'A', status: 'ACTIVE' });

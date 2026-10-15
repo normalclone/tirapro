@@ -473,7 +473,7 @@ export class IssuesService {
       if (before.statusId !== after.statusId) {
         this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, { issue: dto, actorId: userId, fromStatusId: before.statusId });
       } else {
-        this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId: userId });
+        this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId: userId, changedFields: changedFieldsOf(before, after) });
       }
     }
     return { updated: result.map((r) => this.toDto(r)), conflicts };

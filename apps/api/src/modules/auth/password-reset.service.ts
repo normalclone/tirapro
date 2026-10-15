@@ -4,6 +4,7 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { MailService } from '../mail/mail.service';
+import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
 import { generateOneTimeToken, hashOneTimeToken } from './auth-token';
 
 export const PASSWORD_RESET_TTL_MS = 60 * 60_000;
@@ -27,6 +28,8 @@ export class PasswordResetService {
    */
   async requestReset(rawEmail: string): Promise<void> {
     const email = rawEmail.trim().toLowerCase();
+    // Người dùng hệ thống của automation không có mật khẩu và không phải người thật — không bao giờ cấp liên kết đặt lại.
+    if (email === SYSTEM_USER_EMAIL) return;
     const user = await this.prisma.user.findUnique({
       where: { email },
       select: { id: true, email: true, displayName: true, status: true },

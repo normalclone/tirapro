@@ -31,8 +31,6 @@ Repo đã có sẵn [`render.yaml`](../render.yaml) mô tả 4 thành phần: Po
 
 Hợp khi bạn có sẵn 1 server (Ubuntu…). `docker-compose.yml` đã có Postgres(pgvector)+Redis.
 
-**Yêu cầu Node `>=22.19`** (undici@8); image Docker dùng `node:22-alpine` nên đã đáp ứng.
-
 ```bash
 git clone https://github.com/normalclone/tirapro.git && cd tirapro
 cp .env.example .env            # sửa secret JWT, CORS_ORIGIN = domain web, DATABASE_URL/REDIS_URL
@@ -71,7 +69,24 @@ Build/Start/env giống cột trong `render.yaml`. Đặt `DATABASE_URL/DIRECT_U
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | API | ≥32 ký tự; Render `generateValue` tự sinh. |
 | `ANTHROPIC_API_KEY` | API | (tùy chọn) bật AI thật. |
 | `EMBEDDING_PROVIDER` | API | `none` → tìm kiếm dùng full-text. |
+| `INTEGRATION_ENCRYPTION_KEY` | API | Khoá mã hoá token tích hợp (≥32 ký tự, khác mặc định ở production). Render `generateValue` tự sinh. |
+| `INTEGRATION_ENCRYPTION_KEY_PREVIOUS` | API | (tùy chọn) khoá CŨ — để vẫn giải mã token đã mã hoá trước khi đổi khoá. Xem mục dưới. |
 | `VITE_API_URL` | Web | `https://<api>/api/v1` (nhúng lúc build). |
 | `VITE_WS_URL` | Web | `https://<api>` (WebSocket). |
 
 Chi tiết đầy đủ: [`.env.example`](../.env.example).
+
+## Nâng cấp / đổi khoá mã hoá tích hợp (Telegram BYO token)
+
+Token bot Telegram của từng workspace được mã hoá bằng `INTEGRATION_ENCRYPTION_KEY`. Ở production API không cho dùng
+khoá mặc định, nên nếu trước đây hệ thống chạy bằng khoá mặc định (hoặc bạn đổi sang khoá mới) thì token cũ sẽ **không giải được**:
+API ghi log lỗi, trả "không có token" (không dùng ciphertext làm token) và tích hợp đó ngừng gửi tin.
+
+Cách xử lý (chọn một):
+1. **Giữ khoá cũ làm khoá dự phòng** — đặt khoá cũ vào `INTEGRATION_ENCRYPTION_KEY_PREVIOUS` (khoá mặc định cũ là
+   `dev_integration_encryption_key_change_me_0001`), khoá mới vào `INTEGRATION_ENCRYPTION_KEY`, rồi khởi động lại API.
+   Token cũ giải mã bằng khoá dự phòng; token mới luôn mã hoá bằng khoá mới.
+2. **Mã hoá lại một lần** rồi bỏ khoá dự phòng: giữ cả hai biến như trên, chạy
+   `pnpm --filter @tirapro/api run integrations:rekey -- --dry-run` để xem trước, rồi chạy không có `--dry-run`.
+   Sau đó có thể xoá `INTEGRATION_ENCRYPTION_KEY_PREVIOUS`.
+3. Không còn khoá cũ → nhập lại token bot trong Cài đặt → Tích hợp.
