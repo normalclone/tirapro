@@ -40,6 +40,7 @@ function setup(
       ),
     },
     issue: { findFirst: vi.fn(() => Promise.resolve({ ...issue })) },
+    status: { findUnique: vi.fn(() => Promise.resolve({ name: 'In Review' })) },
     // Mô phỏng chỉ mục duy nhất: chỉ dòng CHƯA có sổ mới được chèn và trả về.
     mention: {
       createManyAndReturn: vi.fn((a: { data: { mentionedUserId: string }[] }) =>
@@ -295,5 +296,67 @@ describe('NotificationsService — @mention trong mô tả công việc', () => 
     const { service, created } = setup(['u3']);
     await service.onIssueDescriptionMentions({ issue: withDesc, actorId: 'u3' });
     expect(created()).toEqual([]);
+  });
+});
+
+describe('NotificationsService — payload giàu ngữ cảnh (A13)', () => {
+  const createdData = (prisma: ReturnType<typeof setup>['prisma']) =>
+    prisma.notification.create.mock.calls.map(
+      (c) => c[0].data as unknown as { type: string; payload: Record<string, unknown> },
+    );
+
+  it('đổi trạng thái: payload có tên người, trạng thái cũ → mới, count=1, actors', async () => {
+    const { service, prisma } = setup();
+    await service.onIssueTransitioned({
+      issue: { ...issue, status: { name: 'Done' } },
+      actorId: 'a1',
+      fromStatusId: 's0',
+    });
+    expect(prisma.status.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 's0' } }),
+    );
+    expect(createdData(prisma)[0]!.payload).toMatchObject({
+      actorName: 'Minh',
+      fromStatusName: 'In Review',
+      statusName: 'Done',
+      count: 1,
+      actors: [{ id: 'a1', name: 'Minh' }],
+    });
+  });
+
+  it('đổi trạng thái không có fromStatusId → không tra trạng thái cũ', async () => {
+    const { service, prisma } = setup();
+    await service.onIssueTransitioned({
+      issue: { ...issue, status: { name: 'Done' } },
+      actorId: 'a1',
+    });
+    expect(prisma.status.findUnique).not.toHaveBeenCalled();
+    expect(createdData(prisma)[0]!.payload.fromStatusName).toBeUndefined();
+  });
+
+  it('COMMENT_ADDED: payload có excerpt thuần văn bản (bỏ cú pháp Markdown)', async () => {
+    const { service, prisma } = setup();
+    await service.onCommentAdded({
+      comment: { id: 'c1', authorId: 'a1', body: '**Đã** sửa [link](http://x.y)' },
+      issueId: 'i1',
+      actorId: 'a1',
+    });
+    const c = createdData(prisma).find((n) => n.type === 'COMMENT_ADDED');
+    expect(c?.payload).toMatchObject({ excerpt: 'Đã sửa link', actorName: 'Minh' });
+  });
+
+  it('email MENTIONED dùng bộ dựng câu chung: tiêu đề có người + nơi nhắc, nội dung = trích đoạn', async () => {
+    const { service, mail } = setup(['u3']);
+    await service.onCommentAdded({
+      comment: { id: 'c1', authorId: 'a1', body: 'xem giúp @[Ba](user:u3)' },
+      issueId: 'i1',
+      actorId: 'a1',
+      mentionIds: ['u3'],
+    });
+    const arg = (
+      mail.enqueue.mock.calls as unknown as [{ payload: { title: string; body: string } }][]
+    )[0]![0];
+    expect(arg.payload.title).toBe('Minh nhắc đến bạn trong TP-1');
+    expect(arg.payload.body).toBe('xem giúp @Ba');
   });
 });

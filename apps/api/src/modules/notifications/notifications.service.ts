@@ -2,7 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { z } from 'zod';
-import { extractMentionIds, plainExcerpt } from '@tirapro/shared';
+import {
+  buildNotificationTitle,
+  extractMentionIds,
+  notificationBody,
+  plainExcerpt,
+  type NotificationPayload,
+} from '@tirapro/shared';
 import {
   DOMAIN_EVENTS,
   NotificationType as NotificationTypeEnum,
@@ -288,15 +294,26 @@ export class NotificationsService {
   @OnEvent(DOMAIN_EVENTS.ISSUE_TRANSITIONED)
   async onIssueTransitioned(payload: unknown): Promise<void> {
     try {
-      const { issue, actorId } = payload as IssueTransitionedPayload;
+      const { issue, actorId, fromStatusId } = payload as IssueTransitionedPayload;
       if (!issue?.assigneeId || issue.assigneeId === actorId) return;
+      const fromStatus = fromStatusId
+        ? await this.prisma.status.findUnique({
+            where: { id: fromStatusId },
+            select: { name: true },
+          })
+        : null;
       await this.create({
         recipientId: issue.assigneeId,
         workspaceId: issue.workspaceId,
         type: 'STATUS_CHANGED',
         issueId: issue.id,
         actorId,
-        payload: { key: issue.key, summary: issue.summary, statusName: issue.status?.name ?? null },
+        payload: {
+          key: issue.key,
+          summary: issue.summary,
+          statusName: issue.status?.name ?? null,
+          ...(fromStatus ? { fromStatusName: fromStatus.name } : {}),
+        },
       });
     } catch (err) {
       this.logger.warn(`onIssueTransitioned thất bại: ${this.errMsg(err)}`);
@@ -349,7 +366,11 @@ export class NotificationsService {
         select: { id: true, workspaceId: true, assigneeId: true, key: true, summary: true },
       });
       if (!issue) return;
-      const issuePayload = { key: issue.key, summary: issue.summary };
+      const issuePayload = {
+        key: issue.key,
+        summary: issue.summary,
+        excerpt: plainExcerpt(comment?.body, 80),
+      };
 
       // @nhắc tên: chỉ thành viên không gian làm việc, không tự nhắc chính mình.
       const mentioned = await this.notifyMentioned({
@@ -530,6 +551,7 @@ export class NotificationsService {
       recipient.status !== 'DEACTIVATED' &&
       effectiveEmailPrefs(recipient.settings)[emailKey];
     if (!prefs[input.type] && !emailOn) return noop;
+    const payload = await this.withActor(input);
 
     const created = prefs[input.type]
       ? await db.notification.create({
@@ -540,7 +562,7 @@ export class NotificationsService {
             issueId: input.issueId ?? null,
             commentId: input.commentId ?? null,
             actorId: input.actorId ?? null,
-            payload: input.payload as Prisma.InputJsonValue,
+            payload: payload as Prisma.InputJsonValue,
           },
         })
       : null;
@@ -553,41 +575,46 @@ export class NotificationsService {
           notification: this.toDto(created),
         });
       }
-      if (emailOn) await this.enqueueEmail(recipient.email, input);
+      if (emailOn) await this.enqueueEmail(recipient.email, input.type, payload);
+    };
+  }
+
+  /** Bổ sung người thực hiện (ảnh chụp tên lúc xảy ra) + `count`/`actors` — nền cho việc gộp ở `publish`. */
+  private async withActor(input: NotificationInput): Promise<NotificationPayload> {
+    const base = { ...input.payload } as NotificationPayload;
+    const actor = input.actorId
+      ? await this.prisma.user.findUnique({
+          where: { id: input.actorId },
+          select: { displayName: true },
+        })
+      : null;
+    return {
+      ...base,
+      count: 1,
+      ...(actor?.displayName && input.actorId
+        ? {
+            actorName: actor.displayName,
+            actors: [{ id: input.actorId, name: actor.displayName }],
+          }
+        : {}),
     };
   }
 
   /** Xếp thư thông báo vào outbox (gộp digest 5 phút). Lỗi chỉ log — không được làm hỏng thông báo in-app. */
   private async enqueueEmail(
     to: string,
-    input: { type: NotificationType; actorId?: string | null; payload: Record<string, unknown> },
+    type: NotificationType,
+    payload: NotificationPayload,
   ): Promise<void> {
     try {
-      const actor = input.actorId
-        ? await this.prisma.user.findUnique({
-            where: { id: input.actorId },
-            select: { displayName: true },
-          })
-        : null;
-      const key = typeof input.payload.key === 'string' ? input.payload.key : '';
-      const summary = typeof input.payload.summary === 'string' ? input.payload.summary : '';
-      const statusName =
-        typeof input.payload.statusName === 'string' ? input.payload.statusName : '';
-      const who = actor?.displayName ?? 'Ai đó';
-      const title: Record<string, string> = {
-        MENTIONED: `${who} đã nhắc đến bạn${key ? ` trong ${key}` : ''}`,
-        ISSUE_ASSIGNED: `${who} đã giao cho bạn${key ? ` ${key}` : ' một công việc'}`,
-        COMMENT_ADDED: `${who} đã bình luận${key ? ` trong ${key}` : ''}`,
-        STATUS_CHANGED: `${key ? `${key} ` : 'Công việc '}đã chuyển sang ${statusName || 'trạng thái mới'}`,
-      };
       const base = this.config.get<string>('mail.appWebUrl') ?? '';
       await this.mail.enqueue({
         to,
         template: 'notification',
         payload: {
-          title: title[input.type] ?? 'Thông báo mới',
-          body: summary,
-          url: key ? `${base}/issue/${key}` : base,
+          title: buildNotificationTitle(type, payload),
+          body: notificationBody(type, payload),
+          url: payload.key ? `${base}/issue/${payload.key}` : base,
         },
       });
     } catch (err) {
