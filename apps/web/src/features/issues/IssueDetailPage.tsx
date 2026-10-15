@@ -636,11 +636,11 @@ export function IssueDetailPage() {
                           type="button"
                           disabled={transition.isPending}
                           onClick={() => changeStatus(o.id)}
-                          title={
-                            i < 9
-                              ? `Chuyển sang “${o.name}” · phím tắt ${i + 1}`
+                          title={`${
+                            o.label !== o.name
+                              ? `${o.label} → “${o.name}”`
                               : `Chuyển sang “${o.name}”`
-                          }
+                          }${i < 9 ? ` · phím tắt ${i + 1}` : ''}`}
                           className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
                         >
                           <span
@@ -648,7 +648,7 @@ export function IssueDetailPage() {
                             style={{ background: CATEGORY_COLOR[o.category] ?? 'var(--faint)' }}
                             aria-hidden
                           />
-                          {o.name}
+                          {o.label}
                           {i < 9 && (
                             <kbd
                               aria-hidden

@@ -25,7 +25,12 @@ export function resolveDropStatuses(
     const first = col.statusIds[0];
     // category giả chỉ để thoả kiểu; nơi dùng không đọc category ở nhánh này.
     return first
-      ? { kind: 'move', options: [{ id: first, name: col.name, category: 'TODO' }] }
+      ? {
+          kind: 'move',
+          options: [
+            { id: first, name: col.name, category: 'TODO', transitionName: null, label: col.name },
+          ],
+        }
       : { kind: 'blocked' };
   }
   const allowed = new Map(computeNextStatuses(workflows, currentStatusId).map((s) => [s.id, s]));

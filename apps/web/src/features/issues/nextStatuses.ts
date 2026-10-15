@@ -4,6 +4,18 @@ export interface NextStatus {
   id: string;
   name: string;
   category: string;
+  /** Tên transition do admin đặt (hành động: "Mở lại", "Trả lại"…); null nếu trống. */
+  transitionName: string | null;
+  /** Nhãn hiển thị trên nút: tên hành động, hoặc tên trạng thái đích khi transition không có tên có nghĩa. */
+  label: string;
+}
+
+/** Tên hành động của transition, bỏ tên máy sinh kiểu "To <trạng thái đích>" (vd "To To Do"). */
+export function transitionLabel(name: string | null | undefined, toStatusName: string): string {
+  const n = (name ?? '').trim();
+  if (!n) return toStatusName;
+  if (n.toLowerCase() === `to ${toStatusName}`.toLowerCase()) return toStatusName;
+  return n;
 }
 
 const NONE: NextStatus[] = [];
@@ -25,7 +37,13 @@ export function computeNextStatuses(
     const s = byId.get(t.toStatusId);
     if (!s) continue;
     seen.add(t.toStatusId);
-    out.push({ id: s.id, name: s.name, category: s.category });
+    out.push({
+      id: s.id,
+      name: s.name,
+      category: s.category,
+      transitionName: t.name || null,
+      label: transitionLabel(t.name, s.name),
+    });
   }
   return out;
 }
