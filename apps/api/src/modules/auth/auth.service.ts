@@ -54,7 +54,14 @@ export class AuthService {
       });
       if (!adminRole) throw new Error('System role chưa được seed (chạy pnpm db:seed)');
       await tx.workspaceMembership.create({
-        data: { workspaceId: ws.id, userId: user.id, roleId: adminRole.id, joinedAt: new Date() },
+        data: {
+          workspaceId: ws.id,
+          userId: user.id,
+          roleId: adminRole.id,
+          joinedAt: new Date(),
+          // Bảng nối mới là nguồn sự thật cho UI (vai trò hiển thị, đếm thành viên) — ghi cùng cột roleId cũ.
+          roles: { create: [{ roleId: adminRole.id }] },
+        },
       });
       return { user, workspaceId: ws.id };
     });

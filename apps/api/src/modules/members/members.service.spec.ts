@@ -120,3 +120,43 @@ describe('MembersService.removeWorkspace', () => {
     expect(tx.workspaceMembership.delete).not.toHaveBeenCalled();
   });
 });
+
+describe('MembersService.listWorkspace — phòng thủ bảng nối rỗng', () => {
+  it('khi bảng nối rỗng thì rơi về vai trò chính (roleId/role)', async () => {
+    const prisma = {
+      workspaceMembership: {
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            {
+              id: 'm1',
+              roleId: 'r1',
+              role: { id: 'r1', name: 'Workspace Admin', color: null },
+              roles: [],
+              joinedAt: null,
+              user: {
+                id: 'u1',
+                email: 'a@x.vn',
+                displayName: 'A',
+                avatarUrl: null,
+                timezone: 'UTC',
+                locale: 'vi',
+                status: 'ACTIVE',
+                isSystemAdmin: false,
+                lastSeenAt: null,
+                createdAt: new Date(),
+              },
+            },
+          ]),
+        ),
+      },
+    };
+    const service = new MembersService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      { emit: vi.fn() } as never,
+    );
+    const out = await service.listWorkspace('w1');
+    expect(out[0]!.roles).toEqual([{ id: 'r1', name: 'Workspace Admin', color: null }]);
+  });
+});

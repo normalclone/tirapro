@@ -53,7 +53,13 @@ export class WorkspacesService {
       });
       if (!adminRole) throw new BusinessRuleException('Thiếu vai trò hệ thống WORKSPACE_ADMIN');
       await tx.workspaceMembership.create({
-        data: { workspaceId: ws.id, userId, roleId: adminRole.id },
+        data: {
+          workspaceId: ws.id,
+          userId,
+          roleId: adminRole.id,
+          joinedAt: new Date(),
+          roles: { create: [{ roleId: adminRole.id }] },
+        },
       });
       return { id: ws.id, name: ws.name, slug: ws.slug };
     });

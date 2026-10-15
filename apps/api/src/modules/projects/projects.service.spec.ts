@@ -158,3 +158,38 @@ describe('ProjectsService — dự án lưu trữ là chỉ đọc (cài đặt 
     expect(prisma.project.update).not.toHaveBeenCalled();
   });
 });
+
+describe('ProjectsService.create — vai trò chủ dự án', () => {
+  it('membership của người tạo có dòng nối ProjectMembershipRole (Quản trị dự án)', async () => {
+    const ok = () => vi.fn(() => Promise.resolve({ id: 'x' }));
+    const tx = {
+      project: {
+        create: vi.fn(() => Promise.resolve(row({ id: 'p1', name: 'D' }))),
+        update: ok(),
+      },
+      workflow: { create: ok() },
+      status: { create: ok() },
+      workflowTransition: { create: ok() },
+      board: { create: ok() },
+      boardColumn: { create: ok() },
+      boardColumnStatus: { create: ok() },
+      projectMembership: { create: ok() },
+    };
+    const prisma = {
+      project: { findFirst: vi.fn(() => Promise.resolve(null)) },
+      role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-padmin' })) },
+      $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+    };
+    const svc = new ProjectsService(prisma as never, {} as never);
+    await svc.create('w1', 'u1', { key: 'D', name: 'D', type: 'SCRUM' } as never);
+    const arg = tx.projectMembership.create.mock.calls[0] as unknown as [
+      { data: Record<string, unknown> },
+    ];
+    expect(arg[0].data).toMatchObject({
+      projectId: 'p1',
+      userId: 'u1',
+      roleId: 'r-padmin',
+      roles: { create: [{ roleId: 'r-padmin' }] },
+    });
+  });
+});

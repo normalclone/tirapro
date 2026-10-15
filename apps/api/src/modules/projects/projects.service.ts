@@ -123,7 +123,12 @@ export class ProjectsService {
         // Người tạo = Project Admin
         if (adminRole) {
           await tx.projectMembership.create({
-            data: { projectId: project.id, userId, roleId: adminRole.id },
+            data: {
+              projectId: project.id,
+              userId,
+              roleId: adminRole.id,
+              roles: { create: [{ roleId: adminRole.id }] },
+            },
           });
         }
         return project;

@@ -31,11 +31,13 @@ export class MembersService {
       select: {
         id: true,
         joinedAt: true,
+        roleId: true,
+        role: { select: { id: true, name: true, color: true } },
         user: { select: USER_DTO_SELECT },
         roles: { select: { role: { select: { id: true, name: true, color: true } } } },
       },
     });
-    return rows.map((m) => this.toMemberDto(m));
+    return rows.map((m) => this.toMemberDto(m, m.role));
   }
 
   async addWorkspace(workspaceId: string, userId: string, roleIds: string[]) {
@@ -174,6 +176,8 @@ export class MembersService {
         select: {
           id: true,
           joinedAt: true,
+          roleId: true,
+          role: { select: { id: true, name: true, color: true } },
           user: { select: USER_DTO_SELECT },
           roles: { select: { role: { select: { id: true, name: true, color: true } } } },
         },
@@ -183,6 +187,8 @@ export class MembersService {
         select: {
           id: true,
           userId: true,
+          roleId: true,
+          role: { select: { id: true, name: true, color: true } },
           roles: { select: { role: { select: { id: true, name: true, color: true } } } },
         },
       }),
@@ -198,13 +204,13 @@ export class MembersService {
       const ov = overrideByUser.get(m.user.id);
       if (ov) {
         return {
-          ...this.toMemberDto({ id: ov.id, user: m.user, roles: ov.roles }),
+          ...this.toMemberDto({ id: ov.id, user: m.user, roles: ov.roles }, ov.role),
           isOverride: true,
         };
       }
       // Vai trò mặc định theo vai trò workspace của người này.
       const defaults: { id: string; name: string; color: string | null }[] = [];
-      for (const r of m.roles) {
+      for (const r of m.roles.length ? m.roles : [{ role: m.role }]) {
         const target = DEFAULT_PROJECT_ROLE_BY_WS_ROLE[r.role.name];
         const found = target ? projRoleByName.get(target) : undefined;
         if (found && !defaults.some((d) => d.id === found.id)) defaults.push(found);
@@ -342,11 +348,13 @@ export class MembersService {
       select: {
         id: true,
         joinedAt: true,
+        roleId: true,
+        role: { select: { id: true, name: true, color: true } },
         user: { select: USER_DTO_SELECT },
         roles: { select: { role: { select: { id: true, name: true, color: true } } } },
       },
     });
-    return this.toMemberDto(m);
+    return this.toMemberDto(m, m.role);
   }
 
   private async getProjectMember(projectId: string, userId: string) {
@@ -354,11 +362,13 @@ export class MembersService {
       where: { projectId_userId: { projectId, userId } },
       select: {
         id: true,
+        roleId: true,
+        role: { select: { id: true, name: true, color: true } },
         user: { select: USER_DTO_SELECT },
         roles: { select: { role: { select: { id: true, name: true, color: true } } } },
       },
     });
-    return this.toMemberDto(m);
+    return this.toMemberDto(m, m.role);
   }
 
   /** Mỗi role phải tồn tại (system hoặc của workspace) và đúng scope của cấp đang gán. */
@@ -382,16 +392,27 @@ export class MembersService {
     return unique.filter((id) => set.has(id));
   }
 
-  private toMemberDto(m: {
-    id: string;
-    joinedAt?: Date | null;
-    user: UserDtoSource;
-    roles: RoleRefRow[];
-  }) {
+  /**
+   * `primary` = vai trò chính (cột roleId): khi bảng nối rỗng (membership tạo bởi đường quên ghi bảng nối,
+   * hoặc race giữa tạo và `roles.create`) thì rơi về nó thay vì trả `roles: []` ("Chưa có vai trò").
+   */
+  private toMemberDto(
+    m: {
+      id: string;
+      joinedAt?: Date | null;
+      user: UserDtoSource;
+      roles: RoleRefRow[];
+    },
+    primary?: { id: string; name: string; color: string | null } | null,
+  ) {
     return {
       membershipId: m.id,
       user: toUserDto(m.user),
-      roles: m.roles.map((r) => ({ id: r.role.id, name: r.role.name, color: r.role.color })),
+      roles: m.roles.length
+        ? m.roles.map((r) => ({ id: r.role.id, name: r.role.name, color: r.role.color }))
+        : primary
+          ? [{ id: primary.id, name: primary.name, color: primary.color }]
+          : [],
       joinedAt: m.joinedAt ? m.joinedAt.toISOString() : null,
     };
   }
