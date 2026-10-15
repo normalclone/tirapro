@@ -198,7 +198,7 @@ export class IssuesService {
           where: {
             id: m.sprintId,
             deletedAt: null,
-            project: { workspaceId },
+            project: { workspaceId, deletedAt: null },
             ...(m.projectId ? { projectId: m.projectId } : {}),
           },
           select: { id: true, state: true },
@@ -283,7 +283,8 @@ export class IssuesService {
   }
 
   /**
-   * Epic của issue: phải tồn tại trong workspace, CÙNG dự án, đúng loại Epic (`key = EPIC` hoặc `hierarchyLevel >= 1`),
+   * Epic của issue: phải tồn tại trong workspace, CÙNG dự án, đúng loại Epic (`key = EPIC` hoặc `hierarchyLevel >= 1`;
+   * bỏ qua kiểm LOẠI khi `checkType = false` — đường import),
    * không phải chính issue và không tạo vòng (epic đang trỏ ngược về issue này) — vi phạm: 404/422.
    */
   private async assertEpicValid(
@@ -292,6 +293,7 @@ export class IssuesService {
     epicId: string,
     projectId: string,
     selfId: string | null,
+    checkType = true,
   ): Promise<void> {
     if (selfId && epicId === selfId)
       throw new BusinessRuleException(
@@ -313,7 +315,7 @@ export class IssuesService {
       throw new BusinessRuleException(
         'Epic phải thuộc cùng dự án với công việc — hãy chọn epic khác',
       );
-    if (epic.type.key !== 'EPIC' && epic.type.hierarchyLevel < 1)
+    if (checkType && epic.type.key !== 'EPIC' && epic.type.hierarchyLevel < 1)
       throw new BusinessRuleException(
         'Công việc được chọn không phải loại Epic — hãy chọn một Epic trong dự án',
       );
@@ -368,7 +370,7 @@ export class IssuesService {
     input: CreateIssueInput,
     opts?: AutomationEventMeta,
   ): Promise<IssueDto> {
-    const dto = await this.createCore(null, workspaceId, userId, input, null, true);
+    const dto = await this.createCore(null, workspaceId, userId, input, null, 'api');
     this.emitCreated(dto, userId, input.clientId, opts);
     return dto;
   }
@@ -385,7 +387,7 @@ export class IssuesService {
     input: CreateIssueInput,
     deferred: Array<() => void> = [],
   ): Promise<IssueDto> {
-    return this.createCore(tx, workspaceId, userId, input, deferred, false, true);
+    return this.createCore(tx, workspaceId, userId, input, deferred, 'import');
   }
 
   emitCreated(dto: IssueDto, actorId: string, clientId?: string, meta?: AutomationEventMeta): void {
@@ -403,10 +405,13 @@ export class IssuesService {
     userId: string,
     input: CreateIssueInput,
     deferred: Array<() => void> | null = null,
-    /** Chỉ đường API người dùng (`create`) đòi `issue:transition` khi chọn trạng thái ≠ khởi tạo; import có quyền riêng. */
-    enforceTransitionPerm = false,
-    /** Import tạo sprint đã hoàn thành theo lịch sử Jira rồi gắn issue vào; đường API thường vẫn chặn (FW1). */
-    allowClosedSprint = false,
+    /**
+     * `api` (mặc định, `create`): đường người dùng — đòi `issue:transition` khi chọn trạng thái ≠ khởi tạo, chặn sprint
+     * đã hoàn thành, epic phải đúng LOẠI Epic. `import` (`createWithin`): dữ liệu nhập từ nguồn ngoài (Jira) đã được
+     * người có quyền import duyệt — sprint CLOSED theo lịch sử và epic thuộc loại tuỳ chỉnh vẫn nhận (epic vẫn phải
+     * cùng dự án, không tự trỏ).
+     */
+    origin: 'api' | 'import' = 'api',
   ): Promise<IssueDto> {
     const db: Prisma.TransactionClient = outerTx ?? this.prisma;
     const project = await db.project.findFirst({
@@ -430,11 +435,12 @@ export class IssuesService {
         sprintId: input.sprintId,
         parentId: input.parentId,
         projectId: project.id,
-        allowClosedSprint,
+        allowClosedSprint: origin === 'import',
       },
       db,
     );
-    if (input.epicId) await this.assertEpicValid(db, workspaceId, input.epicId, project.id, null);
+    if (input.epicId)
+      await this.assertEpicValid(db, workspaceId, input.epicId, project.id, null, origin === 'api');
     await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId, db);
 
     // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project
@@ -455,7 +461,7 @@ export class IssuesService {
           'Trạng thái không thuộc quy trình của dự án này — hãy chọn lại trạng thái từ danh sách',
         );
       // Tạo thẳng ở trạng thái khác trạng thái khởi tạo cũng là một lần "chuyển trạng thái" → cần cùng quyền.
-      if (enforceTransitionPerm && chosen.id !== initial?.id)
+      if (origin === 'api' && chosen.id !== initial?.id)
         await this.assertCanTransition(userId, workspaceId, project.id);
       isDone = chosen.category === 'DONE';
     } else {

@@ -206,6 +206,7 @@ export class RbacService {
     if (projectId) {
       const projMembership = await this.prisma.projectMembership.findUnique({
         // Giới hạn theo workspace: membership dự án của workspace khác không được tính.
+        // Cố ý KHÔNG lọc project.deletedAt: đây chỉ tính quyền hiệu lực; dự án xoá mềm đã bị guard (`viaProject`/`@ProjectRef`) trả 404 trước khi tới đây.
         where: { projectId_userId: { projectId, userId }, project: { workspaceId } },
         select: { roleId: true, roles: { select: { roleId: true } } },
       });

@@ -480,6 +480,36 @@ describe('JiraImportService.run — chạy thật', () => {
     expect(done.status).toBe('FAILED');
   });
 
+  it.each([
+    ['workspace chưa có loại key EPIC', [], { hierarchyLevel: 1, key: 'EPIC' }],
+    [
+      'workspace đã có loại key EPIC (tên khác) => không nhân đôi key',
+      [{ id: 't-old', name: 'Initiative', key: 'EPIC', isSubtask: false }],
+      { hierarchyLevel: 1 },
+    ],
+  ])('loại Epic Jira __create__: %s', async (_n, existing, expected) => {
+    const others = [
+      { id: 't-story', name: 'Story', key: 'STORY', isSubtask: false },
+      { id: 't-task', name: 'Task', key: 'TASK', isSubtask: false },
+      { id: 't-bug', name: 'Bug', key: 'BUG', isSubtask: false },
+      { id: 't-sub', name: 'Subtask', key: 'SUBTASK', isSubtask: true },
+    ];
+    ctx.prisma.issueType.findMany.mockResolvedValue([...others, ...existing] as never);
+    ctx.prisma.issueType.create.mockResolvedValue({ id: 't-new' });
+    await runAndWait({
+      mapping: {
+        ...fullMapping(),
+        issueTypes: { ...fullMapping().issueTypes, Epic: '__create__' },
+      },
+    });
+    const calls = ctx.prisma.issueType.create.mock.calls as unknown as Array<
+      [{ data: Record<string, unknown> }]
+    >;
+    const epic = calls.map((c) => c[0].data).find((d) => d.name === 'Epic')!;
+    expect(epic).toMatchObject(expected);
+    if (!('key' in expected)) expect(epic).not.toHaveProperty('key');
+  });
+
   it('project mới: tạo qua ProjectsService, trạng thái __create__ khớp tên có sẵn rồi mới tạo', async () => {
     const mapping = {
       ...fullMapping(),

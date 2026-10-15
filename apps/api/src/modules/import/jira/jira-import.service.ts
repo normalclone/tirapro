@@ -686,6 +686,7 @@ export class JiraImportService implements OnApplicationBootstrap {
   ): Promise<Map<string, string>> {
     const byName = new Map(catalog.types.map((t) => [t.name.toLowerCase(), t.id]));
     const out = new Map<string, string>();
+    let epicKeyTaken = false; // đã tạo loại key EPIC trong lượt này
     for (const [jiraName, target] of Object.entries(mapping)) {
       if (target !== JIRA_CREATE) {
         out.set(jiraName, target);
@@ -693,10 +694,21 @@ export class JiraImportService implements OnApplicationBootstrap {
       }
       let id = byName.get(jiraName.toLowerCase());
       if (!id) {
+        // Loại Epic tạo mới phải thật sự là Epic của Tirapro (level 1; key EPIC nếu workspace chưa có loại key đó).
+        const isEpic = isEpicTypeName(jiraName);
+        const hasEpicKey = catalog.types.some((t) => t.key === 'EPIC') || epicKeyTaken;
         const created = await this.prisma.issueType.create({
-          data: { workspaceId, name: jiraName, isSubtask: isSubtaskTypeName(jiraName) },
+          data: {
+            workspaceId,
+            name: jiraName,
+            isSubtask: isSubtaskTypeName(jiraName),
+            ...(isEpic
+              ? { hierarchyLevel: 1, ...(hasEpicKey ? {} : { key: 'EPIC' as const }) }
+              : {}),
+          },
           select: { id: true },
         });
+        if (isEpic) epicKeyTaken = true;
         id = created.id;
         byName.set(jiraName.toLowerCase(), id);
       }
