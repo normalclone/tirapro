@@ -7,6 +7,7 @@ import {
   extractMentionIds,
   notificationBody,
   plainExcerpt,
+  type NotificationFilter,
   type NotificationPayload,
 } from '@tirapro/shared';
 import {
@@ -115,6 +116,14 @@ function readNotificationsSettings(
   return notifications as Record<string, unknown>;
 }
 
+/** Bộ lọc danh sách → điều kiện Prisma (đi theo chỉ mục [recipientId, createdAt] rồi lọc trên tập của MỘT người). */
+const FILTER_WHERE = {
+  all: {},
+  unread: { readAt: null },
+  mentioned: { type: 'MENTIONED' },
+  assigned: { type: 'ISSUE_ASSIGNED' },
+} as const satisfies Record<NotificationFilter, Prisma.NotificationWhereInput>;
+
 /** Issue tối thiểu kèm trong payload của các domain event. */
 interface IssueEventShape {
   id: string;
@@ -188,9 +197,11 @@ export class NotificationsService {
     recipientId: string,
     cursor: string | undefined,
     limit: number,
+    filter: NotificationFilter = 'all',
   ): Promise<PageResult<NotificationDto>> {
     const rows = await this.prisma.notification.findMany({
-      where: { recipientId },
+      // recipientId luôn có mặt: không thể xem thông báo người khác dù bộ lọc là gì.
+      where: { recipientId, ...FILTER_WHERE[filter] },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

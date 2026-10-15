@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { NotificationType } from '@tirapro/types';
 
 /**
@@ -83,3 +84,9 @@ export function buildNotificationTitle(type: NotificationType, p: NotificationPa
 export function notificationBody(_type: NotificationType, p: NotificationPayload): string {
   return p.excerpt || p.summary || '';
 }
+
+/** Bộ lọc danh sách thông báo (`GET /notifications?filter=`). Giá trị lạ hoặc thiếu → `all`. */
+export const notificationFilterSchema = z
+  .enum(['all', 'unread', 'mentioned', 'assigned'])
+  .catch('all');
+export type NotificationFilter = z.infer<typeof notificationFilterSchema>;

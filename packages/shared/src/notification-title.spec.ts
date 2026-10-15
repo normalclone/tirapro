@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildNotificationTitle as t, notificationBody } from './notification-title';
+import {
+  buildNotificationTitle as t,
+  notificationBody,
+  notificationFilterSchema,
+} from './notification-title';
 
 const a = (...names: string[]) => names.map((name, i) => ({ id: `u${i}`, name }));
 describe('buildNotificationTitle', () => {
@@ -73,5 +77,14 @@ describe('buildNotificationTitle', () => {
       'Đã sửa xong',
     );
     expect(notificationBody('ISSUE_ASSIGNED', { summary: 'Sửa lỗi' })).toBe('Sửa lỗi');
+  });
+});
+
+describe('notificationFilterSchema', () => {
+  it('nhận 4 giá trị hợp lệ; giá trị lạ hoặc thiếu → all (không 400)', () => {
+    for (const f of ['all', 'unread', 'mentioned', 'assigned'])
+      expect(notificationFilterSchema.parse(f)).toBe(f);
+    expect(notificationFilterSchema.parse('rac')).toBe('all');
+    expect(notificationFilterSchema.parse(undefined)).toBe('all');
   });
 });
