@@ -4,11 +4,13 @@ import {
   bulkUpdateIssuesSchema,
   createIssueSchema,
   moveIssueSchema,
+  rankIssueSchema,
   transitionIssueSchema,
   updateIssueSchema,
   type BulkUpdateIssuesInput,
   type CreateIssueInput,
   type MoveIssueInput,
+  type RankIssueInput,
   type TransitionIssueInput,
   type UpdateIssueInput,
 } from '@tirapro/shared';
@@ -114,6 +116,23 @@ export class IssuesController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(moveIssueSchema)) dto: MoveIssueInput,
     @OwnOnly(PERMISSIONS.ISSUE_TRANSITION) ownOnly: boolean,
+  ) {
+    return this.issues.move(workspaceId, user.id, id, dto, ownOnly);
+  }
+
+  /**
+   * Xếp lại thứ tự / đổi sprint (không đổi trạng thái). Dùng cho Backlog: Product Owner có `backlog:manage` + `issue:edit`
+   * nhưng không có `issue:transition` nên không gọi được `move`. Cùng `IssuesService.move()` bên dưới.
+   */
+  @Permissions(PERMISSIONS.BACKLOG_MANAGE, PERMISSIONS.ISSUE_EDIT)
+  @ProjectRef('issue', 'id')
+  @Post(':id/rank')
+  async rank(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(rankIssueSchema)) dto: RankIssueInput,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
     return this.issues.move(workspaceId, user.id, id, dto, ownOnly);
   }

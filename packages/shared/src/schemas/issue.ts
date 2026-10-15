@@ -87,9 +87,18 @@ export const moveIssueSchema = z.object({
   force: z.boolean().optional(),
 });
 
+/** Chỉ xếp lại thứ tự / đổi sprint (không đổi trạng thái): dùng cho Backlog, quyền `backlog:manage` + `issue:edit`. */
+export const rankIssueSchema = moveIssueSchema.pick({
+  beforeId: true,
+  afterId: true,
+  sprintId: true,
+  version: true,
+});
+
 export type CreateIssueInput = z.infer<typeof createIssueSchema>;
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>;
 export type TransitionIssueInput = z.infer<typeof transitionIssueSchema>;
 export type MoveIssueInput = z.infer<typeof moveIssueSchema>;
+export type RankIssueInput = z.infer<typeof rankIssueSchema>;
 export type BulkUpdateIssuesInput = z.infer<typeof bulkUpdateIssuesSchema>;
 export type LinkIssueInput = z.infer<typeof linkIssueSchema>;
