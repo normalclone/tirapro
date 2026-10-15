@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { DEFAULT_PROJECT_ROLE_BY_WS_ROLE, type RoleScope } from '@tirapro/types';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { DEFAULT_PROJECT_ROLE_BY_WS_ROLE, DOMAIN_EVENTS, type RoleScope } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto, USER_DTO_SELECT, type UserDtoSource } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { RbacService } from '../rbac/rbac.service';
+import { ApiKeyService } from '../api-keys/api-key.service';
 
 type RoleRefRow = { role: { id: string; name: string; color: string | null } };
 
@@ -16,6 +18,8 @@ export class MembersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rbac: RbacService,
+    private readonly apiKeys: ApiKeyService,
+    private readonly events: EventEmitter2,
   ) {}
 
   // ───────────────────────── Workspace ─────────────────────────
@@ -99,8 +103,17 @@ export class MembersService {
     if (userId === actingUserId) throw new ForbiddenAppException('Không thể tự gỡ chính mình');
     const ws = await this.prisma.workspace.findUnique({ where: { id: workspaceId }, select: { ownerId: true } });
     if (ws?.ownerId === userId) throw new ForbiddenAppException('Không thể gỡ chủ sở hữu của không gian làm việc — hãy chuyển quyền sở hữu cho người khác trước');
-    await this.prisma.workspaceMembership.delete({ where: { workspaceId_userId: { workspaceId, userId } } });
+    // Một transaction: gỡ membership + xoá ghi đè vai trò dự án của workspace này + thu hồi API key.
+    // Thiếu bước nào thì người bị gỡ vẫn giữ được quyền qua key/ghi đè dự án còn sót.
+    const revokedPrefixes = await this.prisma.$transaction(async (tx) => {
+      await tx.workspaceMembership.delete({ where: { workspaceId_userId: { workspaceId, userId } } });
+      await tx.projectMembership.deleteMany({ where: { userId, project: { workspaceId } } });
+      return this.apiKeys.revokeAllForUser(workspaceId, userId, tx);
+    });
+    await this.apiKeys.dropCaches(revokedPrefixes);
     await this.rbac.invalidate(userId, workspaceId);
+    // Gateway ngắt mọi socket của user này đang ở workspace đó (room ws:<id>).
+    this.events.emit(DOMAIN_EVENTS.MEMBER_REMOVED, { workspaceId, userId });
     return { success: true };
   }
 

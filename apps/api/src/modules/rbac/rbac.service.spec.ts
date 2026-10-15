@@ -225,11 +225,22 @@ describe('RbacService.assertProjectInWorkspace', () => {
 describe('RbacService.getEffectivePermissions', () => {
   it('membership dự án chỉ tính khi dự án thuộc workspace', async () => {
     const { svc, prisma } = setup('down');
+    prisma.workspaceMembership.findUnique.mockResolvedValueOnce({ roleId: 'R1', roles: [] } as never);
     await svc.getEffectivePermissions('U1', 'W1', 'P1');
     expect(prisma.projectMembership.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { projectId_userId: { projectId: 'P1', userId: 'U1' }, project: { workspaceId: 'W1' } },
       }),
     );
+  });
+
+  it('rỗng khi không còn membership workspace, kể cả khi còn ghi đè vai trò dự án', async () => {
+    const { svc, prisma } = setup('down');
+    prisma.workspaceMembership.findUnique.mockResolvedValue(null);
+    prisma.projectMembership.findUnique.mockResolvedValue({ roleId: 'RP', roles: [{ roleId: 'RP' }] } as never);
+    prisma.rolePermission.findMany.mockResolvedValue([{ permission: { key: 'issue:edit' } }] as never);
+    const perms = await svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(perms.size).toBe(0);
+    expect(prisma.rolePermission.findMany).not.toHaveBeenCalled();
   });
 });
