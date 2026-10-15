@@ -15,6 +15,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { useAddWorklog, useDeleteWorklog, useUpdateWorklog, useWorklogs } from './worklog-api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { LOCALE } from '@/lib/locale';
+import { TimeProgressBar } from './TimeProgressBar';
 
 const QUICK = ['30m', '1h', '2h', '1d'];
 
@@ -136,37 +137,42 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
         )}
       </header>
 
-      <Progress spent={spent} original={original} remaining={remaining} />
+      <TimeProgressBar
+        spent={spent}
+        original={original}
+        remaining={remaining}
+        canEstimate={canEstimate}
+      />
 
-      <div className="mt-3 text-xs text-muted">
-        {editingEstimate ? (
-          <Input
-            autoFocus
-            className="h-7 w-32 text-sm"
-            aria-label="Ước lượng gốc"
-            placeholder="vd 2d 4h"
-            defaultValue={original ? formatDuration(original) : ''}
-            onBlur={(e) => saveEstimate(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-              if (e.key === 'Escape') setEditingEstimate(false);
-            }}
-          />
-        ) : canEstimate ? (
-          <button
-            type="button"
-            className="rounded px-1 hover:bg-surface-2 hover:text-ink"
-            onClick={() => setEditingEstimate(true)}
-            title="Sửa ước lượng gốc"
-          >
-            {original ? `Ước lượng gốc: ${formatDuration(original)}` : 'Đặt ước lượng gốc'}
-          </button>
-        ) : (
-          <span>
-            {original ? `Ước lượng gốc: ${formatDuration(original)}` : 'Chưa có ước lượng gốc'}
-          </span>
-        )}
-      </div>
+      {(editingEstimate || canEstimate || !!original) && (
+        <div className="mt-3 text-xs text-muted">
+          {editingEstimate ? (
+            <Input
+              autoFocus
+              className="h-7 w-32 text-sm"
+              aria-label="Ước lượng gốc"
+              placeholder="vd 2d 4h"
+              defaultValue={original ? formatDuration(original) : ''}
+              onBlur={(e) => saveEstimate(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                if (e.key === 'Escape') setEditingEstimate(false);
+              }}
+            />
+          ) : canEstimate ? (
+            <button
+              type="button"
+              className="rounded px-1 hover:bg-surface-2 hover:text-ink"
+              onClick={() => setEditingEstimate(true)}
+              title="Sửa ước lượng gốc"
+            >
+              {original ? `Ước lượng gốc: ${formatDuration(original)}` : 'Đặt ước lượng gốc'}
+            </button>
+          ) : original ? (
+            <span>Ước lượng gốc: {formatDuration(original)}</span>
+          ) : null}
+        </div>
+      )}
 
       {formOpen && canLog && (
         <WorklogForm
@@ -281,70 +287,6 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
         }}
       />
     </section>
-  );
-}
-
-/** Thanh tiến độ: phần đã làm / ước lượng gốc; vượt ước lượng đổi sang màu cảnh báo. */
-function Progress({
-  spent,
-  original,
-  remaining,
-}: {
-  spent: number;
-  original: number | null;
-  remaining: number | null;
-}) {
-  const over = original !== null && original > 0 && spent > original;
-  const pct =
-    original && original > 0
-      ? Math.min(100, Math.round((spent / original) * 100))
-      : spent > 0
-        ? 100
-        : 0;
-  return (
-    <div>
-      <div
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={pct}
-        aria-label="Tiến độ thời gian"
-        className="h-2 overflow-hidden rounded-full bg-surface-3"
-      >
-        <div
-          className={cn(
-            'h-full rounded-full transition-[width] duration-300',
-            over ? 'bg-warning' : 'bg-primary',
-          )}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-        <Stat label="Đã làm" value={spent > 0 ? formatDuration(spent) : '0m'} />
-        <Stat label="Ước lượng" value={original ? formatDuration(original) : '—'} />
-        <Stat
-          label="Còn lại"
-          value={remaining !== null ? formatDuration(remaining) : '—'}
-          warn={over}
-        />
-      </dl>
-      {over && (
-        <p className="mt-1.5 text-xs text-warning">
-          Đã vượt ước lượng gốc {formatDuration(spent - (original ?? 0))}.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
-  return (
-    <div>
-      <dt className="text-faint">{label}</dt>
-      <dd className={cn('font-semibold tabular-nums', warn ? 'text-warning' : 'text-ink')}>
-        {value}
-      </dd>
-    </div>
   );
 }
 

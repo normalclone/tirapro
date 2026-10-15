@@ -28,6 +28,8 @@ import {
   useCompleteSprint,
   useMoveToSprint,
   useBulkUpdateIssues,
+  bulkShortfallHint,
+  rejectionReason,
   type BulkIssuePatch,
   type MoveIncompleteTo,
 } from './api';
@@ -278,10 +280,11 @@ export function BacklogPage() {
     const prevValue = new Map(targets.map((i) => [i.id, i[field] ?? null]));
     setBulkBusy(true);
     try {
-      const { updated, conflicts } = await bulkUpdate.mutateAsync({
+      const result = await bulkUpdate.mutateAsync({
         items: targets.map((i) => ({ id: i.id, version: i.version })),
         patch,
       });
+      const { updated, conflicts } = result;
       clearSelection();
 
       if (conflicts.length === 0) {
@@ -301,14 +304,17 @@ export function BacklogPage() {
                 }
                 try {
                   let stuck = 0;
+                  let unsent = 0;
+                  let firstError: unknown;
                   for (const [value, items] of groups) {
                     const r = await bulkUpdate.mutateAsync({ items, patch: { [field]: value } });
                     stuck += r.conflicts.length;
+                    unsent += r.unsent;
+                    firstError ??= r.error;
                   }
                   if (stuck > 0) {
                     toast.warning(`Chưa hoàn tác được ${stuck} việc`, {
-                      description:
-                        'Người khác vừa sửa những việc đó — hãy tải lại trang để xem bản mới nhất rồi thử lại.',
+                      description: bulkShortfallHint(stuck, unsent, rejectionReason(firstError)),
                     });
                   }
                 } catch (err) {
@@ -320,8 +326,11 @@ export function BacklogPage() {
         });
       } else {
         toast.warning(`Đã ${verb} ${updated.length} việc, còn ${conflicts.length} việc chưa xong`, {
-          description:
-            'Người khác vừa sửa những việc đó — hãy tải lại trang để xem bản mới nhất rồi thử lại.',
+          description: bulkShortfallHint(
+            conflicts.length,
+            result.unsent,
+            rejectionReason(result.error),
+          ),
         });
       }
     } catch (err) {

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /** ---- Workflow admin (workflows / statuses / transitions) ---- */
@@ -106,7 +106,7 @@ export function useUpdateWorkflow() {
 export function useDeleteWorkflow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/workflows/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/workflows/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.workflows });
     },
@@ -140,7 +140,7 @@ export function useUpdateStatus() {
 export function useDeleteStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/statuses/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/statuses/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.workflows });
     },
@@ -165,7 +165,7 @@ export function useAddTransition() {
 export function useDeleteTransition() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/transitions/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/transitions/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.workflows });
     },

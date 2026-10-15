@@ -1,6 +1,7 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BulkUpdateIssuesResult, IssueDto, SprintDto } from '@tirapro/types';
-import { api } from '@/lib/api';
+import axios from 'axios';
+import { api, apiErrorMessage } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import { invalidateIssue, optimisticPatchIssue, rollbackIssue, writeIssue } from '@/lib/optimistic';
 
@@ -94,15 +95,44 @@ export interface BulkIssuePatch {
 export const BULK_CHUNK = 100;
 
 /**
+ * Kết quả gộp các lô. `unsent` = số việc CHƯA được gửi/xử lý vì một lô sau bị lỗi (đã nằm trong `conflicts`);
+ * `error` = lỗi của lô thất bại đầu tiên (chỉ có khi `unsent > 0`).
+ */
+export type BulkChunksResult = BulkUpdateIssuesResult & { unsent: number; error?: unknown };
+
+/** Lý do máy chủ TỪ CHỐI một lô (403, WIP, validate…): thử lại vô ích. Lỗi mạng/không có phản hồi → `null` (thử lại được). */
+export function rejectionReason(error: unknown): string | null {
+  return axios.isAxiosError(error) && error.response ? apiErrorMessage(error) : null;
+}
+
+/**
+ * Câu mô tả (theo SỐ conflict và số chưa gửi) phần "chưa xong" của một lần bulk. Phải tách việc chưa gửi được
+ * khỏi conflict thật (người khác sửa trước — cần tải lại), kẻo báo sai nguyên nhân. `rejection` (từ
+ * `rejectionReason`) có thì nêu nó thay cho "thử lại".
+ */
+export function bulkShortfallHint(
+  conflicts: number,
+  unsent: number,
+  rejection?: string | null,
+): string {
+  const edited = Math.max(0, conflicts - unsent);
+  if (unsent > 0 && edited === 0) return rejection ?? 'Một số việc chưa gửi được — thử lại.';
+  if (unsent > 0)
+    return `${rejection ?? 'Một số việc chưa gửi được.'} Ngoài ra ${edited} việc bị người khác sửa trước — hãy tải lại trang rồi thử lại.`;
+  return 'Người khác vừa sửa những việc đó — hãy tải lại trang để xem bản mới nhất rồi thử lại.';
+}
+
+/**
  * Gửi tuần tự từng lô (không song song: OCC + WIP cần khoá theo lô). Lô đầu lỗi → ném nguyên văn
- * (chưa ghi gì). Lô sau lỗi → dừng, không ném: trả phần đã xong, phần còn lại (kể cả lô lỗi) vào `conflicts`.
+ * (chưa ghi gì). Lô sau lỗi → dừng, không ném: trả phần đã xong, phần còn lại (kể cả lô lỗi) vào `conflicts`
+ * và đếm trong `unsent` để UI không nhầm với conflict do người khác sửa.
  */
 export async function runBulkInChunks(
   items: Array<{ id: string; version: number }>,
   send: (chunk: Array<{ id: string; version: number }>) => Promise<BulkUpdateIssuesResult>,
   size = BULK_CHUNK,
-): Promise<BulkUpdateIssuesResult> {
-  const out: BulkUpdateIssuesResult = { updated: [], conflicts: [] };
+): Promise<BulkChunksResult> {
+  const out: BulkChunksResult = { updated: [], conflicts: [], unsent: 0 };
   for (let i = 0; i < items.length; i += size) {
     const chunk = items.slice(i, i + size);
     try {
@@ -111,7 +141,10 @@ export async function runBulkInChunks(
       out.conflicts.push(...r.conflicts);
     } catch (err) {
       if (i === 0) throw err;
-      out.conflicts.push(...items.slice(i).map((x) => ({ id: x.id, version: x.version })));
+      const rest = items.slice(i);
+      out.conflicts.push(...rest.map((x) => ({ id: x.id, version: x.version })));
+      out.unsent = rest.length;
+      out.error = err;
       return out;
     }
   }

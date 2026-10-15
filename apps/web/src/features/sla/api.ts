@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 export interface SlaPolicyDto {
@@ -94,7 +94,7 @@ export function useUpdateSlaPolicy() {
 export function useDeleteSlaPolicy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/sla/policies/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/sla/policies/${id}`).then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policies }),
   });
 }

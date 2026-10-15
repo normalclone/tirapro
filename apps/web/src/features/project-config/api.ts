@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth-token';
 import { keys } from '@/lib/queryKeys';
 
@@ -129,7 +129,7 @@ export function useUpdateComponent(projectId: string) {
 export function useDeleteComponent(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/components/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/components/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
@@ -174,7 +174,7 @@ export function useUpdateVersion(projectId: string) {
 export function useDeleteVersion(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/versions/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/versions/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },
@@ -219,7 +219,7 @@ export function useUpdateLabel(projectId: string) {
 export function useDeleteLabel(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/labels/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/labels/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.projectMeta.all(projectId) });
     },

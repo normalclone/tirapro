@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RaidKind, RaidStatus } from '@tirapro/types';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 // Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Rủi ro import một chỗ.
@@ -97,7 +97,7 @@ export function useUpdateRaidItem() {
 export function useDeleteRaidItem() {
   const invalidate = useInvalidateRaid();
   return useMutation({
-    mutationFn: async (id: string) => (await api.delete<void>(`/raid/${id}`)).data,
+    mutationFn: async (id: string) => (await api.delete<Ack>(`/raid/${id}`)).data,
     onSuccess: invalidate,
   });
 }

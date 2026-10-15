@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /* ------------------------------------------------------------------ */
@@ -87,7 +87,7 @@ export function useUpdateDigest() {
 export function useDeleteDigest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/digests/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/digests/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.digests.all });
     },

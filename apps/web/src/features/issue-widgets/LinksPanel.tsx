@@ -9,7 +9,8 @@ import { api, apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useCreateLink, useDeleteLink, useIssueLinks, useLinkTypes, type IssueLink } from './api';
 
-export function LinksPanel({ issueId }: { issueId: string }) {
+/** `canEdit`: được sửa issue này — không thì chỉ xem (không nút thêm/xoá, tránh 403). */
+export function LinksPanel({ issueId, canEdit }: { issueId: string; canEdit: boolean }) {
   const { data: links } = useIssueLinks(issueId);
   const { data: linkTypes } = useLinkTypes();
   const createLink = useCreateLink(issueId);
@@ -60,7 +61,7 @@ export function LinksPanel({ issueId }: { issueId: string }) {
     }
   }
 
-  const form = adding && (
+  const form = canEdit && adding && (
     <div className="space-y-2 rounded-md border border-border bg-surface p-2.5">
       <div className="flex items-center gap-2">
         <SearchSelect
@@ -103,15 +104,17 @@ export function LinksPanel({ issueId }: { issueId: string }) {
   );
 
   // Trạng thái rỗng + chưa mở form: dòng nhạt + nút mở form.
-  if (count === 0 && !adding) {
+  if (count === 0 && !(canEdit && adding)) {
     return (
       <div>
         <div className="mb-2 flex items-center justify-between">
           <p className="text-sm font-medium text-muted">Liên kết</p>
-          <Button variant="ghost" size="sm" onClick={() => setAdding(true)}>
-            <Plus className="h-4 w-4" />
-            Thêm liên kết
-          </Button>
+          {canEdit && (
+            <Button variant="ghost" size="sm" onClick={() => setAdding(true)}>
+              <Plus className="h-4 w-4" />
+              Thêm liên kết
+            </Button>
+          )}
         </div>
         <p className="text-sm text-faint">Chưa có liên kết.</p>
       </div>
@@ -122,13 +125,13 @@ export function LinksPanel({ issueId }: { issueId: string }) {
     <div>
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-medium text-muted">Liên kết ({count})</p>
-        {!adding && (
+        {canEdit && !adding && (
           <Button variant="ghost" size="sm" onClick={() => setAdding(true)}>
             <Plus className="h-4 w-4" />
             Thêm liên kết
           </Button>
         )}
-        {adding && (
+        {canEdit && adding && (
           <Button
             variant="ghost"
             size="icon"
@@ -155,19 +158,21 @@ export function LinksPanel({ issueId }: { issueId: string }) {
               {link.otherIssue.key}
             </span>
             <span className="min-w-0 flex-1 truncate text-ink">{link.otherIssue.summary}</span>
-            <button
-              type="button"
-              onClick={() => void onDelete(link)}
-              disabled={deleteLink.isPending}
-              aria-label={`Xóa liên kết tới ${link.otherIssue.key}`}
-              className={cn(
-                'shrink-0 rounded p-1 text-faint transition-colors',
-                'hover:bg-surface-3 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50',
-              )}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => void onDelete(link)}
+                disabled={deleteLink.isPending}
+                aria-label={`Xóa liên kết tới ${link.otherIssue.key}`}
+                className={cn(
+                  'shrink-0 rounded p-1 text-faint transition-colors',
+                  'hover:bg-surface-3 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                  'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50',
+                )}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         ))}
       </div>

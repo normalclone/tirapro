@@ -45,6 +45,7 @@ import { DueBadge, dueState } from '@/components/ui/DueBadge';
 import { pageContainer } from '@/components/layout/page';
 import { useRecents } from '@/stores/recentIssues';
 import { cn } from '@/lib/utils';
+import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
 
 const CATEGORY_COLOR: Record<StatusCategory, string> = {
   TODO: 'var(--status-todo)',
@@ -335,7 +336,7 @@ function TrendChart({ trend }: { trend: OverviewTrendPoint[] }) {
   if (!trend || trend.length === 0) return <EmptyChart />;
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={trend} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
+      <LineChart data={trend} margin={{ ...CHART_MARGIN, right: 12 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis
           dataKey="label"
@@ -347,7 +348,7 @@ function TrendChart({ trend }: { trend: OverviewTrendPoint[] }) {
           allowDecimals={false}
           tick={{ fontSize: 11, fill: 'var(--muted)' }}
           stroke="var(--border)"
-          width={32}
+          width={yAxisWidth(trend.flatMap((p) => [p.created, p.resolved]))}
           tickLine={false}
           axisLine={false}
         />
@@ -443,7 +444,7 @@ function SliceBar({ slices }: { slices: OverviewSlice[] }) {
   if (!slices || slices.length === 0) return <EmptyChart />;
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={slices} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
+      <BarChart data={slices} margin={CHART_MARGIN}>
         <XAxis
           dataKey="name"
           tick={{ fontSize: 11, fill: 'var(--muted)' }}
@@ -455,7 +456,7 @@ function SliceBar({ slices }: { slices: OverviewSlice[] }) {
           allowDecimals={false}
           tick={{ fontSize: 11, fill: 'var(--muted)' }}
           stroke="var(--border)"
-          width={32}
+          width={yAxisWidth(slices.map((s) => s.count))}
           tickLine={false}
           axisLine={false}
         />

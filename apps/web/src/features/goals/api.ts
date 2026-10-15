@@ -1,6 +1,6 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { KeyResultUnit, ListResponse, ObjectiveStatus, StatusCategory } from '@tirapro/types';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 // Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Mục tiêu import một chỗ.
@@ -133,7 +133,7 @@ export function useUpdateGoal() {
 export function useDeleteGoal() {
   const invalidate = useInvalidateGoals();
   return useMutation({
-    mutationFn: async (id: string) => (await api.delete<void>(`/goals/${id}`)).data,
+    mutationFn: async (id: string) => (await api.delete<Ack>(`/goals/${id}`)).data,
     onSuccess: invalidate,
   });
 }

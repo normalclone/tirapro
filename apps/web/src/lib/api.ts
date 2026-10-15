@@ -4,6 +4,9 @@ import { getAccessToken, setAccessToken } from './auth-token';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1';
 
+/** Phản hồi của endpoint xoá/thao tác không trả dữ liệu: máy chủ trả `{ success: true }` (không phải `void`). */
+export type Ack = { success: boolean };
+
 export const api = axios.create({ baseURL: BASE_URL, withCredentials: true });
 
 api.interceptors.request.use((config) => {
@@ -19,7 +22,7 @@ async function doRefresh(): Promise<string | null> {
   try {
     // Gửi kèm access token cũ (có thể đã hết hạn) để server giữ nguyên workspace đang làm việc.
     const old = getAccessToken();
-    const res = await axios.post<{ accessToken?: string }>(
+    const res = await axios.post<{ accessToken?: string | null }>(
       `${BASE_URL}/auth/refresh`,
       {},
       { withCredentials: true, headers: old ? { Authorization: `Bearer ${old}` } : undefined },

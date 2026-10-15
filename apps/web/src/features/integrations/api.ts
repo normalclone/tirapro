@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /* ------------------------------------------------------------------ */
@@ -100,7 +100,7 @@ export function useCreateTelegram() {
 export function useDeleteIntegration() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/integrations/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/integrations/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.integrations.byType('TELEGRAM') });
     },
@@ -142,7 +142,7 @@ export function useDeleteChannel(integrationId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (channelId: string) =>
-      api.delete<void>(`/integrations/channels/${channelId}`).then((r) => r.data),
+      api.delete<Ack>(`/integrations/channels/${channelId}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.integrations.channels(integrationId) });
     },
@@ -174,7 +174,7 @@ export function useCreateRepository() {
 export function useDeleteRepository() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/dev/repositories/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/dev/repositories/${id}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.integrations.repositories });
     },

@@ -15,7 +15,7 @@ export function hasPermission(ctx: PermissionContext, perm: string): boolean {
 export interface IssueOwnership {
   reporterId?: string | null;
   assigneeId?: string | null;
-  /** DTO web hiện chưa mang `createdById`; có thì được tính như API. */
+  /** `IssueDto.createdById` (người tạo) — được tính là chủ sở hữu như ở API. */
   createdById?: string | null;
 }
 

@@ -11,6 +11,7 @@ import { ClaudeService } from './claude.service';
 import { DATA_NOT_INSTRUCTIONS, wrap } from './ai.service';
 
 const WINDOW_DAYS = 90;
+const RECENT_DAYS = 14;
 const MAX_CANDIDATES = 10;
 const MAX_SUGGESTIONS = 3;
 
@@ -18,8 +19,13 @@ interface Candidate {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
-  resolvedSimilar: number;
+  /** Số issue cùng nhãn/thành phần đã xử lý (tín hiệu cụ thể). */
+  resolvedSpecific: number;
+  /** Số issue cùng loại đã xử lý (tín hiệu chung). */
+  resolvedType: number;
   openLoad: number;
+  /** Số issue được giao cập nhật trong RECENT_DAYS ngày. */
+  recentActivity: number;
   recentTouch: boolean;
   score: number;
   reasons: string[];
@@ -108,6 +114,7 @@ export class AssigneeSuggestService {
   private async heuristic(issue: {
     id: string;
     typeId: string;
+    type: { name: string };
     projectId: string;
     parentId: string | null;
     epicId: string | null;
@@ -124,11 +131,17 @@ export class AssigneeSuggestService {
     const ids = members.map((m) => m.user.id);
     const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000);
 
-    const similar: Record<string, unknown>[] = [{ typeId: issue.typeId }];
+    const sinceRecent = new Date(Date.now() - RECENT_DAYS * 86_400_000);
+
+    // "Cùng nhãn/thành phần" (cụ thể, hiếm) tách khỏi "cùng loại" (chung, gần như ai cũng có) —
+    // gộp OR như trước khiến loại issue chiếm hết trọng số và mọi người hoà điểm.
+    const specificOr: Record<string, unknown>[] = [];
     if (issue.labels.length)
-      similar.push({ labels: { some: { labelId: { in: issue.labels.map((l) => l.labelId) } } } });
+      specificOr.push({
+        labels: { some: { labelId: { in: issue.labels.map((l) => l.labelId) } } },
+      });
     if (issue.components.length)
-      similar.push({
+      specificOr.push({
         components: { some: { componentId: { in: issue.components.map((c) => c.componentId) } } },
       });
 
@@ -139,66 +152,95 @@ export class AssigneeSuggestService {
       ...issue.targetLinks.map((l) => l.sourceIssueId),
     ].filter((x): x is string => !!x && x !== issue.id);
 
-    const [resolved, open, touchers] = await Promise.all([
+    // Mọi lần đếm đều loại issue đã xoá mềm ngay tại đây (không để từng nơi gọi tự nhớ).
+    const groupCount = (where: Record<string, unknown>) =>
       this.prisma.issue.groupBy({
         by: ['assigneeId'],
-        where: {
-          projectId: issue.projectId,
-          deletedAt: null,
-          id: { not: issue.id },
-          assigneeId: { in: ids },
-          status: { category: 'DONE' },
-          resolvedAt: { gte: since },
-          OR: similar,
-        },
+        where: { deletedAt: null, ...where },
         _count: { _all: true },
+      });
+    const baseDone = {
+      projectId: issue.projectId,
+      id: { not: issue.id },
+      assigneeId: { in: ids },
+      status: { category: 'DONE' },
+      resolvedAt: { gte: since },
+    };
+    const [resolvedType, resolvedSpecific, open, recent, touchers] = await Promise.all([
+      groupCount({ ...baseDone, typeId: issue.typeId }),
+      specificOr.length ? groupCount({ ...baseDone, OR: specificOr }) : Promise.resolve([]),
+      groupCount({
+        projectId: issue.projectId,
+        id: { not: issue.id }, // issue đang xét không tự tính vào tải/hoạt động của người được giao
+        assigneeId: { in: ids },
+        status: { category: { not: 'DONE' } },
       }),
-      this.prisma.issue.groupBy({
-        by: ['assigneeId'],
-        where: {
-          projectId: issue.projectId,
-          deletedAt: null,
-          assigneeId: { in: ids },
-          status: { category: { not: 'DONE' } },
-        },
-        _count: { _all: true },
+      groupCount({
+        projectId: issue.projectId,
+        id: { not: issue.id }, // issue đang xét không tự tính vào tải/hoạt động của người được giao
+        assigneeId: { in: ids },
+        updatedAt: { gte: sinceRecent },
       }),
       this.touchers(related, ids, since),
     ]);
 
     const countOf = (rows: { assigneeId: string | null; _count: { _all: number } }[]) =>
       new Map(rows.filter((r) => r.assigneeId).map((r) => [r.assigneeId as string, r._count._all]));
-    const resolvedBy = countOf(resolved);
+    const typeBy = countOf(resolvedType);
+    const specificBy = countOf(resolvedSpecific);
     const openBy = countOf(open);
-    const maxResolved = Math.max(0, ...resolvedBy.values());
+    const recentBy = countOf(recent);
+    const maxType = Math.max(0, ...typeBy.values());
+    const maxSpecific = Math.max(0, ...specificBy.values());
     const maxOpen = Math.max(0, ...openBy.values());
+    const maxRecent = Math.max(0, ...recentBy.values());
     const norm = (v: number, max: number) => (max > 0 ? v / max : 0);
+    const avgOpen = (
+      [...openBy.values()].reduce((a, b) => a + b, 0) / members.length
+    ).toLocaleString('vi-VN', { maximumFractionDigits: 1 });
 
     return members
       .map(({ user }): Candidate => {
-        const resolvedSimilar = resolvedBy.get(user.id) ?? 0;
+        const specific = specificBy.get(user.id) ?? 0;
+        const typeCnt = typeBy.get(user.id) ?? 0;
         const openLoad = openBy.get(user.id) ?? 0;
+        const recentActivity = recentBy.get(user.id) ?? 0;
         const recentTouch = touchers.has(user.id);
         const score = round2(
-          0.5 * norm(resolvedSimilar, maxResolved) +
-            0.3 * (1 - norm(openLoad, maxOpen)) +
-            0.2 * (recentTouch ? 1 : 0),
+          0.3 * norm(specific, maxSpecific) +
+            0.15 * norm(typeCnt, maxType) +
+            0.25 * (1 - norm(openLoad, maxOpen)) +
+            0.15 * (recentTouch ? 1 : 0) +
+            0.15 * norm(recentActivity, maxRecent),
         );
-        const reasons: string[] = [];
-        if (resolvedSimilar > 0)
-          reasons.push(`Đã xử lý ${resolvedSimilar} issue tương tự trong ${WINDOW_DAYS} ngày qua`);
-        reasons.push(
+        const loadReason =
           openLoad === 0
-            ? 'Hiện không có issue nào đang dở'
-            : `Đang có ${openLoad} issue chưa xong`,
-        );
+            ? 'Không có issue nào đang dở'
+            : `Đang dở ${openLoad} issue (trung bình nhóm ${avgOpen})`;
+        const reasons: string[] = [];
+        // Không có tín hiệu dương nào: nói thật thay vì bịa lý do; dòng tải chỉ là dữ kiện kèm theo.
+        if (specific + typeCnt + recentActivity === 0 && !recentTouch)
+          reasons.push('Chưa có dữ liệu xử lý issue tương tự — xếp theo khối lượng đang dở');
+        if (specific > 0)
+          reasons.push(
+            `Đã xử lý ${specific} issue cùng nhãn/thành phần trong ${WINDOW_DAYS} ngày qua`,
+          );
+        if (typeCnt > 0)
+          reasons.push(
+            `Đã xử lý ${typeCnt} issue cùng loại “${issue.type.name}” trong ${WINDOW_DAYS} ngày qua`,
+          );
+        reasons.push(loadReason);
+        if (recentActivity > 0)
+          reasons.push(`Có hoạt động trên ${recentActivity} issue trong ${RECENT_DAYS} ngày qua`);
         if (recentTouch) reasons.push('Đã tham gia issue cha hoặc issue liên kết');
         return {
           userId: user.id,
           displayName: user.displayName,
           avatarUrl: user.avatarUrl,
-          resolvedSimilar,
+          resolvedSpecific: specific,
+          resolvedType: typeCnt,
           openLoad,
+          recentActivity,
           recentTouch,
           score,
           reasons,
@@ -208,6 +250,7 @@ export class AssigneeSuggestService {
         (a, b) =>
           b.score - a.score ||
           a.openLoad - b.openLoad ||
+          b.recentActivity - a.recentActivity ||
           a.displayName.localeCompare(b.displayName, 'vi'),
       );
   }
@@ -259,7 +302,7 @@ export class AssigneeSuggestService {
     const table = candidates
       .map(
         (c, i) =>
-          `u${i + 1} | giải_tương_tự=${c.resolvedSimilar} | đang_dở=${c.openLoad} | từng_tham_gia_issue_liên_quan=${c.recentTouch ? 'có' : 'không'} | điểm=${c.score}`,
+          `u${i + 1} | giải_cùng_nhãn_thành_phần=${c.resolvedSpecific} | giải_cùng_loại=${c.resolvedType} | đang_dở=${c.openLoad} | hoạt_động_${RECENT_DAYS}_ngày=${c.recentActivity} | từng_tham_gia_issue_liên_quan=${c.recentTouch ? 'có' : 'không'} | điểm=${c.score}`,
       )
       .join('\n');
     try {
@@ -271,7 +314,7 @@ export class AssigneeSuggestService {
         system:
           'Bạn giúp trưởng nhóm chọn người nhận một issue. Cho bảng số liệu của các ứng viên đã ẩn danh (u1, u2…), ' +
           `hãy chọn tối đa ${MAX_SUGGESTIONS} ứng viên phù hợp nhất theo thứ tự giảm dần, mỗi người kèm lý do đúng một câu tiếng Việt ` +
-          'chỉ dựa trên số liệu (kinh nghiệm xử lý issue tương tự, khối lượng đang dở, mức độ liên quan). ' +
+          'chỉ dựa trên số liệu (kinh nghiệm xử lý issue cùng nhãn/thành phần hoặc cùng loại, khối lượng đang dở, hoạt động gần đây, mức độ liên quan). ' +
           'Chỉ dùng mã u1…uN có trong bảng; không bịa thông tin.' +
           DATA_NOT_INSTRUCTIONS,
         prompt: `${wrap('issue', `Loại: ${issue.type.name}\nTiêu đề: ${issue.summary}`)}\n\nỨng viên:\n${table}`,

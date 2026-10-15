@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TeamDto } from '@tirapro/types';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 export interface TeamInput {
@@ -40,7 +40,7 @@ export function useUpdateTeam() {
 export function useDeleteTeam() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/teams/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/teams/${id}`).then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.teams.all }),
   });
 }

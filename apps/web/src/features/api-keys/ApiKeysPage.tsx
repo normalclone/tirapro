@@ -33,9 +33,7 @@ import { LOCALE } from '@/lib/locale';
 const DEV_FALLBACK = import.meta.env.DEV;
 const REST_URL =
   import.meta.env.VITE_API_URL ?? (DEV_FALLBACK ? 'http://localhost:4000/api/v1' : '');
-const MCP_URL =
-  (import.meta.env.VITE_MCP_URL as string | undefined) ??
-  (DEV_FALLBACK ? 'http://localhost:4100/mcp' : '');
+const MCP_URL = import.meta.env.VITE_MCP_URL ?? (DEV_FALLBACK ? 'http://localhost:4100/mcp' : '');
 const DOCS_URL = REST_URL ? `${REST_URL.replace(/\/api\/v\d+\/?$/, '')}/api/docs` : '';
 const HELP_URL = REST_URL ? `${REST_URL.replace(/\/$/, '')}/help` : '';
 

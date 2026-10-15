@@ -1,6 +1,6 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UserDto } from '@tirapro/types';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 export interface ChecklistItemDto {
@@ -73,7 +73,7 @@ export function useRemoveChecklistItem(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (itemId: string) =>
-      api.delete<void>(`/issues/${issueId}/checklist/${itemId}`).then((r) => r.data),
+      api.delete<Ack>(`/issues/${issueId}/checklist/${itemId}`).then((r) => r.data),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.issues.checklist(issueId) }),
   });
 }

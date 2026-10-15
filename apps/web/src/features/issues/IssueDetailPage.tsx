@@ -667,7 +667,7 @@ export function IssueDetailPage() {
 
                   {/* Thành phần & phiên bản + các trường do dự án tự thêm */}
                   <IssueComponentsPicker issue={issue} />
-                  <CustomFieldsPanel issueId={issue.id} />
+                  <CustomFieldsPanel issueId={issue.id} canEdit={canEditThis} />
 
                   {devLinks && devLinks.length > 0 && (
                     <div>
@@ -713,10 +713,10 @@ export function IssueDetailPage() {
                   )}
 
                   <LazyPanel minHeight={64}>
-                    <LinksPanel issueId={issue.id} />
+                    <LinksPanel issueId={issue.id} canEdit={canEditThis} />
                   </LazyPanel>
                   <LazyPanel minHeight={64}>
-                    <AttachmentsPanel issueId={issue.id} />
+                    <AttachmentsPanel issueId={issue.id} canEdit={canEditThis} />
                   </LazyPanel>
 
                   {/* Hoạt động: tab Bình luận / Lịch sử */}

@@ -174,7 +174,7 @@ export function FloatingActions() {
           <div
             className={cn(
               'w-64 rounded-lg border border-border bg-surface p-2 shadow-lg',
-              'origin-bottom-right animate-in fade-in zoom-in-95 duration-[120ms] ease-out-quart',
+              'origin-bottom-right animate-in fade-in zoom-in-95 duration-fast ease-out-quart',
               'motion-reduce:animate-none motion-reduce:zoom-in-100',
             )}
           >
@@ -258,7 +258,7 @@ export function FloatingActions() {
           title="Thao tác nhanh"
           className={cn(
             'grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-fg shadow-lg',
-            'transition-[background-color,transform] duration-[120ms] ease-out-quart',
+            'transition-[background-color,transform] duration-fast ease-out-quart',
             'hover:bg-primary-hover active:scale-95',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
             'motion-reduce:transition-none motion-reduce:active:scale-100',
@@ -266,7 +266,7 @@ export function FloatingActions() {
         >
           <span
             className={cn(
-              'grid place-items-center transition-transform duration-[120ms] ease-out-quart motion-reduce:transition-none',
+              'grid place-items-center transition-transform duration-fast ease-out-quart motion-reduce:transition-none',
               open && !closing ? 'rotate-45' : 'rotate-0',
             )}
           >
@@ -347,7 +347,7 @@ function ActionButton({
       style={{ transitionDelay: `${delay}ms`, willChange: 'transform, opacity' }}
       className={cn(
         'group flex items-center gap-2 rounded-full outline-none',
-        'transition-[opacity,transform] duration-[180ms] ease-out-quart',
+        'transition-[opacity,transform] duration-base ease-out-quart',
         visible ? 'translate-y-0 opacity-100' : 'translate-y-1.5 opacity-0',
         'motion-reduce:transition-none motion-reduce:translate-y-0',
       )}
@@ -355,7 +355,7 @@ function ActionButton({
       <span
         className={cn(
           'flex items-center gap-1.5 rounded-md border bg-surface px-2.5 py-1 text-sm font-medium shadow-sm',
-          'transition-colors duration-[120ms] ease-out-quart motion-reduce:transition-none',
+          'transition-colors duration-fast ease-out-quart motion-reduce:transition-none',
           muted ? 'border-border text-muted group-hover:text-ink' : 'border-border text-ink',
           'group-hover:bg-surface-2',
         )}
@@ -368,7 +368,7 @@ function ActionButton({
       <span
         className={cn(
           'grid h-11 w-11 shrink-0 place-items-center rounded-full border bg-surface shadow-md',
-          'transition-[background-color,transform] duration-[120ms] ease-out-quart',
+          'transition-[background-color,transform] duration-fast ease-out-quart',
           'group-hover:bg-surface-2 group-active:scale-95',
           'group-focus-visible:ring-2 group-focus-visible:ring-[var(--ring)]',
           'motion-reduce:transition-none motion-reduce:group-active:scale-100',

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 export interface ProgramProjectRef {
@@ -116,7 +116,7 @@ export function useUpdateProgram() {
 export function useDeleteProgram() {
   const invalidate = useInvalidatePortfolio();
   return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/programs/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/programs/${id}`).then((r) => r.data),
     onSuccess: invalidate,
   });
 }
