@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   DOMAIN_EVENTS,
@@ -107,6 +107,8 @@ export interface IssueListFilter {
 
 @Injectable()
 export class IssuesService {
+  private readonly logger = new Logger(IssuesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
@@ -1073,11 +1075,18 @@ export class IssuesService {
     // Đọc lại hàng có đổi nhãn để `updated[].labels` và sự kiện phản ánh đúng sau khi ghi.
     const fresh = new Map<string, IssueRow>();
     if (labelIds.length) {
-      const reread = await this.prisma.issue.findMany({
-        where: { id: { in: labelIds }, workspaceId, deletedAt: null },
-        include: issueInclude,
-      });
-      for (const r of reread) fresh.set(r.id, r);
+      try {
+        const reread = await this.prisma.issue.findMany({
+          where: { id: { in: labelIds }, workspaceId, deletedAt: null },
+          include: issueInclude,
+        });
+        for (const r of reread) fresh.set(r.id, r);
+      } catch (e) {
+        // Dữ liệu ĐÃ commit: đọc lại lỗi chỉ làm mất nhãn mới trong phản hồi/sự kiện, không được biến thành lỗi của request.
+        this.logger.warn(
+          `Bulk: đọc lại ${labelIds.length} việc sau khi gắn nhãn lỗi — ${(e as Error).message}`,
+        );
+      }
     }
     const labelSet = new Set(labelIds);
     const changedIds = new Set(changed.map((c) => c.after.id));

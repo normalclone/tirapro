@@ -2503,4 +2503,89 @@ describe('IssuesService.bulkUpdate — storyPoints / epicId / labels (B7)', () =
       }),
     ).rejects.toMatchObject({ status: 404 });
   });
+  it('labels.add: hàng lệch version bị loại khỏi createMany và vào conflicts', async () => {
+    const t = tx({
+      issue: {
+        ...tx().issue,
+        findMany: vi.fn((_args: unknown) =>
+          Promise.resolve([issueRow({ id: 'a' }), issueRow({ id: 'b', version: 9 })]),
+        ),
+      },
+    });
+    const { service } = makeService(t);
+    const r = await service.bulkUpdate('w1', 'u1', {
+      projectId: 'p1',
+      items,
+      patch: { labels: { add: ['l1'] } },
+    });
+    expect(t.issueLabel.createMany).toHaveBeenCalledWith({
+      data: [{ issueId: 'a', labelId: 'l1' }],
+      skipDuplicates: true,
+    });
+    expect(r.conflicts).toEqual([{ id: 'b', version: 9 }]);
+  });
+  it('labels.remove: gỡ đúng nhãn khỏi các hàng còn khớp version', async () => {
+    const t = tx();
+    const { service } = makeService(t);
+    await service.bulkUpdate('w1', 'u1', {
+      projectId: 'p1',
+      items,
+      patch: { labels: { remove: ['l1'] } },
+    });
+    expect(t.issueLabel.deleteMany).toHaveBeenCalledWith({
+      where: { issueId: { in: ['a', 'b'] }, labelId: { in: ['l1'] } },
+    });
+    expect(t.issueLabel.createMany).not.toHaveBeenCalled();
+  });
+  it('epicId: chuỗi epic của epic được chọn chạm một việc trong lô => 422 (chu trình), chưa ghi', async () => {
+    const chain: Record<string, Record<string, unknown>> = {
+      e1: { projectId: 'p1', epicId: 'e2', type: { key: 'EPIC', hierarchyLevel: 1 } },
+      e2: { projectId: 'p1', epicId: 'a', type: { key: 'EPIC', hierarchyLevel: 1 } },
+    };
+    const t = tx({
+      issue: {
+        ...tx().issue,
+        findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(chain[where.id] ?? null),
+        ),
+      },
+    });
+    const { service } = makeService(t);
+    await expect(
+      service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { epicId: 'e1' } }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('storyPoints: null xoá điểm', async () => {
+    const t = tx({
+      issue: {
+        ...tx().issue,
+        findMany: vi.fn((_args: unknown) =>
+          Promise.resolve([
+            issueRow({ id: 'a', storyPoints: 5 }),
+            issueRow({ id: 'b', storyPoints: 5 }),
+          ]),
+        ),
+      },
+    });
+    const { service } = makeService(t);
+    await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { storyPoints: null } });
+    expect(t.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ storyPoints: null });
+  });
+  it('đọc lại nhãn SAU commit lỗi => vẫn trả thành công (dữ liệu đã ghi), không văng lỗi', async () => {
+    const base = tx();
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce(rowsAB())
+      .mockRejectedValueOnce(new Error('db down'));
+    const t = tx({ issue: { ...base.issue, findMany } });
+    const { service } = makeService(t);
+    const r = await service.bulkUpdate('w1', 'u1', {
+      projectId: 'p1',
+      items,
+      patch: { labels: { add: ['l1'] } },
+    });
+    expect(r.updated).toHaveLength(2);
+    expect(t.issueLabel.createMany).toHaveBeenCalled();
+  });
 });
