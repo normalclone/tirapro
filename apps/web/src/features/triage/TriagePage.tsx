@@ -41,6 +41,8 @@ export function TriagePage() {
   const snooze = useSnooze(projectId ?? '');
 
   const peek = useIssuePeek();
+  // Panel mở → cột danh sách hẹp: bỏ chip phụ, nút chỉ còn biểu tượng (tên nút vẫn có cho trình đọc màn hình + tooltip).
+  const compact = !!peek.peekKey;
   const [snoozingId, setSnoozingId] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
 
@@ -152,7 +154,7 @@ export function TriagePage() {
                         {issue.summary}
                       </span>
 
-                      {issue.severity && (
+                      {issue.severity && !compact && (
                         <span
                           className="hidden shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium sm:inline-flex"
                           style={{
@@ -175,9 +177,11 @@ export function TriagePage() {
                         />
                       )}
 
-                      <span className="hidden shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted md:inline">
-                        {issue.type.name}
-                      </span>
+                      {!compact && (
+                        <span className="hidden shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted md:inline">
+                          {issue.type.name}
+                        </span>
+                      )}
 
                       <span className="shrink-0">
                         {issue.assignee && (
@@ -199,7 +203,7 @@ export function TriagePage() {
                             title="Nhận công việc này vào dự án"
                           >
                             <Check className="h-4 w-4" />
-                            Nhận
+                            <span className={compact ? 'sr-only' : undefined}>Nhận</span>
                           </Button>
 
                           <div className="relative">
@@ -215,7 +219,7 @@ export function TriagePage() {
                               title="Tạm hoãn"
                             >
                               <Clock className="h-4 w-4" />
-                              Tạm hoãn
+                              <span className={compact ? 'sr-only' : undefined}>Tạm hoãn</span>
                             </Button>
                             {snoozingId === issue.id && (
                               <>
@@ -254,7 +258,7 @@ export function TriagePage() {
                             title="Từ chối công việc này"
                           >
                             <X className="h-4 w-4" />
-                            Từ chối
+                            <span className={compact ? 'sr-only' : undefined}>Từ chối</span>
                           </Button>
                         </div>
                       )}
