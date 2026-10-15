@@ -11,25 +11,27 @@ declare module '@tanstack/react-query' {
   }
 }
 
+export const mutationCache = new MutationCache();
+
 /**
- * Lỗi mutation: toast chung bằng câu tiếng Việt từ `apiErrorMessage` — không còn mutation nào
- * thất bại âm thầm khi component quên `onError`.
+ * Lỗi mutation: toast chung bằng câu tiếng Việt từ `apiErrorMessage` — không mutation nào thất bại âm thầm
+ * khi component quên `onError`. Mutation tự xử lý: `meta: { silent: true }`.
  *
- * Tránh toast đôi: nơi nào đã tự báo lỗi qua `apiErrorMessage(e)` (call-site `mutate(..., { onError })`
- * hoặc try/catch quanh `mutateAsync`) thì bản chung bỏ qua. MutationCache chạy TRƯỚC các callback đó
- * nên phải chờ một tick (setTimeout 0) rồi mới kiểm tra. Mutation muốn hoàn toàn không toast thì
- * đặt `meta: { silent: true }`.
- *
- * CẢNH BÁO: một tick chỉ đủ cho callback đồng bộ/microtask. `onError`/`onSettled` nào làm I/O bất đồng bộ
- * thật (await mạng, timer) rồi mới gọi `apiErrorMessage` sẽ bị toast đôi — hãy đặt `meta: { silent: true }`.
+ * Tránh toast đôi: nơi nào đã tự báo qua `apiErrorMessage(e)` thì bản chung bỏ qua. Lắng nghe sự kiện `updated`/`error`
+ * (phát đồng bộ SAU `await options.onError/onSettled` và sau callback của `mutate(…, { onError })`), rồi chờ thêm một
+ * macrotask cho các `catch` quanh `mutateAsync` (chạy ở microtask sau đó). Giả định còn lại: không `await` I/O thật giữa lúc
+ * `mutateAsync` reject và lúc gọi `apiErrorMessage` — nếu cần, dùng `meta.silent`.
+ * Toast mang `id` theo nội dung → nhiều lỗi giống hệt cùng lúc chỉ hiện một toast (sonner cập nhật thay vì xếp chồng).
  */
-export const mutationCache = new MutationCache({
-  onError: (error, _variables, _context, mutation) => {
-    if (mutation.meta?.silent) return;
-    setTimeout(() => {
-      if (!wasErrorDescribed(error)) toast.error(apiErrorMessage(error));
-    }, 0);
-  },
+mutationCache.subscribe((event) => {
+  if (event.type !== 'updated' || event.action.type !== 'error') return;
+  if (event.mutation.meta?.silent) return;
+  const error = event.action.error;
+  setTimeout(() => {
+    if (wasErrorDescribed(error)) return;
+    const message = apiErrorMessage(error);
+    toast.error(message, { id: `mutation-error:${message}` });
+  }, 0);
 });
 
 export const queryClient = new QueryClient({

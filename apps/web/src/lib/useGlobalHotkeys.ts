@@ -1,27 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { ProjectDto } from '@tirapro/types';
 import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
-import { LAST_VIEW_KEY } from '@/features/projects/ProjectLayout';
+import { currentProjectKey } from './currentProject';
 import { SHORTCUTS_EVENT } from '@/components/layout/ShortcutsDialog';
 import { isDialogOpen, isTypingTarget } from './hotkeys';
-
-/**
- * Dự án "hiện tại" cho các phím điều hướng: ưu tiên project trong URL (`/p/:key`),
- * rồi view mở gần nhất (localStorage), cuối cùng dự án đầu tiên.
- */
-function currentProjectKey(projects: ProjectDto[] | undefined): string | null {
-  const m = /^\/p\/([^/]+)/.exec(window.location.pathname);
-  if (m) return decodeURIComponent(m[1]!);
-  try {
-    const saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}') as { key?: string };
-    if (saved.key && (projects ?? []).some((p) => p.key === saved.key)) return saved.key;
-  } catch {
-    /* ignore */
-  }
-  return projects?.[0]?.key ?? null;
-}
 
 /** Đưa focus vào ô tìm/bảng lệnh: mở bảng lệnh (⌘K) qua sự kiện dùng chung. */
 function focusSearch() {
