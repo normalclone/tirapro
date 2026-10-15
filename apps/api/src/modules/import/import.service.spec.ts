@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ImportService } from './import.service';
+import { IssuesService } from '../issues/issues.service';
 
 function setup(failSummary?: string, members: Array<{ id: string; email: string }> = []) {
   const tx = {};
@@ -107,5 +108,111 @@ describe('ImportService.importJson — assignee chỉ là thành viên workspace
       data: { issues: [{ summary: 'a', assignee: 'member@x.vn' }, { summary: 'b' }] },
     });
     expect(res.skippedAssignees).toBe(0);
+  });
+});
+
+describe('ImportService.createIssuesInChunks + IssuesService thật — sprint CLOSED của import Jira', () => {
+  it('dòng gắn sprint CLOSED (do import Jira tạo) vẫn được tạo, không bị FW1 chặn 422', async () => {
+    const createdRow = {
+      id: 'i1',
+      key: 'P-TASK-1',
+      summary: 's',
+      workspaceId: 'w1',
+      projectId: 'p1',
+      type: {
+        id: 't1',
+        name: 'Task',
+        key: 'TASK',
+        iconUrl: null,
+        color: null,
+        hierarchyLevel: 0,
+        isSubtask: false,
+      },
+      status: {
+        id: 's1',
+        workflowId: 'wf',
+        name: 'Todo',
+        category: 'TODO',
+        color: null,
+        order: 0,
+        isInitial: true,
+      },
+      statusId: 's1',
+      sprintId: 'sp-closed',
+      labels: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const tx = {
+      project: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({
+            id: 'p1',
+            key: 'P',
+            defaultWorkflowId: 'wf',
+            leadId: null,
+            defaultAssigneeMode: 'NONE',
+            archivedAt: null,
+          }),
+        ),
+        update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
+      },
+      issueType: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
+        findUnique: vi.fn(() => Promise.resolve({ key: 'TASK', name: 'Task' })),
+      },
+      sprint: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'sp-closed', state: 'CLOSED' })),
+      },
+      status: { findFirst: vi.fn(() => Promise.resolve({ id: 's1', category: 'TODO' })) },
+      priority: { findFirst: vi.fn(() => Promise.resolve(null)) },
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(null)),
+        count: vi.fn(() => Promise.resolve(0)),
+        create: vi.fn(() => Promise.resolve(createdRow)),
+      },
+      issueHistory: { create: vi.fn() },
+    };
+    const prisma = { $transaction: (fn: (t: unknown) => unknown) => fn(tx), ...tx };
+    const issues = new IssuesService(prisma as never, { emit: vi.fn() } as never, {} as never);
+    const service = new ImportService(prisma as never, issues);
+    const res = await service.createIssuesInChunks(
+      'w1',
+      'u1',
+      [
+        {
+          row: 0,
+          input: {
+            projectId: 'p1',
+            typeId: 't1',
+            summary: 's',
+            descriptionFormat: 'MARKDOWN',
+            sprintId: 'sp-closed',
+          },
+        },
+      ],
+      new Map(),
+    );
+    expect(res).toMatchObject({ created: 1, errors: [] });
+    expect(tx.issue.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ImportService.importJson — skippedAssignees khi lô lỗi rồi chạy lại từng dòng', () => {
+  it('không đếm đôi: dòng thành công sau khi lô rollback chỉ đếm một lần, dòng lỗi không đếm', async () => {
+    const { service } = setup('bad', [{ id: 'u2', email: 'member@x.vn' }]);
+    const res = await service.importJson('w1', 'u1', {
+      projectId: 'p1',
+      data: {
+        issues: [
+          { summary: 'ok1', assignee: 'ghost1@x.vn' },
+          { summary: 'bad', assignee: 'ghost2@x.vn' }, // làm cả lô rollback rồi bị cô lập
+          { summary: 'ok2', assignee: 'ghost3@x.vn' },
+          { summary: 'ok3', assignee: 'member@x.vn' },
+        ],
+      },
+    });
+    expect(res).toMatchObject({ created: 3, failed: 1 });
+    expect(res.skippedAssignees).toBe(2); // ok1 + ok2, mỗi dòng đúng một lần
   });
 });

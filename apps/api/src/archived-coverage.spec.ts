@@ -36,8 +36,6 @@ const EXEMPT: Record<string, string> = {
   'auth/invite.service.ts': 'định danh',
   'auth/password-reset.service.ts': 'định danh',
   'auth/token.service.ts': 'định danh',
-  'automation/rule-engine.service.ts':
-    'thực thi qua IssuesService (lỗi archived vào nhật ký chạy) và các action (đã quét ở test riêng); scheduler lọc ACTIVE_PROJECT',
   'clients/clients.service.ts': 'cấp workspace',
   'programs/programs.service.ts': 'cấp workspace',
   'resources/resources.service.ts': 'cấp workspace',
@@ -70,6 +68,26 @@ const EXEMPT_METHODS: Record<string, string> = {
   'projects/projects.service.ts#remove': 'vòng đời dự án (xoá mềm)',
   'automation/automation.service.ts#runDueRecurring':
     'cron; scanDueRecurring lọc `project: { archivedAt: null }` ở where',
+  'automation/rule-engine.service.ts#onModuleInit':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#systemUserId':
+    'upsert người dùng hệ thống của automation, không phải dữ liệu dự án',
+  'automation/rule-engine.service.ts#onIssueCreated':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#onIssueTransitioned':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#onIssueUpdated':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#onCommentAdded':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#handle':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#dryRun':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#runRule':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#pruneRuns':
+    'dọn lịch sử chạy cũ (AutomationRun), không phải dữ liệu làm việc',
   'automation/rules.service.ts#invalidate': 'xoá cache quy tắc, không ghi dữ liệu làm việc',
   'dev-links/dev-links.service.ts#createRepository':
     'kho mã nguồn là hạ tầng tích hợp cấp workspace',

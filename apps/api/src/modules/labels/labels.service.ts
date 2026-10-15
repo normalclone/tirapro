@@ -116,7 +116,7 @@ export class LabelsService {
 
   private async requireLabel(workspaceId: string, labelId: string) {
     const label = await this.prisma.label.findFirst({
-      where: { id: labelId, project: { workspaceId } },
+      where: { id: labelId, project: { workspaceId, deletedAt: null } },
       select: { id: true, projectId: true },
     });
     if (!label) throw new NotFoundAppException('Nhãn');

@@ -1032,6 +1032,23 @@ describe('IssuesService — sprint CLOSED không nhận việc (FW1)', () => {
     expect(tx.issue.create).not.toHaveBeenCalled();
   });
 
+  it('createWithin (import Jira gắn sprint CLOSED theo lịch sử) KHÔNG bị chặn, create() thường vẫn 422', async () => {
+    const input = {
+      projectId: 'p1',
+      typeId: 't1',
+      summary: 's',
+      descriptionFormat: 'MARKDOWN' as const,
+      sprintId: 'sp9',
+    };
+    const w = createTx([{ id: 's1', category: 'TODO', isInitial: true }]);
+    const tx = Object.assign(w.tx, { sprint: { findFirst: closedSprint() } });
+    const { service } = makeService(tx);
+    await expect(service.createWithin(tx as never, 'w1', 'u1', input, [])).resolves.toBeDefined();
+    expect(w.created.mock.calls[0]![0].data.sprintId).toBe('sp9');
+    await expect(service.create('w1', 'u1', input)).rejects.toMatchObject({ status: 422 });
+    expect(w.created).toHaveBeenCalledTimes(1);
+  });
+
   it('update(sprintId đã đóng) => 422, chưa ghi', async () => {
     const tx = {
       issue: {
@@ -1123,6 +1140,62 @@ describe('IssuesService — sprint CLOSED không nhận việc (FW1)', () => {
   });
 });
 
+/** Prisma giả cho `create`: `statuses` = trạng thái của workflow dự án; `epics` = id → hàng epic. */
+/** `statuses`: các trạng thái của workflow dự án (wf); status ngoài danh sách coi như thuộc workflow khác. */
+function createTx(
+  statuses: Array<{ id: string; category: string; isInitial: boolean }>,
+  epics: Record<string, unknown> = {},
+) {
+  const created = vi.fn((_args: { data: Record<string, unknown> }) =>
+    Promise.resolve(issueRow({ statusId: 's9' })),
+  );
+  const tx = {
+    project: {
+      findFirst: vi.fn(() =>
+        Promise.resolve({
+          id: 'p1',
+          key: 'P',
+          defaultWorkflowId: 'wf',
+          leadId: null,
+          defaultAssigneeMode: 'NONE',
+          archivedAt: null,
+        }),
+      ),
+      update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
+    },
+    issueType: {
+      findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
+      findUnique: vi.fn(() => Promise.resolve({ key: 'task', name: 'Task' })),
+    },
+    status: {
+      findFirst: vi.fn(
+        ({ where }: { where: { id?: string; workflowId: string; isInitial?: boolean } }) =>
+          Promise.resolve(
+            statuses.find(
+              (st) =>
+                where.workflowId === 'wf' &&
+                (where.id === undefined || where.id === st.id) &&
+                (where.isInitial === undefined || where.isInitial === st.isInitial),
+            ) ?? null,
+          ),
+      ),
+    },
+    priority: { findFirst: vi.fn(() => Promise.resolve(null)) },
+    issue: {
+      findFirst: vi.fn(({ where }: { where: { id?: string } }) =>
+        Promise.resolve(where.id && where.id in epics ? epics[where.id] : null),
+      ),
+      count: vi.fn(() => Promise.resolve(0)),
+      create: created,
+    },
+    issueHistory: { create: vi.fn() },
+  };
+  return { tx, created };
+}
+
+const WF_DEFAULT = [{ id: 's1', category: 'TODO', isInitial: true }];
+const createTxFor = (epics: Record<string, unknown>) => createTx(WF_DEFAULT, epics);
+
 describe('IssuesService.create — statusId phải thuộc workflow của dự án (I1)', () => {
   const baseInput = {
     projectId: 'p1',
@@ -1131,52 +1204,6 @@ describe('IssuesService.create — statusId phải thuộc workflow của dự �
     descriptionFormat: 'MARKDOWN' as const,
   };
 
-  /** `statuses`: các trạng thái của workflow dự án (wf); status ngoài danh sách coi như thuộc workflow khác. */
-  function createTx(statuses: Array<{ id: string; category: string; isInitial: boolean }>) {
-    const created = vi.fn((_args: { data: Record<string, unknown> }) =>
-      Promise.resolve(issueRow({ statusId: 's9' })),
-    );
-    const tx = {
-      project: {
-        findFirst: vi.fn(() =>
-          Promise.resolve({
-            id: 'p1',
-            key: 'P',
-            defaultWorkflowId: 'wf',
-            leadId: null,
-            defaultAssigneeMode: 'NONE',
-            archivedAt: null,
-          }),
-        ),
-        update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
-      },
-      issueType: {
-        findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
-        findUnique: vi.fn(() => Promise.resolve({ key: 'task', name: 'Task' })),
-      },
-      status: {
-        findFirst: vi.fn(
-          ({ where }: { where: { id?: string; workflowId: string; isInitial?: boolean } }) =>
-            Promise.resolve(
-              statuses.find(
-                (st) =>
-                  where.workflowId === 'wf' &&
-                  (where.id === undefined || where.id === st.id) &&
-                  (where.isInitial === undefined || where.isInitial === st.isInitial),
-              ) ?? null,
-            ),
-        ),
-      },
-      priority: { findFirst: vi.fn(() => Promise.resolve(null)) },
-      issue: {
-        findFirst: vi.fn(() => Promise.resolve(null)),
-        count: vi.fn(() => Promise.resolve(0)),
-        create: created,
-      },
-      issueHistory: { create: vi.fn() },
-    };
-    return { tx, created };
-  }
   const WF = [
     { id: 's1', category: 'TODO', isInitial: true },
     { id: 's2', category: 'IN_PROGRESS', isInitial: false },
@@ -1239,12 +1266,25 @@ describe('IssuesService.create — statusId phải thuộc workflow của dự �
   });
 });
 
-describe('IssuesService.update — epicId được lưu (FW11)', () => {
-  function epicTx(current: Record<string, unknown>, after: Record<string, unknown>) {
+describe('IssuesService — epicId được lưu và hợp lệ (FW11 + review)', () => {
+  const epicRow = (over: Record<string, unknown> = {}) => ({
+    projectId: 'p1',
+    epicId: null,
+    type: { key: 'EPIC', hierarchyLevel: 1 },
+    ...over,
+  });
+
+  /** `epics`: id → hàng epic (cho truy vấn kiểm epic); mọi truy vấn khác trả `current`. */
+  function epicTx(
+    current: Record<string, unknown>,
+    after: Record<string, unknown>,
+    epics: Record<string, unknown> = {},
+  ) {
     return {
       issue: {
-        // requireIssue + assertMetaInWorkspace(epic) đều đi qua findFirst
-        findFirst: vi.fn(() => Promise.resolve(current)),
+        findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(where.id in epics ? epics[where.id] : where.id === 'i1' ? current : null),
+        ),
         updateMany: vi.fn((_args: { data: Record<string, unknown> }) =>
           Promise.resolve({ count: 1 }),
         ),
@@ -1255,7 +1295,7 @@ describe('IssuesService.update — epicId được lưu (FW11)', () => {
   }
 
   it('PATCH { epicId } ghi epicId vào DB và phát ISSUE_UPDATED với changedFields chứa epicId', async () => {
-    const tx = epicTx(issueRow(), issueRow({ epicId: 'e1', version: 4 }));
+    const tx = epicTx(issueRow(), issueRow({ epicId: 'e1', version: 4 }), { e1: epicRow() });
     const { service, events } = makeService(tx);
     const dto = await service.update('w1', 'u1', 'i1', { version: 3, epicId: 'e1' });
     expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ epicId: 'e1' });
@@ -1266,27 +1306,102 @@ describe('IssuesService.update — epicId được lưu (FW11)', () => {
     );
   });
 
-  it('PATCH { epicId: null } gỡ epic', async () => {
+  it('PATCH { epicId: null } gỡ epic (không tra epic)', async () => {
     const tx = epicTx(issueRow({ epicId: 'e1' }), issueRow({ epicId: null, version: 4 }));
     const { service } = makeService(tx);
     await service.update('w1', 'u1', 'i1', { version: 3, epicId: null });
     expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ epicId: null });
   });
 
-  it('không gửi epicId => không đụng epicId', async () => {
+  it('không gửi epicId, hoặc gửi lại epic hiện tại => không đụng epicId, không tra epic', async () => {
     const tx = epicTx(issueRow({ epicId: 'e1' }), issueRow({ epicId: 'e1', version: 4 }));
     const { service } = makeService(tx);
     await service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới' });
     expect(tx.issue.updateMany.mock.calls[0]![0].data).not.toHaveProperty('epicId');
+    await service.update('w1', 'u1', 'i1', { version: 3, epicId: 'e1' });
+    expect(tx.issue.findFirst.mock.calls.every((c) => c[0].where.id === 'i1')).toBe(true);
   });
 
-  it('epicId là chính issue này => 422, không ghi', async () => {
-    const tx = epicTx(issueRow(), issueRow());
+  it.each([
+    ['chính issue này', 'i1', {}, 422],
+    ['không tồn tại / ngoài workspace', 'ghost', {}, 404],
+    [
+      'khác dự án',
+      'e1',
+      { e1: { projectId: 'p2', epicId: null, type: { key: 'EPIC', hierarchyLevel: 1 } } },
+      422,
+    ],
+    [
+      'không phải loại Epic',
+      'e1',
+      { e1: { projectId: 'p1', epicId: null, type: { key: 'TASK', hierarchyLevel: 0 } } },
+      422,
+    ],
+    [
+      'tạo vòng trực tiếp (epic đang trỏ về issue)',
+      'e1',
+      { e1: { projectId: 'p1', epicId: 'i1', type: { key: 'EPIC', hierarchyLevel: 1 } } },
+      422,
+    ],
+    [
+      'tạo vòng gián tiếp (e1 → e2 → i1)',
+      'e1',
+      {
+        e1: { projectId: 'p1', epicId: 'e2', type: { key: 'EPIC', hierarchyLevel: 1 } },
+        e2: { projectId: 'p1', epicId: 'i1', type: { key: 'EPIC', hierarchyLevel: 1 } },
+      },
+      422,
+    ],
+  ])('update: epic %s => lỗi, không ghi', async (_n, epicId, epics, status) => {
+    const tx = epicTx(issueRow(), issueRow(), epics);
+    const { service } = makeService(tx);
+    await expect(service.update('w1', 'u1', 'i1', { version: 3, epicId })).rejects.toMatchObject({
+      status,
+    });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('epic hợp lệ theo hierarchyLevel >= 1 (loại tuỳ chỉnh) cũng được', async () => {
+    const tx = epicTx(issueRow(), issueRow({ epicId: 'e1', version: 4 }), {
+      e1: epicRow({ type: { key: null, hierarchyLevel: 2 } }),
+    });
     const { service } = makeService(tx);
     await expect(
-      service.update('w1', 'u1', 'i1', { version: 3, epicId: 'i1' }),
-    ).rejects.toMatchObject({ status: 422 });
-    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+      service.update('w1', 'u1', 'i1', { version: 3, epicId: 'e1' }),
+    ).resolves.toBeDefined();
+  });
+
+  it('create: epic khác dự án / không phải Epic => 422, không tạo', async () => {
+    for (const epic of [
+      epicRow({ projectId: 'p2' }),
+      epicRow({ type: { key: 'TASK', hierarchyLevel: 0 } }),
+    ]) {
+      const { tx, created } = createTxFor({ e1: epic });
+      const { service } = makeService(tx);
+      await expect(
+        service.create('w1', 'u1', {
+          projectId: 'p1',
+          typeId: 't1',
+          summary: 's',
+          descriptionFormat: 'MARKDOWN',
+          epicId: 'e1',
+        }),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(created).not.toHaveBeenCalled();
+    }
+  });
+
+  it('create: epic hợp lệ => tạo với epicId', async () => {
+    const { tx, created } = createTxFor({ e1: epicRow() });
+    const { service } = makeService(tx);
+    await service.create('w1', 'u1', {
+      projectId: 'p1',
+      typeId: 't1',
+      summary: 's',
+      descriptionFormat: 'MARKDOWN',
+      epicId: 'e1',
+    });
+    expect(created.mock.calls[0]![0].data.epicId).toBe('e1');
   });
 });
 
@@ -1856,7 +1971,7 @@ describe('IssuesService.move — ma trận quyền sprint/rank (I4)', () => {
     return { tx, ...made };
   }
 
-  it('chỉ có issue:transition (Tester) đổi sprintId => 403, không ghi', async () => {
+  it('role chỉ có issue:transition đổi sprintId => 403, không ghi', async () => {
     const { tx, service } = setup(['issue:transition']);
     await expect(
       service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' }),

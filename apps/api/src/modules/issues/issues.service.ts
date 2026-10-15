@@ -167,9 +167,10 @@ export class IssuesService {
       typeId?: string | null;
       priorityId?: string | null;
       sprintId?: string | null;
+      /** Import (Jira) tạo sprint CLOSED theo lịch sử rồi gắn issue vào — chỉ đường `createWithin` bật cờ này. */
+      allowClosedSprint?: boolean;
       resolutionId?: string | null;
       parentId?: string | null;
-      epicId?: string | null;
       /** Dự án của issue/lô: có thì `sprintId` phải thuộc CHÍNH dự án này (không chỉ cùng workspace). */
       projectId?: string;
     },
@@ -210,13 +211,6 @@ export class IssuesService {
           select: { id: true },
         }),
       );
-    if (m.epicId)
-      jobs.push(
-        db.issue.findFirst({
-          where: { id: m.epicId, workspaceId, deletedAt: null },
-          select: { id: true },
-        }),
-      );
     if (!jobs.length) return;
     const found = await Promise.all(jobs);
     if (found.some((r) => r == null)) {
@@ -225,7 +219,7 @@ export class IssuesService {
       );
     }
     // Sprint đã hoàn thành không nhận thêm việc (bỏ gán/giữ nguyên thì không đi qua đây — xem `sprintIfChanged`).
-    if (found.some((r) => r?.state === 'CLOSED')) {
+    if (!m.allowClosedSprint && found.some((r) => r?.state === 'CLOSED')) {
       throw new BusinessRuleException(
         'Sprint đã hoàn thành — không thêm việc vào được nữa. Hãy chọn sprint khác hoặc để việc ở Backlog',
       );
@@ -288,6 +282,56 @@ export class IssuesService {
     );
   }
 
+  /**
+   * Epic của issue: phải tồn tại trong workspace, CÙNG dự án, đúng loại Epic (`key = EPIC` hoặc `hierarchyLevel >= 1`),
+   * không phải chính issue và không tạo vòng (epic đang trỏ ngược về issue này) — vi phạm: 404/422.
+   */
+  private async assertEpicValid(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    epicId: string,
+    projectId: string,
+    selfId: string | null,
+  ): Promise<void> {
+    if (selfId && epicId === selfId)
+      throw new BusinessRuleException(
+        'Một công việc không thể là epic của chính nó — hãy chọn một epic khác',
+      );
+    const epic = await db.issue.findFirst({
+      where: { id: epicId, workspaceId, deletedAt: null },
+      select: {
+        projectId: true,
+        epicId: true,
+        type: { select: { key: true, hierarchyLevel: true } },
+      },
+    });
+    if (!epic)
+      throw new NotFoundAppException(
+        'Epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+      );
+    if (epic.projectId !== projectId)
+      throw new BusinessRuleException(
+        'Epic phải thuộc cùng dự án với công việc — hãy chọn epic khác',
+      );
+    if (epic.type.key !== 'EPIC' && epic.type.hierarchyLevel < 1)
+      throw new BusinessRuleException(
+        'Công việc được chọn không phải loại Epic — hãy chọn một Epic trong dự án',
+      );
+    // Vòng: chuỗi epic của epic được chọn quay về chính issue này.
+    let cur = epic.epicId;
+    for (let depth = 0; selfId && cur && depth < 50; depth++) {
+      if (cur === selfId)
+        throw new BusinessRuleException(
+          'Không thể chọn epic này vì sẽ tạo vòng lặp (epic đó đang thuộc về công việc này)',
+        );
+      const next: { epicId: string | null } | null = await db.issue.findFirst({
+        where: { id: cur, workspaceId, deletedAt: null },
+        select: { epicId: true },
+      });
+      cur = next?.epicId ?? null;
+    }
+  }
+
   /** Có thể gán mới cho user này không: là thành viên workspace và tài khoản chưa bị vô hiệu hoá. */
   async isAssignableMember(
     workspaceId: string,
@@ -341,7 +385,7 @@ export class IssuesService {
     input: CreateIssueInput,
     deferred: Array<() => void> = [],
   ): Promise<IssueDto> {
-    return this.createCore(tx, workspaceId, userId, input, deferred);
+    return this.createCore(tx, workspaceId, userId, input, deferred, false, true);
   }
 
   emitCreated(dto: IssueDto, actorId: string, clientId?: string, meta?: AutomationEventMeta): void {
@@ -361,6 +405,8 @@ export class IssuesService {
     deferred: Array<() => void> | null = null,
     /** Chỉ đường API người dùng (`create`) đòi `issue:transition` khi chọn trạng thái ≠ khởi tạo; import có quyền riêng. */
     enforceTransitionPerm = false,
+    /** Import tạo sprint đã hoàn thành theo lịch sử Jira rồi gắn issue vào; đường API thường vẫn chặn (FW1). */
+    allowClosedSprint = false,
   ): Promise<IssueDto> {
     const db: Prisma.TransactionClient = outerTx ?? this.prisma;
     const project = await db.project.findFirst({
@@ -383,11 +429,12 @@ export class IssuesService {
         priorityId: input.priorityId,
         sprintId: input.sprintId,
         parentId: input.parentId,
-        epicId: input.epicId,
         projectId: project.id,
+        allowClosedSprint,
       },
       db,
     );
+    if (input.epicId) await this.assertEpicValid(db, workspaceId, input.epicId, project.id, null);
     await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId, db);
 
     // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project
@@ -679,9 +726,10 @@ export class IssuesService {
       sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
       resolutionId: input.resolutionId,
       parentId: input.parentId,
-      epicId: input.epicId,
       projectId: current.projectId,
     });
+    if (input.epicId && input.epicId !== current.epicId)
+      await this.assertEpicValid(this.prisma, workspaceId, input.epicId, current.projectId, id);
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
       await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
 
@@ -709,13 +757,7 @@ export class IssuesService {
       data.originalEstimate = input.originalEstimate ?? null;
     if (input.remainingEstimate !== undefined)
       data.remainingEstimate = input.remainingEstimate ?? null;
-    if (input.epicId !== undefined) {
-      if (input.epicId === id)
-        throw new BusinessRuleException(
-          'Một công việc không thể là epic của chính nó — hãy chọn một epic khác',
-        );
-      data.epicId = input.epicId ?? null;
-    }
+    if (input.epicId !== undefined) data.epicId = input.epicId ?? null;
     if (input.parentId !== undefined) {
       if (input.parentId === id)
         throw new BusinessRuleException(

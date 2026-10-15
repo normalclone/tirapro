@@ -303,7 +303,7 @@ export class ComponentsService {
 
   private async requireComponent(workspaceId: string, componentId: string) {
     const component = await this.prisma.component.findFirst({
-      where: { id: componentId, project: { workspaceId } },
+      where: { id: componentId, project: { workspaceId, deletedAt: null } },
       select: { id: true, projectId: true },
     });
     if (!component) throw new NotFoundAppException('Hạng mục');
@@ -312,7 +312,7 @@ export class ComponentsService {
 
   private async requireVersion(workspaceId: string, versionId: string) {
     const version = await this.prisma.version.findFirst({
-      where: { id: versionId, project: { workspaceId } },
+      where: { id: versionId, project: { workspaceId, deletedAt: null } },
       select: { id: true, projectId: true },
     });
     if (!version) throw new NotFoundAppException('Phiên bản');
