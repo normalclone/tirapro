@@ -48,7 +48,8 @@ export function ExportMenu({ items, disabled }: { items: ExportMenuItem[]; disab
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          align="end"
+          align="start"
+          collisionPadding={12}
           sideOffset={6}
           className="z-dropdown w-56 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-150 print:hidden"
         >
