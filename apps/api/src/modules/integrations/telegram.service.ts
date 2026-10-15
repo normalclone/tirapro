@@ -1,8 +1,17 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { Prisma } from '@prisma/client';
 import * as crypto from 'node:crypto';
 import { Telegraf } from 'telegraf';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
+
+export const TELEGRAM_TOKEN_UNUSABLE_MESSAGE =
+  'Token bot của tích hợp Telegram này không dùng được (khoá mã hoá đã đổi hoặc dữ liệu hỏng) — hãy xoá rồi thêm lại tích hợp với token mới, hoặc đặt khoá cũ vào INTEGRATION_ENCRYPTION_KEY_PREVIOUS rồi chạy integrations:rekey';
+
+export type BotTokenResolution =
+  | { kind: 'global' }
+  | { kind: 'own'; token: string }
+  | { kind: 'unusable' };
 
 /**
  * Bot wrapper Telegram — degrade-graceful.
@@ -132,5 +141,14 @@ export class TelegramService {
       'Không giải mã được bot token của tích hợp — khoá INTEGRATION_ENCRYPTION_KEY đã đổi? Đặt khoá cũ vào INTEGRATION_ENCRYPTION_KEY_PREVIOUS (xem docs/DEPLOY.md) hoặc nhập lại token trong Cài đặt → Tích hợp',
     );
     return null;
+  }
+
+  /** Phân biệt "không có token riêng" (dùng bot toàn cục) với "có token riêng nhưng hỏng" (KHÔNG được rơi về toàn cục). */
+  resolveBotToken(config: Prisma.JsonValue): BotTokenResolution {
+    if (!config || typeof config !== 'object' || Array.isArray(config)) return { kind: 'global' };
+    const botToken = (config as Record<string, unknown>).botToken;
+    if (typeof botToken !== 'string' || botToken.length === 0) return { kind: 'global' };
+    const token = this.decrypt(botToken);
+    return token === null ? { kind: 'unusable' } : { kind: 'own', token };
   }
 }

@@ -62,3 +62,32 @@ describe('TelegramService.decrypt', () => {
     expect(make(NEW_KEY).decrypt('123456:ABC-def')).toBe('123456:ABC-def');
   });
 });
+
+describe('TelegramService.resolveBotToken', () => {
+  it.each([[{}], [null], [{ botToken: null, useGlobal: true }], [{ botToken: '' }], [[]]])(
+    'không có botToken riêng (%j) → global',
+    (cfg) => {
+      expect(make(NEW_KEY).resolveBotToken(cfg as never)).toEqual({ kind: 'global' });
+    },
+  );
+
+  it('botToken giải mã được → own, trả token đã giải', () => {
+    const svc = make(NEW_KEY);
+    expect(svc.resolveBotToken({ botToken: svc.encrypt('123:ABC') })).toEqual({
+      kind: 'own',
+      token: '123:ABC',
+    });
+  });
+
+  it('botToken mã hoá bằng khoá không còn → unusable (KHÔNG rơi về global)', () => {
+    const svc = make(NEW_KEY);
+    vi.spyOn(
+      (svc as unknown as { logger: { error: () => void } }).logger,
+      'error',
+    ).mockImplementation(() => undefined);
+    expect(svc.resolveBotToken({ botToken: encryptWith(OLD_KEY, '123:ABC') })).toEqual({
+      kind: 'unusable',
+    });
+    expect(svc.resolveBotToken({ botToken: 'zz:yy:xx' })).toEqual({ kind: 'unusable' });
+  });
+});

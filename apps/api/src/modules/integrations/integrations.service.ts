@@ -4,7 +4,7 @@ import { DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma, IntegrationType, IntegrationStatus } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
-import { TelegramService } from './telegram.service';
+import { TELEGRAM_TOKEN_UNUSABLE_MESSAGE, TelegramService } from './telegram.service';
 
 /** Cấu hình lưu trong Integration.config (botToken đã mã hóa). */
 interface TelegramConfig {
@@ -165,7 +165,19 @@ export class IntegrationsService {
     integrationId: string,
   ): Promise<{ sent: number; total: number; enabled: boolean }> {
     const integration = await this.requireIntegration(workspaceId, integrationId);
-    const token = this.resolveToken(integration.config);
+    const res = this.telegram.resolveBotToken(integration.config);
+    if (res.kind === 'unusable') {
+      await this.reportUnusableToken(integration.id);
+      throw new BusinessRuleException(TELEGRAM_TOKEN_UNUSABLE_MESSAGE);
+    }
+    if (integration.status === IntegrationStatus.ERROR) {
+      // Token dùng được trở lại → "Gửi thử" đóng vai trò kiểm lại, phục hồi trạng thái.
+      await this.prisma.integration.updateMany({
+        where: { id: integration.id, status: IntegrationStatus.ERROR },
+        data: { status: IntegrationStatus.ACTIVE },
+      });
+    }
+    const token = res.kind === 'own' ? res.token : null;
     const channels = await this.prisma.integrationChannel.findMany({
       where: { integrationId, workspaceId, isEnabled: true },
     });
@@ -239,7 +251,12 @@ export class IntegrationsService {
       include: { channels: { where: { isEnabled: true } } },
     });
     for (const integration of integrations) {
-      const token = this.resolveToken(integration.config);
+      const res = this.telegram.resolveBotToken(integration.config);
+      if (res.kind === 'unusable') {
+        await this.reportUnusableToken(integration.id);
+        continue;
+      }
+      const token = res.kind === 'own' ? res.token : null;
       for (const channel of integration.channels) {
         if (channel.projectId && projectId && channel.projectId !== projectId) continue;
         const wantsAll = channel.events.length === 0;
@@ -259,22 +276,17 @@ export class IntegrationsService {
     return row;
   }
 
-  /** Giải mã botToken từ config; null → dùng token toàn cục. */
-  private resolveToken(config: Prisma.JsonValue): string | null {
-    const cfg = this.asTelegramConfig(config);
-    if (!cfg.botToken) return null;
-    return this.telegram.decrypt(cfg.botToken);
-  }
-
-  private asTelegramConfig(config: Prisma.JsonValue): TelegramConfig {
-    if (config && typeof config === 'object' && !Array.isArray(config)) {
-      const obj = config as Record<string, unknown>;
-      return {
-        botToken: typeof obj.botToken === 'string' ? obj.botToken : null,
-        useGlobal: obj.useGlobal !== false,
-      };
+  /** Token riêng không giải mã được: ngừng gửi và đánh dấu ERROR (chỉ chuyển từ ACTIVE, log một lần). */
+  async reportUnusableToken(integrationId: string): Promise<void> {
+    const { count } = await this.prisma.integration.updateMany({
+      where: { id: integrationId, status: IntegrationStatus.ACTIVE },
+      data: { status: IntegrationStatus.ERROR },
+    });
+    if (count > 0) {
+      this.logger.warn(
+        `Tích hợp ${integrationId}: token bot không dùng được — đã chuyển sang trạng thái ERROR`,
+      );
     }
-    return { botToken: null, useGlobal: true };
   }
 
   /** Trả DTO đã ẩn botToken (thay bằng '***' nếu có). */
