@@ -23,6 +23,7 @@ import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
 import { ReportIssueModal } from '@/features/intake/ReportIssueModal';
 import { apiErrorMessage } from '@/lib/api';
+import { createPresetFromTarget } from '@/lib/currentProject';
 import { useCreateTarget } from '@/lib/useCreateTarget';
 import { cn } from '@/lib/utils';
 
@@ -120,7 +121,8 @@ export function FloatingActions() {
         onClick: run(() => {
           if (createTarget.notice) toast.info(createTarget.notice);
           if (createTarget.block) return;
-          if (createTarget.projectKey) openCreate({ projectKey: createTarget.projectKey });
+          if (createTarget.projectKey || createTarget.pickProject)
+            openCreate(createPresetFromTarget(createTarget));
           else
             toast.error('Chưa có dự án nào — hãy tạo một dự án trước, rồi thêm công việc vào đó.');
         }),

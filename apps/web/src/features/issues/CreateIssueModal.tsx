@@ -17,6 +17,7 @@ import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
+import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
 import { TokenTitleInput } from './TokenTitleInput';
 import { parseTitleTokens, type TokenCtx } from './titleTokens';
@@ -28,10 +29,9 @@ const selectClass = cn(
 );
 
 // Nhớ dự án/loại đã dùng gần nhất để prefill lần sau (tăng tốc nhập liệu).
-const LAST_KEY = 'tirapro:createIssue:last';
 function loadLast(): { projectKey?: string; typeId?: string } {
   try {
-    return JSON.parse(localStorage.getItem(LAST_KEY) || '{}') as {
+    return JSON.parse(localStorage.getItem(CREATE_LAST_KEY) || '{}') as {
       projectKey?: string;
       typeId?: string;
     };
@@ -41,7 +41,7 @@ function loadLast(): { projectKey?: string; typeId?: string } {
 }
 function saveLast(v: { projectKey?: string; typeId?: string }) {
   try {
-    localStorage.setItem(LAST_KEY, JSON.stringify(v));
+    localStorage.setItem(CREATE_LAST_KEY, JSON.stringify(v));
   } catch {
     /* ignore */
   }
@@ -150,7 +150,10 @@ export function CreateIssueModal() {
   // Mở popup: đặt lại theo ngữ cảnh; dự án prefill từ lần dùng gần nhất; khôi phục bản nháp (nếu có).
   useEffect(() => {
     if (!open) return;
-    const key = preset.projectKey ?? loadLast().projectKey ?? projects?.[0]?.key ?? '';
+    // pickProject: dự án hiện tại đã lưu trữ → để TRỐNG, người dùng tự chọn (không đoán dự án đầu danh sách).
+    const key = preset.pickProject
+      ? ''
+      : (preset.projectKey ?? loadLast().projectKey ?? projects?.[0]?.key ?? '');
     const draft = loadDraft(key);
     setSelKey(key);
     setTypeId('');
@@ -166,6 +169,11 @@ export function CreateIssueModal() {
     prevTypeRef.current = '';
     if (draft.summary || draft.description)
       toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
+    // Ô Dự án trống: đưa focus vào đó (sau khi Dialog tự focus ô đầu tiên).
+    if (preset.pickProject) {
+      const t = setTimeout(() => document.getElementById('ci-project')?.focus(), 60);
+      return () => clearTimeout(t);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -362,6 +370,7 @@ export function CreateIssueModal() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Dự án">
             <SearchSelect
+              id="ci-project"
               value={selKey}
               onChange={(v) => {
                 // Đổi dự án → nạp bản nháp của DỰ ÁN MỚI (không mang chữ dự án cũ sang, không đè nháp dự án mới).
@@ -379,6 +388,11 @@ export function CreateIssueModal() {
               className={selectClass}
               options={(projects ?? []).map((p) => ({ value: p.key, label: p.name, hint: p.key }))}
             />
+            {preset.pickProject && !selKey && (
+              <p className="mt-1 text-xs text-muted" role="status">
+                {ARCHIVED_PICK_HINT}
+              </p>
+            )}
           </Field>
           <Field label="Loại việc">
             <SearchSelect
@@ -398,7 +412,7 @@ export function CreateIssueModal() {
           <Field label="Tiêu đề" className="relative z-20 sm:col-span-2">
             <TokenTitleInput
               id="ci-summary"
-              autoFocus
+              autoFocus={!preset.pickProject}
               value={summary}
               onChange={setSummary}
               onBlur={applyTokens}

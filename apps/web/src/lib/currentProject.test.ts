@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CREATE_LAST_KEY,
+  LAST_ACTIVE_KEY,
+  LAST_VIEW_KEY,
+  createPresetFromTarget,
+  readRecentProjectKeys,
   resolveCreateTarget,
   resolveCurrentProjectKey,
   safeDecode,
@@ -42,27 +47,75 @@ describe('resolveCreateTarget', () => {
   it('dự án hiện tại đang hoạt động => giữ nguyên, không thông báo', () => {
     expect(resolveCreateTarget('QAI', active)).toEqual({ projectKey: 'QAI' });
   });
-  it('dự án hiện tại không nằm trong danh sách đang hoạt động (đã lưu trữ) => dự án đầu tiên + thông báo', () => {
-    const r = resolveCreateTarget('OLD', active);
-    expect(r.projectKey).toBe('DEMO');
+  it('dự án hiện tại đã lưu trữ => dự án hoạt động dùng GẦN NHẤT + thông báo (không lấy dự án đầu danh sách)', () => {
+    const r = resolveCreateTarget('OLD', active, ['OLD', 'QAI', 'DEMO']);
+    expect(r.projectKey).toBe('QAI');
     expect(r.notice).toContain('OLD');
-    expect(r.notice).toContain('DEMO');
+    expect(r.notice).toContain('QAI');
     expect(r.block).toBeUndefined();
+    expect(r.pickProject).toBeUndefined();
+  });
+  it('bỏ qua key gần đây không còn hoạt động; so key không phân biệt hoa/thường', () => {
+    expect(resolveCreateTarget('OLD', active, [undefined, 'GONE', 'qai']).projectKey).toBe('QAI');
+  });
+  it('lưu trữ + không có dự án gần đây hợp lệ => KHÔNG tự chọn dự án đầu, để trống + pickProject', () => {
+    for (const recent of [[], ['GONE', 'OLD'], [null]]) {
+      const r = resolveCreateTarget('OLD', active, recent);
+      expect(r.projectKey).toBeUndefined();
+      expect(r.pickProject).toBe(true);
+      expect(r.block).toBeUndefined();
+    }
+    // không truyền lịch sử (mặc định) cũng không rơi về active[0]
+    expect(resolveCreateTarget('OLD', active).projectKey).toBeUndefined();
   });
   it('key khác hoa/thường vẫn khớp dự án đang hoạt động => dùng key chuẩn, không thông báo', () => {
     expect(resolveCreateTarget('qai', active)).toEqual({ projectKey: 'QAI' });
   });
   it('thông báo không khẳng định "đã lưu trữ" khi chỉ biết key không còn hoạt động', () => {
-    expect(resolveCreateTarget('OLD', active).notice).toContain('không còn hoạt động');
-    expect(resolveCreateTarget('OLD', active).notice).not.toContain('đã lưu trữ');
+    expect(resolveCreateTarget('OLD', active, ['QAI']).notice).toContain('không còn hoạt động');
+    expect(resolveCreateTarget('OLD', active, ['QAI']).notice).not.toContain('đã lưu trữ');
     expect(resolveCreateTarget('OLD', []).notice).not.toContain('đã lưu trữ');
   });
   it('không còn dự án nào đang hoạt động => chặn + thông báo (không mở dialog trống)', () => {
-    expect(resolveCreateTarget('OLD', [])).toMatchObject({ block: true });
+    expect(resolveCreateTarget('OLD', [], ['QAI'])).toMatchObject({ block: true });
   });
   it('danh sách chưa tải hoặc không có dự án hiện tại => như cũ', () => {
     expect(resolveCreateTarget('OLD', undefined)).toEqual({ projectKey: 'OLD' });
     expect(resolveCreateTarget(null, active)).toEqual({ projectKey: undefined });
+  });
+});
+
+describe('createPresetFromTarget', () => {
+  it('pickProject => preset không có projectKey', () => {
+    expect(createPresetFromTarget({ pickProject: true })).toEqual({ pickProject: true });
+  });
+  it('có dự án đích => chỉ projectKey', () => {
+    expect(createPresetFromTarget({ projectKey: 'DEMO', notice: 'x' })).toEqual({
+      projectKey: 'DEMO',
+    });
+  });
+});
+
+describe('readRecentProjectKeys', () => {
+  const store = new Map<string, string>();
+  beforeEach(() => {
+    store.clear();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  it('thứ tự: dự án hoạt động xem gần nhất → view gần nhất → tạo việc gần nhất, bỏ trùng', () => {
+    store.set(LAST_ACTIVE_KEY, 'AAA');
+    store.set(LAST_VIEW_KEY, JSON.stringify({ key: 'OLD', view: 'board' }));
+    store.set(CREATE_LAST_KEY, JSON.stringify({ projectKey: 'AAA' }));
+    expect(readRecentProjectKeys()).toEqual(['AAA', 'OLD']);
+  });
+  it('JSON hỏng không ném lỗi', () => {
+    store.set(LAST_VIEW_KEY, '{hỏng');
+    store.set(CREATE_LAST_KEY, JSON.stringify({ projectKey: 'BBB' }));
+    expect(readRecentProjectKeys()).toEqual(['BBB']);
   });
 });
 

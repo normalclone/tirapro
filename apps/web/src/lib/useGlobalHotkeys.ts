@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
-import { CREATE_DENIED_NOTICE, currentProjectKey } from './currentProject';
+import { CREATE_DENIED_NOTICE, createPresetFromTarget, currentProjectKey } from './currentProject';
 import { useCreateTarget } from './useCreateTarget';
 import { SHORTCUTS_EVENT } from '@/components/layout/ShortcutsDialog';
 import { isOverlayOpen, isTypingTarget, shouldIgnoreGlobalHotkey } from './hotkeys';
@@ -78,7 +78,7 @@ export function useGlobalHotkeys() {
             if (access === 'deny') toast.info(CREATE_DENIED_NOTICE);
             else {
               if (t.notice) toast.info(t.notice);
-              if (access === 'open') openCreate({ projectKey: t.projectKey });
+              if (access === 'open') openCreate(createPresetFromTarget(t));
             }
           }
           break;

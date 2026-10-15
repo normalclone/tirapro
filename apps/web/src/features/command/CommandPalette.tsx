@@ -19,7 +19,7 @@ import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { useTheme } from '@/stores/theme';
 import { useRecents } from '@/stores/recentIssues';
-import { currentProjectKey, safeDecode } from '@/lib/currentProject';
+import { createPresetFromTarget, currentProjectKey, safeDecode } from '@/lib/currentProject';
 import { useCreateTarget } from '@/lib/useCreateTarget';
 import { QUICK_SEARCH_MIN_LENGTH, useQuickSearch } from './api';
 import { ActionItem } from './ActionItem';
@@ -166,8 +166,7 @@ export function CommandPalette() {
                 runAction(() => {
                   // Cùng đích + cùng luật quyền với phím `c` / nút Tạo / nút nổi (xem `useCreateTarget`).
                   if (create.target.notice) toast.info(create.target.notice);
-                  if (create.access === 'open')
-                    openCreate({ projectKey: create.target.projectKey });
+                  if (create.access === 'open') openCreate(createPresetFromTarget(create.target));
                 })
               }
             />
