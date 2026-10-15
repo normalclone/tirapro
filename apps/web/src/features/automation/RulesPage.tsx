@@ -1,5 +1,15 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Pause, Pencil, Play, Plus, Trash2, Zap } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Lock,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Trash2,
+  Zap,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
@@ -7,9 +17,11 @@ import { QueryError } from '@/components/ui/QueryError';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { useProjects } from '@/features/projects/api';
+import { useProjectsCan } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { RuleEditor } from './RuleEditor';
 import { RuleRunLog } from './RuleRunLog';
+import { resolveRulesScope } from './rulesScope';
 import {
   ALL_RULES,
   summarizeRule,
@@ -37,10 +49,21 @@ export function RulesPage() {
   const can = useAuth((s) => s.can);
   const canManageWorkspace = can('automation:manage');
   const { data: projects } = useProjects();
-  // Quản trị cấp workspace thấy tất cả; người chỉ quản trị một dự án bắt đầu từ dự án đầu tiên.
+  const projectCan = useProjectsCan(
+    (projects ?? []).map((p) => p.id),
+    'automation:manage',
+  );
+  // Quản trị cấp workspace thấy tất cả; người chỉ quản trị một dự án bắt đầu từ dự án đầu tiên CÓ quyền.
   const [scopeChoice, setScopeChoice] = useState<string | null>(null);
-  const scope = scopeChoice ?? (canManageWorkspace ? ALL_RULES : projects?.[0]?.id);
-  const { data, isLoading, isError, error, refetch } = useRules(scope);
+  const { scope, canManage } = resolveRulesScope({
+    choice: scopeChoice,
+    canWorkspace: canManageWorkspace,
+    projects,
+    projectCan,
+  });
+  // Không có quyền ở phạm vi này → không gọi API (tránh 403 đỏ); đang tải quyền → chờ.
+  const { data, isLoading, isError, error, refetch } = useRules(canManage ? scope : undefined);
+  const noAccess = canManage === false;
   const update = useUpdateRule();
   const remove = useDeleteRule();
 
@@ -81,14 +104,24 @@ export function RulesPage() {
               ariaLabel="Phạm vi quy tắc"
             />
           </div>
-          <Button size="sm" onClick={() => open(null)}>
-            <Plus className="h-4 w-4" /> Tạo quy tắc
-          </Button>
+          {canManage && (
+            <Button size="sm" onClick={() => open(null)}>
+              <Plus className="h-4 w-4" /> Tạo quy tắc
+            </Button>
+          )}
         </div>
       </div>
 
       <div>
-        {isLoading ? (
+        {noAccess ? (
+          <div className="p-5">
+            <EmptyState
+              icon={<Lock className="h-6 w-6" />}
+              title="Bạn không có quyền quản lý quy tắc ở dự án này"
+              description="Quy tắc tự động chỉ dành cho người có quyền quản lý tự động hoá. Hãy chọn dự án khác ở ô phạm vi, hoặc nhờ quản trị dự án cấp quyền cho bạn."
+            />
+          </div>
+        ) : canManage === undefined || isLoading ? (
           <div className="space-y-2.5 p-5">
             {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-14 w-full" />
