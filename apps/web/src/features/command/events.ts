@@ -9,3 +9,9 @@ export const COMMENT_INPUT_ID = 'issue-comment-input';
  * MỘT đường chung cho nút "Bình luận", phím `m` và lệnh Cmd+K "Thêm bình luận".
  */
 export const requestFocusComment = () => window.dispatchEvent(new Event(FOCUS_COMMENT_EVENT));
+
+/** Sự kiện cửa sổ: Cmd+K → trang chi tiết công việc xử lý đổi trạng thái (hiện hộp Cách giải quyết/Lý do khi cần). */
+export const REQUEST_TRANSITION_EVENT = 'tirapro:request-transition';
+export interface RequestTransitionDetail {
+  toStatusId: string;
+}

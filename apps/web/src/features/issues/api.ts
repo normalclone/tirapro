@@ -5,7 +5,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query';
-import type { CommentDto, IssueDto, ListResponse } from '@tirapro/types';
+import type { CommentDto, IssueDto, IssueTransitionResultDto, ListResponse } from '@tirapro/types';
 import { extractMentionIds } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -161,9 +161,22 @@ export function useUpdateIssue(projectId: string | undefined, opts?: { silent?: 
   const qc = useQueryClient();
   return useMutation({
     meta: { silent: opts?.silent },
-    mutationFn: (v: { id: string; key: string; patch: Record<string, unknown>; version: number }) =>
-      api.patch<IssueDto>(`/issues/${v.id}`, { ...v.patch, version: v.version }),
-    onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, scalarIssuePatch(v.patch), v.key),
+    mutationFn: (v: {
+      id: string;
+      key: string;
+      patch: Record<string, unknown>;
+      version: number;
+      /** Phần vá lạc quan cho field quan hệ (vd `severity` tra từ meta) — KHÔNG gửi lên máy chủ; bản thật thay khi trả về. */
+      optimistic?: Partial<IssueDto>;
+    }) => api.patch<IssueDto>(`/issues/${v.id}`, { ...v.patch, version: v.version }),
+    onMutate: (v) =>
+      optimisticPatchIssue(
+        qc,
+        projectId,
+        v.id,
+        { ...scalarIssuePatch(v.patch), ...v.optimistic },
+        v.key,
+      ),
     onSuccess: (res) => {
       // Ghi bản THẬT (version mới) vào cả chi tiết lẫn danh sách → sửa inline liên tiếp không bị 409 OCC.
       writeIssue(qc, projectId, res.data);
@@ -180,14 +193,20 @@ export function useTransitionDetail(projectId: string | undefined) {
   return useMutation({
     mutationFn: (v: TransitionVars) =>
       api
-        .post<IssueDto>(`/issues/${v.id}/transition`, {
+        .post<IssueTransitionResultDto>(`/issues/${v.id}/transition`, {
           toStatusId: v.toStatusId,
           version: v.version,
+          resolutionId: v.resolutionId,
+          comment: v.comment,
         })
         .then((r) => r.data),
     onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, statusPatch(v), v.key),
     onError: (_e, _v, snap) => rollbackIssue(qc, snap),
     // Chuyển trạng thái có thể đổi resolution/resolvedAt → luôn nạp lại bản thật (hẹp: issue này + danh sách project).
-    onSettled: (_r, _e, v, snap) => invalidateIssue(qc, projectId, snap?.issueKey ?? v.key),
+    onSettled: (_r, _e, v, snap) => {
+      invalidateIssue(qc, projectId, snap?.issueKey ?? v.key);
+      // Lý do được máy chủ lưu thành bình luận → nạp lại danh sách bình luận.
+      if (v.comment) void qc.invalidateQueries({ queryKey: keys.issues.comments(v.id) });
+    },
   });
 }

@@ -17,6 +17,8 @@ import { useAuth } from '@/stores/auth';
 import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/primitives';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
+import { SeverityBadge } from '@/components/ui/SeverityBadge';
+import { isBugType } from './severity';
 import { dueState } from '@/components/ui/DueBadge';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -155,6 +157,148 @@ export function IssuePrioritySelect({ issue }: { issue: IssueDto }) {
       }}
       className={INLINE_TRIGGER}
       renderTrigger={() => <PriorityBadge priority={issue.priority} />}
+    />
+  );
+}
+
+/**
+ * Mức nghiêm trọng (chỉ Bug), đặt cạnh Ưu tiên. Trống: người sửa được thấy nút mờ "Đặt mức nghiêm trọng", người chỉ xem thì không thấy gì.
+ * Vá lạc quan kèm đối tượng `severity` tra từ meta để huy hiệu đổi tức thì; bản thật về sau thay thế.
+ */
+export function IssueSeveritySelect({ issue }: { issue: IssueDto }) {
+  const { data: projects } = useProjects();
+  const projectKey = projects?.find((p) => p.id === issue.projectId)?.key;
+  const { data: meta } = useProjectMeta(projectKey);
+  const patch = useUpdateIssue(issue.projectId);
+  const canEdit = useCanEditIssue(issue.projectId)(issue);
+  if (!isBugType(issue.type)) return null;
+  if (!canEdit) return <SeverityBadge severity={issue.severity} />;
+  const severities = meta?.severities ?? [];
+  return (
+    <SearchSelect
+      ariaLabel="Mức nghiêm trọng"
+      value={issue.severity?.id ?? ''}
+      disabled={patch.isPending}
+      options={[
+        { value: '', label: '—' },
+        ...severities.map((s) => ({ value: s.id, label: s.name, color: s.color })),
+      ]}
+      onChange={(v) => {
+        const next = v || null;
+        if (next === (issue.severity?.id ?? null)) return;
+        const found = severities.find((s) => s.id === next);
+        patch.mutate(
+          {
+            id: issue.id,
+            key: issue.key,
+            patch: { severityId: next },
+            version: issue.version,
+            optimistic: { severity: found ?? null },
+          },
+          { onError: (e) => toast.error(apiErrorMessage(e)) },
+        );
+      }}
+      className={INLINE_TRIGGER}
+      renderTrigger={() =>
+        issue.severity ? (
+          <SeverityBadge severity={issue.severity} suffix="Bấm để đổi." />
+        ) : (
+          <span
+            className="text-xs text-faint"
+            title="Chưa đặt mức nghiêm trọng. Mức nghiêm trọng = lỗi gây hại kỹ thuật đến đâu; khác với Ưu tiên (độ gấp xử lý). Bấm để chọn."
+          >
+            Đặt mức nghiêm trọng
+          </span>
+        )
+      }
+    />
+  );
+}
+
+/** Chip "Giải quyết: Done" (chỉ đọc hoặc làm nút bấm đổi). */
+function ResolutionChip({ name, hint }: { name: string; hint: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-muted ring-1 ring-inset ring-border"
+      title={hint}
+    >
+      <span className="text-faint">Giải quyết:</span> {name}
+    </span>
+  );
+}
+
+/**
+ * Cách giải quyết — chỉ hiện khi trạng thái thuộc nhóm Done (rời Done thì máy chủ xoá nên ẩn).
+ * Chọn lại được ở đây để sửa giá trị gán ngầm (kéo thẻ board sang Done nhận mặc định "Done").
+ * Có "Hoàn tác" sau khi đổi; người không có quyền sửa / dự án lưu trữ chỉ thấy chip.
+ */
+export function IssueResolutionSelect({ issue }: { issue: IssueDto }) {
+  const { data: projects } = useProjects();
+  const projectKey = projects?.find((p) => p.id === issue.projectId)?.key;
+  const { data: meta } = useProjectMeta(projectKey);
+  const patch = useUpdateIssue(issue.projectId);
+  const canEdit = useCanEditIssue(issue.projectId)(issue);
+  if (issue.status.category !== 'DONE') return null;
+  const resolutions = meta?.resolutions ?? [];
+  const current = issue.resolution;
+  if (!canEdit)
+    return current ? (
+      <ResolutionChip name={current.name} hint={`Cách giải quyết: ${current.name}`} />
+    ) : null;
+
+  function apply(nextId: string, version: number, prev: IssueDto['resolution'], undoable: boolean) {
+    const found = resolutions.find((r) => r.id === nextId);
+    patch.mutate(
+      {
+        id: issue.id,
+        key: issue.key,
+        patch: { resolutionId: nextId },
+        version,
+        optimistic: {
+          resolution: found
+            ? { id: found.id, name: found.name, description: found.description, rank: found.rank }
+            : null,
+        },
+      },
+      {
+        onSuccess: (res) => {
+          if (!undoable || !prev) return;
+          toast.success(`Cách giải quyết: ${found?.name ?? ''}`, {
+            duration: 4000,
+            action: {
+              label: 'Hoàn tác',
+              onClick: () => apply(prev.id, res.data.version, null, false),
+            },
+          });
+        },
+        onError: (e) => toast.error(apiErrorMessage(e)),
+      },
+    );
+  }
+
+  return (
+    <SearchSelect
+      ariaLabel="Cách giải quyết"
+      value={current?.id ?? ''}
+      disabled={patch.isPending}
+      options={resolutions.map((r) => ({ value: r.id, label: r.name }))}
+      onChange={(v) => {
+        if (!v || v === current?.id) return;
+        apply(v, issue.version, current, true);
+      }}
+      className={INLINE_TRIGGER}
+      renderTrigger={() =>
+        current ? (
+          <ResolutionChip
+            name={current.name}
+            hint={`Cách giải quyết: ${current.name}${current.description ? ` — ${current.description}` : ''}. Bấm để đổi.`}
+          />
+        ) : (
+          <span className="text-xs text-faint" title="Chưa đặt cách giải quyết. Bấm để chọn.">
+            Đặt cách giải quyết
+          </span>
+        )
+      }
     />
   );
 }

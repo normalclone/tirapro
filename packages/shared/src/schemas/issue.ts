@@ -47,6 +47,8 @@ export const transitionIssueSchema = z.object({
   boardId: z.string().min(1).optional(),
   /** "Vẫn chuyển" khi cột đã đầy WIP — chỉ người có `project:admin` được dùng. */
   force: z.boolean().optional(),
+  /** Lý do/ghi chú khi chuyển — lưu thành bình luận (cần `comment:create`). */
+  comment: z.string().trim().max(5000).optional(),
 });
 
 /**

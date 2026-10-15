@@ -152,7 +152,7 @@ function PeekContent({ issue }: { issue: IssueDto }) {
   const can = useCanIn(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
   const canEditRestricted = useCanEditRestricted(issue);
-  const { nextStatuses, changeStatus, isPending } = useIssueTransitions(issue);
+  const { nextStatuses, requestTransition, dialog, isPending } = useIssueTransitions(issue);
   const [tab, setTab] = useState<'comments' | 'history'>('comments');
   const canTransition = can('issue:transition');
 
@@ -187,7 +187,7 @@ function PeekContent({ issue }: { issue: IssueDto }) {
                 key={o.id}
                 type="button"
                 disabled={isPending}
-                onClick={() => changeStatus(o.id)}
+                onClick={() => requestTransition(o.id)}
                 title={`Chuyển sang “${o.name}”`}
                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
               >
@@ -230,6 +230,7 @@ function PeekContent({ issue }: { issue: IssueDto }) {
       <LazyPanel minHeight={160}>
         <ActivityTabs issue={issue} tab={tab} onTab={setTab} />
       </LazyPanel>
+      {dialog}
     </div>
   );
 }

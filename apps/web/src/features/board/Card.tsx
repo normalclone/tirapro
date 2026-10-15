@@ -6,6 +6,8 @@ import { AcceptanceBadge } from '@/components/ui/AcceptanceBadge';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { Avatar } from '@/components/ui/primitives';
+import { SeverityBadge } from '@/components/ui/SeverityBadge';
+import { isBugType } from '@/features/issue-edit/severity';
 import { cn } from '@/lib/utils';
 import { useDropEdge } from '@/lib/dropHint';
 import { SORT_TRANSITION } from '@/lib/sortableDnd';
@@ -133,6 +135,9 @@ export function CardBody({
           />
         )}
         <AcceptanceBadge progress={issue.acceptanceProgress} />
+        {issue.severity && isBugType(issue.type) && (
+          <SeverityBadge severity={issue.severity} compact />
+        )}
         <div className="ml-auto flex min-w-0 items-center">
           {issue.assignee ? (
             <span

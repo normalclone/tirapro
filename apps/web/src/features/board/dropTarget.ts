@@ -28,7 +28,14 @@ export function resolveDropStatuses(
       ? {
           kind: 'move',
           options: [
-            { id: first, name: col.name, category: 'TODO', transitionName: null, label: col.name },
+            {
+              id: first,
+              name: col.name,
+              category: 'TODO',
+              order: 0,
+              transitionName: null,
+              label: col.name,
+            },
           ],
         }
       : { kind: 'blocked' };

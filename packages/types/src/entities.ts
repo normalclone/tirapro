@@ -258,6 +258,12 @@ export interface IssueEnvironment {
   viewport?: string;
 }
 
+/** Kết quả POST /issues/:id/transition: issue + cờ cho biết lý do (comment) có được lưu thành bình luận không. */
+export interface IssueTransitionResultDto extends IssueDto {
+  /** Chỉ có khi request gửi `comment`; `false` = chuyển trạng thái xong nhưng KHÔNG ghi được bình luận lý do. */
+  reasonSaved?: boolean;
+}
+
 export interface IssueDto extends IssueSummaryDto {
   workspaceId: ID;
   projectId: ID;

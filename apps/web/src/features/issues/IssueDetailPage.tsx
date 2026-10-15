@@ -50,6 +50,8 @@ import {
   IssueStoryPointsInline,
   IssueTypeSelect,
   IssuePrioritySelect,
+  IssueSeveritySelect,
+  IssueResolutionSelect,
 } from '@/features/issue-edit/IssueProperties';
 import { AcceptanceCriteria } from '@/features/issue-edit/AcceptanceCriteria';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
@@ -60,7 +62,9 @@ import { ActivityTabs } from './ActivityTabs';
 import {
   COMMENT_INPUT_ID,
   FOCUS_COMMENT_EVENT,
+  REQUEST_TRANSITION_EVENT,
   requestFocusComment,
+  type RequestTransitionDetail,
 } from '@/features/command/events';
 import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
@@ -137,7 +141,13 @@ export function IssueDetailPage() {
   const removeIssue = useDeleteIssue();
   const retractIssue = useRetractIssue();
 
-  const { nextStatuses, changeStatus, isPending: transitionPending } = useIssueTransitions(issue);
+  const {
+    nextStatuses,
+    requestTransition,
+    dialog: transitionDialog,
+    dialogOpen: transitionDialogOpen,
+    isPending: transitionPending,
+  } = useIssueTransitions(issue);
 
   const [editingSummary, setEditingSummary] = useState(false);
   const [summary, setSummary] = useState('');
@@ -199,6 +209,18 @@ export function IssueDetailPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [canComment, hasIssue]);
 
+  // Cmd+K gửi sự kiện cửa sổ; ref để bộ nghe luôn gọi bản mới nhất của requestTransition (không đăng ký lại mỗi lần render).
+  const requestTransitionRef = useRef(requestTransition);
+  requestTransitionRef.current = requestTransition;
+  useEffect(() => {
+    function onRequest(e: Event) {
+      const d = (e as CustomEvent<RequestTransitionDetail>).detail;
+      if (d?.toStatusId) requestTransitionRef.current(d.toStatusId);
+    }
+    window.addEventListener(REQUEST_TRANSITION_EVENT, onRequest);
+    return () => window.removeEventListener(REQUEST_TRANSITION_EVENT, onRequest);
+  }, []);
+
   async function cloneIssue() {
     if (!issue) return;
     try {
@@ -225,7 +247,8 @@ export function IssueDetailPage() {
 
   // Phím tắt 1..9 = chuyển nhanh sang trạng thái ở bước kế tiếp.
   // Chỉ bind khi KHÔNG có overlay mở (dialog quy trình / xác nhận xoá) và không gõ trong ô nhập.
-  const shortcutsEnabled = !wfOpen && !confirmDelete && !confirmRetract && !editingSummary;
+  const shortcutsEnabled =
+    !wfOpen && !confirmDelete && !confirmRetract && !editingSummary && !transitionDialogOpen;
   useEffect(() => {
     if (!shortcutsEnabled) return;
     function onKey(e: KeyboardEvent) {
@@ -252,7 +275,7 @@ export function IssueDetailPage() {
       const opt = nextStatuses[n - 1];
       if (opt) {
         e.preventDefault();
-        changeStatus(opt.id);
+        requestTransition(opt.id);
       }
     }
     window.addEventListener('keydown', onKey);
@@ -476,6 +499,8 @@ export function IssueDetailPage() {
                   <div className="mt-1.5 flex shrink-0 items-center gap-1.5">
                     <IssueTypeSelect issue={issue} />
                     <IssuePrioritySelect issue={issue} />
+                    <IssueSeveritySelect issue={issue} />
+                    <IssueResolutionSelect issue={issue} />
                   </div>
                   {editingSummary ? (
                     <Input
@@ -639,7 +664,7 @@ export function IssueDetailPage() {
                           key={o.id}
                           type="button"
                           disabled={transitionPending}
-                          onClick={() => changeStatus(o.id)}
+                          onClick={() => requestTransition(o.id)}
                           title={`${
                             o.label !== o.name
                               ? `${o.label} → “${o.name}”`
@@ -775,6 +800,7 @@ export function IssueDetailPage() {
                 </Suspense>
               )}
 
+              {transitionDialog}
               <ConfirmDialog
                 open={confirmDelete}
                 title={`Xoá công việc ${issue.key}?`}
