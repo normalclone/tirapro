@@ -1,11 +1,12 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
+import { keys } from '@/lib/queryKeys';
 import { MarkdownView } from './MarkdownView';
 
-const html = (text: string, onToggleTask?: () => void) =>
+const html = (text: string, onToggleTask?: () => void, client = new QueryClient()) =>
   renderToStaticMarkup(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={client}>
       <MarkdownView text={text} onToggleTask={onToggleTask} />
     </QueryClientProvider>,
   );
@@ -47,5 +48,14 @@ describe('MarkdownView — an toàn đầu ra (không dangerouslySetInnerHTML)',
   it('chip mention hiển thị chữ @Tên (không HTML), thẻ giả trong tên bị escape', () => {
     const out = html('cc @[<i>Admin</i>](user:u1)');
     expect(out).not.toContain('<i>');
+  });
+
+  it('chip mention hiển thị tên THẬT theo id, không tin tên giả trong token', () => {
+    const client = new QueryClient();
+    client.setQueryData(keys.users.workspace, [{ id: 'u1', displayName: 'Trang (Tester)' }]);
+    const out = html('cc @[Admin](user:u1) và @[Lạ](user:u9)', undefined, client);
+    expect(out).toContain('@Trang (Tester)');
+    expect(out).not.toContain('@Admin');
+    expect(out).toContain('@Lạ'); // không tìm thấy → tên trong token
   });
 });

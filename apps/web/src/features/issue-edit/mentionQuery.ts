@@ -59,3 +59,15 @@ export function applyMention(
   const next = before + token + (needSpace ? ' ' : '') + after;
   return { value: next, caret: before.length + token.length + 1 };
 }
+
+/**
+ * Tên hiển thị của chip: tra theo userId trong danh sách thành viên (chống giả tên — ai cũng gõ được
+ * `@[Admin](user:<id người khác>)`); chưa tải xong / không tìm thấy thì dùng tên ghi trong token.
+ */
+export function resolveMentionName(
+  users: readonly { id: string; displayName: string }[] | undefined,
+  id: string,
+  tokenName: string,
+): string {
+  return users?.find((u) => u.id === id)?.displayName || tokenName;
+}

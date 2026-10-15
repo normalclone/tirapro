@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { applyMention, filterMentionCandidates, findMentionTrigger } from './mentionQuery';
+import {
+  applyMention,
+  filterMentionCandidates,
+  findMentionTrigger,
+  resolveMentionName,
+} from './mentionQuery';
 
 const people = [
   { id: 'u1', name: 'Dũng (Dev)', email: 'dev@tirapro.dev' },
@@ -46,5 +51,16 @@ describe('applyMention', () => {
     const r = applyMention('@b', { start: 0, query: 'b' }, 2, people[1]!);
     expect(r.value).toBe('@[Bình (BA)](user:u2) ');
     expect(r.caret).toBe(r.value.length);
+  });
+});
+
+describe('resolveMentionName', () => {
+  const users = [{ id: 'u1', displayName: 'Trang (Tester)' }];
+  it('ưu tiên tên thật theo id, bỏ qua tên giả trong token', () => {
+    expect(resolveMentionName(users, 'u1', 'Admin')).toBe('Trang (Tester)');
+  });
+  it('không tìm thấy hoặc chưa tải → dùng tên trong token', () => {
+    expect(resolveMentionName(users, 'u9', 'Lạ')).toBe('Lạ');
+    expect(resolveMentionName(undefined, 'u1', 'Tên token')).toBe('Tên token');
   });
 });
