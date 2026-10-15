@@ -1,8 +1,10 @@
 import 'reflect-metadata';
 import { describe, expect, it, vi } from 'vitest';
 import { PERMISSIONS } from '@tirapro/types';
+import { rankIssueSchema } from '@tirapro/shared';
 import { PERMISSIONS_KEY } from '../../common/decorators/permissions.decorator';
 import { PROJECT_REF_KEY } from '../../common/decorators/project-ref.decorator';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { IssuesController } from './issues.controller';
 
 describe('IssuesController.rank', () => {
@@ -32,5 +34,24 @@ describe('IssuesController.rank', () => {
       { version: 3, afterId: 'a', beforeId: null, sprintId: 'sp1' },
       true,
     );
+  });
+});
+
+describe('POST /issues/:id/rank — schema body', () => {
+  it('loại statusId/boardId/force khỏi body (route này chỉ đổi thứ tự/sprint, không đổi trạng thái)', () => {
+    const pipe = new ZodValidationPipe(rankIssueSchema);
+    const out = pipe.transform(
+      {
+        version: 3,
+        afterId: 'a',
+        beforeId: null,
+        sprintId: 'sp1',
+        statusId: 's2',
+        boardId: 'b1',
+        force: true,
+      },
+      { type: 'body' },
+    );
+    expect(out).toEqual({ version: 3, afterId: 'a', beforeId: null, sprintId: 'sp1' });
   });
 });

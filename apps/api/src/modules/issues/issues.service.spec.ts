@@ -1510,3 +1510,36 @@ describe('IssuesService.move — không mốc giữ rank; đổi sprint ghi lị
     expect(emitted(events)).toEqual([DOMAIN_EVENTS.ISSUE_MOVED]);
   });
 });
+
+describe('IssuesService.move — không rebalance khi giữ rank; đổi status + sprint cùng lúc', () => {
+  const emitted = (events: { emit: ReturnType<typeof vi.fn> }) =>
+    events.emit.mock.calls.map((c) => c[0] as string);
+
+  it('không mốc => không gọi $executeRaw (không rebalance toàn dự án), không tra mốc', async () => {
+    const tx = { ...wipTx({ count: 0 }), $executeRaw: vi.fn(() => Promise.resolve(0)) };
+    tx.issue.findFirstOrThrow = vi.fn(() => Promise.resolve(issueRow({ version: 4 })));
+    const { service } = makeService(tx);
+    await service.move('w1', 'u1', 'i1', { version: 3 });
+    await service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2', boardId: 'b1' });
+    expect(tx.$executeRaw).not.toHaveBeenCalled();
+    expect(tx.issue.findMany).not.toHaveBeenCalled();
+  });
+
+  it('đổi status + sprint cùng lúc => MOVED → TRANSITIONED → UPDATED, mỗi loại đúng một lần', async () => {
+    const tx = wipTx({ count: 0 });
+    tx.issue.findFirstOrThrow = vi.fn(() =>
+      Promise.resolve(issueRow({ version: 4, statusId: 's2', sprintId: 'sp2' })),
+    );
+    const { service, events } = makeService(tx);
+    await service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2', sprintId: 'sp2' });
+    expect(emitted(events)).toEqual([
+      DOMAIN_EVENTS.ISSUE_MOVED,
+      DOMAIN_EVENTS.ISSUE_TRANSITIONED,
+      DOMAIN_EVENTS.ISSUE_UPDATED,
+    ]);
+    expect(events.emit).toHaveBeenLastCalledWith(
+      DOMAIN_EVENTS.ISSUE_UPDATED,
+      expect.objectContaining({ changedFields: ['sprintId'] }),
+    );
+  });
+});
