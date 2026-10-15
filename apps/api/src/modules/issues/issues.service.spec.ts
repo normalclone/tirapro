@@ -1279,3 +1279,63 @@ describe('IssuesService — dự án đã xoá mềm', () => {
     }
   });
 });
+
+describe('IssuesService.bulkUpdate — đổi status cùng field khác', () => {
+  const stage2 = {
+    id: 's2',
+    workflowId: 'wf',
+    name: 'Doing',
+    category: 'IN_PROGRESS',
+    color: null,
+    order: 1,
+    isInitial: false,
+  };
+  function tx2(afterOver: Record<string, unknown>) {
+    const rows = [issueRow({ id: 'a' })];
+    return {
+      issue: {
+        findMany: vi.fn(() => Promise.resolve(rows)),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirst: vi.fn(() => Promise.resolve({ version: 5 })),
+        findFirstOrThrow: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(issueRow({ id: where.id, version: 4, ...afterOver })),
+        ),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+      project: { findUnique: vi.fn(() => Promise.resolve({ defaultWorkflowId: 'wf' })) },
+      workflowTransition: { findFirst: vi.fn(() => Promise.resolve({ id: 'tr' })) },
+      status: { findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })) },
+    };
+  }
+
+  it('đổi cả status lẫn assignee => TRANSITIONED + thêm ISSUE_UPDATED mang changedFields ["assigneeId"]', async () => {
+    const tx = tx2({ statusId: 's2', status: stage2, assigneeId: 'u2' });
+    const { service, events, rbac } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition']));
+    await service.bulkUpdate('w1', 'u1', {
+      projectId: 'p1',
+      items: [{ id: 'a', version: 3 }],
+      patch: { statusId: 's2', assigneeId: 'u2' },
+    });
+    expect(events.emit.mock.calls.map((c) => c[0] as string)).toEqual([
+      'issue.transitioned',
+      'issue.updated',
+    ]);
+    expect(events.emit).toHaveBeenLastCalledWith(
+      'issue.updated',
+      expect.objectContaining({ changedFields: ['assigneeId'], actorId: 'u1' }),
+    );
+  });
+
+  it('chỉ đổi status => chỉ TRANSITIONED, không ISSUE_UPDATED thừa', async () => {
+    const tx = tx2({ statusId: 's2', status: stage2 });
+    const { service, events, rbac } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition']));
+    await service.bulkUpdate('w1', 'u1', {
+      projectId: 'p1',
+      items: [{ id: 'a', version: 3 }],
+      patch: { statusId: 's2' },
+    });
+    expect(events.emit.mock.calls.map((c) => c[0] as string)).toEqual(['issue.transitioned']);
+  });
+});

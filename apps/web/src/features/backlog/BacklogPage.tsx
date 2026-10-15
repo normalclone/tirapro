@@ -253,7 +253,7 @@ export function BacklogPage() {
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 
   /**
-   * Áp `patch` cho các issue đã chọn bằng MỘT request. `field` là trường bị đổi — giá trị cũ của nó được giữ
+   * Áp `patch` cho các issue đã chọn tuần tự theo lô ≤ 100 (một request mỗi lô). `field` là trường bị đổi — giá trị cũ của nó được giữ
    * để "Hoàn tác". Việc bị người khác sửa trước (conflicts) không làm hỏng cả lô, chỉ được đếm là chưa xong.
    * Hoàn tác dùng version máy chủ trả về trong `updated`, gom theo giá trị cũ (mỗi giá trị cũ một request).
    */
