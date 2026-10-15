@@ -4,13 +4,16 @@ import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
-import { useIssue, useTransitionDetail, useUpdateIssue } from '@/features/issues/api';
+import { useIssue, useUpdateIssue } from '@/features/issues/api';
 import { computeNextStatuses } from '@/features/issues/nextStatuses';
-import { transitionToastOptions } from '@/features/issues/statusUndo';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { useToggleWatch, useWatchState } from '@/features/issue-widgets/api';
 import { ActionItem } from './ActionItem';
-import { FOCUS_COMMENT_EVENT } from './events';
+import {
+  FOCUS_COMMENT_EVENT,
+  REQUEST_TRANSITION_EVENT,
+  type RequestTransitionDetail,
+} from './events';
 
 const ICON = 'h-4 w-4 shrink-0 text-muted';
 
@@ -35,7 +38,6 @@ export function IssueContextGroup({
   const { data: issue } = useIssue(issueKey);
   const { data: workflows } = useWorkflows();
   const updateIssue = useUpdateIssue(issue?.projectId);
-  const transition = useTransitionDetail(issue?.projectId);
   const { data: watch } = useWatchState(issue?.id ?? '');
   const toggleWatch = useToggleWatch(issue?.id ?? '');
   // Cùng quyền như trang chi tiết (kể cả dự án lưu trữ = chỉ đọc): không bày hành động mà API sẽ từ chối.
@@ -64,24 +66,18 @@ export function IssueContextGroup({
     }
   }
 
-  async function changeStatus(toStatusId: string, toName: string) {
-    if (!issue) return;
-    const from = { statusId: issue.status.id, statusName: issue.status.name };
-    try {
-      const updated = await transition.mutateAsync({
-        id: issue.id,
-        key: issue.key,
-        toStatusId,
-        version: issue.version,
-        statusName: toName,
-      });
-      toast.success(
-        `Đã chuyển sang “${toName}”`,
-        transitionToastOptions({ workflows, from, toStatusId, updated, transition }),
-      );
-    } catch (e) {
-      toast.error(apiErrorMessage(e));
-    }
+  // Đổi trạng thái đi qua trang chi tiết (đang mount vì nhóm này chỉ dựng ở /issue/:key): trang quyết định chạy thẳng
+  // hay hiện hộp Cách giải quyết / Lý do. Chờ bảng lệnh đóng xong (Radix trả focus) rồi mới bắn sự kiện.
+  function requestTransition(toStatusId: string) {
+    window.setTimeout(
+      () =>
+        window.dispatchEvent(
+          new CustomEvent<RequestTransitionDetail>(REQUEST_TRANSITION_EVENT, {
+            detail: { toStatusId },
+          }),
+        ),
+      120,
+    );
   }
 
   async function toggleWatching(watching: boolean) {
@@ -113,7 +109,7 @@ export function IssueContextGroup({
             value={`doi trang thai chuyen ${s.label} ${s.name} ${issue.key}`}
             icon={<ArrowRightLeft className={ICON} aria-hidden="true" />}
             label={s.label !== s.name ? `${s.label} → ${s.name}` : `Đổi trạng thái → ${s.name}`}
-            onSelect={() => runAction(() => void changeStatus(s.id, s.name))}
+            onSelect={() => runAction(() => requestTransition(s.id))}
           />
         ))}
       {watch && (

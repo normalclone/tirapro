@@ -3,6 +3,7 @@ import {
   Suspense,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentProps,
   type ComponentType,
@@ -57,8 +58,15 @@ import {
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { CommentsSection } from '@/features/issue-edit/CommentsSection';
 import { computeNextStatuses } from './nextStatuses';
+import { TransitionDialog, type DialogTransitionKind } from './TransitionDialog';
+import { defaultResolutionId, transitionKind } from './transitionKind';
+import { useProjectMeta } from '@/features/ai/api';
 import { transitionToastOptions } from './statusUndo';
-import { FOCUS_COMMENT_EVENT } from '@/features/command/events';
+import {
+  FOCUS_COMMENT_EVENT,
+  REQUEST_TRANSITION_EVENT,
+  type RequestTransitionDetail,
+} from '@/features/command/events';
 import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
 import { IssueLabelsPicker } from '@/features/issue-meta/IssueLabelsPicker';
@@ -174,6 +182,18 @@ export function IssueDetailPage() {
   const [wfSeen, setWfSeen] = useState(false); // đã từng mở → giữ dialog trong cây để hiệu ứng đóng chạy được
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmRetract, setConfirmRetract] = useState(false);
+  // Hộp Cách giải quyết / Lý do: `pending` giữ nội dung kể cả khi đang đóng (để hiệu ứng đóng chạy), `pendingOpen` điều khiển mở.
+  const [pending, setPending] = useState<{
+    seq: number;
+    toStatusId: string;
+    kind: DialogTransitionKind;
+    fromName: string;
+    toName: string;
+    toLabel: string;
+  } | null>(null);
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const { data: meta } = useProjectMeta(projectKey || undefined);
+  const resolutions = meta?.resolutions ?? [];
   useEffect(() => {
     if (issue) setSummary(issue.summary);
   }, [issue?.id]);
@@ -205,22 +225,68 @@ export function IssueDetailPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [canLogWork, hasIssue]);
 
-  function changeStatus(toStatusId: string) {
+  function changeStatus(toStatusId: string, extra?: { resolutionId?: string; comment?: string }) {
     if (!issue || toStatusId === issue.status.id) return;
     const toName = nextStatuses.find((s) => s.id === toStatusId)?.name;
     const from = { statusId: issue.status.id, statusName: issue.status.name };
     transition.mutate(
-      { id: issue.id, key: issue.key, toStatusId, version: issue.version, statusName: toName },
       {
-        onSuccess: (updated) =>
+        id: issue.id,
+        key: issue.key,
+        toStatusId,
+        version: issue.version,
+        statusName: toName,
+        ...extra,
+      },
+      {
+        onSuccess: (updated) => {
+          // Hoàn tác (nếu có) quay về trạng thái cũ; khi rời Done máy chủ tự xoá Resolution, còn hoàn tác vào lại Done thì
+          // máy chủ gán lại mặc định (có thể khác lựa chọn trước đó) — chấp nhận.
           toast.success(
             toName ? `Đã chuyển sang “${toName}”` : 'Đã đổi trạng thái',
             transitionToastOptions({ workflows, from, toStatusId, updated, transition }),
-          ),
+          );
+        },
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
     );
   }
+
+  /**
+   * Cổng chung cho nút, phím 1..9 và Cmd+K: vào Done / mở lại / trả lại → hộp hỏi (Cách giải quyết, lý do); còn lại chạy thẳng.
+   * Vào Done mà workspace chưa có Cách giải quyết nào → chạy thẳng (máy chủ không có gì để gán).
+   */
+  function requestTransition(toStatusId: string) {
+    if (!issue || toStatusId === issue.status.id) return;
+    const to = nextStatuses.find((s) => s.id === toStatusId);
+    const wf = (workflows ?? []).find((w) => w.statuses.some((s) => s.id === issue.status.id));
+    const from = wf?.statuses.find((s) => s.id === issue.status.id);
+    const kind = to && from ? transitionKind(from, to) : 'forward';
+    if (kind === 'forward' || !to || (kind === 'close' && resolutions.length === 0)) {
+      changeStatus(toStatusId);
+      return;
+    }
+    setPending({
+      seq: Date.now(),
+      toStatusId,
+      kind,
+      fromName: issue.status.name,
+      toName: to.name,
+      toLabel: to.label,
+    });
+    setPendingOpen(true);
+  }
+  // Cmd+K gửi sự kiện cửa sổ; ref để bộ nghe luôn gọi bản mới nhất của requestTransition (không đăng ký lại mỗi lần render).
+  const requestTransitionRef = useRef(requestTransition);
+  requestTransitionRef.current = requestTransition;
+  useEffect(() => {
+    function onRequest(e: Event) {
+      const d = (e as CustomEvent<RequestTransitionDetail>).detail;
+      if (d?.toStatusId) requestTransitionRef.current(d.toStatusId);
+    }
+    window.addEventListener(REQUEST_TRANSITION_EVENT, onRequest);
+    return () => window.removeEventListener(REQUEST_TRANSITION_EVENT, onRequest);
+  }, []);
 
   async function cloneIssue() {
     if (!issue) return;
@@ -244,7 +310,8 @@ export function IssueDetailPage() {
 
   // Phím tắt 1..9 = chuyển nhanh sang trạng thái ở bước kế tiếp.
   // Chỉ bind khi KHÔNG có overlay mở (dialog quy trình / xác nhận xoá) và không gõ trong ô nhập.
-  const shortcutsEnabled = !wfOpen && !confirmDelete && !confirmRetract && !editingSummary;
+  const shortcutsEnabled =
+    !wfOpen && !confirmDelete && !confirmRetract && !editingSummary && !pendingOpen;
   useEffect(() => {
     if (!shortcutsEnabled) return;
     function onKey(e: KeyboardEvent) {
@@ -271,7 +338,7 @@ export function IssueDetailPage() {
       const opt = nextStatuses[n - 1];
       if (opt) {
         e.preventDefault();
-        changeStatus(opt.id);
+        requestTransition(opt.id);
       }
     }
     window.addEventListener('keydown', onKey);
@@ -661,7 +728,7 @@ export function IssueDetailPage() {
                           key={o.id}
                           type="button"
                           disabled={transition.isPending}
-                          onClick={() => changeStatus(o.id)}
+                          onClick={() => requestTransition(o.id)}
                           title={`${
                             o.label !== o.name
                               ? `${o.label} → “${o.name}”`
@@ -791,6 +858,25 @@ export function IssueDetailPage() {
                 </Suspense>
               )}
 
+              {pending && (
+                <TransitionDialog
+                  key={pending.seq}
+                  open={pendingOpen}
+                  kind={pending.kind}
+                  issueKey={issue.key}
+                  fromName={pending.fromName}
+                  toName={pending.toName}
+                  toLabel={pending.toLabel}
+                  resolutions={resolutions}
+                  defaultResolutionId={defaultResolutionId(resolutions)}
+                  loading={transition.isPending}
+                  onConfirm={(v) => {
+                    setPendingOpen(false);
+                    changeStatus(pending.toStatusId, v);
+                  }}
+                  onCancel={() => setPendingOpen(false)}
+                />
+              )}
               <ConfirmDialog
                 open={confirmDelete}
                 title={`Xoá công việc ${issue.key}?`}

@@ -183,11 +183,17 @@ export function useTransitionDetail(projectId: string | undefined) {
         .post<IssueDto>(`/issues/${v.id}/transition`, {
           toStatusId: v.toStatusId,
           version: v.version,
+          resolutionId: v.resolutionId,
+          comment: v.comment,
         })
         .then((r) => r.data),
     onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, statusPatch(v), v.key),
     onError: (_e, _v, snap) => rollbackIssue(qc, snap),
     // Chuyển trạng thái có thể đổi resolution/resolvedAt → luôn nạp lại bản thật (hẹp: issue này + danh sách project).
-    onSettled: (_r, _e, v, snap) => invalidateIssue(qc, projectId, snap?.issueKey ?? v.key),
+    onSettled: (_r, _e, v, snap) => {
+      invalidateIssue(qc, projectId, snap?.issueKey ?? v.key);
+      // Lý do được máy chủ lưu thành bình luận → nạp lại danh sách bình luận.
+      if (v.comment) void qc.invalidateQueries({ queryKey: keys.issues.comments(v.id) });
+    },
   });
 }

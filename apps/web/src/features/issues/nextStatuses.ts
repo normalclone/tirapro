@@ -4,6 +4,8 @@ export interface NextStatus {
   id: string;
   name: string;
   category: string;
+  /** Thứ tự trạng thái trong workflow — để biết bước đi ngược (xem transitionKind). */
+  order: number;
   /** Tên transition do admin đặt (hành động: "Mở lại", "Trả lại"…); null nếu trống. */
   transitionName: string | null;
   /** Nhãn hiển thị trên nút: tên hành động, hoặc tên trạng thái đích khi transition không có tên có nghĩa. */
@@ -41,6 +43,7 @@ export function computeNextStatuses(
       id: s.id,
       name: s.name,
       category: s.category,
+      order: s.order,
       transitionName: t.name || null,
       label: transitionLabel(t.name, s.name),
     });
