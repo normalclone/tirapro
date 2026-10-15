@@ -56,15 +56,21 @@ function isControl(t: EventTarget | null): t is FormControl {
   return !!t && typeof (t as FormControl).setCustomValidity === 'function';
 }
 
+/** Ô tự đặt `customValidity` (có `data-custom-validity`) — bộ dịch không được đè/xoá. */
+function isSelfManaged(el: FormControl): boolean {
+  return el.hasAttribute('data-custom-validity');
+}
+
 /**
  * Cài bộ dịch validation native cho toàn tài liệu. Trả hàm gỡ.
+ * Ô mang thuộc tính `data-custom-validity` tự quản lý `setCustomValidity` (vd `DateInput`) nên bị bỏ qua hoàn toàn.
  * Thông điệp tuỳ biến được xoá khi người dùng sửa ô (`input`/`change`) và trước mỗi lần bấm nút gửi,
  * để ô không kẹt trạng thái lỗi cũ khi giá trị đổi bằng code.
  */
 export function installViValidation(doc: Document = document): () => void {
   const onInvalid = (e: Event) => {
     const el = e.target;
-    if (!isControl(el)) return;
+    if (!isControl(el) || isSelfManaged(el)) return;
     el.setCustomValidity(''); // đo lại validity gốc
     const i = el as HTMLInputElement;
     const msg = viValidationMessage(el.validity, {
@@ -77,7 +83,7 @@ export function installViValidation(doc: Document = document): () => void {
     if (msg) el.setCustomValidity(msg);
   };
   const clear = (e: Event) => {
-    if (isControl(e.target)) e.target.setCustomValidity('');
+    if (isControl(e.target) && !isSelfManaged(e.target)) e.target.setCustomValidity('');
   };
   const clearForm = (e: Event) => {
     const target = e.target instanceof Element ? e.target : null;
@@ -86,7 +92,7 @@ export function installViValidation(doc: Document = document): () => void {
     );
     if (!btn || btn.type !== 'submit') return;
     for (const c of Array.from(btn.form?.elements ?? [])) {
-      if (isControl(c)) c.setCustomValidity('');
+      if (isControl(c) && !isSelfManaged(c)) c.setCustomValidity('');
     }
   };
   doc.addEventListener('invalid', onInvalid, true);

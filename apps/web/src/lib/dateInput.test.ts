@@ -16,6 +16,17 @@ describe('maskViDate', () => {
     expect(maskViDate('05/08/20269999')).toBe('05/08/2026');
     expect(maskViDate('ab12')).toBe('12');
   });
+  it('gõ tay dấu phân cách chốt phần ngày/tháng 1 chữ số (đệm 0)', () => {
+    expect(maskViDate('5/')).toBe('05/');
+    expect(maskViDate('5/8/2026')).toBe('05/08/2026');
+    expect(maskViDate('5.8.26')).toBe('05/08/26');
+    expect(maskViDate('05/8/')).toBe('05/08/');
+    expect(maskViDate('5/8')).toBe('05/8');
+  });
+  it('gõ liền từng chữ số vẫn đúng khi có dấu / tự chèn', () => {
+    expect(maskViDate('05/082')).toBe('05/08/2');
+    expect(maskViDate('05/0')).toBe('05/0');
+  });
 });
 describe('parseViDate', () => {
   it('chấp nhận nhiều dạng, trả ISO', () => {
@@ -47,6 +58,9 @@ describe('formatViDate', () => {
 describe('giờ', () => {
   it('mặt nạ + parse HH:mm 24h', () => {
     expect(maskViTime('0930')).toBe('09:30');
+    expect(maskViTime('9:30')).toBe('09:30');
+    expect(maskViTime('9:')).toBe('09:');
+    expect(maskViTime('09:3')).toBe('09:3');
     expect(parseViTime('9:30')).toBe('09:30');
     expect(parseViTime('24:00')).toBeNull();
     expect(parseViTime('12:60')).toBeNull();

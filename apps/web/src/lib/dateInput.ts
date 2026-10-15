@@ -18,13 +18,29 @@ function daysInMonth(y: number, m: number): number {
   return [4, 6, 9, 11].includes(m) ? 30 : 31;
 }
 
-/** Chỉ giữ chữ số (tối đa 8), tự chèn `/` sau 2 và 4 số: `0508` → `05/08`. */
+/**
+ * Mặt nạ gõ ngày: giữ chữ số, tự chèn `/` sau 2 và 4 số (`0508` → `05/08`). Dấu `/ . -` gõ tay chốt phần
+ * ngày/tháng đang gõ và đệm `0` nếu chỉ có 1 chữ số (`5/8/2026` → `05/08/2026`, `5/` → `05/`).
+ */
 export function maskViDate(raw: string): string {
-  const d = raw.replace(/\D/g, '').slice(0, 8);
-  let out = d.slice(0, 2);
-  if (d.length > 2) out += '/' + d.slice(2, 4);
-  if (d.length > 4) out += '/' + d.slice(4, 8);
-  return out;
+  return maskParts(raw, /[/.-]/, '/', [2, 2, 4]);
+}
+
+/** Máy trạng thái chung cho mặt nạ ngày/giờ: `limits[i]` = số chữ số tối đa của phần thứ i. */
+function maskParts(raw: string, sep: RegExp, joiner: string, limits: number[]): string {
+  const parts = [''];
+  for (const ch of raw) {
+    const i = parts.length - 1;
+    const limit = limits[i] ?? 0;
+    if (/\d/.test(ch)) {
+      if ((parts[i] ?? '').length < limit) parts[i] += ch;
+      else if (i + 1 < limits.length) parts.push(ch);
+    } else if (sep.test(ch) && parts[i] !== '' && i + 1 < limits.length) {
+      parts[i] = (parts[i] ?? '').padStart(2, '0');
+      parts.push('');
+    }
+  }
+  return parts.join(joiner);
 }
 
 /**
@@ -59,10 +75,9 @@ export function formatViDate(iso: string): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
 }
 
-/** Chữ số → `HH:mm` (tối đa 4 số, chèn `:` sau 2 số). */
+/** Mặt nạ gõ giờ `HH:mm`: chữ số (tối đa 4), `:` sau 2 số; `9:` → `09:`. */
 export function maskViTime(raw: string): string {
-  const d = raw.replace(/\D/g, '').slice(0, 4);
-  return d.length > 2 ? `${d.slice(0, 2)}:${d.slice(2)}` : d;
+  return maskParts(raw, /:/, ':', [2, 2]);
 }
 
 /** `9:30`, `0930`, `09:30` → `09:30`; giờ 0–23, phút 0–59; không hợp lệ → null. */
