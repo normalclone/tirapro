@@ -10,12 +10,15 @@ import { SystemSettingsService } from '../system-settings/system-settings.servic
  * - Token cấu hình toàn cục (TELEGRAM_BOT_TOKEN) hoặc BYO (bring-your-own) theo integration.
  * - Thiếu token → mọi thao tác gửi trả về false (tính năng tắt), KHÔNG ném lỗi.
  * - Mã hóa botToken bằng AES-256-GCM; thiếu INTEGRATION_ENCRYPTION_KEY (>=32 ký tự) → encrypt() ném lỗi.
+ * - Giải mã thử khoá hiện tại rồi INTEGRATION_ENCRYPTION_KEY_PREVIOUS; thất bại → null (không trả ciphertext).
  */
 @Injectable()
 export class TelegramService {
   private readonly logger = new Logger(TelegramService.name);
   private readonly globalBotToken: string;
   private readonly encryptionKey: string;
+  /** Khoá cũ (optional) — chỉ để giải mã dữ liệu đã mã hoá trước khi đổi khoá, không bao giờ dùng để mã hoá. */
+  private readonly previousKey: string;
   /** Cache Telegraf theo token để tái dùng (tránh tạo client mới mỗi lần gửi). */
   private readonly bots = new Map<string, Telegraf>();
 
@@ -26,6 +29,7 @@ export class TelegramService {
     const telegram = this.config.get<{ globalBotToken?: string }>('integrations.telegram');
     this.globalBotToken = telegram?.globalBotToken ?? '';
     this.encryptionKey = this.config.get<string>('integrations.encryptionKey') ?? '';
+    this.previousKey = this.config.get<string>('integrations.encryptionKeyPrevious') ?? '';
   }
 
   /** Có bot khả dụng không (token truyền vào hoặc token toàn cục). */
@@ -69,8 +73,8 @@ export class TelegramService {
     return this.encryptionKey.length >= 32;
   }
 
-  private deriveKey(): Buffer {
-    return crypto.createHash('sha256').update(this.encryptionKey).digest();
+  private static deriveKey(secret: string): Buffer {
+    return crypto.createHash('sha256').update(secret).digest();
   }
 
   /** Mã hóa bot token (aes-256-gcm) → "iv:tag:ciphertext" hex. Không có key → ném lỗi (không bao giờ lưu plaintext). */
@@ -81,36 +85,45 @@ export class TelegramService {
       );
     }
     const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.deriveKey(), iv);
+    const cipher = crypto.createCipheriv('aes-256-gcm', TelegramService.deriveKey(this.encryptionKey), iv);
     const ciphertext = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
     const tag = cipher.getAuthTag();
     return `${iv.toString('hex')}:${tag.toString('hex')}:${ciphertext.toString('hex')}`;
   }
 
-  /** Giải mã token. Không có key hoặc không đúng định dạng → trả nguyên (giả định plaintext). */
-  decrypt(enc: string): string {
-    // Không có key → không giải mã được; trả nguyên (dữ liệu cũ có thể là plaintext).
-    if (!this.hasKey()) return enc;
-    const parts = enc.split(':');
-    if (parts.length !== 3) return enc;
+  /** Thử giải mã bằng một khoá; sai khoá / dữ liệu hỏng → null. */
+  private tryDecrypt(parts: [string, string, string], secret: string): string | null {
     try {
-      const [ivHex, tagHex, dataHex] = parts as [string, string, string]; // đã kiểm parts.length === 3 ở trên
       const decipher = crypto.createDecipheriv(
         'aes-256-gcm',
-        this.deriveKey(),
-        Buffer.from(ivHex, 'hex'),
+        TelegramService.deriveKey(secret),
+        Buffer.from(parts[0], 'hex'),
       );
-      decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-      const plain = Buffer.concat([
-        decipher.update(Buffer.from(dataHex, 'hex')),
-        decipher.final(),
-      ]);
+      decipher.setAuthTag(Buffer.from(parts[1], 'hex'));
+      const plain = Buffer.concat([decipher.update(Buffer.from(parts[2], 'hex')), decipher.final()]);
       return plain.toString('utf8');
-    } catch (err) {
-      this.logger.warn(
-        `Không giải mã được bot token: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return enc;
+    } catch {
+      return null;
     }
+  }
+
+  /**
+   * Giải mã token: thử khoá hiện tại rồi khoá cũ (INTEGRATION_ENCRYPTION_KEY_PREVIOUS).
+   * - Chuỗi không có dạng "iv:tag:ciphertext" (dữ liệu cũ lưu plaintext) → trả nguyên.
+   * - Có dạng ciphertext nhưng không khoá nào giải được → null + log lỗi; KHÔNG BAO GIỜ trả ciphertext làm token.
+   */
+  decrypt(enc: string): string | null {
+    const parts = enc.split(':');
+    if (parts.length !== 3) return enc;
+    const triple = parts as [string, string, string];
+    const keys = [this.encryptionKey, this.previousKey].filter((k) => k.length >= 32);
+    for (const key of keys) {
+      const plain = this.tryDecrypt(triple, key);
+      if (plain !== null) return plain;
+    }
+    this.logger.error(
+      'Không giải mã được bot token của tích hợp — khoá INTEGRATION_ENCRYPTION_KEY đã đổi? Đặt khoá cũ vào INTEGRATION_ENCRYPTION_KEY_PREVIOUS (xem docs/DEPLOY.md) hoặc nhập lại token trong Cài đặt → Tích hợp',
+    );
+    return null;
   }
 }

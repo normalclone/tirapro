@@ -33,6 +33,24 @@ describe('validateEnv — khoá mã hoá', () => {
   });
 });
 
+describe('validateEnv — khoá mã hoá cũ', () => {
+  it('prod: khoá mới + khoá cũ (khoá mặc định) → ok', () => {
+    const env = validateEnv({
+      ...base,
+      NODE_ENV: 'production',
+      INTEGRATION_ENCRYPTION_KEY: 'k'.repeat(40),
+      INTEGRATION_ENCRYPTION_KEY_PREVIOUS: DEFAULT_INTEGRATION_ENCRYPTION_KEY,
+    });
+    expect(env.INTEGRATION_ENCRYPTION_KEY_PREVIOUS).toBe(DEFAULT_INTEGRATION_ENCRYPTION_KEY);
+  });
+
+  it('không đặt / để trống → ok; có đặt nhưng ngắn hơn 32 ký tự → lỗi', () => {
+    expect(validateEnv({ ...base }).INTEGRATION_ENCRYPTION_KEY_PREVIOUS).toBe('');
+    expect(validateEnv({ ...base, INTEGRATION_ENCRYPTION_KEY_PREVIOUS: '' }).INTEGRATION_ENCRYPTION_KEY_PREVIOUS).toBe('');
+    expect(() => validateEnv({ ...base, INTEGRATION_ENCRYPTION_KEY_PREVIOUS: 'ngan' })).toThrow(/INTEGRATION_ENCRYPTION_KEY_PREVIOUS/);
+  });
+});
+
 describe('validateEnv — email', () => {
   it('mặc định: driver console, web URL localhost', () => {
     const env = validateEnv({ ...base, NODE_ENV: 'development' });

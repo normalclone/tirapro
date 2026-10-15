@@ -66,6 +66,7 @@ export function configuration() {
     throttle: { ttl: e.THROTTLE_TTL, limit: e.THROTTLE_LIMIT },
     integrations: {
       encryptionKey: e.INTEGRATION_ENCRYPTION_KEY,
+      encryptionKeyPrevious: e.INTEGRATION_ENCRYPTION_KEY_PREVIOUS,
       telegram: {
         globalBotToken: e.TELEGRAM_BOT_TOKEN,
         webhookDomain: e.TELEGRAM_WEBHOOK_DOMAIN,
