@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ListTree } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import { byPriorityThenStatus } from '@/lib/issueOrder';
-import { isEpicIssue, treeParentId } from '@/lib/issueRefs';
+import { childrenForPanel } from '@/lib/epic';
+import { isEpicIssue } from '@/lib/issueRefs';
 import { subtreeProgress } from '@/lib/issueTree';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { categoryColor } from '@/lib/statusColor';
@@ -18,11 +19,7 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
   const { data: issues = [] } = useProjectIssues(issue.projectId);
 
   const children = useMemo(
-    () =>
-      issues
-        .filter((i) => treeParentId(i) === issue.id)
-        .slice()
-        .sort(byPriorityThenStatus),
+    () => childrenForPanel(issues, issue).sort(byPriorityThenStatus),
     [issues, issue.id],
   );
   const isEpic = isEpicIssue(issue);

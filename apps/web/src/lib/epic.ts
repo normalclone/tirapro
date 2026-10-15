@@ -16,11 +16,23 @@ export interface PointsProgress {
   pct: number;
 }
 
+/** Việc `i` thuộc TRỰC TIẾP epic `epicId`: `epicId` khớp, hoặc cha trực tiếp là epic đó. Một nguồn cho danh sách lẫn tiến độ. */
+const isDirectEpicMember = (i: IssueDto, epicId: string): boolean =>
+  i.id !== epicId && (i.epicId === epicId || i.parentId === epicId);
+
 /** Thành viên TRỰC TIẾP của epic (epicId hoặc cha là epic), bỏ sub-task. Không đệ quy: tránh tính trùng cha-con cùng có điểm. */
 export function epicMembers(issues: IssueDto[], epicId: string): IssueDto[] {
-  return issues.filter(
-    (i) => i.id !== epicId && !i.type.isSubtask && (i.epicId === epicId || i.parentId === epicId),
-  );
+  return issues.filter((i) => !i.type.isSubtask && isDirectEpicMember(i, epicId));
+}
+
+/**
+ * Danh sách "việc con" hiện ở panel của `issue`. Epic: đúng tập thành viên trực tiếp mà `epicProgress` đếm
+ * (kể cả việc có cha thường nhưng `epicId` = epic này — nó thuộc epic dù trong cây nằm dưới cha thường).
+ * Việc thường: con theo cây (`parentId ?? epicId`).
+ */
+export function childrenForPanel(issues: IssueDto[], issue: IssueDto): IssueDto[] {
+  if (isEpicIssue(issue)) return issues.filter((i) => isDirectEpicMember(i, issue.id));
+  return issues.filter((i) => treeParentId(i) === issue.id);
 }
 export function epicProgress(issues: IssueDto[], epicId: string): PointsProgress {
   const m = epicMembers(issues, epicId);

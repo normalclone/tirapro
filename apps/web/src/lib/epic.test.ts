@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyEpicFilter,
+  childrenForPanel,
   epicChoices,
   epicCounts,
   epicIdOf,
+  epicMembers,
   epicProgress,
   parentChoices,
   rollupPoints,
@@ -101,5 +103,37 @@ describe('lựa chọn & lọc theo epic', () => {
     expect(applyEpicFilter(all, 'e1', byId).map((i) => i.id)).toEqual(['s']);
     expect(applyEpicFilter(all, 'none', byId).map((i) => i.id)).toEqual(['c', 'u']);
     expect(applyEpicFilter(all, null, byId)).toBe(all);
+  });
+});
+
+describe('childrenForPanel khớp epicProgress', () => {
+  const e = mk('e', { t: 'epic' });
+  const p = mk('p'); // cha thường
+  const both = mk('both', { parentId: 'p', epicId: 'e' }); // cha thường + gắn epic
+  const direct = mk('direct', { epicId: 'e' });
+  const viaParent = mk('viaParent', { parentId: 'e' });
+  const sub = mk('sub', { t: 'sub', parentId: 'p' });
+  const list = [e, p, both, direct, viaParent, sub];
+
+  it('epic: gồm việc có cha thường nhưng epicId = epic (cùng tập với epicMembers)', () => {
+    const ids = childrenForPanel(list, e)
+      .map((i) => i.id)
+      .sort();
+    expect(ids).toEqual(['both', 'direct', 'viaParent']);
+    expect(
+      epicMembers(list, 'e')
+        .map((i) => i.id)
+        .sort(),
+    ).toEqual(ids);
+  });
+  it('số việc của danh sách epic bằng totalCount của epicProgress', () => {
+    expect(childrenForPanel(list, e)).toHaveLength(epicProgress(list, 'e').totalCount);
+  });
+  it('việc thường: con theo cây parentId ?? epicId (việc "both" nằm dưới cha thường p)', () => {
+    expect(
+      childrenForPanel(list, p)
+        .map((i) => i.id)
+        .sort(),
+    ).toEqual(['both', 'sub']);
   });
 });
