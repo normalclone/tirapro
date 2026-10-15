@@ -378,6 +378,21 @@ export function tokenSegments(
   return out;
 }
 
+/**
+ * Phím trong ô tiêu đề khi popup gợi ý: `accept` = chọn gợi ý (Enter/Tab trơn); `pass` = ⌘/Ctrl+Enter nhường cho
+ * form tạo việc (không chọn gợi ý); `none` = không đụng.
+ */
+export function shouldAcceptSuggestionOnKey(
+  e: { key: string; metaKey: boolean; ctrlKey: boolean },
+  open: boolean,
+): 'accept' | 'pass' | 'none' {
+  if (!open) return 'none';
+  const mod = e.metaKey || e.ctrlKey;
+  if (e.key === 'Enter') return mod ? 'pass' : 'accept';
+  if (e.key === 'Tab') return mod ? 'none' : 'accept';
+  return 'none';
+}
+
 /* ---------- Gợi ý (autocomplete) cho token đang gõ ---------- */
 
 export interface ActiveToken {

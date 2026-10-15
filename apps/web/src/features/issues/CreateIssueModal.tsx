@@ -20,7 +20,13 @@ import { cn } from '@/lib/utils';
 import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
 import { TokenTitleInput } from './TokenTitleInput';
-import { parseTitleTokens, type TokenCtx } from './titleTokens';
+import {
+  changedTokenFields,
+  parseTitleTokens,
+  stripPartialTail,
+  type TokenCtx,
+  type TokenResult,
+} from './titleTokens';
 
 const selectClass = cn(
   'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
@@ -132,6 +138,9 @@ export function CreateIssueModal() {
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const prevTypeRef = useRef('');
+  const lastTokens = useRef<TokenResult>({ clean: '' });
+  // Lần chạy effect đồng bộ token ngay sau khi mở dùng `summary` cũ (trước khi nạp bản nháp) → bỏ qua.
+  const skipSyncRef = useRef(false);
   // Chữ đang giữ (không tự lưu) sau khi chọn dự án đã có nháp riêng — xem ô Dự án.
   const heldDraftRef = useRef<{ key: string; summary: string; description: string } | null>(null);
 
@@ -170,6 +179,8 @@ export function CreateIssueModal() {
     setFiles([]);
     setBusy(false);
     prevTypeRef.current = '';
+    lastTokens.current = { clean: '' };
+    skipSyncRef.current = true;
     if (draft.summary || draft.description)
       toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -221,6 +232,25 @@ export function CreateIssueModal() {
     () => ({ priorities: meta?.priorities ?? [], users: users ?? [], sprints: sprints ?? [] }),
     [meta, users, sprints],
   );
+
+  // Đồng bộ ô bên dưới NGAY khi token khớp (không đợi rời ô tiêu đề). Chỉ áp token MỚI/ĐỔI so với lần trước
+  // nên không ghi đè lựa chọn tay; gỡ token không xoá ô. Token đang gõ dở ở đuôi chưa áp (tránh ô nhảy theo từng chữ).
+  // `tokenCtx` đổi khi meta/người dùng/sprint tải xong → token đã gõ trước đó được áp ở lần chạy này.
+  useEffect(() => {
+    if (!open) return;
+    if (skipSyncRef.current) {
+      skipSyncRef.current = false;
+      return;
+    }
+    const next = parseTitleTokens(stripPartialTail(summary), tokenCtx);
+    const ch = changedTokenFields(lastTokens.current, next);
+    lastTokens.current = next;
+    if (ch.priorityId) setPriorityId(ch.priorityId);
+    if (ch.assigneeId) setAssigneeId(ch.assigneeId);
+    if (ch.sprintId) setSprintId(ch.sprintId);
+    if (ch.points != null) setPoints(String(ch.points));
+    if (ch.dueLocal) setDue(ch.dueLocal);
+  }, [open, summary, tokenCtx]);
 
   // Rời ô tiêu đề: CHỈ điền các trường suy ra từ token — GIỮ nguyên chữ đang gõ trong ô
   // (tránh cảm giác "mất chữ"/không undo được). Token chỉ được lược bỏ khi thực sự tạo (doCreate).
@@ -323,6 +353,7 @@ export function CreateIssueModal() {
     setFiles([]);
     setPoints('');
     setDue('');
+    lastTokens.current = { clean: '' };
     requestAnimationFrame(() => document.getElementById('ci-summary')?.focus());
   }
 

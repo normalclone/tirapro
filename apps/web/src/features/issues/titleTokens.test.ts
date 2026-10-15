@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   changedTokenFields,
   parseTitleTokens,
+  shouldAcceptSuggestionOnKey,
   stripPartialTail,
   suggestFor,
   tokenSegments,
@@ -121,5 +122,26 @@ describe('gợi ý và tô sáng', () => {
   it('token không khớp (không ở cuối) có đoạn kind "unknown"', () => {
     const seg = tokenSegments('Việc !xyz tiếp', ctx);
     expect(seg.some((s) => s.kind === 'unknown' && s.text === '!xyz')).toBe(true);
+  });
+});
+
+describe('shouldAcceptSuggestionOnKey', () => {
+  const k = (key: string, o: Partial<{ metaKey: boolean; ctrlKey: boolean }> = {}) => ({
+    key,
+    metaKey: false,
+    ctrlKey: false,
+    ...o,
+  });
+  it('Enter/Tab chọn gợi ý khi popup mở', () => {
+    expect(shouldAcceptSuggestionOnKey(k('Enter'), true)).toBe('accept');
+    expect(shouldAcceptSuggestionOnKey(k('Tab'), true)).toBe('accept');
+  });
+  it('⌘/Ctrl+Enter luôn nhường cho form tạo việc', () => {
+    expect(shouldAcceptSuggestionOnKey(k('Enter', { metaKey: true }), true)).toBe('pass');
+    expect(shouldAcceptSuggestionOnKey(k('Enter', { ctrlKey: true }), true)).toBe('pass');
+  });
+  it('popup đóng hoặc phím khác => không đụng', () => {
+    expect(shouldAcceptSuggestionOnKey(k('Enter'), false)).toBe('none');
+    expect(shouldAcceptSuggestionOnKey(k('a'), true)).toBe('none');
   });
 });
