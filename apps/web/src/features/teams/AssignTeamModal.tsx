@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { TeamDto } from '@tirapro/types';
 import { apiErrorMessage } from '@/lib/api';
+import { useRetained } from '@/lib/useRetained';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -23,6 +24,8 @@ export function AssignTeamModal({
   const { data: projects } = useProjects();
   const { data: roles } = useRoles('PROJECT');
   const assign = useAssignTeamToProject();
+  // Giữ nhóm gần nhất để nội dung không biến mất giữa hiệu ứng đóng.
+  const shown = useRetained(team);
 
   const [projectId, setProjectId] = useState('');
   const [roleIds, setRoleIds] = useState<string[]>([]);
@@ -40,17 +43,17 @@ export function AssignTeamModal({
     setRoleIds(dev ? [dev.id] : roles?.[0] ? [roles[0].id] : []);
   }, [open, projects, roles]);
 
-  if (!open || !team) return null;
+  if (!shown) return null;
 
   const busy = assign.isPending;
   const canSave = !!projectId && roleIds.length > 0 && !busy;
 
   async function submit() {
-    if (!canSave || !team) return;
+    if (!canSave || !shown) return;
     try {
-      const res = await assign.mutateAsync({ id: team.id, projectId, roleIds });
+      const res = await assign.mutateAsync({ id: shown.id, projectId, roleIds });
       toast.success(
-        `Đã đặt vai trò riêng trong dự án cho ${res.added} thành viên của nhóm “${team.name}”`,
+        `Đã đặt vai trò riêng trong dự án cho ${res.added} thành viên của nhóm “${shown.name}”`,
       );
       onClose();
     } catch (e) {
@@ -64,7 +67,7 @@ export function AssignTeamModal({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      title={`Đặt vai trò cho nhóm “${team.name}” trong dự án`}
+      title={`Đặt vai trò cho nhóm “${shown.name}” trong dự án`}
       size="md"
       footer={
         <>
@@ -81,8 +84,8 @@ export function AssignTeamModal({
         <p className="text-sm text-muted">
           Mọi thành viên của không gian làm việc vốn đã có mặt trong dự án với{' '}
           <strong>vai trò mặc định</strong>. Thao tác này đặt <strong>vai trò riêng</strong> cho{' '}
-          {team.memberCount} thành viên của nhóm trong dự án bạn chọn — vai trò riêng được dùng thay
-          cho vai trò mặc định.
+          {shown.memberCount} thành viên của nhóm trong dự án bạn chọn — vai trò riêng được dùng
+          thay cho vai trò mặc định.
         </p>
         <div>
           <label

@@ -4,6 +4,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { useRetained } from '@/lib/useRetained';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useProjects } from '@/features/projects/api';
 import { useCreateContract, useUpdateContract, formatMoney, type ContractDto } from './api';
@@ -57,9 +58,9 @@ function Field({
 /** Modal tạo/sửa hợp đồng của một khách hàng. */
 export function ContractEditorModal({
   open,
-  clientId,
-  clientName,
-  contract,
+  clientId: clientIdProp,
+  clientName: clientNameProp,
+  contract: contractProp,
   onClose,
 }: {
   open: boolean;
@@ -71,6 +72,13 @@ export function ContractEditorModal({
   const { data: projects } = useProjects();
   const create = useCreateContract();
   const update = useUpdateContract();
+  // Cha về `null` ngay khi đóng → giữ ảnh chụp lần mở cuối để tiêu đề/nút không đổi giữa hiệu ứng đóng.
+  const snap = useRetained(
+    open ? { clientId: clientIdProp, clientName: clientNameProp, contract: contractProp } : null,
+  );
+  const clientId = snap?.clientId ?? null;
+  const clientName = snap?.clientName;
+  const contract = snap?.contract;
   const editing = !!contract;
 
   const [name, setName] = useState('');
@@ -105,7 +113,7 @@ export function ContractEditorModal({
   const parsedValue = parseMoney(value);
   const dateOrderInvalid = !!startDate && !!endDate && startDate > endDate;
 
-  if (!open || !clientId) return null;
+  if (!clientId) return null;
 
   const busy = create.isPending || update.isPending;
   const canSave = name.trim().length > 0 && !dateOrderInvalid && !busy;

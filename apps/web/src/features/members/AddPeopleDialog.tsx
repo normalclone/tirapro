@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Search } from 'lucide-react';
+import { Check, Search, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { Avatar } from '@/components/ui/primitives';
@@ -146,8 +146,6 @@ export function AddPeopleDialog({
     [candidates],
   );
 
-  if (!open) return null;
-
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.has(c.id));
   const busy = addWs.isPending || addProj.isPending;
   const canSubmit = selected.size > 0 && roleIds.length > 0 && !busy;
@@ -189,7 +187,8 @@ export function AddPeopleDialog({
 
   return (
     <Dialog
-      open
+      open={open}
+      icon={<Users className="h-4 w-4" />}
       onOpenChange={(o) => {
         if (!o) onClose();
       }}

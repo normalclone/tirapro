@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
+import { useRetained } from '@/lib/useRetained';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
@@ -20,6 +21,8 @@ export function ProgramProjectsModal({
   const { data: projects } = useProjects();
   const setProjects = useSetProgramProjects();
   const [ids, setIds] = useState<string[]>([]);
+  // Giữ chương trình gần nhất để nội dung không biến mất giữa hiệu ứng đóng.
+  const shown = useRetained(program);
 
   useEffect(() => {
     if (!open) return;
@@ -31,12 +34,12 @@ export function ProgramProjectsModal({
     [projects],
   );
 
-  if (!open || !program) return null;
+  if (!shown) return null;
 
   async function save() {
-    if (!program) return;
+    if (!shown) return;
     try {
-      await setProjects.mutateAsync({ id: program.id, projectIds: ids });
+      await setProjects.mutateAsync({ id: shown.id, projectIds: ids });
       toast.success('Đã cập nhật danh sách dự án của chương trình');
       onClose();
     } catch (e) {
@@ -50,7 +53,13 @@ export function ProgramProjectsModal({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      title={`Gán dự án · ${program.name}`}
+      title={`Gán dự án · ${shown.name}`}
+      icon={
+        <span
+          className="h-3 w-3 rounded-full"
+          style={{ background: shown.color ?? 'var(--faint)' }}
+        />
+      }
       size="md"
       footer={
         <>

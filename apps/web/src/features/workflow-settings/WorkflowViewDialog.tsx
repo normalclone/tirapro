@@ -203,16 +203,20 @@ export function WorkflowViewDialog({
   );
   const edges = useMemo(() => (workflow ? buildEdges(workflow) : []), [workflow]);
 
-  if (!open) return null;
-
   return (
     <Dialog
-      open
+      open={open}
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
       title={`Quy trình${workflow ? `: ${workflow.name}` : ''}`}
-      description={currentStatusName ? `Hiện tại: ${currentStatusName}` : undefined}
+      headerExtra={
+        currentStatusName && (
+          <span className="shrink-0 rounded bg-primary-subtle px-2 py-0.5 text-xs font-medium text-primary">
+            Hiện tại: {currentStatusName}
+          </span>
+        )
+      }
       size="xl"
       className="h-[80vh]"
       bodyClassName="relative p-0"

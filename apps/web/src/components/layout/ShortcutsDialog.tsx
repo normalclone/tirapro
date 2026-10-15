@@ -1,3 +1,4 @@
+import { Keyboard } from 'lucide-react';
 import { Dialog } from '@/components/ui/Dialog';
 
 /** Sự kiện mở bảng phím tắt (phát từ hotkey `?` hoặc bảng lệnh). */
@@ -37,6 +38,7 @@ export function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () 
         if (!o) onClose();
       }}
       title="Phím tắt"
+      icon={<Keyboard className="h-4 w-4" />}
     >
       <div className="space-y-5 py-1">
         {GROUPS.map((group) => (

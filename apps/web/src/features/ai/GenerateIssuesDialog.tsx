@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Wand2 } from 'lucide-react';
+import { Sparkles, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AiGeneratedIssue } from '@tirapro/shared';
 import { api, apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -16,7 +17,16 @@ interface Row extends AiGeneratedIssue {
   selected: boolean;
 }
 
-export function GenerateIssuesDialog({
+/**
+ * Luôn mount (có hiệu ứng đóng); `key` theo lần mở → mỗi lần mở là mount mới nên form khởi tạo lại, không có
+ * khung hình nội dung cũ. Lúc đóng `key` giữ nguyên nên nội dung ở lại suốt hiệu ứng.
+ */
+export function GenerateIssuesDialog(props: ComponentProps<typeof GenerateIssuesDialogInner>) {
+  const session = useOpenSession(props.open);
+  return <GenerateIssuesDialogInner key={session} {...props} />;
+}
+
+function GenerateIssuesDialogInner({
   projectKey,
   projectId,
   open,
@@ -34,16 +44,6 @@ export function GenerateIssuesDialog({
   const [rows, setRows] = useState<Row[] | null>(null);
   const [source, setSource] = useState<'claude' | 'heuristic' | null>(null);
   const [creating, setCreating] = useState(false);
-
-  useEffect(() => {
-    if (!open) {
-      setText('');
-      setRows(null);
-      setSource(null);
-    }
-  }, [open]);
-
-  if (!open) return null;
 
   const defaultTypeId =
     meta?.issueTypes.find((t) => !t.isSubtask)?.id ?? meta?.issueTypes[0]?.id ?? '';
@@ -105,7 +105,8 @@ export function GenerateIssuesDialog({
 
   return (
     <Dialog
-      open
+      open={open}
+      icon={<Sparkles className="h-4 w-4" />}
       onOpenChange={(o) => {
         if (!o) onClose();
       }}

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { useRetained } from '@/lib/useRetained';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
 import { useProjects } from '@/features/projects/api';
 import { useSetClientProjects, type ClientDto } from './api';
@@ -20,6 +21,8 @@ export function ClientProjectsModal({
   const { data: projects } = useProjects();
   const setProjects = useSetClientProjects();
   const [ids, setIds] = useState<string[]>([]);
+  // Giữ khách hàng gần nhất để nội dung không biến mất giữa hiệu ứng đóng.
+  const shown = useRetained(client);
 
   useEffect(() => {
     if (!open) return;
@@ -31,12 +34,12 @@ export function ClientProjectsModal({
     [projects],
   );
 
-  if (!open || !client) return null;
+  if (!shown) return null;
 
   async function save() {
-    if (!client) return;
+    if (!shown) return;
     try {
-      await setProjects.mutateAsync({ id: client.id, projectIds: ids });
+      await setProjects.mutateAsync({ id: shown.id, projectIds: ids });
       toast.success('Đã cập nhật danh sách dự án của khách hàng');
       onClose();
     } catch (e) {
@@ -50,7 +53,7 @@ export function ClientProjectsModal({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      title={`Gán dự án · ${client.name}`}
+      title={`Gán dự án · ${shown.name}`}
       size="md"
       footer={
         <>

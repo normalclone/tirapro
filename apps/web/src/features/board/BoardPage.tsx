@@ -30,6 +30,8 @@ import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/pr
 import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
+import { useOpenSession } from '@/lib/useOpenSession';
+import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useCan, useCanEditIssue } from '@/features/projects/permissions';
@@ -198,6 +200,10 @@ export function BoardPage() {
     /** `null` = chưa đổi người → lấy bản mới nhất của việc khi người dùng chọn (tránh 409 nếu thẻ đổi qua realtime). */
     version: number | null;
   } | null>(null);
+  // Giữ bản cuối của hai hộp hỏi để nội dung (mã việc, tên cột, danh sách đích) không trống đi giữa hiệu ứng đóng.
+  const wipShown = useRetained(wipPrompt);
+  const pickShown = useRetained(pick);
+  const settingsKey = useOpenSession(settingsOpen);
   const {
     swimlaneBy,
     override: swimlaneOverride,
@@ -623,8 +629,10 @@ export function BoardPage() {
         )}
       </div>
 
-      {settingsOpen && project?.id && (
+      {/* Luôn mount sau lần mở đầu (để có hiệu ứng đóng); key theo lần mở → bản nháp cột khởi tạo lại. */}
+      {settingsKey > 0 && project?.id && (
         <BoardSettingsDialog
+          key={settingsKey}
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           projectId={project.id}
@@ -634,21 +642,21 @@ export function BoardPage() {
       <ConfirmDialog
         open={!!wipPrompt}
         danger={false}
-        title={`Cột “${wipPrompt?.col.name ?? ''}” đã đạt giới hạn WIP`}
-        description={`Cột chỉ nên có tối đa ${wipPrompt?.col.wipLimit ?? ''} việc đang làm cùng lúc. Chuyển ${wipPrompt?.issueKey ?? 'việc này'} vào sẽ vượt giới hạn đó. Bạn vẫn muốn chuyển?`}
+        title={`Cột “${wipShown?.col.name ?? ''}” đã đạt giới hạn WIP`}
+        description={`Cột chỉ nên có tối đa ${wipShown?.col.wipLimit ?? ''} việc đang làm cùng lúc. Chuyển ${wipShown?.issueKey ?? 'việc này'} vào sẽ vượt giới hạn đó. Bạn vẫn muốn chuyển?`}
         confirmLabel="Vẫn chuyển"
         cancelLabel="Giữ nguyên"
         onConfirm={confirmForce}
         onCancel={() => setWipPrompt(null)}
       />
-      {pick && (
+      {pickShown && (
         <StatusPickDialog
-          open
-          issueKey={pick.issue.key}
-          colName={pick.col.name}
-          options={pick.options}
+          open={!!pick}
+          issueKey={pickShown.issue.key}
+          colName={pickShown.col.name}
+          options={pickShown.options}
           onPick={(id, name) => {
-            const p = pick;
+            const p = pickShown;
             setPick(null);
             const latest = (issues ?? []).find((i) => i.id === p.issue.id) ?? p.issue;
             runTransition(latest, p.col, id, false, name, p.version ?? latest.version);

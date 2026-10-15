@@ -6,6 +6,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
+import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
 import { useAttachGoalIssues, useIssueSearch, type GoalDto } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
@@ -27,6 +28,8 @@ export function AttachIssuesModal({
   const [debounced, setDebounced] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
   const attach = useAttachGoalIssues();
+  // Giữ mục tiêu gần nhất để nội dung không biến mất giữa hiệu ứng đóng.
+  const shown = useRetained(goal);
 
   useEffect(() => {
     if (!open) return;
@@ -40,20 +43,20 @@ export function AttachIssuesModal({
     return () => clearTimeout(t);
   }, [term]);
 
-  const resultsQuery = useIssueSearch(debounced, goal?.projectId ?? null, open && !!goal);
+  const resultsQuery = useIssueSearch(debounced, shown?.projectId ?? null, open && !!shown);
 
-  if (!open || !goal) return null;
+  if (!shown) return null;
 
-  const attached = new Set(goal.issues.map((i) => i.id));
+  const attached = new Set(shown.issues.map((i) => i.id));
 
   function toggle(id: string) {
     setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   async function submit() {
-    if (picked.length === 0 || !goal) return;
+    if (picked.length === 0 || !shown) return;
     try {
-      await attach.mutateAsync({ goalId: goal.id, issueIds: picked });
+      await attach.mutateAsync({ goalId: shown.id, issueIds: picked });
       toast.success(`Đã gắn ${picked.length} công việc vào mục tiêu`);
       onClose();
     } catch (e) {
@@ -67,7 +70,7 @@ export function AttachIssuesModal({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      title={`Gắn công việc · ${goal.name}`}
+      title={`Gắn công việc · ${shown.name}`}
       size="md"
       bodyClassName="flex flex-col overflow-hidden p-0"
       footer={
@@ -105,9 +108,9 @@ export function AttachIssuesModal({
             aria-label="Tìm công việc để gắn"
           />
         </div>
-        {goal.project && (
+        {shown.project && (
           <p className="mt-1.5 text-xs text-faint">
-            Mục tiêu này thuộc dự án {goal.project.name} nên chỉ tìm công việc trong dự án đó.
+            Mục tiêu này thuộc dự án {shown.project.name} nên chỉ tìm công việc trong dự án đó.
           </p>
         )}
       </div>

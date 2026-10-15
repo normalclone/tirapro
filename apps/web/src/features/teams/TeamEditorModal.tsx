@@ -108,8 +108,6 @@ export function TeamEditorModal({
     if (leadId && !memberIds.includes(leadId)) setLeadId('');
   }, [memberIds, leadId]);
 
-  if (!open) return null;
-
   const busy = create.isPending || update.isPending;
   const canSave = name.trim().length > 0 && !busy;
 
@@ -143,6 +141,7 @@ export function TeamEditorModal({
         if (!o) onClose();
       }}
       title={editing ? 'Sửa nhóm' : 'Tạo nhóm'}
+      icon={<span className="h-3 w-3 rounded-full" style={{ background: color }} />}
       size="md"
       footer={
         <>

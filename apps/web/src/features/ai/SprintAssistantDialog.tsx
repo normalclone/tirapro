@@ -32,17 +32,11 @@ export function SprintAssistantDialog({
   const [result, setResult] = useState<AiSprintPlanResult | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
 
-  const { reset: resetPlan } = plan;
+  // Cha gắn `key` theo lần mở nên mỗi lần mở là mount mới (kết quả/năng lực cũ không còn); chỉ đồng bộ lại
+  // mục tiêu nếu sprint đổi mục tiêu khi hộp đang mở.
   useEffect(() => {
-    if (open) {
-      setGoal(sprint.goal ?? '');
-      return;
-    }
-    setCapacity('');
-    setResult(null);
-    setTicked(new Set());
-    resetPlan();
-  }, [open, sprint.goal, resetPlan]);
+    if (open) setGoal(sprint.goal ?? '');
+  }, [open, sprint.goal]);
 
   const capacityNum = capacity.trim() === '' ? undefined : Number(capacity);
   const capacityInvalid =
@@ -100,6 +94,7 @@ export function SprintAssistantDialog({
         if (!o) onClose();
       }}
       title={`Trợ lý lập sprint — ${sprint.name}`}
+      icon={<Sparkles className="h-4 w-4" />}
       description="Đề xuất việc trong Backlog vừa với năng lực của đội. Bạn xem lại và bỏ tick việc nào không muốn đưa vào."
       size="lg"
       footer={

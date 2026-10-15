@@ -1,4 +1,13 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type ComponentType,
+  type ReactNode,
+} from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
@@ -66,9 +75,10 @@ import { isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { IssueDto } from '@tirapro/types';
+import type { WorkflowViewDialog as WorkflowViewDialogType } from '@/features/workflow-settings/WorkflowViewDialog';
 
 /** Sơ đồ quy trình kéo theo reactflow (nặng) → chỉ tải khi người dùng bấm “Xem quy trình”. */
-const WorkflowViewDialog = lazy(() =>
+const WorkflowViewDialog = lazy<ComponentType<ComponentProps<typeof WorkflowViewDialogType>>>(() =>
   import('@/features/workflow-settings/WorkflowViewDialog')
     .then((m) => ({ default: m.WorkflowViewDialog }))
     .catch(() => {
@@ -233,8 +243,8 @@ export function IssueDetailPage() {
       const tag = el?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable)
         return;
-      // Chặn khi còn overlay/menu Radix đang mở ở đâu đó trên trang.
-      if (document.querySelector('[data-radix-popper-content-wrapper],[role="dialog"]')) return;
+      // Chặn khi còn overlay/menu Radix đang MỞ (dialog đã đóng nhưng còn chạy hiệu ứng không chặn).
+      if (isOverlayOpen()) return;
       // i = gán cho tôi, y = sao chép liên kết.
       if ((e.key === 'i' || e.key === 'I') && canEditThis) {
         e.preventDefault();

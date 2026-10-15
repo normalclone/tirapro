@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
 import { apiErrorMessage } from '@/lib/api';
+import { useRetained } from '@/lib/useRetained';
 import { useProjects } from '@/features/projects/api';
 import { useWorkspaceUsers } from '@/features/members/api';
 import {
@@ -90,7 +91,7 @@ function suggestPeriods(): string[] {
 /** Modal tạo/sửa mục tiêu (OKR) — thông tin chung + danh sách kết quả then chốt. */
 export function GoalEditorModal({
   open,
-  goal,
+  goal: goalProp,
   defaultPeriod,
   onClose,
 }: {
@@ -103,6 +104,8 @@ export function GoalEditorModal({
   const { data: users } = useWorkspaceUsers();
   const create = useCreateGoal();
   const update = useUpdateGoal();
+  // Cha đặt `goal` về null ngay khi đóng → giữ bản lúc mở để tiêu đề/nút không đổi giữa hiệu ứng đóng.
+  const goal = useRetained(open ? { goal: goalProp } : null)?.goal;
   const editing = !!goal;
 
   const [name, setName] = useState('');
@@ -163,8 +166,6 @@ export function GoalEditorModal({
       })),
     [users],
   );
-
-  if (!open) return null;
 
   const busy = create.isPending || update.isPending;
   const validKrs = krs.filter((kr) => kr.name.trim().length > 0);
