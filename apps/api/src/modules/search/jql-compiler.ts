@@ -138,18 +138,27 @@ function compileOrder(o: JqlOrderBy): Prisma.IssueOrderByWithRelationInput {
   return { updatedAt: dir };
 }
 
+/** Escape `\`, `%`, `_` — Prisma `contains` KHÔNG tự escape (ghép thẳng vào LIKE; `\` là escape mặc định của Postgres). */
+function escapeLike(v: string): string {
+  return v.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 /**
  * Điều kiện Prisma ĐẦY ĐỦ cho `text ~ v`: id full-text đã xếp hạng (nếu có) HOẶC chuỗi con ở
  * summary/description/key. Đúng đắn không phụ thuộc danh sách xếp hạng (vốn bị cắt top-N);
  * danh sách đó chỉ giúp bắt token khác dạng mà `contains` không thấy và để xếp hạng (rankHint).
+ *
+ * Không bao giờ cho NULL (3 trị đúng/sai): `description` có thể NULL nên chặn bằng `not: null`
+ * — nhờ vậy `NOT (…)` (kể cả `!~`, `NOT (text ~ …)` hay NOT bọc nhiều điều kiện) luôn là phần bù đúng,
+ * không làm rơi issue không có mô tả.
  */
 function textMatchWhere(v: string, ranked?: readonly string[]): Where {
-  const like = { contains: v, mode: 'insensitive' as const };
+  const like = { contains: escapeLike(v), mode: 'insensitive' as const };
   return {
     OR: [
       ...(ranked?.length ? [{ id: { in: [...ranked] } }] : []),
       { summary: like },
-      { description: like },
+      { AND: [{ description: { not: null } }, { description: like }] },
       { key: like },
     ],
   };
@@ -194,7 +203,8 @@ function compileComparison(
     }
     case 'fulltext': {
       const v = scalarString(value, ctx);
-      const match = textMatchWhere(v, op === '~' ? ctx.fulltext?.get(v) : undefined);
+      // `!~` dùng cùng tập xếp hạng (nếu `text ~ v` cũng có trong truy vấn) để hai vế là phần bù chính xác.
+      const match = textMatchWhere(v, ctx.fulltext?.get(v));
       return op === '!~' ? { NOT: match } : match;
     }
     case 'array': {
