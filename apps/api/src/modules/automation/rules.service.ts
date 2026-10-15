@@ -17,6 +17,8 @@ import {
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { TelegramService } from '../integrations/telegram.service';
+import { maskWebhookActions, openSecret, sealWebhookActions } from './webhook-secret';
 
 const CACHE_TTL_SEC = 60;
 const cacheKey = (workspaceId: string) => `automation:rules:${workspaceId}`;
@@ -41,6 +43,7 @@ export class RulesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly cipher: TelegramService,
   ) {}
 
   /* ------------------------------ cache ------------------------------ */
@@ -125,7 +128,7 @@ export class RulesService {
         trigger: input.trigger,
         triggerConfig: input.triggerConfig,
         conditions: input.conditions as Prisma.InputJsonValue,
-        actions: input.actions,
+        actions: sealWebhookActions(this.cipher, input.actions, undefined) as Prisma.InputJsonValue,
         createdById: userId,
       },
     });
@@ -153,7 +156,15 @@ export class RulesService {
         ...(input.conditions !== undefined
           ? { conditions: input.conditions as Prisma.InputJsonValue }
           : {}),
-        ...(input.actions !== undefined ? { actions: input.actions } : {}),
+        ...(input.actions !== undefined
+          ? {
+              actions: sealWebhookActions(
+                this.cipher,
+                input.actions,
+                current.actions as unknown[],
+              ) as Prisma.InputJsonValue,
+            }
+          : {}),
       },
     });
     if (count === 0) throw new NotFoundAppException('Quy tắc');
@@ -195,6 +206,11 @@ export class RulesService {
       durationMs: r.durationMs,
       createdAt: r.createdAt.toISOString(),
     }));
+  }
+
+  /** Giải mã khoá bí mật webhook đã lưu (cache/DB giữ bản mã hoá); null = không giải mã được. */
+  openSecret(stored: string): string | null {
+    return openSecret(this.cipher, stored);
   }
 
   /** Dùng bởi controller/engine: quy tắc thuộc workspace hoặc NotFound. */
@@ -259,7 +275,7 @@ export class RulesService {
       trigger: r.trigger,
       triggerConfig: r.triggerConfig as Record<string, unknown>,
       conditions: r.conditions as unknown as Array<Record<string, unknown>>,
-      actions: r.actions as unknown as Array<Record<string, unknown>>,
+      actions: maskWebhookActions(r.actions as unknown[]) as Array<Record<string, unknown>>,
       createdById: r.createdById,
       lastRunAt: r.lastRunAt?.toISOString() ?? null,
       runCount: r.runCount,

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CommentsModule } from '../comments/comments.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 import { IssuesModule } from '../issues/issues.module';
 import { AutomationController } from './automation.controller';
 import { AutomationService } from './automation.service';
@@ -14,7 +15,7 @@ import { RulesService } from './rules.service';
  * Import IssuesModule/CommentsModule để mọi thay đổi đi đúng luồng workflow/OCC/sự kiện.
  */
 @Module({
-  imports: [IssuesModule, CommentsModule],
+  imports: [IssuesModule, CommentsModule, IntegrationsModule],
   controllers: [AutomationController, RulesController],
   providers: [AutomationService, RulesService, RuleEngineService],
   exports: [AutomationService, RulesService],

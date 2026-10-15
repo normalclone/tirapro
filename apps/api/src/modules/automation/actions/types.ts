@@ -10,6 +10,8 @@ export interface ActionDeps {
   issues: IssuesService;
   comments: CommentsService;
   events: EventEmitter2;
+  /** Giải mã khoá bí mật webhook đã lưu; null = không giải mã được. */
+  openSecret(stored: string): string | null;
 }
 
 /** Ngữ cảnh một lần chạy quy tắc trên MỘT issue. */

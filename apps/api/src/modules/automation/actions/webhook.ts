@@ -30,6 +30,8 @@ for (const [net, prefix] of [
   ['fe80::', 10],
   ['fec0::', 10],
   ['64:ff9b::', 96],
+  ['2002::', 16], // 6to4 và Teredo nhúng IPv4 tuỳ ý
+  ['2001::', 32],
   ['ff00::', 8],
 ] as const)
   BLOCKED.addSubnet(net, prefix, 'ipv6');
@@ -59,13 +61,30 @@ export interface SafeTarget {
   url: URL;
   address: string;
   family: 4 | 6;
+  /** Mọi địa chỉ đã kiểm (theo thứ tự phân giải) — dispatcher ghim cả danh sách để thử lần lượt. */
+  addresses: Array<{ address: string; family: 4 | 6 }>;
+}
+
+/** Chờ `p` nhưng bỏ ngay (reject) khi `signal` abort — `dns.lookup` không huỷ được nên lệnh treo vẫn chạy nền. */
+function raceAbort<T>(
+  p: Promise<T>,
+  signal: AbortSignal | undefined,
+  onAbort: () => Error,
+): Promise<T> {
+  if (!signal) return p;
+  return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) return reject(onAbort());
+    const h = () => reject(onAbort());
+    signal.addEventListener('abort', h, { once: true });
+    p.then(resolve, reject).finally(() => signal.removeEventListener('abort', h));
+  });
 }
 
 /**
  * Phân giải tên miền MỘT lần, kiểm TOÀN BỘ địa chỉ trả về, rồi trả địa chỉ đã kiểm để kết nối đúng IP đó
  * (chống DNS rebinding: không phân giải lần hai giữa lúc kiểm và lúc kết nối). Không cho kèm user:pass trong URL.
  */
-export async function resolveSafeTarget(raw: string): Promise<SafeTarget> {
+export async function resolveSafeTarget(raw: string, signal?: AbortSignal): Promise<SafeTarget> {
   let url: URL;
   try {
     url = new URL(raw);
@@ -81,7 +100,14 @@ export async function resolveSafeTarget(raw: string): Promise<SafeTarget> {
   const host = url.hostname.replace(/^\[|\]$/g, '');
   const found = isIP(host)
     ? [{ address: host, family: isIP(host) }]
-    : await lookup(host, { all: true }).catch(() => []);
+    : await raceAbort(
+        lookup(host, { all: true }).catch(() => []),
+        signal,
+        () =>
+          new BusinessRuleException(
+            'Không phân giải được địa chỉ webhook trong thời gian cho phép — hãy kiểm tra lại tên miền',
+          ),
+      );
   if (!found.length)
     throw new BusinessRuleException(
       'Không phân giải được địa chỉ webhook — hãy kiểm tra lại tên miền',
@@ -93,12 +119,18 @@ export async function resolveSafeTarget(raw: string): Promise<SafeTarget> {
       'Địa chỉ webhook trỏ vào mạng nội bộ nên bị chặn — hãy dùng địa chỉ công khai',
     );
   }
-  const first = found[0]!;
-  return { url, address: first.address, family: first.family === 6 ? 6 : 4 };
+  const addresses = found.map((r) => ({
+    address: r.address,
+    family: r.family === 6 ? (6 as const) : (4 as const),
+  }));
+  return { url, address: addresses[0]!.address, family: addresses[0]!.family, addresses };
 }
 
-/** Hàm `lookup` cho undici: luôn trả đúng địa chỉ đã kiểm (xử lý cả kiểu gọi `all: true`). */
-export function pinnedLookup(address: string, family: 4 | 6) {
+/**
+ * Hàm `lookup` cho undici: chỉ trả các địa chỉ đã kiểm (xử lý cả kiểu gọi `all: true` — undici/Node dùng để
+ * thử lần lượt khi `autoSelectFamily`; `all: false` trả phần tử đầu).
+ */
+export function pinnedLookup(addresses: ReadonlyArray<{ address: string; family: 4 | 6 }>) {
   return (
     _hostname: string,
     options: { all?: boolean },
@@ -108,8 +140,12 @@ export function pinnedLookup(address: string, family: 4 | 6) {
       family?: number,
     ) => void,
   ): void => {
-    if (options?.all) cb(null, [{ address, family }]);
-    else cb(null, address, family);
+    if (options?.all)
+      cb(
+        null,
+        addresses.map((a) => ({ ...a })),
+      );
+    else cb(null, addresses[0]!.address, addresses[0]!.family);
   };
 }
 
@@ -122,35 +158,44 @@ export async function runWebhook(
   ctx: ActionContext,
   a: Extract<RuleAction, { type: 'webhook' }>,
 ): Promise<ActionResult> {
-  const { url, address, family } = await resolveSafeTarget(a.url);
-  if (ctx.dryRun) return `Sẽ gọi webhook ${url.origin}${url.pathname}`;
-  const body = JSON.stringify({
-    event: ctx.trigger,
-    rule: { id: ctx.rule.id, name: ctx.rule.name },
-    issue: {
-      id: ctx.issue.id,
-      key: ctx.issue.key,
-      summary: ctx.issue.summary,
-      projectId: ctx.issue.projectId,
-      status: ctx.issue.status.name,
-      priority: ctx.issue.priority?.name ?? null,
-      assigneeId: ctx.issue.assigneeId,
-    },
-    sentAt: new Date().toISOString(),
-  });
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'User-Agent': 'Tirapro-Automation/1.0',
-  };
-  if (a.secret)
-    headers['X-Tirapro-Signature'] =
-      `sha256=${createHmac('sha256', a.secret).update(body).digest('hex')}`;
-
+  // Một đồng hồ 5 giây bao cả phân giải DNS lẫn kết nối/phản hồi.
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
-  // Kết nối thẳng tới IP đã kiểm; TLS/SNI vẫn dùng tên miền trong URL.
-  const dispatcher = new Agent({ connect: { lookup: pinnedLookup(address, family) } });
+  let dispatcher: Agent | undefined;
   try {
+    const { url, addresses } = await resolveSafeTarget(a.url, ac.signal);
+    if (ctx.dryRun) return `Sẽ gọi webhook ${url.origin}${url.pathname}`;
+    const secret = a.secret ? ctx.deps.openSecret(a.secret) : undefined;
+    if (a.secret && secret == null)
+      throw new BusinessRuleException(
+        'Khoá bí mật của webhook không giải mã được — hãy nhập lại khoá trong quy tắc',
+      );
+    const body = JSON.stringify({
+      event: ctx.trigger,
+      rule: { id: ctx.rule.id, name: ctx.rule.name },
+      issue: {
+        id: ctx.issue.id,
+        key: ctx.issue.key,
+        summary: ctx.issue.summary,
+        projectId: ctx.issue.projectId,
+        status: ctx.issue.status.name,
+        priority: ctx.issue.priority?.name ?? null,
+        assigneeId: ctx.issue.assigneeId,
+      },
+      sentAt: new Date().toISOString(),
+    });
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'User-Agent': 'Tirapro-Automation/1.0',
+    };
+    if (secret)
+      headers['X-Tirapro-Signature'] =
+        `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
+
+    // Kết nối thẳng tới các IP đã kiểm (thử lần lượt); TLS/SNI vẫn dùng tên miền trong URL.
+    dispatcher = new Agent({
+      connect: { lookup: pinnedLookup(addresses), autoSelectFamily: true },
+    });
     const res = await fetch(url, {
       method: 'POST',
       headers,
@@ -176,6 +221,6 @@ export async function runWebhook(
     );
   } finally {
     clearTimeout(timer);
-    await dispatcher.close().catch(() => undefined);
+    await dispatcher?.close().catch(() => undefined);
   }
 }

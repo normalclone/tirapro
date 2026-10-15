@@ -20,7 +20,8 @@
     "db:seed:rich": "node prisma/seed-rich.mjs",
     "db:reset": "prisma migrate reset --force",
     "db:studio": "prisma studio",
-    "integrations:rekey": "node scripts/rekey-integrations.mjs"
+    "integrations:rekey": "node scripts/rekey-integrations.mjs",
+    "automation:seal-secrets": "node scripts/seal-webhook-secrets.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
