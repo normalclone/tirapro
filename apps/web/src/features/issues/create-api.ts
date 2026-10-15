@@ -12,6 +12,7 @@ export interface CreateIssueInput {
   priorityId?: string;
   assigneeId?: string | null;
   parentId?: string | null;
+  epicId?: string | null;
   storyPoints?: number;
   sprintId?: string | null;
   statusId?: string;

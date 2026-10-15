@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
+import { matchesQuery } from '@/lib/text';
 import { cn } from '@/lib/utils';
 
 export interface SearchSelectOption {
@@ -51,11 +52,9 @@ export function SearchSelect({
   const [q, setQ] = useState('');
 
   const selected = options.find((o) => o.value === value);
-  const query = q.trim().toLowerCase();
-  const filtered = query
-    ? options.filter(
-        (o) => o.label.toLowerCase().includes(query) || o.value.toLowerCase().includes(query),
-      )
+  // Không phân biệt hoa thường/dấu, tìm cả theo `hint` (mã) lẫn `value`: "dang ky" ra "Đăng ký", "psl 3" ra PSL-TASK-3.
+  const filtered = q.trim()
+    ? options.filter((o) => matchesQuery(q, o.label, o.hint, o.value))
     : options;
 
   function pick(v: string) {

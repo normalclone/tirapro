@@ -57,6 +57,8 @@ import { FOCUS_COMMENT_EVENT } from '@/features/command/events';
 import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
 import { IssueLabelsPicker } from '@/features/issue-meta/IssueLabelsPicker';
+import { EpicParentField } from '@/features/issue-meta/EpicParentField';
+import { isEpicIssue } from '@/lib/issueRefs';
 import { IssueComponentsPicker } from '@/features/issue-meta/IssueComponentsPicker';
 import { DelayedSpinner, EmptyState } from '@/components/ui/primitives';
 import { pageContainer } from '@/components/layout/page';
@@ -114,10 +116,11 @@ export function IssueDetailPage() {
   // Trang chi tiết nằm ngoài ProjectLayout → tự nhận realtime của project chứa issue này.
   useProjectRealtime(issue?.projectId);
   // Việc cha chỉ để hiện breadcrumb: đọc từ cache dự án (có sẵn khi đi từ board sang) mà KHÔNG tải cả danh sách việc.
-  const parentId = issue?.parentId ?? null;
+  // Cha trong cây = `parentId ?? epicId` (việc gắn epic nhưng không có cha thường vẫn hiện epic ở breadcrumb).
+  const parentLinkId = issue?.parentId ?? issue?.epicId ?? null;
   const { data: parent = null } = useCachedProjectIssue(issue?.projectId, (list) => {
-    const p = parentId ? list.find((i) => i.id === parentId) : undefined;
-    return p ? { key: p.key, summary: p.summary } : null;
+    const p = parentLinkId ? list.find((i) => i.id === parentLinkId) : undefined;
+    return p ? { key: p.key, summary: p.summary, isEpic: isEpicIssue(p) } : null;
   });
   const updateIssue = useUpdateIssue(issue?.projectId);
   const createIssue = useCreateIssue(issue?.projectId ?? '');
@@ -367,7 +370,7 @@ export function IssueDetailPage() {
                   <Link
                     to={`/issue/${parent.key}`}
                     className="truncate font-mono hover:text-ink"
-                    title={`Việc cha: ${parent.summary}`}
+                    title={`${parent.isEpic ? 'Epic' : 'Việc cha'}: ${parent.summary}`}
                   >
                     {parent.key}
                   </Link>
@@ -681,6 +684,7 @@ export function IssueDetailPage() {
                 {/* Cột phải: Người liên quan + Mốc thời gian */}
                 <aside className="min-w-0">
                   <div className="space-y-5 lg:sticky lg:top-4">
+                    <EpicParentField issue={issue} />
                     <IssuePeoplePanel issue={issue} />
                     <IssueDatesPanel issue={issue} canEditRestricted={canEditRestricted} />
                     <LazyPanel id="issue-worklog" minHeight={96} force={worklogRequest > 0}>

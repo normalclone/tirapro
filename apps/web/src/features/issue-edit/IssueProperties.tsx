@@ -23,11 +23,11 @@ import { cn } from '@/lib/utils';
 import { LOCALE } from '@/lib/locale';
 
 /** Trigger SearchSelect ở dạng badge/label (không viền, hover nền) — bấm để đổi. */
-const INLINE_TRIGGER =
+export const INLINE_TRIGGER =
   'inline-flex h-auto w-auto gap-1 border-transparent bg-transparent px-1 py-0.5 hover:bg-surface-2';
 
 /** Khung 1 mục (tiêu đề + gạch chân) — không phải card có viền. */
-function PanelSection({ title, children }: { title: string; children: ReactNode }) {
+export function PanelSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
       <div className="mb-3 border-b border-border pb-1.5">
@@ -39,7 +39,15 @@ function PanelSection({ title, children }: { title: string; children: ReactNode 
 }
 
 /** Hàng nhãn:giá trị (chỉ đọc / control inline). `hint` = giải nghĩa nhãn khi rê chuột. */
-function InfoRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+export function InfoRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
       <span className="shrink-0 text-muted" title={hint}>

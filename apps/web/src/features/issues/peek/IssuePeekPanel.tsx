@@ -13,6 +13,7 @@ import {
   IssueStoryPointsInline,
   IssueTypeSelect,
 } from '@/features/issue-edit/IssueProperties';
+import { EpicParentField } from '@/features/issue-meta/EpicParentField';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { ChecklistPanel } from '@/features/issue-extras/ChecklistPanel';
 import { LinksPanel } from '@/features/issue-widgets/LinksPanel';
@@ -200,6 +201,8 @@ function PeekContent({ issue }: { issue: IssueDto }) {
         </span>
         <IssueStoryPointsInline issue={issue} canEditRestricted={canEditRestricted} />
       </div>
+
+      <EpicParentField issue={issue} />
 
       <IssuePeoplePanel issue={issue} />
 
