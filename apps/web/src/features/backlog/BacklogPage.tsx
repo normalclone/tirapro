@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Play, CheckCircle2, ChevronRight, Inbox, Sparkles, Pencil } from 'lucide-react';
 import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
 import { buildProgressMap, type SubtreeProgress } from '@/lib/issueTree';
@@ -40,6 +40,7 @@ import {
 } from './api';
 import { CompleteSprintDialog } from './CompleteSprintDialog';
 import { SprintEditDialog } from './SprintEditDialog';
+import { StartSprintDialog, type StartSprintValues } from './StartSprintDialog';
 import { useProjectIssues } from '@/features/issues/api';
 import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
@@ -100,6 +101,7 @@ function pointsSum(issues: IssueDto[]): number {
 
 export function BacklogPage() {
   const { key = '' } = useParams();
+  const navigate = useNavigate();
   const peek = useIssuePeek();
   const {
     data: project,
@@ -173,6 +175,10 @@ export function BacklogPage() {
   const completingKey = useOpenSession(!!completing);
   const editingShown = useRetained(editing);
   const editingKey = useOpenSession(!!editing);
+  // Sprint đang chờ xác nhận Bắt đầu (hộp thoại sửa ngày/mục tiêu + cảnh báo thiếu).
+  const [starting, setStarting] = useState<{ sprint: SprintDto; unestimated: number } | null>(null);
+  const startingShown = useRetained(starting);
+  const startingKey = useOpenSession(!!starting);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -508,13 +514,33 @@ export function BacklogPage() {
 
   const backlogIssues = bySprint.get(BACKLOG_ID) ?? [];
 
-  // Bắt đầu sprint: BE chưa có endpoint "hủy bắt đầu" nên không thể Hoàn tác an toàn
-  // (dùng toast thường; sẽ bổ sung nút Hoàn tác khi có API đảo ngược).
-  function handleStartSprint(id: string, name: string) {
-    startSprint.mutate(id, {
-      onSuccess: () => toast.success(`Đã bắt đầu sprint “${name}”`),
-      onError: (err) => toast.error(apiErrorMessage(err)),
-    });
+  // Mở hộp xác nhận Bắt đầu sprint — MỘT lối vào dùng cho nút và các lệnh khác (vd Cmd+K `?action=start`).
+  // Không gọi API trực tiếp: BE chưa có endpoint "huỷ bắt đầu" nên hộp xác nhận là lưới an toàn.
+  function openStartDialog(sprintId: string) {
+    const sprint = sprints?.find((s) => s.id === sprintId);
+    if (!sprint || sprint.state !== 'FUTURE') return;
+    const unestimated = (bySprint.get(sprintId) ?? []).filter((i) => i.storyPoints == null).length;
+    setStarting({ sprint, unestimated });
+  }
+
+  function confirmStart(values: StartSprintValues) {
+    if (!starting) return;
+    const { id, name } = starting.sprint;
+    startSprint.mutate(
+      { sprintId: id, ...values },
+      {
+        onSuccess: () => {
+          setStarting(null);
+          toast.success(`Đã bắt đầu sprint “${name}”`);
+        },
+        onError: (err) => toast.error(apiErrorMessage(err)),
+      },
+    );
+  }
+
+  // Sau khi kết thúc sprint: sang trang tổng kết đúng sprint đó (x/y điểm, việc chuyển tiếp, so velocity TB).
+  function showSprintSummary(sprintId: string) {
+    navigate(`/p/${key}/reports?tab=sprint&sprint=${sprintId}`);
   }
 
   // Xác nhận hoàn thành sprint còn việc chưa xong; người dùng chọn việc chưa xong đi đâu.
@@ -531,12 +557,14 @@ export function BacklogPage() {
     completeSprint.mutate(
       { sprintId: id, moveIncompleteTo },
       {
-        onSuccess: () =>
+        onSuccess: () => {
           toast.success(
             notDone > 0
               ? `Đã kết thúc sprint “${name}”. ${notDone} việc chưa xong ${where}.`
               : `Đã kết thúc sprint “${name}”`,
-          ),
+          );
+          showSprintSummary(id);
+        },
         onError: (err) => toast.error(apiErrorMessage(err)),
       },
     );
@@ -686,8 +714,7 @@ export function BacklogPage() {
                             <Button
                               size="sm"
                               title={`Bắt đầu đợt làm việc này. ${SPRINT_TIP}`}
-                              loading={startSprint.isPending && startSprint.variables === sprint.id}
-                              onClick={() => handleStartSprint(sprint.id, sprint.name)}
+                              onClick={() => openStartDialog(sprint.id)}
                             >
                               <Play className="h-4 w-4" />
                               Bắt đầu sprint
@@ -709,8 +736,10 @@ export function BacklogPage() {
                                 : completeSprint.mutate(
                                     { sprintId: sprint.id },
                                     {
-                                      onSuccess: () =>
-                                        toast.success(`Đã kết thúc sprint “${sprint.name}”`),
+                                      onSuccess: () => {
+                                        toast.success(`Đã kết thúc sprint “${sprint.name}”`);
+                                        showSprintSummary(sprint.id);
+                                      },
                                       onError: (err) => toast.error(apiErrorMessage(err)),
                                     },
                                   )
@@ -843,6 +872,17 @@ export function BacklogPage() {
             loading={completeSprint.isPending}
             onConfirm={confirmComplete}
             onCancel={() => setCompleting(null)}
+          />
+        )}
+        {startingShown && (
+          <StartSprintDialog
+            key={startingKey}
+            open={!!starting}
+            sprint={startingShown.sprint}
+            unestimatedCount={startingShown.unestimated}
+            loading={startSprint.isPending}
+            onConfirm={confirmStart}
+            onCancel={() => setStarting(null)}
           />
         )}
         {editingShown && projectId && (

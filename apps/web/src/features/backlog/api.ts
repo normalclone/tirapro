@@ -20,6 +20,8 @@ function useInvalidateBacklog(projectId: string) {
   return () => {
     void qc.invalidateQueries({ queryKey: keys.sprints.byProject(projectId) });
     void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
+    // Báo cáo sprint (tổng kết, burndown, velocity) phụ thuộc đúng những thứ vừa đổi.
+    void qc.invalidateQueries({ queryKey: keys.reports.all });
   };
 }
 
@@ -32,11 +34,23 @@ export function useCreateSprint(projectId: string) {
   });
 }
 
+export interface StartSprintRequest {
+  sprintId: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  goal?: string | null;
+}
+
+/** Ngày/mục tiêu (tuỳ chọn) đi cùng request để máy chủ áp trong MỘT giao dịch với việc chuyển ACTIVE. */
+export function postStartSprint(v: StartSprintRequest): Promise<SprintDto> {
+  const { sprintId, ...body } = v;
+  return api.post<SprintDto>(`/sprints/${sprintId}/start`, body).then((r) => r.data);
+}
+
 export function useStartSprint(projectId: string) {
   const invalidate = useInvalidateBacklog(projectId);
   return useMutation({
-    mutationFn: (sprintId: string) =>
-      api.post<SprintDto>(`/sprints/${sprintId}/start`).then((r) => r.data),
+    mutationFn: postStartSprint,
     onSuccess: invalidate,
   });
 }
@@ -44,7 +58,23 @@ export function useStartSprint(projectId: string) {
 /** Nơi chuyển việc chưa xong khi hoàn thành sprint (khớp `completeSprintSchema` ở máy chủ). */
 export type MoveIncompleteTo = 'backlog' | 'new' | { sprintId: string };
 
+/**
+ * Báo cáo của dự án mà việc kết thúc `sprintId` làm đổi. Các query này KHÔNG active khi đang ở Việc chờ nên
+ * `invalidate` chỉ đánh dấu stale: trang tổng kết sẽ chớp bản cache cũ (sprint còn ACTIVE) rồi mới nhảy sang
+ * CLOSED. Xoá hẳn khỏi cache để trang đó hiện khung chờ rồi dữ liệu đúng.
+ */
+export function sprintReportKeys(projectId: string, sprintId: string) {
+  return [
+    keys.reports.sprints(projectId),
+    keys.reports.sprintSummary(sprintId),
+    keys.reports.burndown(sprintId),
+    keys.reports.velocity(projectId),
+    keys.reports.project(projectId),
+  ];
+}
+
 export function useCompleteSprint(projectId: string) {
+  const qc = useQueryClient();
   const invalidate = useInvalidateBacklog(projectId);
   return useMutation({
     mutationFn: (v: { sprintId: string; moveIncompleteTo?: MoveIncompleteTo }) =>
@@ -53,7 +83,11 @@ export function useCompleteSprint(projectId: string) {
           moveIncompleteTo: v.moveIncompleteTo ?? 'backlog',
         })
         .then((r) => r.data),
-    onSuccess: invalidate,
+    onSuccess: (_sprint, v) => {
+      invalidate();
+      for (const queryKey of sprintReportKeys(projectId, v.sprintId))
+        qc.removeQueries({ queryKey });
+    },
   });
 }
 

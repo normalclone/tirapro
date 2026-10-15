@@ -1,10 +1,11 @@
 import { skipToken, useQuery } from '@tanstack/react-query';
-import type { SprintDto } from '@tirapro/types';
+import type { IssueDto, ListResponse, SprintDto } from '@tirapro/types';
 import type {
   BurndownReport,
   VelocityReport,
   CfdReport,
   CreatedResolvedReport,
+  SprintSummaryReport,
 } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -84,6 +85,22 @@ export function useBurndown(sprintId?: string, projectId?: string) {
   });
 }
 
+/** Tổng kết một sprint (x/y điểm, việc chuyển tiếp, so velocity TB) — `GET /reports/sprint-summary`. */
+export function useSprintSummary(sprintId?: string, projectId?: string) {
+  return useQuery({
+    queryKey: keys.reports.sprintSummary(sprintId ?? ''),
+    queryFn:
+      sprintId && projectId
+        ? async () =>
+            (
+              await api.get<SprintSummaryReport>(
+                `/reports/sprint-summary?sprintId=${sprintId}&projectId=${projectId}`,
+              )
+            ).data
+        : skipToken,
+  });
+}
+
 export function useVelocity(projectId?: string) {
   return useQuery({
     queryKey: keys.reports.velocity(projectId ?? ''),
@@ -112,4 +129,33 @@ export function useCreatedResolved(projectId?: string) {
             .data
       : skipToken,
   });
+}
+
+/** Trần số việc gom khi xuất một sprint (sprint thật hiếm khi tới mức này). */
+const SPRINT_EXPORT_CAP = 5000;
+
+/**
+ * Việc của MỘT sprint, lấy MỚI từ máy chủ (không đọc cache, không phụ thuộc danh sách dự án bị cắt ở 2000 việc).
+ * `truncated` = còn việc chưa lấy vì chạm trần `cap`; nơi gọi phải báo người dùng thay vì xuất thiếu im lặng.
+ */
+export async function fetchSprintIssues(
+  projectId: string,
+  sprintId: string,
+  cap = SPRINT_EXPORT_CAP,
+): Promise<{ issues: IssueDto[]; truncated: boolean }> {
+  const issues: IssueDto[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    const qs = new URLSearchParams({ projectId, sprintId, limit: '100' });
+    if (cursor) qs.set('cursor', cursor);
+    const res: ListResponse<IssueDto> = (
+      await api.get<ListResponse<IssueDto>>(`/issues?${qs.toString()}`)
+    ).data;
+    issues.push(...res.data);
+    const info = res.pageInfo;
+    const next = 'hasNextPage' in info && info.hasNextPage ? info.endCursor : null;
+    if (!next || res.data.length === 0) return { issues, truncated: false };
+    if (issues.length >= cap) return { issues, truncated: true };
+    cursor = next;
+  }
 }
