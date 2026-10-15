@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
@@ -26,11 +26,8 @@ export function AcceptanceCriteria({ issue }: { issue: IssueDto }) {
   const people = useAssigneeOptions(issue.projectId);
   const toggleTask = useTaskToggle(issue.projectId, 'acceptanceCriteria');
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(issue.acceptanceCriteria ?? '');
-
-  useEffect(() => {
-    if (!editing) setDraft(issue.acceptanceCriteria ?? '');
-  }, [issue.acceptanceCriteria, editing]);
+  // Bản nháp chỉ được nạp lại ở start() (không đồng bộ theo issue qua effect: effect sẽ đè mất chữ đang giữ lại khi lưu lỗi/409).
+  const [draft, setDraft] = useState('');
 
   const text = issue.acceptanceCriteria;
   const progress = issue.acceptanceProgress;
@@ -56,10 +53,11 @@ export function AcceptanceCriteria({ issue }: { issue: IssueDto }) {
         onError: (e) => {
           setDraft(next ?? '');
           setEditing(true);
+          const message = apiErrorMessage(e); // gọi luôn để toast chung của MutationCache không báo thêm lần nữa
           toast.error(
             apiErrorCode(e) === 'VERSION_CONFLICT'
               ? 'Tiêu chí vừa được người khác thay đổi — đã nạp bản mới, chữ bạn đang sửa vẫn còn. Kiểm tra rồi bấm Lưu lại.'
-              : apiErrorMessage(e),
+              : message,
           );
         },
       },
