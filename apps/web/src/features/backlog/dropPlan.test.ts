@@ -60,10 +60,36 @@ describe('planBacklogDrop', () => {
 describe('widenNeighbors — mốc theo danh sách CHƯA lọc của khu đích', () => {
   // full (đã sắp rank, chưa lọc): a h1 b h2 h3 c  — h* là việc bị ẩn bởi bộ lọc
   const full = ['a', 'h1', 'b', 'h2', 'h3', 'c'];
-  it('hai mốc đã có thì giữ nguyên', () => {
+  it('hai mốc đã có và liền kề thì giữ nguyên', () => {
+    expect(widenNeighbors(full, { afterId: 'h1', beforeId: 'b' }, 'x')).toEqual({
+      afterId: 'h1',
+      beforeId: 'b',
+    });
+  });
+  it('hai mốc đều thấy nhưng giữa có việc ẩn => beforeId = phần tử ngay sau afterId (sát mốc trên)', () => {
     expect(widenNeighbors(full, { afterId: 'a', beforeId: 'b' }, 'x')).toEqual({
       afterId: 'a',
+      beforeId: 'h1',
+    });
+    expect(widenNeighbors(full, { afterId: 'b', beforeId: 'c' }, 'x')).toEqual({
+      afterId: 'b',
+      beforeId: 'h2',
+    });
+  });
+  it('hai mốc: bỏ chính dòng đang kéo khi tìm phần tử sau afterId', () => {
+    expect(widenNeighbors(['a', 'x', 'h1', 'b'], { afterId: 'a', beforeId: 'b' }, 'x')).toEqual({
+      afterId: 'a',
+      beforeId: 'h1',
+    });
+  });
+  it('hai mốc: afterId không có trong danh sách hoặc thứ tự lệch thì giữ nguyên', () => {
+    expect(widenNeighbors(full, { afterId: 'zzz', beforeId: 'b' }, 'x')).toEqual({
+      afterId: 'zzz',
       beforeId: 'b',
+    });
+    expect(widenNeighbors(full, { afterId: 'c', beforeId: 'a' }, 'x')).toEqual({
+      afterId: 'c',
+      beforeId: 'a',
     });
   });
   it('thả lên đầu danh sách lọc (afterId null, beforeId b) => afterId = phần tử ngay trước b', () => {

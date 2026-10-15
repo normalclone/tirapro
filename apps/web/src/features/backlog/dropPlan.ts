@@ -28,7 +28,7 @@ export function neighborsIn(list: readonly string[], id: string): Neighbors {
  * Mốc tính trên danh sách ĐANG HIỂN THỊ (đã lọc) nên có thể thiếu một đầu dù giữa đó còn việc bị ẩn; server đặt rank ở TRUNG ĐIỂM
  * của khoảng trống nên việc rơi tuỳ ý trong khối việc ẩn. Mở rộng theo danh sách CHƯA lọc của khu đích (`full`, đã sắp rank) để việc
  * nằm SÁT mốc đang thấy: thiếu `afterId` → phần tử ngay trước `beforeId`; thiếu `beforeId` → phần tử ngay sau `afterId`;
- * cả hai thiếu mà khu đích có việc (bị lọc hết) → cuối khu. Bỏ chính dòng đang kéo. Mốc không có trong `full` thì giữ nguyên.
+ * đủ cả hai mà giữa có việc ẩn → `beforeId` thu về phần tử ngay sau `afterId`; cả hai thiếu mà khu đích có việc (bị lọc hết) → cuối khu. Bỏ chính dòng đang kéo. Mốc không có trong `full` thì giữ nguyên.
  */
 export function widenNeighbors(full: readonly string[], n: Neighbors, activeId: string): Neighbors {
   const list = full.filter((id) => id !== activeId);
@@ -41,5 +41,9 @@ export function widenNeighbors(full: readonly string[], n: Neighbors, activeId: 
     const i = list.indexOf(n.afterId);
     return { afterId: n.afterId, beforeId: i >= 0 ? (list[i + 1] ?? null) : null };
   }
+  // Cả hai mốc đều thấy: nếu giữa chúng còn việc ẩn thì thu hẹp `beforeId` về phần tử ngay sau `afterId`, để việc thả nằm SÁT mốc trên.
+  const ai = list.indexOf(n.afterId);
+  const bi = list.indexOf(n.beforeId);
+  if (ai >= 0 && bi > ai + 1) return { afterId: n.afterId, beforeId: list[ai + 1]! };
   return n;
 }
