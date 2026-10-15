@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { Plus, Play, CheckCircle2, ChevronRight, Inbox, Sparkles, Pencil } from 'lucide-react';
 import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
@@ -57,7 +57,7 @@ import { useAuth } from '@/stores/auth';
 import { useCan, useCanEditIssue } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
 import { IssueRow, IssueRowBody } from './IssueRow';
-import { planBacklogDrop } from './dropPlan';
+import { neighborsIn, planBacklogDrop, widenNeighbors } from './dropPlan';
 import { BulkActionBar } from './BulkActionBar';
 import { SprintAssistantDialog } from '@/features/ai/SprintAssistantDialog';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
@@ -182,28 +182,32 @@ export function BacklogPage() {
     [sprints],
   );
 
-  // Công việc sau khi áp bộ lọc nhanh + người phụ trách — chia vào từng khu (số đếm phản ánh tập đã lọc).
-  const filteredIssues = useMemo(
-    () =>
-      applyAssigneeFilter(applyQuickFilters(issues ?? [], quickFilters, currentUserId), assignee),
-    [issues, quickFilters, currentUserId, assignee],
-  );
-
-  const bySprint = useMemo(() => {
+  // Mỗi khu theo rank CHƯA lọc (+ các lần kéo đang chờ, lạc quan, không tự tính rank). Mốc kéo-thả phải tính trên danh sách này
+  // để việc thả xuống sát mốc đang thấy dù quanh đó có việc bị ẩn bởi bộ lọc.
+  const fullBySprint = useMemo(() => {
     const map = new Map<string, IssueDto[]>();
     map.set(BACKLOG_ID, []);
     for (const s of visibleSprints) map.set(s.id, []);
     for (const s of closedSprints) map.set(s.id, []);
-    for (const issue of filteredIssues) {
-      const bucket = issue.sprintId && map.has(issue.sprintId) ? issue.sprintId : BACKLOG_ID;
-      // Việc thuộc sprint không nằm trong danh sách → về Backlog (an toàn).
+    for (const issue of issues ?? []) {
+      // Việc thuộc sprint không nằm trong danh sách → bỏ qua (an toàn).
       if (issue.sprintId && !map.has(issue.sprintId)) continue;
-      map.get(bucket)!.push(issue);
+      map.get(issue.sprintId ?? BACKLOG_ID)!.push(issue);
     }
-    // Thứ tự = rank (như máy chủ) + các lần kéo đang chờ (lạc quan, không tự tính rank).
     for (const [k, list] of map) map.set(k, applyPendingOrder(sortByRank(list), pending));
     return map;
-  }, [visibleSprints, closedSprints, filteredIssues, pending]);
+  }, [visibleSprints, closedSprints, issues, pending]);
+
+  // Công việc sau khi áp bộ lọc nhanh + người phụ trách — chia vào từng khu (số đếm phản ánh tập đã lọc).
+  const bySprint = useMemo(() => {
+    const map = new Map<string, IssueDto[]>();
+    for (const [k, list] of fullBySprint)
+      map.set(
+        k,
+        applyAssigneeFilter(applyQuickFilters(list, quickFilters, currentUserId), assignee),
+      );
+    return map;
+  }, [fullBySprint, quickFilters, currentUserId, assignee]);
 
   const progressMap = useMemo(() => buildProgressMap(issues ?? []), [issues]);
 
@@ -226,14 +230,18 @@ export function BacklogPage() {
     if (plan.ignore) return;
     const { targetSprintId, sprintChanged } = plan;
     const currentSprintId = issue.sprintId ?? null;
+    // Mốc theo danh sách CHƯA lọc của khu đích (xem `widenNeighbors`); chỗ cũ (Hoàn tác) = láng giềng thật ở khu cũ.
+    const idsOf = (container: string) => (fullBySprint.get(container) ?? []).map((i) => i.id);
+    const { afterId, beforeId } = widenNeighbors(idsOf(p.containerId), p, issue.id);
+    const origin = neighborsIn(idsOf(currentSprintId ?? BACKLOG_ID), issue.id);
     // Route `rank` (backlog:manage + issue:edit) — khớp `canDragIssue`; một request vừa đổi sprint vừa chèn đúng chỗ.
     const vars: MoveVars = {
       route: 'rank',
       id: issue.id,
       key: issue.key,
       version: issue.version,
-      afterId: p.afterId,
-      beforeId: p.beforeId,
+      afterId,
+      beforeId,
       ...(sprintChanged ? { sprintId: targetSprintId } : {}),
     };
     try {
@@ -254,8 +262,8 @@ export function BacklogPage() {
                   id: issue.id,
                   key: issue.key,
                   version: updated.version,
-                  afterId: p.origin.afterId,
-                  beforeId: p.origin.beforeId,
+                  afterId: origin.afterId,
+                  beforeId: origin.beforeId,
                   ...(sprintChanged ? { sprintId: currentSprintId } : {}),
                 })
                 .catch(() => undefined),
@@ -267,6 +275,8 @@ export function BacklogPage() {
     }
   }
 
+  // Trang rời đi (DndContext unmount) giữa lúc kéo: không để lại đường kẻ chèn của lần kéo dở.
+  useEffect(() => () => dropHint.set(null), []);
   const onDragMove = (e: DragMoveEvent) => dropHint.set(hintOf(placementFromDnd(e)));
   const onDragCancel = () => {
     setDragging(null);
@@ -280,6 +290,13 @@ export function BacklogPage() {
         ? 'Backlog'
         : `sprint “${(sprints ?? []).find((s) => s.id === containerId)?.name ?? 'khác'}”`;
     const at = (p: Placement) => `vị trí ${p.index + 1}/${p.total}`;
+    const overText = (e: Parameters<NonNullable<Announcements['onDragOver']>>[0]) => {
+      const p = placementFromDnd(e);
+      if (!p) return `${keyOf(e.active.id)} đang ở ngoài các danh sách.`;
+      return p.crossContainer
+        ? `${keyOf(e.active.id)} sang ${whereOf(p.containerId)}, ${at(p)}.`
+        : `${keyOf(e.active.id)} ở ${at(p)} trong ${whereOf(p.containerId)}.`;
+    };
     return {
       onDragStart: ({ active }) => {
         const s = active.data.current?.sortable as
@@ -289,13 +306,9 @@ export function BacklogPage() {
           s ? ` ở ${whereOf(String(s.containerId))}, vị trí ${s.index + 1}/${s.items.length}` : ''
         }. Mũi tên lên xuống đổi thứ tự, tới sprint khác để chuyển sprint, Space để thả, Esc để huỷ.`;
       },
-      onDragOver: (e) => {
-        const p = placementFromDnd(e);
-        if (!p) return `${keyOf(e.active.id)} đang ở ngoài các danh sách.`;
-        return p.crossContainer
-          ? `${keyOf(e.active.id)} sang ${whereOf(p.containerId)}, ${at(p)}.`
-          : `${keyOf(e.active.id)} ở ${at(p)} trong ${whereOf(p.containerId)}.`;
-      },
+      onDragOver: overText,
+      // Cùng câu với onDragOver: vị trí đổi (nửa trên/dưới của dòng đích) mà `over` không đổi vẫn được đọc đúng.
+      onDragMove: overText,
       onDragEnd: (e) => {
         const p = placementFromDnd(e);
         if (!p) return `Đã thả ${keyOf(e.active.id)} ra ngoài các danh sách, giữ nguyên.`;
