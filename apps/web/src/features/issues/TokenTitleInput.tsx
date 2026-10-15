@@ -96,7 +96,14 @@ export function TokenTitleInput({
         className="pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre rounded-md border border-transparent px-3 text-sm leading-[34px] text-ink"
       >
         {segments.map((s, i) =>
-          s.kind ? (
+          s.kind === 'unknown' ? (
+            <span
+              key={i}
+              className="rounded bg-warning/15 text-warning underline decoration-dotted"
+            >
+              {s.text}
+            </span>
+          ) : s.kind ? (
             <span key={i} className="rounded bg-primary-subtle text-primary">
               {s.text}
             </span>
