@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Check, Flag, Link2, Plus, Trash2, X } from 'lucide-react';
+import { Check, Flag, Link2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
 import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Skeleton } from '@/components/ui/primitives';
@@ -478,48 +479,18 @@ export function PlanningPanel({
   canManage: boolean;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-modal flex justify-end">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/30 animate-in fade-in duration-200"
-        onClick={onClose}
-        aria-label="Đóng bảng lịch trình"
-      />
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-label="Phụ thuộc và cột mốc"
-        className="relative flex h-full w-full max-w-md flex-col border-l border-border bg-surface shadow-lg animate-in slide-in-from-right duration-200"
-      >
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <span className="text-sm font-medium text-ink-strong">Phụ thuộc &amp; cột mốc</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="ml-auto"
-            onClick={onClose}
-            aria-label="Đóng"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <DependencySection projectId={projectId} issues={issues} canManage={canManage} />
-          <MilestoneSection projectId={projectId} canManage={canManage} />
-        </div>
-      </aside>
-    </div>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title="Phụ thuộc & cột mốc"
+      placement="right"
+      bodyClassName="p-0"
+    >
+      <DependencySection projectId={projectId} issues={issues} canManage={canManage} />
+      <MilestoneSection projectId={projectId} canManage={canManage} />
+    </Dialog>
   );
 }

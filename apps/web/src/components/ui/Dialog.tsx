@@ -28,7 +28,28 @@ export interface DialogProps {
   hideTitle?: boolean;
   /** Class thêm cho khung nội dung (vd đặt chiều cao cố định). */
   className?: string;
+  /** Icon đứng trước tiêu đề (aria-hidden) — vd `<Sparkles className="h-4 w-4" />`, hoặc chấm màu. */
+  icon?: ReactNode;
+  /** Sắc của icon: `primary` (mặc định) hoặc `danger` cho xác nhận phá huỷ. */
+  iconTone?: 'primary' | 'danger';
+  /** Nội dung phụ cạnh tiêu đề (vd pill trạng thái hiện tại). */
+  headerExtra?: ReactNode;
+  /** `right` = ngăn kéo cạnh phải, dùng cho panel phụ (PlanningPanel). */
+  placement?: 'center' | 'right';
 }
+
+const CENTER_CLASS = [
+  // `inset-0 m-auto h-fit` canh giữa mà không dùng transform → không xung đột với animation zoom.
+  'fixed inset-0 z-modal m-auto flex h-fit max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-lg duration-150',
+  'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[.98]',
+  'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98]',
+];
+
+const RIGHT_CLASS = [
+  'fixed inset-y-0 right-0 z-modal flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-surface shadow-lg duration-200',
+  'data-[state=open]:animate-in data-[state=open]:slide-in-from-right',
+  'data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right',
+];
 
 /**
  * Hộp thoại dùng chung, bọc @radix-ui/react-dialog: Radix lo focus-trap, Esc, trả focus về nút mở,
@@ -48,6 +69,10 @@ export function Dialog({
   bodyClassName,
   hideTitle = false,
   className,
+  icon,
+  iconTone = 'primary',
+  headerExtra,
+  placement = 'center',
 }: DialogProps) {
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!onSubmit) return;
@@ -66,12 +91,8 @@ export function Dialog({
           // Không có mô tả thì báo rõ cho Radix (tránh cảnh báo thiếu aria-describedby).
           {...(description ? {} : { 'aria-describedby': undefined })}
           onKeyDown={onKeyDown}
-          // `inset-0 m-auto h-fit` canh giữa mà không dùng transform → không xung đột với animation zoom.
           className={cn(
-            'fixed inset-0 z-modal m-auto flex h-fit max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-lg duration-150',
-            'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[.98]',
-            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98]',
-            SIZE[size],
+            placement === 'right' ? RIGHT_CLASS : [CENTER_CLASS, SIZE[size]],
             className,
           )}
         >
@@ -82,9 +103,26 @@ export function Dialog({
               hideTitle && 'sr-only',
             )}
           >
-            <RadixDialog.Title className="text-base font-semibold text-ink-strong">
-              {title}
-            </RadixDialog.Title>
+            <div className="flex min-w-0 items-center gap-2">
+              {icon && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    'grid shrink-0 place-items-center',
+                    // Xác nhận phá huỷ: huy hiệu tròn đỏ nhạt (như bản trước khi chuyển sang Dialog chung).
+                    iconTone === 'danger'
+                      ? 'h-7 w-7 rounded-full bg-danger/10 text-danger'
+                      : 'text-primary',
+                  )}
+                >
+                  {icon}
+                </span>
+              )}
+              <RadixDialog.Title className="min-w-0 text-base font-semibold text-ink-strong">
+                {title}
+              </RadixDialog.Title>
+              {headerExtra}
+            </div>
             {description && (
               <RadixDialog.Description className="mt-1 text-sm text-muted">
                 {description}
