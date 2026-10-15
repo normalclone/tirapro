@@ -171,3 +171,4 @@ Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng A
 - [ ] Tính năng mới qua "thuế tĩnh lặng" (không làm màn chính ồn hơn).
 - [ ] `/impeccable critique` không còn P0/P1.
 - [ ] Chuỗi hiển thị đúng bảng thuật ngữ §19; ngày dd/MM/yyyy; thời gian tương đối tiếng Việt.
+- [ ] Chạy `pnpm --filter @tirapro/web mobile:audit` cho màn mới (390px).
