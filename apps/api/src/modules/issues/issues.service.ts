@@ -240,6 +240,51 @@ export class IssuesService {
     return next === undefined || next === current ? undefined : next;
   }
 
+  /**
+   * Quyền phụ của `move()` ngoài `issue:transition` (đã kiểm ở guard):
+   * - đổi `sprintId` cần `issue:edit` (`issue:edit:own` chỉ với việc của mình, như PATCH) hoặc system admin → else 403;
+   * - mốc rank (`afterId`/`beforeId`) cần `issue:edit` hoặc `backlog:manage` (hoặc system admin). Thiếu: nếu ĐANG đổi
+   *   trạng thái thì BỎ QUA mốc (giữ rank, vẫn chuyển) — trả `false`; không đổi trạng thái thì 403.
+   * Trả `true` khi mốc rank được dùng. Không đụng DB quyền nếu request không có sprint/mốc.
+   */
+  private async assertMoveCapabilities(
+    workspaceId: string,
+    userId: string,
+    current: {
+      projectId: string;
+      reporterId: string | null;
+      assigneeId: string | null;
+      createdById: string | null;
+    },
+    want: { sprintChanged: boolean; wantsRank: boolean; statusChanged: boolean },
+  ): Promise<boolean> {
+    if (!want.sprintChanged && !want.wantsRank) return true;
+    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, current.projectId);
+    let admin: boolean | undefined;
+    const isAdmin = async () =>
+      (admin ??= !!(
+        await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { isSystemAdmin: true },
+        })
+      )?.isSystemAdmin);
+    const canEdit = perms.has(PERMISSIONS.ISSUE_EDIT);
+
+    if (want.sprintChanged && !canEdit && !(await isAdmin())) {
+      if (perms.has(`${PERMISSIONS.ISSUE_EDIT}:own`)) this.assertOwnsIssue(userId, current);
+      else
+        throw new ForbiddenAppException(
+          'Bạn không có quyền đổi sprint của công việc — cần quyền sửa công việc hoặc nhờ quản trị cấp quyền',
+        );
+    }
+    if (!want.wantsRank) return true;
+    if (canEdit || perms.has(PERMISSIONS.BACKLOG_MANAGE) || (await isAdmin())) return true;
+    if (want.statusChanged) return false;
+    throw new ForbiddenAppException(
+      'Bạn không có quyền sắp xếp lại thứ tự công việc — cần quyền sửa công việc hoặc quản lý backlog',
+    );
+  }
+
   /** Có thể gán mới cho user này không: là thành viên workspace và tài khoản chưa bị vô hiệu hoá. */
   async isAssignableMember(
     workspaceId: string,
@@ -882,6 +927,15 @@ export class IssuesService {
     const current = await this.requireIssue(workspaceId, id);
     if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
+    const statusChanged = !!input.statusId && input.statusId !== current.statusId;
+    const sprintChanged = this.sprintIfChanged(input.sprintId, current.sprintId) !== undefined;
+    const wantsRank = !!input.afterId || !!input.beforeId;
+    // `/move` chỉ đòi `issue:transition` nhưng còn nhận sprint + mốc rank: hai việc đó cần quyền riêng (như `/rank`).
+    const useRankHint = await this.assertMoveCapabilities(workspaceId, userId, current, {
+      sprintChanged,
+      wantsRank,
+      statusChanged,
+    });
     await this.assertMetaInWorkspace(workspaceId, {
       sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
       projectId: current.projectId,
@@ -889,7 +943,6 @@ export class IssuesService {
 
     // Kéo sang cột khác là đổi trạng thái: đi đúng workflow như transition()/bulkUpdate(). Kiểm TRƯỚC resolveRank
     // để không rebalance rank rồi mới báo lỗi; kéo cùng cột/xếp lại thứ tự không đụng workflow.
-    const statusChanged = !!input.statusId && input.statusId !== current.statusId;
     let toDone = false;
     if (statusChanged) {
       await this.assertTransitionAllowed(
@@ -901,7 +954,7 @@ export class IssuesService {
     }
 
     // Không có mốc nào ⇒ giữ rank hiện tại (trước đây rankBetween(null, null) đặt thẻ vào GIỮA dự án).
-    const hasNeighbor = !!input.afterId || !!input.beforeId;
+    const hasNeighbor = wantsRank && useRankHint;
     const rank = hasNeighbor
       ? await this.rankService.resolveRank(current.projectId, this.prisma, null, id, async () => ({
           prev: input.afterId

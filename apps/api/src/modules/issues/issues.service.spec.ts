@@ -83,7 +83,12 @@ function makeService(tx: Record<string, unknown>, prismaExtra: Record<string, un
     ...prismaExtra,
   };
   const events = { emit: vi.fn() };
-  const rbac = { getEffectivePermissions: vi.fn() };
+  // Mặc định đủ quyền sửa/xếp backlog/chuyển trạng thái; ca thiếu quyền ghi đè bằng mockResolvedValue.
+  const rbac = {
+    getEffectivePermissions: vi.fn(() =>
+      Promise.resolve(new Set(['issue:edit', 'backlog:manage', 'issue:transition'])),
+    ),
+  };
   const service = new IssuesService(prisma as never, events as never, rbac as never);
   return { service, events, prisma, rbac };
 }
@@ -1812,6 +1817,102 @@ describe('IssuesService.move — không mốc giữ rank; đổi sprint ghi lị
     await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a' });
     expect(tx.issueHistory.createMany).not.toHaveBeenCalled();
     expect(emitted(events)).toEqual([DOMAIN_EVENTS.ISSUE_MOVED]);
+  });
+});
+
+describe('IssuesService.move — ma trận quyền sprint/rank (I4)', () => {
+  const rankOf = (tx: ReturnType<typeof wipTx>) =>
+    (tx.issue.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }])[0].data
+      .rank;
+
+  function setup(
+    perms: string[],
+    opts: { sysAdmin?: boolean; issue?: Record<string, unknown> } = {},
+  ) {
+    const tx = wipTx({ count: 0, issue: opts.issue });
+    tx.issue.findFirstOrThrow = vi.fn(() => Promise.resolve(issueRow({ version: 4 })));
+    const made = makeService(tx, {
+      user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: !!opts.sysAdmin })) },
+    });
+    made.rbac.getEffectivePermissions.mockResolvedValue(new Set(perms));
+    return { tx, ...made };
+  }
+
+  it('chỉ có issue:transition (Tester) đổi sprintId => 403, không ghi', async () => {
+    const { tx, service } = setup(['issue:transition']);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('issue:edit đổi sprintId => được; sprintId không đổi thì không đòi quyền sửa', async () => {
+    const ok = setup(['issue:edit']);
+    await expect(
+      ok.service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' }),
+    ).resolves.toBeDefined();
+    const same = setup(['issue:transition']);
+    await expect(
+      same.service.move('w1', 'u1', 'i1', { version: 3, sprintId: null, statusId: 's2' }),
+    ).resolves.toBeDefined(); // sprintId hiện tại là null => không đổi
+  });
+
+  it('chỉ issue:edit:own: đổi sprint việc của mình được, việc người khác 403', async () => {
+    const mine = setup(['issue:edit:own'], { issue: { reporterId: 'u1' } });
+    await expect(
+      mine.service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' }),
+    ).resolves.toBeDefined();
+    const other = setup(['issue:edit:own'], {
+      issue: { reporterId: 'x', assigneeId: 'x', createdById: 'x' },
+    });
+    await expect(
+      other.service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('system admin đổi sprint được dù không có quyền dự án', async () => {
+    const { service } = setup([], { sysAdmin: true });
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' }),
+    ).resolves.toBeDefined();
+  });
+
+  it('thiếu issue:edit/backlog:manage + mốc rank + KHÔNG đổi status => 403', async () => {
+    const { tx, service } = setup(['issue:transition']);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a' }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('thiếu quyền xếp + mốc rank + CÓ đổi status => bỏ qua mốc (giữ rank), vẫn chuyển trạng thái', async () => {
+    const { tx, service } = setup(['issue:transition']);
+    await service.move('w1', 'u1', 'i1', {
+      version: 3,
+      afterId: 'a',
+      beforeId: 'b',
+      statusId: 's2',
+    });
+    expect(rankOf(tx)).toBe('n'); // rank cũ
+    const data = (
+      tx.issue.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data.statusId).toBe('s2');
+    expect(tx.issue.findFirst).toHaveBeenCalledTimes(1); // chỉ requireIssue, không tra mốc
+  });
+
+  it.each([['issue:edit'], ['backlog:manage']])('có %s => mốc rank được dùng', async (perm) => {
+    const { tx, service } = setup([perm, 'issue:transition']);
+    await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a' });
+    expect(tx.issue.findFirst.mock.calls.length).toBeGreaterThan(1); // có tra rank của mốc
+  });
+
+  it('không mốc, không sprint, chỉ đổi status với issue:transition => không cần quyền sửa/backlog', async () => {
+    const { rbac, service } = setup(['issue:transition']);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2' }),
+    ).resolves.toBeDefined();
+    expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
   });
 });
 
