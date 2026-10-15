@@ -116,6 +116,12 @@ export interface AuthMeDto {
   permissions: PermissionKey[]; // effective trong workspace hiện tại
 }
 
+/** Quyền hiệu lực của người đang đăng nhập ở MỘT dự án (= vai trò workspace ∪ vai trò dự án). */
+export interface ProjectPermissionsDto {
+  projectId: ID;
+  permissions: PermissionKey[];
+}
+
 export interface AuthTokensDto {
   accessToken: string;
   expiresIn: number;
