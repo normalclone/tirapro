@@ -27,6 +27,7 @@ import {
   useMoveToSprint,
   useBulkUpdateIssues,
   bulkShortfallHint,
+  rejectionReason,
   type BulkIssuePatch,
   type MoveIncompleteTo,
 } from './api';
@@ -295,14 +296,16 @@ export function BacklogPage() {
                 try {
                   let stuck = 0;
                   let unsent = 0;
+                  let firstError: unknown;
                   for (const [value, items] of groups) {
                     const r = await bulkUpdate.mutateAsync({ items, patch: { [field]: value } });
                     stuck += r.conflicts.length;
                     unsent += r.unsent;
+                    firstError ??= r.error;
                   }
                   if (stuck > 0) {
                     toast.warning(`Chưa hoàn tác được ${stuck} việc`, {
-                      description: bulkShortfallHint(stuck, unsent),
+                      description: bulkShortfallHint(stuck, unsent, rejectionReason(firstError)),
                     });
                   }
                 } catch (err) {
@@ -314,7 +317,11 @@ export function BacklogPage() {
         });
       } else {
         toast.warning(`Đã ${verb} ${updated.length} việc, còn ${conflicts.length} việc chưa xong`, {
-          description: bulkShortfallHint(conflicts.length, result.unsent),
+          description: bulkShortfallHint(
+            conflicts.length,
+            result.unsent,
+            rejectionReason(result.error),
+          ),
         });
       }
     } catch (err) {

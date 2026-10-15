@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -32,7 +32,8 @@ export function CustomFieldsPanel({ issueId, canEdit }: { issueId: string; canEd
   return (
     <div>
       <p className="mb-1.5 text-sm font-medium text-muted">Trường tùy chỉnh</p>
-      <div className="grid grid-cols-[110px_1fr] gap-y-2.5 text-sm">
+      {/* Chỉ-đọc dùng dl/dt/dd (cặp tên-giá trị đúng ngữ nghĩa); sửa được dùng label gắn với ô nhập. */}
+      <Rows as={canEdit ? 'div' : 'dl'}>
         {data.map((item) => (
           <FieldRow
             key={item.field.id}
@@ -42,9 +43,13 @@ export function CustomFieldsPanel({ issueId, canEdit }: { issueId: string; canEd
             onSave={(value) => void save(item.field.id, value)}
           />
         ))}
-      </div>
+      </Rows>
     </div>
   );
+}
+
+function Rows({ as: Tag, children }: { as: 'div' | 'dl'; children: ReactNode }) {
+  return <Tag className="grid grid-cols-[110px_1fr] gap-y-2.5 text-sm">{children}</Tag>;
 }
 
 function FieldRow({
@@ -59,27 +64,32 @@ function FieldRow({
   onSave: (value: unknown) => void;
 }) {
   const { field } = item;
+  const required = field.isRequired && (
+    <span className="ml-0.5 text-danger" aria-hidden>
+      *
+    </span>
+  );
+  if (!canEdit) {
+    return (
+      <>
+        <dt className="flex items-start pt-1 text-muted">
+          {field.name}
+          {required}
+        </dt>
+        <dd className="min-w-0 whitespace-pre-wrap break-words pt-1 text-ink">
+          {displayCustomFieldValue(field, item.value) ?? <span className="text-faint">—</span>}
+        </dd>
+      </>
+    );
+  }
   return (
     <>
-      <label
-        className="flex items-start pt-1 text-muted"
-        htmlFor={canEdit ? `cf-${field.id}` : undefined}
-      >
+      <label className="flex items-start pt-1 text-muted" htmlFor={`cf-${field.id}`}>
         {field.name}
-        {field.isRequired && (
-          <span className="ml-0.5 text-danger" aria-hidden>
-            *
-          </span>
-        )}
+        {required}
       </label>
       <div className="min-w-0">
-        {canEdit ? (
-          <FieldEditor field={field} value={item.value} saving={saving} onSave={onSave} />
-        ) : (
-          <span className="block whitespace-pre-wrap break-words pt-1 text-ink">
-            {displayCustomFieldValue(field, item.value) ?? <span className="text-faint">—</span>}
-          </span>
-        )}
+        <FieldEditor field={field} value={item.value} saving={saving} onSave={onSave} />
       </div>
     </>
   );

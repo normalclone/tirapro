@@ -1,6 +1,7 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BulkUpdateIssuesResult, IssueDto, SprintDto } from '@tirapro/types';
-import { api } from '@/lib/api';
+import axios from 'axios';
+import { api, apiErrorMessage } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import { invalidateIssue, optimisticPatchIssue, rollbackIssue, writeIssue } from '@/lib/optimistic';
 
@@ -93,18 +94,31 @@ export interface BulkIssuePatch {
 /** Máy chủ nhận tối đa 100 việc/lần (`bulkUpdateIssuesSchema`). */
 export const BULK_CHUNK = 100;
 
-/** Kết quả gộp các lô. `unsent` = số việc CHƯA được gửi/xử lý vì một lô sau bị lỗi (đã nằm trong `conflicts`). */
-export type BulkChunksResult = BulkUpdateIssuesResult & { unsent: number };
+/**
+ * Kết quả gộp các lô. `unsent` = số việc CHƯA được gửi/xử lý vì một lô sau bị lỗi (đã nằm trong `conflicts`);
+ * `error` = lỗi của lô thất bại đầu tiên (chỉ có khi `unsent > 0`).
+ */
+export type BulkChunksResult = BulkUpdateIssuesResult & { unsent: number; error?: unknown };
+
+/** Lý do máy chủ TỪ CHỐI một lô (403, WIP, validate…): thử lại vô ích. Lỗi mạng/không có phản hồi → `null` (thử lại được). */
+export function rejectionReason(error: unknown): string | null {
+  return axios.isAxiosError(error) && error.response ? apiErrorMessage(error) : null;
+}
 
 /**
- * Câu mô tả (theo SỐ conflict và số chưa gửi) phần "chưa xong" của một lần bulk. Phải tách việc chưa gửi được (mạng/403/WIP — thử lại là được) khỏi
- * conflict thật (người khác sửa trước — cần tải lại), kẻo báo sai nguyên nhân.
+ * Câu mô tả (theo SỐ conflict và số chưa gửi) phần "chưa xong" của một lần bulk. Phải tách việc chưa gửi được
+ * khỏi conflict thật (người khác sửa trước — cần tải lại), kẻo báo sai nguyên nhân. `rejection` (từ
+ * `rejectionReason`) có thì nêu nó thay cho "thử lại".
  */
-export function bulkShortfallHint(conflicts: number, unsent: number): string {
+export function bulkShortfallHint(
+  conflicts: number,
+  unsent: number,
+  rejection?: string | null,
+): string {
   const edited = Math.max(0, conflicts - unsent);
-  if (unsent > 0 && edited === 0) return 'Một số việc chưa gửi được — thử lại.';
+  if (unsent > 0 && edited === 0) return rejection ?? 'Một số việc chưa gửi được — thử lại.';
   if (unsent > 0)
-    return `Một số việc chưa gửi được, ${edited} việc khác bị người khác sửa trước — hãy tải lại trang rồi thử lại.`;
+    return `${rejection ?? 'Một số việc chưa gửi được.'} Ngoài ra ${edited} việc bị người khác sửa trước — hãy tải lại trang rồi thử lại.`;
   return 'Người khác vừa sửa những việc đó — hãy tải lại trang để xem bản mới nhất rồi thử lại.';
 }
 
@@ -130,6 +144,7 @@ export async function runBulkInChunks(
       const rest = items.slice(i);
       out.conflicts.push(...rest.map((x) => ({ id: x.id, version: x.version })));
       out.unsent = rest.length;
+      out.error = err;
       return out;
     }
   }

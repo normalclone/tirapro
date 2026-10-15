@@ -171,11 +171,13 @@ export class AssigneeSuggestService {
       specificOr.length ? groupCount({ ...baseDone, OR: specificOr }) : Promise.resolve([]),
       groupCount({
         projectId: issue.projectId,
+        id: { not: issue.id }, // issue đang xét không tự tính vào tải/hoạt động của người được giao
         assigneeId: { in: ids },
         status: { category: { not: 'DONE' } },
       }),
       groupCount({
         projectId: issue.projectId,
+        id: { not: issue.id }, // issue đang xét không tự tính vào tải/hoạt động của người được giao
         assigneeId: { in: ids },
         updatedAt: { gte: sinceRecent },
       }),

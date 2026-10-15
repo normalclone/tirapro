@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-vi.mock('@/lib/api', () => ({ api: { patch: vi.fn() } }));
-import { bulkShortfallHint, runBulkInChunks } from './api';
+vi.mock('@/lib/api', () => ({
+  api: { patch: vi.fn() },
+  apiErrorMessage: (e: Error) => `msg:${e.message}`,
+}));
+import { AxiosError } from 'axios';
+import { bulkShortfallHint, rejectionReason, runBulkInChunks } from './api';
 
 const mkItems = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `i${i}`, version: 1 }));
 type Items = Array<{ id: string; version: number }>;
@@ -50,6 +54,7 @@ describe('runBulkInChunks', () => {
     expect(r.conflicts).toHaveLength(150);
     expect(r.conflicts[0]).toEqual({ id: 'i100', version: 1 });
     expect(r.unsent).toBe(150); // lô lỗi + phần sau — KHÔNG phải conflict do người khác sửa
+    expect(r.error).toEqual(new Error('net')); // lỗi của lô thất bại đầu tiên
     expect(send).toHaveBeenCalledTimes(2);
   });
 
@@ -70,6 +75,28 @@ describe('bulkShortfallHint', () => {
     expect(msg).not.toMatch(/Người khác/);
   });
   it('lẫn cả hai: nêu cả hai nguyên nhân', () => {
-    expect(bulkShortfallHint(5, 3)).toMatch(/chưa gửi được, 2 việc khác bị người khác sửa/);
+    expect(bulkShortfallHint(5, 3)).toMatch(/chưa gửi được\. Ngoài ra 2 việc bị người khác sửa/);
+  });
+});
+
+describe('rejectionReason', () => {
+  it('máy chủ từ chối (có response): trả câu lỗi — thử lại vô ích', () => {
+    const e = new AxiosError('x', 'ERR_BAD_REQUEST', undefined, undefined, {
+      status: 403,
+    } as never);
+    expect(rejectionReason(e)).toBe('msg:x');
+  });
+  it('mất mạng (axios không có response) hoặc lỗi không phải axios: null => câu trung tính', () => {
+    expect(rejectionReason(new AxiosError('Network Error', 'ERR_NETWORK'))).toBeNull();
+    expect(rejectionReason(new Error('net'))).toBeNull();
+    expect(rejectionReason(undefined)).toBeNull();
+  });
+  it('hint dùng lý do từ chối thay cho "thử lại"', () => {
+    expect(bulkShortfallHint(3, 3, 'Bạn không có quyền làm việc này.')).toBe(
+      'Bạn không có quyền làm việc này.',
+    );
+    expect(bulkShortfallHint(5, 3, 'WIP đầy.')).toMatch(
+      /^WIP đầy\. Ngoài ra 2 việc bị người khác sửa/,
+    );
   });
 });

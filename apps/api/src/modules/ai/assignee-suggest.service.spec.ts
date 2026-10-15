@@ -84,8 +84,11 @@ describe('AssigneeSuggestService', () => {
     const out = await svc.suggest('ws1', 'me', { projectId: 'p1', issueId: 'i1' });
     // Cả 4 lần đếm đều loại issue đã xoá mềm.
     expect(prisma.issue.groupBy).toHaveBeenCalledTimes(4);
-    for (const c of prisma.issue.groupBy.mock.calls)
-      expect((c[0] as { where: { deletedAt: null } }).where.deletedAt).toBeNull();
+    for (const c of prisma.issue.groupBy.mock.calls) {
+      const w = (c[0] as { where: { deletedAt: null; id?: unknown } }).where;
+      expect(w.deletedAt).toBeNull();
+      expect(w.id).toEqual({ not: 'i1' }); // issue đang xét không tự tính vào tải/hoạt động/đã xử lý
+    }
     expect(out.source).toBe('heuristic');
     expect('reason' in out).toBe(false);
     expect(out.suggestions.map((s) => s.userId)).toEqual(['uB', 'uA', 'uC']);
