@@ -21,6 +21,7 @@ import { useProject } from '@/features/projects/api';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { cn } from '@/lib/utils';
+import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
 import {
   useBurndown,
   useCfd,
@@ -409,10 +410,15 @@ function StatusDonut({ slices }: { slices: ReportSlice[] }) {
 function SliceBar({ slices }: { slices: ReportSlice[] }) {
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={slices} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+      <BarChart data={slices} margin={CHART_MARGIN}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis dataKey="name" {...AXIS_PROPS} interval={0} />
-        <YAxis allowDecimals={false} {...AXIS_PROPS} width={32} axisLine={false} />
+        <YAxis
+          allowDecimals={false}
+          {...AXIS_PROPS}
+          width={yAxisWidth(slices.map((s) => s.count))}
+          axisLine={false}
+        />
         <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={TOOLTIP_STYLE} />
         <Bar dataKey="count" name="Số công việc" radius={[4, 4, 0, 0]} maxBarSize={56}>
           {slices.map((s) => (
