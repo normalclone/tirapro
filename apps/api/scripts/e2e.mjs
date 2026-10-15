@@ -116,7 +116,7 @@ async function main() {
   console.log('\n— Analytics —');
   const sprints = await call('GET', `/sprints?projectId=${pid}`);
   const sprint = (sprints.json ?? []).find((s) => s.state === 'ACTIVE') ?? (sprints.json ?? [])[0];
-  const bd = await call('GET', `/reports/burndown?sprintId=${sprint.id}`);
+  const bd = await call('GET', `/reports/burndown?sprintId=${sprint.id}&projectId=${pid}`);
   check(
     'reports/burndown (multi-day)',
     bd.status === 200 && bd.json?.series?.length > 1,

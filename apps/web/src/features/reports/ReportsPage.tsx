@@ -58,7 +58,7 @@ export function ReportsPage() {
   const { data: sprints } = useProjectSprints(projectId);
   const burndownSprint = sprints?.find((s) => s.state === 'ACTIVE') ?? sprints?.[0];
 
-  const burndown = useBurndown(burndownSprint?.id);
+  const burndown = useBurndown(burndownSprint?.id, projectId);
   const velocity = useVelocity(projectId);
   const cfd = useCfd(projectId);
   const createdResolved = useCreatedResolved(projectId);
