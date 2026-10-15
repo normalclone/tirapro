@@ -1,8 +1,7 @@
-import { useCallback, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { Plus, Play, CheckCircle2, ChevronRight, Inbox, Sparkles, Pencil } from 'lucide-react';
 import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
-import { byPriorityThenStatus } from '@/lib/issueOrder';
 import { buildProgressMap, type SubtreeProgress } from '@/lib/issueTree';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useRetained } from '@/lib/useRetained';
@@ -15,9 +14,17 @@ import {
   useSensors,
   useDndContext,
   useDroppable,
+  type Announcements,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragStartEvent,
+  type ScreenReaderInstructions,
 } from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { toast } from 'sonner';
 import type { IssueDto, SprintDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
@@ -26,7 +33,6 @@ import {
   useCreateSprint,
   useStartSprint,
   useCompleteSprint,
-  useMoveToSprint,
   useBulkUpdateIssues,
   bulkShortfallHint,
   rejectionReason,
@@ -44,15 +50,26 @@ import { Badge, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/pri
 import { QueryError } from '@/components/ui/QueryError';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
 import { apiErrorMessage } from '@/lib/api';
+import { dropHint } from '@/lib/dropHint';
+import { hintOf, placementFromDnd, type Placement } from '@/lib/rankDrop';
+import { applyPendingOrder, sortByRank } from '@/lib/rankOrder';
+import { sortableCollision } from '@/lib/sortableDnd';
+import { useMoveIssue, usePendingMoves, type MoveVars } from '@/features/issues/moveIssue';
 import { useAuth } from '@/stores/auth';
 import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
 import { IssueRow, IssueRowBody } from './IssueRow';
+import { neighborsIn, planBacklogDrop, widenNeighbors } from './dropPlan';
 import { BulkActionBar } from './BulkActionBar';
 import { SprintAssistantDialog } from '@/features/ai/SprintAssistantDialog';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
 import { applyQuickFilters, useQuickFilters } from '@/features/quick-filters/useQuickFilters';
 import { AssigneeFilter, applyAssigneeFilter } from '@/features/quick-filters/AssigneeFilter';
+
+const SCREEN_READER_INSTRUCTIONS: ScreenReaderInstructions = {
+  draggable:
+    'Nhấn Space để nhấc việc này lên. Khi đang nhấc, dùng mũi tên lên hoặc xuống để đổi thứ tự, tới sprint hoặc Backlog khác để chuyển, nhấn Space để thả, nhấn Esc để huỷ.',
+};
 
 /** id của droppable backlog (không phải sprint). */
 const BACKLOG_ID = 'backlog';
@@ -103,7 +120,8 @@ export function BacklogPage() {
   const createSprint = useCreateSprint(projectId ?? '');
   const startSprint = useStartSprint(projectId ?? '');
   const completeSprint = useCompleteSprint(projectId ?? '');
-  const moveToSprint = useMoveToSprint(projectId ?? '');
+  const move = useMoveIssue(projectId ?? '');
+  const pending = usePendingMoves(projectId);
   const bulkUpdate = useBulkUpdateIssues(projectId ?? '');
   const assigneeOptions = useAssigneeOptions(projectId);
 
@@ -144,7 +162,7 @@ export function BacklogPage() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   // Sprint hiển thị: chỉ FUTURE/ACTIVE, ACTIVE trước rồi theo sequence.
@@ -166,27 +184,32 @@ export function BacklogPage() {
     [sprints],
   );
 
-  // Công việc sau khi áp bộ lọc nhanh + người phụ trách — chia vào từng khu (số đếm phản ánh tập đã lọc).
-  const filteredIssues = useMemo(
-    () =>
-      applyAssigneeFilter(applyQuickFilters(issues ?? [], quickFilters, currentUserId), assignee),
-    [issues, quickFilters, currentUserId, assignee],
-  );
-
-  const bySprint = useMemo(() => {
+  // Mỗi khu theo rank CHƯA lọc (+ các lần kéo đang chờ, lạc quan, không tự tính rank). Mốc kéo-thả phải tính trên danh sách này
+  // để việc thả xuống sát mốc đang thấy dù quanh đó có việc bị ẩn bởi bộ lọc.
+  const fullBySprint = useMemo(() => {
     const map = new Map<string, IssueDto[]>();
     map.set(BACKLOG_ID, []);
     for (const s of visibleSprints) map.set(s.id, []);
     for (const s of closedSprints) map.set(s.id, []);
-    for (const issue of filteredIssues) {
-      const bucket = issue.sprintId && map.has(issue.sprintId) ? issue.sprintId : BACKLOG_ID;
-      // Việc thuộc sprint không nằm trong danh sách → về Backlog (an toàn).
+    for (const issue of issues ?? []) {
+      // Việc thuộc sprint không nằm trong danh sách → bỏ qua (an toàn).
       if (issue.sprintId && !map.has(issue.sprintId)) continue;
-      map.get(bucket)!.push(issue);
+      map.get(issue.sprintId ?? BACKLOG_ID)!.push(issue);
     }
-    for (const list of map.values()) list.sort(byPriorityThenStatus);
+    for (const [k, list] of map) map.set(k, applyPendingOrder(sortByRank(list), pending));
     return map;
-  }, [visibleSprints, closedSprints, filteredIssues]);
+  }, [visibleSprints, closedSprints, issues, pending]);
+
+  // Công việc sau khi áp bộ lọc nhanh + người phụ trách — chia vào từng khu (số đếm phản ánh tập đã lọc).
+  const bySprint = useMemo(() => {
+    const map = new Map<string, IssueDto[]>();
+    for (const [k, list] of fullBySprint)
+      map.set(
+        k,
+        applyAssigneeFilter(applyQuickFilters(list, quickFilters, currentUserId), assignee),
+      );
+    return map;
+  }, [fullBySprint, quickFilters, currentUserId, assignee]);
 
   const progressMap = useMemo(() => buildProgressMap(issues ?? []), [issues]);
 
@@ -199,34 +222,107 @@ export function BacklogPage() {
     return (sprints ?? []).find((s) => s.id === id)?.name ?? 'sprint khác';
   }
 
-  function onDragEnd(e: DragEndEvent) {
+  async function onDragEnd(e: DragEndEvent) {
     setDragging(null);
+    dropHint.set(null);
     const issue = (issues ?? []).find((i) => i.id === e.active.id);
-    const overId = e.over?.id;
-    if (!issue || overId == null || !canDragIssue(issue)) return;
-    const targetSprintId = overId === BACKLOG_ID ? null : String(overId);
+    const p = placementFromDnd(e);
+    if (!issue || !p || !canDragIssue(issue)) return;
+    const plan = planBacklogDrop(issue, p, BACKLOG_ID);
+    if (plan.ignore) return;
+    const { targetSprintId, sprintChanged } = plan;
     const currentSprintId = issue.sprintId ?? null;
-    if (currentSprintId === targetSprintId) return;
-    moveToSprint.mutate(
-      { id: issue.id, sprintId: targetSprintId, version: issue.version },
-      {
-        onError: (err) => toast.error(apiErrorMessage(err)),
-        onSuccess: (updated) =>
-          toast.success(`Đã chuyển ${issue.key} sang ${labelForSprint(targetSprintId)}`, {
-            duration: 4000,
-            action: {
-              label: 'Hoàn tác',
-              // Chuyển ngược về sprint cũ, dùng version máy chủ vừa trả về.
-              onClick: () =>
-                moveToSprint.mutate(
-                  { id: issue.id, sprintId: currentSprintId, version: updated.version },
-                  { onError: (err) => toast.error(apiErrorMessage(err)) },
-                ),
-            },
-          }),
-      },
-    );
+    // Mốc theo danh sách CHƯA lọc của khu đích (xem `widenNeighbors`); chỗ cũ (Hoàn tác) = láng giềng thật ở khu cũ.
+    const idsOf = (container: string) => (fullBySprint.get(container) ?? []).map((i) => i.id);
+    const { afterId, beforeId } = widenNeighbors(idsOf(p.containerId), p, issue.id);
+    const origin = neighborsIn(idsOf(currentSprintId ?? BACKLOG_ID), issue.id);
+    // Route `rank` (backlog:manage + issue:edit) — khớp `canDragIssue`; một request vừa đổi sprint vừa chèn đúng chỗ.
+    const vars: MoveVars = {
+      route: 'rank',
+      id: issue.id,
+      key: issue.key,
+      version: issue.version,
+      afterId,
+      beforeId,
+      ...(sprintChanged ? { sprintId: targetSprintId } : {}),
+    };
+    try {
+      const updated = await move.mutateAsync(vars);
+      toast.success(
+        sprintChanged
+          ? `Đã chuyển ${issue.key} sang ${labelForSprint(targetSprintId)}`
+          : `Đã đổi thứ tự ${issue.key}`,
+        {
+          duration: 4000,
+          action: {
+            label: 'Hoàn tác',
+            // Đưa về sprint cũ + hai mốc cũ, dùng version máy chủ vừa trả về.
+            onClick: () =>
+              void move
+                .mutateAsync({
+                  route: 'rank',
+                  id: issue.id,
+                  key: issue.key,
+                  version: updated.version,
+                  afterId: origin.afterId,
+                  beforeId: origin.beforeId,
+                  ...(sprintChanged ? { sprintId: currentSprintId } : {}),
+                })
+                .catch(() => undefined),
+          },
+        },
+      );
+    } catch {
+      /* hook + MutationCache đã báo (409 mốc cũ → toast nhẹ + nạp lại) */
+    }
   }
+
+  // Trang rời đi (DndContext unmount) giữa lúc kéo: không để lại đường kẻ chèn của lần kéo dở.
+  useEffect(() => () => dropHint.set(null), []);
+  const onDragMove = (e: DragMoveEvent) => dropHint.set(hintOf(placementFromDnd(e)));
+  const onDragCancel = () => {
+    setDragging(null);
+    dropHint.set(null);
+  };
+
+  const announcements = useMemo<Announcements>(() => {
+    const keyOf = (id: string | number) => (issues ?? []).find((i) => i.id === id)?.key ?? 'Việc';
+    const whereOf = (containerId: string) =>
+      containerId === BACKLOG_ID
+        ? 'Backlog'
+        : `sprint “${(sprints ?? []).find((s) => s.id === containerId)?.name ?? 'khác'}”`;
+    const at = (p: Placement) => `vị trí ${p.index + 1}/${p.total}`;
+    const overText = (e: Parameters<NonNullable<Announcements['onDragOver']>>[0]) => {
+      const p = placementFromDnd(e);
+      if (!p) return `${keyOf(e.active.id)} đang ở ngoài các danh sách.`;
+      return p.crossContainer
+        ? `${keyOf(e.active.id)} sang ${whereOf(p.containerId)}, ${at(p)}.`
+        : `${keyOf(e.active.id)} ở ${at(p)} trong ${whereOf(p.containerId)}.`;
+    };
+    return {
+      onDragStart: ({ active }) => {
+        const s = active.data.current?.sortable as
+          | { containerId: string; index: number; items: unknown[] }
+          | undefined;
+        return `Đã nhấc ${keyOf(active.id)}${
+          s ? ` ở ${whereOf(String(s.containerId))}, vị trí ${s.index + 1}/${s.items.length}` : ''
+        }. Mũi tên lên xuống đổi thứ tự, tới sprint khác để chuyển sprint, Space để thả, Esc để huỷ.`;
+      },
+      onDragOver: overText,
+      // Cùng câu với onDragOver: vị trí đổi (nửa trên/dưới của dòng đích) mà `over` không đổi vẫn được đọc đúng.
+      onDragMove: overText,
+      onDragEnd: (e) => {
+        const p = placementFromDnd(e);
+        if (!p) return `Đã thả ${keyOf(e.active.id)} ra ngoài các danh sách, giữ nguyên.`;
+        if (p.unchanged)
+          return `Đã thả ${keyOf(e.active.id)}, giữ nguyên ${at(p)} trong ${whereOf(p.containerId)}.`;
+        return p.crossContainer
+          ? `Đã thả ${keyOf(e.active.id)} vào ${whereOf(p.containerId)}, ${at(p)}.`
+          : `Đã thả ${keyOf(e.active.id)} ở ${at(p)} trong ${whereOf(p.containerId)}.`;
+      },
+      onDragCancel: ({ active }) => `Đã huỷ kéo ${keyOf(active.id)}, giữ nguyên vị trí.`,
+    };
+  }, [issues, sprints]);
 
   function handleCreate() {
     const name = newName.trim();
@@ -484,7 +580,15 @@ export function BacklogPage() {
           ))}
       </div>
 
-      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={sortableCollision}
+        onDragStart={onDragStart}
+        onDragMove={onDragMove}
+        onDragEnd={(e) => void onDragEnd(e)}
+        onDragCancel={onDragCancel}
+        accessibility={{ announcements, screenReaderInstructions: SCREEN_READER_INSTRUCTIONS }}
+      >
         <div ref={setScrollEl} className="flex-1 space-y-4 overflow-y-auto p-6">
           {visibleSprints.map((sprint) => {
             const sprintIssues = bySprint.get(sprint.id) ?? [];
@@ -817,6 +921,13 @@ function VirtualRows({
   );
 }
 
+/** `data.current` của dnd-kit là `any` — chỉ đọc `sortable.containerId`, có kiểu. */
+const sortableContainerOf = (data: unknown): string | undefined => {
+  const id = (data as { sortable?: { containerId?: string | number } } | undefined)?.sortable
+    ?.containerId;
+  return id === undefined ? undefined : String(id);
+};
+
 function Section({
   id,
   title,
@@ -869,11 +980,18 @@ function Section({
   onToggleSelect?: (id: string) => void;
   onToggleSection?: (ids: string[], selectAll: boolean) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id, disabled: readOnly });
+  const ids = useMemo(() => issues.map((i) => i.id), [issues]);
+  // `container.items` để khu trống / thả vào đáy khu vẫn tính được thứ tự đích (xem `placementFromDnd`).
+  const data = useMemo(() => ({ container: { items: ids } }), [ids]);
+  const { setNodeRef } = useDroppable({ id, disabled: readOnly, data });
+  const { active, over } = useDndContext();
+  const fromContainer = active ? sortableContainerOf(active.data.current) : undefined;
+  const overContainer = over ? (sortableContainerOf(over.data.current) ?? String(over.id)) : null;
+  // Viền nổi chỉ khi kéo TỪ khu khác sang (cùng khu đã có dịch chỗ live).
+  const highlight = !!active && !readOnly && overContainer === id && fromContainer !== id;
   const showQuickAdd =
     !readOnly && canCreate && projectKey && projectId && quickAddSprintId !== undefined;
   const canSelect = !!selectable && !readOnly;
-  const ids = issues.map((i) => i.id);
   const selectedInSection = canSelect && selected ? ids.filter((i) => selected.has(i)).length : 0;
   const allSelected = ids.length > 0 && selectedInSection === ids.length;
   const someSelected = selectedInSection > 0 && !allSelected;
@@ -883,7 +1001,8 @@ function Section({
       key={issue.id}
       issue={issue}
       progress={progressMap.get(issue.id)}
-      readOnly={readOnly || (canDrag ? !canDrag(issue) : false)}
+      readOnly={readOnly}
+      dragDisabled={canDrag ? !canDrag(issue) : false}
       selectable={canSelect}
       checked={selected?.has(issue.id) ?? false}
       onToggleSelect={onToggleSelect}
@@ -894,7 +1013,7 @@ function Section({
       ref={setNodeRef}
       className={cn(
         'rounded-lg border border-border bg-surface transition-colors',
-        isOver && 'ring-2 ring-[var(--ring)]',
+        highlight && 'ring-2 ring-[var(--ring)]',
       )}
     >
       <div className="flex flex-wrap items-center gap-2 px-4 py-3">
@@ -926,11 +1045,14 @@ function Section({
       {hint && <p className="px-4 pb-2 text-xs text-muted">{hint}</p>}
 
       <div className="space-y-1.5 border-t border-border px-2 py-2">
-        {issues.length > VIRTUALIZE_AFTER ? (
-          <VirtualRows issues={issues} scrollEl={scrollEl} renderRow={renderRow} />
-        ) : (
-          issues.map((issue) => renderRow(issue))
-        )}
+        {/* items = TOÀN BỘ id của khu (kể cả dòng chưa gắn DOM do ảo hoá) để chỉ số/thứ tự dnd-kit đúng. */}
+        <SortableContext id={id} items={ids} strategy={verticalListSortingStrategy}>
+          {issues.length > VIRTUALIZE_AFTER ? (
+            <VirtualRows issues={issues} scrollEl={scrollEl} renderRow={renderRow} />
+          ) : (
+            issues.map((issue) => renderRow(issue))
+          )}
+        </SortableContext>
         {issues.length === 0 &&
           (emptyTitle ? (
             <div className="p-2">
