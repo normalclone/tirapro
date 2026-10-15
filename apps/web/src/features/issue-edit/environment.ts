@@ -9,7 +9,7 @@ export function parseUserAgent(ua: string): { browser?: string; os?: string } {
   const edge = major(/\bEdg(?:e|A|iOS)?\/(\d+)/);
   const opera = major(/\bOPR\/(\d+)/);
   const firefox = major(/\b(?:Firefox|FxiOS)\/(\d+)/);
-  const chrome = major(/\b(?:Chrome|CriOS)\/(\d+)/);
+  const chrome = major(/(?:\b|Headless)(?:Chrome|CriOS)\/(\d+)/); // HeadlessChrome/… (Playwright/CI) cũng là Chrome
   const safari = /\bSafari\//.test(ua) ? major(/\bVersion\/(\d+)/) : undefined;
   if (edge) out.browser = `Edge ${edge}`;
   else if (opera) out.browser = `Opera ${opera}`;

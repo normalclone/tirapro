@@ -28,6 +28,13 @@ describe('parseUserAgent', () => {
       ),
     ).toEqual({ browser: 'Firefox 127', os: 'Windows 10/11' });
   });
+  it('HeadlessChrome (trình duyệt tự động) vẫn nhận là Chrome', () => {
+    expect(
+      parseUserAgent(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/126.0.0.0 Safari/537.36',
+      ),
+    ).toEqual({ browser: 'Chrome 126', os: 'macOS' });
+  });
   it('UA lạ => object rỗng, không ném lỗi', () => {
     expect(parseUserAgent('curl/8.0')).toEqual({});
   });
