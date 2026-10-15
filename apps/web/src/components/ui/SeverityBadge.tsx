@@ -14,9 +14,12 @@ export function severityTitle(
   return `${head} ${SEVERITY_VS_PRIORITY}${suffix ? ` ${suffix}` : ''}`;
 }
 
+/** Ba chữ cái đầu ("Maj"/"Min"/"Cri") — một chữ thì Major và Minor trùng nhau. */
+const compactLabel = (name: string) => name.trim().slice(0, 3);
+
 /**
  * Huy hiệu Mức nghiêm trọng của Bug: nền nhạt 14% theo màu mức, chữ cùng màu.
- * `compact` (thẻ board, dòng Việc chờ) chỉ giữ chữ cái đầu để không làm màn chính ồn hơn.
+ * `compact` (thẻ board, dòng Việc chờ) chỉ giữ ba chữ cái đầu để không làm màn chính ồn hơn.
  * Chưa đặt mức (`null`) thì không vẽ gì — nơi cần nút "Đặt mức" tự dựng.
  */
 export function SeverityBadge({
@@ -37,7 +40,7 @@ export function SeverityBadge({
     <span
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-full text-xs font-medium',
-        compact ? 'h-4 min-w-4 px-1 text-[10px] leading-none' : 'gap-1 px-2 py-0.5',
+        compact ? 'h-4 px-1.5 text-[10px] leading-none' : 'gap-1 px-2 py-0.5',
         className,
       )}
       style={{
@@ -47,7 +50,7 @@ export function SeverityBadge({
       title={severityTitle(severity, suffix)}
       aria-label={`Mức nghiêm trọng: ${severity.name}`}
     >
-      {compact ? severity.name.trim().charAt(0).toUpperCase() : severity.name}
+      {compact ? compactLabel(severity.name) : severity.name}
     </span>
   );
 }
