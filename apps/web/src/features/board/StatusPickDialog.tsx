@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
@@ -17,11 +17,6 @@ interface Props {
 /** Cột gom nhiều trạng thái và workflow cho phép >1 đích: hỏi chọn. ↑/↓ đổi lựa chọn, Enter chọn, Esc huỷ. */
 export function StatusPickDialog({ open, issueKey, colName, options, onPick, onCancel }: Props) {
   const list = useRef<HTMLDivElement>(null);
-
-  // Lựa chọn đầu nhận focus khi mở (Radix focus vào phần tử đầu tiên có thể focus, nhưng chủ động cho chắc).
-  useEffect(() => {
-    if (open) list.current?.querySelector<HTMLButtonElement>('button')?.focus();
-  }, [open]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;

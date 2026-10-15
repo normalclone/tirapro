@@ -187,12 +187,13 @@ export function BoardPage() {
     col: BoardColumnDto;
     issueKey: string;
   } | null>(null);
-  // Thả vào cột gom nhiều trạng thái mà workflow cho >1 đích → hỏi chọn (`version` = bản mới nhất sau khi đổi người).
+  // Thả vào cột gom nhiều trạng thái mà workflow cho >1 đích → hỏi chọn (`version` chỉ có khi vừa đổi người).
   const [pick, setPick] = useState<{
     issue: IssueDto;
     col: BoardColumnDto;
     options: NextStatus[];
-    version: number;
+    /** `null` = chưa đổi người → lấy bản mới nhất của việc khi người dùng chọn (tránh 409 nếu thẻ đổi qua realtime). */
+    version: number | null;
   } | null>(null);
   const {
     swimlaneBy,
@@ -377,8 +378,7 @@ export function BoardPage() {
     if (!assigneeChanged) {
       if (res.kind === 'blocked') toast.error(blockedMsg);
       else if (only) runTransition(issue, col, only.id, false, labelFor(only));
-      else if (res.kind === 'move')
-        setPick({ issue, col, options: res.options, version: issue.version });
+      else if (res.kind === 'move') setPick({ issue, col, options: res.options, version: null });
       return;
     }
 
@@ -643,7 +643,8 @@ export function BoardPage() {
           onPick={(id, name) => {
             const p = pick;
             setPick(null);
-            runTransition(p.issue, p.col, id, false, name, p.version);
+            const latest = (issues ?? []).find((i) => i.id === p.issue.id) ?? p.issue;
+            runTransition(latest, p.col, id, false, name, p.version ?? latest.version);
           }}
           onCancel={() => setPick(null)}
         />
