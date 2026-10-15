@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { CalendarClock, Play, Trash2, Plus, ChevronDown, ChevronRight } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
@@ -20,6 +19,7 @@ import {
   type DigestSchedule,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { fmtRelative } from '@/lib/dateFormat';
 
 /* ------------------------------------------------------------------ */
 /* Hằng số                                                            */
@@ -293,9 +293,7 @@ function DigestRow({
     });
   }
 
-  const lastRunLabel = digest.lastRunAt
-    ? formatDistanceToNow(new Date(digest.lastRunAt), { addSuffix: true })
-    : 'Chưa chạy lần nào';
+  const lastRunLabel = digest.lastRunAt ? fmtRelative(digest.lastRunAt) : 'Chưa chạy lần nào';
 
   return (
     <li className="rounded-md border border-border">

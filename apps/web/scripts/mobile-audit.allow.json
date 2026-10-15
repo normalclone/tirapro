@@ -1,0 +1,3 @@
+{
+  "/p/:project/gantt|small-targets": "Gantt cuộn ngang trong khung; thanh công việc nhỏ có chủ đích. LƯU Ý: small-targets vốn chỉ là cảnh báo (WARN_ONLY) — mục này chỉ ẩn khỏi báo cáo, không phải ngoại lệ thật của loại chặn."
+}

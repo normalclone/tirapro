@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Popover from '@radix-ui/react-popover';
-import { formatDistanceToNow } from 'date-fns';
 import {
   AtSign,
   Bell,
@@ -25,6 +24,7 @@ import {
   type NotificationItem,
   type NotificationType,
 } from './api';
+import { fmtRelative } from '@/lib/dateFormat';
 
 /** Nhãn tiếng Việt + icon theo loại thông báo. */
 const TYPE_META: Record<NotificationType, { label: string; Icon: LucideIcon }> = {
@@ -37,12 +37,6 @@ const TYPE_META: Record<NotificationType, { label: string; Icon: LucideIcon }> =
   SPRINT_COMPLETED: { label: 'Sprint xong', Icon: FlagOff },
   WATCHING_UPDATE: { label: 'Theo dõi', Icon: Eye },
 };
-
-function relativeTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return formatDistanceToNow(d, { addSuffix: true });
-}
 
 export function NotificationBell() {
   const { data: items = [] } = useNotifications();
@@ -126,7 +120,7 @@ function NotificationRow({ item, onActivate }: { item: NotificationItem; onActiv
   const unread = !item.readAt;
   const key = item.payload?.key;
   const summary = item.payload?.summary;
-  const time = relativeTime(item.createdAt);
+  const time = fmtRelative(item.createdAt);
 
   return (
     <li>

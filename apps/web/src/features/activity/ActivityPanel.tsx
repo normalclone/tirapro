@@ -1,7 +1,7 @@
-import { formatDistanceToNow } from 'date-fns';
 import { Avatar } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import { useIssueActivity, type ActivityItem } from './api';
+import { fmtRelative } from '@/lib/dateFormat';
 
 /** Giá trị hiển thị, rỗng → dấu gạch. */
 function val(v: string | null): string {
@@ -59,9 +59,7 @@ export function ActivityPanel({ issueId }: { issueId: string }) {
               <p className={cn('min-w-0 flex-1 text-sm text-ink')}>
                 <b className="font-medium text-ink-strong">{a.actor?.displayName ?? 'Hệ thống'}</b>{' '}
                 {describe(a)}{' '}
-                <span className="text-xs text-faint">
-                  {formatDistanceToNow(new Date(a.occurredAt), { addSuffix: true })}
-                </span>
+                <span className="text-xs text-faint">{fmtRelative(a.occurredAt)}</span>
               </p>
             </li>
           ))}

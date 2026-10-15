@@ -1,6 +1,5 @@
 import { type ReactNode } from 'react';
-import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
-import { vi } from 'date-fns/locale';
+import { isToday, isYesterday } from 'date-fns';
 import {
   ArrowRight,
   ArrowUpDown,
@@ -18,6 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { pageContainer } from '@/components/layout/page';
 import { useProjectActivity, type ProjectActivityItem } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { fmtDate, fmtDateTime, fmtRelative } from '@/lib/dateFormat';
 
 /** Màu chấm theo status category (dùng CSS var giống IssueProperties). */
 function categoryColor(cat: string | null): string {
@@ -151,12 +151,12 @@ function actionPhrase(a: ProjectActivityItem): ReactNode {
   }
 }
 
-/** Nhãn ngày cho header nhóm: Hôm nay / Hôm qua / d thg M yyyy. */
+/** Nhãn ngày cho header nhóm: Hôm nay / Hôm qua / dd/MM/yyyy. */
 function dayLabel(iso: string): string {
   const d = new Date(iso);
   if (isToday(d)) return 'Hôm nay';
   if (isYesterday(d)) return 'Hôm qua';
-  return format(d, 'd MMM yyyy', { locale: vi });
+  return fmtDate(d);
 }
 
 /** Gộp các mục theo ngày (đã sort desc từ server), giữ thứ tự. */
@@ -176,8 +176,8 @@ function groupByDay(
 /** Một sự kiện trên timeline: chấm + avatar + câu mô tả. */
 function TimelineEvent({ a }: { a: ProjectActivityItem }) {
   const Icon = fieldIcon(a.field);
-  const abs = format(new Date(a.occurredAt), "HH:mm 'ngày' d MMMM yyyy", { locale: vi });
-  const rel = formatDistanceToNow(new Date(a.occurredAt), { addSuffix: true, locale: vi });
+  const abs = fmtDateTime(a.occurredAt);
+  const rel = fmtRelative(a.occurredAt);
 
   return (
     <li className="relative flex gap-3 pb-5 last:pb-0">

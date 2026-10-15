@@ -14,25 +14,10 @@ import { useUpdateIssue } from './api';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useAddWorklog, useDeleteWorklog, useUpdateWorklog, useWorklogs } from './worklog-api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { LOCALE } from '@/lib/locale';
+import { fmtDateTime, toDateTimeInput } from '@/lib/dateFormat';
 import { TimeProgressBar } from './TimeProgressBar';
 
 const QUICK = ['30m', '1h', '2h', '1d'];
-
-/** `datetime-local` đọc/ghi giờ địa phương dạng "YYYY-MM-DDTHH:mm". */
-function toLocalInput(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-const when = (iso: string) =>
-  new Date(iso).toLocaleString(LOCALE, {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 
 /** "2.5" nghĩa là 2,5 giờ → "2h 30m"; chuỗi có đơn vị giữ nguyên. Dùng cho gợi ý ngay khi gõ. */
 function previewOf(text: string): { ok: boolean; label: string } {
@@ -223,7 +208,7 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
                         {formatDuration(w.timeSpentSec)}
                       </span>
                     </p>
-                    <p className="text-xs text-faint">{when(w.startedAt)}</p>
+                    <p className="text-xs text-faint">{fmtDateTime(w.startedAt)}</p>
                     {w.comment && (
                       <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted">
                         {w.comment}
@@ -310,7 +295,7 @@ function WorklogForm({
 }) {
   const [time, setTime] = useState(initial ? formatDuration(initial.timeSpentSec) : '');
   const [startedAt, setStartedAt] = useState(
-    toLocalInput(initial ? new Date(initial.startedAt) : new Date()),
+    toDateTimeInput(initial ? new Date(initial.startedAt) : new Date()),
   );
   const [comment, setComment] = useState(initial?.comment ?? '');
   const [mode, setMode] = useState<'auto' | 'leave' | 'set'>('auto');

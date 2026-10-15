@@ -1,4 +1,4 @@
-import { LOCALE } from '@/lib/locale';
+import { fmtDate, fmtDateTime } from '@/lib/dateFormat';
 import type { CustomFieldDefinition, CustomFieldValue } from './api';
 
 /** Chuỗi hiển thị (chỉ-đọc) của giá trị trường tuỳ chỉnh; `null` = chưa có giá trị. */
@@ -19,9 +19,7 @@ export function displayCustomFieldValue(
     case 'DATETIME': {
       const d = new Date(String(value));
       if (Number.isNaN(d.getTime())) return String(value);
-      return field.type === 'DATE'
-        ? d.toLocaleDateString(LOCALE)
-        : d.toLocaleString(LOCALE, { dateStyle: 'short', timeStyle: 'short' });
+      return field.type === 'DATE' ? fmtDate(d) : fmtDateTime(d);
     }
     default:
       return Array.isArray(value) ? value.join(', ') : String(value);

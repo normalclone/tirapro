@@ -76,6 +76,7 @@ import { useInView } from '@/lib/useInView';
 import { isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { FEATURES } from '@/lib/features';
 import type { IssueDto } from '@tirapro/types';
 import type { WorkflowViewDialog as WorkflowViewDialogType } from '@/features/workflow-settings/WorkflowViewDialog';
 
@@ -136,7 +137,7 @@ export function IssueDetailPage() {
   const can = useCanIn(issue?.projectId);
   const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
   const canTransition = can('issue:transition');
-  const { data: devLinks } = useDevLinks(issue?.id);
+  const { data: devLinks } = useDevLinks(FEATURES.repos ? issue?.id : undefined);
   // Mã issue theo LOẠI (BUG-4…) → KHÔNG suy ra project key từ chuỗi; resolve theo projectId.
   // Kể cả dự án đã lưu trữ (danh sách mặc định chỉ có dự án hoạt động → breadcrumb trống, "Tạo việc con" sai dự án).
   const { data: projects } = useProjects(true);
@@ -685,7 +686,7 @@ export function IssueDetailPage() {
                   <IssueComponentsPicker issue={issue} />
                   <CustomFieldsPanel issueId={issue.id} canEdit={canEditThis} />
 
-                  {devLinks && devLinks.length > 0 && (
+                  {FEATURES.repos && devLinks && devLinks.length > 0 && (
                     <div>
                       <p
                         className="mb-2 text-sm font-medium text-muted"

@@ -6,4 +6,6 @@ interface ImportMetaEnv {
   readonly VITE_WS_URL?: string;
   /** URL MCP server hiển thị ở trang API keys (mặc định dev: http://localhost:4100/mcp). */
   readonly VITE_MCP_URL?: string;
+  /** '1' = bật lại mục Kho mã (GitHub/GitLab) + khối "Liên kết code" (mặc định ẩn). */
+  readonly VITE_FEATURE_REPOS?: string;
 }

@@ -1,7 +1,7 @@
 import { AlarmClock, CheckCircle2, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIssueSla, fmtMins, SLA_SOON_MINS } from './api';
-import { LOCALE } from '@/lib/locale';
+import { fmtDateTime } from '@/lib/dateFormat';
 
 /** Nhãn cam kết thời gian xử lý trên trang chi tiết công việc: còn bao lâu / đã trễ / đã xong. */
 export function IssueSlaBadge({ issueId }: { issueId: string }) {
@@ -43,8 +43,8 @@ export function IssueSlaBadge({ issueId }: { issueId: string }) {
   const title = [
     'Cam kết thời gian xử lý — hệ thống bấm giờ từ lúc công việc được tạo.',
     `Cam kết áp dụng: ${data.policyName}`,
-    `Phải phản hồi trước: ${new Date(data.responseDueAt).toLocaleString(LOCALE)}${data.firstRespondedAt ? ' (đã phản hồi)' : ' (chưa phản hồi)'}`,
-    `Phải xử lý xong trước: ${new Date(data.resolveDueAt).toLocaleString(LOCALE)}`,
+    `Phải phản hồi trước: ${fmtDateTime(data.responseDueAt)}${data.firstRespondedAt ? ' (đã phản hồi)' : ' (chưa phản hồi)'}`,
+    `Phải xử lý xong trước: ${fmtDateTime(data.resolveDueAt)}`,
   ].join('\n');
 
   return (

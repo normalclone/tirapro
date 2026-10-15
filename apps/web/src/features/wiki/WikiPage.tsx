@@ -37,7 +37,7 @@ import {
   type WikiNode,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { LOCALE } from '@/lib/locale';
+import { fmtDateTime } from '@/lib/dateFormat';
 
 /** Vị trí của một trang trong cây: danh sách anh em + chỉ số, để đổi thứ tự bằng nút lên/xuống. */
 interface Slot {
@@ -58,14 +58,7 @@ function indexTree(
   return out;
 }
 
-const dateTime = (iso: string) =>
-  new Date(iso).toLocaleString(LOCALE, {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+const dateTime = fmtDateTime;
 
 /**
  * Tài liệu nội bộ (wiki): cây trang bên trái, nội dung markdown bên phải.

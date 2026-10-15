@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TimeOffKind } from '@tirapro/types';
 import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { toDateInput } from '@/lib/dateFormat';
 
 /* ─────────────────────────── Kiểu dữ liệu ─────────────────────────── */
 
@@ -203,8 +204,7 @@ export function useDeleteTimeOff() {
 
 /** `YYYY-MM-DD` theo lịch địa phương (khớp cách người dùng đọc ngày). */
 export function isoDay(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return toDateInput(d);
 }
 
 export function addDays(d: Date, n: number): Date {

@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { formatDistanceToNow } from 'date-fns';
-import { vi } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { CommentDto, IssueDto } from '@tirapro/types';
 import { useAddComment, useComments } from '@/features/issues/api';
@@ -14,6 +12,7 @@ import { MarkdownEditor, MarkdownView } from './DescriptionEditor';
 import { useDeleteComment, useUpdateComment } from './api';
 import { TypingIndicator } from '@/features/presence/TypingIndicator';
 import { useTypingEmitter } from '@/features/presence/usePresence';
+import { fmtRelative } from '@/lib/dateFormat';
 
 /**
  * Danh sách + soạn bình luận cho một công việc. Bình luận lưu dạng Markdown → soạn/sửa bằng
@@ -145,7 +144,7 @@ function CommentRow({
         <p className="text-sm">
           <span className="font-medium text-ink-strong">{comment.author?.displayName}</span>{' '}
           <span className="text-xs text-faint">
-            {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true, locale: vi })}
+            {fmtRelative(comment.createdAt)}
             {comment.isEdited ? ' · đã sửa' : ''}
           </span>
         </p>

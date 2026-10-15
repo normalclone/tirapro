@@ -2,29 +2,29 @@ import { useState, type ReactNode } from 'react';
 import { CalendarClock } from 'lucide-react';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
+import { FEATURES } from '@/lib/features';
 import { DigestsSection } from '@/features/digests/DigestsSection';
 import { PlatformLogo } from './PlatformLogo';
 import { TelegramSection } from './TelegramSection';
 import { RepositorySection, RepoStackIcon } from './RepositorySection';
+import { integrationSections, type IntegrationSectionId } from './sections';
 
 /* ------------------------------------------------------------------ */
 /* Submenu — rail dọc trên desktop, hàng pill cuộn ngang trên mobile  */
 /* ------------------------------------------------------------------ */
 
-type SectionId = 'telegram' | 'repos' | 'digest';
+const SECTION_ICON: Record<IntegrationSectionId, ReactNode> = {
+  telegram: <PlatformLogo platform="TELEGRAM" size={16} />,
+  repos: <RepoStackIcon />,
+  digest: <CalendarClock className="h-4 w-4 text-muted" aria-hidden />,
+};
 
-const INTEGRATION_NAV: { id: SectionId; label: string; icon: ReactNode }[] = [
-  { id: 'telegram', label: 'Telegram', icon: <PlatformLogo platform="TELEGRAM" size={16} /> },
-  { id: 'repos', label: 'Kho mã', icon: <RepoStackIcon /> },
-  {
-    id: 'digest',
-    label: 'Digest',
-    icon: <CalendarClock className="h-4 w-4 text-muted" aria-hidden />,
-  },
-];
+const INTEGRATION_NAV = integrationSections(FEATURES);
 
 export function IntegrationsPage() {
-  const [active, setActive] = useState<SectionId>('telegram');
+  const [picked, setPicked] = useState<IntegrationSectionId>('telegram');
+  // Mục đang chọn không còn trong danh sách (cờ tắt) → rơi về Telegram.
+  const active = INTEGRATION_NAV.some((s) => s.id === picked) ? picked : 'telegram';
 
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
@@ -44,7 +44,7 @@ export function IntegrationsPage() {
             <button
               key={item.id}
               type="button"
-              onClick={() => setActive(item.id)}
+              onClick={() => setPicked(item.id)}
               aria-current={isActive ? 'page' : undefined}
               className={cn(
                 'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
@@ -54,7 +54,7 @@ export function IntegrationsPage() {
                   : 'text-muted hover:bg-surface-2 hover:text-ink',
               )}
             >
-              {item.icon}
+              {SECTION_ICON[item.id]}
               {item.label}
             </button>
           );
@@ -64,7 +64,7 @@ export function IntegrationsPage() {
       <div className="min-w-0 flex-1 overflow-auto">
         <div className={pageContainer('sm')}>
           {active === 'telegram' && <TelegramSection />}
-          {active === 'repos' && <RepositorySection />}
+          {FEATURES.repos && active === 'repos' && <RepositorySection />}
           {active === 'digest' && <DigestsSection />}
         </div>
       </div>
