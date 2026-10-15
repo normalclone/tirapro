@@ -62,6 +62,14 @@ Checklist đầy đủ (thứ tự, lệnh theo từng môi trường): `docs/DE
 - **Kết quả import hiển thị `skippedAssignees`:** toast "N người phụ trách không khớp thành viên nào — đã bỏ gán (việc vẫn được nhập)."
 - Dialog dùng token motion `duration-base/fast`; nút tạo/AI có skeleton khi dự án hoặc quyền đang tải (không nhảy bố cục).
 
+### Chỉnh cuối sau smoke test (P1–P5)
+
+- Tạo việc (phím `c`, Cmd+K, nút nổi) khi đang ở dự án lưu trữ: không còn tự chọn dự án đầu danh sách — chọn dự án hoạt động dùng gần nhất, không có thì để trống ô Dự án kèm gợi ý.
+- Toast "Hoàn tác" sau khi chuyển trạng thái (board, trang chi tiết, phím số, Cmd+K) chỉ hiện khi bước ngược hợp lệ theo workflow.
+- Trang Quy tắc tự động: không gọi API cho dự án thiếu quyền (hết lỗi 403 đỏ); dự án mặc định là dự án có quyền; người không thuộc dự án nào thấy câu riêng.
+- Panel Thời gian: chưa đặt "ước lượng còn lại" thì hiện ước tính = gốc − đã ghi (ghi rõ "ước tính").
+- Nhập Jira: người phụ trách không khớp thành viên được đếm và liệt kê (`skippedAssignees`, cảnh báo); người được chủ động chọn "Để trống" đếm riêng (`blankedAssignees`, không cảnh báo). Nhập CSV đơn giản vẫn không đọc cột assignee.
+
 ## 3. Thay đổi API
 
 Cập nhật trong `docs/design/api-contract.md` (đợt cuối FW-OPS I4).
@@ -93,6 +101,8 @@ Cập nhật trong `docs/design/api-contract.md` (đợt cuối FW-OPS I4).
 - Đường probe health không ghi log, dựng từ `API_GLOBAL_PREFIX`/`API_VERSION` thay vì hardcode (T3). `issues.service.ts` tách `RankService` (T4, không đổi hành vi).
 
 ## 6. Còn mở / cố ý không làm
+
+- Trang Quy tắc với người không quản trị workspace tra `GET /projects/:id/permissions/me` theo đợt 5 dự án tới khi gặp dự án có quyền (tối đa một request mỗi dự án) — nên có endpoint gộp quyền nhiều dự án nếu workspace rất nhiều dự án.
 
 - **Cố ý (quyết định sản phẩm / ruling):** `!=`/`NOT IN` trên quan hệ nullable giữ ngữ nghĩa Jira; Resources → Allocation và clients → Contract trên dự án lưu trữ vẫn ghi được; snapshot sprint của dự án lưu trữ vẫn ghi; `recoverStaleJobs` chỉ cho job `jira-csv` (import generic mồ côi vẫn kẹt RUNNING như trước C6).
 - **Nợ còn lại:** ratchet lint 91 cảnh báo (65 `max-lines-per-function` ở web, 12 `no-unsafe-*` ở api…); `knip.jsonc` còn che `@nestjs/testing` và `AiIssuePanel.tsx` (chưa nối UI). `pnpm knip` thoát 0.
