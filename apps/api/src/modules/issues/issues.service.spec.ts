@@ -19,6 +19,7 @@ function issueRow(over: Record<string, unknown> = {}) {
     number: 1,
     description: null,
     descriptionFormat: 'MARKDOWN',
+    acceptanceCriteria: null,
     type: {
       id: 't1',
       name: 'Task',
@@ -264,6 +265,42 @@ describe('IssuesService — OCC atomic', () => {
     });
     expect(dto.version).toBe(4);
     expect(events.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('update(): acceptanceCriteria được ghi qua updateMany (OCC) và DTO trả acceptanceProgress', async () => {
+    const tx = occTx(1, null);
+    tx.issue.findFirstOrThrow.mockResolvedValueOnce(
+      issueRow({ version: 4, acceptanceCriteria: '- [x] a\n- [ ] b\n- [ ] c' }),
+    );
+    const { service } = makeService(tx);
+    const dto = await service.update('w1', 'u1', 'i1', {
+      version: 3,
+      acceptanceCriteria: '- [x] a\n- [ ] b\n- [ ] c',
+    });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({
+      acceptanceCriteria: '- [x] a\n- [ ] b\n- [ ] c',
+    });
+    expect(dto.acceptanceProgress).toEqual({ done: 1, total: 3 });
+  });
+
+  it('update(): chuỗi rỗng/khoảng trắng → null; không có mục tick → acceptanceProgress null', async () => {
+    const tx = occTx(1, null);
+    const { service } = makeService(tx);
+    await service.update('w1', 'u1', 'i1', { version: 3, acceptanceCriteria: '   ' });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ acceptanceCriteria: null });
+  });
+
+  it('toDto: văn bản tiêu chí không có ô tick -> acceptanceProgress null; có ô tick -> đếm đúng', async () => {
+    const plain = occTx(1, null);
+    plain.issue.findFirstOrThrow.mockResolvedValueOnce(
+      issueRow({ version: 4, acceptanceCriteria: 'Chỉ là đoạn văn, không có ô tick' }),
+    );
+    const dto = await makeService(plain).service.update('w1', 'u1', 'i1', {
+      version: 3,
+      acceptanceCriteria: 'Chỉ là đoạn văn, không có ô tick',
+    });
+    expect(dto.acceptanceCriteria).toBe('Chỉ là đoạn văn, không có ô tick');
+    expect(dto.acceptanceProgress).toBeNull();
   });
 
   it('update(): issue bị xoá giữa chừng => 404 thay vì 409', async () => {
@@ -1463,6 +1500,18 @@ describe('IssuesService.create — statusId phải thuộc workflow của dự �
     expect(created.mock.calls[0]![0].data.resolvedAt).toBeNull();
   });
 
+  it('acceptanceCriteria: create ghi văn bản; chuỗi trắng -> null', async () => {
+    const a = createTx(WF);
+    await makeService(a.tx).service.create('w1', 'u1', {
+      ...baseInput,
+      acceptanceCriteria: '- [ ] a\n- [ ] b',
+    });
+    expect(a.created.mock.calls[0]![0].data.acceptanceCriteria).toBe('- [ ] a\n- [ ] b');
+    const b = createTx(WF);
+    await makeService(b.tx).service.create('w1', 'u1', { ...baseInput, acceptanceCriteria: '  ' });
+    expect(b.created.mock.calls[0]![0].data.acceptanceCriteria).toBeNull();
+  });
+
   it('không truyền statusId => dùng trạng thái khởi tạo (hành vi cũ)', async () => {
     const { tx, created } = createTx(WF);
     const { service } = makeService(tx);
@@ -1916,6 +1965,21 @@ describe('IssuesService — dự án đã xoá mềm', () => {
       deletedAt: null,
       ...projectFilter,
     });
+  });
+
+  it('list: không trả văn bản tiêu chí (chỉ acceptanceProgress); getByKey trả đủ', async () => {
+    const row = issueRow({ acceptanceCriteria: '- [x] a\n- [ ] b' });
+    const { service } = makeService({
+      issue: {
+        findMany: vi.fn(() => Promise.resolve([row])),
+        findFirst: vi.fn(() => Promise.resolve(row)),
+      },
+    });
+    const page = await service.list('w1', {}, undefined, 50);
+    expect(page.data[0]).not.toHaveProperty('acceptanceCriteria');
+    expect(page.data[0]!.acceptanceProgress).toEqual({ done: 1, total: 2 });
+    const detail = await service.getByKey('w1', 'P-TASK-1');
+    expect(detail.acceptanceCriteria).toBe('- [x] a\n- [ ] b');
   });
 
   it('list với search: escape % _ \\ (không để "_" khớp mọi dòng)', async () => {

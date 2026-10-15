@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
+import { countTasks } from '@tirapro/shared';
 import type { IssueDto } from '@tirapro/types';
 import { keys } from './queryKeys';
 
@@ -22,6 +23,7 @@ const SCALAR_FIELDS = [
   'summary',
   'description',
   'descriptionFormat',
+  'acceptanceCriteria',
   'storyPoints',
   'originalEstimate',
   'remainingEstimate',
@@ -37,6 +39,9 @@ const SCALAR_FIELDS = [
 export function scalarIssuePatch(body: Record<string, unknown>): Partial<IssueDto> {
   const out: Record<string, unknown> = {};
   for (const f of SCALAR_FIELDS) if (f in body) out[f] = body[f];
+  // Số "đạt" tính từ chính Markdown (cùng hàm với API) để thẻ board/dòng Việc chờ đổi ngay khi tick.
+  if ('acceptanceCriteria' in body)
+    out.acceptanceProgress = countTasks(body.acceptanceCriteria as string | null | undefined);
   return out;
 }
 

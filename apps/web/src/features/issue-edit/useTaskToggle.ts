@@ -32,7 +32,7 @@ export function useTaskToggle(projectId: string | undefined, field: TaskField) {
     return toggleWithRetry({
       read: () => {
         const cur = qc.getQueryData<IssueDto>(queryKey);
-        const text = (cur as Partial<Record<TaskField, string | null>> | undefined)?.[field];
+        const text = cur?.[field];
         return cur && text ? { text, version: cur.version } : undefined;
       },
       plan: (text) => planToggle(text, index, checked, itemText),

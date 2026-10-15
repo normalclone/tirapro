@@ -10,13 +10,13 @@ import { transitionToastOptions } from '@/features/issues/statusUndo';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { useToggleWatch, useWatchState } from '@/features/issue-widgets/api';
 import { ActionItem } from './ActionItem';
-import { FOCUS_COMMENT_EVENT } from './events';
+import { requestFocusComment } from './events';
 
 const ICON = 'h-4 w-4 shrink-0 text-muted';
 
 /** Chờ bảng lệnh đóng xong (Radix trả focus về chỗ cũ) rồi mới nhờ trang đưa con trỏ vào ô bình luận. */
 function focusCommentBox() {
-  window.setTimeout(() => window.dispatchEvent(new Event(FOCUS_COMMENT_EVENT)), 120);
+  window.setTimeout(requestFocusComment, 120);
 }
 
 /**

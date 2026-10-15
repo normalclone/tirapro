@@ -9,6 +9,7 @@ import {
   type IssueEnvironment,
 } from '@tirapro/types';
 import {
+  countTasks,
   issueTypePrefix,
   normalizeEnvironment,
   type BulkUpdateIssuesInput,
@@ -64,6 +65,7 @@ export const RETRACT_WINDOW_MS = 10 * 60_000;
 const TRACKED_FIELDS = [
   'summary',
   'description',
+  'acceptanceCriteria',
   'priorityId',
   'severityId',
   'assigneeId',
@@ -542,6 +544,7 @@ export class IssuesService {
           summary: input.summary,
           description: input.description ?? null,
           descriptionFormat: input.descriptionFormat,
+          acceptanceCriteria: input.acceptanceCriteria?.trim() ? input.acceptanceCriteria : null,
           reporterId: userId,
           assigneeId: assigneeId ?? null,
           parentId: input.parentId ?? null,
@@ -613,7 +616,7 @@ export class IssuesService {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return cursorPage(
-      rows.map((r) => this.toDto(r)),
+      rows.map((r) => this.toListDto(r)),
       limit,
       (i) => i.id,
     );
@@ -646,7 +649,7 @@ export class IssuesService {
         const position = new Map(rawIds.map((id, i) => [id, i]));
         const sorted = rows
           .sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0))
-          .map((r) => this.toDto(r));
+          .map((r) => this.toListDto(r));
         // Con trỏ không còn trong danh sách (kết quả tìm đổi giữa hai lần gọi) → trang rỗng, KHÔNG quay về trang đầu
         // (client nạp tiếp tự động sẽ lặp vô hạn). Con trỏ còn trong rawIds nhưng issue đã biến mất vẫn tiếp tục đúng chỗ.
         const cursorPos = cursor ? (position.get(cursor) ?? -1) : -1;
@@ -678,7 +681,9 @@ export class IssuesService {
         where: { AND: [scope, { id: { in: rank } }] },
         include: issueInclude,
       });
-      const sorted = rows.sort((a, b) => pos.get(a.id)! - pos.get(b.id)!).map((r) => this.toDto(r));
+      const sorted = rows
+        .sort((a, b) => pos.get(a.id)! - pos.get(b.id)!)
+        .map((r) => this.toListDto(r));
       const after = cursorRanked ? pos.get(cursor)! : -1;
       out.push(...sorted.filter((i) => pos.get(i.id)! > after).slice(0, limit + 1));
     }
@@ -691,7 +696,7 @@ export class IssuesService {
         take: limit + 1 - out.length,
         ...(cursor && !cursorRanked ? { cursor: { id: cursor }, skip: 1 } : {}),
       });
-      out.push(...rest.map((r) => this.toDto(r)));
+      out.push(...rest.map((r) => this.toListDto(r)));
     }
     return cursorPage(out, limit, (i) => i.id);
   }
@@ -719,7 +724,7 @@ export class IssuesService {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return cursorPage(
-      rows.map((r) => this.toDto(r)),
+      rows.map((r) => this.toListDto(r)),
       limit,
       (i) => i.id,
     );
@@ -767,7 +772,7 @@ export class IssuesService {
       rows.push(...unset);
     }
     return cursorPage(
-      rows.map((r) => this.toDto(r)),
+      rows.map((r) => this.toListDto(r)),
       limit,
       (i) => i.id,
     );
@@ -823,6 +828,8 @@ export class IssuesService {
     const data: Prisma.IssueUncheckedUpdateManyInput = { updatedById: userId };
     if (input.summary !== undefined) data.summary = input.summary;
     if (input.description !== undefined) data.description = input.description;
+    if (input.acceptanceCriteria !== undefined)
+      data.acceptanceCriteria = input.acceptanceCriteria?.trim() ? input.acceptanceCriteria : null;
     if (input.priorityId !== undefined) data.priorityId = input.priorityId ?? null;
     if (input.severityId !== undefined) data.severityId = input.severityId ?? null;
     if (input.environment !== undefined)
@@ -1427,6 +1434,12 @@ export class IssuesService {
     if (rows.length) await tx.issueHistory.createMany({ data: rows });
   }
 
+  /** DTO cho danh sách/tìm kiếm/board/Việc chờ: không kèm văn bản tiêu chí (tới 20k ký tự/dòng), chỉ `acceptanceProgress`. */
+  private toListDto(i: IssueRow): IssueDto {
+    const { acceptanceCriteria: _text, ...rest } = this.toDto(i);
+    return rest;
+  }
+
   private toDto(i: IssueRow): IssueDto {
     return {
       id: i.id,
@@ -1466,6 +1479,8 @@ export class IssuesService {
       number: i.number,
       description: i.description,
       descriptionFormat: i.descriptionFormat,
+      acceptanceCriteria: i.acceptanceCriteria,
+      acceptanceProgress: countTasks(i.acceptanceCriteria),
       reporter: i.reporter ? toUserDto(i.reporter) : null,
       reporterId: i.reporterId,
       createdById: i.createdById,

@@ -2,6 +2,7 @@ import { memo, type CSSProperties, type HTMLAttributes, type Ref } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import type { IssueDto } from '@tirapro/types';
 import { DueBadge, dueBorderClass } from '@/components/ui/DueBadge';
+import { AcceptanceBadge } from '@/components/ui/AcceptanceBadge';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { Avatar } from '@/components/ui/primitives';
@@ -131,6 +132,7 @@ export function CardBody({
             title={`Mức ưu tiên: ${issue.priority.name}`}
           />
         )}
+        <AcceptanceBadge progress={issue.acceptanceProgress} />
         <div className="ml-auto flex min-w-0 items-center">
           {issue.assignee ? (
             <span

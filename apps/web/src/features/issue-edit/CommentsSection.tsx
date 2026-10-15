@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import type { CommentDto, IssueDto } from '@tirapro/types';
 import { useAddComment, useComments } from '@/features/issues/api';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
+import { COMMENT_INPUT_ID } from '@/features/command/events';
 import { useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { Avatar } from '@/components/ui/primitives';
@@ -52,7 +53,9 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   }
 
   return (
-    <div>
+    // data-comments-loaded: phím tắt/nút "Bình luận" chờ danh sách nạp xong rồi mới cuộn tới ô viết (ô nằm cuối danh sách,
+    // cuộn sớm thì danh sách nạp về làm ô trôi xuống dưới màn hình).
+    <div data-comments-loaded={comments !== undefined}>
       <p className="mb-2 text-sm font-medium text-muted">
         Bình luận {comments?.length ? `(${comments.length})` : ''}
       </p>
@@ -84,6 +87,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             onSubmit={() => void submit()}
             rows={3}
             mentionPeople={people}
+            textareaId={COMMENT_INPUT_ID}
             placeholder="Viết bình luận… (viết được Markdown · ⌘/Ctrl+Enter để gửi)"
           />
           <TypingIndicator issueId={issue.id} />

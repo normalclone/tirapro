@@ -113,6 +113,7 @@ export function MarkdownEditor({
   rows = 6,
   placeholder = 'Nhập nội dung… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))',
   mentionPeople,
+  textareaId,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -123,6 +124,8 @@ export function MarkdownEditor({
   placeholder?: string;
   /** Có → bật popup @ (gõ `@` hoặc nút @); không có → không gợi ý và không tốn request. */
   mentionPeople?: MentionPerson[];
+  /** `id` của <textarea> — để nơi khác (vd phím tắt) tìm và focus ô này. */
+  textareaId?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const mention = useMentionPopup(ref, mentionPeople, onChange);
@@ -215,6 +218,7 @@ export function MarkdownEditor({
         />
         <textarea
           ref={ref}
+          id={textareaId}
           value={value}
           onChange={(e) => {
             onChange(e.target.value);

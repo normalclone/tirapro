@@ -11,13 +11,21 @@ export function TaskProgress({
   progress,
   compact,
   className,
+  title: titleOverride,
+  label = 'Tiến trình task con',
 }: {
   progress: SubtreeProgress;
   compact?: boolean;
   className?: string;
+  /** Thay chú thích mặc định (vd tiến độ tiêu chí chấp nhận không có "đang làm"). */
+  title?: string;
+  /** Tên đối tượng cho aria-label của thanh. */
+  label?: string;
 }) {
   if (progress.total === 0) return null;
-  const title = `Hoàn thành ${progress.done}/${progress.total} (${progress.pct}%) · Đang làm ${progress.inProgress} · Cần làm ${progress.todo}`;
+  const title =
+    titleOverride ??
+    `Hoàn thành ${progress.done}/${progress.total} (${progress.pct}%) · Đang làm ${progress.inProgress} · Cần làm ${progress.todo}`;
 
   const bar = (
     <div
@@ -27,7 +35,7 @@ export function TaskProgress({
       aria-valuenow={progress.pct}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label={`Tiến trình task con: ${progress.pct}%`}
+      aria-label={`${label}: ${progress.pct}%`}
     >
       {progress.done > 0 && (
         <span style={{ flexGrow: progress.done, background: 'var(--status-done)' }} />

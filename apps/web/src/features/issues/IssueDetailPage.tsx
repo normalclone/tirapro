@@ -2,6 +2,7 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useRef,
   useState,
   type ComponentProps,
   type ComponentType,
@@ -26,6 +27,7 @@ import {
   Workflow,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { uncheckAllTasks } from '@tirapro/shared';
 import { useDevLinks, useIssue } from './api';
 import { useCreateIssue } from './create-api';
 import { useProjects } from '@/features/projects/api';
@@ -49,12 +51,17 @@ import {
   IssueTypeSelect,
   IssuePrioritySelect,
 } from '@/features/issue-edit/IssueProperties';
+import { AcceptanceCriteria } from '@/features/issue-edit/AcceptanceCriteria';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { useIssueTransitions } from './useIssueTransitions';
 import { LazyPanel } from './LazyPanel';
 import { useCanEditRestricted } from './useCanEditRestricted';
 import { ActivityTabs } from './ActivityTabs';
-import { FOCUS_COMMENT_EVENT } from '@/features/command/events';
+import {
+  COMMENT_INPUT_ID,
+  FOCUS_COMMENT_EVENT,
+  requestFocusComment,
+} from '@/features/command/events';
 import { ConfirmDialog } from './ConfirmDialog';
 import { WorklogPanel } from './WorklogPanel';
 import { IssueLabelsPicker } from '@/features/issue-meta/IssueLabelsPicker';
@@ -72,7 +79,7 @@ import { useCreateIssueModal } from '@/stores/createIssue';
 import { useRecents } from '@/stores/recentIssues';
 import { useProjectRealtime } from '@/lib/realtime';
 import { useCachedProjectIssue, useUpdateIssue } from './api';
-import { isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
+import { isCommentHotkey, isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { FEATURES } from '@/lib/features';
@@ -170,6 +177,28 @@ export function IssueDetailPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [canLogWork, hasIssue]);
 
+  // Phím `m` viết bình luận: cùng cách đăng ký với `w` (khu bình luận dựng lười nên bắt phím ở cấp trang).
+  const canComment = can('comment:create');
+  const canCommentRef = useRef(canComment);
+  canCommentRef.current = canComment;
+  useEffect(() => {
+    if (!canComment || !hasIssue) return;
+    function onKey(e: KeyboardEvent) {
+      if (
+        !isCommentHotkey(e, {
+          typing: isTypingTarget(e.target),
+          dialogOpen: isOverlayOpen(),
+          canComment,
+        })
+      )
+        return;
+      e.preventDefault(); // chữ "m" không lọt vào ô vừa được focus
+      requestFocusComment();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canComment, hasIssue]);
+
   async function cloneIssue() {
     if (!issue) return;
     try {
@@ -179,6 +208,10 @@ export function IssueDetailPage() {
         summary: `${issue.summary} (bản sao)`,
         description: issue.description ?? null,
         descriptionFormat: 'MARKDOWN',
+        // Bản sao giữ nội dung tiêu chí nhưng bỏ tick (việc mới chưa đạt gì).
+        acceptanceCriteria: issue.acceptanceCriteria
+          ? uncheckAllTasks(issue.acceptanceCriteria)
+          : undefined,
         priorityId: issue.priority?.id || undefined,
         storyPoints: issue.storyPoints ?? undefined,
         sprintId: issue.sprintId || undefined,
@@ -271,13 +304,9 @@ export function IssueDetailPage() {
     if (issue) useRecents.getState().record({ key: issue.key, summary: issue.summary });
   }, [issue?.id, issue?.summary]);
 
+  // Một đường chung với phím `m` và Cmd+K: listener bên dưới mở tab, cuộn, rồi đặt con trỏ vào ô viết.
   function jumpToComments() {
-    setActivityTab('comments');
-    requestAnimationFrame(() =>
-      document
-        .getElementById('issue-activity')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-    );
+    requestFocusComment();
   }
 
   // Cmd+K "Thêm bình luận": mở tab bình luận, cuộn tới khu hoạt động rồi đưa con trỏ vào ô viết bình luận.
@@ -286,20 +315,29 @@ export function IssueDetailPage() {
     let timer: number | undefined;
     function onFocusComment() {
       setActivityTab('comments');
-      requestAnimationFrame(() =>
+      const commentBox = () =>
+        document.getElementById(COMMENT_INPUT_ID) as HTMLTextAreaElement | null;
+      const loaded = (box: HTMLElement | null) => !!box?.closest('[data-comments-loaded="true"]');
+      // Cuộn tới đầu khu hoạt động để dựng khu lười/tab — bỏ qua nếu ô viết đã sẵn sàng (cuộn đầu khu sẽ đè cuộn tới ô).
+      requestAnimationFrame(() => {
+        if (loaded(commentBox())) return;
         document
           .getElementById('issue-activity')
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-      );
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
       let tries = 0;
       const attempt = () => {
-        const box = document.querySelector<HTMLTextAreaElement>(
-          '#issue-activity textarea[placeholder^="Viết bình luận"]',
-        );
-        if (box) {
+        const box = commentBox();
+        // Chờ danh sách bình luận nạp xong (ô nằm cuối danh sách); quá ~1.2s thì cứ focus (vd nạp lỗi).
+        if (box && (loaded(box) || tries >= 15)) {
+          // Ô viết nằm CUỐI danh sách bình luận: cuộn tới giữa màn hình rồi mới focus (không để focus tự cuộn).
+          box.scrollIntoView({ behavior: 'smooth', block: 'center' });
           box.focus({ preventScroll: true });
+          box.setSelectionRange(box.value.length, box.value.length); // gõ tiếp ở cuối bản nháp
           return;
         }
+        // Không có quyền thì không có ô — khỏi chờ đủ 2s (đợi chút phòng quyền chưa nạp xong).
+        if (tries >= 6 && !canCommentRef.current) return;
         if (++tries < 25) timer = window.setTimeout(attempt, 80);
       };
       attempt();
@@ -486,7 +524,7 @@ export function IssueDetailPage() {
                 <button
                   type="button"
                   className={TOOLBAR_BTN}
-                  title="Xuống khu bình luận để trao đổi về việc này"
+                  title="Xuống khu bình luận và viết ngay · phím m"
                   onClick={jumpToComments}
                 >
                   <MessageSquare className="h-4 w-4" /> Bình luận
@@ -637,6 +675,11 @@ export function IssueDetailPage() {
                     <p className="mb-1.5 text-sm font-medium text-muted">Mô tả</p>
                     <IssueDescription issue={issue} />
                   </div>
+
+                  {/* Story luôn có khối này (kể cả rỗng); loại khác chỉ khi đã có nội dung */}
+                  {(issue.type.key === 'STORY' || issue.acceptanceCriteria) && (
+                    <AcceptanceCriteria issue={issue} />
+                  )}
 
                   {/* Danh sách bước nhỏ — nhẹ hơn việc con, chỉ để tick cho xong */}
                   <LazyPanel>

@@ -59,6 +59,7 @@ function saveLast(v: { projectKey?: string; typeId?: string }) {
 interface Draft {
   summary?: string;
   description?: string;
+  acceptance?: string;
 }
 const DRAFT_KEY = (projectKey: string) => `tirapro:createIssue:draft:${projectKey || '_'}`;
 function loadDraft(projectKey: string): Draft {
@@ -70,7 +71,7 @@ function loadDraft(projectKey: string): Draft {
 }
 function saveDraft(projectKey: string, d: Draft) {
   try {
-    if (!d.summary?.trim() && !d.description?.trim())
+    if (!d.summary?.trim() && !d.description?.trim() && !d.acceptance?.trim())
       localStorage.removeItem(DRAFT_KEY(projectKey));
     else localStorage.setItem(DRAFT_KEY(projectKey), JSON.stringify(d));
   } catch {
@@ -88,7 +89,7 @@ function clearDraft(projectKey: string) {
 /* --------- Mẫu mô tả gợi sẵn theo loại công việc --------- */
 const TEMPLATES: Record<string, string> = {
   BUG: 'Các bước tái hiện:\n1. \n2. \n\nKết quả hiện tại:\n\nKết quả mong muốn:\n',
-  STORY: 'Bối cảnh:\n\nTiêu chí hoàn thành:\n- \n- ',
+  STORY: 'Bối cảnh:\n\n',
   TASK: 'Mục tiêu:\n\nViệc cần làm:\n- ',
 };
 const TEMPLATE_VALUES = Object.values(TEMPLATES);
@@ -132,6 +133,7 @@ export function CreateIssueModal() {
   const [typeId, setTypeId] = useState('');
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
+  const [acceptance, setAcceptance] = useState('');
   const [priorityId, setPriorityId] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [sprintId, setSprintId] = useState('');
@@ -146,7 +148,12 @@ export function CreateIssueModal() {
   // Lần chạy effect đồng bộ token ngay sau khi mở dùng `summary` cũ (trước khi nạp bản nháp) → bỏ qua.
   const skipSyncRef = useRef(false);
   // Chữ đang giữ (không tự lưu) sau khi chọn dự án đã có nháp riêng — xem ô Dự án.
-  const heldDraftRef = useRef<{ key: string; summary: string; description: string } | null>(null);
+  const heldDraftRef = useRef<{
+    key: string;
+    summary: string;
+    description: string;
+    acceptance: string;
+  } | null>(null);
 
   const selProject = useMemo(
     () => (projects ?? []).find((p) => p.key === selKey),
@@ -176,6 +183,7 @@ export function CreateIssueModal() {
     setTypeId('');
     setSummary(draft.summary ?? '');
     setDescription(draft.description ?? '');
+    setAcceptance(draft.acceptance ?? '');
     setPriorityId('');
     setAssigneeId('');
     setSprintId('');
@@ -188,7 +196,7 @@ export function CreateIssueModal() {
     prevTypeRef.current = '';
     lastTokens.current = { clean: '' };
     skipSyncRef.current = true;
-    if (draft.summary || draft.description)
+    if (draft.summary || draft.description || draft.acceptance)
       toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -199,13 +207,18 @@ export function CreateIssueModal() {
     // Vừa chọn dự án đã có nháp riêng khi đang giữ chữ đã gõ: chưa ghi đè nháp cũ cho tới khi người dùng gõ thêm.
     const held = heldDraftRef.current;
     if (held) {
-      if (held.key === selKey && held.summary === summary && held.description === description)
+      if (
+        held.key === selKey &&
+        held.summary === summary &&
+        held.description === description &&
+        held.acceptance === acceptance
+      )
         return;
       heldDraftRef.current = null;
     }
-    const t = setTimeout(() => saveDraft(selKey, { summary, description }), 400);
+    const t = setTimeout(() => saveDraft(selKey, { summary, description, acceptance }), 400);
     return () => clearTimeout(t);
-  }, [open, selKey, summary, description]);
+  }, [open, selKey, summary, description, acceptance]);
 
   // Mặc định loại: sub-task nếu tạo sub-task, ngược lại ưu tiên loại đã dùng gần nhất.
   const defaultTypeId = useMemo(() => {
@@ -315,6 +328,7 @@ export function CreateIssueModal() {
     setDescription((d) => (d === '' || isTemplate(d) ? tmpl : d));
   }, [typeId, meta]);
 
+  const isStory = meta?.issueTypes.find((t) => t.id === typeId)?.key === 'STORY';
   const trimmed = summary.trim();
   const canSubmit =
     !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
@@ -337,6 +351,7 @@ export function CreateIssueModal() {
         summary: finalSummary,
         description: description.trim() || null,
         descriptionFormat: 'MARKDOWN',
+        acceptanceCriteria: isStory ? acceptance.trim() || null : null,
         priorityId: (tk.priorityId ?? priorityId) || undefined,
         assigneeId: (tk.assigneeId ?? assigneeId) || null,
         parentId: preset.parentId ?? (hideParent ? undefined : parentPick || undefined),
@@ -462,17 +477,24 @@ export function CreateIssueModal() {
               onChange={(v) => {
                 // Đổi dự án → nạp bản nháp của DỰ ÁN MỚI (không mang chữ dự án cũ sang, không đè nháp dự án mới).
                 // Riêng khi CHƯA có dự án (chọn lần đầu): giữ chữ đã gõ, chỉ nạp nháp nếu chưa gõ gì — không ghi đè.
-                const typed = !selKey && (summary.trim() !== '' || description.trim() !== '');
+                const typed =
+                  !selKey &&
+                  (summary.trim() !== '' || description.trim() !== '' || acceptance.trim() !== '');
                 if (!typed) {
                   const d = loadDraft(v);
                   setSummary(d.summary ?? '');
                   setDescription(d.description ?? '');
+                  setAcceptance(d.acceptance ?? '');
                 } else {
                   clearDraft(selKey); // nháp "chưa có dự án" đã chuyển sang dự án vừa chọn
                   const saved = loadDraft(v);
-                  if (saved.summary?.trim() || saved.description?.trim()) {
+                  if (
+                    saved.summary?.trim() ||
+                    saved.description?.trim() ||
+                    saved.acceptance?.trim()
+                  ) {
                     // Dự án này đã có nháp riêng: giữ nguyên nháp đó trong kho cho tới khi người dùng gõ thêm.
-                    heldDraftRef.current = { key: v, summary, description };
+                    heldDraftRef.current = { key: v, summary, description, acceptance };
                     toast.info(
                       'Dự án này đang có một bản nháp khác — chữ bạn vừa gõ được giữ nguyên, bản nháp cũ chỉ bị thay khi bạn gõ tiếp.',
                     );
@@ -680,6 +702,24 @@ export function CreateIssueModal() {
               placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))"
             />
           </Field>
+
+          {isStory && (
+            <Field
+              label="Tiêu chí chấp nhận"
+              hint="(tùy chọn — mỗi dòng một tiêu chí)"
+              className="sm:col-span-2"
+              title="Điều kiện để Story được coi là xong. Mỗi dòng dạng - [ ] … để tick khi nghiệm thu."
+            >
+              <MarkdownEditor
+                value={acceptance}
+                onChange={setAcceptance}
+                onSubmit={() => void submitCreate()}
+                rows={4}
+                mentionPeople={assignees}
+                placeholder="- [ ] Người dùng đăng nhập được bằng email&#10;- [ ] Báo lỗi rõ khi sai mật khẩu"
+              />
+            </Field>
+          )}
 
           <Field label="Tệp đính kèm" hint="(tùy chọn)" className="sm:col-span-2">
             <FileDrop

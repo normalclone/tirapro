@@ -9,6 +9,7 @@ export interface CreateIssueInput {
   summary: string;
   description?: string | null;
   descriptionFormat: 'MARKDOWN';
+  acceptanceCriteria?: string | null;
   priorityId?: string;
   assigneeId?: string | null;
   parentId?: string | null;
