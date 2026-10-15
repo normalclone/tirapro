@@ -36,7 +36,6 @@ const EXEMPT: Record<string, string> = {
   'auth/invite.service.ts': 'định danh',
   'auth/password-reset.service.ts': 'định danh',
   'auth/token.service.ts': 'định danh',
-  'automation/rule-engine.service.ts': 'thực thi qua IssuesService (lỗi archived vào nhật ký chạy)',
   'clients/clients.service.ts': 'cấp workspace',
   'programs/programs.service.ts': 'cấp workspace',
   'resources/resources.service.ts': 'cấp workspace',
@@ -44,7 +43,6 @@ const EXEMPT: Record<string, string> = {
   'roles/roles.service.ts': 'phân quyền',
   'members/members.service.ts': 'phân quyền truy cập (quản trị cần chỉnh khi lưu trữ)',
   'config-catalog/config-catalog.service.ts': 'danh mục cấp workspace',
-  'workflow-admin/workflow-admin.service.ts': 'workflow dùng chung workspace',
   'guides/guides.service.ts': 'hướng dẫn workspace',
   'system-settings/system-settings.service.ts': 'cấu hình hệ thống',
   'integrations/integrations.service.ts': 'hạ tầng tích hợp cấp workspace',
@@ -70,6 +68,26 @@ const EXEMPT_METHODS: Record<string, string> = {
   'projects/projects.service.ts#remove': 'vòng đời dự án (xoá mềm)',
   'automation/automation.service.ts#runDueRecurring':
     'cron; scanDueRecurring lọc `project: { archivedAt: null }` ở where',
+  'automation/rule-engine.service.ts#onModuleInit':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#systemUserId':
+    'upsert người dùng hệ thống của automation, không phải dữ liệu dự án',
+  'automation/rule-engine.service.ts#onIssueCreated':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#onIssueTransitioned':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#onIssueUpdated':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#onCommentAdded':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#handle':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#dryRun':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#runRule':
+    'sổ sách chạy quy tắc (AutomationRun/runCount); mọi thay đổi issue đi qua IssuesService/CommentsService (chặn dự án lưu trữ) hoặc action đã quét ở test riêng; scheduler lọc WRITABLE_PROJECT_FILTER',
+  'automation/rule-engine.service.ts#pruneRuns':
+    'dọn lịch sử chạy cũ (AutomationRun), không phải dữ liệu làm việc',
   'automation/rules.service.ts#invalidate': 'xoá cache quy tắc, không ghi dữ liệu làm việc',
   'dev-links/dev-links.service.ts#createRepository':
     'kho mã nguồn là hạ tầng tích hợp cấp workspace',
@@ -134,6 +152,24 @@ export function unguardedWriteMethods(source: string): string[] {
     .filter((m) => !/^ {2}(?:private|protected)\s/m.test(m.body.split('\n')[0]!))
     .filter((m) => reaches(methods, m.name, WRITE) && !reaches(methods, m.name, GUARD))
     .map((m) => m.name);
+}
+
+/** Ghi Prisma TRỰC TIẾP (`prisma.x.create(`…): action automation ghi kiểu này không đi qua service nên phải tự có guard. */
+const DIRECT_PRISMA_WRITE =
+  /\bprisma\.\w+\.(create|createMany|update|updateMany|delete|deleteMany|upsert)\(/;
+
+/** Action ghi Prisma trực tiếp nhưng cố ý không chặn: tệp → lý do. */
+const EXEMPT_ACTIONS: Record<string, string> = {
+  'notify.ts':
+    'tạo thông báo của người dùng, không phải dữ liệu làm việc của dự án (rule SCHEDULED đã loại dự án lưu trữ ở scheduler)',
+};
+
+/** Tệp action (không phải spec) ghi Prisma trực tiếp mà không có guard dự án lưu trữ. */
+export function unguardedActionFiles(files: Record<string, string>): string[] {
+  return Object.entries(files)
+    .filter(([name]) => !(name in EXEMPT_ACTIONS))
+    .filter(([, src]) => DIRECT_PRISMA_WRITE.test(src) && !GUARD.test(src))
+    .map(([name]) => name);
 }
 
 function services(dir: string): string[] {
@@ -211,5 +247,26 @@ export class FakeService {
   }
 }`;
     expect(unguardedWriteMethods(fake).sort()).toEqual(['unsafe', 'unsafeViaHelper']);
+  });
+
+  it('automation/actions/*.ts: action ghi Prisma trực tiếp phải có guard dự án lưu trữ', () => {
+    const dir = join(MODULES, 'automation', 'actions');
+    const sources = Object.fromEntries(
+      readdirSync(dir)
+        .filter((n) => n.endsWith('.ts') && !n.endsWith('.spec.ts'))
+        .map((n) => [n, readFileSync(join(dir, n), 'utf8')]),
+    );
+    expect(Object.keys(sources).length).toBeGreaterThan(0);
+    expect(unguardedActionFiles(sources)).toEqual([]);
+  });
+
+  it('tự kiểm: bắt action ghi trực tiếp thiếu guard', () => {
+    expect(
+      unguardedActionFiles({
+        ok: 'await assertIssueWritable(prisma, id); await prisma.issueLabel.createMany({});',
+        bad: 'await prisma.issueLabel.deleteMany({});',
+        viaService: 'await ctx.deps.issues.update(1);',
+      }),
+    ).toEqual(['bad']);
   });
 });

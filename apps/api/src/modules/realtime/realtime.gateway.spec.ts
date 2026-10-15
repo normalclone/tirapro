@@ -286,6 +286,14 @@ describe('RealtimeGateway — bridge notification & sprint', () => {
     expect(emit).toHaveBeenCalledWith(WS_EVENTS.COMMENT_UPDATED, { comment });
   });
 
+  it('comment.updated thiếu projectId thì bỏ qua', () => {
+    const { gateway, to, emit } = makeGateway();
+    const comment = { id: 'C1', issueId: 'I1' } as never;
+    gateway.onCommentUpdated({ comment, issueId: 'I1' });
+    expect(to).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalled();
+  });
+
   it('comment.deleted -> comment:deleted {commentId, issueId} tới room project; thiếu projectId thì bỏ qua', () => {
     const { gateway, to, emit } = makeGateway();
     gateway.onCommentDeleted({ commentId: 'C1', issueId: 'I1', projectId: 'P1' });

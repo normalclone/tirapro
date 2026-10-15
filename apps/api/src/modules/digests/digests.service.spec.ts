@@ -279,3 +279,27 @@ describe('DigestsService.runScheduled — chống gửi đôi (CAS lastRunAt)', 
     expect(b.send).not.toHaveBeenCalled();
   });
 });
+
+describe('DigestsService.buildDigest — bỏ qua dự án đã xoá mềm (I3)', () => {
+  it('mọi truy vấn issue/sprint/history đều lọc project.deletedAt = null', async () => {
+    const issueCount = vi.fn(() => Promise.resolve(1));
+    const groupBy = vi.fn(() => Promise.resolve([]));
+    const aggregate = vi.fn(() => Promise.resolve({ _sum: { storyPoints: 3 } }));
+    const historyFind = vi.fn(() => Promise.resolve([]));
+    const sprintFind = vi.fn(() => Promise.resolve({ id: 'sp1', name: 'S1' }));
+    const prisma = {
+      issue: { count: issueCount, groupBy, aggregate },
+      issueHistory: { findMany: historyFind },
+      sprint: { findFirst: sprintFind },
+      status: { findMany: vi.fn(() => Promise.resolve([])) },
+    };
+    const service = new DigestsService(prisma as never, {} as never, {} as never, {} as never);
+    await service.buildDigest('w1');
+    const arg = (m: { mock: { calls: unknown[][] } }) =>
+      JSON.stringify((m.mock.calls[0] as unknown[])[0]);
+    expect(arg(issueCount)).toContain('"project":{"deletedAt":null}');
+    expect(arg(groupBy)).toContain('"project":{"deletedAt":null}');
+    expect(arg(historyFind)).toContain('"project":{"deletedAt":null}');
+    expect(arg(sprintFind)).toContain('"project":{"workspaceId":"w1","deletedAt":null}');
+  });
+});

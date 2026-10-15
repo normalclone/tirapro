@@ -79,6 +79,9 @@ function changedFieldsOf(before: IssueRow, after: IssueRow): string[] {
   return TRACKED_FIELDS.filter((f) => !same(before[f], after[f]));
 }
 
+/** Lô tối đa 100 issue × ~4 truy vấn tuần tự: mặc định 5s của interactive transaction quá sát, quá hạn là rollback cả lô. */
+const BULK_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
+
 /** `meta` chỉ gắn vào payload khi do automation gây ra — sự kiện của người dùng thật giữ nguyên hình dạng cũ. */
 const withMeta = (meta: AutomationEventMeta | undefined) => (meta ? { meta } : {});
 
@@ -164,15 +167,16 @@ export class IssuesService {
       typeId?: string | null;
       priorityId?: string | null;
       sprintId?: string | null;
+      /** Import (Jira) tạo sprint CLOSED theo lịch sử rồi gắn issue vào — chỉ đường `createWithin` bật cờ này. */
+      allowClosedSprint?: boolean;
       resolutionId?: string | null;
       parentId?: string | null;
-      epicId?: string | null;
       /** Dự án của issue/lô: có thì `sprintId` phải thuộc CHÍNH dự án này (không chỉ cùng workspace). */
       projectId?: string;
     },
     db: Prisma.TransactionClient = this.prisma,
   ): Promise<void> {
-    const jobs: Array<Promise<{ id: string } | null>> = [];
+    const jobs: Array<Promise<{ id: string; state?: string } | null>> = [];
     if (m.typeId)
       jobs.push(
         db.issueType.findFirst({ where: { id: m.typeId, workspaceId }, select: { id: true } }),
@@ -194,10 +198,10 @@ export class IssuesService {
           where: {
             id: m.sprintId,
             deletedAt: null,
-            project: { workspaceId },
+            project: { workspaceId, deletedAt: null },
             ...(m.projectId ? { projectId: m.projectId } : {}),
           },
-          select: { id: true },
+          select: { id: true, state: true },
         }),
       );
     if (m.parentId)
@@ -207,17 +211,126 @@ export class IssuesService {
           select: { id: true },
         }),
       );
-    if (m.epicId)
-      jobs.push(
-        db.issue.findFirst({
-          where: { id: m.epicId, workspaceId, deletedAt: null },
-          select: { id: true },
-        }),
-      );
-    if (jobs.length && (await Promise.all(jobs)).some((r) => r == null)) {
+    if (!jobs.length) return;
+    const found = await Promise.all(jobs);
+    if (found.some((r) => r == null)) {
       throw new NotFoundAppException(
         'Loại công việc, độ ưu tiên, sprint (phải cùng dự án), kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
       );
+    }
+    // Sprint đã hoàn thành không nhận thêm việc (bỏ gán/giữ nguyên thì không đi qua đây — xem `sprintIfChanged`).
+    if (!m.allowClosedSprint && found.some((r) => r?.state === 'CLOSED')) {
+      throw new BusinessRuleException(
+        'Sprint đã hoàn thành — không thêm việc vào được nữa. Hãy chọn sprint khác hoặc để việc ở Backlog',
+      );
+    }
+  }
+
+  /**
+   * Chỉ kiểm sprint khi thật sự ĐỔI: việc đang nằm trong sprint đã đóng mà client gửi lại đúng `sprintId` cũ
+   * (hoặc không đụng tới) thì không bị chặn; `null` (bỏ gán) cũng không cần kiểm.
+   */
+  private sprintIfChanged(
+    next: string | null | undefined,
+    current: string | null,
+  ): string | null | undefined {
+    return next === undefined || next === current ? undefined : next;
+  }
+
+  /**
+   * Quyền phụ của `move()` ngoài `issue:transition` (đã kiểm ở guard):
+   * - đổi `sprintId` cần `issue:edit` (`issue:edit:own` chỉ với việc của mình, như PATCH) hoặc system admin → else 403;
+   * - mốc rank (`afterId`/`beforeId`) cần `issue:edit` hoặc `backlog:manage` (hoặc system admin). Thiếu: nếu ĐANG đổi
+   *   trạng thái thì BỎ QUA mốc (giữ rank, vẫn chuyển) — trả `false`; không đổi trạng thái thì 403.
+   * Trả `true` khi mốc rank được dùng. Không đụng DB quyền nếu request không có sprint/mốc.
+   */
+  private async assertMoveCapabilities(
+    workspaceId: string,
+    userId: string,
+    current: {
+      projectId: string;
+      reporterId: string | null;
+      assigneeId: string | null;
+      createdById: string | null;
+    },
+    want: { sprintChanged: boolean; wantsRank: boolean; statusChanged: boolean },
+  ): Promise<boolean> {
+    if (!want.sprintChanged && !want.wantsRank) return true;
+    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, current.projectId);
+    let admin: boolean | undefined;
+    const isAdmin = async () =>
+      (admin ??= !!(
+        await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { isSystemAdmin: true },
+        })
+      )?.isSystemAdmin);
+    const canEdit = perms.has(PERMISSIONS.ISSUE_EDIT);
+
+    if (want.sprintChanged && !canEdit && !(await isAdmin())) {
+      if (perms.has(`${PERMISSIONS.ISSUE_EDIT}:own`)) this.assertOwnsIssue(userId, current);
+      else
+        throw new ForbiddenAppException(
+          'Bạn không có quyền đổi sprint của công việc — cần quyền sửa công việc hoặc nhờ quản trị cấp quyền',
+        );
+    }
+    if (!want.wantsRank) return true;
+    if (canEdit || perms.has(PERMISSIONS.BACKLOG_MANAGE) || (await isAdmin())) return true;
+    if (want.statusChanged) return false;
+    throw new ForbiddenAppException(
+      'Bạn không có quyền sắp xếp lại thứ tự công việc — cần quyền sửa công việc hoặc quản lý backlog',
+    );
+  }
+
+  /**
+   * Epic của issue: phải tồn tại trong workspace, CÙNG dự án, đúng loại Epic (`key = EPIC` hoặc `hierarchyLevel >= 1`;
+   * bỏ qua kiểm LOẠI khi `checkType = false` — đường import),
+   * không phải chính issue và không tạo vòng (epic đang trỏ ngược về issue này) — vi phạm: 404/422.
+   */
+  private async assertEpicValid(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    epicId: string,
+    projectId: string,
+    selfId: string | null,
+    checkType = true,
+  ): Promise<void> {
+    if (selfId && epicId === selfId)
+      throw new BusinessRuleException(
+        'Một công việc không thể là epic của chính nó — hãy chọn một epic khác',
+      );
+    const epic = await db.issue.findFirst({
+      where: { id: epicId, workspaceId, deletedAt: null },
+      select: {
+        projectId: true,
+        epicId: true,
+        type: { select: { key: true, hierarchyLevel: true } },
+      },
+    });
+    if (!epic)
+      throw new NotFoundAppException(
+        'Epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+      );
+    if (epic.projectId !== projectId)
+      throw new BusinessRuleException(
+        'Epic phải thuộc cùng dự án với công việc — hãy chọn epic khác',
+      );
+    if (checkType && epic.type.key !== 'EPIC' && epic.type.hierarchyLevel < 1)
+      throw new BusinessRuleException(
+        'Công việc được chọn không phải loại Epic — hãy chọn một Epic trong dự án',
+      );
+    // Vòng: chuỗi epic của epic được chọn quay về chính issue này.
+    let cur = epic.epicId;
+    for (let depth = 0; selfId && cur && depth < 50; depth++) {
+      if (cur === selfId)
+        throw new BusinessRuleException(
+          'Không thể chọn epic này vì sẽ tạo vòng lặp (epic đó đang thuộc về công việc này)',
+        );
+      const next: { epicId: string | null } | null = await db.issue.findFirst({
+        where: { id: cur, workspaceId, deletedAt: null },
+        select: { epicId: true },
+      });
+      cur = next?.epicId ?? null;
     }
   }
 
@@ -257,7 +370,7 @@ export class IssuesService {
     input: CreateIssueInput,
     opts?: AutomationEventMeta,
   ): Promise<IssueDto> {
-    const dto = await this.createCore(null, workspaceId, userId, input);
+    const dto = await this.createCore(null, workspaceId, userId, input, null, 'api');
     this.emitCreated(dto, userId, input.clientId, opts);
     return dto;
   }
@@ -274,7 +387,7 @@ export class IssuesService {
     input: CreateIssueInput,
     deferred: Array<() => void> = [],
   ): Promise<IssueDto> {
-    return this.createCore(tx, workspaceId, userId, input, deferred);
+    return this.createCore(tx, workspaceId, userId, input, deferred, 'import');
   }
 
   emitCreated(dto: IssueDto, actorId: string, clientId?: string, meta?: AutomationEventMeta): void {
@@ -292,6 +405,13 @@ export class IssuesService {
     userId: string,
     input: CreateIssueInput,
     deferred: Array<() => void> | null = null,
+    /**
+     * `api` (mặc định, `create`): đường người dùng — đòi `issue:transition` khi chọn trạng thái ≠ khởi tạo, chặn sprint
+     * đã hoàn thành, epic phải đúng LOẠI Epic. `import` (`createWithin`): dữ liệu nhập từ nguồn ngoài (Jira) đã được
+     * người có quyền import duyệt — sprint CLOSED theo lịch sử và epic thuộc loại tuỳ chỉnh vẫn nhận (epic vẫn phải
+     * cùng dự án, không tự trỏ).
+     */
+    origin: 'api' | 'import' = 'api',
   ): Promise<IssueDto> {
     const db: Prisma.TransactionClient = outerTx ?? this.prisma;
     const project = await db.project.findFirst({
@@ -314,20 +434,37 @@ export class IssuesService {
         priorityId: input.priorityId,
         sprintId: input.sprintId,
         parentId: input.parentId,
-        epicId: input.epicId,
         projectId: project.id,
+        allowClosedSprint: origin === 'import',
       },
       db,
     );
+    if (input.epicId)
+      await this.assertEpicValid(db, workspaceId, input.epicId, project.id, null, origin === 'api');
     await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId, db);
 
-    // Status: input hoặc trạng thái initial của workflow project
+    // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project
+    const workflowId = project.defaultWorkflowId ?? '';
+    const initial = await db.status.findFirst({
+      where: { workflowId, isInitial: true },
+      select: { id: true },
+    });
     let statusId = input.statusId;
-    if (!statusId) {
-      const initial = await db.status.findFirst({
-        where: { workflowId: project.defaultWorkflowId ?? '', isInitial: true },
-        select: { id: true },
+    let isDone = false;
+    if (statusId) {
+      const chosen = await db.status.findFirst({
+        where: { id: statusId, workflowId },
+        select: { id: true, category: true },
       });
+      if (!chosen)
+        throw new BusinessRuleException(
+          'Trạng thái không thuộc quy trình của dự án này — hãy chọn lại trạng thái từ danh sách',
+        );
+      // Tạo thẳng ở trạng thái khác trạng thái khởi tạo cũng là một lần "chuyển trạng thái" → cần cùng quyền.
+      if (origin === 'api' && chosen.id !== initial?.id)
+        await this.assertCanTransition(userId, workspaceId, project.id);
+      isDone = chosen.category === 'DONE';
+    } else {
       if (!initial)
         throw new BusinessRuleException('Project chưa cấu hình workflow/trạng thái khởi đầu');
       statusId = initial.id;
@@ -381,6 +518,7 @@ export class IssuesService {
           key,
           typeId: input.typeId,
           statusId,
+          resolvedAt: isDone ? new Date() : null,
           priorityId: priorityId ?? null,
           summary: input.summary,
           description: input.description ?? null,
@@ -490,8 +628,12 @@ export class IssuesService {
         const sorted = rows
           .sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0))
           .map((r) => this.toDto(r));
-        const start = cursor ? sorted.findIndex((i) => i.id === cursor) + 1 : 0;
-        return cursorPage(sorted.slice(start, start + limit + 1), limit, (i) => i.id);
+        // Con trỏ không còn trong danh sách (kết quả tìm đổi giữa hai lần gọi) → trang rỗng, KHÔNG quay về trang đầu
+        // (client nạp tiếp tự động sẽ lặp vô hạn). Con trỏ còn trong rawIds nhưng issue đã biến mất vẫn tiếp tục đúng chỗ.
+        const cursorPos = cursor ? (position.get(cursor) ?? -1) : -1;
+        if (cursor && cursorPos < 0) return cursorPage<IssueDto>([], limit, (i) => i.id);
+        const rest = cursor ? sorted.filter((i) => (position.get(i.id) ?? 0) > cursorPos) : sorted;
+        return cursorPage(rest.slice(0, limit + 1), limit, (i) => i.id);
       }
       return this.queryOrdered(idScope, orderBy, cursor, limit);
     }
@@ -587,12 +729,13 @@ export class IssuesService {
     await this.assertMetaInWorkspace(workspaceId, {
       typeId: input.typeId,
       priorityId: input.priorityId,
-      sprintId: input.sprintId,
+      sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
       resolutionId: input.resolutionId,
       parentId: input.parentId,
-      epicId: input.epicId,
       projectId: current.projectId,
     });
+    if (input.epicId && input.epicId !== current.epicId)
+      await this.assertEpicValid(this.prisma, workspaceId, input.epicId, current.projectId, id);
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
       await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
 
@@ -620,6 +763,7 @@ export class IssuesService {
       data.originalEstimate = input.originalEstimate ?? null;
     if (input.remainingEstimate !== undefined)
       data.remainingEstimate = input.remainingEstimate ?? null;
+    if (input.epicId !== undefined) data.epicId = input.epicId ?? null;
     if (input.parentId !== undefined) {
       if (input.parentId === id)
         throw new BusinessRuleException(
@@ -671,7 +815,8 @@ export class IssuesService {
     if (ownOnly || transitionOwnOnly) for (const r of rows) this.assertOwnsIssue(userId, r); // một việc của người khác → 403 cả lô, chưa ghi gì
     await this.assertMetaInWorkspace(workspaceId, {
       priorityId: patch.priorityId,
-      sprintId: patch.sprintId,
+      // Chỉ kiểm khi có việc thật sự đổi sprint (lô đã ở đúng sprint đó thì thôi).
+      sprintId: rows.some((r) => r.sprintId !== patch.sprintId) ? patch.sprintId : undefined,
       projectId,
     });
     // Chỉ kiểm khi có hàng thật sự đổi assignee (hàng đã giữ đúng assignee đó thì bỏ qua).
@@ -748,7 +893,7 @@ export class IssuesService {
           conflicts.push({ id: item.id, version: (e.current as { version: number }).version });
         }
       }
-    });
+    }, BULK_TX_OPTIONS);
 
     for (const { before, after } of changed) {
       const dto = this.toDto(after);
@@ -837,14 +982,22 @@ export class IssuesService {
     const current = await this.requireIssue(workspaceId, id);
     if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
+    const statusChanged = !!input.statusId && input.statusId !== current.statusId;
+    const sprintChanged = this.sprintIfChanged(input.sprintId, current.sprintId) !== undefined;
+    const wantsRank = !!input.afterId || !!input.beforeId;
+    // `/move` chỉ đòi `issue:transition` nhưng còn nhận sprint + mốc rank: hai việc đó cần quyền riêng (như `/rank`).
+    const useRankHint = await this.assertMoveCapabilities(workspaceId, userId, current, {
+      sprintChanged,
+      wantsRank,
+      statusChanged,
+    });
     await this.assertMetaInWorkspace(workspaceId, {
-      sprintId: input.sprintId,
+      sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
       projectId: current.projectId,
     });
 
     // Kéo sang cột khác là đổi trạng thái: đi đúng workflow như transition()/bulkUpdate(). Kiểm TRƯỚC resolveRank
     // để không rebalance rank rồi mới báo lỗi; kéo cùng cột/xếp lại thứ tự không đụng workflow.
-    const statusChanged = !!input.statusId && input.statusId !== current.statusId;
     let toDone = false;
     if (statusChanged) {
       await this.assertTransitionAllowed(
@@ -856,7 +1009,7 @@ export class IssuesService {
     }
 
     // Không có mốc nào ⇒ giữ rank hiện tại (trước đây rankBetween(null, null) đặt thẻ vào GIỮA dự án).
-    const hasNeighbor = !!input.afterId || !!input.beforeId;
+    const hasNeighbor = wantsRank && useRankHint;
     const rank = hasNeighbor
       ? await this.rankService.resolveRank(current.projectId, this.prisma, null, id, async () => ({
           prev: input.afterId

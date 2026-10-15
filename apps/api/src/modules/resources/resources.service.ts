@@ -156,7 +156,7 @@ export class ResourcesService {
 
   async updateAllocation(workspaceId: string, id: string, dto: UpdateAllocationInput) {
     const current = await this.prisma.allocation.findFirst({
-      where: { id, project: { workspaceId } },
+      where: { id, project: { workspaceId, deletedAt: null } },
       select: { id: true, startDate: true, endDate: true },
     });
     if (!current) throw new NotFoundAppException('Phân bổ');
@@ -191,7 +191,7 @@ export class ResourcesService {
 
   async deleteAllocation(workspaceId: string, id: string) {
     const found = await this.prisma.allocation.findFirst({
-      where: { id, project: { workspaceId } },
+      where: { id, project: { workspaceId, deletedAt: null } },
       select: { id: true },
     });
     if (!found) throw new NotFoundAppException('Phân bổ');

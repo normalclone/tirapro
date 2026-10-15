@@ -73,7 +73,7 @@ export class SprintAssistantService {
         id: input.sprintId,
         projectId: input.projectId,
         deletedAt: null,
-        project: { workspaceId },
+        project: { workspaceId, deletedAt: null },
       },
       select: { id: true, state: true },
     });

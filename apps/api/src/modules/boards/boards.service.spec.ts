@@ -219,6 +219,40 @@ describe('BoardsService.setColumns — khoá board và xung đột', () => {
     );
   });
 
+  it('FW3: khoá chạy TRƯỚC khi đọc lại cột, và chỉ khoá board chưa xoá mềm (deletedAt IS NULL)', async () => {
+    const { service, tx } = make();
+    await service.setColumns('w1', 'b1', {
+      columns: [
+        col('Todo', ['s1'], { id: 'c1' }),
+        col('Doing', ['s2'], { id: 'c2' }),
+        col('Done', ['s3'], { id: 'c3' }),
+      ],
+    });
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]!).toBeLessThan(
+      tx.boardColumn.findMany.mock.invocationCallOrder[0]!,
+    );
+    const strings = (tx.$queryRaw.mock.calls[0] as unknown as [readonly string[]])[0];
+    const sql = strings.join('?');
+    expect(sql).toContain('"deletedAt" IS NULL');
+    expect(sql).toContain('FOR UPDATE');
+  });
+
+  it('FW3: board bị xoá mềm giữa chừng (khoá không trả dòng nào) => 404, không đọc/ghi cột', async () => {
+    const { service, tx } = make();
+    tx.$queryRaw.mockResolvedValue([]);
+    await expect(
+      service.setColumns('w1', 'b1', {
+        columns: [
+          col('Todo', ['s1'], { id: 'c1' }),
+          col('Doing', ['s2'], { id: 'c2' }),
+          col('Done', ['s3'], { id: 'c3' }),
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(tx.boardColumn.findMany).not.toHaveBeenCalled();
+    expect(tx.boardColumn.deleteMany).not.toHaveBeenCalled();
+  });
+
   it('cột client tham chiếu đã bị người khác xoá (so với bản đọc lại sau khoá) => lỗi rõ ràng, không ghi', async () => {
     const { service, tx } = make(boardRow(), { lockedColumnIds: ['c1', 'c3'] }); // c2 đã bị xoá
     await expect(
@@ -273,6 +307,39 @@ describe('BoardsService.update', () => {
     expect(prisma.board.update).not.toHaveBeenCalled();
   });
 
+  it('FW12: đổi loại SCRUM -> KANBAN và KANBAN -> SCRUM => ghi type, trả BoardDto có type', async () => {
+    const { service, prisma } = make(boardRow({ type: 'SCRUM' }));
+    await service.update('w1', 'b1', { type: 'KANBAN' });
+    expect(prisma.board.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'b1' }, data: { type: 'KANBAN' } }),
+    );
+    const k = make(boardRow({ type: 'KANBAN' }));
+    const dto = await k.service.update('w1', 'b1', { type: 'SCRUM' });
+    expect(k.prisma.board.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { type: 'SCRUM' } }),
+    );
+    expect(dto).toMatchObject({ id: 'b1', type: 'KANBAN' }); // DTO đọc lại từ DB, có trường type
+  });
+
+  it('FW12: không gửi type => không đụng type', async () => {
+    const { service, prisma } = make();
+    await service.update('w1', 'b1', { name: 'Mới' });
+    expect(prisma.board.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { name: 'Mới' } }),
+    );
+  });
+
+  it('FW12: dự án đã lưu trữ => chặn đổi loại, không ghi', async () => {
+    const { service, prisma } = make(
+      boardRow({ project: { archivedAt: new Date(), defaultWorkflowId: 'wf' } }),
+    );
+    await expect(service.update('w1', 'b1', { type: 'KANBAN' })).rejects.toMatchObject({
+      status: 422,
+      message: has('lưu trữ'),
+    });
+    expect(prisma.board.update).not.toHaveBeenCalled();
+  });
+
   it('filterJql hợp lệ + swimlane => lưu filter và swimlaneConfig { by }', async () => {
     const { service, prisma } = make();
     await service.update('w1', 'b1', { filterJql: 'assignee = currentUser()', swimlaneBy: 'epic' });
@@ -290,5 +357,38 @@ describe('BoardsService.update', () => {
     expect(prisma.board.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { filterJql: null } }),
     );
+  });
+});
+
+describe('BoardsService — dự án đã xoá mềm = board không tồn tại (I3)', () => {
+  it('get/setColumns/update/listForProject tra board với project.deletedAt = null; không khớp => 404', async () => {
+    const { service, prisma } = make(null, { lockedColumnIds: [] });
+    await expect(service.get('w1', 'b1')).rejects.toMatchObject({ status: 404 });
+    await expect(
+      service.setColumns('w1', 'b1', { columns: [col('A', ['s1', 's2', 's3'])] }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(service.update('w1', 'b1', { name: 'x' })).rejects.toMatchObject({ status: 404 });
+    for (const call of prisma.board.findFirst.mock.calls as unknown as [{ where: unknown }][])
+      expect(call[0].where).toMatchObject({ project: { workspaceId: 'w1', deletedAt: null } });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('BoardsService.listIssues — board có filterJql sắp theo rank (Minor 5)', () => {
+  it('truyền orderByRank cho SearchService; board không filterJql đi đường IssuesService.list', async () => {
+    const search = { search: vi.fn(() => Promise.resolve({ data: [] })) };
+    const issues = { list: vi.fn(() => Promise.resolve({ data: [] })) };
+    const board = { projectId: 'p1', filterJql: 'assignee = currentUser()' };
+    const prisma = { board: { findFirst: vi.fn(() => Promise.resolve(board)) } };
+    const service = new BoardsService(prisma as never, issues as never, search as never);
+    await service.listIssues('w1', 'u1', 'b1', undefined, 50);
+    expect(search.search).toHaveBeenCalledWith(
+      'w1',
+      'u1',
+      expect.objectContaining({ orderByRank: true, projectId: 'p1' }),
+    );
+    board.filterJql = '';
+    await service.listIssues('w1', 'u1', 'b1', undefined, 50);
+    expect(issues.list).toHaveBeenCalledTimes(1);
   });
 });

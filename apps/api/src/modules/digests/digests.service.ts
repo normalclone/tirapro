@@ -12,6 +12,7 @@ import {
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { withCronLock } from '../../common/cron-lock';
+import { LIVE_PROJECT } from '../../common/live-project';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { TELEGRAM_TOKEN_UNUSABLE_MESSAGE, TelegramService } from '../integrations/telegram.service';
@@ -145,6 +146,7 @@ export class DigestsService implements OnApplicationShutdown {
     const issueScope: Prisma.IssueWhereInput = {
       workspaceId,
       deletedAt: null,
+      ...LIVE_PROJECT, // dự án đã xoá mềm không được lọt vào số liệu gửi ra ngoài
       ...(projectId ? { projectId } : {}),
     };
 
@@ -193,7 +195,12 @@ export class DigestsService implements OnApplicationShutdown {
           field: HistoryField.STATUS,
           newCategory: StatusCategory.DONE,
           occurredAt: { gte: since },
-          issue: { workspaceId, deletedAt: null, ...(projectId ? { projectId } : {}) },
+          issue: {
+            workspaceId,
+            deletedAt: null,
+            ...LIVE_PROJECT,
+            ...(projectId ? { projectId } : {}),
+          },
         },
         select: { issueId: true },
         distinct: ['issueId'],
@@ -246,7 +253,7 @@ export class DigestsService implements OnApplicationShutdown {
         where: {
           state: SprintState.ACTIVE,
           deletedAt: null,
-          project: { workspaceId },
+          project: { workspaceId, deletedAt: null },
           ...(projectId ? { projectId } : {}),
         },
         orderBy: { startDate: 'desc' },

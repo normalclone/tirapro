@@ -420,3 +420,25 @@ describe('SprintsService.remove / update', () => {
     await expect(service.update('w1', 's1', { goal: 'x' })).rejects.toMatchObject({ status: 422 });
   });
 });
+
+describe('SprintsService — dự án đã xoá mềm = sprint không tồn tại (I3)', () => {
+  it('start/complete/update/remove tra sprint với project.deletedAt = null; không khớp => 404, không ghi', async () => {
+    const tx = {
+      sprint: {
+        findFirst: vi.fn((_args: { where: unknown }) => Promise.resolve(null)),
+        updateMany: vi.fn(),
+      },
+      issue: { updateMany: vi.fn() },
+    };
+    const { service } = make(tx);
+    await expect(service.start('w1', 's1')).rejects.toMatchObject({ status: 404 });
+    await expect(
+      service.complete('w1', 's1', 'u1', { moveIncompleteTo: 'backlog' }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(service.update('w1', 's1', { goal: 'x' })).rejects.toMatchObject({ status: 404 });
+    await expect(service.remove('w1', 's1', 'u1')).rejects.toMatchObject({ status: 404 });
+    for (const call of tx.sprint.findFirst.mock.calls)
+      expect(call[0].where).toMatchObject({ project: { workspaceId: 'w1', deletedAt: null } });
+    expect(tx.sprint.updateMany).not.toHaveBeenCalled();
+  });
+});

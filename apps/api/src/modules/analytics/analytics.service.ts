@@ -498,7 +498,12 @@ export class AnalyticsService {
     // projectId (đã qua guard report:view theo dự án) PHẢI khớp sprint — nếu không, client có thể gửi projectId của dự án
     // mình có quyền + sprintId của dự án khác để đọc burndown ngoài quyền.
     const sprint = await this.prisma.sprint.findFirst({
-      where: { id: sprintId, projectId, deletedAt: null, project: { workspaceId } },
+      where: {
+        id: sprintId,
+        projectId,
+        deletedAt: null,
+        project: { workspaceId, deletedAt: null },
+      },
       include: { issues: { where: { deletedAt: null }, select: { id: true, storyPoints: true } } },
     });
     if (!sprint) throw new NotFoundAppException('Đợt làm việc (sprint)');

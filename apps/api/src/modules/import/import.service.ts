@@ -71,6 +71,8 @@ export interface ImportJsonResult {
   failed: number;
   total: number;
   errors: RowError[];
+  /** Số issue ĐÃ tạo nhưng bị bỏ gán vì email assignee không phải thành viên workspace (không báo lỗi dòng). */
+  skippedAssignees: number;
 }
 
 /** Số dòng ghi trong mỗi transaction khi import. */
@@ -319,6 +321,7 @@ export class ImportService {
       // 4. Chuẩn bị từng issue (kèm bước gắn label + comment chạy trong CÙNG transaction của lô).
       const errors: RowError[] = [];
       const items: PreparedItem[] = [];
+      let skippedAssignees = 0;
 
       for (let i = 0; i < issues.length; i++) {
         const issue = issues[i]!;
@@ -338,9 +341,13 @@ export class ImportService {
 
           const priorityId = this.lookup(priorityByName, issue.priority ?? '');
           const assigneeId = this.lookupUser(userByEmail, issue.assignee);
+          // Có ghi assignee nhưng không khớp thành viên nào → issue vẫn tạo, chỉ bỏ gán: đếm để báo lại.
+          const assigneeDropped =
+            !assigneeId && typeof issue.assignee === 'string' && issue.assignee.trim() !== '';
 
           items.push({
             row: i,
+            onCreated: assigneeDropped ? () => void skippedAssignees++ : undefined,
             input: {
               projectId,
               typeId,
@@ -411,6 +418,7 @@ export class ImportService {
             failed,
             comments: commentsCreated,
             labels: labelsLinked,
+            skippedAssignees,
             errors: errors.slice(0, 50),
           } as unknown as Prisma.InputJsonValue,
         },
@@ -424,6 +432,7 @@ export class ImportService {
         failed,
         total,
         errors: errors.slice(0, 20),
+        skippedAssignees,
       };
     } catch (err) {
       const message = this.errMessage(err);

@@ -8,9 +8,10 @@ import { RedisService } from '../../infra/redis/redis.service';
 type ResolverDelegate = { findFirst(args: { where: object; select: object }): Promise<unknown> };
 
 const projectIdOnly = { projectId: true } as const;
+// Sprint/board/nhãn/... của dự án đã xoá mềm = không tồn tại (guard trả 404, không cho start/complete/setColumns...).
 const viaProject = (value: string, workspaceId: string) => ({
   id: value,
-  project: { workspaceId },
+  project: { workspaceId, deletedAt: null },
 });
 // Issue của dự án đã xoá mềm = không tồn tại (mọi route theo issue id → guard trả 404).
 const issueInLiveProject = (value: string, workspaceId: string) => ({
@@ -205,6 +206,7 @@ export class RbacService {
     if (projectId) {
       const projMembership = await this.prisma.projectMembership.findUnique({
         // Giới hạn theo workspace: membership dự án của workspace khác không được tính.
+        // Cố ý KHÔNG lọc project.deletedAt: đây chỉ tính quyền hiệu lực; dự án xoá mềm đã bị guard (`viaProject`/`@ProjectRef`) trả 404 trước khi tới đây.
         where: { projectId_userId: { projectId, userId }, project: { workspaceId } },
         select: { roleId: true, roles: { select: { roleId: true } } },
       });

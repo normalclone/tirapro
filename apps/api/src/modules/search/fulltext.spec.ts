@@ -1,10 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  buildFulltextQuery,
-  FulltextSearcher,
-  isMissingColumnError,
-  isMissingSearchObject,
-} from './fulltext';
+import { buildFulltextQuery, FulltextSearcher, isMissingSearchObject } from './fulltext';
+
+/** Có surrogate mồ côi (nửa cặp UTF-16) không. */
+const hasLoneSurrogate = (s: string): boolean =>
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(s);
 
 /** Gom chuỗi SQL + tham số từ lời gọi tagged template `$queryRaw` (làm phẳng cả Prisma.sql lồng nhau). */
 function renderCall(call: unknown[]): { sql: string; values: unknown[] } {
@@ -39,6 +38,14 @@ describe('buildFulltextQuery', () => {
     expect(buildFulltextQuery('a'.repeat(500))?.q).toHaveLength(200);
   });
 
+  it('FW6: cắt 200 theo code point — emoji nằm ở biên không bị chẻ thành surrogate mồ côi', () => {
+    const q = buildFulltextQuery(`${'a'.repeat(199)}😀b`)!;
+    expect([...q.q]).toHaveLength(200);
+    expect(q.q.endsWith('😀')).toBe(true);
+    for (const v of [q.q, q.like, q.qn, q.likeNorm, q.tsquery])
+      expect(hasLoneSurrogate(v)).toBe(false);
+  });
+
   it('trả null khi rỗng/chỉ khoảng trắng', () => {
     expect(buildFulltextQuery('   ')).toBeNull();
     expect(buildFulltextQuery('\u0000')).toBeNull();
@@ -66,29 +73,28 @@ describe('buildFulltextQuery — bỏ dấu/tiền tố', () => {
   });
 });
 
-describe('isMissingColumnError / isMissingSearchObject', () => {
-  it('nhận cả 42883 (thiếu hàm immutable_unaccent), cùng một hàm với tên cũ', () => {
+describe('isMissingSearchObject', () => {
+  it('nhận cả 42883 (thiếu hàm immutable_unaccent)', () => {
     expect(isMissingSearchObject({ code: 'P2010', meta: { code: '42883' } })).toBe(true);
     expect(isMissingSearchObject(new Error('Raw query failed. Code: `42883`. function'))).toBe(
       true,
     );
-    expect(isMissingColumnError).toBe(isMissingSearchObject);
   });
   it('nhận mã 42703 ở các dạng lỗi Prisma/pg', () => {
-    expect(isMissingColumnError({ code: 'P2010', meta: { code: '42703', message: 'x' } })).toBe(
+    expect(isMissingSearchObject({ code: 'P2010', meta: { code: '42703', message: 'x' } })).toBe(
       true,
     );
-    expect(isMissingColumnError({ code: '42703' })).toBe(true);
+    expect(isMissingSearchObject({ code: '42703' })).toBe(true);
     expect(
-      isMissingColumnError(
+      isMissingSearchObject(
         new Error('Raw query failed. Code: `42703`. Message: column "searchVector" does not exist'),
       ),
     ).toBe(true);
   });
   it('không nhận lỗi khác', () => {
-    expect(isMissingColumnError(new Error('timeout'))).toBe(false);
-    expect(isMissingColumnError({ code: 'P2010', meta: { code: '57014' } })).toBe(false);
-    expect(isMissingColumnError(null)).toBe(false);
+    expect(isMissingSearchObject(new Error('timeout'))).toBe(false);
+    expect(isMissingSearchObject({ code: 'P2010', meta: { code: '57014' } })).toBe(false);
+    expect(isMissingSearchObject(null)).toBe(false);
   });
 });
 
@@ -257,5 +263,33 @@ describe('FulltextSearcher.search', () => {
     await expect(new FulltextSearcher(prisma as never).search('W1', 'abc')).rejects.toThrow(
       'connection lost',
     );
+  });
+});
+
+describe('FulltextSearcher.search — log đường phòng thủ 42601', () => {
+  it('FW6: đường phòng thủ 42601 ghi log warn, nhưng chỉ một lần trong mỗi khoảng', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-10-15T00:00:00Z'));
+      const syntaxErr = () =>
+        Object.assign(new Error('Raw query failed'), { code: 'P2010', meta: { code: '42601' } });
+      let n = 0;
+      const prisma = {
+        // lần gọi lẻ = câu ranked đầu của mỗi search → lỗi cú pháp; lần chẵn = câu chạy lại → ok
+        $queryRaw: vi.fn(() => (n++ % 2 === 0 ? Promise.reject(syntaxErr()) : Promise.resolve([]))),
+      };
+      const logger = { warn: vi.fn() };
+      const searcher = new FulltextSearcher(prisma as never, logger);
+      await searcher.search('W1', 'ʼ⑴');
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn.mock.calls[0]![0]).toContain('42601');
+      await searcher.search('W1', 'ʼ⑴');
+      expect(logger.warn).toHaveBeenCalledTimes(1); // trong khoảng => không log lại
+      vi.setSystemTime(new Date('2026-10-15T00:30:00Z'));
+      await searcher.search('W1', 'ʼ⑴');
+      expect(logger.warn).toHaveBeenCalledTimes(2); // qua khoảng => log lại
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

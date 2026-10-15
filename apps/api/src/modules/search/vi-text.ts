@@ -5,6 +5,11 @@ export function normalizeVi(s: string): string {
   return s.normalize('NFD').replace(MARKS, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 }
 
+/** Cắt tối đa `max` KÝ TỰ (code point), không chẻ đôi cặp surrogate như `slice` theo đơn vị UTF-16. */
+export function truncateCodePoints(s: string, max: number): string {
+  return [...s].slice(0, max).join('');
+}
+
 /**
  * Token chữ/số Unicode của chuỗi gõ (giữ dấu — SQL bỏ dấu sau), tối đa 8 token × 40 ký tự.
  * NFKC (gộp NFD của macOS về NFC + dạng tương thích, vd ⑴ → (1)) rồi loại chữ "modifier" (\p{Lm}: ʼ ˈ ː …) và số
@@ -12,7 +17,7 @@ export function normalizeVi(s: string): string {
  */
 export function searchTokens(s: string): string[] {
   const tokens = s.normalize('NFKC').match(/(?:(?![\p{Lm}\p{No}])[\p{L}\p{N}])+/gu) ?? [];
-  return tokens.slice(0, 8).map((t) => t.slice(0, 40));
+  return tokens.slice(0, 8).map((t) => truncateCodePoints(t, 40));
 }
 
 const VI_ACCENTED = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';

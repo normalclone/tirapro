@@ -83,7 +83,12 @@ function makeService(tx: Record<string, unknown>, prismaExtra: Record<string, un
     ...prismaExtra,
   };
   const events = { emit: vi.fn() };
-  const rbac = { getEffectivePermissions: vi.fn() };
+  // Mặc định đủ quyền sửa/xếp backlog/chuyển trạng thái; ca thiếu quyền ghi đè bằng mockResolvedValue.
+  const rbac = {
+    getEffectivePermissions: vi.fn(() =>
+      Promise.resolve(new Set(['issue:edit', 'backlog:manage', 'issue:transition'])),
+    ),
+  };
   const service = new IssuesService(prisma as never, events as never, rbac as never);
   return { service, events, prisma, rbac };
 }
@@ -347,6 +352,14 @@ describe('IssuesService.bulkUpdate', () => {
     { id: 'b', version: 3 },
   ];
 
+  it('transaction của lô đặt timeout/maxWait đủ rộng (mặc định 5s quá sát với 100 item × ~4 truy vấn)', async () => {
+    const tx = bulkTx();
+    const txSpy = vi.fn((fn: (t: unknown) => unknown, _opts?: unknown) => fn(tx));
+    const { service } = makeService(tx, { $transaction: txSpy });
+    await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { assigneeId: 'u2' } });
+    expect(txSpy.mock.calls[0]![1]).toMatchObject({ timeout: 30_000, maxWait: 10_000 });
+  });
+
   it('2 item, 1 thua OCC lúc ghi => updated 1, conflicts 1 (kèm version hiện tại), chỉ emit cho item đã ghi', async () => {
     const tx = bulkTx({ lose: 'b' });
     const { service, events } = makeService(tx);
@@ -511,6 +524,16 @@ describe('IssuesService.query — rawIds (full-text)', () => {
     const second = await service.query('w1', {}, [], 'b', 2, ['a', 'b', 'c']);
     expect(second.data.map((i) => i.id)).toEqual(['c']);
     expect(second.pageInfo).toMatchObject({ hasNextPage: false });
+  });
+
+  it('con trỏ không còn trong rawIds => trang rỗng (không quay lại trang đầu); con trỏ còn trong rawIds dù issue đã mất vẫn tiếp tục đúng chỗ', async () => {
+    const rows = ['a', 'c'].map((id) => issueRow({ id })); // b đã bị xoá/ẩn khỏi kết quả
+    const { service } = setup(rows);
+    const gone = await service.query('w1', {}, [], 'zzz', 2, ['a', 'b', 'c']);
+    expect(gone.data).toEqual([]);
+    expect(gone.pageInfo).toMatchObject({ hasNextPage: false, endCursor: null });
+    const afterB = await service.query('w1', {}, [], 'b', 2, ['a', 'b', 'c']);
+    expect(afterB.data.map((i) => i.id)).toEqual(['c']);
   });
 
   it('rawIds rỗng -> trang rỗng, không truy vấn DB', async () => {
@@ -972,6 +995,413 @@ describe('IssuesService — assignee phải là thành viên, sprint phải cùn
       projectId: 'p1',
     });
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('IssuesService — sprint CLOSED không nhận việc (FW1)', () => {
+  const closedSprint = () => vi.fn(() => Promise.resolve({ id: 'sp9', state: 'CLOSED' }));
+
+  it('create(sprintId đã đóng) => 422, chưa ghi', async () => {
+    const tx = {
+      project: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({
+            id: 'p1',
+            key: 'P',
+            defaultWorkflowId: 'wf',
+            leadId: null,
+            defaultAssigneeMode: 'NONE',
+            archivedAt: null,
+          }),
+        ),
+      },
+      issueType: { findFirst: vi.fn(() => Promise.resolve({ id: 't1' })) },
+      sprint: { findFirst: closedSprint() },
+      issue: { create: vi.fn() },
+    };
+    const { service } = makeService(tx);
+    await expect(
+      service.create('w1', 'u1', {
+        projectId: 'p1',
+        typeId: 't1',
+        summary: 's',
+        descriptionFormat: 'MARKDOWN',
+        sprintId: 'sp9',
+      }),
+    ).rejects.toMatchObject({ status: 422, message: has('Sprint đã hoàn thành') });
+    expect(tx.issue.create).not.toHaveBeenCalled();
+  });
+
+  it('createWithin (import Jira gắn sprint CLOSED theo lịch sử) KHÔNG bị chặn, create() thường vẫn 422', async () => {
+    const input = {
+      projectId: 'p1',
+      typeId: 't1',
+      summary: 's',
+      descriptionFormat: 'MARKDOWN' as const,
+      sprintId: 'sp9',
+    };
+    const w = createTx([{ id: 's1', category: 'TODO', isInitial: true }]);
+    const tx = Object.assign(w.tx, { sprint: { findFirst: closedSprint() } });
+    const { service } = makeService(tx);
+    await expect(service.createWithin(tx as never, 'w1', 'u1', input, [])).resolves.toBeDefined();
+    expect(w.created.mock.calls[0]![0].data.sprintId).toBe('sp9');
+    await expect(service.create('w1', 'u1', input)).rejects.toMatchObject({ status: 422 });
+    expect(w.created).toHaveBeenCalledTimes(1);
+  });
+
+  it('update(sprintId đã đóng) => 422, chưa ghi', async () => {
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow())),
+        updateMany: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+      },
+      sprint: { findFirst: closedSprint() },
+    };
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, sprintId: 'sp9' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('update: việc ĐANG ở sprint đã đóng, sửa field khác (kể cả gửi lại sprintId cũ) => không bị chặn', async () => {
+    const sprintFind = closedSprint();
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow({ sprintId: 'sp9' }))),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(() =>
+          Promise.resolve(issueRow({ sprintId: 'sp9', version: 4, summary: 'mới' })),
+        ),
+      },
+      issueHistory: { createMany: vi.fn() },
+      sprint: { findFirst: sprintFind },
+    };
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới' }),
+    ).resolves.toBeDefined();
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới', sprintId: 'sp9' }),
+    ).resolves.toBeDefined();
+    expect(tx.issue.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('update(sprintId: null) từ sprint đã đóng => được bỏ gán', async () => {
+    const sprintFind = closedSprint();
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow({ sprintId: 'sp9' }))),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ sprintId: null, version: 4 }))),
+      },
+      issueHistory: { createMany: vi.fn() },
+      sprint: { findFirst: sprintFind },
+    };
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, sprintId: null }),
+    ).resolves.toBeDefined();
+    expect(sprintFind).not.toHaveBeenCalled();
+  });
+
+  it('bulkUpdate(patch.sprintId đã đóng) => 422, không ghi gì', async () => {
+    const tx = {
+      issue: {
+        findMany: vi.fn(() => Promise.resolve([issueRow({ id: 'a' })])),
+        updateMany: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+      },
+      project: { findUnique: vi.fn(() => Promise.resolve({ archivedAt: null })) },
+      sprint: { findFirst: closedSprint() },
+    };
+    const txSpy = vi.fn();
+    const { service } = makeService(tx, { $transaction: txSpy });
+    await expect(
+      service.bulkUpdate('w1', 'u1', {
+        projectId: 'p1',
+        items: [{ id: 'a', version: 3 }],
+        patch: { sprintId: 'sp9' },
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(txSpy).not.toHaveBeenCalled();
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('move / rank (sprintId đã đóng) => 422, không ghi', async () => {
+    const tx = wipTx({ count: 0 });
+    tx.sprint.findFirst = closedSprint();
+    const { service } = makeService(tx);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp9' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/** Prisma giả cho `create`: `statuses` = trạng thái của workflow dự án; `epics` = id → hàng epic. */
+/** `statuses`: các trạng thái của workflow dự án (wf); status ngoài danh sách coi như thuộc workflow khác. */
+function createTx(
+  statuses: Array<{ id: string; category: string; isInitial: boolean }>,
+  epics: Record<string, unknown> = {},
+) {
+  const created = vi.fn((_args: { data: Record<string, unknown> }) =>
+    Promise.resolve(issueRow({ statusId: 's9' })),
+  );
+  const tx = {
+    project: {
+      findFirst: vi.fn(() =>
+        Promise.resolve({
+          id: 'p1',
+          key: 'P',
+          defaultWorkflowId: 'wf',
+          leadId: null,
+          defaultAssigneeMode: 'NONE',
+          archivedAt: null,
+        }),
+      ),
+      update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
+    },
+    issueType: {
+      findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
+      findUnique: vi.fn(() => Promise.resolve({ key: 'task', name: 'Task' })),
+    },
+    status: {
+      findFirst: vi.fn(
+        ({ where }: { where: { id?: string; workflowId: string; isInitial?: boolean } }) =>
+          Promise.resolve(
+            statuses.find(
+              (st) =>
+                where.workflowId === 'wf' &&
+                (where.id === undefined || where.id === st.id) &&
+                (where.isInitial === undefined || where.isInitial === st.isInitial),
+            ) ?? null,
+          ),
+      ),
+    },
+    priority: { findFirst: vi.fn(() => Promise.resolve(null)) },
+    issue: {
+      findFirst: vi.fn(({ where }: { where: { id?: string } }) =>
+        Promise.resolve(where.id && where.id in epics ? epics[where.id] : null),
+      ),
+      count: vi.fn(() => Promise.resolve(0)),
+      create: created,
+    },
+    issueHistory: { create: vi.fn() },
+  };
+  return { tx, created };
+}
+
+const WF_DEFAULT = [{ id: 's1', category: 'TODO', isInitial: true }];
+const createTxFor = (epics: Record<string, unknown>) => createTx(WF_DEFAULT, epics);
+
+describe('IssuesService.create — statusId phải thuộc workflow của dự án (I1)', () => {
+  const baseInput = {
+    projectId: 'p1',
+    typeId: 't1',
+    summary: 's',
+    descriptionFormat: 'MARKDOWN' as const,
+  };
+
+  const WF = [
+    { id: 's1', category: 'TODO', isInitial: true },
+    { id: 's2', category: 'IN_PROGRESS', isInitial: false },
+    { id: 's9', category: 'DONE', isInitial: false },
+  ];
+
+  it('statusId của workflow khác => 422, không tạo', async () => {
+    const { tx, created } = createTx(WF);
+    const { service, rbac } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition']));
+    await expect(
+      service.create('w1', 'u1', { ...baseInput, statusId: 'ngoai-workflow' }),
+    ).rejects.toMatchObject({ status: 422, message: has('không thuộc quy trình') });
+    expect(created).not.toHaveBeenCalled();
+  });
+
+  it('statusId khác trạng thái khởi tạo mà thiếu issue:transition => 403, không tạo', async () => {
+    const { tx, created } = createTx(WF);
+    const { service, rbac } = makeService(tx, {
+      user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) },
+    });
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:create']));
+    await expect(
+      service.create('w1', 'u1', { ...baseInput, statusId: 's9' }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(created).not.toHaveBeenCalled();
+  });
+
+  it('có issue:transition + status DONE của workflow => tạo ở DONE và đặt resolvedAt', async () => {
+    const { tx, created } = createTx(WF);
+    const { service, rbac } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition']));
+    await service.create('w1', 'u1', { ...baseInput, statusId: 's9' });
+    const data = created.mock.calls[0]![0].data;
+    expect(data.statusId).toBe('s9');
+    expect(data.resolvedAt).toBeInstanceOf(Date);
+  });
+
+  it('statusId chính là trạng thái khởi tạo => không đòi issue:transition, không resolvedAt', async () => {
+    const { tx, created } = createTx(WF);
+    const { service, rbac } = makeService(tx);
+    await service.create('w1', 'u1', { ...baseInput, statusId: 's1' });
+    expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
+    expect(created.mock.calls[0]![0].data.resolvedAt).toBeNull();
+  });
+
+  it('không truyền statusId => dùng trạng thái khởi tạo (hành vi cũ)', async () => {
+    const { tx, created } = createTx(WF);
+    const { service } = makeService(tx);
+    await service.create('w1', 'u1', baseInput);
+    expect(created.mock.calls[0]![0].data.statusId).toBe('s1');
+  });
+
+  it('createWithin (import) nhận trạng thái bất kỳ của workflow dự án, không đòi issue:transition', async () => {
+    const { tx, created } = createTx(WF);
+    const { service, rbac } = makeService(tx);
+    await service.createWithin(tx as never, 'w1', 'u1', { ...baseInput, statusId: 's2' }, []);
+    expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
+    expect(created.mock.calls[0]![0].data.statusId).toBe('s2');
+  });
+});
+
+describe('IssuesService — epicId được lưu và hợp lệ (FW11 + review)', () => {
+  const epicRow = (over: Record<string, unknown> = {}) => ({
+    projectId: 'p1',
+    epicId: null,
+    type: { key: 'EPIC', hierarchyLevel: 1 },
+    ...over,
+  });
+
+  /** `epics`: id → hàng epic (cho truy vấn kiểm epic); mọi truy vấn khác trả `current`. */
+  function epicTx(
+    current: Record<string, unknown>,
+    after: Record<string, unknown>,
+    epics: Record<string, unknown> = {},
+  ) {
+    return {
+      issue: {
+        findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(where.id in epics ? epics[where.id] : where.id === 'i1' ? current : null),
+        ),
+        updateMany: vi.fn((_args: { data: Record<string, unknown> }) =>
+          Promise.resolve({ count: 1 }),
+        ),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(after)),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+  }
+
+  it('PATCH { epicId } ghi epicId vào DB và phát ISSUE_UPDATED với changedFields chứa epicId', async () => {
+    const tx = epicTx(issueRow(), issueRow({ epicId: 'e1', version: 4 }), { e1: epicRow() });
+    const { service, events } = makeService(tx);
+    const dto = await service.update('w1', 'u1', 'i1', { version: 3, epicId: 'e1' });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ epicId: 'e1' });
+    expect(dto.epicId).toBe('e1');
+    expect(events.emit).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.ISSUE_UPDATED,
+      expect.objectContaining({ changedFields: ['epicId'] }),
+    );
+  });
+
+  it('PATCH { epicId: null } gỡ epic (không tra epic)', async () => {
+    const tx = epicTx(issueRow({ epicId: 'e1' }), issueRow({ epicId: null, version: 4 }));
+    const { service } = makeService(tx);
+    await service.update('w1', 'u1', 'i1', { version: 3, epicId: null });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ epicId: null });
+  });
+
+  it('không gửi epicId, hoặc gửi lại epic hiện tại => không đụng epicId, không tra epic', async () => {
+    const tx = epicTx(issueRow({ epicId: 'e1' }), issueRow({ epicId: 'e1', version: 4 }));
+    const { service } = makeService(tx);
+    await service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới' });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).not.toHaveProperty('epicId');
+    await service.update('w1', 'u1', 'i1', { version: 3, epicId: 'e1' });
+    expect(tx.issue.findFirst.mock.calls.every((c) => c[0].where.id === 'i1')).toBe(true);
+  });
+
+  it.each([
+    ['chính issue này', 'i1', {}, 422],
+    ['không tồn tại / ngoài workspace', 'ghost', {}, 404],
+    [
+      'khác dự án',
+      'e1',
+      { e1: { projectId: 'p2', epicId: null, type: { key: 'EPIC', hierarchyLevel: 1 } } },
+      422,
+    ],
+    [
+      'không phải loại Epic',
+      'e1',
+      { e1: { projectId: 'p1', epicId: null, type: { key: 'TASK', hierarchyLevel: 0 } } },
+      422,
+    ],
+    [
+      'tạo vòng trực tiếp (epic đang trỏ về issue)',
+      'e1',
+      { e1: { projectId: 'p1', epicId: 'i1', type: { key: 'EPIC', hierarchyLevel: 1 } } },
+      422,
+    ],
+    [
+      'tạo vòng gián tiếp (e1 → e2 → i1)',
+      'e1',
+      {
+        e1: { projectId: 'p1', epicId: 'e2', type: { key: 'EPIC', hierarchyLevel: 1 } },
+        e2: { projectId: 'p1', epicId: 'i1', type: { key: 'EPIC', hierarchyLevel: 1 } },
+      },
+      422,
+    ],
+  ])('update: epic %s => lỗi, không ghi', async (_n, epicId, epics, status) => {
+    const tx = epicTx(issueRow(), issueRow(), epics);
+    const { service } = makeService(tx);
+    await expect(service.update('w1', 'u1', 'i1', { version: 3, epicId })).rejects.toMatchObject({
+      status,
+    });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('epic hợp lệ theo hierarchyLevel >= 1 (loại tuỳ chỉnh) cũng được', async () => {
+    const tx = epicTx(issueRow(), issueRow({ epicId: 'e1', version: 4 }), {
+      e1: epicRow({ type: { key: null, hierarchyLevel: 2 } }),
+    });
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, epicId: 'e1' }),
+    ).resolves.toBeDefined();
+  });
+
+  it('create: epic khác dự án / không phải Epic => 422, không tạo', async () => {
+    for (const epic of [
+      epicRow({ projectId: 'p2' }),
+      epicRow({ type: { key: 'TASK', hierarchyLevel: 0 } }),
+    ]) {
+      const { tx, created } = createTxFor({ e1: epic });
+      const { service } = makeService(tx);
+      await expect(
+        service.create('w1', 'u1', {
+          projectId: 'p1',
+          typeId: 't1',
+          summary: 's',
+          descriptionFormat: 'MARKDOWN',
+          epicId: 'e1',
+        }),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(created).not.toHaveBeenCalled();
+    }
+  });
+
+  it('create: epic hợp lệ => tạo với epicId', async () => {
+    const { tx, created } = createTxFor({ e1: epicRow() });
+    const { service } = makeService(tx);
+    await service.create('w1', 'u1', {
+      projectId: 'p1',
+      typeId: 't1',
+      summary: 's',
+      descriptionFormat: 'MARKDOWN',
+      epicId: 'e1',
+    });
+    expect(created.mock.calls[0]![0].data.epicId).toBe('e1');
   });
 });
 
@@ -1520,6 +1950,102 @@ describe('IssuesService.move — không mốc giữ rank; đổi sprint ghi lị
     await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a' });
     expect(tx.issueHistory.createMany).not.toHaveBeenCalled();
     expect(emitted(events)).toEqual([DOMAIN_EVENTS.ISSUE_MOVED]);
+  });
+});
+
+describe('IssuesService.move — ma trận quyền sprint/rank (I4)', () => {
+  const rankOf = (tx: ReturnType<typeof wipTx>) =>
+    (tx.issue.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }])[0].data
+      .rank;
+
+  function setup(
+    perms: string[],
+    opts: { sysAdmin?: boolean; issue?: Record<string, unknown> } = {},
+  ) {
+    const tx = wipTx({ count: 0, issue: opts.issue });
+    tx.issue.findFirstOrThrow = vi.fn(() => Promise.resolve(issueRow({ version: 4 })));
+    const made = makeService(tx, {
+      user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: !!opts.sysAdmin })) },
+    });
+    made.rbac.getEffectivePermissions.mockResolvedValue(new Set(perms));
+    return { tx, ...made };
+  }
+
+  it('role chỉ có issue:transition đổi sprintId => 403, không ghi', async () => {
+    const { tx, service } = setup(['issue:transition']);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('issue:edit đổi sprintId => được; sprintId không đổi thì không đòi quyền sửa', async () => {
+    const ok = setup(['issue:edit']);
+    await expect(
+      ok.service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' }),
+    ).resolves.toBeDefined();
+    const same = setup(['issue:transition']);
+    await expect(
+      same.service.move('w1', 'u1', 'i1', { version: 3, sprintId: null, statusId: 's2' }),
+    ).resolves.toBeDefined(); // sprintId hiện tại là null => không đổi
+  });
+
+  it('chỉ issue:edit:own: đổi sprint việc của mình được, việc người khác 403', async () => {
+    const mine = setup(['issue:edit:own'], { issue: { reporterId: 'u1' } });
+    await expect(
+      mine.service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' }),
+    ).resolves.toBeDefined();
+    const other = setup(['issue:edit:own'], {
+      issue: { reporterId: 'x', assigneeId: 'x', createdById: 'x' },
+    });
+    await expect(
+      other.service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('system admin đổi sprint được dù không có quyền dự án', async () => {
+    const { service } = setup([], { sysAdmin: true });
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'sp2' }),
+    ).resolves.toBeDefined();
+  });
+
+  it('thiếu issue:edit/backlog:manage + mốc rank + KHÔNG đổi status => 403', async () => {
+    const { tx, service } = setup(['issue:transition']);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a' }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('thiếu quyền xếp + mốc rank + CÓ đổi status => bỏ qua mốc (giữ rank), vẫn chuyển trạng thái', async () => {
+    const { tx, service } = setup(['issue:transition']);
+    await service.move('w1', 'u1', 'i1', {
+      version: 3,
+      afterId: 'a',
+      beforeId: 'b',
+      statusId: 's2',
+    });
+    expect(rankOf(tx)).toBe('n'); // rank cũ
+    const data = (
+      tx.issue.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data.statusId).toBe('s2');
+    expect(tx.issue.findFirst).toHaveBeenCalledTimes(1); // chỉ requireIssue, không tra mốc
+  });
+
+  it.each([['issue:edit'], ['backlog:manage']])('có %s => mốc rank được dùng', async (perm) => {
+    const { tx, service } = setup([perm, 'issue:transition']);
+    await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a' });
+    expect(tx.issue.findFirst.mock.calls.length).toBeGreaterThan(1); // có tra rank của mốc
+  });
+
+  it('không mốc, không sprint, chỉ đổi status với issue:transition => không cần quyền sửa/backlog', async () => {
+    const { rbac, service } = setup(['issue:transition']);
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, statusId: 's2' }),
+    ).resolves.toBeDefined();
+    expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
   });
 });
 
