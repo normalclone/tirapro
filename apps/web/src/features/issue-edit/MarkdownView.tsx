@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { parseMarkdown, type MdBlock } from './markdownParse';
+import { MentionChip } from './MentionChip';
 
 /* ----------------------------- Render markdown (tập con GFM) ----------------------------- */
 
 // Token inline (nhóm có tên để thêm nhánh mới không phải đánh lại chỉ số): ảnh, liên kết,
-// đậm, mã, gạch ngang (~~), nghiêng (* hoặc _).
+// đậm, mã, gạch ngang (~~), nghiêng (* hoặc _), @mention `@[Tên](user:id)`.
 const INLINE_SOURCE =
   '(?<img>!\\[(?<imgAlt>[^\\]]*)\\]\\((?<imgSrc>[^)\\s]+)\\))' +
   '|(?<link>\\[(?<linkText>[^\\]]+)\\]\\((?<linkHref>[^)\\s]+)\\))' +
@@ -13,7 +14,8 @@ const INLINE_SOURCE =
   '|`(?<code>[^`]+)`' +
   '|~~(?<strike>[^~]+)~~' +
   '|\\*(?<em1>[^*]+)\\*' +
-  '|_(?<em2>[^_]+)_';
+  '|_(?<em2>[^_]+)_' +
+  '|(?<mention>@\\[(?<mentionName>[^\\]\\n]{1,80})\\]\\(user:(?<mentionId>[A-Za-z0-9_-]{1,64})\\))';
 
 // Chống XSS lưu trữ: chỉ cho phép scheme an toàn. Liên kết chặn javascript:/data:;
 // riêng ảnh cho thêm data:image vì thẻ ảnh không chạy được mã từ nguồn này.
@@ -84,6 +86,8 @@ function renderInline(text: string): ReactNode[] {
           {g.strike}
         </del>,
       );
+    } else if (g.mention !== undefined) {
+      out.push(<MentionChip key={k++} id={g.mentionId!} name={g.mentionName!} />);
     } else {
       out.push(<em key={k++}>{g.em1 ?? g.em2}</em>);
     }

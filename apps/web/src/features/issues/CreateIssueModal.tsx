@@ -562,6 +562,7 @@ export function CreateIssueModal() {
               onChange={setDescription}
               onSubmit={() => void submitCreate()}
               rows={10}
+              mentionPeople={assignees}
               placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))"
             />
           </Field>

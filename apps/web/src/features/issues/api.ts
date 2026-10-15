@@ -6,6 +6,7 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 import type { CommentDto, IssueDto, ListResponse } from '@tirapro/types';
+import { extractMentionIds } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import {
@@ -143,7 +144,11 @@ export function useAddComment(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: string) =>
-      api.post<CommentDto>(`/issues/${issueId}/comments`, { body, bodyFormat: 'MARKDOWN' }),
+      api.post<CommentDto>(`/issues/${issueId}/comments`, {
+        body,
+        bodyFormat: 'MARKDOWN',
+        mentionUserIds: extractMentionIds(body),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.issues.comments(issueId) }),
   });
 }

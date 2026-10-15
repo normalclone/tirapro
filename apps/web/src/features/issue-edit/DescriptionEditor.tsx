@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { apiErrorMessage } from '@/lib/api';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownView } from './MarkdownView';
+import { useAssigneeOptions } from './useAssigneeOptions';
 
 /**
  * Mô tả công việc: xem (render Markdown, dạng label) → bấm để sửa bằng MarkdownEditor.
@@ -15,6 +16,7 @@ import { MarkdownView } from './MarkdownView';
 export function IssueDescription({ issue }: { issue: IssueDto }) {
   const patch = useUpdateIssue(issue.projectId);
   const canEdit = useCanEditIssue(issue.projectId)(issue);
+  const people = useAssigneeOptions(issue.projectId);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(issue.description ?? '');
 
@@ -60,6 +62,7 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
           onCancel={cancel}
           autoFocus
           rows={8}
+          mentionPeople={people}
         />
         <div className="flex items-center gap-2">
           <span className="mr-auto text-xs text-faint">
