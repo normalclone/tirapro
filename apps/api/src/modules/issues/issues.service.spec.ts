@@ -319,6 +319,46 @@ describe('IssuesService — OCC atomic', () => {
   });
 });
 
+describe('IssuesService.update — severityId', () => {
+  function occTx() {
+    return {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow())),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 4 }))),
+        updateMany: vi.fn(
+          (_args: { where: Record<string, unknown>; data: Record<string, unknown> }) =>
+            Promise.resolve({ count: 1 }),
+        ),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+    };
+  }
+
+  it('kiểm mức thuộc workspace, ghi severityId, null để bỏ mức', async () => {
+    const tx = occTx();
+    const severity = { findFirst: vi.fn(() => Promise.resolve({ id: 'sv1' })) };
+    const { service } = makeService(tx, { severity });
+    await service.update('w1', 'u1', 'i1', { version: 3, severityId: 'sv1' });
+    expect(severity.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'sv1', workspaceId: 'w1' } }),
+    );
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ severityId: 'sv1' });
+    await service.update('w1', 'u1', 'i1', { version: 3, severityId: null });
+    expect(tx.issue.updateMany.mock.calls[1]![0].data).toMatchObject({ severityId: null });
+  });
+
+  it('mức của workspace khác => 404, chưa ghi', async () => {
+    const tx = occTx();
+    const { service } = makeService(tx, {
+      severity: { findFirst: vi.fn(() => Promise.resolve(null)) },
+    });
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, severityId: 'x' }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('IssuesService.bulkUpdate', () => {
   /** Hai issue a, b (version 3). `lose` = id bị thua OCC lúc ghi (version hiện tại trong DB = 5). */
   function bulkTx(

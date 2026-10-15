@@ -301,7 +301,7 @@ export class ProjectsService {
       select: { id: true, key: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
-    const [issueTypes, priorities] = await Promise.all([
+    const [issueTypes, priorities, severities, resolutions] = await Promise.all([
       this.prisma.issueType.findMany({
         where: { workspaceId },
         orderBy: { hierarchyLevel: 'asc' },
@@ -312,8 +312,25 @@ export class ProjectsService {
         orderBy: { rank: 'desc' },
         select: { id: true, name: true, color: true, rank: true, isDefault: true },
       }),
+      this.prisma.severity.findMany({
+        where: { workspaceId },
+        orderBy: { rank: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          color: true,
+          rank: true,
+          isDefault: true,
+        },
+      }),
+      this.prisma.resolution.findMany({
+        where: { workspaceId },
+        orderBy: { rank: 'asc' },
+        select: { id: true, name: true, description: true, rank: true, isDefault: true },
+      }),
     ]);
-    return { projectId: project.id, issueTypes, priorities };
+    return { projectId: project.id, issueTypes, priorities, severities, resolutions };
   }
 
   private toDto(

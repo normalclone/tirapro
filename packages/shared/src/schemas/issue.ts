@@ -10,6 +10,7 @@ export const createIssueSchema = z.object({
   description: z.string().max(50_000).optional().nullable(),
   descriptionFormat: richTextFormatEnum.default('MARKDOWN'),
   priorityId: z.string().optional().nullable(),
+  severityId: z.string().optional().nullable(),
   assigneeId: z.string().optional().nullable(),
   parentId: z.string().optional().nullable(),
   epicId: z.string().optional().nullable(),

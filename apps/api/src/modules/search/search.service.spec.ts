@@ -116,3 +116,33 @@ describe('SearchService.search', () => {
     expect((issues.query.mock.calls[0] as unknown[])[5]).toBeUndefined();
   });
 });
+
+describe('SearchService.fields — severities', () => {
+  it('trả severities theo rank giảm, đủ value/label/color', async () => {
+    const empty = vi.fn().mockResolvedValue([]);
+    const severity = {
+      findMany: vi.fn().mockResolvedValue([
+        { name: 'Critical', color: '#f00' },
+        { name: 'Minor', color: null },
+      ]),
+    };
+    const prisma = {
+      issueType: { findMany: empty },
+      status: { findMany: empty },
+      priority: { findMany: empty },
+      sprint: { findMany: empty },
+      label: { findMany: empty },
+      resolution: { findMany: empty },
+      severity,
+    };
+    const service = new SearchService({} as never, prisma as never);
+    const out = await service.fields('W1');
+    expect(severity.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { workspaceId: 'W1' }, orderBy: { rank: 'desc' } }),
+    );
+    expect(out.severities).toEqual([
+      { value: 'Critical', label: 'Critical', color: '#f00' },
+      { value: 'Minor', label: 'Minor', color: null },
+    ]);
+  });
+});

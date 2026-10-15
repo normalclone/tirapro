@@ -38,6 +38,7 @@ export interface FilterFieldsDto {
   types: FieldOption[];
   statuses: FieldOption[];
   priorities: FieldOption[];
+  severities: FieldOption[];
   sprints: FieldOption[];
   labels: FieldOption[];
   resolutions: FieldOption[];
@@ -60,45 +61,52 @@ export class SearchService {
    * gom từ mọi project (khử trùng theo tên vì JQL khớp theo tên). Degrade: rỗng nếu chưa có.
    */
   async fields(workspaceId: string): Promise<FilterFieldsDto> {
-    const [types, statuses, priorities, sprints, labels, resolutions] = await Promise.all([
-      this.prisma.issueType.findMany({
-        where: { workspaceId },
-        orderBy: { hierarchyLevel: 'asc' },
-        select: { name: true, color: true },
-      }),
-      this.prisma.status.findMany({
-        where: { workflow: { workspaceId } },
-        orderBy: { order: 'asc' },
-        select: { name: true, color: true },
-      }),
-      this.prisma.priority.findMany({
-        where: { workspaceId },
-        orderBy: { rank: 'desc' },
-        select: { name: true, color: true },
-      }),
-      this.prisma.sprint.findMany({
-        where: { project: { workspaceId, deletedAt: null } },
-        orderBy: { sequence: 'desc' },
-        select: { name: true },
-        take: 100,
-      }),
-      this.prisma.label.findMany({
-        where: { project: { workspaceId, deletedAt: null } },
-        orderBy: { name: 'asc' },
-        select: { name: true, color: true },
-        take: 200,
-      }),
-      this.prisma.resolution.findMany({
-        where: { workspaceId },
-        orderBy: { rank: 'asc' },
-        select: { name: true },
-      }),
-    ]);
+    const [types, statuses, priorities, severities, sprints, labels, resolutions] =
+      await Promise.all([
+        this.prisma.issueType.findMany({
+          where: { workspaceId },
+          orderBy: { hierarchyLevel: 'asc' },
+          select: { name: true, color: true },
+        }),
+        this.prisma.status.findMany({
+          where: { workflow: { workspaceId } },
+          orderBy: { order: 'asc' },
+          select: { name: true, color: true },
+        }),
+        this.prisma.priority.findMany({
+          where: { workspaceId },
+          orderBy: { rank: 'desc' },
+          select: { name: true, color: true },
+        }),
+        this.prisma.severity.findMany({
+          where: { workspaceId },
+          orderBy: { rank: 'desc' },
+          select: { name: true, color: true },
+        }),
+        this.prisma.sprint.findMany({
+          where: { project: { workspaceId, deletedAt: null } },
+          orderBy: { sequence: 'desc' },
+          select: { name: true },
+          take: 100,
+        }),
+        this.prisma.label.findMany({
+          where: { project: { workspaceId, deletedAt: null } },
+          orderBy: { name: 'asc' },
+          select: { name: true, color: true },
+          take: 200,
+        }),
+        this.prisma.resolution.findMany({
+          where: { workspaceId },
+          orderBy: { rank: 'asc' },
+          select: { name: true },
+        }),
+      ]);
 
     return {
       types: dedupeByName(types),
       statuses: dedupeByName(statuses),
       priorities: dedupeByName(priorities),
+      severities: dedupeByName(severities),
       sprints: dedupeByName(sprints),
       labels: dedupeByName(labels),
       resolutions: dedupeByName(resolutions),

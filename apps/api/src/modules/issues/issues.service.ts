@@ -60,6 +60,7 @@ const TRACKED_FIELDS = [
   'summary',
   'description',
   'priorityId',
+  'severityId',
   'assigneeId',
   'storyPoints',
   'sprintId',
@@ -160,12 +161,25 @@ export class IssuesService {
     );
   }
 
+  /** Priority mặc định của workspace (undefined nếu chưa cấu hình). */
+  private async defaultPriorityId(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+  ): Promise<string | undefined> {
+    const def = await db.priority.findFirst({
+      where: { workspaceId, isDefault: true },
+      select: { id: true },
+    });
+    return def?.id;
+  }
+
   /** Đảm bảo metadata/quan hệ (nếu truyền) thuộc đúng workspace — chống gán/liên kết chéo tenant. */
   private async assertMetaInWorkspace(
     workspaceId: string,
     m: {
       typeId?: string | null;
       priorityId?: string | null;
+      severityId?: string | null;
       sprintId?: string | null;
       /** Import (Jira) tạo sprint CLOSED theo lịch sử rồi gắn issue vào — chỉ đường `createWithin` bật cờ này. */
       allowClosedSprint?: boolean;
@@ -184,6 +198,10 @@ export class IssuesService {
     if (m.priorityId)
       jobs.push(
         db.priority.findFirst({ where: { id: m.priorityId, workspaceId }, select: { id: true } }),
+      );
+    if (m.severityId)
+      jobs.push(
+        db.severity.findFirst({ where: { id: m.severityId, workspaceId }, select: { id: true } }),
       );
     if (m.resolutionId)
       jobs.push(
@@ -432,6 +450,7 @@ export class IssuesService {
       {
         typeId: input.typeId,
         priorityId: input.priorityId,
+        severityId: input.severityId,
         sprintId: input.sprintId,
         parentId: input.parentId,
         projectId: project.id,
@@ -471,14 +490,7 @@ export class IssuesService {
     }
 
     // Priority mặc định của workspace nếu không truyền
-    let priorityId = input.priorityId ?? undefined;
-    if (!priorityId) {
-      const def = await db.priority.findFirst({
-        where: { workspaceId, isDefault: true },
-        select: { id: true },
-      });
-      priorityId = def?.id;
-    }
+    const priorityId = input.priorityId || (await this.defaultPriorityId(db, workspaceId));
 
     const assigneeId =
       input.assigneeId ?? (project.defaultAssigneeMode === 'PROJECT_LEAD' ? project.leadId : null);
@@ -520,6 +532,7 @@ export class IssuesService {
           statusId,
           resolvedAt: isDone ? new Date() : null,
           priorityId: priorityId ?? null,
+          severityId: input.severityId ?? null,
           summary: input.summary,
           description: input.description ?? null,
           descriptionFormat: input.descriptionFormat,
@@ -729,6 +742,7 @@ export class IssuesService {
     await this.assertMetaInWorkspace(workspaceId, {
       typeId: input.typeId,
       priorityId: input.priorityId,
+      severityId: input.severityId,
       sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
       resolutionId: input.resolutionId,
       parentId: input.parentId,
@@ -751,6 +765,7 @@ export class IssuesService {
     if (input.summary !== undefined) data.summary = input.summary;
     if (input.description !== undefined) data.description = input.description;
     if (input.priorityId !== undefined) data.priorityId = input.priorityId ?? null;
+    if (input.severityId !== undefined) data.severityId = input.severityId ?? null;
     if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId ?? null;
     if (input.storyPoints !== undefined) data.storyPoints = input.storyPoints;
     if (input.sprintId !== undefined) data.sprintId = input.sprintId ?? null;
