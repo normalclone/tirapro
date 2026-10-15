@@ -31,10 +31,22 @@ export function usePatchIssue(key: string, projectId?: string) {
   });
 }
 
-/** Xoá mềm một issue. */
+/**
+ * Xoá mềm một issue. Thành công thì tự gỡ khỏi cache (danh sách dự án + chi tiết theo mã) —
+ * không chỉ trông vào event realtime `issue:deleted` (có thể chậm/lỡ khi mất kết nối).
+ */
 export function useDeleteIssue() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/issues/${id}`),
+    mutationFn: (v: { id: string; key: string; projectId: string }) => api.delete(`/issues/${v.id}`),
+    onSuccess: (_res, v) => {
+      qc.setQueryData<IssueDto[]>(keys.issues.byProject(v.projectId), (old) =>
+        old ? old.filter((i) => i.id !== v.id) : undefined,
+      );
+      qc.removeQueries({ queryKey: keys.issues.byKey(v.key), exact: true });
+      // Số issue/điểm của sprint đổi theo.
+      void qc.invalidateQueries({ queryKey: keys.sprints.byProject(v.projectId) });
+    },
   });
 }
 

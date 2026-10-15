@@ -26,14 +26,15 @@ export class SprintsController {
   }
 
   @Permissions(PERMISSIONS.SPRINT_MANAGE)
-  @ProjectRef('query', 'projectId')
+  // projectId lấy từ body và chính guard cũng kiểm quyền trên giá trị này (không đọc query để
+  // client không thể qua mặt guard bằng cách gửi hai projectId khác nhau).
+  @ProjectRef('body', 'projectId')
   @Post()
   async create(
     @WorkspaceId() workspaceId: string,
-    @Query('projectId') projectId: string,
     @Body(new ZodValidationPipe(createSprintSchema)) dto: CreateSprintInput,
   ) {
-    return this.sprints.create(workspaceId, projectId, dto);
+    return this.sprints.create(workspaceId, dto.projectId, dto);
   }
 
   @Permissions(PERMISSIONS.SPRINT_MANAGE)
