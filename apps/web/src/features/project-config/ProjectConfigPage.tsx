@@ -13,6 +13,7 @@ import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
+import { useCan } from '@/features/projects/permissions';
 import {
   useProject,
   useUploadProjectAvatar,
@@ -50,7 +51,7 @@ export function ProjectConfigPage() {
   const { data: project } = useProject(key);
   const projectId = project?.id;
 
-  const canAdmin = useAuth((s) => s.can('project:admin'));
+  const canAdmin = useCan(projectId)('project:admin');
   const canImport = useAuth((s) => s.can('import:run'));
 
   const [active, setActive] = useState<ConfigSectionId>('general');

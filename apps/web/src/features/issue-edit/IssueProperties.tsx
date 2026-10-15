@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
+import { useCanEditIssue } from '@/features/projects/permissions';
 import { useProjectSprints, useMoveToSprint } from '@/features/backlog/api';
 import { useUpdateIssue } from '@/features/issues/api';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
@@ -300,7 +301,8 @@ export function IssueStoryPointsInline({
 export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
   const assignees = useAssigneeOptions(issue.projectId);
   const patch = useUpdateIssue(issue.projectId);
-  const canSuggest = useAuth((s) => s.can('ai:use') && s.can('issue:edit'));
+  const canEditThis = useCanEditIssue(issue.projectId)(issue);
+  const canSuggest = useAuth((s) => s.can('ai:use')) && canEditThis;
 
   return (
     <PanelSection title="Người liên quan">
@@ -386,7 +388,7 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
         </InfoRow>
 
         {/* Người tham gia — nhiều người cùng theo việc này (ngoài người phụ trách và người tạo). */}
-        <ParticipantsRow issueId={issue.id} projectId={issue.projectId} />
+        <ParticipantsRow issueId={issue.id} projectId={issue.projectId} owner={issue} />
       </div>
     </PanelSection>
   );

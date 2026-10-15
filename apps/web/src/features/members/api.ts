@@ -151,6 +151,7 @@ export function useSetMemberRoles() {
     mutationFn: ({ userId, roleIds }: { userId: string; roleIds: string[] }) =>
       api.put<MemberDto>(`/members/${userId}/roles`, { roleIds }).then((r) => r.data),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.projects.permissionsAll });
       void qc.invalidateQueries({ queryKey: keys.members.workspace });
       void qc.invalidateQueries({ queryKey: keys.users.workspace });
     },
@@ -222,6 +223,7 @@ export function useSetProjectMemberRoles(projectId: string) {
         .then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });
     },
   });
 }
@@ -234,6 +236,7 @@ export function useRemoveProjectMember(projectId: string) {
       api.delete(`/projects/${projectId}/members/${userId}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });
     },
   });
 }
