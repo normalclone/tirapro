@@ -838,7 +838,9 @@ describe('IssuesService — assignee phải là thành viên, sprint phải cùn
       service.update('w1', 'u1', 'i1', { version: 3, assigneeId: 'xx' }),
     ).rejects.toMatchObject({ status: 422 });
     expect(extra.workspaceMembership.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'w1', userId: 'xx' } }),
+      expect.objectContaining({
+        where: { workspaceId: 'w1', userId: 'xx', user: { status: { not: 'DEACTIVATED' } } },
+      }),
     );
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
   });
@@ -1157,5 +1159,84 @@ describe('IssuesService.bulkUpdate — :own trên tập lẫn', () => {
     expect(tx.issueHistory.create).not.toHaveBeenCalled();
     expect(txSpy).not.toHaveBeenCalled();
     expect(events.emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('IssuesService — assignee không đổi / tài khoản vô hiệu hoá', () => {
+  const noMember = () => ({
+    workspaceMembership: { findFirst: vi.fn(() => Promise.resolve(null)) },
+  });
+
+  it('update gửi lại assigneeId cũ (người đã rời workspace) => KHÔNG kiểm thành viên, không 422', async () => {
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow({ assigneeId: 'gone' }))),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(() =>
+          Promise.resolve(issueRow({ version: 4, assigneeId: 'gone' })),
+        ),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+    const extra = noMember();
+    const { service } = makeService(tx, extra);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới', assigneeId: 'gone' }),
+    ).resolves.toBeDefined();
+    expect(extra.workspaceMembership.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('gán MỚI cho tài khoản DEACTIVATED => điều kiện where loại DEACTIVATED, 422 khi không khớp', async () => {
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow())),
+        updateMany: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+    const extra = noMember(); // thành viên có user DEACTIVATED không khớp where → findFirst trả null
+    const { service } = makeService(tx, extra);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, assigneeId: 'off' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(extra.workspaceMembership.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { workspaceId: 'w1', userId: 'off', user: { status: { not: 'DEACTIVATED' } } },
+      }),
+    );
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('bulkUpdate: mọi hàng đã giữ assignee đó => bỏ qua kiểm; có hàng đổi => kiểm và 422', async () => {
+    const mk = (rows: Array<Record<string, unknown>>) => ({
+      issue: {
+        findMany: vi.fn(() => Promise.resolve(rows)),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(issueRow({ id: where.id, version: 4, assigneeId: 'gone' })),
+        ),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+      project: { findUnique: vi.fn(() => Promise.resolve({ archivedAt: null })) },
+    });
+    const input = {
+      projectId: 'p1',
+      items: [{ id: 'a', version: 3 }],
+      patch: { assigneeId: 'gone' },
+    };
+    const same = noMember();
+    await makeService(mk([issueRow({ id: 'a', assigneeId: 'gone' })]), same).service.bulkUpdate(
+      'w1',
+      'u1',
+      input,
+    );
+    expect(same.workspaceMembership.findFirst).not.toHaveBeenCalled();
+
+    const diff = mk([issueRow({ id: 'a', assigneeId: null })]);
+    await expect(
+      makeService(diff, noMember()).service.bulkUpdate('w1', 'u1', input),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(diff.issue.updateMany).not.toHaveBeenCalled();
   });
 });

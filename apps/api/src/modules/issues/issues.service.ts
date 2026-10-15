@@ -224,18 +224,31 @@ export class IssuesService {
     }
   }
 
-  /** Người được giao phải là thành viên workspace — chặn gán user của tenant khác (cùng quy ước automation `assertMember`). `null`/rỗng (bỏ gán) luôn hợp lệ. */
+  /** Có thể gán mới cho user này không: là thành viên workspace và tài khoản chưa bị vô hiệu hoá. */
+  async isAssignableMember(
+    workspaceId: string,
+    userId: string,
+    db: Prisma.TransactionClient = this.prisma,
+  ): Promise<boolean> {
+    const member = await db.workspaceMembership.findFirst({
+      where: { workspaceId, userId, user: { status: { not: 'DEACTIVATED' } } },
+      select: { userId: true },
+    });
+    return !!member;
+  }
+
+  /**
+   * Gán MỚI: người được giao phải là thành viên workspace còn hoạt động — chặn gán user của tenant khác
+   * hay tài khoản đã vô hiệu hoá. `null`/rỗng (bỏ gán) luôn hợp lệ. Chỉ gọi khi assignee thật sự đổi:
+   * việc cũ còn giữ người đã rời workspace thì không được làm hỏng các sửa không liên quan.
+   */
   private async assertAssigneeInWorkspace(
     workspaceId: string,
     assigneeId: string | null | undefined,
     db: Prisma.TransactionClient = this.prisma,
   ): Promise<void> {
     if (!assigneeId) return;
-    const member = await db.workspaceMembership.findFirst({
-      where: { workspaceId, userId: assigneeId },
-      select: { userId: true },
-    });
-    if (!member)
+    if (!(await this.isAssignableMember(workspaceId, assigneeId, db)))
       throw new BusinessRuleException(
         'Người được giao không thuộc không gian làm việc này — hãy chọn một thành viên khác',
       );
@@ -540,7 +553,8 @@ export class IssuesService {
       epicId: input.epicId,
       projectId: current.projectId,
     });
-    await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
+    if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
+      await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
 
     // Field-level: Story points / Hạn chỉ người tạo hoặc admin sửa được.
     if (
@@ -620,7 +634,9 @@ export class IssuesService {
       sprintId: patch.sprintId,
       projectId,
     });
-    await this.assertAssigneeInWorkspace(workspaceId, patch.assigneeId);
+    // Chỉ kiểm khi có hàng thật sự đổi assignee (hàng đã giữ đúng assignee đó thì bỏ qua).
+    if (patch.assigneeId !== undefined && rows.some((r) => r.assigneeId !== patch.assigneeId))
+      await this.assertAssigneeInWorkspace(workspaceId, patch.assigneeId);
 
     // Chuyển trạng thái: kiểm tra workflow đúng như transition() trước khi ghi bất cứ thứ gì.
     let toDone = false;
