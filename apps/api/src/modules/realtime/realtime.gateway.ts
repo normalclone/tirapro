@@ -421,6 +421,19 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.toProject(p.projectId, WS_EVENTS.COMMENT_ADDED, { comment: p.comment });
   }
 
+  @OnEvent(DOMAIN_EVENTS.COMMENT_UPDATED)
+  onCommentUpdated(p: { comment: CommentDto; projectId?: string; issueId: string }) {
+    this.toProject(p.projectId, WS_EVENTS.COMMENT_UPDATED, { comment: p.comment });
+  }
+
+  @OnEvent(DOMAIN_EVENTS.COMMENT_DELETED)
+  onCommentDeleted(p: { commentId: string; issueId: string; projectId?: string }) {
+    this.toProject(p.projectId, WS_EVENTS.COMMENT_DELETED, {
+      commentId: p.commentId,
+      issueId: p.issueId,
+    });
+  }
+
   @OnEvent(DOMAIN_EVENTS.NOTIFICATION_CREATED)
   onNotificationCreated(p: { recipientId?: string; notification: NotificationDto }) {
     if (!p?.recipientId || !this.server) return;

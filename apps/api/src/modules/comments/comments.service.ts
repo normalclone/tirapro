@@ -101,6 +101,7 @@ export class CommentsService {
     this.events.emit(DOMAIN_EVENTS.COMMENT_UPDATED, {
       comment: dto,
       issueId: updated.issueId,
+      projectId: current.issue.projectId,
       actorId: userId,
     });
     return dto;
@@ -123,6 +124,7 @@ export class CommentsService {
     this.events.emit(DOMAIN_EVENTS.COMMENT_DELETED, {
       commentId,
       issueId: current.issueId,
+      projectId: current.issue.projectId,
       actorId: userId,
     });
     return { success: true };
@@ -140,6 +142,7 @@ export class CommentsService {
   private async requireComment(workspaceId: string, commentId: string) {
     const c = await this.prisma.comment.findFirst({
       where: { id: commentId, deletedAt: null, issue: { workspaceId } },
+      include: { issue: { select: { projectId: true } } },
     });
     if (!c) throw new NotFoundAppException('Bình luận');
     return c;

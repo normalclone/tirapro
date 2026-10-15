@@ -2,11 +2,30 @@ import { describe, expect, it, vi } from 'vitest';
 import { CommentsService } from './comments.service';
 
 function make(authorId: string, archivedAt: Date | null = null) {
-  const update = vi.fn().mockResolvedValue({});
+  const row = {
+    id: 'c1',
+    issueId: 'i1',
+    authorId,
+    author: null,
+    body: 'nội dung mới',
+    bodyFormat: 'MARKDOWN',
+    parentId: null,
+    isEdited: true,
+    version: 2,
+    createdAt: new Date('2026-10-01T00:00:00Z'),
+    updatedAt: new Date('2026-10-02T00:00:00Z'),
+  };
+  const update = vi.fn().mockResolvedValue(row);
   const create = vi.fn().mockResolvedValue({});
   const prisma = {
     comment: {
-      findFirst: vi.fn().mockResolvedValue({ id: 'c1', authorId, issueId: 'i1', version: 1 }),
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'c1',
+        authorId,
+        issueId: 'i1',
+        version: 1,
+        issue: { projectId: 'p1' },
+      }),
       update,
     },
     issue: {
@@ -62,5 +81,27 @@ describe('CommentsService.softDelete', () => {
     const { service, update } = make('u1');
     await expect(service.softDelete('w1', 'u2', 'c1', true)).resolves.toEqual({ success: true });
     expect(update).toHaveBeenCalled();
+  });
+});
+
+describe('CommentsService — domain event kèm projectId', () => {
+  it('update() phát comment.updated kèm projectId', async () => {
+    const { service, events } = make('u1');
+    await service.update('w1', 'u1', 'c1', 'nội dung mới', 1);
+    expect(events.emit).toHaveBeenCalledWith(
+      'comment.updated',
+      expect.objectContaining({ issueId: 'i1', projectId: 'p1', actorId: 'u1' }),
+    );
+  });
+
+  it('softDelete() phát comment.deleted kèm projectId', async () => {
+    const { service, events } = make('u1');
+    await service.softDelete('w1', 'u1', 'c1');
+    expect(events.emit).toHaveBeenCalledWith('comment.deleted', {
+      commentId: 'c1',
+      issueId: 'i1',
+      projectId: 'p1',
+      actorId: 'u1',
+    });
   });
 });

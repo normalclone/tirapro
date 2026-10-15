@@ -278,6 +278,27 @@ describe('RealtimeGateway.onMemberRemoved', () => {
 });
 
 describe('RealtimeGateway — bridge notification & sprint', () => {
+  it('comment.updated -> comment:updated tới room project', () => {
+    const { gateway, to, emit } = makeGateway();
+    const comment = { id: 'C1', issueId: 'I1' } as never;
+    gateway.onCommentUpdated({ comment, issueId: 'I1', projectId: 'P1' });
+    expect(to).toHaveBeenCalledWith('project:P1');
+    expect(emit).toHaveBeenCalledWith(WS_EVENTS.COMMENT_UPDATED, { comment });
+  });
+
+  it('comment.deleted -> comment:deleted {commentId, issueId} tới room project; thiếu projectId thì bỏ qua', () => {
+    const { gateway, to, emit } = makeGateway();
+    gateway.onCommentDeleted({ commentId: 'C1', issueId: 'I1', projectId: 'P1' });
+    expect(to).toHaveBeenCalledWith('project:P1');
+    expect(emit).toHaveBeenCalledWith(WS_EVENTS.COMMENT_DELETED, {
+      commentId: 'C1',
+      issueId: 'I1',
+    });
+    to.mockClear();
+    gateway.onCommentDeleted({ commentId: 'C1', issueId: 'I1' });
+    expect(to).not.toHaveBeenCalled();
+  });
+
   it('notification.created -> notification:new tới room user của người nhận', () => {
     const { gateway, to, emit } = makeGateway();
     const notification = { id: 'N1', type: 'MENTIONED' } as never;
