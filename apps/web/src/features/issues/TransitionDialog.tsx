@@ -8,13 +8,13 @@ import { appendReason, type TransitionKind } from './transitionKind';
 
 export type DialogTransitionKind = Exclude<TransitionKind, 'forward'>;
 
-export interface TransitionDialogResolution {
+interface TransitionDialogResolution {
   id: string;
   name: string;
   description: string | null;
 }
 
-export interface TransitionConfirm {
+interface TransitionConfirm {
   /** Chỉ có khi `kind='close'`. */
   resolutionId?: string;
   comment?: string;

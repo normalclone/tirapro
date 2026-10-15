@@ -6,10 +6,7 @@ const SEVERITY_VS_PRIORITY =
   'Mức nghiêm trọng = lỗi gây hại kỹ thuật đến đâu; khác với Ưu tiên (độ gấp xử lý).';
 
 /** Dòng giải nghĩa hiện khi rê chuột (tooltip toàn cục bắt thuộc tính `title`). */
-export function severityTitle(
-  s: Pick<SeverityDto, 'name' | 'description'>,
-  suffix?: string,
-): string {
+function severityTitle(s: Pick<SeverityDto, 'name' | 'description'>, suffix?: string): string {
   const head = s.description ? `${s.name} — ${s.description}.` : `${s.name}.`;
   return `${head} ${SEVERITY_VS_PRIORITY}${suffix ? ` ${suffix}` : ''}`;
 }
