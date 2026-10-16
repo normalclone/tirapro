@@ -115,10 +115,13 @@ interface StorageLike {
 
 export const columnsStorageKey = (userId: string) => `tirapro:jqlColumns:v1:${userId}`;
 
-/** Đọc cột đã lưu của người dùng; storage bị chặn/hỏng → mặc định. */
-export function loadColumns(userId: string, storage: StorageLike = localStorage): ResultColumnId[] {
+/**
+ * Đọc cột đã lưu của người dùng; storage bị chặn/hỏng → mặc định. `localStorage` được chạm BÊN TRONG `try`
+ * (không dùng default parameter): khi trình duyệt chặn dữ liệu site, chỉ việc đọc `window.localStorage` đã ném SecurityError.
+ */
+export function loadColumns(userId: string, storage?: StorageLike): ResultColumnId[] {
   try {
-    return readColumns(storage.getItem(columnsStorageKey(userId)));
+    return readColumns((storage ?? localStorage).getItem(columnsStorageKey(userId)));
   } catch {
     return [...DEFAULT_RESULT_COLUMNS];
   }
@@ -127,10 +130,10 @@ export function loadColumns(userId: string, storage: StorageLike = localStorage)
 export function saveColumns(
   userId: string,
   columns: ResultColumnId[],
-  storage: StorageLike = localStorage,
+  storage?: StorageLike,
 ): void {
   try {
-    storage.setItem(columnsStorageKey(userId), JSON.stringify(columns));
+    (storage ?? localStorage).setItem(columnsStorageKey(userId), JSON.stringify(columns));
   } catch {
     /* storage bị chặn: bỏ qua, lựa chọn chỉ có hiệu lực trong phiên */
   }

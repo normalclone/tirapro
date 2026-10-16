@@ -336,7 +336,6 @@ function ResultRow({
       tabIndex={0}
       data-nav-item
       aria-roledescription="dòng việc"
-      aria-label={`${issue.key} ${issue.summary}`}
       onClick={(e: MouseEvent<HTMLTableRowElement>) => void openOnClick(e, issue.key, onOpen)}
       onKeyDown={(e: KeyboardEvent<HTMLTableRowElement>) =>
         void openOnRowKey(e, { key: issue.key, open: onOpen })

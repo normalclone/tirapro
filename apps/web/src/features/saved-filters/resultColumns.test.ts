@@ -110,4 +110,20 @@ describe('lưu theo người', () => {
     expect(loadColumns('u1', boom)).toEqual(DEFAULT_RESULT_COLUMNS);
     expect(() => saveColumns('u1', ['key', 'summary'], boom)).not.toThrow();
   });
+  it('trình duyệt chặn dữ liệu site: chạm window.localStorage ném SecurityError → không sập', () => {
+    const had = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      },
+    });
+    try {
+      expect(loadColumns('u1')).toEqual(DEFAULT_RESULT_COLUMNS);
+      expect(() => saveColumns('u1', ['key', 'summary'])).not.toThrow();
+    } finally {
+      if (had) Object.defineProperty(globalThis, 'localStorage', had);
+      else delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
+  });
 });
