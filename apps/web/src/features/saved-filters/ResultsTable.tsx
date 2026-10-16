@@ -129,39 +129,17 @@ export function ResultsTable({
 
   return (
     <div className="flex flex-col rounded-lg border border-border bg-surface">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
-        <span className="text-sm font-medium text-ink-strong">Kết quả</span>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-muted">
-            {resultCountLabel(total, hasMore)}
-            {totalPages > 1 && ` · ${start + 1}–${Math.min(start + RESULTS_PAGE_SIZE, total)}`}
-          </span>
-          {wide && <ColumnPicker columns={columns} onToggle={toggle} />}
-          {exportJql && (
-            <ExportMenu
-              items={[
-                {
-                  id: 'csv',
-                  label: 'Kết quả (CSV)',
-                  hint: wide
-                    ? 'Đủ mọi công việc khớp, theo cột đang chọn'
-                    : 'Đủ mọi công việc khớp',
-                  run: () => exportIssuesCsvWithToast({ jql: exportJql, columns }),
-                },
-              ]}
-            />
-          )}
-        </div>
-      </div>
-
-      {hasMore && (
-        <p className="border-b border-border bg-surface-2 px-4 py-1.5 text-xs text-muted">
-          Còn nhiều công việc khớp hơn số đang hiện.
-          {exportJql
-            ? ' Bấm “Tải thêm” để xem tiếp, hoặc Xuất CSV để lấy đủ.'
-            : ' Bấm “Tải thêm” để xem tiếp.'}
-        </p>
-      )}
+      <ResultsToolbar
+        countLabel={resultCountLabel(total, hasMore)}
+        range={
+          totalPages > 1 ? ` · ${start + 1}–${Math.min(start + RESULTS_PAGE_SIZE, total)}` : ''
+        }
+        hasMore={hasMore}
+        wide={wide}
+        columns={columns}
+        onToggleColumn={toggle}
+        exportJql={exportJql}
+      />
 
       {wide ? (
         <div className="overflow-x-auto">
@@ -236,6 +214,62 @@ export function ResultsTable({
         </div>
       )}
     </div>
+  );
+}
+
+/** Thanh đầu bảng kết quả: nhãn đếm (không ghi số bị cắt như tổng), chọn cột, xuất CSV, gợi ý khi còn nữa. */
+function ResultsToolbar({
+  countLabel,
+  range,
+  hasMore,
+  wide,
+  columns,
+  onToggleColumn,
+  exportJql,
+}: {
+  countLabel: string;
+  range: string;
+  hasMore: boolean;
+  wide: boolean;
+  columns: ResultColumnId[];
+  onToggleColumn: (id: ResultColumnId) => void;
+  exportJql?: string;
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
+        <span className="text-sm font-medium text-ink-strong">Kết quả</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted">
+            {countLabel}
+            {range}
+          </span>
+          {wide && <ColumnPicker columns={columns} onToggle={onToggleColumn} />}
+          {exportJql && (
+            <ExportMenu
+              items={[
+                {
+                  id: 'csv',
+                  label: 'Kết quả (CSV)',
+                  hint: wide
+                    ? 'Đủ mọi công việc khớp, theo cột đang chọn'
+                    : 'Đủ mọi công việc khớp',
+                  run: () => exportIssuesCsvWithToast({ jql: exportJql, columns }),
+                },
+              ]}
+            />
+          )}
+        </div>
+      </div>
+      {hasMore && (
+        <p className="border-b border-border bg-surface-2 px-4 py-1.5 text-xs text-muted">
+          Còn nhiều công việc khớp hơn số đang hiện.
+          {exportJql
+            ? ' Bấm “Tải thêm” để xem tiếp, hoặc Xuất CSV để lấy đủ.'
+            : ' Bấm “Tải thêm” để xem tiếp.'}
+        </p>
+      )}
+    </>
   );
 }
 

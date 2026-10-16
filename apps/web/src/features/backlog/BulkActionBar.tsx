@@ -44,6 +44,15 @@ function useEscapeClears(onClear: () => void) {
   }, [onClear]);
 }
 
+function AssignTrigger() {
+  return (
+    <span className="flex items-center gap-2 text-muted">
+      <Users className="h-4 w-4 shrink-0" />
+      Đổi người phụ trách
+    </span>
+  );
+}
+
 /**
  * Thanh thao tác hàng loạt (sticky đáy backlog) — hiện khi có ≥1 việc được chọn.
  * Các hành động ghi được gate ở phía trang gọi (canAssign / canManageBacklog).
@@ -149,12 +158,7 @@ export function BulkActionBar({
               disabled={busy || assignPicker.options.length === 0}
               align="end"
               className="h-8 w-52"
-              renderTrigger={() => (
-                <span className="flex items-center gap-2 text-muted">
-                  <Users className="h-4 w-4 shrink-0" />
-                  Đổi người phụ trách
-                </span>
-              )}
+              renderTrigger={AssignTrigger}
             />
           </>
         )}

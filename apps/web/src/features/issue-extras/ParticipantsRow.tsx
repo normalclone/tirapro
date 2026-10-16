@@ -24,18 +24,22 @@ interface ParticipantsRowProps {
   owner: IssueOwnership;
 }
 
+/** Danh sách gợi ý người tham gia: máy chủ lọc theo dự án + từ khoá (debounce), rồi lọc nhanh tại chỗ theo chữ đang gõ. */
+function useParticipantSearch(projectId: string, q: string) {
+  const options = useAssigneeOptions(projectId, { search: useDebouncedValue(q, 200) });
+  const query = q.trim().toLowerCase();
+  return { options, filtered: query ? options.filter((o) => o.search.includes(query)) : options };
+}
+
 export function ParticipantsRow({ issueId, projectId, owner }: ParticipantsRowProps) {
   const canEdit = useCanEditIssue(projectId)(owner);
   const { data: participants } = useParticipants(issueId);
   const setParticipants = useSetParticipants(issueId);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
-  const search = useDebouncedValue(q, 200);
-  const options = useAssigneeOptions(projectId, { search });
+  const { options, filtered } = useParticipantSearch(projectId, q);
 
   const selected = useMemo(() => new Set((participants ?? []).map((p) => p.id)), [participants]);
-  const query = q.trim().toLowerCase();
-  const filtered = query ? options.filter((o) => o.search.includes(query)) : options;
 
   function toggle(userId: string) {
     const next = new Set(selected);
