@@ -5,8 +5,10 @@ import { useUpdateIssue } from '@/features/issues/api';
 import { useCanEditIssue } from '@/features/projects/permissions';
 import { Button } from '@/components/ui/Button';
 import { apiErrorMessage } from '@/lib/api';
+import { stripPlaceholders } from './pasteImage';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownView } from './MarkdownView';
+import { usePastedImageUploader } from '@/features/attachments/api';
 import { useAssigneeOptions } from './useAssigneeOptions';
 import { useTaskToggle } from './useTaskToggle';
 
@@ -19,7 +21,9 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
   const canEdit = useCanEditIssue(issue.projectId)(issue);
   const people = useAssigneeOptions(issue.projectId);
   const toggleTask = useTaskToggle(issue.projectId, 'description');
+  const pasteImages = usePastedImageUploader(issue.id, 'description');
   const [editing, setEditing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [draft, setDraft] = useState(issue.description ?? '');
 
   useEffect(() => {
@@ -35,7 +39,9 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
     setDraft(issue.description ?? '');
   }
   function save() {
-    const next = draft.trim() === '' ? null : draft;
+    if (uploading) return; // ảnh dán còn đang tải: chưa lưu (tránh lưu chữ giữ chỗ)
+    const clean = stripPlaceholders(draft);
+    const next = clean.trim() === '' ? null : clean;
     setEditing(false);
     if (next === (issue.description ?? null)) return;
     patch.mutate(
@@ -65,6 +71,8 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
           autoFocus
           rows={8}
           mentionPeople={people}
+          onPasteImages={pasteImages}
+          onBusyChange={setUploading}
         />
         <div className="flex items-center gap-2">
           <span className="mr-auto text-xs text-faint">
@@ -73,7 +81,7 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
           <Button size="sm" variant="ghost" onClick={cancel}>
             Huỷ
           </Button>
-          <Button size="sm" onClick={save} loading={patch.isPending}>
+          <Button size="sm" onClick={save} loading={patch.isPending} disabled={uploading}>
             Lưu
           </Button>
         </div>

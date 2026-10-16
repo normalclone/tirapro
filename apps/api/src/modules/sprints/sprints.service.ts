@@ -13,6 +13,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { iso } from '../../common/mappers/date';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 
 /** Ngày lịch (UTC) của một thời điểm, dạng số để so sánh. */
 const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -36,7 +37,7 @@ export class SprintsService {
     // Đếm issue + tổng điểm bằng một câu GROUP BY (không kéo từng issue về); issue đã xoá mềm không tính.
     const groups = await this.prisma.issue.groupBy({
       by: ['sprintId'],
-      where: { sprintId: { in: sprints.map((s) => s.id) }, deletedAt: null },
+      where: { sprintId: { in: sprints.map((s) => s.id) }, deletedAt: null, ...TRIAGE_VISIBLE },
       _count: { _all: true },
       _sum: { storyPoints: true },
     });

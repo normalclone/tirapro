@@ -313,7 +313,12 @@ describe('SprintsService.listForProject — groupBy thay cho kéo từng issue',
     ]);
     expect(groupBy).toHaveBeenCalledWith({
       by: ['sprintId'],
-      where: { sprintId: { in: ['s1', 's2'] }, deletedAt: null },
+      // việc chưa duyệt không tính vào sprint (cùng quy tắc với Board/Việc chờ)
+      where: {
+        sprintId: { in: ['s1', 's2'] },
+        deletedAt: null,
+        OR: [{ triageState: null }, { triageState: 'ACCEPTED' }],
+      },
       _count: { _all: true },
       _sum: { storyPoints: true },
     });

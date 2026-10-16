@@ -2244,6 +2244,15 @@ describe('IssuesService — dự án đã xoá mềm', () => {
     });
   });
 
+  it('list: ẩn việc chưa duyệt (PENDING/SNOOZED/DECLINED) khỏi Board/Việc chờ — chỉ lấy triageState null hoặc ACCEPTED', async () => {
+    const findMany = vi.fn(() => Promise.resolve([]));
+    const { service } = makeService({ issue: { findMany } });
+    await service.list('w1', { projectId: 'p1' }, undefined, 50);
+    expect((findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where).toMatchObject({
+      OR: [{ triageState: null }, { triageState: 'ACCEPTED' }],
+    });
+  });
+
   it('list: không trả văn bản tiêu chí (chỉ acceptanceProgress); getByKey trả đủ', async () => {
     const row = issueRow({ acceptanceCriteria: '- [x] a\n- [ ] b' });
     const { service } = makeService({

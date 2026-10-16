@@ -15,6 +15,7 @@ import { insertTableTemplate, toggleLinePrefix } from './markdownEdit';
 import type { MentionPerson } from './mentionQuery';
 import { MentionPopup } from './MentionPopup';
 import { useMentionPopup } from './useMentionPopup';
+import { usePasteImages, type PasteImagesHandler } from './usePasteImages';
 
 function ToolBtn({
   onClick,
@@ -111,9 +112,11 @@ export function MarkdownEditor({
   onCancel,
   autoFocus,
   rows = 6,
-  placeholder = 'Nhập nội dung… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))',
+  placeholder,
   mentionPeople,
   textareaId,
+  onPasteImages,
+  onBusyChange,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -126,9 +129,14 @@ export function MarkdownEditor({
   mentionPeople?: MentionPerson[];
   /** `id` của <textarea> — để nơi khác (vd phím tắt) tìm và focus ô này. */
   textareaId?: string;
+  /** Có → Ctrl/Cmd+V ảnh vào ô được xử lý (tải lên và chèn `![tên](attachment:ID)`, hoặc gom tệp — xem `PasteImagesHandler`). */
+  onPasteImages?: PasteImagesHandler;
+  /** Báo cho nơi dùng biết còn ảnh dán đang tải (để vô hiệu hoá Lưu/Gửi); Cmd/Ctrl+Enter cũng bị chặn trong lúc đó. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const mention = useMentionPopup(ref, mentionPeople, onChange);
+  const { onPaste, busy } = usePasteImages(ref, value, onChange, onPasteImages, onBusyChange);
 
   function insertAt() {
     const ta = ref.current;
@@ -230,12 +238,16 @@ export function MarkdownEditor({
           rows={rows}
           {...mention.aria}
           autoFocus={autoFocus}
-          placeholder={placeholder}
+          placeholder={
+            placeholder ??
+            `Nhập nội dung… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn)${onPasteImages ? ' hoặc dán ảnh' : ''})`
+          }
+          onPaste={onPaste}
           onKeyDown={(e) => {
             if (mention.handleKey(e)) return;
             if (onSubmit && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
               e.preventDefault();
-              onSubmit();
+              if (!busy) onSubmit(); // còn ảnh đang tải: chưa lưu/gửi để chữ giữ chỗ không bị lưu
             }
             if (onCancel && e.key === 'Escape') {
               e.preventDefault();
@@ -244,6 +256,11 @@ export function MarkdownEditor({
           }}
           className="block w-full resize-y bg-transparent px-3 py-2 text-sm text-ink outline-none placeholder:text-faint"
         />
+        {busy && (
+          <p role="status" className="border-t border-border px-3 py-1 text-xs text-muted">
+            Đang tải ảnh… chờ xong rồi hãy lưu
+          </p>
+        )}
       </div>
       {mention.popupOpen && (
         <MentionPopup

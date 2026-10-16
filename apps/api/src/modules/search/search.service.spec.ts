@@ -109,6 +109,21 @@ describe('SearchService.search', () => {
     expect(call[2]).toEqual([{ createdAt: 'desc' }]);
   });
 
+  it('excludeUntriaged (board có filterJql): AND thêm điều kiện chỉ null/ACCEPTED; không bật thì JQL/tìm kiếm thường thấy mọi việc', async () => {
+    const { service, issues } = makeService([]);
+    await service.search('W1', 'U1', { jql: 'summary ~ "x"', limit: 50, excludeUntriaged: true });
+    await service.search('W1', 'U1', { limit: 50, projectId: 'P1', excludeUntriaged: true });
+    await service.search('W1', 'U1', { jql: 'summary ~ "x"', limit: 50 });
+    const wheres = (issues.query.mock.calls as unknown as unknown[][]).map((c) =>
+      JSON.stringify(c[1]),
+    );
+    const vis = '"OR":[{"triageState":null},{"triageState":"ACCEPTED"}]';
+    expect(wheres[0]).toContain(vis);
+    expect(wheres[1]).toContain(vis);
+    expect(wheres[1]).toContain('"projectId":"P1"');
+    expect(wheres[2]).not.toContain('triageState');
+  });
+
   it('JQL không có text ~ -> không đụng full-text (hành vi cũ)', async () => {
     const { service, issues, queryRaw } = makeService([]);
     await service.search('W1', 'U1', { jql: 'summary ~ "x"', limit: 50 });

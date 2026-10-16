@@ -385,7 +385,7 @@ describe('BoardsService.listIssues — board có filterJql sắp theo rank (Mino
     expect(search.search).toHaveBeenCalledWith(
       'w1',
       'u1',
-      expect.objectContaining({ orderByRank: true, projectId: 'p1' }),
+      expect.objectContaining({ orderByRank: true, projectId: 'p1', excludeUntriaged: true }),
     );
     board.filterJql = '';
     await service.listIssues('w1', 'u1', 'b1', undefined, 50);

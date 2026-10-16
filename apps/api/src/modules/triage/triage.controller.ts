@@ -15,12 +15,15 @@ import { OwnOnly } from '../../common/decorators/own-only.decorator';
 const acceptSchema = z.object({
   version: z.number().int().nonnegative(),
   assigneeId: z.string().optional(),
+  typeId: z.string().min(1).optional(),
+  priorityId: z.string().min(1).nullable().optional(),
+  sprintId: z.string().min(1).nullable().optional(),
 });
 type AcceptInput = z.infer<typeof acceptSchema>;
 
 const declineSchema = z.object({
   version: z.number().int().nonnegative(),
-  reason: z.string().optional(),
+  reason: z.string().trim().max(2000).optional(),
 });
 type DeclineInput = z.infer<typeof declineSchema>;
 
@@ -73,7 +76,7 @@ export class TriageController {
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
     await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.triage.accept(workspaceId, user.id, issueId, dto);
+    return this.triage.accept(workspaceId, user.id, issueId, dto, ownOnly);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)

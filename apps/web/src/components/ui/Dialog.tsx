@@ -38,6 +38,11 @@ export interface DialogProps {
   placement?: 'center' | 'right';
   /** Tuỳ biến focus khi mở (gọi `e.preventDefault()` rồi tự focus phần tử mong muốn). */
   onOpenAutoFocus?: (e: Event) => void;
+  /**
+   * Tuỳ biến focus khi đóng (gọi `e.preventDefault()` rồi tự focus). Mặc định Radix trả focus về `Dialog.Trigger`,
+   * mà hộp này mở bằng state nên không có trigger → focus rơi về `body`; nơi mở từ một nút nên tự trả focus về nút đó.
+   */
+  onCloseAutoFocus?: (e: Event) => void;
   /** Chặn Esc đóng hộp (gọi `e.preventDefault()`) — vd Esc đang dành để đóng một panel con. */
   onEscapeKeyDown?: (e: globalThis.KeyboardEvent) => void;
 }
@@ -78,6 +83,7 @@ export function Dialog({
   headerExtra,
   placement = 'center',
   onOpenAutoFocus,
+  onCloseAutoFocus,
   onEscapeKeyDown,
 }: DialogProps) {
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -98,6 +104,7 @@ export function Dialog({
           {...(description ? {} : { 'aria-describedby': undefined })}
           onKeyDown={onKeyDown}
           onOpenAutoFocus={onOpenAutoFocus}
+          onCloseAutoFocus={onCloseAutoFocus}
           onEscapeKeyDown={onEscapeKeyDown}
           className={cn(
             placement === 'right' ? RIGHT_CLASS : [CENTER_CLASS, SIZE[size]],

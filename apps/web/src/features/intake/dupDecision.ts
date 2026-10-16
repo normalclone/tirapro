@@ -17,6 +17,15 @@ export type DupSelection =
   | { mode: 'new' }
   | { mode: 'merge'; key: string; id?: string };
 
+/**
+ * `aria-describedby` của ô Tiêu đề: id của vùng đang hiện — danh sách gợi ý trùng (`ri-dup`) hoặc, khi đã chọn gộp,
+ * dòng tóm tắt (`ri-dup-merged`; lúc đó `ri-dup` KHÔNG có trong DOM). Không có panel thì không trỏ đâu cả.
+ */
+export function dupDescribedBy(showPanel: boolean, mode: DupSelection['mode']): string | undefined {
+  if (!showPanel) return undefined;
+  return mode === 'merge' ? 'ri-dup-merged' : 'ri-dup';
+}
+
 export function submitLabel(
   sel: DupSelection,
   top: { key: string; exact: boolean } | null,

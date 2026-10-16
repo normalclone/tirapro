@@ -733,7 +733,8 @@ export function CreateIssueModal() {
               onSubmit={() => void submitCreate()}
               rows={10}
               mentionPeople={assignees}
-              placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))"
+              onPasteImages={(fs) => setFiles((prev) => [...prev, ...fs])}
+              placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn) hoặc dán ảnh)"
             />
           </Field>
 

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { dupDecision, foldVi, isExactTitle, submitLabel, type DupMatch } from './dupDecision';
+import {
+  dupDescribedBy,
+  dupDecision,
+  foldVi,
+  isExactTitle,
+  submitLabel,
+  type DupMatch,
+} from './dupDecision';
 
 describe('foldVi / isExactTitle', () => {
   it('bỏ dấu, hạ chữ, gộp khoảng trắng', () => {
@@ -95,5 +102,15 @@ describe('dupDecision', () => {
     expect(f.label).toBe('Gửi');
     const b = dupDecision({ mode: 'none' }, [live], 'Giỏ hàng bị mất sản phẩm', { kind: 'BUG' });
     expect(b.mergeInto).toEqual({ id: 'a', key: 'D-1' });
+  });
+});
+
+describe('dupDescribedBy', () => {
+  it('trỏ đúng id có trong DOM: danh sách gợi ý hoặc dòng "Sẽ thêm ghi chú vào…" khi đã chọn gộp; không có panel thì undefined', () => {
+    expect(dupDescribedBy(true, 'none')).toBe('ri-dup');
+    expect(dupDescribedBy(true, 'new')).toBe('ri-dup');
+    expect(dupDescribedBy(true, 'merge')).toBe('ri-dup-merged');
+    expect(dupDescribedBy(false, 'merge')).toBeUndefined();
+    expect(dupDescribedBy(false, 'none')).toBeUndefined();
   });
 });

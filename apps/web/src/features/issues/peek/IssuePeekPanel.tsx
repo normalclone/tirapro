@@ -9,6 +9,8 @@ import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import {
   IssuePeoplePanel,
   IssuePrioritySelect,
+  IssueResolutionSelect,
+  IssueSeveritySelect,
   IssueSprintSubtitle,
   IssueStoryPointsInline,
   IssueTypeSelect,
@@ -187,7 +189,7 @@ function PeekContent({ issue }: { issue: IssueDto }) {
                 type="button"
                 disabled={isPending}
                 onClick={() => requestTransition(o.id)}
-                title={`Chuyển sang “${o.name}”`}
+                title={o.label !== o.name ? `${o.label} → “${o.name}”` : `Chuyển sang “${o.name}”`}
                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
               >
                 <span
@@ -195,11 +197,17 @@ function PeekContent({ issue }: { issue: IssueDto }) {
                   style={{ background: CATEGORY_COLOR[o.category] ?? 'var(--faint)' }}
                   aria-hidden
                 />
-                {o.name}
+                {o.label}
               </button>
             ))}
           </>
         )}
+      </div>
+
+      {/* Như trang công việc: Mức nghiêm trọng (chỉ Bug) và Cách giải quyết (khi ở nhóm Done); không có gì thì không chiếm chỗ. */}
+      <div className="flex flex-wrap items-center gap-1.5 empty:hidden">
+        <IssueSeveritySelect issue={issue} />
+        <IssueResolutionSelect issue={issue} />
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
