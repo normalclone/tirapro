@@ -44,6 +44,14 @@ function flatten(
   return out;
 }
 
+/** Bản sao của `set` không có `id` (giữ nguyên tham chiếu nếu `id` vốn không có để khỏi vẽ lại thừa). */
+function without(set: Set<string>, id: string): Set<string> {
+  if (!set.has(id)) return set;
+  const next = new Set(set);
+  next.delete(id);
+  return next;
+}
+
 /** Tập id của mọi node có con (để hỗ trợ "thu gọn tất cả"). */
 function collectParentIds(nodes: IssueTreeNode[], out: Set<string> = new Set()): Set<string> {
   for (const n of nodes) {
@@ -83,14 +91,8 @@ export function TreePage() {
 
   const allCollapsed = parentIds.size > 0 && collapsed.size >= parentIds.size;
 
-  const drag = useTreeDrag(project?.id, issues, (targetId) =>
-    setCollapsed((prev) => {
-      if (!prev.has(targetId)) return prev;
-      const next = new Set(prev);
-      next.delete(targetId);
-      return next;
-    }),
-  );
+  // Sau khi thả, mở nhánh đích để thấy ngay việc vừa vào.
+  const drag = useTreeDrag(project?.id, issues, (id) => setCollapsed((prev) => without(prev, id)));
   const { canEditIssue, canEditAny, dragged, dragId, overId } = drag;
 
   function toggle(id: string) {
@@ -197,10 +199,11 @@ export function TreePage() {
                   ))}
                 </ul>
               </div>
-              {dragId && <RootDropZone active={overId === ROOT_DROP_ID} />}
             </div>
           )}
         </div>
+        {/* Ngoài khung cuộn: không phủ lên dòng nào, vị trí không phụ thuộc cuộn/tự cuộn khi kéo. */}
+        {dragId && <RootDropZone active={overId === ROOT_DROP_ID} />}
       </div>
       <DragOverlay dropAnimation={null}>
         {dragged ? (
@@ -214,14 +217,14 @@ export function TreePage() {
   );
 }
 
-/** Vùng thả "Đưa ra ngoài" — chỉ hiện khi đang kéo, dính đáy khung cuộn để luôn thấy dù cây dài. */
+/** Vùng thả "Đưa ra ngoài" — chỉ hiện khi đang kéo, nằm dưới khung cuộn của cây nên luôn thấy dù cây dài. */
 function RootDropZone({ active }: { active: boolean }) {
   const { setNodeRef } = useDroppable({ id: ROOT_DROP_ID });
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        'sticky bottom-4 z-20 mt-3 flex items-center justify-center gap-2 rounded-lg border-2 border-dashed px-3 py-3 text-sm',
+        'mx-4 mb-3 mt-1 flex shrink-0 items-center justify-center gap-2 rounded-lg border-2 border-dashed px-3 py-3 text-sm',
         active
           ? 'border-[var(--ring)] bg-surface-2 text-ink-strong ring-2 ring-[var(--ring)]'
           : 'border-border bg-surface text-muted',
