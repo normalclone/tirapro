@@ -28,6 +28,8 @@ export const createProjectSchema = z.object({
   templateKey: z.enum(['scrum', 'kanban', 'requirements']).optional(),
   description: z.string().max(2000).optional().nullable(),
   leadId: z.string().optional().nullable(),
+  /** Dự án riêng tư — chỉ thành viên dự án + quản trị thấy. Mặc định false. */
+  isPrivate: z.boolean().optional(),
 });
 
 export const createCommentSchema = z.object({

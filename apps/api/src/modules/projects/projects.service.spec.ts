@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ProjectsService } from './projects.service';
 
+const ACCESS = {
+  visibleWhere: vi.fn(() => Promise.resolve({})),
+  onVisibilityChanged: vi.fn(() => Promise.resolve()),
+};
+const AUDIT = { record: vi.fn((_e?: unknown) => Promise.resolve()) };
+
 const row = (over: Record<string, unknown> = {}) => ({
   id: 'p1',
   workspaceId: 'w1',
@@ -13,6 +19,7 @@ const row = (over: Record<string, unknown> = {}) => ({
   defaultAssigneeMode: 'UNASSIGNED',
   isArchived: false,
   archivedAt: null,
+  isPrivate: false,
   createdAt: new Date('2026-10-01T00:00:00Z'),
   _count: { issues: 0 },
   lead: null,
@@ -51,7 +58,13 @@ function make(
     ),
   };
   return {
-    service: new ProjectsService(prisma as never, {} as never, health as never),
+    service: new ProjectsService(
+      prisma as never,
+      {} as never,
+      health as never,
+      ACCESS as never,
+      AUDIT as never,
+    ),
     prisma,
     health,
   };
@@ -158,7 +171,13 @@ describe('ProjectsService — dự án lưu trữ là chỉ đọc (cài đặt 
         update: vi.fn(() => Promise.resolve({})),
       },
     };
-    const service = new ProjectsService(prisma as never, media as never, {} as never);
+    const service = new ProjectsService(
+      prisma as never,
+      media as never,
+      {} as never,
+      ACCESS as never,
+      AUDIT as never,
+    );
     await expect(service.setAvatar('w1', 'DEMO', undefined, {} as never)).rejects.toMatchObject({
       status: 422,
     });
@@ -181,7 +200,13 @@ describe('ProjectsService.meta — severities + resolutions', () => {
       severity: { findMany: vi.fn(() => Promise.resolve(sev)) },
       resolution: { findMany: vi.fn(() => Promise.resolve(res)) },
     };
-    const service = new ProjectsService(prisma as never, {} as never, {} as never);
+    const service = new ProjectsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      ACCESS as never,
+      AUDIT as never,
+    );
     const out = await service.meta('w1', 'DEMO');
     expect(out).toMatchObject({ projectId: 'p1', severities: sev, resolutions: res });
     expect(prisma.severity.findMany).toHaveBeenCalledWith(
@@ -282,7 +307,13 @@ describe('ProjectsService.create — vai trò chủ dự án', () => {
       role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-padmin' })) },
       $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
     };
-    const svc = new ProjectsService(prisma as never, {} as never, {} as never);
+    const svc = new ProjectsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      ACCESS as never,
+      AUDIT as never,
+    );
     await svc.create('w1', 'u1', { key: 'D', name: 'D', type: 'SCRUM' } as never);
     const arg = tx.projectMembership.create.mock.calls[0] as unknown as [
       { data: Record<string, unknown> },
@@ -317,7 +348,16 @@ describe('ProjectsService.create — mẫu dự án', () => {
       role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-padmin' })) },
       $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
     };
-    return { tx, svc: new ProjectsService(prisma as never, {} as never, {} as never) };
+    return {
+      tx,
+      svc: new ProjectsService(
+        prisma as never,
+        {} as never,
+        {} as never,
+        ACCESS as never,
+        AUDIT as never,
+      ),
+    };
   }
   const arg = (m: { mock: { calls: unknown[][] } }, i = 0) =>
     (m.mock.calls[i] as unknown as [{ data: Record<string, unknown> }])[0].data;
@@ -358,5 +398,195 @@ describe('ProjectsService.create — mẫu dự án', () => {
     const { tx, svc } = makeTx();
     await svc.create('w1', 'u1', { key: 'DEMO', name: 'Demo', type: 'SCRUM' });
     expect(arg(tx.workflow.create).name).toBe('Scrum mặc định (DEMO)');
+  });
+});
+
+describe('ProjectsService — dự án riêng tư', () => {
+  it('list(viewerId): where chứa điều kiện hiển thị của ProjectAccessService (công khai hoặc là thành viên)', async () => {
+    const visible = {
+      OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }],
+    };
+    const { service, prisma } = make();
+    ACCESS.visibleWhere.mockResolvedValueOnce(visible);
+    await service.list('w1', false, 'u1');
+    expect(ACCESS.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+    expect(prisma.project.findMany.mock.calls.at(-1)![0].where).toMatchObject({
+      workspaceId: 'w1',
+      deletedAt: null,
+      archivedAt: null,
+      ...visible,
+    });
+  });
+
+  it('list() không có viewerId: không lọc riêng tư (đường nội bộ)', async () => {
+    const { service, prisma } = make();
+    ACCESS.visibleWhere.mockClear();
+    await service.list('w1');
+    expect(ACCESS.visibleWhere).not.toHaveBeenCalled();
+    expect(prisma.project.findMany.mock.calls.at(-1)![0].where).not.toHaveProperty('OR');
+  });
+
+  it('create: isPrivate được ghi (mặc định false) và có trong DTO', async () => {
+    const ok = () => vi.fn((_a?: unknown) => Promise.resolve({ id: 'x' }));
+    const tx = {
+      project: {
+        create: vi.fn((_a?: unknown) => Promise.resolve(row({ id: 'p1', isPrivate: true }))),
+        update: ok(),
+      },
+      workflow: { create: ok() },
+      status: { create: ok() },
+      workflowTransition: { create: ok() },
+      board: { create: ok() },
+      boardColumn: { create: ok() },
+      boardColumnStatus: { create: ok() },
+      projectMembership: { create: ok() },
+    };
+    const prisma = {
+      project: { findFirst: vi.fn(() => Promise.resolve(null)) },
+      role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-padmin' })) },
+      $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+    };
+    const svc = new ProjectsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      ACCESS as never,
+      AUDIT as never,
+    );
+    const dto = await svc.create('w1', 'u1', {
+      key: 'HR',
+      name: 'Nhân sự',
+      type: 'SCRUM',
+      isPrivate: true,
+    });
+    const data = (
+      tx.project.create.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data.isPrivate).toBe(true);
+    expect(dto.isPrivate).toBe(true);
+    // người phụ trách khác người tạo cũng phải là thành viên (dự án riêng tư không để lead mất quyền xem)
+    await svc.create('w1', 'u1', {
+      key: 'HR2',
+      name: 'Nhân sự 2',
+      type: 'SCRUM',
+      isPrivate: true,
+      leadId: 'lead9',
+    });
+    const members = tx.projectMembership.create.mock.calls.map(
+      (c) => (c[0] as { data: { userId: string } }).data.userId,
+    );
+    expect(members).toEqual(['u1', 'u1', 'lead9']);
+  });
+});
+
+describe('ProjectsService.update — đổi riêng tư', () => {
+  function setup(opts: { cur?: Record<string, unknown> } = {}) {
+    const tx = {
+      project: { update: vi.fn((_a?: unknown) => Promise.resolve({ id: 'p1' })) },
+      projectMembership: { upsert: vi.fn((_a?: unknown) => Promise.resolve({ id: 'pm' })) },
+    };
+    const prisma = {
+      project: {
+        findFirst: vi.fn(() =>
+          Promise.resolve(row({ leadId: 'lead1', isPrivate: false, ...opts.cur })),
+        ),
+        update: vi.fn((_a?: unknown) => Promise.resolve({ id: 'p1' })),
+      },
+      role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-padmin' })) },
+      $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+    };
+    AUDIT.record.mockClear();
+    ACCESS.onVisibilityChanged.mockClear();
+    const svc = new ProjectsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      ACCESS as never,
+      AUDIT as never,
+    );
+    return { svc, prisma, tx };
+  }
+
+  it('false → true: trong transaction bảo đảm người thao tác và người phụ trách là thành viên (Project Admin), ghi nhật ký, xoá cache quyền', async () => {
+    const { svc, prisma, tx } = setup();
+    await svc.update('w1', 'p1', 'actor1', { isPrivate: true });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.project.update.mock.calls[0]![0]).toMatchObject({
+      where: { id: 'p1' },
+      data: { isPrivate: true },
+    });
+    const users = tx.projectMembership.upsert.mock.calls.map(
+      (c) =>
+        (c[0] as { where: { projectId_userId: { userId: string } } }).where.projectId_userId.userId,
+    );
+    expect(users.sort()).toEqual(['actor1', 'lead1']);
+    expect(tx.projectMembership.upsert.mock.calls[0]![0]).toMatchObject({
+      update: {},
+      create: {
+        projectId: 'p1',
+        roleId: 'r-padmin',
+        roles: { create: [{ roleId: 'r-padmin' }] },
+      },
+    });
+    expect(AUDIT.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'project.visibility_changed',
+        entityType: 'project',
+        entityId: 'p1',
+        meta: { isPrivate: true },
+      }),
+    );
+    expect(ACCESS.onVisibilityChanged).toHaveBeenCalledWith('w1');
+  });
+
+  it('người thao tác cũng là người phụ trách => chỉ một dòng thành viên', async () => {
+    const { svc, tx } = setup({ cur: { leadId: 'actor1' } });
+    await svc.update('w1', 'p1', 'actor1', { isPrivate: true });
+    expect(tx.projectMembership.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('đổi người phụ trách cùng lúc bật riêng tư => người phụ trách MỚI được bảo đảm', async () => {
+    const { svc, tx, prisma } = setup();
+    (prisma as unknown as { workspaceMembership: unknown }).workspaceMembership = {
+      findUnique: vi.fn(() => Promise.resolve({ id: 'm' })),
+    };
+    await svc.update('w1', 'p1', 'actor1', { isPrivate: true, leadId: 'lead2' });
+    const users = tx.projectMembership.upsert.mock.calls.map(
+      (c) =>
+        (c[0] as { where: { projectId_userId: { userId: string } } }).where.projectId_userId.userId,
+    );
+    expect(users.sort()).toEqual(['actor1', 'lead2']);
+  });
+
+  it('đang riêng tư, đổi người phụ trách => người phụ trách mới được thêm làm thành viên', async () => {
+    const { svc, tx, prisma } = setup({ cur: { isPrivate: true } });
+    (prisma as unknown as { workspaceMembership: unknown }).workspaceMembership = {
+      findUnique: vi.fn(() => Promise.resolve({ id: 'm' })),
+    };
+    await svc.update('w1', 'p1', 'actor1', { leadId: 'lead2' });
+    const users = tx.projectMembership.upsert.mock.calls.map(
+      (c) =>
+        (c[0] as { where: { projectId_userId: { userId: string } } }).where.projectId_userId.userId,
+    );
+    expect(users).toEqual(['lead2']);
+    expect(AUDIT.record).not.toHaveBeenCalled();
+  });
+
+  it('true → false: không xoá thành viên, ghi nhật ký "mở cho mọi thành viên"', async () => {
+    const { svc, prisma, tx } = setup({ cur: { isPrivate: true } });
+    await svc.update('w1', 'p1', 'actor1', { isPrivate: false });
+    expect(prisma.project.update.mock.calls[0]![0]).toMatchObject({ data: { isPrivate: false } });
+    expect(tx.projectMembership.upsert).not.toHaveBeenCalled();
+    expect(AUDIT.record.mock.calls[0]![0]).toMatchObject({
+      action: 'project.visibility_changed',
+      meta: { isPrivate: false },
+    });
+  });
+
+  it('không đổi giá trị (đã riêng tư, gửi true) => không ghi nhật ký, không đụng thành viên', async () => {
+    const { svc, tx } = setup({ cur: { isPrivate: true } });
+    await svc.update('w1', 'p1', 'actor1', { isPrivate: true });
+    expect(tx.projectMembership.upsert).not.toHaveBeenCalled();
+    expect(AUDIT.record).not.toHaveBeenCalled();
   });
 });

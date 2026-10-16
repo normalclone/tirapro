@@ -7,6 +7,8 @@ export const updateProjectSchema = z
     description: z.string().max(2000).nullable().optional(),
     leadId: z.string().min(1).nullable().optional(),
     defaultAssigneeMode: z.enum(['UNASSIGNED', 'PROJECT_LEAD']).optional(),
+    /** Bật/tắt dự án riêng tư (chỉ quản trị dự án). */
+    isPrivate: z.boolean().optional(),
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined), 'Hãy chọn ít nhất một thay đổi');
 

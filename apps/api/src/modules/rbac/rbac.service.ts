@@ -190,6 +190,8 @@ export class RbacService {
     projectId?: string | null,
   ): Promise<Set<string>> {
     const roleIds: string[] = [];
+    // Dự án riêng tư mà người này không phải thành viên → không được leo thang qua vai trò mặc định của workspace.
+    let hiddenFromUser = false;
 
     // 1 thành viên có thể NHIỀU vai trò → union vai trò chính (roleId) + các vai trò phụ (join).
     const wsMembership = await this.prisma.workspaceMembership.findUnique({
@@ -214,6 +216,11 @@ export class RbacService {
         // Có GHI ĐÈ vai trò riêng ở dự án này → dùng đúng vai trò đó.
         roleIds.push(projMembership.roleId, ...projMembership.roles.map((r) => r.roleId));
       } else {
+        const proj = await this.prisma.project.findFirst({
+          where: { id: projectId, workspaceId, deletedAt: null },
+          select: { isPrivate: true },
+        });
+        hiddenFromUser = proj?.isPrivate === true;
         // Không ghi đè → áp vai trò dự án MẶC ĐỊNH suy từ vai trò workspace
         // (thành viên tính trên workspace; mọi dự án dùng chung tập người dùng).
         roleIds.push(...(await this.defaultProjectRoleIds(workspaceId, wsRoleNames)));
@@ -226,7 +233,11 @@ export class RbacService {
       where: { roleId: { in: roleIds } },
       select: { permission: { select: { key: true } } },
     });
-    return new Set(rows.map((r) => r.permission.key));
+    const perms = new Set(rows.map((r) => r.permission.key));
+    // Phòng thủ: service tự gọi getEffectivePermissions(…, projectId) không được thấy quyền ở dự án riêng tư
+    // của người ngoài (guard đã 404 ở route; đây là lớp thứ hai). Quản trị workspace vẫn giữ quyền.
+    if (hiddenFromUser && !perms.has('workspace:admin')) return new Set();
+    return perms;
   }
 
   /**
@@ -284,6 +295,27 @@ export class RbacService {
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
+  }
+
+  /**
+   * Dự án riêng tư: người không phải thành viên dự án và không có `workspace:admin` nhận 404.
+   * Dự án công khai / không tồn tại / đã xoá → qua (các kiểm tra khác lo phần 404 của chúng).
+   * Một truy vấn theo khoá chính; admin hệ thống đã được guard cho qua sớm.
+   */
+  async assertProjectVisible(
+    userId: string,
+    workspaceId: string,
+    projectId: string,
+  ): Promise<void> {
+    const row = await this.prisma.project.findFirst({
+      where: { id: projectId, workspaceId, deletedAt: null, isPrivate: true },
+      select: { memberships: { where: { userId }, select: { id: true }, take: 1 } },
+    });
+    if (!row) return;
+    if (row.memberships.length > 0) return;
+    const perms = await this.getEffectivePermissions(userId, workspaceId);
+    if (perms.has('workspace:admin')) return;
+    throw new NotFoundAppException('Dự án');
   }
 
   /** Invalidate cache khi đổi vai trò của 1 user (gọi từ MembersModule). */

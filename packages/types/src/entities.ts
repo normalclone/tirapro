@@ -168,6 +168,8 @@ export interface ProjectDto {
   isArchived: boolean;
   /** Thời điểm lưu trữ; null = đang hoạt động. Dự án đã lưu trữ chỉ đọc. */
   archivedAt: ISODate | null;
+  /** Dự án riêng tư: chỉ thành viên dự án + quản trị workspace thấy (người khác nhận 404). */
+  isPrivate: boolean;
   issueCount?: number;
   createdAt: ISODate;
 }

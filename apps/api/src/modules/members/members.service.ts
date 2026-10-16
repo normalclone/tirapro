@@ -326,7 +326,7 @@ export class MembersService {
   private async requireProject(workspaceId: string, projectId: string) {
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true, name: true },
+      select: { id: true, name: true, isPrivate: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return p;
@@ -338,7 +338,7 @@ export class MembersService {
    * vai trò mặc định suy từ vai trò workspace (`DEFAULT_PROJECT_ROLE_BY_WS_ROLE`).
    */
   async listProject(workspaceId: string, projectId: string) {
-    await this.requireProject(workspaceId, projectId);
+    const project = await this.requireProject(workspaceId, projectId);
     const [wsRows, overrides, projectRoles] = await Promise.all([
       this.prisma.workspaceMembership.findMany({
         where: { workspaceId },
@@ -368,9 +368,13 @@ export class MembersService {
       }),
     ]);
     const overrideByUser = new Map(overrides.map((o) => [o.userId, o]));
+    // Dự án riêng tư: thành viên = chỉ các dòng ProjectMembership (không có "mặc định theo workspace").
+    const visibleRows = project.isPrivate
+      ? wsRows.filter((m) => overrideByUser.has(m.user.id))
+      : wsRows;
     const projRoleByName = new Map(projectRoles.map((r) => [r.name, r]));
 
-    return wsRows.map((m) => {
+    return visibleRows.map((m) => {
       const ov = overrideByUser.get(m.user.id);
       if (ov) {
         return {
@@ -403,6 +407,16 @@ export class MembersService {
     actorId?: string,
   ) {
     const project = await this.requireProject(workspaceId, projectId);
+    if (project.isPrivate) {
+      // Dự án riêng tư: gỡ ghi đè = GỠ KHỎI DỰ ÁN. Không để dự án không còn thành viên nào (mồ côi).
+      const members = await this.prisma.projectMembership.count({ where: { projectId } });
+      const isMember = await this.prisma.projectMembership.findUnique({
+        where: { projectId_userId: { projectId, userId } },
+        select: { id: true },
+      });
+      if (isMember && members <= 1)
+        throw new BusinessRuleException('Dự án phải còn ít nhất một thành viên');
+    }
     const { count } = await this.prisma.projectMembership.deleteMany({
       where: { projectId, userId },
     });
@@ -414,7 +428,9 @@ export class MembersService {
       action: AUDIT_ACTIONS.PROJECT_MEMBER_REMOVED,
       entityType: 'user',
       entityId: userId,
-      summary: `Gỡ vai trò riêng của ${await this.userLabel(userId)} trong dự án "${project.name}"`,
+      summary: project.isPrivate
+        ? `Gỡ ${await this.userLabel(userId)} khỏi dự án riêng tư "${project.name}"`
+        : `Gỡ vai trò riêng của ${await this.userLabel(userId)} trong dự án "${project.name}"`,
       meta: { projectId },
     });
     return { success: true };

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Archive, Plus } from 'lucide-react';
+import { Archive, Lock, Plus } from 'lucide-react';
 import { useProjects } from './api';
 import { CreateProjectModal } from './CreateProjectModal';
 import { cn } from '@/lib/utils';
@@ -65,6 +65,9 @@ export function ProjectRail({ activeKey, view = 'board' }: { activeKey: string; 
                 {p.key.slice(0, 3)}
               </span>
               <span className="min-w-0 flex-1 truncate">{p.name}</span>
+              {p.isPrivate && (
+                <Lock className="h-3.5 w-3.5 shrink-0 text-faint" aria-label="Dự án riêng tư" />
+              )}
               {p.archivedAt && (
                 <Archive className="h-3.5 w-3.5 shrink-0 text-faint" aria-label="Đã lưu trữ" />
               )}

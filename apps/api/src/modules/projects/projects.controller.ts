@@ -44,9 +44,10 @@ export class ProjectsController {
   @Get()
   async list(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query('includeArchived') includeArchived?: string,
   ) {
-    return this.projects.list(workspaceId, includeArchived === 'true');
+    return this.projects.list(workspaceId, includeArchived === 'true', user.id);
   }
 
   @Permissions(PERMISSIONS.PROJECT_CREATE)

@@ -10,6 +10,8 @@ export interface CreateProjectInput {
   /** Mẫu dự án; có thì API dùng thay cho `type`. */
   templateKey?: ProjectTemplateKey;
   description?: string | null;
+  /** Dự án riêng tư: chỉ thành viên dự án + quản trị thấy. */
+  isPrivate?: boolean;
 }
 
 /** Tạo dự án mới; invalidate danh sách dự án khi thành công. */

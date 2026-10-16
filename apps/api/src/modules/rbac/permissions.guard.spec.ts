@@ -23,6 +23,7 @@ function setup(opts: {
   resolved?: { projectId: string | null } | null;
   projectInWorkspace?: boolean;
   effective?: string[];
+  hidden?: boolean;
 }) {
   const reflector = {
     getAllAndOverride: vi.fn((key: string) => {
@@ -37,6 +38,9 @@ function setup(opts: {
     ),
     resolveProjectId: vi.fn(() =>
       Promise.resolve(opts.resolved === undefined ? { projectId: 'P-cua-I1' } : opts.resolved),
+    ),
+    assertProjectVisible: vi.fn(() =>
+      opts.hidden ? Promise.reject(new NotFoundAppException('Dự án')) : Promise.resolve(),
     ),
     assertProjectInWorkspace: vi.fn(() =>
       opts.projectInWorkspace === false
@@ -262,5 +266,53 @@ describe('PermissionsGuard', () => {
 
     const open = setup({ required: [], req: { user: { ...user } } });
     await expect(open.guard.canActivate(open.ctx)).resolves.toBe(true);
+  });
+});
+
+describe('PermissionsGuard — dự án riêng tư', () => {
+  it('assertProjectVisible ném NotFound => guard ném đúng lỗi đó, KHÔNG tính quyền', async () => {
+    const { guard, rbac, ctx } = setup({
+      hidden: true,
+      ref: { kind: 'param', param: 'projectId' },
+      req: { user: { ...user }, params: { projectId: 'P1' } },
+    });
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(NotFoundAppException);
+    expect(rbac.assertProjectVisible).toHaveBeenCalledWith('U1', 'W1', 'P1');
+    expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
+  });
+
+  it('route theo tài nguyên (issue) cũng chốt theo dự án thật của tài nguyên', async () => {
+    const { guard, rbac, ctx } = setup({
+      hidden: true,
+      ref: { kind: 'issue', param: 'id' },
+      req: { user: { ...user }, params: { id: 'I1' } },
+    });
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(NotFoundAppException);
+    expect(rbac.assertProjectVisible).toHaveBeenCalledWith('U1', 'W1', 'P-cua-I1');
+  });
+
+  it('admin hệ thống return sớm, không gọi assertProjectVisible', async () => {
+    const { guard, rbac, ctx } = setup({
+      hidden: true,
+      ref: { kind: 'param', param: 'projectId' },
+      req: { user: { ...user, isSystemAdmin: true }, params: { projectId: 'P1' } },
+    });
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(rbac.assertProjectVisible).not.toHaveBeenCalled();
+  });
+
+  it('route không có dự án (projectId null) không gọi assertProjectVisible', async () => {
+    const { guard, rbac, ctx } = setup({ req: { user: { ...user }, params: {}, body: {} } });
+    await guard.canActivate(ctx);
+    expect(rbac.assertProjectVisible).not.toHaveBeenCalled();
+  });
+
+  it('thấy được => qua và tính quyền như cũ', async () => {
+    const { guard, rbac, ctx } = setup({
+      ref: { kind: 'param', param: 'projectId' },
+      req: { user: { ...user }, params: { projectId: 'P1' } },
+    });
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('U1', 'W1', 'P1');
   });
 });

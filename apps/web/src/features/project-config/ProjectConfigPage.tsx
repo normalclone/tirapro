@@ -115,7 +115,9 @@ export function ProjectConfigPage() {
                 />
               </>
             )}
-            {active === 'members' && <MembersSection projectId={projectId} />}
+            {active === 'members' && (
+              <MembersSection projectId={projectId} isPrivate={project?.isPrivate ?? false} />
+            )}
             {active === 'components' && (
               <ComponentsSection projectId={projectId} canAdmin={canAdmin} />
             )}
