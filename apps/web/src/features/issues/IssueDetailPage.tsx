@@ -500,7 +500,7 @@ export function IssueDetailPage() {
                 onClick={copyKey}
                 title={`Sao chép mã công việc (${key}) để dán vào chat, commit…`}
                 aria-label="Sao chép mã công việc"
-                className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink"
+                className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
               >
                 <Hash className="h-3.5 w-3.5" />
               </button>

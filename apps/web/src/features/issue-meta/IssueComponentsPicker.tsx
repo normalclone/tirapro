@@ -189,7 +189,7 @@ function ChipGroup({
               ariaLabel={addLabel}
               searchPlaceholder="Tìm…"
               hideChevron
-              className="h-6 w-auto rounded-full border-dashed px-2 py-0 text-xs font-medium text-muted hover:border-primary hover:text-ink"
+              className="h-6 w-auto rounded-full border-dashed px-2 py-0 text-xs font-medium text-muted hover:border-primary hover:text-ink [@media(pointer:coarse)]:min-h-9"
               renderTrigger={() => (
                 <span className="inline-flex items-center gap-1">
                   <Plus className="h-3 w-3" aria-hidden />

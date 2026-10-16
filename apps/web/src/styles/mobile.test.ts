@@ -38,4 +38,15 @@ describe('mobile nền chung', () => {
   });
   it('dòng Việc chờ có dấu hiệu quá hạn không chỉ là màu viền (dưới sm)', () =>
     expect(src('features/backlog/IssueRow.tsx')).toMatch(/<DueBadge[^>]*sm:hidden/));
+
+  it('bộ đo mobile có chế độ --dialogs và allowlist mỗi mục có lý do', () => {
+    const script = readFileSync(join(__dirname, '..', '..', 'scripts', 'mobile-audit.mjs'), 'utf8');
+    expect(script).toMatch(/DIALOG_SCENARIOS/);
+    for (const name of ['tao-cong-viec', 'bao-loi-co-ban', 'cmd-k', 'tao-vai-tro', 'okr-check-in'])
+      expect(script).toContain(`'${name}'`);
+    const allow = JSON.parse(
+      readFileSync(join(__dirname, '..', '..', 'scripts', 'mobile-audit.allow.json'), 'utf8'),
+    ) as Record<string, string>;
+    for (const [k, why] of Object.entries(allow)) expect(why.length, k).toBeGreaterThan(20);
+  });
 });

@@ -176,4 +176,4 @@ Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng A
 - [ ] Tính năng mới qua "thuế tĩnh lặng" (không làm màn chính ồn hơn).
 - [ ] `/impeccable critique` không còn P0/P1.
 - [ ] Chuỗi hiển thị đúng bảng thuật ngữ §19; ngày dd/MM/yyyy; thời gian tương đối tiếng Việt.
-- [ ] Chạy `pnpm --filter @tirapro/web mobile:audit` cho màn mới (390px).
+- [ ] Chạy `pnpm --filter @tirapro/web mobile:audit -- --route=<route mới>` (390px; 0 lỗi chặn hoặc có mục trong `scripts/mobile-audit.allow.json` kèm lý do). Màn có hộp thoại/popover mới: thêm kịch bản vào `DIALOG_SCENARIOS` trong `scripts/mobile-audit.mjs` rồi chạy `mobile:audit -- --dialogs`. Cần web + API + DB seed đang chạy (không nằm trong `pnpm test`).
