@@ -23,7 +23,7 @@ export function LeadershipCards() {
 
   if (isLoading) {
     return (
-      <div className="grid gap-3 lg:grid-cols-3" aria-busy="true">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3" aria-busy="true">
         {[0, 1, 2].map((i) => (
           <div key={i} className="rounded-lg border border-border bg-surface p-3">
             <Skeleton className="h-4 w-32" />
@@ -43,7 +43,7 @@ export function LeadershipCards() {
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
       <LeadershipCard
         icon={<Flame className="h-4 w-4 text-danger" aria-hidden />}
         title="Top rủi ro"
