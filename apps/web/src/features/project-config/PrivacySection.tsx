@@ -29,10 +29,12 @@ export function PrivacySection({ project, canAdmin }: { project: ProjectDto; can
         ? {
             title: 'Chuyển dự án sang riêng tư?',
             description: `${
-              members
-                ? `${losing} người đang tham gia mặc định sẽ mất quyền vào dự án`
-                : 'Những người đang tham gia mặc định sẽ mất quyền vào dự án'
-            }. Chỉ bạn, người phụ trách và những người được thêm riêng ở mục Thành viên (cùng quản trị không gian làm việc) còn thấy dự án.`,
+              !members
+                ? 'Những người đang tham gia mặc định sẽ mất quyền vào dự án.'
+                : losing === 0
+                  ? 'Mọi người đang tham gia đều đã được thêm riêng nên không ai mất quyền.'
+                  : `${losing} người đang tham gia mặc định sẽ mất quyền vào dự án.`
+            } Từ giờ chỉ thành viên được thêm ở mục Thành viên (cùng quản trị không gian làm việc) thấy dự án.`,
             confirmLabel: 'Chuyển sang riêng tư',
             destructive: true,
           }

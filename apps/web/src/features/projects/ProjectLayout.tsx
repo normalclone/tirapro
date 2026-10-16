@@ -14,6 +14,7 @@ import {
   Archive,
   BarChart3,
   ChevronDown,
+  FolderX,
   GanttChartSquare,
   Inbox,
   LayoutGrid,
@@ -31,7 +32,8 @@ import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
 import { Button } from '@/components/ui/Button';
 import { useAi } from '@/stores/ai';
 import { useCan, useProjectPermissions } from './permissions';
-import { Skeleton } from '@/components/ui/primitives';
+import { EmptyState, Skeleton } from '@/components/ui/primitives';
+import { apiErrorCode } from '@/lib/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
 import { useProjectRealtime } from '@/lib/realtime';
@@ -63,7 +65,9 @@ export function ProjectLayout() {
   const navigate = useNavigate();
   const aiEnabled = useAi((s) => s.enabled);
   const openCreate = useCreateIssueModal((s) => s.openCreate);
-  const { data: project, isPending: projectPending } = useProject(key);
+  const { data: project, isPending: projectPending, error: projectError } = useProject(key);
+  // 404 gồm cả dự án riêng tư mà người xem không được thấy (API cố ý không phân biệt với không tồn tại).
+  const notFound = apiErrorCode(projectError) === 'NOT_FOUND';
   const permsPending = useProjectPermissions(project?.id).isPending;
   const canProject = useCan(project?.id);
   const canAdminProject = canProject('project:admin');
@@ -189,7 +193,7 @@ export function ProjectLayout() {
             </>
           )}
 
-          <div className="ml-auto flex items-center gap-1">
+          <div className={cn('ml-auto flex items-center gap-1', notFound && 'hidden')}>
             {VIEWS.map((v) => (
               <NavLink
                 key={v.seg}
@@ -265,7 +269,17 @@ export function ProjectLayout() {
               </div>
             }
           >
-            <Outlet />
+            {notFound ? (
+              <div className="mx-auto max-w-md px-6 py-16">
+                <EmptyState
+                  icon={<FolderX className="h-6 w-6" />}
+                  title="Không tìm thấy dự án"
+                  description="Dự án không tồn tại, đã bị xoá hoặc bạn không có quyền xem. Chọn một dự án khác ở danh sách bên trái."
+                />
+              </div>
+            ) : (
+              <Outlet />
+            )}
           </Suspense>
         </div>
       </div>
