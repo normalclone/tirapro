@@ -9,10 +9,17 @@ import {
   ERROR_CODES,
   PERMISSIONS,
   roleLabel,
+  type MemberUserDto,
   type RoleScope,
 } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { toUserDto, USER_DTO_SELECT, type UserDtoSource } from '../../common/mappers/user.mapper';
+import {
+  canSeeAdminUserFields,
+  memberUserForViewer,
+  toUserDto,
+  USER_DTO_SELECT,
+  type UserDtoSource,
+} from '../../common/mappers/user.mapper';
 import {
   BusinessRuleException,
   ConflictAppException,
@@ -26,6 +33,9 @@ import { ApiKeyService } from '../api-keys/api-key.service';
 import { AuditService } from '../audit/audit.service';
 import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
 import type { CreateMemberAccountInput } from './members.schemas';
+
+/** Người xem (AuthUser rút gọn) để quyết định có trả `isSystemAdmin`/`lastSeenAt` của thành viên không. */
+type ViewerLike = { isSystemAdmin?: boolean; permissions?: readonly string[] };
 
 type RoleRefRow = { role: { id: string; name: string; color: string | null } };
 
@@ -45,7 +55,11 @@ export class MembersService {
 
   // ───────────────────────── Workspace ─────────────────────────
 
-  async listWorkspace(workspaceId: string) {
+  /**
+   * Thành viên workspace. `viewer`: người xem — `isSystemAdmin`/`lastSeenAt` của từng người chỉ trả khi viewer là admin hệ
+   * thống hoặc có `member:manage` (người khác nhận bản rút gọn). Không truyền = bản đầy đủ (dùng nội bộ).
+   */
+  async listWorkspace(workspaceId: string, viewer?: ViewerLike) {
     const rows = await this.prisma.workspaceMembership.findMany({
       where: { workspaceId },
       orderBy: { createdAt: 'asc' },
@@ -58,7 +72,19 @@ export class MembersService {
         roles: { select: { role: { select: { id: true, name: true, color: true } } } },
       },
     });
-    return rows.map((m) => this.toMemberDto(m, m.role));
+    return this.forViewer(
+      rows.map((m) => this.toMemberDto(m, m.role)),
+      viewer,
+    );
+  }
+
+  /** Rút gọn `user` của từng thành viên theo quyền người xem (xem `listWorkspace`). */
+  private forViewer<T extends { user: ReturnType<typeof toUserDto> }>(
+    rows: T[],
+    viewer?: ViewerLike,
+  ): Array<Omit<T, 'user'> & { user: MemberUserDto }> {
+    const privileged = !viewer || canSeeAdminUserFields(viewer);
+    return rows.map((m) => ({ ...m, user: memberUserForViewer(m.user, privileged) }));
   }
 
   async addWorkspace(workspaceId: string, userId: string, roleIds: string[], actorId?: string) {
@@ -502,7 +528,7 @@ export class MembersService {
    * Vai trò hiển thị là vai trò HIỆU LỰC: ghi đè riêng ở dự án nếu có, ngược lại là
    * vai trò mặc định suy từ vai trò workspace (`DEFAULT_PROJECT_ROLE_BY_WS_ROLE`).
    */
-  async listProject(workspaceId: string, projectId: string) {
+  async listProject(workspaceId: string, projectId: string, viewer?: ViewerLike) {
     const project = await this.requireProject(workspaceId, projectId);
     const [wsRows, overrides, projectRoles] = await Promise.all([
       this.prisma.workspaceMembership.findMany({
@@ -539,7 +565,7 @@ export class MembersService {
       : wsRows;
     const projRoleByName = new Map(projectRoles.map((r) => [r.name, r]));
 
-    return visibleRows.map((m) => {
+    const out = visibleRows.map((m) => {
       const ov = overrideByUser.get(m.user.id);
       if (ov) {
         return {
@@ -562,6 +588,7 @@ export class MembersService {
         isOverride: false,
       };
     });
+    return this.forViewer(out, viewer);
   }
 
   /** Xoá GHI ĐÈ vai trò ở dự án → người này quay về vai trò mặc định của workspace. */

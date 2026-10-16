@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { type IssueEnvironment, type TriageItemDto, type TriageKind } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { toUserDto } from '../../common/mappers/user.mapper';
+import { toUserRefDto } from '../../common/mappers/user.mapper';
 import {
   BusinessRuleException,
   NotFoundAppException,
@@ -349,7 +349,7 @@ export class TriageService {
       summary: i.summary,
       projectId: i.projectId,
       description: i.description,
-      reporter: i.reporter ? toUserDto(i.reporter) : null,
+      reporter: i.reporter ? toUserRefDto(i.reporter) : null,
       kind: TRIAGE_KINDS.includes(i.triageSource ?? '') ? (i.triageSource as TriageKind) : null,
       environment: (i.environment as IssueEnvironment | null) ?? null,
       type: {
@@ -390,7 +390,7 @@ export class TriageService {
             isDefault: i.severity.isDefault,
           }
         : null,
-      assignee: i.assignee ? toUserDto(i.assignee) : null,
+      assignee: i.assignee ? toUserRefDto(i.assignee) : null,
       sprintId: i.sprintId,
       occurrenceCount: i.occurrenceCount,
       lastOccurredAt: i.lastOccurredAt?.toISOString() ?? null,

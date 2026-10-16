@@ -4,7 +4,7 @@ import { DOMAIN_EVENTS, type AutomationEventMeta, type CommentDto } from '@tirap
 import { extractMentionIds, MENTION_LIMIT, type CreateCommentInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { toUserDto } from '../../common/mappers/user.mapper';
+import { toUserRefDto } from '../../common/mappers/user.mapper';
 import {
   ForbiddenAppException,
   NotFoundAppException,
@@ -218,7 +218,7 @@ export class CommentsService {
       id: c.id,
       issueId: c.issueId,
       authorId: c.authorId,
-      author: c.author ? toUserDto(c.author) : null,
+      author: c.author ? toUserRefDto(c.author) : null,
       body: c.body,
       bodyFormat: c.bodyFormat,
       parentId: c.parentId,

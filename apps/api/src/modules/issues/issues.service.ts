@@ -23,7 +23,7 @@ import {
 } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { toUserDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
+import { toUserRefDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
 import { iso } from '../../common/mappers/date';
 import { insensitiveContains } from '../../common/like';
 import { assertIssueOwner } from '../rbac/issue-ownership.service';
@@ -1996,7 +1996,7 @@ export class IssuesService {
             isDefault: i.priority.isDefault,
           }
         : null,
-      assignee: i.assignee ? toUserDto(i.assignee) : null,
+      assignee: i.assignee ? toUserRefDto(i.assignee) : null,
       workspaceId: i.workspaceId,
       projectId: i.projectId,
       number: i.number,
@@ -2004,7 +2004,7 @@ export class IssuesService {
       descriptionFormat: i.descriptionFormat,
       acceptanceCriteria: i.acceptanceCriteria,
       acceptanceProgress: countTasks(i.acceptanceCriteria),
-      reporter: i.reporter ? toUserDto(i.reporter) : null,
+      reporter: i.reporter ? toUserRefDto(i.reporter) : null,
       reporterId: i.reporterId,
       createdById: i.createdById,
       assigneeId: i.assigneeId,

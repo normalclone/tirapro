@@ -1048,3 +1048,60 @@ describe('MembersService — thử gán lại việc Jira khi được thêm và
     expect(b.events.emit).not.toHaveBeenCalledWith('project.access_changed', expect.anything());
   });
 });
+
+describe('MembersService.listWorkspace/listProject — lastSeenAt/isSystemAdmin chỉ cho member:manage (S-minor)', () => {
+  const userRow = {
+    id: 'u1',
+    email: 'a@x.vn',
+    displayName: 'An',
+    avatarUrl: null,
+    timezone: 'UTC',
+    locale: 'vi',
+    status: 'ACTIVE',
+    isSystemAdmin: true,
+    lastSeenAt: new Date('2026-10-16T01:00:00Z'),
+    createdAt: new Date('2026-10-01T00:00:00Z'),
+  };
+  const wsRow = {
+    id: 'm1',
+    joinedAt: null,
+    roleId: 'r1',
+    role: { id: 'r1', name: 'Workspace Member', color: null },
+    user: userRow,
+    roles: [{ role: { id: 'r1', name: 'Workspace Member', color: null } }],
+  };
+  function setup() {
+    const prisma = {
+      workspaceMembership: { findMany: vi.fn(() => Promise.resolve([wsRow])) },
+      projectMembership: { findMany: vi.fn(() => Promise.resolve([])) },
+      project: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'p1', name: 'Demo', isPrivate: false })),
+      },
+      role: { findMany: vi.fn(() => Promise.resolve([])) },
+    };
+    return new MembersService(prisma as never, {} as never, {} as never, {} as never, {} as never);
+  }
+  const plain = { id: 'v', permissions: ['workspace:view'] };
+  const manager = { id: 'v', permissions: ['member:manage'] };
+
+  it('workspace: người xem thường nhận bản rút gọn; member:manage / admin hệ thống / nội bộ (không viewer) nhận đủ', async () => {
+    const svc = setup();
+    const [a] = await svc.listWorkspace('w1', plain);
+    expect(a!.user).not.toHaveProperty('isSystemAdmin');
+    expect(a!.user).not.toHaveProperty('lastSeenAt');
+    expect((await svc.listWorkspace('w1', manager))[0]!.user).toMatchObject({
+      isSystemAdmin: true,
+      lastSeenAt: '2026-10-16T01:00:00.000Z',
+    });
+    expect(
+      (await svc.listWorkspace('w1', { id: 'v', isSystemAdmin: true }))[0]!.user,
+    ).toHaveProperty('lastSeenAt');
+    expect((await svc.listWorkspace('w1'))[0]!.user).toHaveProperty('lastSeenAt');
+  });
+
+  it('dự án: cùng quy tắc', async () => {
+    const svc = setup();
+    expect((await svc.listProject('w1', 'p1', plain))[0]!.user).not.toHaveProperty('lastSeenAt');
+    expect((await svc.listProject('w1', 'p1', manager))[0]!.user).toHaveProperty('lastSeenAt');
+  });
+});

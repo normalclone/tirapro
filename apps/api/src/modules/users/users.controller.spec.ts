@@ -45,3 +45,39 @@ describe('UsersController.changePassword', () => {
     expect(events.emit).not.toHaveBeenCalled();
   });
 });
+
+describe('UsersController.list — truyền truy vấn xuống service', () => {
+  const run = async (
+    query: Record<string, string | undefined>,
+    viewer: Record<string, unknown>,
+  ) => {
+    const users = { listWorkspaceMembers: vi.fn((..._a: unknown[]) => Promise.resolve([])) };
+    const ctrl = new UsersController(users as never, {} as never, {} as never, {} as never);
+    await ctrl.list(
+      'w1',
+      viewer as never,
+      query.search,
+      query.projectId,
+      query.limit,
+      query.includeInactive,
+    );
+    return users.listWorkspaceMembers.mock.calls[0] as unknown[];
+  };
+
+  it('search/projectId/limit/includeInactive đi nguyên xuống service; includeInactive chỉ khi đúng chuỗi "true"', async () => {
+    const [ws, viewerId, q] = await run(
+      { search: 'an', projectId: 'p1', limit: '120', includeInactive: 'true' },
+      { id: 'u1', permissions: [] },
+    );
+    expect([ws, viewerId]).toEqual(['w1', 'u1']);
+    expect(q).toEqual({ search: 'an', projectId: 'p1', limit: 120, includeInactive: true });
+    const [, , q2] = await run({ includeInactive: 'yes', limit: 'abc' }, { id: 'u1' });
+    expect(q2).toMatchObject({ includeInactive: false, limit: undefined, projectId: undefined });
+  });
+
+  it('privileged chỉ với member:manage hoặc admin hệ thống', async () => {
+    expect((await run({}, { id: 'u1', permissions: ['member:manage'] }))[3]).toBe(true);
+    expect((await run({}, { id: 'u1', isSystemAdmin: true }))[3]).toBe(true);
+    expect((await run({}, { id: 'u1', permissions: ['workspace:view'] }))[3]).toBe(false);
+  });
+});
