@@ -3,6 +3,7 @@ import {
   countTasks,
   extractIssueKeys,
   isIssueKey,
+  matchIssueKeys,
   extractMentionIds,
   listTaskItems,
   mentionToken,
@@ -118,5 +119,30 @@ describe('isIssueKey', () => {
       expect(isIssueKey(k)).toBe(true);
     for (const k of ['JRA', 'JRA-', '-1', 'Xem JRA-1', 'JRA-1 ', 'thanh toán', '', 'DEMO-BUG'])
       expect(isIssueKey(k)).toBe(false);
+  });
+});
+
+describe('matchIssueKeys — vị trí thật của mã (không lookbehind)', () => {
+  it('trả key + index đúng dù ranh giới trước là ký tự bị tiêu thụ; mã liền nhau cách một dấu phẩy/khoảng trắng đều khớp', () => {
+    const text = 'Xem DEMO-1,DEMO-BUG-2 (PROJ-3) và MY_APP-12';
+    expect(matchIssueKeys(text)).toEqual([
+      { key: 'DEMO-1', index: 4 },
+      { key: 'DEMO-BUG-2', index: 11 },
+      { key: 'PROJ-3', index: 23 },
+      { key: 'MY_APP-12', index: 34 },
+    ]);
+    for (const m of matchIssueKeys(text))
+      expect(text.slice(m.index, m.index + m.key.length)).toBe(m.key);
+  });
+
+  it('mã ở đầu chuỗi khớp; chữ/số/_/- liền trước hoặc liền sau thì không (kiểu mặc định)', () => {
+    expect(matchIssueKeys('DEMO-5').map((m) => m.index)).toEqual([0]);
+    expect(matchIssueKeys('abcDEMO-9 x_APP-12 DEMO-5-fix -DEMO-5')).toEqual([]);
+  });
+
+  it('kiểu nhúng cho phép "-" liền kề nhưng vẫn cấm chữ/số/_', () => {
+    expect(matchIssueKeys('feature/DEMO-5-login', true)).toEqual([{ key: 'DEMO-5', index: 8 }]);
+    expect(matchIssueKeys('fix-DEMO-7', true)).toEqual([{ key: 'DEMO-7', index: 4 }]);
+    expect(matchIssueKeys('x_APP-12 fooDEMO-9', true)).toEqual([]);
   });
 });
