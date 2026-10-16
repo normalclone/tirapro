@@ -57,10 +57,11 @@ export function ProjectCommandGroup({
       heading={`Dự án ${project?.name ?? projectKey}`}
       className="text-faint [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-faint"
     >
-      {commands.map((c) => (
+      {commands.map((c, i) => (
         <ActionItem
           key={c.id}
-          value={c.keywords}
+          // Hậu tố thứ tự (không phải id thật) để hai lệnh trùng từ khoá — vd hai sprint cùng tên — không trùng `value` của cmdk.
+          value={`${c.keywords} ~${i}`}
           icon={ICONS[c.icon]}
           label={c.label}
           onSelect={() => runAction(() => navigate(c.to))}
