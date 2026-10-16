@@ -1417,9 +1417,15 @@ export class IssuesService {
     // Cả lô là MỘT "lần sửa hàng loạt": mỗi ISSUE_UPDATED mang `batch` để Telegram bỏ qua từng việc (gửi một tin gộp qua
     // ISSUES_BULK_UPDATED) và automation gộp thông báo. KHÔNG dùng `bulk: true` — cờ đó là "hệ thống phát hàng loạt" (thông
     // báo "được giao"/theo dõi/automation bỏ qua hẳn), còn người dùng sửa hàng loạt vẫn phải báo người được giao.
-    const touched = new Set<string>(); // việc có ISSUE_UPDATED (đổi trạng thái thuần túy đã có ISSUE_TRANSITIONED riêng)
+    // `touched` = mọi việc của lô có thay đổi người dùng thấy (đổi trường theo dõi, nhãn HOẶC chỉ đổi trạng thái): cả
+    // ISSUE_TRANSITIONED lẫn ISSUE_UPDATED của lô mang `batch`, và Telegram nhận một tin gộp cho cả lô.
+    const touched = new Set<string>();
     for (const { before, after } of changed)
-      if (changedFieldsOf(before, after).length > 0 || labelSet.has(after.id))
+      if (
+        changedFieldsOf(before, after).length > 0 ||
+        before.statusId !== after.statusId ||
+        labelSet.has(after.id)
+      )
         touched.add(after.id);
     for (const id of labelSet) touched.add(id);
     const batch = { id: randomUUID(), size: touched.size };
@@ -1432,6 +1438,7 @@ export class IssuesService {
           issue: dto,
           actorId: userId,
           fromStatusId: before.statusId,
+          batch,
         });
       }
       // Đổi thêm assignee/priority/sprint cùng lúc với status: vẫn phải có ISSUE_UPDATED

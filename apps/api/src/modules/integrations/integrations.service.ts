@@ -420,6 +420,8 @@ export class IntegrationsService {
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_TRANSITIONED)
   async onIssueTransitioned(payload: IssueEventPayload): Promise<void> {
+    // Cùng ISSUE_UPDATED: lô sửa hàng loạt đã có MỘT tin gộp (`onIssuesBulkUpdated`); hệ thống phát hàng loạt thì im.
+    if (payload?.bulk || payload?.batch) return;
     await this.dispatchIssue(payload, 'STATUS_CHANGED');
   }
 

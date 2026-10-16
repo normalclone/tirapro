@@ -561,4 +561,21 @@ describe('RuleEngineService — việc chưa duyệt + sửa hàng loạt (S-I1,
     });
     expect(rules.activeFor).toHaveBeenCalled();
   });
+
+  it('N1: ISSUE_TRANSITIONED của lô sửa hàng loạt vẫn chạy quy tắc và chuyển `batch` xuống runRule (notify gộp như ISSUE_UPDATED)', async () => {
+    const { engine } = setup(
+      makeRule({ trigger: 'ISSUE_TRANSITIONED', triggerConfig: {}, conditions: [] }),
+    );
+    const runRule = vi
+      .spyOn(engine as unknown as { runRule: (i: unknown) => Promise<void> }, 'runRule')
+      .mockResolvedValue(undefined);
+    await engine.onIssueTransitioned({
+      issue: issueDto() as never,
+      actorId: 'u1',
+      batch: { id: 'b1', size: 30 },
+    });
+    expect(runRule).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: 'ISSUE_TRANSITIONED', batch: { id: 'b1', size: 30 } }),
+    );
+  });
 });

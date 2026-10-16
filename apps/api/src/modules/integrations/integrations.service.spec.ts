@@ -422,6 +422,15 @@ describe('IntegrationsService — sửa hàng loạt không spam kênh (D-I2)', 
     expect(telegram.send).toHaveBeenCalledTimes(1);
   });
 
+  it('N1: ISSUE_TRANSITIONED có bulk/batch => không gửi từng việc; chuyển trạng thái đơn lẻ vẫn gửi', async () => {
+    const { service, telegram } = setup({ kind: 'global' }, integ({ channels: [ch] }));
+    await service.onIssueTransitioned({ ...payload, bulk: true });
+    await service.onIssueTransitioned({ ...payload, batch: { id: 'b1', size: 30 } });
+    expect(telegram.send).not.toHaveBeenCalled();
+    await service.onIssueTransitioned(payload);
+    expect(telegram.send).toHaveBeenCalledTimes(1);
+  });
+
   it('việc chưa duyệt (PENDING/SNOOZED/DECLINED) không đẩy ISSUE_UPDATED lên kênh; ACCEPTED/không qua duyệt thì có', async () => {
     const { service, telegram } = setup({ kind: 'global' }, integ({ channels: [ch] }));
     for (const triageState of ['PENDING', 'SNOOZED', 'DECLINED'])

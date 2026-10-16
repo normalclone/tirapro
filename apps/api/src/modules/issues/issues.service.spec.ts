@@ -815,7 +815,8 @@ describe('IssuesService.bulkUpdate', () => {
     });
     expect(res.updated).toHaveLength(2);
     expect(tx.issueHistory.create).toHaveBeenCalledTimes(2);
-    expect(events.emit).toHaveBeenCalledTimes(2);
+    // 2 ISSUE_TRANSITIONED (cùng batch) + 1 ISSUES_BULK_UPDATED gộp cho cả lô (N1).
+    expect(events.emit).toHaveBeenCalledTimes(3);
     expect(events.emit).toHaveBeenCalledWith(
       'issue.transitioned',
       expect.objectContaining({ fromStatusId: 's1' }),
@@ -2416,8 +2417,8 @@ describe('IssuesService.bulkUpdate — đổi status cùng field khác', () => {
     order: 1,
     isInitial: false,
   };
-  function tx2(afterOver: Record<string, unknown>) {
-    const rows = [issueRow({ id: 'a' })];
+  function tx2(afterOver: Record<string, unknown>, ids: string[] = ['a']) {
+    const rows = ids.map((id) => issueRow({ id }));
     return {
       issue: {
         findMany: vi.fn(() => Promise.resolve(rows)),
@@ -2463,7 +2464,39 @@ describe('IssuesService.bulkUpdate — đổi status cùng field khác', () => {
       items: [{ id: 'a', version: 3 }],
       patch: { statusId: 's2' },
     });
-    expect(events.emit.mock.calls.map((c) => c[0] as string)).toEqual(['issue.transitioned']);
+    // N1: status-only cũng thuộc lô — TRANSITIONED mang `batch` + MỘT ISSUES_BULK_UPDATED (Telegram gộp 1 tin).
+    expect(events.emit.mock.calls.map((c) => c[0] as string)).toEqual([
+      'issue.transitioned',
+      'issue.bulk_updated',
+    ]);
+    expect(events.emit).toHaveBeenCalledWith(
+      'issue.transitioned',
+      expect.objectContaining({
+        actorId: 'u1',
+        batch: { id: expect.any(String) as string, size: 1 },
+      }),
+    );
+  });
+
+  it('N1: lô 30 việc chỉ đổi status => 30 TRANSITIONED cùng batch {id,size:30} + đúng MỘT ISSUES_BULK_UPDATED count 30', async () => {
+    const ids = Array.from({ length: 30 }, (_, i) => `i${i}`);
+    const tx = tx2({ statusId: 's2', status: stage2 }, ids);
+    const { service, events, rbac } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition']));
+    await service.bulkUpdate('w1', 'u1', {
+      projectId: 'p1',
+      items: ids.map((id) => ({ id, version: 3 })),
+      patch: { statusId: 's2' },
+    });
+    const calls = events.emit.mock.calls as unknown as Array<[string, Record<string, unknown>]>;
+    const transitioned = calls.filter(([n]) => n === 'issue.transitioned').map(([, p]) => p);
+    expect(transitioned).toHaveLength(30);
+    const batchId = (transitioned[0]!.batch as { id: string }).id;
+    for (const p of transitioned) expect(p.batch).toEqual({ id: batchId, size: 30 });
+    expect(calls.filter(([n]) => n === 'issue.updated')).toHaveLength(0);
+    const summary = calls.filter(([n]) => n === 'issue.bulk_updated');
+    expect(summary).toHaveLength(1);
+    expect(summary[0]![1]).toMatchObject({ projectId: 'p1', actorId: 'u1', count: 30 });
   });
 });
 
