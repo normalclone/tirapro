@@ -234,10 +234,10 @@ function ProjectList({
               </span>
             </div>
             <span className="relative z-10 flex items-center gap-3 text-sm">
-              <Link to={`/p/${p.key}/board`} className="text-primary hover:underline">
+              <Link to={`/p/${p.key}/board`} className="py-1.5 text-primary hover:underline">
                 {TERM.board}
               </Link>
-              <Link to={`/p/${p.key}/backlog`} className="text-primary hover:underline">
+              <Link to={`/p/${p.key}/backlog`} className="py-1.5 text-primary hover:underline">
                 {TERM.backlog}
               </Link>
             </span>
