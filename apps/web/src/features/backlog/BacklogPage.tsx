@@ -893,9 +893,11 @@ export function BacklogPage() {
             />
             <div
               ref={setScrollEl}
+              // Xem nhanh mở → cột danh sách hẹp lại: dòng ẩn nhãn + tên người phụ trách (xem `group-data-[peeking]/list` ở IssueRow).
+              data-peeking={peek.peekKey ? '' : undefined}
               // Có thanh hàng loạt: chừa đáy danh sách trên mobile để cuộn dòng cuối lên khỏi thanh.
               className={cn(
-                'min-w-0 flex-1 space-y-4 overflow-y-auto p-3 pb-24 sm:p-6 sm:pb-24',
+                'group/list min-w-0 flex-1 space-y-4 overflow-y-auto p-3 pb-24 sm:p-6 sm:pb-24',
                 selected.size > 0 && 'max-sm:pb-28',
               )}
             >

@@ -78,6 +78,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   VALIDATION_ERROR: 'Thông tin nhập chưa hợp lệ — kiểm tra lại các ô được đánh dấu.',
   RANK_NEIGHBORS_STALE:
     'Thứ tự công việc vừa thay đổi do người khác — danh sách đã được nạp lại, hãy kéo thả lại.',
+  ALREADY_MEMBER: 'Người này đã là thành viên.',
+  LAST_WORKSPACE_ADMIN: 'Không thể hạ hoặc gỡ quản trị viên cuối cùng của không gian làm việc.',
   RATE_LIMITED: 'Bạn thao tác hơi nhanh. Chờ vài giây rồi thử lại.',
   WORKFLOW_TRANSITION_INVALID:
     'Quy trình không cho chuyển thẳng sang trạng thái này. Hãy chọn một trạng thái trong danh sách gợi ý.',

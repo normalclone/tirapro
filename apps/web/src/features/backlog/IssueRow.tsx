@@ -29,7 +29,7 @@ import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
 function RowLabels({ labels }: { labels: IssueDto['labels'] }) {
   if (!labels || labels.length === 0) return null;
   return (
-    <span className="hidden shrink-0 items-center gap-1 lg:flex">
+    <span className="hidden shrink-0 items-center gap-1 lg:flex group-data-[peeking]/list:!hidden">
       {labels.slice(0, 2).map((l) => (
         <span
           key={l.id}
@@ -202,7 +202,7 @@ export function IssueRowBody({
           title={`Người phụ trách: ${issue.assignee.displayName}`}
         >
           <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={20} />
-          <span className="hidden max-w-[9rem] truncate text-xs text-muted md:inline">
+          <span className="hidden max-w-[9rem] truncate text-xs text-muted md:inline group-data-[peeking]/list:!hidden">
             {issue.assignee.displayName}
           </span>
         </span>
