@@ -40,6 +40,11 @@ export const keys = {
     comments: (issueId: string) => ['issues', 'comments', issueId] as const,
     devLinks: (issueId: string) => ['issues', 'dev-links', issueId] as const,
     activity: (issueId: string) => ['issues', 'activity', issueId] as const,
+    /** Lịch sử đã lọc theo loại (CSV `HistoryField`) — mở rộng `activity` để invalidate theo tiền tố vẫn trúng. */
+    activityFiltered: (issueId: string, fields: string) =>
+      ['issues', 'activity', issueId, fields] as const,
+    activityDetail: (issueId: string, id: string) =>
+      ['issues', 'activity-detail', issueId, id] as const,
     watch: (issueId: string) => ['issues', 'watch', issueId] as const,
     watchers: (issueId: string) => ['issues', 'watchers', issueId] as const,
     links: (issueId: string) => ['issues', 'links', issueId] as const,
