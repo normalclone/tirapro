@@ -10,6 +10,8 @@ export interface DaySpan {
 export const NO_SCHEDULE_PERM_HINT = 'Chỉ người tạo việc hoặc quản trị mới đổi được ngày';
 
 export type DragEdge = 'start' | 'end';
+/** Kiểu kéo: thân = dời cả khoảng; mép = đổi một đầu. */
+export type DragMode = 'move' | DragEdge;
 
 /** Px kéo ngang → số ngày nguyên (nhảy theo ngày). `-0` chuẩn hoá về `0`. */
 export function pxToDays(dx: number, dayW: number): number {
@@ -33,7 +35,7 @@ export function resizeSpan(span: DaySpan, edge: DragEdge, deltaDays: number): Da
 }
 
 /** Áp kiểu kéo lên khoảng gốc: thân = dời, mép = co giãn. */
-export function applyDrag(span: DaySpan, mode: 'move' | DragEdge, deltaDays: number): DaySpan {
+export function applyDrag(span: DaySpan, mode: DragMode, deltaDays: number): DaySpan {
   return mode === 'move' ? shiftSpan(span, deltaDays) : resizeSpan(span, mode, deltaDays);
 }
 
@@ -105,4 +107,59 @@ export function buildUnscheduledPatch(start: string, due: string): UnscheduledPa
   if (start) patch.startDate = dayToIso(start, 'start');
   if (due) patch.dueDate = dayToIso(due, 'end');
   return patch;
+}
+
+/**
+ * Kẹp số ngày để thanh ở trong thước thời gian `0..lastOff` (offset ngày của hai đầu thanh = `sOff`, `eOff`):
+ * dời không vượt hai đầu thước; mép trái không qua đầu thước/mép phải; mép phải không dưới mép trái/qua cuối thước.
+ */
+export function clampDelta(
+  sOff: number,
+  eOff: number,
+  lastOff: number,
+  mode: DragMode,
+  delta: number,
+): number {
+  if (mode === 'move') return Math.max(-sOff, Math.min(lastOff - eOff, delta));
+  if (mode === 'start') return Math.max(-sOff, Math.min(eOff - sOff, delta));
+  return Math.max(sOff - eOff, Math.min(lastOff - eOff, delta));
+}
+
+/**
+ * Phím mũi tên trên thanh: Shift+←/→ dời cả thanh ±1 ngày, Alt+←/→ đổi hạn, Alt+Shift+←/→ đổi bắt đầu.
+ * Mũi tên trần (không phím bổ trợ) trả `null` để không cướp phím cuộn/điều hướng.
+ */
+export function keyToDrag(e: {
+  key: string;
+  shiftKey: boolean;
+  altKey: boolean;
+}): { mode: DragMode; dir: 1 | -1 } | null {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return null;
+  const dir = e.key === 'ArrowRight' ? 1 : -1;
+  if (e.altKey && e.shiftKey) return { mode: 'start', dir };
+  if (e.altKey) return { mode: 'end', dir };
+  if (e.shiftKey) return { mode: 'move', dir };
+  return null;
+}
+
+/**
+ * Thứ tự hàng: mặc định theo ngày bắt đầu rồi kết thúc. Sau khi người dùng kéo/đổi ngày, `frozen` (thứ tự id lúc đó)
+ * giữ nguyên hàng — thanh vừa thả không nhảy sang hàng khác; việc chưa có trong `frozen` xếp sau theo ngày.
+ */
+export function orderSpans<T extends { id: string; start: Date; end: Date }>(
+  spans: readonly T[],
+  frozen: readonly string[] | null,
+): T[] {
+  const byDate = (a: T, b: T) =>
+    a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime();
+  if (!frozen) return [...spans].sort(byDate);
+  const rank = new Map(frozen.map((id, i) => [id, i]));
+  return [...spans].sort((a, b) => {
+    const ra = rank.get(a.id);
+    const rb = rank.get(b.id);
+    if (ra !== undefined && rb !== undefined) return ra - rb;
+    if (ra !== undefined) return -1;
+    if (rb !== undefined) return 1;
+    return byDate(a, b);
+  });
 }

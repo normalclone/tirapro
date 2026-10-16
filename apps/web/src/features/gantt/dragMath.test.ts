@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   applyDrag,
   buildUnscheduledPatch,
+  clampDelta,
+  keyToDrag,
+  orderSpans,
   pxToDays,
   resizeSpan,
   shiftSpan,
@@ -98,5 +101,65 @@ describe('buildUnscheduledPatch', () => {
     expect(buildUnscheduledPatch('2026-10-16', '')).toEqual({
       startDate: new Date(2026, 9, 16, 0, 0).toISOString(),
     });
+  });
+});
+
+describe('clampDelta — giữ thanh trong thước thời gian', () => {
+  // thanh chiếm ngày 3..5 trên thước 0..9
+  it('dời: không vượt hai đầu thước', () => {
+    expect(clampDelta(3, 5, 9, 'move', -10)).toBe(-3);
+    expect(clampDelta(3, 5, 9, 'move', 10)).toBe(4);
+    expect(clampDelta(3, 5, 9, 'move', 2)).toBe(2);
+  });
+  it('mép trái: không qua đầu thước và không vượt mép phải; mép phải: không dưới mép trái và không qua cuối thước', () => {
+    expect(clampDelta(3, 5, 9, 'start', -9)).toBe(-3);
+    expect(clampDelta(3, 5, 9, 'start', 9)).toBe(2);
+    expect(clampDelta(3, 5, 9, 'end', -9)).toBe(-2);
+    expect(clampDelta(3, 5, 9, 'end', 9)).toBe(4);
+  });
+  it('cộng dồn phím: kẹp theo tổng số ngày đã bấm (giữ phím không chạy ra ngoài thước)', () => {
+    let acc = 0;
+    for (let i = 0; i < 10; i++) acc = clampDelta(3, 5, 9, 'move', acc + 1);
+    expect(acc).toBe(4);
+  });
+});
+
+describe('keyToDrag — phím mũi tên trên thanh', () => {
+  const k = (key: string, shiftKey = false, altKey = false) => ({ key, shiftKey, altKey });
+  it('Shift = dời cả thanh, Alt = đổi hạn, Alt+Shift = đổi bắt đầu', () => {
+    expect(keyToDrag(k('ArrowRight', true))).toEqual({ mode: 'move', dir: 1 });
+    expect(keyToDrag(k('ArrowLeft', true))).toEqual({ mode: 'move', dir: -1 });
+    expect(keyToDrag(k('ArrowRight', false, true))).toEqual({ mode: 'end', dir: 1 });
+    expect(keyToDrag(k('ArrowLeft', true, true))).toEqual({ mode: 'start', dir: -1 });
+  });
+  it('mũi tên trần hoặc phím khác → null (không cướp phím của trang)', () => {
+    expect(keyToDrag(k('ArrowRight'))).toBeNull();
+    expect(keyToDrag(k('ArrowUp', true))).toBeNull();
+    expect(keyToDrag(k('a', true))).toBeNull();
+  });
+});
+
+describe('orderSpans — thứ tự hàng ổn định sau khi thả', () => {
+  const s = (id: string, start: string, end = start) => ({ id, start: d(start), end: d(end) });
+  const a = s('a', '2026-10-10');
+  const b = s('b', '2026-10-12');
+  const c = s('c', '2026-10-14');
+  it('không đóng băng: sắp theo ngày bắt đầu rồi kết thúc', () => {
+    expect(orderSpans([c, a, b], null).map((x) => x.id)).toEqual(['a', 'b', 'c']);
+  });
+  it('đóng băng: thanh vừa kéo sang ngày muộn vẫn ở hàng cũ', () => {
+    const moved = s('a', '2026-10-20');
+    expect(orderSpans([moved, b, c], ['a', 'b', 'c']).map((x) => x.id)).toEqual(['a', 'b', 'c']);
+  });
+  it('việc mới (chưa có trong danh sách đóng băng) xếp sau, theo ngày', () => {
+    const n1 = s('n1', '2026-10-13');
+    const n0 = s('n0', '2026-10-01');
+    expect(orderSpans([n1, n0, c, a, b], ['a', 'b', 'c']).map((x) => x.id)).toEqual([
+      'a',
+      'b',
+      'c',
+      'n0',
+      'n1',
+    ]);
   });
 });
