@@ -6,6 +6,7 @@ function setup(
   updateManyCounts: number[],
   row: Record<string, unknown> | null,
   successor: Record<string, unknown> | null = null,
+  owner: Record<string, unknown> | null = { sessionsRevokedAt: null },
 ) {
   const updateMany = vi.fn((_args: { where: Record<string, unknown> }) =>
     Promise.resolve({ count: 0 }),
@@ -19,6 +20,7 @@ function setup(
       findUniqueOrThrow: vi.fn(() => Promise.resolve(row)),
       create: vi.fn(() => Promise.resolve({})),
     },
+    user: { findUnique: vi.fn(() => Promise.resolve(owner)) },
   };
   const config = {
     get: (k: string) =>
@@ -136,5 +138,23 @@ describe('TokenService.signAccess — mốc cấp token', () => {
     expect(payload.iatMs).toBeGreaterThanOrEqual(before);
     expect(payload.iatMs).toBeLessThanOrEqual(Date.now());
     expect(payload.iat).toBe(Math.floor(payload.iatMs / 1000));
+  });
+});
+
+describe('TokenService.rotateRefresh — race với thu hồi phiên', () => {
+  const created = new Date(1_000_000);
+  const live = { id: 'r1', userId: 'u1', family: 'fam1', tokenHash: 'h', createdAt: created };
+
+  it('thu hồi COMMIT sau khi token cũ sinh ra nhưng trước khi token mới được cấp -> từ chối và thu hồi family', async () => {
+    const { service, prisma } = setup([1], live, null, { sessionsRevokedAt: new Date(1_500_000) });
+    await expect(service.rotateRefresh('fam1.rawtoken', {})).rejects.toThrow(/thu hồi/);
+    const calls = prisma.refreshToken.updateMany.mock.calls.map((c) => c[0].where);
+    expect(calls).toContainEqual({ family: 'fam1', revokedAt: null });
+  });
+
+  it('mốc thu hồi cũ hơn token (đã đăng nhập lại sau đó) -> xoay bình thường', async () => {
+    const { service } = setup([1], live, null, { sessionsRevokedAt: new Date(500_000) });
+    const res = await service.rotateRefresh('fam1.rawtoken', {});
+    expect(res.newToken!.startsWith('fam1.')).toBe(true);
   });
 });

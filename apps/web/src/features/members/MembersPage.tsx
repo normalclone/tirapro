@@ -250,9 +250,12 @@ function MemberRow({
           {isSelf && <span className="ml-1.5 text-xs font-normal text-faint">(bạn)</span>}
         </p>
         <p className="truncate text-xs text-faint">{user.email}</p>
-        <p className="truncate text-xs text-faint">
-          {user.lastSeenAt ? `Hoạt động ${fmtRelative(user.lastSeenAt)}` : 'Chưa từng đăng nhập'}
-        </p>
+        {/* Hoạt động của người khác chỉ hiện cho người quản lý thành viên (không phô cho vai Người xem). */}
+        {canManage && (
+          <p className="truncate text-xs text-faint">
+            {user.lastSeenAt ? `Hoạt động ${fmtRelative(user.lastSeenAt)}` : 'Chưa từng đăng nhập'}
+          </p>
+        )}
       </div>
 
       <div

@@ -85,7 +85,7 @@ Thứ tự **duy nhất** cho mọi lần nâng cấp (bản đầu tiên của 
 | # | Bước | Lệnh | Khi nào |
 |---|---|---|---|
 | 0 | Sao lưu DB | `pg_dump` / snapshot của nhà cung cấp | Luôn, trước khi đụng DB prod |
-| 1 | Áp migration Prisma | `prisma migrate deploy` | Luôn. PR này không thêm migration riêng, nhưng **nếu prod chưa chạy 6 migration của base `22c116c` thì bước này áp cả 6** — xem "Bước 1" bên dưới |
+| 1 | Áp migration Prisma | `prisma migrate deploy` | Luôn. Đợt UX round 2 thêm migration (vd `user_sessions_revoked_at`, `system_roles_refresh`) và **nếu prod chưa chạy 6 migration của base `22c116c` thì bước này áp cả 6** — xem "Bước 1" bên dưới |
 | 2 | SQL thô (extension, `searchVector`, chỉ mục) | `pnpm --filter @tirapro/api run db:raw` | Luôn. **DB lớn: chạy TAY trong giờ thấp điểm TRƯỚC khi rollout image mới** (xem cảnh báo bên dưới) |
 | 3 | Mã hoá lại token/khoá bí mật khi ĐỔI `INTEGRATION_ENCRYPTION_KEY` | `integrations:rekey` | Chỉ khi đổi khoá (xem mục "đổi khoá mã hoá" bên dưới) |
 | 4 | Mã hoá khoá bí mật webhook automation cũ | `automation:seal-secrets` | Một lần, **sau khi bản mới đã ổn định** (xem cảnh báo rollback) |
@@ -93,9 +93,15 @@ Thứ tự **duy nhất** cho mọi lần nâng cấp (bản đầu tiên của 
 
 Render/Docker (`render.yaml` `startCommand`, `Dockerfile` `CMD`) tự chạy bước 1 + 2 mỗi lần khởi động; bước 3-4 luôn là thao tác tay.
 
+### Ghi chú phát hành — tài khoản & phiên đăng nhập
+
+- **Khoá tài khoản có hiệu lực ngay** (access token, refresh token, socket đang mở, API key của người đó). **Đặt lại mật khẩu, "Quên mật khẩu" hoàn tất, tự đổi mật khẩu và "Đăng xuất mọi thiết bị"** thu hồi mọi phiên web (access token cấp trước mốc thu hồi bị 401 ngay) và ngắt socket đang mở; tự đổi mật khẩu thì thiết bị đang đổi được cấp phiên mới.
+- **API key KHÔNG bị thu hồi** khi đổi mật khẩu / đăng xuất mọi thiết bị: key là thông tin xác thực riêng của tích hợp (MCP, script). Key chỉ bị chặn khi tài khoản chủ key bị **khoá** (cache xác thực bị xoá ngay) hoặc khi chủ key bị **gỡ khỏi không gian làm việc**. Nghi lộ key thì thu hồi trong Cài đặt → API.
+- Phiên đang chạy trên bản cũ không có claim `iatMs` — vẫn hợp lệ, chỉ bị so theo giây.
+
 ### Bước 1 — `migrate deploy`: 6 migration của base có thể chưa chạy trên prod
 
-Nhánh này không thêm migration, nhưng base `22c116c` có 6 migration mà prod có thể chưa từng áp: `sprint_sequence_unique`, `perf_indexes`, `mail_invite_reset`, `project_archive`, `worklog_rules`, `ai_log_index`. Kiểm bằng `prisma migrate status`. Nếu còn pending, `migrate deploy` sẽ áp chúng, hệ quả:
+Ngoài các migration của đợt UX round 2, base `22c116c` có 6 migration mà prod có thể chưa từng áp: `sprint_sequence_unique`, `perf_indexes`, `mail_invite_reset`, `project_archive`, `worklog_rules`, `ai_log_index`. Kiểm bằng `prisma migrate status`. Nếu còn pending, `migrate deploy` sẽ áp chúng, hệ quả:
 
 - **`project_archive`**: đặt `archivedAt = updatedAt` cho mọi dự án đang `isArchived` → các dự án đó trở thành **chỉ-đọc và bị ẩn** (thông báo cho quản trị dự án trước).
 - **`perf_indexes`**: `CREATE INDEX` thường (không `CONCURRENTLY`, vì chạy trong transaction migration) trên `"Issue"` → **khoá ghi bảng `Issue` trong lúc build index** (đọc vẫn được). Với bảng lớn hãy coi như cửa sổ bảo trì, cùng lúc với bước 2.

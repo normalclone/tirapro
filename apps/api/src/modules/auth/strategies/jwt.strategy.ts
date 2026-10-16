@@ -5,6 +5,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import type { AuthUser } from '../../../common/types/request';
 import type { AccessTokenPayload } from '../token.service';
+import { isSessionRevoked } from '../session-revocation';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
@@ -35,14 +36,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (!user || user.status === 'DEACTIVATED') {
       throw new UnauthorizedException('Tài khoản không hợp lệ');
     }
-    // Phiên bị thu hồi (khoá, đặt lại mật khẩu, đăng xuất mọi thiết bị): token cấp TRƯỚC mốc đó chết ngay,
-    // không chờ hết hạn. Ưu tiên `iatMs` (chính xác tới ms); token không có (cấp bởi bản cũ) chỉ có `iat` theo giây →
-    // coi như cấp ở cuối giây đó, nên token cấp cùng giây với mốc thu hồi vẫn hợp lệ.
-    if (user.sessionsRevokedAt) {
-      const issuedMs = payload.iatMs ?? (payload.iat ?? 0) * 1000 + 999;
-      if (issuedMs < user.sessionsRevokedAt.getTime()) {
-        throw new UnauthorizedException('Phiên đăng nhập đã bị thu hồi — hãy đăng nhập lại');
-      }
+    // Phiên bị thu hồi (khoá, đặt lại mật khẩu, đăng xuất mọi thiết bị): token cấp TRƯỚC mốc đó chết ngay.
+    if (isSessionRevoked(payload, user.sessionsRevokedAt)) {
+      throw new UnauthorizedException('Phiên đăng nhập đã bị thu hồi — hãy đăng nhập lại');
     }
     // Kiểm tra membership MỖI request (PK lookup rẻ): token còn hạn nhưng đã bị gỡ khỏi
     // workspace thì không được tiếp tục dùng. System admin được miễn.

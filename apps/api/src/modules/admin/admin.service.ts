@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { AUDIT_ACTIONS, SYSTEM_ROLES } from '@tirapro/types';
+import { AUDIT_ACTIONS, DOMAIN_EVENTS, SYSTEM_ROLES } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { offsetPage } from '../../common/dto/page-result';
 import { generateTempPassword } from '../../common/password';
 import { AuditService } from '../audit/audit.service';
+import { ApiKeyService } from '../api-keys/api-key.service';
 import { MembersService } from '../members/members.service';
 import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
 import type {
@@ -49,7 +51,26 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly members: MembersService,
+    private readonly apiKeys: ApiKeyService,
+    private readonly events: EventEmitter2,
   ) {}
+
+  /**
+   * Chặn bỏ / khoá admin hệ thống hoạt động CUỐI CÙNG. Khoá hàng admin đang hoạt động (`FOR UPDATE`) trong cùng
+   * transaction với thao tác ghi → hai admin khoá/hạ quyền lẫn nhau đồng thời sẽ xếp hàng, người thứ hai thấy tập đã co lại.
+   */
+  private async assertNotLastAdmin(tx: Prisma.TransactionClient, userId: string): Promise<void> {
+    const admins = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "User" WHERE "isSystemAdmin" = true AND "status" = 'ACTIVE' ORDER BY "id" FOR UPDATE`;
+    if (admins.some((a) => a.id === userId) && admins.length <= 1) {
+      throw new BusinessRuleException('Không thể bỏ admin hệ thống cuối cùng');
+    }
+  }
+
+  /** Sau khi thu hồi phiên: ngắt mọi socket đang mở của user (gateway lo cả node khác qua Redis adapter). */
+  private emitSessionsRevoked(userId: string): void {
+    this.events.emit(DOMAIN_EVENTS.ACCOUNT_SESSIONS_REVOKED, { userId });
+  }
 
   private toDto(u: Row) {
     return {
@@ -142,15 +163,19 @@ export class AdminService {
     if (input.status && input.status !== found.status) {
       await this.setStatus(actorId, id, input.status);
     }
-    const updated = await this.prisma.user.update({
-      where: { id },
-      data: {
-        displayName: input.displayName,
-        isSystemAdmin: input.isSystemAdmin,
-        canCreateWorkspace: input.canCreateWorkspace,
-      },
-      select: USER_SELECT,
-    });
+    const data = {
+      displayName: input.displayName,
+      isSystemAdmin: input.isSystemAdmin,
+      canCreateWorkspace: input.canCreateWorkspace,
+    };
+    // Hạ quyền admin hệ thống (kể cả tự hạ) cũng không được để hệ thống hết admin → cùng bộ chặn với khoá admin cuối.
+    const demoting = input.isSystemAdmin === false && found.isSystemAdmin;
+    const updated = demoting
+      ? await this.prisma.$transaction(async (tx) => {
+          await this.assertNotLastAdmin(tx, id);
+          return tx.user.update({ where: { id }, data, select: USER_SELECT });
+        })
+      : await this.prisma.user.update({ where: { id }, data, select: USER_SELECT });
     // Đổi quyền hệ thống (admin hệ thống / được lập workspace) — thao tác quản trị giá trị cao nhất.
     const permChanges: string[] = [];
     if (input.isSystemAdmin !== undefined && input.isSystemAdmin !== found.isSystemAdmin) {
@@ -201,17 +226,10 @@ export class AdminService {
       if (found.email === SYSTEM_USER_EMAIL) {
         throw new BusinessRuleException('Không thể vô hiệu hoá tài khoản hệ thống của tự động hoá');
       }
-      if (found.isSystemAdmin) {
-        const activeAdmins = await this.prisma.user.count({
-          where: { isSystemAdmin: true, status: 'ACTIVE' },
-        });
-        if (activeAdmins <= 1) {
-          throw new BusinessRuleException('Không thể vô hiệu hoá admin hệ thống cuối cùng');
-        }
-      }
     }
     await this.prisma.$transaction(async (tx) => {
       const now = new Date();
+      if (deactivate && found.isSystemAdmin) await this.assertNotLastAdmin(tx, id);
       await tx.user.update({
         where: { id },
         data: deactivate ? { status, sessionsRevokedAt: now } : { status },
@@ -221,8 +239,15 @@ export class AdminService {
           where: { userId: id, revokedAt: null },
           data: { revokedAt: now },
         });
+        // Liên kết "quên mật khẩu" đã gửi trước đó không được dùng để lách khoá.
+        await tx.passwordResetToken.deleteMany({ where: { userId: id, usedAt: null } });
       }
     });
+    if (deactivate) {
+      // API key của họ chặn NGAY (không đợi cache 60s) + ngắt socket đang mở. Key không bị thu hồi: mở khoá là dùng lại được.
+      await this.apiKeys.dropCachesForUser(id);
+      this.emitSessionsRevoked(id);
+    }
     // Thao tác quản trị toàn hệ thống → workspaceId null (xem ở /admin/system).
     await this.audit.record({
       actorId,
@@ -258,7 +283,10 @@ export class AdminService {
         where: { userId: id, revokedAt: null },
         data: { revokedAt: now },
       });
+      // Liên kết "quên mật khẩu" đang chờ phải chết: nếu không, ai giữ link cũ vẫn đặt được mật khẩu mới.
+      await tx.passwordResetToken.deleteMany({ where: { userId: id, usedAt: null } });
     });
+    this.emitSessionsRevoked(id);
     await this.audit.record({
       actorId,
       workspaceId: null,
@@ -286,6 +314,7 @@ export class AdminService {
       });
       return res.count;
     });
+    this.emitSessionsRevoked(id);
     await this.audit.record({
       actorId,
       workspaceId: null,

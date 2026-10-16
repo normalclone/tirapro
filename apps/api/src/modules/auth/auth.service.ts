@@ -1,7 +1,8 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createId } from '@paralleldrive/cuid2';
-import { SYSTEM_ROLES, type PermissionKey } from '@tirapro/types';
+import { DOMAIN_EVENTS, SYSTEM_ROLES, type PermissionKey } from '@tirapro/types';
 import type { LoginInput, RegisterInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
@@ -21,6 +22,7 @@ export class AuthService {
     private readonly rbac: RbacService,
     private readonly bootstrap: WorkspaceBootstrapService,
     private readonly settings: SystemSettingsService,
+    private readonly events: EventEmitter2,
   ) {}
 
   async register(input: RegisterInput, meta: RefreshMeta) {
@@ -156,6 +158,8 @@ export class AuthService {
       });
       await tx.user.update({ where: { id: userId }, data: { sessionsRevokedAt: now } });
     });
+    // Ngắt mọi socket đang mở của user (kể cả thiết bị này — web đăng xuất ngay sau đó).
+    this.events.emit(DOMAIN_EVENTS.ACCOUNT_SESSIONS_REVOKED, { userId });
     return { success: true };
   }
 
@@ -261,6 +265,20 @@ export class AuthService {
     }
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     return this.issueSession(user, workspaceId, meta);
+  }
+
+  /**
+   * Cấp phiên mới (access + refresh) cho thiết bị đang dùng — sau khi chính user đổi mật khẩu (các phiên khác đã bị
+   * thu hồi bằng `sessionsRevokedAt`, phiên này không bị đăng xuất giữa chừng).
+   */
+  async reissueSession(userId: string, workspaceId: string | null, meta: RefreshMeta) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+    const access = this.tokens.signAccess(user, workspaceId);
+    const refreshToken = await this.tokens.issueRefresh(userId, null, meta);
+    return { ...access, refreshToken };
   }
 
   private async issueSession(

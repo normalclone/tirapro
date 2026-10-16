@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { DOMAIN_EVENTS } from '@tirapro/types';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
@@ -21,6 +23,7 @@ export class PasswordResetService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -91,12 +94,18 @@ export class PasswordResetService {
       });
       if (claim.count !== 1) throw new BusinessRuleException(INVALID_LINK);
 
-      await tx.user.update({ where: { id: row.userId }, data: { passwordHash } });
+      // `sessionsRevokedAt`: access token còn hạn của mật khẩu cũ chết ngay (không đợi hết 15 phút).
+      await tx.user.update({
+        where: { id: row.userId },
+        data: { passwordHash, sessionsRevokedAt: now },
+      });
       // Đổi mật khẩu = thu hồi mọi refresh token (mọi family) của user.
       await tx.refreshToken.updateMany({
         where: { userId: row.userId, revokedAt: null },
         data: { revokedAt: now },
       });
     });
+    // Ngắt socket đang mở của mật khẩu cũ (kể cả node khác qua Redis adapter).
+    this.events.emit(DOMAIN_EVENTS.ACCOUNT_SESSIONS_REVOKED, { userId: row.userId });
   }
 }

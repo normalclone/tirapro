@@ -50,6 +50,7 @@ function make() {
     {} as never,
     { bootstrap: vi.fn(() => Promise.resolve()) },
     { flags: () => ({ signupEnabled: true }) } as never,
+    { emit: vi.fn() } as never,
   );
   return { service, tx };
 }
@@ -102,14 +103,16 @@ function makeSession(userOverrides: Record<string, unknown> = {}) {
     rotateRefresh: vi.fn(() => Promise.resolve({ userId: 'u1', newToken: 'NEW' })),
     signAccess: vi.fn(() => ({ accessToken: 'AT', expiresIn: 900 })),
   };
+  const events = { emit: vi.fn() };
   const service = new AuthService(
     prisma as never,
     tokens as never,
     {} as never,
     {} as never,
     { flags: () => ({ signupEnabled: true }) } as never,
+    events as never,
   );
-  return { service, prisma, tx, tokens };
+  return { service, prisma, tx, tokens, events };
 }
 
 describe('AuthService.refresh — tài khoản bị khoá và hoạt động gần nhất', () => {
@@ -153,10 +156,23 @@ describe('AuthService.refresh — tài khoản bị khoá và hoạt động g�
   });
 });
 
+describe('AuthService.reissueSession', () => {
+  it('cấp access + refresh mới (family mới) cho thiết bị đang đổi mật khẩu', async () => {
+    const { service, tokens } = makeSession();
+    (tokens as unknown as { issueRefresh: unknown }).issueRefresh = vi.fn(() =>
+      Promise.resolve('NEWRT'),
+    );
+    const out = await service.reissueSession('u1', 'w1', {});
+    expect(out).toMatchObject({ accessToken: 'AT', refreshToken: 'NEWRT' });
+    expect(tokens.signAccess).toHaveBeenCalledWith(expect.objectContaining({ id: 'u1' }), 'w1');
+  });
+});
+
 describe('AuthService.logoutAll', () => {
   it('thu hồi mọi refresh token và đặt mốc sessionsRevokedAt', async () => {
-    const { service, tx } = makeSession();
+    const { service, tx, events } = makeSession();
     await expect(service.logoutAll('u1')).resolves.toEqual({ success: true });
+    expect(events.emit).toHaveBeenCalledWith('account.sessions_revoked', { userId: 'u1' });
     expect(tx.refreshToken.updateMany).toHaveBeenCalledWith({
       where: { userId: 'u1', revokedAt: null },
       data: { revokedAt: anyDate },

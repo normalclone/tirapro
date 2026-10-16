@@ -90,3 +90,34 @@ describe('ApiKeyService.revokeAllForUser / dropCaches', () => {
     expect(client.del).toHaveBeenCalledWith('apikey:ctx:p2');
   });
 });
+
+describe('ApiKeyService.dropCachesForUser — khoá tài khoản chặn key ngay', () => {
+  it('xoá cache của MỌI key còn hiệu lực của user (mọi workspace), không thu hồi key', async () => {
+    const { service, prisma, client } = setup();
+    await service.dropCachesForUser('U1');
+    expect(prisma.apiKey.findMany).toHaveBeenCalledWith({
+      where: { userId: 'U1', revokedAt: null },
+      select: { prefix: true },
+    });
+    expect(client.del).toHaveBeenCalledWith('apikey:ctx:p1');
+    expect(client.del).toHaveBeenCalledWith('apikey:ctx:p2');
+    expect(prisma.apiKey.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('key đã có cache hợp lệ: sau khi cache bị xoá, lượt dùng kế tiếp đọc lại DB và bị từ chối vì user DEACTIVATED', async () => {
+    const { service, client } = setup({ id: 'M1' }, 'DEACTIVATED');
+    // Trước khi khoá: cache trúng.
+    client.get.mockResolvedValueOnce(
+      JSON.stringify({
+        h: hashApiKeySecret(SECRET),
+        exp: null,
+        ctx: { keyId: 'K1', userId: 'U1', workspaceId: 'W1', scopes: ['write'] },
+      }) as never,
+    );
+    await expect(service.validate(RAW)).resolves.toMatchObject({ userId: 'U1' });
+    // setStatus(DEACTIVATED) → dropCachesForUser → cache rỗng → đọc DB.
+    await service.dropCachesForUser('U1');
+    client.get.mockResolvedValue(null);
+    await expect(service.validate(RAW)).resolves.toBeNull();
+  });
+});

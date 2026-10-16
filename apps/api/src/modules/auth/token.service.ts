@@ -136,6 +136,23 @@ export class TokenService {
 
     const row = await this.prisma.refreshToken.findUniqueOrThrow({ where: { tokenHash } });
     const newToken = await this.issueRefresh(row.userId, row.family, meta);
+    // Race với thu hồi phiên: nếu admin khoá / đặt lại mật khẩu / revoke COMMIT trong lúc ta xoay token, token mới có thể
+    // chèn SAU `updateMany` của họ. Kiểm lại SAU khi cấp: token cũ (đã giành được) sinh trước mốc thu hồi ⇒ không hợp lệ,
+    // thu hồi cả family vừa cấp. (Nếu thu hồi commit sau lúc cấp thì `updateMany` của họ đã thu hồi luôn token mới.)
+    const owner = await this.prisma.user.findUnique({
+      where: { id: row.userId },
+      select: { sessionsRevokedAt: true },
+    });
+    if (owner?.sessionsRevokedAt && row.createdAt.getTime() < owner.sessionsRevokedAt.getTime()) {
+      await this.prisma.refreshToken.updateMany({
+        where: { family: row.family, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      throw new UnauthorizedException({
+        code: ERROR_CODES.UNAUTHENTICATED,
+        message: 'Phiên đăng nhập đã bị thu hồi — hãy đăng nhập lại',
+      });
+    }
     return { userId: row.userId, newToken };
   }
 

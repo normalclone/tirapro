@@ -37,9 +37,10 @@ function makeGateway(projectRow: unknown = null, issueRow: unknown = null) {
   const emit = vi.fn();
   const to = vi.fn().mockReturnValue({ emit });
   const fetchSockets = vi.fn().mockResolvedValue([]);
-  const inRoom = vi.fn().mockReturnValue({ fetchSockets });
+  const disconnectSockets = vi.fn();
+  const inRoom = vi.fn().mockReturnValue({ fetchSockets, disconnectSockets });
   (gateway as unknown as { server: unknown }).server = { to, in: inRoom };
-  return { gateway, prisma, presence, jwt, config, to, emit, fetchSockets };
+  return { gateway, prisma, presence, jwt, config, to, emit, fetchSockets, disconnectSockets };
 }
 
 function makeClient(data: Record<string, unknown> = { userId: 'U1', workspaceId: 'W1' }) {
@@ -248,6 +249,70 @@ describe('RealtimeGateway.onSubscribe — membership bị gỡ sau handshake', (
       ok: false,
       error: 'FORBIDDEN',
     });
+  });
+});
+
+describe('RealtimeGateway — phiên bị thu hồi (sessionsRevokedAt)', () => {
+  const revokedAt = new Date(2_000_500);
+  function connect(token: Record<string, unknown>) {
+    const ctx = makeGateway();
+    ctx.jwt.verify.mockReturnValue({ sub: 'U1', workspaceId: 'W1', ...token });
+    ctx.prisma.user.findUnique.mockResolvedValue({
+      status: 'ACTIVE',
+      isSystemAdmin: false,
+      sessionsRevokedAt: revokedAt,
+    });
+    const client = { ...makeClient({}), handshake: { auth: { token: 't' }, headers: {} } };
+    return { ...ctx, client };
+  }
+
+  it('kết nối mới bằng token cấp TRƯỚC mốc thu hồi -> disconnect, không join room', async () => {
+    const { gateway, client } = connect({ iat: 2000, iatMs: 2_000_400 });
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+    expect(client.join).not.toHaveBeenCalled();
+  });
+
+  it('token cũ chỉ có iat (trước mốc theo giây) cũng bị từ chối', async () => {
+    const { gateway, client } = connect({ iat: 1000 });
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('token cấp SAU mốc thu hồi (đăng nhập lại) -> cho vào', async () => {
+    const { gateway, client } = connect({ iat: 2000, iatMs: 2_000_600 });
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).not.toHaveBeenCalled();
+    expect(client.join).toHaveBeenCalledWith('user:U1');
+  });
+
+  it('subscribe sau khi phiên bị thu hồi -> FORBIDDEN, không join', async () => {
+    const { gateway, prisma } = makeGateway({ id: 'P1' });
+    prisma.user.findUnique.mockResolvedValue({
+      status: 'ACTIVE',
+      isSystemAdmin: false,
+      sessionsRevokedAt: revokedAt,
+    });
+    const client = makeClient({ userId: 'U1', workspaceId: 'W1', iat: 2000, iatMs: 2_000_400 });
+    expect(await gateway.onSubscribe({ kind: 'project', id: 'P1' }, client as never)).toEqual({
+      ok: false,
+      error: 'FORBIDDEN',
+    });
+    expect(client.join).not.toHaveBeenCalled();
+  });
+
+  it('onSessionsRevoked ngắt mọi socket trong room user:<id> (qua adapter, kể cả node khác)', () => {
+    const { gateway, disconnectSockets } = makeGateway();
+    gateway.onSessionsRevoked({ userId: 'U1' });
+    const server = (gateway as unknown as { server: { in: ReturnType<typeof vi.fn> } }).server;
+    expect(server.in).toHaveBeenCalledWith('user:U1');
+    expect(disconnectSockets).toHaveBeenCalledWith(true);
+  });
+
+  it('onSessionsRevoked bỏ qua payload thiếu userId', () => {
+    const { gateway, disconnectSockets } = makeGateway();
+    gateway.onSessionsRevoked({});
+    expect(disconnectSockets).not.toHaveBeenCalled();
   });
 });
 

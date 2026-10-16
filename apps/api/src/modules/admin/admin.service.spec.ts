@@ -41,12 +41,23 @@ function setup(status = 'ACTIVE') {
       count: vi.fn(() => Promise.resolve(2)),
     },
     refreshToken: { updateMany: vi.fn(() => Promise.resolve({ count: 0 })) },
+    passwordResetToken: { deleteMany: vi.fn(() => Promise.resolve({ count: 0 })) },
+    $queryRaw: vi.fn(() => Promise.resolve([{ id: 'u1' }, { id: 'other' }])),
     $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(prisma))),
   };
   const audit = { record: vi.fn() };
+  const apiKeys = { dropCachesForUser: vi.fn(() => Promise.resolve()) };
+  const events = { emit: vi.fn() };
   return {
-    service: new AdminService(prisma as never, audit as never, {} as never),
+    service: new AdminService(
+      prisma as never,
+      audit as never,
+      {} as never,
+      apiKeys as never,
+      events as never,
+    ),
     audit,
+    prisma,
   };
 }
 
@@ -109,12 +120,16 @@ function make(
   const tx = {
     user: { update: vi.fn(() => Promise.resolve({ id: 'u2' })) },
     refreshToken: { updateMany: vi.fn(() => Promise.resolve({ count: 3 })) },
+    passwordResetToken: { deleteMany: vi.fn(() => Promise.resolve({ count: 1 })) },
+    // Admin hệ thống đang hoạt động bị khoá hàng (FOR UPDATE) trong transaction — mặc định có 2 người.
+    $queryRaw: vi.fn(() => Promise.resolve([{ id: 'u3' }, { id: 'admin1' }])),
   };
   const prisma = {
     user: {
       findUnique: vi.fn(() => Promise.resolve(user)),
       count: vi.fn(() => Promise.resolve(2)),
       findMany: vi.fn(() => Promise.resolve([])),
+      update: vi.fn(() => Promise.resolve({})),
     },
     workspace: { findFirst: vi.fn(() => Promise.resolve({ id: 'w2', name: 'Công ty Demo' })) },
     workspaceMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
@@ -123,12 +138,22 @@ function make(
   };
   const audit = { record: vi.fn() };
   const members = { addWorkspace: vi.fn(() => Promise.resolve({ membershipId: 'm1' })) };
+  const apiKeys = { dropCachesForUser: vi.fn(() => Promise.resolve()) };
+  const events = { emit: vi.fn() };
   return {
-    svc: new AdminService(prisma as never, audit as never, members as never),
+    svc: new AdminService(
+      prisma as never,
+      audit as never,
+      members as never,
+      apiKeys as never,
+      events as never,
+    ),
     tx,
     prisma,
     audit,
     members,
+    apiKeys,
+    events,
   };
 }
 
@@ -190,7 +215,7 @@ describe('AdminService — vòng đời tài khoản', () => {
   });
 
   it('không cho khoá admin hệ thống cuối cùng', async () => {
-    const { svc, prisma } = make({
+    const { svc, tx } = make({
       id: 'u3',
       email: 'b@x.vn',
       displayName: 'B',
@@ -198,8 +223,9 @@ describe('AdminService — vòng đời tài khoản', () => {
       isSystemAdmin: true,
       passwordHash: 'H',
     });
-    prisma.user.count.mockResolvedValue(1);
+    tx.$queryRaw.mockResolvedValue([{ id: 'u3' }] as never);
     await expect(svc.setStatus('admin1', 'u3', 'DEACTIVATED')).rejects.toThrow(/cuối cùng/);
+    expect(tx.user.update).not.toHaveBeenCalled();
   });
 
   it('không cho khoá tài khoản hệ thống automation', async () => {
@@ -357,5 +383,111 @@ describe('AdminService.list — đánh dấu tài khoản automation', () => {
     ] as never);
     const out = await svc.list();
     expect(out.data.map((u) => u.isAutomation)).toEqual([true, false]);
+  });
+});
+
+describe('AdminService — bảo mật vòng đời tài khoản (fix round 1)', () => {
+  const ADMIN_ROW = {
+    id: 'u3',
+    email: 'b@x.vn',
+    displayName: 'B',
+    status: 'ACTIVE',
+    isSystemAdmin: true,
+    canCreateWorkspace: false,
+    passwordHash: 'H',
+  };
+
+  const FULL_ROW = {
+    id: 'u3',
+    email: 'b@x.vn',
+    displayName: 'B',
+    avatarUrl: null,
+    status: 'ACTIVE',
+    isSystemAdmin: false,
+    canCreateWorkspace: false,
+    lastSeenAt: null,
+    createdAt: new Date(),
+    _count: { workspaceMemberships: 1 },
+  };
+
+  it('khoá: xoá cache API key của user NGAY, ngắt socket, xoá link quên mật khẩu đang chờ', async () => {
+    const { svc, tx, apiKeys, events } = make();
+    await svc.setStatus('admin1', 'u2', 'DEACTIVATED');
+    expect(tx.passwordResetToken.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 'u2', usedAt: null },
+    });
+    expect(apiKeys.dropCachesForUser).toHaveBeenCalledWith('u2');
+    expect(events.emit).toHaveBeenCalledWith('account.sessions_revoked', { userId: 'u2' });
+  });
+
+  it('khoá thất bại (admin cuối) thì không drop cache / không phát sự kiện', async () => {
+    const { svc, tx, apiKeys, events } = make(ADMIN_ROW);
+    tx.$queryRaw.mockResolvedValue([{ id: 'u3' }] as never);
+    await expect(svc.setStatus('admin1', 'u3', 'DEACTIVATED')).rejects.toThrow();
+    expect(apiKeys.dropCachesForUser).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('mở khoá: không drop cache, không ngắt socket', async () => {
+    const { svc, apiKeys, events } = make({
+      ...ADMIN_ROW,
+      id: 'u2',
+      isSystemAdmin: false,
+      status: 'DEACTIVATED',
+    });
+    await svc.setStatus('admin1', 'u2', 'ACTIVE');
+    expect(apiKeys.dropCachesForUser).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('đếm admin trong CHÍNH transaction có khoá hàng (FOR UPDATE), không đếm ngoài transaction', async () => {
+    const { svc, tx, prisma } = make(ADMIN_ROW);
+    await svc.setStatus('admin1', 'u3', 'DEACTIVATED');
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    const sql = (tx.$queryRaw.mock.calls[0] as unknown as [TemplateStringsArray])[0].join('');
+    expect(sql).toContain('FOR UPDATE');
+    expect(prisma.user.count).not.toHaveBeenCalled();
+  });
+
+  it('đặt lại mật khẩu: xoá link quên mật khẩu đang chờ + ngắt socket', async () => {
+    const { svc, tx, events } = make();
+    await svc.resetPassword('admin1', 'u2');
+    expect(tx.passwordResetToken.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 'u2', usedAt: null },
+    });
+    expect(events.emit).toHaveBeenCalledWith('account.sessions_revoked', { userId: 'u2' });
+  });
+
+  it('đăng xuất mọi thiết bị: ngắt socket, KHÔNG đụng API key', async () => {
+    const { svc, apiKeys, events } = make();
+    await svc.revokeSessions('admin1', 'u2');
+    expect(events.emit).toHaveBeenCalledWith('account.sessions_revoked', { userId: 'u2' });
+    expect(apiKeys.dropCachesForUser).not.toHaveBeenCalled();
+  });
+
+  it('hạ isSystemAdmin của admin hệ thống cuối cùng (kể cả tự hạ) -> từ chối, không ghi', async () => {
+    const { svc, tx } = make({ ...ADMIN_ROW, id: 'admin1' });
+    tx.$queryRaw.mockResolvedValue([{ id: 'admin1' }] as never);
+    await expect(svc.update('admin1', { isSystemAdmin: false }, 'admin1')).rejects.toThrow(
+      /cuối cùng/,
+    );
+    expect(tx.user.update).not.toHaveBeenCalled();
+  });
+
+  it('hạ isSystemAdmin khi còn admin khác -> được, kiểm trong transaction', async () => {
+    const { svc, tx } = make(ADMIN_ROW);
+    tx.user.update.mockResolvedValue(FULL_ROW);
+    await svc.update('u3', { isSystemAdmin: false }, 'admin1');
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    const call = tx.user.update.mock.calls[0] as unknown as [{ data: { isSystemAdmin: boolean } }];
+    expect(call[0].data.isSystemAdmin).toBe(false);
+  });
+
+  it('cấp isSystemAdmin hoặc đổi trường khác không đi qua bộ chặn admin cuối', async () => {
+    const { svc, tx, prisma } = make({ ...ADMIN_ROW, isSystemAdmin: false });
+    prisma.user.update.mockResolvedValue(FULL_ROW);
+    await svc.update('u3', { isSystemAdmin: true }, 'admin1');
+    expect(prisma.user.update).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
   });
 });

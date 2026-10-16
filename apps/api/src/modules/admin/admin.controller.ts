@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
@@ -39,6 +39,8 @@ export class AdminController {
     return this.admin.list(query);
   }
 
+  // Phản hồi có thể chứa mật khẩu tạm: không để trình duyệt / proxy lưu cache.
+  @Header('Cache-Control', 'no-store')
   @Post()
   async create(
     @CurrentUser() user: AuthUser,
@@ -59,6 +61,8 @@ export class AdminController {
   }
 
   /** Đặt mật khẩu tạm (trả một lần) + đăng xuất mọi thiết bị. */
+  // Phản hồi chứa mật khẩu tạm: không để trình duyệt / proxy lưu cache.
+  @Header('Cache-Control', 'no-store')
   @HttpCode(200)
   @Post(':id/reset-password')
   async resetPassword(@CurrentUser() user: AuthUser, @Param('id') id: string) {

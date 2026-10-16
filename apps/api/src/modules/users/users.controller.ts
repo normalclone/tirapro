@@ -9,12 +9,14 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 import {
   changePasswordSchema,
   updateProfileSchema,
@@ -28,12 +30,18 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { UsersService } from './users.service';
+import { AuthService } from '../auth/auth.service';
+import { setRefreshCookie } from '../auth/refresh-cookie';
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly auth: AuthService,
+    private readonly config: ConfigService,
+  ) {}
 
   /** Danh sách thành viên workspace hiện tại (picker assignee/@mention). */
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
@@ -67,8 +75,17 @@ export class UsersController {
   async changePassword(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(changePasswordSchema)) body: ChangePasswordInput,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.users.changePassword(user.id, body);
+    await this.users.changePassword(user.id, body);
+    // Mọi phiên (kể cả thiết bị này) đã bị thu hồi → cấp phiên mới cho thiết bị đang đổi mật khẩu.
+    const { refreshToken, ...session } = await this.auth.reissueSession(user.id, user.workspaceId, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
+    setRefreshCookie(res, refreshToken, !!this.config.get<boolean>('isProd'));
+    return { success: true, ...session };
   }
 
   /** Tải ảnh đại diện của chính mình (multipart `file`). */
