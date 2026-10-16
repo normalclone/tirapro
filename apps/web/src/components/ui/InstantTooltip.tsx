@@ -155,6 +155,8 @@ export function InstantTooltip() {
     window.addEventListener('scroll', softHide, true);
     window.addEventListener('blur', hide);
     document.addEventListener('click', softHide, true);
+    // Nhấn chuột xuống (mở đầu cú kéo, vd thanh Gantt) cũng ẩn — không chờ `click` sau khi nhả.
+    document.addEventListener('pointerdown', softHide, true);
     return () => {
       restore();
       document.removeEventListener('mouseover', onOver, true);
@@ -165,6 +167,7 @@ export function InstantTooltip() {
       window.removeEventListener('scroll', softHide, true);
       window.removeEventListener('blur', hide);
       document.removeEventListener('click', softHide, true);
+      document.removeEventListener('pointerdown', softHide, true);
     };
   }, []);
 

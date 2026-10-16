@@ -4,6 +4,8 @@ import type { SprintSummaryReport } from '@tirapro/shared';
 import type { SprintDto } from '@tirapro/types';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { ExportMenu } from '@/components/ui/ExportMenu';
+import { PrintButton } from '@/components/ui/PrintButton';
+import { PrintHeader } from '@/components/ui/PrintHeader';
 import { QueryError } from '@/components/ui/QueryError';
 import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
 import { fmtDate } from '@/lib/dateFormat';
@@ -92,7 +94,18 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <PrintHeader
+        title="Báo cáo sprint"
+        subtitle={[
+          `Dự án ${projectKey}`,
+          sprint.name,
+          time.range,
+          sprint.goal && `Mục tiêu: ${sprint.goal}`,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 print:hidden">
         <SearchSelect
           value={sprint.id}
           onChange={pickSprint}
@@ -107,6 +120,7 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
         >
           {statusLine}
         </p>
+        <PrintButton title={`Báo cáo ${sprint.name} ${projectKey}`} />
         <SprintExport projectId={projectId} projectKey={projectKey} sprint={sprint} />
       </div>
 

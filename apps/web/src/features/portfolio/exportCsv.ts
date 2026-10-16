@@ -1,5 +1,6 @@
 import { toCsv, type CsvColumn } from '@tirapro/shared';
 import { formatCalendarDmy as dmy } from '@/lib/calendarDate';
+import { healthLabel, healthReasonText } from '@/components/ui/healthLabel';
 import type { PortfolioRollup, RollupGroup, RollupProject } from './api';
 
 interface Row {
@@ -20,6 +21,12 @@ const COLUMNS: CsvColumn<Row>[] = [
   { header: 'Tiến độ %', value: (r) => r.project.progressPct },
   { header: 'Bắt đầu', value: (r) => dmy(r.project.startDate) },
   { header: 'Hạn', value: (r) => dmy(r.project.targetDate) },
+  // Dự án lưu trữ không có sức khoẻ → để trống thay vì "Chưa đủ dữ liệu".
+  {
+    header: 'Sức khoẻ',
+    value: (r) => (r.project.health ? healthLabel(r.project.health.level) : ''),
+  },
+  { header: 'Lý do', value: (r) => healthReasonText(r.project.health) },
 ];
 
 /** Danh mục dự án dạng phẳng: mỗi dự án một dòng, kèm tên chương trình chứa nó. */

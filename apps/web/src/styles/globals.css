@@ -114,3 +114,66 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ===== In / Lưu PDF (L4) ===== */
+[data-print-only] {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+  /* Bản in luôn nền sáng (in/đính kèm email): đặt lại bộ token sáng kể cả khi đang ở theme tối (`.dark`).
+     Phải trùng khối :root ở đầu file — sửa token sáng thì sửa cả hai. */
+  :root,
+  :root.dark {
+    color-scheme: light;
+    --bg: oklch(1 0 0);
+    --surface: oklch(0.985 0.004 250);
+    --surface-2: oklch(0.968 0.005 250);
+    --surface-3: oklch(0.945 0.006 250);
+    --border: oklch(0.915 0.006 250);
+    --border-strong: oklch(0.86 0.008 250);
+    --ink: oklch(0.27 0.013 256);
+    --ink-strong: oklch(0.2 0.014 256);
+    --muted: oklch(0.46 0.012 256);
+    --faint: oklch(0.6 0.01 256);
+    --primary: oklch(0.52 0.17 252);
+    --primary-hover: oklch(0.46 0.17 252);
+    --primary-fg: oklch(0.99 0.005 250);
+    --primary-subtle: oklch(0.95 0.03 252);
+    --ring: oklch(0.52 0.17 252 / 0.55);
+    --success: oklch(0.58 0.14 150);
+    --warning: oklch(0.72 0.15 75);
+    --warning-ink: oklch(0.48 0.12 75);
+    --danger: oklch(0.55 0.2 25);
+    --status-todo: oklch(0.6 0.018 256);
+    --status-progress: oklch(0.55 0.13 245);
+    --status-done: oklch(0.58 0.13 150);
+  }
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  main {
+    overflow: visible !important;
+  }
+  * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .print-avoid-break {
+    break-inside: avoid;
+  }
+  [data-print-only] {
+    display: block !important;
+  }
+  /* Thông báo nổi (toast) không thuộc bản in. */
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+}

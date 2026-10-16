@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ProjectHealthDto } from '@tirapro/shared';
 import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -50,6 +51,8 @@ export interface RollupProject extends RollupStats {
   leadName: string | null;
   startDate: string | null;
   targetDate: string | null;
+  /** Sức khoẻ dự án (L16); null với dự án đã lưu trữ. */
+  health: ProjectHealthDto | null;
 }
 
 export interface RollupGroup extends RollupStats {

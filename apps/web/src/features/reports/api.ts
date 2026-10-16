@@ -1,4 +1,4 @@
-import { skipToken, useQuery } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IssueDto, ListResponse, SprintDto } from '@tirapro/types';
 import type {
   BurndownReport,
@@ -7,6 +7,7 @@ import type {
   CreatedResolvedReport,
   QaReportDto,
   SprintSummaryReport,
+  ProjectHealthDto,
 } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -44,6 +45,8 @@ export interface ReportAssignee {
 export interface ProjectReport {
   totals: ProjectReportTotals;
   completionRate: number;
+  /** Sức khoẻ tự tính + ghi đè của PM (L16). */
+  health: ProjectHealthDto | null;
   highPriUnassigned: number;
   dueSoon: number;
   byStatus: ReportSlice[];
@@ -59,6 +62,23 @@ export function useProjectReport(projectId?: string) {
       ? async () => (await api.get<ProjectReport>(`/reports/project?projectId=${projectId}`)).data
       : skipToken,
     staleTime: 30_000,
+  });
+}
+
+/**
+ * Ghi đè / bỏ ghi đè sức khoẻ dự án (`PATCH /projects/:id/health`, cần `project:admin`). `health: null` = bỏ ghi đè.
+ * Xong thì nạp lại mọi nơi hiện sức khoẻ: báo cáo dự án, Tổng quan admin, Danh mục.
+ */
+export function useSetProjectHealth(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { health: 'GREEN' | 'YELLOW' | 'RED' | null; note?: string }) =>
+      api.patch<ProjectHealthDto>(`/projects/${projectId}/health`, v),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.reports.project(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.dashboard.workspaceOverview });
+      void qc.invalidateQueries({ queryKey: keys.programs.rollup });
+    },
   });
 }
 

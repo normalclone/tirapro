@@ -79,7 +79,7 @@ function RailInner({
       <aside
         aria-label="Danh sách dự án"
         className={cn(
-          'hidden shrink-0 flex-col border-r border-border bg-surface lg:flex',
+          'hidden shrink-0 flex-col border-r border-border bg-surface print:hidden lg:flex',
           collapsed ? 'w-14' : 'w-56',
         )}
       >

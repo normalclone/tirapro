@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { addDays, differenceInCalendarDays, format, startOfDay } from 'date-fns';
-import { CalendarRange, Camera, Link2, Zap } from 'lucide-react';
+import { CalendarRange, Camera, Link2, ListTodo, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
-import { useProjectIssues } from '@/features/issues/api';
+import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -13,8 +13,20 @@ import { QueryError } from '@/components/ui/QueryError';
 import { isOverdue } from '@/components/ui/DueBadge';
 import { categoryColor } from '@/lib/statusColor';
 import { apiErrorMessage } from '@/lib/api';
-import { useCanIn } from '@/features/projects/permissions';
+import { useCanEditSchedule, useCanIn } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
+import { keys } from '@/lib/queryKeys';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  applyDrag,
+  clampDelta,
+  NO_SCHEDULE_PERM_HINT,
+  orderSpans,
+  toIssuePatch,
+  type UnscheduledPatch,
+} from './dragMath';
+import { useBarDrag, type BarDragMode } from './useBarDrag';
+import { UnscheduledPanel } from './UnscheduledPanel';
 import { PlanningPanel } from '@/features/planning/PlanningPanel';
 import {
   useBaseline,
@@ -35,8 +47,15 @@ const ROW_H = 40;
 /** Chiều cao thật của một hàng = ROW_H + 1px viền dưới → dùng để đặt mũi tên phụ thuộc. */
 const ROW_STRIDE = ROW_H + 1;
 const MAX_DAYS = 220;
+const HANDLE_W = 8;
+const BAR_KEYSHORTCUTS =
+  'Shift+ArrowLeft Shift+ArrowRight Alt+ArrowLeft Alt+ArrowRight Alt+Shift+ArrowLeft Alt+Shift+ArrowRight';
+const BAR_KEY_HINT =
+  'Phím (khi đang chọn thanh): Shift+←/→ dời cả thanh · Alt+←/→ đổi hạn · Alt+Shift+←/→ đổi bắt đầu';
 
 interface Span {
+  /** = issue.id (khoá cho useBarDrag). */
+  id: string;
   issue: IssueDto;
   start: Date;
   end: Date;
@@ -112,6 +131,9 @@ export function GanttPage() {
   } = useProject(key);
   const projectId = project?.id;
   const canManagePlan = useCanIn(projectId)('plan:manage');
+  const canSchedule = useCanEditSchedule(projectId);
+  const qc = useQueryClient();
+  const updateIssue = useUpdateIssue(projectId);
   const issuesQ = useProjectIssues(projectId);
   const { data: issues, isLoading: li } = issuesQ;
   const isLoading = lp || li;
@@ -123,6 +145,7 @@ export function GanttPage() {
 
   const [showCritical, setShowCritical] = useState(true);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [unscheduledOpen, setUnscheduledOpen] = useState(false);
   const [baselineId, setBaselineId] = useState('');
   const baselineQ = useBaseline(projectId, baselineId || undefined);
   const createBaseline = useCreateBaseline(projectId ?? '');
@@ -141,10 +164,15 @@ export function GanttPage() {
     [baselineQ.data],
   );
 
+  // Sau khi người dùng đổi ngày: giữ nguyên thứ tự hàng và mốc đầu thước (thanh không nhảy hàng, biểu đồ không dịch)
+  // cho tới lần tải/đổi dự án sau.
+  const [frozen, setFrozen] = useState<{ order: string[]; minD: Date } | null>(null);
+  useEffect(() => setFrozen(null), [projectId]);
+
   const model = useMemo(() => {
     const today = startOfDay(new Date());
     const spans: Span[] = [];
-    let noDate = 0;
+    const unscheduled: IssueDto[] = [];
 
     for (const issue of issues ?? []) {
       const sch = scheduleById.get(issue.id);
@@ -161,7 +189,7 @@ export function GanttPage() {
         end = startOfDay(new Date(sch.earlyFinish));
         inferred = true;
       } else {
-        noDate++;
+        unscheduled.push(issue);
         continue;
       }
 
@@ -173,6 +201,7 @@ export function GanttPage() {
       const baseEnd = baseStart && baseEndPick && baseEndPick < baseStart ? baseStart : baseEndPick;
 
       spans.push({
+        id: issue.id,
         issue,
         start,
         end,
@@ -185,18 +214,21 @@ export function GanttPage() {
       });
     }
 
-    spans.sort(
-      (a, b) => a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime(),
+    // Việc còn mở lên trước (đặt ngày cho việc đã xong ít có ý nghĩa).
+    unscheduled.sort(
+      (a, b) => Number(a.status.category === 'DONE') - Number(b.status.category === 'DONE'),
     );
 
+    const ordered = orderSpans(spans, frozen?.order ?? null);
+
     const empty = {
-      spans,
+      spans: ordered,
       days: [] as Date[],
       months: [] as { label: string; span: number }[],
       minD: today,
       totalDays: 0,
       today,
-      noDate,
+      unscheduled,
       layout: new Map<string, BarBox>(),
       msPoints: [] as { m: MilestoneDto; x: number }[],
     };
@@ -211,7 +243,8 @@ export function GanttPage() {
     times.push(today.getTime());
     for (const m of milestones) times.push(startOfDay(new Date(m.dueDate)).getTime());
 
-    const minD = addDays(startOfDay(new Date(Math.min(...times))), -2);
+    const computedMin = addDays(startOfDay(new Date(Math.min(...times))), -2);
+    const minD = frozen && frozen.minD < computedMin ? frozen.minD : computedMin;
     let maxD = addDays(startOfDay(new Date(Math.max(...times))), 7);
     let totalDays = differenceInCalendarDays(maxD, minD) + 1;
     if (totalDays > MAX_DAYS) {
@@ -238,7 +271,7 @@ export function GanttPage() {
 
     const dayOffset = (d: Date) => differenceInCalendarDays(d, minD);
     const layout = new Map<string, BarBox>();
-    spans.forEach((s, row) => {
+    ordered.forEach((s, row) => {
       const left = dayOffset(s.start) * DAY_W;
       const width = Math.max((dayOffset(s.end) - dayOffset(s.start) + 1) * DAY_W - 4, DAY_W - 4);
       layout.set(s.issue.id, { row, left, right: left + width, y: row * ROW_STRIDE + ROW_H / 2 });
@@ -249,14 +282,99 @@ export function GanttPage() {
       x: dayOffset(startOfDay(new Date(m.dueDate))) * DAY_W + DAY_W / 2,
     }));
 
-    return { spans, days, months, minD, totalDays, today, noDate, layout, msPoints };
-  }, [issues, scheduleById, baselineById, milestones, compareOn]);
+    return { spans: ordered, days, months, minD, totalDays, today, unscheduled, layout, msPoints };
+  }, [issues, scheduleById, baselineById, milestones, compareOn, frozen]);
 
   const trackW = model.totalDays * DAY_W;
   const offset = (d: Date) => differenceInCalendarDays(d, model.minD);
   const criticalCount = scheduleQ.data?.criticalCount ?? 0;
   const hasInferred = model.spans.some((s) => s.inferred);
   const highlightCritical = showCritical && deps.length > 0;
+
+  const refreshSchedule = useCallback(() => {
+    if (projectId) void qc.invalidateQueries({ queryKey: keys.planning.schedule(projectId) });
+  }, [qc, projectId]);
+
+  /** Ghi ngày mới (chỉ trường đổi) + toast "Hoàn tác"; lỗi/409 do hook rollback + MutationCache báo. */
+  const commitDrag = useCallback(
+    (s: Span, mode: BarDragMode, deltaDays: number) => {
+      const shown = { start: s.start, end: s.end };
+      const next = applyDrag(shown, mode, deltaDays);
+      const patch = toIssuePatch(s.issue, next, shown);
+      const fields = Object.keys(patch) as ('startDate' | 'dueDate')[];
+      if (fields.length === 0) return;
+      const { issue } = s;
+      setFrozen((prev) => prev ?? { order: model.spans.map((x) => x.id), minD: model.minD });
+      updateIssue.mutate(
+        { id: issue.id, key: issue.key, patch, version: issue.version },
+        {
+          onSuccess: (res) => {
+            refreshSchedule();
+            const old: Record<string, string | null> = {};
+            for (const f of fields) old[f] = issue[f];
+            toast.success(
+              `Đã đổi lịch ${issue.key}: ${format(next.start, 'dd/MM')} → ${format(next.end, 'dd/MM')}`,
+              {
+                duration: 5000,
+                action: {
+                  label: 'Hoàn tác',
+                  onClick: () =>
+                    updateIssue.mutate(
+                      { id: issue.id, key: issue.key, patch: old, version: res.data.version },
+                      { onSuccess: refreshSchedule },
+                    ),
+                },
+              },
+            );
+          },
+        },
+      );
+    },
+    [updateIssue, refreshSchedule, model],
+  );
+
+  const canDragBar = useCallback((s: Span) => canSchedule(s.issue), [canSchedule]);
+  /** Giữ thanh trong thước thời gian: ngày đầu ≥ 0, ngày cuối ≤ totalDays-1. */
+  const clampBar = useCallback(
+    (s: Span, mode: BarDragMode, delta: number) => {
+      const sOff = differenceInCalendarDays(s.start, model.minD);
+      const eOff = differenceInCalendarDays(s.end, model.minD);
+      return clampDelta(sOff, eOff, model.totalDays - 1, mode, delta);
+    },
+    [model.minD, model.totalDays],
+  );
+  const drag = useBarDrag<Span>({
+    dayW: DAY_W,
+    canDrag: canDragBar,
+    clamp: clampBar,
+    onCommit: commitDrag,
+  });
+
+  async function saveUnscheduled(issue: IssueDto, patch: UnscheduledPatch) {
+    const res = await updateIssue.mutateAsync({
+      id: issue.id,
+      key: issue.key,
+      patch: { ...patch },
+      version: issue.version,
+    });
+    refreshSchedule();
+    toast.success(`Đã đặt ngày cho ${issue.key} — việc hiện thành thanh trên biểu đồ`, {
+      duration: 5000,
+      action: {
+        label: 'Hoàn tác',
+        onClick: () =>
+          updateIssue.mutate(
+            {
+              id: issue.id,
+              key: issue.key,
+              patch: { startDate: null, dueDate: null },
+              version: res.data.version,
+            },
+            { onSuccess: refreshSchedule },
+          ),
+      },
+    });
+  }
 
   const baselineOptions = useMemo(
     () => [
@@ -303,6 +421,8 @@ export function GanttPage() {
         `Kế hoạch gốc: ${format(s.baseStart, 'dd/MM')} → ${format(s.baseEnd, 'dd/MM')} (${drift})`,
       );
     }
+    if (!canSchedule(s.issue)) parts.push(NO_SCHEDULE_PERM_HINT);
+    else parts.push(BAR_KEY_HINT);
     return parts.join('\n');
   }
 
@@ -334,6 +454,19 @@ export function GanttPage() {
         >
           <Link2 className="h-4 w-4" aria-hidden /> Phụ thuộc &amp; cột mốc
           <span className="tabular text-muted">{deps.length + milestones.length}</span>
+        </Button>
+
+        <Button
+          variant={unscheduledOpen ? 'secondary' : 'ghost'}
+          size="sm"
+          aria-expanded={unscheduledOpen}
+          aria-controls="gantt-unscheduled"
+          disabled={!projectId}
+          title="Công việc chưa có ngày bắt đầu/hạn và không nối với việc nào nên chưa hiện trên biểu đồ. Bấm để đặt ngày ngay tại đây."
+          onClick={() => setUnscheduledOpen((v) => !v)}
+        >
+          <ListTodo className="h-4 w-4" aria-hidden /> Chưa lên lịch
+          <span className="tabular text-muted">{model.unscheduled.length}</span>
         </Button>
 
         <div className="flex items-center gap-1.5">
@@ -418,14 +551,13 @@ export function GanttPage() {
         </div>
       </div>
 
-      {model.noDate > 0 && (
-        <div
-          className="border-b border-border px-6 py-2 text-xs text-faint"
-          title="Đặt ngày bắt đầu hoặc hạn cho những việc này, hoặc nối chúng vào một việc khác, thì chúng sẽ hiện trên biểu đồ."
-        >
-          {model.noDate} công việc chưa hiện ở đây vì chưa có ngày bắt đầu/hạn và cũng không nối với
-          việc nào
-        </div>
+      {unscheduledOpen && (
+        <UnscheduledPanel
+          issues={model.unscheduled}
+          canSchedule={canSchedule}
+          onSave={saveUnscheduled}
+          onClose={() => setUnscheduledOpen(false)}
+        />
       )}
 
       <div className="min-h-0 flex-1 overflow-auto p-4 pb-24">
@@ -599,8 +731,15 @@ export function GanttPage() {
                 {model.spans.map((s) => {
                   const { issue, overdue, inferred, critical } = s;
                   const box = model.layout.get(issue.id);
-                  const left = box?.left ?? 0;
-                  const width = (box?.right ?? 0) - left;
+                  const dragging = drag.preview?.id === issue.id ? drag.preview : null;
+                  const draggable = canSchedule(issue);
+                  const live = dragging
+                    ? applyDrag({ start: s.start, end: s.end }, dragging.mode, dragging.deltaDays)
+                    : null;
+                  const left = live ? offset(live.start) * DAY_W : (box?.left ?? 0);
+                  const width = live
+                    ? Math.max((offset(live.end) - offset(live.start) + 1) * DAY_W - 4, DAY_W - 4)
+                    : (box?.right ?? 0) - (box?.left ?? 0);
                   const barColor = overdue
                     ? 'var(--danger)'
                     : issue.status.color || categoryColor(issue.status.category);
@@ -653,13 +792,25 @@ export function GanttPage() {
                         )}
                         <button
                           type="button"
-                          onClick={() => navigate(`/issue/${issue.key}`)}
-                          title={barTitle(s)}
+                          onClick={() => {
+                            if (drag.consumeClick()) return;
+                            navigate(`/issue/${issue.key}`);
+                          }}
+                          // Đang kéo: bỏ tooltip (che thanh + chữ đã cũ); chip ngày xem trước thay thế.
+                          title={drag.preview ? undefined : barTitle(s)}
                           aria-label={barTitle(s)}
+                          aria-keyshortcuts={draggable ? BAR_KEYSHORTCUTS : undefined}
+                          {...drag.bind(s, 'move')}
                           className={cn(
                             'absolute top-1/2 flex -translate-y-1/2 items-center overflow-hidden rounded-md border px-2 text-left',
-                            'transition-opacity hover:opacity-90',
+                            !dragging && 'transition-opacity hover:opacity-90',
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                            // Chuột/bút kéo được → chặn cử chỉ trình duyệt; cảm ứng giữ cuộn trang.
+                            draggable &&
+                              (dragging
+                                ? 'cursor-grabbing select-none'
+                                : 'cursor-grab [@media(pointer:fine)]:touch-none'),
+                            dragging && 'z-10 opacity-90 shadow-md',
                             inferred && 'border-dashed opacity-75',
                           )}
                           style={{
@@ -673,6 +824,24 @@ export function GanttPage() {
                             boxShadow: isCritical ? '0 0 0 1.5px var(--danger)' : undefined,
                           }}
                         >
+                          {draggable &&
+                            (['start', 'end'] as const).map((edge) => (
+                              <span
+                                key={edge}
+                                data-gantt-handle={edge}
+                                aria-hidden
+                                title={
+                                  edge === 'start' ? 'Kéo để đổi ngày bắt đầu' : 'Kéo để đổi hạn'
+                                }
+                                {...drag.bind(s, edge)}
+                                className={cn(
+                                  'absolute top-0 h-full cursor-ew-resize touch-none [@media(pointer:coarse)]:hidden',
+                                  'hover:bg-[color-mix(in_oklab,var(--ink)_14%,transparent)]',
+                                  edge === 'start' ? 'left-0' : 'right-0',
+                                )}
+                                style={{ width: Math.min(HANDLE_W, Math.floor(width / 3)) }}
+                              />
+                            ))}
                           {width >= 70 && (
                             <span
                               className="truncate text-[11px] font-medium"
@@ -684,6 +853,15 @@ export function GanttPage() {
                             </span>
                           )}
                         </button>
+                        {live && (
+                          <span
+                            role="status"
+                            className="pointer-events-none absolute top-0 z-20 -translate-y-full whitespace-nowrap rounded bg-ink px-1.5 py-0.5 text-[11px] tabular text-surface"
+                            style={{ left }}
+                          >
+                            {format(live.start, 'dd/MM')} → {format(live.end, 'dd/MM')}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
