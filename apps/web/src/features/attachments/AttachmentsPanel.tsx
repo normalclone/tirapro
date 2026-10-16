@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import { Download, Paperclip, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
-import { Lightbox } from '@/components/ui/Lightbox';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
@@ -12,7 +11,7 @@ import {
   useUploadAttachment,
   type Attachment,
 } from './api';
-import { AttachmentPicture } from './AttachmentImage';
+import { AttachmentLightbox, AttachmentThumb } from './AttachmentImage';
 import { isImageMime } from './ref';
 
 /** Định dạng byte → "x B" / "x KB" / "x.x MB". */
@@ -20,6 +19,34 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Hai nút "Xoá / Huỷ" thay cho cụm nút của dòng khi đang xác nhận xoá. */
+function ConfirmDelete({
+  loading,
+  onConfirm,
+  onCancel,
+}: {
+  loading: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <Button
+        variant="danger"
+        size="sm"
+        className="h-7 px-2 text-xs"
+        loading={loading}
+        onClick={onConfirm}
+      >
+        Xoá
+      </Button>
+      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onCancel}>
+        Huỷ
+      </Button>
+    </span>
+  );
 }
 
 /** `canEdit`: được sửa issue này — không thì chỉ xem/tải xuống (không nút tải lên/xoá, tránh 403). */
@@ -110,19 +137,11 @@ export function AttachmentsPanel({ issueId, canEdit }: { issueId: string; canEdi
                 className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
               >
                 {isImageMime(a.mimeType) ? (
-                  <button
-                    type="button"
-                    onClick={() => setViewing(images.findIndex((i) => i.id === a.id))}
-                    aria-label={`Xem ảnh ${a.fileName}`}
-                    className="h-10 w-10 shrink-0 cursor-zoom-in overflow-hidden rounded border border-border bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                  >
-                    <AttachmentPicture
-                      id={a.id}
-                      alt={a.fileName}
-                      className="h-full w-full object-cover"
-                      placeholderClassName="h-full w-full rounded-none"
-                    />
-                  </button>
+                  <AttachmentThumb
+                    id={a.id}
+                    name={a.fileName}
+                    onOpen={() => setViewing(images.findIndex((i) => i.id === a.id))}
+                  />
                 ) : (
                   <Paperclip className="h-4 w-4 shrink-0 text-muted" />
                 )}
@@ -134,25 +153,11 @@ export function AttachmentsPanel({ issueId, canEdit }: { issueId: string; canEdi
                 </span>
 
                 {confirming ? (
-                  <span className="flex shrink-0 items-center gap-1">
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      loading={remove.isPending}
-                      onClick={() => void onDelete(a.id)}
-                    >
-                      Xoá
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setConfirmId(null)}
-                    >
-                      Huỷ
-                    </Button>
-                  </span>
+                  <ConfirmDelete
+                    loading={remove.isPending}
+                    onConfirm={() => void onDelete(a.id)}
+                    onCancel={() => setConfirmId(null)}
+                  />
                 ) : (
                   <span className="flex shrink-0 items-center gap-0.5">
                     <Button
@@ -183,20 +188,11 @@ export function AttachmentsPanel({ issueId, canEdit }: { issueId: string; canEdi
           })}
         </ul>
       )}
-      <Lightbox
-        open={viewing !== null}
-        onOpenChange={(o) => !o && setViewing(null)}
-        items={images.map((a) => ({ id: a.id, name: a.fileName }))}
-        index={Math.max(viewing ?? 0, 0)}
-        onIndexChange={setViewing}
-        renderImage={(it) => (
-          <AttachmentPicture
-            id={it.id}
-            alt={it.name}
-            className="max-h-[70dvh] max-w-full rounded-md object-contain"
-          />
-        )}
-        onDownload={(it) => void onDownload(items.find((a) => a.id === it.id)!)}
+      <AttachmentLightbox
+        images={images}
+        viewing={viewing}
+        onViewingChange={setViewing}
+        onDownload={(a) => void onDownload(a)}
       />
     </div>
   );
