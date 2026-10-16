@@ -52,7 +52,8 @@ interface IntegrationDto {
   /** @username của bot Telegram (null: chưa biết / không phải Telegram). */
   botUsername: string | null;
   /** Trạng thái thật (Sẵn sàng / Chưa có kênh / Chưa có bot / Lỗi token / Tắt toàn hệ thống). */
-  health: TelegramHealth;
+  /** Chỉ có với kết nối Telegram; loại khác → null. */
+  health: TelegramHealth | null;
   lastTest: TelegramLastTest | null;
 }
 
@@ -330,16 +331,10 @@ export class IntegrationsService {
       sent,
       total: channels.length,
     };
-    const base =
-      integration.config &&
-      typeof integration.config === 'object' &&
-      !Array.isArray(integration.config)
-        ? (integration.config as Record<string, unknown>)
-        : {};
-    await this.prisma.integration.update({
-      where: { id: integration.id },
-      data: { config: { ...base, lastTest } as unknown as Prisma.InputJsonValue },
-    });
+    // Cập nhật NGUYÊN TỬ riêng khoá lastTest (jsonb_set) — không đọc-sửa-ghi cả config, nên không đè thay đổi
+    // khác xảy ra trong lúc gửi (vài giây).
+    await this.prisma
+      .$executeRaw`UPDATE "Integration" SET "config" = jsonb_set(COALESCE("config", '{}'::jsonb), '{lastTest}', ${JSON.stringify(lastTest)}::jsonb, true) WHERE "id" = ${integration.id} AND "workspaceId" = ${workspaceId}`;
     return { sent, total: channels.length, enabled, ok };
   }
 
@@ -477,13 +472,16 @@ export class IntegrationsService {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       botUsername,
-      health: telegramHealth({
-        status: row.status,
-        hasOwnToken,
-        globalAvailable: this.telegram.available(),
-        platformEnabled: this.telegram.platformEnabled(),
-        channelCount: enabledChannelCount,
-      }),
+      health:
+        row.type === IntegrationType.TELEGRAM
+          ? telegramHealth({
+              status: row.status,
+              hasOwnToken,
+              globalAvailable: this.telegram.available(),
+              platformEnabled: this.telegram.platformEnabled(),
+              channelCount: enabledChannelCount,
+            })
+          : null,
       lastTest,
     };
   }

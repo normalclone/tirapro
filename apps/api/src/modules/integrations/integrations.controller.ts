@@ -14,7 +14,12 @@ import { LinkCodesService } from './link-codes.service';
 /** Body tạo integration Telegram. */
 export const createTelegramSchema = z.object({
   name: z.string().min(1, 'Tên không được để trống'),
-  botToken: z.string().min(1).optional(),
+  // Hình dạng token bot (123456789:AAH…) — chặn ký tự lạ trước khi token đi vào URL gọi getMe.
+  botToken: z
+    .string()
+    .trim()
+    .regex(/^\d{6,}:[A-Za-z0-9_-]{30,}$/, 'Token bot không đúng dạng — hãy copy lại từ @BotFather')
+    .optional(),
 });
 export type CreateTelegramBody = z.infer<typeof createTelegramSchema>;
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { IntegrationsService } from './integrations.service';
 import { TelegramUnreachableError } from './telegram.service';
+import { createTelegramSchema } from './integrations.controller';
 
 const integ = (over: Record<string, unknown> = {}) => ({
   id: 'g1',
@@ -29,6 +30,7 @@ function setup(
       update: vi.fn(() => Promise.resolve(row)),
       delete: vi.fn(() => Promise.resolve(row)),
     },
+    $executeRaw: vi.fn((..._a: unknown[]) => Promise.resolve(1)),
     integrationChannel: { findMany: vi.fn(() => Promise.resolve(row.channels)) },
   };
   const audit = { record: vi.fn() };
@@ -221,12 +223,15 @@ describe('IntegrationsService.test — nguyên nhân rõ ràng + lastTest', () =
     telegram.send.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     const res = await service.test('w1', 'g1');
     expect(res).toMatchObject({ ok: false, sent: 1, total: 2 });
-    const upd = prisma.integration.update.mock.calls[0] as unknown as [
-      { where: { id: string }; data: { config: { lastTest: Record<string, unknown> } } },
-    ];
-    expect(upd[0].where).toEqual({ id: 'g1' });
-    expect(upd[0].data.config.lastTest).toMatchObject({ ok: false, sent: 1, total: 2 });
-    expect(typeof upd[0].data.config.lastTest.at).toBe('string');
+    // Ghi nguyên tử riêng khoá lastTest (jsonb_set), KHÔNG đọc-sửa-ghi cả config.
+    expect(prisma.integration.update).not.toHaveBeenCalled();
+    const call = prisma.$executeRaw.mock.calls[0] as unknown as [string[], string, string, string];
+    expect(call[0].join('?')).toContain('jsonb_set');
+    const lastTest = JSON.parse(call[1]) as Record<string, unknown>;
+    expect(lastTest).toMatchObject({ ok: false, sent: 1, total: 2 });
+    expect(typeof lastTest.at).toBe('string');
+    expect(call[2]).toBe('g1');
+    expect(call[3]).toBe('w1');
   });
 
   it('gửi đủ 2/2 → ok:true', async () => {
@@ -256,7 +261,7 @@ describe('IntegrationsService.list — health tính lúc đọc', () => {
     };
     const { service } = setup({ kind: 'own', token: 'T' }, row);
     const [dto] = await service.list('w1');
-    expect(dto!.health.state).toBe('NO_CHANNEL');
+    expect(dto!.health?.state).toBe('NO_CHANNEL');
     expect(dto!.botUsername).toBe('tira_bot');
     expect(dto!.lastTest).toEqual({ at: '2026-10-15T09:12:00.000Z', ok: true, sent: 2, total: 2 });
     expect(JSON.stringify(dto)).not.toContain('SECRETCIPHER');
@@ -270,7 +275,7 @@ describe('IntegrationsService.list — health tính lúc đọc', () => {
     const { service, telegram } = setup({ kind: 'global' }, row);
     telegram.available.mockReturnValue(false);
     const [dto] = await service.list('w1');
-    expect(dto!.health.state).toBe('NO_BOT');
+    expect(dto!.health?.state).toBe('NO_BOT');
     expect(dto!.botUsername).toBeNull();
     expect(dto!.lastTest).toBeNull();
   });
@@ -282,5 +287,35 @@ describe('IntegrationsService.list — health tính lúc đọc', () => {
       globalBotAvailable: true,
       globalBotUsername: 'global_bot',
     });
+  });
+});
+
+describe('IntegrationsService.list — health chỉ cho Telegram', () => {
+  it('kết nối loại khác (GITHUB) → health null, không gán nhãn "Chưa có bot"', async () => {
+    const row = { ...integ({ type: 'GITHUB', config: {} }), _count: { channels: 0 } };
+    const { service } = setup({ kind: 'global' }, row);
+    const [dto] = await service.list('w1');
+    expect(dto!.health).toBeNull();
+  });
+});
+
+describe('createTelegramSchema — hình dạng token ở server', () => {
+  const good = '123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw';
+  it('token đúng dạng (có trim) hợp lệ; không token vẫn hợp lệ', () => {
+    expect(createTelegramSchema.safeParse({ name: 'n', botToken: `  ${good} ` })).toMatchObject({
+      success: true,
+      data: { botToken: good },
+    });
+    expect(createTelegramSchema.safeParse({ name: 'n' }).success).toBe(true);
+  });
+  it.each([
+    'hello',
+    '123456789',
+    '123456789:short',
+    `${good}/../x`,
+    '12:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw',
+    'a b',
+  ])('từ chối token lạ %s', (bad) => {
+    expect(createTelegramSchema.safeParse({ name: 'n', botToken: bad }).success).toBe(false);
   });
 });
