@@ -161,3 +161,74 @@ describe('SprintAssistantService', () => {
     expect(noGoal).not.toHaveBeenCalled();
   });
 });
+
+describe('SprintAssistantService — heuristic (U20)', () => {
+  it('heuristic có mục tiêu: việc khớp từ khoá lên đầu, lý do nêu từ khoá thật', async () => {
+    n = 0;
+    const backlog = [
+      row(3, { summary: 'Tìm kiếm sản phẩm' }),
+      row(5, { summary: 'Giỏ hàng: thêm/xóa sản phẩm' }),
+      row(2, { summary: 'Thanh toán qua VNPay' }),
+    ];
+    const { svc } = make(backlog, { closes: [20] });
+    const r = await svc.plan('w', 'u', { ...input, goal: 'giữ giỏ hàng' });
+    expect(r.picks[0]!.summary).toContain('Giỏ hàng');
+    expect(r.picks[0]!.reason).toMatch(/Khớp mục tiêu: “giỏ/);
+    expect(r.source).toBe('heuristic');
+    expect(r.reason).toBe('unconfigured');
+  });
+
+  it('việc ưu tiên Medium không bị ghi "ưu tiên cao"', async () => {
+    n = 0;
+    const { svc } = make([row(3, { priority: { rank: 3, name: 'Medium' } })], { closes: [10] });
+    const r = await svc.plan('w', 'u', input);
+    expect(r.picks[0]!.reason).not.toMatch(/ưu tiên cao/i);
+    expect(r.picks[0]!.reason).toMatch(/Vị trí 1 trong Việc chờ/);
+  });
+
+  it('High/Highest được ghi đúng tên ưu tiên', async () => {
+    n = 0;
+    const { svc } = make([row(3, { priority: { rank: 5, name: 'Highest' } })], { closes: [10] });
+    expect((await svc.plan('w', 'u', input)).picks[0]!.reason).toContain('Ưu tiên Highest');
+  });
+
+  it('không còn chữ "backlog" trong lý do', async () => {
+    n = 0;
+    const { svc } = make([row(3)], { closes: [10] });
+    expect((await svc.plan('w', 'u', input)).picks[0]!.reason).not.toMatch(/backlog/i);
+  });
+
+  it('vừa khớp mục tiêu vừa đến hạn → ghép lý do, ngày dd/MM; quá hạn ghi "Quá hạn"', async () => {
+    n = 0;
+    const due = new Date(Date.UTC(2099, 9, 22, 5, 0, 0));
+    const soonDue = new Date(Date.now() + 3 * 86_400_000);
+    const late = new Date(Date.now() - 2 * 86_400_000);
+    const { svc } = make(
+      [
+        row(2, { summary: 'Giỏ hàng', dueDate: soonDue }),
+        row(2, { summary: 'Việc khác', dueDate: late }),
+        row(2, { summary: 'Xa', dueDate: due }),
+      ],
+      { closes: [20] },
+    );
+    const r = await svc.plan('w', 'u', { ...input, goal: 'giỏ hàng' });
+    const dd = (d: Date) =>
+      new Intl.DateTimeFormat('vi-VN', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        day: '2-digit',
+        month: '2-digit',
+      }).format(d);
+    expect(r.picks[0]!.reason).toBe(`Khớp mục tiêu: “giỏ” “hàng” · Đến hạn ${dd(soonDue)}`);
+    expect(r.picks[1]!.reason).toBe(`Quá hạn ${dd(late)}`);
+    expect(r.picks[2]!.reason).toMatch(/^Vị trí 3 trong Việc chờ$/);
+  });
+
+  it('có Claude nhưng không có mục tiêu → heuristic không kèm reason', async () => {
+    n = 0;
+    const extract = vi.fn();
+    const { svc } = make([row(3)], { closes: [10], claude: { available: () => true, extract } });
+    const r = await svc.plan('w', 'u', input);
+    expect(r.source).toBe('heuristic');
+    expect(r.reason).toBeUndefined();
+  });
+});
