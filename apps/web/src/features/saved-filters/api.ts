@@ -2,6 +2,7 @@ import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/reac
 import type { IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 export type FilterVisibility = 'PRIVATE' | 'WORKSPACE' | 'PROJECT';
 
@@ -16,10 +17,18 @@ export interface SavedFilter {
   createdAt: string;
 }
 
+/** Một giá trị JQL không có trong workspace, kèm giá trị gần đúng nhất (nếu có). */
+export interface JqlValueSuggestion {
+  field: string;
+  value: string;
+  didYouMean: string | null;
+}
+
 export interface JqlValidation {
   valid: boolean;
   error?: string;
   position?: number;
+  suggestions?: JqlValueSuggestion[];
 }
 
 /** Một lựa chọn cho bộ dựng truy vấn (value khớp JQL, label hiển thị). */
@@ -120,4 +129,21 @@ export function useRunFilter() {
 /** Validate JQL qua POST /search/validate — helper fetch thủ công. */
 export async function validateJql(jql: string): Promise<JqlValidation> {
   return (await api.post<JqlValidation>('/search/validate', { jql })).data;
+}
+
+/**
+ * Kiểm JQL đang gõ (cú pháp + giá trị) sau 400ms ngừng gõ. Chỉ trả kết quả khi đã "đứng yên" (văn bản hiện tại
+ * đúng là bản đã kiểm) để không hiện lỗi/nút sửa của câu cũ trong lúc gõ tiếp.
+ */
+export function useJqlValidation(jql: string) {
+  const text = jql.trim();
+  const debounced = useDebouncedValue(text, 400);
+  const settled = text === debounced && text.length > 0;
+  const query = useQuery({
+    queryKey: keys.search.validate(debounced),
+    queryFn: debounced.length > 0 ? () => validateJql(debounced) : skipToken,
+    retry: false,
+    staleTime: 30_000,
+  });
+  return { validation: settled ? (query.data ?? null) : null };
 }

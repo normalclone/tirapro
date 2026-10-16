@@ -242,6 +242,11 @@ function needsQuote(v: string): boolean {
 }
 const quote = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
+/** Giá trị viết vào JQL: bare word nếu được, ngược lại bọc nháy kép (đã escape). */
+export function jqlLiteral(v: string): string {
+  return needsQuote(v) ? quote(v) : v;
+}
+
 function catalogValues(field: JqlFieldName, cat: JqlCatalog): JqlSuggestion[] | null {
   const vals = (xs: string[] | undefined): JqlSuggestion[] =>
     (xs ?? []).map((x) => ({ label: x, insert: x, kind: 'value' as const }));

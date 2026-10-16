@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ComponentProps } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import {
   Bookmark,
@@ -25,10 +25,12 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useAuth } from '@/stores/auth';
+import { JqlEditor } from './JqlEditor';
 import { QueryBuilder, Segmented } from './QueryBuilder';
 import {
   useCreateFilter,
   useDeleteFilter,
+  useJqlValidation,
   useRunFilter,
   useRunJql,
   useSavedFilters,
@@ -81,6 +83,10 @@ export function FiltersPage() {
   const [results, setResults] = useState<IssueDto[] | null>(null);
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
+  // JQL đổ sẵn vào hộp "Tạo bộ lọc" (nút "Lưu truy vấn" cạnh "Chạy JQL"); '' = mở hộp trống.
+  const [createInitialJql, setCreateInitialJql] = useState('');
+  const [searchParams] = useSearchParams();
+  const urlJql = searchParams.get('jql')?.trim() ?? '';
 
   // Ô nhập JQL nhanh (ad-hoc) trong khu nội dung.
   const [jqlDraft, setJqlDraft] = useState('');
@@ -108,7 +114,17 @@ export function FiltersPage() {
     setPage(1);
   }, [active, shownResults]);
 
+  // `?jql=…` trên URL (vd "Xem tất cả" từ trang chủ) → điền vào ô và chạy ngay; chỉ áp lại khi tham số đổi.
+  useEffect(() => {
+    if (!urlJql) return;
+    setJqlDraft(urlJql);
+    setResults(null);
+    setActive({ kind: 'adhoc', jql: urlJql });
+    setAdhocJql(urlJql);
+  }, [urlJql]);
+
   async function loadAndRunSaved(f: SavedFilter) {
+    setJqlDraft(f.jql); // hiện đúng câu JQL của bộ lọc để người dùng học cú pháp / chỉnh rồi "Lưu truy vấn"
     setAdhocJql(''); // dừng truy vấn ad-hoc
     setResults(null);
     setActive({ kind: 'filter', filter: f });
@@ -178,7 +194,14 @@ export function FiltersPage() {
         </div>
 
         {canManageFilters && (
-          <Button size="sm" onClick={() => setCreateOpen(true)} className="w-full">
+          <Button
+            size="sm"
+            onClick={() => {
+              setCreateInitialJql('');
+              setCreateOpen(true);
+            }}
+            className="w-full"
+          >
             <Plus className="h-4 w-4" aria-hidden />
             Tạo bộ lọc
           </Button>
@@ -213,12 +236,21 @@ export function FiltersPage() {
             onRun={runAdhoc}
             running={active.kind === 'adhoc' && isRunning}
             error={runError}
+            onSave={
+              canManageFilters
+                ? () => {
+                    setCreateInitialJql(jqlDraft.trim());
+                    setCreateOpen(true);
+                  }
+                : undefined
+            }
           />
 
           <Results
             issues={shownResults}
             loading={isRunning}
             hasRun={hasRun}
+            error={runError}
             page={page}
             onPageChange={setPage}
             projectKeyById={projectKeyById}
@@ -231,6 +263,7 @@ export function FiltersPage() {
         <CreateFilterModal
           open={createOpen}
           onClose={() => setCreateOpen(false)}
+          initialJql={createInitialJql}
           saving={createFilter.isPending}
           onSave={(name, jql, visibility) =>
             saveWithToast(createFilter.mutateAsync, name, jql, visibility)
@@ -251,54 +284,49 @@ function AdhocBar({
   onRun,
   running,
   error,
+  onSave,
 }: {
   value: string;
   onChange: (v: string) => void;
   onRun: () => void;
   running: boolean;
   error: string | null;
+  /** Mở hộp "Tạo bộ lọc" với JQL đang gõ; undefined = không có quyền `filter:manage` → ẩn nút. */
+  onSave?: () => void;
 }) {
+  const { validation } = useJqlValidation(value);
+  // Lỗi chạy gần nhất không lặp lại khi ô đã báo lỗi cho cùng câu (cú pháp/giá trị sai).
+  const showRunError = error && !(validation && !validation.valid);
+  const empty = !value.trim();
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
         <div className="min-w-0 flex-1">
-          <label htmlFor="adhoc-jql" className="sr-only">
-            Chạy nhanh truy vấn JQL
-          </label>
-          <textarea
+          <JqlEditor
             id="adhoc-jql"
+            label="Chạy nhanh truy vấn JQL"
             value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={(e) => {
-              // Cmd/Ctrl+Enter để chạy nhanh.
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                e.preventDefault();
-                onRun();
-              }
-            }}
+            onChange={onChange}
+            onRun={onRun}
             rows={2}
             placeholder={PLACEHOLDER}
-            spellCheck={false}
-            className={cn(
-              'w-full resize-y rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-ink',
-              'placeholder:text-faint transition-colors duration-150',
-              'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            )}
           />
         </div>
-        <Button
-          size="sm"
-          onClick={onRun}
-          loading={running}
-          disabled={!value.trim()}
-          className="sm:mt-0"
-        >
-          {!running && <Play className="h-4 w-4" aria-hidden />}
-          Chạy JQL
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button size="sm" onClick={onRun} loading={running} disabled={empty}>
+            {!running && <Play className="h-4 w-4" aria-hidden />}
+            Chạy JQL
+          </Button>
+          {onSave && (
+            <Button size="sm" variant="secondary" onClick={onSave} disabled={empty}>
+              <Bookmark className="h-4 w-4" aria-hidden />
+              Lưu truy vấn
+            </Button>
+          )}
+        </div>
       </div>
 
-      {error && (
+      {showRunError && (
         <p
           className="rounded-md border border-danger/40 bg-surface-2 px-3 py-2 font-mono text-sm text-danger"
           role="alert"
@@ -420,14 +448,17 @@ function CreateFilterModalInner({
   onClose,
   onSave,
   saving,
+  initialJql,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (name: string, jql: string, visibility: FilterVisibility) => Promise<boolean>;
   saving: boolean;
+  /** Có JQL đổ sẵn → mở thẳng tab JQL (bộ dựng "Đơn giản" không đọc ngược được JQL tuỳ ý). */
+  initialJql: string;
 }) {
-  const [mode, setMode] = useState<BuilderMode>('simple');
-  const [jql, setJql] = useState('');
+  const [mode, setMode] = useState<BuilderMode>(initialJql ? 'jql' : 'simple');
+  const [jql, setJql] = useState(initialJql);
   const [name, setName] = useState('');
   const [visibility, setVisibility] = useState<FilterVisibility>('PRIVATE');
 
@@ -484,18 +515,12 @@ function CreateFilterModalInner({
             <label htmlFor="create-jql" className="text-sm font-medium text-muted">
               Truy vấn JQL
             </label>
-            <textarea
+            <JqlEditor
               id="create-jql"
               value={jql}
-              onChange={(e) => setJql(e.target.value)}
+              onChange={setJql}
               rows={3}
               placeholder={PLACEHOLDER}
-              spellCheck={false}
-              className={cn(
-                'w-full resize-y rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-ink',
-                'placeholder:text-faint transition-colors duration-150',
-                'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              )}
             />
           </div>
         )}
@@ -548,6 +573,7 @@ function Results({
   issues,
   loading,
   hasRun,
+  error,
   page,
   onPageChange,
   projectKeyById,
@@ -556,6 +582,8 @@ function Results({
   issues: IssueDto[] | null;
   loading: boolean;
   hasRun: boolean;
+  /** Truy vấn lỗi (cú pháp/giá trị): lỗi đã hiện ở ô JQL nên không hiện thêm "Không có công việc nào khớp". */
+  error: string | null;
   page: number;
   onPageChange: (p: number) => void;
   projectKeyById: Map<string, string>;
@@ -580,6 +608,8 @@ function Results({
       />
     );
   }
+
+  if (error && !issues) return null;
 
   if (!issues || issues.length === 0) {
     return (
