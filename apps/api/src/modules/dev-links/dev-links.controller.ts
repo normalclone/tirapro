@@ -24,7 +24,7 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { DevLinksService } from './dev-links.service';
 
 /** Body kết nối repository code (GitHub/GitLab) với workspace. */
-export const createRepositorySchema = z.object({
+const createRepositorySchema = z.object({
   integrationId: z.string().min(1, 'Thiếu integrationId'),
   provider: z.enum(['GITHUB', 'GITLAB']),
   externalId: z.string().min(1, 'Thiếu externalId'),

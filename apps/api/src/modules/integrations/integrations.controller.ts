@@ -24,7 +24,7 @@ export const createTelegramSchema = z.object({
 export type CreateTelegramBody = z.infer<typeof createTelegramSchema>;
 
 /** Body thêm kênh. */
-export const addChannelSchema = z.object({
+const addChannelSchema = z.object({
   externalId: z.string().min(1, 'Thiếu chat_id'),
   title: z.string().optional(),
   events: z.array(z.string()).optional(),
@@ -33,7 +33,7 @@ export const addChannelSchema = z.object({
 export type AddChannelBody = z.infer<typeof addChannelSchema>;
 
 /** Body tạo mã liên kết (projectId: kênh chỉ nhận thông báo của dự án đó). */
-export const createLinkCodeSchema = z.object({ projectId: z.string().min(1).optional() });
+const createLinkCodeSchema = z.object({ projectId: z.string().min(1).optional() });
 export type CreateLinkCodeBody = z.infer<typeof createLinkCodeSchema>;
 
 @ApiTags('integrations')

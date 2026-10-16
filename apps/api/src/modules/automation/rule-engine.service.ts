@@ -38,7 +38,7 @@ export const SYSTEM_USER_EMAIL = 'automation@tirapro.local';
 /** Chuỗi automation nối nhau quá số tầng này thì dừng (chống vòng lặp). */
 export const MAX_AUTOMATION_DEPTH = 3;
 /** Quy tắc theo lịch xử lý tối đa chừng này issue mỗi lần chạy. */
-export const SCHEDULED_ISSUE_LIMIT = 500;
+const SCHEDULED_ISSUE_LIMIT = 500;
 const RUN_RETENTION_DAYS = 30;
 
 const conditionsSchema = z.array(ruleConditionSchema);

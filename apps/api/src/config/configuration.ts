@@ -75,5 +75,3 @@ export function configuration() {
     },
   };
 }
-
-export type AppConfig = ReturnType<typeof configuration>;

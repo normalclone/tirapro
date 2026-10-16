@@ -70,7 +70,7 @@ const MAX_LISTED_VALUES = 8;
 /** Thông điệp khi JQL của KR tự đo phụ thuộc người xem (không có nghĩa với lịch sử chung). */
 export const VIEWER_JQL_MESSAGE = 'JQL của KR tự đo không được dùng currentUser/me';
 
-export interface JqlValueSuggestion {
+interface JqlValueSuggestion {
   field: string;
   value: string;
   didYouMean: string | null;
@@ -88,7 +88,7 @@ interface InvalidValue extends JqlValueSuggestion {
 }
 
 /** Một lựa chọn cho bộ dựng truy vấn (value đúng dạng JQL khớp, label hiển thị). */
-export interface FieldOption {
+interface FieldOption {
   value: string;
   label: string;
   color?: string | null;

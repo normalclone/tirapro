@@ -6,7 +6,7 @@ import type { IssuesService } from '../../issues/issues.service';
 import type { NotificationsService } from '../../notifications/notifications.service';
 
 /** Phụ thuộc mà các action dùng — engine truyền xuống để action là hàm thuần dễ test. */
-export interface ActionDeps {
+interface ActionDeps {
   prisma: PrismaService;
   issues: IssuesService;
   comments: CommentsService;

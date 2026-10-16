@@ -1,8 +1,6 @@
-import { JIRA_CREATE, type JiraMappingInput } from '@tirapro/shared';
+import type { JiraMappingInput } from '@tirapro/shared';
 import type { JiraAnalyzeResult } from '@tirapro/types';
 import type { JiraIssueRow } from './jira-csv.parser';
-
-export { JIRA_CREATE };
 
 /** Phần của kết quả analyze mà việc kiểm tra mapping cần. */
 type AnalysisLike = Pick<JiraAnalyzeResult, 'issueTypes' | 'statuses' | 'priorities'>;

@@ -4,16 +4,12 @@ import { DEFAULT_GUIDES, type ChecklistContent } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 
 /** Khoá của guide checklist "Bắt đầu" (Guide toàn cục nạp bởi GuidesBootstrapService; workspace có thể ghi đè bản riêng). */
-export const ONBOARDING_GUIDE_KEY = 'onboarding-start';
+const ONBOARDING_GUIDE_KEY = 'onboarding-start';
 
 /** Bốn mục có logic tính tiến độ; khoá lạ trong bản ghi Guide bị bỏ qua. */
-export type OnboardingItemKey =
-  | 'create_project'
-  | 'add_members'
-  | 'start_sprint'
-  | 'connect_telegram';
+type OnboardingItemKey = 'create_project' | 'add_members' | 'start_sprint' | 'connect_telegram';
 
-export interface OnboardingItemDto {
+interface OnboardingItemDto {
   key: OnboardingItemKey;
   label: string;
   done: boolean;

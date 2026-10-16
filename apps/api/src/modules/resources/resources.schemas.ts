@@ -39,7 +39,7 @@ export const listAllocationsQuerySchema = z.object({
 
 /* ───────────────────────── Nghỉ phép / ngày lễ ───────────────────────── */
 
-export const TIME_OFF_KINDS = ['LEAVE', 'HOLIDAY', 'OTHER'] as const;
+const TIME_OFF_KINDS = ['LEAVE', 'HOLIDAY', 'OTHER'] as const;
 
 export const createTimeOffSchema = z.object({
   /** Bỏ trống / null = ngày lễ áp dụng cho TOÀN workspace. */

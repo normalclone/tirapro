@@ -39,7 +39,7 @@ export interface ProjectRefMeta {
 }
 
 /** Tên tham số mặc định theo loại: tài nguyên → `id` (projectKey → `key`), còn lại → `projectId`. */
-export function defaultProjectRefParam(kind: ProjectRefKind): string {
+function defaultProjectRefParam(kind: ProjectRefKind): string {
   if (kind === 'param' || kind === 'body' || kind === 'query') return 'projectId';
   return kind === 'projectKey' ? 'key' : 'id';
 }

@@ -14,7 +14,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/request';
 
 /** Body tạo custom field. SELECT/MULTI_SELECT có thể kèm options. */
-export const createCustomFieldSchema = z.object({
+const createCustomFieldSchema = z.object({
   name: z.string().min(1, 'Tên field không được để trống').max(120),
   type: z.nativeEnum(CustomFieldType),
   projectId: z.string().min(1).optional(),
@@ -27,7 +27,7 @@ export const createCustomFieldSchema = z.object({
 export type CreateCustomFieldBody = z.infer<typeof createCustomFieldSchema>;
 
 /** Body cập nhật field (không cho đổi `type`). */
-export const updateCustomFieldSchema = z
+const updateCustomFieldSchema = z
   .object({
     name: z.string().min(1).max(120).optional(),
     isRequired: z.boolean().optional(),
@@ -37,7 +37,7 @@ export const updateCustomFieldSchema = z
 export type UpdateCustomFieldBody = z.infer<typeof updateCustomFieldSchema>;
 
 /** Body đặt giá trị field cho issue. Kiểu của `value` tuỳ loại field (kiểm tra ở service). */
-export const setCustomFieldValueSchema = z.object({ value: z.unknown() });
+const setCustomFieldValueSchema = z.object({ value: z.unknown() });
 
 @ApiTags('custom-fields')
 @Controller()

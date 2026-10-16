@@ -75,7 +75,7 @@ export interface IntakeCreateState {
 }
 
 /** Người báo tự thu hồi (xoá) công việc của mình trong khoảng này kể từ lúc tạo. */
-export const RETRACT_WINDOW_MS = 10 * 60_000;
+const RETRACT_WINDOW_MS = 10 * 60_000;
 
 /** Trường issue mà `update()` có thể đổi — dùng để báo `changedFields` cho automation (trigger ISSUE_UPDATED). */
 const TRACKED_FIELDS = [

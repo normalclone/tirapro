@@ -30,7 +30,7 @@ export interface UpdateCustomFieldInput {
 /** Giá trị đã chuẩn hoá trả về FE (kiểu phụ thuộc loại field). */
 export type NormalizedFieldValue = string | number | boolean | string[] | null;
 
-export interface FieldOptionView {
+interface FieldOptionView {
   id: string;
   value: string;
   color: string | null;

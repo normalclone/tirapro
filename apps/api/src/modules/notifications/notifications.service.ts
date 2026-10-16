@@ -47,7 +47,7 @@ const NOTIFICATION_TYPES = Object.values(NotificationTypeEnum) as NotificationTy
  * Mặc định "im lặng": chỉ bật các thông báo trực tiếp / tín hiệu cao,
  * tắt các loại ồn ào để không spam người dùng.
  */
-export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   ISSUE_ASSIGNED: true,
   MENTIONED: true,
   COMMENT_ADDED: true,
@@ -62,9 +62,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
  * Gộp tùy chọn đã lưu (trong `User.settings.notifications`) lên trên mặc định.
  * Bỏ qua mọi khóa lạ / giá trị không phải boolean để luôn trả về map đầy đủ & hợp lệ.
  */
-export function effectivePrefs(
-  userSettings: Prisma.JsonValue | null | undefined,
-): NotificationPrefs {
+function effectivePrefs(userSettings: Prisma.JsonValue | null | undefined): NotificationPrefs {
   const result: NotificationPrefs = { ...DEFAULT_NOTIFICATION_PREFS };
   const stored = readNotificationsSettings(userSettings);
   for (const type of NOTIFICATION_TYPES) {
@@ -75,7 +73,7 @@ export function effectivePrefs(
 }
 
 /** Mặc định gửi email: chỉ bật loại trực tiếp (nhắc tên, được giao việc); bình luận / đổi trạng thái tắt. */
-export const DEFAULT_EMAIL_PREFS: NotificationEmailPrefs = {
+const DEFAULT_EMAIL_PREFS: NotificationEmailPrefs = {
   mention: true,
   assigned: true,
   comment: false,

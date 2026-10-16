@@ -24,9 +24,9 @@ const RENDERERS: Record<MailTemplate, (payload: Record<string, unknown>) => Rend
 export const SENSITIVE_TEMPLATES: readonly MailTemplate[] = ['password-reset'];
 
 /** Cửa sổ gộp (digest) cho thư thông báo. */
-export const NOTIFICATION_DIGEST_WINDOW_MS = 5 * 60_000;
+const NOTIFICATION_DIGEST_WINDOW_MS = 5 * 60_000;
 /** Số mục tối đa trong một thư digest; mục cũ hơn bị bỏ (đếm ở `payload.dropped`). */
-export const NOTIFICATION_DIGEST_MAX_ITEMS = 50;
+const NOTIFICATION_DIGEST_MAX_ITEMS = 50;
 const DIGEST_CAS_RETRIES = 3;
 
 @Injectable()

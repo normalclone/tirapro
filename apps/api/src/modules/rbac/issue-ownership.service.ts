@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 
-export const NOT_OWN_ISSUE_MESSAGE =
+const NOT_OWN_ISSUE_MESSAGE =
   'Bạn chỉ được sửa công việc do mình tạo, báo cáo hoặc được giao — hãy nhờ người phụ trách hoặc quản trị viên dự án';
 
 export interface IssueOwners {

@@ -31,7 +31,7 @@ const programSelect = (visible: Prisma.ProjectWhereInput) =>
   }) satisfies Prisma.ProgramSelect;
 
 /** Số liệu tổng hợp cho một dự án hoặc một chương trình. */
-export interface RollupStats {
+interface RollupStats {
   issueCount: number;
   doneCount: number;
   inProgressCount: number;
@@ -41,7 +41,7 @@ export interface RollupStats {
   progressPct: number;
 }
 
-export interface RollupProject extends RollupStats {
+interface RollupProject extends RollupStats {
   id: string;
   key: string;
   name: string;
@@ -54,7 +54,7 @@ export interface RollupProject extends RollupStats {
   health: ProjectHealthDto | null;
 }
 
-export interface RollupGroup extends RollupStats {
+interface RollupGroup extends RollupStats {
   /** null = nhóm "Chưa thuộc chương trình". */
   id: string | null;
   name: string;

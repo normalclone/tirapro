@@ -30,7 +30,7 @@ export interface TransitionDto {
 }
 
 /** Dự án đang dùng một quy trình làm quy trình mặc định (`Project.defaultWorkflowId`). */
-export interface WorkflowUsedByDto {
+interface WorkflowUsedByDto {
   id: string;
   key: string;
   name: string;
