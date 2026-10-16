@@ -185,6 +185,8 @@ enum HistoryField {
   PRIORITY
   TIME_SPENT
   DESCRIPTION
+  COMPONENT
+  FIX_VERSION
 }
 
 enum AiSuggestionKind {

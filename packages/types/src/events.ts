@@ -8,6 +8,7 @@
 export const DOMAIN_EVENTS = {
   ISSUE_CREATED: 'issue.created',
   ISSUE_UPDATED: 'issue.updated',
+  ISSUE_SETS_CHANGED: 'issue.sets_changed', // payload IssueSetsChangedPayload — gắn/bỏ thành phần/phiên bản (KHÔNG đổi version của việc)
   ISSUE_MOVED: 'issue.moved',
   PROJECT_RANKS_REBALANCED: 'project.ranks_rebalanced', // payload { projectId } — rank cả project vừa được đánh số lại
   ISSUE_DELETED: 'issue.deleted',
@@ -45,6 +46,7 @@ export const WS_EVENTS = {
   // server -> client
   ISSUE_CREATED: 'issue:created',
   ISSUE_UPDATED: 'issue:updated',
+  ISSUE_SETS_CHANGED: 'issue:sets_changed',
   ISSUE_MOVED: 'issue:moved',
   ISSUE_DELETED: 'issue:deleted',
   PROJECT_RANKS_REBALANCED: 'project:ranks_rebalanced',

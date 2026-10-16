@@ -194,6 +194,8 @@ export const HistoryField = {
   PRIORITY: 'PRIORITY',
   TIME_SPENT: 'TIME_SPENT',
   DESCRIPTION: 'DESCRIPTION',
+  COMPONENT: 'COMPONENT',
+  FIX_VERSION: 'FIX_VERSION',
 } as const;
 export type HistoryField = (typeof HistoryField)[keyof typeof HistoryField];
 

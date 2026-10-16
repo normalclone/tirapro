@@ -37,6 +37,7 @@ import {
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 import { assertNotArchived, assertProjectWritable } from '../../common/project-writable';
 import { LIVE_PROJECT } from '../../common/live-project';
+import { mapIssueSets } from './issue-sets';
 import { RankService } from './rank.service';
 import { WipService } from './wip.service';
 
@@ -1803,12 +1804,7 @@ export class IssuesService {
         name: l.label.name,
         color: l.label.color,
       })),
-      components: i.components
-        .map((c) => ({ id: c.component.id, name: c.component.name }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-      fixVersions: i.fixVersions
-        .map((v) => ({ id: v.version.id, name: v.version.name, type: v.type }))
-        .sort((a, b) => a.name.localeCompare(b.name) || a.type.localeCompare(b.type)),
+      ...mapIssueSets(i),
       createdAt: i.createdAt.toISOString(),
       updatedAt: i.updatedAt.toISOString(),
     };

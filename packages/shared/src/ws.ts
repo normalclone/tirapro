@@ -1,5 +1,12 @@
 /** Hợp đồng socket.io typed dùng chung gateway (BE) và client (FE). */
-import type { CommentDto, ID, IssueDto, NotificationDto } from '@tirapro/types';
+import type {
+  CommentDto,
+  ID,
+  IssueComponentRefDto,
+  IssueDto,
+  IssueVersionRefDto,
+  NotificationDto,
+} from '@tirapro/types';
 
 /** Room client được phép subscribe — khớp kiểm quyền ở RealtimeGateway.onSubscribe. */
 export type RoomTarget =
@@ -21,6 +28,18 @@ export interface IssueMovedPayload {
   sprintId: ID | null;
   version: number;
   actorId: ID;
+}
+
+/**
+ * Gắn/bỏ thành phần/phiên bản của một việc. Máy chủ KHÔNG đổi `version` của việc khi gắn/bỏ nên không đi qua
+ * `issue:updated` (client bỏ bản không mới hơn): payload mang tập đầy đủ sau thay đổi để client thay thẳng theo id.
+ */
+export interface IssueSetsChangedPayload {
+  issueId: ID;
+  issueKey: string;
+  projectId: ID;
+  components: IssueComponentRefDto[];
+  fixVersions: IssueVersionRefDto[];
 }
 
 export interface PresenceUser {
@@ -47,6 +66,7 @@ export interface AiStreamChunk {
 export interface ServerToClientEvents {
   'issue:created': (p: { issue: IssueDto }) => void;
   'issue:updated': (p: { issue: IssueDto }) => void;
+  'issue:sets_changed': (p: IssueSetsChangedPayload) => void;
   'issue:moved': (p: IssueMovedPayload) => void;
   'issue:deleted': (p: { issueId: ID; projectId: ID }) => void;
   'project:ranks_rebalanced': (p: { projectId: ID }) => void;
