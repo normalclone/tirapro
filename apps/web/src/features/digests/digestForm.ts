@@ -1,6 +1,6 @@
 import { DEFAULT_DIGEST_BLOCKS, resolveDigestBlocks, type DigestBlockId } from '@tirapro/shared';
 import type { CreateDigestInput, Digest, DigestSchedule, UpdateDigestInput } from './api';
-import { browserTimeZone } from './schedule';
+import { browserTimeZone, canonicalTimeZone } from './schedule';
 
 /** Trạng thái form tạo/sửa báo cáo định kỳ. */
 export interface DigestFormState {
@@ -42,7 +42,8 @@ export function initialForm(digest: Digest | null): DigestFormState {
     schedule: digest.schedule,
     weekday: digest.weekday,
     hour: digest.hour,
-    timezone: digest.timezone,
+    // Chuẩn hoá tên cũ (Asia/Saigon…) khi nạp form: chỉ đổi giá trị trong form, máy chủ chỉ đổi nếu người dùng bấm Lưu.
+    timezone: canonicalTimeZone(digest.timezone),
     channelId: digest.channelId ?? '',
     deliverEmail: digest.deliverEmail,
     recipients: digest.recipients,

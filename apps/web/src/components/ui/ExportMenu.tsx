@@ -3,6 +3,7 @@ import { Download, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { Button } from './Button';
 
 export interface ExportMenuItem {
@@ -13,7 +14,16 @@ export interface ExportMenuItem {
 }
 
 /** Nút "Xuất" + danh sách định dạng. Mỗi mục là một thao tác bất đồng bộ; lỗi hiện toast. */
-export function ExportMenu({ items, disabled }: { items: ExportMenuItem[]; disabled?: boolean }) {
+export function ExportMenu({
+  items,
+  disabled,
+  className,
+}: {
+  items: ExportMenuItem[];
+  disabled?: boolean;
+  /** Lớp thêm cho nút (vd `CHIP_TOUCH_HIT` khi nút nằm trong dải chip cuộn ngang). */
+  className?: string;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
 
   // Khi đang tải KHÔNG `disabled` trigger: Radix trả focus về trigger sau khi chọn mục, nút disabled sẽ làm focus rơi
@@ -39,7 +49,7 @@ export function ExportMenu({ items, disabled }: { items: ExportMenuItem[]; disab
           aria-label="Xuất dữ liệu"
           disabled={disabled}
           aria-busy={busy !== null}
-          className="print:hidden"
+          className={cn('print:hidden', className)}
         >
           {busy ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />

@@ -25,6 +25,7 @@ import type { PermissionKey } from '@tirapro/types';
 import { useProject, useProjects } from './api';
 import { ProjectRail } from './ProjectRail';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
+import { TRIAGE_TITLE } from '@/features/triage/triageLogic';
 import { Button } from '@/components/ui/Button';
 import { useAi } from '@/stores/ai';
 import { useCan, useProjectPermissions } from './permissions';
@@ -54,7 +55,7 @@ const MORE: {
   to: (p: { key: string; id: string }) => string;
   needs?: PermissionKey;
 }[] = [
-  { id: 'triage', label: 'Việc mới vào', icon: Inbox, to: (p) => `/p/${p.key}/triage` },
+  { id: 'triage', label: TRIAGE_TITLE, icon: Inbox, to: (p) => `/p/${p.key}/triage` },
   { id: 'activity', label: 'Hoạt động', icon: Activity, to: (p) => `/p/${p.key}/activity` },
   // Rủi ro và Tự động hoá dùng trang sẵn có, lọc sẵn theo dự án này qua `?project=<id>`.
   {

@@ -14,7 +14,7 @@ export const CHIP_TOUCH_HIT =
   'relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-[9px]';
 
 /** Đệm dọc cho dải chip cuộn ngang (dưới `sm`) trên cảm ứng — chứa vùng bấm mở rộng của chip (overflow cắt phần tràn). */
-export const CHIP_STRIP_COARSE_PAD = '[@media(pointer:coarse)]:max-sm:py-2';
+const CHIP_STRIP_COARSE_PAD = '[@media(pointer:coarse)]:max-sm:py-2';
 
 /**
  * Liên kết chữ một dòng cao ~17px (mã công việc trên dòng/thẻ): mở vùng bấm THEO CHIỀU DỌC 6px mỗi phía (→ ~29px, đủ
@@ -36,3 +36,17 @@ export const SWITCH_TOUCH_HIT =
  * VÙNG BẤM vẫn chồng 8px). Đặt trên mọi khung `flex-wrap` chứa chip.
  */
 export const CHIP_ROW_GAP_COARSE = '[@media(pointer:coarse)]:gap-y-4';
+
+/**
+ * Thanh chứa CHỈ gồm các dải cuộn ngang trên mobile (`MOBILE_SCROLL_STRIP`): mỗi dải đã có đệm dọc chứa vùng bấm mở rộng của chip
+ * nên bỏ khoảng hở hàng — nhưng CHỈ trên cảm ứng (đệm `py-2` của dải cũng chỉ có trên cảm ứng; chuột thì giữ `gap-2`).
+ * Dùng cùng `CHIP_ROW_GAP_COARSE` (`!` vì hai luật cùng độ ưu tiên).
+ */
+export const STRIP_ROWS_GAP_COARSE = '[@media(pointer:coarse)]:max-sm:!gap-y-0';
+
+/**
+ * Dải cuộn ngang dưới `sm` (breakpoint chung của mọi hàng chip): một dòng, không xuống dòng, ẩn thanh cuộn, mờ mép báo còn
+ * mục, tràn sát mép màn hình (`-mx-4` bù lề `px-4` của thanh chứa) + đệm dọc trên cảm ứng chứa vùng bấm mở rộng.
+ * Dùng chung cho `QuickFilterChips` và `ToolbarStrip` — cần `useScrollFade` (đặt `--scroll-fade`) và thanh chứa có lề ngang `px-4`.
+ */
+export const MOBILE_SCROLL_STRIP = `max-sm:relative max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:[mask-image:var(--scroll-fade)] max-sm:-mx-4 max-sm:w-[calc(100%+2rem)] max-sm:px-4 ${CHIP_STRIP_COARSE_PAD}`;

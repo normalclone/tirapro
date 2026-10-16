@@ -48,6 +48,19 @@ describe('initialForm', () => {
   });
 });
 
+describe('initialForm — múi giờ đã lưu', () => {
+  it('tên cũ (Asia/Saigon, Asia/Calcutta) được chuẩn hoá khi nạp form; tên chuẩn giữ nguyên', () => {
+    expect(initialForm(digest({ timezone: 'Asia/Saigon' })).timezone).toBe('Asia/Ho_Chi_Minh');
+    expect(initialForm(digest({ timezone: 'Asia/Calcutta' })).timezone).toBe('Asia/Kolkata');
+    expect(initialForm(digest({ timezone: 'Europe/Paris' })).timezone).toBe('Europe/Paris');
+  });
+  it('không động tới máy chủ: giá trị cũ chỉ đổi trong form, payload sửa mang tên chuẩn khi người dùng bấm Lưu', () => {
+    const d = digest({ timezone: 'Asia/Saigon' });
+    expect(d.timezone).toBe('Asia/Saigon');
+    expect(toUpdatePayload('d1', initialForm(d), false).timezone).toBe('Asia/Ho_Chi_Minh');
+  });
+});
+
 describe('validateForm', () => {
   const ok = { ...initialForm(null), name: 'A' };
   it('tên bắt buộc, ≥1 khối, bật email phải có người nhận', () => {

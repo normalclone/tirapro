@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildProjectCommands } from './projectCommands';
+import { TRIAGE_TITLE } from '@/features/triage/triageLogic';
 
 const sprints = [
   { id: 's1', name: 'Sprint 1', state: 'CLOSED' },
@@ -79,6 +80,10 @@ describe('buildProjectCommands', () => {
     expect(buildProjectCommands({ ...base, canSprint: false }).map((c) => c.to)).toContain(
       '/p/DEMO/triage',
     );
+  });
+  it('nhãn lệnh dùng đúng tên chức năng (TRIAGE_TITLE) như tab và tiêu đề trang', () => {
+    const cmd = buildProjectCommands(base).find((c) => c.to === '/p/DEMO/triage');
+    expect(cmd?.label).toBe(`Mở ${TRIAGE_TITLE}`);
   });
   it('không lặp lệnh Báo lỗi (đã có ở nhóm Hành động của bảng lệnh)', () => {
     expect(buildProjectCommands(base).some((c) => /báo lỗi/i.test(c.label))).toBe(false);

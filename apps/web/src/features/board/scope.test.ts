@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { IssueDto } from '@tirapro/types';
-import { noActiveSprintHint, scopeBoardIssues, swimlaneEmptyKind } from './scope';
+import { noActiveSprintHint, scopeBoardIssues, shortSprintName, swimlaneEmptyKind } from './scope';
 
 const mk = (id: string, sprintId: string | null) => ({ id, sprintId }) as unknown as IssueDto;
 const all = [mk('a', 's1'), mk('b', 's2'), mk('c', null), mk('d', 's1')];
@@ -56,5 +56,24 @@ describe('swimlaneEmptyKind — vì sao chế độ swimlane không có hàng n�
   });
   it('có việc nhưng không hàng nào mà cũng không lọc (không xảy ra): coi như bộ lọc', () => {
     expect(swimlaneEmptyKind({ isScrum: true, scopedCount: 3, filtered: false })).toBe('filtered');
+  });
+});
+
+describe('shortSprintName', () => {
+  it('bỏ phần mô tả sau dấu gạch ngang rộng: "Sprint 2 — Thanh toán" → "Sprint 2"', () => {
+    expect(shortSprintName('Sprint 2 — Thanh toán')).toBe('Sprint 2');
+    expect(shortSprintName('Sprint 3 – Tìm kiếm')).toBe('Sprint 3');
+    expect(shortSprintName('Sprint 4 - Báo cáo')).toBe('Sprint 4');
+  });
+  it('tên không bắt đầu bằng "Sprint" thì thêm nhãn "Sprint: " để chip vẫn rõ nghĩa', () => {
+    expect(shortSprintName('Tuần 12 — Ra mắt')).toBe('Sprint: Tuần 12');
+    expect(shortSprintName('Alpha')).toBe('Sprint: Alpha');
+  });
+  it('không có dấu phân tách thì giữ nguyên; gạch nối liền chữ (không có khoảng trắng) không bị cắt', () => {
+    expect(shortSprintName('Sprint 5')).toBe('Sprint 5');
+    expect(shortSprintName('Sprint Q4-2026')).toBe('Sprint Q4-2026');
+  });
+  it('dấu gạch đầu tên (không có khoảng trắng phía trước) không phải dấu phân tách → giữ nguyên', () => {
+    expect(shortSprintName('— Khẩn')).toBe('Sprint: — Khẩn');
   });
 });
