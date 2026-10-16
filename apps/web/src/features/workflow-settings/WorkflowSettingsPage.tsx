@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   GitBranch,
   Plus,
@@ -73,6 +74,7 @@ export function WorkflowSettingsPage() {
   const [projectId, setProjectId] = useState('');
 
   const workflows = data ?? [];
+  const groups = useMemo(() => groupWorkflows(data ?? []), [data]);
   const selected = workflows.find((w) => w.id === selectedId) ?? null;
 
   function resetAdd() {
@@ -107,7 +109,9 @@ export function WorkflowSettingsPage() {
   async function handleDeleteWorkflow(wf: Workflow) {
     const ok = await confirm({
       title: `Xoá quy trình "${wf.name}"?`,
-      description: 'Hành động này không thể hoàn tác.',
+      description: wf.isTemplate
+        ? 'Mẫu chỉ dùng để tham khảo; dự án đã tạo không bị ảnh hưởng. Hành động này không thể hoàn tác.'
+        : 'Quy trình và các trạng thái, chuyển tiếp của nó sẽ bị xoá. Hành động này không thể hoàn tác.',
       destructive: true,
     });
     if (!ok) return;
@@ -178,18 +182,27 @@ export function WorkflowSettingsPage() {
             }
           >
             {() => (
-              <ul className="space-y-2">
-                {workflows.map((wf) => (
-                  <WorkflowRow
-                    key={wf.id}
-                    workflow={wf}
-                    expanded={wf.id === selectedId}
-                    onToggle={() => setSelectedId((cur) => (cur === wf.id ? null : wf.id))}
-                    onDelete={() => void handleDeleteWorkflow(wf)}
-                    deleting={deleteWorkflow.isPending}
-                  />
+              <div className="space-y-5">
+                {groups.map((g) => (
+                  <section key={g.id} aria-labelledby={`wf-group-${g.id}`}>
+                    <h3 id={`wf-group-${g.id}`} className="mb-2 text-sm font-medium text-muted">
+                      {g.title} <span className="font-normal text-faint">({g.items.length})</span>
+                    </h3>
+                    <ul className="space-y-2">
+                      {g.items.map((wf) => (
+                        <WorkflowRow
+                          key={wf.id}
+                          workflow={wf}
+                          expanded={wf.id === selectedId}
+                          onToggle={() => setSelectedId((cur) => (cur === wf.id ? null : wf.id))}
+                          onDelete={() => void handleDeleteWorkflow(wf)}
+                          deleting={deleteWorkflow.isPending}
+                        />
+                      ))}
+                    </ul>
+                  </section>
                 ))}
-              </ul>
+              </div>
             )}
           </QueryBoundary>
 
@@ -263,8 +276,59 @@ export function WorkflowSettingsPage() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Nhóm danh sách: mẫu có sẵn / quy trình của dự án / còn lại          */
+/* ------------------------------------------------------------------ */
+
+export function groupWorkflows(workflows: Workflow[]) {
+  const groups = [
+    { id: 'templates', title: 'Mẫu có sẵn', items: workflows.filter((w) => w.isTemplate) },
+    {
+      id: 'projects',
+      title: 'Quy trình của dự án',
+      items: workflows.filter((w) => !w.isTemplate && w.projectId !== null),
+    },
+    {
+      id: 'others',
+      title: 'Quy trình dùng chung',
+      items: workflows.filter((w) => !w.isTemplate && w.projectId === null),
+    },
+  ];
+  return groups.filter((g) => g.items.length > 0);
+}
+
+/* ------------------------------------------------------------------ */
 /* Một dòng workflow trong danh sách                                   */
 /* ------------------------------------------------------------------ */
+
+const MAX_USED_BY_SHOWN = 3;
+
+function UsedByLine({ usedBy }: { usedBy: NonNullable<Workflow['usedBy']> }) {
+  const shown = usedBy.slice(0, MAX_USED_BY_SHOWN);
+  const rest = usedBy.length - shown.length;
+  return (
+    <p className="mt-1 pl-6 text-xs text-muted">
+      Dùng bởi:{' '}
+      {shown.map((p, i) => (
+        <span key={p.id}>
+          {i > 0 && ', '}
+          {p.deleted ? (
+            <span>
+              {p.key} · {p.name} (đã xoá)
+            </span>
+          ) : (
+            <Link
+              to={`/p/${p.key}/config`}
+              className="text-primary hover:underline focus-visible:underline focus-visible:outline-none"
+            >
+              {p.key} · {p.name}
+            </Link>
+          )}
+        </span>
+      ))}
+      {rest > 0 && <span className="text-faint"> +{rest}</span>}
+    </p>
+  );
+}
 
 function WorkflowRow({
   workflow,
@@ -279,42 +343,56 @@ function WorkflowRow({
   onDelete: () => void;
   deleting: boolean;
 }) {
+  const usedBy = workflow.usedBy ?? [];
+  const inUse = usedBy.length > 0;
   return (
     <li
       className={cn(
-        'flex items-center gap-3 rounded-md border px-3 py-2.5 transition-colors',
+        'rounded-md border px-3 py-2.5 transition-colors',
         expanded
           ? 'border-primary bg-primary-subtle'
           : 'border-border bg-surface hover:bg-surface-2',
       )}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
-      >
-        <ChevronRight
-          className={cn(
-            'h-4 w-4 shrink-0 text-faint transition-transform duration-150',
-            expanded && 'rotate-90',
-          )}
-        />
-        <span className="truncate text-sm font-medium text-ink">{workflow.name}</span>
-        {workflow.isDefault && <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>}
-        {workflow.isTemplate && <Badge className="bg-surface-2 text-muted">Template</Badge>}
-      </button>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onDelete}
-        loading={deleting}
-        title="Xoá quy trình"
-        className="text-muted hover:text-danger"
-      >
-        <Trash2 className="h-4 w-4" />
-        <span className="sr-only">Xoá quy trình {workflow.name}</span>
-      </Button>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
+        >
+          <ChevronRight
+            className={cn(
+              'h-4 w-4 shrink-0 text-faint transition-transform duration-150',
+              expanded && 'rotate-90',
+            )}
+          />
+          <span className="truncate text-sm font-medium text-ink">{workflow.name}</span>
+          {workflow.isDefault && <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>}
+          {workflow.isTemplate && <Badge className="bg-surface-2 text-muted">Mẫu</Badge>}
+        </button>
+        {inUse ? (
+          <span
+            className="shrink-0 text-xs text-faint"
+            title="Quy trình của dự án chỉ mất khi dự án bị xoá — chưa có cách gỡ khỏi dự án đang dùng."
+          >
+            Đang dùng — không xoá được
+          </span>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDelete}
+            loading={deleting}
+            title="Xoá quy trình"
+            className="text-muted hover:text-danger"
+          >
+            <Trash2 className="h-4 w-4" />
+            <span className="sr-only">Xoá quy trình {workflow.name}</span>
+          </Button>
+        )}
+      </div>
+      {inUse && <UsedByLine usedBy={usedBy} />}
     </li>
   );
 }

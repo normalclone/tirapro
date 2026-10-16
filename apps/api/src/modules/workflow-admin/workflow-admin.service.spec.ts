@@ -67,6 +67,7 @@ function make(opts: { projectId: string | null; archived?: boolean }) {
       findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })),
       findUnique: vi.fn(() => Promise.resolve({ archivedAt: opts.archived ? new Date() : null })),
       count: vi.fn(() => Promise.resolve(0)),
+      findMany: vi.fn(() => Promise.resolve([])),
     },
     issue: { count: vi.fn(() => Promise.resolve(0)) },
     $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
@@ -143,5 +144,66 @@ describe('WorkflowAdminService — workflow thuộc dự án lưu trữ là ch�
     const { service, prisma } = make({ projectId: null, archived: true });
     await expect(service.createWorkflow('w1', { name: 'N' })).resolves.toBeDefined();
     expect(prisma.workflow.create).toHaveBeenCalled();
+  });
+});
+
+describe('WorkflowAdminService.listWorkflows — usedBy', () => {
+  const wfRow = (id: string) => ({
+    id,
+    workspaceId: 'w1',
+    projectId: null,
+    name: id,
+    description: null,
+    isTemplate: false,
+    isDefault: false,
+    sourceTemplateId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    statuses: [],
+    transitions: [],
+  });
+
+  it('gắn danh sách dự án đang dùng cho từng quy trình', async () => {
+    const prisma = {
+      workflow: { findMany: vi.fn(() => Promise.resolve([wfRow('w1'), wfRow('w2')])) },
+      project: {
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            { id: 'p1', key: 'WM', name: 'Website', defaultWorkflowId: 'w1', deletedAt: null },
+            { id: 'p2', key: 'OLD', name: 'Cũ', defaultWorkflowId: 'w1', deletedAt: new Date() },
+          ]),
+        ),
+      },
+    };
+    const svc = new WorkflowAdminService(prisma as never);
+    const out = await svc.listWorkflows('ws1', {});
+    expect(out.find((w) => w.id === 'w1')!.usedBy).toEqual([
+      { id: 'p1', key: 'WM', name: 'Website', deleted: false },
+      { id: 'p2', key: 'OLD', name: 'Cũ', deleted: true },
+    ]);
+    expect(out.find((w) => w.id === 'w2')!.usedBy).toEqual([]);
+    expect(prisma.project.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('getWorkflow cũng trả usedBy', async () => {
+    const prisma = {
+      workflow: { findFirst: vi.fn(() => Promise.resolve(wfRow('w1'))) },
+      project: {
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            { id: 'p1', key: 'WM', name: 'Website', defaultWorkflowId: 'w1', deletedAt: null },
+          ]),
+        ),
+      },
+    };
+    const out = await new WorkflowAdminService(prisma as never).getWorkflow('ws1', 'w1');
+    expect(out.usedBy).toEqual([{ id: 'p1', key: 'WM', name: 'Website', deleted: false }]);
+  });
+
+  it('removeWorkflow: đang dùng → báo mã dự án đang dùng, không xoá', async () => {
+    const { service, prisma } = make({ projectId: null });
+    prisma.project.findMany.mockResolvedValueOnce([{ key: 'WM' }, { key: 'HR' }] as never);
+    await expect(service.removeWorkflow('w1', 'wf1')).rejects.toThrow(/WM, HR/);
+    expect(prisma.workflow.delete).not.toHaveBeenCalled();
   });
 });

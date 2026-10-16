@@ -85,7 +85,8 @@ export class ProjectsService {
             projectId: project.id,
             isTemplate: false,
             isDefault: true,
-            name: tpl.name,
+            // Hậu tố mã dự án: mỗi dự án có quy trình riêng, tên không còn trùng hệt nhau trong danh sách.
+            name: `${tpl.name} (${input.key})`,
             description: tpl.description,
           },
         });

@@ -353,4 +353,10 @@ describe('ProjectsService.create — mẫu dự án', () => {
     expect(tx.status.create).toHaveBeenCalledTimes(4);
     expect(arg(tx.board.create).type).toBe('SCRUM');
   });
+
+  it('tên quy trình của dự án có hậu tố mã dự án để không trùng nhau', async () => {
+    const { tx, svc } = makeTx();
+    await svc.create('w1', 'u1', { key: 'DEMO', name: 'Demo', type: 'SCRUM' });
+    expect(arg(tx.workflow.create).name).toBe('Scrum mặc định (DEMO)');
+  });
 });
