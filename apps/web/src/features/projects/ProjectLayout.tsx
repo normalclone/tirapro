@@ -33,6 +33,7 @@ import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
 import { useProjectRealtime } from '@/lib/realtime';
 import { LAST_ACTIVE_KEY, LAST_VIEW_KEY } from '@/lib/currentProject';
+import { withKey } from '@/lib/shortcuts';
 
 const VIEWS = [
   { seg: 'board', label: 'Bảng việc', icon: LayoutGrid },
@@ -217,7 +218,11 @@ export function ProjectLayout() {
                 className="ml-auto sm:ml-2"
                 onClick={() => openCreate({ projectKey: key })}
                 disabled={!project?.id || !!project.archivedAt}
-                title={project?.archivedAt ? 'Dự án đã lưu trữ — chỉ đọc' : undefined}
+                title={
+                  project?.archivedAt
+                    ? 'Dự án đã lưu trữ — chỉ đọc'
+                    : withKey('Tạo công việc', 'global.create')
+                }
                 aria-label="Tạo công việc"
               >
                 <Plus className="h-4 w-4" />

@@ -84,6 +84,7 @@ import { useCreateIssueModal } from '@/stores/createIssue';
 import { useRecents } from '@/stores/recentIssues';
 import { useProjectRealtime } from '@/lib/realtime';
 import { useCachedProjectIssue, useUpdateIssue } from './api';
+import { withKey } from '@/lib/shortcuts';
 import { isCommentHotkey, isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -550,7 +551,7 @@ export function IssueDetailPage() {
                 <button
                   type="button"
                   className={TOOLBAR_BTN}
-                  title="Xuống khu bình luận và viết ngay · phím m"
+                  title={withKey('Xuống khu bình luận và viết ngay', 'issue.comment')}
                   onClick={jumpToComments}
                 >
                   <MessageSquare className="h-4 w-4" /> Bình luận
@@ -583,7 +584,7 @@ export function IssueDetailPage() {
                     className={TOOLBAR_BTN}
                     onClick={assignToMe}
                     disabled={updateIssue.isPending}
-                    title="Đặt bạn làm người phụ trách · phím i"
+                    title={withKey('Đặt bạn làm người phụ trách', 'issue.assignMe')}
                   >
                     <UserPlus className="h-4 w-4" /> Gán cho tôi
                   </button>
@@ -607,6 +608,7 @@ export function IssueDetailPage() {
                     >
                       <DropdownMenu.Item
                         onSelect={() => copyLink()}
+                        title={withKey('Sao chép liên kết công việc', 'issue.copyLink')}
                         className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
                       >
                         <Link2 className="h-4 w-4 text-muted" /> Sao chép liên kết

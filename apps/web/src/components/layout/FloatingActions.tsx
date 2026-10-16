@@ -24,6 +24,7 @@ import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
 import { apiErrorMessage } from '@/lib/api';
 import { createPresetFromTarget } from '@/lib/currentProject';
+import { keyLabel } from '@/lib/shortcuts';
 import { useCreateTarget } from '@/lib/useCreateTarget';
 import { cn } from '@/lib/utils';
 import { FAB_EDGE_PX } from '@/lib/layoutTokens';
@@ -119,6 +120,7 @@ export function FloatingActions() {
         key: 'issue',
         icon: <Plus className="h-5 w-5" />,
         label: 'Tạo công việc',
+        kbd: keyLabel('global.create'),
         onClick: run(() => {
           if (createTarget.notice) toast.info(createTarget.notice);
           if (createTarget.block) return;
@@ -167,7 +169,7 @@ export function FloatingActions() {
       key: 'command',
       icon: <Search className="h-5 w-5" />,
       label: 'Lệnh nhanh',
-      kbd: '⌘K',
+      kbd: keyLabel('global.palette')?.replace(' ', ''),
       onClick: run(() => window.dispatchEvent(new Event('tirapro:command'))),
     },
   ].filter(Boolean) as QuickAction[];

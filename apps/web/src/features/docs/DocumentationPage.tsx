@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/stores/theme';
 import { cn } from '@/lib/utils';
+import { SHORTCUT_GROUPS, shortcutsOf, type ShortcutScope } from '@/lib/shortcuts';
 import { SHOW_DEMO_ACCOUNTS } from '@/features/auth/demoLogin';
 
 /* ============================ Khối trợ giúp UI ============================ */
@@ -84,6 +85,26 @@ function Table({ head, rows }: { head: [string, string]; rows: [ReactNode, React
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** Bảng phím của một nhóm, đọc từ kho `lib/shortcuts.ts` (cùng nguồn với bảng `?` và tooltip). */
+function ShortcutTable({ scope }: { scope: ShortcutScope }) {
+  return (
+    <Table
+      head={['Phím', 'Hành động']}
+      rows={shortcutsOf(scope).map((s): [ReactNode, ReactNode] => [
+        <span key={s.id} className="flex flex-wrap items-center gap-1">
+          {(s.display ?? s.keys).map((k, i) => (
+            <span key={i} className="flex items-center gap-1">
+              {s.sequence && i > 0 && <span className="text-xs text-faint">rồi</span>}
+              <Kbd>{k}</Kbd>
+            </span>
+          ))}
+        </span>,
+        s.label,
+      ])}
+    />
   );
 }
 
@@ -577,20 +598,13 @@ export function DocumentationPage() {
 
             <section className="mb-14">
               <H2 id="phim-tat">Phím tắt</H2>
-              <H3>Toàn cục</H3>
-              <Table head={['Phím', 'Hành động']} rows={[
-                [<span className="flex gap-1"><Kbd>⌘</Kbd><Kbd>K</Kbd></span>, <>Bảng lệnh — tìm, điều hướng, hành động, nhảy tới mã công việc</>],
-                [<Kbd>c</Kbd>, 'Tạo công việc (ở bất kỳ đâu)'],
-                [<Kbd>/</Kbd>, 'Mở nhanh ô tìm kiếm'],
-                [<span className="flex items-center gap-1"><Kbd>g</Kbd> <span className="text-xs text-faint">rồi</span> <Kbd>b</Kbd>/<Kbd>l</Kbd>/<Kbd>d</Kbd></span>, 'Đi tới Bảng việc / Việc chờ / Tổng quan'],
-                [<Kbd>?</Kbd>, 'Mở bảng phím tắt'],
-              ]} />
-              <H3>Trên trang chi tiết công việc</H3>
-              <Table head={['Phím', 'Hành động']} rows={[
-                [<Kbd>i</Kbd>, 'Gán công việc cho tôi'],
-                [<Kbd>y</Kbd>, 'Sao chép liên kết công việc'],
-                [<span className="flex gap-1"><Kbd>1</Kbd>…<Kbd>9</Kbd></span>, 'Chuyển sang trạng thái kế tiếp theo quy trình'],
-              ]} />
+              <P>Nhấn <Kbd>?</Kbd> ở bất kỳ đâu để mở bảng này ngay trong ứng dụng — hai nơi cùng đọc một nguồn nên luôn khớp.</P>
+              {SHORTCUT_GROUPS.map((g) => (
+                <div key={g.scope}>
+                  <H3>{g.title}</H3>
+                  <ShortcutTable scope={g.scope} />
+                </div>
+              ))}
               <div className="border-t border-border">
                 <Feature icon={<MousePointerClick className="h-4 w-4" />} title="Chọn nhiều & thao tác hàng loạt">Ở Việc chờ, tick nhiều công việc để Gán cho tôi · Đổi người · Chuyển sprint — có nút Hoàn tác.</Feature>
                 <Feature icon={<ListPlus className="h-4 w-4" />} title="Thêm nhanh">Ô “+ Thêm việc…” cuối mỗi cột Bảng việc / nhóm Việc chờ — nhấn Enter là tạo ngay đúng cột/sprint.</Feature>
