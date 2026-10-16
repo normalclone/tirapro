@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   ListTodo,
   ListTree,
+  MoreHorizontal,
   Plus,
   Repeat,
   Settings,
@@ -34,6 +35,8 @@ import { cn } from '@/lib/utils';
 import { useProjectRealtime } from '@/lib/realtime';
 import { LAST_ACTIVE_KEY, LAST_VIEW_KEY } from '@/lib/currentProject';
 import { withKey } from '@/lib/shortcuts';
+import { useScrollFade } from '@/lib/useScrollFade';
+import { activeMoreSeg, tabLabelVisible } from './projectTabs';
 
 const VIEWS = [
   { seg: 'board', label: 'Bảng việc', icon: LayoutGrid },
@@ -138,11 +141,17 @@ export function ProjectLayout() {
     }
   }, [activeKey]);
 
+  // Dưới sm: tab là ô vuông ≥44px chỉ có biểu tượng; tab ĐANG MỞ xếp dọc biểu tượng + nhãn nhỏ bên dưới.
   const tabCls = (active: boolean) =>
     cn(
       'flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:px-2.5',
+      'max-sm:min-h-11 max-sm:min-w-11 max-sm:flex-col max-sm:justify-center max-sm:gap-0.5 max-sm:py-1',
       active ? 'bg-primary-subtle text-primary' : 'text-muted hover:bg-surface-2 hover:text-ink',
     );
+  const moreSeg = activeMoreSeg(seg);
+  const moreLabel = MORE.find((m) => m.id === moreSeg)?.label;
+  // Dải tab cuộn ngang khi thừa; mục đang mở tự cuộn vào khung (`aria-current` do NavLink đặt; nút "Thêm" tự đặt khi ở màn của nó).
+  const tabsFade = useScrollFade<HTMLDivElement>(seg, '[aria-current="page"]');
 
   return (
     <div className="flex h-full min-h-0 print:block print:h-auto">
@@ -188,14 +197,17 @@ export function ProjectLayout() {
           )}
           {/* Dưới lg đã có ô chọn dự án (hiện tên) → không lặp tên dự án lần hai. */}
           <h1
-            className={cn('text-lg font-semibold tracking-tight', hasPicker && 'hidden lg:block')}
+            className={cn(
+              'min-w-0 truncate text-lg font-semibold tracking-tight',
+              hasPicker ? 'hidden lg:block' : 'max-sm:flex-1',
+            )}
           >
             {project?.name ?? key}
           </h1>
           <span
             className={cn(
               'rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-muted',
-              hasPicker && 'hidden lg:inline',
+              hasPicker ? 'hidden lg:inline' : 'shrink-0',
             )}
           >
             {project?.key ?? key}
@@ -207,7 +219,7 @@ export function ProjectLayout() {
               aria-hidden
               className={cn(
                 'ml-auto h-8 rounded-md sm:ml-2',
-                aiEnabled ? 'w-20 sm:w-56' : 'w-9 sm:w-32',
+                aiEnabled ? 'w-24 max-sm:h-11 sm:w-56' : 'w-11 max-sm:h-11 sm:w-32',
               )}
             />
           )}
@@ -215,7 +227,7 @@ export function ProjectLayout() {
             <>
               <Button
                 size="sm"
-                className="ml-auto sm:ml-2"
+                className="ml-auto max-sm:h-11 max-sm:w-11 max-sm:px-0 sm:ml-2"
                 onClick={() => openCreate({ projectKey: key })}
                 disabled={!project?.id || !!project.archivedAt}
                 title={
@@ -233,6 +245,8 @@ export function ProjectLayout() {
                 <Button
                   variant="secondary"
                   size="sm"
+                  className="max-sm:h-11 max-sm:w-11 max-sm:px-0"
+                  title="Tạo bằng AI"
                   onClick={() => setGenOpen(true)}
                   disabled={!project?.id || !!project.archivedAt}
                   data-tour="board-ai"
@@ -247,8 +261,10 @@ export function ProjectLayout() {
 
           {/* Dải tab MỘT hàng: dưới lg xuống hàng riêng, tab không hoạt động chỉ còn biểu tượng (dưới sm) để "Thêm" luôn trong màn hình. */}
           <div
+            ref={tabsFade.ref}
+            style={tabsFade.style}
             className={cn(
-              'order-last flex w-full items-center gap-0.5 overflow-x-auto whitespace-nowrap lg:order-none lg:ml-auto lg:w-auto lg:gap-1',
+              'relative order-last flex w-full items-center gap-0.5 overflow-x-auto whitespace-nowrap max-sm:scrollbar-none max-sm:[mask-image:var(--scroll-fade)] lg:order-none lg:ml-auto lg:w-auto lg:gap-1',
               notFound && 'hidden',
             )}
             data-tour="project-views"
@@ -265,7 +281,14 @@ export function ProjectLayout() {
                 {({ isActive }) => (
                   <>
                     <v.icon className="h-4 w-4 shrink-0" />
-                    <span className={cn(!isActive && 'hidden sm:inline')}>{v.label}</span>
+                    <span
+                      className={cn(
+                        'max-sm:text-[10px] max-sm:leading-none',
+                        !tabLabelVisible(isActive, true) && 'hidden sm:inline',
+                      )}
+                    >
+                      {v.label}
+                    </span>
                   </>
                 )}
               </NavLink>
@@ -274,10 +297,26 @@ export function ProjectLayout() {
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
-                  className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-muted sm:px-2.5 transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] data-[state=open]:bg-surface-2"
+                  aria-label="Thêm"
+                  title="Thêm"
+                  aria-current={moreSeg ? 'page' : undefined}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] data-[state=open]:bg-surface-2 sm:px-2.5',
+                    'max-sm:min-h-11 max-sm:min-w-11 max-sm:flex-col max-sm:justify-center max-sm:gap-0.5 max-sm:py-1',
+                    moreSeg
+                      ? 'bg-primary-subtle text-primary'
+                      : 'text-muted hover:bg-surface-2 hover:text-ink',
+                  )}
                 >
-                  Thêm
-                  <ChevronDown className="h-3.5 w-3.5 text-faint" />
+                  {/* Mobile: biểu tượng "…" (+ tên màn đang mở nếu thuộc Thêm); từ sm: chữ "Thêm" + mũi tên như cũ. */}
+                  <MoreHorizontal className="h-4 w-4 shrink-0 sm:hidden" aria-hidden />
+                  {moreLabel && (
+                    <span className="max-w-[5.5rem] truncate text-[10px] leading-none sm:hidden">
+                      {moreLabel}
+                    </span>
+                  )}
+                  <span className="max-sm:hidden">Thêm</span>
+                  <ChevronDown className="h-3.5 w-3.5 text-faint max-sm:hidden" />
                 </button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>

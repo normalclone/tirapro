@@ -111,6 +111,13 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+  /* Hàng cuộn ngang không hiện thanh cuộn (chip lọc, dải tab trên mobile) — kèm mờ mép báo còn nội dung. */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Reduced motion: tắt mọi animation (DESIGN.md) */

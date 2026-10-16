@@ -774,7 +774,7 @@ export function BacklogPage() {
     <PeekShell>
       <div className="flex min-h-0 flex-1 flex-col">
         <TruncatedBanner projectId={projectId} />
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-6">
           {!epicPanelOpen && (
             <Button
               size="sm"
