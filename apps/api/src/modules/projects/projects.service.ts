@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { Request } from 'express';
-import { DEFAULT_WORKFLOW_TEMPLATES, SYSTEM_ROLES, type ProjectDto } from '@tirapro/types';
+import {
+  DEFAULT_WORKFLOW_TEMPLATES,
+  PROJECT_TEMPLATES,
+  SYSTEM_ROLES,
+  type ProjectDto,
+} from '@tirapro/types';
 import type {
   CreateProjectInput,
   ProjectHealthDto,
@@ -37,7 +42,13 @@ export class ProjectsService {
         `Mã dự án "${input.key}" đã tồn tại trong không gian làm việc này — hãy chọn mã khác`,
       );
 
+    // `templateKey` thắng `type`; không có thì giữ hành vi cũ (chọn theo `type`).
+    const def = input.templateKey
+      ? PROJECT_TEMPLATES.find((t) => t.key === input.templateKey)
+      : undefined;
+    const projectType = def?.projectType ?? input.type;
     const tpl =
+      (def && DEFAULT_WORKFLOW_TEMPLATES.find((t) => t.name === def.workflowName)) ??
       DEFAULT_WORKFLOW_TEMPLATES.find((t) => t.boardType === input.type) ??
       DEFAULT_WORKFLOW_TEMPLATES.find((t) => t.isDefault) ??
       DEFAULT_WORKFLOW_TEMPLATES[0]!;
@@ -60,7 +71,7 @@ export class ProjectsService {
             workspaceId,
             key: input.key,
             name: input.name,
-            type: input.type,
+            type: projectType,
             description: input.description ?? null,
             leadId: input.leadId ?? userId,
             createdById: userId,
@@ -114,7 +125,7 @@ export class ProjectsService {
           data: {
             projectId: project.id,
             name: `${project.name} Board`,
-            type: input.type === 'KANBAN' ? 'KANBAN' : 'SCRUM',
+            type: projectType === 'KANBAN' ? 'KANBAN' : 'SCRUM',
           },
         });
         let cOrder = 0;

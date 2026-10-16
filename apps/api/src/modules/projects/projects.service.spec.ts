@@ -295,3 +295,62 @@ describe('ProjectsService.create — vai trò chủ dự án', () => {
     });
   });
 });
+
+describe('ProjectsService.create — mẫu dự án', () => {
+  function makeTx() {
+    const ok = () => vi.fn((_a?: unknown) => Promise.resolve({ id: 'x' }));
+    const tx = {
+      project: {
+        create: vi.fn((_a?: unknown) => Promise.resolve(row({ id: 'p1', name: 'D' }))),
+        update: ok(),
+      },
+      workflow: { create: ok() },
+      status: { create: ok() },
+      workflowTransition: { create: ok() },
+      board: { create: ok() },
+      boardColumn: { create: ok() },
+      boardColumnStatus: { create: ok() },
+      projectMembership: { create: ok() },
+    };
+    const prisma = {
+      project: { findFirst: vi.fn(() => Promise.resolve(null)) },
+      role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-padmin' })) },
+      $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+    };
+    return { tx, svc: new ProjectsService(prisma as never, {} as never, {} as never) };
+  }
+  const arg = (m: { mock: { calls: unknown[][] } }, i = 0) =>
+    (m.mock.calls[i] as unknown as [{ data: Record<string, unknown> }])[0].data;
+
+  it('templateKey thắng type: requirements + type SCRUM => dự án/bảng KANBAN, quy trình 6 trạng thái/6 cột', async () => {
+    const { tx, svc } = makeTx();
+    await svc.create('w1', 'u1', {
+      key: 'YCKA',
+      name: 'Yêu cầu khách A',
+      type: 'SCRUM',
+      templateKey: 'requirements',
+    });
+    expect(arg(tx.project.create).type).toBe('KANBAN');
+    expect(String(arg(tx.workflow.create).name)).toContain('Quản lý yêu cầu');
+    expect(tx.status.create).toHaveBeenCalledTimes(6);
+    expect(arg(tx.board.create).type).toBe('KANBAN');
+    expect(tx.boardColumn.create).toHaveBeenCalledTimes(6);
+    expect(tx.workflowTransition.create).toHaveBeenCalledTimes(9);
+  });
+
+  it('không templateKey: type KANBAN => "Kanban mặc định" (hành vi cũ)', async () => {
+    const { tx, svc } = makeTx();
+    await svc.create('w1', 'u1', { key: 'KB', name: 'KB', type: 'KANBAN' });
+    expect(String(arg(tx.workflow.create).name)).toContain('Kanban mặc định');
+    expect(tx.status.create).toHaveBeenCalledTimes(3);
+    expect(arg(tx.project.create).type).toBe('KANBAN');
+  });
+
+  it('templateKey scrum => SCRUM, 4 trạng thái', async () => {
+    const { tx, svc } = makeTx();
+    await svc.create('w1', 'u1', { key: 'SC', name: 'SC', type: 'KANBAN', templateKey: 'scrum' });
+    expect(arg(tx.project.create).type).toBe('SCRUM');
+    expect(tx.status.create).toHaveBeenCalledTimes(4);
+    expect(arg(tx.board.create).type).toBe('SCRUM');
+  });
+});
