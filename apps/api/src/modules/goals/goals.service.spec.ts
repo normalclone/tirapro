@@ -231,4 +231,21 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
     expect(whereOf(deleteMany)).toEqual({ objectiveId: 'o1', issue: { project: visible } });
     expect(createMany).toHaveBeenCalledWith({ data: [{ objectiveId: 'o1', issueId: 'i1' }] });
   });
+
+  it('removeIssues: chỉ gỡ việc thuộc dự án người gọi thấy (không dò/gỡ liên kết tới việc dự án ẩn)', async () => {
+    const { service, prisma } = make();
+    prisma.objective.findFirst.mockResolvedValue({
+      id: 'o1',
+      projectId: null,
+      project: null,
+    } as never);
+    const deleteMany = vi.fn((_a?: unknown) => Promise.resolve({ count: 0 }));
+    Object.assign(prisma, { objectiveIssue: { deleteMany } });
+    await expect(service.removeIssues('w1', 'o1', ['i-hidden'], 'u1')).rejects.toBeDefined(); // read() sau ghi: mock trả null → 404
+    expect(whereOf(deleteMany)).toEqual({
+      objectiveId: 'o1',
+      issueId: { in: ['i-hidden'] },
+      issue: { project: visible },
+    });
+  });
 });

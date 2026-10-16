@@ -337,7 +337,8 @@ export class GoalsService {
     const visible = await this.visibleFor(workspaceId, viewerId);
     await this.requireObjective(workspaceId, objectiveId, visible);
     await this.prisma.objectiveIssue.deleteMany({
-      where: { objectiveId, issueId: { in: issueIds } },
+      // Chỉ gỡ việc thuộc dự án người gọi thấy (không dò/gỡ liên kết tới việc của dự án ẩn).
+      where: { objectiveId, issueId: { in: issueIds }, issue: { project: visible } },
     });
     return this.read(workspaceId, objectiveId, visible);
   }

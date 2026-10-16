@@ -191,15 +191,15 @@ export class ProjectsService {
   }
 
   /**
-   * Danh sách dự án; dự án đã lưu trữ bị ẩn trừ khi `includeArchived`. Có `viewerId` thì chỉ trả dự án người đó
-   * được thấy (riêng tư → thành viên + quản trị); không có = đường nội bộ không lọc.
+   * Danh sách dự án; dự án đã lưu trữ bị ẩn trừ khi `includeArchived`. Chỉ trả dự án `viewerId` được thấy
+   * (theo ProjectAccessService); `viewerId` bắt buộc.
    */
   async list(
     workspaceId: string,
-    includeArchived = false,
-    viewerId?: string,
+    includeArchived: boolean,
+    viewerId: string,
   ): Promise<ProjectDto[]> {
-    const visible = viewerId ? await this.access.visibleWhere(viewerId, workspaceId) : {};
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const projects = await this.prisma.project.findMany({
       where: {
         workspaceId,
