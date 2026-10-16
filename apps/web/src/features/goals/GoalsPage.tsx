@@ -134,7 +134,10 @@ function KeyResultRow({
   return (
     <li className="py-2.5 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <p className="min-w-0 flex-1 truncate text-sm text-ink" title={kr.name}>
+        <p
+          className="w-full min-w-0 text-sm text-ink sm:w-auto sm:flex-1 sm:truncate"
+          title={kr.name}
+        >
           {kr.name}
         </p>
         <div className="flex items-center gap-2">
@@ -195,20 +198,16 @@ function KeyResultRow({
           title="Hành trình của kết quả này"
         >
           {krSummary(kr)}
+          {auto && !kr.measureError && kr.measuredAt && ` · đo lúc ${fmtDateTime(kr.measuredAt)}`}
         </p>
         <div className="flex items-center gap-0.5">
           {canManage && !auto && <CheckInButton goal={goal} kr={kr} />}
           {(!auto || kr.checkInCount > 0) && <CheckInHistoryButton goal={goal} kr={kr} />}
         </div>
       </div>
-      {auto && (kr.measureError || kr.measuredAt) && (
-        <p
-          className={cn('mt-1 text-xs', kr.measureError ? 'text-danger' : 'text-faint')}
-          role={kr.measureError ? 'alert' : undefined}
-        >
-          {kr.measureError
-            ? `Không đo được: ${kr.measureError} — đang hiện số cũ`
-            : `Cập nhật lúc ${fmtDateTime(kr.measuredAt)}`}
+      {auto && kr.measureError && (
+        <p className="mt-1 text-xs text-danger" role="alert">
+          {`Không đo được: ${kr.measureError} — đang hiện số cũ`}
         </p>
       )}
     </li>

@@ -112,7 +112,7 @@ function ProgressChartBody({ goal, data }: { goal: GoalDto; data: GoalProgressHi
     <div>
       <div role="img" aria-label={summary}>
         <ResponsiveContainer width="100%" height={240}>
-          <LineChart data={rows} margin={CHART_MARGIN}>
+          <LineChart data={rows} margin={{ ...CHART_MARGIN, top: 20, right: 12 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             <XAxis dataKey="date" {...AXIS_PROPS} tickFormatter={shortDay} minTickGap={24} />
             <YAxis
