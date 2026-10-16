@@ -228,6 +228,8 @@ model User {
   settings      Json     @default("{}") // notification matrix, vocabulary, UI prefs (quiet-by-default)
   status        UserStatus @default(ACTIVE)
   lastSeenAt    DateTime?
+  /// Access token cấp TRƯỚC mốc này bị từ chối ngay (khoá tài khoản, đặt lại mật khẩu, đăng xuất mọi thiết bị).
+  sessionsRevokedAt DateTime?
   isSystemAdmin Boolean  @default(false)
   canCreateWorkspace Boolean @default(false) // admin hệ thống cấp quyền tạo workspace
   createdAt     DateTime @default(now())

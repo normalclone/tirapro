@@ -23,6 +23,10 @@ import type {
 } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { PresenceService, type PresenceProfile } from './presence.service';
+import { isSessionRevoked } from '../auth/session-revocation';
+
+/** Thời điểm cấp access token (để so với `sessionsRevokedAt`). */
+type TokenIssued = { iat?: number; iatMs?: number };
 
 /** Room issue hợp lệ cho `presence:view` / `typing:*` (tên do client gửi nên phải kiểm dạng). */
 const ISSUE_ROOM_RE = /^issue:[A-Za-z0-9_-]+$/;
@@ -56,17 +60,33 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       const raw =
         (client.handshake.auth?.token as string) ||
         String(client.handshake.headers.authorization ?? '').replace('Bearer ', '');
-      const payload = this.jwt.verify<{ sub: string; workspaceId: string | null }>(raw, {
+      const payload = this.jwt.verify<{
+        sub: string;
+        workspaceId: string | null;
+        iat?: number;
+        iatMs?: number;
+      }>(raw, {
         secret: this.config.get<string>('jwt.accessSecret'),
       });
       // Gán ngay (đồng bộ) để subscribe đến sớm vẫn có danh tính; mỗi lần subscribe sẽ kiểm membership lại.
-      client.data.userId = payload.sub;
-      client.data.workspaceId = payload.workspaceId;
-      if (!(await this.hasAccess(payload.sub, payload.workspaceId))) {
+      const data = client.data as {
+        userId?: string;
+        workspaceId?: string | null;
+        iat?: number;
+        iatMs?: number;
+      };
+      data.userId = payload.sub;
+      data.workspaceId = payload.workspaceId;
+      // Giữ mốc cấp token: mỗi lần subscribe kiểm lại với `sessionsRevokedAt` như guard HTTP.
+      data.iat = payload.iat;
+      data.iatMs = payload.iatMs;
+      // Vào room user TRƯỚC khi kiểm: sự kiện thu hồi phiên tới giữa hai bước vẫn ngắt được socket này
+      // (nếu chưa join, event lọt qua; còn kiểm sau thì `hasAccess` thấy mốc thu hồi). Chưa được cấp quyền gì khác ở bước này.
+      await client.join(rooms.user(payload.sub));
+      if (!(await this.hasAccess(payload.sub, payload.workspaceId, payload))) {
         client.disconnect(true);
         return;
       }
-      void client.join(rooms.user(payload.sub));
       if (payload.workspaceId) void client.join(rooms.workspace(payload.workspaceId));
     } catch {
       client.disconnect(true);
@@ -80,13 +100,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   private async hasAccess(
     userId: string,
     workspaceId: string | null | undefined,
+    issued: TokenIssued,
   ): Promise<boolean> {
     try {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { status: true, isSystemAdmin: true },
+        select: { status: true, isSystemAdmin: true, sessionsRevokedAt: true },
       });
       if (!user || user.status === 'DEACTIVATED') return false;
+      // Token cấp trước mốc thu hồi phiên (đặt lại mật khẩu, đăng xuất mọi thiết bị…) không được mở/giữ socket.
+      if (isSessionRevoked(issued, user.sessionsRevokedAt)) return false;
       if (!workspaceId || user.isSystemAdmin) return true;
       const membership = await this.prisma.workspaceMembership.findUnique({
         where: { workspaceId_userId: { workspaceId, userId } },
@@ -318,9 +341,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   ): Promise<string | null> {
     const room = this.roomName(target);
     if (!room || !target) return null;
-    const { userId, workspaceId } = client.data as { userId?: string; workspaceId?: string | null };
-    // Kiểm lại MỖI lần subscribe: member bị gỡ / user bị khoá sau lúc handshake thì không vào thêm room nào.
-    if (!userId || !(await this.hasAccess(userId, workspaceId))) return null;
+    const { userId, workspaceId, iat, iatMs } = client.data as {
+      userId?: string;
+      workspaceId?: string | null;
+      iat?: number;
+      iatMs?: number;
+    };
+    // Kiểm lại MỖI lần subscribe: member bị gỡ / user bị khoá / phiên bị thu hồi sau lúc handshake thì không vào thêm room nào.
+    if (!userId || !(await this.hasAccess(userId, workspaceId, { iat, iatMs }))) return null;
     switch (target.kind) {
       case 'user':
         return userId && target.id === userId ? room : null;
@@ -383,6 +411,33 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     } catch (err) {
       this.logger.warn(
         `Ngắt socket của member bị gỡ thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị / đổi mật khẩu) → ngắt socket của họ.
+   * `in(room).disconnectSockets` đi qua Redis adapter nên ngắt cả socket đang ở node khác.
+   * Có `revokedAtMs` (vd tự đổi mật khẩu): chỉ ngắt socket mang token cấp TRƯỚC mốc đó — socket mới của thiết bị đang đổi
+   * (token mới) được giữ, kể cả khi nó nối lại trước lúc sự kiện tới node này.
+   */
+  @OnEvent(DOMAIN_EVENTS.ACCOUNT_SESSIONS_REVOKED)
+  async onSessionsRevoked(p: { userId?: string; revokedAtMs?: number }): Promise<void> {
+    if (!p?.userId || !this.server) return;
+    try {
+      const room = this.server.in(rooms.user(p.userId));
+      if (p.revokedAtMs == null) {
+        room.disconnectSockets(true);
+        return;
+      }
+      const revokedAt = new Date(p.revokedAtMs);
+      for (const s of await room.fetchSockets()) {
+        const d = s.data as { iat?: number; iatMs?: number };
+        if (isSessionRevoked(d, revokedAt)) s.disconnect(true);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Ngắt socket của phiên bị thu hồi thất bại: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }

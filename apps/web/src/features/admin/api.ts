@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { MemberDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -16,6 +17,8 @@ export interface AdminUser {
   status: string;
   isSystemAdmin: boolean;
   canCreateWorkspace: boolean;
+  /** Tài khoản nội bộ của tự động hoá — không có thao tác khoá / đặt lại mật khẩu. */
+  isAutomation?: boolean;
   workspaceCount: number;
   lastSeenAt: string | null;
   createdAt: string;
@@ -60,6 +63,42 @@ export function useUpdateAdminUser() {
     mutationFn: async (v: { id: string; patch: UpdateAdminUserInput }) =>
       (await api.patch<AdminUser>(`/admin/users/${v.id}`, v.patch)).data,
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.admin.users }),
+  });
+}
+
+/** Đặt lại mật khẩu: trả mật khẩu tạm "chỉ hiện một lần" → không giữ trong MutationCache. */
+export function useResetAdminPassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    gcTime: 0,
+    mutationFn: async (id: string) =>
+      (await api.post<{ tempPassword: string }>(`/admin/users/${id}/reset-password`)).data,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.admin.users }),
+  });
+}
+
+export function useRevokeAdminSessions() {
+  return useMutation({
+    mutationFn: async (id: string) =>
+      (await api.post<{ revoked: number }>(`/admin/users/${id}/revoke-sessions`)).data,
+  });
+}
+
+/** Thêm tài khoản vào một không gian làm việc (bỏ trống vai trò → "Thành viên"). */
+export function useAddAdminUserToWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { userId: string; workspaceId: string; roleIds?: string[] }) =>
+      (
+        await api.post<MemberDto>(`/admin/users/${v.userId}/workspaces`, {
+          workspaceId: v.workspaceId,
+          roleIds: v.roleIds,
+        })
+      ).data,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.admin.users });
+      void qc.invalidateQueries({ queryKey: keys.admin.workspaces });
+    },
   });
 }
 

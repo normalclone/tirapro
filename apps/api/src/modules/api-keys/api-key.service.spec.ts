@@ -25,6 +25,8 @@ function setup(membership: unknown = { id: 'M1' }, status = 'ACTIVE') {
       findMany: vi.fn(() => Promise.resolve([{ prefix: 'p1' }, { prefix: 'p2' }])),
     },
     workspaceMembership: { findUnique: vi.fn(() => Promise.resolve(membership)) },
+    // Đọc lại trạng thái chủ key sau khi ghi cache (chống race với khoá tài khoản).
+    user: { findUnique: vi.fn(() => Promise.resolve({ status: 'ACTIVE' })) },
   };
   const client = {
     get: vi.fn(() => Promise.resolve(null)),
@@ -88,5 +90,56 @@ describe('ApiKeyService.revokeAllForUser / dropCaches', () => {
     await service.dropCaches(['p1', 'p2']);
     expect(client.del).toHaveBeenCalledWith('apikey:ctx:p1');
     expect(client.del).toHaveBeenCalledWith('apikey:ctx:p2');
+  });
+});
+
+describe('ApiKeyService.dropCachesForUser — khoá tài khoản chặn key ngay', () => {
+  it('xoá cache của MỌI key còn hiệu lực của user (mọi workspace), không thu hồi key', async () => {
+    const { service, prisma, client } = setup();
+    await service.dropCachesForUser('U1');
+    expect(prisma.apiKey.findMany).toHaveBeenCalledWith({
+      where: { userId: 'U1', revokedAt: null },
+      select: { prefix: true },
+    });
+    expect(client.del).toHaveBeenCalledWith('apikey:ctx:p1');
+    expect(client.del).toHaveBeenCalledWith('apikey:ctx:p2');
+    expect(prisma.apiKey.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('key đã có cache hợp lệ: sau khi cache bị xoá, lượt dùng kế tiếp đọc lại DB và bị từ chối vì user DEACTIVATED', async () => {
+    const { service, client } = setup({ id: 'M1' }, 'DEACTIVATED');
+    // Trước khi khoá: cache trúng.
+    client.get.mockResolvedValueOnce(
+      JSON.stringify({
+        h: hashApiKeySecret(SECRET),
+        exp: null,
+        ctx: { keyId: 'K1', userId: 'U1', workspaceId: 'W1', scopes: ['write'] },
+      }) as never,
+    );
+    await expect(service.validate(RAW)).resolves.toMatchObject({ userId: 'U1' });
+    // setStatus(DEACTIVATED) → dropCachesForUser → cache rỗng → đọc DB.
+    await service.dropCachesForUser('U1');
+    client.get.mockResolvedValue(null);
+    await expect(service.validate(RAW)).resolves.toBeNull();
+  });
+});
+
+describe('ApiKeyService.validate — race với khoá tài khoản (cache-miss)', () => {
+  it('user bị khoá SAU lúc validate đọc ACTIVE: đọc lại thấy DEACTIVATED -> xoá cache vừa ghi, từ chối', async () => {
+    const { service, prisma, client } = setup();
+    prisma.user.findUnique.mockResolvedValue({ status: 'DEACTIVATED' });
+    await expect(service.validate(RAW)).resolves.toBeNull();
+    expect(client.set).toHaveBeenCalledTimes(1); // đã ghi cache…
+    expect(client.del).toHaveBeenCalledWith(`apikey:ctx:${PREFIX}`); // …rồi xoá ngay
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 'U1' },
+      select: { status: true },
+    });
+  });
+
+  it('user vẫn ACTIVE -> giữ cache, trả ngữ cảnh', async () => {
+    const { service, client } = setup();
+    await expect(service.validate(RAW)).resolves.toMatchObject({ userId: 'U1' });
+    expect(client.del).not.toHaveBeenCalled();
   });
 });

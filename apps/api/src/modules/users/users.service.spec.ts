@@ -73,3 +73,56 @@ describe('UsersService — escape ký tự đại diện LIKE khi tìm người 
     ]);
   });
 });
+
+describe('UsersService.changePassword — thu hồi phiên', () => {
+  it('đổi mật khẩu: đặt mốc sessionsRevokedAt, thu hồi mọi refresh token, xoá link quên mật khẩu — một transaction', async () => {
+    const argon2 = await import('argon2');
+    const passwordHash = await argon2.hash('Old-Passw0rd');
+    const tx = {
+      user: { update: vi.fn(() => Promise.resolve({})) },
+      refreshToken: { updateMany: vi.fn(() => Promise.resolve({ count: 2 })) },
+      passwordResetToken: { deleteMany: vi.fn(() => Promise.resolve({ count: 1 })) },
+    };
+    const prisma = {
+      user: { findUnique: vi.fn(() => Promise.resolve({ id: 'u1', passwordHash })) },
+      $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+    };
+    const service = new UsersService(prisma as never, {} as never);
+    await expect(
+      service.changePassword('u1', {
+        currentPassword: 'Old-Passw0rd',
+        newPassword: 'New-Passw0rd1',
+      }),
+    ).resolves.toEqual({ success: true, revokedAtMs: expect.any(Number) as unknown });
+    const upd = tx.user.update.mock.calls[0] as unknown as [
+      { where: { id: string }; data: { passwordHash: string; sessionsRevokedAt: Date } },
+    ];
+    expect(upd[0].where).toEqual({ id: 'u1' });
+    expect(upd[0].data.sessionsRevokedAt).toBeInstanceOf(Date);
+    expect(await argon2.verify(upd[0].data.passwordHash, 'New-Passw0rd1')).toBe(true);
+    expect(tx.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', revokedAt: null },
+      data: { revokedAt: expect.any(Date) as unknown },
+    });
+    expect(tx.passwordResetToken.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', usedAt: null },
+    });
+  });
+
+  it('mật khẩu hiện tại sai -> không ghi gì', async () => {
+    const argon2 = await import('argon2');
+    const passwordHash = await argon2.hash('Old-Passw0rd');
+    const prisma = {
+      user: { findUnique: vi.fn(() => Promise.resolve({ id: 'u1', passwordHash })) },
+      $transaction: vi.fn(),
+    };
+    const service = new UsersService(prisma as never, {} as never);
+    await expect(
+      service.changePassword('u1', {
+        currentPassword: 'Wrong-Passw0rd',
+        newPassword: 'New-Passw0rd1',
+      }),
+    ).rejects.toThrow(/không đúng/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});

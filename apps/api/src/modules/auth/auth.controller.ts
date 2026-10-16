@@ -15,6 +15,7 @@ import {
 } from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AuthService } from './auth.service';
@@ -22,8 +23,7 @@ import { TokenService } from './token.service';
 import { PasswordResetService } from './password-reset.service';
 import { switchWorkspaceSchema, type SwitchWorkspaceInput } from './auth.schemas';
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
-
-const REFRESH_COOKIE = 'tirapro_rt';
+import { REFRESH_COOKIE, clearRefreshCookie, setRefreshCookie } from './refresh-cookie';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -40,18 +40,11 @@ export class AuthController {
   }
 
   private setRefreshCookie(res: Response, token: string) {
-    const days = 7;
-    const isProd = !!this.config.get<boolean>('isProd');
-    res.cookie(REFRESH_COOKIE, token, {
-      httpOnly: true,
-      // Production: web và API thường KHÁC domain (vd *.onrender.com) → cookie phải
-      // SameSite=None + Secure thì trình duyệt mới gửi kèm khi gọi chéo site;
-      // nếu để 'lax' thì /auth/refresh luôn 401 → reload là bị đăng xuất.
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      path: '/',
-      maxAge: days * 24 * 60 * 60 * 1000,
-    });
+    setRefreshCookie(res, token, !!this.config.get<boolean>('isProd'));
+  }
+
+  private clearRefreshCookie(res: Response) {
+    clearRefreshCookie(res, !!this.config.get<boolean>('isProd'));
   }
 
   @Public()
@@ -105,15 +98,28 @@ export class AuthController {
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(req.cookies?.[REFRESH_COOKIE] as string);
-    // Xoá cookie phải khớp thuộc tính lúc set (secure/sameSite) thì trình duyệt mới chấp nhận.
-    const isProd = !!this.config.get<boolean>('isProd');
-    res.clearCookie(REFRESH_COOKIE, {
-      path: '/',
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      httpOnly: true,
-    });
+    this.clearRefreshCookie(res);
     return { success: true };
+  }
+
+  /** Đăng xuất mọi thiết bị của chính mình (kể cả thiết bị này). */
+  // Chỉ tác động lên tài khoản của chính người gọi (user.id từ token), không nhận id từ client.
+  @AuthOnly()
+  @HttpCode(200)
+  @Post('logout-all')
+  async logoutAll(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request & { apiKey?: unknown },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // API key là thông tin xác thực của tích hợp, không được dùng để đăng xuất mọi phiên web của chủ key.
+    if (req.apiKey)
+      throw new ForbiddenAppException(
+        'Chỉ phiên đăng nhập của người dùng mới được đăng xuất mọi thiết bị',
+      );
+    const out = await this.auth.logoutAll(user.id);
+    this.clearRefreshCookie(res);
+    return out;
   }
 
   // Tài khoản & danh sách workspace của chính người dùng; switchWorkspace tự kiểm tra thành viên trong service.

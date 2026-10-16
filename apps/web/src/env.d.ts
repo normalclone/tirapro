@@ -8,4 +8,6 @@ interface ImportMetaEnv {
   readonly VITE_MCP_URL?: string;
   /** '1' = bật lại mục Kho mã (GitHub/GitLab) + khối "Liên kết code" (mặc định ẩn). */
   readonly VITE_FEATURE_REPOS?: string;
+  /** 'true' = hiện khối "Tài khoản demo" ở trang đăng nhập trên bản build (staging/demo). Mặc định production: ẩn. */
+  readonly VITE_SHOW_DEMO_ACCOUNTS?: string;
 }

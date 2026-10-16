@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Pencil, Trash2, UserPlus, Users } from 'lucide-react';
+import { useDeferredValue, useState } from 'react';
+import { Pencil, Search, Trash2, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { MemberDto, UserStatus } from '@tirapro/types';
 import { AddMemberPanel } from './AddMemberPanel';
@@ -7,9 +7,12 @@ import { TeamsPanel } from '@/features/teams/TeamsPanel';
 import { AddPeopleDialog } from './AddPeopleDialog';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { apiErrorMessage } from '@/lib/api';
+import { fmtRelative } from '@/lib/dateFormat';
+import { normalizeVi } from '@/lib/text';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
@@ -33,6 +36,8 @@ export function MembersPage() {
   const canManage = can('member:manage');
   const [tab, setTab] = useState<Tab>('members');
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
+  const memberQuery = useDeferredValue(memberSearch);
 
   const membersQuery = useWorkspaceMembers();
   const { data: members } = membersQuery;
@@ -107,6 +112,25 @@ export function MembersPage() {
               </div>
             </div>
 
+            {members && members.length > 0 && (
+              <div className="border-b border-border px-5 py-3">
+                <div className="relative">
+                  <Search
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
+                    aria-hidden
+                  />
+                  <Input
+                    type="search"
+                    value={memberSearch}
+                    onChange={(e) => setMemberSearch(e.target.value)}
+                    placeholder="Tìm thành viên…"
+                    aria-label="Tìm thành viên"
+                    className="pl-8"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="p-5">
               <QueryBoundary
                 query={membersQuery}
@@ -127,17 +151,13 @@ export function MembersPage() {
                 }
               >
                 {(members) => (
-                  <ul className="divide-y divide-border">
-                    {members.map((m) => (
-                      <MemberRow
-                        key={m.membershipId}
-                        member={m}
-                        canManage={canManage}
-                        isSelf={m.user.id === currentUserId}
-                        roleOptions={wsRoles ?? []}
-                      />
-                    ))}
-                  </ul>
+                  <MemberList
+                    members={members}
+                    search={memberQuery}
+                    canManage={canManage}
+                    currentUserId={currentUserId}
+                    roleOptions={wsRoles ?? []}
+                  />
                 )}
               </QueryBoundary>
             </div>
@@ -147,6 +167,48 @@ export function MembersPage() {
 
       <AddPeopleDialog mode="workspace" open={bulkOpen} onClose={() => setBulkOpen(false)} />
     </div>
+  );
+}
+
+/** Danh sách thành viên đã lọc theo ô tìm (tên/email, không phân biệt dấu). */
+function MemberList({
+  members,
+  search,
+  canManage,
+  currentUserId,
+  roleOptions,
+}: {
+  members: MemberDto[];
+  search: string;
+  canManage: boolean;
+  currentUserId: string | undefined;
+  roleOptions: { id: string; name: string; color?: string | null }[];
+}) {
+  const q = normalizeVi(search);
+  const shown = q
+    ? members.filter(
+        (m) => normalizeVi(m.user.displayName).includes(q) || normalizeVi(m.user.email).includes(q),
+      )
+    : members;
+  if (shown.length === 0) {
+    return (
+      <p className="py-4 text-center text-sm text-muted">
+        Không có thành viên nào khớp “{search.trim()}”.
+      </p>
+    );
+  }
+  return (
+    <ul className="divide-y divide-border">
+      {shown.map((m) => (
+        <MemberRow
+          key={m.membershipId}
+          member={m}
+          canManage={canManage}
+          isSelf={m.user.id === currentUserId}
+          roleOptions={roleOptions}
+        />
+      ))}
+    </ul>
   );
 }
 
@@ -188,6 +250,12 @@ function MemberRow({
           {isSelf && <span className="ml-1.5 text-xs font-normal text-faint">(bạn)</span>}
         </p>
         <p className="truncate text-xs text-faint">{user.email}</p>
+        {/* Hoạt động của người khác chỉ hiện cho người quản lý thành viên (không phô cho vai Người xem). */}
+        {canManage && (
+          <p className="truncate text-xs text-faint">
+            {user.lastSeenAt ? `Hoạt động ${fmtRelative(user.lastSeenAt)}` : 'Chưa từng đăng nhập'}
+          </p>
+        )}
       </div>
 
       <div

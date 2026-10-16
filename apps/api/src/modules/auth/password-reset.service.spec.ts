@@ -29,11 +29,18 @@ function setup() {
   const config = {
     get: vi.fn((k: string) => (k === 'mail.appWebUrl' ? 'http://localhost:5173' : undefined)),
   };
+  const events = { emit: vi.fn() };
   return {
-    service: new PasswordResetService(prisma as never, mail as never, config as never),
+    service: new PasswordResetService(
+      prisma as never,
+      mail as never,
+      config as never,
+      events as never,
+    ),
     prisma,
     tx,
     mail,
+    events,
   };
 }
 
@@ -177,9 +184,11 @@ describe('PasswordResetService.resetPassword', () => {
 
     const upd = tx.user.update.mock.calls[0]![0] as {
       where: { id: string };
-      data: { passwordHash: string };
+      data: { passwordHash: string; sessionsRevokedAt: Date };
     };
     expect(upd.where).toEqual({ id: 'u1' });
+    // Access token cũ chết ngay: cùng mốc với thu hồi refresh token.
+    expect(upd.data.sessionsRevokedAt).toBeInstanceOf(Date);
     expect(await argon2.verify(upd.data.passwordHash, 'Abcdef12')).toBe(true);
 
     const revoke = tx.refreshToken.updateMany.mock.calls[0]![0] as {
@@ -188,5 +197,27 @@ describe('PasswordResetService.resetPassword', () => {
     };
     expect(revoke.where).toMatchObject({ userId: 'u1', revokedAt: null });
     expect(revoke.data.revokedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('PasswordResetService.resetPassword — ngắt phiên cũ', () => {
+  it('hoàn tất đặt lại bằng link -> phát sự kiện ngắt socket của user (sau commit)', async () => {
+    const { service, prisma, events } = setup();
+    prisma.passwordResetToken.findUnique.mockResolvedValue({
+      id: 't1',
+      userId: 'u1',
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await service.resetPassword({ token: 'tok', newPassword: 'Abcdef12' });
+    expect(events.emit).toHaveBeenCalledWith('account.sessions_revoked', { userId: 'u1' });
+  });
+
+  it('link không hợp lệ -> không phát sự kiện', async () => {
+    const { service, events } = setup();
+    await expect(
+      service.resetPassword({ token: 'nope', newPassword: 'Abcdef12' }),
+    ).rejects.toThrow();
+    expect(events.emit).not.toHaveBeenCalled();
   });
 });

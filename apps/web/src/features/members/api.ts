@@ -1,7 +1,9 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MemberDto, PoolUserDto, UserDto } from '@tirapro/types';
 import { api, type Ack } from '@/lib/api';
+import { setAccessToken } from '@/lib/auth-token';
 import { queryClient } from '@/lib/queryClient';
+import { reconnectSocket } from '@/lib/socket';
 import { useAuth } from '@/stores/auth';
 import { keys } from '@/lib/queryKeys';
 
@@ -62,13 +64,29 @@ export function useUpdateProfile() {
 }
 
 /**
- * Đổi mật khẩu của chính mình. BE xác minh mật khẩu hiện tại; không cần đăng nhập
- * lại vì session (access + refresh) hiện tại vẫn giữ nguyên.
+ * Đổi mật khẩu của chính mình. BE xác minh mật khẩu hiện tại, thu hồi MỌI phiên (thiết bị khác phải đăng nhập lại)
+ * và cấp phiên mới cho thiết bị này (access token trong body + cookie refresh) → không cần đăng nhập lại ở đây.
  */
 export function useChangePassword() {
   return useMutation({
     mutationFn: async (input: ChangePasswordInput) =>
-      (await api.post<{ success: boolean }>('/users/me/change-password', input)).data,
+      (
+        await api.post<{ success: boolean; accessToken: string }>(
+          '/users/me/change-password',
+          input,
+        )
+      ).data,
+    onSuccess: (data) => {
+      setAccessToken(data.accessToken);
+      reconnectSocket();
+    },
+  });
+}
+
+/** Đăng xuất mọi thiết bị của chính mình (kể cả thiết bị này). Gọi xong phải `useAuth.getState().logout()`. */
+export function useLogoutAll() {
+  return useMutation({
+    mutationFn: async () => (await api.post<{ success: boolean }>('/auth/logout-all')).data,
   });
 }
 

@@ -154,6 +154,18 @@ export class ApiKeyService {
     await Promise.all(prefixes.map((p) => this.dropCache(p)));
   }
 
+  /**
+   * Xoá cache xác thực của MỌI key (mọi workspace) của một user — gọi khi tài khoản bị vô hiệu hoá để key chặn NGAY,
+   * không đợi hết TTL 60s. Không thu hồi key: mở khoá tài khoản thì key dùng lại được (validate kiểm `user.status`).
+   */
+  async dropCachesForUser(userId: string): Promise<void> {
+    const keys = await this.prisma.apiKey.findMany({
+      where: { userId, revokedAt: null },
+      select: { prefix: true },
+    });
+    await this.dropCaches(keys.map((k) => k.prefix));
+  }
+
   /** Xác thực raw key → ngữ cảnh, hoặc null nếu không hợp lệ. */
   async validate(raw: string): Promise<ApiKeyContext | null> {
     const m = KEY_RE.exec(raw.trim());
@@ -202,6 +214,17 @@ export class ApiKeyService {
       scopes: key.scopes as ApiScope[],
     };
     await this.writeCache(prefix!, { h: secretHash, exp: key.expiresAt?.getTime() ?? null, ctx });
+    // Race với khoá tài khoản: lượt validate này có thể đã đọc user ACTIVE TRƯỚC lúc khoá commit + `dropCachesForUser`
+    // rồi mới ghi cache → cache sống thêm 60s. Đọc lại trạng thái (khoá chính) SAU khi ghi: thứ tự commit → drop → ghi
+    // bảo đảm lượt đọc lại này thấy DEACTIVATED, khi đó xoá cache vừa ghi và từ chối.
+    const owner = await this.prisma.user.findUnique({
+      where: { id: key.userId },
+      select: { status: true },
+    });
+    if (!owner || owner.status === 'DEACTIVATED') {
+      await this.dropCache(prefix!);
+      return null;
+    }
     return ctx;
   }
 

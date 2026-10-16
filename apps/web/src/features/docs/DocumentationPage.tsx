@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/stores/theme';
 import { cn } from '@/lib/utils';
+import { SHOW_DEMO_ACCOUNTS } from '@/features/auth/demoLogin';
 
 /* ============================ Khối trợ giúp UI ============================ */
 
@@ -300,6 +301,8 @@ export function DocumentationPage() {
             <section className="mb-14">
               <H2 id="dang-nhap">Đăng nhập &amp; tài khoản</H2>
               <P>Mở ứng dụng và đăng nhập bằng email + mật khẩu được cấp. Quên mật khẩu thì dùng liên kết đặt lại ở màn đăng nhập, hoặc nhờ quản trị chung cấp lại.</P>
+              {/* Chỉ bản dev / build demo (VITE_SHOW_DEMO_ACCOUNTS) — production công khai không nêu mật khẩu demo. */}
+              {SHOW_DEMO_ACCOUNTS && (<>
               <H3>Tài khoản dùng thử</H3>
               <P>Bản demo có sẵn các tài khoản dưới đây (mật khẩu chung <Mono>Password123</Mono>), mỗi tài khoản đại diện một vai trò để bạn trải nghiệm nhanh:</P>
               <div className="mb-3 rounded-lg border border-border bg-surface px-4">
@@ -314,6 +317,7 @@ export function DocumentationPage() {
                   </div>
                 ))}
               </div>
+              </>)}
               <H3>Chuyển không gian làm việc &amp; đăng xuất</H3>
               <P>Nếu bạn thuộc nhiều nơi, dùng bộ chọn không gian làm việc ở đầu thanh bên để chuyển. Đăng xuất ở menu người dùng góc phải trên (cũng có sẵn liên kết mở lại tài liệu này).</P>
             </section>

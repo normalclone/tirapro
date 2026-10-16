@@ -74,4 +74,69 @@ describe('JwtStrategy.validate', () => {
     });
     await expect(strategy.validate(payload)).rejects.toBeInstanceOf(UnauthorizedException);
   });
+
+  it('access token cấp TRƯỚC mốc sessionsRevokedAt -> Unauthorized ngay', async () => {
+    const { strategy } = setup({
+      user: {
+        id: 'U1',
+        email: 'a@b.c',
+        displayName: 'A',
+        isSystemAdmin: false,
+        status: 'ACTIVE',
+        sessionsRevokedAt: new Date(2_000_000),
+      },
+    });
+    const p = strategy.validate({ ...payload, iat: 1000 });
+    await expect(p).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(p).rejects.toThrow(/thu hồi/);
+  });
+
+  it('access token cấp SAU mốc thu hồi (đăng nhập lại) -> hợp lệ', async () => {
+    const { strategy } = setup({
+      user: {
+        id: 'U1',
+        email: 'a@b.c',
+        displayName: 'A',
+        isSystemAdmin: false,
+        status: 'ACTIVE',
+        sessionsRevokedAt: new Date(2_000_000),
+      },
+    });
+    await expect(strategy.validate({ ...payload, iat: 2001 })).resolves.toMatchObject({
+      id: 'U1',
+    });
+  });
+
+  it('token cấp trong cùng giây với mốc thu hồi vẫn hợp lệ (so theo giây)', async () => {
+    const { strategy } = setup({
+      user: {
+        id: 'U1',
+        email: 'a@b.c',
+        displayName: 'A',
+        isSystemAdmin: false,
+        status: 'ACTIVE',
+        sessionsRevokedAt: new Date(2_000_500),
+      },
+    });
+    await expect(strategy.validate({ ...payload, iat: 2000 })).resolves.toMatchObject({
+      id: 'U1',
+    });
+  });
+
+  it('token có iatMs: cấp ngay TRƯỚC mốc thu hồi (cùng giây) -> Unauthorized; ngay SAU -> hợp lệ', async () => {
+    const revoked = new Date(2_000_500);
+    const user = {
+      id: 'U1',
+      email: 'a@b.c',
+      displayName: 'A',
+      isSystemAdmin: false,
+      status: 'ACTIVE',
+      sessionsRevokedAt: revoked,
+    };
+    const before = setup({ user }).strategy.validate({ ...payload, iat: 2000, iatMs: 2_000_400 });
+    await expect(before).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(
+      setup({ user }).strategy.validate({ ...payload, iat: 2000, iatMs: 2_000_600 }),
+    ).resolves.toMatchObject({ id: 'U1' });
+  });
 });

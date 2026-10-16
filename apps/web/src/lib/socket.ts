@@ -101,6 +101,17 @@ export function acquireRoom(target: RoomTarget, onReconnect?: () => void): () =>
   };
 }
 
+/**
+ * Nối lại socket hiện có bằng access token MỚI (không đổi singleton, giữ registry room → tự vào lại room khi `connect`).
+ * Dùng sau khi token đổi mà phiên vẫn tiếp tục (vd tự đổi mật khẩu: token cũ bị thu hồi, máy chủ kiểm lại mốc thu hồi
+ * ở mỗi lần subscribe nên socket mang token cũ sẽ không vào được room mới).
+ */
+export function reconnectSocket(): void {
+  if (!socket) return;
+  socket.disconnect();
+  socket.connect();
+}
+
 /** Ngắt kết nối (vd khi đăng xuất) để socket cũ không giữ phiên/room của người dùng trước. */
 export function disconnectSocket(): void {
   // Registry room gắn với socket cũ → bỏ luôn, các hàm release còn sót sẽ thành no-op.

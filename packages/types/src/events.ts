@@ -21,6 +21,8 @@ export const DOMAIN_EVENTS = {
   SPRINT_UPDATED: 'sprint.updated',
   MEMBER_ROLE_CHANGED: 'member.role_changed',
   MEMBER_REMOVED: 'member.removed', // payload { workspaceId, userId } — gateway ngắt socket của user khỏi workspace
+  // payload { userId } — phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị): gateway ngắt mọi socket của user
+  ACCOUNT_SESSIONS_REVOKED: 'account.sessions_revoked',
   NOTIFICATION_CREATED: 'notification.created',
   MENTION_CREATED: 'mention.created',
   WORKLOG_CREATED: 'worklog.created',

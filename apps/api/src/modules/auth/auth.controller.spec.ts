@@ -3,6 +3,7 @@ import { AuthController } from './auth.controller';
 
 function make() {
   const auth = {
+    logoutAll: vi.fn(() => Promise.resolve({ success: true })),
     refresh: vi.fn(() =>
       Promise.resolve({ accessToken: 'AT', refreshToken: 'RT2', user: { id: 'u1' } }),
     ),
@@ -44,5 +45,23 @@ describe('AuthController.refresh', () => {
     await expect(ctrl.refresh(req({ tirapro_rt: 'x' }), res as never)).rejects.toMatchObject({
       status: 401,
     });
+  });
+});
+
+describe('AuthController.logoutAll', () => {
+  const user = { id: 'u1' } as never;
+  it('phiên người dùng -> thu hồi mọi phiên và xoá cookie refresh', async () => {
+    const { ctrl, auth, res } = make();
+    const out = await ctrl.logoutAll(user, { headers: {} } as never, res as never);
+    expect(auth.logoutAll).toHaveBeenCalledWith('u1');
+    expect(res.clearCookie).toHaveBeenCalledWith('tirapro_rt', expect.anything());
+    expect(out).toEqual({ success: true });
+  });
+  it('xác thực bằng API key -> 403, không thu hồi gì', async () => {
+    const { ctrl, auth, res } = make();
+    await expect(
+      ctrl.logoutAll(user, { headers: {}, apiKey: { id: 'k1' } } as never, res as never),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(auth.logoutAll).not.toHaveBeenCalled();
   });
 });

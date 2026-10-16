@@ -1,7 +1,8 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createId } from '@paralleldrive/cuid2';
-import { SYSTEM_ROLES, type PermissionKey } from '@tirapro/types';
+import { DOMAIN_EVENTS, SYSTEM_ROLES, type PermissionKey } from '@tirapro/types';
 import type { LoginInput, RegisterInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
@@ -9,6 +10,9 @@ import { RbacService } from '../rbac/rbac.service';
 import { WorkspaceBootstrapService } from '../workspaces/workspace-bootstrap.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { TokenService, type RefreshMeta } from './token.service';
+
+/** Giãn cách tối thiểu giữa hai lần ghi `lastSeenAt` khi refresh. */
+const LAST_SEEN_THROTTLE_MS = 10 * 60_000;
 
 @Injectable()
 export class AuthService {
@@ -18,6 +22,7 @@ export class AuthService {
     private readonly rbac: RbacService,
     private readonly bootstrap: WorkspaceBootstrapService,
     private readonly settings: SystemSettingsService,
+    private readonly events: EventEmitter2,
   ) {}
 
   async register(input: RegisterInput, meta: RefreshMeta) {
@@ -101,6 +106,23 @@ export class AuthService {
   async refresh(refreshToken: string, meta: RefreshMeta, preferredWorkspaceId?: string | null) {
     const { userId, newToken } = await this.tokens.rotateRefresh(refreshToken, meta);
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (user.status === 'DEACTIVATED') {
+      // Bảo hiểm: lúc khoá đã thu hồi hết, nhưng token cấp lại muộn hơn (race) cũng không được sống tiếp.
+      await this.prisma.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Tài khoản đã bị vô hiệu hoá',
+      });
+    }
+    // "Hoạt động gần nhất": refresh xảy ra ≈ mỗi 15 phút khi đang dùng → cập nhật có giãn cách, không ghi DB mỗi request.
+    if (!user.lastSeenAt || Date.now() - user.lastSeenAt.getTime() > LAST_SEEN_THROTTLE_MS) {
+      void this.prisma.user
+        .update({ where: { id: userId }, data: { lastSeenAt: new Date() } })
+        .catch(() => undefined);
+    }
     let workspaceId: string | null = null;
     if (preferredWorkspaceId) {
       const kept = await this.prisma.workspaceMembership.findUnique({
@@ -123,6 +145,21 @@ export class AuthService {
 
   async logout(refreshToken?: string) {
     if (refreshToken) await this.tokens.revokeFamilyByToken(refreshToken);
+    return { success: true };
+  }
+
+  /** Đăng xuất mọi thiết bị: thu hồi mọi refresh token + access token cấp trước thời điểm này. */
+  async logoutAll(userId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      await tx.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      await tx.user.update({ where: { id: userId }, data: { sessionsRevokedAt: now } });
+    });
+    // Ngắt mọi socket đang mở của user (kể cả thiết bị này — web đăng xuất ngay sau đó).
+    this.events.emit(DOMAIN_EVENTS.ACCOUNT_SESSIONS_REVOKED, { userId });
     return { success: true };
   }
 
@@ -230,6 +267,20 @@ export class AuthService {
     return this.issueSession(user, workspaceId, meta);
   }
 
+  /**
+   * Cấp phiên mới (access + refresh) cho thiết bị đang dùng — sau khi chính user đổi mật khẩu (các phiên khác đã bị
+   * thu hồi bằng `sessionsRevokedAt`, phiên này không bị đăng xuất giữa chừng).
+   */
+  async reissueSession(userId: string, workspaceId: string | null, meta: RefreshMeta) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+    const access = this.tokens.signAccess(user, workspaceId);
+    const refreshToken = await this.tokens.issueRefresh(userId, null, meta);
+    return { ...access, refreshToken };
+  }
+
   private async issueSession(
     user: { id: string; email: string },
     workspaceId: string | null,
@@ -250,6 +301,7 @@ export class AuthService {
     locale: string;
     status: string;
     isSystemAdmin: boolean;
+    canCreateWorkspace: boolean;
     lastSeenAt: Date | null;
     createdAt: Date;
   }) {
@@ -262,6 +314,7 @@ export class AuthService {
       locale: u.locale,
       status: u.status,
       isSystemAdmin: u.isSystemAdmin,
+      canCreateWorkspace: u.canCreateWorkspace,
       lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
       createdAt: u.createdAt.toISOString(),
     };

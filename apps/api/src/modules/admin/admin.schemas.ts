@@ -17,5 +17,18 @@ export const updateUserSchema = z.object({
   status: z.enum(['ACTIVE', 'DEACTIVATED']).optional(),
 });
 
+/** Admin hệ thống thêm một tài khoản vào một không gian làm việc (vai trò mặc định: Workspace Member). */
+export const addToWorkspaceSchema = z.object({
+  workspaceId: z.string().min(1),
+  roleIds: z.array(z.string().min(1)).max(20).optional(),
+});
+
+export const listUsersQuerySchema = z.object({
+  search: z.string().trim().max(100).optional(),
+  status: z.enum(['ACTIVE', 'DEACTIVATED']).optional(),
+});
+
+export type AddToWorkspaceInput = z.infer<typeof addToWorkspaceSchema>;
+export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
