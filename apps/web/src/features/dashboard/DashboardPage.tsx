@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   CalendarClock,
@@ -43,6 +43,10 @@ import { MyBugsSection } from './MyBugsSection';
 import { OnboardingChecklist } from '@/features/guides/OnboardingChecklist';
 import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
 import { Button } from '@/components/ui/Button';
+import { LAST_VIEW_KEY, resolveCurrentProjectKey } from '@/lib/currentProject';
+import { emptyHomeActions, personaOf, type HomeAction } from '@/lib/persona';
+import { useCreateIssueModal } from '@/stores/createIssue';
+import { openReportIssue } from '@/stores/reportIssue';
 import { useAuth } from '@/stores/auth';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { DueBadge, dueState } from '@/components/ui/DueBadge';
@@ -792,13 +796,7 @@ function PersonalOverview() {
 
         {isLoading && <IssueListSkeleton />}
         {isError && <p className="text-sm text-danger">Không tải được danh sách việc của bạn.</p>}
-        {issues && issues.length === 0 && (
-          <EmptyState
-            icon={<Inbox className="h-8 w-8" />}
-            title="Bạn chưa được giao việc nào"
-            description="Khi có việc được giao cho bạn, chúng sẽ xuất hiện ở đây."
-          />
-        )}
+        {issues && issues.length === 0 && projects && <PersonalEmptyState projects={projects} />}
         {issues && issues.length > 0 && (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
             {issues.map((issue) => (
@@ -807,6 +805,66 @@ function PersonalOverview() {
           </ul>
         )}
       </section>
+    </>
+  );
+}
+
+/** "Việc của tôi" trống: nút hành động đúng vai (dev → nhận việc, tester → báo lỗi, BA/PO/SM → viết yêu cầu). */
+function PersonalEmptyState({ projects }: { projects: { key: string }[] }) {
+  const navigate = useNavigate();
+  const can = useAuth((s) => s.can);
+  const workspaceId = useAuth((s) => s.workspaceId);
+  const memberships = useAuth((s) => s.memberships);
+  const openCreate = useCreateIssueModal((s) => s.openCreate);
+  const [createProject, setCreateProject] = useState(false);
+
+  const persona = personaOf(
+    memberships.filter((m) => m.workspaceId === workspaceId),
+    can,
+  );
+  let lastViewRaw: string | null = null;
+  try {
+    lastViewRaw = localStorage.getItem(LAST_VIEW_KEY);
+  } catch {
+    /* storage bị chặn → rơi về dự án đầu */
+  }
+  const projectKey = resolveCurrentProjectKey({ pathname: '/', projects, lastViewRaw });
+  const { title, description, actions } = emptyHomeActions(persona, {
+    projectKey,
+    canCreateProject: can('project:create'),
+  });
+
+  function run(a: HomeAction) {
+    if (a.kind === 'link' && a.to) navigate(a.to);
+    else if (a.kind === 'create-issue') openCreate({ projectKey: projectKey ?? undefined });
+    else if (a.kind === 'report-bug')
+      openReportIssue({ projectKey: projectKey ?? undefined, kind: 'BUG' });
+    else if (a.kind === 'create-project') setCreateProject(true);
+  }
+
+  return (
+    <>
+      <EmptyState
+        icon={<Inbox className="h-8 w-8" />}
+        title={title}
+        description={description}
+        action={
+          actions.length > 0 ? (
+            <div className="flex flex-wrap justify-center gap-2">
+              {actions.map((a) => (
+                <Button
+                  key={a.id}
+                  variant={a.primary ? 'primary' : 'secondary'}
+                  onClick={() => run(a)}
+                >
+                  {a.label}
+                </Button>
+              ))}
+            </div>
+          ) : undefined
+        }
+      />
+      <CreateProjectModal open={createProject} onClose={() => setCreateProject(false)} />
     </>
   );
 }
