@@ -13,7 +13,12 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useProjects } from './api';
 import { CreateProjectModal } from './CreateProjectModal';
-import { filterProjects } from './projectsFilter';
+import {
+  filterProjects,
+  PROJECT_SORT_LABEL,
+  sortProjects,
+  type ProjectSort,
+} from './projectsFilter';
 import { useShowArchived } from './showArchived';
 
 const TYPE_LABEL: Record<ProjectDto['type'], string> = { SCRUM: 'Scrum', KANBAN: 'Kanban' };
@@ -44,18 +49,20 @@ export function ProjectsPage() {
   const projectsQuery = useProjects(showArchived);
   const canCreate = useAuth((s) => s.can('project:create'));
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<ProjectSort>('recent');
   const [createOpen, setCreateOpen] = useState(false);
   const last = useMemo(readLastView, []);
 
   const projects = projectsQuery.data;
+  // Danh sách rỗng khi công tắc tắt có thể là "tất cả đã lưu trữ" — tra thêm danh sách đủ để gợi ý đúng.
+  const allQuery = useProjects(true, !showArchived && projects?.length === 0);
+  const onlyArchived = !showArchived && projects?.length === 0 && (allQuery.data?.length ?? 0) > 0;
   const recent = projects?.find((p) => p.key === last?.key);
   // Dự án xem gần nhất ghim đầu danh sách (không tự chuyển trang).
-  const shown = useMemo(() => {
-    const list = filterProjects(projects ?? [], query);
-    return recent
-      ? [...list.filter((p) => p.key === recent.key), ...list.filter((p) => p.key !== recent.key)]
-      : list;
-  }, [projects, query, recent]);
+  const shown = useMemo(
+    () => sortProjects(filterProjects(projects ?? [], query), sort, recent?.key),
+    [projects, query, sort, recent],
+  );
 
   const createButton = canCreate && (
     <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -105,6 +112,21 @@ export function ProjectsPage() {
           />
           Hiện đã lưu trữ
         </label>
+        <label className="flex items-center gap-2 text-sm text-muted sm:ml-auto">
+          Sắp xếp
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as ProjectSort)}
+            aria-label="Sắp xếp dự án"
+            className="h-9 rounded-md border border-border bg-bg px-2 text-sm text-ink focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          >
+            {(Object.keys(PROJECT_SORT_LABEL) as ProjectSort[]).map((m) => (
+              <option key={m} value={m}>
+                {PROJECT_SORT_LABEL[m]}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <QueryBoundary
@@ -118,22 +140,35 @@ export function ProjectsPage() {
         }
         empty={(d) => d.length === 0}
         emptyState={
-          <EmptyState
-            icon={<FolderKanban className="h-6 w-6" />}
-            title="Chưa có dự án nào"
-            description={
-              canCreate
-                ? 'Dự án gom công việc, sprint và bảng của một nhóm. Tạo dự án đầu tiên để bắt đầu.'
-                : 'Nhờ quản trị thêm bạn vào một dự án.'
-            }
-            action={
-              canCreate ? (
-                <Button size="sm" onClick={() => setCreateOpen(true)}>
-                  <Plus className="h-4 w-4" /> Tạo dự án đầu tiên
+          onlyArchived ? (
+            <EmptyState
+              icon={<Archive className="h-6 w-6" />}
+              title="Tất cả dự án đã được lưu trữ"
+              description="Dự án đã lưu trữ chỉ đọc và đang được ẩn. Bật hiển thị để xem hoặc khôi phục."
+              action={
+                <Button size="sm" variant="secondary" onClick={() => setShowArchived(true)}>
+                  Hiện đã lưu trữ
                 </Button>
-              ) : undefined
-            }
-          />
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={<FolderKanban className="h-6 w-6" />}
+              title="Chưa có dự án nào"
+              description={
+                canCreate
+                  ? 'Dự án gom công việc, sprint và bảng của một nhóm. Tạo dự án đầu tiên để bắt đầu.'
+                  : 'Nhờ quản trị thêm bạn vào một dự án.'
+              }
+              action={
+                canCreate ? (
+                  <Button size="sm" onClick={() => setCreateOpen(true)}>
+                    <Plus className="h-4 w-4" /> Tạo dự án đầu tiên
+                  </Button>
+                ) : undefined
+              }
+            />
+          )
         }
       >
         {() =>
