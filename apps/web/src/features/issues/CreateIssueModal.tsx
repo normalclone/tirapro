@@ -242,7 +242,7 @@ export function CreateIssueModal() {
 
   const sprintOptions = useMemo(
     () => [
-      { value: '', label: 'Backlog — chưa xếp vào sprint' },
+      { value: '', label: 'Việc chờ — chưa xếp vào sprint' },
       ...(sprints ?? [])
         .filter((s) => s.state !== 'CLOSED')
         .map((s) => ({
@@ -641,7 +641,7 @@ export function CreateIssueModal() {
           <Field
             label="Sprint"
             hint="(tùy chọn)"
-            title="Sprint là đợt làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Backlog — danh sách chờ."
+            title="Sprint là khoảng thời gian làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Việc chờ."
           >
             <SearchSelect
               value={sprintId}

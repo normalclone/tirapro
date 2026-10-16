@@ -1,8 +1,9 @@
 import type { SubtreeProgress } from '@/lib/issueTree';
 import { cn } from '@/lib/utils';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 /**
- * Thanh tiến trình của cây task con: 3 đoạn (Hoàn thành / Đang làm / Cần làm) theo tỉ lệ số lượng,
+ * Thanh tiến trình của cây task con: 3 đoạn (Done / In Progress / To Do) theo tỉ lệ số lượng,
  * cho task cha "nhìn" được trạng thái toàn bộ con cháu trong một liếc mắt.
  * - compact: chỉ thanh mảnh (cho card/dòng list).
  * - mặc định: thanh + "done/total".
@@ -26,7 +27,7 @@ export function TaskProgress({
   const unit = progress.unit === 'điểm' ? ' điểm' : '';
   const title =
     titleOverride ??
-    `Hoàn thành ${progress.done}/${progress.total}${unit} (${progress.pct}%) · Đang làm ${progress.inProgress} · Cần làm ${progress.todo}`;
+    `${STATUS_CATEGORY_LABEL.DONE} ${progress.done}/${progress.total}${unit} (${progress.pct}%) · ${STATUS_CATEGORY_LABEL.IN_PROGRESS} ${progress.inProgress} · ${STATUS_CATEGORY_LABEL.TODO} ${progress.todo}`;
 
   const bar = (
     <div

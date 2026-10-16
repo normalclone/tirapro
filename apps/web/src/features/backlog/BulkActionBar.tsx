@@ -12,6 +12,7 @@ import type { ProjectLabel } from '@/features/issue-meta/api';
 import { PointsPopover } from './PointsPopover';
 import type { PriorityChoice } from './InlineEdits';
 import { cn } from '@/lib/utils';
+import { TERM } from '@/lib/terms';
 
 /** id ảo cho lựa chọn "Backlog" trong picker chuyển sprint (sprintId thực = null). */
 export const BACKLOG_OPTION = '__backlog__';
@@ -98,7 +99,7 @@ export function BulkActionBar({
   useEscapeClears(onClear);
 
   const sprintOptions = [
-    { value: BACKLOG_OPTION, label: 'Backlog (việc chờ)' },
+    { value: BACKLOG_OPTION, label: TERM.backlog },
     ...sprints.map((s) => ({ value: s.id, label: s.name })),
   ];
 
@@ -165,7 +166,7 @@ export function BulkActionBar({
             options={sprintOptions}
             placeholder="Chuyển sprint"
             searchPlaceholder="Tìm sprint…"
-            ariaLabel="Chuyển các việc đang chọn sang một sprint khác hoặc về Backlog"
+            ariaLabel="Chuyển các việc đang chọn sang một sprint khác hoặc về Việc chờ"
             disabled={busy}
             align="end"
             className="h-8 w-48"

@@ -309,10 +309,10 @@ export function DocumentationPage() {
               <P>Vài thuật ngữ xuất hiện xuyên suốt ứng dụng:</P>
               <Table head={['Thuật ngữ', 'Ý nghĩa']} rows={[
                 [<strong className="text-ink-strong">Không gian làm việc</strong>, 'Nơi riêng của một công ty hoặc phòng ban, chứa nhiều dự án và thành viên. Một người có thể thuộc nhiều nơi khác nhau.'],
-                [<strong className="text-ink-strong">Dự án (Project)</strong>, 'Nơi chứa công việc, có Board, Backlog, Sprint và cấu hình riêng.'],
+                [<strong className="text-ink-strong">Dự án (Project)</strong>, 'Nơi chứa công việc, có Bảng việc, Việc chờ, Sprint và cấu hình riêng.'],
                 [<strong className="text-ink-strong">Công việc</strong>, <>Một đầu việc cần làm — có thể là lỗi cần sửa, việc mới, hay một yêu cầu lớn. Mỗi việc có mã riêng như <Mono>DEMO-12</Mono> để nhắc tới cho gọn.</>],
-                [<strong className="text-ink-strong">Board (Bảng)</strong>, 'Xem công việc theo cột trạng thái, kéo-thả card giữa các cột.'],
-                [<strong className="text-ink-strong">Backlog</strong>, 'Danh sách chờ, xếp thứ tự ưu tiên và đưa vào sprint.'],
+                [<strong className="text-ink-strong">Bảng việc (Board)</strong>, 'Xem công việc theo cột trạng thái, kéo-thả card giữa các cột.'],
+                [<strong className="text-ink-strong">Việc chờ (backlog)</strong>, 'Danh sách việc chờ, xếp thứ tự ưu tiên và đưa vào sprint.'],
                 [<strong className="text-ink-strong">Sprint</strong>, 'Chu kỳ làm việc có thời hạn (thường 1–2 tuần).'],
                 [<strong className="text-ink-strong">Quy trình (Workflow)</strong>, 'Tập trạng thái và các đường chuyển tiếp hợp lệ giữa chúng.'],
                 [<strong className="text-ink-strong">Epic / Việc con</strong>, 'Epic gom nhiều công việc liên quan thành một khối lớn; việc con là phần nhỏ tách ra từ một công việc.'],
@@ -386,7 +386,7 @@ export function DocumentationPage() {
                 <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Thanh bên & bộ chọn dự án">Chuyển giữa các dự án, mở Bảng việc / Việc chờ / Lịch trình / Báo cáo / Cây việc.</Feature>
                 <Feature icon={<History className="h-4 w-4" />} title="Xem gần đây">Công việc vừa mở hiện lại trong ⌘K và trên Trang tổng quan để quay lại nhanh.</Feature>
               </div>
-              <Note kind="tip">Gõ <Kbd>g</Kbd> rồi <Kbd>b</Kbd> để tới Board, <Kbd>g</Kbd> <Kbd>l</Kbd> tới Backlog. Xem đầy đủ ở mục <a href="#phim-tat" className="font-medium underline">Phím tắt</a>.</Note>
+              <Note kind="tip">Gõ <Kbd>g</Kbd> rồi <Kbd>b</Kbd> để tới Bảng việc, <Kbd>g</Kbd> <Kbd>l</Kbd> tới Việc chờ. Xem đầy đủ ở mục <a href="#phim-tat" className="font-medium underline">Phím tắt</a>.</Note>
             </section>
 
             <section className="mb-14">
@@ -415,7 +415,7 @@ export function DocumentationPage() {
               <H2 id="tim-kiem">Tìm kiếm &amp; bộ lọc</H2>
               <div className="border-t border-border">
                 <Feature icon={<Search className="h-4 w-4" />} title="Tìm nhanh">Nhấn <Kbd>/</Kbd> để mở ô tìm kiếm; tìm theo mã, tiêu đề, nội dung.</Feature>
-                <Feature icon={<Filter className="h-4 w-4" />} title="Lọc nhanh & bộ lọc lưu">Chip lọc nhanh <em>Của tôi · Quá hạn · Chưa gán</em> trên Board &amp; Backlog; lưu bộ lọc cá nhân để dùng lại.</Feature>
+                <Feature icon={<Filter className="h-4 w-4" />} title="Lọc nhanh & bộ lọc lưu">Chip lọc nhanh <em>Của tôi · Quá hạn · Chưa gán</em> trên Bảng việc &amp; Việc chờ; lưu bộ lọc cá nhân để dùng lại.</Feature>
                 <Feature icon={<Sparkles className="h-4 w-4" />} title="Tìm kiếm ngữ nghĩa (AI)">Tìm theo ý nghĩa gần đúng thay vì đúng từ khoá; tự giảm về tìm toàn văn khi chưa bật embedding.</Feature>
               </div>
               <H3>Cú pháp JQL (nâng cao)</H3>
@@ -470,7 +470,7 @@ export function DocumentationPage() {
                   'Xoá công việc, quản lý thành viên hay cấu hình dự án.',
                 ]}
               />
-              <H3>Nhận &amp; hoàn thành một task</H3>
+              <H3>Nhận &amp; hoàn thành một công việc</H3>
               <Steps items={[
                 <>Mở Bảng việc, tìm việc của mình (chip <em>Của tôi</em>) hoặc bấm <Kbd>i</Kbd> trên công việc để <strong>gán cho tôi</strong>.</>,
                 'Kéo thẻ sang cột đang làm, cập nhật story points / ghi nhận thời gian khi cần.',

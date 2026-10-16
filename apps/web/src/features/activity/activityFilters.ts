@@ -1,4 +1,5 @@
 import type { ActivityItem } from './api';
+import { TERM } from '@/lib/terms';
 
 /** Chip lọc của tab Lịch sử. `fields` = giá trị `HistoryField` gửi lên `GET /issues/:id/activity?fields=`; rỗng = tất cả. */
 export const ACTIVITY_FILTERS: { id: string; label: string; fields: string[] }[] = [
@@ -48,7 +49,7 @@ export function describeActivity(a: ActivityLike): string {
     case 'STORY_POINTS':
       return `đổi điểm: ${val(a.oldValue)} → ${val(a.newValue)}`;
     case 'SPRINT':
-      return `chuyển sprint: ${a.oldLabel ?? 'Backlog'} → ${a.newLabel ?? 'Backlog'}`;
+      return `chuyển sprint: ${a.oldLabel ?? TERM.backlog} → ${a.newLabel ?? TERM.backlog}`;
     case 'DESCRIPTION':
       return 'sửa mô tả';
     case 'COMPONENT':

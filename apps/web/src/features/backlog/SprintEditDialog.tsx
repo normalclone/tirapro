@@ -72,7 +72,7 @@ export function SprintEditDialog({
   async function doDelete() {
     try {
       await remove.mutateAsync(sprint.id);
-      toast.success(`Đã xoá sprint “${sprint.name}”. Việc trong sprint đã về Backlog.`);
+      toast.success(`Đã xoá sprint “${sprint.name}”. Việc trong sprint đã về Việc chờ.`);
       setConfirmDelete(false);
       onClose();
     } catch (e) {
@@ -187,7 +187,7 @@ export function SprintEditDialog({
         title={`Xoá sprint “${sprint.name}”?`}
         description={
           sprint.issueCount
-            ? `${sprint.issueCount} việc trong sprint sẽ quay về Backlog. Sprint đã xoá không khôi phục được.`
+            ? `${sprint.issueCount} việc trong sprint sẽ quay về Việc chờ. Sprint đã xoá không khôi phục được.`
             : 'Sprint trống sẽ bị xoá. Không thể khôi phục.'
         }
         confirmLabel="Xoá sprint"

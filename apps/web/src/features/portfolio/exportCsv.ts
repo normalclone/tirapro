@@ -2,6 +2,7 @@ import { toCsv, type CsvColumn } from '@tirapro/shared';
 import { formatCalendarDmy as dmy } from '@/lib/calendarDate';
 import { healthLabel, healthReasonText } from '@/components/ui/healthLabel';
 import type { PortfolioRollup, RollupGroup, RollupProject } from './api';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 interface Row {
   group: RollupGroup;
@@ -14,9 +15,9 @@ const COLUMNS: CsvColumn<Row>[] = [
   { header: 'Tên dự án', value: (r) => r.project.name },
   { header: 'Người phụ trách', value: (r) => r.project.leadName },
   { header: 'Tổng việc', value: (r) => r.project.issueCount },
-  { header: 'Xong', value: (r) => r.project.doneCount },
-  { header: 'Đang làm', value: (r) => r.project.inProgressCount },
-  { header: 'Cần làm', value: (r) => r.project.todoCount },
+  { header: STATUS_CATEGORY_LABEL.DONE, value: (r) => r.project.doneCount },
+  { header: STATUS_CATEGORY_LABEL.IN_PROGRESS, value: (r) => r.project.inProgressCount },
+  { header: STATUS_CATEGORY_LABEL.TODO, value: (r) => r.project.todoCount },
   { header: 'Quá hạn', value: (r) => r.project.overdueCount },
   { header: 'Tiến độ %', value: (r) => r.project.progressPct },
   { header: 'Bắt đầu', value: (r) => dmy(r.project.startDate) },

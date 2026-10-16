@@ -706,7 +706,7 @@ export function BoardPage() {
                   canManageSprint,
                   archived: !!project?.archivedAt,
                 })}
-                action={<Button onClick={() => navigate(`/p/${key}/backlog`)}>Mở Backlog</Button>}
+                action={<Button onClick={() => navigate(`/p/${key}/backlog`)}>Mở Việc chờ</Button>}
               />
             </div>
           ) : lanes ? (
@@ -723,15 +723,15 @@ export function BoardPage() {
                   <div className="flex flex-col items-center gap-3 py-10 text-center">
                     <p className="text-sm text-faint">
                       {swimlaneEmpty === 'sprint'
-                        ? 'Sprint này chưa có việc nào. Thêm việc từ Backlog.'
-                        : 'Bảng chưa có việc nào. Thêm việc từ Backlog.'}
+                        ? 'Sprint này chưa có việc nào. Thêm việc từ Việc chờ.'
+                        : 'Bảng chưa có việc nào. Thêm việc từ Việc chờ.'}
                     </p>
                     <Button
                       variant="secondary"
                       size="sm"
                       onClick={() => navigate(`/p/${key}/backlog`)}
                     >
-                      Mở Backlog
+                      Mở Việc chờ
                     </Button>
                   </div>
                 )

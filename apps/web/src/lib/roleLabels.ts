@@ -11,7 +11,7 @@ const ROLE_HINTS: Record<string, string> = {
   [SYSTEM_ROLES.PROJECT_REPORTER]: 'Tạo và theo dõi công việc, không sửa việc của người khác.',
   [SYSTEM_ROLES.BUSINESS_ANALYST]: 'Làm rõ yêu cầu, viết mô tả và tiêu chí nghiệm thu.',
   [SYSTEM_ROLES.PRODUCT_OWNER]: 'Quyết định làm gì trước, chốt phạm vi và nghiệm thu.',
-  [SYSTEM_ROLES.SCRUM_MASTER]: 'Điều phối đợt làm việc, gỡ vướng cho nhóm.',
+  [SYSTEM_ROLES.SCRUM_MASTER]: 'Điều phối sprint, gỡ vướng cho nhóm.',
   [SYSTEM_ROLES.DEVELOPER]: 'Nhận việc, cập nhật tiến độ, bình luận.',
   [SYSTEM_ROLES.TESTER]: 'Kiểm tra kết quả, báo lỗi, xác nhận đã sửa xong.',
   [SYSTEM_ROLES.DESIGNER]: 'Thiết kế giao diện và trải nghiệm.',

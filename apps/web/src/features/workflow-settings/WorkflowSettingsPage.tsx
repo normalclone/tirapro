@@ -37,6 +37,7 @@ import {
   type StatusCategory,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 /* ------------------------------------------------------------------ */
 /* Hằng số phân loại trạng thái                                       */
@@ -46,12 +47,6 @@ const CATEGORY_VAR: Record<StatusCategory, string> = {
   TODO: 'var(--status-todo)',
   IN_PROGRESS: 'var(--status-progress)',
   DONE: 'var(--status-done)',
-};
-
-const CATEGORY_LABEL: Record<StatusCategory, string> = {
-  TODO: 'Cần làm',
-  IN_PROGRESS: 'Đang làm',
-  DONE: 'Hoàn thành',
 };
 
 const CATEGORY_OPTIONS: StatusCategory[] = ['TODO', 'IN_PROGRESS', 'DONE'];
@@ -556,7 +551,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
             title="Chưa có trạng thái nào"
             description={
               canManage
-                ? 'Trạng thái cho biết công việc đang ở bước nào (vd Cần làm, Đang làm, Xong). Thêm trạng thái đầu tiên cho quy trình này.'
+                ? 'Trạng thái cho biết công việc đang ở bước nào (vd To Do, In Progress, Done). Thêm trạng thái đầu tiên cho quy trình này.'
                 : 'Quy trình này chưa có trạng thái nào.'
             }
             action={
@@ -579,7 +574,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                 />
                 <span className="truncate text-sm font-medium text-ink">{s.name}</span>
                 <Badge className="bg-surface-2 text-muted" dotColor={CATEGORY_VAR[s.category]}>
-                  {CATEGORY_LABEL[s.category]}
+                  {STATUS_CATEGORY_LABEL[s.category]}
                 </Badge>
                 {s.isInitial && (
                   <Badge className="bg-primary-subtle text-primary">
@@ -652,7 +647,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                 >
                   {CATEGORY_OPTIONS.map((c) => (
                     <option key={c} value={c}>
-                      {CATEGORY_LABEL[c]}
+                      {STATUS_CATEGORY_LABEL[c]}
                     </option>
                   ))}
                 </select>

@@ -22,6 +22,7 @@ import { useProjects } from '@/features/projects/api';
 import { useWorkspaceUsers } from '@/features/members/api';
 import { useFilterFields, type FieldOption } from './api';
 import { toDateInput } from '@/lib/dateFormat';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 /* ------------------------------------------------------------------ */
 /* Metadata field (nhãn tiếng Việt + thứ tự hiển thị)                  */
@@ -53,9 +54,9 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
 
 /** Nhóm trạng thái: enum cố định, khớp Status.category ở backend. */
 const STATUS_CATEGORY_OPTIONS: FieldOption[] = [
-  { value: 'TODO', label: 'Cần làm' },
-  { value: 'IN_PROGRESS', label: 'Đang làm' },
-  { value: 'DONE', label: 'Hoàn thành' },
+  { value: 'TODO', label: STATUS_CATEGORY_LABEL.TODO },
+  { value: 'IN_PROGRESS', label: STATUS_CATEGORY_LABEL.IN_PROGRESS },
+  { value: 'DONE', label: STATUS_CATEGORY_LABEL.DONE },
 ];
 
 const ME_OPTION: FieldOption = { value: CURRENT_USER_TOKEN, label: 'Tôi' };

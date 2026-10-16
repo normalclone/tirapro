@@ -108,10 +108,11 @@ import { SprintAssistantDialog } from '@/features/ai/SprintAssistantDialog';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
 import { applyQuickFilters, useQuickFilters } from '@/features/quick-filters/useQuickFilters';
 import { AssigneeFilter, applyAssigneeFilter } from '@/features/quick-filters/AssigneeFilter';
+import { TERM } from '@/lib/terms';
 
 const SCREEN_READER_INSTRUCTIONS: ScreenReaderInstructions = {
   draggable:
-    'Nhấn Space để nhấc việc này lên. Khi đang nhấc, dùng mũi tên lên hoặc xuống để đổi thứ tự, tới sprint hoặc Backlog khác để chuyển, nhấn Space để thả, nhấn Esc để huỷ.',
+    'Nhấn Space để nhấc việc này lên. Khi đang nhấc, dùng mũi tên lên hoặc xuống để đổi thứ tự, tới sprint khác hoặc Việc chờ để chuyển, nhấn Space để thả, nhấn Esc để huỷ.',
 };
 
 /** id của droppable backlog (không phải sprint). */
@@ -124,8 +125,8 @@ const STATE_BADGE: Record<SprintDto['state'], { label: string; className: string
 };
 
 /** Giải nghĩa cho người mới: backlog và sprint là gì (hiện trong tooltip tiêu đề mỗi khu). */
-const BACKLOG_TIP = 'Backlog: danh sách việc chờ, chưa xếp vào đợt làm nào.';
-const SPRINT_TIP = 'Sprint: đợt làm việc ngắn, thường 1–2 tuần.';
+const BACKLOG_TIP = 'Việc chờ: danh sách việc chưa xếp vào sprint nào.';
+const SPRINT_TIP = 'Sprint: khoảng thời gian làm việc ngắn, thường 1–2 tuần.';
 
 function pointsSum(issues: IssueDto[]): number {
   return issues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
@@ -327,7 +328,7 @@ export function BacklogPage() {
   }
 
   function labelForSprint(id: string | null): string {
-    if (id === null) return 'Backlog';
+    if (id === null) return TERM.backlog;
     return (sprints ?? []).find((s) => s.id === id)?.name ?? 'sprint khác';
   }
 
@@ -463,7 +464,7 @@ export function BacklogPage() {
     const keyOf = (id: string | number) => (issues ?? []).find((i) => i.id === id)?.key ?? 'Việc';
     const whereOf = (containerId: string) =>
       containerId === BACKLOG_ID
-        ? 'Backlog'
+        ? TERM.backlog
         : `sprint “${(sprints ?? []).find((s) => s.id === containerId)?.name ?? 'khác'}”`;
     const at = (p: Placement) => `vị trí ${p.index + 1}/${p.total}`;
     // Mục panel Epic đang rê/thả: 'none' = bỏ khỏi epic, còn lại = tên epic, null = không phải panel Epic.
@@ -523,7 +524,7 @@ export function BacklogPage() {
         onSuccess: () => {
           setNewName('');
           setCreating(false);
-          toast.success(`Đã tạo sprint “${name}”. Kéo việc từ Backlog vào để xếp lịch.`);
+          toast.success(`Đã tạo sprint “${name}”. Kéo việc từ Việc chờ vào để xếp lịch.`);
         },
         onError: (err) => toast.error(apiErrorMessage(err)),
       },
@@ -730,7 +731,7 @@ export function BacklogPage() {
     setCompleting(null);
     const where =
       moveIncompleteTo === 'backlog'
-        ? 'quay về Backlog'
+        ? 'quay về Việc chờ'
         : moveIncompleteTo === 'new'
           ? 'đã chuyển sang sprint mới'
           : `đã chuyển sang “${labelForSprint(moveIncompleteTo.sprintId)}”`;
@@ -848,7 +849,7 @@ export function BacklogPage() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  title={`Tạo một đợt làm việc mới. ${SPRINT_TIP}`}
+                  title={`Tạo một sprint mới. ${SPRINT_TIP}`}
                   onClick={() => setCreating(true)}
                 >
                   <Plus className="h-4 w-4" />
@@ -946,7 +947,7 @@ export function BacklogPage() {
                                   <Button
                                     size="sm"
                                     variant="secondary"
-                                    title="Gợi ý việc trong Backlog vừa với năng lực của đội"
+                                    title="Gợi ý việc trong Việc chờ vừa với năng lực của đội"
                                     onClick={() =>
                                       setAssistantFor({
                                         id: sprint.id,
@@ -961,7 +962,7 @@ export function BacklogPage() {
                                 )}
                                 <Button
                                   size="sm"
-                                  title={`Bắt đầu đợt làm việc này. ${SPRINT_TIP}`}
+                                  title={`Bắt đầu sprint này. ${SPRINT_TIP}`}
                                   onClick={() => openStartDialog(sprint.id)}
                                 >
                                   <Play className="h-4 w-4" />
@@ -972,7 +973,7 @@ export function BacklogPage() {
                               <Button
                                 size="sm"
                                 variant="secondary"
-                                title="Kết thúc đợt làm việc này. Bạn chọn việc chưa xong đi đâu: Backlog, sprint mới hoặc sprint có sẵn."
+                                title="Kết thúc sprint này. Bạn chọn việc chưa xong đi đâu: Việc chờ, sprint mới hoặc sprint có sẵn."
                                 loading={
                                   completeSprint.isPending &&
                                   completeSprint.variables?.sprintId === sprint.id
@@ -992,7 +993,7 @@ export function BacklogPage() {
                             ? 'Đang có một sprint chạy dở — kết thúc sprint đó trước rồi mới bắt đầu sprint này.'
                             : sprint.goal
                           : notDone > 0
-                            ? `Còn ${notDone} việc chưa xong. Khi kết thúc sprint, bạn chọn đưa chúng về Backlog hoặc sang sprint khác.`
+                            ? `Còn ${notDone} việc chưa xong. Khi kết thúc sprint, bạn chọn đưa chúng về Việc chờ hoặc sang sprint khác.`
                             : sprint.goal
                       }
                     />
@@ -1002,7 +1003,7 @@ export function BacklogPage() {
 
               <Section
                 id={BACKLOG_ID}
-                title="Backlog"
+                title={TERM.backlog}
                 badge={null}
                 points={pointsSum(backlogIssues)}
                 count={backlogIssues.length}
@@ -1023,7 +1024,7 @@ export function BacklogPage() {
                 onToggleSection={toggleSelectSection}
                 onOpen={peek.open}
                 peekedKey={peek.peekKey}
-                emptyTitle="Backlog đang trống"
+                emptyTitle="Việc chờ đang trống"
                 emptyDescription="Đây là nơi chứa việc chưa xếp vào sprint nào. Thêm việc ở ô bên dưới, hoặc kéo việc từ sprint về đây."
               />
 
@@ -1034,7 +1035,7 @@ export function BacklogPage() {
                     type="button"
                     onClick={() => setShowClosed((v) => !v)}
                     aria-expanded={showClosed}
-                    title="Các đợt làm việc đã kết thúc — chỉ xem lại, không sửa được."
+                    title="Các sprint đã kết thúc — chỉ xem lại, không sửa được."
                     className="flex items-center gap-1.5 rounded-md px-1 py-1 text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                   >
                     <ChevronRight
@@ -1414,7 +1415,7 @@ function Section({
             <p className="px-2 py-5 text-center text-xs text-faint">
               {readOnly
                 ? 'Sprint này không có việc nào.'
-                : 'Chưa có việc nào. Kéo việc từ Backlog vào đây hoặc thêm mới bên dưới.'}
+                : 'Chưa có việc nào. Kéo việc từ Việc chờ vào đây hoặc thêm mới bên dưới.'}
             </p>
           ))}
         {showQuickAdd && (
@@ -1428,7 +1429,7 @@ function Section({
               }}
               placeholder={
                 quickAddSprintId === null
-                  ? '+ Thêm việc vào Backlog…'
+                  ? '+ Thêm việc vào Việc chờ…'
                   : '+ Thêm việc vào sprint này…'
               }
               compact
