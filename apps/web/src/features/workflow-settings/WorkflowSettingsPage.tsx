@@ -319,7 +319,7 @@ export function UsedByLine({
   hiddenCount = 0,
 }: {
   usedBy: NonNullable<Workflow['usedBy']>;
-  /** Số dự án riêng tư người xem không thấy — chỉ hiện số, không lộ khoá/tên. */
+  /** Số dự án người xem KHÔNG xem được (riêng tư; hoặc công khai khi chỉ thấy dự án mình là thành viên) — chỉ hiện số, không lộ khoá/tên. */
   hiddenCount?: number;
 }) {
   const shown = usedBy.slice(0, MAX_USED_BY_SHOWN);
@@ -349,7 +349,7 @@ export function UsedByLine({
         <span className={usedBy.length > 0 ? 'text-faint' : undefined}>
           {usedBy.length > 0 ? ' · ' : ''}
           {usedBy.length > 0 ? '+' : ''}
-          {hiddenCount} dự án riêng tư
+          {hiddenCount} dự án bạn không xem được
         </span>
       )}
     </p>

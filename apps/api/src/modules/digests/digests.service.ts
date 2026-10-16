@@ -82,6 +82,8 @@ export class DigestsService implements OnApplicationShutdown {
 
   /** Tạo subscription mới. */
   async create(workspaceId: string, userId: string, input: CreateDigestInput) {
+    // Báo cáo gắn dự án: người tạo phải THẤY dự án (dự án riêng tư người ngoài → 404, không tạo, không lộ sự tồn tại).
+    if (input.projectId) await this.access.assertCanSee(userId, workspaceId, input.projectId);
     // `!== undefined` (không phải truthy): chuỗi rỗng cũng phải bị từ chối, không được lưu như một channelId.
     if (input.channelId !== undefined)
       await this.assertChannelInWorkspace(workspaceId, input.channelId);
@@ -125,8 +127,10 @@ export class DigestsService implements OnApplicationShutdown {
   /**
    * Chạy ngay một subscription: tính toán + gửi + cập nhật lastRunAt.
    * Chỉ ghi lastRunAt khi thật sự gửi được — `sent:false` không được làm cron bỏ qua sub trong cửa sổ dedupe.
-   * Chạy tay là ngữ cảnh NGƯỜI DÙNG: báo cáo cấp workspace chỉ tính dự án người bấm thấy (văn bản trả về/gửi đi không
-   * lộ số liệu dự án riêng tư); cron nền (`sendScheduled`) là ngữ cảnh hệ thống nên không lọc.
+   * Dữ liệu dự án riêng tư chỉ nằm trong báo cáo CẤP DỰ ÁN (người tạo đã phải thấy dự án). Báo cáo cấp workspace:
+   * - gửi ra KÊNH (nhóm Telegram nhiều người — thành viên nhóm không đồng nghĩa thành viên dự án) → chỉ dự án CÔNG KHAI,
+   *   giống cron;
+   * - không có kênh (chỉ trả văn bản cho đúng người bấm) → lọc theo quyền xem của người đó.
    */
   async run(
     workspaceId: string,
@@ -136,7 +140,9 @@ export class DigestsService implements OnApplicationShutdown {
     const sub = await this.requireSubscription(workspaceId, id, viewerId);
     const scope = sub.projectId
       ? undefined
-      : ((await this.access.visibleProjectIds(viewerId, workspaceId)) ?? undefined);
+      : sub.channelId
+        ? await this.publicProjectIds(workspaceId)
+        : ((await this.access.visibleProjectIds(viewerId, workspaceId)) ?? undefined);
     const summaryText = await this.buildDigest(workspaceId, sub.projectId ?? undefined, scope);
     const { sent, tokenUnusable, integrationError } = await this.send(
       workspaceId,
@@ -159,7 +165,8 @@ export class DigestsService implements OnApplicationShutdown {
   /**
    * Tổng hợp digest dạng text/HTML tiếng Việt (Telegram parse_mode HTML) cho 7 ngày gần nhất.
    * Mỗi truy vấn độc lập, lỗi cục bộ không làm hỏng toàn bộ (degrade-graceful).
-   * `scopeProjectIds`: chỉ tính các dự án này khi không có `projectId` (undefined = mọi dự án — ngữ cảnh hệ thống).
+   * `scopeProjectIds`: chỉ tính các dự án này khi không có `projectId` (undefined = mọi dự án — chỉ dùng khi người gọi
+   * thấy tất cả và văn bản không đi ra kênh chung; cron/kênh luôn truyền danh sách dự án công khai).
    */
   async buildDigest(
     workspaceId: string,
@@ -404,6 +411,7 @@ export class DigestsService implements OnApplicationShutdown {
       return;
     }
 
+    const publicScopes = new Map<string, Promise<string[]>>();
     for (const sub of subs) {
       if (this.stopping) break; // app đang tắt
       const now = new Date();
@@ -417,7 +425,11 @@ export class DigestsService implements OnApplicationShutdown {
         });
         if (claimed.count === 0) continue;
         try {
-          const text = await this.buildDigest(sub.workspaceId, sub.projectId ?? undefined);
+          // Cấp workspace gửi ra kênh chung ⇒ chỉ dự án công khai; cấp dự án ⇒ đúng dự án admin đã chủ ý gắn.
+          const scope = sub.projectId
+            ? undefined
+            : await this.publicProjectIdsCached(publicScopes, sub.workspaceId);
+          const text = await this.buildDigest(sub.workspaceId, sub.projectId ?? undefined, scope);
           await this.send(sub.workspaceId, sub.channelId, text);
         } catch (err) {
           // Chỉ là lưới an toàn cho lỗi BẤT NGỜ (vd buildDigest ném). send()/telegram.send tự nuốt lỗi
@@ -438,6 +450,30 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   // ----------------------------- Helpers ------------------------------
+
+  /**
+   * Id các dự án CÔNG KHAI còn sống của workspace — phạm vi duy nhất của digest cấp workspace gửi ra kênh chung.
+   * Ngữ cảnh hệ thống/kênh chung không có người xem cụ thể nên không dùng visibleWhere.
+   */
+  private async publicProjectIds(workspaceId: string): Promise<string[]> {
+    const rows = await this.prisma.project.findMany({
+      where: { workspaceId, deletedAt: null, isPrivate: false },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
+  private publicProjectIdsCached(
+    cache: Map<string, Promise<string[]>>,
+    workspaceId: string,
+  ): Promise<string[]> {
+    let hit = cache.get(workspaceId);
+    if (!hit) {
+      hit = this.publicProjectIds(workspaceId);
+      cache.set(workspaceId, hit);
+    }
+    return hit;
+  }
 
   /** Kênh phải thuộc workspace của người gọi — chặn trỏ digest vào kênh Telegram của workspace khác. */
   private async assertChannelInWorkspace(workspaceId: string, channelId: string): Promise<void> {

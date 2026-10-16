@@ -74,6 +74,22 @@ describe('ClientsService — dự án riêng tư (P14)', () => {
     expect(got.contractTotals).toEqual([{ currency: 'VND', value: 100 }]);
   });
 
+  it('tổng giá trị hợp đồng đúng THEO NGƯỜI XEM: quản trị thấy hết (200), người ngoài chỉ phần thấy được (100), hợp đồng không gắn dự án luôn tính', async () => {
+    const admin = make();
+    admin.access.visibleProjectIds.mockResolvedValue(null as never); // quản trị: thấy mọi dự án → không lọc
+    const [forAdmin] = await admin.service.list('w1', 'admin');
+    expect(forAdmin!.contractCount).toBe(2);
+    expect(forAdmin!.contractTotals).toEqual([{ currency: 'VND', value: 200 }]);
+
+    // Thêm hợp đồng cấp khách hàng (không gắn dự án): luôn nằm trong tổng của người ngoài.
+    const outsider = make();
+    const row = (await outsider.prisma.client.findMany())[0]!;
+    row.contracts.push(contract('k4', null));
+    const [forOutsider] = await outsider.service.list('w1', 'u1');
+    expect(forOutsider!.contracts.map((k) => k.name)).toEqual(['HĐ k1', 'HĐ k4']);
+    expect(forOutsider!.contractTotals).toEqual([{ currency: 'VND', value: 200 }]); // k1 (công khai) + k4 (không dự án)
+  });
+
   it('setProjects: dự án người gọi không thấy → 422, không ghi; gỡ chỉ trong phạm vi thấy được', async () => {
     const hidden = make([]);
     await expect(hidden.service.setProjects('w1', 'c1', ['hr'], 'u1')).rejects.toMatchObject({

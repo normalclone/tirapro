@@ -49,6 +49,7 @@ export class DigestsController {
 
   @Post()
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
+  @ProjectRef('body', 'projectId')
   async create(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,

@@ -13,6 +13,7 @@ function setup(
   integrationStatus: 'ACTIVE' | 'ERROR' | 'DISABLED' = 'ACTIVE',
 ) {
   const prisma = {
+    project: { findMany: vi.fn(() => Promise.resolve([{ id: 'pPublic' }])) },
     reportSubscription: {
       findFirst: vi.fn(() =>
         Promise.resolve({ id: 's1', workspaceId: 'w1', projectId: null, channelId: 'ch1' }),
@@ -191,6 +192,7 @@ function makeNode(
     },
   );
   const prisma = {
+    project: { findMany: vi.fn(() => Promise.resolve([{ id: 'pPublic' }])) },
     reportSubscription: {
       // Snapshot tại thời điểm đọc (như SELECT): hai node đọc cùng lastRunAt cũ.
       findMany: vi.fn(() =>
@@ -219,7 +221,7 @@ function makeNode(
   if (opts.sendFails) send.mockRejectedValue(new Error('telegram down'));
   else send.mockResolvedValue({ sent: true, tokenUnusable: false, integrationError: false });
   vi.spyOn(service, 'buildDigest').mockResolvedValue('t');
-  return { service, updateMany, send };
+  return { service, updateMany, send, prisma };
 }
 
 describe('DigestsService.runScheduled — chống gửi đôi (CAS lastRunAt)', () => {
@@ -333,6 +335,9 @@ describe('DigestsService — dự án riêng tư: người ngoài không thấy 
       ...base.prisma,
       reportSubscription: {
         ...base.prisma.reportSubscription,
+        create: vi.fn((a: { data: unknown }) =>
+          Promise.resolve({ id: 'new', ...(a.data as object) }),
+        ),
         findMany: vi.fn(() => Promise.resolve([])),
         findFirst: vi.fn(() =>
           Promise.resolve({ id: 's1', workspaceId: 'w1', projectId: 'pHidden', channelId: 'ch1' }),
@@ -418,5 +423,159 @@ describe('DigestsService — dự án riêng tư: người ngoài không thấy 
       JSON.stringify((m.mock.calls[0] as unknown[])[0]);
     for (const m of [issueCount, groupBy, historyFind, sprintFind])
       expect(arg(m)).toContain('"projectId":{"in":["pA"]}');
+  });
+});
+
+describe('DigestsService.create — dự án ẩn (P15 fix round 1)', () => {
+  function createSetup(visible: string[] | null) {
+    const out = (() => {
+      const base = setup({ kind: 'global' });
+      const access = {
+        visibleProjectIds: vi.fn(() => Promise.resolve(visible)),
+        assertCanSee: vi.fn((_u: string, _w: string, p: string) =>
+          visible === null || visible.includes(p)
+            ? Promise.resolve()
+            : Promise.reject(Object.assign(new Error('Dự án'), { status: 404 })),
+        ),
+      };
+      const create = vi.fn((a: { data: unknown }) =>
+        Promise.resolve({ id: 'new', ...(a.data as object) }),
+      );
+      const prisma = {
+        ...base.prisma,
+        reportSubscription: { ...base.prisma.reportSubscription, create },
+      };
+      const service = new DigestsService(
+        prisma as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        access as never,
+      );
+      return { service, create, access };
+    })();
+    return out;
+  }
+
+  it('người không thấy dự án → 404, KHÔNG tạo báo cáo', async () => {
+    const { service, create } = createSetup(['pVisible']);
+    await expect(
+      service.create('w1', 'u1', { name: 'x', projectId: 'pHidden' }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('người thấy dự án (thành viên/admin) → tạo được', async () => {
+    const { service, create } = createSetup(['pHidden']);
+    await expect(
+      service.create('w1', 'u1', { name: 'x', projectId: 'pHidden' }),
+    ).resolves.toMatchObject({ projectId: 'pHidden' });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('báo cáo cấp workspace (không projectId): không cần kiểm dự án', async () => {
+    const { service, create, access } = createSetup(['pVisible']);
+    await service.create('w1', 'u1', { name: 'x' });
+    expect(access.assertCanSee).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('DigestsService — digest cấp workspace ra kênh chỉ chứa dự án công khai (P15 fix round 1)', () => {
+  it('run cấp workspace CÓ kênh: người bấm là admin thấy hết nhưng văn bản gửi ra chỉ dự án công khai', async () => {
+    const { service, prisma } = setup({ kind: 'global' }); // sub: projectId null, channelId ch1; ALL_ACCESS = thấy hết
+    const build = vi.spyOn(service, 'buildDigest').mockResolvedValue('t');
+    await service.run('w1', 's1', 'admin');
+    expect(prisma.project.findMany).toHaveBeenCalledWith({
+      where: { workspaceId: 'w1', deletedAt: null, isPrivate: false },
+      select: { id: true },
+    });
+    expect(build).toHaveBeenCalledWith('w1', undefined, ['pPublic']);
+  });
+
+  it('run cấp dự án (admin chủ ý gắn dự án riêng tư): không thu hẹp, vẫn đúng dự án đó', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    prisma.reportSubscription.findFirst.mockResolvedValueOnce({
+      id: 's3',
+      workspaceId: 'w1',
+      projectId: 'pPrivate',
+      channelId: 'ch1',
+    } as never);
+    const build = vi.spyOn(service, 'buildDigest').mockResolvedValue('t');
+    await service.run('w1', 's3', 'member');
+    expect(build).toHaveBeenCalledWith('w1', 'pPrivate', undefined);
+  });
+
+  it('cron: cấp workspace → phạm vi = dự án công khai; cấp dự án → đúng dự án (không phạm vi)', async () => {
+    const node = makeNode([
+      { id: 'sWs', lastRunAt: null },
+      { id: 'sPr', lastRunAt: null },
+    ]);
+    // sPr là báo cáo gắn dự án riêng tư
+    (
+      node.prisma.reportSubscription.findMany as unknown as {
+        mockImplementation: (f: () => unknown) => void;
+      }
+    ).mockImplementation(() =>
+      Promise.resolve([
+        {
+          id: 'sWs',
+          lastRunAt: null,
+          workspaceId: 'w1',
+          projectId: null,
+          channelId: 'c1',
+          schedule: 'DAILY',
+        },
+        {
+          id: 'sPr',
+          lastRunAt: null,
+          workspaceId: 'w1',
+          projectId: 'pPrivate',
+          channelId: 'c1',
+          schedule: 'DAILY',
+        },
+      ]),
+    );
+    const build = vi.spyOn(node.service, 'buildDigest').mockResolvedValue('t');
+    await node.service.runScheduled();
+    expect(build).toHaveBeenCalledWith('w1', undefined, ['pPublic']);
+    expect(build).toHaveBeenCalledWith('w1', 'pPrivate', undefined);
+    expect(node.prisma.project.findMany).toHaveBeenCalledTimes(1); // gộp theo workspace
+  });
+
+  it('văn bản thật: dự án riêng tư (đếm, tên sprint, điểm còn lại) không lọt vào digest ra kênh', async () => {
+    // Prisma giả tôn trọng điều kiện projectId.in: dữ liệu của pPrivate chỉ trả về nếu truy vấn KHÔNG giới hạn.
+    const inScope = (where: { projectId?: { in: string[] } }, id: string) =>
+      !where.projectId || where.projectId.in.includes(id);
+    const prisma = {
+      issue: {
+        count: vi.fn((a: { where: { projectId?: { in: string[] } } }) =>
+          Promise.resolve(inScope(a.where, 'pPrivate') ? 7 : 2),
+        ),
+        groupBy: vi.fn(() => Promise.resolve([])),
+        aggregate: vi.fn(() => Promise.resolve({ _sum: { storyPoints: 13 } })),
+      },
+      issueHistory: { findMany: vi.fn(() => Promise.resolve([])) },
+      sprint: {
+        findFirst: vi.fn((a: { where: { projectId?: { in: string[] } } }) =>
+          Promise.resolve(
+            inScope(a.where, 'pPrivate') ? { id: 'sp', name: 'Sprint nhạy cảm HRX' } : null,
+          ),
+        ),
+      },
+      status: { findMany: vi.fn(() => Promise.resolve([])) },
+    };
+    const service = new DigestsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      ALL_ACCESS as never,
+    );
+    const leaked = await service.buildDigest('w1'); // không phạm vi = hành vi cũ của cron
+    expect(leaked).toContain('Sprint nhạy cảm HRX');
+    const channelText = await service.buildDigest('w1', undefined, ['pPublic']);
+    expect(channelText).not.toContain('Sprint nhạy cảm HRX');
+    expect(channelText).toContain('Tạo mới (7 ngày): 2');
   });
 });
