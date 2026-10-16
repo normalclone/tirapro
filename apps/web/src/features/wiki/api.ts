@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Ack } from '@/lib/api';
+import { api, apiErrorCode, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /** Một nút trong cây tài liệu (không kèm nội dung — nội dung lấy ở trang chi tiết). */
@@ -21,6 +21,8 @@ export interface WikiPageDetail {
   title: string;
   body: string;
   order: number;
+  /** Số phiên bản nội dung — gửi lại ở `expectedVersion` khi lưu (OCC). */
+  version: number;
   createdBy: { id: string; displayName: string } | null;
   updatedBy: { id: string; displayName: string } | null;
   breadcrumb: { id: string; title: string }[];
@@ -41,8 +43,9 @@ export interface WikiSearchHit {
 export const WIKI_SCOPE_SHARED = 'none';
 
 /** Cây trang theo phạm vi (`scope` rỗng = tất cả). */
-export function useWikiTree(scope: string) {
+export function useWikiTree(scope: string, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: keys.wiki.tree(scope),
     queryFn: async () =>
       (await api.get<WikiNode[]>('/wiki', { params: scope ? { projectId: scope } : {} })).data,
@@ -73,6 +76,22 @@ export function useWikiPage(id: string | null) {
   });
 }
 
+/** Người quản trị có thể cấp quyền viết / xoá trang ở phạm vi `scope` (rỗng = cấp workspace). Chỉ gọi khi `enabled`. */
+export function useWikiAdmins(scope: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.wiki.admins(scope),
+    queryFn: enabled
+      ? async () =>
+          (
+            await api.get<{ id: string; displayName: string }[]>('/wiki/admins', {
+              params: scope ? { projectId: scope } : {},
+            })
+          ).data
+      : skipToken,
+    staleTime: 60_000,
+  });
+}
+
 function useInvalidateWiki() {
   const qc = useQueryClient();
   return (pageId?: string) => {
@@ -85,6 +104,7 @@ function useInvalidateWiki() {
 export interface CreateWikiInput {
   title: string;
   body?: string;
+  /** Phạm vi của trang mới. Trang con PHẢI gửi `projectId` của trang cha (API từ chối nếu lệch). */
   projectId?: string | null;
   parentId?: string | null;
 }
@@ -101,9 +121,23 @@ export function useCreateWikiPage() {
 export function useUpdateWikiPage() {
   const invalidate = useInvalidateWiki();
   return useMutation({
-    mutationFn: ({ id, ...patch }: { id: string; title?: string; body?: string }) =>
-      api.put<WikiPageDetail>(`/wiki/${id}`, patch).then((r) => r.data),
+    mutationFn: ({
+      id,
+      ...patch
+    }: {
+      id: string;
+      title?: string;
+      body?: string;
+      /** `version` của trang lúc mở sửa — API trả 409 VERSION_CONFLICT nếu người khác đã lưu trước, 404 nếu trang đã bị xoá. */
+      expectedVersion?: number;
+    }) => api.put<WikiPageDetail>(`/wiki/${id}`, patch).then((r) => r.data),
     onSuccess: (page) => invalidate(page.id),
+    // Xung đột: làm mới bản của trang để "Huỷ → mở lại" thấy ngay nội dung người kia vừa lưu.
+    onError: (e, vars) => {
+      const code = apiErrorCode(e);
+      if (code === 'VERSION_CONFLICT') invalidate(vars.id);
+      else if (code === 'NOT_FOUND') invalidate(); // trang đã bị xoá → làm mới cây
+    },
   });
 }
 

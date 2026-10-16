@@ -793,6 +793,7 @@ model Issue {
   objectives        ObjectiveIssue[]
   sla               IssueSla?
   checklist         ChecklistItem[]
+  wikiPages         WikiPageIssue[]
   // Bỏ [typeId][priorityId][severityId] đứng riêng: low-selectivity + cản HOT update
   // (priority/severity đổi thường xuyên). Lọc theo chúng đi kèm prefix workspaceId/projectId.
 
@@ -1976,6 +1977,8 @@ model WikiPage {
   title       String
   body        String   @db.Text
   order       Int      @default(0)
+  /// Số phiên bản NỘI DUNG (tiêu đề/nội dung) — OCC; đổi chỗ/đổi cha KHÔNG tăng.
+  version     Int      @default(0)
   createdById String?
   updatedById String?
   createdAt   DateTime @default(now())
@@ -1985,9 +1988,22 @@ model WikiPage {
   project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   parent    WikiPage?  @relation("WikiTree", fields: [parentId], references: [id], onDelete: SetNull)
   children  WikiPage[] @relation("WikiTree")
+  issues    WikiPageIssue[]
 
   @@index([workspaceId, projectId])
   @@index([parentId])
+}
+
+/// Trang wiki nhắc tới công việc nào (suy ra từ nội dung trang mỗi lần lưu).
+model WikiPageIssue {
+  wikiPageId String
+  issueId    String
+  createdAt  DateTime @default(now())
+  wikiPage   WikiPage @relation(fields: [wikiPageId], references: [id], onDelete: Cascade)
+  issue      Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@id([wikiPageId, issueId])
+  @@index([issueId])
 }
 
 /// Khách hàng và hợp đồng.

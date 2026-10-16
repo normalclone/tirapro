@@ -20,6 +20,7 @@ export type ProjectResourceKind =
   | 'automationRule'
   | 'customField'
   | 'repository'
+  | 'wikiPage'
   | 'projectKey';
 
 /**
