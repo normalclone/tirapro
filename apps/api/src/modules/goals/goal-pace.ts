@@ -2,7 +2,7 @@
 const QUARTER = /^(\d{4})-Q([1-4])$/;
 
 /** Mục tiêu bị coi là chậm khi tiến độ thấp hơn phần thời gian đã trôi từ chừng này điểm phần trăm. */
-export const BEHIND_GAP_POINTS = 15;
+const BEHIND_GAP_POINTS = 15;
 
 /**
  * Phần trăm thời gian đã trôi (0–100, làm tròn) của quý trong `period`, tính theo UTC. Kỳ chưa tới → 0, đã qua → 100,

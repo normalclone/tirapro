@@ -9,7 +9,7 @@ export type ExportRow = IssueDto & { sprintName: string | null; projectKey: stri
  * Id cột xuất. Phần đầu TRÙNG `ResultColumnId` của bảng kết quả JQL (web/features/saved-filters/resultColumns.ts) để
  * "Xuất CSV" ở đó xuất đúng các cột đang xem; `start|sprint|labels|created` chỉ có ở file xuất.
  */
-export const ISSUE_CSV_COLUMN_IDS = [
+const ISSUE_CSV_COLUMN_IDS = [
   'key',
   'summary',
   'type',

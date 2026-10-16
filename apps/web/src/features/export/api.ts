@@ -3,10 +3,10 @@ import { downloadFile } from '@/lib/download';
 import type { ResultColumnId } from '@/features/saved-filters/resultColumns';
 
 /** Trần dòng của máy chủ (`CSV_MAX_ROWS` ở api/export/export.service.ts) — chỉ để nói với người dùng. */
-export const EXPORT_ROW_CAP = 5000;
+const EXPORT_ROW_CAP = 5000;
 
 /** Cột xuất = id cột của bảng kết quả JQL + vài cột chỉ có ở file xuất (máy chủ bỏ id lạ, luôn có `key`). */
-export type ExportColumnId = ResultColumnId | 'start' | 'sprint' | 'labels' | 'created';
+type ExportColumnId = ResultColumnId | 'start' | 'sprint' | 'labels' | 'created';
 
 export interface ExportIssuesCsvInput {
   jql?: string;

@@ -16,7 +16,7 @@ import {
 
 /** Mỗi trang 200 (trần của tìm kiếm), tối đa 25 trang = 5.000 dòng. */
 const CSV_PAGE_SIZE = 200;
-export const CSV_MAX_ROWS = 5000;
+const CSV_MAX_ROWS = 5000;
 
 /** Include đầy đủ cho mỗi issue khi export (round-trippable với import CSV/JSON). */
 const exportIssueInclude = {
