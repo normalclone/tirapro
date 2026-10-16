@@ -14,7 +14,8 @@ import { ProjectAccessService } from '../rbac/project-access.service';
 import { RbacService } from '../rbac/rbac.service';
 import { expectedProgress, periodRange } from './goal-pace';
 import { krProgress } from './kr-progress';
-import { KrSnapshotCron, utcDay } from './kr-snapshot.cron';
+import { vnTodayUtc } from '@tirapro/shared';
+import { KrSnapshotCron, vnDay } from './kr-snapshot.cron';
 import { KrMeasureService, type MeasureResult } from './kr-measure.service';
 import {
   parseSourceConfig,
@@ -626,7 +627,7 @@ export class GoalsService {
     });
     if (!objective) throw new NotFoundAppException('Mục tiêu');
 
-    const today = utcDay(now);
+    const today = vnDay(now);
     const range = periodRange(objective.period);
     const span = clampHistoryDays(days, range?.start, today);
     const fromDate = new Date(today.getTime() - (span - 1) * DAY_MS);
@@ -670,7 +671,8 @@ export class GoalsService {
     type DayValue = { value: number; auto: boolean };
     const byKr = new Map<string, Map<string, DayValue>>();
     for (const r of rows) {
-      const day = (r.snapshotDate ?? r.createdAt).toISOString().slice(0, 10);
+      // bản chụp: ngày lịch đã lưu; check-in tay: ngày VN của lúc tạo (không lệch một ngày lúc 00:00–07:00 VN)
+      const day = (r.snapshotDate ?? vnTodayUtc(r.createdAt)).toISOString().slice(0, 10);
       const m = byKr.get(r.keyResultId) ?? new Map<string, DayValue>();
       m.set(day, { value: r.value, auto: r.source === 'AUTO' });
       byKr.set(r.keyResultId, m);

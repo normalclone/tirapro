@@ -18,6 +18,7 @@ import {
   type DigestModel,
   type DigestSection,
   resolveDigestBlocks,
+  overdueCutoff,
   vnTodayUtc,
   WORKSPACE_ONLY_DIGEST_BLOCKS,
 } from '@tirapro/shared';
@@ -739,7 +740,7 @@ export class DigestsService implements OnApplicationShutdown {
     const where: Prisma.IssueWhereInput = {
       ...ctx.issueScope,
       deletedAt: null,
-      dueDate: { lt: today },
+      dueDate: { lt: overdueCutoff(ctx.now) },
       status: { category: { not: StatusCategory.DONE } },
     };
     const [total, worst] = await Promise.all([

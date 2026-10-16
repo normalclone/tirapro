@@ -6,6 +6,7 @@ import {
   NotFoundAppException,
 } from '../../common/exceptions/app.exception';
 import { BUG_TYPE_WHERE } from '../../common/bug-type';
+import { TtlCache } from '../../common/ttl-cache';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
@@ -48,7 +49,7 @@ export interface MeasureResult {
 export class KrMeasureService {
   private readonly logger = new Logger(KrMeasureService.name);
   /** Cache 30s theo (workspace, người xem, nguồn+cấu hình): số đo phụ thuộc dự án người xem thấy nên khoá có viewerId. */
-  private readonly cache = new Map<string, { at: number; result: MeasureResult }>();
+  private readonly cache = new TtlCache<MeasureResult>(MEASURE_CACHE_TTL_MS, MEASURE_CACHE_MAX);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -78,9 +79,10 @@ export class KrMeasureService {
     const now = Date.now();
     const pending: Array<{ key: string; kr: MeasurableKr; ids: string[] }> = [];
     for (const [key, g] of groups) {
-      const hit = cacheable ? this.cache.get(this.cacheKey(workspaceId, scope, key)) : undefined;
-      if (hit && now - hit.at < MEASURE_CACHE_TTL_MS)
-        for (const id of g.ids) out.set(id, hit.result);
+      const hit = cacheable
+        ? this.cache.read(this.cacheKey(workspaceId, scope, key), now)
+        : undefined;
+      if (hit) for (const id of g.ids) out.set(id, hit);
       else pending.push({ key, kr: g.kr, ids: g.ids });
     }
     if (pending.length === 0) return out;
@@ -92,7 +94,7 @@ export class KrMeasureService {
       try {
         const value = await this.measureOne(workspaceId, scope, visible, kr);
         result = { value, measuredAt, error: null };
-        if (cacheable) this.remember(this.cacheKey(workspaceId, scope, key), result);
+        if (cacheable) this.cache.put(this.cacheKey(workspaceId, scope, key), result);
       } catch (err) {
         result = { value: null, measuredAt, error: this.messageOf(err) };
       }
@@ -103,15 +105,6 @@ export class KrMeasureService {
 
   private cacheKey(workspaceId: string, scope: MeasureScope, groupKey: string): string {
     return `${workspaceId}|${scope === 'public' ? 'public' : scope.viewerId}|${groupKey}`;
-  }
-
-  private remember(key: string, result: MeasureResult): void {
-    if (this.cache.size >= MEASURE_CACHE_MAX) {
-      const cutoff = Date.now() - MEASURE_CACHE_TTL_MS;
-      for (const [k, v] of this.cache) if (v.at < cutoff) this.cache.delete(k);
-      if (this.cache.size >= MEASURE_CACHE_MAX) this.cache.clear();
-    }
-    this.cache.set(key, { at: Date.now(), result });
   }
 
   /** Chạy `fn` cho từng phần tử với tối đa `MEASURE_CONCURRENCY` việc đồng thời. `fn` tự bắt lỗi (không ném). */

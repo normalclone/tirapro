@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { ProjectHealthDto } from '@tirapro/shared';
+import { overdueCutoff, type ProjectHealthDto } from '@tirapro/shared';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
@@ -68,7 +68,7 @@ export class ProjectHealthService {
       }),
       this.prisma.issue.groupBy({
         by: ['projectId'],
-        where: { ...live, ...notDone, dueDate: { lt: now } },
+        where: { ...live, ...notDone, dueDate: { lt: overdueCutoff(now) } },
         _count: { _all: true },
       }),
       this.prisma.sprint.findMany({

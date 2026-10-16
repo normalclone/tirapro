@@ -8,6 +8,7 @@ import type {
   SprintSummaryReport,
   VelocityReport,
 } from '@tirapro/shared';
+import { overdueCutoff } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { isBugType } from '../../common/bug-type';
@@ -84,7 +85,8 @@ export class AnalyticsService {
     const overdueWhere: Prisma.IssueWhereInput = {
       ...baseWhere,
       ...openStatus,
-      dueDate: { lt: now },
+      // quá hạn theo NGÀY VN: hạn hôm nay chưa quá hạn (cùng định nghĩa Sức khoẻ dự án/digest/Danh mục)
+      dueDate: { lt: overdueCutoff(now) },
     };
     const unassignedOpenWhere: Prisma.IssueWhereInput = {
       ...baseWhere,
@@ -95,7 +97,7 @@ export class AnalyticsService {
     const dueSoonWhere: Prisma.IssueWhereInput = {
       ...baseWhere,
       ...openStatus,
-      dueDate: { gte: now, lte: new Date(now.getTime() + 3 * DAY) },
+      dueDate: { gte: overdueCutoff(now), lte: new Date(now.getTime() + 3 * DAY) },
     };
     const attentionSelect = { key: true, summary: true, projectId: true, dueDate: true } as const;
 
@@ -146,7 +148,7 @@ export class AnalyticsService {
         where: {
           ...unassignedOpenWhere,
           ...highPriWhere,
-          OR: [{ dueDate: null }, { dueDate: { gte: now } }],
+          OR: [{ dueDate: null }, { dueDate: { gte: overdueCutoff(now) } }],
         },
         orderBy: { createdAt: 'asc' },
         take: 8,
@@ -329,7 +331,7 @@ export class AnalyticsService {
       }),
       this.prisma.issue.groupBy({
         by: ['assigneeId'],
-        where: { ...baseWhere, ...openStatus, dueDate: { lt: now } },
+        where: { ...baseWhere, ...openStatus, dueDate: { lt: overdueCutoff(now) } },
         _count: { _all: true },
       }),
       this.prisma.issue.count({
@@ -344,7 +346,7 @@ export class AnalyticsService {
         where: {
           ...baseWhere,
           ...openStatus,
-          dueDate: { gte: now, lte: new Date(now.getTime() + 3 * DAY) },
+          dueDate: { gte: overdueCutoff(now), lte: new Date(now.getTime() + 3 * DAY) },
         },
       }),
     ]);
@@ -932,18 +934,20 @@ function attentionRows(
     summary: i.summary,
     projectKey: keyByProject.get(i.projectId) ?? '',
   });
+  const cutoff = overdueCutoff(now);
   for (const i of g.overdueTop) {
-    const days = Math.ceil((now.getTime() - i.dueDate!.getTime()) / DAY);
+    // số ngày tính theo ngày lịch VN (hạn hôm qua = 1 ngày)
+    const days = Math.max(1, Math.round((cutoff.getTime() - i.dueDate!.getTime()) / DAY));
     rows.push({ ...base(i), reason: `Quá hạn ${days} ngày`, level: 'danger', sort: 1000 + days });
   }
   for (const i of g.highPriTop) {
     rows.push({ ...base(i), reason: 'Ưu tiên cao, chưa gán người', level: 'warning', sort: 500 });
   }
   for (const i of g.dueSoonTop) {
-    const dueInDays = (i.dueDate!.getTime() - now.getTime()) / DAY;
+    const dueInDays = Math.max(0, Math.round((i.dueDate!.getTime() - cutoff.getTime()) / DAY));
     rows.push({
       ...base(i),
-      reason: `Sắp đến hạn (${Math.ceil(dueInDays)} ngày)`,
+      reason: dueInDays === 0 ? 'Đến hạn hôm nay' : `Sắp đến hạn (${dueInDays} ngày)`,
       level: 'warning',
       sort: 300 - dueInDays,
     });

@@ -6,7 +6,7 @@ import {
   ForbiddenAppException,
   NotFoundAppException,
 } from '../../common/exceptions/app.exception';
-import type { ProjectHealthDto } from '@tirapro/shared';
+import { overdueCutoff, type ProjectHealthDto } from '@tirapro/shared';
 import { ProjectHealthService } from '../analytics/project-health.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import type { CreateProgramInput, UpdateProgramInput } from './programs.schemas';
@@ -267,7 +267,7 @@ export class ProgramsService {
         by: ['projectId'],
         where: {
           ...issueScope,
-          dueDate: { lt: now },
+          dueDate: { lt: overdueCutoff(now) },
           ...(doneStatusIds.length ? { statusId: { notIn: doneStatusIds } } : {}),
         },
         _count: { _all: true },

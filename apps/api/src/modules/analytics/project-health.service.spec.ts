@@ -176,6 +176,21 @@ describe('ProjectHealthService.forProjects', () => {
       expect(call[0].where.projectId).toEqual({ in: ['p1', 'p2', 'p3'] });
   });
 
+  it('"quá hạn" = hạn < đầu ngày VN (hạn hôm nay chưa quá hạn), không phải < bây giờ', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-16T02:00:00Z')); // 09:00 VN ngày 16/10
+    try {
+      const { service, prisma } = make();
+      await service.forProjects('w1', ['p1'], null);
+      const overdueCall = prisma.issue.groupBy.mock.calls.find((c) => 'dueDate' in c[0].where)!;
+      expect((overdueCall[0].where.dueDate as { lt: Date }).lt.toISOString()).toBe(
+        '2026-10-16T00:00:00.000Z',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('danh sách rỗng => Map rỗng, không chạm DB; id không thuộc workspace/đã xoá bị bỏ qua', async () => {
     const { service, prisma } = make();
     expect((await service.forProjects('w1', [], null)).size).toBe(0);
