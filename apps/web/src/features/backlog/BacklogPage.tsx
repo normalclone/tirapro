@@ -28,11 +28,7 @@ import {
   type DragStartEvent,
   type ScreenReaderInstructions,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { toast } from 'sonner';
 import type { IssueDto, PriorityDto, SprintDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
@@ -72,7 +68,7 @@ import { dropContainer, useIsDropContainer } from '@/lib/dropContainer';
 import { dropHint } from '@/lib/dropHint';
 import { hintOf, placementFromDnd, type Placement } from '@/lib/rankDrop';
 import { applyPendingOrder, sortByRank } from '@/lib/rankOrder';
-import { sortableCollision } from '@/lib/sortableDnd';
+import { epicAwareCollision, epicAwareKeyboardCoordinates } from '@/lib/sortableDnd';
 import { useMoveIssue, usePendingMoves, type MoveVars } from '@/features/issues/moveIssue';
 import { useAuth } from '@/stores/auth';
 import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
@@ -264,7 +260,7 @@ export function BacklogPage() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, { coordinateGetter: epicAwareKeyboardCoordinates }),
   );
 
   // Sprint hiển thị: chỉ FUTURE/ACTIVE, ACTIVE trước rồi theo sequence.
@@ -775,7 +771,7 @@ export function BacklogPage() {
 
         <DndContext
           sensors={sensors}
-          collisionDetection={sortableCollision}
+          collisionDetection={epicAwareCollision}
           onDragStart={onDragStart}
           onDragMove={onDragMove}
           onDragEnd={(e) => void onDragEnd(e)}
@@ -789,7 +785,8 @@ export function BacklogPage() {
               counts={counts}
               selected={epicFilter}
               onSelect={setEpicFilter}
-              dropEnabled={dragRoute !== null}
+              // Không có quyền sửa việc đang kéo → mục epic không nhận thả (không sáng viền gợi ý rồi mới từ chối).
+              dropEnabled={dragRoute !== null && (!dragging || canEditIssue(dragging))}
               collapsed={!epicPanelOpen}
               onToggle={toggleEpicPanel}
             />
