@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ProjectMeta } from '@/features/ai/api';
+import { useProjectMeta, type ProjectMeta } from '@/features/ai/api';
 import {
   detectEnvironment,
   mergeDetected,
@@ -7,6 +7,15 @@ import {
   type EnvironmentDraft,
 } from '@/features/issue-edit/environment';
 import { defaultSeverityId } from '@/features/issue-edit/severity';
+
+/**
+ * Meta dự án đích (mức nghiêm trọng…) + cờ `waiting`: Bug cần meta để biết mức mặc định nên ⌘Enter khi meta chưa
+ * tải phải chờ (xem `useQueuedSubmit`).
+ */
+export function useReportMeta(open: boolean, projectKey: string | undefined, isBug: boolean) {
+  const { data: meta, isPending } = useProjectMeta(open ? projectKey : undefined);
+  return { meta, waiting: isBug && !!projectKey && isPending };
+}
 
 /**
  * Chi tiết của báo cáo: mức nghiêm trọng, môi trường, tệp đính kèm. Chạy ở CẢ hai chế độ: Bug luôn được chọn sẵn mức

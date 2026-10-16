@@ -3,10 +3,12 @@ import {
   buildReportPayload,
   canSubmitReport,
   descriptionForMode,
+  descriptionOnKindChange,
   environmentSummary,
   hasDraftContent,
   isReportTemplate,
   parseReportMode,
+  severityForSubmit,
   reportDialogTitle,
   reportKindLabel,
   reportTemplate,
@@ -161,5 +163,41 @@ describe('chế độ Cơ bản / Nâng cao (F3)', () => {
       severityId: 'sev-default',
       environment: { browser: 'Chrome 151', os: 'macOS', viewport: '1440×900' },
     });
+  });
+});
+
+describe('severityForSubmit — ⌘Enter ngay khi meta chưa kịp nạp (F3)', () => {
+  it('Bug, người dùng chưa chạm tới mức: dùng mức mặc định của dự án dù ô chưa kịp được chọn sẵn', () => {
+    expect(
+      severityForSubmit({ isBug: true, selected: '', touched: false, defaultId: 'sv-def' }),
+    ).toBe('sv-def');
+  });
+  it('đã chọn thì giữ; đã tự bỏ chọn ("Chưa đánh giá") thì tôn trọng; không phải Bug thì rỗng', () => {
+    expect(
+      severityForSubmit({ isBug: true, selected: 'sv1', touched: true, defaultId: 'sv-def' }),
+    ).toBe('sv1');
+    expect(
+      severityForSubmit({ isBug: true, selected: '', touched: true, defaultId: 'sv-def' }),
+    ).toBe('');
+    expect(
+      severityForSubmit({ isBug: false, selected: '', touched: false, defaultId: 'sv-def' }),
+    ).toBe('');
+  });
+  it('dự án không có mức nào → rỗng', () => {
+    expect(severityForSubmit({ isBug: true, selected: '', touched: false, defaultId: null })).toBe(
+      '',
+    );
+  });
+});
+
+describe('descriptionOnKindChange', () => {
+  it('trống/mẫu: Nâng cao đổi sang mẫu loại mới, Cơ bản để trống; chữ người dùng giữ nguyên', () => {
+    expect(descriptionOnKindChange(reportTemplate('BUG'), 'FEATURE', 'advanced')).toBe(
+      reportTemplate('FEATURE'),
+    );
+    expect(descriptionOnKindChange('', 'QUESTION', 'advanced')).toBe(reportTemplate('QUESTION'));
+    expect(descriptionOnKindChange(reportTemplate('BUG'), 'FEATURE', 'basic')).toBe('');
+    expect(descriptionOnKindChange('Lỗi của tôi', 'FEATURE', 'basic')).toBe('Lỗi của tôi');
+    expect(descriptionOnKindChange('Lỗi của tôi', 'FEATURE', 'advanced')).toBe('Lỗi của tôi');
   });
 });

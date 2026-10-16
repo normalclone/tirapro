@@ -3,13 +3,14 @@ import { Bug, Monitor } from 'lucide-react';
 import type { EnvironmentInput } from '@tirapro/shared';
 import type { ProjectDto } from '@tirapro/types';
 import { cn } from '@/lib/utils';
+import { radioGroupKeyDown } from '@/lib/radioNav';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useCreateTarget } from '@/lib/useCreateTarget';
-import { useProjectMeta, type ProjectMeta } from '@/features/ai/api';
+import type { ProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { useReportIssueModal, type ReportIssuePreset } from '@/stores/reportIssue';
@@ -27,16 +28,20 @@ import {
   useReportInitial,
 } from './useReportDraft';
 import { useCanComment } from './useCanComment';
-import { useReportDetails } from './useReportDetails';
+import { useReportDetails, useReportMeta } from './useReportDetails';
 import { useReportSubmit } from './useReportSubmit';
+import { useQueuedSubmit } from './useQueuedSubmit';
+import { defaultSeverityId } from '@/features/issue-edit/severity';
 import {
+  canSubmitReport,
   descriptionForMode,
+  descriptionOnKindChange,
   environmentSummary,
   isReportTemplate,
   REPORT_KINDS,
   reportDialogTitle,
   reportKindLabel,
-  reportTemplate,
+  severityForSubmit,
   type ReportMode,
   type RequestKind,
 } from './reportForm';
@@ -57,13 +62,19 @@ export function ReportIssueModal() {
 /** Ba nút phân đoạn chọn loại yêu cầu. */
 function KindPicker({ kind, onChange }: { kind: RequestKind; onChange: (k: RequestKind) => void }) {
   return (
-    <div role="radiogroup" aria-label="Loại yêu cầu" className="flex gap-1.5">
+    <div
+      role="radiogroup"
+      aria-label="Loại yêu cầu"
+      onKeyDown={radioGroupKeyDown}
+      className="flex gap-1.5"
+    >
       {REPORT_KINDS.map((k) => (
         <button
           key={k}
           type="button"
           role="radio"
           aria-checked={kind === k}
+          tabIndex={kind === k ? 0 : -1}
           onClick={() => onChange(k)}
           className={cn(
             'h-8 flex-1 rounded-md border px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
@@ -142,6 +153,7 @@ function ModeSwitch({ mode, onChange }: { mode: ReportMode; onChange: (m: Report
     <div
       role="radiogroup"
       aria-label="Chế độ form"
+      onKeyDown={radioGroupKeyDown}
       className="inline-flex rounded-md border border-border bg-surface-2 p-0.5"
     >
       {opts.map((o) => (
@@ -150,10 +162,11 @@ function ModeSwitch({ mode, onChange }: { mode: ReportMode; onChange: (m: Report
           type="button"
           role="radio"
           aria-checked={mode === o.id}
+          tabIndex={mode === o.id ? 0 : -1}
           title={o.hint}
           onClick={() => onChange(o.id)}
           className={cn(
-            'h-7 rounded px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+            'h-7 rounded px-3 text-sm transition-colors max-sm:h-11 max-sm:px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
             mode === o.id
               ? 'bg-surface font-medium text-ink shadow-sm'
               : 'text-muted hover:text-ink',
@@ -177,7 +190,7 @@ function AutoEnvLine({ summary, onEdit }: { summary: string; onEdit: () => void 
       <button
         type="button"
         onClick={onEdit}
-        className="shrink-0 rounded px-1 text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        className="inline-flex shrink-0 items-center justify-center rounded px-1 text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] max-sm:min-h-11 max-sm:min-w-11 max-sm:px-3"
       >
         Sửa
       </button>
@@ -365,6 +378,20 @@ function escapeInDupPanel(e: KeyboardEvent, dismiss: () => void) {
   document.getElementById('ri-summary')?.focus();
 }
 
+/** Mức nghiêm trọng gửi đi: ô đang chọn, hoặc mặc định của dự án nếu Bug chưa kịp được chọn sẵn (meta vừa về). */
+function submitSeverity(
+  isBug: boolean,
+  details: ReturnType<typeof useReportDetails>,
+  meta: ProjectMeta | undefined,
+): string {
+  return severityForSubmit({
+    isBug,
+    selected: details.props.severityId,
+    touched: details.props.severityTouched.current,
+    defaultId: meta ? defaultSeverityId(meta.severities) : null,
+  });
+}
+
 function ReportIssueForm({
   open,
   preset,
@@ -391,7 +418,7 @@ function ReportIssueForm({
   );
   const projectId = selProject?.id ?? '';
   const isBug = kind === 'BUG';
-  const { data: meta } = useProjectMeta(open && selProject ? selProject.key : undefined);
+  const { meta, waiting: metaWaiting } = useReportMeta(open, selProject?.key, isBug);
   const details = useReportDetails({
     initialFiles: preset.files,
     isBug,
@@ -411,7 +438,7 @@ function ReportIssueForm({
     kind,
     summary,
     description,
-    severityId: details.props.severityId,
+    severityId: submitSeverity(isBug, details, meta),
     environment: details.envDraft as EnvironmentInput,
     mergeIntoIssueId: dup.decision.mergeInto?.id ?? null,
     forceNew: dup.decision.forceNew,
@@ -428,6 +455,11 @@ function ReportIssueForm({
   });
   const draft = useDraftAutosave(open, selKey, { kind, summary, description });
   const merging = !!dup.decision.mergeInto;
+  const { queued, trySubmit } = useQueuedSubmit({
+    valid: canSubmitReport(form),
+    waiting: metaWaiting,
+    submit,
+  });
   const envText = environmentSummary(details.envDraft);
 
   /** Đổi chế độ (nhớ theo người). Dữ liệu đã nhập giữ nguyên; chỉ mẫu chưa sửa được chèn/bỏ theo chế độ. */
@@ -441,14 +473,7 @@ function ReportIssueForm({
   function changeKind(next: RequestKind) {
     if (next === kind) return;
     setKind(next);
-    // Chỉ thay mô tả khi đang trống hoặc đang đúng một mẫu (không đè chữ người dùng); Cơ bản không dùng mẫu.
-    setDescription((d) =>
-      d.trim() === '' || isReportTemplate(d)
-        ? mode === 'advanced'
-          ? reportTemplate(next)
-          : ''
-        : d,
-    );
+    setDescription((d) => descriptionOnKindChange(d, next, mode));
   }
 
   /** Chọn gộp: mô tả mẫu bỏ đi (nội dung thành bình luận); bỏ chọn gộp mà mô tả trống thì trả lại mẫu. */
@@ -466,18 +491,18 @@ function ReportIssueForm({
       onOpenChange={(o) => !o && onClose()}
       title={reportDialogTitle(kind)}
       size="lg"
-      onSubmit={() => void submit()}
+      onSubmit={() => trySubmit()}
       onEscapeKeyDown={(e) => escapeInDupPanel(e, () => dup.setDismissed(true))}
       footer={
         <ReportFooter
-          busy={busy}
+          busy={busy || queued}
           canSubmit={canSubmit}
           label={dup.decision.label}
           onClose={onClose}
         />
       }
     >
-      <form id="report-issue-form" onSubmit={(e) => void submit(e)} className="space-y-4">
+      <form id="report-issue-form" onSubmit={(e) => trySubmit(e)} className="space-y-4">
         <ModeSwitch mode={mode} onChange={changeMode} />
         <KindPicker kind={kind} onChange={changeKind} />
         <ProjectField
@@ -508,7 +533,7 @@ function ReportIssueForm({
           merging={merging}
           description={description}
           onChange={setDescription}
-          onSubmit={() => void submit()}
+          onSubmit={() => trySubmit()}
           rows={mode === 'basic' ? 3 : 6}
           onPasteImages={details.pasteFiles}
         />

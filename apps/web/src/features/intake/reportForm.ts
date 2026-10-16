@@ -101,6 +101,12 @@ export function descriptionForMode(desc: string, kind: RequestKind, mode: Report
   return isReportTemplate(desc) ? '' : desc;
 }
 
+/** Mô tả sau khi đổi loại: chỉ thay khi trống hoặc đúng một mẫu (không đè chữ người dùng); Cơ bản không dùng mẫu. */
+export function descriptionOnKindChange(desc: string, next: RequestKind, mode: ReportMode): string {
+  if (desc.trim() !== '' && !isReportTemplate(desc)) return desc;
+  return mode === 'advanced' ? reportTemplate(next) : '';
+}
+
 /** Dòng tóm tắt môi trường tự ghi ("Chrome 151 · macOS · 1440×900"); bỏ phần trống. */
 export function environmentSummary(e: {
   browser?: string;
@@ -111,4 +117,20 @@ export function environmentSummary(e: {
     .map((v) => v?.trim())
     .filter(Boolean)
     .join(' · ');
+}
+
+/**
+ * Mức nghiêm trọng thật sự gửi đi. Bug mà người dùng chưa chạm tới ô này (`touched` false) và chưa có mức nào thì dùng
+ * mặc định của dự án — để ⌘Enter ngay sau khi mở form (ô mặc định chưa kịp được chọn sẵn) vẫn gửi đúng. Đã tự bỏ chọn
+ * ("Chưa đánh giá") thì tôn trọng; loại khác Bug không có mức.
+ */
+export function severityForSubmit(a: {
+  isBug: boolean;
+  selected: string;
+  touched: boolean;
+  defaultId: string | null;
+}): string {
+  if (!a.isBug) return '';
+  if (a.selected || a.touched) return a.selected;
+  return a.defaultId ?? '';
 }
