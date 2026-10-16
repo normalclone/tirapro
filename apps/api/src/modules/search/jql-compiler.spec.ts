@@ -205,3 +205,27 @@ describe('severity', () => {
     ]);
   });
 });
+
+describe('JQL component / fixVersion / affectedVersion (B17)', () => {
+  const c = (jql: string) => compileJql(ast(jql), { currentUserId: 'U' }).where;
+  it('component = "Backend"', () =>
+    expect(c('component = "Backend"')).toEqual({
+      components: { some: { component: { name: { in: ['Backend'] } } } },
+    }));
+  it('fixVersion IN (...) chỉ xét loại FIX', () =>
+    expect(c('fixVersion IN ("v1.0","v1.1")')).toEqual({
+      fixVersions: { some: { type: 'FIX', version: { name: { in: ['v1.0', 'v1.1'] } } } },
+    }));
+  it('affectedVersion != … => none, loại AFFECTS', () =>
+    expect(c('affectedVersion != "v1.0"')).toEqual({
+      fixVersions: { none: { type: 'AFFECTS', version: { name: { in: ['v1.0'] } } } },
+    }));
+  it('IS EMPTY / IS NOT EMPTY', () => {
+    expect(c('component IS EMPTY')).toEqual({ components: { none: {} } });
+    expect(c('fixVersion IS NOT EMPTY')).toEqual({ fixVersions: { some: { type: 'FIX' } } });
+  });
+  it('labels vẫn như cũ', () =>
+    expect(c('labels = "bug"')).toEqual({
+      labels: { some: { label: { name: { in: ['bug'] } } } },
+    }));
+});

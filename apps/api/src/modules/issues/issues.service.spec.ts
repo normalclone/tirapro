@@ -66,6 +66,8 @@ function issueRow(over: Record<string, unknown> = {}) {
     rank: 'n',
     version: 3,
     labels: [],
+    components: [{ component: { id: 'c1', name: 'Backend' } }],
+    fixVersions: [{ type: 'FIX', version: { id: 'v1', name: 'v1.0' } }],
     createdAt: now,
     updatedAt: now,
     project: { archivedAt: null },
@@ -104,6 +106,31 @@ function makeService(
   );
   return { service, events, prisma, rbac };
 }
+
+describe('IssuesService.toDto — components/fixVersions (B17)', () => {
+  it('toDto trả components/fixVersions đã gắn (sắp theo tên)', async () => {
+    const row = issueRow({
+      components: [
+        { component: { id: 'c2', name: 'Web' } },
+        { component: { id: 'c1', name: 'API' } },
+      ],
+      fixVersions: [
+        { type: 'AFFECTS', version: { id: 'v2', name: 'v2.0' } },
+        { type: 'FIX', version: { id: 'v1', name: 'v1.0' } },
+      ],
+    });
+    const { service } = makeService({ issue: { findFirst: vi.fn(() => Promise.resolve(row)) } });
+    const dto = await service.getByKey('w1', 'P-TASK-1');
+    expect(dto.components).toEqual([
+      { id: 'c1', name: 'API' },
+      { id: 'c2', name: 'Web' },
+    ]);
+    expect(dto.fixVersions).toEqual([
+      { id: 'v1', name: 'v1.0', type: 'FIX' },
+      { id: 'v2', name: 'v2.0', type: 'AFFECTS' },
+    ]);
+  });
+});
 
 describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
   it('rank hai mốc sát nhau => đánh số lại project rồi tính lại 1 lần', async () => {

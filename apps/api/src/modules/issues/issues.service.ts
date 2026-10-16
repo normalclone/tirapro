@@ -49,6 +49,8 @@ const issueInclude = {
   assignee: { select: USER_DTO_SELECT },
   reporter: { select: USER_DTO_SELECT },
   labels: { include: { label: true } },
+  components: { include: { component: { select: { id: true, name: true } } } },
+  fixVersions: { include: { version: { select: { id: true, name: true } } } },
 } satisfies Prisma.IssueInclude;
 
 type IssueRow = Prisma.IssueGetPayload<{ include: typeof issueInclude }>;
@@ -1792,6 +1794,12 @@ export class IssuesService {
         name: l.label.name,
         color: l.label.color,
       })),
+      components: i.components
+        .map((c) => ({ id: c.component.id, name: c.component.name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      fixVersions: i.fixVersions
+        .map((v) => ({ id: v.version.id, name: v.version.name, type: v.type }))
+        .sort((a, b) => a.name.localeCompare(b.name) || a.type.localeCompare(b.type)),
       createdAt: i.createdAt.toISOString(),
       updatedAt: i.updatedAt.toISOString(),
     };
