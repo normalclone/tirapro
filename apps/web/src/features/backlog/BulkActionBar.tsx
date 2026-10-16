@@ -120,7 +120,8 @@ export function BulkActionBar({
         Đã chọn <span className="tabular">{count}</span> việc
       </span>
 
-      <div className="ml-auto flex flex-wrap items-center gap-2">
+      {/* Mobile: MỘT hàng cuộn ngang thay vì xuống 5 dòng — thanh không che cả màn hình. */}
+      <div className="flex items-center gap-2 max-sm:w-full max-sm:overflow-x-auto max-sm:pb-1 max-sm:[&>*]:shrink-0 sm:ml-auto sm:flex-wrap">
         {canAssign && (
           <>
             <Button

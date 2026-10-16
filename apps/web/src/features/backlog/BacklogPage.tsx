@@ -599,7 +599,14 @@ export function BacklogPage() {
           onDragCancel={onDragCancel}
           accessibility={{ announcements, screenReaderInstructions: SCREEN_READER_INSTRUCTIONS }}
         >
-          <div ref={setScrollEl} className="flex-1 space-y-4 overflow-y-auto p-6">
+          <div
+            ref={setScrollEl}
+            // Có thanh hàng loạt: chừa đáy danh sách trên mobile để cuộn dòng cuối lên khỏi thanh.
+            className={cn(
+              'flex-1 space-y-4 overflow-y-auto p-6',
+              selected.size > 0 && 'max-sm:pb-28',
+            )}
+          >
             {visibleSprints.map((sprint) => {
               const sprintIssues = bySprint.get(sprint.id) ?? [];
               const notDone = sprintIssues.filter((i) => i.status.category !== 'DONE').length;
