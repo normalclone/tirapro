@@ -1,21 +1,11 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  Param,
-  ParseIntPipe,
-  Post,
-  Put,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
+import { PositiveInt32Pipe } from '../../common/pipes/positive-int32.pipe';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { WikiService } from './wiki.service';
@@ -82,8 +72,12 @@ export class WikiController {
   @ProjectRef('query', 'projectId')
   @Get('trash')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
-  async trash(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
-    return this.wiki.trash(workspaceId, projectId);
+  async trash(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.wiki.trash(workspaceId, projectId, user);
   }
 
   @Get(':id')
@@ -99,8 +93,12 @@ export class WikiController {
   /** Lịch sử phiên bản của trang (mới nhất trước, tối đa 200, không kèm nội dung). Quyền xem như `GET :id`. */
   @Get(':id/versions')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async versions(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.wiki.listVersions(workspaceId, id);
+  async versions(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.wiki.listVersions(workspaceId, id, user);
   }
 
   /** Nội dung một phiên bản (404 nếu không có). */
@@ -108,10 +106,11 @@ export class WikiController {
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async version(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-    @Param('version', ParseIntPipe) version: number,
+    @Param('version', PositiveInt32Pipe) version: number,
   ) {
-    return this.wiki.getVersion(workspaceId, id, version);
+    return this.wiki.getVersion(workspaceId, id, version, user);
   }
 
   /** Khôi phục một phiên bản cũ (tạo phiên bản mới, không xoá lịch sử); 409 nếu trang vừa được sửa. */
@@ -123,7 +122,7 @@ export class WikiController {
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-    @Param('version', ParseIntPipe) version: number,
+    @Param('version', PositiveInt32Pipe) version: number,
     @Body(new ZodValidationPipe(restoreWikiVersionSchema)) dto: RestoreWikiVersionInput,
   ) {
     return this.wiki.restoreVersion(workspaceId, id, version, dto, user);
@@ -173,7 +172,7 @@ export class WikiController {
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.wiki.remove(workspaceId, id, user.id);
+    return this.wiki.remove(workspaceId, id, user);
   }
 
   /** Khôi phục trang đã xoá (kèm lịch sử): cùng quyền với xoá, theo dự án của trang. */
