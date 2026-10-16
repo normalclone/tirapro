@@ -11,6 +11,11 @@ export const createWikiPageSchema = z.object({
 export const updateWikiPageSchema = z.object({
   title: z.string().min(1, 'Tiêu đề bắt buộc').max(200).optional(),
   body: z.string().max(200_000).optional(),
+  /**
+   * OCC: `updatedAt` của trang lúc người dùng mở sửa. Lệch (người khác đã lưu) → 409 VERSION_CONFLICT.
+   * Bỏ trống = ghi thẳng như trước (tương thích API key/client cũ).
+   */
+  expectedUpdatedAt: z.string().datetime().optional(),
 });
 
 /** Đổi cha / thứ tự trong danh sách anh em. `order` = vị trí chèn (0 = đầu). */

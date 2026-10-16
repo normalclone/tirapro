@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { PERMISSIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { insensitiveContains } from '../../common/like';
-import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  NotFoundAppException,
+  VersionConflictException,
+} from '../../common/exceptions/app.exception';
 import { assertNotArchived, assertProjectIdWritable } from '../../common/project-writable';
 import type { CreateWikiPageInput, MoveWikiPageInput, UpdateWikiPageInput } from './wiki.schemas';
 
@@ -223,14 +227,25 @@ export class WikiService {
     await this.requireWritablePage(workspaceId, id);
     const title = dto.title?.trim();
     if (dto.title !== undefined && !title) throw new BusinessRuleException('Tiêu đề bắt buộc');
-    await this.prisma.wikiPage.update({
-      where: { id },
-      data: {
-        ...(title !== undefined ? { title } : {}),
-        ...(dto.body !== undefined ? { body: dto.body } : {}),
-        updatedById: actingUserId,
-      },
-    });
+    const data = {
+      ...(title !== undefined ? { title } : {}),
+      ...(dto.body !== undefined ? { body: dto.body } : {}),
+      updatedById: actingUserId,
+    };
+    if (dto.expectedUpdatedAt) {
+      // Kiểm-và-ghi trong MỘT câu lệnh (không có khe giữa đọc và ghi): lệch updatedAt → không dòng nào khớp.
+      const r = await this.prisma.wikiPage.updateMany({
+        where: { id, workspaceId, updatedAt: new Date(dto.expectedUpdatedAt) },
+        data,
+      });
+      if (r.count === 0) {
+        throw new VersionConflictException(
+          'Trang vừa được người khác sửa — hãy sao chép phần bạn vừa viết, tải lại trang rồi dán/hợp nhất.',
+        );
+      }
+    } else {
+      await this.prisma.wikiPage.update({ where: { id }, data });
+    }
     return this.get(workspaceId, id);
   }
 

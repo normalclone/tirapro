@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Ack } from '@/lib/api';
+import { api, apiErrorCode, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /** Một nút trong cây tài liệu (không kèm nội dung — nội dung lấy ở trang chi tiết). */
@@ -119,9 +119,21 @@ export function useCreateWikiPage() {
 export function useUpdateWikiPage() {
   const invalidate = useInvalidateWiki();
   return useMutation({
-    mutationFn: ({ id, ...patch }: { id: string; title?: string; body?: string }) =>
-      api.put<WikiPageDetail>(`/wiki/${id}`, patch).then((r) => r.data),
+    mutationFn: ({
+      id,
+      ...patch
+    }: {
+      id: string;
+      title?: string;
+      body?: string;
+      /** `updatedAt` của trang lúc mở sửa — API trả 409 VERSION_CONFLICT nếu người khác đã lưu trước. */
+      expectedUpdatedAt?: string;
+    }) => api.put<WikiPageDetail>(`/wiki/${id}`, patch).then((r) => r.data),
     onSuccess: (page) => invalidate(page.id),
+    // Xung đột: làm mới bản của trang để "Huỷ → mở lại" thấy ngay nội dung người kia vừa lưu.
+    onError: (e, vars) => {
+      if (apiErrorCode(e) === 'VERSION_CONFLICT') invalidate(vars.id);
+    },
   });
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { WikiService } from './wiki.service';
+import { updateWikiPageSchema } from './wiki.schemas';
 
 describe('WikiService.search — escape ký tự đại diện LIKE', () => {
   it('q="_" / "50%" được escape (không khớp mọi trang), tìm cả title và body', async () => {
@@ -178,5 +179,46 @@ describe('WikiService.admins — "xin ai" cấp quyền / xoá trang (A9)', () =
       Array.from({ length: 8 }, (_, i) => user(`p${i}`, `Pr ${i}`)),
     );
     expect(await service.admins('w1', 'p1')).toHaveLength(8);
+  });
+});
+
+describe('WikiService.update — chống ghi đè theo updatedAt (A10)', () => {
+  const EXPECTED = '2026-10-01T00:00:00.000Z';
+
+  it('expectedUpdatedAt lệch → VersionConflictException (409), không ghi', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPage.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      service.update('w1', 'g1', { body: 'mới', expectedUpdatedAt: EXPECTED }, 'u1'),
+    ).rejects.toMatchObject({ status: 409, code: 'VERSION_CONFLICT' });
+    expect(prisma.wikiPage.update).not.toHaveBeenCalled();
+  });
+
+  it('khớp → updateMany có where.updatedAt đúng (kiểm-và-ghi một câu lệnh)', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPage.updateMany.mockResolvedValueOnce({ count: 1 });
+    await service.update('w1', 'g1', { body: 'mới', expectedUpdatedAt: EXPECTED }, 'u1');
+    expect(prisma.wikiPage.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'g1', workspaceId: 'w1', updatedAt: new Date(EXPECTED) },
+        data: expect.objectContaining({ body: 'mới', updatedById: 'u1' }) as unknown,
+      }),
+    );
+  });
+
+  it('không gửi expectedUpdatedAt → vẫn dùng update thường (tương thích client cũ)', async () => {
+    const { service, prisma } = setup(false);
+    await service.update('w1', 'g1', { body: 'mới' }, 'u1');
+    expect(prisma.wikiPage.update).toHaveBeenCalled();
+    expect(prisma.wikiPage.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('schema: expectedUpdatedAt phải là ISO datetime', () => {
+    expect(
+      updateWikiPageSchema.safeParse({ body: 'x', expectedUpdatedAt: 'hôm qua' }).success,
+    ).toBe(false);
+    expect(updateWikiPageSchema.safeParse({ body: 'x', expectedUpdatedAt: EXPECTED }).success).toBe(
+      true,
+    );
   });
 });

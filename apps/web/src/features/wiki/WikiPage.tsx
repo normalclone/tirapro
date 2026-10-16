@@ -25,7 +25,7 @@ import { MarkdownView } from '@/features/issue-edit/MarkdownView';
 import { useProjects } from '@/features/projects/api';
 import { useProjectsCan } from '@/features/projects/permissions';
 import { pageContainer } from '@/components/layout/page';
-import { apiErrorMessage } from '@/lib/api';
+import { apiErrorCode, apiErrorMessage } from '@/lib/api';
 import { currentProjectKey } from '@/lib/currentProject';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
@@ -116,6 +116,8 @@ export function WikiPage() {
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftBody, setDraftBody] = useState('');
+  // `updatedAt` của trang lúc BẮT ĐẦU sửa (không lấy lại từ cache vì nền có thể tự làm mới giữa chừng).
+  const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | null>(null);
 
   const slots = useMemo(
     () => indexTree(tree.data ?? [], null, new Map<string, Slot>()),
@@ -182,6 +184,7 @@ export function WikiPage() {
       setSelectedId(created.id);
       setDraftTitle(created.title);
       setDraftBody(created.body);
+      setBaseUpdatedAt(created.updatedAt);
       setEditing(true);
       setTreeOpen(false);
     } catch (e) {
@@ -197,11 +200,21 @@ export function WikiPage() {
       return;
     }
     try {
-      await update.mutateAsync({ id: page.data.id, title, body: draftBody });
+      await update.mutateAsync({
+        id: page.data.id,
+        title,
+        body: draftBody,
+        expectedUpdatedAt: baseUpdatedAt ?? page.data.updatedAt,
+      });
       setEditing(false);
       toast.success('Đã lưu trang');
     } catch (e) {
-      toast.error(apiErrorMessage(e));
+      // Người khác lưu trước: giữ chế độ sửa để bản đang soạn không mất.
+      toast.error(
+        apiErrorCode(e) === 'VERSION_CONFLICT'
+          ? 'Trang vừa được người khác sửa. Bản bạn đang soạn vẫn còn trong ô — hãy sao chép lại, bấm Huỷ, mở lại trang để xem bản mới.'
+          : apiErrorMessage(e),
+      );
     }
   }
 
@@ -511,6 +524,7 @@ export function WikiPage() {
                               onClick={() => {
                                 setDraftTitle(pg.title);
                                 setDraftBody(pg.body);
+                                setBaseUpdatedAt(pg.updatedAt);
                                 setEditing(true);
                               }}
                             >
