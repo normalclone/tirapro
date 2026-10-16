@@ -4,6 +4,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto, USER_DTO_SELECT, type UserDtoSource } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { MembersService } from '../members/members.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import type { CreateTeamInput, UpdateTeamInput } from './teams.schemas';
 
 const TEAM_SELECT = {
@@ -31,6 +32,7 @@ export class TeamsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly members: MembersService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   async list(workspaceId: string) {
@@ -164,6 +166,9 @@ export class TeamsService {
     actorId?: string,
   ) {
     await this.requireTeam(workspaceId, teamId);
+    // Route không có `@ProjectRef` (projectId nằm ở body, route có :id) nên guard không kiểm dự án: người gọi không thấy
+    // dự án riêng tư thì 404 như dự án không tồn tại (không thêm được ai, không lộ sự tồn tại).
+    if (actorId) await this.access.assertCanSee(actorId, workspaceId, projectId, 'Dự án');
     const teamMembers = await this.prisma.teamMember.findMany({
       // Bỏ qua tài khoản đã vô hiệu hoá — không đặt vai trò dự án cho họ (và không làm hỏng cả lượt giao nhóm).
       where: { teamId, user: { status: { not: 'DEACTIVATED' } } },

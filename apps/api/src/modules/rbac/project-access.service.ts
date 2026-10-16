@@ -20,23 +20,41 @@ export class ProjectAccessService {
     private readonly rbac: RbacService,
   ) {}
 
-  /** Admin hệ thống hoặc quyền hiệu lực workspace:admin → thấy mọi dự án riêng tư. */
-  async seesAll(userId: string, workspaceId: string): Promise<boolean> {
+  /**
+   * `all` = admin hệ thống / `workspace:admin` (thấy mọi dự án); `standard` = công khai + dự án mình là thành viên;
+   * `memberOnly` = vai trò cấp workspace KHÔNG có `project:view` (vai trò tuỳ biến) → chỉ dự án mình có vai trò.
+   */
+  private async mode(
+    userId: string,
+    workspaceId: string,
+  ): Promise<'all' | 'standard' | 'memberOnly'> {
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { isSystemAdmin: true },
     });
-    if (u?.isSystemAdmin) return true;
-    return (await this.rbac.getEffectivePermissions(userId, workspaceId)).has('workspace:admin');
+    if (u?.isSystemAdmin) return 'all';
+    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId);
+    if (perms.has('workspace:admin')) return 'all';
+    return perms.has('project:view') ? 'standard' : 'memberOnly';
+  }
+
+  /** Admin hệ thống hoặc quyền hiệu lực workspace:admin → thấy mọi dự án riêng tư. */
+  async seesAll(userId: string, workspaceId: string): Promise<boolean> {
+    return (await this.mode(userId, workspaceId)) === 'all';
   }
 
   /**
    * Điều kiện lồng vào `project: {...}` của model con hoặc `where` của Project. Admin → `{}`.
-   * Người thường: công khai HOẶC là thành viên dự án.
+   * Người thường: công khai HOẶC là thành viên dự án; người không có `project:view` cấp workspace: chỉ dự án có vai trò.
    */
   async visibleWhere(userId: string, workspaceId: string): Promise<Prisma.ProjectWhereInput> {
-    if (await this.seesAll(userId, workspaceId)) return {};
-    return this.memberOrPublic(userId);
+    const mode = await this.mode(userId, workspaceId);
+    if (mode === 'all') return {};
+    return mode === 'memberOnly' ? this.memberOnly(userId) : this.memberOrPublic(userId);
+  }
+
+  private memberOnly(userId: string): Prisma.ProjectWhereInput {
+    return { memberships: { some: { userId } } };
   }
 
   /** Điều kiện cho người KHÔNG phải quản trị: công khai hoặc là thành viên dự án (không truy vấn). */
@@ -46,9 +64,14 @@ export class ProjectAccessService {
 
   /** `null` = thấy tất cả (admin); ngược lại tập id dự án (dùng cho raw SQL / full-text). */
   async visibleProjectIds(userId: string, workspaceId: string): Promise<string[] | null> {
-    if (await this.seesAll(userId, workspaceId)) return null;
+    const mode = await this.mode(userId, workspaceId);
+    if (mode === 'all') return null;
     const rows = await this.prisma.project.findMany({
-      where: { workspaceId, deletedAt: null, ...this.memberOrPublic(userId) },
+      where: {
+        workspaceId,
+        deletedAt: null,
+        ...(mode === 'memberOnly' ? this.memberOnly(userId) : this.memberOrPublic(userId)),
+      },
       select: { id: true },
     });
     return rows.map((r) => r.id);

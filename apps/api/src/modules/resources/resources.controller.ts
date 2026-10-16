@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/types/request';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -33,34 +35,41 @@ export class ResourcesController {
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async listAllocations(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query(new ZodValidationPipe(listAllocationsQuerySchema)) q: ListAllocationsQuery,
   ) {
-    return this.resources.listAllocations(workspaceId, q);
+    return this.resources.listAllocations(workspaceId, q, user.id);
   }
 
   @Post('allocations')
   @Permissions(PERMISSIONS.RESOURCE_MANAGE)
   async createAllocation(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createAllocationSchema)) dto: CreateAllocationInput,
   ) {
-    return this.resources.createAllocation(workspaceId, dto);
+    return this.resources.createAllocation(workspaceId, dto, user.id);
   }
 
   @Put('allocations/:id')
   @Permissions(PERMISSIONS.RESOURCE_MANAGE)
   async updateAllocation(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateAllocationSchema)) dto: UpdateAllocationInput,
   ) {
-    return this.resources.updateAllocation(workspaceId, id, dto);
+    return this.resources.updateAllocation(workspaceId, id, dto, user.id);
   }
 
   @Delete('allocations/:id')
   @Permissions(PERMISSIONS.RESOURCE_MANAGE)
-  async deleteAllocation(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.resources.deleteAllocation(workspaceId, id);
+  async deleteAllocation(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.resources.deleteAllocation(workspaceId, id, user.id);
   }
 
   /* ────────────────────── Nghỉ phép / ngày lễ ────────────────────── */
@@ -107,8 +116,9 @@ export class ResourcesController {
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async workload(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query(new ZodValidationPipe(workloadQuerySchema)) q: WorkloadQuery,
   ) {
-    return this.resources.workload(workspaceId, q);
+    return this.resources.workload(workspaceId, q, user.id);
   }
 }

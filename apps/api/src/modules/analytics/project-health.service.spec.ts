@@ -76,7 +76,8 @@ function make() {
       ),
     },
   };
-  return { service: new ProjectHealthService(prisma as never), prisma };
+  const access = { visibleWhere: vi.fn((..._a: unknown[]) => Promise.resolve({})) };
+  return { service: new ProjectHealthService(prisma as never, access as never), prisma, access };
 }
 
 describe('ProjectHealthService.forProjects', () => {
@@ -193,5 +194,49 @@ describe('ProjectHealthService.forProjects', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('ProjectHealthService.forProjects — người xem (dự án riêng tư)', () => {
+  const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+
+  it('có viewerId: project.findMany chỉ lấy dự án thấy được; dự án ẩn không có trong kết quả, RAID chỉ của dự án thấy', async () => {
+    const { service, prisma, access } = make();
+    access.visibleWhere.mockResolvedValue(visible);
+    // Cơ sở dữ liệu (đã lọc theo visible) chỉ trả p3; p1/p2 là dự án riêng tư người xem không thuộc.
+    prisma.project.findMany.mockResolvedValueOnce([
+      {
+        id: 'p3',
+        createdAt: new Date('2026-01-01'),
+        healthOverride: 'RED',
+        healthNote: 'ghi chú riêng của PM',
+        healthUpdatedAt: new Date('2026-10-10T00:00:00Z'),
+        healthUpdatedBy: { id: 'u2', displayName: 'PM' },
+      },
+    ]);
+    const map = await service.forProjects('w1', ['p1', 'p2', 'p3'], 'u1');
+    expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+    expect(
+      (prisma.project.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
+    ).toMatchObject({
+      id: { in: ['p1', 'p2', 'p3'] },
+      workspaceId: 'w1',
+      deletedAt: null,
+      ...visible,
+    });
+    expect([...map.keys()]).toEqual(['p3']);
+    expect(map.has('p1')).toBe(false);
+    expect(map.has('p2')).toBe(false);
+    // Mọi truy vấn phụ (issue/sprint/RAID) chỉ nhận id dự án đã qua lọc.
+    expect(
+      (prisma.raidItem.findMany.mock.calls[0] as unknown as [{ where: { projectId: unknown } }])[0]
+        .where.projectId,
+    ).toEqual({ in: ['p3'] });
+  });
+
+  it('không có viewerId (hệ thống) → không hỏi quyền xem', async () => {
+    const { service, access } = make();
+    await service.forProjects('w1', ['p1']);
+    expect(access.visibleWhere).not.toHaveBeenCalled();
   });
 });

@@ -11,7 +11,7 @@ import type {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
-import { LIVE_PROJECT } from '../../common/live-project';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { ProjectHealthService } from './project-health.service';
 
 type Category = 'TODO' | 'IN_PROGRESS' | 'DONE';
@@ -36,17 +36,24 @@ export class AnalyticsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly health: ProjectHealthService,
+    private readonly access: ProjectAccessService,
   ) {}
 
-  // ---------- Tổng quan workspace (mọi dự án — cho admin) ----------
-  async workspaceOverview(workspaceId: string) {
+  // ---------- Tổng quan workspace (mọi dự án người xem được thấy) ----------
+  /**
+   * `viewerId`: chỉ tính/hiện dự án người đó được thấy (dự án riêng tư chỉ cho thành viên + admin).
+   * Số liệu hai người xem có thể khác nhau. Trống = ngữ cảnh hệ thống (không lọc).
+   */
+  async workspaceOverview(workspaceId: string, viewerId?: string) {
+    const visible = viewerId ? await this.access.visibleWhere(viewerId, workspaceId) : {};
+    const visibleIds = viewerId ? await this.access.visibleProjectIds(viewerId, workspaceId) : null;
     const now = new Date();
     const DAY = 24 * 3600 * 1000;
     const WEEK = 7 * DAY;
     const HIGH_RANK = 4; // High/Highest
 
     const projects = await this.prisma.project.findMany({
-      where: { workspaceId, deletedAt: null, isArchived: false },
+      where: { workspaceId, deletedAt: null, isArchived: false, ...visible },
       select: { id: true, key: true, name: true },
       orderBy: { createdAt: 'asc' },
     });
@@ -67,7 +74,11 @@ export class AnalyticsService {
 
     // Mọi số liệu tính bằng aggregate SQL (groupBy/count/$queryRaw) — không kéo từng issue về app.
     // Loại issue của dự án đã XOÁ; dự án chỉ lưu trữ vẫn tính vào tổng (xem comment ở `totals`).
-    const baseWhere: Prisma.IssueWhereInput = { workspaceId, deletedAt: null, ...LIVE_PROJECT };
+    const baseWhere: Prisma.IssueWhereInput = {
+      workspaceId,
+      deletedAt: null,
+      project: { deletedAt: null, ...visible },
+    };
     const openStatus: Prisma.IssueWhereInput = { status: { category: { not: 'DONE' } } };
     const overdueWhere: Prisma.IssueWhereInput = {
       ...baseWhere,
@@ -114,8 +125,8 @@ export class AnalyticsService {
       }),
       this.prisma.issue.groupBy({ by: ['priorityId'], where: baseWhere, _count: { _all: true } }),
       this.prisma.issue.groupBy({ by: ['projectId'], where: overdueWhere, _count: { _all: true } }),
-      this.weekBuckets('createdAt', workspaceId, now),
-      this.weekBuckets('resolvedAt', workspaceId, now),
+      this.weekBuckets('createdAt', workspaceId, now, visibleIds),
+      this.weekBuckets('resolvedAt', workspaceId, now, visibleIds),
       this.prisma.issue.count({
         where: { ...baseWhere, resolvedAt: { gte: new Date(now.getTime() - 14 * DAY) } },
       }),
@@ -243,6 +254,7 @@ export class AnalyticsService {
     const healthMap = await this.health.forProjects(
       workspaceId,
       projects.map((p) => p.id),
+      viewerId,
     );
     const attention = attentionRows(now, keyByProject, { overdueTop, highPriTop, dueSoonTop });
     const { warnings, forecast } = narrate(
@@ -844,7 +856,11 @@ export class AnalyticsService {
     column: 'createdAt' | 'resolvedAt',
     workspaceId: string,
     now: Date,
+    /** null = không giới hạn; ngược lại chỉ đếm việc của các dự án này (dự án riêng tư người xem không thấy bị loại). */
+    visibleIds: string[] | null = null,
   ): Promise<{ idx: number; n: number }[]> {
+    const onlyVisible =
+      visibleIds === null ? Prisma.empty : Prisma.sql`AND "projectId" = ANY(${visibleIds}::text[])`;
     const WEEK_MS = 7 * 24 * 3600 * 1000;
     const low = new Date(now.getTime() - 8 * WEEK_MS);
     const rows =
@@ -855,6 +871,7 @@ export class AnalyticsService {
             FROM "Issue"
             WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
               AND EXISTS (SELECT 1 FROM "Project" p WHERE p."id" = "Issue"."projectId" AND p."deletedAt" IS NULL)
+              ${onlyVisible}
               AND "createdAt" > ${utc(low)} AND "createdAt" <= ${utc(now)}
             GROUP BY 1`
         : await this.prisma.$queryRaw<WeekRow[]>`
@@ -863,6 +880,7 @@ export class AnalyticsService {
             FROM "Issue"
             WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
               AND EXISTS (SELECT 1 FROM "Project" p WHERE p."id" = "Issue"."projectId" AND p."deletedAt" IS NULL)
+              ${onlyVisible}
               AND "resolvedAt" > ${utc(low)} AND "resolvedAt" <= ${utc(now)}
             GROUP BY 1`;
     return rows

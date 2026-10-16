@@ -5,6 +5,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertProjectWritable } from '../../common/project-writable';
 import { RbacService } from '../rbac/rbac.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import type { CreateRaidInput, UpdateRaidInput } from './raid.schemas';
 
 const OWNER_SELECT = { id: true, displayName: true, email: true, avatarUrl: true } as const;
@@ -59,10 +60,29 @@ export class RaidService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rbac: RbacService,
+    private readonly access: ProjectAccessService,
   ) {}
 
-  async list(workspaceId: string, filter: RaidListFilter) {
-    const where: Prisma.RaidItemWhereInput = { workspaceId };
+  /**
+   * Điều kiện hiển thị mục RAID cho người xem: mục cấp workspace (không gắn dự án) luôn hiện; mục gắn dự án chỉ khi người
+   * xem thấy dự án đó (dự án riêng tư → thành viên/admin). `viewerId` trống hoặc admin → `{}` (không lọc).
+   * Dùng khoá `OR` ở cấp cao nhất — các `where` gọi nó không tự dùng `OR`.
+   */
+  private async scopeFor(
+    workspaceId: string,
+    viewerId?: string,
+  ): Promise<Prisma.RaidItemWhereInput> {
+    if (!viewerId) return {};
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+    if (Object.keys(visible).length === 0) return {};
+    return { OR: [{ projectId: null }, { project: visible }] };
+  }
+
+  async list(workspaceId: string, filter: RaidListFilter, viewerId?: string) {
+    const where: Prisma.RaidItemWhereInput = {
+      workspaceId,
+      ...(await this.scopeFor(workspaceId, viewerId)),
+    };
     if (filter.kind) where.kind = filter.kind as RaidKind;
     if (filter.status) where.status = filter.status as RaidStatus;
     if (filter.projectId) where.projectId = filter.projectId;
@@ -77,9 +97,9 @@ export class RaidService {
     return rows.map((r) => this.toDto(r)).sort((a, b) => b.score - a.score);
   }
 
-  async get(workspaceId: string, id: string) {
+  async get(workspaceId: string, id: string, viewerId?: string) {
     const row = await this.prisma.raidItem.findFirst({
-      where: { id, workspaceId },
+      where: { id, workspaceId, ...(await this.scopeFor(workspaceId, viewerId)) },
       select: RAID_SELECT,
     });
     if (!row) throw new NotFoundAppException('Mục rủi ro');
@@ -87,7 +107,7 @@ export class RaidService {
   }
 
   async create(workspaceId: string, dto: CreateRaidInput, actingUserId: string) {
-    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
+    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, actingUserId);
     if (projectId) await assertProjectWritable(this.prisma, projectId);
     const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
 
@@ -108,11 +128,11 @@ export class RaidService {
       },
       select: { id: true },
     });
-    return this.get(workspaceId, created.id);
+    return this.get(workspaceId, created.id, actingUserId);
   }
 
   async update(workspaceId: string, id: string, dto: UpdateRaidInput, actor: RaidActor) {
-    const item = await this.requireItem(workspaceId, id);
+    const item = await this.requireItem(workspaceId, id, actor.id);
     if (item.projectId) await assertProjectWritable(this.prisma, item.projectId);
     const data: Prisma.RaidItemUpdateInput = {};
 
@@ -130,7 +150,7 @@ export class RaidService {
     if (dto.impact !== undefined && dto.impact !== null) data.impact = dto.impact;
     if (dto.dueDate !== undefined) data.dueDate = this.parseDate(dto.dueDate ?? null);
     if (dto.projectId !== undefined) {
-      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
+      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, actor.id);
       if (projectId !== item.projectId) {
         // Guard chỉ tính quyền ở dự án HIỆN TẠI của mục → phải kiểm thêm quyền Ở ĐÍCH (null = cấp workspace).
         await this.assertCanManageRisk(workspaceId, actor, projectId);
@@ -144,11 +164,11 @@ export class RaidService {
     }
 
     await this.prisma.raidItem.update({ where: { id }, data });
-    return this.get(workspaceId, id);
+    return this.get(workspaceId, id, actor.id);
   }
 
-  async remove(workspaceId: string, id: string) {
-    const item = await this.requireItem(workspaceId, id);
+  async remove(workspaceId: string, id: string, viewerId?: string) {
+    const item = await this.requireItem(workspaceId, id, viewerId);
     if (item.projectId) await assertProjectWritable(this.prisma, item.projectId);
     await this.prisma.raidItem.delete({ where: { id } });
     return { success: true };
@@ -156,9 +176,9 @@ export class RaidService {
 
   // ───────────────────────── helpers ─────────────────────────
 
-  private async requireItem(workspaceId: string, id: string) {
+  private async requireItem(workspaceId: string, id: string, viewerId?: string) {
     const row = await this.prisma.raidItem.findFirst({
-      where: { id, workspaceId },
+      where: { id, workspaceId, ...(await this.scopeFor(workspaceId, viewerId)) },
       select: { id: true, projectId: true },
     });
     if (!row) throw new NotFoundAppException('Mục rủi ro');
@@ -191,10 +211,12 @@ export class RaidService {
   private async resolveProject(
     workspaceId: string,
     projectId: string | null,
+    viewerId?: string,
   ): Promise<string | null> {
     if (!projectId) return null;
+    const visible = viewerId ? await this.access.visibleWhere(viewerId, workspaceId) : {};
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, workspaceId, deletedAt: null, ...visible },
       select: { id: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');

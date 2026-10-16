@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { GoalsService } from './goals.service';
 
+/** ProjectAccessService giả: người xem thấy mọi dự án (admin) / không có viewer. */
+const ACCESS_ALL = { visibleWhere: vi.fn(() => Promise.resolve({})) };
+
 type IssueWhere = { where: Record<string, unknown> };
 const LIVE = { deletedAt: null };
 
 describe('GoalsService — không đếm/gắn issue của dự án xoá mềm', () => {
   it('validateIssues: where có project.deletedAt:null (không gắn được issue của dự án đã xoá)', async () => {
     const findMany = vi.fn(() => Promise.resolve([{ id: 'i1' }]));
-    const service = new GoalsService({ issue: { findMany } } as never);
+    const service = new GoalsService({ issue: { findMany } } as never, ACCESS_ALL as never);
     const validate = (
       service as unknown as {
         validateIssues(w: string, ids: string[], p: string | null): Promise<string[]>;
@@ -24,7 +27,7 @@ describe('GoalsService — không đếm/gắn issue của dự án xoá mềm',
 
   it('list: issue gắn kèm lọc cả issue xoá mềm lẫn dự án xoá mềm', async () => {
     const findMany = vi.fn(() => Promise.resolve([]));
-    const service = new GoalsService({ objective: { findMany } } as never);
+    const service = new GoalsService({ objective: { findMany } } as never, ACCESS_ALL as never);
     await service.list('w1', {});
     const { select } = (
       findMany.mock.calls[0] as unknown as [{ select: { issues: { where: unknown } } }]
@@ -67,7 +70,7 @@ function setup(archived: boolean, objectiveProject = true) {
     workspaceMembership: { findFirst: vi.fn(() => Promise.resolve({ userId: 'u1' })) },
     $transaction: vi.fn(() => Promise.resolve([])),
   };
-  return { service: new GoalsService(prisma as never), prisma };
+  return { service: new GoalsService(prisma as never, ACCESS_ALL as never), prisma };
 }
 
 describe('GoalsService — dự án lưu trữ là chỉ đọc', () => {
@@ -111,5 +114,98 @@ describe('GoalsService — dự án lưu trữ là chỉ đọc', () => {
     const { service, prisma } = setup(true, false);
     await service.remove('w1', 'o1');
     expect(prisma.objective.delete).toHaveBeenCalled();
+  });
+});
+
+describe('GoalsService — dự án riêng tư (P14)', () => {
+  const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+  const scope = { OR: [{ projectId: null }, { project: visible }] };
+  const whereOf = (fn: ReturnType<typeof vi.fn>, i = 0) =>
+    (fn.mock.calls[i] as unknown as [{ where: unknown }])[0].where;
+
+  function make() {
+    const prisma = {
+      objective: {
+        findMany: vi.fn((_a?: unknown) => Promise.resolve([])),
+        findFirst: vi.fn((_a?: unknown) => Promise.resolve(null)),
+        create: vi.fn(() => Promise.resolve({ id: 'o2' })),
+      },
+      project: { findFirst: vi.fn((_a?: unknown) => Promise.resolve(null)) },
+      issue: { findMany: vi.fn((_a?: unknown) => Promise.resolve([])) },
+    };
+    const access = { visibleWhere: vi.fn(() => Promise.resolve(visible)) };
+    return { service: new GoalsService(prisma as never, access as never), prisma, access };
+  }
+
+  it('list(w, f, viewer): mục tiêu cấp workspace luôn hiện, gắn dự án chỉ khi thấy; việc gắn kèm của dự án ẩn bị bỏ', async () => {
+    const { service, prisma, access } = make();
+    await service.list('w1', { period: '2026-Q4' }, 'u1');
+    expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+    expect(whereOf(prisma.objective.findMany)).toMatchObject({
+      workspaceId: 'w1',
+      period: '2026-Q4',
+      ...scope,
+    });
+    const { select } = (
+      prisma.objective.findMany.mock.calls[0] as unknown as [
+        { select: { issues: { where: unknown } } },
+      ]
+    )[0];
+    expect(select.issues.where).toEqual({
+      issue: { deletedAt: null, project: { deletedAt: null, ...visible } },
+    });
+  });
+
+  it('periods(w, viewer): chỉ kỳ của mục tiêu người xem thấy', async () => {
+    const { service, prisma } = make();
+    await service.periods('w1', 'u1');
+    expect(whereOf(prisma.objective.findMany)).toMatchObject({ workspaceId: 'w1', ...scope });
+  });
+
+  it('get(w, id, viewer): mục tiêu của dự án riêng tư không thấy → 404 "Mục tiêu" như không tồn tại', async () => {
+    const { service, prisma } = make();
+    await expect(service.get('w1', 'o1', 'u1')).rejects.toMatchObject({ status: 404 });
+    expect(whereOf(prisma.objective.findFirst)).toMatchObject({ id: 'o1', ...scope });
+  });
+
+  it('thao tác ghi (update/remove/KR/issue) cũng 404 khi mục tiêu thuộc dự án ẩn', async () => {
+    const { service, prisma } = make();
+    await expect(service.update('w1', 'o1', { name: 'x' }, 'u1')).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(service.remove('w1', 'o1', 'u1')).rejects.toMatchObject({ status: 404 });
+    await expect(
+      service.addKeyResult('w1', 'o1', { name: 'KR', targetValue: 1 }, 'u1'),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(service.addIssues('w1', 'o1', ['i1'], 'u1')).rejects.toMatchObject({
+      status: 404,
+    });
+    for (let i = 0; i < 4; i++)
+      expect(whereOf(prisma.objective.findFirst, i)).toMatchObject({ id: 'o1', ...scope });
+  });
+
+  it('create gắn vào dự án riêng tư không thấy → 404 "Dự án"; không tạo', async () => {
+    const { service, prisma } = make();
+    await expect(
+      service.create('w1', { name: 'O', period: '2026-Q4', projectId: 'hr' }, 'u1'),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(whereOf(prisma.project.findFirst)).toMatchObject({ id: 'hr', ...visible });
+    expect(prisma.objective.create).not.toHaveBeenCalled();
+  });
+
+  it('gắn việc: chỉ nhận việc của dự án người xem thấy (việc ở dự án ẩn bị từ chối như việc không tồn tại)', async () => {
+    const { service, prisma } = make();
+    prisma.objective.findFirst.mockResolvedValue({
+      id: 'o1',
+      projectId: null,
+      project: null,
+    } as never);
+    await expect(service.addIssues('w1', 'o1', ['i-hidden'], 'u1')).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(whereOf(prisma.issue.findMany)).toMatchObject({
+      id: { in: ['i-hidden'] },
+      project: { deletedAt: null, ...visible },
+    });
   });
 });

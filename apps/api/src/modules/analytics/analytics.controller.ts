@@ -1,7 +1,9 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import type { AuthUser } from '../../common/types/request';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
@@ -12,11 +14,11 @@ import { AnalyticsService } from './analytics.service';
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}
 
-  /** Tổng hợp toàn workspace cho Tổng quan của admin (mọi dự án). */
+  /** Tổng hợp toàn workspace cho Tổng quan — chỉ gồm dự án người xem được thấy (dự án riêng tư chỉ cho thành viên/admin). */
   @Get('overview')
   @Permissions(PERMISSIONS.REPORT_VIEW)
-  async overview(@WorkspaceId() workspaceId: string) {
-    return this.analytics.workspaceOverview(workspaceId);
+  async overview(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
+    return this.analytics.workspaceOverview(workspaceId, user.id);
   }
 
   /** Báo cáo tổng hợp một dự án (phân bố trạng thái/loại/ưu tiên/người phụ trách). */

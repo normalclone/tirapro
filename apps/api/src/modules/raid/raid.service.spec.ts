@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RaidService } from './raid.service';
 
+/** ProjectAccessService giả: người xem thấy mọi dự án (admin) / không có viewer. */
+const ACCESS_ALL = { visibleWhere: vi.fn(() => Promise.resolve({})) };
+
 const raidRow = (over: Record<string, unknown> = {}) => ({
   id: 'r1',
   workspaceId: 'w1',
@@ -41,7 +44,11 @@ function setup(
     },
   };
   const rbac = { getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(perms))) };
-  return { service: new RaidService(prisma as never, rbac as never), prisma, rbac };
+  return {
+    service: new RaidService(prisma as never, rbac as never, ACCESS_ALL as never),
+    prisma,
+    rbac,
+  };
 }
 const member = { id: 'u1', isSystemAdmin: false };
 
@@ -106,5 +113,60 @@ describe('RaidService.update — đổi dự án', () => {
     expect(ok.prisma.raidItem.update.mock.calls[0]![0]).toMatchObject({
       data: { project: { connect: { id: 'p2' } } },
     });
+  });
+});
+
+describe('RaidService — dự án riêng tư (P14)', () => {
+  const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+  const whereOf = (fn: ReturnType<typeof vi.fn>, i = 0) =>
+    (fn.mock.calls[i] as unknown as [{ where: unknown }])[0].where;
+
+  function make() {
+    const prisma = {
+      raidItem: {
+        findMany: vi.fn((_a?: unknown) => Promise.resolve([raidRow()])),
+        findFirst: vi.fn((_a?: unknown) => Promise.resolve(null)),
+      },
+      project: { findFirst: vi.fn((_a?: unknown) => Promise.resolve(null)) },
+    };
+    const access = { visibleWhere: vi.fn(() => Promise.resolve(visible)) };
+    const service = new RaidService(prisma as never, {} as never, access as never);
+    return { service, prisma, access };
+  }
+
+  it('list(w, filter, viewer): mục cấp workspace luôn hiện; mục gắn dự án chỉ khi dự án thấy được', async () => {
+    const { service, prisma, access } = make();
+    await service.list('w1', { kind: 'RISK' }, 'u1');
+    expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+    expect(whereOf(prisma.raidItem.findMany)).toMatchObject({
+      workspaceId: 'w1',
+      kind: 'RISK',
+      OR: [{ projectId: null }, { project: visible }],
+    });
+  });
+
+  it('list không viewer → không thêm điều kiện dự án', async () => {
+    const { service, prisma, access } = make();
+    await service.list('w1', {});
+    expect(access.visibleWhere).not.toHaveBeenCalled();
+    expect(JSON.stringify(whereOf(prisma.raidItem.findMany))).not.toContain('isPrivate');
+  });
+
+  it('get(w, id, viewer): mục của dự án riêng tư không thấy → 404 "Mục rủi ro" như không tồn tại', async () => {
+    const { service, prisma } = make();
+    await expect(service.get('w1', 'r1', 'u1')).rejects.toMatchObject({ status: 404 });
+    expect(whereOf(prisma.raidItem.findFirst)).toMatchObject({
+      id: 'r1',
+      workspaceId: 'w1',
+      OR: [{ projectId: null }, { project: visible }],
+    });
+  });
+
+  it('create/update: gắn vào dự án riêng tư không thấy → 404 "Dự án" như dự án không tồn tại', async () => {
+    const { service, prisma } = make();
+    await expect(service.create('w1', { title: 'R', projectId: 'hr' }, 'u1')).rejects.toMatchObject(
+      { status: 404 },
+    );
+    expect(whereOf(prisma.project.findFirst)).toMatchObject({ id: 'hr', ...visible });
   });
 });

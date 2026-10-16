@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import type { ObjectiveStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { LIVE_PROJECT } from '../../common/live-project';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import type {
   CreateGoalInput,
   CreateKeyResultInput,
@@ -14,47 +14,49 @@ import type {
 
 const OWNER_SELECT = { id: true, displayName: true, email: true, avatarUrl: true } as const;
 
-const OBJECTIVE_SELECT = {
-  id: true,
-  workspaceId: true,
-  projectId: true,
-  name: true,
-  description: true,
-  period: true,
-  status: true,
-  ownerId: true,
-  createdAt: true,
-  updatedAt: true,
-  owner: { select: OWNER_SELECT },
-  project: { select: { id: true, key: true, name: true } },
-  keyResults: {
-    orderBy: { createdAt: 'asc' as const },
-    select: {
-      id: true,
-      name: true,
-      unit: true,
-      startValue: true,
-      targetValue: true,
-      currentValue: true,
+/** `visible` = điều kiện hiển thị dự án của người xem (`{}` = thấy hết): việc gắn kèm thuộc dự án ẩn không hiện/không tính tiến độ. */
+const objectiveSelect = (visible: Prisma.ProjectWhereInput) =>
+  ({
+    id: true,
+    workspaceId: true,
+    projectId: true,
+    name: true,
+    description: true,
+    period: true,
+    status: true,
+    ownerId: true,
+    createdAt: true,
+    updatedAt: true,
+    owner: { select: OWNER_SELECT },
+    project: { select: { id: true, key: true, name: true } },
+    keyResults: {
+      orderBy: { createdAt: 'asc' as const },
+      select: {
+        id: true,
+        name: true,
+        unit: true,
+        startValue: true,
+        targetValue: true,
+        currentValue: true,
+      },
     },
-  },
-  issues: {
-    where: { issue: { deletedAt: null, project: { deletedAt: null } } },
-    select: {
-      issue: {
-        select: {
-          id: true,
-          key: true,
-          summary: true,
-          type: { select: { name: true, color: true } },
-          status: { select: { name: true, category: true, color: true } },
+    issues: {
+      where: { issue: { deletedAt: null, project: { deletedAt: null, ...visible } } },
+      select: {
+        issue: {
+          select: {
+            id: true,
+            key: true,
+            summary: true,
+            type: { select: { name: true, color: true } },
+            status: { select: { name: true, category: true, color: true } },
+          },
         },
       },
     },
-  },
-} satisfies Prisma.ObjectiveSelect;
+  }) satisfies Prisma.ObjectiveSelect;
 
-type ObjectiveRow = Prisma.ObjectiveGetPayload<{ select: typeof OBJECTIVE_SELECT }>;
+type ObjectiveRow = Prisma.ObjectiveGetPayload<{ select: ReturnType<typeof objectiveSelect> }>;
 
 interface GoalListFilter {
   period?: string;
@@ -79,10 +81,29 @@ function clamp01(n: number): number {
  */
 @Injectable()
 export class GoalsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: ProjectAccessService,
+  ) {}
 
-  async list(workspaceId: string, filter: GoalListFilter) {
-    const where: Prisma.ObjectiveWhereInput = { workspaceId };
+  /** Điều kiện hiển thị dự án của người xem; `viewerId` trống = ngữ cảnh hệ thống → `{}` (không lọc). */
+  private visibleFor(workspaceId: string, viewerId?: string): Promise<Prisma.ProjectWhereInput> {
+    return viewerId ? this.access.visibleWhere(viewerId, workspaceId) : Promise.resolve({});
+  }
+
+  /**
+   * Điều kiện hiển thị mục tiêu: mục tiêu cấp tổ chức (không gắn dự án) luôn hiện; mục tiêu gắn dự án chỉ khi người xem
+   * thấy dự án đó. `{}` khi không cần lọc (không viewer / admin). Dùng khoá `OR` cấp cao nhất.
+   */
+  private scopeOf(visible: Prisma.ProjectWhereInput): Prisma.ObjectiveWhereInput {
+    return Object.keys(visible).length === 0
+      ? {}
+      : { OR: [{ projectId: null }, { project: visible }] };
+  }
+
+  async list(workspaceId: string, filter: GoalListFilter, viewerId?: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    const where: Prisma.ObjectiveWhereInput = { workspaceId, ...this.scopeOf(visible) };
     if (filter.period) where.period = filter.period;
     if (filter.projectId) where.projectId = filter.projectId;
     if (filter.status) where.status = filter.status as ObjectiveStatus;
@@ -91,15 +112,16 @@ export class GoalsService {
     const rows = await this.prisma.objective.findMany({
       where,
       orderBy: [{ period: 'desc' }, { createdAt: 'asc' }],
-      select: OBJECTIVE_SELECT,
+      select: objectiveSelect(visible),
     });
     return rows.map((r) => this.toDto(r));
   }
 
   /** Các kỳ đã dùng (mới nhất trước) — để FE dựng bộ chọn kỳ mà không cần tải hết mục tiêu. */
-  async periods(workspaceId: string): Promise<string[]> {
+  async periods(workspaceId: string, viewerId?: string): Promise<string[]> {
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const rows = await this.prisma.objective.findMany({
-      where: { workspaceId },
+      where: { workspaceId, ...this.scopeOf(visible) },
       distinct: ['period'],
       orderBy: { period: 'desc' },
       select: { period: true },
@@ -107,20 +129,21 @@ export class GoalsService {
     return rows.map((r) => r.period);
   }
 
-  async get(workspaceId: string, id: string) {
+  async get(workspaceId: string, id: string, viewerId?: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const row = await this.prisma.objective.findFirst({
-      where: { id, workspaceId },
-      select: OBJECTIVE_SELECT,
+      where: { id, workspaceId, ...this.scopeOf(visible) },
+      select: objectiveSelect(visible),
     });
     if (!row) throw new NotFoundAppException('Mục tiêu');
     return this.toDto(row);
   }
 
-  async create(workspaceId: string, dto: CreateGoalInput) {
-    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
+  async create(workspaceId: string, dto: CreateGoalInput, viewerId?: string) {
+    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, viewerId);
     const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
     const issueIds = dto.issueIds?.length
-      ? await this.validateIssues(workspaceId, dto.issueIds, projectId)
+      ? await this.validateIssues(workspaceId, dto.issueIds, projectId, viewerId)
       : [];
 
     const created = await this.prisma.objective.create({
@@ -137,11 +160,11 @@ export class GoalsService {
       },
       select: { id: true },
     });
-    return this.get(workspaceId, created.id);
+    return this.get(workspaceId, created.id, viewerId);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateGoalInput) {
-    const current = await this.requireObjective(workspaceId, id);
+  async update(workspaceId: string, id: string, dto: UpdateGoalInput, viewerId?: string) {
+    const current = await this.requireObjective(workspaceId, id, viewerId);
     const data: Prisma.ObjectiveUpdateInput = {};
 
     if (dto.name !== undefined && dto.name !== null) {
@@ -157,7 +180,7 @@ export class GoalsService {
     }
     if (dto.status !== undefined && dto.status !== null) data.status = dto.status;
     if (dto.projectId !== undefined) {
-      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
+      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, viewerId);
       data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
     }
     if (dto.ownerId !== undefined) {
@@ -197,7 +220,7 @@ export class GoalsService {
     if (dto.issueIds !== undefined) {
       const projectId = dto.projectId !== undefined ? (dto.projectId ?? null) : current.projectId;
       const issueIds = dto.issueIds.length
-        ? await this.validateIssues(workspaceId, dto.issueIds, projectId)
+        ? await this.validateIssues(workspaceId, dto.issueIds, projectId, viewerId)
         : [];
       ops.push(this.prisma.objectiveIssue.deleteMany({ where: { objectiveId: id } }));
       if (issueIds.length) {
@@ -210,21 +233,26 @@ export class GoalsService {
     }
 
     await this.prisma.$transaction(ops);
-    return this.get(workspaceId, id);
+    return this.get(workspaceId, id, viewerId);
   }
 
-  async remove(workspaceId: string, id: string) {
-    await this.requireObjective(workspaceId, id);
+  async remove(workspaceId: string, id: string, viewerId?: string) {
+    await this.requireObjective(workspaceId, id, viewerId);
     await this.prisma.objective.delete({ where: { id } }); // KR + ObjectiveIssue cascade
     return { success: true };
   }
 
   // ───────────────────────── key results ─────────────────────────
 
-  async addKeyResult(workspaceId: string, objectiveId: string, dto: CreateKeyResultInput) {
-    await this.requireObjective(workspaceId, objectiveId);
+  async addKeyResult(
+    workspaceId: string,
+    objectiveId: string,
+    dto: CreateKeyResultInput,
+    viewerId?: string,
+  ) {
+    await this.requireObjective(workspaceId, objectiveId, viewerId);
     await this.prisma.keyResult.create({ data: { objectiveId, ...this.krCreateData(dto) } });
-    return this.get(workspaceId, objectiveId);
+    return this.get(workspaceId, objectiveId, viewerId);
   }
 
   async updateKeyResult(
@@ -232,8 +260,9 @@ export class GoalsService {
     objectiveId: string,
     keyResultId: string,
     dto: UpdateKeyResultInput,
+    viewerId?: string,
   ) {
-    await this.requireObjective(workspaceId, objectiveId);
+    await this.requireObjective(workspaceId, objectiveId, viewerId);
     const kr = await this.prisma.keyResult.findFirst({
       where: { id: keyResultId, objectiveId },
       select: { id: true },
@@ -252,36 +281,46 @@ export class GoalsService {
     if (dto.currentValue !== undefined) data.currentValue = dto.currentValue;
 
     await this.prisma.keyResult.update({ where: { id: keyResultId }, data });
-    return this.get(workspaceId, objectiveId);
+    return this.get(workspaceId, objectiveId, viewerId);
   }
 
-  async removeKeyResult(workspaceId: string, objectiveId: string, keyResultId: string) {
-    await this.requireObjective(workspaceId, objectiveId);
+  async removeKeyResult(
+    workspaceId: string,
+    objectiveId: string,
+    keyResultId: string,
+    viewerId?: string,
+  ) {
+    await this.requireObjective(workspaceId, objectiveId, viewerId);
     const { count } = await this.prisma.keyResult.deleteMany({
       where: { id: keyResultId, objectiveId },
     });
     if (count === 0) throw new NotFoundAppException('Kết quả then chốt');
-    return this.get(workspaceId, objectiveId);
+    return this.get(workspaceId, objectiveId, viewerId);
   }
 
   // ───────────────────────── issues gắn kèm ─────────────────────────
 
-  async addIssues(workspaceId: string, objectiveId: string, issueIds: string[]) {
-    const objective = await this.requireObjective(workspaceId, objectiveId);
-    const ids = await this.validateIssues(workspaceId, issueIds, objective.projectId);
+  async addIssues(workspaceId: string, objectiveId: string, issueIds: string[], viewerId?: string) {
+    const objective = await this.requireObjective(workspaceId, objectiveId, viewerId);
+    const ids = await this.validateIssues(workspaceId, issueIds, objective.projectId, viewerId);
     await this.prisma.objectiveIssue.createMany({
       data: ids.map((issueId) => ({ objectiveId, issueId })),
       skipDuplicates: true,
     });
-    return this.get(workspaceId, objectiveId);
+    return this.get(workspaceId, objectiveId, viewerId);
   }
 
-  async removeIssues(workspaceId: string, objectiveId: string, issueIds: string[]) {
-    await this.requireObjective(workspaceId, objectiveId);
+  async removeIssues(
+    workspaceId: string,
+    objectiveId: string,
+    issueIds: string[],
+    viewerId?: string,
+  ) {
+    await this.requireObjective(workspaceId, objectiveId, viewerId);
     await this.prisma.objectiveIssue.deleteMany({
       where: { objectiveId, issueId: { in: issueIds } },
     });
-    return this.get(workspaceId, objectiveId);
+    return this.get(workspaceId, objectiveId, viewerId);
   }
 
   // ───────────────────────── helpers ─────────────────────────
@@ -296,9 +335,13 @@ export class GoalsService {
     };
   }
 
-  private async requireObjective(workspaceId: string, id: string) {
+  private async requireObjective(workspaceId: string, id: string, viewerId?: string) {
     const row = await this.prisma.objective.findFirst({
-      where: { id, workspaceId },
+      where: {
+        id,
+        workspaceId,
+        ...this.scopeOf(await this.visibleFor(workspaceId, viewerId)),
+      },
       select: { id: true, projectId: true, project: { select: { archivedAt: true } } },
     });
     if (!row) throw new NotFoundAppException('Mục tiêu');
@@ -310,10 +353,16 @@ export class GoalsService {
   private async resolveProject(
     workspaceId: string,
     projectId: string | null,
+    viewerId?: string,
   ): Promise<string | null> {
     if (!projectId) return null;
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: {
+        id: projectId,
+        workspaceId,
+        deletedAt: null,
+        ...(await this.visibleFor(workspaceId, viewerId)),
+      },
       select: { id: true, archivedAt: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
@@ -339,6 +388,7 @@ export class GoalsService {
     workspaceId: string,
     issueIds: string[],
     projectId: string | null,
+    viewerId?: string,
   ): Promise<string[]> {
     const unique = [...new Set(issueIds)];
     if (unique.length === 0) return [];
@@ -347,7 +397,7 @@ export class GoalsService {
         id: { in: unique },
         workspaceId,
         deletedAt: null,
-        ...LIVE_PROJECT,
+        project: { deletedAt: null, ...(await this.visibleFor(workspaceId, viewerId)) },
         ...(projectId ? { projectId } : {}),
       },
       select: { id: true },

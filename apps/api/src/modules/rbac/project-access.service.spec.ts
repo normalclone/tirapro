@@ -102,4 +102,17 @@ describe('ProjectAccessService', () => {
     boom.prisma.project.findFirst.mockRejectedValueOnce(new Error('db down'));
     await expect(boom.svc.canSee('u1', 'w1', 'p1')).rejects.toThrow('db down');
   });
+
+  it('visibleWhere/visibleProjectIds: vai trò cấp workspace không có project:view → chỉ dự án mình có vai trò (kể cả dự án công khai)', async () => {
+    const { svc, prisma } = make({ perms: ['workspace:view'] });
+    expect(await svc.visibleWhere('u1', 'w1')).toEqual({ memberships: { some: { userId: 'u1' } } });
+    await svc.visibleProjectIds('u1', 'w1');
+    expect(
+      (prisma.project.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
+    ).toMatchObject({
+      workspaceId: 'w1',
+      deletedAt: null,
+      memberships: { some: { userId: 'u1' } },
+    });
+  });
 });

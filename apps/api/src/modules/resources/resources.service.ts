@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma, TimeOffKind } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { LIVE_PROJECT } from '../../common/live-project';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import {
   HOURS_PER_DAY,
   addDays,
@@ -113,13 +113,22 @@ export interface WorkloadReport {
  */
 @Injectable()
 export class ResourcesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: ProjectAccessService,
+  ) {}
+
+  /** Điều kiện hiển thị dự án của người xem; `viewerId` trống = ngữ cảnh hệ thống → `{}` (không lọc). */
+  private visibleFor(workspaceId: string, viewerId?: string): Promise<Prisma.ProjectWhereInput> {
+    return viewerId ? this.access.visibleWhere(viewerId, workspaceId) : Promise.resolve({});
+  }
 
   /* ─────────────────────────── Phân bổ ─────────────────────────── */
 
-  async listAllocations(workspaceId: string, q: ListAllocationsQuery) {
+  async listAllocations(workspaceId: string, q: ListAllocationsQuery, viewerId?: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const where: Prisma.AllocationWhereInput = {
-      project: { workspaceId, deletedAt: null },
+      project: { workspaceId, deletedAt: null, ...visible },
       ...(q.projectId ? { projectId: q.projectId } : {}),
       ...(q.userId ? { userId: q.userId } : {}),
     };
@@ -135,9 +144,9 @@ export class ResourcesService {
     return rows.map((r) => this.toAllocationDto(r));
   }
 
-  async createAllocation(workspaceId: string, dto: CreateAllocationInput) {
+  async createAllocation(workspaceId: string, dto: CreateAllocationInput, viewerId?: string) {
     const { startDate, endDate } = this.requireRange(dto.startDate, dto.endDate);
-    await this.requireProject(workspaceId, dto.projectId);
+    await this.requireProject(workspaceId, dto.projectId, viewerId);
     await this.requireMember(workspaceId, dto.userId);
 
     const created = await this.prisma.allocation.create({
@@ -154,16 +163,22 @@ export class ResourcesService {
     return this.toAllocationDto(created);
   }
 
-  async updateAllocation(workspaceId: string, id: string, dto: UpdateAllocationInput) {
+  async updateAllocation(
+    workspaceId: string,
+    id: string,
+    dto: UpdateAllocationInput,
+    viewerId?: string,
+  ) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const current = await this.prisma.allocation.findFirst({
-      where: { id, project: { workspaceId, deletedAt: null } },
+      where: { id, project: { workspaceId, deletedAt: null, ...visible } },
       select: { id: true, startDate: true, endDate: true },
     });
     if (!current) throw new NotFoundAppException('Phân bổ');
 
     const data: Prisma.AllocationUpdateInput = {};
     if (dto.projectId !== undefined && dto.projectId !== null) {
-      await this.requireProject(workspaceId, dto.projectId);
+      await this.requireProject(workspaceId, dto.projectId, viewerId);
       data.project = { connect: { id: dto.projectId } };
     }
     if (dto.userId !== undefined && dto.userId !== null) {
@@ -189,9 +204,10 @@ export class ResourcesService {
     return this.toAllocationDto(updated);
   }
 
-  async deleteAllocation(workspaceId: string, id: string) {
+  async deleteAllocation(workspaceId: string, id: string, viewerId?: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const found = await this.prisma.allocation.findFirst({
-      where: { id, project: { workspaceId, deletedAt: null } },
+      where: { id, project: { workspaceId, deletedAt: null, ...visible } },
       select: { id: true },
     });
     if (!found) throw new NotFoundAppException('Phân bổ');
@@ -285,7 +301,13 @@ export class ResourcesService {
 
   /* ─────────────────────────── Tải theo tuần ─────────────────────────── */
 
-  async workload(workspaceId: string, q: WorkloadQuery): Promise<WorkloadReport> {
+  async workload(
+    workspaceId: string,
+    q: WorkloadQuery,
+    viewerId?: string,
+  ): Promise<WorkloadReport> {
+    // Dự án riêng tư người xem không thấy: phân bổ/việc/giờ log vào đó bị bỏ khỏi tổng (không lộ qua con số); admin thấy đủ.
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const today = new Date();
     const from = parseDayParam(q.from, today);
     const to = parseDayParam(q.to, addDays(startOfWeek(today), 27)); // mặc định 4 tuần
@@ -331,7 +353,7 @@ export class ResourcesService {
       this.prisma.allocation.findMany({
         where: {
           userId: { in: userIds },
-          project: { workspaceId, deletedAt: null },
+          project: { workspaceId, deletedAt: null, ...visible },
           ...projectFilter,
           startDate: { lte: rangeEnd },
           endDate: { gte: rangeStart },
@@ -351,7 +373,7 @@ export class ResourcesService {
         where: {
           workspaceId,
           deletedAt: null,
-          ...LIVE_PROJECT,
+          project: { deletedAt: null, ...visible },
           assigneeId: { in: userIds },
           ...projectFilter,
           OR: [
@@ -373,7 +395,12 @@ export class ResourcesService {
         where: {
           authorId: { in: userIds },
           startedAt: { gte: rangeStart, lt: addDays(rangeEnd, 1) },
-          issue: { workspaceId, deletedAt: null, ...LIVE_PROJECT, ...projectFilter },
+          issue: {
+            workspaceId,
+            deletedAt: null,
+            project: { deletedAt: null, ...visible },
+            ...projectFilter,
+          },
         },
         select: { authorId: true, timeSpent: true, startedAt: true },
       }),
@@ -541,9 +568,10 @@ export class ResourcesService {
     return { startDate, endDate };
   }
 
-  private async requireProject(workspaceId: string, projectId: string) {
+  private async requireProject(workspaceId: string, projectId: string, viewerId?: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, workspaceId, deletedAt: null, ...visible },
       select: { id: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
