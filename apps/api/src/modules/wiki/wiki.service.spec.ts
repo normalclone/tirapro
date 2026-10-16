@@ -43,7 +43,7 @@ function setup(archived: boolean, pageProjectId: string | null = 'p1') {
     },
     wikiPage: {
       findFirst: vi.fn(() => Promise.resolve(page)),
-      findMany: vi.fn(() => Promise.resolve([])),
+      findMany: vi.fn((): Promise<unknown[]> => Promise.resolve([])),
       create: vi.fn(() => Promise.resolve({ id: 'g2' })),
       update: vi.fn(() => Promise.resolve({})),
       updateMany: vi.fn(() => Promise.resolve({})),
@@ -51,6 +51,12 @@ function setup(archived: boolean, pageProjectId: string | null = 'p1') {
       aggregate: vi.fn(() => Promise.resolve({ _max: { order: null } })),
     },
     user: { findMany: vi.fn(() => Promise.resolve([])) },
+    issue: { findMany: vi.fn((): Promise<{ id: string }[]> => Promise.resolve([])) },
+    wikiPageIssue: {
+      deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+      createMany: vi.fn(() => Promise.resolve({ count: 0 })),
+      findMany: vi.fn((): Promise<unknown[]> => Promise.resolve([])),
+    },
     workspaceMembership: { findMany: vi.fn((): Promise<Member[]> => Promise.resolve([])) },
     projectMembership: { findMany: vi.fn((): Promise<Member[]> => Promise.resolve([])) },
     $transaction: vi.fn((arg: unknown) =>
@@ -219,6 +225,136 @@ describe('WikiService.update — chống ghi đè theo updatedAt (A10)', () => {
     ).toBe(false);
     expect(updateWikiPageSchema.safeParse({ body: 'x', expectedUpdatedAt: EXPECTED }).success).toBe(
       true,
+    );
+  });
+});
+
+describe('WikiService — liên kết trang ↔ công việc (A11)', () => {
+  it('update(): đồng bộ liên kết từ mã công việc trong body, bỏ mã không tồn tại', async () => {
+    const { service, prisma } = setup(false);
+    prisma.issue.findMany.mockResolvedValueOnce([{ id: 'i1' }]); // chỉ DEMO-STORY-3 có thật
+    await service.update('w1', 'g1', { body: 'Xem DEMO-STORY-3 và UTF-8' }, 'u1');
+    expect(prisma.issue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          workspaceId: 'w1',
+          key: { in: ['DEMO-STORY-3', 'UTF-8'] },
+          deletedAt: null,
+          project: { deletedAt: null },
+        }) as unknown,
+      }),
+    );
+    expect(prisma.wikiPageIssue.deleteMany).toHaveBeenCalledWith({ where: { wikiPageId: 'g1' } });
+    expect(prisma.wikiPageIssue.createMany).toHaveBeenCalledWith({
+      data: [{ wikiPageId: 'g1', issueId: 'i1' }],
+      skipDuplicates: true,
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('create(): trang mới có body nhắc mã → ghi liên kết cho trang vừa tạo', async () => {
+    const { service, prisma } = setup(false);
+    prisma.issue.findMany.mockResolvedValueOnce([{ id: 'i1' }]);
+    await service.create('w1', { title: 'x', body: 'Liên quan DEMO-3', projectId: 'p1' }, 'u1');
+    expect(prisma.wikiPageIssue.createMany).toHaveBeenCalledWith({
+      data: [{ wikiPageId: 'g2', issueId: 'i1' }],
+      skipDuplicates: true,
+    });
+  });
+
+  it('update(): chỉ đổi tiêu đề (không có body) → không đụng liên kết', async () => {
+    const { service, prisma } = setup(false);
+    await service.update('w1', 'g1', { title: 'Tên mới' }, 'u1');
+    expect(prisma.wikiPageIssue.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.issue.findMany).not.toHaveBeenCalled();
+  });
+
+  it('update(): body không còn mã → xoá hết liên kết, không truy vấn issue, không createMany', async () => {
+    const { service, prisma } = setup(false);
+    await service.update('w1', 'g1', { body: 'Không còn mã nào' }, 'u1');
+    expect(prisma.issue.findMany).not.toHaveBeenCalled();
+    expect(prisma.wikiPageIssue.deleteMany).toHaveBeenCalledWith({ where: { wikiPageId: 'g1' } });
+    expect(prisma.wikiPageIssue.createMany).not.toHaveBeenCalled();
+  });
+
+  it('update(): đồng bộ liên kết lỗi → trang vẫn lưu và trả về bình thường (chỉ log)', async () => {
+    const { service, prisma } = setup(false);
+    prisma.issue.findMany.mockRejectedValueOnce(new Error('db down'));
+    await expect(service.update('w1', 'g1', { body: 'DEMO-3' }, 'u1')).resolves.toMatchObject({
+      id: 'g1',
+    });
+    expect(prisma.wikiPage.update).toHaveBeenCalled();
+  });
+
+  it('get(): trả issues của công việc còn sống (lọc deletedAt công việc + dự án)', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPageIssue.findMany.mockResolvedValueOnce([
+      {
+        issue: {
+          id: 'i1',
+          key: 'DEMO-3',
+          summary: 'Đăng nhập',
+          type: { name: 'Story' },
+          status: { name: 'Đang làm', category: 'IN_PROGRESS' },
+        },
+      },
+    ]);
+    const page = await service.get('w1', 'g1');
+    expect(page.issues).toEqual([
+      {
+        id: 'i1',
+        key: 'DEMO-3',
+        summary: 'Đăng nhập',
+        typeName: 'Story',
+        statusName: 'Đang làm',
+        statusCategory: 'IN_PROGRESS',
+      },
+    ]);
+    expect(prisma.wikiPageIssue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { wikiPageId: 'g1', issue: { deletedAt: null, project: { deletedAt: null } } },
+      }),
+    );
+  });
+
+  it('byIssue(): lọc theo workspace + liên kết, kèm projectKey', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPage.findMany.mockResolvedValueOnce([
+      {
+        id: 'g1',
+        title: 'Đặc tả',
+        projectId: 'p1',
+        project: { key: 'DEMO' },
+        updatedAt: new Date('2026-10-01T00:00:00Z'),
+      },
+      {
+        id: 'g9',
+        title: 'Chung',
+        projectId: null,
+        project: null,
+        updatedAt: new Date('2026-09-01T00:00:00Z'),
+      },
+    ]);
+    await expect(service.byIssue('w1', 'i1')).resolves.toEqual([
+      {
+        id: 'g1',
+        title: 'Đặc tả',
+        projectId: 'p1',
+        projectKey: 'DEMO',
+        updatedAt: '2026-10-01T00:00:00.000Z',
+      },
+      {
+        id: 'g9',
+        title: 'Chung',
+        projectId: null,
+        projectKey: null,
+        updatedAt: '2026-09-01T00:00:00.000Z',
+      },
+    ]);
+    expect(prisma.wikiPage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { workspaceId: 'w1', issues: { some: { issueId: 'i1' } } },
+      }),
     );
   });
 });

@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PERMISSIONS } from '@tirapro/types';
+import { extractIssueKeys } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { insensitiveContains } from '../../common/like';
 import {
@@ -49,6 +50,24 @@ export interface WikiNodeDto {
   children: WikiNodeDto[];
 }
 
+/** Công việc được nhắc trong trang wiki (để vẽ chip). */
+export interface WikiIssueRefDto {
+  id: string;
+  key: string;
+  summary: string;
+  typeName: string;
+  statusName: string;
+  statusCategory: 'TODO' | 'IN_PROGRESS' | 'DONE';
+}
+
+export interface WikiByIssueDto {
+  id: string;
+  title: string;
+  projectId: string | null;
+  projectKey: string | null;
+  updatedAt: string;
+}
+
 export interface WikiPageDto {
   id: string;
   workspaceId: string;
@@ -61,6 +80,8 @@ export interface WikiPageDto {
   updatedBy: { id: string; displayName: string } | null;
   /** Đường dẫn từ gốc tới trang (không gồm chính nó) — dùng cho breadcrumb. */
   breadcrumb: { id: string; title: string }[];
+  /** Công việc còn sống được nhắc trong nội dung trang (suy ra từ mã công việc). */
+  issues: WikiIssueRefDto[];
   createdAt: string;
   updatedAt: string;
 }
@@ -83,6 +104,8 @@ export interface WikiSearchHit {
  */
 @Injectable()
 export class WikiService {
+  private readonly logger = new Logger(WikiService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /** Cây trang theo phạm vi. `projectId` bỏ trống = mọi trang trong workspace. */
@@ -164,6 +187,20 @@ export class WikiService {
         })
       : [];
     const byId = new Map(users.map((u) => [u.id, u]));
+    const links = await this.prisma.wikiPageIssue.findMany({
+      where: { wikiPageId: id, issue: { deletedAt: null, project: { deletedAt: null } } },
+      select: {
+        issue: {
+          select: {
+            id: true,
+            key: true,
+            summary: true,
+            type: { select: { name: true } },
+            status: { select: { name: true, category: true } },
+          },
+        },
+      },
+    });
 
     return {
       id: page.id,
@@ -176,9 +213,40 @@ export class WikiService {
       createdBy: (page.createdById && byId.get(page.createdById)) || null,
       updatedBy: (page.updatedById && byId.get(page.updatedById)) || null,
       breadcrumb,
+      issues: links.map(({ issue: i }) => ({
+        id: i.id,
+        key: i.key,
+        summary: i.summary,
+        typeName: i.type.name,
+        statusName: i.status.name,
+        statusCategory: i.status.category,
+      })),
       createdAt: page.createdAt.toISOString(),
       updatedAt: page.updatedAt.toISOString(),
     };
+  }
+
+  /** Các trang wiki nhắc tới một công việc (cho khối "Tài liệu liên quan"). */
+  async byIssue(workspaceId: string, issueId: string): Promise<WikiByIssueDto[]> {
+    const rows = await this.prisma.wikiPage.findMany({
+      where: { workspaceId, issues: { some: { issueId } } },
+      orderBy: { updatedAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        title: true,
+        projectId: true,
+        updatedAt: true,
+        project: { select: { key: true } },
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      projectId: r.projectId,
+      projectKey: r.project?.key ?? null,
+      updatedAt: r.updatedAt.toISOString(),
+    }));
   }
 
   async create(
@@ -215,6 +283,7 @@ export class WikiService {
       },
       select: { id: true },
     });
+    if (dto.body) await this.syncIssueLinks(workspaceId, created.id, dto.body);
     return this.get(workspaceId, created.id);
   }
 
@@ -246,6 +315,7 @@ export class WikiService {
     } else {
       await this.prisma.wikiPage.update({ where: { id }, data });
     }
+    if (dto.body !== undefined) await this.syncIssueLinks(workspaceId, id, dto.body);
     return this.get(workspaceId, id);
   }
 
@@ -325,6 +395,41 @@ export class WikiService {
   }
 
   // ───────────────────────── helpers ─────────────────────────
+
+  /**
+   * Ghi lại liên kết trang → công việc theo mã công việc trong nội dung (xoá & ghi lại, nguyên tử).
+   * Chạy SAU khi lưu trang: lỗi chỉ log, không làm hỏng việc lưu. Mã giống-mã nhưng không phải
+   * công việc (vd "UTF-8") bị loại ở truy vấn.
+   */
+  private async syncIssueLinks(workspaceId: string, pageId: string, body: string): Promise<void> {
+    try {
+      const keys = extractIssueKeys(body);
+      const issues = keys.length
+        ? await this.prisma.issue.findMany({
+            where: {
+              workspaceId,
+              key: { in: keys },
+              deletedAt: null,
+              project: { deletedAt: null },
+            },
+            select: { id: true },
+          })
+        : [];
+      await this.prisma.$transaction([
+        this.prisma.wikiPageIssue.deleteMany({ where: { wikiPageId: pageId } }),
+        ...(issues.length
+          ? [
+              this.prisma.wikiPageIssue.createMany({
+                data: issues.map((i) => ({ wikiPageId: pageId, issueId: i.id })),
+                skipDuplicates: true,
+              }),
+            ]
+          : []),
+      ]);
+    } catch (e) {
+      this.logger.warn(`Không đồng bộ được liên kết công việc của trang ${pageId}: ${String(e)}`);
+    }
+  }
 
   private scopeWhere(projectId?: string) {
     if (!projectId) return {};

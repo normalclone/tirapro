@@ -50,6 +50,14 @@ export class WikiController {
     return this.wiki.admins(workspaceId, projectId);
   }
 
+  /** Trang wiki nhắc tới công việc `issueId` (khối "Tài liệu liên quan"). Đặt TRƯỚC `:id`. */
+  @ProjectRef('issue', 'issueId')
+  @Get('by-issue/:issueId')
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  async byIssue(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
+    return this.wiki.byIssue(workspaceId, issueId);
+  }
+
   @Get(':id')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async get(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
