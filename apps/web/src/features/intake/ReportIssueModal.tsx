@@ -16,7 +16,7 @@ import { useReportIssueModal, type ReportIssuePreset } from '@/stores/reportIssu
 import { useDuplicateCheck, type DuplicateSuggestion } from './api';
 import { DuplicatePanel } from './DuplicatePanel';
 import { useDupChoice } from './useDupChoice';
-import type { DupSelection } from './dupDecision';
+import { dupDescribedBy, type DupSelection } from './dupDecision';
 import { FIELD_LABEL, ReportDetails } from './ReportDetails';
 import { clearDraft, useDraftAutosave, useReportInitial } from './useReportDraft';
 import { useCanComment } from './useCanComment';
@@ -219,7 +219,7 @@ function TitleField({
         }}
         placeholder={TITLE_PLACEHOLDER[kind]}
         className="text-sm"
-        aria-describedby={showPanel ? 'ri-dup' : undefined}
+        aria-describedby={dupDescribedBy(showPanel, dup.sel.mode)}
       />
       {/* Vùng aria-live luôn có trong DOM để trình đọc màn hình đọc được khi panel xuất hiện. */}
       <div aria-live="polite">
