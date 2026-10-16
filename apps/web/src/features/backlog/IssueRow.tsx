@@ -130,7 +130,7 @@ export function IssueRowBody({
       {...rootProps}
       className={cn(
         'relative flex items-center gap-3 rounded-md border bg-surface px-2.5 py-2 transition-colors',
-        readOnly ? 'cursor-default' : 'cursor-grab touch-none active:cursor-grabbing',
+        readOnly ? 'cursor-default' : 'cursor-grab touch-manipulation active:cursor-grabbing',
         warn || 'border-transparent hover:border-border',
         'hover:bg-surface-2',
         checked && 'border-primary bg-primary-subtle',

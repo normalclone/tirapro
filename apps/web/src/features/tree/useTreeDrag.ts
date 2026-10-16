@@ -1,9 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  PointerSensor,
   pointerWithin,
-  useSensor,
-  useSensors,
   type Announcements,
   type DragEndEvent,
   type DragOverEvent,
@@ -14,6 +11,7 @@ import type { IssueDto } from '@tirapro/types';
 import { useUpdateIssue } from '@/features/issues/api';
 import { useCanEditIssue } from '@/features/projects/permissions';
 import { apiErrorMessage } from '@/lib/api';
+import { useDragSensors } from '@/lib/dragSensors';
 import { planTreeDrop } from './treeDrop';
 
 export const ROOT_DROP_ID = 'tree:root';
@@ -39,7 +37,7 @@ export function useTreeDrag(
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   // Cần rê 6px mới tính là kéo — bấm trơn vẫn mở công việc.
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useDragSensors({ distance: 6 });
   const dragged = dragId ? (byId.get(dragId) ?? null) : null;
 
   /** Trạng thái viền của dòng đang rê: sáng (hợp lệ) / đỏ (bị chặn). */

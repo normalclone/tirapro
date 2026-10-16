@@ -20,15 +20,12 @@ import {
 } from 'lucide-react';
 import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
 import type { SubtreeProgress } from '@/lib/issueTree';
+import { useDragSensors } from '@/lib/dragSensors';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useRetained } from '@/lib/useRetained';
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
   useDroppable,
   type Announcements,
   type DragEndEvent,
@@ -101,7 +98,8 @@ import {
 } from './dropPlan';
 import { BulkActionBar } from './BulkActionBar';
 import { EpicPanel } from './EpicPanel';
-import { useEpicPanel } from '@/stores/epicPanel';
+import { epicPanelShown, useEpicPanel } from '@/stores/epicPanel';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeekShell } from '@/features/issues/peek/PeekShell';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
@@ -218,8 +216,16 @@ export function BacklogPage() {
   // Lọc theo epic ở panel trái: null = tất cả, 'none' = không thuộc epic, còn lại = id epic. State cục bộ (peek đã dùng URL).
   const [epicFilter, setEpicFilter] = useState<string | null>(null);
   // Trạng thái panel Epic dùng chung với rail dự án (mở panel → rail thu tạm, mở rail → panel thu).
-  const epicPanelOpen = useEpicPanel((s) => s.open);
-  const toggleEpicPanel = useEpicPanel((s) => s.toggle);
+  const epicPanelUserOpen = useEpicPanel((s) => s.open);
+  const storeToggleEpicPanel = useEpicPanel((s) => s.toggle);
+  // Xem nhanh mở ở khổ hẹp thì panel Epic tự thu tạm (không đổi lựa chọn đã lưu của người dùng).
+  const squeezed = useMediaQuery('(min-width: 1024px) and (max-width: 1535px)');
+  const epicPanelOpen = epicPanelShown(epicPanelUserOpen, peek.peekKey !== null, squeezed);
+  const toggleEpicPanel = () => {
+    // Đang bị thu tạm vì xem nhanh: người dùng bấm "Epic" = muốn xem Epic → đóng xem nhanh (mở cái này thì cái kia thu vào).
+    if (epicPanelUserOpen && !epicPanelOpen) peek.close();
+    else storeToggleEpicPanel();
+  };
 
   // Bulk select: id các việc đang chọn + cờ đang chạy batch (khóa thao tác).
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -255,10 +261,7 @@ export function BacklogPage() {
   const startingShown = useRetained(starting);
   const startingKey = useOpenSession(!!starting);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: epicAwareKeyboardCoordinates }),
-  );
+  const sensors = useDragSensors({ distance: 5, keyboard: epicAwareKeyboardCoordinates });
 
   // Sprint hiển thị: chỉ FUTURE/ACTIVE, ACTIVE trước rồi theo sequence.
   const visibleSprints = useMemo(() => {

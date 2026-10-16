@@ -83,7 +83,7 @@ export function IssuePeekPanel({ issueKey, onClose }: { issueKey: string; onClos
       data-peek-panel
       role="complementary"
       aria-label={`Xem nhanh ${issueKey}`}
-      className="fixed inset-y-0 right-0 z-sticky flex w-full max-w-[30rem] flex-col border-l border-border bg-surface shadow-lg outline-none duration-base animate-in slide-in-from-right lg:static lg:z-auto lg:w-[30rem] lg:max-w-none lg:shrink-0 lg:shadow-none"
+      className="fixed inset-y-0 right-0 z-sticky flex w-full max-w-[30rem] flex-col border-l border-border bg-surface shadow-lg outline-none duration-base animate-in slide-in-from-right lg:static lg:z-auto lg:w-[min(30rem,40vw)] lg:min-w-[20rem] lg:max-w-none lg:shrink-0 lg:shadow-none"
     >
       <PeekHeader issueKey={issueKey} onClose={onClose} />
       <PeekBody key={issueKey} issueKey={issueKey} onClose={onClose} />

@@ -25,8 +25,27 @@ function patchDetail(qc: QueryClient, issueKey: string, fn: (old: IssueDto) => I
 const getList = (qc: QueryClient, projectId: string) =>
   qc.getQueryData<IssueDto[]>(keys.issues.byProject(projectId));
 
-/** issue:created — thêm vào CUỐI danh sách nếu chưa có (event dội về sau khi mình tự tạo thì bỏ qua). */
+/** Việc chưa duyệt / tạm hoãn / đã từ chối — không thuộc Board, Việc chờ, sprint (server ẩn qua `TRIAGE_VISIBLE`). */
+function isTriageHidden(issue: Pick<IssueDto, 'triageState'>): boolean {
+  const st = issue.triageState;
+  return st === 'PENDING' || st === 'SNOOZED' || st === 'DECLINED';
+}
+
+/** Gỡ việc khỏi cache danh sách dự án + danh sách Board có bộ lọc (không đụng cache chi tiết). */
+function removeFromLists(qc: QueryClient, projectId: string, issueId: string) {
+  patchList(qc, projectId, (list) =>
+    list.some((i) => i.id === issueId) ? list.filter((i) => i.id !== issueId) : list,
+  );
+  qc.setQueriesData<IssueDto[]>({ queryKey: ['issues', 'board'] }, (old) =>
+    Array.isArray(old) && old.some((i) => i.id === issueId)
+      ? old.filter((i) => i.id !== issueId)
+      : old,
+  );
+}
+
+/** issue:created — thêm vào CUỐI danh sách nếu chưa có (event dội về sau khi mình tự tạo thì bỏ qua). Việc chưa duyệt không chèn. */
 export function applyIssueCreated(qc: QueryClient, issue: IssueDto) {
+  if (isTriageHidden(issue)) return;
   patchList(qc, issue.projectId, (list) =>
     list.some((i) => i.id === issue.id) ? list : [...list, issue],
   );
@@ -35,8 +54,25 @@ export function applyIssueCreated(qc: QueryClient, issue: IssueDto) {
 /**
  * issue:updated — payload là IssueDto đầy đủ: thay theo id CHỈ khi `version` mới hơn bản đang giữ
  * (bản bằng/cũ hơn là echo của chính mình hoặc event đến trễ → bỏ qua, không nháy/lùi dữ liệu).
+ * Việc chuyển SANG trạng thái duyệt ẩn (PENDING/SNOOZED/DECLINED) → gỡ khỏi các danh sách; việc ACCEPTED mà danh sách
+ * chưa có (vừa từ trạng thái ẩn ra) → nạp lại danh sách của dự án thay vì chèn.
  */
 export function applyIssueUpdated(qc: QueryClient, issue: IssueDto) {
+  if (isTriageHidden(issue)) {
+    removeFromLists(qc, issue.projectId, issue.id);
+    patchDetail(qc, issue.key, (old) => (issue.version > old.version ? { ...old, ...issue } : old));
+    return;
+  }
+  if (
+    issue.triageState === 'ACCEPTED' &&
+    !getList(qc, issue.projectId)?.some((i) => i.id === issue.id)
+  ) {
+    void qc.invalidateQueries({ queryKey: keys.issues.byProject(issue.projectId) });
+    void qc.invalidateQueries({ queryKey: ['issues', 'board'] });
+    void qc.invalidateQueries({ queryKey: keys.sprints.byProject(issue.projectId) });
+    patchDetail(qc, issue.key, (old) => (issue.version > old.version ? { ...old, ...issue } : old));
+    return;
+  }
   patchList(qc, issue.projectId, (list) => {
     const cur = list.find((i) => i.id === issue.id);
     if (!cur) return [...list, issue];

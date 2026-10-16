@@ -81,7 +81,7 @@ export function CardBody({
       style={style}
       className={cn(
         'relative rounded-md border bg-surface p-2.5 shadow-sm transition-shadow',
-        canDrag ? 'cursor-grab touch-none active:cursor-grabbing' : 'cursor-pointer',
+        canDrag ? 'cursor-grab touch-manipulation active:cursor-grabbing' : 'cursor-pointer',
         dueBorderClass(issue) || 'border-border',
         'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
         isDragging && 'opacity-40',

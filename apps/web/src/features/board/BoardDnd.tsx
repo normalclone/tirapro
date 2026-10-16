@@ -2,10 +2,6 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import {
   DndContext,
   DragOverlay,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
   type Announcements,
   type DragEndEvent,
   type DragMoveEvent,
@@ -16,6 +12,7 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { BoardColumnDto, IssueDto } from '@tirapro/types';
 import { activeDrag } from '@/lib/activeDrag';
+import { useDragSensors } from '@/lib/dragSensors';
 import { dropContainer } from '@/lib/dropContainer';
 import { dropHint } from '@/lib/dropHint';
 import { placementFromDnd, type Placement } from '@/lib/rankDrop';
@@ -55,10 +52,7 @@ export function BoardDnd({
   planOf: (issue: IssueDto, placement: Placement) => DropPlan | null;
   children: ReactNode;
 }) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+  const sensors = useDragSensors({ distance: 5, keyboard: sortableKeyboardCoordinates });
   const [draggingId, setDraggingId] = useState<string | null>(null);
   // `dropHint`/`dropContainer` là store toàn cục: unmount giữa lúc kéo (đổi trang, đóng board) mà không dọn thì vạch chèn/viền cột
   // "kẹt" lại và hiện ở lần mở board sau, vì dnd-kit không phát `onDragCancel` khi context bị gỡ.
