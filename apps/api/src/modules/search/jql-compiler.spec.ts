@@ -304,3 +304,38 @@ describe('jqlDependsOnViewer (I1 — JQL phụ thuộc người xem không dùng
     expect(jqlDependsOnViewer(null)).toBe(false);
   });
 });
+
+describe('JQL key — mã công việc, cả mã Jira (JRA-1) lẫn mã Tirapro (L27)', () => {
+  const w = (jql: string) => compileJql(ast(jql), { currentUserId: 'U' }).where;
+  it('key = "JRA-1" → khớp đúng; literal có gạch ngang trong nháy parse được', () => {
+    expect(w('key = "JRA-1"')).toEqual({ key: 'JRA-1' });
+    expect(w('key = "PROJ-STORY-7"')).toEqual({ key: 'PROJ-STORY-7' });
+  });
+  it('mã luôn lưu HOA nên = / != chuẩn hoá HOA giá trị gõ', () => {
+    expect(w('key = "jra-1"')).toEqual({ key: 'JRA-1' });
+    expect(w('key != "jra-1"')).toEqual({ key: { not: 'JRA-1' } });
+  });
+  it('key ~ "JRA" → contains; key !~ → NOT contains', () => {
+    expect(w('key ~ "JRA"')).toEqual({ key: { contains: 'JRA', mode: 'insensitive' } });
+    expect(w('key !~ "JRA"')).toEqual({
+      NOT: { key: { contains: 'JRA', mode: 'insensitive' } },
+    });
+  });
+  it('key IN / NOT IN danh sách mã (không im lặng ra 0 kết quả)', () => {
+    expect(w('key IN ("JRA-1", "proj-story-2")')).toEqual({
+      key: { in: ['JRA-1', 'PROJ-STORY-2'] },
+    });
+    expect(w('key NOT IN ("JRA-1")')).toEqual({ key: { notIn: ['JRA-1'] } });
+  });
+  it('JQL của thông báo gộp nhập Jira (assignee = me AND key IN (...)) biên dịch được', () => {
+    const r = compileJql(ast('assignee = me AND key IN ("PROJ-9", "PROJ-2")'), {
+      currentUserId: 'U',
+    }).where;
+    expect(JSON.stringify(r)).toContain('"key":{"in":["PROJ-9","PROJ-2"]}');
+    expect(JSON.stringify(r)).toContain('"assigneeId":"U"');
+  });
+  it('ORDER BY key', () => {
+    const r = compileJql(ast('project = X ORDER BY key ASC'), { currentUserId: 'U' });
+    expect(r.orderBy).toEqual([{ key: 'asc' }]);
+  });
+});

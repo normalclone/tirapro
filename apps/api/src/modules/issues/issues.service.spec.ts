@@ -1760,6 +1760,62 @@ describe('IssuesService.create — statusId phải thuộc workflow của dự �
   });
 });
 
+describe('IssuesService.createWithin — mã công việc nhập từ Jira (L27)', () => {
+  const baseInput = {
+    projectId: 'p1',
+    typeId: 't1',
+    summary: 's',
+    descriptionFormat: 'MARKDOWN' as const,
+  };
+  const WF = [{ id: 's1', category: 'TODO', isInitial: true }];
+
+  it('import + fixedKey: key = mã Jira, number vẫn lấy từ issueSequence, KHÔNG đếm theo loại', async () => {
+    const { tx, created } = createTx(WF);
+    tx.project.update = vi.fn(() => Promise.resolve({ issueSequence: 7 }));
+    const { service } = makeService(tx);
+    await service.createWithin(tx as never, 'w1', 'u1', baseInput, [], 'JRA-1');
+    const data = created.mock.calls[0]![0].data;
+    expect(data.key).toBe('JRA-1');
+    expect(data.number).toBe(7);
+    expect(tx.project.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { issueSequence: { increment: 1 } } }),
+    );
+    expect(tx.issue.count).not.toHaveBeenCalled();
+  });
+
+  it('không có fixedKey: đếm theo loại CHỈ trong dải mã Tirapro cùng tiền tố (việc nhập không làm lệch số)', async () => {
+    const { tx, created } = createTx(WF);
+    tx.issue.count = vi.fn(() => Promise.resolve(2));
+    const { service } = makeService(tx);
+    await service.createWithin(tx as never, 'w1', 'u1', baseInput, []);
+    const where = (
+      tx.issue.count.mock.calls[0] as unknown as [{ where: Record<string, unknown> }]
+    )[0].where;
+    expect(where).toMatchObject({
+      projectId: 'p1',
+      typeId: 't1',
+      key: { startsWith: 'P-TASK-' },
+    });
+    expect(created.mock.calls[0]![0].data.key).toBe('P-TASK-3');
+  });
+
+  it('đường API (create) bỏ qua fixedKey: người dùng không tự đặt được mã', async () => {
+    const { tx, created } = createTx(WF);
+    const { service } = makeService(tx);
+    // createCore là private; `create` không có tham số mã ⇒ luôn sinh mã Tirapro.
+    await service.create('w1', 'u1', { ...baseInput, key: 'JRA-1' } as never);
+    expect(created.mock.calls[0]![0].data.key).toBe('P-TASK-1');
+    expect(tx.issue.count).toHaveBeenCalled();
+  });
+
+  it('fixedKey sai dạng (mã Tirapro 3 đoạn) bị bỏ qua: rơi về mã Tirapro tự sinh', async () => {
+    const { tx, created } = createTx(WF);
+    const { service } = makeService(tx);
+    await service.createWithin(tx as never, 'w1', 'u1', baseInput, [], 'JRA-STORY-1');
+    expect(created.mock.calls[0]![0].data.key).toBe('P-TASK-1');
+  });
+});
+
 describe('IssuesService — epicId được lưu và hợp lệ (FW11 + review)', () => {
   const epicRow = (over: Record<string, unknown> = {}) => ({
     projectId: 'p1',

@@ -17,12 +17,17 @@ export const jiraMappingSchema = z.object({
   priorities: z.record(z.string().min(1)),
   /** Tên người dùng Jira → id user thành viên workspace; null = để trống. Thiếu khoá = để trống. */
   users: z.record(z.string().nullable()).default({}),
+  /**
+   * Tên người dùng Jira CHƯA ghép → email (L28): nhớ để tự gán việc khi họ được thêm vào workspace.
+   * Chỉ có tác dụng với người không có khoá trong `users`; khớp theo email, không đoán theo tên.
+   */
+  pendingEmails: z.record(z.string().email()).default({}),
 });
 
 export const jiraImportOptionsSchema = z.object({
   importComments: z.boolean().default(true),
   importSprints: z.boolean().default(true),
-  /** Ghi `Nhập từ Jira: KEY-123` ở đầu mô tả. */
+  /** Dùng mã Jira gốc (`JRA-1`) làm mã công việc; nhập lại cùng tệp thì bỏ qua việc đã có mã. Tắt = mã Tirapro tự sinh. */
   keepJiraKey: z.boolean().default(false),
   /** Chỉ kiểm tra và đếm, không ghi gì vào DB. */
   dryRun: z.boolean().default(false),

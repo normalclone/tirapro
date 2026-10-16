@@ -8,6 +8,7 @@ import type { Prisma } from '@prisma/client';
 import {
   JIRA_CREATE,
   jiraAnalyzeIdSchema,
+  normalizeJiraKey,
   type JiraImportOptions,
   type JiraImportRunInput,
 } from '@tirapro/shared';
@@ -30,6 +31,7 @@ import {
 import {
   findMissingMapping,
   formatMissing,
+  formatRemembered,
   formatUnmatchedAssignees,
   hasMissing,
   inferPriorityRank,
@@ -39,7 +41,9 @@ import {
   layerIssues,
   ownValue,
   newAssigneeTally,
+  pendingEmailFor,
   resolveLinks,
+  summarizeRemembered,
   summarizeUnmatchedAssignees,
   tallyAssignee,
   type IssueLinks,
@@ -92,6 +96,31 @@ interface Plan {
   labels: number;
   comments: number;
 }
+
+/** Việc đã có mã này trong workspace (kể cả đã xoá mềm — unique `(workspaceId, key)` vẫn giữ mã). */
+interface ExistingKey {
+  id: string;
+  key: string;
+  projectId: string;
+  projectKey: string;
+  deleted: boolean;
+}
+
+/** Kế hoạch mã Jira cho một lượt nhập (L27): dòng nào dùng mã gốc, dòng nào bỏ qua vì trùng, dòng nào sai dạng. */
+interface KeyPlan {
+  /** Dòng → mã Jira đã chuẩn hoá, dùng làm `Issue.key`. */
+  fixed: Map<JiraIssueRow, string>;
+  /** Dòng bị bỏ qua vì mã trùng (đã có trong workspace, hoặc lặp trong tệp — `existing` rỗng). */
+  skip: Map<JiraIssueRow, { message: string; existing?: ExistingKey }>;
+  /** Dòng có mã sai dạng → vẫn tạo bằng mã Tirapro tự sinh. */
+  invalid: Map<JiraIssueRow, string>;
+}
+
+const NO_KEY_PLAN = (): KeyPlan => ({ fixed: new Map(), skip: new Map(), invalid: new Map() });
+/** Số mã tra mỗi truy vấn (tránh vượt giới hạn tham số bind của Postgres). */
+const KEY_LOOKUP_CHUNK = 5000;
+/** Dry-run chỉ liệt kê tối đa chừng này dòng cảnh báo mã (còn lại gộp một dòng). */
+const DRY_RUN_KEY_WARNINGS = 20;
 
 interface AnalyzeMeta {
   workspaceId: string;
@@ -313,6 +342,12 @@ export class JiraImportService implements OnApplicationBootstrap {
     const plan = this.plan(parsed, input, catalog);
 
     if (input.options.dryRun) {
+      const keyPlan = input.options.keepJiraKey
+        ? // Phản hồi dry-run chỉ đến tay quản trị (jira/run = workspace:admin, thấy mọi dự án) nên nêu mã dự án đang giữ mã.
+          await this.planKeys(workspaceId, parsed.issues, { revealProjects: true })
+        : NO_KEY_PLAN();
+      const keyWarnings = this.keyWarnings(keyPlan);
+      const assigneeNotes = this.dryRunAssignees(parsed.issues, input.mapping);
       return {
         dryRun: true,
         total: parsed.issues.length,
@@ -321,11 +356,18 @@ export class JiraImportService implements OnApplicationBootstrap {
         sprints: input.options.importSprints ? plan.sprintNames.length : 0,
         labels: plan.labels,
         comments: input.options.importComments ? plan.comments : 0,
+        duplicateKeys: keyPlan.skip.size,
+        invalidKeys: keyPlan.invalid.size,
+        rememberedAssignees: assigneeNotes.remembered,
         warnings: [
+          ...keyWarnings.slice(0, DRY_RUN_KEY_WARNINGS),
+          ...(keyWarnings.length > DRY_RUN_KEY_WARNINGS
+            ? [`… và ${keyWarnings.length - DRY_RUN_KEY_WARNINGS} cảnh báo về mã nữa`]
+            : []),
           ...[...plan.links.entries()].flatMap(([r, l]) =>
             l.warnings.map((w) => this.line(r, w, true)),
           ),
-          ...this.dryRunAssigneeWarning(parsed.issues, input.mapping.users),
+          ...assigneeNotes.lines,
         ],
       };
     }
@@ -452,7 +494,23 @@ export class JiraImportService implements OnApplicationBootstrap {
       const idByRow = new Map<JiraIssueRow, string>();
       const rowByNo = new Map(parsed.issues.map((r) => [r.row, r]));
       const errorLines: string[] = [];
-      const counters = { created: 0, failed: 0, labels: 0, comments: 0, warnings: 0 };
+      const counters = {
+        created: 0,
+        failed: 0,
+        labels: 0,
+        comments: 0,
+        warnings: 0,
+        duplicates: 0,
+        invalid: 0,
+      };
+      // Mã Jira gốc (L27): tra một lần trước khi ghi theo lô — dòng trùng bỏ qua, dòng sai dạng dùng mã Tirapro.
+      const keyPlan = opts.keepJiraKey
+        ? // Nhật ký job đọc được qua `import:run` (rộng hơn quản trị): không nêu mã dự án khác (có thể là dự án riêng tư).
+          await this.planKeys(workspaceId, parsed.issues, {
+            revealProjects: false,
+            targetProjectId: projectId,
+          })
+        : NO_KEY_PLAN();
       // Người phụ trách Jira không được gán: không khớp (cảnh báo) hoặc chủ động "Để trống" (trung tính) — đếm theo việc ĐÃ tạo được.
       const assigneeTally = newAssigneeTally();
       let processed = 0;
@@ -472,7 +530,25 @@ export class JiraImportService implements OnApplicationBootstrap {
 
       for (const layer of plan.layers) {
         const items: PreparedItem[] = [];
+        let skippedInLayer = 0;
         for (const row of layer) {
+          const dup = keyPlan.skip.get(row);
+          if (dup) {
+            errorLines.push(this.line(row, dup.message, true));
+            counters.warnings++;
+            counters.duplicates++;
+            skippedInLayer++;
+            // Việc đã có CÙNG dự án đích (còn sống) làm cha/epic cho dòng con ở tầng sau.
+            if (dup.existing && !dup.existing.deleted && dup.existing.projectId === projectId)
+              idByRow.set(row, dup.existing.id);
+            continue;
+          }
+          const invalidKey = keyPlan.invalid.get(row);
+          if (invalidKey) {
+            errorLines.push(this.line(row, invalidKey, true));
+            counters.warnings++;
+            counters.invalid++;
+          }
           const links = plan.links.get(row)!;
           for (const w of links.warnings) {
             errorLines.push(this.line(row, w, true));
@@ -509,6 +585,11 @@ export class JiraImportService implements OnApplicationBootstrap {
               sprintId: opts.importSprints
                 ? sprintIds.get(row.sprints[row.sprints.length - 1] ?? '')
                 : undefined,
+              fixedKey: keyPlan.fixed.get(row),
+              workspaceId,
+              pendingEmail: row.assignee
+                ? pendingEmailFor(row.assignee, input.mapping.users, input.mapping.pendingEmails)
+                : undefined,
               assigneeId: row.assignee ? userFor(row.assignee) : undefined,
               reporterId: row.reporter ? userFor(row.reporter) : undefined,
               resolutionByName,
@@ -517,11 +598,17 @@ export class JiraImportService implements OnApplicationBootstrap {
               userFor,
               onCreated: (dto) => {
                 idByRow.set(row, dto.id);
-                tallyAssignee(assigneeTally, row.assignee, input.mapping.users);
+                tallyAssignee(
+                  assigneeTally,
+                  row.assignee,
+                  input.mapping.users,
+                  input.mapping.pendingEmails,
+                );
               },
             }),
           );
         }
+        if (skippedInLayer) await hooks.onChunk(skippedInLayer); // dòng bỏ qua vẫn tính vào tiến độ
         const written = await this.importService.createIssuesInChunks(
           workspaceId,
           userId,
@@ -532,6 +619,14 @@ export class JiraImportService implements OnApplicationBootstrap {
         counters.created += written.created;
         counters.labels += written.labels;
         counters.comments += written.comments;
+        // Lọt qua bước tra mã (hai lượt nhập đồng thời cùng mã): coi là trùng, không phải lỗi.
+        for (const d of written.duplicates) {
+          counters.duplicates++;
+          counters.warnings++;
+          const r = rowByNo.get(d.row);
+          const msg = 'Mã vừa được một lượt nhập khác tạo — bỏ qua';
+          errorLines.push(r ? this.line(r, msg, true) : `Dòng ${d.row} [Cảnh báo]: ${msg}`);
+        }
         for (const e of written.errors) {
           counters.failed++;
           const r = rowByNo.get(e.row);
@@ -541,6 +636,10 @@ export class JiraImportService implements OnApplicationBootstrap {
 
       // 5b. Báo người phụ trách bị bỏ gán (một dòng gộp, không mỗi việc một dòng).
       const unmatched = summarizeUnmatchedAssignees(assigneeTally.unmatched);
+      // L28: người đã nhớ email → ghi chú (KHÔNG phải cảnh báo): việc của họ sẽ tự gán khi họ được thêm vào workspace.
+      const remembered = summarizeRemembered(assigneeTally.remembered);
+      // (không nêu email: result/errorLog đọc được qua `import:run`; wizard tự giữ email vừa nhập để hiển thị)
+      if (remembered) errorLines.unshift(`[Ghi chú]: ${formatRemembered(remembered)}`);
       if (unmatched) {
         // Đặt ĐẦU nhật ký: dòng gộp này không bị `joinLog` cắt khi có hàng nghìn dòng lỗi.
         errorLines.unshift(`[Cảnh báo]: ${formatUnmatchedAssignees(unmatched)}`);
@@ -549,7 +648,7 @@ export class JiraImportService implements OnApplicationBootstrap {
 
       // 6. Tổng kết.
       const status: 'COMPLETED' | 'FAILED' =
-        counters.created === 0 && total > 0 ? 'FAILED' : 'COMPLETED';
+        counters.created === 0 && total - counters.duplicates > 0 ? 'FAILED' : 'COMPLETED';
       await this.prisma.importJob.update({
         where: { id: jobId },
         data: {
@@ -563,7 +662,8 @@ export class JiraImportService implements OnApplicationBootstrap {
             created: counters.created,
             failed: counters.failed,
             warnings: counters.warnings,
-            skippedAssignees: unmatched?.skipped ?? 0,
+            skippedAssignees: (unmatched?.skipped ?? 0) + (remembered?.total ?? 0),
+            rememberedAssignees: remembered?.total ?? 0,
             unmatchedAssignees: unmatched?.listed ?? [],
             unmatchedAssigneesMore: unmatched?.more ?? 0,
             blankedAssignees: assigneeTally.blank,
@@ -572,6 +672,8 @@ export class JiraImportService implements OnApplicationBootstrap {
             sprints: opts.importSprints ? plan.sprintNames.length : 0,
             labels: counters.labels,
             comments: counters.comments,
+            duplicateKeys: counters.duplicates,
+            invalidKeys: counters.invalid,
           },
           errorLog: this.joinLog(errorLines),
         },
@@ -606,6 +708,11 @@ export class JiraImportService implements OnApplicationBootstrap {
     category: Category;
     priorityId?: string;
     sprintId?: string;
+    /** Mã Jira gốc làm `Issue.key` (đã kiểm định dạng + trùng). */
+    fixedKey?: string;
+    workspaceId: string;
+    /** Email đã nhớ cho người phụ trách chưa ghép (L28) → ghi hàng chờ trong cùng transaction. */
+    pendingEmail?: string;
     assigneeId?: string;
     reporterId?: string;
     resolutionByName: Map<string, string>;
@@ -620,7 +727,6 @@ export class JiraImportService implements OnApplicationBootstrap {
     const longSummary = row.summary.length > SUMMARY_MAX;
     const summary = longSummary ? `${row.summary.slice(0, SUMMARY_MAX - 1)}…` : row.summary;
     const descParts: string[] = [];
-    if (options.keepJiraKey) descParts.push(`Nhập từ Jira: ${row.key}`);
     if (longSummary) descParts.push(`Tiêu đề gốc: ${row.summary}`);
     if (row.description) descParts.push(row.description);
 
@@ -643,6 +749,7 @@ export class JiraImportService implements OnApplicationBootstrap {
     return {
       row: row.row,
       input,
+      fixedKey: a.fixedKey,
       onCreated: a.onCreated,
       after: async (tx, issue, labelCache) => {
         // 1. Các field IssuesService.create không nhận: ngày gốc, thời gian, người báo cáo, resolution.
@@ -662,6 +769,19 @@ export class JiraImportService implements OnApplicationBootstrap {
         if (row.updated) data.updatedAt = row.updated;
         if (a.reporterId) data.reporterId = a.reporterId;
         await tx.issue.update({ where: { id: issue.id }, data });
+
+        // 1b. Người phụ trách chưa là thành viên nhưng đã nhớ email: ghi hàng chờ để tự gán khi họ được thêm vào.
+        if (a.pendingEmail) {
+          await tx.importPendingAssignee.create({
+            data: {
+              workspaceId: a.workspaceId,
+              projectId: a.projectId,
+              issueId: issue.id,
+              email: a.pendingEmail,
+              sourceName: row.assignee,
+            },
+          });
+        }
 
         // 2. Label (resolve-or-create theo project, dùng cache của lô).
         const labelIds = new Set<string>();
@@ -1094,15 +1214,112 @@ export class JiraImportService implements OnApplicationBootstrap {
     };
   }
 
-  /** Dòng cảnh báo gộp của dry-run: người phụ trách sẽ bị bỏ gán vì không khớp (rỗng nếu không có). */
-  private dryRunAssigneeWarning(
+  /**
+   * Quyết định mã cho từng dòng khi giữ mã Jira (L27). Kiểm trùng bằng truy vấn trước + `Set` trong lượt, KHÔNG dựa
+   * vào bắt P2002 trong transaction (Postgres huỷ cả transaction sau lỗi unique). Trùng = bỏ qua (idempotent, không
+   * ghi đè chỉnh sửa người dùng đã làm trên Tirapro): mã đang có trong workspace (mọi dự án, kể cả đã xoá mềm) hoặc
+   * mã lặp lại trong chính tệp (dòng sau bị bỏ). Mã sai dạng `KEY-123` → không dùng làm mã, việc vẫn được tạo.
+   */
+  private async planKeys(
+    workspaceId: string,
     rows: JiraIssueRow[],
-    users: Record<string, string | null>,
-  ): string[] {
+    scope: { revealProjects: boolean; targetProjectId?: string },
+  ): Promise<KeyPlan> {
+    const plan = NO_KEY_PLAN();
+    const normalized = new Map<JiraIssueRow, string>();
+    for (const r of rows) {
+      const key = normalizeJiraKey(r.key);
+      if (key) normalized.set(r, key);
+      else
+        plan.invalid.set(
+          r,
+          r.key
+            ? `Mã "${r.key}" không đúng dạng KEY-123 — tạo bằng mã Tirapro tự sinh`
+            : 'Dòng không có mã Jira — tạo bằng mã Tirapro tự sinh',
+        );
+    }
+    const keys = [...new Set(normalized.values())];
+    const existing = new Map<string, ExistingKey>();
+    for (let i = 0; i < keys.length; i += KEY_LOOKUP_CHUNK) {
+      const found = await this.prisma.issue.findMany({
+        // allow-deleted: việc đã xoá mềm vẫn giữ mã → vẫn trùng unique (workspaceId, key)
+        where: { workspaceId, key: { in: keys.slice(i, i + KEY_LOOKUP_CHUNK) } },
+        select: {
+          id: true,
+          key: true,
+          projectId: true,
+          deletedAt: true,
+          project: { select: { key: true } },
+        },
+      });
+      for (const f of found)
+        existing.set(f.key, {
+          id: f.id,
+          key: f.key,
+          projectId: f.projectId,
+          projectKey: f.project.key,
+          deleted: f.deletedAt !== null,
+        });
+    }
+    const firstRow = new Map<string, JiraIssueRow>();
+    for (const [row, key] of normalized) {
+      const had = existing.get(key);
+      if (had) {
+        const where =
+          scope.targetProjectId === had.projectId
+            ? 'dự án này'
+            : scope.revealProjects
+              ? `dự án ${had.projectKey}`
+              : 'một dự án khác';
+        plan.skip.set(row, {
+          existing: had,
+          message: had.deleted
+            ? `Mã ${key} đã tồn tại (việc đã xoá, nằm trong Thùng rác của ${where}) — bỏ qua`
+            : `Mã ${key} đã tồn tại (ở ${where}) — bỏ qua`,
+        });
+        continue;
+      }
+      const first = firstRow.get(key);
+      if (first) {
+        plan.skip.set(row, {
+          message: `Mã ${key} lặp lại trong tệp (đã dùng ở dòng ${first.row}) — bỏ qua dòng này`,
+        });
+        continue;
+      }
+      firstRow.set(key, row);
+      plan.fixed.set(row, key);
+    }
+    return plan;
+  }
+
+  /** Cảnh báo dạng chữ (dry-run) từ kế hoạch mã, theo thứ tự dòng. */
+  private keyWarnings(plan: KeyPlan): string[] {
+    const lines: Array<[JiraIssueRow, string]> = [
+      ...[...plan.skip].map(([r, v]) => [r, v.message] as [JiraIssueRow, string]),
+      ...plan.invalid,
+    ];
+    return lines.sort((a, b) => a[0].row - b[0].row).map(([r, m]) => this.line(r, m, true));
+  }
+
+  /**
+   * Dry-run về người phụ trách: dòng cảnh báo gộp cho người sẽ bị bỏ gán (không khớp, không có email) và dòng ghi chú
+   * cho người đã nhớ email (sẽ tự gán khi họ được thêm vào workspace); kèm số việc của nhóm sau.
+   */
+  private dryRunAssignees(
+    rows: JiraIssueRow[],
+    mapping: JiraImportRunInput['mapping'],
+  ): { lines: string[]; remembered: number } {
     const tally = newAssigneeTally();
-    for (const r of rows) tallyAssignee(tally, r.assignee, users);
+    for (const r of rows) tallyAssignee(tally, r.assignee, mapping.users, mapping.pendingEmails);
     const u = summarizeUnmatchedAssignees(tally.unmatched);
-    return u ? [formatUnmatchedAssignees(u)] : [];
+    const rem = summarizeRemembered(tally.remembered);
+    return {
+      lines: [
+        ...(u ? [formatUnmatchedAssignees(u)] : []),
+        ...(rem ? [formatRemembered(rem, true)] : []),
+      ],
+      remembered: rem?.total ?? 0,
+    };
   }
 
   /** "Dòng 5 (ABC-12): lý do" / "Dòng 5 (ABC-12) [Cảnh báo]: lý do". */

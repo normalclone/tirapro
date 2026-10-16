@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/primitives';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
 import { NotificationRow } from './NotificationRow';
+import { notificationHref } from './notificationHref';
 import {
   useMarkAllRead,
   useMarkRead,
@@ -55,8 +56,8 @@ export function NotificationsPage() {
 
   function activate(n: NotificationItem) {
     if (!n.readAt) markRead.mutate(n.id);
-    const key = n.payload?.key;
-    if (key) navigate(`/issue/${key}`);
+    const href = notificationHref(n.payload);
+    if (href) navigate(href);
   }
 
   const current = TABS.find((t) => t.id === tab)!;

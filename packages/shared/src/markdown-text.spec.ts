@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   countTasks,
   extractIssueKeys,
+  isIssueKey,
   extractMentionIds,
   listTaskItems,
   mentionToken,
@@ -85,5 +86,37 @@ describe('extractIssueKeys', () => {
     expect(
       extractIssueKeys('Xem DEMO-STORY-3, DEMO-3 và (DEMO-BUG-12). Lặp DEMO-3; abcDEMO-9'),
     ).toEqual(['DEMO-STORY-3', 'DEMO-3', 'DEMO-BUG-12']);
+  });
+  it('nhận mã Jira gốc, kể cả khoá có gạch dưới, và mã Tirapro', () => {
+    expect(extractIssueKeys('Xem MY_APP-12, JRA-1 và PROJ-STORY-1.')).toEqual([
+      'MY_APP-12',
+      'JRA-1',
+      'PROJ-STORY-1',
+    ]);
+  });
+  it('không khớp một phần sau "_" (MY_APP-12 không sinh APP-12), không khớp chữ thường/dính chữ', () => {
+    expect(extractIssueKeys('MY_APP-12')).toEqual(['MY_APP-12']);
+    expect(extractIssueKeys('x_APP-12 và foo_BAR-3')).toEqual([]);
+    expect(extractIssueKeys('my_app-12')).toEqual([]);
+  });
+});
+
+describe('extractIssueKeys — chế độ nhúng (tên nhánh/commit)', () => {
+  it("cho phép '-' liền kề, vẫn cấm '_'/chữ liền kề", () => {
+    expect(extractIssueKeys('feature/DEMO-5-login', 50, true)).toEqual(['DEMO-5']);
+    expect(extractIssueKeys('DEMO-5-fix, fix-DEMO-7', 50, true)).toEqual(['DEMO-5', 'DEMO-7']);
+    expect(extractIssueKeys('x_APP-12 fooDEMO-9', 50, true)).toEqual([]);
+    expect(extractIssueKeys('MY_APP-12', 50, true)).toEqual(['MY_APP-12']);
+    // chế độ thường (chip markdown) vẫn chặt: không khớp trong "DEMO-5-login"
+    expect(extractIssueKeys('feature/DEMO-5-login')).toEqual([]);
+  });
+});
+
+describe('isIssueKey', () => {
+  it('đúng cho cả hai kiểu mã, sai cho văn bản khác', () => {
+    for (const k of ['MY_APP-12', 'JRA-1', 'PROJ-STORY-1', 'DEMO-BUG-12'])
+      expect(isIssueKey(k)).toBe(true);
+    for (const k of ['JRA', 'JRA-', '-1', 'Xem JRA-1', 'JRA-1 ', 'thanh toán', '', 'DEMO-BUG'])
+      expect(isIssueKey(k)).toBe(false);
   });
 });

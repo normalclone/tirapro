@@ -13,6 +13,7 @@ import {
   countTasks,
   issueTypePrefix,
   normalizeEnvironment,
+  normalizeJiraKey,
   type BulkUpdateIssuesInput,
   type CreateIssueInput,
   type MoveIssueInput,
@@ -651,8 +652,14 @@ export class IssuesService {
     userId: string,
     input: CreateIssueInput,
     deferred: Array<() => void> = [],
+    /**
+     * Mã Jira gốc (`JRA-1`) dùng làm `Issue.key` (L27). Tham số NỘI BỘ — không đi qua DTO/zod/Controller nên API công
+     * khai không đặt được mã. Chỉ nhận dạng `KEY-123` (đúng một dấu `-`, tách khỏi dải mã Tirapro `PROJ-TYPE-N`);
+     * sai dạng thì bỏ qua và sinh mã Tirapro như thường. Người gọi tự kiểm trùng (unique `(workspaceId, key)`).
+     */
+    fixedKey?: string,
   ): Promise<IssueDto> {
-    return this.createCore(tx, workspaceId, userId, input, deferred, 'import');
+    return this.createCore(tx, workspaceId, userId, input, deferred, 'import', fixedKey);
   }
 
   emitCreated(dto: IssueDto, actorId: string, clientId?: string, meta?: AutomationEventMeta): void {
@@ -677,8 +684,11 @@ export class IssuesService {
      * cùng dự án, không tự trỏ).
      */
     origin: 'api' | 'import' = 'api',
+    fixedKey?: string,
   ): Promise<IssueDto> {
     const db: Prisma.TransactionClient = outerTx ?? this.prisma;
+    // Chỉ đường import mới được mang mã ngoài vào, và phải đúng dạng mã Jira.
+    const importedKey = origin === 'import' ? normalizeJiraKey(fixedKey) : null;
     const project = await db.project.findFirst({
       where: { id: input.projectId, workspaceId, deletedAt: null },
       select: {
@@ -763,16 +773,8 @@ export class IssuesService {
         select: { issueSequence: true },
       });
       const number = updated.issueSequence;
-      // Mã issue = {mã dự án}-{loại}-{identity}: DEMO-BUG-1, DEMO-TASK-3…
-      // identity đếm RIÊNG theo LOẠI trong TỪNG DỰ ÁN (per projectId+typeId).
-      const type = await tx.issueType.findUnique({
-        where: { id: input.typeId },
-        select: { key: true, name: true },
-      });
-      const typeSeq =
-        // allow-deleted: đếm cả issue đã xoá để số thứ tự theo loại không sinh trùng key
-        (await tx.issue.count({ where: { projectId: project.id, typeId: input.typeId } })) + 1;
-      const key = `${project.key}-${issueTypePrefix(type?.key ?? null, type?.name ?? '')}-${typeSeq}`;
+      const key =
+        importedKey ?? (await this.nextTiraproKey(tx, project.id, project.key, input.typeId));
       const created = await tx.issue.create({
         data: {
           workspaceId,
@@ -835,6 +837,28 @@ export class IssuesService {
     };
     const issue = outerTx ? await body(outerTx) : await this.prisma.$transaction(body);
     return this.toDto(issue);
+  }
+
+  /**
+   * Mã Tirapro = {mã dự án}-{loại}-{identity}: DEMO-BUG-1, DEMO-TASK-3…
+   * identity đếm RIÊNG theo LOẠI trong TỪNG DỰ ÁN (per projectId+typeId) và CHỈ trong dải mã Tirapro cùng tiền tố,
+   * nên việc nhập từ Jira (mã `JRA-1`, khác dải) không làm lệch số thứ tự.
+   */
+  private async nextTiraproKey(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    projectKey: string,
+    typeId: string,
+  ): Promise<string> {
+    const type = await tx.issueType.findUnique({
+      where: { id: typeId },
+      select: { key: true, name: true },
+    });
+    const prefix = `${projectKey}-${issueTypePrefix(type?.key ?? null, type?.name ?? '')}-`;
+    const typeSeq =
+      // allow-deleted: đếm cả issue đã xoá để số thứ tự theo loại không sinh trùng key
+      (await tx.issue.count({ where: { projectId, typeId, key: { startsWith: prefix } } })) + 1;
+    return `${prefix}${typeSeq}`;
   }
 
   async list(
@@ -1028,6 +1052,19 @@ export class IssuesService {
       limit,
       (i) => i.id,
     );
+  }
+
+  /**
+   * DTO của NHIỀU việc theo id trong MỘT truy vấn — ngữ cảnh HỆ THỐNG có chủ đích (không lọc dự án riêng tư): chỉ dùng
+   * để phát sự kiện realtime sau khi nghiệp vụ đã tự kiểm quyền (vd tự gán việc Jira). Không dùng cho đường đọc của người dùng.
+   */
+  async getDtosByIdsForSystem(workspaceId: string, ids: string[]): Promise<IssueDto[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.issue.findMany({
+      where: { workspaceId, id: { in: ids }, deletedAt: null, project: { deletedAt: null } },
+      include: issueInclude,
+    });
+    return rows.map((r) => this.toDto(r));
   }
 
   async getByKey(workspaceId: string, key: string, viewerId: string | null): Promise<IssueDto> {

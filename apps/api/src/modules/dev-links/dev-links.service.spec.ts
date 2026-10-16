@@ -103,3 +103,27 @@ describe('DevLinksService.listRepositories — dự án riêng tư (P15)', () =>
     expect(where(findMany)).toEqual({ workspaceId: 'w1' });
   });
 });
+
+describe('DevLinksService.handleWebhook — mã nhúng trong tên nhánh/commit (L27 fix)', () => {
+  const run = async (message: string): Promise<string[]> => {
+    const { service } = setup({ archivedAt: null, deletedAt: null });
+    const res = await service.handleWebhook('r1', auth, {
+      commits: [{ id: 'abc123', message }],
+    });
+    return res.matched;
+  };
+
+  it("vẫn khớp mã khi có hậu tố sau '-' như trước: nhánh feature/DEMO-5-login, DEMO-5-fix, fix-DEMO-5", async () => {
+    expect(await run("Merge branch 'feature/DEMO-5-login' into main")).toEqual(['DEMO-5']);
+    expect(await run('DEMO-5-fix sửa lỗi')).toEqual(['DEMO-5']);
+    expect(await run('bugfix-DEMO-7 lỗi nhỏ')).toEqual(['DEMO-7']);
+  });
+
+  it('nhận cả mã Tirapro nhiều đoạn và mã Jira có "_"', async () => {
+    expect(await run('feature/DEMO-STORY-3-x và MY_APP-12')).toEqual(['DEMO-STORY-3', 'MY_APP-12']);
+  });
+
+  it('vẫn cấm khớp một phần sau "_" hoặc chữ liền kề', async () => {
+    expect(await run('x_APP-12 và fooDEMO-9')).toEqual([]);
+  });
+});

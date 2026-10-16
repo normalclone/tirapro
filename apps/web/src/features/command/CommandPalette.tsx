@@ -30,9 +30,7 @@ import { ActionItem } from './ActionItem';
 import { IssueContextGroup } from './IssueContextGroup';
 import { ProjectCommandGroup } from './ProjectCommandGroup';
 import { commandFilter, ISSUE_GO_VALUE_PREFIX, ISSUE_VALUE_PREFIX } from './commandFilter';
-
-/** Nhận dạng mã issue người dùng gõ (vd `DEMO-BUG-1`) để nhảy thẳng tới issue. */
-const ISSUE_KEY_RE = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/;
+import { guessIssueKey } from './issueKey';
 
 /** Đang xem trang chi tiết công việc `/issue/:key` → trả về key để hiện nhóm hành động theo ngữ cảnh. */
 const ISSUE_ROUTE_RE = /^\/issue\/([^/]+)/;
@@ -70,7 +68,7 @@ export function CommandPalette() {
   };
 
   // Người dùng gõ đúng dạng mã issue → gợi ý nhảy thẳng.
-  const issueKeyGuess = ISSUE_KEY_RE.test(trimmed.toUpperCase()) ? trimmed.toUpperCase() : null;
+  const issueKeyGuess = guessIssueKey(trimmed);
 
   // ⌘K / Ctrl+K bật/tắt bảng lệnh ở mọi nơi; sự kiện 'tirapro:command' mở từ nút nổi.
   useEffect(() => {

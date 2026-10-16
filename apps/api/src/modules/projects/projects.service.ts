@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Request } from 'express';
 import {
@@ -34,8 +34,8 @@ export class ProjectsService {
     private readonly health: ProjectHealthService,
     private readonly access: ProjectAccessService,
     private readonly audit: AuditService,
-    // Tuỳ chọn để spec dựng bằng 5 đối số vẫn chạy; Nest DI tiêm bản thật (phát sự kiện đổi riêng tư cho realtime).
-    private readonly events?: EventEmitter2,
+    // Tuỳ chọn để spec dựng bằng 5 đối số vẫn chạy; Nest DI tiêm bản thật (phát sự kiện đổi riêng tư / đổi quyền xem).
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   async create(
@@ -309,7 +309,38 @@ export class ProjectsService {
       // Sau commit: socket của người không còn thấy dự án bị rút khỏi room project (gateway kiểm lại quyền từng người).
       this.events?.emit(DOMAIN_EVENTS.PROJECT_VISIBILITY_CHANGED, { workspaceId, projectId });
     } else await this.access.onMembersChanged(workspaceId, mustBeMembers);
+    this.emitProjectAccess(workspaceId, projectId, userId, {
+      nowPublic: privacyChanged && input.isPrivate === false,
+      newMembers: privacyChanged ? [] : mustBeMembers,
+    });
     return this.getById(workspaceId, projectId);
+  }
+
+  /**
+   * Quyền xem dự án vừa rộng ra (mở công khai hoặc có người mới vào dự án riêng tư) → báo SAU commit để việc Jira đang
+   * chờ ở dự án đó (từng bị giữ vì người phụ trách chưa thấy dự án) được thử gán lại.
+   */
+  private emitProjectAccess(
+    workspaceId: string,
+    projectId: string,
+    actorId: string,
+    change: { nowPublic: boolean; newMembers: (string | null | undefined)[] },
+  ): void {
+    const ids = [...new Set(change.newMembers.filter((u): u is string => !!u))];
+    if (change.nowPublic)
+      this.events?.emit(DOMAIN_EVENTS.PROJECT_ACCESS_CHANGED, {
+        workspaceId,
+        projectId,
+        userIds: null,
+        actorId,
+      });
+    else if (ids.length)
+      this.events?.emit(DOMAIN_EVENTS.PROJECT_ACCESS_CHANGED, {
+        workspaceId,
+        projectId,
+        userIds: ids,
+        actorId,
+      });
   }
 
   /**

@@ -38,6 +38,8 @@ export const JQL_FIELDS = {
   component: { type: 'array', column: 'components' },
   fixVersion: { type: 'array', column: 'fixVersions' },
   affectedVersion: { type: 'array', column: 'affectedVersions' },
+  /** Mã công việc: mã Tirapro `PROJ-TYPE-N` hoặc mã Jira gốc `JRA-1` (L27) — luôn lưu HOA. */
+  key: { type: 'text', column: 'key' },
   summary: { type: 'text', column: 'summary' },
   text: { type: 'fulltext', column: 'searchVector' },
   created: { type: 'date', column: 'createdAt' },

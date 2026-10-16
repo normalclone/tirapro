@@ -147,6 +147,7 @@ const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
     kind: 'array',
     arrayRel: { relation: 'fixVersions', ref: 'version', type: 'AFFECTS' },
   },
+  key: { kind: 'text', column: 'key' },
   summary: { kind: 'text', column: 'summary' },
   text: { kind: 'fulltext' },
   created: { kind: 'date', column: 'createdAt' },
@@ -268,7 +269,16 @@ function compileComparison(
     }
     case 'text': {
       const col = cfg.column!;
-      const v = scalarString(value, ctx);
+      // `IN`/`NOT IN` (vd `key IN ("JRA-1", "PROJ-STORY-2")`): so khớp chính xác từng giá trị; mã luôn lưu HOA.
+      if (op === 'IN' || op === 'NOT IN') {
+        const norm = (x: JqlValue, c: JqlCompileContext): string =>
+          field === 'key' ? scalarString(x, c).toUpperCase() : scalarString(x, c);
+        const list = listStrings(value, ctx, norm);
+        return op === 'IN' ? { [col]: { in: list } } : { [col]: { notIn: list } };
+      }
+      const raw = scalarString(value, ctx);
+      // Mã công việc luôn lưu HOA → so khớp chính xác không phân biệt hoa/thường người gõ.
+      const v = field === 'key' && (op === '=' || op === '!=') ? raw.toUpperCase() : raw;
       if (op === '~') return containsWhere(col, v, cfg.nullable);
       if (op === '!~') return { NOT: containsWhere(col, v, cfg.nullable) };
       if (op === '!=') return { [col]: { not: v } };

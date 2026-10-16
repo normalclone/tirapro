@@ -437,6 +437,10 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
   ],
   'issues/issues.service.ts::IssuesService.retract': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'issues/issues.service.ts::IssuesService.restore': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
+  'issues/issues.service.ts::IssuesService.getDtosByIdsForSystem': [
+    'INTERNAL',
+    'ngữ cảnh hệ thống có chủ đích (L28): chỉ dựng DTO để phát realtime sau khi nghiệp vụ tự gán việc đã kiểm quyền; không route nào gọi',
+  ],
   'issues/trash.service.ts::TrashService.list': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'labels/labels.service.ts::LabelsService.list': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'labels/labels.service.ts::LabelsService.attach': ['ROUTE_GUARDED', R_ROUTE_GUARDED],

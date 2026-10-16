@@ -96,11 +96,33 @@ export function plainExcerpt(md: string | null | undefined, max = 80): string {
   return plain.length > max ? `${plain.slice(0, max - 1).trimEnd()}…` : plain;
 }
 
-export const ISSUE_KEY_RE =
-  /(?<![A-Za-z0-9-])[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+(?![A-Za-z0-9-])/g;
-export function extractIssueKeys(text: string, max = 50): string[] {
+const ISSUE_KEY_BODY = '[A-Z][A-Z0-9_]*(?:-[A-Z][A-Z0-9]*)*-\\d+';
+
+/**
+ * MỘT regex nhận mã công việc cho chip markdown, `extractIssueKeys`, `issueRefs`, Cmd+K/URL: mã Tirapro `PROJ-TYPE-N`
+ * và mã Jira gốc `KEY-N` (khoá Jira có thể chứa `_`, vd `MY_APP-12`). Lookbehind/lookahead cấm cả `_` để
+ * `MY_APP-12` không khớp một phần `APP-12`.
+ */
+export const ISSUE_KEY_RE = new RegExp(`(?<![A-Za-z0-9_-])${ISSUE_KEY_BODY}(?![A-Za-z0-9_-])`, 'g');
+
+/**
+ * Biến thể cho mã NHÚNG trong tên nhánh/commit (dev-links): cho phép `-` liền kề (`feature/DEMO-5-login`, `DEMO-5-fix`,
+ * `fix-DEMO-5`) nhưng vẫn cấm chữ/số/`_` liền kề — `MY_APP-12` không khớp một phần `APP-12`.
+ */
+export const ISSUE_KEY_EMBEDDED_RE = new RegExp(
+  `(?<![A-Za-z0-9_])${ISSUE_KEY_BODY}(?![A-Za-z0-9_])`,
+  'g',
+);
+
+/** `s` (đã trim) CHÍNH LÀ một mã công việc (không phải văn bản chứa mã). */
+export function isIssueKey(s: string): boolean {
+  const m = new RegExp(ISSUE_KEY_RE.source).exec(s);
+  return m !== null && m[0] === s;
+}
+export function extractIssueKeys(text: string, max = 50, embedded = false): string[] {
   const keys = new Set<string>();
-  for (const m of text.matchAll(new RegExp(ISSUE_KEY_RE.source, 'g'))) {
+  const re = embedded ? ISSUE_KEY_EMBEDDED_RE : ISSUE_KEY_RE;
+  for (const m of text.matchAll(new RegExp(re.source, 'g'))) {
     keys.add(m[0]);
     if (keys.size >= max) break;
   }

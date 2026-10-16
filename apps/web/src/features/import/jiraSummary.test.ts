@@ -31,3 +31,41 @@ describe('unmatchedAssigneesNotice', () => {
     expect(unmatchedAssigneesNotice({ skippedAssignees: 2 })).toMatch(/^2 việc/);
   });
 });
+
+describe('unmatchedAssigneesNotice — email đã nhớ (L28)', () => {
+  it('chỉ có người đã nhớ email: câu "sẽ tự gán khi <email> được thêm vào không gian làm việc", không còn lời cảnh báo mất người', () => {
+    const t = unmatchedAssigneesNotice({
+      skippedAssignees: 4,
+      rememberedAssignees: 4,
+      rememberedEmails: ['cuong@x.com'],
+      unmatchedAssignees: [],
+    });
+    expect(t).toBe(
+      '4 việc chưa có người phụ trách — sẽ tự gán khi cuong@x.com được thêm vào không gian làm việc.',
+    );
+    expect(t).not.toContain('mời');
+  });
+  it('nhiều email + phần vượt giới hạn', () => {
+    const t = unmatchedAssigneesNotice({
+      skippedAssignees: 6,
+      rememberedAssignees: 6,
+      rememberedEmails: ['a@x.com', 'b@x.com'],
+      rememberedEmailsMore: 3,
+    });
+    expect(t).toContain('a@x.com, b@x.com và 3 email khác');
+  });
+  it('lẫn hai nhóm: nhóm không có email vẫn nhận câu cũ (không chữ "mời"), tách khỏi nhóm đã nhớ', () => {
+    const t = unmatchedAssigneesNotice({
+      skippedAssignees: 7,
+      rememberedAssignees: 4,
+      rememberedEmails: ['cuong@x.com'],
+      unmatchedAssignees: [{ name: 'Bình', count: 3 }],
+      unmatchedAssigneesMore: 0,
+    })!;
+    expect(t).toContain('3 việc đã nhập nhưng chưa có người phụ trách');
+    expect(t).toContain(': Bình');
+    expect(t).toContain('Hãy thêm họ vào không gian làm việc rồi gán lại.');
+    expect(t).toContain('4 việc chưa có người phụ trách — sẽ tự gán khi cuong@x.com');
+    expect(t).not.toContain('mời');
+  });
+});

@@ -300,6 +300,7 @@ model Workspace {
   linkTypes           LinkType[]
   integrations        Integration[]
   importJobs          ImportJob[]
+  importPendingAssignees ImportPendingAssignee[]
   exportJobs          ExportJob[]
   reportSubscriptions ReportSubscription[]
   channelLinkTokens   ChannelLinkToken[]
@@ -801,6 +802,7 @@ model Issue {
   sla               IssueSla?
   checklist         ChecklistItem[]
   wikiPages         WikiPageIssue[]
+  importPendingAssignee ImportPendingAssignee?
   // Bỏ [typeId][priorityId][severityId] đứng riêng: low-selectivity + cản HOT update
   // (priority/severity đổi thường xuyên). Lọc theo chúng đi kèm prefix workspaceId/projectId.
 
@@ -1467,6 +1469,23 @@ model ImportJob {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, status])
+}
+
+/// Người phụ trách Jira chưa là thành viên workspace (L28): nhớ email để tự gán việc khi họ được thêm vào.
+/// Khớp CHỈ theo email (chữ thường). Xoá khi workspace/việc bị xoá; xử lý xong thì xoá hàng.
+model ImportPendingAssignee {
+  id          String   @id @default(cuid())
+  workspaceId String
+  projectId   String
+  issueId     String   @unique
+  email       String   // chữ thường
+  sourceName  String   // tên/email người phụ trách trong Jira (để đối chiếu)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  issue     Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, email])
 }
 
 // One-click full export (chống vendor lock-in) — round-trippable với ImportJob.

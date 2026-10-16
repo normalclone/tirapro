@@ -495,6 +495,12 @@ export interface JiraDryRunResult {
   sprints: number;
   labels: number;
   comments: number;
+  /** Số dòng sẽ bị bỏ qua vì mã Jira đã có trong workspace hoặc lặp trong tệp (chỉ khi giữ mã Jira, L27). */
+  duplicateKeys: number;
+  /** Số dòng có mã Jira sai dạng `KEY-123` — vẫn tạo nhưng bằng mã Tirapro tự sinh (L27). */
+  invalidKeys: number;
+  /** Số việc sẽ tự gán khi người phụ trách (đã nhớ email, chưa là thành viên) được thêm vào workspace (L28). */
+  rememberedAssignees: number;
   warnings: string[];
 }
 

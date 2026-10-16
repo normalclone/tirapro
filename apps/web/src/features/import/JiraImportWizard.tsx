@@ -10,7 +10,14 @@ import { Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { unmatchedAssigneesNotice } from './jiraSummary';
-import { BLANK, UNMAPPED, autoMapUsers, buildUserMapping } from './jiraUsers';
+import {
+  BLANK,
+  UNMAPPED,
+  autoMapUsers,
+  buildPendingEmails,
+  buildUserMapping,
+  seedPendingEmails,
+} from './jiraUsers';
 import {
   useImportJob,
   useJiraAnalyze,
@@ -78,6 +85,7 @@ function MappingTable({
   children,
   disabled,
   fallback = BLANK,
+  rowExtra,
 }: {
   title: string;
   hint?: string;
@@ -89,6 +97,8 @@ function MappingTable({
   disabled?: boolean;
   /** Giá trị hiển thị khi dòng chưa có trong `value`. */
   fallback?: string;
+  /** Nội dung phụ dưới ô chọn của một dòng (vd ô email của người chưa ghép). */
+  rowExtra?: (name: string) => ReactNode;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -113,6 +123,7 @@ function MappingTable({
             >
               {children}
             </select>
+            {rowExtra?.(name)}
           </div>
         ))}
       </div>
@@ -154,6 +165,8 @@ export function JiraImportWizard() {
   const [step, setStep] = useState(0);
   const [analysis, setAnalysis] = useState<JiraAnalyzeResult | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  // Email vừa nhập ở bước ghép: server không trả email trong kết quả (job đọc được qua import:run), wizard tự giữ để hiển thị.
+  const [rememberedEmails, setRememberedEmails] = useState<string[]>([]);
   const [session, setSession] = useState(0);
   const job = useImportJob(jobId);
 
@@ -182,8 +195,9 @@ export function JiraImportWizard() {
             key={analysis.analyzeId}
             analysis={analysis}
             onBack={() => setStep(0)}
-            onStarted={(id) => {
+            onStarted={(id, emails) => {
               setJobId(id);
+              setRememberedEmails(emails);
               setStep(2);
             }}
           />
@@ -193,6 +207,7 @@ export function JiraImportWizard() {
         <ProgressStep
           job={job.data}
           error={job.isError ? apiErrorMessage(job.error) : null}
+          rememberedEmails={rememberedEmails}
           onReset={reset}
         />
       )}
@@ -361,8 +376,8 @@ function OptionsPanel({ options, onChange }: { options: Options; onChange: (o: O
       <Checkbox
         checked={options.keepJiraKey}
         onChange={(v) => onChange({ ...options, keepJiraKey: v })}
-        label="Giữ mã Jira trong mô tả"
-        hint="Thêm dòng “Nhập từ Jira: KEY-123” ở đầu mô tả mỗi công việc."
+        label="Giữ mã Jira làm mã công việc (JRA-1)"
+        hint="Công việc mang đúng mã Jira. Việc tạo mới sau này vẫn theo mã Tirapro (vd JRA-STORY-7). Nhập lại cùng tệp sẽ bỏ qua việc đã có mã."
       />
       <Checkbox
         checked={options.importComments}
@@ -387,6 +402,22 @@ function DryRunSummary({ result }: { result: JiraDryRunResult }) {
         Sẽ nhập {result.total} công việc ({result.epics} epic, {result.subtasks} việc con),{' '}
         {result.sprints} sprint, {result.labels} nhãn, {result.comments} bình luận.
       </p>
+      {result.duplicateKeys > 0 && (
+        <p className="mt-1 text-warning">
+          {result.duplicateKeys} việc trùng mã đã có — sẽ bỏ qua, không ghi đè.
+        </p>
+      )}
+      {result.rememberedAssignees > 0 && (
+        <p className="mt-1 text-muted">
+          {result.rememberedAssignees} việc sẽ tự gán khi người phụ trách được thêm vào không gian
+          làm việc.
+        </p>
+      )}
+      {result.invalidKeys > 0 && (
+        <p className="mt-1 text-warning">
+          {result.invalidKeys} việc có mã Jira sai dạng — vẫn nhập nhưng dùng mã Tirapro tự sinh.
+        </p>
+      )}
       {result.warnings.length > 0 && (
         <details className="mt-2">
           <summary className="cursor-pointer text-warning">
@@ -408,11 +439,14 @@ function MappingTables({
   targets,
   newProject,
   maps,
+  pendingEmails,
 }: {
   analysis: JiraAnalyzeResult;
   targets: JiraImportTargets;
   newProject: boolean;
   maps: MappingState;
+  /** Ô "Email để tự gán khi họ vào" của người chưa ghép (L28). */
+  pendingEmails: [Record<string, string>, (name: string, email: string) => void];
 }) {
   return (
     <>
@@ -466,11 +500,27 @@ function MappingTables({
 
       <MappingTable
         title="Người dùng"
-        hint="Chọn thành viên tương ứng, hoặc “Để trống” nếu cố ý không gán. Người để “Chưa ghép” vẫn được nhập nhưng không có người phụ trách và sẽ có cảnh báo."
+        hint="Chọn thành viên tương ứng, hoặc “Để trống” nếu cố ý không gán. Người “Chưa ghép” vẫn được nhập nhưng chưa có người phụ trách — điền email để tự gán khi họ được thêm vào không gian làm việc."
         rows={analysis.users.map((u) => u.name)}
         value={maps.users[0]}
         fallback={UNMAPPED}
         onChange={(k, v) => maps.users[1]((m) => ({ ...m, [k]: v }))}
+        rowExtra={(name) =>
+          (maps.users[0][name] ?? UNMAPPED) === UNMAPPED ? (
+            <label className="col-span-2 flex flex-col gap-1 text-xs text-muted sm:col-span-1 sm:col-start-2">
+              Email để tự gán khi họ vào
+              <Input
+                type="email"
+                inputMode="email"
+                autoComplete="off"
+                placeholder="ten@congty.com (không bắt buộc)"
+                aria-label={`Email để tự gán khi họ vào: ${name}`}
+                value={pendingEmails[0][name] ?? ''}
+                onChange={(e) => pendingEmails[1](name, e.target.value)}
+              />
+            </label>
+          ) : null
+        }
       >
         <option value={UNMAPPED}>— Chưa ghép —</option>
         <option value={BLANK}>— Để trống (cố ý) —</option>
@@ -499,7 +549,7 @@ function MappingStep({
 }: {
   analysis: JiraAnalyzeResult;
   onBack: () => void;
-  onStarted: (jobId: string) => void;
+  onStarted: (jobId: string, rememberedEmails: string[]) => void;
 }) {
   const defaultKey = (analysis.projectKeys[0] ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const [projectChoice, setProjectChoice] = useState<string>(NEW_PROJECT);
@@ -517,6 +567,8 @@ function MappingStep({
     keepJiraKey: true,
   });
   const [dryRun, setDryRun] = useState<JiraDryRunResult | null>(null);
+  const emailState = useState<Record<string, string>>({}); // như `maps`: tuple để effect gieo một lần không phải liệt kê deps
+  const emails = emailState[0];
 
   const run = useJiraRun();
   const isNew = projectChoice === NEW_PROJECT;
@@ -530,7 +582,9 @@ function MappingStep({
     seeded.current = true;
     maps.types[1](autoMap(analysis.issueTypes, targetsData.issueTypes));
     maps.priorities[1](autoMap(analysis.priorities, targetsData.priorities));
-    maps.users[1](autoMapUsers(analysis.users, targetsData.members));
+    const userSel = autoMapUsers(analysis.users, targetsData.members);
+    maps.users[1](userSel);
+    emailState[1](seedPendingEmails(analysis.users, userSel)); // email từ CSV (Jira Server) điền sẵn cho người chưa ghép
   });
   const setStatusMap = maps.statuses[1];
   useEffect(() => {
@@ -554,13 +608,14 @@ function MappingStep({
         statuses: maps.statuses[0],
         priorities: maps.priorities[0],
         users: userMap,
+        pendingEmails: buildPendingEmails(emails, maps.users[0]),
       },
       options: { ...options, dryRun: isDry },
     };
     run.mutate(body, {
       onSuccess: (res) => {
         if ('dryRun' in res) setDryRun(res);
-        else onStarted(res.jobId);
+        else onStarted(res.jobId, [...new Set(Object.values(body.mapping.pendingEmails))]);
       },
       onError: (err) => toast.error(apiErrorMessage(err)),
     });
@@ -596,7 +651,19 @@ function MappingStep({
           </button>
         </p>
       ) : (
-        <MappingTables analysis={analysis} targets={targetsData} newProject={isNew} maps={maps} />
+        <MappingTables
+          analysis={analysis}
+          targets={targetsData}
+          newProject={isNew}
+          maps={maps}
+          pendingEmails={[
+            emails,
+            (name, email) => {
+              emailState[1]((m) => ({ ...m, [name]: email }));
+              setDryRun(null);
+            },
+          ]}
+        />
       )}
 
       <OptionsPanel options={options} onChange={setOptions} />
@@ -631,10 +698,13 @@ function MappingStep({
 function ProgressStep({
   job,
   error,
+  rememberedEmails,
   onReset,
 }: {
   job: ReturnType<typeof useImportJob>['data'];
   error: string | null;
+  /** Email đã nhập ở bước ghép (chỉ giữ ở trình duyệt). */
+  rememberedEmails: string[];
   onReset: () => void;
 }) {
   if (error) {
@@ -654,7 +724,11 @@ function ProgressStep({
   }
   const running = job.status === 'RUNNING' || job.status === 'PENDING';
   const summary = (job.result ?? {}) as JiraImportSummary;
-  const assigneeNotice = unmatchedAssigneesNotice(summary);
+  const assigneeNotice = unmatchedAssigneesNotice({
+    ...summary,
+    rememberedEmails: rememberedEmails.slice(0, 20),
+    rememberedEmailsMore: Math.max(0, rememberedEmails.length - 20),
+  });
 
   function downloadLog() {
     if (!job?.errorLog) return;
@@ -699,7 +773,7 @@ function ProgressStep({
             )}
           >
             {job.status === 'COMPLETED'
-              ? `Đã nhập ${summary.created ?? 0}/${job.totalItems ?? 0} công việc${summary.failed ? `, ${summary.failed} dòng lỗi` : ''}.`
+              ? `Đã nhập ${summary.created ?? 0}/${job.totalItems ?? 0} công việc${summary.duplicateKeys ? `, ${summary.duplicateKeys} việc trùng mã — bỏ qua` : ''}${summary.failed ? `, ${summary.failed} dòng lỗi` : ''}.`
               : 'Nhập thất bại — không có công việc nào được tạo. Tải nhật ký lỗi để xem lý do.'}
           </p>
           <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -709,6 +783,8 @@ function ProgressStep({
               ['Sprint', summary.sprints],
               ['Nhãn gắn', summary.labels],
               ['Bình luận', summary.comments],
+              ['Bỏ qua (trùng mã)', summary.duplicateKeys],
+              ['Sẽ tự gán khi họ vào', summary.rememberedAssignees],
               ['Cảnh báo', summary.warnings],
               ['Chưa có người phụ trách', summary.skippedAssignees],
               ['Để trống có chủ đích', summary.blankedAssignees],

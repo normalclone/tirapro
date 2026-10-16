@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { extractIssueKeys } from '@tirapro/shared';
 import { Prisma, DevLinkType, DevLinkState, IntegrationType } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { LIVE_PROJECT } from '../../common/live-project';
@@ -13,9 +14,6 @@ export interface WebhookAuth {
   gitlabToken?: string;
   rawBody?: Buffer;
 }
-
-/** Regex bắt issue key kiểu "DEMO-1", "PROJ2-123" trong message commit / tiêu đề PR. */
-const ISSUE_KEY_RE = /\b[A-Z][A-Z0-9]+-\d+\b/g;
 
 /** Input tạo repo (đã validate bằng zod ở controller). */
 export interface CreateRepositoryInput {
@@ -353,8 +351,8 @@ export class DevLinksService {
 
   private extractKeys(text: string): string[] {
     if (!text) return [];
-    const found = text.match(ISSUE_KEY_RE);
-    return found ? [...new Set(found)] : [];
+    // Cùng thân regex với chip markdown (biến thể nhúng: cho phép `-` liền kề như `feature/DEMO-5-login`): nhận cả mã Tirapro (DEMO-BUG-1) lẫn mã Jira gốc (JRA-1, MY_APP-12).
+    return extractIssueKeys(text, 200, true);
   }
 
   private async findIssue(workspaceId: string, key: string): Promise<{ id: string } | null> {

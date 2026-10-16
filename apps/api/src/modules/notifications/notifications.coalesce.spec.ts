@@ -251,3 +251,63 @@ describe('gộp thông báo — kịch bản thực tế', () => {
     expect(rows[0]!.payload.count).toBe(3);
   });
 });
+
+describe('ISSUE_UPDATED giao việc hàng loạt (L28 fix)', () => {
+  it('bulk: true → không tạo thông báo "được giao" cho từng việc (producer gửi một thông báo gộp)', async () => {
+    const { rows, notifications } = setup({ watchers: [] });
+    const assigned = { ...issue, assigneeId: 'u2', description: null };
+    await notifications.onIssueUpdated({
+      issue: assigned,
+      actorId: 'a1',
+      changedFields: ['assigneeId'],
+      bulk: true,
+    });
+    expect(rows).toHaveLength(0);
+    // không có cờ: vẫn báo như cũ
+    await notifications.onIssueUpdated({
+      issue: assigned,
+      actorId: 'a1',
+      changedFields: ['assigneeId'],
+    });
+    expect(rows.map((r) => r.type)).toEqual(['ISSUE_ASSIGNED']);
+  });
+
+  it('publish giữ `count` do producer gộp sẵn (thông báo "Bạn được giao N việc từ nhập Jira")', async () => {
+    const { rows, notifications } = setup({ watchers: [] });
+    await notifications.publish({
+      recipientId: 'u2',
+      workspaceId: 'w1',
+      type: 'ISSUE_ASSIGNED',
+      issueId: 'i1',
+      actorId: 'a1',
+      payload: { key: 'TP-1', count: 5, bulk: 'jira-import' },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.payload).toMatchObject({ count: 5, bulk: 'jira-import' });
+    // phát thường (không count) vẫn là 1
+    await notifications.publish({
+      recipientId: 'u3',
+      workspaceId: 'w1',
+      type: 'ISSUE_ASSIGNED',
+      issueId: 'i2',
+      actorId: 'a1',
+      payload: { key: 'TP-2' },
+    });
+    expect(rows[1]!.payload).toMatchObject({ count: 1 });
+  });
+});
+
+describe('WatchersService.onIssueUpdated — cập nhật hàng loạt (L28 fix)', () => {
+  it('bulk: true → không báo người theo dõi từng việc; không có cờ vẫn báo', async () => {
+    const { rows, watchers } = setup({ watchers: ['w1'] });
+    await watchers.onIssueUpdated({
+      issue,
+      actorId: 'a1',
+      changedFields: ['assigneeId'],
+      bulk: true,
+    });
+    expect(rows).toHaveLength(0);
+    await watchers.onIssueUpdated({ issue, actorId: 'a1', changedFields: ['assigneeId'] });
+    expect(rows.map((r) => r.type)).toEqual(['WATCHING_UPDATE']);
+  });
+});

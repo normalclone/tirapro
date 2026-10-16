@@ -42,6 +42,7 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
   { field: 'affectedVersion', label: 'Phiên bản bị ảnh hưởng' },
   { field: 'resolution', label: 'Cách giải quyết' },
   { field: 'text', label: 'Văn bản (toàn văn)' },
+  { field: 'key', label: 'Mã công việc' },
   { field: 'summary', label: 'Tiêu đề' },
   { field: 'created', label: 'Ngày tạo' },
   { field: 'updated', label: 'Ngày cập nhật' },

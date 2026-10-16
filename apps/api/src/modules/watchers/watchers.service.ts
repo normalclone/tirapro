@@ -118,7 +118,9 @@ export class WatchersService {
   @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
   async onIssueUpdated(payload: unknown): Promise<void> {
     try {
-      const { issue, actorId } = payload as IssueEventPayload;
+      const { issue, actorId, bulk } = payload as IssueEventPayload & { bulk?: boolean };
+      // Cập nhật hàng loạt (vd tự gán việc Jira): producer tự báo gộp, không báo từng việc cho người theo dõi.
+      if (bulk) return;
       if (!issue?.id) return;
       await this.notifyWatchers(issue, actorId);
     } catch (err) {

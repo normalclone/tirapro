@@ -7,6 +7,14 @@ import {
 
 const a = (...names: string[]) => names.map((name, i) => ({ id: `u${i}`, name }));
 describe('buildNotificationTitle', () => {
+  it('ISSUE_ASSIGNED gộp từ nhập Jira: một câu "Bạn được giao N việc từ nhập Jira"', () => {
+    expect(
+      t('ISSUE_ASSIGNED', { bulk: 'jira-import', count: 13, key: 'PROJ-2', actorName: 'Admin' }),
+    ).toBe('Bạn được giao 13 việc từ nhập Jira');
+    expect(t('ISSUE_ASSIGNED', { actorName: 'Admin', key: 'PROJ-2' })).toBe(
+      'Admin giao PROJ-2 cho bạn',
+    );
+  });
   it('đổi trạng thái: người + mã + từ → đến', () => {
     expect(
       t('STATUS_CHANGED', {

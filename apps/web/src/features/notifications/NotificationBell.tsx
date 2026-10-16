@@ -11,6 +11,7 @@ import {
   type NotificationItem,
 } from './api';
 import { NotificationRow } from './NotificationRow';
+import { notificationHref } from './notificationHref';
 
 export function NotificationBell() {
   const { data: items = [] } = useNotifications();
@@ -25,9 +26,9 @@ export function NotificationBell() {
   // Bấm 1 thông báo: đánh dấu đã đọc + mở issue liên quan (nếu có) + đóng popover.
   function activate(n: NotificationItem) {
     if (!n.readAt) markRead.mutate(n.id);
-    const key = n.payload?.key;
-    if (key) {
-      navigate(`/issue/${key}`);
+    const href = notificationHref(n.payload);
+    if (href) {
+      navigate(href);
       setOpen(false);
     }
   }
