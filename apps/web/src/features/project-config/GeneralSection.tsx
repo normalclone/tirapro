@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
-import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { useArchiveProject, useUpdateProject } from '@/features/projects/api';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -46,7 +46,7 @@ function Card({
 export function GeneralSection({ project, canAdmin }: { project: ProjectDto; canAdmin: boolean }) {
   const update = useUpdateProject(project.key, project.id);
   const archive = useArchiveProject(project.key, project.id);
-  const people = useAssigneeOptions(project.id);
+  const people = useAssigneePicker(project.id);
 
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? '');
@@ -162,7 +162,8 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
               <PeoplePicker
                 value={leadId}
                 onChange={setLeadId}
-                options={people}
+                {...people}
+                selectedFallback={project.lead ?? undefined}
                 emptyLabel="Chưa có"
                 disabled={!canAdmin}
                 ariaLabel="Người phụ trách dự án"

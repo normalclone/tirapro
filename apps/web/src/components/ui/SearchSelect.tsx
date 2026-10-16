@@ -40,6 +40,9 @@ export function SearchSelect({
   align = 'start',
   renderTrigger,
   hideChevron,
+  onSearchChange,
+  moreHint,
+  resolveOption,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -55,11 +58,18 @@ export function SearchSelect({
   renderTrigger?: (selected: SearchSelectOption | undefined) => ReactNode;
   /** Bỏ mũi tên (trigger gọn dạng chấm/biểu tượng, vd chấm ưu tiên trên dòng Việc chờ). */
   hideChevron?: boolean;
+  /** Tìm phía máy chủ: báo từ khoá gõ (nơi gọi debounce rồi nạp lại `options`). Bỏ trống = chỉ lọc tại chỗ. */
+  onSearchChange?: (q: string) => void;
+  /** Danh sách đã đầy mà chưa gõ → hiện dòng "Gõ để tìm thêm". */
+  moreHint?: boolean;
+  /** Tra lựa chọn đang chọn khi nó không nằm trong `options` (kết quả tìm đã bị lọc). */
+  resolveOption?: (value: string) => SearchSelectOption | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
 
-  const selected = options.find((o) => o.value === value);
+  const selected =
+    options.find((o) => o.value === value) ?? (value ? resolveOption?.(value) : undefined);
   // Không phân biệt hoa thường/dấu, tìm theo nhãn + mã hiển thị (`hint`), KHÔNG theo `value` (id nội bộ): xem `filterByQuery`.
   const filtered = filterByQuery(options, q);
 
@@ -67,6 +77,7 @@ export function SearchSelect({
     onChange(v);
     setOpen(false);
     setQ('');
+    onSearchChange?.('');
   }
 
   return (
@@ -74,7 +85,10 @@ export function SearchSelect({
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
-        if (!o) setQ('');
+        if (!o) {
+          setQ('');
+          onSearchChange?.('');
+        }
       }}
     >
       <Popover.Trigger asChild>
@@ -109,7 +123,10 @@ export function SearchSelect({
           <div className="border-b border-border p-2">
             <Input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {
+                setQ(e.target.value);
+                onSearchChange?.(e.target.value);
+              }}
               placeholder={searchPlaceholder}
               autoFocus
               className="h-8 text-sm max-sm:text-[16px]"
@@ -142,6 +159,9 @@ export function SearchSelect({
             })}
             {filtered.length === 0 && (
               <li className="px-2 py-3 text-center text-sm text-muted">Không có lựa chọn</li>
+            )}
+            {moreHint && q.trim() === '' && (
+              <li className="px-2 py-2 text-center text-xs text-faint">Gõ để tìm thêm</li>
             )}
           </ul>
         </Popover.Content>

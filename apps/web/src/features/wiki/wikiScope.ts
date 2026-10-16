@@ -5,15 +5,42 @@ export interface WikiCanCtx {
   wsCan: boolean;
   /** Quyền theo từng dự án: true/false, `undefined` = quyền dự án đó đang tải. */
   projectCan: (projectId: string) => boolean | undefined;
+  /**
+   * Dự án KHÔNG còn dùng được để ghi (đã lưu trữ — không nằm trong danh sách dự án đang hoạt động): coi là không có
+   * quyền ghi, không phải "đang tải". Bỏ trống = chưa biết danh sách → không loại ai.
+   */
+  inactive?: (projectId: string) => boolean;
 }
 
 /**
  * Có quyền ở phạm vi của một trang không: trang chung → quyền workspace; trang của dự án → quyền dự án.
- * Quyền dự án đang tải → false (không bày nút rồi bị 403). Dùng cho cả `wiki:manage` (sửa/tạo/đổi chỗ)
- * lẫn `project:admin` (xoá) — gọi hai lần với hai bản đồ quyền.
+ * Quyền dự án đang tải hoặc dự án đã lưu trữ → false (không bày nút rồi bị 403/422). Dùng cho cả `wiki:manage`
+ * (sửa/tạo/đổi chỗ) lẫn `project:admin` (xoá) — gọi hai lần với hai bản đồ quyền.
  */
 export function canWriteAt(projectId: string | null, ctx: WikiCanCtx): boolean {
-  return projectId === null ? ctx.wsCan : ctx.projectCan(projectId) === true;
+  if (projectId === null) return ctx.wsCan;
+  if (ctx.inactive?.(projectId)) return false;
+  return ctx.projectCan(projectId) === true;
+}
+
+/** Quyền ghi của trang còn ĐANG TẢI không (chỉ khi dự án còn hoạt động mà quyền chưa về) — dự án lưu trữ thì không chờ. */
+export function writeLoadingAt(projectId: string | null, ctx: WikiCanCtx): boolean {
+  if (projectId === null || ctx.inactive?.(projectId)) return false;
+  return ctx.projectCan(projectId) === undefined;
+}
+
+/**
+ * Chỉ tra quyền cho dự án của phạm vi đang xem + dự án của trang đang mở (bỏ dự án đã lưu trữ); các dự án khác
+ * trong cây "Tất cả" tra lười khi người dùng rê/mở hàng — không bắn N request khi mở `/wiki`.
+ */
+export function projectIdsToCheck(
+  scopeProjectId: string | null,
+  pageProjectId: string | null | undefined,
+  inactive?: (projectId: string) => boolean,
+): string[] {
+  const ids = new Set<string>();
+  for (const id of [scopeProjectId, pageProjectId]) if (id && !inactive?.(id)) ids.add(id);
+  return [...ids];
 }
 
 const ASK_TAIL = '(quản trị) cấp quyền viết tài liệu cho vai trò của bạn.';

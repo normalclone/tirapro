@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import {
   AtSign,
   Bold,
@@ -15,6 +15,8 @@ import { insertTableTemplate, toggleLinePrefix } from './markdownEdit';
 import type { MentionPerson } from './mentionQuery';
 import { MentionPopup } from './MentionPopup';
 import { useMentionPopup } from './useMentionPopup';
+import { useAssigneeOptions } from './useAssigneeOptions';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { usePasteImages, type PasteImagesHandler } from './usePasteImages';
 
 function ToolBtn({
@@ -114,6 +116,7 @@ export function MarkdownEditor({
   rows = 6,
   placeholder,
   mentionPeople,
+  mentionProjectId,
   textareaId,
   onPasteImages,
   onBusyChange,
@@ -127,6 +130,8 @@ export function MarkdownEditor({
   placeholder?: string;
   /** Có → bật popup @ (gõ `@` hoặc nút @); không có → không gợi ý và không tốn request. */
   mentionPeople?: MentionPerson[];
+  /** Có → danh sách @ lấy từ máy chủ theo dự án + từ khoá đang gõ (không bị cắt ở 50 người đầu); `mentionPeople` chỉ còn làm công tắc/danh sách ban đầu. */
+  mentionProjectId?: string;
   /** `id` của <textarea> — để nơi khác (vd phím tắt) tìm và focus ô này. */
   textareaId?: string;
   /** Có → Ctrl/Cmd+V ảnh vào ô được xử lý (tải lên và chèn `![tên](attachment:ID)`, hoặc gom tệp — xem `PasteImagesHandler`). */
@@ -135,7 +140,18 @@ export function MarkdownEditor({
   onBusyChange?: (busy: boolean) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
-  const mention = useMentionPopup(ref, mentionPeople, onChange);
+  // Từ khoá @ đang gõ → hỏi máy chủ (debounce) để người thứ 51+ cũng @ được; chưa mở popup thì không gọi.
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const mentionSearch = useDebouncedValue(mentionQuery ?? '', 200);
+  const remotePeople = useAssigneeOptions(mentionProjectId, {
+    search: mentionSearch,
+    enabled: !!mentionProjectId && !!mentionPeople && mentionQuery !== null,
+  });
+  const people =
+    mentionPeople && mentionProjectId && mentionQuery !== null && remotePeople.length > 0
+      ? remotePeople
+      : mentionPeople;
+  const mention = useMentionPopup(ref, people, onChange, setMentionQuery);
   const { onPaste, busy } = usePasteImages(ref, value, onChange, onPasteImages, onBusyChange);
 
   function insertAt() {
@@ -249,7 +265,8 @@ export function MarkdownEditor({
               e.preventDefault();
               if (!busy) onSubmit(); // còn ảnh đang tải: chưa lưu/gửi để chữ giữ chỗ không bị lưu
             }
-            if (onCancel && e.key === 'Escape') {
+            // Esc trong lúc bộ gõ (Telex/VNI) đang soạn thuộc về bộ gõ, không huỷ sửa.
+            if (onCancel && e.key === 'Escape' && !e.nativeEvent.isComposing) {
               e.preventDefault();
               onCancel();
             }

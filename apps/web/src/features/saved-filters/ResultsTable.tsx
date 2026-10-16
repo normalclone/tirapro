@@ -3,7 +3,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { ChevronLeft, ChevronRight, Columns3, Filter as FilterIcon, SearchX } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
-import { dueState } from '@/components/ui/DueBadge';
+import { dueState } from '@/lib/dueDate';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -12,6 +12,7 @@ import { exportIssuesCsvWithToast } from '@/features/export/api';
 import { openOnClick, openOnRowKey } from '@/lib/rowOpen';
 import { categoryColor } from '@/lib/statusColor';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { resultCountLabel } from './resultPaging';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import {
@@ -28,7 +29,7 @@ const RESULTS_PAGE_SIZE = 25;
  * Cột đang chọn của người dùng (nhớ trong localStorage theo `userId`). `columns` luôn có `key` + `summary`.
  * L2 (Xuất CSV) dùng chính hook này + `cellText`/`RESULT_COLUMNS` để xuất đúng cột đang xem.
  */
-export function useResultColumns(): {
+function useResultColumns(): {
   columns: ResultColumnId[];
   toggle: (id: ResultColumnId) => void;
 } {
@@ -64,6 +65,9 @@ export function ResultsTable({
   projectKeyById,
   onOpen,
   exportJql,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
 }: {
   issues: IssueDto[] | null;
   loading: boolean;
@@ -76,6 +80,10 @@ export function ResultsTable({
   onOpen: (key: string) => void;
   /** JQL của kết quả đang xem; có thì hiện nút Xuất CSV (tải ĐỦ mọi dòng ở máy chủ, theo cột đang chọn). */
   exportJql?: string;
+  /** Máy chủ còn kết quả sau phần đã nạp: nhãn đếm không ghi như tổng, có nút "Tải thêm" + gợi ý Xuất CSV. */
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }) {
   const { columns, toggle } = useResultColumns();
   const wide = useMediaQuery('(min-width: 640px)', true);
@@ -121,30 +129,17 @@ export function ResultsTable({
 
   return (
     <div className="flex flex-col rounded-lg border border-border bg-surface">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
-        <span className="text-sm font-medium text-ink-strong">Kết quả</span>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-muted">
-            {total} công việc
-            {totalPages > 1 && ` · ${start + 1}–${Math.min(start + RESULTS_PAGE_SIZE, total)}`}
-          </span>
-          {wide && <ColumnPicker columns={columns} onToggle={toggle} />}
-          {exportJql && (
-            <ExportMenu
-              items={[
-                {
-                  id: 'csv',
-                  label: 'Kết quả (CSV)',
-                  hint: wide
-                    ? 'Đủ mọi công việc khớp, theo cột đang chọn'
-                    : 'Đủ mọi công việc khớp',
-                  run: () => exportIssuesCsvWithToast({ jql: exportJql, columns }),
-                },
-              ]}
-            />
-          )}
-        </div>
-      </div>
+      <ResultsToolbar
+        countLabel={resultCountLabel(total, hasMore)}
+        range={
+          totalPages > 1 ? ` · ${start + 1}–${Math.min(start + RESULTS_PAGE_SIZE, total)}` : ''
+        }
+        hasMore={hasMore}
+        wide={wide}
+        columns={columns}
+        onToggleColumn={toggle}
+        exportJql={exportJql}
+      />
 
       {wide ? (
         <div className="overflow-x-auto">
@@ -211,7 +206,70 @@ export function ResultsTable({
           </Button>
         </div>
       )}
+      {hasMore && onLoadMore && (
+        <div className="flex justify-center border-t border-border px-4 py-2.5">
+          <Button variant="secondary" size="sm" loading={loadingMore} onClick={onLoadMore}>
+            Tải thêm
+          </Button>
+        </div>
+      )}
     </div>
+  );
+}
+
+/** Thanh đầu bảng kết quả: nhãn đếm (không ghi số bị cắt như tổng), chọn cột, xuất CSV, gợi ý khi còn nữa. */
+function ResultsToolbar({
+  countLabel,
+  range,
+  hasMore,
+  wide,
+  columns,
+  onToggleColumn,
+  exportJql,
+}: {
+  countLabel: string;
+  range: string;
+  hasMore: boolean;
+  wide: boolean;
+  columns: ResultColumnId[];
+  onToggleColumn: (id: ResultColumnId) => void;
+  exportJql?: string;
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
+        <span className="text-sm font-medium text-ink-strong">Kết quả</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted">
+            {countLabel}
+            {range}
+          </span>
+          {wide && <ColumnPicker columns={columns} onToggle={onToggleColumn} />}
+          {exportJql && (
+            <ExportMenu
+              items={[
+                {
+                  id: 'csv',
+                  label: 'Kết quả (CSV)',
+                  hint: wide
+                    ? 'Đủ mọi công việc khớp, theo cột đang chọn'
+                    : 'Đủ mọi công việc khớp',
+                  run: () => exportIssuesCsvWithToast({ jql: exportJql, columns }),
+                },
+              ]}
+            />
+          )}
+        </div>
+      </div>
+      {hasMore && (
+        <p className="border-b border-border bg-surface-2 px-4 py-1.5 text-xs text-muted">
+          Còn nhiều công việc khớp hơn số đang hiện.
+          {exportJql
+            ? ' Bấm “Tải thêm” để xem tiếp, hoặc Xuất CSV để lấy đủ.'
+            : ' Bấm “Tải thêm” để xem tiếp.'}
+        </p>
+      )}
+    </>
   );
 }
 

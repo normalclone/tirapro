@@ -50,6 +50,21 @@ export function useProjectsCan(
   return (id) => byId.get(id);
 }
 
+/**
+ * Một quyền ở MỘT dự án, tra LƯỜI: chỉ gọi API khi `active` (vd người dùng vừa rê/mở hàng). Chưa tra/đang tải → false.
+ * Dùng cho danh sách chứa nhiều dự án (cây wiki "Tất cả") thay vì bắn N request ngay khi mở màn.
+ */
+export function useLazyProjectCan(
+  projectId: string | null,
+  perm: PermissionKey,
+  active: boolean,
+): boolean {
+  const isSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);
+  const workspace = useAuth((s) => s.permissions);
+  const project = useProjectPermissions(active ? projectId : null).data?.permissions;
+  return hasPermission({ isSystemAdmin, workspace, project }, perm);
+}
+
 /** `const can = useCan(project?.id); can('worklog:create')` — quyền hiệu lực trong dự án. */
 export function useCan(projectId?: string | null): (perm: PermissionKey) => boolean {
   const isSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);

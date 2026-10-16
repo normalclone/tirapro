@@ -215,7 +215,10 @@ function RequireAuth() {
   }
   if (status === 'guest') return <Navigate to="/login" replace />;
   // Chưa thuộc không gian làm việc nào: màn riêng thay cho khung ứng dụng (xem workspaceGate).
-  if (user && needsWorkspaceScreen({ workspaceId, isSystemAdmin: user.isSystemAdmin }, pathname)) {
+  if (
+    user &&
+    needsWorkspaceScreen({ workspaceId, isSystemAdmin: user.isSystemAdmin === true }, pathname)
+  ) {
     return <NoWorkspaceScreen />;
   }
   return (

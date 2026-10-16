@@ -32,7 +32,7 @@ export function issuesCsvParams(input: ExportIssuesCsvInput): Record<string, str
 }
 
 /** Tải CSV công việc từ máy chủ (đủ mọi dòng, không bị cắt ở trang đã tải). */
-export function exportIssuesCsv(
+function exportIssuesCsv(
   input: ExportIssuesCsvInput,
 ): Promise<{ filename: string; truncated: boolean; rows: number | null; saved: boolean }> {
   return downloadFile('/export/issues.csv', {

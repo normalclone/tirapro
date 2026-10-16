@@ -71,6 +71,7 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
           autoFocus
           rows={8}
           mentionPeople={people}
+          mentionProjectId={issue.projectId}
           onPasteImages={pasteImages}
           onBusyChange={setUploading}
         />

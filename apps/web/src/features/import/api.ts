@@ -10,13 +10,13 @@ import { api } from '@/lib/api';
 import type { ImportResult } from '@/features/project-config/api';
 
 /** Khoá cache riêng của tính năng nhập dữ liệu (không dùng chung với module khác). */
-export const importKeys = {
+const importKeys = {
   targets: (projectId: string) => ['import', 'jira-targets', projectId] as const,
   job: (id: string) => ['import', 'job', id] as const,
 };
 
 /** Chu kỳ poll tiến độ job (ms). */
-export const JOB_POLL_MS = 2000;
+const JOB_POLL_MS = 2000;
 
 /** Bước 1: tải CSV Jira lên, nhận tóm tắt để dựng bảng mapping. */
 export function useJiraAnalyze() {

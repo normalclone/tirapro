@@ -216,7 +216,8 @@ export function BoardPage() {
   const currentUserId = useAuth((s) => s.user?.id);
   const { active: quickFilters, toggle: toggleQuickFilter } = useQuickFilters();
   const [assignee, setAssignee] = useState('');
-  const assigneeOptions = useAssigneeOptions(project?.id);
+  // Bộ lọc theo người + tên người nhận khi kéo vào làn: gồm cả tài khoản đã khoá, tối đa 200 người.
+  const assigneeOptions = useAssigneeOptions(project?.id, { includeInactive: true, limit: 200 });
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Cột đầy WIP + người có quyền → hỏi "Vẫn chuyển?" (giữ nguyên biến để gửi lại kèm force).
   const [wipPrompt, setWipPrompt] = useState<{

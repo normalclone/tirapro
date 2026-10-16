@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useBlocker, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { GripVertical, LayoutDashboard, Plus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProjectDto, TeamDto } from '@tirapro/types';
@@ -7,11 +7,11 @@ import type { CustomDashboardDto, CustomWidgetDto, DashboardWidgetType } from '@
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/primitives';
-import { useConfirm } from '@/components/ui/useConfirm';
 import { pageContainer } from '@/components/layout/page';
 import { useProjects } from '@/features/projects/api';
 import { useTeams } from '@/features/teams/api';
 import { apiErrorCode, apiErrorMessage } from '@/lib/api';
+import { useLeaveGuard } from '@/lib/useLeaveGuard';
 import { isOverlayOpen, isTypingTarget, shouldLeaveEditorOnEscape } from '@/lib/hotkeys';
 import { useSaveDashboard } from './api';
 import { AddWidgetDialog } from './AddWidgetDialog';
@@ -73,33 +73,6 @@ function draftFromDashboard(d: CustomDashboardDto | null): DashboardDraft {
     teamId: d.team?.id ?? '',
     widgets: normalizeOrder(widgets),
   };
-}
-
-/** Rời trang khi còn thay đổi chưa lưu → hỏi lại (đổi route) hoặc cảnh báo của trình duyệt (đóng/tải lại tab). */
-function useLeaveGuard(
-  dirty: boolean,
-  dirtyRef: { current: boolean },
-  exitingRef: { current: boolean },
-): void {
-  const confirm = useConfirm();
-  const blocker = useBlocker(() => dirtyRef.current && !exitingRef.current);
-  useEffect(() => {
-    if (blocker.state !== 'blocked') return;
-    void confirm({
-      title: 'Bỏ các thay đổi chưa lưu?',
-      description: 'Dashboard có thay đổi chưa lưu. Rời trang bây giờ sẽ mất chúng.',
-      confirmLabel: 'Bỏ thay đổi',
-      destructive: true,
-    }).then((ok) => (ok ? blocker.proceed() : blocker.reset()));
-  }, [blocker, confirm]);
-  useEffect(() => {
-    if (!dirty) return;
-    const onUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-    };
-    window.addEventListener('beforeunload', onUnload);
-    return () => window.removeEventListener('beforeunload', onUnload);
-  }, [dirty]);
 }
 
 /** Lưu bản nháp: tạo mới (POST) hoặc ghi đè (PUT kèm `updatedAt` đã đọc). 409 → báo "vừa được người khác sửa" + Tải lại. */
@@ -311,8 +284,6 @@ export function DashboardEditor({
     shareError === null &&
     Object.keys(issues).length === 0;
 
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
   const exitingRef = useRef(false);
   const draggingRef = useRef(false);
   draggingRef.current = dragging;
@@ -321,7 +292,11 @@ export function DashboardEditor({
   const viewUrl = dashboard ? `/dashboards/${dashboard.id}` : '/';
   const leave = () => navigate(viewUrl, { replace: true });
 
-  useLeaveGuard(dirty, dirtyRef, exitingRef);
+  useLeaveGuard({
+    dirty,
+    shouldBlock: () => !exitingRef.current,
+    description: 'Dashboard có thay đổi chưa lưu. Rời trang bây giờ sẽ mất chúng.',
+  });
   useEffect(
     () => () => {
       removeToastsRef.current.forEach((id) => toast.dismiss(id));

@@ -1,6 +1,6 @@
 /* Gõ nhanh trong tiêu đề: !ưu-tiên @người #sprint ~điểm ^hạn — parse + gợi ý + chip xác nhận. */
 
-export function normalize(s: string): string {
+function normalize(s: string): string {
   // Hạ chữ thường TRƯỚC khi bỏ dấu: 'Đ' hoa chỉ thành 'đ' sau toLowerCase, rồi mới đổi sang 'd'.
   return s
     .toLowerCase()
@@ -101,7 +101,7 @@ interface Named {
 }
 
 /** Khớp 1 từ: bằng đúng > bắt đầu bằng > chứa (để "!high" ra High chứ không phải Highest). */
-export function bestMatch<T>(
+function bestMatch<T>(
   items: T[],
   val: string,
   key: (t: T) => string,
@@ -200,6 +200,21 @@ function matchAlias(rest: string, ps: PriorityItem[]): { id: string; length: num
   return null;
 }
 
+/**
+ * Sprint theo 1 từ sau `#` (đã bỏ dấu/hoa thường/khoảng trắng/gạch): bằng đúng tên chuẩn hoá, hoặc là tiền tố
+ * DUY NHẤT dài ≥ 3 ký tự có chứa chữ cái ("#S12" không khớp "Sprint 12"; "#sprint1" mơ hồ giữa Sprint 12/120).
+ */
+function matchSprintWord(sprints: Named[], word: string): Named | undefined {
+  const squash = (s: string) => normalize(s).replace(/[\s\-_–—]/g, '');
+  const w = squash(word);
+  if (!w) return undefined;
+  const exact = sprints.find((x) => squash(x.name) === w);
+  if (exact) return exact;
+  if (w.length < 3 || !/\p{L}/u.test(w)) return undefined;
+  const pre = sprints.filter((x) => squash(x.name).startsWith(w));
+  return pre.length === 1 ? pre[0] : undefined;
+}
+
 /** Khớp 1 token đứng sau symbol. Trả giá trị + số ký tự (sau symbol) đã tiêu thụ, hoặc null nếu không khớp. */
 function matchToken(
   sym: string,
@@ -208,8 +223,9 @@ function matchToken(
   prios: PriorityItem[],
 ): { id?: string; points?: number; due?: string; length: number } | null {
   if (sym === '~') {
-    const m = /^(\d+)/.exec(rest);
-    return m ? { points: Number(m[1]), length: m[1]!.length } : null;
+    // Chấp nhận điểm thập phân (`2.5`, `2,5`) — cùng dạng ô điểm; dấu chấm/phẩy cuối câu không bị nuốt.
+    const m = /^(\d+(?:[.,]\d+)?)/.exec(rest);
+    return m ? { points: Number(m[1]!.replace(',', '.')), length: m[1]!.length } : null;
   }
   if (sym === '^') {
     const m = /^(\S+)/.exec(rest);
@@ -220,6 +236,8 @@ function matchToken(
     return null;
   }
   const list = sym === '!' ? lists.priorities : sym === '@' ? lists.users : lists.sprints;
+  // `#12`, `#1`: chỉ chữ số là tham chiếu việc, KHÔNG BAO GIỜ là sprint (giữ nguyên trong tiêu đề).
+  if (sym === '#' && /^\d+(?=\s|$)/.test(rest)) return null;
   // 1) Tên đầy đủ (đã chọn từ gợi ý → có khoảng trắng).
   const full = greedyName(rest, list);
   if (full) return { id: full.id, length: full.length };
@@ -230,8 +248,12 @@ function matchToken(
   }
   // 3) Viết tắt 1 từ (người dùng tự gõ, chưa chọn).
   const w = /^(\S+)/.exec(rest);
+  if (w && sym === '#') {
+    const hit = matchSprintWord(list, w[1]!);
+    return hit ? { id: hit.id, length: w[1]!.length } : null;
+  }
   if (w) {
-    const hit = bestMatch(list, w[1]!, (x) => x.name, sym === '#');
+    const hit = bestMatch(list, w[1]!, (x) => x.name);
     if (hit) return { id: hit.id, length: w[1]!.length };
   }
   return null;
@@ -318,7 +340,7 @@ function scanTokens(
       const w = /^\S+/.exec(text.slice(i + 1));
       if (
         w &&
-        !(ch === '#' && /^\d+$/.test(w[0])) &&
+        !(ch === '#' && /^\d+[.,;:!?)]*$/.test(w[0])) &&
         !isPartialPhrase(ch, text.slice(i + 1), ctx)
       ) {
         unmatched.push({
@@ -387,6 +409,51 @@ export function changedTokenFields(
     if (v !== undefined && v !== prev[k]) out[k] = v;
   }
   return out;
+}
+
+export interface TokenFieldValues {
+  priorityId: string;
+  assigneeId: string;
+  sprintId: string;
+  points: string;
+  due: string;
+}
+export type TokenFieldKey = keyof TokenFieldValues;
+
+const RESULT_TO_FIELD: [keyof Omit<TokenResult, 'clean'>, TokenFieldKey][] = [
+  ['priorityId', 'priorityId'],
+  ['assigneeId', 'assigneeId'],
+  ['sprintId', 'sprintId'],
+  ['points', 'points'],
+  ['dueLocal', 'due'],
+];
+
+/**
+ * Trường nào được phép ghi từ token: token đổi so với lần ĐÃ đồng bộ (`synced`) VÀ ô chưa bị đổi tay (`manual`)
+ * sau lần token đó xuất hiện. Ô đổi tay thắng — giá trị trên ô luôn là giá trị được gửi.
+ */
+export function tokenFieldsToApply(
+  synced: TokenResult,
+  tokens: TokenResult,
+  manual: ReadonlySet<TokenFieldKey>,
+): Partial<TokenFieldValues> {
+  const ch = changedTokenFields(synced, tokens);
+  const out: Partial<TokenFieldValues> = {};
+  for (const [rk, fk] of RESULT_TO_FIELD) {
+    const v = ch[rk];
+    if (v !== undefined && !manual.has(fk)) out[fk] = String(v);
+  }
+  return out;
+}
+
+/** Giá trị cuối khi bấm Tạo: giá trị ô, chỉ chèn token chưa kịp đồng bộ cho ô chưa bị đổi tay. */
+export function resolveCreateValues(
+  current: TokenFieldValues,
+  synced: TokenResult,
+  tokens: TokenResult,
+  manual: ReadonlySet<TokenFieldKey>,
+): TokenFieldValues {
+  return { ...current, ...tokenFieldsToApply(synced, tokens, manual) };
 }
 
 export interface DisplaySegment {
@@ -496,16 +563,20 @@ export function suggestFor(sym: string, partial: string, ctx: TokenCtx): Suggest
       .map((u) => ({ id: u.id, label: u.displayName, insert: `@${u.displayName}` }));
   }
   if (sym === '#') {
-    return ctx.sprints
-      .filter((s) => s.state !== 'CLOSED')
-      .filter((s) => match(s.name, true))
-      .slice(0, 6)
-      .map((s) => ({
-        id: s.id,
-        label: s.name,
-        hint: s.state === 'ACTIVE' ? 'đang chạy' : undefined,
-        insert: `#${s.name}`,
-      }));
+    return (
+      ctx.sprints
+        .filter((s) => s.state !== 'CLOSED')
+        // Sprint tên toàn số không bao giờ khớp qua `#` (là tham chiếu) → đừng gợi ý để chọn xong lại không gán được.
+        .filter((s) => !/^\d+$/.test(s.name.trim()))
+        .filter((s) => match(s.name, true))
+        .slice(0, 6)
+        .map((s) => ({
+          id: s.id,
+          label: s.name,
+          hint: s.state === 'ACTIVE' ? 'đang chạy' : undefined,
+          insert: `#${s.name}`,
+        }))
+    );
   }
   return [];
 }

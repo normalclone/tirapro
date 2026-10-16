@@ -35,3 +35,11 @@ export const useEpicPanel = create<{
   },
   toggle: () => get().setOpen(!get().open),
 }));
+
+/**
+ * Panel Epic thực sự hiện hay không: xem nhanh mở ở khổ hẹp (lg..2xl) thì panel Epic tự thu TẠM để danh sách không
+ * bị ép — KHÔNG ghi vào lựa chọn của người dùng, đóng xem nhanh là panel về đúng trạng thái đã chọn.
+ */
+export function epicPanelShown(userOpen: boolean, peekOpen: boolean, squeezed: boolean): boolean {
+  return userOpen && !(peekOpen && squeezed);
+}

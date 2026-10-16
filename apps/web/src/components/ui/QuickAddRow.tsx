@@ -3,7 +3,7 @@ import { Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjectSprints } from '@/features/backlog/api';
-import { useWorkspaceUsers } from '@/features/issue-edit/api';
+import { useSearchUsers } from '@/features/members/api';
 import { useCreateIssue, type CreateIssueInput } from '@/features/issues/create-api';
 import {
   buildQuickAddInput,
@@ -51,7 +51,8 @@ export function QuickAddRow({
   const pickedKey = useQuickAddTypeKey();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const { data: meta } = useProjectMeta(projectKey || undefined);
-  const { data: users } = useWorkspaceUsers({ enabled: touched });
+  // Token `@tên`: thành viên của DỰ ÁN này (máy chủ lọc theo dự án, bỏ tài khoản khoá), tối đa 200 người.
+  const { data: users } = useSearchUsers({ projectId, limit: 200, enabled: touched });
   const { data: sprints } = useProjectSprints(touched ? projectId : undefined);
   const create = useCreateIssue(projectId);
 

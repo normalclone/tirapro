@@ -38,7 +38,7 @@ export interface Workflow {
   hiddenCount?: number;
 }
 
-export interface WorkflowUsedBy {
+interface WorkflowUsedBy {
   id: string;
   key: string;
   name: string;
@@ -50,12 +50,6 @@ export interface WorkflowCreateInput {
   description?: string;
   projectId?: string;
   isTemplate?: boolean;
-}
-
-export interface WorkflowUpdateInput {
-  name?: string;
-  description?: string;
-  isDefault?: boolean;
 }
 
 export interface StatusCreateInput {
@@ -97,17 +91,6 @@ export function useCreateWorkflow() {
   return useMutation({
     mutationFn: (input: WorkflowCreateInput) =>
       api.post<Workflow>('/workflows', input).then((r) => r.data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.workflows });
-    },
-  });
-}
-
-export function useUpdateWorkflow() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: WorkflowUpdateInput }) =>
-      api.patch<Workflow>(`/workflows/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.workflows });
     },

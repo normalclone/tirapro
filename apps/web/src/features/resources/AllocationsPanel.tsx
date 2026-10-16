@@ -5,11 +5,11 @@ import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
-import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
+import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
-import { useWorkspaceUsers } from '@/features/members/api';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { useProjects } from '@/features/projects/api';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -58,7 +58,8 @@ export function AllocationsPanel({
   to: string;
 }) {
   const list = useAllocations({ projectId, from, to });
-  const { data: users } = useWorkspaceUsers();
+  // Chọn người: tìm phía máy chủ (không giới hạn 50 người), loại tài khoản khoá; chủ cũ đã khoá vẫn hiện tên.
+  const people = useAssigneePicker();
   const { data: projects } = useProjects();
   const create = useCreateAllocation();
   const update = useUpdateAllocation();
@@ -68,17 +69,6 @@ export function AllocationsPanel({
   const formRef = useRef<HTMLDivElement>(null);
   const [pendingDelete, setPendingDelete] = useState<AllocationDto | null>(null);
 
-  const people: PersonOption[] = useMemo(
-    () =>
-      (users ?? []).map((u) => ({
-        id: u.id,
-        name: u.displayName,
-        avatarUrl: u.avatarUrl,
-        email: u.email,
-        search: `${u.displayName} ${u.email}`.toLowerCase(),
-      })),
-    [users],
-  );
   const projectOptions = useMemo(
     () => (projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
     [projects],
@@ -171,7 +161,7 @@ export function AllocationsPanel({
                 id="alloc-user"
                 value={form.userId}
                 onChange={(v) => setForm({ ...form, userId: v })}
-                options={people}
+                {...people}
                 includeEmpty={false}
                 emptyLabel="Chọn người"
                 ariaLabel="Chọn thành viên được phân bổ"

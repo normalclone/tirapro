@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { IssueDto } from '@tirapro/types';
+import { isOverdue } from '@/lib/dueDate';
 
 /** Bộ lọc nhanh có thể bật/tắt độc lập; bật nhiều bộ cùng lúc thì việc phải khớp TẤT CẢ. */
 export type QuickFilterId = 'mine' | 'reported' | 'unassigned' | 'overdue' | 'bug';
@@ -57,14 +58,6 @@ export function useQuickFilters() {
   return { active, toggle, clear };
 }
 
-/** Một công việc có "quá hạn" không: có đặt hạn, hạn đã qua, và việc chưa xong. */
-function isOverdue(issue: IssueDto, now: number): boolean {
-  if (!issue.dueDate) return false;
-  if (issue.status.category === 'DONE') return false;
-  const due = new Date(issue.dueDate).getTime();
-  return Number.isFinite(due) && due < now;
-}
-
 /**
  * Lọc phía trình duyệt theo các bộ lọc đang bật (việc phải khớp tất cả). `userId` = người dùng
  * hiện tại, dùng cho bộ "Của tôi". Trả về mảng mới (không đột biến đầu vào).
@@ -75,7 +68,7 @@ export function applyQuickFilters(
   userId: string | undefined,
 ): IssueDto[] {
   if (active.size === 0) return issues;
-  const now = Date.now();
+  const now = new Date();
   return issues.filter((issue) => {
     if (active.has('mine') && issue.assigneeId !== userId) return false;
     if (active.has('overdue') && !isOverdue(issue, now)) return false;

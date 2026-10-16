@@ -14,7 +14,7 @@ type LogoProps = SVGProps<SVGSVGElement> & {
 };
 
 /** Telegram — máy bay giấy trên nền tròn xanh thương hiệu. */
-export function TelegramLogo({ size = 18, ...props }: LogoProps) {
+function TelegramLogo({ size = 18, ...props }: LogoProps) {
   return (
     <svg
       width={size}
@@ -35,7 +35,7 @@ export function TelegramLogo({ size = 18, ...props }: LogoProps) {
 }
 
 /** GitHub — mèo mực (invertocat). Dùng currentColor để hợp light/dark. */
-export function GitHubLogo({ size = 18, ...props }: LogoProps) {
+function GitHubLogo({ size = 18, ...props }: LogoProps) {
   return (
     <svg
       width={size}
@@ -53,7 +53,7 @@ export function GitHubLogo({ size = 18, ...props }: LogoProps) {
 }
 
 /** GitLab — logo cáo (tanuki) đa sắc cam. */
-export function GitLabLogo({ size = 18, ...props }: LogoProps) {
+function GitLabLogo({ size = 18, ...props }: LogoProps) {
   return (
     <svg
       width={size}

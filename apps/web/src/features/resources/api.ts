@@ -6,7 +6,7 @@ import { toDateInput } from '@/lib/dateFormat';
 
 /* ─────────────────────────── Kiểu dữ liệu ─────────────────────────── */
 
-export interface ResourceUser {
+interface ResourceUser {
   id: string;
   email: string;
   displayName: string;

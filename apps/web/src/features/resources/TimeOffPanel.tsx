@@ -1,15 +1,15 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { CalendarOff, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
-import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
+import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
-import { useWorkspaceUsers } from '@/features/members/api';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { apiErrorMessage } from '@/lib/api';
 import {
   shortDay,
@@ -66,7 +66,8 @@ export function TimeOffPanel({
   to: string;
 }) {
   const list = useTimeOffs({ from, to });
-  const { data: users } = useWorkspaceUsers();
+  // Chọn người: tìm phía máy chủ (không giới hạn 50 người), loại tài khoản khoá; chủ cũ đã khoá vẫn hiện tên.
+  const people = useAssigneePicker();
   const create = useCreateTimeOff();
   const update = useUpdateTimeOff();
   const remove = useDeleteTimeOff();
@@ -74,18 +75,6 @@ export function TimeOffPanel({
   const [form, setForm] = useState<FormState | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const [pendingDelete, setPendingDelete] = useState<TimeOffDto | null>(null);
-
-  const people: PersonOption[] = useMemo(
-    () =>
-      (users ?? []).map((u) => ({
-        id: u.id,
-        name: u.displayName,
-        avatarUrl: u.avatarUrl,
-        email: u.email,
-        search: `${u.displayName} ${u.email}`.toLowerCase(),
-      })),
-    [users],
-  );
 
   const saving = create.isPending || update.isPending;
 
@@ -184,7 +173,7 @@ export function TimeOffPanel({
                   id="off-user"
                   value={form.userId}
                   onChange={(v) => setForm({ ...form, userId: v })}
-                  options={people}
+                  {...people}
                   includeEmpty={false}
                   emptyLabel="Chọn người"
                   ariaLabel="Chọn thành viên nghỉ"

@@ -6,7 +6,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
 import { useProjectSprints } from '@/features/backlog/api';
-import { useWorkspaceUsers } from '@/features/issue-edit/api';
+import { useSearchUsers } from '@/features/members/api';
 import { uploadAttachmentFile } from '@/features/attachments/api';
 import { FileDrop } from '@/features/attachments/FileDrop';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/Input';
 import { DateTimeInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
-import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { openReportIssue } from '@/stores/reportIssue';
 import { isBugType } from '@/features/issue-edit/severity';
@@ -26,12 +26,16 @@ import { useCreateIssue } from './create-api';
 import { useProjectIssues } from './api';
 import { epicChoices, parentChoices } from '@/lib/epic';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { dueDaysFromToday } from '@/lib/dueDate';
 import { TokenTitleInput } from './TokenTitleInput';
 import {
-  changedTokenFields,
   parseTitleTokens,
+  resolveCreateValues,
   stripPartialTail,
+  tokenFieldsToApply,
   type TokenCtx,
+  type TokenFieldKey,
+  type TokenFieldValues,
   type TokenResult,
 } from './titleTokens';
 
@@ -150,6 +154,10 @@ export function CreateIssueModal() {
   const [busy, setBusy] = useState(false);
   const prevTypeRef = useRef('');
   const lastTokens = useRef<TokenResult>({ clean: '' });
+  // Parse đầy đủ (kể cả token đuôi chưa đồng bộ) ở lần gõ trước, và các ô người dùng đổi tay sau lần token đổi gần nhất.
+  const lastFull = useRef<TokenResult>({ clean: '' });
+  const manualRef = useRef<Set<TokenFieldKey>>(new Set());
+  const markManual = (k: TokenFieldKey) => manualRef.current.add(k);
   // Lần chạy effect đồng bộ token ngay sau khi mở dùng `summary` cũ (trước khi nạp bản nháp) → bỏ qua.
   const skipSyncRef = useRef(false);
   // Chữ đang giữ (không tự lưu) sau khi chọn dự án đã có nháp riêng — xem ô Dự án.
@@ -169,8 +177,13 @@ export function CreateIssueModal() {
   const { data: meta } = useProjectMeta(open && selKey ? selKey : undefined);
   const { data: sprints } = useProjectSprints(open ? selId || undefined : undefined);
   const { data: projIssues = [] } = useProjectIssues(open && selId ? selId : undefined);
-  const { data: users } = useWorkspaceUsers();
-  const assignees = useAssigneeOptions(selId || undefined);
+  // Người cho token `@tên` trong tiêu đề: thành viên của dự án đang chọn (máy chủ lọc theo dự án, bỏ tài khoản khoá).
+  const { data: users } = useSearchUsers({
+    projectId: selId || undefined,
+    limit: 200,
+    enabled: open,
+  });
+  const assignees = useAssigneePicker(selId || undefined);
   const create = useCreateIssue(selId);
 
   const last = useMemo(() => loadLast(), [open]);
@@ -200,6 +213,8 @@ export function CreateIssueModal() {
     setBusy(false);
     prevTypeRef.current = '';
     lastTokens.current = { clean: '' };
+    lastFull.current = { clean: '' };
+    manualRef.current.clear();
     skipSyncRef.current = true;
     if (draft.summary || draft.description || draft.acceptance)
       toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
@@ -301,25 +316,30 @@ export function CreateIssueModal() {
       skipSyncRef.current = false;
       return;
     }
+    // Token vừa xuất hiện/đổi giá trị (kể cả đuôi chưa áp) → ô tương ứng lại do token quản tới khi người dùng đổi tay.
+    const full = parseTitleTokens(summary, tokenCtx);
+    for (const k of Object.keys(tokenFieldsToApply(lastFull.current, full, new Set()))) {
+      manualRef.current.delete(k as TokenFieldKey);
+    }
+    lastFull.current = full;
     const next = parseTitleTokens(stripPartialTail(summary), tokenCtx);
-    const ch = changedTokenFields(lastTokens.current, next);
+    applyFields(tokenFieldsToApply(lastTokens.current, next, manualRef.current));
     lastTokens.current = next;
-    if (ch.priorityId) setPriorityId(ch.priorityId);
-    if (ch.assigneeId) setAssigneeId(ch.assigneeId);
-    if (ch.sprintId) setSprintId(ch.sprintId);
-    if (ch.points != null) setPoints(String(ch.points));
-    if (ch.dueLocal) setDue(ch.dueLocal);
   }, [open, summary, tokenCtx]);
 
   // Rời ô tiêu đề: CHỈ điền các trường suy ra từ token — GIỮ nguyên chữ đang gõ trong ô
   // (tránh cảm giác "mất chữ"/không undo được). Token chỉ được lược bỏ khi thực sự tạo (doCreate).
   function applyTokens() {
     const r = parseTitleTokens(summary, tokenCtx);
-    if (r.priorityId) setPriorityId(r.priorityId);
-    if (r.assigneeId) setAssigneeId(r.assigneeId);
-    if (r.sprintId) setSprintId(r.sprintId);
-    if (r.points != null) setPoints(String(r.points));
-    if (r.dueLocal) setDue(r.dueLocal);
+    applyFields(tokenFieldsToApply(lastTokens.current, r, manualRef.current));
+    lastTokens.current = r;
+  }
+  function applyFields(f: Partial<TokenFieldValues>) {
+    if (f.priorityId) setPriorityId(f.priorityId);
+    if (f.assigneeId) setAssigneeId(f.assigneeId);
+    if (f.sprintId) setSprintId(f.sprintId);
+    if (f.points != null) setPoints(f.points);
+    if (f.due) setDue(f.due);
   }
 
   // Đổi loại → tự điền mẫu mô tả (chỉ khi mô tả trống hoặc đang là mẫu; bỏ qua lần đặt mặc định đầu).
@@ -338,15 +358,23 @@ export function CreateIssueModal() {
   const canSubmit =
     !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
   // Cảnh báo mềm: không chặn gửi (đường Tạo / Tạo & nhập tiếp / Cmd+Enter đều như nhau).
-  const dueInPast = due !== '' && new Date(due).getTime() < Date.now();
+  // Cùng định nghĩa "quá hạn" với mọi nơi khác: hạn HÔM NAY (theo ngày VN) chưa phải quá khứ.
+  const dueInPast = due !== '' && dueDaysFromToday(due) < 0;
   const title = preset.subtask ? 'Tạo việc con' : 'Tạo công việc';
 
   async function doCreate() {
     if (!canSubmit) return null;
     // Ô ngày/giờ đang gõ sai: chặn mọi đường gửi (nút Tạo & nhập tiếp, Cmd+Enter không đi qua form native).
     if (blockOnInvalidDate()) return null;
-    // Áp token gõ nhanh còn sót (nếu chưa blur) — token thắng giá trị đang chọn. Chỉ lược token khi TẠO.
+    // Giá trị trên ô = giá trị được gửi: ô đổi tay thắng; token chỉ chèn cho ô chưa bị đổi tay và token chưa kịp
+    // đồng bộ (đang gõ dở ở đuôi). Chỉ lược token khỏi tiêu đề khi TẠO.
     const tk = parseTitleTokens(summary, tokenCtx);
+    const v = resolveCreateValues(
+      { priorityId, assigneeId, sprintId, points, due },
+      lastTokens.current,
+      tk,
+      manualRef.current,
+    );
     const finalSummary = tk.clean.trim();
     if (!finalSummary) {
       toast.error('Hãy nhập tiêu đề mô tả việc cần làm');
@@ -361,17 +389,13 @@ export function CreateIssueModal() {
         description: description.trim() || null,
         descriptionFormat: 'MARKDOWN',
         acceptanceCriteria: isStory ? acceptance.trim() || null : null,
-        priorityId: (tk.priorityId ?? priorityId) || undefined,
-        assigneeId: (tk.assigneeId ?? assigneeId) || null,
+        priorityId: v.priorityId || undefined,
+        assigneeId: v.assigneeId || null,
         parentId: preset.parentId ?? (hideParent ? undefined : parentPick || undefined),
         epicId: hideEpic ? undefined : epicId || undefined,
-        storyPoints: tk.points ?? (points ? Number(points) : undefined),
-        sprintId: (tk.sprintId ?? sprintId) || undefined,
-        dueDate: tk.dueLocal
-          ? new Date(tk.dueLocal).toISOString()
-          : due
-            ? new Date(due).toISOString()
-            : undefined,
+        storyPoints: v.points ? Number(v.points) : undefined,
+        sprintId: v.sprintId || undefined,
+        dueDate: v.due ? new Date(v.due).toISOString() : undefined,
       });
       // Tải các tệp đính kèm song song → không dừng vì 1 tệp lỗi; báo rõ N/M nếu có lỗi.
       if (files.length > 0) {
@@ -438,6 +462,8 @@ export function CreateIssueModal() {
     setPoints('');
     setDue('');
     lastTokens.current = { clean: '' };
+    lastFull.current = { clean: '' };
+    manualRef.current.clear();
     requestAnimationFrame(() => document.getElementById('ci-summary')?.focus());
   }
 
@@ -529,6 +555,7 @@ export function CreateIssueModal() {
                 }
                 setSelKey(v);
                 setTypeId('');
+                manualRef.current.clear();
                 setPriorityId('');
                 setSprintId('');
                 setAssigneeId('');
@@ -615,10 +642,13 @@ export function CreateIssueModal() {
           >
             <PeoplePicker
               value={assigneeId}
-              onChange={setAssigneeId}
+              onChange={(v) => {
+                markManual('assigneeId');
+                setAssigneeId(v);
+              }}
               emptyLabel="Chưa gán"
               className={selectClass}
-              options={assignees}
+              {...assignees}
             />
           </Field>
           <Field
@@ -628,7 +658,10 @@ export function CreateIssueModal() {
           >
             <SearchSelect
               value={priorityId}
-              onChange={setPriorityId}
+              onChange={(v) => {
+                markManual('priorityId');
+                setPriorityId(v);
+              }}
               disabled={!meta}
               className={selectClass}
               options={[
@@ -649,7 +682,10 @@ export function CreateIssueModal() {
           >
             <SearchSelect
               value={sprintId}
-              onChange={setSprintId}
+              onChange={(v) => {
+                markManual('sprintId');
+                setSprintId(v);
+              }}
               disabled={!selId}
               className={selectClass}
               ariaLabel="Sprint"
@@ -666,7 +702,10 @@ export function CreateIssueModal() {
               min={0}
               inputMode="numeric"
               value={points}
-              onChange={(e) => setPoints(e.target.value)}
+              onChange={(e) => {
+                markManual('points');
+                setPoints(e.target.value);
+              }}
               placeholder="VD: 3"
               className="text-sm"
               aria-label="Điểm ước lượng"
@@ -681,7 +720,10 @@ export function CreateIssueModal() {
           >
             <DateTimeInput
               value={due}
-              onChange={setDue}
+              onChange={(v) => {
+                markManual('due');
+                setDue(v);
+              }}
               defaultTime="17:00"
               ariaLabel="Hạn hoàn thành"
             />
@@ -742,7 +784,8 @@ export function CreateIssueModal() {
               onChange={setDescription}
               onSubmit={() => void submitCreate()}
               rows={10}
-              mentionPeople={assignees}
+              mentionPeople={assignees.options}
+              mentionProjectId={selId || undefined}
               onPasteImages={(fs) => setFiles((prev) => [...prev, ...fs])}
               placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn) hoặc dán ảnh)"
             />
@@ -760,7 +803,8 @@ export function CreateIssueModal() {
                 onChange={setAcceptance}
                 onSubmit={() => void submitCreate()}
                 rows={4}
-                mentionPeople={assignees}
+                mentionPeople={assignees.options}
+                mentionProjectId={selId || undefined}
                 placeholder="- [ ] Người dùng đăng nhập được bằng email&#10;- [ ] Báo lỗi rõ khi sai mật khẩu"
               />
             </Field>

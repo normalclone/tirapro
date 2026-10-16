@@ -245,3 +245,42 @@ describe('shouldLeaveEditorOnEscape (soạn dashboard)', () => {
     expect(shouldLeaveEditorOnEscape({ ...esc, key: 'Enter' }, idle)).toBe(false);
   });
 });
+
+describe('isTypingTarget: chỉ ô nhập chữ/số/ngày (WC-M2)', () => {
+  const el = (tagName: string, type?: string) => ({ tagName, type }) as unknown as EventTarget;
+  it.each([
+    'text',
+    'search',
+    'email',
+    'url',
+    'tel',
+    'password',
+    'number',
+    'date',
+    'datetime-local',
+  ])('input %s → đang gõ', (t) => expect(isTypingTarget(el('INPUT', t))).toBe(true));
+  it.each(['checkbox', 'radio', 'range', 'button', 'color', 'file'])(
+    'input %s → KHÔNG tính đang gõ (bấm ô tick chọn hàng rồi vẫn dùng j/k)',
+    (t) => expect(isTypingTarget(el('INPUT', t))).toBe(false),
+  );
+  it('input không khai báo type = text; textarea/select vẫn là gõ', () => {
+    expect(isTypingTarget(el('INPUT'))).toBe(true);
+    expect(isTypingTarget(el('TEXTAREA'))).toBe(true);
+    expect(isTypingTarget(el('SELECT'))).toBe(true);
+    expect(isTypingTarget(el('BUTTON'))).toBe(false);
+  });
+});
+
+describe('isOverlayOpen nhường tour driver.js (WC-M6)', () => {
+  it('body có class driver-active → coi là lớp phủ đang mở', () => {
+    const prev = (globalThis as { document?: unknown }).document;
+    (globalThis as { document?: unknown }).document = {
+      body: { classList: { contains: (c: string) => c === 'driver-active' } },
+    };
+    try {
+      expect(isOverlayOpen({ querySelector: () => null })).toBe(true);
+    } finally {
+      (globalThis as { document?: unknown }).document = prev;
+    }
+  });
+});

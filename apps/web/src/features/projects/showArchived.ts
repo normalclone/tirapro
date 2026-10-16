@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 /** localStorage: bật "Hiện đã lưu trữ" ở danh sách dự án — dùng chung giữa rail và trang Dự án. */
-export const SHOW_ARCHIVED_KEY = 'tirapro:showArchivedProjects';
+const SHOW_ARCHIVED_KEY = 'tirapro:showArchivedProjects';
 
 /** Chọn "Hiện đã lưu trữ" được nhớ theo trình duyệt (chỉ là tiện ích, không có vẫn chạy). */
 export function useShowArchived(): [boolean, (v: boolean) => void] {

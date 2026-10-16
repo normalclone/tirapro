@@ -3,7 +3,8 @@ import { UserCheck, Users, MoveRight, X, Flag, Tag, Zap, CircleDot } from 'lucid
 import type { IssueDto, SprintDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
+import { PeoplePicker } from '@/components/ui/PeoplePicker';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { isOverlayOpen, shouldClearSelectionOnEscape } from '@/lib/hotkeys';
 import { activeDrag } from '@/lib/activeDrag';
 import { categoryColor } from '@/lib/statusColor';
@@ -15,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { TERM } from '@/lib/terms';
 
 /** id ảo cho lựa chọn "Backlog" trong picker chuyển sprint (sprintId thực = null). */
-export const BACKLOG_OPTION = '__backlog__';
+const BACKLOG_OPTION = '__backlog__';
 /** id ảo cho lựa chọn "Gỡ khỏi epic" / "Bỏ ưu tiên" (giá trị thật = null). */
 const NONE_OPTION = '__none__';
 
@@ -43,13 +44,22 @@ function useEscapeClears(onClear: () => void) {
   }, [onClear]);
 }
 
+function AssignTrigger() {
+  return (
+    <span className="flex items-center gap-2 text-muted">
+      <Users className="h-4 w-4 shrink-0" />
+      Đổi người phụ trách
+    </span>
+  );
+}
+
 /**
  * Thanh thao tác hàng loạt (sticky đáy backlog) — hiện khi có ≥1 việc được chọn.
  * Các hành động ghi được gate ở phía trang gọi (canAssign / canManageBacklog).
  */
 export function BulkActionBar({
   count,
-  assigneeOptions,
+  projectId,
   sprints,
   busy,
   canAssign,
@@ -71,7 +81,7 @@ export function BulkActionBar({
   onSetStatus,
 }: {
   count: number;
-  assigneeOptions: PersonOption[];
+  projectId: string;
   sprints: SprintDto[];
   busy: boolean;
   canAssign: boolean;
@@ -96,6 +106,7 @@ export function BulkActionBar({
   onSetEpic: (epicId: string | null) => void;
   onSetStatus: (statusId: string) => void;
 }) {
+  const assignPicker = useAssigneePicker(projectId);
   useEscapeClears(onClear);
 
   const sprintOptions = [
@@ -141,18 +152,13 @@ export function BulkActionBar({
               onChange={(v) => {
                 if (v) onAssignTo(v);
               }}
-              options={assigneeOptions}
+              {...assignPicker}
               includeEmpty={false}
               ariaLabel="Chọn người phụ trách mới cho các việc đang chọn"
-              disabled={busy || assigneeOptions.length === 0}
+              disabled={busy || assignPicker.options.length === 0}
               align="end"
               className="h-8 w-52"
-              renderTrigger={() => (
-                <span className="flex items-center gap-2 text-muted">
-                  <Users className="h-4 w-4 shrink-0" />
-                  Đổi người phụ trách
-                </span>
-              )}
+              renderTrigger={AssignTrigger}
             />
           </>
         )}

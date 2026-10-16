@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils';
 import type { IssueOwnership } from '@/lib/permissions';
 import { useCanEditIssue } from '@/features/projects/permissions';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
+import { showTypeToSearchHint } from '@/features/members/userSearch';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { useParticipants, useSetParticipants } from './api';
 
 /**
@@ -22,17 +24,22 @@ interface ParticipantsRowProps {
   owner: IssueOwnership;
 }
 
+/** Danh sách gợi ý người tham gia: máy chủ lọc theo dự án + từ khoá (debounce), rồi lọc nhanh tại chỗ theo chữ đang gõ. */
+function useParticipantSearch(projectId: string, q: string) {
+  const options = useAssigneeOptions(projectId, { search: useDebouncedValue(q, 200) });
+  const query = q.trim().toLowerCase();
+  return { options, filtered: query ? options.filter((o) => o.search.includes(query)) : options };
+}
+
 export function ParticipantsRow({ issueId, projectId, owner }: ParticipantsRowProps) {
   const canEdit = useCanEditIssue(projectId)(owner);
   const { data: participants } = useParticipants(issueId);
   const setParticipants = useSetParticipants(issueId);
-  const options = useAssigneeOptions(projectId);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
+  const { options, filtered } = useParticipantSearch(projectId, q);
 
   const selected = useMemo(() => new Set((participants ?? []).map((p) => p.id)), [participants]);
-  const query = q.trim().toLowerCase();
-  const filtered = query ? options.filter((o) => o.search.includes(query)) : options;
 
   function toggle(userId: string) {
     const next = new Set(selected);
@@ -151,6 +158,9 @@ export function ParticipantsRow({ issueId, projectId, owner }: ParticipantsRowPr
                   <li className="px-2 py-3 text-center text-sm text-muted">
                     Không có ai khớp. Thử từ khoá khác.
                   </li>
+                )}
+                {showTypeToSearchHint(options.length, q) && (
+                  <li className="px-2 py-2 text-center text-xs text-faint">Gõ để tìm thêm</li>
                 )}
               </ul>
             </Popover.Content>

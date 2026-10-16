@@ -29,7 +29,7 @@ import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
 function RowLabels({ labels }: { labels: IssueDto['labels'] }) {
   if (!labels || labels.length === 0) return null;
   return (
-    <span className="hidden shrink-0 items-center gap-1 lg:flex">
+    <span className="hidden shrink-0 items-center gap-1 lg:flex group-data-[peeking]/list:!hidden">
       {labels.slice(0, 2).map((l) => (
         <span
           key={l.id}
@@ -130,7 +130,9 @@ export function IssueRowBody({
       {...rootProps}
       className={cn(
         'relative flex items-center gap-3 rounded-md border bg-surface px-2.5 py-2 transition-colors',
-        readOnly ? 'cursor-default' : 'cursor-grab touch-none active:cursor-grabbing',
+        readOnly
+          ? 'cursor-default'
+          : 'cursor-grab touch-manipulation active:cursor-grabbing [@media(pointer:coarse)]:select-none [@media(pointer:coarse)]:[-webkit-touch-callout:none]',
         warn || 'border-transparent hover:border-border',
         'hover:bg-surface-2',
         checked && 'border-primary bg-primary-subtle',
@@ -202,7 +204,7 @@ export function IssueRowBody({
           title={`Người phụ trách: ${issue.assignee.displayName}`}
         >
           <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={20} />
-          <span className="hidden max-w-[9rem] truncate text-xs text-muted md:inline">
+          <span className="hidden max-w-[9rem] truncate text-xs text-muted md:inline group-data-[peeking]/list:!hidden">
             {issue.assignee.displayName}
           </span>
         </span>

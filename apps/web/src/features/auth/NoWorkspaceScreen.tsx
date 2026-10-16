@@ -15,7 +15,7 @@ export function NoWorkspaceScreen() {
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   if (!user) return null;
-  const canCreate = !!user.canCreateWorkspace || user.isSystemAdmin;
+  const canCreate = !!user.canCreateWorkspace || user.isSystemAdmin === true;
 
   return (
     <main className="grid h-full place-items-center px-4">
@@ -40,7 +40,7 @@ export function NoWorkspaceScreen() {
               <Building2 className="h-4 w-4" /> Tạo không gian làm việc
             </Button>
           )}
-          {user.isSystemAdmin && (
+          {user.isSystemAdmin === true && (
             <Button variant="secondary" onClick={() => navigate('/admin/accounts')}>
               <ShieldCheck className="h-4 w-4" /> Vào trang quản trị hệ thống
             </Button>

@@ -37,7 +37,7 @@ export interface MoveVars {
   route: 'move' | 'rank';
 }
 
-export const moveMutationKey = (projectId: string) => ['issue-move', projectId] as const;
+const moveMutationKey = (projectId: string) => ['issue-move', projectId] as const;
 
 export function apiErrorCode(e: unknown): string | undefined {
   return axios.isAxiosError(e)

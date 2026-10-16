@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { askWhoText, canWriteAt, noWriteMessage } from './wikiScope';
+import {
+  askWhoText,
+  canWriteAt,
+  noWriteMessage,
+  projectIdsToCheck,
+  writeLoadingAt,
+} from './wikiScope';
 
 describe('canWriteAt', () => {
   const projectCan = (id: string) => (id === 'p1' ? true : id === 'loading' ? undefined : false);
@@ -46,5 +52,31 @@ describe('noWriteMessage', () => {
     expect(noWriteMessage([])).toBe(
       'Hãy liên hệ quản trị không gian làm việc để được cấp quyền viết tài liệu.',
     );
+  });
+});
+
+describe('quyền theo phạm vi: dự án lưu trữ & không bắn N request (WO-I2, WO-M1)', () => {
+  const ctx = {
+    wsCan: true,
+    projectCan: (id: string) => (id === 'loading' ? undefined : true),
+    inactive: (id: string) => id === 'archived',
+  };
+  it('dự án lưu trữ → không ghi được và KHÔNG kẹt "đang tải"', () => {
+    expect(canWriteAt('archived', ctx)).toBe(false);
+    expect(writeLoadingAt('archived', ctx)).toBe(false);
+  });
+  it('dự án đang hoạt động: quyền chưa về = đang tải; có rồi = ghi được; trang chung theo workspace', () => {
+    expect(writeLoadingAt('loading', ctx)).toBe(true);
+    expect(canWriteAt('loading', ctx)).toBe(false);
+    expect(canWriteAt('p1', ctx)).toBe(true);
+    expect(writeLoadingAt(null, ctx)).toBe(false);
+    expect(canWriteAt(null, ctx)).toBe(true);
+  });
+  it('chỉ tra quyền cho dự án của phạm vi + trang đang mở (tối đa 2), bỏ trùng/null/lưu trữ', () => {
+    expect(projectIdsToCheck(null, null)).toEqual([]);
+    expect(projectIdsToCheck('a', undefined)).toEqual(['a']);
+    expect(projectIdsToCheck('a', 'b')).toEqual(['a', 'b']);
+    expect(projectIdsToCheck('a', 'a')).toEqual(['a']);
+    expect(projectIdsToCheck('archived', 'b', ctx.inactive)).toEqual(['b']);
   });
 });

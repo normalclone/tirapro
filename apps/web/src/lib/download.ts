@@ -24,7 +24,8 @@ function saveBlob(blob: Blob, filename: string): void {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  // Thu hồi chậm: Safari cũ/Firefox có thể huỷ tải nếu URL bị thu hồi ngay sau click().
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export interface DownloadOptions {

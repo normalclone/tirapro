@@ -1,4 +1,10 @@
-import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  skipToken,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import type { MemberDto, PoolUserDto, UserDto } from '@tirapro/types';
 import { api, type Ack } from '@/lib/api';
 import { setAccessToken } from '@/lib/auth-token';
@@ -6,6 +12,7 @@ import { queryClient } from '@/lib/queryClient';
 import { reconnectSocket } from '@/lib/socket';
 import { useAuth } from '@/stores/auth';
 import { keys } from '@/lib/queryKeys';
+import { userSearchQuery, USER_PICKER_LIMIT, type UserSearchOpts } from './userSearch';
 
 /** Thân request cập nhật hồ sơ cá nhân (PATCH /users/me). */
 export interface UpdateProfileInput {
@@ -21,11 +28,22 @@ export interface ChangePasswordInput {
   newPassword: string;
 }
 
-/** Danh sách thành viên (user) trong không gian làm việc hiện tại. */
-export function useWorkspaceUsers() {
+/**
+ * Tìm người PHÍA MÁY CHỦ (GET /users?projectId&search&limit): dự án riêng tư chỉ trả người xem được dự án, loại tài khoản
+ * đã khoá (trừ khi `includeInactive`). Giữ kết quả cũ trong lúc gõ tiếp để danh sách không nháy trống.
+ */
+export function useSearchUsers(opts: UserSearchOpts & { enabled?: boolean } = {}) {
+  const { enabled = true, ...q } = opts;
+  const search = q.search?.trim() ?? '';
+  const limit = q.limit ?? USER_PICKER_LIMIT;
   return useQuery({
-    queryKey: keys.users.workspace,
-    queryFn: async () => (await api.get<UserDto[]>('/users')).data,
+    queryKey: keys.users.search(q.projectId ?? '', search, limit, q.includeInactive ?? false),
+    queryFn: enabled
+      ? async ({ signal }) =>
+          (await api.get<UserDto[]>(`/users?${userSearchQuery({ ...q, search })}`, { signal })).data
+      : skipToken,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -226,21 +244,6 @@ export function useProjectMembers(projectId?: string) {
     queryFn: projectId
       ? async () => (await api.get<MemberDto[]>(`/projects/${projectId}/members`)).data
       : skipToken,
-  });
-}
-
-/** Thêm thành viên (user có sẵn trong không gian làm việc) vào dự án với ≥1 vai trò. */
-export function useAddProjectMember(projectId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ userId, roleIds }: { userId: string; roleIds: string[] }) =>
-      api
-        .post<MemberDto>(`/projects/${projectId}/members`, { userId, roleIds })
-        .then((r) => r.data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
-      void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });
-    },
   });
 }
 

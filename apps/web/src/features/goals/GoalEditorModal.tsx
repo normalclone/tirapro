@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
+import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { apiErrorMessage } from '@/lib/api';
 import { useRetained } from '@/lib/useRetained';
 import { useProjects } from '@/features/projects/api';
-import { useWorkspaceUsers } from '@/features/members/api';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { useJqlValidation } from '@/features/saved-filters/api';
 import {
   useCreateGoal,
@@ -167,7 +167,8 @@ export function GoalEditorModal({
   onClose: () => void;
 }) {
   const { data: projects } = useProjects();
-  const { data: users } = useWorkspaceUsers();
+  // Chọn người: tìm phía máy chủ (không giới hạn 50 người), loại tài khoản khoá; chủ cũ đã khoá vẫn hiện tên.
+  const people = useAssigneePicker();
   const create = useCreateGoal();
   const update = useUpdateGoal();
   // Cha đặt `goal` về null ngay khi đóng → giữ bản lúc mở để tiêu đề/nút không đổi giữa hiệu ứng đóng.
@@ -226,18 +227,6 @@ export function GoalEditorModal({
       .reverse()
       .map((p) => ({ value: p, label: p }));
   }, [period, defaultPeriod]);
-
-  const people: PersonOption[] = useMemo(
-    () =>
-      (users ?? []).map((u) => ({
-        id: u.id,
-        name: u.displayName,
-        avatarUrl: u.avatarUrl,
-        email: u.email,
-        search: `${u.displayName} ${u.email}`.toLowerCase(),
-      })),
-    [users],
-  );
 
   const busy = create.isPending || update.isPending;
   const validKrs = krs.filter((kr) => kr.name.trim().length > 0);
@@ -365,7 +354,7 @@ export function GoalEditorModal({
               id="goal-owner"
               value={ownerId}
               onChange={setOwnerId}
-              options={people}
+              {...people}
               emptyLabel="Chưa chọn"
               ariaLabel="Người phụ trách mục tiêu"
             />

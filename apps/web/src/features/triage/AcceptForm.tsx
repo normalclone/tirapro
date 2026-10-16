@@ -6,7 +6,7 @@ import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjectSprints } from '@/features/backlog/api';
-import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import {
   buildAcceptPayload,
   defaultTypeKeyForKind,
@@ -52,7 +52,7 @@ export function AcceptForm({
 }) {
   const { data: meta } = useProjectMeta(projectKey);
   const { data: sprints } = useProjectSprints(issue.projectId);
-  const people = useAssigneeOptions(issue.projectId);
+  const people = useAssigneePicker(issue.projectId);
 
   const defaultTypeId = useMemo(() => {
     const key = defaultTypeKeyForKind(issue.kind);
@@ -145,7 +145,7 @@ export function AcceptForm({
             id={`${id}-assignee`}
             value={assigneeId}
             onChange={setAssigneeId}
-            options={people}
+            {...people}
             ariaLabel="Người phụ trách"
           />
         </Field>

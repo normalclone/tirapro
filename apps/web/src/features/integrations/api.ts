@@ -8,7 +8,7 @@ import { pollPlan } from './telegramWizard';
 /* ------------------------------------------------------------------ */
 
 export type IntegrationType = 'TELEGRAM' | 'GITHUB' | 'GITLAB';
-export type IntegrationStatus = 'ACTIVE' | 'INACTIVE' | 'ERROR';
+type IntegrationStatus = 'ACTIVE' | 'INACTIVE' | 'ERROR';
 
 export type TelegramHealthState =
   | 'READY'

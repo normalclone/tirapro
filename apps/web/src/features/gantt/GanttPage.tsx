@@ -10,7 +10,7 @@ import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives
 import { Button } from '@/components/ui/Button';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
-import { isOverdue } from '@/components/ui/DueBadge';
+import { isOverdue } from '@/lib/dueDate';
 import { categoryColor } from '@/lib/statusColor';
 import { apiErrorMessage } from '@/lib/api';
 import { useCanEditSchedule, useCanIn } from '@/features/projects/permissions';

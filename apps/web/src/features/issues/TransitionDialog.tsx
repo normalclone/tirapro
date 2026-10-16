@@ -164,6 +164,7 @@ export function TransitionDialog({
             onChange={(v) => setComment(v.slice(0, 5000))}
             rows={3}
             mentionPeople={people}
+            mentionProjectId={projectId}
             placeholder={
               isClose
                 ? 'Ghi chú sẽ được lưu thành bình luận (gõ @ để nhắc người)'

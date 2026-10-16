@@ -15,6 +15,8 @@ export function useMentionPopup(
   ref: RefObject<HTMLTextAreaElement>,
   people: MentionPerson[] | undefined,
   onChange: (v: string) => void,
+  /** Báo từ khoá @ đang gõ (null = không còn gõ @) để nơi gọi tìm người phía máy chủ. */
+  onQueryChange?: (query: string | null) => void,
 ) {
   const listId = useId();
   const [trigger, setTrigger] = useState<MentionTrigger | null>(null);
@@ -25,6 +27,10 @@ export function useMentionPopup(
     () => (trigger && people?.length ? filterMentionCandidates(people, trigger.query) : []),
     [trigger, people],
   );
+  const queryNow = trigger?.query ?? null;
+  useEffect(() => {
+    onQueryChange?.(queryNow);
+  }, [queryNow, onQueryChange]);
   const popupOpen = !!trigger && candidates.length > 0 && dismissedAt !== trigger.start;
   const activeIdx = Math.min(active, Math.max(candidates.length - 1, 0));
 

@@ -20,7 +20,7 @@ export function useMyIssues() {
 }
 
 /** Bug do tôi báo còn mở (loại chứa "bug" — chịu được workspace đổi tên loại), mới cập nhật trước. */
-export const MY_BUGS_JQL =
+const MY_BUGS_JQL =
   'reporter = currentUser() AND type ~ "bug" AND statusCategory != DONE ORDER BY updated DESC';
 
 export function useMyReportedBugs() {
@@ -45,7 +45,7 @@ export interface OverviewTotals {
 }
 
 /** Sprint đang chạy của dự án (dùng trong bảng tổng quan). */
-export interface OverviewSprint {
+interface OverviewSprint {
   name: string;
   /** Số ngày còn lại tới hạn sprint; <0 = đã trễ; null = sprint không đặt hạn. */
   daysLeft: number | null;

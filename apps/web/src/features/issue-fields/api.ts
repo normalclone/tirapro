@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /** Các loại field tùy chỉnh (mirror Prisma `CustomFieldType`). */
-export type CustomFieldType =
+type CustomFieldType =
   | 'TEXT'
   | 'TEXTAREA'
   | 'NUMBER'

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
-import { useWorkspaceUsers } from '@/features/members/api';
+import { useUserSelect } from '@/features/members/useUserSelect';
 import { useProjects } from '@/features/projects/api';
 import { cn } from '@/lib/utils';
 import { useCreateProgram, useUpdateProgram, type ProgramDto } from './api';
@@ -70,7 +70,7 @@ export function ProgramEditorModal({
   program?: ProgramDto | null;
   onClose: () => void;
 }) {
-  const { data: users } = useWorkspaceUsers();
+  const owners = useUserSelect({ enabled: open });
   const { data: projects } = useProjects();
   const create = useCreateProgram();
   const update = useUpdateProgram();
@@ -96,11 +96,8 @@ export function ProgramEditorModal({
   }, [open, program]);
 
   const ownerOptions = useMemo(
-    () => [
-      { value: '', label: 'Chưa chỉ định' },
-      ...(users ?? []).map((u) => ({ value: u.id, label: u.displayName })),
-    ],
-    [users],
+    () => [{ value: '', label: 'Chưa chỉ định' }, ...owners.options],
+    [owners.options],
   );
   const projectOptions = useMemo(
     () => (projects ?? []).map((p) => ({ id: p.id, name: `${p.key} · ${p.name}` })),
@@ -207,6 +204,9 @@ export function ProgramEditorModal({
             value={ownerId}
             onChange={setOwnerId}
             options={ownerOptions}
+            onSearchChange={owners.onSearchChange}
+            moreHint={owners.moreHint}
+            resolveOption={owners.resolveOption}
             placeholder="Chưa chỉ định"
             searchPlaceholder="Tìm thành viên…"
             ariaLabel="Người phụ trách chương trình"

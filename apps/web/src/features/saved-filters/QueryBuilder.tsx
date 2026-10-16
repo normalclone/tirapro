@@ -19,7 +19,7 @@ import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
-import { useWorkspaceUsers } from '@/features/members/api';
+import { useSearchUsers } from '@/features/members/api';
 import { useFilterFields, type FieldOption } from './api';
 import { toDateInput } from '@/lib/dateFormat';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
@@ -129,7 +129,8 @@ export function QueryBuilder({
   onEditAsJql: () => void;
 }) {
   const { data: projects } = useProjects();
-  const { data: users } = useWorkspaceUsers();
+  // Lọc theo người (assignee/reporter): gồm cả tài khoản đã khoá để tìm được việc cũ của họ.
+  const { data: users } = useSearchUsers({ includeInactive: true, limit: 200 });
   const { data: fields } = useFilterFields();
 
   const [query, setQuery] = useState<SimpleQuery>(

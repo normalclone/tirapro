@@ -138,13 +138,17 @@
     scroll-snap-align: start;
   }
   /* iOS Safari tự phóng to trang khi chạm ô nhập có chữ < 16px: chỉ dưới `sm` (DESIGN.md giữ 14px ở desktop).
+     Luật là TỐI THIỂU 16px: ô tiêu đề cỡ lớn (`text-lg` 17px, `text-xl`… — Wiki, Dashboard, chi tiết việc) giữ cỡ của nó,
+     không bị ép xuống 16px.
      `!important` BẮT BUỘC: quy tắc trong @layer base có độ ưu tiên thấp hơn `.text-base/.text-sm` của utilities
      (đặt trên <Input>, ô tìm…) nên không có nó thì ô nhập vẫn 14px. Lưới an toàn cho mọi ô nhập, kể cả ô viết tay —
      `<Input>`/`SearchSelect` còn có `max-sm:text-[16px]` riêng. Bộ đo `mobile:audit` kiểm `input-font-small`. */
   @media (max-width: 639px) {
-    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
-    select,
-    textarea {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not(
+        .text-lg
+      ):not(.text-xl):not(.text-2xl):not(.text-3xl),
+    select:not(.text-lg):not(.text-xl):not(.text-2xl):not(.text-3xl),
+    textarea:not(.text-lg):not(.text-xl):not(.text-2xl):not(.text-3xl) {
       font-size: 16px !important;
     }
   }

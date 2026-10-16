@@ -33,7 +33,7 @@ import { apiErrorCode } from '@/lib/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { cn } from '@/lib/utils';
 import { useProjectRealtime } from '@/lib/realtime';
-import { LAST_ACTIVE_KEY, LAST_VIEW_KEY } from '@/lib/currentProject';
+import { LAST_ACTIVE_KEY, lastViewKey } from '@/lib/currentProject';
 import { withKey } from '@/lib/shortcuts';
 import { useScrollFade } from '@/lib/useScrollFade';
 import { activeMoreSeg, tabLabelVisible } from './projectTabs';
@@ -123,7 +123,7 @@ export function ProjectLayout() {
   useEffect(() => {
     if (key && KNOWN_VIEWS.has(seg)) {
       try {
-        localStorage.setItem(LAST_VIEW_KEY, JSON.stringify({ key, view: seg }));
+        localStorage.setItem(lastViewKey(), JSON.stringify({ key, view: seg }));
       } catch {
         /* ignore */
       }

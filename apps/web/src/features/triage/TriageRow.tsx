@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Link } from 'react-router-dom';
 import { Check, ChevronRight, Clock, ExternalLink, Repeat2, X } from 'lucide-react';
 import type { TriageItemDto } from '@tirapro/types';
@@ -33,7 +34,7 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-/** Nút Tạm hoãn + menu 1 ngày / 3 ngày / 1 tuần. */
+/** Nút Tạm hoãn + menu 1 ngày / 3 ngày / 1 tuần (Radix: Esc đóng, mũi tên chọn, focus trả về nút). */
 function SnoozeMenu({
   compact,
   pending,
@@ -43,52 +44,33 @@ function SnoozeMenu({
   pending: boolean;
   onPick: (days: number, label: string) => void;
 }) {
-  const [snoozeOpen, setSnoozeOpen] = useState(false);
   return (
-    <div className="relative">
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => setSnoozeOpen((v) => !v)}
-        disabled={pending}
-        aria-haspopup="menu"
-        aria-expanded={snoozeOpen}
-        title="Tạm hoãn"
-      >
-        <Clock className="h-4 w-4" />
-        <span className={compact ? 'sr-only' : undefined}>Tạm hoãn</span>
-      </Button>
-      {snoozeOpen && (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-10 cursor-default"
-            aria-label="Đóng"
-            onClick={() => setSnoozeOpen(false)}
-          />
-          <div
-            role="menu"
-            data-state="open"
-            className="absolute right-0 top-full z-20 mt-1 w-32 overflow-hidden rounded-md border border-border bg-surface py-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
-          >
-            {SNOOZE_CHOICES.map((c) => (
-              <button
-                key={c.days}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setSnoozeOpen(false);
-                  onPick(c.days, c.label);
-                }}
-                className="block w-full px-3 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2"
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <Button variant="secondary" size="sm" disabled={pending} title="Tạm hoãn">
+          <Clock className="h-4 w-4" />
+          <span className={compact ? 'sr-only' : undefined}>Tạm hoãn</span>
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          collisionPadding={12}
+          className="z-dropdown w-32 overflow-hidden rounded-md border border-border bg-surface py-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
+        >
+          {SNOOZE_CHOICES.map((c) => (
+            <DropdownMenu.Item
+              key={c.days}
+              onSelect={() => onPick(c.days, c.label)}
+              className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
+            >
+              {c.label}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 
@@ -247,6 +229,7 @@ export function TriageRow({
   return (
     <li data-issue-key={issue.key} className={cn(peeking && 'bg-primary-subtle/60')}>
       <div
+        role="group"
         tabIndex={0}
         data-nav-item
         aria-label={`Xem nhanh ${issue.key}: ${issue.summary}`}

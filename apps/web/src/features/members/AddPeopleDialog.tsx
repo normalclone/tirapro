@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Search, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiErrorMessage } from '@/lib/api';
+import { apiErrorCode, apiErrorMessage } from '@/lib/api';
+import { memberErrorText } from './memberErrors';
 import { Avatar } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
@@ -179,7 +180,11 @@ export function AddPeopleDialog({
       );
       onClose();
     } catch (e) {
-      toast.error(apiErrorMessage(e));
+      // Chọn đúng một người mà API báo đã là thành viên → nêu tên người đó.
+      const one =
+        selected.size === 1 ? candidates.find((c) => selected.has(c.id))?.name : undefined;
+      const generic = apiErrorMessage(e); // luôn gọi: đánh dấu lỗi đã báo
+      toast.error(memberErrorText(apiErrorCode(e), one) ?? generic);
     }
   }
 

@@ -1,7 +1,7 @@
 import type { PermissionKey } from '@tirapro/types';
 
 /** Khớp `RETRACT_WINDOW_MS` của API (10 phút). Chỉ để ước lượng hiển thị — server luôn là bên quyết. */
-export const RETRACT_WINDOW_MIN = 10;
+const RETRACT_WINDOW_MIN = 10;
 
 /** Số phút còn lại để thu hồi (làm tròn lên); 0 khi quá hạn hoặc `createdAt` không hợp lệ. */
 export function retractMinutesLeft(createdAt: string, now: Date = new Date()): number {

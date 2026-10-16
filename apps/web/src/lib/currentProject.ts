@@ -1,6 +1,12 @@
-/** localStorage: view cơ bản người dùng mở gần nhất (để /projects mở lại đúng view). */
-export const LAST_VIEW_KEY = 'tirapro:lastProjectView';
-/** localStorage: key dự án ĐANG HOẠT ĐỘNG xem gần nhất (không bị dự án lưu trữ ghi đè, khác `LAST_VIEW_KEY`). */
+import { useAuth } from '@/stores/auth';
+
+/**
+ * localStorage: view cơ bản người dùng mở gần nhất (để /projects mở lại đúng view) — THEO NGƯỜI DÙNG, hai tài khoản
+ * dùng chung trình duyệt không thấy "Tiếp tục:" của nhau.
+ */
+export const lastViewKey = (userId: string | undefined = useAuth.getState().user?.id): string =>
+  `tirapro:lastProjectView:${userId ?? 'anon'}`;
+/** localStorage: key dự án ĐANG HOẠT ĐỘNG xem gần nhất (không bị dự án lưu trữ ghi đè, khác `lastViewKey`). */
 export const LAST_ACTIVE_KEY = 'tirapro:lastActiveProject';
 /** localStorage: dự án tạo việc gần nhất (do `CreateIssueModal` ghi). */
 export const CREATE_LAST_KEY = 'tirapro:createIssue:last';
@@ -130,7 +136,7 @@ export function readRecentProjectKeys(): string[] {
   };
   try {
     add(localStorage.getItem(LAST_ACTIVE_KEY));
-    addJson(localStorage.getItem(LAST_VIEW_KEY), 'key');
+    addJson(localStorage.getItem(lastViewKey()), 'key');
     addJson(localStorage.getItem(CREATE_LAST_KEY), 'projectKey');
   } catch {
     /* storage bị chặn */
@@ -142,7 +148,7 @@ export function readRecentProjectKeys(): string[] {
 export function currentProjectKey(projects: { key: string }[] | undefined): string | null {
   let lastViewRaw: string | null = null;
   try {
-    lastViewRaw = localStorage.getItem(LAST_VIEW_KEY);
+    lastViewRaw = localStorage.getItem(lastViewKey());
   } catch {
     /* storage bị chặn */
   }

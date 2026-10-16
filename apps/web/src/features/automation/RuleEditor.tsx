@@ -23,7 +23,7 @@ import { Input } from '@/components/ui/Input';
 import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjectSprints } from '@/features/backlog/api';
-import { useWorkspaceUsers } from '@/features/issue-edit/api';
+import { useUserSelect } from '@/features/members/useUserSelect';
 import { useProjectLabels } from '@/features/issue-meta/api';
 import { useProjects } from '@/features/projects/api';
 import { QueryBuilder } from '@/features/saved-filters/QueryBuilder';
@@ -282,12 +282,20 @@ function toPayload(d: Draft): unknown {
 
 /* ------------------------------ dữ liệu chọn ------------------------------ */
 
+interface UserPick {
+  onSearchChange: (q: string) => void;
+  moreHint: boolean;
+  resolveOption: (id: string) => SearchSelectOption | undefined;
+}
+
 interface Options {
   priorities: SearchSelectOption[];
   types: SearchSelectOption[];
   subtaskTypes: SearchSelectOption[];
   statuses: SearchSelectOption[];
   users: SearchSelectOption[];
+  /** Tìm người phía máy chủ cho mọi ô chọn người (props rải thẳng vào SearchSelect/MultiPick). */
+  userPick: UserPick;
   labels: SearchSelectOption[];
   sprints: SearchSelectOption[];
 }
@@ -297,7 +305,8 @@ function useOptions(projectId: string): Options {
   const metaKey = projects?.find((p) => p.id === projectId)?.key ?? projects?.[0]?.key;
   const { data: meta } = useProjectMeta(metaKey);
   const { data: workflows } = useWorkflows();
-  const { data: users } = useWorkspaceUsers();
+  // Chọn người: tìm phía máy chủ (theo dự án của quy tắc nếu có), loại tài khoản khoá; giá trị cũ tra tên theo id.
+  const people = useUserSelect({ projectId: projectId || undefined });
   const { data: labels } = useProjectLabels(projectId || undefined);
   const { data: sprints } = useProjectSprints(projectId || undefined);
   return useMemo(() => {
@@ -321,11 +330,16 @@ function useOptions(projectId: string): Options {
           hint: multi ? w.name : undefined,
         })),
       ),
-      users: (users ?? []).map((u) => ({ value: u.id, label: u.displayName, hint: u.email })),
+      users: people.options,
+      userPick: {
+        onSearchChange: people.onSearchChange,
+        moreHint: people.moreHint,
+        resolveOption: people.resolveOption,
+      },
       labels: (labels ?? []).map((l) => ({ value: l.id, label: l.name, color: l.color })),
       sprints: (sprints ?? []).map((s) => ({ value: s.id, label: s.name })),
     };
-  }, [meta, workflows, users, labels, sprints]);
+  }, [meta, workflows, people, labels, sprints]);
 }
 
 function optionsForField(f: FieldName, o: Options): SearchSelectOption[] {
@@ -410,36 +424,57 @@ function MultiPick({
   onChange,
   empty,
   ariaLabel,
+  pick,
 }: {
   options: SearchSelectOption[];
   value: string[];
   onChange: (v: string[]) => void;
   empty: string;
   ariaLabel: string;
+  /** Chọn người: có ô tìm phía máy chủ; mục đã chọn không nằm trong kết quả vẫn hiện (tra tên theo id). */
+  pick?: UserPick;
 }) {
-  if (!options.length) return <p className="text-xs text-faint">{empty}</p>;
+  if (!options.length && !pick && !value.length)
+    return <p className="text-xs text-faint">{empty}</p>;
   const toggle = (v: string) =>
     onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+  const shown = pick
+    ? [
+        ...options,
+        ...value.flatMap((id) =>
+          options.some((o) => o.value === id)
+            ? []
+            : [pick.resolveOption(id) ?? { value: id, label: id }],
+        ),
+      ]
+    : options;
   return (
-    <div
-      role="group"
-      aria-label={ariaLabel}
-      className="max-h-36 overflow-y-auto rounded-md border border-border bg-surface p-1.5"
-    >
-      {options.map((o) => (
-        <label
-          key={o.value}
-          className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-ink hover:bg-surface-2"
-        >
-          <input
-            type="checkbox"
-            checked={value.includes(o.value)}
-            onChange={() => toggle(o.value)}
-          />
-          <span className="truncate">{o.label}</span>
-          {o.hint && <span className="ml-auto truncate text-xs text-faint">{o.hint}</span>}
-        </label>
-      ))}
+    <div className="rounded-md border border-border bg-surface">
+      {pick && (
+        <Input
+          aria-label={`Tìm — ${ariaLabel}`}
+          placeholder="Tìm người…"
+          onChange={(e) => pick.onSearchChange(e.target.value)}
+          className="h-8 rounded-b-none border-0 border-b border-border text-sm"
+        />
+      )}
+      <div role="group" aria-label={ariaLabel} className="max-h-36 overflow-y-auto p-1.5">
+        {shown.map((o) => (
+          <label
+            key={o.value}
+            className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-ink hover:bg-surface-2"
+          >
+            <input
+              type="checkbox"
+              checked={value.includes(o.value)}
+              onChange={() => toggle(o.value)}
+            />
+            <span className="truncate">{o.label}</span>
+            {o.hint && <span className="ml-auto truncate text-xs text-faint">{o.hint}</span>}
+          </label>
+        ))}
+        {pick?.moreHint && <p className="px-1.5 py-1 text-xs text-faint">Gõ để tìm thêm</p>}
+      </div>
     </div>
   );
 }
@@ -525,6 +560,7 @@ function ConditionCard({
       {needsValue ? (
         multi ? (
           <MultiPick
+            pick={options === opts.users ? opts.userPick : undefined}
             options={options}
             value={c.values}
             onChange={(values) => onChange({ ...c, values })}
@@ -533,6 +569,7 @@ function ConditionCard({
           />
         ) : options.length || ID_FIELDS.includes(c.field) || c.field === 'labelIds' ? (
           <SearchSelect
+            {...(options === opts.users ? opts.userPick : {})}
             value={c.value}
             onChange={(value) => onChange({ ...c, value })}
             options={options}
@@ -602,6 +639,7 @@ function ActionCard({
           </Select>
           {a.field === 'priorityId' || a.field === 'assigneeId' || a.field === 'sprintId' ? (
             <SearchSelect
+              {...(a.field === 'assigneeId' ? opts.userPick : {})}
               value={a.value}
               onChange={(value) => set({ value })}
               options={[
@@ -643,6 +681,7 @@ function ActionCard({
           </Select>
           {a.mode === 'user' && (
             <SearchSelect
+              {...opts.userPick}
               value={a.userId}
               onChange={(userId) => set({ userId })}
               options={opts.users}
@@ -704,6 +743,7 @@ function ActionCard({
           />
           <p className="text-xs font-medium text-muted">Người nhận</p>
           <MultiPick
+            pick={opts.userPick}
             options={opts.users}
             value={a.userIds}
             onChange={(userIds) => set({ userIds })}

@@ -5,13 +5,13 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
+import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { Badge } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
-import { useWorkspaceUsers } from '@/features/members/api';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import {
   useCreateRaidItem,
   useUpdateRaidItem,
@@ -105,7 +105,8 @@ export function RaidEditorModal({
   onClose: () => void;
 }) {
   const { data: projects } = useProjects();
-  const { data: users } = useWorkspaceUsers();
+  // Chọn người: tìm phía máy chủ (không giới hạn 50 người), loại tài khoản khoá; chủ cũ đã khoá vẫn hiện tên.
+  const people = useAssigneePicker();
   const create = useCreateRaidItem();
   const update = useUpdateRaidItem();
   // Cha đặt `item` về null ngay khi đóng → giữ bản lúc mở để tiêu đề/nút không đổi giữa hiệu ứng đóng.
@@ -143,18 +144,6 @@ export function RaidEditorModal({
       ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
     ],
     [projects],
-  );
-
-  const people: PersonOption[] = useMemo(
-    () =>
-      (users ?? []).map((u) => ({
-        id: u.id,
-        name: u.displayName,
-        avatarUrl: u.avatarUrl,
-        email: u.email,
-        search: `${u.displayName} ${u.email}`.toLowerCase(),
-      })),
-    [users],
   );
 
   const busy = create.isPending || update.isPending;
@@ -332,7 +321,7 @@ export function RaidEditorModal({
               id="raid-owner"
               value={ownerId}
               onChange={setOwnerId}
-              options={people}
+              {...people}
               emptyLabel="Chưa chọn"
               ariaLabel="Người phụ trách mục này"
             />

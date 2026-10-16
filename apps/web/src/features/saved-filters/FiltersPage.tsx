@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ComponentProps } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { Bookmark, ChevronDown, Filter as FilterIcon, Play, Plus, Trash2 } from 'lucide-react';
@@ -17,12 +17,15 @@ import { useProjects } from '@/features/projects/api';
 import { useAuth } from '@/stores/auth';
 import { JqlEditor } from './JqlEditor';
 import { ResultsTable } from './ResultsTable';
+import { appendResults, type ResultSet } from './resultPaging';
 import { QueryBuilder, Segmented } from './QueryBuilder';
 import {
   useCreateFilter,
   useDeleteFilter,
   useJqlValidation,
   useRunFilter,
+  fetchFilterPage,
+  fetchJqlPage,
   useRunJql,
   useSavedFilters,
   type FilterVisibility,
@@ -70,7 +73,10 @@ export function FiltersPage() {
   const canManageFilters = useAuth((s) => s.can('filter:manage'));
 
   const [active, setActive] = useState<ActiveSource>({ kind: 'none' });
-  const [results, setResults] = useState<IssueDto[] | null>(null);
+  const [results, setResults] = useState<ResultSet | null>(null);
+  // Các trang đã nạp THÊM sau trang đầu ("Tải thêm"); đổi nguồn/chạy lại thì bỏ.
+  const [more, setMore] = useState<ResultSet | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
@@ -98,7 +104,16 @@ export function FiltersPage() {
   }, [projects]);
 
   // Kết quả ad-hoc lấy trực tiếp từ query; kết quả bộ lọc đã lưu giữ trong state.
-  const shownResults = active.kind === 'adhoc' ? (adhoc.data ?? null) : results;
+  const baseResults = active.kind === 'adhoc' ? (adhoc.data ?? null) : results;
+  // Đổi bộ lọc/chạy lại trong lúc đang "Tải thêm": trang về trễ của nguồn cũ bị bỏ (so `loadSeq`).
+  const loadSeq = useRef(0);
+  useEffect(() => {
+    loadSeq.current += 1;
+    setMore(null);
+    setLoadingMore(false);
+  }, [baseResults]);
+  const shownSet = baseResults ? (more ? appendResults(baseResults, more) : baseResults) : null;
+  const shownResults: IssueDto[] | null = shownSet?.items ?? null;
 
   // Đổi nguồn kết quả → về trang 1.
   useEffect(() => {
@@ -114,14 +129,33 @@ export function FiltersPage() {
     setAdhocJql(urlJql);
   }, [urlJql]);
 
+  async function loadMore() {
+    if (!shownSet?.nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    const seq = loadSeq.current;
+    try {
+      const next =
+        active.kind === 'adhoc'
+          ? await fetchJqlPage(active.jql, shownSet.nextCursor)
+          : active.kind === 'filter'
+            ? await fetchFilterPage(active.filter.id, shownSet.nextCursor)
+            : null;
+      if (seq !== loadSeq.current) return; // nguồn đã đổi
+      if (next && baseResults) setMore((m) => (m ? appendResults(m, next) : next));
+    } catch (e) {
+      if (seq === loadSeq.current) toast.error(apiErrorMessage(e));
+    } finally {
+      if (seq === loadSeq.current) setLoadingMore(false);
+    }
+  }
+
   async function loadAndRunSaved(f: SavedFilter) {
     setJqlDraft(f.jql); // hiện đúng câu JQL của bộ lọc để người dùng học cú pháp / chỉnh rồi "Lưu truy vấn"
     setAdhocJql(''); // dừng truy vấn ad-hoc
     setResults(null);
     setActive({ kind: 'filter', filter: f });
     try {
-      const issues = await runFilter.mutateAsync(f.id);
-      setResults(issues);
+      setResults(await runFilter.mutateAsync(f.id));
     } catch (e) {
       toast.error(apiErrorMessage(e));
       setActive({ kind: 'none' });
@@ -275,6 +309,9 @@ export function FiltersPage() {
             onPageChange={setPage}
             projectKeyById={projectKeyById}
             onOpen={openIssue}
+            hasMore={shownSet?.hasMore ?? false}
+            loadingMore={loadingMore}
+            onLoadMore={() => void loadMore()}
             exportJql={
               active.kind === 'adhoc'
                 ? active.jql

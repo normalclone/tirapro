@@ -3,7 +3,7 @@ import { create } from 'zustand';
 /** Các tác vụ nhanh có thể bật/tắt trên nút nổi. */
 export type QuickActionKey = 'issue' | 'ai' | 'report' | 'watch' | 'project' | 'command';
 
-export const QUICK_ACTION_KEYS: QuickActionKey[] = [
+const QUICK_ACTION_KEYS: QuickActionKey[] = [
   'issue',
   'ai',
   'report',

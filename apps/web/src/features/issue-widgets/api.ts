@@ -8,12 +8,6 @@ export interface WatchState {
   watching: boolean;
 }
 
-export interface Watcher {
-  id: string;
-  displayName: string;
-  avatarUrl: string | null;
-}
-
 export interface LinkType {
   id: string;
   name: string;
@@ -21,7 +15,7 @@ export interface LinkType {
   inwardName: string;
 }
 
-export interface LinkedIssue {
+interface LinkedIssue {
   id: string;
   key: string;
   summary: string;

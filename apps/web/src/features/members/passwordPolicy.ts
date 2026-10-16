@@ -1,7 +1,7 @@
 import { passwordSchema } from '@tirapro/shared';
 
 /** Thông điệp chính sách mật khẩu dùng chung (đăng ký = admin tạo = đặt lại). */
-export const PASSWORD_POLICY_MESSAGE = 'Mật khẩu tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và số';
+const PASSWORD_POLICY_MESSAGE = 'Mật khẩu tối thiểu 8 ký tự, gồm chữ hoa, chữ thường và số';
 
 /** Gợi ý dưới ô mật khẩu khi tạo tài khoản. */
 export const PASSWORD_POLICY_HINT =

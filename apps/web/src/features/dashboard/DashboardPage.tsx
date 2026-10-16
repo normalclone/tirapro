@@ -45,13 +45,14 @@ import { MyBugsSection } from './MyBugsSection';
 import { OnboardingChecklist } from '@/features/guides/OnboardingChecklist';
 import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
 import { Button } from '@/components/ui/Button';
-import { LAST_VIEW_KEY, resolveCurrentProjectKey } from '@/lib/currentProject';
+import { lastViewKey, resolveCurrentProjectKey } from '@/lib/currentProject';
 import { emptyHomeActions, personaOf, type HomeAction } from '@/lib/persona';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { openReportIssue } from '@/stores/reportIssue';
 import { useAuth } from '@/stores/auth';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
-import { DueBadge, dueState } from '@/components/ui/DueBadge';
+import { DueBadge } from '@/components/ui/DueBadge';
+import { dueState } from '@/lib/dueDate';
 import { HealthBadge } from '@/components/ui/HealthBadge';
 import { PrintButton } from '@/components/ui/PrintButton';
 import { PrintHeader } from '@/components/ui/PrintHeader';
@@ -869,7 +870,7 @@ function PersonalEmptyState({ projects }: { projects: { key: string }[] }) {
   );
   let lastViewRaw: string | null = null;
   try {
-    lastViewRaw = localStorage.getItem(LAST_VIEW_KEY);
+    lastViewRaw = localStorage.getItem(lastViewKey());
   } catch {
     /* storage bị chặn → rơi về dự án đầu */
   }

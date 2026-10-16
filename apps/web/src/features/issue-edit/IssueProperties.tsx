@@ -10,7 +10,7 @@ import { BACKLOG_LABEL, buildSprintOptions } from './sprintOptions';
 import { useUpdateIssue } from '@/features/issues/api';
 import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { useConfirm } from '@/components/ui/useConfirm';
-import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { ParticipantsRow } from '@/features/issue-extras/ParticipantsRow';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
@@ -21,7 +21,7 @@ import { Avatar } from '@/components/ui/primitives';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { isBugType } from './severity';
-import { dueState } from '@/components/ui/DueBadge';
+import { dueState } from '@/lib/dueDate';
 import { apiErrorMessage } from '@/lib/api';
 import { parsePointsInput } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
@@ -438,7 +438,7 @@ export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; ca
 /* ------------------------------------------------------------------ */
 
 export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
-  const assignees = useAssigneeOptions(issue.projectId);
+  const assignees = useAssigneePicker(issue.projectId);
   const patch = useUpdateIssue(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
   const canSuggest = useAuth((s) => s.can('ai:use')) && canEditThis;
@@ -477,7 +477,8 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
                 value={issue.assignee?.id ?? ''}
                 disabled={patch.isPending}
                 align="end"
-                options={assignees}
+                {...assignees}
+                selectedFallback={issue.assignee ?? undefined}
                 onChange={(v) => {
                   const next = v || null;
                   if (next !== (issue.assignee?.id ?? null)) {

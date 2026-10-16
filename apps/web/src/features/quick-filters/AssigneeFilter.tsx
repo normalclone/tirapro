@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import { CHIP_TOUCH_HIT } from '@/lib/touchHit';
 
 /** Giá trị đặc biệt cho bộ lọc: '' = mọi người, dưới đây = việc chưa có người phụ trách. */
-export const ASSIGNEE_UNASSIGNED = '__unassigned__';
+const ASSIGNEE_UNASSIGNED = '__unassigned__';
 
 /** Lọc công việc theo người phụ trách (ngay tại trình duyệt). */
 export function applyAssigneeFilter<T extends Pick<IssueDto, 'assigneeId'>>(

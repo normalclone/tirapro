@@ -20,15 +20,12 @@ import {
 } from 'lucide-react';
 import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
 import type { SubtreeProgress } from '@/lib/issueTree';
+import { useDragSensors } from '@/lib/dragSensors';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useRetained } from '@/lib/useRetained';
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
   useDroppable,
   type Announcements,
   type DragEndEvent,
@@ -101,7 +98,8 @@ import {
 } from './dropPlan';
 import { BulkActionBar } from './BulkActionBar';
 import { EpicPanel } from './EpicPanel';
-import { useEpicPanel } from '@/stores/epicPanel';
+import { epicPanelShown, useEpicPanel } from '@/stores/epicPanel';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeekShell } from '@/features/issues/peek/PeekShell';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
@@ -163,27 +161,28 @@ export function BacklogPage() {
   // Sửa tại chỗ trên dòng (điểm/ưu tiên): callback + đối tượng ổn định để `IssueRow` (memo) không vẽ lại thừa.
   const { data: meta } = useProjectMeta(key);
   const patchIssue = useUpdateIssue(projectId);
-  const mutateIssue = patchIssue.mutate;
+  // `mutateAsync` (không phải `mutate`): callback của `mutate` chỉ chạy cho lần gọi MỚI NHẤT của cùng observer — sửa nhanh
+  // hai dòng liền nhau sẽ làm dòng trước mất toast/Hoàn tác. Promise của từng lần gọi thì luôn chạy xong.
+  const mutateIssue = patchIssue.mutateAsync;
   const onEditPoints = useCallback(
     (issue: IssueDto, value: number | null) =>
-      mutateIssue(
-        { id: issue.id, key: issue.key, patch: { storyPoints: value }, version: issue.version },
-        { onError: (e) => toast.error(apiErrorMessage(e)) },
-      ),
+      void mutateIssue({
+        id: issue.id,
+        key: issue.key,
+        patch: { storyPoints: value },
+        version: issue.version,
+      }).catch((e) => toast.error(apiErrorMessage(e))),
     [mutateIssue],
   );
   const onEditPriority = useCallback(
     (issue: IssueDto, priority: PriorityDto | null) =>
-      mutateIssue(
-        {
-          id: issue.id,
-          key: issue.key,
-          patch: { priorityId: priority?.id ?? null },
-          version: issue.version,
-          optimistic: { priority },
-        },
-        { onError: (e) => toast.error(apiErrorMessage(e)) },
-      ),
+      void mutateIssue({
+        id: issue.id,
+        key: issue.key,
+        patch: { priorityId: priority?.id ?? null },
+        version: issue.version,
+        optimistic: { priority },
+      }).catch((e) => toast.error(apiErrorMessage(e))),
     [mutateIssue],
   );
   const rowEdit = useMemo<RowEdit>(
@@ -210,7 +209,8 @@ export function BacklogPage() {
   const completeSprint = useCompleteSprint(projectId ?? '');
   const move = useMoveIssue(projectId ?? '');
   const pending = usePendingMoves(projectId);
-  const assigneeOptions = useAssigneeOptions(projectId);
+  // Bộ lọc theo người: gồm cả tài khoản đã khoá (lọc được việc cũ của họ), tối đa 200 người.
+  const assigneeOptions = useAssigneeOptions(projectId, { includeInactive: true, limit: 200 });
 
   // Bộ lọc nhanh (dùng chung với board) — áp client-side trong mỗi section.
   const { active: quickFilters, toggle: toggleQuickFilter } = useQuickFilters();
@@ -218,8 +218,16 @@ export function BacklogPage() {
   // Lọc theo epic ở panel trái: null = tất cả, 'none' = không thuộc epic, còn lại = id epic. State cục bộ (peek đã dùng URL).
   const [epicFilter, setEpicFilter] = useState<string | null>(null);
   // Trạng thái panel Epic dùng chung với rail dự án (mở panel → rail thu tạm, mở rail → panel thu).
-  const epicPanelOpen = useEpicPanel((s) => s.open);
-  const toggleEpicPanel = useEpicPanel((s) => s.toggle);
+  const epicPanelUserOpen = useEpicPanel((s) => s.open);
+  const storeToggleEpicPanel = useEpicPanel((s) => s.toggle);
+  // Xem nhanh mở ở khổ hẹp thì panel Epic tự thu tạm (không đổi lựa chọn đã lưu của người dùng).
+  const squeezed = useMediaQuery('(min-width: 1024px) and (max-width: 1535px)');
+  const epicPanelOpen = epicPanelShown(epicPanelUserOpen, peek.peekKey !== null, squeezed);
+  const toggleEpicPanel = () => {
+    // Đang bị thu tạm vì xem nhanh: người dùng bấm "Epic" = muốn xem Epic → đóng xem nhanh (mở cái này thì cái kia thu vào).
+    if (epicPanelUserOpen && !epicPanelOpen) peek.close();
+    else storeToggleEpicPanel();
+  };
 
   // Bulk select: id các việc đang chọn + cờ đang chạy batch (khóa thao tác).
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -255,10 +263,7 @@ export function BacklogPage() {
   const startingShown = useRetained(starting);
   const startingKey = useOpenSession(!!starting);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: epicAwareKeyboardCoordinates }),
-  );
+  const sensors = useDragSensors({ distance: 5, keyboard: epicAwareKeyboardCoordinates });
 
   // Sprint hiển thị: chỉ FUTURE/ACTIVE, ACTIVE trước rồi theo sequence.
   const visibleSprints = useMemo(() => {
@@ -346,33 +351,30 @@ export function BacklogPage() {
       return;
     }
     const epicKey = byIdAll.get(target)?.key;
-    mutateIssue(
-      { id: issue.id, key: issue.key, patch: plan.patch, version: issue.version },
-      {
-        onSuccess: (res) =>
-          toast.success(
-            target === 'none'
-              ? `Đã gỡ ${issue.key} khỏi epic`
-              : `Đã gắn ${issue.key} vào ${epicKey}`,
-            {
-              duration: 5000,
-              action: {
-                label: 'Hoàn tác',
-                onClick: () =>
-                  mutateIssue(
-                    {
-                      id: issue.id,
-                      key: issue.key,
-                      patch: plan.restore,
-                      version: res.data.version,
-                    },
-                    { onError: (err) => toast.error(apiErrorMessage(err)) },
-                  ),
-              },
+    void mutateIssue({
+      id: issue.id,
+      key: issue.key,
+      patch: plan.patch,
+      version: issue.version,
+    }).then(
+      (res) =>
+        toast.success(
+          target === 'none' ? `Đã gỡ ${issue.key} khỏi epic` : `Đã gắn ${issue.key} vào ${epicKey}`,
+          {
+            duration: 5000,
+            action: {
+              label: 'Hoàn tác',
+              onClick: () =>
+                void mutateIssue({
+                  id: issue.id,
+                  key: issue.key,
+                  patch: plan.restore,
+                  version: res.data.version,
+                }).catch((err) => toast.error(apiErrorMessage(err))),
             },
-          ),
-        onError: (err) => toast.error(apiErrorMessage(err)),
-      },
+          },
+        ),
+      (err) => toast.error(apiErrorMessage(err)),
     );
   }
 
@@ -653,7 +655,10 @@ export function BacklogPage() {
   function openStartDialog(sprintId: string) {
     const sprint = sprints?.find((s) => s.id === sprintId);
     if (!sprint || sprint.state !== 'FUTURE') return;
-    const unestimated = (bySprint.get(sprintId) ?? []).filter((i) => i.storyPoints == null).length;
+    // Đếm trên danh sách CHƯA lọc (như requestComplete): bộ lọc nhanh đang bật không được làm sai cảnh báo.
+    const unestimated = (fullBySprint.get(sprintId) ?? []).filter(
+      (i) => i.storyPoints == null,
+    ).length;
     setStarting({ sprint, unestimated });
   }
 
@@ -888,9 +893,11 @@ export function BacklogPage() {
             />
             <div
               ref={setScrollEl}
+              // Xem nhanh mở → cột danh sách hẹp lại: dòng ẩn nhãn + tên người phụ trách (xem `group-data-[peeking]/list` ở IssueRow).
+              data-peeking={peek.peekKey ? '' : undefined}
               // Có thanh hàng loạt: chừa đáy danh sách trên mobile để cuộn dòng cuối lên khỏi thanh.
               className={cn(
-                'min-w-0 flex-1 space-y-4 overflow-y-auto p-3 pb-24 sm:p-6 sm:pb-24',
+                'group/list min-w-0 flex-1 space-y-4 overflow-y-auto p-3 pb-24 sm:p-6 sm:pb-24',
                 selected.size > 0 && 'max-sm:pb-28',
               )}
             >
@@ -1080,7 +1087,7 @@ export function BacklogPage() {
               {selected.size > 0 && (
                 <BulkActionBar
                   count={selected.size}
-                  assigneeOptions={assigneeOptions}
+                  projectId={projectId}
                   sprints={visibleSprints}
                   busy={bulk.busy}
                   canAssign={canAssign}

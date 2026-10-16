@@ -6,6 +6,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
+import { useAuth } from '@/stores/auth';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useCreateDigest, usePreviewDigest, useUpdateDigest, type Digest } from './api';
@@ -39,7 +40,8 @@ export function DigestEditorDialog({
   digest: Digest | null;
 }) {
   const [form, setForm] = useState<DigestFormState>(() => initialForm(digest));
-  const projects = useProjects();
+  // Gồm dự án đã lưu trữ: sửa báo cáo của dự án lưu trữ không được âm thầm coi là công khai (reset `allowPrivateToChannel`).
+  const projects = useProjects(true);
   const create = useCreateDigest();
   const update = useUpdateDigest();
   const saving = create.isPending || update.isPending;
@@ -123,6 +125,8 @@ function PreviewPanel({
   form: DigestFormState;
   projectIsPrivate: boolean;
 }) {
+  // API xem trước (`POST /digests/preview`) cùng quyền với việc mở hộp soạn: integration:manage → không bày nút rồi bị 403.
+  const canPreview = useAuth((s) => s.can('integration:manage'));
   const hasChannel = form.channelId !== '';
   const [as, setAs] = useState<'channel' | 'me'>(hasChannel ? 'channel' : 'me');
   const mode = hasChannel ? as : 'me';
@@ -151,6 +155,12 @@ function PreviewPanel({
   }
 
   const result = preview.data;
+  if (!canPreview)
+    return (
+      <p className="text-xs text-faint">
+        Xem trước cần quyền quản lý kết nối — bạn vẫn lưu được cấu hình, báo cáo sẽ gửi đúng lịch.
+      </p>
+    );
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">

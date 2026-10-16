@@ -8,13 +8,7 @@ import { epicDropId, epicProgress, epicProgressLabel, type PointsProgress } from
 import { cn } from '@/lib/utils';
 
 /** Thanh tiến độ theo điểm: phần xong tô `--status-done` trên nền `surface-3`, luôn kèm nhãn chữ. */
-export function PointsBar({
-  progress,
-  className,
-}: {
-  progress: PointsProgress;
-  className?: string;
-}) {
+function PointsBar({ progress, className }: { progress: PointsProgress; className?: string }) {
   const label = epicProgressLabel(progress);
   return (
     <div className={cn('space-y-1', className)}>

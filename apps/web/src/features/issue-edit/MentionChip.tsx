@@ -1,5 +1,5 @@
 import { useAuth } from '@/stores/auth';
-import { useWorkspaceUsers } from './api';
+import { useSearchUsers } from '@/features/members/api';
 import { resolveMentionName } from './mentionQuery';
 import { cn } from '@/lib/utils';
 
@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils';
  */
 export function MentionChip({ id, name: tokenName }: { id: string; name: string }) {
   const me = useAuth((s) => s.user?.id);
-  const { data: users } = useWorkspaceUsers();
+  // Chỉ để TRA TÊN theo id cho @mention đã có trong văn bản: gồm cả tài khoản đã khoá.
+  const { data: users } = useSearchUsers({ includeInactive: true, limit: 200 });
   const name = resolveMentionName(users, id, tokenName);
   return (
     <span
