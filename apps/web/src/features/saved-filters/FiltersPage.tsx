@@ -1,31 +1,22 @@
 import { useEffect, useMemo, useState, type FormEvent, type ComponentProps } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
-import {
-  Bookmark,
-  ChevronLeft,
-  ChevronRight,
-  Filter as FilterIcon,
-  Play,
-  Plus,
-  SearchX,
-  Trash2,
-} from 'lucide-react';
+import { Bookmark, Filter as FilterIcon, Play, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { IssueDto, UserDto } from '@tirapro/types';
+import type { IssueDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
-import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
+import { Badge, Skeleton } from '@/components/ui/primitives';
 import { pageContainer } from '@/components/layout/page';
-import { categoryColor } from '@/lib/statusColor';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useAuth } from '@/stores/auth';
 import { JqlEditor } from './JqlEditor';
+import { ResultsTable } from './ResultsTable';
 import { QueryBuilder, Segmented } from './QueryBuilder';
 import {
   useCreateFilter,
@@ -40,8 +31,6 @@ import {
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 type BuilderMode = 'simple' | 'jql';
-
-const PAGE_SIZE = 25;
 
 const VISIBILITY_LABEL: Record<FilterVisibility, string> = {
   PRIVATE: 'Riêng tư',
@@ -145,8 +134,8 @@ export function FiltersPage() {
     setAdhocJql(jql);
   }
 
-  function openIssue(issue: IssueDto) {
-    navigate(`/issue/${issue.key}`);
+  function openIssue(key: string) {
+    navigate(`/issue/${key}`);
   }
 
   async function handleDelete(f: SavedFilter) {
@@ -246,7 +235,7 @@ export function FiltersPage() {
             }
           />
 
-          <Results
+          <ResultsTable
             issues={shownResults}
             loading={isRunning}
             hasRun={hasRun}
@@ -562,175 +551,5 @@ function CreateFilterModalInner({
         </div>
       </form>
     </Dialog>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Kết quả + phân trang phía client                                    */
-/* ------------------------------------------------------------------ */
-
-function Results({
-  issues,
-  loading,
-  hasRun,
-  error,
-  page,
-  onPageChange,
-  projectKeyById,
-  onOpen,
-}: {
-  issues: IssueDto[] | null;
-  loading: boolean;
-  hasRun: boolean;
-  /** Truy vấn lỗi (cú pháp/giá trị): lỗi đã hiện ở ô JQL nên không hiện thêm "Không có công việc nào khớp". */
-  error: string | null;
-  page: number;
-  onPageChange: (p: number) => void;
-  projectKeyById: Map<string, string>;
-  onOpen: (issue: IssueDto) => void;
-}) {
-  if (loading && !issues) {
-    return (
-      <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface p-2">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-11 w-full" />
-        ))}
-      </div>
-    );
-  }
-
-  if (!hasRun) {
-    return (
-      <EmptyState
-        icon={<FilterIcon className="h-8 w-8" aria-hidden />}
-        title="Chọn hoặc chạy một bộ lọc"
-        description="Chọn một bộ lọc đã lưu ở cột trái, hoặc chạy nhanh một truy vấn JQL để xem kết quả."
-      />
-    );
-  }
-
-  if (error && !issues) return null;
-
-  if (!issues || issues.length === 0) {
-    return (
-      <EmptyState
-        icon={<SearchX className="h-8 w-8" aria-hidden />}
-        title="Không có công việc nào khớp"
-        description="Bộ lọc hiện tại quá hẹp. Thử bớt điều kiện hoặc nới rộng khoảng giá trị rồi tìm lại."
-      />
-    );
-  }
-
-  const total = issues.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const current = Math.min(page, totalPages);
-  const start = (current - 1) * PAGE_SIZE;
-  const pageItems = issues.slice(start, start + PAGE_SIZE);
-
-  return (
-    <div className="flex flex-col rounded-lg border border-border bg-surface">
-      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <span className="text-sm font-medium text-ink-strong">Kết quả</span>
-        <span className="text-xs text-muted">
-          {total} issue
-          {totalPages > 1 && (
-            <>
-              {' · '}
-              {start + 1}–{Math.min(start + PAGE_SIZE, total)}
-            </>
-          )}
-        </span>
-      </div>
-      <ul className="divide-y divide-border">
-        {pageItems.map((issue) => (
-          <IssueRow
-            key={issue.id}
-            issue={issue}
-            projectKey={projectKeyById.get(issue.projectId)}
-            onOpen={onOpen}
-          />
-        ))}
-      </ul>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-2.5">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onPageChange(current - 1)}
-            disabled={current <= 1}
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden />
-            Trước
-          </Button>
-          <span className="text-xs text-muted" aria-live="polite">
-            Trang {current}/{totalPages}
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onPageChange(current + 1)}
-            disabled={current >= totalPages}
-          >
-            Sau
-            <ChevronRight className="h-4 w-4" aria-hidden />
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function IssueRow({
-  issue,
-  projectKey,
-  onOpen,
-}: {
-  issue: IssueDto;
-  projectKey: string | undefined;
-  onOpen: (issue: IssueDto) => void;
-}) {
-  const dot = categoryColor(issue.status.category);
-  const assignee: UserDto | null | undefined = issue.assignee;
-
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={() => onOpen(issue)}
-        className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:bg-surface-2"
-      >
-        <span
-          className="h-2 w-2 shrink-0 rounded-full"
-          style={{ background: dot }}
-          title={issue.status.name}
-          aria-hidden
-        />
-        <span className="shrink-0 font-mono text-xs font-medium text-muted">{issue.key}</span>
-        <span className="min-w-0 flex-1 truncate text-sm text-ink-strong">{issue.summary}</span>
-        {issue.priority && (
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ background: issue.priority.color ?? 'var(--status-todo)' }}
-            title={issue.priority.name}
-            aria-hidden
-          />
-        )}
-        {assignee ? (
-          <Avatar name={assignee.displayName} src={assignee.avatarUrl} size={22} />
-        ) : (
-          <span
-            className="h-[22px] w-[22px] shrink-0 rounded-full border border-dashed border-border"
-            title="Chưa có người được giao"
-            aria-hidden
-          />
-        )}
-        {projectKey && (
-          <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] font-medium text-muted">
-            {projectKey}
-          </span>
-        )}
-      </button>
-    </li>
   );
 }
