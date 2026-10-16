@@ -51,6 +51,7 @@ import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { fmtDateTime } from '@/lib/dateFormat';
 import { canWriteAt, noWriteMessage } from './wikiScope';
 import { WikiHistoryDialog } from './WikiHistoryDialog';
+import { WikiTrashDialog } from './WikiTrashDialog';
 
 /** Vị trí của một trang trong cây: danh sách anh em + chỉ số, để đổi thứ tự bằng nút lên/xuống. */
 interface Slot {
@@ -106,6 +107,8 @@ export function WikiPage() {
   const pageWriteLoading = (pid: string | null) =>
     pid !== null && projectCanWrite(pid) === undefined;
   const scopeLoading = !scopeReady || pageWriteLoading(scopeProjectId);
+  // Thùng rác: cùng quyền với xoá trang (project:admin ở phạm vi đang chọn; "Tất cả"/chung = quyền workspace).
+  const scopeCanDelete = !scopeLoading && canDelete(scopeProjectId);
   const [q, setQ] = useState('');
   // Trang đang xem nằm trên URL (`?page=<id>`) để chia sẻ/quay lại được; `edit=1` = mở thẳng chế độ sửa.
   const [sp, setSp] = useSearchParams();
@@ -141,6 +144,7 @@ export function WikiPage() {
 
   const [editing, setEditing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
   // Đang sửa mà trang lệch phiên bản (có người lưu trước) hoặc đã bị xoá → khối xử lý ngay trong ô sửa.
   const [editIssue, setEditIssue] = useState<'conflict' | 'deleted' | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
@@ -342,7 +346,9 @@ export function WikiPage() {
   async function destroy(id: string, title: string) {
     if (
       !(await confirm({
-        title: `Xoá trang “${title}”? Các trang con không bị xoá theo, chúng sẽ được đưa lên cấp trên.`,
+        title: `Xoá trang “${title}”?`,
+        description:
+          'Trang sẽ vào “Trang đã xoá”, quản trị khôi phục lại được. Các trang con không bị xoá theo, chúng sẽ được đưa lên cấp trên.',
         destructive: true,
       }))
     )
@@ -485,6 +491,19 @@ export function WikiPage() {
           </div>
         )
       )}
+      {scopeCanDelete && (
+        <div className="border-t border-border p-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-full text-muted"
+            title="Khôi phục trang đã xoá"
+            onClick={() => setTrashOpen(true)}
+          >
+            <Trash2 className="h-4 w-4" /> Trang đã xoá
+          </Button>
+        </div>
+      )}
     </div>
   );
 
@@ -539,6 +558,19 @@ export function WikiPage() {
                       <Plus className="h-4 w-4" /> Tạo trang mới
                     </Button>
                   ) : undefined
+                }
+              />
+            </div>
+          ) : page.isError && apiErrorCode(page.error) === 'NOT_FOUND' ? (
+            <div className="p-6">
+              <EmptyState
+                icon={<BookOpen className="h-6 w-6" />}
+                title="Trang không còn"
+                description="Trang này đã bị xoá hoặc không tồn tại. Chọn một trang khác ở danh sách bên trái."
+                action={
+                  <Button size="sm" variant="secondary" onClick={() => setSelectedId(null)}>
+                    Xem trang khác
+                  </Button>
                 }
               />
             </div>
@@ -692,6 +724,16 @@ export function WikiPage() {
           )}
         </section>
       </div>
+
+      <WikiTrashDialog
+        open={trashOpen}
+        onOpenChange={setTrashOpen}
+        scope={scope}
+        scopeLabel={(pid) =>
+          pid ? (projects?.find((p) => p.id === pid)?.name ?? 'Dự án') : 'Dùng chung'
+        }
+        onRestored={open}
+      />
     </div>
   );
 }

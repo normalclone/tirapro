@@ -102,6 +102,15 @@ export interface WikiVersionDto extends WikiVersionSummaryDto {
   body: string;
 }
 
+/** Một trang trong "Trang đã xoá". */
+export interface WikiTrashItemDto {
+  id: string;
+  title: string;
+  projectId: string | null;
+  deletedAt: string;
+  deletedByName: string | null;
+}
+
 export interface WikiPageDto {
   id: string;
   workspaceId: string;
@@ -150,7 +159,7 @@ export class WikiService {
   /** Cây trang theo phạm vi. `projectId` bỏ trống = mọi trang trong workspace. */
   async tree(workspaceId: string, projectId?: string): Promise<WikiNodeDto[]> {
     const rows = await this.prisma.wikiPage.findMany({
-      where: { workspaceId, ...this.scopeWhere(projectId) },
+      where: { workspaceId, deletedAt: null, ...this.scopeWhere(projectId) },
       orderBy: [{ order: 'asc' }, { title: 'asc' }],
       select: NODE_SELECT,
     });
@@ -164,6 +173,7 @@ export class WikiService {
     const rows = await this.prisma.wikiPage.findMany({
       where: {
         workspaceId,
+        deletedAt: null,
         ...this.scopeWhere(projectId),
         OR: [{ title: insensitiveContains(term) }, { body: insensitiveContains(term) }],
       },
@@ -216,7 +226,9 @@ export class WikiService {
   }
 
   async get(workspaceId: string, id: string, viewer: WikiActor): Promise<WikiPageDto> {
-    const page = await this.prisma.wikiPage.findFirst({ where: { id, workspaceId } });
+    const page = await this.prisma.wikiPage.findFirst({
+      where: { id, workspaceId, deletedAt: null },
+    });
     if (!page) throw new NotFoundAppException('Trang tài liệu');
 
     const breadcrumb = await this.ancestors(workspaceId, page.parentId);
@@ -279,6 +291,7 @@ export class WikiService {
     const rows = await this.prisma.wikiPage.findMany({
       where: {
         workspaceId,
+        deletedAt: null,
         issues: { some: { issueId } },
         OR: [{ projectId: null }, { project }],
       },
@@ -445,6 +458,7 @@ export class WikiService {
     const siblings = await this.prisma.wikiPage.findMany({
       where: {
         workspaceId,
+        deletedAt: null,
         projectId: page.projectId,
         parentId: nextParentId,
         NOT: { id },
@@ -487,18 +501,80 @@ export class WikiService {
     return this.tree(workspaceId, page.projectId ?? SCOPE_WORKSPACE);
   }
 
-  /** Xoá trang; các trang con được nâng lên làm con của trang cha (không mất dữ liệu). */
-  async remove(workspaceId: string, id: string): Promise<{ success: true }> {
+  /**
+   * Xoá MỀM trang: biến khỏi cây/tìm kiếm nhưng giữ nguyên nội dung và lịch sử phiên bản, quản trị khôi phục lại
+   * được (`undelete`). Các trang con được nâng lên làm con của trang cha (không mất dữ liệu) mà KHÔNG đổi
+   * `updatedAt` của chúng (đổi chỗ không phải sửa nội dung, như `move`).
+   */
+  async remove(workspaceId: string, id: string, actingUserId: string): Promise<{ success: true }> {
     const page = await this.requireWritablePage(workspaceId, id);
+    const children = await this.prisma.wikiPage.findMany({
+      where: { workspaceId, parentId: id, deletedAt: null },
+      select: { id: true, updatedAt: true },
+    });
     await this.prisma.$transaction([
-      this.prisma.wikiPage.updateMany({
-        where: { parentId: id },
-        data: { parentId: page.parentId },
+      ...children.map((c) =>
+        this.prisma.wikiPage.update({
+          where: { id: c.id },
+          data: { parentId: page.parentId, updatedAt: c.updatedAt },
+        }),
+      ),
+      this.prisma.wikiPage.update({
+        where: { id },
+        data: { deletedAt: new Date(), deletedById: actingUserId },
       }),
-      this.prisma.wikiPage.delete({ where: { id } }),
     ]);
     await this.renumber(workspaceId, page.projectId, page.parentId);
     return { success: true };
+  }
+
+  /** Trang đã xoá của một phạm vi (`projectId` bỏ trống = mọi phạm vi), mới xoá trước, tối đa 100. */
+  async trash(workspaceId: string, projectId?: string): Promise<WikiTrashItemDto[]> {
+    const rows = await this.prisma.wikiPage.findMany({
+      where: { workspaceId, deletedAt: { not: null }, ...this.scopeWhere(projectId) },
+      orderBy: { deletedAt: 'desc' },
+      take: 100,
+      select: { id: true, title: true, projectId: true, deletedAt: true, deletedById: true },
+    });
+    const names = await this.authorNames(rows.map((r) => r.deletedById));
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      projectId: r.projectId,
+      deletedAt: r.deletedAt!.toISOString(),
+      deletedByName: (r.deletedById && names.get(r.deletedById)) || null,
+    }));
+  }
+
+  /**
+   * Khôi phục trang đã xoá (kèm toàn bộ lịch sử). Trang cha cũ còn sống → giữ chỗ cũ (cuối nhóm anh em);
+   * đã bị xoá/không còn → lên gốc. Các con đã được nâng lên lúc xoá KHÔNG tự trở lại.
+   */
+  async undelete(workspaceId: string, id: string, viewer: WikiActor): Promise<WikiPageDto> {
+    // allow-deleted: khôi phục trang đã xoá
+    const page = await this.prisma.wikiPage.findFirst({
+      where: { id, workspaceId, deletedAt: { not: null } },
+      select: { id: true, projectId: true, parentId: true },
+    });
+    if (!page) throw new NotFoundAppException('Trang tài liệu');
+    await assertProjectIdWritable(this.prisma, page.projectId);
+    const parent = page.parentId
+      ? await this.prisma.wikiPage.findFirst({
+          where: { id: page.parentId, workspaceId, deletedAt: null },
+          select: { id: true },
+        })
+      : null;
+    const parentId = parent?.id ?? null;
+    await this.prisma.wikiPage.update({
+      where: { id },
+      data: {
+        deletedAt: null,
+        deletedById: null,
+        parentId,
+        order: await this.nextOrder(workspaceId, page.projectId, parentId),
+      },
+    });
+    return this.get(workspaceId, id, viewer);
   }
 
   // ───────────────────────── helpers ─────────────────────────
@@ -534,7 +610,7 @@ export class WikiService {
         if (r.count === 0) {
           // Phân biệt "trang vừa bị xoá" (404) với "người khác vừa lưu" (409).
           const still = await tx.wikiPage.findFirst({
-            where: { id, workspaceId },
+            where: { id, workspaceId, deletedAt: null },
             select: { id: true },
           });
           if (!still) throw new NotFoundAppException('Trang tài liệu');
@@ -544,7 +620,10 @@ export class WikiService {
         }
         // Chỉ sửa tiêu đề: nội dung giữ nguyên nên lấy lại từ dòng vừa ghi để chụp phiên bản đủ bộ.
         if (body === undefined) {
-          const row = await tx.wikiPage.findFirst({ where: { id }, select: { body: true } });
+          const row = await tx.wikiPage.findFirst({
+            where: { id, deletedAt: null },
+            select: { body: true },
+          });
           body = row?.body ?? '';
         }
       } else {
@@ -699,7 +778,7 @@ export class WikiService {
 
   private async requirePage(workspaceId: string, id: string) {
     const page = await this.prisma.wikiPage.findFirst({
-      where: { id, workspaceId },
+      where: { id, workspaceId, deletedAt: null },
       select: {
         id: true,
         projectId: true,
@@ -736,7 +815,7 @@ export class WikiService {
     parentId: string | null,
   ): Promise<number> {
     const last = await this.prisma.wikiPage.findFirst({
-      where: { workspaceId, projectId, parentId },
+      where: { workspaceId, projectId, parentId, deletedAt: null },
       orderBy: { order: 'desc' },
       select: { order: true },
     });
@@ -749,7 +828,7 @@ export class WikiService {
     parentId: string | null,
   ): Promise<void> {
     const rows = await this.prisma.wikiPage.findMany({
-      where: { workspaceId, projectId, parentId },
+      where: { workspaceId, projectId, parentId, deletedAt: null },
       orderBy: [{ order: 'asc' }, { title: 'asc' }],
       select: { id: true, order: true, updatedAt: true },
     });
@@ -776,7 +855,7 @@ export class WikiService {
     let cursor: string | null = candidateId;
     for (let depth = 0; cursor && depth < 100; depth += 1) {
       const row: { parentId: string | null } | null = await this.prisma.wikiPage.findFirst({
-        where: { id: cursor, workspaceId },
+        where: { id: cursor, workspaceId, deletedAt: null },
         select: { parentId: true },
       });
       cursor = row?.parentId ?? null;
@@ -794,7 +873,7 @@ export class WikiService {
     for (let depth = 0; cursor && depth < 100; depth += 1) {
       const row: { id: string; title: string; parentId: string | null } | null =
         await this.prisma.wikiPage.findFirst({
-          where: { id: cursor, workspaceId },
+          where: { id: cursor, workspaceId, deletedAt: null },
           select: { id: true, title: true, parentId: true },
         });
       if (!row) break;

@@ -159,6 +159,8 @@ export const keys = {
     admins: (scope: string) => ['wiki', 'admins', scope] as const,
     versions: (id: string) => ['wiki', 'versions', id] as const,
     version: (id: string, v: number) => ['wiki', 'version', id, v] as const,
+    trashRoot: ['wiki', 'trash'] as const,
+    trash: (scope: string) => ['wiki', 'trash', scope] as const,
     byIssueRoot: ['wiki', 'byIssue'] as const,
     byIssue: (issueId: string) => ['wiki', 'byIssue', issueId] as const,
   },

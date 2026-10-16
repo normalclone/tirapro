@@ -75,6 +75,17 @@ export class WikiController {
     return this.wiki.byIssue(workspaceId, issueId, user);
   }
 
+  /**
+   * Trang đã xoá (thùng rác) của phạm vi `projectId` (bỏ trống = cấp workspace, `none` = tài liệu chung).
+   * Chỉ Quản trị dự án / workspace. Đặt TRƯỚC `:id`.
+   */
+  @ProjectRef('query', 'projectId')
+  @Get('trash')
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  async trash(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
+    return this.wiki.trash(workspaceId, projectId);
+  }
+
   @Get(':id')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async get(
@@ -153,11 +164,28 @@ export class WikiController {
     return this.wiki.move(workspaceId, id, dto);
   }
 
-  /** Xoá trang: chỉ Quản trị dự án (hoặc Workspace Admin với trang chung / mọi dự án). */
+  /** Xoá mềm trang: chỉ Quản trị dự án (hoặc Workspace Admin với trang chung / mọi dự án). */
   @ProjectRef('wikiPage', 'id')
   @Delete(':id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
-  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.wiki.remove(workspaceId, id);
+  async remove(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.wiki.remove(workspaceId, id, user.id);
+  }
+
+  /** Khôi phục trang đã xoá (kèm lịch sử): cùng quyền với xoá, theo dự án của trang. */
+  @ProjectRef('wikiPage', 'id')
+  @Post(':id/undelete')
+  @HttpCode(200)
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  async undelete(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.wiki.undelete(workspaceId, id, user);
   }
 }

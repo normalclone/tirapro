@@ -66,6 +66,15 @@ export interface WikiVersion extends WikiVersionSummary {
   body: string;
 }
 
+/** Một trang trong "Trang đã xoá". */
+export interface WikiTrashItem {
+  id: string;
+  title: string;
+  projectId: string | null;
+  deletedAt: string;
+  deletedByName: string | null;
+}
+
 export interface WikiSearchHit {
   id: string;
   projectId: string | null;
@@ -134,6 +143,21 @@ export function useWikiVersion(id: string, version: number | null) {
   });
 }
 
+/** Trang đã xoá của phạm vi `scope` (rỗng = mọi phạm vi). Chỉ gọi khi `enabled` — API chỉ cho người có `project:admin`. */
+export function useWikiTrash(scope: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.wiki.trash(scope),
+    queryFn: enabled
+      ? async () =>
+          (
+            await api.get<WikiTrashItem[]>('/wiki/trash', {
+              params: scope ? { projectId: scope } : {},
+            })
+          ).data
+      : skipToken,
+  });
+}
+
 /** Các trang wiki nhắc tới công việc `issueId`. */
 export function useIssueDocs(issueId: string) {
   return useQuery({
@@ -164,6 +188,7 @@ function useInvalidateWiki() {
     void qc.invalidateQueries({ queryKey: keys.wiki.treeRoot });
     void qc.invalidateQueries({ queryKey: keys.wiki.searchRoot });
     void qc.invalidateQueries({ queryKey: keys.wiki.byIssueRoot });
+    void qc.invalidateQueries({ queryKey: keys.wiki.trashRoot });
     if (pageId) {
       void qc.invalidateQueries({ queryKey: keys.wiki.page(pageId) });
       void qc.invalidateQueries({ queryKey: keys.wiki.versions(pageId) });
@@ -261,5 +286,17 @@ export function useDeleteWikiPage() {
   return useMutation({
     mutationFn: (id: string) => api.delete<Ack>(`/wiki/${id}`).then((r) => r.data),
     onSuccess: () => invalidate(),
+  });
+}
+
+/** Khôi phục trang đã xoá (kèm lịch sử phiên bản). */
+export function useUndeleteWikiPage() {
+  const invalidate = useInvalidateWiki();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<WikiPageDetail>(`/wiki/${id}/undelete`).then((r) => r.data),
+    onSuccess: (page) => invalidate(page.id),
+    // Người khác đã khôi phục trước (404) → làm mới danh sách.
+    onError: () => invalidate(),
   });
 }
