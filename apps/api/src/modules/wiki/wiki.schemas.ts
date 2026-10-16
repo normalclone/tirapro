@@ -18,6 +18,11 @@ export const updateWikiPageSchema = z.object({
   expectedVersion: z.number().int().min(0).optional(),
 });
 
+/** Khôi phục một phiên bản cũ: OCC bắt buộc (`version` của trang người bấm đang xem). */
+export const restoreWikiVersionSchema = z.object({
+  expectedVersion: z.number().int().min(0),
+});
+
 /** Đổi cha / thứ tự trong danh sách anh em. `order` = vị trí chèn (0 = đầu). */
 export const moveWikiPageSchema = z.object({
   parentId: z.string().min(1).optional().nullable(),
@@ -26,4 +31,5 @@ export const moveWikiPageSchema = z.object({
 
 export type CreateWikiPageInput = z.infer<typeof createWikiPageSchema>;
 export type UpdateWikiPageInput = z.infer<typeof updateWikiPageSchema>;
+export type RestoreWikiVersionInput = z.infer<typeof restoreWikiVersionSchema>;
 export type MoveWikiPageInput = z.infer<typeof moveWikiPageSchema>;

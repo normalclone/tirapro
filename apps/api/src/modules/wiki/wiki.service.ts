@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PERMISSIONS } from '@tirapro/types';
 import { extractIssueKeys } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -10,10 +11,18 @@ import {
   VersionConflictException,
 } from '../../common/exceptions/app.exception';
 import { assertNotArchived, assertProjectIdWritable } from '../../common/project-writable';
-import type { CreateWikiPageInput, MoveWikiPageInput, UpdateWikiPageInput } from './wiki.schemas';
+import type {
+  CreateWikiPageInput,
+  MoveWikiPageInput,
+  RestoreWikiVersionInput,
+  UpdateWikiPageInput,
+} from './wiki.schemas';
 
 /** Số mã công việc tối đa ghi liên kết cho một trang. */
 const MAX_LINKED_ISSUES = 500;
+
+/** Số phiên bản lịch sử giữ lại cho mỗi trang (xoá bản cũ nhất khi vượt). */
+const MAX_VERSIONS = 200;
 
 /** Giá trị `projectId` đặc biệt trên query: chỉ lấy tài liệu chung của workspace. */
 const SCOPE_WORKSPACE = 'none';
@@ -76,6 +85,21 @@ export interface WikiByIssueDto {
   projectId: string | null;
   projectKey: string | null;
   updatedAt: string;
+}
+
+/** Một dòng trong lịch sử trang (không kèm nội dung). */
+export interface WikiVersionSummaryDto {
+  version: number;
+  title: string;
+  authorName: string | null;
+  note: string | null;
+  createdAt: string;
+  /** Độ dài nội dung (ký tự). */
+  size: number;
+}
+
+export interface WikiVersionDto extends WikiVersionSummaryDto {
+  body: string;
 }
 
 export interface WikiPageDto {
@@ -298,18 +322,24 @@ export class WikiService {
       await this.requireProject(workspaceId, projectId);
     }
 
-    const created = await this.prisma.wikiPage.create({
-      data: {
-        workspaceId,
-        projectId,
-        parentId,
-        title,
-        body: dto.body ?? '',
-        order: await this.nextOrder(workspaceId, projectId, parentId),
-        createdById: actor.id,
-        updatedById: actor.id,
-      },
-      select: { id: true },
+    const body = dto.body ?? '';
+    const order = await this.nextOrder(workspaceId, projectId, parentId);
+    const created = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.wikiPage.create({
+        data: {
+          workspaceId,
+          projectId,
+          parentId,
+          title,
+          body,
+          order,
+          createdById: actor.id,
+          updatedById: actor.id,
+        },
+        select: { id: true },
+      });
+      await this.snapshot(tx, row.id, title, body, actor.id);
+      return row;
     });
     if (dto.body) await this.syncIssueLinks(workspaceId, created.id, dto.body);
     return this.get(workspaceId, created.id, actor);
@@ -321,36 +351,72 @@ export class WikiService {
     dto: UpdateWikiPageInput,
     actor: WikiActor,
   ): Promise<WikiPageDto> {
-    await this.requireWritablePage(workspaceId, id);
+    const current = await this.requireWritablePage(workspaceId, id);
     const title = dto.title?.trim();
     if (dto.title !== undefined && !title) throw new BusinessRuleException('Tiêu đề bắt buộc');
-    const data = {
-      ...(title !== undefined ? { title } : {}),
-      ...(dto.body !== undefined ? { body: dto.body } : {}),
-      updatedById: actor.id,
-      version: { increment: 1 },
-    };
-    if (dto.expectedVersion !== undefined) {
-      // Kiểm-và-ghi trong MỘT câu lệnh (không có khe giữa đọc và ghi): lệch version → không dòng nào khớp.
-      const r = await this.prisma.wikiPage.updateMany({
-        where: { id, workspaceId, version: dto.expectedVersion },
-        data,
-      });
-      if (r.count === 0) {
-        // Phân biệt "trang vừa bị xoá" (404) với "người khác vừa lưu" (409).
-        const still = await this.prisma.wikiPage.findFirst({
-          where: { id, workspaceId },
-          select: { id: true },
-        });
-        if (!still) throw new NotFoundAppException('Trang tài liệu');
-        throw new VersionConflictException(
-          'Trang vừa được người khác sửa — hãy xem bản mới, sao chép phần bạn vừa viết hoặc ghi đè có xác nhận.',
-        );
-      }
-    } else {
-      await this.prisma.wikiPage.update({ where: { id }, data });
-    }
+    await this.writePage(
+      workspaceId,
+      id,
+      current.title,
+      { title, body: dto.body },
+      dto.expectedVersion,
+      actor.id,
+    );
     if (dto.body !== undefined) await this.syncIssueLinks(workspaceId, id, dto.body);
+    return this.get(workspaceId, id, actor);
+  }
+
+  /** Lịch sử trang: mới nhất trước, tối đa 200 bản, không kèm nội dung. */
+  async listVersions(workspaceId: string, id: string): Promise<WikiVersionSummaryDto[]> {
+    await this.requirePage(workspaceId, id);
+    const rows = await this.prisma.wikiPageVersion.findMany({
+      where: { wikiPageId: id },
+      orderBy: { version: 'desc' },
+      take: MAX_VERSIONS,
+    });
+    const names = await this.authorNames(rows.map((r) => r.authorId));
+    return rows.map((r) => this.toVersionSummary(r, names));
+  }
+
+  /** Nội dung một phiên bản của trang. */
+  async getVersion(workspaceId: string, id: string, version: number): Promise<WikiVersionDto> {
+    await this.requirePage(workspaceId, id);
+    const row = await this.prisma.wikiPageVersion.findFirst({
+      where: { wikiPageId: id, version },
+    });
+    if (!row) throw new NotFoundAppException('Phiên bản trang tài liệu');
+    const names = await this.authorNames([row.authorId]);
+    return { ...this.toVersionSummary(row, names), body: row.body };
+  }
+
+  /**
+   * Khôi phục một phiên bản cũ: ghi tiêu đề/nội dung của bản đó lên trang rồi tạo phiên bản MỚI
+   * (`note` = "Khôi phục từ phiên bản N") — lịch sử không bao giờ bị cắt. Đi cùng đường ghi của `update`
+   * (chặn dự án lưu trữ, OCC theo `expectedVersion` — bắt buộc vì người bấm đang xem một trạng thái cụ thể).
+   */
+  async restoreVersion(
+    workspaceId: string,
+    id: string,
+    version: number,
+    dto: RestoreWikiVersionInput,
+    actor: WikiActor,
+  ): Promise<WikiPageDto> {
+    const current = await this.requireWritablePage(workspaceId, id);
+    const target = await this.prisma.wikiPageVersion.findFirst({
+      where: { wikiPageId: id, version },
+      select: { version: true, title: true, body: true },
+    });
+    if (!target) throw new NotFoundAppException('Phiên bản trang tài liệu');
+    await this.writePage(
+      workspaceId,
+      id,
+      current.title,
+      { title: target.title, body: target.body },
+      dto.expectedVersion,
+      actor.id,
+      `Khôi phục từ phiên bản ${target.version}`,
+    );
+    await this.syncIssueLinks(workspaceId, id, target.body);
     return this.get(workspaceId, id, actor);
   }
 
@@ -436,6 +502,124 @@ export class WikiService {
   }
 
   // ───────────────────────── helpers ─────────────────────────
+
+  /**
+   * Lõi ghi nội dung trang (dùng chung cho `update` và `restoreVersion`): ghi + chụp phiên bản trong MỘT giao dịch.
+   * Có `expectedVersion` → kiểm-và-ghi trong một câu lệnh (lệch version → không dòng nào khớp → 409; trang đã
+   * bị xoá → 404). Câu UPDATE khoá dòng trang nên hai lần lưu đồng thời được tuần tự hoá (không đua số phiên bản).
+   */
+  private async writePage(
+    workspaceId: string,
+    id: string,
+    currentTitle: string,
+    patch: { title?: string; body?: string },
+    expectedVersion: number | undefined,
+    userId: string,
+    note?: string,
+  ): Promise<void> {
+    const data = {
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
+      ...(patch.body !== undefined ? { body: patch.body } : {}),
+      updatedById: userId,
+      version: { increment: 1 },
+    };
+    await this.prisma.$transaction(async (tx) => {
+      let title = patch.title ?? currentTitle;
+      let body = patch.body;
+      if (expectedVersion !== undefined) {
+        const r = await tx.wikiPage.updateMany({
+          where: { id, workspaceId, version: expectedVersion },
+          data,
+        });
+        if (r.count === 0) {
+          // Phân biệt "trang vừa bị xoá" (404) với "người khác vừa lưu" (409).
+          const still = await tx.wikiPage.findFirst({
+            where: { id, workspaceId },
+            select: { id: true },
+          });
+          if (!still) throw new NotFoundAppException('Trang tài liệu');
+          throw new VersionConflictException(
+            'Trang vừa được người khác sửa — hãy xem bản mới, sao chép phần bạn vừa viết hoặc ghi đè có xác nhận.',
+          );
+        }
+        // Chỉ sửa tiêu đề: nội dung giữ nguyên nên lấy lại từ dòng vừa ghi để chụp phiên bản đủ bộ.
+        if (body === undefined) {
+          const row = await tx.wikiPage.findFirst({ where: { id }, select: { body: true } });
+          body = row?.body ?? '';
+        }
+      } else {
+        // Không OCC: lấy tiêu đề/nội dung cuối cùng từ chính dòng vừa ghi (không dựa bản đọc trước đó, có thể cũ).
+        const row = await tx.wikiPage.update({
+          where: { id },
+          data,
+          select: { title: true, body: true },
+        });
+        title = row?.title ?? title;
+        body = row?.body ?? body;
+      }
+      await this.snapshot(tx, id, title, body ?? '', userId, note ?? null);
+    });
+  }
+
+  /**
+   * Chụp phiên bản mới của trang (nguyên bản). Bỏ qua khi tiêu đề và nội dung không đổi so với bản mới nhất
+   * (trừ khi có `note`, vd khôi phục). Giữ tối đa MAX_VERSIONS bản: xoá bản cũ nhất khi vượt.
+   */
+  private async snapshot(
+    tx: Prisma.TransactionClient,
+    pageId: string,
+    title: string,
+    body: string,
+    userId: string,
+    note: string | null = null,
+  ): Promise<void> {
+    const last = await tx.wikiPageVersion.findFirst({
+      where: { wikiPageId: pageId },
+      orderBy: { version: 'desc' },
+      select: { version: true, title: true, body: true },
+    });
+    if (last && last.title === title && last.body === body && !note) return;
+    const version = (last?.version ?? 0) + 1;
+    await tx.wikiPageVersion.create({
+      data: { wikiPageId: pageId, version, title, body, authorId: userId, note },
+    });
+    if (version > MAX_VERSIONS) {
+      await tx.wikiPageVersion.deleteMany({
+        where: { wikiPageId: pageId, version: { lte: version - MAX_VERSIONS } },
+      });
+    }
+  }
+
+  private async authorNames(ids: (string | null)[]): Promise<Map<string, string>> {
+    const unique = [...new Set(ids.filter((v): v is string => !!v))];
+    if (!unique.length) return new Map();
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: unique } },
+      select: { id: true, displayName: true },
+    });
+    return new Map(users.map((u) => [u.id, u.displayName]));
+  }
+
+  private toVersionSummary(
+    r: {
+      version: number;
+      title: string;
+      body: string;
+      authorId: string | null;
+      note: string | null;
+      createdAt: Date;
+    },
+    names: Map<string, string>,
+  ): WikiVersionSummaryDto {
+    return {
+      version: r.version,
+      title: r.title,
+      authorName: (r.authorId && names.get(r.authorId)) || null,
+      note: r.note,
+      createdAt: r.createdAt.toISOString(),
+      size: r.body.length,
+    };
+  }
 
   /**
    * Điều kiện Prisma cho công việc mà `viewer` được thấy: còn sống, dự án còn sống và dự án người gọi xem được

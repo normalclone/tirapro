@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseIntPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -11,9 +22,11 @@ import { WikiService } from './wiki.service';
 import {
   createWikiPageSchema,
   moveWikiPageSchema,
+  restoreWikiVersionSchema,
   updateWikiPageSchema,
   type CreateWikiPageInput,
   type MoveWikiPageInput,
+  type RestoreWikiVersionInput,
   type UpdateWikiPageInput,
 } from './wiki.schemas';
 
@@ -70,6 +83,39 @@ export class WikiController {
     @Param('id') id: string,
   ) {
     return this.wiki.get(workspaceId, id, user);
+  }
+
+  /** Lịch sử phiên bản của trang (mới nhất trước, tối đa 200, không kèm nội dung). Quyền xem như `GET :id`. */
+  @Get(':id/versions')
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  async versions(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.wiki.listVersions(workspaceId, id);
+  }
+
+  /** Nội dung một phiên bản (404 nếu không có). */
+  @Get(':id/versions/:version')
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  async version(
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+    @Param('version', ParseIntPipe) version: number,
+  ) {
+    return this.wiki.getVersion(workspaceId, id, version);
+  }
+
+  /** Khôi phục một phiên bản cũ (tạo phiên bản mới, không xoá lịch sử); 409 nếu trang vừa được sửa. */
+  @ProjectRef('wikiPage', 'id')
+  @Post(':id/versions/:version/restore')
+  @HttpCode(200)
+  @Permissions(PERMISSIONS.WIKI_MANAGE)
+  async restoreVersion(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('version', ParseIntPipe) version: number,
+    @Body(new ZodValidationPipe(restoreWikiVersionSchema)) dto: RestoreWikiVersionInput,
+  ) {
+    return this.wiki.restoreVersion(workspaceId, id, version, dto, user);
   }
 
   @ProjectRef('body', 'projectId')

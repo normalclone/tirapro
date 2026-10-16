@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { WikiService } from './wiki.service';
-import { updateWikiPageSchema } from './wiki.schemas';
+import { restoreWikiVersionSchema, updateWikiPageSchema } from './wiki.schemas';
 
 describe('WikiService.search — escape ký tự đại diện LIKE', () => {
   it('q="_" / "50%" được escape (không khớp mọi trang), tìm cả title và body', async () => {
@@ -53,7 +53,13 @@ function setup(archived: boolean, pageProjectId: string | null = 'p1') {
       delete: vi.fn(() => Promise.resolve({})),
       aggregate: vi.fn(() => Promise.resolve({ _max: { order: null } })),
     },
-    user: { findMany: vi.fn(() => Promise.resolve([])) },
+    wikiPageVersion: {
+      findFirst: vi.fn((): Promise<unknown> => Promise.resolve(null)),
+      findMany: vi.fn((): Promise<unknown[]> => Promise.resolve([])),
+      create: vi.fn(() => Promise.resolve({})),
+      deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+    },
+    user: { findMany: vi.fn((): Promise<unknown[]> => Promise.resolve([])) },
     issue: { findMany: vi.fn((): Promise<{ id: string }[]> => Promise.resolve([])) },
     wikiPageIssue: {
       deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
@@ -327,7 +333,7 @@ describe('WikiService — liên kết trang ↔ công việc (A11)', () => {
       data: [{ wikiPageId: 'g1', issueId: 'i1' }],
       skipDuplicates: true,
     });
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2); // ghi trang + chụp phiên bản; đồng bộ liên kết
   });
 
   it('create(): trang mới có body nhắc mã → ghi liên kết cho trang vừa tạo', async () => {
@@ -481,5 +487,224 @@ describe('WikiService.visibleIssueFilter — lọc lúc đọc theo quyền xem 
         },
       }),
     );
+  });
+});
+
+describe('WikiService — lịch sử phiên bản (A18)', () => {
+  const lastOf = (version: number, title: string, body: string) => ({ version, title, body });
+
+  it('create(): ghi phiên bản 1 (tiêu đề, nội dung, người tạo)', async () => {
+    const { service, prisma } = setup(false, null);
+    await service.create('w1', { title: 'Đặc tả', body: 'a' }, U);
+    expect(prisma.wikiPageVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        wikiPageId: 'g2',
+        version: 1,
+        title: 'Đặc tả',
+        body: 'a',
+        authorId: 'u1',
+        note: null,
+      }) as unknown,
+    });
+  });
+
+  it('update(): nội dung đổi → phiên bản = bản mới nhất + 1', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPageVersion.findFirst.mockResolvedValueOnce(lastOf(3, 'T', 'cũ'));
+    await service.update('w1', 'g1', { body: 'mới' }, { id: 'u2' });
+    expect(prisma.wikiPageVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        wikiPageId: 'g1',
+        version: 4,
+        body: 'mới',
+        authorId: 'u2',
+      }) as unknown,
+    });
+  });
+
+  it('update(): có OCC → vẫn chụp phiên bản; chỉ sửa tiêu đề thì lấy nội dung từ dòng vừa ghi', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPage.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.wikiPageVersion.findFirst.mockResolvedValueOnce(lastOf(1, 'T', 'giữ nguyên'));
+    // 1: requireWritablePage; 2: đọc nội dung sau khi ghi
+    prisma.wikiPage.findFirst
+      .mockResolvedValueOnce({
+        id: 'g1',
+        projectId: 'p1',
+        parentId: null,
+        title: 'T',
+        order: 0,
+      } as never)
+      .mockResolvedValueOnce({ body: 'giữ nguyên' } as never);
+    await service.update('w1', 'g1', { title: 'Mới', expectedVersion: 1 }, U);
+    expect(prisma.wikiPageVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ version: 2, title: 'Mới', body: 'giữ nguyên' }) as unknown,
+    });
+  });
+
+  it('update(): tiêu đề và nội dung không đổi → KHÔNG tạo phiên bản', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPage.update.mockResolvedValueOnce({ title: 'T', body: 'x' });
+    prisma.wikiPageVersion.findFirst.mockResolvedValueOnce(lastOf(3, 'T', 'x'));
+    await service.update('w1', 'g1', { title: 'T', body: 'x' }, U);
+    expect(prisma.wikiPageVersion.create).not.toHaveBeenCalled();
+  });
+
+  it('update(): xung đột OCC → không chụp phiên bản', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPage.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      service.update('w1', 'g1', { body: 'mới', expectedVersion: 9 }, U),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(prisma.wikiPageVersion.create).not.toHaveBeenCalled();
+  });
+
+  it('update(): vượt 200 phiên bản → xoá bản cũ nhất', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPageVersion.findFirst.mockResolvedValueOnce(lastOf(205, 'T', 'cũ'));
+    await service.update('w1', 'g1', { body: 'mới' }, { id: 'u2' });
+    expect(prisma.wikiPageVersion.deleteMany).toHaveBeenCalledWith({
+      where: { wikiPageId: 'g1', version: { lte: 206 - 200 } },
+    });
+  });
+
+  it('move(): đổi chỗ KHÔNG tạo phiên bản', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPage.findMany.mockResolvedValueOnce([{ id: 'a', order: 0, updatedAt: new Date() }]);
+    await service.move('w1', 'g1', { order: 0 });
+    expect(prisma.wikiPageVersion.create).not.toHaveBeenCalled();
+  });
+
+  it('listVersions(): mới nhất trước, không trả body, kèm tên người lưu', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPageVersion.findMany.mockResolvedValueOnce([
+      {
+        version: 2,
+        title: 'T',
+        body: 'xyz',
+        authorId: 'u1',
+        note: null,
+        createdAt: new Date('2026-10-02T00:00:00Z'),
+      },
+    ]);
+    prisma.user.findMany.mockResolvedValueOnce([{ id: 'u1', displayName: 'Bình' }]);
+    const out = await service.listVersions('w1', 'g1');
+    expect(out).toEqual([
+      {
+        version: 2,
+        title: 'T',
+        authorName: 'Bình',
+        note: null,
+        createdAt: '2026-10-02T00:00:00.000Z',
+        size: 3,
+      },
+    ]);
+    expect(prisma.wikiPageVersion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { wikiPageId: 'g1' },
+        orderBy: { version: 'desc' },
+        take: 200,
+      }),
+    );
+  });
+
+  it('listVersions()/getVersion(): trang không có trong workspace → 404, không đọc lịch sử', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPage.findFirst.mockResolvedValue(null as never);
+    await expect(service.listVersions('w1', 'g1')).rejects.toMatchObject({ status: 404 });
+    await expect(service.getVersion('w1', 'g1', 1)).rejects.toMatchObject({ status: 404 });
+    expect(prisma.wikiPageVersion.findMany).not.toHaveBeenCalled();
+    expect(prisma.wikiPageVersion.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('getVersion(): không có → NotFound; có → kèm nội dung', async () => {
+    const { service, prisma } = setup(false);
+    await expect(service.getVersion('w1', 'g1', 9)).rejects.toMatchObject({ status: 404 });
+    prisma.wikiPageVersion.findFirst.mockResolvedValueOnce({
+      version: 2,
+      title: 'T',
+      body: 'nội dung',
+      authorId: null,
+      note: 'ghi chú',
+      createdAt: new Date('2026-10-02T00:00:00Z'),
+    });
+    await expect(service.getVersion('w1', 'g1', 2)).resolves.toMatchObject({
+      version: 2,
+      body: 'nội dung',
+      authorName: null,
+      note: 'ghi chú',
+    });
+  });
+
+  it('restoreVersion(): ghi lại tiêu đề/nội dung bản cũ, phiên bản mới có note, OCC bắt buộc', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPageVersion.findFirst
+      .mockResolvedValueOnce(lastOf(2, 'Cũ', 'bản 2')) // bản cần khôi phục
+      .mockResolvedValueOnce(lastOf(5, 'Mới', 'bản 5')); // bản mới nhất (trong snapshot)
+    prisma.wikiPage.updateMany.mockResolvedValueOnce({ count: 1 });
+    await service.restoreVersion('w1', 'g1', 2, { expectedVersion: 4 }, { id: 'u3' });
+    expect(prisma.wikiPage.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'g1', workspaceId: 'w1', version: 4 },
+        data: expect.objectContaining({
+          title: 'Cũ',
+          body: 'bản 2',
+          updatedById: 'u3',
+          version: { increment: 1 },
+        }) as unknown,
+      }),
+    );
+    expect(prisma.wikiPageVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        version: 6,
+        title: 'Cũ',
+        body: 'bản 2',
+        authorId: 'u3',
+        note: 'Khôi phục từ phiên bản 2',
+      }) as unknown,
+    });
+  });
+
+  it('restoreVersion(): bản trùng nội dung bản mới nhất vẫn tạo phiên bản (có note)', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPageVersion.findFirst
+      .mockResolvedValueOnce(lastOf(2, 'T', 'x'))
+      .mockResolvedValueOnce(lastOf(5, 'T', 'x'));
+    prisma.wikiPage.updateMany.mockResolvedValueOnce({ count: 1 });
+    await service.restoreVersion('w1', 'g1', 2, { expectedVersion: 0 }, U);
+    expect(prisma.wikiPageVersion.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('restoreVersion(): trang đã đổi (updateMany count 0) → 409, không tạo phiên bản', async () => {
+    const { service, prisma } = setup(false);
+    prisma.wikiPageVersion.findFirst.mockResolvedValueOnce(lastOf(2, 'Cũ', 'bản 2'));
+    prisma.wikiPage.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      service.restoreVersion('w1', 'g1', 2, { expectedVersion: 1 }, U),
+    ).rejects.toMatchObject({ status: 409, code: 'VERSION_CONFLICT' });
+    expect(prisma.wikiPageVersion.create).not.toHaveBeenCalled();
+  });
+
+  it('restoreVersion(): phiên bản không tồn tại → 404, không ghi trang', async () => {
+    const { service, prisma } = setup(false);
+    await expect(
+      service.restoreVersion('w1', 'g1', 99, { expectedVersion: 1 }, U),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(prisma.wikiPage.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('restoreVersion(): dự án lưu trữ → 422, không ghi', async () => {
+    const { service, prisma } = setup(true);
+    await expect(
+      service.restoreVersion('w1', 'g1', 2, { expectedVersion: 1 }, U),
+    ).rejects.toMatchObject(ARCHIVED);
+    expect(prisma.wikiPage.updateMany).not.toHaveBeenCalled();
+    expect(prisma.wikiPageVersion.create).not.toHaveBeenCalled();
+  });
+
+  it('schema: restore bắt buộc expectedVersion nguyên không âm', () => {
+    expect(restoreWikiVersionSchema.safeParse({}).success).toBe(false);
+    expect(restoreWikiVersionSchema.safeParse({ expectedVersion: -1 }).success).toBe(false);
+    expect(restoreWikiVersionSchema.safeParse({ expectedVersion: 0 }).success).toBe(true);
   });
 });
