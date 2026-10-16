@@ -1,10 +1,17 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { KeyResultUnit, ListResponse, ObjectiveStatus, StatusCategory } from '@tirapro/types';
+import type {
+  KeyResultSource,
+  KeyResultUnit,
+  ListResponse,
+  ObjectiveStatus,
+  StatusCategory,
+} from '@tirapro/types';
+import type { KrSourceConfig } from './krSource';
 import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 // Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Mục tiêu import một chỗ.
-export type { KeyResultUnit, ObjectiveStatus };
+export type { KeyResultSource, KeyResultUnit, ObjectiveStatus };
 
 export interface GoalOwner {
   id: string;
@@ -19,7 +26,14 @@ export interface KeyResultDto {
   unit: KeyResultUnit;
   startValue: number;
   targetValue: number;
+  /** KR tự đo (`source` != MANUAL): số đo trực tiếp lúc đọc; đo lỗi thì giữ số cũ + `measureError`. */
   currentValue: number;
+  source: KeyResultSource;
+  sourceConfig: KrSourceConfig;
+  /** Thời điểm đo (ISO) — null với KR nhập tay. */
+  measuredAt: string | null;
+  /** Lý do không đo được (JQL sai, dự án không còn…) — null nếu ổn. */
+  measureError: string | null;
   /** % hoàn thành đã kẹp trong [0,100] — BE tính (current-start)/(target-start). */
   progress: number;
 }
@@ -63,6 +77,8 @@ export interface KeyResultInput {
   startValue?: number;
   targetValue: number;
   currentValue?: number;
+  source?: KeyResultSource;
+  sourceConfig?: KrSourceConfig;
 }
 
 export interface GoalInput {

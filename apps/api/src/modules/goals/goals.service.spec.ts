@@ -3,6 +3,8 @@ import { GoalsService } from './goals.service';
 
 /** ProjectAccessService giả: người xem thấy mọi dự án (admin) / không có viewer. */
 const ACCESS_ALL = { visibleWhere: vi.fn(() => Promise.resolve({})) };
+/** KrMeasureService giả: không KR tự đo nào được đo (mặc định cho test không liên quan tới L25). */
+const NO_MEASURE = { measure: vi.fn(() => Promise.resolve(new Map())) };
 
 type IssueWhere = { where: Record<string, unknown> };
 const LIVE = { deletedAt: null };
@@ -10,7 +12,11 @@ const LIVE = { deletedAt: null };
 describe('GoalsService — không đếm/gắn issue của dự án xoá mềm', () => {
   it('validateIssues: where có project.deletedAt:null (không gắn được issue của dự án đã xoá)', async () => {
     const findMany = vi.fn(() => Promise.resolve([{ id: 'i1' }]));
-    const service = new GoalsService({ issue: { findMany } } as never, ACCESS_ALL as never);
+    const service = new GoalsService(
+      { issue: { findMany } } as never,
+      ACCESS_ALL as never,
+      NO_MEASURE as never,
+    );
     const validate = (
       service as unknown as {
         validateIssues(w: string, ids: string[], p: string | null): Promise<string[]>;
@@ -27,7 +33,11 @@ describe('GoalsService — không đếm/gắn issue của dự án xoá mềm',
 
   it('list: issue gắn kèm lọc cả issue xoá mềm lẫn dự án xoá mềm', async () => {
     const findMany = vi.fn(() => Promise.resolve([]));
-    const service = new GoalsService({ objective: { findMany } } as never, ACCESS_ALL as never);
+    const service = new GoalsService(
+      { objective: { findMany } } as never,
+      ACCESS_ALL as never,
+      NO_MEASURE as never,
+    );
     await service.list('w1', {}, 'u0');
     const { select } = (
       findMany.mock.calls[0] as unknown as [{ select: { issues: { where: unknown } } }]
@@ -70,7 +80,10 @@ function setup(archived: boolean, objectiveProject = true) {
     workspaceMembership: { findFirst: vi.fn(() => Promise.resolve({ userId: 'u1' })) },
     $transaction: vi.fn(() => Promise.resolve([])),
   };
-  return { service: new GoalsService(prisma as never, ACCESS_ALL as never), prisma };
+  return {
+    service: new GoalsService(prisma as never, ACCESS_ALL as never, NO_MEASURE as never),
+    prisma,
+  };
 }
 
 describe('GoalsService — dự án lưu trữ là chỉ đọc', () => {
@@ -136,7 +149,11 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
       issue: { findMany: vi.fn((_a?: unknown) => Promise.resolve([])) },
     };
     const access = { visibleWhere: vi.fn(() => Promise.resolve(visible)) };
-    return { service: new GoalsService(prisma as never, access as never), prisma, access };
+    return {
+      service: new GoalsService(prisma as never, access as never, NO_MEASURE as never),
+      prisma,
+      access,
+    };
   }
 
   it('list(w, f, viewer): mục tiêu cấp workspace luôn hiện, gắn dự án chỉ khi thấy; việc gắn kèm của dự án ẩn bị bỏ', async () => {
@@ -246,6 +263,186 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
       objectiveId: 'o1',
       issueId: { in: ['i-hidden'] },
       issue: { project: visible },
+    });
+  });
+});
+
+describe('GoalsService — KR tự đo (L25)', () => {
+  const objectiveRow = (krs: unknown[]) => ({
+    id: 'o1',
+    workspaceId: 'w1',
+    projectId: null,
+    name: 'O',
+    description: null,
+    period: '2026-Q4',
+    status: 'ACTIVE',
+    ownerId: null,
+    createdAt: new Date('2026-10-01T00:00:00Z'),
+    updatedAt: new Date('2026-10-01T00:00:00Z'),
+    owner: null,
+    project: null,
+    keyResults: krs,
+    issues: [],
+  });
+  const krRow = (over: Record<string, unknown>) => ({
+    id: 'k1',
+    name: 'Bug mở',
+    unit: 'NUMBER',
+    startValue: 20,
+    targetValue: 0,
+    currentValue: 3,
+    source: 'OPEN_BUGS',
+    sourceConfig: {},
+    ...over,
+  });
+
+  function make(rows: unknown[], measured: Map<string, unknown>) {
+    const prisma = {
+      objective: { findFirst: vi.fn(() => Promise.resolve(objectiveRow(rows))) },
+    };
+    const measure = { measure: vi.fn((..._a: unknown[]) => Promise.resolve(measured)) };
+    return {
+      service: new GoalsService(prisma as never, ACCESS_ALL as never, measure as never),
+      measure,
+    };
+  }
+
+  it('get(): KR OPEN_BUGS trả currentValue = số đo (12) dù DB có 3, progress tính theo 12', async () => {
+    const measured = new Map([
+      ['k1', { value: 12, measuredAt: '2026-10-16T01:00:00.000Z', error: null }],
+    ]);
+    const { service, measure } = make([krRow({})], measured);
+    const goal = await service.get('w1', 'o1', 'u1');
+    expect(measure.measure).toHaveBeenCalledWith('w1', 'u1', [
+      expect.objectContaining({ id: 'k1', source: 'OPEN_BUGS' }),
+    ]);
+    expect(goal.keyResults[0]).toMatchObject({
+      currentValue: 12,
+      source: 'OPEN_BUGS',
+      measuredAt: '2026-10-16T01:00:00.000Z',
+      measureError: null,
+      progress: 40, // (12-20)/(0-20)
+    });
+    expect(goal.progress).toBe(40);
+  });
+
+  it('đo lỗi (JQL sai): giữ currentValue cũ và trả measureError', async () => {
+    const measured = new Map([
+      ['k1', { value: null, measuredAt: '2026-10-16T01:00:00.000Z', error: 'JQL không hợp lệ' }],
+    ]);
+    const { service } = make([krRow({ source: 'ISSUE_COUNT_JQL' })], measured);
+    const goal = await service.get('w1', 'o1', 'u1');
+    expect(goal.keyResults[0]).toMatchObject({
+      currentValue: 3,
+      measureError: 'JQL không hợp lệ',
+    });
+  });
+
+  it('KR MANUAL không đổi: không gọi bộ đo, measuredAt/measureError = null', async () => {
+    const { service, measure } = make(
+      [krRow({ source: 'MANUAL', sourceConfig: null, currentValue: 5 })],
+      new Map(),
+    );
+    const goal = await service.get('w1', 'o1', 'u1');
+    expect(measure.measure).not.toHaveBeenCalled();
+    expect(goal.keyResults[0]).toMatchObject({
+      currentValue: 5,
+      source: 'MANUAL',
+      measuredAt: null,
+      measureError: null,
+      progress: 75,
+    });
+  });
+});
+
+describe('GoalsService — ghi KR tự đo (L25)', () => {
+  function make(
+    existing: { source: string; sourceConfig: unknown } = { source: 'MANUAL', sourceConfig: null },
+  ) {
+    const prisma = {
+      objective: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'o1', projectId: null, project: null })),
+      },
+      keyResult: {
+        create: vi.fn((_a?: unknown) => Promise.resolve({})),
+        update: vi.fn((_a?: unknown) => Promise.resolve({})),
+        findFirst: vi.fn(() => Promise.resolve({ id: 'k1', ...existing })),
+      },
+    };
+    const measure = {
+      measure: vi.fn(() => Promise.resolve(new Map())),
+      validateConfig: vi.fn((..._a: unknown[]) => Promise.resolve()),
+    };
+    const service = new GoalsService(prisma as never, ACCESS_ALL as never, measure as never);
+    // đọc lại sau ghi: không phải đối tượng kiểm của test này
+    (service as unknown as { read: () => Promise<unknown> }).read = () => Promise.resolve({});
+    return { service, prisma, measure };
+  }
+
+  it('addKeyResult tự đo: kiểm cấu hình, lưu source/sourceConfig, bỏ qua currentValue gửi lên', async () => {
+    const { service, prisma, measure } = make();
+    await service.addKeyResult(
+      'w1',
+      'o1',
+      {
+        name: 'Bug mở',
+        startValue: 6,
+        targetValue: 0,
+        currentValue: 99,
+        source: 'OPEN_BUGS',
+        sourceConfig: { projectId: 'p1', junk: 1 },
+      },
+      'u1',
+    );
+    expect(measure.validateConfig).toHaveBeenCalledWith('w1', 'u1', 'OPEN_BUGS', {
+      projectId: 'p1',
+    });
+    expect(prisma.keyResult.create.mock.calls[0]![0]).toMatchObject({
+      data: {
+        source: 'OPEN_BUGS',
+        sourceConfig: { projectId: 'p1' },
+        currentValue: 6,
+      },
+    });
+  });
+
+  it('addKeyResult: cấu hình sai (JQL bị từ chối) → lỗi, không tạo', async () => {
+    const { service, prisma, measure } = make();
+    measure.validateConfig.mockRejectedValueOnce(new Error('JQL không hợp lệ'));
+    await expect(
+      service.addKeyResult(
+        'w1',
+        'o1',
+        { name: 'x', targetValue: 1, source: 'ISSUE_COUNT_JQL', sourceConfig: { jql: 'zzz' } },
+        'u1',
+      ),
+    ).rejects.toThrow('JQL không hợp lệ');
+    expect(prisma.keyResult.create).not.toHaveBeenCalled();
+  });
+
+  it('addKeyResult: thiếu cấu hình theo nguồn → 422 từ service (đường không qua pipe)', async () => {
+    const { service } = make();
+    await expect(
+      service.addKeyResult(
+        'w1',
+        'o1',
+        { name: 'x', targetValue: 1, source: 'SPRINT_COMPLETION' },
+        'u1',
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+  });
+
+  it('updateKeyResult: KR đang tự đo bỏ qua currentValue; KR nhập tay vẫn ghi', async () => {
+    const auto = make({ source: 'OPEN_BUGS', sourceConfig: {} });
+    await auto.service.updateKeyResult('w1', 'o1', 'k1', { currentValue: 5 }, 'u1');
+    expect(
+      (auto.prisma.keyResult.update.mock.calls[0]![0] as { data: Record<string, unknown> }).data,
+    ).not.toHaveProperty('currentValue');
+
+    const manual = make();
+    await manual.service.updateKeyResult('w1', 'o1', 'k1', { currentValue: 5 }, 'u1');
+    expect(manual.prisma.keyResult.update.mock.calls[0]![0]).toMatchObject({
+      data: { currentValue: 5 },
     });
   });
 });

@@ -1659,6 +1659,14 @@ enum KeyResultUnit {
   CURRENCY
 }
 
+/// Nguồn số liệu của Key Result: nhập tay hoặc tự đo từ dữ liệu dự án (L25).
+enum KeyResultSource {
+  MANUAL
+  OPEN_BUGS
+  SPRINT_COMPLETION
+  ISSUE_COUNT_JQL
+}
+
 enum RecurrenceFreq {
   DAILY
   WEEKLY
@@ -1836,6 +1844,10 @@ model KeyResult {
   startValue   Float         @default(0)
   targetValue  Float
   currentValue Float         @default(0)
+  /// Nguồn số liệu (L25). KR tự đo: số hiện tại tính lúc đọc, `currentValue` giữ giá trị tay lần cuối.
+  source       KeyResultSource @default(MANUAL)
+  /// Cấu hình theo nguồn: { projectId? } | { projectId } | { jql } — kiểm ở goals.schemas.
+  sourceConfig Json?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 

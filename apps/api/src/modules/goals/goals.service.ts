@@ -1,15 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import type { ObjectiveStatus, Prisma } from '@prisma/client';
+import { Prisma, type KeyResultSource, type ObjectiveStatus } from '@prisma/client';
+import { ZodError } from 'zod';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  ForbiddenAppException,
+  NotFoundAppException,
+} from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
 import { ProjectAccessService } from '../rbac/project-access.service';
-import type {
-  CreateGoalInput,
-  CreateKeyResultInput,
-  KeyResultUpsertInput,
-  UpdateGoalInput,
-  UpdateKeyResultInput,
+import { KrMeasureService, type MeasureResult } from './kr-measure.service';
+import {
+  parseSourceConfig,
+  type CreateGoalInput,
+  type CreateKeyResultInput,
+  type KeyResultUpsertInput,
+  type UpdateGoalInput,
+  type UpdateKeyResultInput,
 } from './goals.schemas';
 
 const OWNER_SELECT = { id: true, displayName: true, email: true, avatarUrl: true } as const;
@@ -38,6 +45,8 @@ const objectiveSelect = (visible: Prisma.ProjectWhereInput) =>
         startValue: true,
         targetValue: true,
         currentValue: true,
+        source: true,
+        sourceConfig: true,
       },
     },
     issues: {
@@ -84,6 +93,7 @@ export class GoalsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: ProjectAccessService,
+    private readonly measurer: KrMeasureService,
   ) {}
 
   /**
@@ -117,7 +127,8 @@ export class GoalsService {
       orderBy: [{ period: 'desc' }, { createdAt: 'asc' }],
       select: objectiveSelect(visible),
     });
-    return rows.map((r) => this.toDto(r));
+    const measured = await this.measureAll(workspaceId, viewerId, rows);
+    return rows.map((r) => this.toDto(r, measured));
   }
 
   /** Các kỳ đã dùng (mới nhất trước) — để FE dựng bộ chọn kỳ mà không cần tải hết mục tiêu. */
@@ -133,16 +144,36 @@ export class GoalsService {
   }
 
   async get(workspaceId: string, id: string, viewerId: string) {
-    return this.read(workspaceId, id, await this.visibleFor(workspaceId, viewerId));
+    return this.read(workspaceId, id, await this.visibleFor(workspaceId, viewerId), viewerId);
   }
 
-  private async read(workspaceId: string, id: string, visible: Prisma.ProjectWhereInput) {
+  /** `viewerId` để đo KR tự đo theo dự án người xem thấy. */
+  private async read(
+    workspaceId: string,
+    id: string,
+    visible: Prisma.ProjectWhereInput,
+    viewerId: string,
+  ) {
     const row = await this.prisma.objective.findFirst({
       where: { id, workspaceId, ...this.scopeOf(visible) },
       select: objectiveSelect(visible),
     });
     if (!row) throw new NotFoundAppException('Mục tiêu');
-    return this.toDto(row);
+    return this.toDto(row, await this.measureAll(workspaceId, viewerId, [row]));
+  }
+
+  /** Đo mọi KR tự đo của các mục tiêu trong MỘT lượt (KR cùng cấu hình đo một lần). Không có KR tự đo → không đo. */
+  private async measureAll(
+    workspaceId: string,
+    viewerId: string,
+    rows: ObjectiveRow[],
+  ): Promise<Map<string, MeasureResult>> {
+    const auto = rows
+      .flatMap((r) => r.keyResults)
+      .filter((kr) => kr.source !== 'MANUAL')
+      .map((kr) => ({ id: kr.id, source: kr.source, sourceConfig: kr.sourceConfig }));
+    if (auto.length === 0) return new Map();
+    return this.measurer.measure(workspaceId, viewerId, auto);
   }
 
   async create(workspaceId: string, dto: CreateGoalInput, viewerId: string) {
@@ -153,6 +184,12 @@ export class GoalsService {
       ? await this.validateIssues(workspaceId, dto.issueIds, projectId, visible)
       : [];
 
+    const krData = await Promise.all(
+      (dto.keyResults ?? []).map(async (kr) =>
+        this.krCreateData(kr, await this.resolveSource(workspaceId, viewerId, kr)),
+      ),
+    );
+
     const created = await this.prisma.objective.create({
       data: {
         workspaceId,
@@ -162,12 +199,12 @@ export class GoalsService {
         description: dto.description ?? null,
         period: dto.period.trim(),
         status: dto.status ?? 'ACTIVE',
-        keyResults: { create: (dto.keyResults ?? []).map((kr) => this.krCreateData(kr)) },
+        keyResults: { create: krData },
         issues: { create: issueIds.map((issueId) => ({ issueId })) },
       },
       select: { id: true },
     });
-    return this.read(workspaceId, created.id, visible);
+    return this.read(workspaceId, created.id, visible, viewerId);
   }
 
   async update(workspaceId: string, id: string, dto: UpdateGoalInput, viewerId: string) {
@@ -204,7 +241,7 @@ export class GoalsService {
     if (dto.keyResults !== undefined) {
       const existing = await this.prisma.keyResult.findMany({
         where: { objectiveId: id },
-        select: { id: true },
+        select: { id: true, source: true, sourceConfig: true },
       });
       const keptIds = new Set(dto.keyResults.map((kr) => kr.id).filter((v): v is string => !!v));
       const removed = existing.filter((kr) => !keptIds.has(kr.id)).map((kr) => kr.id);
@@ -213,13 +250,25 @@ export class GoalsService {
           this.prisma.keyResult.deleteMany({ where: { id: { in: removed }, objectiveId: id } }),
         );
       for (const kr of dto.keyResults) {
-        if (kr.id && existing.some((e) => e.id === kr.id)) {
-          ops.push(
-            this.prisma.keyResult.update({ where: { id: kr.id }, data: this.krCreateData(kr) }),
-          );
+        const prev = kr.id ? existing.find((e) => e.id === kr.id) : undefined;
+        // KR cũ không gửi `source` → giữ nguồn hiện tại (không vô tình đưa KR tự đo về nhập tay).
+        const src = await this.resolveSource(
+          workspaceId,
+          viewerId,
+          kr.source === undefined && prev
+            ? { source: prev.source, sourceConfig: prev.sourceConfig as Record<string, unknown> }
+            : kr,
+        );
+        if (kr.id && prev) {
+          const data = this.krCreateData(kr, src);
+          // KR tự đo: `currentValue` trong DB (giá trị tay lần cuối) giữ nguyên, không bị ghi đè.
+          if (src.source !== 'MANUAL') delete (data as { currentValue?: number }).currentValue;
+          ops.push(this.prisma.keyResult.update({ where: { id: kr.id }, data }));
         } else {
           ops.push(
-            this.prisma.keyResult.create({ data: { objectiveId: id, ...this.krCreateData(kr) } }),
+            this.prisma.keyResult.create({
+              data: { objectiveId: id, ...this.krCreateData(kr, src) },
+            }),
           );
         }
       }
@@ -246,7 +295,7 @@ export class GoalsService {
     }
 
     await this.prisma.$transaction(ops);
-    return this.read(workspaceId, id, visible);
+    return this.read(workspaceId, id, visible, viewerId);
   }
 
   async remove(workspaceId: string, id: string, viewerId: string) {
@@ -266,8 +315,9 @@ export class GoalsService {
   ) {
     const visible = await this.visibleFor(workspaceId, viewerId);
     await this.requireObjective(workspaceId, objectiveId, visible);
-    await this.prisma.keyResult.create({ data: { objectiveId, ...this.krCreateData(dto) } });
-    return this.read(workspaceId, objectiveId, visible);
+    const src = await this.resolveSource(workspaceId, viewerId, dto);
+    await this.prisma.keyResult.create({ data: { objectiveId, ...this.krCreateData(dto, src) } });
+    return this.read(workspaceId, objectiveId, visible, viewerId);
   }
 
   async updateKeyResult(
@@ -281,7 +331,7 @@ export class GoalsService {
     await this.requireObjective(workspaceId, objectiveId, visible);
     const kr = await this.prisma.keyResult.findFirst({
       where: { id: keyResultId, objectiveId },
-      select: { id: true },
+      select: { id: true, source: true, sourceConfig: true },
     });
     if (!kr) throw new NotFoundAppException('Kết quả then chốt');
 
@@ -294,10 +344,24 @@ export class GoalsService {
     if (dto.unit !== undefined) data.unit = dto.unit;
     if (dto.startValue !== undefined) data.startValue = dto.startValue;
     if (dto.targetValue !== undefined) data.targetValue = dto.targetValue;
-    if (dto.currentValue !== undefined) data.currentValue = dto.currentValue;
+    const source = dto.source ?? kr.source;
+    if (dto.source !== undefined || dto.sourceConfig !== undefined) {
+      const src = await this.resolveSource(workspaceId, viewerId, {
+        source,
+        // Đổi nguồn mà không gửi cấu hình mới thì dùng cấu hình cũ (kiểm lại — có thể không khớp nguồn mới).
+        sourceConfig:
+          dto.sourceConfig !== undefined
+            ? dto.sourceConfig
+            : (kr.sourceConfig as Record<string, unknown> | null),
+      });
+      data.source = src.source;
+      data.sourceConfig = src.sourceConfig;
+    }
+    // KR tự đo bỏ qua `currentValue` gửi lên (số đo tính lúc đọc).
+    if (dto.currentValue !== undefined && source === 'MANUAL') data.currentValue = dto.currentValue;
 
     await this.prisma.keyResult.update({ where: { id: keyResultId }, data });
-    return this.read(workspaceId, objectiveId, visible);
+    return this.read(workspaceId, objectiveId, visible, viewerId);
   }
 
   async removeKeyResult(
@@ -312,7 +376,7 @@ export class GoalsService {
       where: { id: keyResultId, objectiveId },
     });
     if (count === 0) throw new NotFoundAppException('Kết quả then chốt');
-    return this.read(workspaceId, objectiveId, visible);
+    return this.read(workspaceId, objectiveId, visible, viewerId);
   }
 
   // ───────────────────────── issues gắn kèm ─────────────────────────
@@ -325,7 +389,7 @@ export class GoalsService {
       data: ids.map((issueId) => ({ objectiveId, issueId })),
       skipDuplicates: true,
     });
-    return this.read(workspaceId, objectiveId, visible);
+    return this.read(workspaceId, objectiveId, visible, viewerId);
   }
 
   async removeIssues(
@@ -340,18 +404,53 @@ export class GoalsService {
       // Chỉ gỡ việc thuộc dự án người gọi thấy (không dò/gỡ liên kết tới việc của dự án ẩn).
       where: { objectiveId, issueId: { in: issueIds }, issue: { project: visible } },
     });
-    return this.read(workspaceId, objectiveId, visible);
+    return this.read(workspaceId, objectiveId, visible, viewerId);
   }
 
   // ───────────────────────── helpers ─────────────────────────
 
-  private krCreateData(kr: KeyResultUpsertInput) {
+  /**
+   * Kiểm + chuẩn hoá nguồn số liệu của một KR: cấu hình đúng theo nguồn, dự án thuộc workspace và người sửa thấy,
+   * JQL hợp lệ (cú pháp + giá trị). Cấu hình sai → 422 với thông điệp tiếng Việt.
+   */
+  private async resolveSource(
+    workspaceId: string,
+    viewerId: string,
+    kr: { source?: KeyResultSource; sourceConfig?: Record<string, unknown> | null },
+  ): Promise<{
+    source: KeyResultSource;
+    sourceConfig: Prisma.InputJsonValue | typeof Prisma.DbNull;
+  }> {
+    const source = kr.source ?? 'MANUAL';
+    let config: ReturnType<typeof parseSourceConfig>;
+    try {
+      config = parseSourceConfig(source, kr.sourceConfig);
+    } catch (err) {
+      if (err instanceof ZodError)
+        throw new BusinessRuleException(
+          err.issues[0]?.message ?? 'Cấu hình nguồn số liệu không hợp lệ',
+        );
+      throw err;
+    }
+    if (source !== 'MANUAL')
+      await this.measurer.validateConfig(workspaceId, viewerId, source, config);
+    return { source, sourceConfig: config ?? Prisma.DbNull };
+  }
+
+  private krCreateData(
+    kr: KeyResultUpsertInput | CreateKeyResultInput,
+    src: { source: KeyResultSource; sourceConfig: Prisma.InputJsonValue | typeof Prisma.DbNull },
+  ) {
     return {
       name: kr.name.trim(),
       unit: kr.unit ?? 'NUMBER',
       startValue: kr.startValue ?? 0,
       targetValue: kr.targetValue,
-      currentValue: kr.currentValue ?? kr.startValue ?? 0,
+      // KR tự đo bỏ qua `currentValue` gửi lên: số hiển thị là số đo, DB giữ điểm xuất phát.
+      currentValue:
+        src.source === 'MANUAL' ? (kr.currentValue ?? kr.startValue ?? 0) : (kr.startValue ?? 0),
+      source: src.source,
+      sourceConfig: src.sourceConfig,
     };
   }
 
@@ -436,22 +535,29 @@ export class GoalsService {
     return unique;
   }
 
-  private toDto(o: ObjectiveRow) {
+  private toDto(o: ObjectiveRow, measured: Map<string, MeasureResult>) {
     const keyResults = o.keyResults.map((kr) => {
+      const m = measured.get(kr.id);
+      // KR tự đo: số hiện tại = số đo trực tiếp; đo lỗi → giữ giá trị cũ trong DB (kèm `measureError`).
+      const currentValue = m?.value ?? kr.currentValue;
       const span = kr.targetValue - kr.startValue;
       const ratio =
         span === 0
-          ? kr.currentValue >= kr.targetValue
+          ? currentValue >= kr.targetValue
             ? 1
             : 0
-          : clamp01((kr.currentValue - kr.startValue) / span);
+          : clamp01((currentValue - kr.startValue) / span);
       return {
         id: kr.id,
         name: kr.name,
         unit: kr.unit,
         startValue: kr.startValue,
         targetValue: kr.targetValue,
-        currentValue: kr.currentValue,
+        currentValue,
+        source: kr.source,
+        sourceConfig: kr.sourceConfig,
+        measuredAt: m?.measuredAt ?? null,
+        measureError: m?.error ?? null,
         progress: Math.round(ratio * 100),
       };
     });

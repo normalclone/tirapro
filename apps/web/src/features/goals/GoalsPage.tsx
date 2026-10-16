@@ -25,6 +25,8 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { LOCALE } from '@/lib/locale';
+import { fmtDateTime } from '@/lib/dateFormat';
+import { describeSource, isAutoSource } from './krSource';
 
 const STATUS_META: Record<ObjectiveStatus, { label: string; className: string; hint: string }> = {
   DRAFT: {
@@ -105,7 +107,16 @@ function KeyResultRow({
   canManage: boolean;
 }) {
   const updateKr = useUpdateKeyResult();
+  const { data: projects } = useProjects();
   const [draft, setDraft] = useState(String(kr.currentValue));
+  const auto = isAutoSource(kr.source);
+  const projectNames = useMemo(
+    () => Object.fromEntries((projects ?? []).map((p) => [p.id, p.name])),
+    [projects],
+  );
+  const sourceHint = auto
+    ? `${describeSource(kr, projectNames)}. Số tính theo dự án bạn có quyền xem.`
+    : undefined;
 
   useEffect(() => {
     setDraft(String(kr.currentValue));
@@ -132,7 +143,16 @@ function KeyResultRow({
           {kr.name}
         </p>
         <div className="flex items-center gap-2">
-          {canManage ? (
+          {auto ? (
+            <>
+              <Badge className="bg-primary-subtle text-primary" title={sourceHint}>
+                Tự đo
+              </Badge>
+              <span className="tabular-nums text-sm text-ink" title={sourceHint}>
+                {formatValue(kr.currentValue, kr.unit)}
+              </span>
+            </>
+          ) : canManage ? (
             <Input
               type="number"
               value={draft}
@@ -174,6 +194,16 @@ function KeyResultRow({
       <div className="mt-1.5">
         <ProgressBar value={kr.progress} label={`Tiến độ ${kr.name}`} size="sm" />
       </div>
+      {auto && (kr.measureError || kr.measuredAt) && (
+        <p
+          className={cn('mt-1 text-xs', kr.measureError ? 'text-danger' : 'text-faint')}
+          role={kr.measureError ? 'alert' : undefined}
+        >
+          {kr.measureError
+            ? `Không đo được: ${kr.measureError} — đang hiện số cũ`
+            : `Cập nhật lúc ${fmtDateTime(kr.measuredAt)}`}
+        </p>
+      )}
     </li>
   );
 }

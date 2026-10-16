@@ -512,3 +512,43 @@ describe('SearchService — chỉ liệt kê/gợi ý dự án người hỏi đ
     expect(JSON.stringify(out)).not.toMatch(/Sprint Secret|Secret Comp|v9-secret/);
   });
 });
+
+describe('SearchService.count (L25)', () => {
+  function make(visible: Record<string, unknown> = {}) {
+    const { service, prisma, access } = makeService([]);
+    const count = vi.fn((_a?: unknown) => Promise.resolve(9));
+    Object.assign(prisma, {
+      issue: { count },
+      issueType: { findMany: vi.fn(() => Promise.resolve([{ name: 'Bug' }])) },
+    });
+    access.visibleWhere.mockResolvedValue(visible);
+    return { service, count, access };
+  }
+
+  it('compile JQL → issue.count với where đã compile + workspaceId + dự án chưa xoá', async () => {
+    const { service, count, access } = make();
+    await expect(service.count('W1', 'U1', 'type = Bug')).resolves.toBe(9);
+    expect(access.visibleWhere).toHaveBeenCalledWith('U1', 'W1');
+    const { where } = (count.mock.calls[0] as unknown as [{ where: { AND: unknown[] } }])[0];
+    const json = JSON.stringify(where);
+    expect(json).toContain('"workspaceId":"W1"');
+    expect(json).toContain('"deletedAt":null');
+    expect(json).toContain('Bug');
+  });
+
+  it('chỉ đếm việc của dự án người xem thấy (dự án riêng tư không lộ qua số đếm)', async () => {
+    const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'U1' } } }] };
+    const { service, count } = make(visible);
+    await service.count('W1', 'U1', 'statusCategory = DONE');
+    expect(JSON.stringify((count.mock.calls[0] as unknown[])[0])).toContain('"isPrivate":false');
+  });
+
+  it('JQL lỗi cú pháp → BusinessRuleException như validate; không đếm', async () => {
+    const { service, count } = make();
+    await expect(service.count('W1', 'U1', 'type = = Bug')).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('JQL không hợp lệ') as unknown,
+    });
+    expect(count).not.toHaveBeenCalled();
+  });
+});

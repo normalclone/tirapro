@@ -238,20 +238,60 @@ export class SearchService {
   ): Promise<PageResult<IssueDto>> {
     if (opts.mode === 'text') return this.searchText(workspaceId, opts, currentUserId);
 
+    const built = await this.buildWhere(
+      workspaceId,
+      currentUserId,
+      opts.jql,
+      opts.projectId,
+      opts.checkValues,
+      opts.orderByRank,
+    );
+    let { where, orderBy } = built;
+    const { rankHint } = built;
+    if (opts.orderByRank && !orderBy.length) orderBy = [{ rank: 'asc' }];
+    if (opts.projectId) {
+      where = Object.keys(where).length
+        ? { AND: [where, { projectId: opts.projectId }] }
+        : { projectId: opts.projectId };
+    }
+    if (opts.excludeUntriaged) {
+      where = Object.keys(where).length ? { AND: [where, TRIAGE_VISIBLE] } : TRIAGE_VISIBLE;
+    }
+    return this.issues.query(workspaceId, where, orderBy, opts.cursor, opts.limit, currentUserId, {
+      rankHint,
+    });
+  }
+
+  /**
+   * Dịch JQL → `where` Prisma (+ orderBy, rankHint) — dùng chung cho `search()` và `count()`. Chưa ghép phạm vi
+   * workspace/dự án người xem (nơi gọi ghép: `IssuesService.query` hoặc `count`). JQL rỗng → `where` rỗng.
+   */
+  private async buildWhere(
+    workspaceId: string,
+    currentUserId: string,
+    jql: string | undefined,
+    projectId: string | undefined,
+    checkValues?: boolean,
+    orderByRank?: boolean,
+  ): Promise<{
+    where: Prisma.IssueWhereInput;
+    orderBy: Prisma.IssueOrderByWithRelationInput[];
+    rankHint: string[] | undefined;
+  }> {
     let where: Prisma.IssueWhereInput = {};
     let orderBy: Prisma.IssueOrderByWithRelationInput[] = [];
     let rankHint: string[] | undefined;
 
-    if (opts.jql && opts.jql.trim()) {
-      const ast = this.parse(opts.jql);
-      if (opts.checkValues) {
+    if (jql && jql.trim()) {
+      const ast = this.parse(jql);
+      if (checkValues) {
         const [first] = await this.findInvalidValues(workspaceId, currentUserId, ast.where);
         if (first) throw new BusinessRuleException(first.message);
       }
       const fulltext = new Map<string, readonly string[]>();
       const terms = collectFulltextTerms(ast.where);
       const scopeIds = terms.length
-        ? await this.fulltextProjectScope(workspaceId, ast.where, opts.projectId, currentUserId)
+        ? await this.fulltextProjectScope(workspaceId, ast.where, projectId, currentUserId)
         : undefined;
       for (const term of terms) {
         const res = await this.fulltext.search(
@@ -268,19 +308,23 @@ export class SearchService {
       const ids = primary ? fulltext.get(primary) : undefined;
       // Không ORDER BY tường minh → id khớp full-text xếp theo rank lên trước. Chỉ là gợi ý xếp hạng:
       // tập kết quả do `where` (đã gồm ILIKE summary/description/key) quyết định, không bị cắt top-200.
-      if (ids && !orderBy.length && !opts.orderByRank) rankHint = [...ids];
+      if (ids && !orderBy.length && !orderByRank) rankHint = [...ids];
     }
-    if (opts.orderByRank && !orderBy.length) orderBy = [{ rank: 'asc' }];
-    if (opts.projectId) {
-      where = Object.keys(where).length
-        ? { AND: [where, { projectId: opts.projectId }] }
-        : { projectId: opts.projectId };
-    }
-    if (opts.excludeUntriaged) {
-      where = Object.keys(where).length ? { AND: [where, TRIAGE_VISIBLE] } : TRIAGE_VISIBLE;
-    }
-    return this.issues.query(workspaceId, where, orderBy, opts.cursor, opts.limit, currentUserId, {
-      rankHint,
+    return { where, orderBy, rankHint };
+  }
+
+  /**
+   * Đếm việc khớp JQL trong phạm vi người xem thấy (cùng `where` và cùng điều kiện dự án như `search()`): dự án riêng
+   * tư người đó không thấy không bao giờ nằm trong số đếm. JQL lỗi cú pháp/giá trị sai → `BusinessRuleException`.
+   * Dùng cho Key Result tự đo (L25).
+   */
+  async count(workspaceId: string, userId: string, jql: string): Promise<number> {
+    const { where } = await this.buildWhere(workspaceId, userId, jql, undefined, true);
+    const visible = await this.access.visibleWhere(userId, workspaceId);
+    return this.prisma.issue.count({
+      where: {
+        AND: [{ workspaceId, deletedAt: null, project: { deletedAt: null, ...visible } }, where],
+      },
     });
   }
 

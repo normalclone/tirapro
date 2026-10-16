@@ -358,6 +358,14 @@ export const KeyResultUnit = {
 } as const;
 export type KeyResultUnit = (typeof KeyResultUnit)[keyof typeof KeyResultUnit];
 
+export const KeyResultSource = {
+  MANUAL: 'MANUAL',
+  OPEN_BUGS: 'OPEN_BUGS',
+  SPRINT_COMPLETION: 'SPRINT_COMPLETION',
+  ISSUE_COUNT_JQL: 'ISSUE_COUNT_JQL',
+} as const;
+export type KeyResultSource = (typeof KeyResultSource)[keyof typeof KeyResultSource];
+
 export const RecurrenceFreq = {
   DAILY: 'DAILY',
   WEEKLY: 'WEEKLY',
