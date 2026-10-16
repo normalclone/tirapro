@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 
 const issue = {
@@ -28,6 +29,7 @@ function setup(
     notification: {
       // Mặc định chưa có dòng nào để gộp / chưa có dòng trực tiếp.
       findFirst: vi.fn((_a?: unknown): Promise<unknown> => Promise.resolve(null)),
+      deleteMany: vi.fn((_a?: unknown) => Promise.resolve({ count: 0 })),
       update: vi.fn((a: { where: { id: string }; data: Record<string, unknown> }) =>
         Promise.resolve({
           id: a.where.id,
@@ -411,7 +413,7 @@ describe('NotificationsService — gộp theo công việc trong 60 giây (A14)'
       expect(prisma.notification.create).not.toHaveBeenCalled();
       expect(prisma.notification.update).toHaveBeenCalledTimes(1);
       const upd = prisma.notification.update.mock.calls[0]![0];
-      expect(upd.where).toEqual({ id: 'n1' });
+      expect(upd.where).toEqual({ id: 'n1', readAt: null });
       expect(upd.data).toMatchObject({
         payload: { count: 2, excerpt: 'hai' },
         commentId: 'c2',
@@ -521,5 +523,85 @@ describe('NotificationsService — gộp theo công việc trong 60 giây (A14)'
     expect(prisma.notification.findFirst).not.toHaveBeenCalled();
     expect(prisma.notification.create).not.toHaveBeenCalled();
     expect(prisma.notification.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('NotificationsService — vòng sửa 1 (A14)', () => {
+  const watch = {
+    recipientId: 'u2',
+    workspaceId: 'w1',
+    type: 'WATCHING_UPDATE' as const,
+    issueId: 'i1',
+    actorId: 'a1',
+    payload: { key: 'TP-1', summary: 'Sửa lỗi' },
+  };
+
+  it('chốt chặn trung tâm: không báo cho chính người thao tác, không truy vấn gì', async () => {
+    const { service, prisma } = setup();
+    await service.publish({ ...watch, recipientId: 'a1' }, { force: true });
+    await service.publish({ ...watch, type: 'ISSUE_ASSIGNED', recipientId: 'a1' });
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+  });
+
+  it('force KHÔNG vượt công tắc người dùng đã TẮT tường minh (không dòng, không realtime)', async () => {
+    const { service, prisma } = setup([], {
+      settings: { notifications: { WATCHING_UPDATE: false } },
+    });
+    const events = (service as unknown as { events: { emit: ReturnType<typeof vi.fn> } }).events;
+    await service.publish(watch, { force: true });
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('force vẫn thay MẶC ĐỊNH tắt; người dùng bật tường minh thì không cần force', async () => {
+    const a = setup();
+    await a.service.publish(watch, { force: true });
+    expect(a.prisma.notification.create).toHaveBeenCalledTimes(1);
+    const b = setup([], { settings: { notifications: { WATCHING_UPDATE: true } } });
+    await b.service.publish(watch);
+    expect(b.prisma.notification.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('thông báo trực tiếp hấp thụ dòng theo dõi chưa đọc cùng việc trong 60 s (xoá trước khi đẩy realtime)', async () => {
+    const { service, prisma } = setup();
+    const events = (service as unknown as { events: { emit: ReturnType<typeof vi.fn> } }).events;
+    const order: string[] = [];
+    prisma.notification.deleteMany.mockImplementation(() => {
+      order.push('delete');
+      return Promise.resolve({ count: 1 });
+    });
+    events.emit.mockImplementation(() => order.push('emit'));
+    await service.publish({ ...watch, type: 'ISSUE_ASSIGNED' });
+    const arg = prisma.notification.deleteMany.mock.calls[0]![0] as {
+      where: Record<string, unknown>;
+    };
+    expect(arg.where).toMatchObject({
+      recipientId: 'u2',
+      issueId: 'i1',
+      type: 'WATCHING_UPDATE',
+      readAt: null,
+    });
+    expect(order).toEqual(['delete', 'emit']);
+  });
+
+  it('gộp: người nhận bấm đọc giữa lúc tìm và lúc ghi (P2025) → tạo dòng mới, không nhập vào dòng đã đọc', async () => {
+    const { service, prisma } = setup();
+    prisma.notification.findFirst.mockResolvedValueOnce({
+      id: 'n1',
+      type: 'COMMENT_ADDED',
+      payload: { count: 1 },
+      commentId: 'c1',
+      actorId: 'a1',
+    });
+    prisma.notification.update.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('x', { code: 'P2025', clientVersion: 'x' }),
+    );
+    await service.onCommentAdded({
+      comment: { id: 'c2', authorId: 'a1', body: 'hai' },
+      issueId: 'i1',
+      actorId: 'a1',
+    });
+    expect(prisma.notification.create).toHaveBeenCalledTimes(1);
   });
 });

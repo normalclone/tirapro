@@ -563,6 +563,8 @@ export class NotificationsService {
   ): Promise<() => Promise<void>> {
     const noop = (): Promise<void> => Promise.resolve();
     // Quiet-by-default: tôn trọng tùy chọn của người nhận. In-app và email là hai tuỳ chọn độc lập.
+    // Chốt chặn trung tâm: không bao giờ báo cho chính người thao tác (dù producer quên lọc).
+    if (input.actorId && input.actorId === input.recipientId) return noop;
     const recipient = await this.prisma.user.findUnique({
       where: { id: input.recipientId },
       select: { settings: true, email: true, status: true },
@@ -574,7 +576,9 @@ export class NotificationsService {
       !!emailKey &&
       recipient.status !== 'DEACTIVATED' &&
       effectiveEmailPrefs(recipient.settings)[emailKey];
-    const inApp = !!opts?.force || prefs[input.type];
+    // `force` chỉ thay MẶC ĐỊNH (loại tắt-mặc-định như WATCHING_UPDATE); người dùng đã TẮT tường minh thì luôn thắng.
+    const explicitlyOff = readNotificationsSettings(recipient.settings)[input.type] === false;
+    const inApp = prefs[input.type] || (!!opts?.force && !explicitlyOff);
     if (!inApp && !emailOn) return noop;
     const payload = await this.withActor(input);
 
@@ -608,34 +612,60 @@ export class NotificationsService {
               orderBy: { createdAt: 'desc' },
             })
           : null;
-      saved = prev
-        ? await db.notification.update({
-            where: { id: prev.id },
-            data: {
-              payload: mergeNotificationPayload(
-                prev.payload as NotificationPayload,
-                payload,
-              ) as Prisma.InputJsonValue,
-              commentId: input.commentId ?? prev.commentId,
-              actorId: input.actorId ?? prev.actorId,
-              createdAt: new Date(),
-            },
-          })
-        : await db.notification.create({
-            data: {
-              recipientId: input.recipientId,
-              workspaceId: input.workspaceId,
-              type: input.type,
-              issueId: input.issueId ?? null,
-              commentId: input.commentId ?? null,
-              actorId: input.actorId ?? null,
-              payload: payload as Prisma.InputJsonValue,
-            },
-          });
+      const merged = prev ? await this.mergeInto(db, prev, input, payload) : null;
+      saved =
+        merged ??
+        (await db.notification.create({
+          data: {
+            recipientId: input.recipientId,
+            workspaceId: input.workspaceId,
+            type: input.type,
+            issueId: input.issueId ?? null,
+            commentId: input.commentId ?? null,
+            actorId: input.actorId ?? null,
+            payload: payload as Prisma.InputJsonValue,
+          },
+        }));
+      // Kiểm lại SAU khi ghi (đối xứng với bước hấp thụ ở dưới): dòng trực tiếp có thể vừa commit giữa lúc kiểm
+      // ở trên và lúc ghi này (vd MENTIONED trong transaction chưa commit lúc kiểm đầu) → rút dòng theo dõi vừa ghi.
+      if (input.type === 'WATCHING_UPDATE' && input.issueId) {
+        const direct = await db.notification.findFirst({
+          where: {
+            recipientId: input.recipientId,
+            issueId: input.issueId,
+            type: { not: 'WATCHING_UPDATE' },
+            readAt: null,
+            createdAt: { gte: since },
+          },
+          select: { id: true },
+        });
+        if (direct) {
+          await db.notification.deleteMany({ where: { id: saved.id } });
+          return noop;
+        }
+      }
     }
 
     return async () => {
       if (saved) {
+        // Thông báo trực tiếp (loại khác WATCHING_UPDATE) hấp thụ dòng "theo dõi" chưa đọc cùng việc trong cửa sổ:
+        // người nhận chỉ thấy một dòng. Chạy SAU commit (kể cả khi dòng trực tiếp ghi trong transaction).
+        // Không cộng `count` vì dòng theo dõi thường đếm chính sự kiện này (sẽ thành "bình luận 2 lần" sai).
+        if (input.type !== 'WATCHING_UPDATE' && input.issueId) {
+          try {
+            await this.prisma.notification.deleteMany({
+              where: {
+                recipientId: input.recipientId,
+                issueId: input.issueId,
+                type: 'WATCHING_UPDATE',
+                readAt: null,
+                createdAt: { gte: new Date(Date.now() - COALESCE_WINDOW_MS) },
+              },
+            });
+          } catch (err) {
+            this.logger.warn(`Hấp thụ dòng theo dõi thất bại: ${this.errMsg(err)}`);
+          }
+        }
         // Báo cho gateway đẩy `notification:new` tới đúng người nhận (room user:<id>). Dòng đã gộp cũng được đẩy lại
         // với DTO mới — FE chỉ cần làm mới danh sách.
         this.events.emit(DOMAIN_EVENTS.NOTIFICATION_CREATED, {
@@ -645,6 +675,35 @@ export class NotificationsService {
       }
       if (emailOn) await this.enqueueEmail(recipient.email, input.type, payload);
     };
+  }
+
+  /**
+   * Gộp sự kiện mới vào dòng `prev`. Điều kiện `readAt: null` ngay trong UPDATE: nếu người nhận vừa bấm đọc
+   * giữa lúc tìm và lúc ghi thì KHÔNG nhập vào dòng đã đọc (P2025 → trả null để tạo dòng mới).
+   */
+  private async mergeInto(
+    db: Pick<Prisma.TransactionClient, 'notification'>,
+    prev: Notification,
+    input: NotificationInput,
+    payload: NotificationPayload,
+  ): Promise<Notification | null> {
+    try {
+      return await db.notification.update({
+        where: { id: prev.id, readAt: null },
+        data: {
+          payload: mergeNotificationPayload(
+            prev.payload as NotificationPayload,
+            payload,
+          ) as Prisma.InputJsonValue,
+          commentId: input.commentId ?? prev.commentId,
+          actorId: input.actorId ?? prev.actorId,
+          createdAt: new Date(),
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return null;
+      throw err;
+    }
   }
 
   /** Bổ sung người thực hiện (ảnh chụp tên lúc xảy ra) + `count`/`actors` — nền cho việc gộp ở `publish`. */

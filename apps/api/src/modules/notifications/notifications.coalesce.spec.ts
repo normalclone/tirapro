@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 import { WatchersService } from '../watchers/watchers.service';
 
@@ -50,15 +51,36 @@ function setup(opts: { watchers: string[]; assignee?: string }) {
         rows.push(row);
         return Promise.resolve(row);
       }),
-      update: vi.fn((a: { where: { id: string }; data: Partial<Row> }) => {
-        const row = rows.find((r) => r.id === a.where.id)!;
+      update: vi.fn((a: { where: Record<string, unknown>; data: Partial<Row> }) => {
+        const row = rows.find((r) => matches(r, a.where));
+        if (!row)
+          return Promise.reject(
+            new Prisma.PrismaClientKnownRequestError('x', { code: 'P2025', clientVersion: 'x' }),
+          );
         Object.assign(row, a.data);
         return Promise.resolve(row);
+      }),
+      deleteMany: vi.fn((a: { where: Record<string, unknown> }) => {
+        const gone = rows.filter((r) => matches(r, a.where));
+        for (const r of gone) rows.splice(rows.indexOf(r), 1);
+        return Promise.resolve({ count: gone.length });
       }),
     },
     issueWatcher: {
       findMany: vi.fn(() => Promise.resolve(opts.watchers.map((userId) => ({ userId })))),
     },
+    // Mô phỏng sổ mention + transaction: thông báo ghi trong tx chỉ "thấy được" sau khi commit (đẩy vào rows ở cuối).
+    mention: {
+      createManyAndReturn: vi.fn((a: { data: { mentionedUserId: string }[] }) =>
+        Promise.resolve(a.data.map((d) => ({ mentionedUserId: d.mentionedUserId }))),
+      ),
+    },
+    workspaceMembership: {
+      findMany: vi.fn((a: { where: { userId: { in: string[] } } }) =>
+        Promise.resolve(a.where.userId.in.map((userId) => ({ userId }))),
+      ),
+    },
+    $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
     issue: {
       findFirst: vi.fn(() =>
         Promise.resolve({
@@ -85,6 +107,77 @@ function setup(opts: { watchers: string[]; assignee?: string }) {
 }
 
 const issue = { id: 'i1', workspaceId: 'w1', key: 'TP-1', summary: 'Sửa lỗi' };
+
+describe('không gửi đôi theo dõi vs trực tiếp — cả hai thứ tự', () => {
+  const withDesc = { ...issue, assigneeId: null, description: 'cc @[Ba](user:w1)' };
+  const types = (rows: Row[]) => rows.map((r) => r.type);
+
+  it('@nhắc trong mô tả, người đó đang theo dõi — theo dõi chạy TRƯỚC (trực tiếp chưa commit)', async () => {
+    const { rows, notifications, watchers } = setup({ watchers: ['w1'] });
+    await watchers.onIssueUpdated({
+      issue: withDesc,
+      actorId: 'a1',
+      changedFields: ['description'],
+    });
+    expect(types(rows)).toEqual(['WATCHING_UPDATE']);
+    await notifications.onIssueDescriptionMentions({
+      issue: withDesc,
+      actorId: 'a1',
+      changedFields: ['description'],
+    });
+    expect(types(rows)).toEqual(['MENTIONED']);
+  });
+
+  it('@nhắc trong mô tả, người đó đang theo dõi — trực tiếp TRƯỚC, theo dõi sau', async () => {
+    const { rows, notifications, watchers } = setup({ watchers: ['w1'] });
+    await notifications.onIssueDescriptionMentions({
+      issue: withDesc,
+      actorId: 'a1',
+      changedFields: ['description'],
+    });
+    await watchers.onIssueUpdated({
+      issue: withDesc,
+      actorId: 'a1',
+      changedFields: ['description'],
+    });
+    expect(types(rows)).toEqual(['MENTIONED']);
+  });
+
+  it('assignee là watcher, theo dõi chạy TRƯỚC rồi bình luận trực tiếp → chỉ còn COMMENT_ADDED', async () => {
+    const { rows, notifications, watchers } = setup({ watchers: ['u2'], assignee: 'u2' });
+    const ev = { comment: { id: 'c1', authorId: 'a1', body: 'hi' }, issueId: 'i1', actorId: 'a1' };
+    await watchers.onCommentAdded(ev);
+    await notifications.onCommentAdded(ev);
+    expect(types(rows)).toEqual(['COMMENT_ADDED']);
+  });
+
+  it('đua: theo dõi kiểm "trực tiếp" khi chưa thấy, dòng trực tiếp commit giữa chừng → kiểm lại sau khi ghi rút dòng theo dõi', async () => {
+    const { rows, notifications, watchers } = setup({ watchers: ['u2'], assignee: 'u2' });
+    const ev = { comment: { id: 'c1', authorId: 'a1', body: 'hi' }, issueId: 'i1', actorId: 'a1' };
+    const store = (
+      notifications as unknown as {
+        prisma: {
+          notification: { findFirst: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
+        };
+      }
+    ).prisma.notification;
+    // Lần kiểm "trực tiếp" ĐẦU của watcher không thấy gì; ngay sau đó dòng trực tiếp xuất hiện.
+    const real = store.findFirst.getMockImplementation()! as (a: unknown) => Promise<unknown>;
+    let first = true;
+    store.findFirst.mockImplementation(
+      async (a: { where: { type?: unknown } }): Promise<unknown> => {
+        if (first && typeof a.where.type === 'object') {
+          first = false;
+          await notifications.onCommentAdded(ev); // trực tiếp commit + hấp thụ (chưa có dòng theo dõi để xoá)
+          return null;
+        }
+        return await real(a);
+      },
+    );
+    await watchers.onCommentAdded(ev);
+    expect(types(rows)).toEqual(['COMMENT_ADDED']);
+  });
+});
 
 describe('gộp thông báo — kịch bản thực tế', () => {
   it('10 cú tick checklist trong 60 s (10 ISSUE_UPDATED) → mỗi watcher đúng 1 thông báo, count=10, đẩy realtime mỗi lần', async () => {
