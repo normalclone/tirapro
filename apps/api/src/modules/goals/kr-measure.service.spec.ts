@@ -43,7 +43,8 @@ describe('KrMeasureService.measure (L25)', () => {
     expect(whereOf(prisma.issue.count)).toMatchObject({
       workspaceId: 'w1',
       deletedAt: null,
-      type: { key: 'BUG' },
+      // cùng định nghĩa 'bug' với báo cáo QA / CSV: key BUG hoặc tên Bug
+      type: { OR: [{ key: 'BUG' }, { name: { equals: 'Bug', mode: 'insensitive' } }] },
       status: { category: { not: 'DONE' } },
       project: { deletedAt: null, ...VISIBLE },
     });
@@ -187,7 +188,7 @@ describe("KrMeasureService.measure — phạm vi 'public' (cron chụp lịch s�
     expect(access.visibleWhere).not.toHaveBeenCalled();
     expect(whereOf(prisma.issue.count)).toMatchObject({
       workspaceId: 'w1',
-      type: { key: 'BUG' },
+      type: { OR: [{ key: 'BUG' }, { name: { equals: 'Bug', mode: 'insensitive' } }] },
       project: { deletedAt: null, isPrivate: false },
     });
   });

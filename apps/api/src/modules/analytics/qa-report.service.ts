@@ -3,6 +3,7 @@ import type { QaReportDto } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { BUG_TYPE_WHERE, bugTypeSql } from '../../common/bug-type';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import {
   bucketOpenBySeverity,
@@ -13,18 +14,14 @@ import {
   type ReleaseAggRow,
 } from './qa-report';
 
-/** "Bug" = loại công việc có key BUG hoặc tên "Bug" (không phân biệt hoa thường) — cùng quy ước `isBugType` ở FE. */
-const BUG_TYPE: Prisma.IssueTypeWhereInput = {
-  OR: [{ key: 'BUG' }, { name: { equals: 'Bug', mode: 'insensitive' } }],
-};
-
 /**
- * Mảnh SQL dùng chung (alias: i = Issue, t = IssueType). Cùng định nghĩa với `BUG_TYPE` + `TRIAGE_VISIBLE`:
+ * Mảnh SQL dùng chung (alias: i = Issue, t = IssueType). Cùng định nghĩa với `BUG_TYPE_WHERE` + `TRIAGE_VISIBLE`:
  * bug còn sống, và đã qua duyệt (không ở hàng "Việc mới vào" chờ/tạm hoãn/từ chối).
+ * So sánh CỘT enum với literal (không `::text` trên cột) để Postgres vẫn dùng được chỉ mục.
  */
 const IS_LIVE_VISIBLE_BUG = Prisma.sql`i."deletedAt" IS NULL
-  AND (t."key"::text = 'BUG' OR lower(t."name") = 'bug')
-  AND (i."triageState" IS NULL OR i."triageState"::text = 'ACCEPTED')`;
+  AND ${bugTypeSql('t')}
+  AND (i."triageState" IS NULL OR i."triageState" = 'ACCEPTED')`;
 
 /**
  * Tham số Date trong $queryRaw được Prisma gửi dưới dạng timestamptz, còn cột là timestamp(3) không múi giờ (UTC):
@@ -75,7 +72,7 @@ export class QaReportService {
     const bugs: Prisma.IssueWhereInput = {
       projectId,
       deletedAt: null,
-      type: BUG_TYPE,
+      type: BUG_TYPE_WHERE,
       ...TRIAGE_VISIBLE,
     };
     const [openGroups, created, events, closeRow, severities, versions, affects] =
@@ -135,14 +132,14 @@ export class QaReportService {
     const rows = await this.prisma.$queryRaw<EventRow[]>(Prisma.sql`
       WITH ev AS (
         SELECT h."issueId",
-          bool_or(h."newCategory"::text = 'DONE'
-                  AND (h."oldCategory" IS NULL OR h."oldCategory"::text <> 'DONE')) AS closed,
-          bool_or(h."oldCategory"::text = 'DONE'
-                  AND h."newCategory" IS NOT NULL AND h."newCategory"::text <> 'DONE') AS reopened
+          bool_or(h."newCategory" = 'DONE'
+                  AND (h."oldCategory" IS NULL OR h."oldCategory" <> 'DONE')) AS closed,
+          bool_or(h."oldCategory" = 'DONE'
+                  AND h."newCategory" IS NOT NULL AND h."newCategory" <> 'DONE') AS reopened
         FROM "IssueHistory" h
         JOIN "Issue" i ON i."id" = h."issueId"
         JOIN "IssueType" t ON t."id" = i."typeId"
-        WHERE h."projectId" = ${projectId} AND h."field"::text = 'STATUS'
+        WHERE h."projectId" = ${projectId} AND h."field" = 'STATUS'
           AND h."occurredAt" >= ${utc(from)} AND h."occurredAt" <= ${utc(to)}
           AND ${IS_LIVE_VISIBLE_BUG}
         GROUP BY h."issueId"
@@ -165,7 +162,7 @@ export class QaReportService {
         FROM "Issue" i
         JOIN "IssueType" t ON t."id" = i."typeId"
         JOIN "Status" s ON s."id" = i."statusId"
-        WHERE i."projectId" = ${projectId} AND s."category"::text = 'DONE'
+        WHERE i."projectId" = ${projectId} AND s."category" = 'DONE'
           AND i."resolvedAt" >= ${utc(from)} AND i."resolvedAt" <= ${utc(to)}
           AND i."resolvedAt" >= i."createdAt"
           AND ${IS_LIVE_VISIBLE_BUG}
@@ -181,9 +178,9 @@ export class QaReportService {
     return this.prisma.$queryRaw<ReleaseAggRow[]>(Prisma.sql`
       SELECT l."versionId" AS "versionId",
              count(*) AS "total",
-             count(*) FILTER (WHERE s."category"::text <> 'DONE') AS "open",
-             count(*) FILTER (WHERE s."category"::text = 'DONE') AS "closed",
-             count(*) FILTER (WHERE v."status"::text = 'RELEASED' AND v."releaseDate" IS NOT NULL
+             count(*) FILTER (WHERE s."category" <> 'DONE') AS "open",
+             count(*) FILTER (WHERE s."category" = 'DONE') AS "closed",
+             count(*) FILTER (WHERE v."status" = 'RELEASED' AND v."releaseDate" IS NOT NULL
                AND i."createdAt" >= date_trunc('day', v."releaseDate") + interval '1 day') AS "leaked"
       FROM "IssueFixVersion" l
       JOIN "Version" v ON v."id" = l."versionId"

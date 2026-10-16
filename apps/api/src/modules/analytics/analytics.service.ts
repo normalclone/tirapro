@@ -10,6 +10,7 @@ import type {
 } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { isBugType } from '../../common/bug-type';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { ProjectHealthService } from './project-health.service';
@@ -214,7 +215,7 @@ export class AnalyticsService {
       const type = typeById.get(g.typeId);
       if (!type) continue;
       const n = g._count._all;
-      if (type.key === 'BUG') {
+      if (isBugType(type)) {
         totals.bug += n;
         const bp = byProject.get(g.projectId);
         if (bp) bp.bug += n;

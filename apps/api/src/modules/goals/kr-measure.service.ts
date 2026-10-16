@@ -5,6 +5,7 @@ import {
   BusinessRuleException,
   NotFoundAppException,
 } from '../../common/exceptions/app.exception';
+import { BUG_TYPE_WHERE } from '../../common/bug-type';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
@@ -155,7 +156,7 @@ export class KrMeasureService {
           where: {
             workspaceId,
             deletedAt: null,
-            type: { key: 'BUG' },
+            type: BUG_TYPE_WHERE,
             status: { category: { not: 'DONE' } },
             project: { deletedAt: null, ...this.filterFor(scope, visible, !!projectId) },
             ...(projectId ? { projectId } : {}),

@@ -132,16 +132,18 @@ describe('QaReportService.report — điều kiện làm nên định nghĩa', (
     const q = queryRaw.mock.calls.map((c) => c[0]).find((x) => x.sql.includes('"IssueHistory"'))!;
     const s = flat(q);
     expect(s).toContain(
-      `h."newCategory"::text = 'DONE' AND (h."oldCategory" IS NULL OR h."oldCategory"::text <> 'DONE')`,
+      `h."newCategory" = 'DONE' AND (h."oldCategory" IS NULL OR h."oldCategory" <> 'DONE')`,
     );
     expect(s).toContain(
-      `h."oldCategory"::text = 'DONE' AND h."newCategory" IS NOT NULL AND h."newCategory"::text <> 'DONE'`,
+      `h."oldCategory" = 'DONE' AND h."newCategory" IS NOT NULL AND h."newCategory" <> 'DONE'`,
     );
-    expect(s).toContain(`h."field"::text = 'STATUS'`);
+    expect(s).toContain(`h."field" = 'STATUS'`);
+    // không ép kiểu CỘT (::text) trên cột lọc theo chỉ mục — làm mất chỉ mục (projectId, field, occurredAt)
+    expect(s).not.toContain(`h."field"::text`);
     expect(s).toContain(`h."projectId" = ?`);
     expect(s).toMatch(/h\."occurredAt" >= .* AND h\."occurredAt" <= /);
     expect(s).toContain(`i."deletedAt" IS NULL`);
-    expect(s).toContain(`i."triageState" IS NULL OR i."triageState"::text = 'ACCEPTED'`);
+    expect(s).toContain(`i."triageState" IS NULL OR i."triageState" = 'ACCEPTED'`);
     expect(s).toContain(`lower(t."name") = 'bug'`);
     expect(q.values[0]).toBe('P1');
   });
@@ -151,12 +153,12 @@ describe('QaReportService.report — điều kiện làm nên định nghĩa', (
     await svc.report('W1', 'P1', FROM, TO);
     const q = queryRaw.mock.calls.map((c) => c[0]).find((x) => x.sql.includes('percentile_cont'))!;
     const s = flat(q);
-    expect(s).toContain(`s."category"::text = 'DONE'`);
+    expect(s).toContain(`s."category" = 'DONE'`);
     expect(s).toMatch(/i\."resolvedAt" >= .* AND i\."resolvedAt" <= /);
     expect(s).toContain(`i."resolvedAt" >= i."createdAt"`);
     expect(s).toContain(`percentile_cont(0.5)`);
     expect(s).toContain(`i."projectId" = ?`);
-    expect(s).toContain(`i."triageState" IS NULL OR i."triageState"::text = 'ACCEPTED'`);
+    expect(s).toContain(`i."triageState" IS NULL OR i."triageState" = 'ACCEPTED'`);
     expect(q.values[0]).toBe('P1');
   });
 
@@ -169,7 +171,7 @@ describe('QaReportService.report — điều kiện làm nên định nghĩa', (
     const s = flat(q);
     expect(s).toContain(`v."projectId" = ?`);
     expect(s).toContain(`i."deletedAt" IS NULL`);
-    expect(s).toContain(`i."triageState" IS NULL OR i."triageState"::text = 'ACCEPTED'`);
+    expect(s).toContain(`i."triageState" IS NULL OR i."triageState" = 'ACCEPTED'`);
     expect(s).toContain(`i."createdAt" >= date_trunc('day', v."releaseDate") + interval '1 day'`);
     expect(q.values).toContain('AFFECTS');
   });
