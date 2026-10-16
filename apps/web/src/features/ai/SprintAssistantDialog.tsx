@@ -9,14 +9,9 @@ import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 import { useBulkUpdateIssues } from '@/features/backlog/api';
 import { useAiCapabilities, useSprintPlan } from './api';
+import { aiMode, goalLabel } from './aiCopy';
 import { AiFallbackNote } from './AiFallbackNote';
 import { aiSourceLabel } from './fallbackNote';
-
-/** Nhãn ô mục tiêu: chế độ cơ bản không nhận mình là AI. */
-const goalLabel = (basic: boolean) =>
-  basic
-    ? 'Mục tiêu sprint (tuỳ chọn, để ưu tiên việc có từ khoá khớp mục tiêu)'
-    : 'Mục tiêu sprint (tuỳ chọn, để AI chọn việc khớp mục tiêu)';
 
 /**
  * Trợ lý lập sprint: nhập năng lực (bỏ trống = theo velocity) và mục tiêu (tuỳ chọn) → nhận danh sách
@@ -34,7 +29,7 @@ export function SprintAssistantDialog({
   sprint: { id: string; name: string; goal?: string | null };
 }) {
   const plan = useSprintPlan();
-  const basic = useAiCapabilities().data?.available === false;
+  const mode = aiMode(useAiCapabilities().data?.available);
   const bulkUpdate = useBulkUpdateIssues(projectId);
   const [capacity, setCapacity] = useState('');
   const [goal, setGoal] = useState(sprint.goal ?? '');
@@ -142,7 +137,7 @@ export function SprintAssistantDialog({
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-muted">{goalLabel(basic)}</span>
+            <span className="mb-1 block text-muted">{goalLabel(mode)}</span>
             <Input
               value={goal}
               maxLength={500}

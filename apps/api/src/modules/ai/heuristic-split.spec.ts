@@ -55,16 +55,20 @@ describe('splitRequirements — danh sách một dòng và rác markdown', () =>
       '## Danh sách',
       '- [ ] Làm A',
       '- [x] Làm B',
-      '1.Làm C',
+      '1. Làm C',
       '***',
     ].join('\n');
     expect(splitRequirements(t)).toEqual(['Làm A', 'Làm B', 'Làm C']);
   });
-  it('"2.5 giây" và "2FA" không bị coi là số thứ tự', () => {
-    expect(splitRequirements('2.5 giây timeout\n2FA cho admin')).toEqual([
-      '2.5 giây timeout',
-      '2FA cho admin',
-    ]);
+  it('"2.5 giây", "2FA", "1.x release", "3.js file" không bị coi là số thứ tự', () => {
+    expect(
+      splitRequirements('2.5 giây timeout\n2FA cho admin\n1.x release notes\n3.js file lỗi'),
+    ).toEqual(['2.5 giây timeout', '2FA cho admin', '1.x release notes', '3.js file lỗi']);
+  });
+  it('không còn trần 200 mục im lặng: 300 dòng → 300 mục (UI phân trang 15/lượt)', () => {
+    const many = Array.from({ length: 300 }, (_, i) => `Mục số ${i + 1}`).join('\n');
+    expect(splitRequirementsAll(many)).toHaveLength(300);
+    expect(splitRequirements(many)).toHaveLength(15);
   });
   it('splitRequirementsAll không cắt ở 15; splitRequirements cắt 15 đầu', () => {
     const many = Array.from({ length: 23 }, (_, i) => `Mục số ${i + 1}`).join('\n');

@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { DelayedSpinner } from '@/components/ui/primitives';
 import { useAiCapabilities, useGenerateIssues, useProjectMeta } from './api';
+import { aiMode, generateCopy } from './aiCopy';
 import { createSequentially, summarizeFailures } from './createSequence';
 import { AiFallbackNote } from './AiFallbackNote';
 import { aiSourceLabel } from './fallbackNote';
@@ -67,7 +68,7 @@ function GenerateIssuesDialogInner({
   const { data: meta } = useProjectMeta(open ? projectKey : undefined);
   const generate = useGenerateIssues();
   const { data: caps } = useAiCapabilities();
-  const basic = caps?.available === false; // chế độ cơ bản: không nhận mình là AI
+  const copy = generateCopy(aiMode(caps?.available)); // chưa biết/cơ bản → không nhận mình là AI
   const [text, setText] = useState('');
   const [rows, setRows] = useState<Row[] | null>(null);
   const [source, setSource] = useState<'claude' | 'heuristic' | null>(null);
@@ -157,7 +158,7 @@ function GenerateIssuesDialogInner({
       `${done.size ? `Đã tạo ${done.size} công việc. ` : ''}${res.halted ? 'Đã dừng sớm. ' : ''}Còn ${left} việc chưa tạo — ${why}`,
     );
     toast.error(done.size ? `Đã tạo ${done.size}, còn ${left} việc chưa tạo: ${why}` : why);
-    // Bỏ các dòng đã tạo, gắn lý do lên đúng dòng lỗi (khoá sửa khi đang tạo nên `rows` không đổi giữa chừng).
+    // Bỏ các dòng đã tạo, gắn lý do lên đúng dòng lỗi (ô nhập, danh sách và nút Phân tích đều bị khoá khi đang tạo nên `rows` không đổi giữa chừng).
     setRows(
       rows
         .map((r, i) => ({ ...r, error: errorOf.get(i), keep: !done.has(i) }))
@@ -179,7 +180,7 @@ function GenerateIssuesDialogInner({
       onEscapeKeyDown={(e) => {
         if (creating) e.preventDefault();
       }}
-      title={basic ? 'Tạo công việc từ danh sách' : 'Tạo công việc bằng AI'}
+      title={copy.title}
       size="lg"
       footer={
         rows ? (
@@ -200,22 +201,14 @@ function GenerateIssuesDialogInner({
     >
       <div className="space-y-4">
         <div>
-          <p className="mb-1.5 text-sm text-muted">
-            {basic
-              ? 'Dán danh sách yêu cầu — hệ thống tách theo từng dòng (hoặc từng câu nếu chỉ có một dòng). Chưa dùng AI.'
-              : 'Mô tả yêu cầu — AI sẽ tách thành các công việc nhỏ.'}
-          </p>
+          <p className="mb-1.5 text-sm text-muted">{copy.description}</p>
           <textarea
             autoFocus
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={4}
             disabled={creating}
-            placeholder={
-              basic
-                ? 'VD (mỗi việc một dòng):\n- Xây màn hình đăng nhập\n- Đăng nhập Google\n- Sửa lỗi token hết hạn'
-                : 'VD: Xây màn hình đăng nhập email/mật khẩu, validate input, đăng nhập Google, sửa lỗi token hết hạn…'
-            }
+            placeholder={copy.placeholder}
             className="w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus-visible:border-primary"
           />
           <div className="mt-2 flex items-center gap-2">
@@ -223,7 +216,7 @@ function GenerateIssuesDialogInner({
               size="sm"
               loading={generate.isPending}
               onClick={() => void analyze()}
-              disabled={text.trim().length < 3}
+              disabled={text.trim().length < 3 || creating}
             >
               <Wand2 className="h-4 w-4" />
               Phân tích
