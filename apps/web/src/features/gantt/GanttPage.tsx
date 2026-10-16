@@ -17,7 +17,7 @@ import { useCanEditSchedule, useCanIn } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
 import { keys } from '@/lib/queryKeys';
 import { useQueryClient } from '@tanstack/react-query';
-import { applyDrag, toIssuePatch, type UnscheduledPatch } from './dragMath';
+import { applyDrag, NO_SCHEDULE_PERM_HINT, toIssuePatch, type UnscheduledPatch } from './dragMath';
 import { useBarDrag, type BarDragMode } from './useBarDrag';
 import { UnscheduledPanel } from './UnscheduledPanel';
 import { PlanningPanel } from '@/features/planning/PlanningPanel';
@@ -41,7 +41,6 @@ const ROW_H = 40;
 const ROW_STRIDE = ROW_H + 1;
 const MAX_DAYS = 220;
 const HANDLE_W = 8;
-const NO_SCHEDULE_PERM_HINT = 'Chỉ người tạo việc hoặc quản trị mới đổi được ngày';
 
 interface Span {
   /** = issue.id (khoá cho useBarDrag). */

@@ -3,9 +3,7 @@ import { Link } from 'react-router-dom';
 import type { IssueDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { DateInput } from '@/components/ui/DateInput';
-import { buildUnscheduledPatch, type UnscheduledPatch } from './dragMath';
-
-export const NO_SCHEDULE_PERM_HINT = 'Chỉ người tạo việc hoặc quản trị mới đổi được ngày';
+import { buildUnscheduledPatch, NO_SCHEDULE_PERM_HINT, type UnscheduledPatch } from './dragMath';
 
 function Row({
   issue,

@@ -6,6 +6,9 @@ export interface DaySpan {
   end: Date;
 }
 
+/** Giải thích khi không có quyền đổi ngày (tooltip thanh Gantt + ngăn "Chưa lên lịch"). */
+export const NO_SCHEDULE_PERM_HINT = 'Chỉ người tạo việc hoặc quản trị mới đổi được ngày';
+
 export type DragEdge = 'start' | 'end';
 
 /** Px kéo ngang → số ngày nguyên (nhảy theo ngày). `-0` chuẩn hoá về `0`. */
