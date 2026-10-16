@@ -7,6 +7,7 @@ import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { useUpdateProfile, useUploadUserAvatar, useRemoveUserAvatar } from './api';
+import { browserTimeZone, timeZoneOptions } from '@/features/digests/schedule';
 
 const LOCALES: { value: string; label: string }[] = [
   { value: 'vi', label: 'Tiếng Việt' },
@@ -56,7 +57,8 @@ export function ProfilePanel() {
         <div>
           <h2 className="text-base font-semibold text-ink-strong">Hồ sơ của tôi</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Những thông tin này hiện với mọi thành viên khác, ở mọi không gian làm việc bạn tham gia.
+            Những thông tin này hiện với mọi thành viên khác, ở mọi không gian làm việc bạn tham
+            gia.
           </p>
         </div>
       </div>
@@ -72,7 +74,12 @@ export function ProfilePanel() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-ink" title="Tên đồng nghiệp nhìn thấy khi bạn được giao việc hoặc bình luận">Tên hiển thị</span>
+            <span
+              className="text-sm font-medium text-ink"
+              title="Tên đồng nghiệp nhìn thấy khi bạn được giao việc hoặc bình luận"
+            >
+              Tên hiển thị
+            </span>
             <Input
               value={displayName}
               required
@@ -84,14 +91,25 @@ export function ProfilePanel() {
           </label>
 
           <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-ink" title="Dùng để hiện đúng giờ hạn chót và lịch theo nơi bạn ngồi">Múi giờ</span>
+            <span
+              className="text-sm font-medium text-ink"
+              title="Dùng để hiện đúng giờ hạn chót và lịch theo nơi bạn ngồi"
+            >
+              Múi giờ
+            </span>
             <Input
               value={timezone}
-              placeholder="VD: Asia/Ho_Chi_Minh"
+              placeholder={`VD: ${browserTimeZone()}`}
+              list="profile-timezones"
               autoComplete="off"
               onChange={(e) => setTimezone(e.target.value)}
               disabled={update.isPending}
             />
+            <datalist id="profile-timezones">
+              {timeZoneOptions().map((tz) => (
+                <option key={tz} value={tz} />
+              ))}
+            </datalist>
           </label>
 
           <label className="block space-y-1.5">
@@ -112,7 +130,12 @@ export function ProfilePanel() {
         </div>
 
         <div className="flex justify-end">
-          <Button type="submit" loading={update.isPending} disabled={!dirty} title={dirty ? 'Lưu thay đổi hồ sơ' : 'Chưa có gì thay đổi để lưu'}>
+          <Button
+            type="submit"
+            loading={update.isPending}
+            disabled={!dirty}
+            title={dirty ? 'Lưu thay đổi hồ sơ' : 'Chưa có gì thay đổi để lưu'}
+          >
             Lưu hồ sơ
           </Button>
         </div>

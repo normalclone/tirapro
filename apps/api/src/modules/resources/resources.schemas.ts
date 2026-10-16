@@ -5,7 +5,10 @@ const dayString = z
   .string()
   .trim()
   .min(8, 'Ngày không hợp lệ')
-  .refine((v) => !Number.isNaN(Date.parse(v.length === 10 ? `${v}T00:00:00.000Z` : v)), 'Ngày không hợp lệ');
+  .refine(
+    (v) => !Number.isNaN(Date.parse(v.length === 10 ? `${v}T00:00:00.000Z` : v)),
+    'Ngày không hợp lệ',
+  );
 
 const optionalDay = dayString.optional();
 
@@ -14,7 +17,12 @@ const optionalDay = dayString.optional();
 export const createAllocationSchema = z.object({
   projectId: z.string().min(1, 'Chọn dự án'),
   userId: z.string().min(1, 'Chọn thành viên'),
-  percent: z.number().int('Tỉ lệ phải là số nguyên').min(1, 'Tỉ lệ tối thiểu 1%').max(200, 'Tỉ lệ tối đa 200%').default(100),
+  percent: z
+    .number()
+    .int('Tỉ lệ phải là số nguyên')
+    .min(1, 'Tỉ lệ tối thiểu 1%')
+    .max(200, 'Tỉ lệ tối đa 200%')
+    .default(100),
   startDate: dayString,
   endDate: dayString,
   note: z.string().max(500).optional().nullable(),
@@ -31,7 +39,7 @@ export const listAllocationsQuerySchema = z.object({
 
 /* ───────────────────────── Nghỉ phép / ngày lễ ───────────────────────── */
 
-export const TIME_OFF_KINDS = ['LEAVE', 'HOLIDAY', 'OTHER'] as const;
+const TIME_OFF_KINDS = ['LEAVE', 'HOLIDAY', 'OTHER'] as const;
 
 export const createTimeOffSchema = z.object({
   /** Bỏ trống / null = ngày lễ áp dụng cho TOÀN workspace. */

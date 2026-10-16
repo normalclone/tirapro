@@ -23,7 +23,9 @@ export function UserMenu() {
           aria-label="Menu người dùng"
         >
           <Avatar name={user.displayName} src={user.avatarUrl} size={28} />
-          <span className="hidden max-w-[10rem] truncate text-ink sm:inline">{user.displayName}</span>
+          <span className="hidden max-w-[10rem] truncate text-ink sm:inline">
+            {user.displayName}
+          </span>
           <ChevronDown className="hidden h-3.5 w-3.5 text-faint sm:inline" />
         </button>
       </DropdownMenu.Trigger>
@@ -66,7 +68,7 @@ export function UserMenu() {
               className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
             >
               <ShieldCheck className="h-4 w-4 text-muted" />
-              Admin hệ thống
+              Quản trị hệ thống
             </DropdownMenu.Item>
           )}
 
@@ -77,7 +79,11 @@ export function UserMenu() {
             }}
             className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
           >
-            {theme === 'dark' ? <Sun className="h-4 w-4 text-muted" /> : <Moon className="h-4 w-4 text-muted" />}
+            {theme === 'dark' ? (
+              <Sun className="h-4 w-4 text-muted" />
+            ) : (
+              <Moon className="h-4 w-4 text-muted" />
+            )}
             {theme === 'dark' ? 'Giao diện sáng' : 'Giao diện tối'}
           </DropdownMenu.Item>
 

@@ -4,7 +4,6 @@ import { Check, ChevronDown, Copy, Plus, Trash2, Wand2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   CURRENT_USER_TOKEN,
-  isCategoricalField,
   isRelativeDateToken,
   jqlFieldType,
   serializeSimpleQuery,
@@ -16,11 +15,14 @@ import {
 } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
-import { useWorkspaceUsers } from '@/features/members/api';
+import { useSearchUsers } from '@/features/members/api';
 import { useFilterFields, type FieldOption } from './api';
+import { toDateInput } from '@/lib/dateFormat';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 /* ------------------------------------------------------------------ */
 /* Metadata field (nhãn tiếng Việt + thứ tự hiển thị)                  */
@@ -32,12 +34,17 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
   { field: 'status', label: 'Trạng thái' },
   { field: 'statusCategory', label: 'Nhóm trạng thái' },
   { field: 'priority', label: 'Độ ưu tiên' },
+  { field: 'severity', label: 'Mức nghiêm trọng' },
   { field: 'assignee', label: 'Người được giao' },
   { field: 'reporter', label: 'Người báo cáo' },
   { field: 'sprint', label: 'Sprint' },
   { field: 'labels', label: 'Nhãn' },
+  { field: 'component', label: 'Thành phần' },
+  { field: 'fixVersion', label: 'Phiên bản sửa' },
+  { field: 'affectedVersion', label: 'Phiên bản bị ảnh hưởng' },
   { field: 'resolution', label: 'Cách giải quyết' },
   { field: 'text', label: 'Văn bản (toàn văn)' },
+  { field: 'key', label: 'Mã công việc' },
   { field: 'summary', label: 'Tiêu đề' },
   { field: 'created', label: 'Ngày tạo' },
   { field: 'updated', label: 'Ngày cập nhật' },
@@ -45,15 +52,11 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
   { field: 'storyPoints', label: 'Story point' },
 ];
 
-const FIELD_LABEL: Record<string, string> = Object.fromEntries(
-  FIELD_DEFS.map((d) => [d.field, d.label]),
-);
-
 /** Nhóm trạng thái: enum cố định, khớp Status.category ở backend. */
 const STATUS_CATEGORY_OPTIONS: FieldOption[] = [
-  { value: 'TODO', label: 'Cần làm' },
-  { value: 'IN_PROGRESS', label: 'Đang làm' },
-  { value: 'DONE', label: 'Hoàn thành' },
+  { value: 'TODO', label: STATUS_CATEGORY_LABEL.TODO },
+  { value: 'IN_PROGRESS', label: STATUS_CATEGORY_LABEL.IN_PROGRESS },
+  { value: 'DONE', label: STATUS_CATEGORY_LABEL.DONE },
 ];
 
 const ME_OPTION: FieldOption = { value: CURRENT_USER_TOKEN, label: 'Tôi' };
@@ -126,10 +129,13 @@ export function QueryBuilder({
   onEditAsJql: () => void;
 }) {
   const { data: projects } = useProjects();
-  const { data: users } = useWorkspaceUsers();
+  // Lọc theo người (assignee/reporter): gồm cả tài khoản đã khoá để tìm được việc cũ của họ.
+  const { data: users } = useSearchUsers({ includeInactive: true, limit: 200 });
   const { data: fields } = useFilterFields();
 
-  const [query, setQuery] = useState<SimpleQuery>(() => tryParseToSimpleQuery(value) ?? EMPTY_QUERY);
+  const [query, setQuery] = useState<SimpleQuery>(
+    () => tryParseToSimpleQuery(value) ?? EMPTY_QUERY,
+  );
   const [complex, setComplex] = useState(
     () => value.trim() !== '' && tryParseToSimpleQuery(value) === null,
   );
@@ -267,7 +273,9 @@ export function QueryBuilder({
             onChange={(v) =>
               commit({
                 ...query,
-                sort: v ? { field: v as JqlFieldName, direction: query.sort?.direction ?? 'DESC' } : null,
+                sort: v
+                  ? { field: v as JqlFieldName, direction: query.sort?.direction ?? 'DESC' }
+                  : null,
               })
             }
             options={[
@@ -281,7 +289,10 @@ export function QueryBuilder({
             <Segmented
               value={query.sort.direction}
               onChange={(v) =>
-                commit({ ...query, sort: { field: query.sort!.field, direction: v as 'ASC' | 'DESC' } })
+                commit({
+                  ...query,
+                  sort: { field: query.sort!.field, direction: v as 'ASC' | 'DESC' },
+                })
               }
               options={[
                 { value: 'DESC', label: 'Giảm' },
@@ -323,10 +334,17 @@ function optionsForField(field: JqlFieldName, sources: Sources): FieldOption[] |
       return sources.fields?.statuses ?? [];
     case 'priority':
       return sources.fields?.priorities ?? [];
+    case 'severity':
+      return sources.fields?.severities ?? [];
     case 'sprint':
       return sources.fields?.sprints ?? [];
     case 'labels':
       return sources.fields?.labels ?? [];
+    case 'component':
+      return sources.fields?.components ?? [];
+    case 'fixVersion':
+    case 'affectedVersion':
+      return sources.fields?.versions ?? [];
     case 'resolution':
       return sources.fields?.resolutions ?? [];
     default:
@@ -495,14 +513,17 @@ function isAbsoluteDate(v: string): boolean {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toDateInput(new Date());
 }
 
 function DateValueControl({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const absolute = isAbsoluteDate(value);
   // Token tương đối lạ (gõ tay trong JQL) vẫn hiện được nhờ thêm tạm vào danh sách.
   const presets =
-    value && !absolute && !RELATIVE_DATE_PRESETS.some((p) => p.value === value) && isRelativeDateToken(value)
+    value &&
+    !absolute &&
+    !RELATIVE_DATE_PRESETS.some((p) => p.value === value) &&
+    isRelativeDateToken(value)
       ? [{ value, label: value }, ...RELATIVE_DATE_PRESETS]
       : RELATIVE_DATE_PRESETS;
 
@@ -528,13 +549,14 @@ function DateValueControl({ value, onChange }: { value: string; onChange: (v: st
         <option value={ABS_SENTINEL}>Ngày cụ thể…</option>
       </SelectField>
       {absolute && (
-        <Input
-          type="date"
-          aria-label="Ngày cụ thể"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-40 text-sm"
-        />
+        <div className="w-40">
+          <DateInput
+            ariaLabel="Ngày cụ thể"
+            value={value}
+            onChange={onChange}
+            className="text-sm"
+          />
+        </div>
       )}
     </div>
   );

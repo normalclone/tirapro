@@ -3,11 +3,14 @@ import { Link } from 'react-router-dom';
 import {
   ArrowUpRight, Bell, BookOpen, Bug, Building2, Check, ClipboardList, Code2, Command, Copy, Eye,
   Filter, GitBranch, History, KeyRound, LayoutGrid, Link2, ListPlus, MessageSquare, Moon,
-  MousePointerClick, Palette, Plug, Rocket, Search, ShieldCheck, Sparkles, Sun, TriangleAlert,
+  MousePointerClick, Palette, Plug, Search, ShieldCheck, Sparkles, Sun, TriangleAlert,
   UserPlus, Users,
 } from 'lucide-react';
 import { useTheme } from '@/stores/theme';
 import { cn } from '@/lib/utils';
+import { SHORTCUT_GROUPS, shortcutsOf, type ShortcutScope } from '@/lib/shortcuts';
+import { SHOW_DEMO_ACCOUNTS } from '@/features/auth/demoLogin';
+import { ScrollX } from '@/components/ui/ScrollX';
 
 /* ============================ Khối trợ giúp UI ============================ */
 
@@ -73,7 +76,7 @@ function Feature({ icon, title, children }: { icon: ReactNode; title: string; ch
 }
 function Table({ head, rows }: { head: [string, string]; rows: [ReactNode, ReactNode][] }) {
   return (
-    <div className="mb-3 overflow-x-auto rounded-lg border border-border">
+    <ScrollX className="mb-3 rounded-lg border border-border">
       <table className="w-full text-sm">
         <thead><tr className="border-b border-border bg-surface-2 text-left text-xs text-muted">
           <th className="px-4 py-2.5 font-semibold">{head[0]}</th><th className="px-4 py-2.5 font-semibold">{head[1]}</th>
@@ -82,7 +85,27 @@ function Table({ head, rows }: { head: [string, string]; rows: [ReactNode, React
           {rows.map((r, i) => <tr key={i}><td className="whitespace-nowrap px-4 py-2.5 align-top">{r[0]}</td><td className="px-4 py-2.5 align-top text-muted">{r[1]}</td></tr>)}
         </tbody>
       </table>
-    </div>
+    </ScrollX>
+  );
+}
+
+/** Bảng phím của một nhóm, đọc từ kho `lib/shortcuts.ts` (cùng nguồn với bảng `?` và tooltip). */
+function ShortcutTable({ scope }: { scope: ShortcutScope }) {
+  return (
+    <Table
+      head={['Phím', 'Hành động']}
+      rows={shortcutsOf(scope).map((s): [ReactNode, ReactNode] => [
+        <span key={s.id} className="flex flex-wrap items-center gap-1">
+          {(s.display ?? s.keys).map((k, i) => (
+            <span key={i} className="flex items-center gap-1">
+              {s.sequence && i > 0 && <span className="text-xs text-faint">rồi</span>}
+              <Kbd>{k}</Kbd>
+            </span>
+          ))}
+        </span>,
+        s.label,
+      ])}
+    />
   );
 }
 
@@ -149,7 +172,7 @@ function Perm({ v }: { v: 'yes' | 'own' | 'view' | 'cfg' | 'no' }) {
 }
 function Matrix({ cols, rows }: { cols: string[]; rows: [string, ...ReactNode[]][] }) {
   return (
-    <div className="mb-3 overflow-x-auto rounded-lg border border-border">
+    <ScrollX className="mb-3 rounded-lg border border-border">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border bg-surface-2 text-left text-xs text-muted">
@@ -166,7 +189,7 @@ function Matrix({ cols, rows }: { cols: string[]; rows: [string, ...ReactNode[]]
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollX>
   );
 }
 function Legend() {
@@ -287,10 +310,10 @@ export function DocumentationPage() {
               <P>Vài thuật ngữ xuất hiện xuyên suốt ứng dụng:</P>
               <Table head={['Thuật ngữ', 'Ý nghĩa']} rows={[
                 [<strong className="text-ink-strong">Không gian làm việc</strong>, 'Nơi riêng của một công ty hoặc phòng ban, chứa nhiều dự án và thành viên. Một người có thể thuộc nhiều nơi khác nhau.'],
-                [<strong className="text-ink-strong">Dự án (Project)</strong>, 'Nơi chứa công việc, có Board, Backlog, Sprint và cấu hình riêng.'],
+                [<strong className="text-ink-strong">Dự án (Project)</strong>, 'Nơi chứa công việc, có Bảng việc, Việc chờ, Sprint và cấu hình riêng.'],
                 [<strong className="text-ink-strong">Công việc</strong>, <>Một đầu việc cần làm — có thể là lỗi cần sửa, việc mới, hay một yêu cầu lớn. Mỗi việc có mã riêng như <Mono>DEMO-12</Mono> để nhắc tới cho gọn.</>],
-                [<strong className="text-ink-strong">Board (Bảng)</strong>, 'Xem công việc theo cột trạng thái, kéo-thả card giữa các cột.'],
-                [<strong className="text-ink-strong">Backlog</strong>, 'Danh sách chờ, xếp thứ tự ưu tiên và đưa vào sprint.'],
+                [<strong className="text-ink-strong">Bảng việc (Board)</strong>, 'Xem công việc theo cột trạng thái, kéo-thả card giữa các cột.'],
+                [<strong className="text-ink-strong">Việc chờ (backlog)</strong>, 'Danh sách việc chờ, xếp thứ tự ưu tiên và đưa vào sprint.'],
                 [<strong className="text-ink-strong">Sprint</strong>, 'Chu kỳ làm việc có thời hạn (thường 1–2 tuần).'],
                 [<strong className="text-ink-strong">Quy trình (Workflow)</strong>, 'Tập trạng thái và các đường chuyển tiếp hợp lệ giữa chúng.'],
                 [<strong className="text-ink-strong">Epic / Việc con</strong>, 'Epic gom nhiều công việc liên quan thành một khối lớn; việc con là phần nhỏ tách ra từ một công việc.'],
@@ -300,6 +323,8 @@ export function DocumentationPage() {
             <section className="mb-14">
               <H2 id="dang-nhap">Đăng nhập &amp; tài khoản</H2>
               <P>Mở ứng dụng và đăng nhập bằng email + mật khẩu được cấp. Quên mật khẩu thì dùng liên kết đặt lại ở màn đăng nhập, hoặc nhờ quản trị chung cấp lại.</P>
+              {/* Chỉ bản dev / build demo (VITE_SHOW_DEMO_ACCOUNTS) — production công khai không nêu mật khẩu demo. */}
+              {SHOW_DEMO_ACCOUNTS && (<>
               <H3>Tài khoản dùng thử</H3>
               <P>Bản demo có sẵn các tài khoản dưới đây (mật khẩu chung <Mono>Password123</Mono>), mỗi tài khoản đại diện một vai trò để bạn trải nghiệm nhanh:</P>
               <div className="mb-3 rounded-lg border border-border bg-surface px-4">
@@ -314,13 +339,14 @@ export function DocumentationPage() {
                   </div>
                 ))}
               </div>
+              </>)}
               <H3>Chuyển không gian làm việc &amp; đăng xuất</H3>
               <P>Nếu bạn thuộc nhiều nơi, dùng bộ chọn không gian làm việc ở đầu thanh bên để chuyển. Đăng xuất ở menu người dùng góc phải trên (cũng có sẵn liên kết mở lại tài liệu này).</P>
             </section>
 
             <section className="mb-14">
               <H2 id="vai-tro">Hiểu về vai trò</H2>
-              <P><strong>Thành viên tính trên cả không gian làm việc</strong>: ai đã có tên ở đây là tự động tham gia <em>mọi dự án</em> bên trong — không cần thêm người vào từng dự án. Vai trò trong dự án <strong>mặc định</strong> suy từ vai trò chung (Quản trị chung → Quản trị dự án · Thành viên → Lập trình viên · Người xem → chỉ đọc), và có thể <strong>đặt riêng</strong> cho từng người ở từng dự án khi cần.</P>
+              <P><strong>Thành viên tính trên cả không gian làm việc</strong>: ai đã có tên ở đây là tự động tham gia <em>mọi dự án công khai</em> bên trong — không cần thêm người vào từng dự án. <strong>Dự án riêng tư</strong> (bật ở dự án → Cấu hình → Chung) là ngoại lệ: chỉ những người được thêm riêng ở Cấu hình → Thành viên (cùng quản trị không gian làm việc) mới thấy dự án đó. Vai trò trong dự án <strong>mặc định</strong> suy từ vai trò chung (Quản trị chung → Quản trị dự án · Thành viên → Lập trình viên · Người xem → chỉ đọc), và có thể <strong>đặt riêng</strong> cho từng người ở từng dự án khi cần.</P>
               <Cards>
                 <Card name="Vai trò cấp không gian làm việc" val="Quản trị chung · Thành viên · Người xem" desc="Quyền áp dụng cho toàn tổ chức" />
                 <Card name="Vai trò cấp Dự án" val="Quản trị · Developer · Reporter" desc="Mặc định suy từ vai trò chung; đặt riêng khi cần" />
@@ -330,7 +356,7 @@ export function DocumentationPage() {
                 ['Xem không gian làm việc & dự án được phép', <Perm v="yes" />, <Perm v="yes" />, <Perm v="yes" />, <Perm v="view" />],
                 ['Tạo dự án', <Perm v="yes" />, <Perm v="yes" />, <Perm v="cfg" />, <Perm v="no" />],
                 ['Lưu trữ / xoá dự án', <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />],
-                ['Mời / gỡ thành viên của tổ chức', <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />],
+                ['Thêm / gỡ thành viên của tổ chức', <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />],
                 ['Tạo vai trò & phân quyền', <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />],
                 ['Cấu hình chung / gói dịch vụ', <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />, <Perm v="no" />],
                 ['Dùng AI', <Perm v="yes" />, <Perm v="yes" />, <Perm v="yes" />, <Perm v="no" />],
@@ -357,21 +383,23 @@ export function DocumentationPage() {
               <H2 id="dieu-huong">Điều hướng &amp; Command palette</H2>
               <P>Mọi người dùng đã đăng nhập đều có các cách di chuyển nhanh sau:</P>
               <div className="border-t border-border">
-                <Feature icon={<Command className="h-4 w-4" />} title="Bảng lệnh — ⌘K (Ctrl+K)">Tìm công việc, nhảy tới dự án/màn hình, chạy hành động, đổi giao diện; có nhóm “Gần đây”. Gõ thẳng mã công việc (vd <Mono>DEMO-12</Mono>) để mở ngay.</Feature>
+                <Feature icon={<Command className="h-4 w-4" />} title="Bảng lệnh — ⌘K (Ctrl+K)">Tìm công việc, nhảy tới dự án/màn hình, chạy hành động, đổi giao diện; có nhóm “Gần đây”. Gõ thẳng mã công việc (vd <Mono>DEMO-12</Mono>) để mở ngay. Có sẵn lệnh tạo / bắt đầu / kết thúc sprint, mở Báo cáo · Lịch trình · Việc mới vào · Wiki và <em>Báo lỗi</em> (bắt đầu gõ tên lệnh là lọc, không cần dấu).</Feature>
                 <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Thanh bên & bộ chọn dự án">Chuyển giữa các dự án, mở Bảng việc / Việc chờ / Lịch trình / Báo cáo / Cây việc.</Feature>
                 <Feature icon={<History className="h-4 w-4" />} title="Xem gần đây">Công việc vừa mở hiện lại trong ⌘K và trên Trang tổng quan để quay lại nhanh.</Feature>
               </div>
-              <Note kind="tip">Gõ <Kbd>g</Kbd> rồi <Kbd>b</Kbd> để tới Board, <Kbd>g</Kbd> <Kbd>l</Kbd> tới Backlog. Xem đầy đủ ở mục <a href="#phim-tat" className="font-medium underline">Phím tắt</a>.</Note>
+              <Note kind="tip">Gõ <Kbd>g</Kbd> rồi <Kbd>b</Kbd> để tới Bảng việc, <Kbd>g</Kbd> <Kbd>l</Kbd> tới Việc chờ. Xem đầy đủ ở mục <a href="#phim-tat" className="font-medium underline">Phím tắt</a>.</Note>
             </section>
 
             <section className="mb-14">
               <H2 id="lam-viec-issue">Thao tác với công việc</H2>
               <P>Công việc là trung tâm của mọi thứ trong Tirapro. Những thao tác dưới đây có hay không tuỳ vai trò của bạn trong dự án (xem <a href="#vai-tro" className="font-medium underline">ma trận quyền</a>).</P>
               <div className="border-t border-border">
-                <Feature icon={<ListPlus className="h-4 w-4" />} title="Tạo & sửa nhanh">Nhấn <Kbd>c</Kbd> ở bất kỳ đâu để tạo công việc; sửa tại chỗ nhiều trường ngay trên trang chi tiết.</Feature>
+                <Feature icon={<ListPlus className="h-4 w-4" />} title="Tạo & sửa nhanh">Nhấn <Kbd>c</Kbd> ở bất kỳ đâu để tạo công việc; sửa tại chỗ nhiều trường ngay trên trang chi tiết. Ô tiêu đề hiểu cú pháp gõ nhanh (người <Mono>@</Mono>, ưu tiên, điểm, sprint, hạn như <Mono>^15/8</Mono>) và báo khi một phần không khớp; <Kbd>⌘</Kbd> <Kbd>Enter</Kbd> luôn tạo ngay. Mọi ô ngày nhập theo <Mono>dd/MM/yyyy</Mono> (giờ <Mono>HH:mm</Mono>), gõ liền <Mono>0508</Mono> hoặc chọn từ lịch.</Feature>
+                <Feature icon={<Eye className="h-4 w-4" />} title="Xem nhanh hay mở trang đầy đủ">Bấm một dòng ở Việc chờ, Việc mới vào hoặc thẻ trên Bảng việc để mở <strong>khung xem nhanh</strong> bên phải (<Kbd>Esc</Kbd> đóng, nút <em>Mở trang</em> để vào trang đầy đủ). <Kbd>⌘</Kbd>/<Kbd>Ctrl</Kbd> + bấm, hoặc bấm vào mã công việc, mở thẳng trang đầy đủ.</Feature>
                 <Feature icon={<GitBranch className="h-4 w-4" />} title="Chuyển trạng thái">Đổi trạng thái theo quy trình của dự án; xem sơ đồ quy trình ngay trên công việc.</Feature>
-                <Feature icon={<MessageSquare className="h-4 w-4" />} title="Bình luận & @nhắc tên">Thảo luận bằng markdown, @nhắc tên đồng đội (họ nhận thông báo), đính kèm tệp.</Feature>
-                <Feature icon={<Link2 className="h-4 w-4" />} title="Liên kết & phân cấp">Liên kết các công việc liên quan, tạo việc con, gắn vào epic.</Feature>
+                <Feature icon={<MessageSquare className="h-4 w-4" />} title="Bình luận & @nhắc tên">Thảo luận bằng markdown (có danh sách tick được, bảng); gõ <Mono>@</Mono> để chọn đồng đội (tìm không dấu) — cả trong bình luận lẫn mô tả, họ nhận thông báo “X nhắc đến bạn” kèm trích đoạn. Đính kèm hoặc dán ảnh (<Kbd>Ctrl</Kbd> <Kbd>V</Kbd>), bấm ảnh để xem lớn.</Feature>
+                <Feature icon={<Link2 className="h-4 w-4" />} title="Liên kết & phân cấp">Liên kết các công việc liên quan (tìm theo mã hoặc tiêu đề không dấu; loại liên kết giữ tiếng Anh như <Mono>blocks</Mono>, <Mono>is caused by</Mono>, <Mono>is tested by</Mono>), tạo việc con, gắn vào epic bằng ô <em>Epic / Việc cha</em>. Ở Việc chờ có khung Epic bên trái để lọc và kéo công việc vào epic.</Feature>
+                <Feature icon={<Bug className="h-4 w-4" />} title="Mức nghiêm trọng & cách giải quyết">Bug có <strong>Mức nghiêm trọng</strong> (Severity) riêng, tách khỏi độ ưu tiên. Chuyển sang nhóm <em>Done</em> thì được hỏi <strong>cách giải quyết</strong> (Resolution, mặc định Done); <em>Mở lại</em> / <em>Trả lại</em> ghi kèm lý do vào bình luận.</Feature>
                 <Feature icon={<History className="h-4 w-4" />} title="Lịch sử & theo dõi">Xem toàn bộ thay đổi; theo dõi (watch) để nhận cập nhật; log thời gian làm việc.</Feature>
               </div>
               <Note kind="tip">Trên trang chi tiết: <Kbd>i</Kbd> gán công việc cho tôi, <Kbd>y</Kbd> sao chép liên kết. Nút “Gán cho tôi” và nút sao chép mã cũng nằm ngay trên thanh công cụ.</Note>
@@ -380,7 +408,7 @@ export function DocumentationPage() {
             <section className="mb-14">
               <H2 id="thong-bao">Thông báo &amp; theo dõi</H2>
               <div className="border-t border-border">
-                <Feature icon={<Bell className="h-4 w-4" />} title="Trung tâm thông báo">Nhận thông báo ngay khi được giao việc, bị @nhắc tên, hoặc công việc mình theo dõi thay đổi; đánh dấu đã đọc.</Feature>
+                <Feature icon={<Bell className="h-4 w-4" />} title="Trung tâm thông báo">Mỗi thông báo ghi rõ <em>ai</em> làm <em>gì</em> (kèm giá trị mới / trích đoạn bình luận), các thay đổi liên tiếp trên một công việc được gộp lại. Trang <Mono>Thông báo</Mono> lọc <em>Chưa đọc · Được nhắc · Được giao</em> và có nút <em>Đánh dấu đã đọc tất cả</em>.</Feature>
                 <Feature icon={<Eye className="h-4 w-4" />} title="Theo dõi">Bấm theo dõi một công việc để luôn nhận cập nhật kể cả khi không phải người thực hiện. Người tạo và người được giao được tự động theo dõi.</Feature>
               </div>
               <Note kind="info">Muốn nhận thông báo qua Telegram? Xem mục <a href="#tich-hop" className="font-medium underline">Tích hợp</a> — cần quản trị chung bật kết nối trước.</Note>
@@ -390,12 +418,13 @@ export function DocumentationPage() {
               <H2 id="tim-kiem">Tìm kiếm &amp; bộ lọc</H2>
               <div className="border-t border-border">
                 <Feature icon={<Search className="h-4 w-4" />} title="Tìm nhanh">Nhấn <Kbd>/</Kbd> để mở ô tìm kiếm; tìm theo mã, tiêu đề, nội dung.</Feature>
-                <Feature icon={<Filter className="h-4 w-4" />} title="Lọc nhanh & bộ lọc lưu">Chip lọc nhanh <em>Của tôi · Quá hạn · Chưa gán</em> trên Board &amp; Backlog; lưu bộ lọc cá nhân để dùng lại.</Feature>
+                <Feature icon={<Filter className="h-4 w-4" />} title="Lọc nhanh & bộ lọc lưu">Chip lọc nhanh <em>Của tôi · Quá hạn · Chưa gán</em> trên Bảng việc &amp; Việc chờ; lưu bộ lọc cá nhân để dùng lại.</Feature>
                 <Feature icon={<Sparkles className="h-4 w-4" />} title="Tìm kiếm ngữ nghĩa (AI)">Tìm theo ý nghĩa gần đúng thay vì đúng từ khoá; tự giảm về tìm toàn văn khi chưa bật embedding.</Feature>
               </div>
               <H3>Cú pháp JQL (nâng cao)</H3>
               <P>Ô tìm kiếm nâng cao hỗ trợ JQL để lọc chính xác, ví dụ:</P>
-              <Cmd code={`assignee = currentUser() AND status != "Done" ORDER BY priority DESC`} />
+              <Cmd code={`assignee = me AND status != "Done" ORDER BY priority DESC`} />
+              <P>Ô soạn truy vấn tự gợi ý trường và giá trị khi gõ; <Mono>me</Mono> (hoặc <Mono>currentUser()</Mono>) là chính bạn. Giá trị sai được báo kèm gợi ý “ý bạn là…”. Kết quả hiện dạng bảng — chọn cột hiển thị, bấm <em>Xuất CSV</em>, hoặc <em>Lưu truy vấn</em> ngay cạnh nút Chạy để dùng lại.</P>
             </section>
 
             <section className="mb-14">
@@ -425,8 +454,9 @@ export function DocumentationPage() {
               />
               <H3>Báo một bug</H3>
               <Steps items={[
-                <>Nhấn <Kbd>c</Kbd> (hoặc nút <em>Tạo</em>), chọn dự án và loại <em>Bug</em>.</>,
-                'Nhập tiêu đề ngắn gọn, mô tả các bước tái hiện + kết quả mong đợi; đính kèm ảnh chụp màn hình nếu có.',
+                <>Mở <Kbd>⌘</Kbd> <Kbd>K</Kbd> → <em>Báo lỗi</em> (hoặc nút <em>Báo lỗi</em> ở đầu Bảng việc / nút nổi).</>,
+                'Nhập tiêu đề ngắn gọn; chế độ Cơ bản chỉ bắt buộc tiêu đề (mô tả ngắn là tuỳ chọn; môi trường và mức nghiêm trọng mặc định tự điền), chế độ Nâng cao có mẫu tái hiện, mức nghiêm trọng, môi trường (trình duyệt / hệ điều hành / bản build / URL) và ảnh dán trực tiếp.',
+                'Nếu có bug tương tự, hệ thống gợi ý: chọn “Thêm ghi chú vào <mã bug cũ>” (bạn thành người theo dõi bug đó) hoặc “Vẫn tạo mới”.',
                 <>Gửi. Bạn được tự động <strong>theo dõi</strong> công việc đó và sẽ nhận thông báo khi có cập nhật.</>,
               ]} />
             </section>
@@ -445,7 +475,7 @@ export function DocumentationPage() {
                   'Xoá công việc, quản lý thành viên hay cấu hình dự án.',
                 ]}
               />
-              <H3>Nhận &amp; hoàn thành một task</H3>
+              <H3>Nhận &amp; hoàn thành một công việc</H3>
               <Steps items={[
                 <>Mở Bảng việc, tìm việc của mình (chip <em>Của tôi</em>) hoặc bấm <Kbd>i</Kbd> trên công việc để <strong>gán cho tôi</strong>.</>,
                 'Kéo thẻ sang cột đang làm, cập nhật story points / ghi nhận thời gian khi cần.',
@@ -478,7 +508,8 @@ export function DocumentationPage() {
               <CanDo
                 can={[
                   'Tạo / sửa / lưu trữ / xoá dự án trong không gian làm việc.',
-                  'Mời & gỡ thành viên, gán vai trò cho họ.',
+                  'Thêm trực tiếp thành viên (không có lời mời — người được thêm vào ngay), gỡ thành viên, tạo tài khoản mới, khoá / mở khoá, đặt lại mật khẩu, gán vai trò.',
+                  'Tạo dự án từ mẫu (Scrum / Kanban / Quản lý yêu cầu); đặt dự án riêng tư; xem Cài đặt → Nhật ký quản trị.',
                   'Tạo vai trò tuỳ biến và trộn bộ quyền (RBAC).',
                   'Cấu hình chung (tên, đường dẫn, gói dịch vụ), trường tuỳ chỉnh & loại công việc dùng cho mọi dự án.',
                   'Tạo dashboard & bộ lọc chia sẻ cho toàn tổ chức.',
@@ -486,10 +517,10 @@ export function DocumentationPage() {
                   'Kế thừa quyền Quản trị dự án ở mọi dự án.',
                 ]}
               />
-              <H3>Mời người mới &amp; phân quyền</H3>
+              <H3>Thêm người mới &amp; phân quyền</H3>
               <Steps items={[
-                <>Vào trang <strong>Thành viên</strong> của không gian làm việc, mời bằng email và chọn vai trò chung cho họ.</>,
-                <>Xong! Họ đã tham gia mọi dự án. Chỉ khi cần vai trò khác mặc định ở một dự án, vào <strong>dự án → Cấu hình → Thành viên</strong> để <em>đặt vai trò riêng</em>.</>,
+                <>Vào trang <strong>Thành viên</strong> của không gian làm việc, chọn người có sẵn hoặc tạo tài khoản mới, rồi chọn vai trò chung cho họ.</>,
+                <>Xong! Họ đã tham gia mọi dự án công khai (dự án riêng tư cần thêm họ riêng). Chỉ khi cần vai trò khác mặc định ở một dự án, vào <strong>dự án → Cấu hình → Thành viên</strong> để <em>đặt vai trò riêng</em>.</>,
                 'Cần bộ quyền riêng? Tạo vai trò tuỳ biến trong Cài đặt → Vai trò rồi gán cho người dùng.',
               ]} />
             </section>
@@ -523,15 +554,15 @@ export function DocumentationPage() {
             {/* ============== NÂNG CAO ============== */}
             <section className="mb-14">
               <H2 id="quan-ly-nang-cao">Quản lý nâng cao</H2>
-              <P>Ngoài Scrum/Kanban, Tirapro hỗ trợ các mô hình quản lý sau — tất cả nằm trong mục Quản trị trên thanh bên trái.</P>
+              <P>Ngoài Scrum/Kanban, Tirapro hỗ trợ các mô hình quản lý sau — tất cả nằm trong mục Danh mục trên thanh bên trái.</P>
               <div className="border-t border-border">
                 <Feature icon={<GitBranch className="h-4 w-4" />} title="Lịch trình dự án">Khai báo việc nào phải xong trước việc nào, hệ thống tự tìm <strong>đường găng</strong> (chuỗi việc quyết định ngày kết thúc — trễ một việc là trễ cả dự án). Có cột mốc và <strong>kế hoạch gốc</strong> để đối chiếu kế hoạch với thực tế. Vào dự án → tab <Mono>Lịch trình</Mono>.</Feature>
                 <Feature icon={<Users className="h-4 w-4" />} title="Nhân lực">Khai báo mỗi người dành bao nhiêu phần trăm thời gian cho dự án nào, cùng ngày nghỉ và ngày lễ. Bảng theo tuần tô màu cảnh báo ai đang quá tải.</Feature>
                 <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Danh mục dự án">Gom nhiều dự án thành một chương trình để xem tiến độ chung và lịch trình tổng theo thời gian.</Feature>
-                <Feature icon={<Sparkles className="h-4 w-4" />} title="Mục tiêu & kết quả then chốt">Đặt mục tiêu theo quý kèm các kết quả then chốt đo được bằng số; gắn công việc vào mục tiêu để tiến độ tự cập nhật.</Feature>
+                <Feature icon={<Sparkles className="h-4 w-4" />} title="Mục tiêu & kết quả then chốt">Đặt mục tiêu theo quý kèm các kết quả then chốt đo được bằng số. Kết quả then chốt có thể <strong>tự đo</strong> (số bug đang mở, % điểm hoàn tất của sprint, hoặc số công việc theo một câu JQL): hệ thống ghi lại giá trị mỗi ngày và vẽ đường tiến độ; vẫn nhập tay và check-in kèm ghi chú được.</Feature>
                 <Feature icon={<TriangleAlert className="h-4 w-4" />} title="Rủi ro & vướng mắc">Ghi nhận bốn nhóm: rủi ro (có thể xảy ra), giả định (đang tin là đúng), vấn đề (đang xảy ra), phụ thuộc (chờ bên khác). Mỗi mục chấm điểm khả năng xảy ra × mức ảnh hưởng để biết cái nào đáng lo nhất.</Feature>
                 <Feature icon={<Bell className="h-4 w-4" />} title="Cam kết thời gian xử lý">Đặt hạn phải phản hồi và phải xử lý xong. Hệ thống tự bấm giờ khi công việc được tạo, hiện đếm ngược ngay trên công việc và cảnh báo khi sắp trễ.</Feature>
-                <Feature icon={<BookOpen className="h-4 w-4" />} title="Wiki nội bộ">Trang tài liệu dạng cây cho cả công ty hoặc riêng từng dự án, có tìm kiếm theo nội dung.</Feature>
+                <Feature icon={<BookOpen className="h-4 w-4" />} title="Wiki nội bộ">Trang tài liệu dạng cây cho cả công ty hoặc riêng từng dự án, có tìm kiếm theo nội dung, <strong>lịch sử phiên bản</strong> (xem và khôi phục bản cũ) và nhúng / liên kết công việc (công việc hiện lại mục <em>Tài liệu liên quan</em>). Quyền viết wiki cấp <strong>theo từng dự án</strong> (mặc định: quản trị dự án, phân tích nghiệp vụ, chủ sản phẩm, điều phối sprint, lập trình viên, kiểm thử); thiếu quyền thì màn hình nói rõ nên nhờ ai.</Feature>
                 <Feature icon={<Plug className="h-4 w-4" />} title="Tự động hoá">Lưu mẫu công việc để tạo nhanh, và đặt lịch tự tạo công việc lặp lại theo ngày/tuần/tháng.</Feature>
                 <Feature icon={<Building2 className="h-4 w-4" />} title="Khách hàng & hợp đồng">Quản lý khách hàng, hợp đồng (giá trị, thời hạn) và gắn dự án theo khách hàng.</Feature>
                 <Feature icon={<Check className="h-4 w-4" />} title="Trong mỗi công việc">Thêm <strong>người tham gia</strong> (nhiều người cùng theo dõi một việc) và <strong>danh sách việc nhỏ</strong> để tích dần theo tiến độ.</Feature>
@@ -550,22 +581,30 @@ export function DocumentationPage() {
 
             <section className="mb-14">
               <H2 id="bao-cao">Báo cáo &amp; phân tích</H2>
-              <P>Reporter trở lên đều xem được báo cáo; quản trị dự án cấu hình. Xuất PDF/Excel khi cần chia sẻ ngoài.</P>
+              <P>Reporter trở lên đều xem được báo cáo; quản trị dự án cấu hình. <strong>Xuất CSV</strong> (kết quả bộ lọc / JQL, Việc chờ, bug, sprint, Danh mục, rủi ro, nhân lực — mở bằng Excel được) và <strong>In / Lưu PDF</strong> cho Tổng quan và báo cáo sprint khi cần chia sẻ ngoài.</P>
               <Table head={['Báo cáo', 'Cho biết điều gì']} rows={[
+                ['Báo cáo Sprint — tab đầu của Báo cáo', 'Chọn một sprint: Burndown có vạch “hôm nay”, Velocity và tóm tắt cam kết / hoàn thành / phát sinh.'],
                 ['Burndown', 'Khối lượng còn lại theo ngày trong sprint — có kịp hạn không.'],
                 ['Velocity', 'Năng suất trung bình qua các sprint để dự báo phạm vi.'],
                 ['CFD (Cumulative Flow)', 'Luồng công việc qua các trạng thái — phát hiện nghẽn.'],
-                ['Sprint report', 'Tổng kết những gì hoàn tất / dở dang khi kết thúc sprint.'],
-                ['Dashboard tuỳ biến', 'Ghép các widget số liệu cá nhân hoặc toàn tổ chức.'],
+                ['Tổng kết sprint — hiện sau khi Kết thúc sprint', 'Những gì hoàn tất / dở dang và việc dở được chuyển đi đâu.'],
+                ['QA', 'Bug đang mở theo mức nghiêm trọng, tỷ lệ mở lại, thời gian đóng trung bình, theo phiên bản.'],
+                ['Dashboard tuỳ biến — Tổng quan → bộ chọn dashboard', 'Bộ chọn ở đầu Tổng quan (mặc định “Tổng quan chung”): chọn “Tạo dashboard mới…” để ghép widget kéo-thả. Chia sẻ: Chỉ mình tôi · Cả không gian làm việc · Thành viên dự án · Thành viên nhóm. Chỉ chủ dashboard được sửa.'],
               ]} />
+              <H3>Dành cho lãnh đạo</H3>
+              <div className="border-t border-border">
+                <Feature icon={<TriangleAlert className="h-4 w-4" />} title="Sức khoẻ dự án">Mỗi dự án có mức sức khoẻ tự tính từ tiến độ, việc quá hạn và rủi ro; quản trị dự án có thể ghi đè kèm ghi chú (thẻ đầu tab Tổng quan của Báo cáo). Mức này hiện thành cột Sức khoẻ trên Tổng quan và Danh mục.</Feature>
+                <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Thẻ trên Tổng quan">Ba thẻ <em>Top rủi ro</em> (5 rủi ro mở điểm cao nhất), <em>OKR chậm</em> (so với thời gian đã trôi) và <em>Người quá tải</em> (theo bảng nhân lực).</Feature>
+                <Feature icon={<Bell className="h-4 w-4" />} title="Báo cáo định kỳ (Digest)">Ở <Mono>Kết nối → Tích hợp → Báo cáo định kỳ</Mono>: chọn thứ, giờ, múi giờ (hoặc tự gửi khi kết thúc sprint), khối nội dung, xem trước; gửi qua Email và Telegram theo người nhận. Dự án riêng tư chỉ lên kênh chung khi bật rõ.</Feature>
+              </div>
             </section>
 
             <section className="mb-14">
               <H2 id="tich-hop">Tích hợp</H2>
-              <P>Kết nối Tirapro với công cụ khác. Do quản trị chung bật (mỗi người tự liên kết chat cá nhân). Thiếu cấu hình thì tính năng tắt êm, app vẫn chạy.</P>
+              <P>Kết nối Tirapro với công cụ khác. Do quản trị chung bật và cấu hình. Thiếu cấu hình thì tính năng tắt êm, app vẫn chạy.</P>
               <div className="border-t border-border">
-                <Feature icon={<Plug className="h-4 w-4" />} title="Telegram">Nhận thông báo vào chat; tạo task nhanh bằng <Mono>/newtask</Mono>; báo bug bằng <Mono>/bug</Mono> theo biểu mẫu; lấy digest bằng <Mono>/report</Mono>. Mỗi người dùng tự <Mono>/link</Mono> tài khoản.</Feature>
-                <Feature icon={<ArrowUpRight className="h-4 w-4" />} title="Nhập từ Jira">Nhập dự án / công việc / bình luận / tệp đính kèm từ Jira Cloud hoặc tệp CSV/JSON; tự khớp loại & trạng thái. Chạy nền có hiển thị tiến độ.</Feature>
+                <Feature icon={<Plug className="h-4 w-4" />} title="Telegram">Hệ thống chỉ <strong>gửi</strong> tin (thông báo, digest) — không nhận lệnh tạo việc. Quản trị chung làm theo trình hướng dẫn 4 bước: nhập token bot → thêm bot vào nhóm → gõ <Mono>/link@tên_bot MÃ</Mono> trong nhóm để liên kết nhóm với không gian làm việc → gửi thử. Trạng thái kết nối hiện thật trên trang.</Feature>
+                <Feature icon={<ArrowUpRight className="h-4 w-4" />} title="Nhập từ Jira">Nhập từ tệp CSV xuất từ Jira (công việc, bình luận, tệp đính kèm); tự khớp loại, độ ưu tiên và trạng thái, chạy nền có hiển thị tiến độ. Công việc nhập mang <strong>đúng mã gốc</strong> (vd <Mono>JRA-1</Mono>); việc tạo mới sau đó vẫn theo mã Tirapro. Nhập lại bỏ qua việc đã có mã. Người phụ trách chưa là thành viên sẽ tự được gán khi được thêm vào không gian làm việc.</Feature>
                 <Feature icon={<KeyRound className="h-4 w-4" />} title="API key & MCP">Tạo API key ở <strong>Cài đặt → API &amp; MCP</strong> cho phần mềm ngoài hoặc trợ lý AI (MCP) truy cập dữ liệu — chọn chỉ-đọc hoặc đọc-ghi, thu hồi bất cứ lúc nào.</Feature>
               </div>
               <Note kind="info">Chi tiết kỹ thuật REST/MCP (endpoint, ví dụ code) nằm trong tài liệu kỹ thuật của repo, không thuộc hướng dẫn sử dụng này.</Note>
@@ -573,22 +612,16 @@ export function DocumentationPage() {
 
             <section className="mb-14">
               <H2 id="phim-tat">Phím tắt</H2>
-              <H3>Toàn cục</H3>
-              <Table head={['Phím', 'Hành động']} rows={[
-                [<span className="flex gap-1"><Kbd>⌘</Kbd><Kbd>K</Kbd></span>, <>Bảng lệnh — tìm, điều hướng, hành động, nhảy tới mã công việc</>],
-                [<Kbd>c</Kbd>, 'Tạo công việc (ở bất kỳ đâu)'],
-                [<Kbd>/</Kbd>, 'Mở nhanh ô tìm kiếm'],
-                [<span className="flex items-center gap-1"><Kbd>g</Kbd> <span className="text-xs text-faint">rồi</span> <Kbd>b</Kbd>/<Kbd>l</Kbd>/<Kbd>d</Kbd></span>, 'Đi tới Bảng việc / Việc chờ / Tổng quan'],
-                [<Kbd>?</Kbd>, 'Mở bảng phím tắt'],
-              ]} />
-              <H3>Trên trang chi tiết công việc</H3>
-              <Table head={['Phím', 'Hành động']} rows={[
-                [<Kbd>i</Kbd>, 'Gán công việc cho tôi'],
-                [<Kbd>y</Kbd>, 'Sao chép liên kết công việc'],
-                [<span className="flex gap-1"><Kbd>1</Kbd>…<Kbd>9</Kbd></span>, 'Chuyển sang trạng thái kế tiếp theo quy trình'],
-              ]} />
+              <P>Nhấn <Kbd>?</Kbd> ở bất kỳ đâu để mở bảng này ngay trong ứng dụng — hai nơi cùng đọc một nguồn nên luôn khớp.</P>
+              {SHORTCUT_GROUPS.map((g) => (
+                <div key={g.scope}>
+                  <H3>{g.title}</H3>
+                  <ShortcutTable scope={g.scope} />
+                </div>
+              ))}
+              <Note kind="tip">Trên danh sách: <Kbd>j</Kbd> / <Kbd>k</Kbd> xuống / lên, <Kbd>Enter</Kbd> mở xem nhanh; trên công việc: <Kbd>a</Kbd> gán cho người khác, <Kbd>e</Kbd> sửa tiêu đề, <Kbd>m</Kbd> viết bình luận. Rê chuột vào nút để thấy phím tắt tương ứng.</Note>
               <div className="border-t border-border">
-                <Feature icon={<MousePointerClick className="h-4 w-4" />} title="Chọn nhiều & thao tác hàng loạt">Ở Việc chờ, tick nhiều công việc để Gán cho tôi · Đổi người · Chuyển sprint — có nút Hoàn tác.</Feature>
+                <Feature icon={<MousePointerClick className="h-4 w-4" />} title="Chọn nhiều & thao tác hàng loạt">Ở Việc chờ, tick nhiều công việc để Gán cho tôi · Đổi người · Chuyển sprint · Đặt điểm · Đổi ưu tiên · Gắn nhãn · Gắn epic · Đổi trạng thái — có nút Hoàn tác. Điểm và ưu tiên cũng sửa được ngay trên từng dòng.</Feature>
                 <Feature icon={<ListPlus className="h-4 w-4" />} title="Thêm nhanh">Ô “+ Thêm việc…” cuối mỗi cột Bảng việc / nhóm Việc chờ — nhấn Enter là tạo ngay đúng cột/sprint.</Feature>
               </div>
             </section>
@@ -598,7 +631,7 @@ export function DocumentationPage() {
               <H3>Tôi không thấy nút sửa / kéo-thả / cấu hình?</H3>
               <P>Gần như luôn do vai trò. Đối chiếu <a href="#vai-tro" className="font-medium underline">ma trận quyền</a>; nếu cần thêm quyền, đề nghị quản trị chung hoặc quản trị dự án nâng vai trò cho bạn.</P>
               <H3>Tôi không nhận được thông báo?</H3>
-              <P>Kiểm tra bạn có đang <strong>theo dõi</strong> công việc đó không, và thông báo Telegram cần được quản trị bật + bạn đã <Mono>/link</Mono> tài khoản. Người được giao và người tạo được theo dõi tự động.</P>
+              <P>Kiểm tra bạn có đang <strong>theo dõi</strong> công việc đó không, và thông báo Telegram cần được quản trị bật và nhóm Telegram đã được liên kết (<Mono>/link@tên_bot MÃ</Mono>); dự án riêng tư chỉ gửi lên kênh khi quản trị bật rõ. Người được giao và người tạo được theo dõi tự động.</P>
               <H3>Quên mật khẩu?</H3>
               <P>Dùng liên kết đặt lại ở màn đăng nhập, hoặc nhờ quản trị chung cấp lại.</P>
               <H3>AI báo không khả dụng?</H3>

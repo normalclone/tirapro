@@ -4,10 +4,7 @@ import { createId } from '@paralleldrive/cuid2';
 import { promises as fs, createReadStream, type ReadStream } from 'node:fs';
 import * as path from 'node:path';
 import type { Request } from 'express';
-import {
-  BusinessRuleException,
-  NotFoundAppException,
-} from '../../common/exceptions/app.exception';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 
 /** MIME ảnh được phép → đuôi file chuẩn hoá. SVG bị loại (tránh rủi ro nội dung script). */
 const ALLOWED: Record<string, string> = {
@@ -65,7 +62,8 @@ export class MediaService {
 
   private publicUrl(fileName: string, req: Request): string {
     const host = req.get('host');
-    const proto = (req.headers['x-forwarded-proto'] as string | undefined)?.split(',')[0] || req.protocol;
+    const proto =
+      (req.headers['x-forwarded-proto'] as string | undefined)?.split(',')[0] || req.protocol;
     return `${proto}://${host}${this.urlPrefix}/media/avatars/${fileName}`;
   }
 
@@ -80,7 +78,10 @@ export class MediaService {
     } catch {
       throw new NotFoundAppException('Ảnh');
     }
-    return { stream: createReadStream(abs), mimeType: EXT_TO_MIME[ext] ?? 'application/octet-stream' };
+    return {
+      stream: createReadStream(abs),
+      mimeType: EXT_TO_MIME[ext] ?? 'application/octet-stream',
+    };
   }
 
   /**

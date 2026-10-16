@@ -1,23 +1,96 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { Prisma } from '@prisma/client';
 import * as crypto from 'node:crypto';
-import { Telegraf } from 'telegraf';
+import { Telegraf, TelegramError } from 'telegraf';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
+
+export const TELEGRAM_TOKEN_UNUSABLE_MESSAGE =
+  'Token bot của tích hợp Telegram này không dùng được (khoá mã hoá đã đổi hoặc dữ liệu hỏng) — hãy xoá rồi thêm lại tích hợp với token mới, hoặc đặt khoá cũ vào INTEGRATION_ENCRYPTION_KEY_PREVIOUS rồi chạy integrations:rekey';
+
+/** Không liên lạc được Telegram (mạng/timeout/5xx) — KHÁC với token sai. */
+export class TelegramUnreachableError extends Error {
+  constructor() {
+    super('Không kết nối được tới Telegram');
+    this.name = 'TelegramUnreachableError';
+  }
+}
+
+/** getUpdates trả 409: bot đang gắn webhook HOẶC có tiến trình khác đang getUpdates cùng bot. */
+export class TelegramWebhookConflictError extends Error {
+  constructor() {
+    super('Bot đang gắn webhook hoặc có tiến trình khác đang đọc getUpdates');
+    this.name = 'TelegramWebhookConflictError';
+  }
+}
+
+/** Telegram từ chối token (401/404) khi đang dùng. */
+export class TelegramTokenRejectedError extends Error {
+  constructor() {
+    super('Telegram từ chối token bot');
+    this.name = 'TelegramTokenRejectedError';
+  }
+}
+
+/** Một bản tin văn bản trong chat (đã rút gọn từ Update.message). */
+export interface TelegramMessageUpdate {
+  chatId: number;
+  chatType: string;
+  chatTitle?: string;
+  firstName?: string;
+  text: string;
+  /** Unix giây. */
+  date: number;
+}
+
+const LINK_COMMAND_RE = /^\/link(?:@(\w+))?\s+([A-Z0-9]{6})\b/i;
+
+/**
+ * Tách mã liên kết từ `/link@TenBot MÃ` hoặc `/link MÃ` (mã chuẩn hoá chữ hoa); lệnh khác → null.
+ * Truyền `botUsername` để bỏ qua lệnh gọi đích danh BOT KHÁC trong nhóm có nhiều bot.
+ */
+export function parseLinkCommand(text: string, botUsername?: string | null): string | null {
+  const m = LINK_COMMAND_RE.exec(text.trim());
+  if (!m) return null;
+  const target = m[1];
+  if (target && botUsername && target.toLowerCase() !== botUsername.toLowerCase()) return null;
+  return m[2]!.toUpperCase();
+}
+
+export interface TelegramBotInfo {
+  id: number;
+  username: string;
+  firstName: string;
+}
+
+const GET_ME_TIMEOUT_MS = 8000;
+/** Sau khi hỏi bot chung thất bại, không hỏi lại trong khoảng này (tránh dồn request mỗi lần mở danh sách). */
+const GLOBAL_BOT_RETRY_MS = 30_000;
+
+export type BotTokenResolution =
+  | { kind: 'global' }
+  | { kind: 'own'; token: string }
+  | { kind: 'unusable' };
 
 /**
  * Bot wrapper Telegram — degrade-graceful.
  * - KHÔNG launch polling; chỉ tạo Telegraf lazily theo token (cache theo token).
  * - Token cấu hình toàn cục (TELEGRAM_BOT_TOKEN) hoặc BYO (bring-your-own) theo integration.
  * - Thiếu token → mọi thao tác gửi trả về false (tính năng tắt), KHÔNG ném lỗi.
- * - Mã hóa botToken bằng AES-256-GCM nếu có INTEGRATION_ENCRYPTION_KEY (>=32 ký tự).
+ * - Mã hóa botToken bằng AES-256-GCM; thiếu INTEGRATION_ENCRYPTION_KEY (>=32 ký tự) → encrypt() ném lỗi.
+ * - Giải mã thử khoá hiện tại rồi INTEGRATION_ENCRYPTION_KEY_PREVIOUS; thất bại → null (không trả ciphertext).
  */
 @Injectable()
 export class TelegramService {
   private readonly logger = new Logger(TelegramService.name);
   private readonly globalBotToken: string;
   private readonly encryptionKey: string;
+  /** Khoá cũ (optional) — chỉ để giải mã dữ liệu đã mã hoá trước khi đổi khoá, không bao giờ dùng để mã hoá. */
+  private readonly previousKey: string;
   /** Cache Telegraf theo token để tái dùng (tránh tạo client mới mỗi lần gửi). */
   private readonly bots = new Map<string, Telegraf>();
+  private globalBotInfo: TelegramBotInfo | null = null;
+  private globalBotFailedAt = 0;
 
   constructor(
     private readonly config: ConfigService,
@@ -26,11 +99,102 @@ export class TelegramService {
     const telegram = this.config.get<{ globalBotToken?: string }>('integrations.telegram');
     this.globalBotToken = telegram?.globalBotToken ?? '';
     this.encryptionKey = this.config.get<string>('integrations.encryptionKey') ?? '';
+    this.previousKey = this.config.get<string>('integrations.encryptionKeyPrevious') ?? '';
   }
 
   /** Có bot khả dụng không (token truyền vào hoặc token toàn cục). */
   available(globalOrToken?: string | null): boolean {
     return Boolean(globalOrToken || this.globalBotToken);
+  }
+
+  /** Cờ hệ thống (kill-switch) cho phép tích hợp hoạt động. */
+  platformEnabled(): boolean {
+    return this.settings.flags().integrationsEnabled;
+  }
+
+  /**
+   * Hỏi Telegram `getMe` để xác thực token. Trả thông tin bot; trả null khi Telegram từ chối token
+   * (401/404); ném TelegramUnreachableError khi lỗi mạng/timeout/5xx (không kết luận được token sai).
+   * KHÔNG ghi token vào log.
+   */
+  async getMe(token: string): Promise<TelegramBotInfo | null> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const bot = new Telegraf(token); // không cache: token chưa xác thực
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new TelegramUnreachableError()), GET_ME_TIMEOUT_MS);
+      });
+      const me = await Promise.race([bot.telegram.getMe(), timeout]);
+      return { id: me.id, username: me.username, firstName: me.first_name };
+    } catch (err) {
+      if (err instanceof TelegramError && (err.code === 401 || err.code === 404)) return null;
+      if (err instanceof TelegramUnreachableError) throw err;
+      this.logger.warn('Không gọi được getMe tới Telegram (lỗi mạng hoặc phản hồi bất thường)');
+      throw new TelegramUnreachableError();
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * 100 bản tin mới nhất bot nhận được, đọc THEO YÊU CẦU (không polling nền): getUpdates với
+   * offset âm, timeout 0 (token null → bot chung). Offset âm không xác nhận update gần đây nên các lần đọc sau vẫn thấy lại;
+   * Telegram chỉ quên những update cũ hơn 100 bản mới nhất. Ném TelegramWebhookConflictError (409),
+   * TelegramTokenRejectedError (401/404) hoặc TelegramUnreachableError (mạng/timeout/khác).
+   */
+  async recentUpdates(token: string | null): Promise<TelegramMessageUpdate[]> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const resolved = token || this.globalBotToken;
+      if (!resolved) throw new TelegramTokenRejectedError();
+      const bot = new Telegraf(resolved);
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new TelegramUnreachableError()), GET_ME_TIMEOUT_MS);
+      });
+      const updates = await Promise.race([
+        bot.telegram.getUpdates(0, 100, -100, ['message']),
+        timeout,
+      ]);
+      const out: TelegramMessageUpdate[] = [];
+      for (const u of updates) {
+        if (!('message' in u)) continue;
+        const m = u.message;
+        if (!m || !('text' in m) || typeof m.text !== 'string') continue;
+        out.push({
+          chatId: m.chat.id,
+          chatType: m.chat.type,
+          chatTitle: 'title' in m.chat ? m.chat.title : undefined,
+          firstName: 'first_name' in m.chat ? m.chat.first_name : undefined,
+          text: m.text,
+          date: m.date,
+        });
+      }
+      return out;
+    } catch (err) {
+      if (err instanceof TelegramError) {
+        if (err.code === 409) throw new TelegramWebhookConflictError();
+        if (err.code === 401 || err.code === 404) throw new TelegramTokenRejectedError();
+      }
+      if (err instanceof TelegramUnreachableError) throw err;
+      this.logger.warn('Không đọc được tin nhắn từ Telegram (lỗi mạng hoặc phản hồi bất thường)');
+      throw new TelegramUnreachableError();
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /** @username của bot chung (TELEGRAM_BOT_TOKEN); null nếu chưa cấu hình hoặc chưa lấy được. Có cache. */
+  async globalBotUsername(): Promise<string | null> {
+    if (!this.globalBotToken) return null;
+    if (this.globalBotInfo) return this.globalBotInfo.username;
+    if (Date.now() - this.globalBotFailedAt < GLOBAL_BOT_RETRY_MS) return null;
+    try {
+      this.globalBotInfo = await this.getMe(this.globalBotToken);
+      if (!this.globalBotInfo) this.globalBotFailedAt = Date.now();
+    } catch {
+      this.globalBotFailedAt = Date.now();
+    }
+    return this.globalBotInfo?.username ?? null;
   }
 
   /** Lấy (hoặc tạo & cache) Telegraf cho token. */
@@ -69,45 +233,75 @@ export class TelegramService {
     return this.encryptionKey.length >= 32;
   }
 
-  private deriveKey(): Buffer {
-    return crypto.createHash('sha256').update(this.encryptionKey).digest();
+  private static deriveKey(secret: string): Buffer {
+    return crypto.createHash('sha256').update(secret).digest();
   }
 
-  /** Mã hóa bot token (aes-256-gcm) → "iv:tag:ciphertext" hex. Không có key → plaintext. */
+  /** Mã hóa bot token (aes-256-gcm) → "iv:tag:ciphertext" hex. Không có key → ném lỗi (không bao giờ lưu plaintext). */
   encrypt(plain: string): string {
-    // TODO encrypt: thiếu INTEGRATION_ENCRYPTION_KEY (>=32 ký tự) → lưu plaintext.
-    if (!this.hasKey()) return plain;
+    if (!this.hasKey()) {
+      throw new InternalServerErrorException(
+        'Chưa cấu hình INTEGRATION_ENCRYPTION_KEY (tối thiểu 32 ký tự) — hãy đặt biến này rồi khởi động lại API',
+      );
+    }
     const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.deriveKey(), iv);
+    const cipher = crypto.createCipheriv(
+      'aes-256-gcm',
+      TelegramService.deriveKey(this.encryptionKey),
+      iv,
+    );
     const ciphertext = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
     const tag = cipher.getAuthTag();
     return `${iv.toString('hex')}:${tag.toString('hex')}:${ciphertext.toString('hex')}`;
   }
 
-  /** Giải mã token. Không có key hoặc không đúng định dạng → trả nguyên (giả định plaintext). */
-  decrypt(enc: string): string {
-    // TODO encrypt: thiếu key → coi như plaintext.
-    if (!this.hasKey()) return enc;
-    const parts = enc.split(':');
-    if (parts.length !== 3) return enc;
+  /** Thử giải mã bằng một khoá; sai khoá / dữ liệu hỏng → null. */
+  private tryDecrypt(parts: [string, string, string], secret: string): string | null {
     try {
-      const [ivHex, tagHex, dataHex] = parts;
       const decipher = crypto.createDecipheriv(
         'aes-256-gcm',
-        this.deriveKey(),
-        Buffer.from(ivHex, 'hex'),
+        TelegramService.deriveKey(secret),
+        Buffer.from(parts[0], 'hex'),
       );
-      decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+      decipher.setAuthTag(Buffer.from(parts[1], 'hex'));
       const plain = Buffer.concat([
-        decipher.update(Buffer.from(dataHex, 'hex')),
+        decipher.update(Buffer.from(parts[2], 'hex')),
         decipher.final(),
       ]);
       return plain.toString('utf8');
-    } catch (err) {
-      this.logger.warn(
-        `Không giải mã được bot token: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return enc;
+    } catch {
+      return null;
     }
+  }
+
+  /**
+   * Giải mã token: thử khoá hiện tại rồi khoá cũ (INTEGRATION_ENCRYPTION_KEY_PREVIOUS).
+   * - Chuỗi không có dạng "iv:tag:ciphertext" (dữ liệu cũ lưu plaintext) → trả nguyên.
+   * - Có dạng ciphertext nhưng không khoá nào giải được → null + log lỗi; KHÔNG BAO GIỜ trả ciphertext làm token.
+   */
+  decrypt(enc: string): string | null {
+    const parts = enc.split(':');
+    if (parts.length !== 3) return enc;
+    const triple = parts as [string, string, string];
+    const keys = [this.encryptionKey, this.previousKey].filter((k) => k.length >= 32);
+    for (const key of keys) {
+      const plain = this.tryDecrypt(triple, key);
+      if (plain !== null) return plain;
+    }
+    this.logger.error(
+      'Không giải mã được bot token của tích hợp — khoá INTEGRATION_ENCRYPTION_KEY đã đổi? Đặt khoá cũ vào INTEGRATION_ENCRYPTION_KEY_PREVIOUS (xem docs/DEPLOY.md) hoặc nhập lại token trong Cài đặt → Tích hợp',
+    );
+    return null;
+  }
+
+  /** Phân biệt "không có token riêng" (dùng bot toàn cục) với "có token riêng nhưng hỏng" (KHÔNG được rơi về toàn cục). */
+  resolveBotToken(config: Prisma.JsonValue): BotTokenResolution {
+    if (!config || typeof config !== 'object' || Array.isArray(config)) return { kind: 'global' };
+    const botToken = (config as Record<string, unknown>).botToken;
+    // Chỉ "chưa cấu hình" (undefined/null/'') mới dùng bot toàn cục; giá trị sai kiểu = dữ liệu hỏng.
+    if (botToken === undefined || botToken === null || botToken === '') return { kind: 'global' };
+    if (typeof botToken !== 'string') return { kind: 'unusable' };
+    const token = this.decrypt(botToken);
+    return token === null ? { kind: 'unusable' } : { kind: 'own', token };
   }
 }

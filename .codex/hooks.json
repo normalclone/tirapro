@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"C:\\\\Users\\\\Admin\\\\.agents\\\\skills\\\\impeccable\\\\scripts\\\\hook.mjs\"",
+            "command": "node \"$HOME/.agents/skills/impeccable/scripts/hook.mjs\"",
             "timeout": 5,
             "statusMessage": "Checking UI changes"
           }

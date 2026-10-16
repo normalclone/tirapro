@@ -9,31 +9,70 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
-import { changePasswordSchema, type ChangePasswordInput } from '@tirapro/shared';
-import { PERMISSIONS } from '@tirapro/types';
+import type { Request, Response } from 'express';
+import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  changePasswordSchema,
+  updateProfileSchema,
+  type ChangePasswordInput,
+  type UpdateProfileInput,
+} from '@tirapro/shared';
+import { DOMAIN_EVENTS, PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
+import { canSeeAdminUserFields } from '../../common/mappers/user.mapper';
 import { UsersService } from './users.service';
+import { AuthService } from '../auth/auth.service';
+import { setRefreshCookie } from '../auth/refresh-cookie';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly auth: AuthService,
+    private readonly config: ConfigService,
+    private readonly events: EventEmitter2,
+  ) {}
 
-  /** Danh sách thành viên workspace hiện tại (picker assignee/@mention). */
+  /**
+   * Danh sách thành viên workspace hiện tại (picker người phụ trách / @mention / bộ lọc), lọc phía server:
+   * `search`, `projectId` (chỉ người xem được dự án; người gọi phải xem được dự án — 404 nếu không), `limit` (mặc định 50,
+   * tối đa 200), `includeInactive=true` (giữ tài khoản đã khoá + tài khoản hệ thống).
+   */
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get()
-  async list(@CurrentUser() user: AuthUser, @Query('search') search?: string) {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return this.users.listWorkspaceMembers(user.workspaceId, search);
+  async list(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('search') search?: string,
+    @Query('projectId') projectId?: string,
+    @Query('limit') limit?: string,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return this.users.listWorkspaceMembers(
+      workspaceId,
+      user.id,
+      {
+        search: search?.slice(0, 100),
+        projectId: projectId || undefined,
+        limit: Number(limit) || undefined,
+        includeInactive: includeInactive === 'true',
+      },
+      canSeeAdminUserFields(user),
+    );
   }
 
   /** Toàn bộ user trong hệ thống (pool do admin hệ thống quản trị) — để thêm thành viên. */
@@ -43,25 +82,46 @@ export class UsersController {
     return this.users.listAllUsers(search);
   }
 
+  // Hồ sơ của chính người dùng (luôn dùng user.id từ token) — chỉ cần xác thực.
+  @AuthOnly()
   @Patch('me')
   async updateMe(
     @CurrentUser() user: AuthUser,
-    @Body() body: { displayName?: string; avatarUrl?: string; timezone?: string; locale?: string },
+    @Body(new ZodValidationPipe(updateProfileSchema)) body: UpdateProfileInput,
   ) {
     return this.users.updateProfile(user.id, body);
   }
 
   /** Đổi mật khẩu của chính mình (xác minh mật khẩu hiện tại). */
+  // Hồ sơ của chính người dùng (luôn dùng user.id từ token) — chỉ cần xác thực.
+  @AuthOnly()
   @Post('me/change-password')
   @HttpCode(200)
   async changePassword(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(changePasswordSchema)) body: ChangePasswordInput,
+    @Req() req: Request & { apiKey?: unknown },
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.users.changePassword(user.id, body);
+    // Đổi mật khẩu cấp token/cookie web mới → chỉ phiên đăng nhập của người dùng, không phải API key (như logout-all).
+    if (req.apiKey) {
+      throw new ForbiddenAppException('Chỉ phiên đăng nhập của người dùng mới được đổi mật khẩu');
+    }
+    const { revokedAtMs } = await this.users.changePassword(user.id, body);
+    // Mọi phiên (kể cả thiết bị này) đã bị thu hồi → cấp phiên mới cho thiết bị đang đổi mật khẩu.
+    const { refreshToken, ...session } = await this.auth.reissueSession(user.id, user.workspaceId, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
+    setRefreshCookie(res, refreshToken, !!this.config.get<boolean>('isProd'));
+    // Ngắt socket của các thiết bị khác (token cũ); socket mới của thiết bị này (token vừa cấp) không bị đụng.
+    this.events.emit(DOMAIN_EVENTS.ACCOUNT_SESSIONS_REVOKED, { userId: user.id, revokedAtMs });
+    return { success: true, ...session };
   }
 
   /** Tải ảnh đại diện của chính mình (multipart `file`). */
+  // Hồ sơ của chính người dùng (luôn dùng user.id từ token) — chỉ cần xác thực.
+  @AuthOnly()
   @Post('me/avatar')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
@@ -74,13 +134,20 @@ export class UsersController {
   }
 
   /** Gỡ ảnh đại diện của chính mình. */
+  // Hồ sơ của chính người dùng (luôn dùng user.id từ token) — chỉ cần xác thực.
+  @AuthOnly()
   @Delete('me/avatar')
   async removeAvatar(@CurrentUser() user: AuthUser) {
     return this.users.clearAvatar(user.id);
   }
 
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get(':id')
-  async getOne(@Param('id') id: string) {
-    return this.users.getById(id);
+  async getOne(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.users.getById(workspaceId, id, canSeeAdminUserFields(user));
   }
 }

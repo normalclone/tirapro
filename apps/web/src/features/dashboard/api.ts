@@ -1,15 +1,33 @@
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import type { IssueDto, ListResponse } from '@tirapro/types';
+import type { ProjectHealthDto } from '@tirapro/shared';
+import type { RaidLevel } from '@/features/raid/api';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 const MY_ISSUES_JQL = 'assignee = currentUser() ORDER BY updated DESC';
 
 /** "Việc của tôi" — các issue được giao cho người dùng hiện tại, mới cập nhật trước. */
 export function useMyIssues() {
   return useQuery({
-    queryKey: ['my-issues'],
+    queryKey: keys.dashboard.myIssues,
     queryFn: async () => {
       const url = `/search?jql=${encodeURIComponent(MY_ISSUES_JQL)}&limit=15`;
+      return (await api.get<ListResponse<IssueDto>>(url)).data.data;
+    },
+    staleTime: 15_000,
+  });
+}
+
+/** Bug do tôi báo còn mở (loại chứa "bug" — chịu được workspace đổi tên loại), mới cập nhật trước. */
+const MY_BUGS_JQL =
+  'reporter = currentUser() AND type ~ "bug" AND statusCategory != DONE ORDER BY updated DESC';
+
+export function useMyReportedBugs() {
+  return useQuery({
+    queryKey: keys.dashboard.myBugs,
+    queryFn: async () => {
+      const url = `/search?jql=${encodeURIComponent(MY_BUGS_JQL)}&limit=30`;
       return (await api.get<ListResponse<IssueDto>>(url)).data.data;
     },
     staleTime: 15_000,
@@ -27,7 +45,7 @@ export interface OverviewTotals {
 }
 
 /** Sprint đang chạy của dự án (dùng trong bảng tổng quan). */
-export interface OverviewSprint {
+interface OverviewSprint {
   name: string;
   /** Số ngày còn lại tới hạn sprint; <0 = đã trễ; null = sprint không đặt hạn. */
   daysLeft: number | null;
@@ -38,6 +56,7 @@ export interface OverviewProject extends OverviewTotals {
   key: string;
   name: string;
   sprint: OverviewSprint | null;
+  health: ProjectHealthDto | null;
 }
 
 /** Một lát cắt cho sơ đồ (theo loại / theo ưu tiên). */
@@ -89,9 +108,54 @@ export interface WorkspaceOverview {
  */
 export function useWorkspaceOverview(enabled: boolean) {
   return useQuery({
-    queryKey: ['workspace-overview'],
-    queryFn: async () => (await api.get<WorkspaceOverview>('/reports/overview')).data,
-    enabled,
+    queryKey: keys.dashboard.workspaceOverview,
+    queryFn: enabled
+      ? async () => (await api.get<WorkspaceOverview>('/reports/overview')).data
+      : skipToken,
+    staleTime: 30_000,
+  });
+}
+
+/** Ba thẻ lãnh đạo trên Tổng quan — `GET /reports/leadership` (mỗi mảng ≤5, đã lọc theo dự án người xem thấy). */
+export interface LeadershipOverview {
+  topRisks: Array<{
+    id: string;
+    title: string;
+    score: number;
+    level: RaidLevel;
+    levelLabel: string;
+    project: { key: string; name: string } | null;
+    owner: { id: string; displayName: string } | null;
+    dueDate: string | null;
+  }>;
+  slowGoals: Array<{
+    id: string;
+    name: string;
+    period: string;
+    progress: number;
+    expectedProgress: number;
+    owner: { id: string; displayName: string } | null;
+  }>;
+  overloaded: Array<{
+    user: { id: string; displayName: string; avatarUrl: string | null };
+    worstRatio: number;
+    weekLabel: string;
+    assignedHours: number;
+    capacityHours: number;
+  }>;
+  /** Thẻ mà nguồn dữ liệu lỗi: mảng của nó rỗng nhưng KHÔNG có nghĩa "không có vấn đề". */
+  unavailable: LeadershipCard[];
+}
+
+export type LeadershipCard = 'topRisks' | 'slowGoals' | 'overloaded';
+
+/** Thẻ lãnh đạo của Tổng quan admin; `enabled` = chỉ người có quyền xem báo cáo (tránh 403). */
+export function useLeadership(enabled: boolean) {
+  return useQuery({
+    queryKey: keys.dashboard.leadership,
+    queryFn: enabled
+      ? async () => (await api.get<LeadershipOverview>('/reports/leadership')).data
+      : skipToken,
     staleTime: 30_000,
   });
 }

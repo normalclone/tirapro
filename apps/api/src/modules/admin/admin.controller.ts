@@ -1,32 +1,53 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AdminService } from './admin.service';
-import { createUserSchema, updateUserSchema, type CreateUserInput, type UpdateUserInput } from './admin.schemas';
+import {
+  addToWorkspaceSchema,
+  createUserSchema,
+  listUsersQuerySchema,
+  updateUserSchema,
+  type AddToWorkspaceInput,
+  type CreateUserInput,
+  type ListUsersQuery,
+  type UpdateUserInput,
+} from './admin.schemas';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 /** Quản trị tài khoản hệ thống — CHỈ admin hệ thống (isSystemAdmin). */
+// Chỉ admin hệ thống: từng handler tự kiểm tra isSystemAdmin (assertSysAdmin), không thuộc quyền RBAC của workspace.
+@AuthOnly()
 @ApiTags('admin')
 @Controller('admin/users')
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
   private assertSysAdmin(user: AuthUser): void {
-    if (!user.isSystemAdmin) throw new ForbiddenAppException('Chỉ admin hệ thống mới được quản trị tài khoản');
+    if (!user.isSystemAdmin)
+      throw new ForbiddenAppException('Chỉ admin hệ thống mới được quản trị tài khoản');
   }
 
   @Get()
-  async list(@CurrentUser() user: AuthUser) {
+  async list(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(listUsersQuerySchema)) query: ListUsersQuery,
+  ) {
     this.assertSysAdmin(user);
-    return this.admin.list();
+    return this.admin.list(query);
   }
 
+  // Phản hồi có thể chứa mật khẩu tạm: không để trình duyệt / proxy lưu cache.
+  @Header('Cache-Control', 'no-store')
   @Post()
-  async create(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(createUserSchema)) dto: CreateUserInput) {
+  async create(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(createUserSchema)) dto: CreateUserInput,
+  ) {
     this.assertSysAdmin(user);
-    return this.admin.create(dto);
+    return this.admin.create(dto, user.id);
   }
 
   @Patch(':id')
@@ -36,6 +57,35 @@ export class AdminController {
     @Body(new ZodValidationPipe(updateUserSchema)) dto: UpdateUserInput,
   ) {
     this.assertSysAdmin(user);
-    return this.admin.update(id, dto);
+    return this.admin.update(id, dto, user.id);
+  }
+
+  /** Đặt mật khẩu tạm (trả một lần) + đăng xuất mọi thiết bị. */
+  // Phản hồi chứa mật khẩu tạm: không để trình duyệt / proxy lưu cache.
+  @Header('Cache-Control', 'no-store')
+  @HttpCode(200)
+  @Post(':id/reset-password')
+  async resetPassword(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    this.assertSysAdmin(user);
+    return this.admin.resetPassword(user.id, id);
+  }
+
+  /** Đăng xuất mọi thiết bị của tài khoản. */
+  @HttpCode(200)
+  @Post(':id/revoke-sessions')
+  async revokeSessions(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    this.assertSysAdmin(user);
+    return this.admin.revokeSessions(user.id, id);
+  }
+
+  /** Thêm tài khoản vào một không gian làm việc (vd tài khoản mồ côi chưa thuộc nơi nào). */
+  @Post(':id/workspaces')
+  async addToWorkspace(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(addToWorkspaceSchema)) dto: AddToWorkspaceInput,
+  ) {
+    this.assertSysAdmin(user);
+    return this.admin.addToWorkspace(user.id, id, dto);
   }
 }

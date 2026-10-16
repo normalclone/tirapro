@@ -6,3 +6,6 @@ coverage
 pnpm-lock.yaml
 apps/api/prisma/migrations
 docs
+.superpowers
+.claude
+.codex

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   GitBranch,
   Plus,
@@ -13,8 +14,11 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
+import { useAuth } from '@/stores/auth';
+import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
 import { WorkflowGraph } from './WorkflowGraph';
@@ -32,6 +36,8 @@ import {
   type WorkflowTransition,
   type StatusCategory,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 /* ------------------------------------------------------------------ */
 /* Hằng số phân loại trạng thái                                       */
@@ -43,12 +49,6 @@ const CATEGORY_VAR: Record<StatusCategory, string> = {
   DONE: 'var(--status-done)',
 };
 
-const CATEGORY_LABEL: Record<StatusCategory, string> = {
-  TODO: 'Cần làm',
-  IN_PROGRESS: 'Đang làm',
-  DONE: 'Hoàn thành',
-};
-
 const CATEGORY_OPTIONS: StatusCategory[] = ['TODO', 'IN_PROGRESS', 'DONE'];
 
 const DEFAULT_STATUS_COLOR = '#64748b';
@@ -58,9 +58,13 @@ const DEFAULT_STATUS_COLOR = '#64748b';
 /* ------------------------------------------------------------------ */
 
 export function WorkflowSettingsPage() {
-  const { data, isLoading } = useWorkflows();
+  const workflowsQuery = useWorkflows();
+  const { data } = workflowsQuery;
   const createWorkflow = useCreateWorkflow();
   const deleteWorkflow = useDeleteWorkflow();
+  const confirm = useConfirm();
+  // Ghi quy trình cần `workspace:admin` (API) — người khác xem được, không thấy nút ghi.
+  const canManage = useAuth((s) => s.can('workspace:admin'));
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -69,6 +73,7 @@ export function WorkflowSettingsPage() {
   const [projectId, setProjectId] = useState('');
 
   const workflows = data ?? [];
+  const groups = useMemo(() => groupWorkflows(data ?? []), [data]);
   const selected = workflows.find((w) => w.id === selectedId) ?? null;
 
   function resetAdd() {
@@ -100,13 +105,15 @@ export function WorkflowSettingsPage() {
     );
   }
 
-  function handleDeleteWorkflow(wf: Workflow) {
-    if (
-      !window.confirm(
-        `Xoá quy trình "${wf.name}"? Hành động này không thể hoàn tác.`,
-      )
-    )
-      return;
+  async function handleDeleteWorkflow(wf: Workflow) {
+    const ok = await confirm({
+      title: `Xoá quy trình "${wf.name}"?`,
+      description: wf.isTemplate
+        ? 'Mẫu chỉ dùng để tham khảo; dự án đã tạo không bị ảnh hưởng. Hành động này không thể hoàn tác.'
+        : 'Quy trình và các trạng thái, chuyển tiếp của nó sẽ bị xoá. Hành động này không thể hoàn tác.',
+      destructive: true,
+    });
+    if (!ok) return;
     deleteWorkflow.mutate(wf.id, {
       onSuccess: () => {
         if (selectedId === wf.id) setSelectedId(null);
@@ -122,9 +129,11 @@ export function WorkflowSettingsPage() {
           Cấu hình quy trình
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Quản lý các bước một công việc đi qua: có những trạng thái nào và được chuyển từ trạng thái nào sang trạng thái nào.
+          Quản lý các bước một công việc đi qua: có những trạng thái nào và được chuyển từ trạng
+          thái nào sang trạng thái nào.
         </p>
       </header>
+      {!canManage && <ReadOnlyNote />}
 
       <section className="rounded-lg border border-border bg-surface">
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
@@ -139,7 +148,7 @@ export function WorkflowSettingsPage() {
               </p>
             </div>
           </div>
-          {!adding && (
+          {canManage && !adding && (
             <Button size="sm" onClick={() => setAdding(true)}>
               <Plus className="h-4 w-4" />
               Tạo quy trình
@@ -148,50 +157,68 @@ export function WorkflowSettingsPage() {
         </div>
 
         <div className="p-5">
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : workflows.length === 0 && !adding ? (
-            <EmptyState
-              icon={<GitBranch className="h-6 w-6" />}
-              title="Chưa có quy trình nào"
-              description="Quy trình là chuỗi trạng thái mà mỗi công việc đi qua, từ lúc mở đến lúc xong. Tạo quy trình đầu tiên để bắt đầu."
-              action={
-                <Button size="sm" onClick={() => setAdding(true)}>
-                  <Plus className="h-4 w-4" />
-                  Tạo quy trình
-                </Button>
-              }
-            />
-          ) : (
-            <ul className="space-y-2">
-              {workflows.map((wf) => (
-                <WorkflowRow
-                  key={wf.id}
-                  workflow={wf}
-                  expanded={wf.id === selectedId}
-                  onToggle={() =>
-                    setSelectedId((cur) => (cur === wf.id ? null : wf.id))
-                  }
-                  onDelete={() => handleDeleteWorkflow(wf)}
-                  deleting={deleteWorkflow.isPending}
-                />
-              ))}
-            </ul>
-          )}
+          <QueryBoundary
+            query={workflowsQuery}
+            skeleton={
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            }
+            empty={() => workflows.length === 0 && !adding}
+            emptyState={
+              <EmptyState
+                icon={<GitBranch className="h-6 w-6" />}
+                title="Chưa có quy trình nào"
+                description={
+                  canManage
+                    ? 'Quy trình là chuỗi trạng thái mà mỗi công việc đi qua, từ lúc mở đến lúc xong. Tạo quy trình đầu tiên để bắt đầu.'
+                    : 'Chưa có quy trình nào. Nhờ quản trị chung tạo giúp.'
+                }
+                action={
+                  canManage ? (
+                    <Button size="sm" onClick={() => setAdding(true)}>
+                      <Plus className="h-4 w-4" />
+                      Tạo quy trình
+                    </Button>
+                  ) : undefined
+                }
+              />
+            }
+          >
+            {() => (
+              <div className="space-y-5">
+                {groups.map((g) => (
+                  <section key={g.id} aria-labelledby={`wf-group-${g.id}`}>
+                    <h3 id={`wf-group-${g.id}`} className="mb-2 text-sm font-medium text-muted">
+                      {g.title} <span className="font-normal text-faint">({g.items.length})</span>
+                    </h3>
+                    <ul className="space-y-2">
+                      {g.items.map((wf) => (
+                        <WorkflowRow
+                          key={wf.id}
+                          workflow={wf}
+                          canManage={canManage}
+                          expanded={wf.id === selectedId}
+                          onToggle={() => setSelectedId((cur) => (cur === wf.id ? null : wf.id))}
+                          onDelete={() => void handleDeleteWorkflow(wf)}
+                          deleting={deleteWorkflow.isPending}
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            )}
+          </QueryBoundary>
 
           {/* Form tạo workflow */}
-          {adding && (
+          {canManage && adding && (
             <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
               <div className="space-y-3">
                 <div>
-                  <label
-                    htmlFor="wf-name"
-                    className="mb-1 block text-xs font-medium text-muted"
-                  >
+                  <label htmlFor="wf-name" className="mb-1 block text-xs font-medium text-muted">
                     Tên quy trình
                   </label>
                   <Input
@@ -207,10 +234,7 @@ export function WorkflowSettingsPage() {
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="wf-desc"
-                    className="mb-1 block text-xs font-medium text-muted"
-                  >
+                  <label htmlFor="wf-desc" className="mb-1 block text-xs font-medium text-muted">
                     Mô tả (tuỳ chọn)
                   </label>
                   <Input
@@ -221,10 +245,7 @@ export function WorkflowSettingsPage() {
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="wf-project"
-                    className="mb-1 block text-xs font-medium text-muted"
-                  >
+                  <label htmlFor="wf-project" className="mb-1 block text-xs font-medium text-muted">
                     Project ID (tuỳ chọn)
                   </label>
                   <Input
@@ -262,60 +283,140 @@ export function WorkflowSettingsPage() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Nhóm danh sách: mẫu có sẵn / quy trình của dự án / còn lại          */
+/* ------------------------------------------------------------------ */
+
+export function groupWorkflows(workflows: Workflow[]) {
+  const groups = [
+    { id: 'templates', title: 'Mẫu có sẵn', items: workflows.filter((w) => w.isTemplate) },
+    {
+      id: 'projects',
+      title: 'Quy trình của dự án',
+      items: workflows.filter((w) => !w.isTemplate && w.projectId !== null),
+    },
+    {
+      id: 'others',
+      title: 'Quy trình dùng chung',
+      items: workflows.filter((w) => !w.isTemplate && w.projectId === null),
+    },
+  ];
+  return groups.filter((g) => g.items.length > 0);
+}
+
+/* ------------------------------------------------------------------ */
 /* Một dòng workflow trong danh sách                                   */
 /* ------------------------------------------------------------------ */
 
+const MAX_USED_BY_SHOWN = 3;
+
+export function UsedByLine({
+  usedBy,
+  hiddenCount = 0,
+}: {
+  usedBy: NonNullable<Workflow['usedBy']>;
+  /** Số dự án người xem KHÔNG xem được (riêng tư; hoặc công khai khi chỉ thấy dự án mình là thành viên) — chỉ hiện số, không lộ khoá/tên. */
+  hiddenCount?: number;
+}) {
+  const shown = usedBy.slice(0, MAX_USED_BY_SHOWN);
+  const rest = usedBy.length - shown.length;
+  return (
+    <p className="mt-1 pl-6 text-xs text-muted">
+      {usedBy.length === 0 ? 'Đang dùng bởi' : 'Dùng bởi:'}{' '}
+      {shown.map((p, i) => (
+        <span key={p.id}>
+          {i > 0 && ', '}
+          {p.deleted ? (
+            <span>
+              {p.key} · {p.name} (đã xoá)
+            </span>
+          ) : (
+            <Link
+              to={`/p/${p.key}/config`}
+              className="text-primary hover:underline focus-visible:underline focus-visible:outline-none"
+            >
+              {p.key} · {p.name}
+            </Link>
+          )}
+        </span>
+      ))}
+      {rest > 0 && <span className="text-faint"> +{rest}</span>}
+      {hiddenCount > 0 && (
+        <span className={usedBy.length > 0 ? 'text-faint' : undefined}>
+          {usedBy.length > 0 ? ' · ' : ''}
+          {usedBy.length > 0 ? '+' : ''}
+          {hiddenCount} dự án bạn không xem được
+        </span>
+      )}
+    </p>
+  );
+}
+
 function WorkflowRow({
   workflow,
+  canManage,
   expanded,
   onToggle,
   onDelete,
   deleting,
 }: {
   workflow: Workflow;
+  canManage: boolean;
   expanded: boolean;
   onToggle: () => void;
   onDelete: () => void;
   deleting: boolean;
 }) {
+  const usedBy = workflow.usedBy ?? [];
+  const hiddenCount = workflow.hiddenCount ?? 0;
+  const inUse = usedBy.length > 0 || hiddenCount > 0;
   return (
     <li
       className={cn(
-        'flex items-center gap-3 rounded-md border px-3 py-2.5 transition-colors',
-        expanded ? 'border-primary bg-primary-subtle' : 'border-border bg-surface hover:bg-surface-2',
+        'rounded-md border px-3 py-2.5 transition-colors',
+        expanded
+          ? 'border-primary bg-primary-subtle'
+          : 'border-border bg-surface hover:bg-surface-2',
       )}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
-      >
-        <ChevronRight
-          className={cn(
-            'h-4 w-4 shrink-0 text-faint transition-transform duration-150',
-            expanded && 'rotate-90',
-          )}
-        />
-        <span className="truncate text-sm font-medium text-ink">{workflow.name}</span>
-        {workflow.isDefault && (
-          <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
+        >
+          <ChevronRight
+            className={cn(
+              'h-4 w-4 shrink-0 text-faint transition-transform duration-150',
+              expanded && 'rotate-90',
+            )}
+          />
+          <span className="truncate text-sm font-medium text-ink">{workflow.name}</span>
+          {workflow.isDefault && <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>}
+          {workflow.isTemplate && <Badge className="bg-surface-2 text-muted">Mẫu</Badge>}
+        </button>
+        {!canManage ? null : inUse ? (
+          <span
+            className="shrink-0 text-xs text-faint"
+            title="Dự án đang dùng quy trình này (kể cả dự án đã xoá) vẫn giữ nó nên không xoá được — chưa có cách đổi quy trình của dự án."
+          >
+            Đang dùng — không xoá được
+          </span>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDelete}
+            loading={deleting}
+            title="Xoá quy trình"
+            className="text-muted hover:text-danger"
+          >
+            <Trash2 className="h-4 w-4" />
+            <span className="sr-only">Xoá quy trình {workflow.name}</span>
+          </Button>
         )}
-        {workflow.isTemplate && (
-          <Badge className="bg-surface-2 text-muted">Template</Badge>
-        )}
-      </button>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onDelete}
-        loading={deleting}
-        title="Xoá quy trình"
-        className="text-muted hover:text-danger"
-      >
-        <Trash2 className="h-4 w-4" />
-        <span className="sr-only">Xoá quy trình {workflow.name}</span>
-      </Button>
+      </div>
+      {inUse && <UsedByLine usedBy={usedBy} hiddenCount={hiddenCount} />}
     </li>
   );
 }
@@ -375,6 +476,8 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
   const addStatus = useAddStatus();
   const updateStatus = useUpdateStatus();
   const deleteStatus = useDeleteStatus();
+  const confirm = useConfirm();
+  const canManage = useAuth((s) => s.can('workspace:admin'));
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -415,11 +518,13 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
     );
   }
 
-  function handleDelete(status: WorkflowStatus) {
-    if (
-      !window.confirm(`Xoá trạng thái "${status.name}"? Hành động này không thể hoàn tác.`)
-    )
-      return;
+  async function handleDelete(status: WorkflowStatus) {
+    const ok = await confirm({
+      title: `Xoá trạng thái "${status.name}"?`,
+      description: 'Hành động này không thể hoàn tác.',
+      destructive: true,
+    });
+    if (!ok) return;
     deleteStatus.mutate(status.id, {
       onError: (e) => toast.error(apiErrorMessage(e)),
     });
@@ -444,12 +549,18 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
           <EmptyState
             icon={<CircleDot className="h-6 w-6" />}
             title="Chưa có trạng thái nào"
-            description="Trạng thái cho biết công việc đang ở bước nào (vd Cần làm, Đang làm, Xong). Thêm trạng thái đầu tiên cho quy trình này."
+            description={
+              canManage
+                ? 'Trạng thái cho biết công việc đang ở bước nào (vd To Do, In Progress, Done). Thêm trạng thái đầu tiên cho quy trình này.'
+                : 'Quy trình này chưa có trạng thái nào.'
+            }
             action={
-              <Button size="sm" onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4" />
-                Thêm trạng thái
-              </Button>
+              canManage ? (
+                <Button size="sm" onClick={() => setAdding(true)}>
+                  <Plus className="h-4 w-4" />
+                  Thêm trạng thái
+                </Button>
+              ) : undefined
             }
           />
         ) : (
@@ -462,11 +573,8 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                   aria-hidden
                 />
                 <span className="truncate text-sm font-medium text-ink">{s.name}</span>
-                <Badge
-                  className="bg-surface-2 text-muted"
-                  dotColor={CATEGORY_VAR[s.category]}
-                >
-                  {CATEGORY_LABEL[s.category]}
+                <Badge className="bg-surface-2 text-muted" dotColor={CATEGORY_VAR[s.category]}>
+                  {STATUS_CATEGORY_LABEL[s.category]}
                 </Badge>
                 {s.isInitial && (
                   <Badge className="bg-primary-subtle text-primary">
@@ -476,44 +584,43 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                 )}
                 <span className="font-mono text-xs text-faint">#{s.order}</span>
 
-                <div className="ml-auto flex items-center gap-1">
-                  {!s.isInitial && (
+                {canManage && (
+                  <div className="ml-auto flex items-center gap-1">
+                    {!s.isInitial && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setInitial(s)}
+                        loading={updateStatus.isPending}
+                        title="Đặt làm trạng thái khởi đầu"
+                      >
+                        <Flag className="h-4 w-4" />
+                        Đặt khởi đầu
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
-                      size="sm"
-                      onClick={() => setInitial(s)}
-                      loading={updateStatus.isPending}
-                      title="Đặt làm trạng thái khởi đầu"
+                      size="icon"
+                      onClick={() => void handleDelete(s)}
+                      title="Xoá trạng thái"
+                      className="text-muted hover:text-danger"
                     >
-                      <Flag className="h-4 w-4" />
-                      Đặt khởi đầu
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Xoá trạng thái {s.name}</span>
                     </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(s)}
-                    title="Xoá trạng thái"
-                    className="text-muted hover:text-danger"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    <span className="sr-only">Xoá trạng thái {s.name}</span>
-                  </Button>
-                </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
         )}
 
         {/* Form thêm trạng thái */}
-        {adding ? (
+        {!canManage ? null : adding ? (
           <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[10rem] flex-1">
-                <label
-                  htmlFor="st-name"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="st-name" className="mb-1 block text-xs font-medium text-muted">
                   Tên
                 </label>
                 <Input
@@ -529,10 +636,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                 />
               </div>
               <div className="w-40">
-                <label
-                  htmlFor="st-category"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="st-category" className="mb-1 block text-xs font-medium text-muted">
                   Phân loại
                 </label>
                 <select
@@ -543,16 +647,13 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                 >
                   {CATEGORY_OPTIONS.map((c) => (
                     <option key={c} value={c}>
-                      {CATEGORY_LABEL[c]}
+                      {STATUS_CATEGORY_LABEL[c]}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label
-                  htmlFor="st-color"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="st-color" className="mb-1 block text-xs font-medium text-muted">
                   Màu
                 </label>
                 <input
@@ -567,12 +668,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                 <Button size="sm" onClick={submitAdd} loading={addStatus.isPending}>
                   Lưu
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={resetAdd}
-                  disabled={addStatus.isPending}
-                >
+                <Button size="sm" variant="ghost" onClick={resetAdd} disabled={addStatus.isPending}>
                   Huỷ
                 </Button>
               </div>
@@ -580,12 +676,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
           </div>
         ) : (
           statuses.length > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="mt-4"
-              onClick={() => setAdding(true)}
-            >
+            <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
               <Plus className="h-4 w-4" />
               Thêm trạng thái
             </Button>
@@ -605,6 +696,8 @@ const ANY_FROM = '__ANY__';
 function TransitionSection({ workflow }: { workflow: Workflow }) {
   const addTransition = useAddTransition();
   const deleteTransition = useDeleteTransition();
+  const confirm = useConfirm();
+  const canManage = useAuth((s) => s.can('workspace:admin'));
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -619,7 +712,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
   const statusName = useMemo(() => {
     const map = new Map<string, string>();
     for (const s of workflow.statuses) map.set(s.id, s.name);
-    return (id: string | null) => (id == null ? '(bất kỳ)' : map.get(id) ?? '(không rõ)');
+    return (id: string | null) => (id == null ? '(bất kỳ)' : (map.get(id) ?? '(không rõ)'));
   }, [workflow.statuses]);
 
   const transitions = useMemo(
@@ -660,11 +753,13 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
     );
   }
 
-  function handleDelete(t: WorkflowTransition) {
-    if (
-      !window.confirm(`Xoá bước chuyển "${t.name}"? Hành động này không thể hoàn tác.`)
-    )
-      return;
+  async function handleDelete(t: WorkflowTransition) {
+    const ok = await confirm({
+      title: `Xoá bước chuyển "${t.name}"?`,
+      description: 'Hành động này không thể hoàn tác.',
+      destructive: true,
+    });
+    if (!ok) return;
     deleteTransition.mutate(t.id, {
       onError: (e) => toast.error(apiErrorMessage(e)),
     });
@@ -697,6 +792,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
                 : 'Bước chuyển quy định công việc được đi từ trạng thái nào sang trạng thái nào. Thêm bước chuyển đầu tiên cho quy trình này.'
             }
             action={
+              canManage &&
               !noStatuses && (
                 <Button size="sm" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4" />
@@ -717,32 +813,31 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
                   <span className="font-mono">{statusName(t.toStatusId)}</span>
                 </span>
 
-                <div className="ml-auto flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(t)}
-                    title="Xoá bước chuyển"
-                    className="text-muted hover:text-danger"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    <span className="sr-only">Xoá bước chuyển {t.name}</span>
-                  </Button>
-                </div>
+                {canManage && (
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => void handleDelete(t)}
+                      title="Xoá bước chuyển"
+                      className="text-muted hover:text-danger"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Xoá bước chuyển {t.name}</span>
+                    </Button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
         )}
 
         {/* Form thêm bước chuyển */}
-        {adding ? (
+        {!canManage ? null : adding ? (
           <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[10rem] flex-1">
-                <label
-                  htmlFor="tr-name"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="tr-name" className="mb-1 block text-xs font-medium text-muted">
                   Tên
                 </label>
                 <Input
@@ -758,10 +853,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
                 />
               </div>
               <div className="w-40">
-                <label
-                  htmlFor="tr-from"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="tr-from" className="mb-1 block text-xs font-medium text-muted">
                   Từ
                 </label>
                 <SearchSelect
@@ -780,10 +872,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
                 />
               </div>
               <div className="w-40">
-                <label
-                  htmlFor="tr-to"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
+                <label htmlFor="tr-to" className="mb-1 block text-xs font-medium text-muted">
                   Đến
                 </label>
                 <SearchSelect
@@ -817,12 +906,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
         ) : (
           !noStatuses &&
           transitions.length > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="mt-4"
-              onClick={() => setAdding(true)}
-            >
+            <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
               <Plus className="h-4 w-4" />
               Thêm bước chuyển
             </Button>

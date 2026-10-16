@@ -13,10 +13,13 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "gen": "node ../../scripts/gen-enums.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"(types) no lint\""
   },

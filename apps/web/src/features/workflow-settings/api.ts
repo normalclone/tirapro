@@ -1,9 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /** ---- Workflow admin (workflows / statuses / transitions) ---- */
-
-export const workflowsKey = ['workflows'] as const;
 
 export type StatusCategory = 'TODO' | 'IN_PROGRESS' | 'DONE';
 
@@ -33,6 +32,17 @@ export interface Workflow {
   projectId: string | null;
   statuses: WorkflowStatus[];
   transitions: WorkflowTransition[];
+  /** Dự án đang dùng quy trình này làm quy trình mặc định (kể cả dự án đã xoá). GET /workflows luôn trả; để tuỳ chọn vì kiểu này còn được dùng làm dữ liệu giả ở nhiều nơi. */
+  usedBy?: WorkflowUsedBy[];
+  /** Số dự án người xem không xem được cũng đang dùng quy trình này — chỉ để hiện "+N dự án bạn không xem được" và giải thích vì sao không xoá được. */
+  hiddenCount?: number;
+}
+
+interface WorkflowUsedBy {
+  id: string;
+  key: string;
+  name: string;
+  deleted: boolean;
 }
 
 export interface WorkflowCreateInput {
@@ -40,12 +50,6 @@ export interface WorkflowCreateInput {
   description?: string;
   projectId?: string;
   isTemplate?: boolean;
-}
-
-export interface WorkflowUpdateInput {
-  name?: string;
-  description?: string;
-  isDefault?: boolean;
 }
 
 export interface StatusCreateInput {
@@ -75,7 +79,7 @@ export interface TransitionCreateInput {
 
 export function useWorkflows() {
   return useQuery({
-    queryKey: workflowsKey,
+    queryKey: keys.workflows,
     queryFn: async () => (await api.get<Workflow[]>('/workflows')).data,
   });
 }
@@ -88,18 +92,7 @@ export function useCreateWorkflow() {
     mutationFn: (input: WorkflowCreateInput) =>
       api.post<Workflow>('/workflows', input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workflowsKey });
-    },
-  });
-}
-
-export function useUpdateWorkflow() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: WorkflowUpdateInput }) =>
-      api.patch<Workflow>(`/workflows/${id}`, patch).then((r) => r.data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workflowsKey });
+      void qc.invalidateQueries({ queryKey: keys.workflows });
     },
   });
 }
@@ -107,9 +100,9 @@ export function useUpdateWorkflow() {
 export function useDeleteWorkflow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/workflows/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/workflows/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workflowsKey });
+      void qc.invalidateQueries({ queryKey: keys.workflows });
     },
   });
 }
@@ -122,7 +115,7 @@ export function useAddStatus() {
     mutationFn: ({ workflowId, input }: { workflowId: string; input: StatusCreateInput }) =>
       api.post<WorkflowStatus>(`/workflows/${workflowId}/statuses`, input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workflowsKey });
+      void qc.invalidateQueries({ queryKey: keys.workflows });
     },
   });
 }
@@ -133,7 +126,7 @@ export function useUpdateStatus() {
     mutationFn: ({ id, patch }: { id: string; patch: StatusUpdateInput }) =>
       api.patch<WorkflowStatus>(`/statuses/${id}`, patch).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workflowsKey });
+      void qc.invalidateQueries({ queryKey: keys.workflows });
     },
   });
 }
@@ -141,9 +134,9 @@ export function useUpdateStatus() {
 export function useDeleteStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/statuses/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/statuses/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workflowsKey });
+      void qc.invalidateQueries({ queryKey: keys.workflows });
     },
   });
 }
@@ -158,7 +151,7 @@ export function useAddTransition() {
         .post<WorkflowTransition>(`/workflows/${workflowId}/transitions`, input)
         .then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workflowsKey });
+      void qc.invalidateQueries({ queryKey: keys.workflows });
     },
   });
 }
@@ -166,9 +159,9 @@ export function useAddTransition() {
 export function useDeleteTransition() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/transitions/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/transitions/${id}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workflowsKey });
+      void qc.invalidateQueries({ queryKey: keys.workflows });
     },
   });
 }

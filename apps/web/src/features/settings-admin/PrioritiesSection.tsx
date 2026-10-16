@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { SignalHigh, Flag, Plus, Pencil, Trash2, Check, X, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { ReadOnlyNote } from '@/components/ui/NoAccess';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
@@ -14,6 +16,7 @@ import {
   type Priority,
   type PriorityUpdateInput,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 const DEFAULT_COLOR = '#64748b';
 
@@ -46,8 +49,10 @@ function SectionCard({
 }
 
 export function PrioritiesSection() {
+  const confirm = useConfirm();
   const canManage = useAuth((s) => s.can('workspace:admin'));
-  const { data, isLoading } = usePriorities();
+  const prioritiesQuery = usePriorities();
+  const { data } = prioritiesQuery;
   const create = useCreatePriority();
   const update = useUpdatePriority();
   const remove = useDeletePriority();
@@ -96,8 +101,14 @@ export function PrioritiesSection() {
     );
   }
 
-  function handleDelete(p: Priority) {
-    if (!window.confirm(`Xoá độ ưu tiên "${p.name}"? Hành động này không thể hoàn tác.`)) return;
+  async function handleDelete(p: Priority) {
+    if (
+      !(await confirm({
+        title: `Xoá độ ưu tiên "${p.name}"? Hành động này không thể hoàn tác.`,
+        destructive: true,
+      }))
+    )
+      return;
     remove.mutate(p.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -107,99 +118,107 @@ export function PrioritiesSection() {
       title="Độ ưu tiên"
       description="Đặt các mức ưu tiên để sắp xếp thứ tự làm công việc. Số thứ tự càng nhỏ thì càng ưu tiên."
     >
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-11 w-full" />
-          ))}
-        </div>
-      ) : priorities.length === 0 && !adding ? (
-        <EmptyState
-          icon={<Flag className="h-6 w-6" />}
-          title="Chưa có độ ưu tiên nào"
-          description={
-            canManage
-              ? 'Mức ưu tiên cho biết việc nào cần làm trước. Thêm mức đầu tiên để bắt đầu sắp xếp công việc.'
-              : 'Chưa có độ ưu tiên nào. Liên hệ quản trị chung để thêm.'
-          }
-          action={
-            canManage ? (
-              <Button size="sm" onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4" />
-                Thêm độ ưu tiên
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <ul className="divide-y divide-border">
-          {priorities.map((p) =>
-            editingId === p.id ? (
-              <PriorityEditRow
-                key={p.id}
-                priority={p}
-                saving={update.isPending}
-                onCancel={() => setEditingId(null)}
-                onSave={(body) => patch(p.id, body, () => setEditingId(null))}
-              />
-            ) : (
-              <li key={p.id} className="flex items-center gap-3 py-2.5 first:pt-0">
-                <span
-                  className="h-3.5 w-3.5 shrink-0 rounded-full border border-border"
-                  style={{ background: p.color }}
-                  aria-hidden
+      {!canManage && <ReadOnlyNote />}
+      <QueryBoundary
+        query={prioritiesQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-11 w-full" />
+            ))}
+          </div>
+        }
+        empty={() => priorities.length === 0 && !adding}
+        emptyState={
+          <EmptyState
+            icon={<Flag className="h-6 w-6" />}
+            title="Chưa có độ ưu tiên nào"
+            description={
+              canManage
+                ? 'Mức ưu tiên cho biết việc nào cần làm trước. Thêm mức đầu tiên để bắt đầu sắp xếp công việc.'
+                : 'Chưa có độ ưu tiên nào. Liên hệ quản trị chung để thêm.'
+            }
+            action={
+              canManage ? (
+                <Button size="sm" onClick={() => setAdding(true)}>
+                  <Plus className="h-4 w-4" />
+                  Thêm độ ưu tiên
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      >
+        {() => (
+          <ul className="divide-y divide-border">
+            {priorities.map((p) =>
+              editingId === p.id ? (
+                <PriorityEditRow
+                  key={p.id}
+                  priority={p}
+                  saving={update.isPending}
+                  onCancel={() => setEditingId(null)}
+                  onSave={(body) => patch(p.id, body, () => setEditingId(null))}
                 />
-                <span className="truncate text-sm font-medium text-ink">{p.name}</span>
-                <span className="font-mono text-xs text-faint">#{p.rank}</span>
-                {p.isDefault && (
-                  <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>
-                )}
-                {p.isSystem && <Badge className="bg-surface-2 text-muted">Hệ thống</Badge>}
+              ) : (
+                <li key={p.id} className="flex items-center gap-3 py-2.5 first:pt-0">
+                  <span
+                    className="h-3.5 w-3.5 shrink-0 rounded-full border border-border"
+                    style={{ background: p.color }}
+                    aria-hidden
+                  />
+                  <span className="truncate text-sm font-medium text-ink">{p.name}</span>
+                  <span className="font-mono text-xs text-faint">#{p.rank}</span>
+                  {p.isDefault && (
+                    <Badge className="bg-primary-subtle text-primary">Mặc định</Badge>
+                  )}
+                  {p.isSystem && <Badge className="bg-surface-2 text-muted">Hệ thống</Badge>}
 
-                {canManage && (
-                  <div className="ml-auto flex items-center gap-1">
-                    {!p.isDefault && !p.isSystem && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => patch(p.id, { isDefault: true })}
-                        loading={update.isPending}
-                        title="Đặt làm mặc định"
-                      >
-                        <Star className="h-4 w-4" />
-                        <span className="sr-only">Đặt mặc định</span>
-                      </Button>
-                    )}
-                    {!p.isSystem && (
-                      <>
+                  {canManage && (
+                    <div className="ml-auto flex items-center gap-1">
+                      {!p.isDefault && !p.isSystem && (
                         <Button
                           variant="ghost"
-                          size="icon"
-                          onClick={() => setEditingId(p.id)}
-                          title="Chỉnh sửa"
+                          size="sm"
+                          onClick={() => patch(p.id, { isDefault: true })}
+                          loading={update.isPending}
+                          title="Đặt làm mặc định"
                         >
-                          <Pencil className="h-4 w-4" />
-                          <span className="sr-only">Chỉnh sửa {p.name}</span>
+                          <Star className="h-4 w-4" />
+                          <span className="sr-only">Đặt mặc định</span>
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(p)}
-                          title="Xoá"
-                          className="text-muted hover:text-danger"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Xoá {p.name}</span>
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </li>
-            ),
-          )}
-        </ul>
-      )}
+                      )}
+                      {!p.isSystem && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setEditingId(p.id)}
+                            title="Chỉnh sửa"
+                          >
+                            <Pencil className="h-4 w-4" />
+                            <span className="sr-only">Chỉnh sửa {p.name}</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(p)}
+                            title="Xoá"
+                            className="text-muted hover:text-danger"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Xoá {p.name}</span>
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ),
+            )}
+          </ul>
+        )}
+      </QueryBoundary>
 
       {/* Form thêm độ ưu tiên — chỉ quản trị chung */}
       {canManage && adding ? (

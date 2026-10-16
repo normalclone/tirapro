@@ -1,0 +1,202 @@
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Copy, LayoutDashboard, Pencil, Plus, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/Button';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { NoAccess } from '@/components/ui/NoAccess';
+import { useConfirm } from '@/components/ui/useConfirm';
+import { PrintButton } from '@/components/ui/PrintButton';
+import { PrintHeader } from '@/components/ui/PrintHeader';
+import { Badge, EmptyState } from '@/components/ui/primitives';
+import { pageContainer } from '@/components/layout/page';
+import { apiErrorMessage } from '@/lib/api';
+import { useAuth } from '@/stores/auth';
+import type { CustomDashboardDto } from '@tirapro/shared';
+import { useDashboard, useDeleteDashboard, useDuplicateDashboard } from './api';
+import { DashboardEditor } from './DashboardEditor';
+import { scopeBadge, scopeDescription } from './dashboardMeta';
+import { DashboardSwitcher } from './DashboardSwitcher';
+import { widgetDefOf } from './registry';
+import { DASHBOARD_GRID_CLASS, widgetSpanClass } from './widgetLayout';
+import { WidgetBoundary, WidgetFrame } from './WidgetFrame';
+
+/**
+ * `/dashboards/:id` — xem một dashboard tuỳ biến (lưới ô số liệu, 1 cột trên mobile); `?edit=1` vào chế độ soạn (chỉ chủ);
+ * `/dashboards/new` soạn dashboard mới.
+ */
+export function DashboardViewPage() {
+  const { id } = useParams<{ id: string }>();
+  const [params] = useSearchParams();
+  const canManage = useAuth((s) => s.can('dashboard:manage'));
+  const isNew = id === 'new';
+  const query = useDashboard(isNew ? undefined : id);
+
+  if (isNew) {
+    return canManage ? (
+      <DashboardEditor dashboard={null} />
+    ) : (
+      <NoAccess who="người được cấp quyền quản lý dashboard" />
+    );
+  }
+  const editing = params.get('edit') === '1';
+  return (
+    <QueryBoundary query={query}>
+      {(dashboard) =>
+        editing && dashboard.canEdit && canManage ? (
+          // `key`: nạp lại bản mới (sau "Tải lại" khi bị 409) thì khởi tạo lại bản nháp từ dữ liệu mới.
+          <DashboardEditor
+            key={dashboard.updatedAt}
+            dashboard={dashboard}
+            onReload={() => void query.refetch()}
+          />
+        ) : (
+          <div className={pageContainer('xl', 'py-6')}>
+            <DashboardView dashboard={dashboard} canManage={canManage} />
+          </div>
+        )
+      }
+    </QueryBoundary>
+  );
+}
+
+function DashboardView({
+  dashboard,
+  canManage,
+}: {
+  dashboard: CustomDashboardDto;
+  canManage: boolean;
+}) {
+  const navigate = useNavigate();
+  const [, setParams] = useSearchParams();
+  const confirm = useConfirm();
+  const duplicate = useDuplicateDashboard();
+  const remove = useDeleteDashboard();
+  const widgets = [...dashboard.widgets].sort((a, b) => a.position.order - b.position.order);
+
+  function copy() {
+    duplicate.mutate(dashboard.id, {
+      onSuccess: (created) => {
+        toast.success('Đã tạo bản sao riêng tư của bạn');
+        navigate(`/dashboards/${created.id}?edit=1`);
+      },
+      onError: (err) => toast.error(apiErrorMessage(err)),
+    });
+  }
+
+  async function onDelete() {
+    const ok = await confirm({
+      title: `Xoá dashboard “${dashboard.name}”?`,
+      description:
+        dashboard.scope === 'PRIVATE'
+          ? 'Dashboard bị xoá không khôi phục được.'
+          : 'Những người đang được chia sẻ sẽ không còn thấy dashboard này. Không khôi phục được.',
+      destructive: true,
+    });
+    if (!ok) return;
+    remove.mutate(dashboard.id, {
+      onSuccess: () => {
+        toast.success('Đã xoá dashboard');
+        navigate('/');
+      },
+      onError: (err) => toast.error(apiErrorMessage(err)),
+    });
+  }
+
+  return (
+    <>
+      <PrintHeader title={dashboard.name} subtitle={scopeDescription(dashboard)} />
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 print:hidden">
+        <div className="min-w-0">
+          <Link
+            to="/"
+            className="mb-1 inline-flex items-center gap-1 rounded-sm text-xs text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Tổng quan
+          </Link>
+          <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-semibold tracking-tight text-ink-strong">
+            <span className="min-w-0 break-words">{dashboard.name}</span>
+            <Badge className="bg-surface-2 text-muted" title={scopeDescription(dashboard)}>
+              {scopeBadge(dashboard)}
+            </Badge>
+          </h1>
+          {dashboard.description && (
+            <p className="mt-1 max-w-2xl text-sm text-muted">{dashboard.description}</p>
+          )}
+          {!dashboard.isMine && (
+            <p className="mt-1 text-xs text-faint">Của {dashboard.owner.displayName}</p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <DashboardSwitcher currentId={dashboard.id} />
+          {!dashboard.canEdit && canManage && (
+            <Button size="sm" variant="secondary" onClick={copy} loading={duplicate.isPending}>
+              <Copy className="h-4 w-4" aria-hidden /> Tạo bản sao để chỉnh sửa
+            </Button>
+          )}
+          {dashboard.canEdit && canManage && (
+            <Button size="sm" onClick={() => setParams({ edit: '1' })}>
+              <Pencil className="h-4 w-4" aria-hidden /> Chỉnh sửa
+            </Button>
+          )}
+          {widgets.length > 0 && <PrintButton title={dashboard.name} />}
+          {dashboard.canDelete && canManage && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void onDelete()}
+              loading={remove.isPending}
+              aria-label="Xoá dashboard"
+              title="Xoá dashboard"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+            </Button>
+          )}
+        </div>
+      </header>
+
+      {widgets.length === 0 ? (
+        <EmptyState
+          icon={<LayoutDashboard className="h-8 w-8" />}
+          title={
+            dashboard.canEdit
+              ? 'Dashboard trống — thêm widget đầu tiên'
+              : 'Dashboard này chưa có widget nào'
+          }
+          description={
+            dashboard.canEdit
+              ? 'Thêm ô số liệu, biểu đồ hay danh sách việc để dashboard có nội dung.'
+              : 'Chủ dashboard chưa thêm ô nào.'
+          }
+          action={
+            dashboard.canEdit && canManage ? (
+              <Button onClick={() => setParams({ edit: '1' })}>
+                <Plus className="h-4 w-4" aria-hidden /> Thêm widget
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className={DASHBOARD_GRID_CLASS}>
+          {widgets.map((w) => {
+            const def = widgetDefOf(w.type);
+            return (
+              <div key={w.id} className={widgetSpanClass(w.position.w)}>
+                {def ? (
+                  <WidgetBoundary title={w.title}>
+                    <def.Component title={w.title} config={w.config} />
+                  </WidgetBoundary>
+                ) : (
+                  <WidgetFrame
+                    title={w.title}
+                    state="empty"
+                    emptyText="Loại ô này chưa được phiên bản hiện tại hỗ trợ"
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}

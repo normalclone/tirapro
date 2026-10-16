@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IntegrationsController } from './integrations.controller';
 import { IntegrationsService } from './integrations.service';
+import { LinkCodesService } from './link-codes.service';
 import { TelegramService } from './telegram.service';
 
 /**
@@ -9,7 +10,7 @@ import { TelegramService } from './telegram.service';
  */
 @Module({
   controllers: [IntegrationsController],
-  providers: [IntegrationsService, TelegramService],
+  providers: [IntegrationsService, LinkCodesService, TelegramService],
   exports: [IntegrationsService, TelegramService],
 })
 export class IntegrationsModule {}

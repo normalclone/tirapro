@@ -11,6 +11,10 @@ import { ERROR_CODES, type ErrorDetail } from '@tirapro/types';
 import { AppException } from '../exceptions/app.exception';
 import type { AuthedRequest } from '../types/request';
 
+/** Thông báo chung cho lỗi 500 ở production — chi tiết chỉ nằm trong log server. */
+export const INTERNAL_ERROR_MESSAGE =
+  'Lỗi hệ thống — hãy thử lại, nếu vẫn lỗi hãy báo quản trị kèm mã yêu cầu';
+
 /** Bắt mọi exception còn lại → error envelope chuẩn (§4.4). */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -21,7 +25,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<AuthedRequest>();
 
-    let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
+    let statusCode: number = HttpStatus.INTERNAL_SERVER_ERROR;
     let code: string = ERROR_CODES.INTERNAL;
     let message = 'Đã có lỗi xảy ra';
     let details: ErrorDetail[] | undefined;
@@ -50,19 +54,33 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
       code = this.codeFromStatus(statusCode, code);
     } else if (exception instanceof Error) {
-      message = exception.message || message;
+      // Lỗi không lường trước: ở production không lộ message nội bộ (SQL, đường dẫn, stack...) ra client.
+      message =
+        process.env.NODE_ENV === 'production'
+          ? INTERNAL_ERROR_MESSAGE
+          : exception.message || message;
+    } else if (process.env.NODE_ENV === 'production') {
+      message = INTERNAL_ERROR_MESSAGE;
     }
 
     if (statusCode >= 500) {
+      // Log đầy đủ phía server (message gốc + stack), kể cả khi client chỉ thấy thông báo chung.
+      const original = exception instanceof Error ? exception.message : String(exception);
       this.logger.error(
-        `[${req.id}] ${req.method} ${req.url} -> ${statusCode}: ${message}`,
+        `[${req.id}] ${req.method} ${req.url} -> ${statusCode}: ${original}`,
         exception instanceof Error ? exception.stack : undefined,
       );
     }
 
     res.status(statusCode).json({
       success: false,
-      error: { code, message, statusCode, ...(details ? { details } : {}) },
+      error: {
+        code,
+        message,
+        statusCode,
+        ...(details ? { details } : {}),
+        ...(statusCode >= 500 ? { requestId: req.id } : {}),
+      },
       meta: { requestId: req.id, timestamp: new Date().toISOString(), path: req.url },
     });
   }

@@ -1,11 +1,13 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { Eye, EyeOff, KeyRound } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useChangePassword } from './api';
+import { useAuth } from '@/stores/auth';
+import { useChangePassword, useLogoutAll } from './api';
 
 /** Quy tắc mật khẩu — khớp với passwordSchema ở backend. */
 const RULES: { test: (v: string) => boolean; label: string }[] = [
@@ -27,8 +29,7 @@ export function ChangePasswordPanel() {
   const allRulesPass = rulesPass.every(Boolean);
   const confirmMismatch = confirm.length > 0 && confirm !== next;
 
-  const canSubmit =
-    current.length > 0 && allRulesPass && next === confirm && !change.isPending;
+  const canSubmit = current.length > 0 && allRulesPass && next === confirm && !change.isPending;
 
   function reset() {
     setCurrent('');
@@ -133,7 +134,9 @@ export function ChangePasswordPanel() {
         )}
 
         {confirmMismatch && (
-          <p className="text-xs text-danger">Hai ô mật khẩu mới chưa giống nhau — nhập lại cho khớp.</p>
+          <p className="text-xs text-danger">
+            Hai ô mật khẩu mới chưa giống nhau — nhập lại cho khớp.
+          </p>
         )}
 
         <div className="flex items-center justify-between">
@@ -150,6 +153,46 @@ export function ChangePasswordPanel() {
           </Button>
         </div>
       </form>
+
+      <LogoutAllRow />
     </section>
+  );
+}
+
+/** Hàng "Đăng xuất mọi thiết bị" ở cuối panel — đóng phiên của chính mình ở mọi nơi (mất máy, nghi bị lộ). */
+function LogoutAllRow() {
+  const logoutAll = useLogoutAll();
+  const confirmAsk = useConfirm();
+
+  async function onLogoutAll() {
+    const ok = await confirmAsk({
+      title: 'Đăng xuất khỏi mọi thiết bị?',
+      description:
+        'Mọi trình duyệt và thiết bị đang đăng nhập tài khoản này, kể cả thiết bị này, sẽ bị đăng xuất và phải đăng nhập lại. Hãy dùng khi mất máy hoặc nghi ngờ người khác đang dùng tài khoản của bạn.',
+      confirmLabel: 'Đăng xuất tất cả',
+      destructive: true,
+    });
+    if (!ok) return;
+    logoutAll.mutate(undefined, {
+      onSuccess: () => void useAuth.getState().logout(),
+      onError: (err) => toast.error(apiErrorMessage(err)),
+    });
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-4">
+      <p className="text-sm text-muted">
+        Nghi ngờ có người dùng tài khoản của bạn, hoặc mất thiết bị đã đăng nhập?
+      </p>
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        loading={logoutAll.isPending}
+        onClick={() => void onLogoutAll()}
+      >
+        <LogOut className="h-4 w-4" /> Đăng xuất mọi thiết bị
+      </Button>
+    </div>
   );
 }

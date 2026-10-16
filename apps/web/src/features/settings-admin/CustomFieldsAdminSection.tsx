@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { LayoutList, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -15,6 +16,7 @@ import {
   type CustomField,
   type CustomFieldType,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
 /** Nhãn tiếng Việt cho từng loại trường, giữ đúng thứ tự enum backend. */
 const FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
@@ -71,8 +73,10 @@ function SectionCard({
 }
 
 export function CustomFieldsAdminSection() {
+  const confirm = useConfirm();
   const canManage = useAuth((s) => s.can('customfield:manage'));
-  const { data, isLoading } = useCustomFields();
+  const fieldsQuery = useCustomFields();
+  const { data } = fieldsQuery;
   const create = useCreateCustomField();
   const update = useUpdateCustomField();
   const remove = useDeleteCustomField();
@@ -127,8 +131,14 @@ export function CustomFieldsAdminSection() {
     );
   }
 
-  function handleDelete(f: CustomField) {
-    if (!window.confirm(`Xoá trường "${f.name}"? Trường sẽ bị ẩn khỏi mọi công việc.`)) return;
+  async function handleDelete(f: CustomField) {
+    if (
+      !(await confirm({
+        title: `Xoá trường "${f.name}"? Trường sẽ bị ẩn khỏi mọi công việc.`,
+        destructive: true,
+      }))
+    )
+      return;
     remove.mutate(f.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
 
@@ -150,88 +160,93 @@ export function CustomFieldsAdminSection() {
       title="Trường tuỳ chỉnh"
       description="Thêm các ô thông tin riêng của bạn vào mỗi công việc. Không thể đổi kiểu dữ liệu của trường sau khi tạo."
     >
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-11 w-full" />
-          ))}
-        </div>
-      ) : fields.length === 0 && !adding ? (
-        <EmptyState
-          icon={<LayoutList className="h-6 w-6" />}
-          title="Chưa có trường tuỳ chỉnh nào"
-          description={
-            canManage
-              ? 'Trường tuỳ chỉnh là ô thông tin riêng của bạn trên mỗi công việc. Thêm trường đầu tiên để bắt đầu thu thập.'
-              : 'Chưa có trường tuỳ chỉnh nào. Liên hệ quản trị để thêm.'
-          }
-          action={
-            canManage ? (
-              <Button size="sm" onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4" />
-                Thêm trường
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <ul className="divide-y divide-border">
-          {fields.map((f) =>
-            editingId === f.id ? (
-              <CustomFieldEditRow
-                key={f.id}
-                field={f}
-                saving={update.isPending}
-                onCancel={() => setEditingId(null)}
-                onSave={(patch) =>
-                  update.mutate(
-                    { id: f.id, patch },
-                    {
-                      onSuccess: () => setEditingId(null),
-                      onError: (e) => toast.error(apiErrorMessage(e)),
-                    },
-                  )
-                }
-              />
-            ) : (
-              <li key={f.id} className="flex items-center gap-3 py-2.5 first:pt-0">
-                <span className="truncate text-sm font-medium text-ink">{f.name}</span>
-                <Badge className="bg-surface-2 text-muted">{TYPE_LABELS[f.type] ?? f.type}</Badge>
-                {f.isRequired && (
-                  <Badge className="bg-danger/10 text-danger">Bắt buộc</Badge>
-                )}
-                <span className="truncate text-xs text-faint">
-                  {f.projectId ? `Dự án ${f.projectId}` : 'Toàn tổ chức'}
-                </span>
+      <QueryBoundary
+        query={fieldsQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-11 w-full" />
+            ))}
+          </div>
+        }
+        empty={() => fields.length === 0 && !adding}
+        emptyState={
+          <EmptyState
+            icon={<LayoutList className="h-6 w-6" />}
+            title="Chưa có trường tuỳ chỉnh nào"
+            description={
+              canManage
+                ? 'Trường tuỳ chỉnh là ô thông tin riêng của bạn trên mỗi công việc. Thêm trường đầu tiên để bắt đầu thu thập.'
+                : 'Chưa có trường tuỳ chỉnh nào. Liên hệ quản trị để thêm.'
+            }
+            action={
+              canManage ? (
+                <Button size="sm" onClick={() => setAdding(true)}>
+                  <Plus className="h-4 w-4" />
+                  Thêm trường
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      >
+        {() => (
+          <ul className="divide-y divide-border">
+            {fields.map((f) =>
+              editingId === f.id ? (
+                <CustomFieldEditRow
+                  key={f.id}
+                  field={f}
+                  saving={update.isPending}
+                  onCancel={() => setEditingId(null)}
+                  onSave={(patch) =>
+                    update.mutate(
+                      { id: f.id, patch },
+                      {
+                        onSuccess: () => setEditingId(null),
+                        onError: (e) => toast.error(apiErrorMessage(e)),
+                      },
+                    )
+                  }
+                />
+              ) : (
+                <li key={f.id} className="flex items-center gap-3 py-2.5 first:pt-0">
+                  <span className="truncate text-sm font-medium text-ink">{f.name}</span>
+                  <Badge className="bg-surface-2 text-muted">{TYPE_LABELS[f.type] ?? f.type}</Badge>
+                  {f.isRequired && <Badge className="bg-danger/10 text-danger">Bắt buộc</Badge>}
+                  <span className="truncate text-xs text-faint">
+                    {f.projectId ? `Dự án ${f.projectId}` : 'Toàn tổ chức'}
+                  </span>
 
-                {canManage && (
-                  <div className="ml-auto flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setEditingId(f.id)}
-                      title="Chỉnh sửa"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      <span className="sr-only">Chỉnh sửa {f.name}</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(f)}
-                      title="Xoá"
-                      className="text-muted hover:text-danger"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Xoá {f.name}</span>
-                    </Button>
-                  </div>
-                )}
-              </li>
-            ),
-          )}
-        </ul>
-      )}
+                  {canManage && (
+                    <div className="ml-auto flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setEditingId(f.id)}
+                        title="Chỉnh sửa"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Chỉnh sửa {f.name}</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(f)}
+                        title="Xoá"
+                        className="text-muted hover:text-danger"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Xoá {f.name}</span>
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              ),
+            )}
+          </ul>
+        )}
+      </QueryBoundary>
 
       {/* Form thêm trường — chỉ người có quyền quản lý trường tuỳ chỉnh */}
       {canManage && adding ? (

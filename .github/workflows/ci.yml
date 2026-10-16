@@ -1,0 +1,118 @@
+name: ci
+on: { push: { branches: [main] }, pull_request: {} }
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      # prisma validate/generate chỉ cần chuỗi hợp lệ, không kết nối DB thật.
+      DATABASE_URL: postgresql://tirapro:tirapro@localhost:5432/tirapro
+      DIRECT_URL: postgresql://tirapro:tirapro@localhost:5432/tirapro
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @tirapro/types build && pnpm --filter @tirapro/shared build
+      - run: pnpm --filter @tirapro/api exec prisma validate
+      - run: pnpm --filter @tirapro/api db:generate
+      - run: pnpm -r typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm test
+      - run: node scripts/gen-enums.mjs --check
+  db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: { pg: [16, 18] }
+    services:
+      postgres:
+        image: pgvector/pgvector:pg${{ matrix.pg }}
+        env: { POSTGRES_USER: tirapro, POSTGRES_PASSWORD: tirapro, POSTGRES_DB: tirapro }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U tirapro" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://tirapro:tirapro@localhost:5432/tirapro
+      DIRECT_URL: postgresql://tirapro:tirapro@localhost:5432/tirapro
+      SHADOW_DATABASE_URL: postgresql://tirapro:tirapro@localhost:5432/tirapro_shadow
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile --filter @tirapro/api...
+      - run: pnpm --filter @tirapro/api db:generate
+      - name: migrate deploy trên DB trống
+        run: pnpm --filter @tirapro/api db:migrate:deploy
+      - name: migration không được lệch schema.prisma
+        run: |
+          PGPASSWORD=tirapro psql -h localhost -U tirapro -d postgres -c 'CREATE DATABASE tirapro_shadow'
+          pnpm --filter @tirapro/api exec prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "$SHADOW_DATABASE_URL" --exit-code
+      - name: db:raw (pgvector/FTS) chạy 2 lần, phải idempotent
+        run: |
+          pnpm --filter @tirapro/api db:raw
+          pnpm --filter @tirapro/api db:raw
+      - name: db:raw song song (3 tiến trình x 2 vòng) phải đều thoát 0
+        # Hai instance khởi động cùng lúc không được làm nhau chết (pg_advisory_xact_lock ở đầu file SQL).
+        run: |
+          rc=0
+          for round in 1 2; do
+            pids=()
+            for i in 1 2 3; do
+              pnpm --filter @tirapro/api db:raw & pids+=($!)
+            done
+            for p in "${pids[@]}"; do wait "$p" || rc=1; done
+          done
+          exit $rc
+      - name: db:raw nâng cấp từ searchVector bản cũ (nhánh DROP/ADD)
+        run: |
+          cat > /tmp/old-search-vector.sql <<'SQL'
+          ALTER TABLE "Issue" DROP COLUMN "searchVector";
+          ALTER TABLE "Issue" ADD COLUMN "searchVector" tsvector
+            GENERATED ALWAYS AS (setweight(to_tsvector('simple', coalesce("key", '') || ' ' || coalesce("summary", '')), 'A')) STORED;
+          SQL
+          pnpm --filter @tirapro/api exec prisma db execute --file /tmp/old-search-vector.sql --schema prisma/schema.prisma
+          pnpm --filter @tirapro/api db:raw
+          # coalesce: nếu cột biến mất (NULL) cũng phải đỏ, không được lọt qua như "đã nâng cấp".
+          cat > /tmp/assert-upgraded.sql <<'SQL'
+          DO $$ BEGIN
+            IF coalesce(position($x$immutable_unaccent$x$ IN (
+              SELECT pg_get_expr(d.adbin, d.adrelid) FROM pg_attrdef d
+              JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+              WHERE a.attrelid = $q$"Issue"$q$::regclass AND a.attname = $q$searchVector$q$)), 0) = 0
+            THEN RAISE EXCEPTION $m$searchVector van la bieu thuc cu hoac khong ton tai$m$; END IF;
+          END $$;
+          SQL
+          pnpm --filter @tirapro/api exec prisma db execute --file /tmp/assert-upgraded.sql --schema prisma/schema.prisma
+      - name: cột/hàm/chỉ mục raw tồn tại (assert thật)
+        run: |
+          cat > /tmp/assert-raw.sql <<'SQL'
+          DO $$
+          DECLARE missing text;
+          BEGIN
+            SELECT string_agg(n, ', ') INTO missing FROM (
+              SELECT i AS n FROM unnest(ARRAY[
+                $i$issue_search_gin$i$, $i$issue_summary_trgm$i$, $i$issue_description_trgm$i$, $i$issue_key_trgm$i$,
+                $i$issue_summary_unaccent_trgm$i$, $i$issue_description_unaccent_trgm$i$, $i$issue_embedding_hnsw$i$
+              ]) AS i
+              WHERE NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = i)
+            ) t;
+            IF missing IS NOT NULL THEN RAISE EXCEPTION $m$thieu chi muc: %$m$, missing; END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = $f$immutable_unaccent$f$) THEN
+              RAISE EXCEPTION $m$thieu ham immutable_unaccent$m$;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = $t$Issue$t$ AND column_name = $c$searchVector$c$) THEN
+              RAISE EXCEPTION $m$thieu cot Issue.searchVector$m$;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = $t$IssueEmbedding$t$ AND column_name = $c$embedding$c$) THEN
+              RAISE EXCEPTION $m$thieu cot IssueEmbedding.embedding$m$;
+            END IF;
+          END $$;
+          SQL
+          pnpm --filter @tirapro/api exec prisma db execute --file /tmp/assert-raw.sql --schema prisma/schema.prisma

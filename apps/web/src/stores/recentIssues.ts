@@ -10,8 +10,12 @@ const MAX = 8;
 
 function load(): RecentIssue[] {
   try {
-    const raw = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
-    return Array.isArray(raw) ? raw.filter((x) => x && typeof x.key === 'string').slice(0, MAX) : [];
+    const raw = JSON.parse(localStorage.getItem(LS_KEY) || '[]') as unknown;
+    return Array.isArray(raw)
+      ? (raw as Partial<RecentIssue>[])
+          .filter((x): x is RecentIssue => !!x && typeof x.key === 'string')
+          .slice(0, MAX)
+      : [];
   } catch {
     return [];
   }
@@ -21,6 +25,8 @@ interface RecentsState {
   items: RecentIssue[];
   /** Ghi 1 issue vừa mở lên đầu danh sách (dedup theo key, giữ tối đa 8). */
   record: (issue: RecentIssue) => void;
+  /** Gỡ một issue (đã xoá/thu hồi) khỏi danh sách để không dẫn tới trang 404. */
+  remove: (key: string) => void;
   clear: () => void;
 }
 
@@ -32,7 +38,20 @@ export const useRecents = create<RecentsState>((set, get) => ({
     const cur = get().items;
     // Không cập nhật nếu đã ở đầu với cùng tiêu đề (tránh set state thừa).
     if (cur[0]?.key === issue.key && cur[0]?.summary === issue.summary) return;
-    const next = [{ key: issue.key, summary: issue.summary }, ...cur.filter((x) => x.key !== issue.key)].slice(0, MAX);
+    const next = [
+      { key: issue.key, summary: issue.summary },
+      ...cur.filter((x) => x.key !== issue.key),
+    ].slice(0, MAX);
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore quota */
+    }
+    set({ items: next });
+  },
+  remove: (key) => {
+    const next = get().items.filter((x) => x.key !== key);
+    if (next.length === get().items.length) return;
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(next));
     } catch {

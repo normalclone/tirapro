@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
+import { filterByQuery } from '@/lib/text';
+import { groupHeadingAt } from './searchSelectGroups';
 import { cn } from '@/lib/utils';
 
 export interface SearchSelectOption {
@@ -10,6 +12,12 @@ export interface SearchSelectOption {
   color?: string | null;
   /** Nội dung phụ bên phải (vd: key issue, mã). */
   hint?: string;
+  /** Huy hiệu chữ thường (không mono) bên phải — vd mức chia sẻ của dashboard. */
+  badge?: string;
+  /** Không chọn được (hiện mờ, kèm `hint` giải thích nếu có). */
+  disabled?: boolean;
+  /** Tiêu đề nhóm: hiện một hàng tiêu đề (không chọn được) trước lựa chọn đầu tiên của mỗi nhóm liên tiếp. */
+  group?: string;
 }
 
 /**
@@ -31,6 +39,10 @@ export function SearchSelect({
   className,
   align = 'start',
   renderTrigger,
+  hideChevron,
+  onSearchChange,
+  moreHint,
+  resolveOption,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -44,22 +56,28 @@ export function SearchSelect({
   align?: 'start' | 'end';
   /** Tuỳ biến nội dung trigger (mặc định: label của option đang chọn). */
   renderTrigger?: (selected: SearchSelectOption | undefined) => ReactNode;
+  /** Bỏ mũi tên (trigger gọn dạng chấm/biểu tượng, vd chấm ưu tiên trên dòng Việc chờ). */
+  hideChevron?: boolean;
+  /** Tìm phía máy chủ: báo từ khoá gõ (nơi gọi debounce rồi nạp lại `options`). Bỏ trống = chỉ lọc tại chỗ. */
+  onSearchChange?: (q: string) => void;
+  /** Danh sách đã đầy mà chưa gõ → hiện dòng "Gõ để tìm thêm". */
+  moreHint?: boolean;
+  /** Tra lựa chọn đang chọn khi nó không nằm trong `options` (kết quả tìm đã bị lọc). */
+  resolveOption?: (value: string) => SearchSelectOption | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
 
-  const selected = options.find((o) => o.value === value);
-  const query = q.trim().toLowerCase();
-  const filtered = query
-    ? options.filter(
-        (o) => o.label.toLowerCase().includes(query) || o.value.toLowerCase().includes(query),
-      )
-    : options;
+  const selected =
+    options.find((o) => o.value === value) ?? (value ? resolveOption?.(value) : undefined);
+  // Không phân biệt hoa thường/dấu, tìm theo nhãn + mã hiển thị (`hint`), KHÔNG theo `value` (id nội bộ): xem `filterByQuery`.
+  const filtered = filterByQuery(options, q);
 
   function pick(v: string) {
     onChange(v);
     setOpen(false);
     setQ('');
+    onSearchChange?.('');
   }
 
   return (
@@ -67,7 +85,10 @@ export function SearchSelect({
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
-        if (!o) setQ('');
+        if (!o) {
+          setQ('');
+          onSearchChange?.('');
+        }
       }}
     >
       <Popover.Trigger asChild>
@@ -90,7 +111,7 @@ export function SearchSelect({
               {selected ? selected.label : placeholder}
             </span>
           )}
-          <ChevronDown className="h-4 w-4 shrink-0 text-faint" aria-hidden />
+          {!hideChevron && <ChevronDown className="h-4 w-4 shrink-0 text-faint" aria-hidden />}
         </button>
       </Popover.Trigger>
       <Popover.Portal>
@@ -102,56 +123,97 @@ export function SearchSelect({
           <div className="border-b border-border p-2">
             <Input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {
+                setQ(e.target.value);
+                onSearchChange?.(e.target.value);
+              }}
               placeholder={searchPlaceholder}
               autoFocus
-              className="h-8 text-sm"
+              className="h-8 text-sm max-sm:text-[16px]"
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && filtered.length > 0) {
+                const first = filtered.find((o) => !o.disabled);
+                if (e.key === 'Enter' && first) {
                   e.preventDefault();
-                  pick(filtered[0].value);
+                  pick(first.value);
                 }
               }}
             />
           </div>
           <ul className="max-h-64 overflow-y-auto p-1" role="listbox" aria-label={ariaLabel}>
-            {filtered.map((o) => {
+            {filtered.map((o, i) => {
               const active = o.value === value;
+              const heading = groupHeadingAt(filtered, i);
               return (
-                <li key={o.value || '__empty__'}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    onClick={() => pick(o.value)}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2',
-                      active && 'bg-surface-2',
-                    )}
-                  >
-                    <Check
-                      className={cn('h-4 w-4 shrink-0 text-primary', active ? 'opacity-100' : 'opacity-0')}
-                      aria-hidden
-                    />
-                    {o.color && (
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ background: o.color }}
-                        aria-hidden
-                      />
-                    )}
-                    <span className="min-w-0 flex-1 truncate">{o.label}</span>
-                    {o.hint && <span className="shrink-0 font-mono text-xs text-faint">{o.hint}</span>}
-                  </button>
-                </li>
+                <Fragment key={o.value || '__empty__'}>
+                  {heading && (
+                    <li
+                      role="presentation"
+                      className="px-2 pb-1 pt-2 text-xs font-medium text-muted first:pt-1"
+                    >
+                      {heading}
+                    </li>
+                  )}
+                  <OptionRow option={o} active={active} onPick={pick} />
+                </Fragment>
               );
             })}
             {filtered.length === 0 && (
               <li className="px-2 py-3 text-center text-sm text-muted">Không có lựa chọn</li>
             )}
+            {moreHint && q.trim() === '' && (
+              <li className="px-2 py-2 text-center text-xs text-faint">Gõ để tìm thêm</li>
+            )}
           </ul>
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+/** Một dòng lựa chọn của SearchSelect (nhãn, chấm màu, mã `hint`, huy hiệu `badge`). */
+function OptionRow({
+  option: o,
+  active,
+  onPick,
+}: {
+  option: SearchSelectOption;
+  active: boolean;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        role="option"
+        aria-selected={active}
+        aria-disabled={o.disabled || undefined}
+        disabled={o.disabled}
+        onClick={() => onPick(o.value)}
+        className={cn(
+          'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2',
+          active && 'bg-surface-2',
+          o.disabled && 'cursor-not-allowed text-muted hover:bg-transparent',
+        )}
+      >
+        <Check
+          className={cn('h-4 w-4 shrink-0 text-primary', active ? 'opacity-100' : 'opacity-0')}
+          aria-hidden
+        />
+        {o.color && (
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ background: o.color }}
+            aria-hidden
+          />
+        )}
+        <span className="min-w-0 flex-1 truncate">{o.label}</span>
+        {o.hint && <span className="shrink-0 font-mono text-xs text-faint">{o.hint}</span>}
+        {o.badge && (
+          <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
+            {o.badge}
+          </span>
+        )}
+      </button>
+    </li>
   );
 }

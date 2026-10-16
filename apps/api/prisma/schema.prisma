@@ -52,6 +52,13 @@ enum DefaultAssigneeMode {
   PROJECT_LEAD
 }
 
+/// Sức khoẻ dự án: xanh = tốt, vàng = cần chú ý, đỏ = nguy cơ.
+enum ProjectHealth {
+  GREEN
+  YELLOW
+  RED
+}
+
 enum BoardType {
   KANBAN
   SCRUM
@@ -123,6 +130,7 @@ enum DashboardScope {
   PRIVATE
   PROJECT
   GLOBAL
+  TEAM
 }
 
 enum WidgetType {
@@ -136,6 +144,9 @@ enum WidgetType {
   ISSUE_LIST
   PIE_BY_FIELD
   AI_INSIGHT
+  TOP_RISKS
+  SLOW_GOALS
+  OVERLOAD
 }
 
 enum NotificationType {
@@ -176,6 +187,10 @@ enum HistoryField {
   RESOLUTION
   SCOPE
   PRIORITY
+  TIME_SPENT
+  DESCRIPTION
+  COMPONENT
+  FIX_VERSION
 }
 
 enum AiSuggestionKind {
@@ -220,6 +235,8 @@ model User {
   settings      Json     @default("{}") // notification matrix, vocabulary, UI prefs (quiet-by-default)
   status        UserStatus @default(ACTIVE)
   lastSeenAt    DateTime?
+  /// Access token cấp TRƯỚC mốc này bị từ chối ngay (khoá tài khoản, đặt lại mật khẩu, đăng xuất mọi thiết bị).
+  sessionsRevokedAt DateTime?
   isSystemAdmin Boolean  @default(false)
   canCreateWorkspace Boolean @default(false) // admin hệ thống cấp quyền tạo workspace
   createdAt     DateTime @default(now())
@@ -229,6 +246,7 @@ model User {
   projectMemberships   ProjectMembership[]
   ownedWorkspaces      Workspace[]           @relation("WorkspaceOwner")
   ledProjects          Project[]             @relation("ProjectLead")
+  healthUpdatedProjects Project[]            @relation("ProjectHealthUpdater")
   reportedIssues       Issue[]               @relation("IssueReporter")
   assignedIssues       Issue[]               @relation("IssueAssignee")
   comments             Comment[]
@@ -247,7 +265,9 @@ model User {
   timeOffs             TimeOff[]
   ownedPrograms        Program[]             @relation("ProgramOwner")
   ownedObjectives      Objective[]           @relation("ObjectiveOwner")
+  keyResultCheckIns    KeyResultCheckIn[]    @relation("KeyResultCheckInAuthor")
   ownedRaidItems       RaidItem[]            @relation("RaidOwner")
+  passwordResetTokens  PasswordResetToken[]
 
   @@index([status])
 }
@@ -284,6 +304,7 @@ model Workspace {
   linkTypes           LinkType[]
   integrations        Integration[]
   importJobs          ImportJob[]
+  importPendingAssignees ImportPendingAssignee[]
   exportJobs          ExportJob[]
   reportSubscriptions ReportSubscription[]
   channelLinkTokens   ChannelLinkToken[]
@@ -298,6 +319,8 @@ model Workspace {
   issueTemplates      IssueTemplate[]
   wikiPages           WikiPage[]
   clients             Client[]
+  automationRules     AutomationRule[]
+  auditLogs           AuditLog[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -437,6 +460,7 @@ model Team {
   workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   lead      User?        @relation("TeamLead", fields: [leadId], references: [id], onDelete: SetNull)
   members   TeamMember[]
+  dashboards Dashboard[]
 
   @@unique([workspaceId, name])
   @@unique([workspaceId, key])
@@ -471,8 +495,16 @@ model Project {
   defaultWorkflowId   String?
   defaultAssigneeMode DefaultAssigneeMode @default(UNASSIGNED)
   isArchived          Boolean  @default(false)
+  archivedAt          DateTime?
+  /// Dự án riêng tư: chỉ thành viên dự án (ProjectMembership) + quản trị workspace/admin hệ thống thấy.
+  isPrivate           Boolean  @default(false)
   programId           String?
   clientId            String?
+  /// Sức khoẻ do quản trị dự án đặt tay (ghi đè giá trị tự tính); null = dùng giá trị tự tính.
+  healthOverride      ProjectHealth?
+  healthNote          String?  @db.VarChar(500)
+  healthUpdatedAt     DateTime?
+  healthUpdatedById   String?
   settings            Json     @default("{}")
   deletedAt           DateTime?
   createdById         String?
@@ -482,6 +514,7 @@ model Project {
 
   workspace    Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   lead         User?       @relation("ProjectLead", fields: [leadId], references: [id], onDelete: SetNull)
+  healthUpdatedBy User?    @relation("ProjectHealthUpdater", fields: [healthUpdatedById], references: [id], onDelete: SetNull)
   memberships  ProjectMembership[]
   issues       Issue[]
   boards       Board[]
@@ -511,6 +544,8 @@ model Project {
   @@unique([workspaceId, key])
   @@unique([workspaceId, name])
   @@index([workspaceId])
+  @@index([workspaceId, archivedAt])
+  @@index([workspaceId, isPrivate])
   @@index([leadId])
   @@index([deletedAt])
 }
@@ -691,59 +726,61 @@ model IssueType {
 }
 
 model Issue {
-  id                String   @id @default(cuid())
-  workspaceId       String
-  projectId         String
-  number            Int
-  key               String
-  typeId            String
-  statusId          String
-  priorityId        String?
-  severityId        String?
-  summary           String   @db.VarChar(255)
-  description       String?  @db.Text
-  descriptionFormat RichTextFormat @default(MARKDOWN)
-  reporterId        String?
-  assigneeId        String?
-  parentId          String?
-  epicId            String?
-  sprintId          String?
-  storyPoints       Float?
-  originalEstimate  Int?
-  remainingEstimate Int?
-  timeSpent         Int?
-  dueDate           DateTime?
-  startDate         DateTime?
-  resolutionId      String?
-  resolvedAt        DateTime?
-  rank              String
-  version           Int      @default(1)
-  triageState       TriageState?
-  triageSnoozeUntil DateTime?
-  triageSource      String?
-  fingerprint       String?  // hash để dedupe/collapse double-report từ nguồn tự động
-  occurrenceCount   Int      @default(1)
-  lastOccurredAt    DateTime?
-  deletedAt         DateTime?
-  createdById       String?
-  updatedById       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                 String         @id @default(cuid())
+  workspaceId        String
+  projectId          String
+  number             Int
+  key                String
+  typeId             String
+  statusId           String
+  priorityId         String?
+  severityId         String?
+  summary            String         @db.VarChar(255)
+  description        String?        @db.Text
+  descriptionFormat  RichTextFormat @default(MARKDOWN)
+  acceptanceCriteria String?        @db.Text
+  reporterId         String?
+  assigneeId         String?
+  parentId           String?
+  epicId             String?
+  sprintId           String?
+  storyPoints        Float?
+  originalEstimate   Int?
+  remainingEstimate  Int?
+  timeSpent          Int?
+  dueDate            DateTime?
+  startDate          DateTime?
+  resolutionId       String?
+  resolvedAt         DateTime?
+  rank               String
+  version            Int            @default(1)
+  triageState        TriageState?
+  triageSnoozeUntil  DateTime?
+  triageSource       String?
+  fingerprint        String? // hash để dedupe/collapse double-report từ nguồn tự động
+  occurrenceCount    Int            @default(1)
+  lastOccurredAt     DateTime?
+  environment        Json? // môi trường phát sinh lỗi: {env,browser,os,build,url,viewport}
+  deletedAt          DateTime?
+  createdById        String?
+  updatedById        String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
-  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workspace    Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   type         IssueType   @relation(fields: [typeId], references: [id])
   status       Status      @relation(fields: [statusId], references: [id])
   priority     Priority?   @relation(fields: [priorityId], references: [id], onDelete: SetNull)
   severity     Severity?   @relation(fields: [severityId], references: [id], onDelete: SetNull)
   resolution   Resolution? @relation(fields: [resolutionId], references: [id], onDelete: SetNull)
   reporter     User?       @relation("IssueReporter", fields: [reporterId], references: [id], onDelete: SetNull)
-  assignee     User?     @relation("IssueAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  parent       Issue?    @relation("IssueParent", fields: [parentId], references: [id], onDelete: SetNull)
-  children     Issue[]   @relation("IssueParent")
-  epic         Issue?    @relation("IssueEpic", fields: [epicId], references: [id], onDelete: SetNull)
-  epicChildren Issue[]   @relation("IssueEpic")
-  sprint       Sprint?   @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  assignee     User?       @relation("IssueAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  parent       Issue?      @relation("IssueParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Issue[]     @relation("IssueParent")
+  epic         Issue?      @relation("IssueEpic", fields: [epicId], references: [id], onDelete: SetNull)
+  epicChildren Issue[]     @relation("IssueEpic")
+  sprint       Sprint?     @relation(fields: [sprintId], references: [id], onDelete: SetNull)
 
   comments          Comment[]
   attachments       Attachment[]
@@ -753,8 +790,8 @@ model Issue {
   customFieldValues CustomFieldValue[]
   watchers          IssueWatcher[]
   workLogs          WorkLog[]
-  sourceLinks       IssueLink[] @relation("IssueLinkSource")
-  targetLinks       IssueLink[] @relation("IssueLinkTarget")
+  sourceLinks       IssueLink[]        @relation("IssueLinkSource")
+  targetLinks       IssueLink[]        @relation("IssueLinkTarget")
   mentions          Mention[]
   history           IssueHistory[]
   embedding         IssueEmbedding?
@@ -763,29 +800,34 @@ model Issue {
   activities        ActivityLog[]
   devLinks          IssueDevLink[]
   participants      IssueParticipant[]
-  depsAsPredecessor IssueDependency[] @relation("DepPredecessor")
-  depsAsSuccessor   IssueDependency[] @relation("DepSuccessor")
+  depsAsPredecessor IssueDependency[]  @relation("DepPredecessor")
+  depsAsSuccessor   IssueDependency[]  @relation("DepSuccessor")
   baselineItems     PlanBaselineItem[]
   objectives        ObjectiveIssue[]
   sla               IssueSla?
   checklist         ChecklistItem[]
+  wikiPages         WikiPageIssue[]
+  importPendingAssignee ImportPendingAssignee?
+  // Bỏ [typeId][priorityId][severityId] đứng riêng: low-selectivity + cản HOT update
+  // (priority/severity đổi thường xuyên). Lọc theo chúng đi kèm prefix workspaceId/projectId.
 
   @@unique([projectId, number])
   @@unique([workspaceId, key])
-  @@index([workspaceId, statusId])  // board/list/JQL cross-project (tenant-aware)
+  @@index([workspaceId, statusId]) // board/list/JQL cross-project (tenant-aware)
   @@index([workspaceId, updatedAt]) // dashboard/recently-updated cross-project
-  @@index([projectId, statusId])    // board theo project
+  @@index([projectId, statusId]) // board theo project
   @@index([projectId, deletedAt])
   @@index([projectId, triageState])
   @@index([sprintId])
+  @@index([projectId, sprintId, rank]) // backlog/board theo sprint, sắp theo rank
+  @@index([workspaceId, assigneeId]) // dashboard/báo cáo theo người làm
+  @@index([workspaceId, dueDate]) // quá hạn/sắp đến hạn toàn workspace
   @@index([assigneeId])
   @@index([reporterId])
   @@index([parentId])
   @@index([epicId])
   @@index([rank])
   @@index([fingerprint])
-  // Bỏ [typeId][priorityId][severityId] đứng riêng: low-selectivity + cản HOT update
-  // (priority/severity đổi thường xuyên). Lọc theo chúng đi kèm prefix workspaceId/projectId.
 }
 
 model IssueLabel {
@@ -803,6 +845,7 @@ model IssueComponent {
   issue       Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
   component   Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
   @@id([issueId, componentId])
+  @@index([componentId])
 }
 
 model IssueFixVersion {
@@ -812,6 +855,7 @@ model IssueFixVersion {
   issue     Issue   @relation(fields: [issueId], references: [id], onDelete: Cascade)
   version   Version @relation(fields: [versionId], references: [id], onDelete: Cascade)
   @@id([issueId, versionId, type])
+  @@index([versionId])
 }
 
 model IssueLink {
@@ -847,7 +891,58 @@ model WorkLog {
   updatedAt DateTime @updatedAt
   issue     Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
   author    User     @relation(fields: [authorId], references: [id])
-  @@index([issueId])
+  @@index([issueId, startedAt])
+  @@index([authorId, startedAt])
+}
+
+// ============================ AUTOMATION RULES ==============================
+enum RuleTrigger {
+  ISSUE_CREATED
+  ISSUE_TRANSITIONED
+  ISSUE_UPDATED
+  COMMENT_ADDED
+  SCHEDULED
+}
+
+enum RuleRunStatus {
+  SUCCESS
+  SKIPPED
+  FAILED
+}
+
+/// Quy tắc "khi… nếu… thì…". projectId null = áp cho cả workspace.
+model AutomationRule {
+  id            String      @id @default(cuid())
+  workspaceId   String
+  projectId     String?
+  name          String
+  enabled       Boolean     @default(true)
+  trigger       RuleTrigger
+  triggerConfig Json        @default("{}") // { fields?: string[], cron?: string, toStatusId?: string }
+  conditions    Json        @default("[]") // Array<{ field, op, value? } | { jql }>
+  actions       Json        @default("[]") // Array<Action> — xem @tirapro/shared automation-rule.schema
+  createdById   String
+  lastRunAt     DateTime?
+  runCount      Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runs      AutomationRun[]
+  @@index([workspaceId, enabled, trigger])
+}
+
+model AutomationRun {
+  id         String        @id @default(cuid())
+  ruleId     String
+  issueId    String?
+  status     RuleRunStatus
+  log        Json          @default("[]") // [{ step, ok, message }]
+  durationMs Int           @default(0)
+  createdAt  DateTime      @default(now())
+
+  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  @@index([ruleId, createdAt])
 }
 
 // ============================ BOARD / SPRINT ================================
@@ -910,6 +1005,7 @@ model Sprint {
   issues    Issue[]
   snapshots SprintSnapshot[]
 
+  @@unique([projectId, sequence])
   @@index([projectId, state])
   @@index([boardId])
 }
@@ -996,6 +1092,9 @@ model Mention {
   createdAt       DateTime @default(now())
   comment         Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
   issue           Issue?   @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  @@unique([commentId, mentionedUserId])
+  // Sổ cho @ ở mô tả (commentId IS NULL) dùng thêm chỉ mục duy nhất CÓ ĐIỀU KIỆN `Mention_issueId_mentionedUserId_desc_key`
+  // tạo bằng SQL trong migration 20261016299000 — Prisma không biểu diễn/không introspect được mệnh đề WHERE nên không khai báo ở đây.
   @@index([mentionedUserId])
   @@index([commentId])
 }
@@ -1086,6 +1185,7 @@ model AiGenerationLog {
   requestId        String?
   createdAt        DateTime @default(now())
   @@index([workspaceId, feature, createdAt])
+  @@index([workspaceId, createdAt])
 }
 
 // ============================ NOTIFICATION / ACTIVITY / HISTORY =============
@@ -1194,6 +1294,8 @@ model Dashboard {
   workspaceId String
   ownerId     String
   projectId   String?
+  /// Chỉ khi scope = TEAM: dashboard chia sẻ cho thành viên/trưởng nhóm này.
+  teamId      String?
   name        String
   description String?
   scope       DashboardScope @default(PRIVATE)
@@ -1206,9 +1308,11 @@ model Dashboard {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team      Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
   widgets   Widget[]
   @@index([workspaceId, ownerId])
   @@index([projectId, scope])
+  @@index([teamId, scope])
 }
 
 model Widget {
@@ -1238,7 +1342,6 @@ model RefreshToken {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
-  @@index([tokenHash])
 }
 
 // ============================ INTEGRATIONS (config-driven) ==================
@@ -1308,6 +1411,7 @@ model Integration {
   workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   channels     IntegrationChannel[]
   repositories CodeRepository[]
+  linkTokens   ChannelLinkToken[]
 
   @@index([workspaceId, type])
 }
@@ -1339,14 +1443,18 @@ model ChannelLinkToken {
   workspaceId     String
   projectId       String?
   integrationType IntegrationType @default(TELEGRAM)
+  // Mã gắn với đúng một kết nối (bot) — workspace/bot khác không "cướp" được mã.
+  integrationId   String?
   createdById     String
   expiresAt       DateTime
   consumedAt      DateTime?
   createdAt       DateTime @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  integration Integration? @relation(fields: [integrationId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+  @@index([integrationId])
 }
 
 // Job migrate từ Jira (Cloud API hoặc file CSV/JSON), chạy nền BullMQ.
@@ -1370,6 +1478,23 @@ model ImportJob {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, status])
+}
+
+/// Người phụ trách Jira chưa là thành viên workspace (L28): nhớ email để tự gán việc khi họ được thêm vào.
+/// Khớp CHỈ theo email (chữ thường). Xoá khi workspace/việc bị xoá; xử lý xong thì xoá hàng.
+model ImportPendingAssignee {
+  id          String   @id @default(cuid())
+  workspaceId String
+  projectId   String
+  issueId     String   @unique
+  email       String   // chữ thường
+  sourceName  String   // tên/email người phụ trách trong Jira (để đối chiếu)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  issue     Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, email])
 }
 
 // One-click full export (chống vendor lock-in) — round-trippable với ImportJob.
@@ -1403,6 +1528,16 @@ model ReportSubscription {
   projectId   String?
   name        String
   schedule    DigestSchedule @default(WEEKLY)
+  /// 0 = Chủ nhật … 6 = Thứ Bảy; chỉ dùng cho WEEKLY (giờ địa phương theo `timezone`).
+  weekday     Int      @default(1)
+  /// 0–23 theo `timezone` (độ phân giải theo giờ).
+  hour        Int      @default(8)
+  /// Múi giờ IANA của `weekday`/`hour`.
+  timezone    String   @default("Asia/Ho_Chi_Minh")
+  /// Gửi email cho `recipients` (userId thành viên workspace) bên cạnh kênh Telegram.
+  deliverEmail Boolean @default(false)
+  /// Digest gắn dự án riêng tư: cho phép đăng nội dung (tiêu đề việc, sprint, rủi ro) vào KÊNH chung. Mặc định tắt.
+  allowPrivateToChannel Boolean @default(false)
   cron        String?
   metrics     String[] // các khối metric chọn tổng hợp (xem REPORT_METRIC_BLOCKS)
   channelId   String?  // gửi tới IntegrationChannel (Telegram)
@@ -1561,6 +1696,14 @@ enum KeyResultUnit {
   NUMBER
   PERCENT
   CURRENCY
+}
+
+/// Nguồn số liệu của Key Result: nhập tay hoặc tự đo từ dữ liệu dự án (L25).
+enum KeyResultSource {
+  MANUAL
+  OPEN_BUGS
+  SPRINT_COMPLETION
+  ISSUE_COUNT_JQL
 }
 
 enum RecurrenceFreq {
@@ -1740,12 +1883,45 @@ model KeyResult {
   startValue   Float         @default(0)
   targetValue  Float
   currentValue Float         @default(0)
+  /// Nguồn số liệu (L25). KR tự đo: số hiện tại tính lúc đọc, `currentValue` giữ giá trị tay lần cuối.
+  source       KeyResultSource @default(MANUAL)
+  /// Cấu hình theo nguồn: { projectId? } | { projectId } | { jql } — kiểm ở goals.schemas.
+  sourceConfig Json?
+  /// Nhãn đơn vị hiển thị sau số ("4 bug", "12 điểm"); bỏ qua với đơn vị PERCENT (L26).
+  unitLabel    String?       @db.VarChar(20)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
   objective Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  checkIns  KeyResultCheckIn[]
 
   @@index([objectiveId])
+}
+
+/// Nguồn một dòng lịch sử KR: nhập tay (check-in) hoặc cron chụp hằng ngày (L29).
+enum CheckInSource {
+  MANUAL
+  AUTO
+}
+
+/// Lịch sử cập nhật giá trị của Key Result (check-in tay có ghi chú). Bất biến: không sửa/xoá — nhập sai thì check-in mới (L26).
+/// Bản chụp AUTO (L29): mỗi KR tối đa MỘT dòng/ngày UTC — unique (keyResultId, snapshotDate); NULL (check-in tay) không bị ràng.
+model KeyResultCheckIn {
+  id            String   @id @default(cuid())
+  keyResultId   String
+  value         Float
+  previousValue Float?
+  note          String?  @db.VarChar(500)
+  authorId      String?
+  source        CheckInSource @default(MANUAL)
+  snapshotDate  DateTime? @db.Date
+  createdAt     DateTime @default(now())
+
+  keyResult KeyResult @relation(fields: [keyResultId], references: [id], onDelete: Cascade)
+  author    User?     @relation("KeyResultCheckInAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([keyResultId, snapshotDate])
+  @@index([keyResultId, createdAt])
 }
 
 /// Gắn issue/epic vào mục tiêu để tính tiến độ theo công việc thực tế.
@@ -1889,18 +2065,55 @@ model WikiPage {
   title       String
   body        String   @db.Text
   order       Int      @default(0)
+  /// Số phiên bản NỘI DUNG (tiêu đề/nội dung) — OCC; đổi chỗ/đổi cha KHÔNG tăng.
+  version     Int      @default(0)
   createdById String?
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  /// Xoá mềm: trang biến khỏi cây/tìm kiếm nhưng quản trị khôi phục lại được (kèm lịch sử phiên bản).
+  deletedAt   DateTime?
+  deletedById String?
 
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   parent    WikiPage?  @relation("WikiTree", fields: [parentId], references: [id], onDelete: SetNull)
   children  WikiPage[] @relation("WikiTree")
+  issues    WikiPageIssue[]
+  versions  WikiPageVersion[]
 
   @@index([workspaceId, projectId])
   @@index([parentId])
+  @@index([workspaceId, deletedAt])
+}
+
+/// Lịch sử trang wiki — một dòng cho mỗi lần lưu có thay đổi (hoặc khôi phục). `version` là số thứ tự bản
+/// trong lịch sử của trang (KHÁC `WikiPage.version` là bộ đếm OCC); `authorId` không khoá ngoại (giữ lịch sử khi xoá người dùng).
+model WikiPageVersion {
+  id         String   @id @default(cuid())
+  wikiPageId String
+  version    Int
+  title      String
+  body       String   @db.Text
+  authorId   String?
+  note       String?
+  createdAt  DateTime @default(now())
+
+  wikiPage WikiPage @relation(fields: [wikiPageId], references: [id], onDelete: Cascade)
+
+  @@unique([wikiPageId, version])
+}
+
+/// Trang wiki nhắc tới công việc nào (suy ra từ nội dung trang mỗi lần lưu).
+model WikiPageIssue {
+  wikiPageId String
+  issueId    String
+  createdAt  DateTime @default(now())
+  wikiPage   WikiPage @relation(fields: [wikiPageId], references: [id], onDelete: Cascade)
+  issue      Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@id([wikiPageId, issueId])
+  @@index([issueId])
 }
 
 /// Khách hàng và hợp đồng.
@@ -1941,4 +2154,64 @@ model Contract {
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
+}
+
+enum MailStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
+/// Hộp thư đi: thư được ghi vào đây rồi cron gửi sau (không gửi đồng bộ trong request).
+model EmailOutbox {
+  id          String     @id @default(cuid())
+  to          String
+  subject     String
+  html        String     @db.Text
+  text        String     @db.Text
+  template    String // 'password-reset' | 'notification'
+  payload     Json       @default("{}")
+  status      MailStatus @default(PENDING)
+  attempts    Int        @default(0)
+  lastError   String?    @db.Text
+  scheduledAt DateTime   @default(now())
+  sentAt      DateTime?
+  createdAt   DateTime   @default(now())
+
+  @@index([status, scheduledAt])
+}
+
+/// Token đặt lại mật khẩu (dùng một lần, hết hạn sau 1 giờ). Chỉ lưu sha256 của token.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Nhật ký kiểm toán quản trị (vai trò/thành viên/tích hợp/tài khoản). `action` là chuỗi (xem AUDIT_ACTIONS
+/// trong @tirapro/types) để thêm loại mới không cần migration. `actorId` KHÔNG là FK để giữ nhật ký khi xoá người dùng.
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String?
+  summary     String
+  meta        Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, action, createdAt])
+  @@index([actorId, createdAt])
 }

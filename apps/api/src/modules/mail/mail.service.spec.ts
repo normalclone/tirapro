@@ -1,0 +1,133 @@
+import { describe, expect, it, vi } from 'vitest';
+import { MailService, SENSITIVE_TEMPLATES } from './mail.service';
+import { render as renderPasswordReset } from './templates/password-reset';
+
+function setup() {
+  const emailOutbox = {
+    create: vi.fn((_args: { data: Record<string, unknown> }) => Promise.resolve({})),
+    findFirst: vi.fn((_args: unknown) =>
+      Promise.resolve(null as null | { id: string; payload: unknown }),
+    ),
+    updateMany: vi.fn((_args: unknown) => Promise.resolve({ count: 1 })),
+  };
+  const prisma = { emailOutbox };
+  return { service: new MailService(prisma as never), emailOutbox };
+}
+
+const resetPayload = {
+  displayName: 'Minh <A>',
+  resetUrl: 'http://localhost:5173/reset-password?token=abc',
+};
+
+describe('MailService.enqueue', () => {
+  it('ghi vào outbox đúng subject/html/text render từ template', async () => {
+    const { service, emailOutbox } = setup();
+    await service.enqueue({ to: 'a@x.vn', template: 'password-reset', payload: resetPayload });
+
+    const expected = renderPasswordReset(resetPayload);
+    expect(emailOutbox.create).toHaveBeenCalledTimes(1);
+    const data = emailOutbox.create.mock.calls[0]![0].data;
+    expect(data).toMatchObject({
+      to: 'a@x.vn',
+      template: 'password-reset',
+      subject: expected.subject,
+      html: expected.html,
+      text: expected.text,
+    });
+    // HTML phải escape tên người nhận, link nằm trong nút CTA và bản text.
+    expect(expected.html).toContain('Minh &lt;A&gt;');
+    expect(expected.html).not.toContain('Minh <A>');
+    expect(expected.html).toContain(resetPayload.resetUrl);
+    expect(expected.text).toContain(resetPayload.resetUrl);
+  });
+
+  it('dùng tx được truyền vào thay vì prisma gốc', async () => {
+    const { service, emailOutbox } = setup();
+    const tx = { emailOutbox: { create: vi.fn(() => Promise.resolve({})) } };
+    await service.enqueue(
+      { to: 'a@x.vn', template: 'password-reset', payload: { resetUrl: 'http://x/reset?token=t' } },
+      tx as never,
+    );
+    expect(tx.emailOutbox.create).toHaveBeenCalledTimes(1);
+    expect(emailOutbox.create).not.toHaveBeenCalled();
+  });
+
+  it('thông báo: lần đầu tạo hàng mới hẹn gửi sau 5 phút', async () => {
+    const { service, emailOutbox } = setup();
+    const before = Date.now();
+    await service.enqueue({
+      to: 'a@x.vn',
+      template: 'notification',
+      payload: { title: 'T1', body: 'B1', url: 'http://x/1' },
+    });
+    const data = emailOutbox.create.mock.calls[0]![0].data as {
+      scheduledAt: Date;
+      payload: { items: unknown[] };
+    };
+    expect(data.scheduledAt.getTime() - before).toBeGreaterThanOrEqual(5 * 60_000 - 50);
+    expect(data.payload.items).toHaveLength(1);
+  });
+
+  it('thông báo: digest tối đa 50 mục — bỏ mục cũ nhất và ghi số đã bỏ', async () => {
+    const { service, emailOutbox } = setup();
+    const old = Array.from({ length: 50 }, (_, i) => ({
+      title: `T${i}`,
+      body: '',
+      url: 'http://x',
+    }));
+    emailOutbox.findFirst.mockResolvedValue({ id: 'm1', payload: { items: old } });
+    await service.enqueue({
+      to: 'a@x.vn',
+      template: 'notification',
+      payload: { title: 'MOI', body: '', url: 'http://x' },
+    });
+    const args = emailOutbox.updateMany.mock.calls[0]![0] as {
+      data: { subject: string; payload: { items: Array<{ title: string }>; dropped?: number } };
+    };
+    expect(args.data.payload.items).toHaveLength(50);
+    expect(args.data.payload.items[0]!.title).toBe('T1');
+    expect(args.data.payload.items[49]!.title).toBe('MOI');
+    expect(args.data.payload.dropped).toBe(1);
+    expect(args.data.subject).toContain('51');
+  });
+
+  it('thông báo: đã có thư PENDING cho cùng người nhận → gộp vào payload.items, không tạo hàng mới', async () => {
+    const { service, emailOutbox } = setup();
+    emailOutbox.findFirst.mockResolvedValue({
+      id: 'm1',
+      payload: { items: [{ title: 'T1', body: 'B1', url: 'http://x/1' }] },
+    });
+    await service.enqueue({
+      to: 'a@x.vn',
+      template: 'notification',
+      payload: { title: 'T2', body: 'B2', url: 'http://x/2' },
+    });
+    expect(emailOutbox.create).not.toHaveBeenCalled();
+    const args = emailOutbox.updateMany.mock.calls[0]![0] as {
+      where: { id: string; status: string };
+      data: { subject: string; payload: { items: unknown[] } };
+    };
+    expect(args.where).toMatchObject({ id: 'm1', status: 'PENDING' });
+    expect(args.data.payload.items).toHaveLength(2);
+    expect(args.data.subject).toContain('2');
+  });
+});
+
+describe('MailService.enqueue — digest', () => {
+  it('ghi outbox với subject/html/text của template digest; không phải template nhạy cảm', async () => {
+    const { service, emailOutbox } = setup();
+    const payload = {
+      title: 'Tổng kết',
+      subtitle: '',
+      sections: [{ id: 's', title: 'Sprint', lines: ['A & B'] }],
+    };
+    await service.enqueue({ to: 'a@x.vn', template: 'digest', payload });
+    const data = emailOutbox.create.mock.calls[0]![0].data;
+    expect(data).toMatchObject({ to: 'a@x.vn', template: 'digest', subject: 'Tổng kết' });
+    expect(String(data.html)).toContain('A &amp; B');
+    expect(String(data.text)).toContain('A & B');
+    expect(data.payload).toEqual(payload);
+    expect(data.scheduledAt).toBeUndefined(); // không gộp như thông báo — gửi ở lượt cron kế tiếp
+    expect(SENSITIVE_TEMPLATES).not.toContain('digest');
+  });
+});

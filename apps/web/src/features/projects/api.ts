@@ -1,26 +1,33 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery } from '@tanstack/react-query';
 import type { ProjectDto } from '@tirapro/types';
 import { api } from '@/lib/api';
-import { qk, queryClient } from '@/lib/queryClient';
+import { queryClient } from '@/lib/queryClient';
+import { keys } from '@/lib/queryKeys';
 
-export function useProjects() {
+/** Danh sách dự án; mặc định ẩn dự án đã lưu trữ (`includeArchived` để hiện — cache riêng, cùng tiền tố `all`). */
+export function useProjects(includeArchived = false, enabled = true) {
   return useQuery({
-    queryKey: qk.projects,
-    queryFn: async () => (await api.get<ProjectDto[]>('/projects')).data,
+    enabled,
+    queryKey: includeArchived ? keys.projects.withArchived : keys.projects.all,
+    queryFn: async () =>
+      (
+        await api.get<ProjectDto[]>('/projects', {
+          params: includeArchived ? { includeArchived: true } : undefined,
+        })
+      ).data,
   });
 }
 
 export function useProject(key: string) {
   return useQuery({
-    queryKey: qk.project(key),
-    queryFn: async () => (await api.get<ProjectDto>(`/projects/${key}`)).data,
-    enabled: !!key,
+    queryKey: keys.projects.byKey(key),
+    queryFn: key ? async () => (await api.get<ProjectDto>(`/projects/${key}`)).data : skipToken,
   });
 }
 
 function invalidateProject(key: string) {
-  void queryClient.invalidateQueries({ queryKey: qk.project(key) });
-  void queryClient.invalidateQueries({ queryKey: qk.projects });
+  void queryClient.invalidateQueries({ queryKey: keys.projects.byKey(key) });
+  void queryClient.invalidateQueries({ queryKey: keys.projects.all });
 }
 
 /** Tải ảnh đại diện project (cần quyền quản trị project). */
@@ -38,7 +45,35 @@ export function useUploadProjectAvatar(key: string) {
 /** Gỡ ảnh đại diện project. */
 export function useRemoveProjectAvatar(key: string) {
   return useMutation({
-    mutationFn: async () => (await api.delete(`/projects/${key}/avatar`)).data,
+    mutationFn: async () => (await api.delete<ProjectDto>(`/projects/${key}/avatar`)).data,
+    onSuccess: () => invalidateProject(key),
+  });
+}
+
+/** Sửa thông tin dự án (cần quyền quản trị dự án). Mã dự án không đổi được. */
+export interface ProjectPatch {
+  name?: string;
+  description?: string | null;
+  leadId?: string | null;
+  defaultAssigneeMode?: 'UNASSIGNED' | 'PROJECT_LEAD';
+  /** Bật/tắt dự án riêng tư (chỉ quản trị dự án). */
+  isPrivate?: boolean;
+}
+
+export function useUpdateProject(key: string, projectId: string | undefined) {
+  return useMutation({
+    mutationFn: async (patch: ProjectPatch) =>
+      (await api.patch<ProjectDto>(`/projects/${projectId}`, patch)).data,
+    onSuccess: () => invalidateProject(key),
+  });
+}
+
+/** Lưu trữ / khôi phục dự án. Dự án đã lưu trữ chỉ đọc nên các cache việc/sprint cũng được làm mới. */
+export function useArchiveProject(key: string, projectId: string | undefined) {
+  return useMutation({
+    mutationFn: async (archive: boolean) =>
+      (await api.post<ProjectDto>(`/projects/${projectId}/${archive ? 'archive' : 'unarchive'}`))
+        .data,
     onSuccess: () => invalidateProject(key),
   });
 }

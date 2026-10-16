@@ -1,43 +1,151 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutGrid, LayoutDashboard, Settings, Plug, Filter, Users, Menu, X, Sparkles, ShieldCheck, Building2, SlidersHorizontal, Activity, ArrowLeft, Briefcase, BookOpen } from 'lucide-react';
+import {
+  LayoutGrid,
+  LayoutDashboard,
+  Settings,
+  Plug,
+  Filter,
+  Users,
+  Menu,
+  X,
+  Sparkles,
+  ShieldCheck,
+  Building2,
+  SlidersHorizontal,
+  Activity,
+  ArrowLeft,
+  Briefcase,
+  BookOpen,
+} from 'lucide-react';
 import { WorkspaceSwitcher } from '@/features/workspace/WorkspaceSwitcher';
 import { GuideLauncher } from '@/features/guides/GuideLauncher';
+import { useNotificationRealtime } from '@/lib/realtime';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { FloatingActions } from '@/components/layout/FloatingActions';
 import { MaintenanceBanner } from '@/components/layout/MaintenanceBanner';
-import { ShortcutsDialog, SHORTCUTS_EVENT } from '@/components/layout/ShortcutsDialog';
+import { ShortcutsDialog } from '@/components/layout/ShortcutsDialog';
+import { useShellEffects } from '@/components/layout/useShellEffects';
 import { Button } from '@/components/ui/Button';
+import { ConfirmHost } from '@/components/ui/useConfirm';
 import { useAi } from '@/stores/ai';
+import { NAV_RULES, useIsSystemAdmin, useVisibleItems, type NavRule } from '@/lib/navAccess';
 import { useGlobalHotkeys } from '@/lib/useGlobalHotkeys';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 
-const NAV_ITEMS: { to: string; label: string; icon: ReactNode; match: (p: string) => boolean }[] = [
-  { to: '/', label: 'Tổng quan', icon: <LayoutDashboard className="h-4 w-4" />, match: (p) => p === '/' },
-  { to: '/projects', label: 'Dự án', icon: <LayoutGrid className="h-4 w-4" />, match: (p) => p.startsWith('/projects') || p.startsWith('/p/') },
-  { to: '/filters', label: 'Bộ lọc đã lưu', icon: <Filter className="h-4 w-4" />, match: (p) => p.startsWith('/filters') },
-  { to: '/members', label: 'Thành viên', icon: <Users className="h-4 w-4" />, match: (p) => p.startsWith('/members') },
-  { to: '/manage', label: 'Quản trị', icon: <Briefcase className="h-4 w-4" />, match: (p) => p.startsWith('/manage') },
-  { to: '/wiki', label: 'Wiki', icon: <BookOpen className="h-4 w-4" />, match: (p) => p.startsWith('/wiki') },
-  { to: '/connect', label: 'Kết nối', icon: <Plug className="h-4 w-4" />, match: (p) => p.startsWith('/connect') },
-  { to: '/settings', label: 'Cài đặt', icon: <Settings className="h-4 w-4" />, match: (p) => p.startsWith('/settings') },
+interface NavEntry {
+  to: string;
+  label: string;
+  icon: ReactNode;
+  match: (p: string) => boolean;
+  /** Mục chỉ hiện khi người dùng thoả luật này (xem `lib/navAccess.ts`). */
+  rule?: NavRule;
+}
+
+const NAV_ITEMS: NavEntry[] = [
+  {
+    to: '/',
+    label: 'Tổng quan',
+    icon: <LayoutDashboard className="h-4 w-4" />,
+    match: (p) => p === '/',
+  },
+  {
+    to: '/projects',
+    label: 'Dự án',
+    icon: <LayoutGrid className="h-4 w-4" />,
+    match: (p) => p.startsWith('/projects') || p.startsWith('/p/'),
+  },
+  {
+    to: '/filters',
+    label: 'Bộ lọc đã lưu',
+    icon: <Filter className="h-4 w-4" />,
+    match: (p) => p.startsWith('/filters'),
+  },
+  {
+    to: '/members',
+    label: 'Thành viên',
+    icon: <Users className="h-4 w-4" />,
+    match: (p) => p.startsWith('/members'),
+  },
+  {
+    to: '/manage',
+    label: 'Danh mục',
+    icon: <Briefcase className="h-4 w-4" />,
+    match: (p) => p.startsWith('/manage'),
+  },
+  {
+    to: '/wiki',
+    label: 'Wiki',
+    icon: <BookOpen className="h-4 w-4" />,
+    match: (p) => p.startsWith('/wiki'),
+  },
+  {
+    to: '/connect',
+    label: 'Kết nối',
+    icon: <Plug className="h-4 w-4" />,
+    match: (p) => p.startsWith('/connect'),
+    rule: NAV_RULES.connect,
+  },
+  {
+    to: '/settings',
+    label: 'Cài đặt',
+    icon: <Settings className="h-4 w-4" />,
+    match: (p) => p.startsWith('/settings'),
+  },
+  // Admin hệ thống: lối vào console riêng ngay trên sidebar (trước đây chỉ có trong menu người dùng).
+  {
+    to: '/admin',
+    label: 'Quản trị hệ thống',
+    icon: <ShieldCheck className="h-4 w-4" />,
+    match: (p) => p === '/admin' || p.startsWith('/admin/'),
+    rule: NAV_RULES.admin,
+  },
 ];
 
 // Menu riêng cho Admin hệ thống — đứng trên mọi không gian làm việc (không gắn với nơi nào cụ thể).
-const ADMIN_NAV: { to: string; label: string; icon: ReactNode; match: (p: string) => boolean }[] = [
-  { to: '/admin', label: 'Tổng quan', icon: <LayoutDashboard className="h-4 w-4" />, match: (p) => p === '/admin' },
-  { to: '/admin/workspaces', label: 'Không gian làm việc', icon: <Building2 className="h-4 w-4" />, match: (p) => p.startsWith('/admin/workspaces') },
-  { to: '/admin/accounts', label: 'Tài khoản', icon: <Users className="h-4 w-4" />, match: (p) => p.startsWith('/admin/accounts') },
-  { to: '/admin/config', label: 'Cấu hình', icon: <SlidersHorizontal className="h-4 w-4" />, match: (p) => p.startsWith('/admin/config') },
-  { to: '/admin/system', label: 'Hệ thống', icon: <Activity className="h-4 w-4" />, match: (p) => p.startsWith('/admin/system') },
+const ADMIN_NAV: NavEntry[] = [
+  {
+    to: '/admin',
+    label: 'Tổng quan',
+    icon: <LayoutDashboard className="h-4 w-4" />,
+    match: (p) => p === '/admin',
+  },
+  {
+    to: '/admin/workspaces',
+    label: 'Không gian làm việc',
+    icon: <Building2 className="h-4 w-4" />,
+    match: (p) => p.startsWith('/admin/workspaces'),
+  },
+  {
+    to: '/admin/accounts',
+    label: 'Tài khoản',
+    icon: <Users className="h-4 w-4" />,
+    match: (p) => p.startsWith('/admin/accounts'),
+  },
+  {
+    to: '/admin/config',
+    label: 'Cấu hình',
+    icon: <SlidersHorizontal className="h-4 w-4" />,
+    match: (p) => p.startsWith('/admin/config'),
+  },
+  {
+    to: '/admin/system',
+    label: 'Hệ thống',
+    icon: <Activity className="h-4 w-4" />,
+    match: (p) => p.startsWith('/admin/system'),
+  },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const loc = useLocation();
-  const admin = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/');
-  const navItems = admin ? ADMIN_NAV : NAV_ITEMS;
+  // Chế độ menu admin chỉ cho admin hệ thống — người khác mở /admin thấy trang "không có quyền" trong khung thường.
+  const isSysAdmin = useIsSystemAdmin();
+  const admin = isSysAdmin && (loc.pathname === '/admin' || loc.pathname.startsWith('/admin/'));
+  const visibleNav = useVisibleItems(NAV_ITEMS, loc.pathname);
+  const navItems = admin ? ADMIN_NAV : visibleNav;
+  useNotificationRealtime();
   const [navOpen, setNavOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -47,38 +155,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Phím tắt toàn cục (c, /, g b/l/d, ?).
   useGlobalHotkeys();
 
-  // Bảng phím tắt — mở bằng `?` hoặc từ bảng lệnh (sự kiện dùng chung).
-  useEffect(() => {
-    const onOpen = () => setShortcutsOpen(true);
-    window.addEventListener(SHORTCUTS_EVENT, onOpen);
-    return () => window.removeEventListener(SHORTCUTS_EVENT, onOpen);
-  }, []);
-
-  // Đóng drawer khi đổi route (điều hướng xong là ẩn).
-  useEffect(() => {
-    setNavOpen(false);
-  }, [loc.pathname]);
-
-  // Esc để đóng + focus nút đóng khi mở (a11y bàn phím trên mobile).
-  useEffect(() => {
-    if (!navOpen) return;
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setNavOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [navOpen]);
+  useShellEffects({ pathname: loc.pathname, navOpen, setNavOpen, setShortcutsOpen, closeRef });
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full print:block print:h-auto">
       {/* Backdrop (chỉ mobile, khi drawer mở) */}
       {navOpen && (
         <button
           type="button"
           aria-label="Đóng menu"
           onClick={() => setNavOpen(false)}
-          className="fixed inset-0 z-nav-backdrop bg-ink/40 backdrop-blur-[1px] lg:hidden"
+          className="fixed inset-0 z-nav-backdrop bg-ink/40 backdrop-blur-[1px] print:hidden lg:hidden"
         />
       )}
 
@@ -88,16 +175,26 @@ export function AppShell({ children }: { children: ReactNode }) {
         aria-label="Điều hướng chính"
         className={cn(
           'fixed inset-y-0 left-0 z-nav-drawer flex w-64 flex-col border-r border-border bg-surface',
+          // Xoay ngang iPhone: drawer tránh tai thỏ/thanh home (root đã đệm cho phần còn lại).
+          'max-lg:pb-[env(safe-area-inset-bottom)] max-lg:pl-[env(safe-area-inset-left)] max-lg:pt-[env(safe-area-inset-top)]',
           'transition-transform duration-200 ease-out-quart motion-reduce:transition-none',
           'lg:static lg:z-auto lg:w-48 lg:shrink-0 lg:translate-x-0 lg:shadow-none',
+          'print:hidden',
           navOpen ? 'translate-x-0 shadow-lg' : '-translate-x-full',
         )}
       >
         <div className="flex h-[52px] items-center gap-2 px-4">
-          <div className={cn('grid h-6 w-6 place-items-center rounded-md text-xs font-bold', admin ? 'bg-ink-strong text-bg' : 'bg-primary text-primary-fg')}>
+          <div
+            className={cn(
+              'grid h-6 w-6 place-items-center rounded-md text-xs font-bold',
+              admin ? 'bg-ink-strong text-bg' : 'bg-primary text-primary-fg',
+            )}
+          >
             {admin ? <ShieldCheck className="h-3.5 w-3.5" /> : 'T'}
           </div>
-          <span className="font-semibold tracking-tight text-ink-strong">{admin ? 'Quản trị' : 'Tirapro'}</span>
+          <span className="font-semibold tracking-tight text-ink-strong">
+            {admin ? 'Quản trị' : 'Tirapro'}
+          </span>
           <Button
             ref={closeRef}
             variant="ghost"
@@ -109,25 +206,36 @@ export function AppShell({ children }: { children: ReactNode }) {
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2" data-tour="nav-main">
           {admin && (
             <>
-              <NavItem to="/" active={false} icon={<ArrowLeft className="h-4 w-4" />} label="Về ứng dụng" />
+              <NavItem
+                to="/"
+                active={false}
+                icon={<ArrowLeft className="h-4 w-4" />}
+                label="Về ứng dụng"
+              />
               <div className="my-1.5 border-t border-border" />
             </>
           )}
           {navItems.map((item) => (
-            <NavItem key={item.to} to={item.to} active={item.match(loc.pathname)} icon={item.icon} label={item.label} />
+            <NavItem
+              key={item.to}
+              to={item.to}
+              active={item.match(loc.pathname)}
+              icon={item.icon}
+              label={item.label}
+            />
           ))}
         </nav>
-        <div className="border-t border-border p-2 text-xs text-faint">
+        <div className="border-t border-border p-2 text-xs text-faint" data-tour="cmdk-hint">
           <kbd className="rounded bg-surface-2 px-1.5 py-0.5 font-mono">⌘K</kbd> lệnh nhanh
         </div>
       </aside>
 
       {/* Main */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-4">
+      <div className="flex min-w-0 flex-1 flex-col print:block">
+        <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-4 print:hidden">
           <Button
             variant="ghost"
             size="icon"
@@ -159,22 +267,45 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
             {/* Hướng dẫn màn + thông báo dùng chung mọi ngữ cảnh (kể cả admin). */}
             <GuideLauncher />
-            <NotificationBell />
+            <span className="inline-flex" data-tour="topbar-notifications">
+              <NotificationBell />
+            </span>
             <UserMenu />
           </div>
         </header>
-        <MaintenanceBanner />
+        <div className="print:hidden">
+          <MaintenanceBanner />
+        </div>
         {/* scrollbar-gutter:stable — nội dung căn giữa không lệch ngang giữa trang dài (có scrollbar) và trang ngắn */}
-        <main className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]">{children}</main>
+        <main className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable] print:overflow-visible">
+          {children}
+        </main>
       </div>
 
-      {!admin && <FloatingActions />}
+      {/* `contents`: không thêm hộp vào flex của khung; `print:hidden` ẩn cả nút nổi lẫn hộp thoại khi in. */}
+      {!admin && (
+        <div className="contents print:hidden">
+          <FloatingActions />
+        </div>
+      )}
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      {/* Hộp xác nhận dùng chung cho useConfirm() — chỉ mount một lần. */}
+      <ConfirmHost />
     </div>
   );
 }
 
-function NavItem({ to, active, icon, label }: { to: string; active: boolean; icon: ReactNode; label: string }) {
+function NavItem({
+  to,
+  active,
+  icon,
+  label,
+}: {
+  to: string;
+  active: boolean;
+  icon: ReactNode;
+  label: string;
+}) {
   return (
     <Link
       to={to}

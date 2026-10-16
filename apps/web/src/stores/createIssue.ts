@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 
 /** Ngữ cảnh mở popup tạo issue (mở được ở bất kỳ đâu). */
-export interface CreateIssuePreset {
+interface CreateIssuePreset {
   /** Dự án chọn sẵn (key). */
   projectKey?: string;
+  /** Dự án hiện tại đã lưu trữ → để ô Dự án TRỐNG, focus ô đó kèm gợi ý (không tự chọn dự án nào). */
+  pickProject?: boolean;
   /** Tạo sub-task của issue này. */
   parentId?: string;
   /** Ưu tiên loại sub-task khi mở. */

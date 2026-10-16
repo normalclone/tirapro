@@ -35,7 +35,7 @@ export function WatchButton({ issueId }: { issueId: string }) {
         type="button"
         onClick={() => void setWatch(true)}
         disabled={busy}
-        title="Theo dõi vấn đề này để nhận cập nhật"
+        title="Theo dõi công việc này để nhận cập nhật"
         className={PILL}
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
@@ -47,7 +47,13 @@ export function WatchButton({ issueId }: { issueId: string }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <button type="button" disabled={busy} title="Đang theo dõi" aria-label="Đang theo dõi — mở tuỳ chọn" className={PILL}>
+        <button
+          type="button"
+          disabled={busy}
+          title="Đang theo dõi"
+          aria-label="Đang theo dõi — mở tuỳ chọn"
+          className={PILL}
+        >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
           Đang theo dõi
           <ChevronDown className="-mr-1 h-4 w-4 text-muted" aria-hidden />

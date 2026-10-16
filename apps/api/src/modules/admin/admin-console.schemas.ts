@@ -28,5 +28,7 @@ export const auditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   workspaceId: z.string().optional(),
   action: z.string().optional(),
+  /** `admin` (mặc định) = nhật ký quản trị (AuditLog); `activity` = hoạt động công việc (hành vi cũ). */
+  kind: z.enum(['admin', 'activity']).default('admin'),
 });
 export type AuditQueryInput = z.infer<typeof auditQuerySchema>;

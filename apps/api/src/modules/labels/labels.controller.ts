@@ -1,25 +1,39 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
-import type { AuthUser } from '../../common/types/request';
 import { LabelsService } from './labels.service';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+import { PERMISSIONS } from '@tirapro/types';
+import { IssueOwnershipService } from '../rbac/issue-ownership.service';
+import { OwnOnly } from '../../common/decorators/own-only.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/types/request';
 
 const hexColor = z
   .string()
   .regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Màu phải là mã hex hợp lệ');
 
 const createLabelSchema = z.object({
-  name: z.string().trim().min(1, 'Tên nhãn không được để trống').max(50, 'Tên nhãn tối đa 50 ký tự'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Tên nhãn không được để trống')
+    .max(50, 'Tên nhãn tối đa 50 ký tự'),
   color: hexColor.optional(),
 });
 type CreateLabelDto = z.infer<typeof createLabelSchema>;
 
 const updateLabelSchema = z
   .object({
-    name: z.string().trim().min(1, 'Tên nhãn không được để trống').max(50, 'Tên nhãn tối đa 50 ký tự').optional(),
+    name: z
+      .string()
+      .trim()
+      .min(1, 'Tên nhãn không được để trống')
+      .max(50, 'Tên nhãn tối đa 50 ký tự')
+      .optional(),
     color: hexColor.optional(),
   })
   .refine((v) => v.name !== undefined || v.color !== undefined, {
@@ -35,56 +49,72 @@ type AttachLabelDto = z.infer<typeof attachLabelSchema>;
 @ApiTags('labels')
 @Controller()
 export class LabelsController {
-  constructor(private readonly labels: LabelsService) {}
+  constructor(
+    private readonly labels: LabelsService,
+    private readonly ownership: IssueOwnershipService,
+  ) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/labels')
-  async list(@CurrentUser() user: AuthUser, @Param('projectId') projectId: string) {
-    return this.labels.list(this.ws(user), projectId);
+  async list(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
+    return this.labels.list(workspaceId, projectId);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/labels')
   async create(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(createLabelSchema)) dto: CreateLabelDto,
   ) {
-    return this.labels.create(this.ws(user), projectId, dto);
+    return this.labels.create(workspaceId, projectId, dto);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  @ProjectRef('label', 'id')
   @Patch('labels/:id')
   async update(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateLabelSchema)) dto: UpdateLabelDto,
   ) {
-    return this.labels.update(this.ws(user), id, dto);
+    return this.labels.update(workspaceId, id, dto);
   }
 
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  @ProjectRef('label', 'id')
   @Delete('labels/:id')
-  async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.labels.remove(this.ws(user), id);
+  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.labels.remove(workspaceId, id);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/labels')
   async attach(
+    @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(attachLabelSchema)) dto: AttachLabelDto,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    return this.labels.attach(this.ws(user), issueId, dto.labelId);
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
+    return this.labels.attach(workspaceId, issueId, dto.labelId);
   }
 
+  @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/labels/:labelId')
   async detach(
+    @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Param('labelId') labelId: string,
+    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    return this.labels.detach(this.ws(user), issueId, labelId);
+    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
+    return this.labels.detach(workspaceId, issueId, labelId);
   }
 }

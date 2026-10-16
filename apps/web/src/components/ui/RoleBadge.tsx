@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-import { roleLabel, roleHint } from '@/lib/roleLabels';
+import { roleLabel } from '@tirapro/types';
+import { roleHint } from '@/lib/roleLabels';
 
 /** Màu dự phòng khi vai trò chưa đặt màu (token faint, trung tính). */
 const FALLBACK_COLOR = 'var(--faint)';

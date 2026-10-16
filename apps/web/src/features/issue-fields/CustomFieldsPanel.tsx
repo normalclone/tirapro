@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/Input';
+import { DateInput, DateTimeInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { displayCustomFieldValue } from './displayValue';
 import {
   useIssueCustomFields,
   useSetCustomField,
@@ -11,8 +13,10 @@ import {
   type CustomFieldValue,
   type IssueCustomField,
 } from './api';
+import { toDateTimeInput } from '@/lib/dateFormat';
 
-export function CustomFieldsPanel({ issueId }: { issueId: string }) {
+/** `canEdit`: được sửa issue này (`useCanEditIssue`) — không thì hiện giá trị chỉ-đọc, không dựng ô nhập (tránh 403 khi lưu). */
+export function CustomFieldsPanel({ issueId, canEdit }: { issueId: string; canEdit: boolean }) {
   const { data } = useIssueCustomFields(issueId);
   const setField = useSetCustomField(issueId);
 
@@ -30,39 +34,61 @@ export function CustomFieldsPanel({ issueId }: { issueId: string }) {
   return (
     <div>
       <p className="mb-1.5 text-sm font-medium text-muted">Trường tùy chỉnh</p>
-      <div className="grid grid-cols-[110px_1fr] gap-y-2.5 text-sm">
+      {/* Chỉ-đọc dùng dl/dt/dd (cặp tên-giá trị đúng ngữ nghĩa); sửa được dùng label gắn với ô nhập. */}
+      <Rows as={canEdit ? 'div' : 'dl'}>
         {data.map((item) => (
           <FieldRow
             key={item.field.id}
             item={item}
             saving={setField.isPending}
+            canEdit={canEdit}
             onSave={(value) => void save(item.field.id, value)}
           />
         ))}
-      </div>
+      </Rows>
     </div>
   );
+}
+
+function Rows({ as: Tag, children }: { as: 'div' | 'dl'; children: ReactNode }) {
+  return <Tag className="grid grid-cols-[110px_1fr] gap-y-2.5 text-sm">{children}</Tag>;
 }
 
 function FieldRow({
   item,
   saving,
+  canEdit,
   onSave,
 }: {
   item: IssueCustomField;
   saving: boolean;
+  canEdit: boolean;
   onSave: (value: unknown) => void;
 }) {
   const { field } = item;
+  const required = field.isRequired && (
+    <span className="ml-0.5 text-danger" aria-hidden>
+      *
+    </span>
+  );
+  if (!canEdit) {
+    return (
+      <>
+        <dt className="flex items-start pt-1 text-muted">
+          {field.name}
+          {required}
+        </dt>
+        <dd className="min-w-0 whitespace-pre-wrap break-words pt-1 text-ink">
+          {displayCustomFieldValue(field, item.value) ?? <span className="text-faint">—</span>}
+        </dd>
+      </>
+    );
+  }
   return (
     <>
       <label className="flex items-start pt-1 text-muted" htmlFor={`cf-${field.id}`}>
         {field.name}
-        {field.isRequired && (
-          <span className="ml-0.5 text-danger" aria-hidden>
-            *
-          </span>
-        )}
+        {required}
       </label>
       <div className="min-w-0">
         <FieldEditor field={field} value={item.value} saving={saving} onSave={onSave} />
@@ -88,7 +114,14 @@ function FieldEditor({
   switch (field.type) {
     case 'TEXT':
     case 'URL':
-      return <TextField id={id} value={asString(value)} type={field.type === 'URL' ? 'url' : 'text'} onSave={onSave} />;
+      return (
+        <TextField
+          id={id}
+          value={asString(value)}
+          type={field.type === 'URL' ? 'url' : 'text'}
+          onSave={onSave}
+        />
+      );
 
     case 'NUMBER':
       return <NumberField id={id} value={asString(value)} onSave={onSave} />;
@@ -97,10 +130,10 @@ function FieldEditor({
       return <TextAreaField id={id} value={asString(value)} onSave={onSave} />;
 
     case 'DATE':
-      return <DateField id={id} value={asString(value).slice(0, 10)} type="date" onSave={onSave} />;
+      return <DateField id={id} value={asString(value).slice(0, 10)} onSave={onSave} />;
 
     case 'DATETIME':
-      return <DateField id={id} value={toDatetimeLocal(asString(value))} type="datetime-local" onSave={onSave} />;
+      return <DateTimeField id={id} value={toDateTimeInput(asString(value))} onSave={onSave} />;
 
     case 'CHECKBOX':
       return (
@@ -121,17 +154,35 @@ function FieldEditor({
           value={typeof value === 'string' ? value : ''}
           disabled={saving}
           onChange={(v) => onSave(v === '' ? null : v)}
-          options={[{ value: '', label: '—' }, ...options.map((o) => ({ value: o.id, label: o.value }))]}
+          options={[
+            { value: '', label: '—' },
+            ...options.map((o) => ({ value: o.id, label: o.value })),
+          ]}
           className="w-full"
         />
       );
 
     case 'MULTI_SELECT':
-      return <MultiSelectField value={asStringArray(value)} options={options} saving={saving} onSave={onSave} />;
+      return (
+        <MultiSelectField
+          value={asStringArray(value)}
+          options={options}
+          saving={saving}
+          onSave={onSave}
+        />
+      );
 
     case 'USER':
       // TODO user picker
-      return <TextField id={id} value={asString(value)} type="text" placeholder="ID người dùng" onSave={onSave} />;
+      return (
+        <TextField
+          id={id}
+          value={asString(value)}
+          type="text"
+          placeholder="ID người dùng"
+          onSave={onSave}
+        />
+      );
 
     default:
       return null;
@@ -177,7 +228,15 @@ function TextField({
   );
 }
 
-function NumberField({ id, value, onSave }: { id: string; value: string; onSave: (value: unknown) => void }) {
+function NumberField({
+  id,
+  value,
+  onSave,
+}: {
+  id: string;
+  value: string;
+  onSave: (value: unknown) => void;
+}) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const commit = () => {
@@ -202,7 +261,15 @@ function NumberField({ id, value, onSave }: { id: string; value: string; onSave:
   );
 }
 
-function TextAreaField({ id, value, onSave }: { id: string; value: string; onSave: (value: unknown) => void }) {
+function TextAreaField({
+  id,
+  value,
+  onSave,
+}: {
+  id: string;
+  value: string;
+  onSave: (value: unknown) => void;
+}) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const commit = () => {
@@ -224,30 +291,59 @@ function TextAreaField({ id, value, onSave }: { id: string; value: string; onSav
   );
 }
 
+/** Lưu khi ô chốt giá trị (Enter / rời ô / chọn từ lịch) — không lưu mỗi phím gõ dở. */
+function saveDate(raw: string, onSave: (value: unknown) => void) {
+  if (raw === '') return onSave(null);
+  const d = new Date(raw);
+  if (!Number.isNaN(d.getTime())) onSave(d.toISOString());
+}
+
 function DateField({
   id,
   value,
-  type,
   onSave,
 }: {
   id: string;
   value: string;
-  type: 'date' | 'datetime-local';
   onSave: (value: unknown) => void;
 }) {
-  // Lưu ngay khi đổi; input date-native không cần debounce.
-  const handle = (raw: string) => {
-    if (raw === '') return onSave(null);
-    const d = new Date(raw);
-    if (!Number.isNaN(d.getTime())) onSave(d.toISOString());
-  };
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
   return (
-    <Input
+    <DateInput
       id={id}
-      type={type}
-      value={value}
-      onChange={(e) => handle(e.target.value)}
+      value={draft}
+      onChange={(iso) => {
+        setDraft(iso);
+        if (iso === '') saveDate('', onSave);
+      }}
+      onCommit={(iso) => saveDate(iso, onSave)}
       className="h-9 text-sm tabular"
+    />
+  );
+}
+
+function DateTimeField({
+  id,
+  value,
+  onSave,
+}: {
+  id: string;
+  value: string;
+  onSave: (value: unknown) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <DateTimeInput
+      id={id}
+      value={draft}
+      onChange={(v) => {
+        setDraft(v);
+        if (v === '') saveDate('', onSave);
+      }}
+      onCommit={(v) => saveDate(v, onSave)}
+      className="text-sm tabular"
     />
   );
 }
@@ -307,13 +403,4 @@ function asString(value: CustomFieldValue): string {
 
 function asStringArray(value: CustomFieldValue): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
-}
-
-/** ISO → `yyyy-MM-ddTHH:mm` cho input datetime-local (giờ địa phương). */
-function toDatetimeLocal(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

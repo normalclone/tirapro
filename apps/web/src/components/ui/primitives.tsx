@@ -3,7 +3,15 @@ import { Loader2 } from 'lucide-react';
 import { cn, initials } from '@/lib/utils';
 
 /** Avatar tròn với initials fallback. */
-export function Avatar({ name, src, size = 24 }: { name: string; src?: string | null; size?: number }) {
+export function Avatar({
+  name,
+  src,
+  size = 24,
+}: {
+  name: string;
+  src?: string | null;
+  size?: number;
+}) {
   return (
     <span
       className="inline-flex shrink-0 items-center justify-center rounded-full bg-primary-subtle text-[10px] font-semibold text-primary overflow-hidden"
@@ -16,9 +24,25 @@ export function Avatar({ name, src, size = 24 }: { name: string; src?: string | 
 }
 
 /** `title` = câu giải nghĩa hiện tức thì khi rê chuột (xem InstantTooltip). */
-export function Badge({ children, className, dotColor, title }: { children: ReactNode; className?: string; dotColor?: string; title?: string }) {
+export function Badge({
+  children,
+  className,
+  dotColor,
+  title,
+}: {
+  children: ReactNode;
+  className?: string;
+  dotColor?: string;
+  title?: string;
+}) {
   return (
-    <span title={title} className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium', className)}>
+    <span
+      title={title}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium',
+        className,
+      )}
+    >
       {dotColor && <span className="h-1.5 w-1.5 rounded-full" style={{ background: dotColor }} />}
       {children}
     </span>
@@ -49,7 +73,17 @@ export function DelayedSpinner({ delay = 350, label }: { delay?: number; label?:
   );
 }
 
-export function EmptyState({ icon, title, description, action }: { icon?: ReactNode; title: string; description?: string; action?: ReactNode }) {
+export function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+}: {
+  icon?: ReactNode;
+  title: string;
+  description?: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-12 text-center">
       {icon && <div className="text-faint">{icon}</div>}

@@ -2,10 +2,26 @@ import type { RaidKind, RaidLevel, RaidStatus } from './api';
 
 /** Bốn loại mục theo dõi (quốc tế gọi là RAID) — nhãn tiếng Việt dùng chung cho tab, bảng và modal. */
 export const RAID_KINDS: { value: RaidKind; label: string; description: string }[] = [
-  { value: 'RISK', label: 'Rủi ro', description: 'Điều chưa xảy ra nhưng có thể xảy ra và gây hại — ghi lại để phòng trước.' },
-  { value: 'ASSUMPTION', label: 'Giả định', description: 'Điều bạn đang tin là đúng mà chưa kiểm chứng — nếu sai thì kế hoạch lệch.' },
-  { value: 'ISSUE', label: 'Vấn đề', description: 'Điều đang xảy ra và đang cản trở công việc — cần xử lý ngay.' },
-  { value: 'DEPENDENCY', label: 'Phụ thuộc', description: 'Việc phải chờ bên khác làm xong — bên đó trễ thì mình trễ theo.' },
+  {
+    value: 'RISK',
+    label: 'Rủi ro',
+    description: 'Điều chưa xảy ra nhưng có thể xảy ra và gây hại — ghi lại để phòng trước.',
+  },
+  {
+    value: 'ASSUMPTION',
+    label: 'Giả định',
+    description: 'Điều bạn đang tin là đúng mà chưa kiểm chứng — nếu sai thì kế hoạch lệch.',
+  },
+  {
+    value: 'ISSUE',
+    label: 'Vấn đề',
+    description: 'Điều đang xảy ra và đang cản trở công việc — cần xử lý ngay.',
+  },
+  {
+    value: 'DEPENDENCY',
+    label: 'Phụ thuộc',
+    description: 'Việc phải chờ bên khác làm xong — bên đó trễ thì mình trễ theo.',
+  },
 ];
 
 export const RAID_KIND_LABEL: Record<RaidKind, string> = {
@@ -15,11 +31,30 @@ export const RAID_KIND_LABEL: Record<RaidKind, string> = {
   DEPENDENCY: 'Phụ thuộc',
 };
 
-export const RAID_STATUS_META: Record<RaidStatus, { label: string; className: string; hint: string }> = {
-  OPEN: { label: 'Chưa xử lý', className: 'bg-warning/12 text-warning', hint: 'Đã ghi nhận nhưng chưa ai bắt tay vào làm gì' },
-  MITIGATING: { label: 'Đang xử lý', className: 'bg-primary-subtle text-primary', hint: 'Đang làm để giảm xác suất hoặc giảm thiệt hại' },
-  CLOSED: { label: 'Đã xong', className: 'bg-success/12 text-success', hint: 'Đã xử lý xong hoặc không còn đáng lo nữa' },
-  ACCEPTED: { label: 'Chấp nhận', className: 'bg-surface-2 text-muted', hint: 'Cả nhóm quyết định sống chung, không tốn công xử lý' },
+export const RAID_STATUS_META: Record<
+  RaidStatus,
+  { label: string; className: string; hint: string }
+> = {
+  OPEN: {
+    label: 'Chưa xử lý',
+    className: 'bg-warning/12 text-warning',
+    hint: 'Đã ghi nhận nhưng chưa ai bắt tay vào làm gì',
+  },
+  MITIGATING: {
+    label: 'Đang xử lý',
+    className: 'bg-primary-subtle text-primary',
+    hint: 'Đang làm để giảm xác suất hoặc giảm thiệt hại',
+  },
+  CLOSED: {
+    label: 'Đã xong',
+    className: 'bg-success/12 text-success',
+    hint: 'Đã xử lý xong hoặc không còn đáng lo nữa',
+  },
+  ACCEPTED: {
+    label: 'Chấp nhận',
+    className: 'bg-surface-2 text-muted',
+    hint: 'Cả nhóm quyết định sống chung, không tốn công xử lý',
+  },
 };
 
 export const RAID_STATUS_OPTIONS: { value: RaidStatus; label: string }[] = [
@@ -35,7 +70,11 @@ export const RAID_STATUS_OPTIONS: { value: RaidStatus; label: string }[] = [
  */
 export const RAID_LEVEL_META: Record<RaidLevel, { label: string; badge: string; cell: string }> = {
   LOW: { label: 'Thấp', badge: 'bg-success/12 text-success', cell: 'bg-success/10 text-success' },
-  MEDIUM: { label: 'Trung bình', badge: 'bg-warning/12 text-warning', cell: 'bg-warning/12 text-warning' },
+  MEDIUM: {
+    label: 'Trung bình',
+    badge: 'bg-warning/12 text-warning',
+    cell: 'bg-warning/12 text-warning',
+  },
   HIGH: { label: 'Cao', badge: 'bg-danger/12 text-danger', cell: 'bg-danger/18 text-danger' },
   CRITICAL: { label: 'Nghiêm trọng', badge: 'bg-danger text-white', cell: 'bg-danger text-white' },
 };

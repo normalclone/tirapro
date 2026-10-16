@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { FixVersionType, VersionStatus } from '@tirapro/types';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { DOMAIN_EVENTS, FixVersionType, VersionStatus } from '@tirapro/types';
+import type { HistoryField } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import {
-  BusinessRuleException,
-  NotFoundAppException,
-} from '../../common/exceptions/app.exception';
+import { assertIssueWritable, assertProjectWritable } from '../../common/project-writable';
+import { issueSetsSelect, mapIssueSets } from '../issues/issue-sets';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 
 type ComponentRow = Prisma.ComponentGetPayload<true>;
 type VersionRow = Prisma.VersionGetPayload<true>;
@@ -58,7 +59,10 @@ export interface UpdateVersionInput {
 
 @Injectable()
 export class ComponentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventEmitter2,
+  ) {}
 
   // ============================ COMPONENTS ==================================
 
@@ -77,6 +81,7 @@ export class ComponentsService {
     input: CreateComponentInput,
   ): Promise<ComponentDto> {
     await this.requireProject(workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     try {
       const row = await this.prisma.component.create({
         data: {
@@ -100,7 +105,8 @@ export class ComponentsService {
     componentId: string,
     input: UpdateComponentInput,
   ): Promise<ComponentDto> {
-    await this.requireComponent(workspaceId, componentId);
+    const cur = await this.requireComponent(workspaceId, componentId);
+    await assertProjectWritable(this.prisma, cur.projectId);
     const data: Prisma.ComponentUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
     if (input.description !== undefined) data.description = input.description;
@@ -119,53 +125,61 @@ export class ComponentsService {
     }
   }
 
-  async removeComponent(
-    workspaceId: string,
-    componentId: string,
-  ): Promise<{ success: true }> {
-    await this.requireComponent(workspaceId, componentId);
+  async removeComponent(workspaceId: string, componentId: string): Promise<{ success: true }> {
+    const cur = await this.requireComponent(workspaceId, componentId);
+    await assertProjectWritable(this.prisma, cur.projectId);
     await this.prisma.component.delete({ where: { id: componentId } });
     return { success: true };
   }
 
   async attachComponent(
     workspaceId: string,
+    userId: string,
     issueId: string,
     componentId: string,
   ): Promise<{ ok: true }> {
     const issue = await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const component = await this.prisma.component.findFirst({
       where: { id: componentId, projectId: issue.projectId },
-      select: { id: true },
+      select: { id: true, name: true },
     });
     if (!component) throw new NotFoundAppException('Hạng mục');
     try {
-      await this.prisma.issueComponent.create({ data: { issueId, componentId } });
+      await this.prisma.$transaction(async (tx) => {
+        await tx.issueComponent.create({ data: { issueId, componentId } });
+        await this.recordSet(tx, userId, issue, 'COMPONENT', null, component.name);
+      });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         return { ok: true };
       }
       throw e;
     }
+    await this.emitSets(issueId);
     return { ok: true };
   }
 
   async detachComponent(
     workspaceId: string,
+    userId: string,
     issueId: string,
     componentId: string,
   ): Promise<{ ok: true }> {
-    await this.requireIssue(workspaceId, issueId);
-    try {
-      await this.prisma.issueComponent.delete({
-        where: { issueId_componentId: { issueId, componentId } },
-      });
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-        return { ok: true };
-      }
-      throw e;
-    }
+    const issue = await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
+    const component = await this.prisma.component.findFirst({
+      where: { id: componentId, projectId: issue.projectId },
+      select: { name: true },
+    });
+    const removed = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.issueComponent.deleteMany({ where: { issueId, componentId } });
+      // Gỡ cái chưa gắn là idempotent: không để lại lịch sử, không phát sự kiện.
+      if (count > 0)
+        await this.recordSet(tx, userId, issue, 'COMPONENT', component?.name ?? componentId, null);
+      return count > 0;
+    });
+    if (removed) await this.emitSets(issueId);
     return { ok: true };
   }
 
@@ -186,6 +200,7 @@ export class ComponentsService {
     input: CreateVersionInput,
   ): Promise<VersionDto> {
     await this.requireProject(workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     try {
       const row = await this.prisma.version.create({
         data: {
@@ -211,7 +226,8 @@ export class ComponentsService {
     versionId: string,
     input: UpdateVersionInput,
   ): Promise<VersionDto> {
-    await this.requireVersion(workspaceId, versionId);
+    const cur = await this.requireVersion(workspaceId, versionId);
+    await assertProjectWritable(this.prisma, cur.projectId);
     const data: Prisma.VersionUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
     if (input.description !== undefined) data.description = input.description;
@@ -236,56 +252,113 @@ export class ComponentsService {
     }
   }
 
-  async removeVersion(
-    workspaceId: string,
-    versionId: string,
-  ): Promise<{ success: true }> {
-    await this.requireVersion(workspaceId, versionId);
+  async removeVersion(workspaceId: string, versionId: string): Promise<{ success: true }> {
+    const cur = await this.requireVersion(workspaceId, versionId);
+    await assertProjectWritable(this.prisma, cur.projectId);
     await this.prisma.version.delete({ where: { id: versionId } });
     return { success: true };
   }
 
   async attachVersion(
     workspaceId: string,
+    userId: string,
     issueId: string,
     versionId: string,
     type: FixVersionType,
   ): Promise<{ ok: true }> {
     const issue = await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const version = await this.prisma.version.findFirst({
       where: { id: versionId, projectId: issue.projectId },
-      select: { id: true },
+      select: { id: true, name: true },
     });
     if (!version) throw new NotFoundAppException('Phiên bản');
     try {
-      await this.prisma.issueFixVersion.create({ data: { issueId, versionId, type } });
+      await this.prisma.$transaction(async (tx) => {
+        await tx.issueFixVersion.create({ data: { issueId, versionId, type } });
+        await this.recordSet(tx, userId, issue, 'FIX_VERSION', null, `${type}:${version.name}`);
+      });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         return { ok: true };
       }
       throw e;
     }
+    await this.emitSets(issueId);
     return { ok: true };
   }
 
   async detachVersion(
     workspaceId: string,
+    userId: string,
     issueId: string,
     versionId: string,
     type: FixVersionType,
   ): Promise<{ ok: true }> {
-    await this.requireIssue(workspaceId, issueId);
-    try {
-      await this.prisma.issueFixVersion.delete({
-        where: { issueId_versionId_type: { issueId, versionId, type } },
+    const issue = await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
+    const version = await this.prisma.version.findFirst({
+      where: { id: versionId, projectId: issue.projectId },
+      select: { name: true },
+    });
+    const removed = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.issueFixVersion.deleteMany({
+        where: { issueId, versionId, type },
       });
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-        return { ok: true };
-      }
-      throw e;
-    }
+      if (count > 0)
+        await this.recordSet(
+          tx,
+          userId,
+          issue,
+          'FIX_VERSION',
+          `${type}:${version?.name ?? versionId}`,
+          null,
+        );
+      return count > 0;
+    });
+    if (removed) await this.emitSets(issueId);
     return { ok: true };
+  }
+
+  /**
+   * Lịch sử gắn/bỏ (oldValue = cái bị bỏ, newValue = cái được gắn). Phiên bản lưu `FIX:v1.0` / `AFFECTS:v1.0` để
+   * FE phân biệt loại. Không đổi `version`/`updatedAt` của việc (giống nhãn) nên không có đường ghi nào khác.
+   */
+  private async recordSet(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    issue: { id: string; projectId: string; sprintId: string | null },
+    field: HistoryField,
+    oldValue: string | null,
+    newValue: string | null,
+  ): Promise<void> {
+    await tx.issueHistory.create({
+      data: {
+        issueId: issue.id,
+        projectId: issue.projectId,
+        sprintId: issue.sprintId,
+        actorId: userId,
+        field,
+        oldValue,
+        newValue,
+        occurredAt: new Date(),
+      },
+    });
+  }
+
+  /** Phát SAU commit: client thay thẳng tập thành phần/phiên bản theo id (không đổi `version` nên không qua issue:updated). */
+  private async emitSets(issueId: string): Promise<void> {
+    const row = await this.prisma.issue.findFirst({
+      where: { id: issueId, deletedAt: null },
+      select: { id: true, key: true, projectId: true, ...issueSetsSelect },
+    });
+    if (!row) return;
+    this.events.emit(DOMAIN_EVENTS.ISSUE_SETS_CHANGED, {
+      issueId: row.id,
+      issueKey: row.key,
+      projectId: row.projectId,
+      ...mapIssueSets(row),
+    });
   }
 
   // ============================ SCOPE GUARDS ================================
@@ -301,8 +374,8 @@ export class ComponentsService {
 
   private async requireComponent(workspaceId: string, componentId: string) {
     const component = await this.prisma.component.findFirst({
-      where: { id: componentId, project: { workspaceId } },
-      select: { id: true },
+      where: { id: componentId, project: { workspaceId, deletedAt: null } },
+      select: { id: true, projectId: true },
     });
     if (!component) throw new NotFoundAppException('Hạng mục');
     return component;
@@ -310,8 +383,8 @@ export class ComponentsService {
 
   private async requireVersion(workspaceId: string, versionId: string) {
     const version = await this.prisma.version.findFirst({
-      where: { id: versionId, project: { workspaceId } },
-      select: { id: true },
+      where: { id: versionId, project: { workspaceId, deletedAt: null } },
+      select: { id: true, projectId: true },
     });
     if (!version) throw new NotFoundAppException('Phiên bản');
     return version;
@@ -320,7 +393,7 @@ export class ComponentsService {
   private async requireIssue(workspaceId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
       where: { id: issueId, workspaceId, deletedAt: null },
-      select: { id: true, projectId: true },
+      select: { id: true, projectId: true, sprintId: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
@@ -344,7 +417,7 @@ export class ComponentsService {
       projectId: row.projectId,
       name: row.name,
       description: row.description,
-      status: row.status as VersionStatus,
+      status: row.status,
       startDate: row.startDate ? row.startDate.toISOString() : null,
       releaseDate: row.releaseDate ? row.releaseDate.toISOString() : null,
     };

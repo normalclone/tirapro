@@ -6,10 +6,8 @@ import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import type { ReadStream } from 'node:fs';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import {
-  BusinessRuleException,
-  NotFoundAppException,
-} from '../../common/exceptions/app.exception';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertIssueWritable } from '../../common/project-writable';
 
 /** Cấu hình lưu trữ (mirror config.storage). */
 interface StorageConfig {
@@ -61,6 +59,7 @@ export class AttachmentsService {
     file: Express.Multer.File | undefined,
   ): Promise<AttachmentDto> {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     if (!file) throw new BusinessRuleException('Thiếu file');
 
     const maxBytes = this.storage.maxFileSizeMb * 1024 * 1024;
@@ -115,6 +114,7 @@ export class AttachmentsService {
   /** Xóa tệp đính kèm + best-effort xóa file trên đĩa. */
   async remove(workspaceId: string, id: string): Promise<{ ok: true }> {
     const att = await this.requireScoped(workspaceId, id);
+    if (att.issueId) await assertIssueWritable(this.prisma, att.issueId);
     await this.prisma.attachment.delete({ where: { id: att.id } });
     try {
       await fs.unlink(this.absPath(att.storageKey));

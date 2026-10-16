@@ -3,7 +3,7 @@ import { z } from 'zod';
 /** Chuỗi ngày ISO (chấp nhận cả 'YYYY-MM-DD' lẫn ISO đầy đủ). */
 const isoDate = z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'Ngày không hợp lệ');
 
-export const dependencyTypeSchema = z.enum(['FS', 'SS', 'FF', 'SF']);
+const dependencyTypeSchema = z.enum(['FS', 'SS', 'FF', 'SF']);
 
 export const createDependencySchema = z.object({
   predecessorId: z.string().min(1, 'Thiếu công việc trước'),

@@ -25,6 +25,32 @@ export const changePasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 
+/** Cập nhật hồ sơ cá nhân (PATCH /users/me) — khoá lạ bị loại bỏ, không ghi thẳng vào DB. */
+export const updateProfileSchema = z.object({
+  displayName: z
+    .string()
+    .trim()
+    .min(1, 'Tên hiển thị không được để trống')
+    .max(100, 'Tên hiển thị tối đa 100 ký tự')
+    .optional(),
+  avatarUrl: z.string().trim().max(2048, 'Đường dẫn ảnh quá dài').nullable().optional(),
+  timezone: z.string().trim().min(1).max(64, 'Múi giờ không hợp lệ').optional(),
+  locale: z.string().trim().min(2).max(16, 'Ngôn ngữ không hợp lệ').optional(),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Email không hợp lệ').toLowerCase(),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(20, 'Liên kết không hợp lệ').max(200),
+  newPassword: passwordSchema,
+});
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

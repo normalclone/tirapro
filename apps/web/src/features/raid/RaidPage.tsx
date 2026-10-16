@@ -1,21 +1,41 @@
 import { useMemo, useState } from 'react';
 import { Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { ExportMenu } from '@/components/ui/ExportMenu';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { DueBadge } from '@/components/ui/DueBadge';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
+import { downloadText } from '@/lib/download';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useProjects } from '@/features/projects/api';
 import { RaidEditorModal } from './RaidEditorModal';
-import { useDeleteRaidItem, useRaidItems, type RaidItemDto, type RaidKind, type RaidStatus } from './api';
+import { raidCsv } from './exportCsv';
 import {
-  IMPACT_LABELS, PROBABILITY_LABELS, RAID_KINDS, RAID_LEVEL_LEGEND, RAID_LEVEL_META, RAID_STATUS_META,
-  SCALE, raidLevelOf,
+  useDeleteRaidItem,
+  useRaidItems,
+  type RaidItemDto,
+  type RaidKind,
+  type RaidStatus,
+} from './api';
+import {
+  IMPACT_LABELS,
+  PROBABILITY_LABELS,
+  RAID_KINDS,
+  RAID_LEVEL_LEGEND,
+  RAID_LEVEL_META,
+  RAID_STATUS_META,
+  SCALE,
+  raidLevelOf,
 } from './constants';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { useScopeParam } from '@/lib/scopeParam';
+import { ScrollX } from '@/components/ui/ScrollX';
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'Mọi trạng thái' },
@@ -36,7 +56,9 @@ interface Cell {
  * Mỗi ô đếm số mục; bấm ô để lọc bảng bên dưới, bấm lại để bỏ lọc.
  */
 function HeatMatrix({
-  items, selected, onSelect,
+  items,
+  selected,
+  onSelect,
 }: {
   items: RaidItemDto[];
   selected: Cell | null;
@@ -63,8 +85,8 @@ function HeatMatrix({
         <p className="text-xs text-faint">Bấm một ô để chỉ xem các mục trong ô đó</p>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="flex min-w-[26rem] gap-2">
+      <div>
+        <div className="flex gap-2">
           <div className="flex shrink-0 items-center">
             <span
               className="whitespace-nowrap text-xs font-medium text-muted [writing-mode:vertical-rl] rotate-180"
@@ -77,7 +99,8 @@ function HeatMatrix({
           <div className="flex-1">
             <table className="w-full border-separate border-spacing-1">
               <caption className="sr-only">
-                Ma trận rủi ro 5×5: hàng là mức ảnh hưởng, cột là xác suất xảy ra, mỗi ô là số mục đang nằm ở đó
+                Ma trận rủi ro 5×5: hàng là mức ảnh hưởng, cột là xác suất xảy ra, mỗi ô là số mục
+                đang nằm ở đó
               </caption>
               <tbody>
                 {[...SCALE].reverse().map((impact) => (
@@ -94,16 +117,17 @@ function HeatMatrix({
                       const score = prob * impact;
                       const meta = RAID_LEVEL_META[raidLevelOf(score)];
                       const active = selected?.p === prob && selected?.i === impact;
+                      const tip =
+                        `Xác suất: ${PROBABILITY_LABELS[prob]} · Ảnh hưởng: ${IMPACT_LABELS[impact]}\n` +
+                        `Điểm rủi ro ${score} — mức ${meta.label.toLowerCase()} · ${count} mục`;
                       return (
                         <td key={prob} className="p-0">
                           <button
                             type="button"
                             onClick={() => onSelect(active ? null : { p: prob, i: impact })}
                             aria-pressed={active}
-                            title={
-                              `Xác suất: ${PROBABILITY_LABELS[prob]} · Ảnh hưởng: ${IMPACT_LABELS[impact]}\n`
-                              + `Điểm rủi ro ${score} — mức ${meta.label.toLowerCase()} · ${count} mục`
-                            }
+                            title={tip}
+                            aria-label={tip.replace('\n', ' · ')}
                             className={cn(
                               'flex h-11 w-full items-center justify-center rounded-md text-sm font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
                               count === 0 ? 'bg-surface-2 text-faint' : meta.cell,
@@ -145,7 +169,9 @@ function HeatMatrix({
 
       <div className="mt-3 flex flex-wrap items-center gap-2" title={RAID_LEVEL_LEGEND}>
         {(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const).map((lv) => (
-          <Badge key={lv} className={RAID_LEVEL_META[lv].badge}>{RAID_LEVEL_META[lv].label}</Badge>
+          <Badge key={lv} className={RAID_LEVEL_META[lv].badge}>
+            {RAID_LEVEL_META[lv].label}
+          </Badge>
         ))}
         {selected && (
           <Button
@@ -163,20 +189,19 @@ function HeatMatrix({
   );
 }
 
-function RaidRow({
-  item, canManage, onEdit,
-}: {
-  item: RaidItemDto;
-  canManage: boolean;
-  onEdit: (item: RaidItemDto) => void;
-}) {
+/** Xoá một mục (xác nhận → xoá → thông báo) — dùng chung cho dòng bảng (≥ sm) và thẻ (< sm). */
+function useRemoveRaidItem(item: RaidItemDto) {
+  const confirm = useConfirm();
   const remove = useDeleteRaidItem();
-  const level = RAID_LEVEL_META[item.level];
-  const status = RAID_STATUS_META[item.status];
-  const closed = item.status === 'CLOSED' || item.status === 'ACCEPTED';
-
   async function handleRemove() {
-    if (!window.confirm(`Xoá “${item.title}” khỏi danh sách theo dõi? Thao tác này không khôi phục được.`)) return;
+    if (
+      !(await confirm({
+        title: `Xoá “${item.title}” khỏi danh sách theo dõi?`,
+        description: 'Thao tác này không khôi phục được.',
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await remove.mutateAsync(item.id);
       toast.success('Đã xoá khỏi danh sách');
@@ -184,22 +209,122 @@ function RaidRow({
       toast.error(apiErrorMessage(e));
     }
   }
+  return { handleRemove, isPending: remove.isPending };
+}
+
+/** Thẻ một mục RAID cho điện thoại (< sm): mã + tiêu đề + điểm + trạng thái + người phụ trách + hạn, không cần cuộn ngang. */
+function RaidCard({
+  item,
+  canManage,
+  onEdit,
+}: {
+  item: RaidItemDto;
+  canManage: boolean;
+  onEdit: (item: RaidItemDto) => void;
+}) {
+  const { handleRemove, isPending } = useRemoveRaidItem(item);
+  const level = RAID_LEVEL_META[item.level];
+  const status = RAID_STATUS_META[item.status];
+  const closed = item.status === 'CLOSED' || item.status === 'ACCEPTED';
+  return (
+    <li className="border-t border-border px-3 py-3">
+      <div className="flex items-start gap-2">
+        <p className="min-w-0 flex-1 break-words text-sm font-medium text-ink">{item.title}</p>
+        <Badge
+          className={cn('shrink-0 tabular-nums', level.badge)}
+          title={`Xác suất ${item.probability} × ảnh hưởng ${item.impact} = ${item.score} điểm — mức ${item.levelLabel}`}
+        >
+          {item.score} · {item.levelLabel}
+        </Badge>
+      </div>
+      {item.mitigation && (
+        <p className="mt-1 break-words text-xs text-muted">Cách xử lý: {item.mitigation}</p>
+      )}
+      {item.project && <p className="mt-0.5 text-xs text-faint">{item.project.name}</p>}
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <Badge className={status.className}>{status.label}</Badge>
+        {item.dueDate && (
+          <DueBadge
+            issue={{ dueDate: item.dueDate, status: { category: closed ? 'DONE' : 'TODO' } }}
+          />
+        )}
+        {item.owner ? (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <Avatar name={item.owner.displayName} src={item.owner.avatarUrl} size={20} />
+            <span className="truncate text-xs text-muted">{item.owner.displayName}</span>
+          </span>
+        ) : (
+          <span className="text-xs text-faint">Chưa gán</span>
+        )}
+        {canManage && (
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onEdit(item)}
+              title="Sửa mục này"
+              aria-label={`Sửa ${item.title}`}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted hover:text-danger"
+              title="Xoá khỏi danh sách theo dõi"
+              aria-label={`Xoá ${item.title}`}
+              loading={isPending}
+              onClick={() => void handleRemove()}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function RaidRow({
+  item,
+  canManage,
+  onEdit,
+}: {
+  item: RaidItemDto;
+  canManage: boolean;
+  onEdit: (item: RaidItemDto) => void;
+}) {
+  const { handleRemove, isPending } = useRemoveRaidItem(item);
+  const level = RAID_LEVEL_META[item.level];
+  const status = RAID_STATUS_META[item.status];
+  const closed = item.status === 'CLOSED' || item.status === 'ACCEPTED';
 
   return (
     <tr className="border-t border-border align-top">
       <td className="px-3 py-2.5">
         <p className="text-sm font-medium text-ink">{item.title}</p>
-        {item.mitigation && <p className="mt-0.5 text-xs text-muted">Cách xử lý: {item.mitigation}</p>}
-        {item.project && <p className="mt-0.5 text-xs text-faint" title="Dự án liên quan">{item.project.name}</p>}
+        {item.mitigation && (
+          <p className="mt-0.5 text-xs text-muted">Cách xử lý: {item.mitigation}</p>
+        )}
+        {item.project && (
+          <p className="mt-0.5 text-xs text-faint" title="Dự án liên quan">
+            {item.project.name}
+          </p>
+        )}
       </td>
       <td className="px-3 py-2.5">
         {item.owner ? (
-          <span className="flex items-center gap-1.5" title={`Người phụ trách: ${item.owner.displayName}`}>
+          <span
+            className="flex items-center gap-1.5"
+            title={`Người phụ trách: ${item.owner.displayName}`}
+          >
             <Avatar name={item.owner.displayName} src={item.owner.avatarUrl} size={22} />
             <span className="truncate text-sm text-muted">{item.owner.displayName}</span>
           </span>
         ) : (
-          <span className="text-xs text-faint" title="Chưa ai nhận theo dõi mục này">Chưa gán</span>
+          <span className="text-xs text-faint" title="Chưa ai nhận theo dõi mục này">
+            Chưa gán
+          </span>
         )}
       </td>
       <td
@@ -207,7 +332,9 @@ function RaidRow({
         title={`Xác suất ${item.probability} (${PROBABILITY_LABELS[item.probability] ?? '—'}) × ảnh hưởng ${item.impact} (${IMPACT_LABELS[item.impact] ?? '—'}) = ${item.score} điểm`}
       >
         <span className="flex items-center gap-1.5">
-          <span className="text-xs tabular-nums text-faint">{item.probability}×{item.impact}</span>
+          <span className="text-xs tabular-nums text-faint">
+            {item.probability}×{item.impact}
+          </span>
           <Badge className={cn('tabular-nums', level.badge)}>{item.score}</Badge>
           <span className="hidden text-xs text-muted sm:inline">{item.levelLabel}</span>
         </span>
@@ -217,7 +344,9 @@ function RaidRow({
       </td>
       <td className="whitespace-nowrap px-3 py-2.5">
         {item.dueDate ? (
-          <DueBadge issue={{ dueDate: item.dueDate, status: { category: closed ? 'DONE' : 'TODO' } }} />
+          <DueBadge
+            issue={{ dueDate: item.dueDate, status: { category: closed ? 'DONE' : 'TODO' } }}
+          />
         ) : (
           <span className="text-xs text-faint">—</span>
         )}
@@ -225,7 +354,13 @@ function RaidRow({
       {canManage && (
         <td className="whitespace-nowrap px-3 py-2.5 text-right">
           <div className="flex items-center justify-end gap-1">
-            <Button variant="ghost" size="icon" onClick={() => onEdit(item)} title="Sửa mục này" aria-label={`Sửa ${item.title}`}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onEdit(item)}
+              title="Sửa mục này"
+              aria-label={`Sửa ${item.title}`}
+            >
               <Pencil className="h-4 w-4" />
             </Button>
             <Button
@@ -234,7 +369,7 @@ function RaidRow({
               className="text-muted hover:text-danger"
               title="Xoá khỏi danh sách theo dõi"
               aria-label={`Xoá ${item.title}`}
-              loading={remove.isPending}
+              loading={isPending}
               onClick={() => void handleRemove()}
             >
               <Trash2 className="h-4 w-4" />
@@ -253,13 +388,17 @@ export function RaidPage() {
 
   const [kind, setKind] = useState<RaidKind>('RISK');
   const [status, setStatus] = useState<RaidStatus | ''>('');
-  const [projectId, setProjectId] = useState('');
+  // null = chưa chọn → mặc định theo `?project=` (lối vào từ tab dự án); chọn/xoá bộ lọc thì lựa chọn đó thắng.
+  const [projectPick, setProjectId] = useState<string | null>(null);
   const [cell, setCell] = useState<Cell | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<RaidItemDto | null>(null);
 
-  const { data: items, isLoading } = useRaidItems({ kind, status, projectId });
   const { data: projects } = useProjects();
+  const scopeParam = useScopeParam(projects);
+  const projectId = projectPick ?? scopeParam ?? '';
+  const raidQuery = useRaidItems({ kind, status, projectId });
+  const { data: items } = raidQuery;
 
   const projectOptions = useMemo(
     () => [
@@ -291,18 +430,37 @@ export function RaidPage() {
     <div className={pageContainer('lg')}>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Rủi ro &amp; vướng mắc</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+            Rủi ro &amp; vướng mắc
+          </h1>
           <p className="mt-1 text-sm text-muted">
-            Nơi ghi lại mọi thứ có thể cản tiến độ của cả tổ chức: rủi ro có thể xảy ra, giả định đang tin là đúng,
-            vấn đề đang xảy ra và việc phải chờ bên khác (quốc tế gọi là sổ RAID). Điểm rủi ro = xác suất × mức ảnh hưởng,
-            mục đáng lo nhất luôn nằm trên cùng.
+            Nơi ghi lại mọi thứ có thể cản tiến độ của cả tổ chức: rủi ro có thể xảy ra, giả định
+            đang tin là đúng, vấn đề đang xảy ra và việc phải chờ bên khác (quốc tế gọi là sổ RAID).
+            Điểm rủi ro = xác suất × mức ảnh hưởng, mục đáng lo nhất luôn nằm trên cùng.
           </p>
         </div>
-        {canManage && (
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            disabled={rows.length === 0}
+            items={[
+              {
+                id: 'csv',
+                label: 'Tải CSV',
+                hint: 'Đúng danh sách đang xem (theo bộ lọc)',
+                run: () =>
+                  downloadText(
+                    `tirapro-rui-ro-${format(new Date(), 'yyyyMMdd')}.csv`,
+                    raidCsv(rows),
+                  ),
+              },
+            ]}
+          />
+          {canManage && (
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
+            </Button>
+          )}
+        </div>
       </header>
 
       <div
@@ -316,10 +474,15 @@ export function RaidPage() {
             role="tab"
             aria-selected={kind === k.value}
             title={k.description}
-            onClick={() => { setKind(k.value); setCell(null); }}
+            onClick={() => {
+              setKind(k.value);
+              setCell(null);
+            }}
             className={cn(
               '-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              kind === k.value ? 'border-primary text-ink-strong' : 'border-transparent text-muted hover:text-ink',
+              kind === k.value
+                ? 'border-primary text-ink-strong'
+                : 'border-transparent text-muted hover:text-ink',
             )}
           >
             {k.label}
@@ -347,88 +510,133 @@ export function RaidPage() {
           className="w-44"
         />
         {(status || projectId || cell) && (
-          <Button variant="ghost" size="sm" onClick={() => { setStatus(''); setProjectId(''); setCell(null); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setStatus('');
+              setProjectId('');
+              setCell(null);
+            }}
+          >
             Xoá bộ lọc
           </Button>
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-4">
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-48 w-full" />
-        </div>
-      ) : (
-        <div className="space-y-5">
-          <HeatMatrix items={items ?? []} selected={cell} onSelect={setCell} />
+      <QueryBoundary
+        query={raidQuery}
+        skeleton={
+          <div className="space-y-4">
+            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </div>
+        }
+      >
+        {() => (
+          <div className="space-y-5">
+            <HeatMatrix items={items ?? []} selected={cell} onSelect={setCell} />
 
-          <section className="rounded-lg border border-border bg-surface">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
-              <h2 className="text-base font-semibold text-ink-strong">Danh sách chi tiết</h2>
-              <span className="text-sm text-muted">
-                {cell
-                  ? `${rows.length} mục ở ô xác suất ${cell.p} × ảnh hưởng ${cell.i}`
-                  : `${rows.length} mục`}
-              </span>
-            </div>
+            <section className="rounded-lg border border-border bg-surface">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
+                <h2 className="text-base font-semibold text-ink-strong">Danh sách chi tiết</h2>
+                <span className="text-sm text-muted">
+                  {cell
+                    ? `${rows.length} mục ở ô xác suất ${cell.p} × ảnh hưởng ${cell.i}`
+                    : `${rows.length} mục`}
+                </span>
+              </div>
 
-            {rows.length === 0 ? (
-              <div className="p-5">
-                <EmptyState
-                  icon={<ShieldAlert className="h-6 w-6" />}
-                  title={cell ? 'Không có mục nào trong ô này' : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`}
-                  description={
-                    cell
-                      ? 'Bấm lại vào ô đang chọn trong ma trận để xem toàn bộ danh sách.'
-                      : canManage
-                        ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — cả nhóm sẽ thấy ngay trên ma trận và biết việc nào cần lo trước.'
-                        : 'Khi nhóm ghi nhận mục mới, bạn sẽ thấy ở đây.'
-                  }
-                  action={
-                    canManage && !cell
-                      ? (
+              {rows.length === 0 ? (
+                <div className="p-5">
+                  <EmptyState
+                    icon={<ShieldAlert className="h-6 w-6" />}
+                    title={
+                      cell
+                        ? 'Không có mục nào trong ô này'
+                        : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`
+                    }
+                    description={
+                      cell
+                        ? 'Bấm lại vào ô đang chọn trong ma trận để xem toàn bộ danh sách.'
+                        : canManage
+                          ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — cả nhóm sẽ thấy ngay trên ma trận và biết việc nào cần lo trước.'
+                          : 'Khi nhóm ghi nhận mục mới, bạn sẽ thấy ở đây.'
+                    }
+                    action={
+                      canManage && !cell ? (
                         <Button onClick={openCreate}>
                           <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
                         </Button>
-                      )
-                      : undefined
-                  }
-                />
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[46rem] text-left">
-                  <thead>
-                    <tr className="text-xs font-medium text-faint">
-                      <th scope="col" className="px-3 py-2">Nội dung</th>
-                      <th scope="col" className="px-3 py-2" title="Người chịu trách nhiệm theo dõi và xử lý">
-                        Người phụ trách
-                      </th>
-                      <th scope="col" className="px-3 py-2" title={RAID_LEVEL_LEGEND}>
-                        Xác suất × ảnh hưởng
-                      </th>
-                      <th scope="col" className="px-3 py-2">Trạng thái</th>
-                      <th scope="col" className="px-3 py-2" title="Ngày cần xử lý xong">Hạn xử lý</th>
-                      {canManage && <th scope="col" className="px-3 py-2 text-right">Thao tác</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
+                      ) : undefined
+                    }
+                  />
+                </div>
+              ) : (
+                <>
+                  {/* < sm: danh sách thẻ (bảng 46rem không vừa 390px); ≥ sm: bảng như cũ. */}
+                  <ul className="sm:hidden">
                     {rows.map((item) => (
-                      <RaidRow key={item.id} item={item} canManage={canManage} onEdit={openEdit} />
+                      <RaidCard key={item.id} item={item} canManage={canManage} onEdit={openEdit} />
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </div>
-      )}
+                  </ul>
+                  <ScrollX className="max-sm:hidden">
+                    <table className="w-full min-w-[46rem] text-left">
+                      <thead>
+                        <tr className="text-xs font-medium text-faint">
+                          <th scope="col" className="px-3 py-2">
+                            Nội dung
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-3 py-2"
+                            title="Người chịu trách nhiệm theo dõi và xử lý"
+                          >
+                            Người phụ trách
+                          </th>
+                          <th scope="col" className="px-3 py-2" title={RAID_LEVEL_LEGEND}>
+                            Xác suất × ảnh hưởng
+                          </th>
+                          <th scope="col" className="px-3 py-2">
+                            Trạng thái
+                          </th>
+                          <th scope="col" className="px-3 py-2" title="Ngày cần xử lý xong">
+                            Hạn xử lý
+                          </th>
+                          {canManage && (
+                            <th scope="col" className="px-3 py-2 text-right">
+                              Thao tác
+                            </th>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((item) => (
+                          <RaidRow
+                            key={item.id}
+                            item={item}
+                            canManage={canManage}
+                            onEdit={openEdit}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </ScrollX>
+                </>
+              )}
+            </section>
+          </div>
+        )}
+      </QueryBoundary>
 
       <RaidEditorModal
         open={editorOpen}
         item={editing}
         defaultKind={kind}
-        onClose={() => { setEditorOpen(false); setEditing(null); }}
+        onClose={() => {
+          setEditorOpen(false);
+          setEditing(null);
+        }}
       />
     </div>
   );

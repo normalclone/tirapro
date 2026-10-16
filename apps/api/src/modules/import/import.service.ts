@@ -1,16 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { parse } from 'csv-parse/sync';
 import { Prisma } from '@prisma/client';
+import type { ImportJobDto, IssueDto } from '@tirapro/types';
 import type { CreateIssueInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { IssuesService } from '../issues/issues.service';
+import { assertNotArchived } from '../../common/project-writable';
 
 /** Một dòng CSV đã parse: key = header (giữ nguyên), value = chuỗi. */
 type CsvRow = Record<string, string>;
 
 /** Lỗi của một dòng khi import. */
-interface RowError {
+export interface RowError {
   row: number;
   error: string;
 }
@@ -69,6 +71,44 @@ export interface ImportJsonResult {
   failed: number;
   total: number;
   errors: RowError[];
+  /** Số issue ĐÃ tạo nhưng bị bỏ gán vì email assignee không phải thành viên workspace (không báo lỗi dòng). */
+  skippedAssignees: number;
+}
+
+/** Số dòng ghi trong mỗi transaction khi import. */
+const IMPORT_CHUNK_SIZE = 100;
+
+/** Một dòng đã chuẩn bị xong, sẵn sàng ghi. `after` chạy trong cùng transaction với việc tạo issue. */
+export interface PreparedItem {
+  row: number;
+  input: CreateIssueInput;
+  /**
+   * Mã Jira gốc làm `Issue.key` (L27) — chỉ Jira import đặt, đi thẳng vào `createWithin` (không qua DTO/zod).
+   * Người đặt phải kiểm trùng trước; trùng lọt qua (nhập đồng thời) sẽ vào `duplicates` của kết quả.
+   */
+  fixedKey?: string;
+  after?: (
+    tx: Prisma.TransactionClient,
+    issue: IssueDto,
+    labelCache: Map<string, string>,
+  ) => Promise<{ labels: number; comments: number }>;
+  /** Chạy SAU khi transaction của lô commit (vd ghi map `mã nguồn → id` để dòng sau tham chiếu cha/epic). */
+  onCreated?: (issue: IssueDto) => void;
+}
+
+/** Móc theo dõi tiến độ khi ghi theo lô. */
+export interface ChunkHooks {
+  /** Gọi sau mỗi lô (kể cả lô phải chạy lại từng dòng) với số dòng vừa xử lý xong (thành công + lỗi). */
+  onChunk?: (rowsProcessed: number) => Promise<void> | void;
+}
+
+/** Lỗi unique của Prisma (P2002) trên cột `key` của Issue — hai lượt nhập đồng thời cùng mã Jira. */
+function isKeyConflict(err: unknown): boolean {
+  const e = err as { code?: string; meta?: { target?: unknown } } | null;
+  if (e?.code !== 'P2002') return false;
+  const target = e.meta?.target;
+  if (Array.isArray(target)) return target.includes('key');
+  return typeof target === 'string' && /key/i.test(target);
 }
 
 @Injectable()
@@ -92,9 +132,10 @@ export class ImportService {
     // 1. Xác minh project thuộc workspace.
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
+    assertNotArchived(project.archivedAt); // chặn trước khi tạo ImportJob
 
     // 2. Tạo bản ghi ImportJob (RUNNING).
     const job = await this.prisma.importJob.create({
@@ -104,7 +145,7 @@ export class ImportService {
         status: 'RUNNING',
         createdById: userId,
         startedAt: new Date(),
-        config: { projectId } as Prisma.InputJsonValue,
+        config: { projectId },
       },
       select: { id: true },
     });
@@ -130,55 +171,59 @@ export class ImportService {
       ]);
 
       const typeByName = new Map(types.map((t) => [t.name.toLowerCase(), t.id]));
-      const priorityByName = new Map(
-        priorities.map((p) => [p.name.toLowerCase(), p.id]),
-      );
+      const priorityByName = new Map(priorities.map((p) => [p.name.toLowerCase(), p.id]));
       const defaultTypeId = typeByName.get('task') ?? types[0]?.id;
 
-      // 5. Tạo issue cho từng dòng; lỗi từng dòng không làm hỏng cả lần import.
+      // 5. Chuẩn bị input cho từng dòng (lỗi dữ liệu của dòng không làm hỏng cả lần import),
+      // rồi ghi theo lô 100 dòng / transaction.
       const errors: RowError[] = [];
-      let created = 0;
+      const items: PreparedItem[] = [];
 
       for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
+        const row = rows[i]!;
         const get = this.rowAccessor(row);
 
         const summary = get('summary', 'title');
         if (!summary) continue; // bỏ qua dòng không có tiêu đề.
 
         try {
-          const typeId =
-            this.lookup(typeByName, get('type', 'issue type')) ?? defaultTypeId;
+          const typeId = this.lookup(typeByName, get('type', 'issue type')) ?? defaultTypeId;
           if (!typeId) {
-            throw new Error('Không tìm thấy loại công việc phù hợp — hãy kiểm tra cột loại trong tệp hoặc thêm loại công việc đó vào cấu hình');
+            throw new Error(
+              'Không tìm thấy loại công việc phù hợp — hãy kiểm tra cột loại trong tệp hoặc thêm loại công việc đó vào cấu hình',
+            );
           }
 
           const description = get('description');
           const priorityId = this.lookup(priorityByName, get('priority'));
           const storyPoints = this.parseNumber(get('story points', 'points'));
 
-          const input: CreateIssueInput = {
-            projectId,
-            typeId,
-            summary,
-            description: description || null,
-            descriptionFormat: 'MARKDOWN',
-            priorityId: priorityId ?? undefined,
-            storyPoints: storyPoints ?? undefined,
-          };
-
-          await this.issues.create(workspaceId, userId, input);
-          created++;
+          items.push({
+            row: i,
+            input: {
+              projectId,
+              typeId,
+              summary,
+              description: description || null,
+              descriptionFormat: 'MARKDOWN',
+              priorityId: priorityId ?? undefined,
+              storyPoints: storyPoints ?? undefined,
+            },
+          });
         } catch (err) {
           errors.push({ row: i, error: this.errMessage(err) });
         }
       }
 
+      const written = await this.createIssuesInChunks(workspaceId, userId, items, new Map());
+      errors.push(...written.errors);
+      errors.sort((x, y) => x.row - y.row);
+      const created = written.created;
+
       // 6. Cập nhật ImportJob.
       const total = rows.length;
       const failed = errors.length;
-      const status: 'COMPLETED' | 'FAILED' =
-        created === 0 && failed > 0 ? 'FAILED' : 'COMPLETED';
+      const status: 'COMPLETED' | 'FAILED' = created === 0 && failed > 0 ? 'FAILED' : 'COMPLETED';
 
       await this.prisma.importJob.update({
         where: { id: job.id },
@@ -235,9 +280,10 @@ export class ImportService {
     // 1. Xác minh project thuộc workspace.
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
+    assertNotArchived(project.archivedAt); // chặn trước khi tạo ImportJob
 
     const issues = Array.isArray(data?.issues) ? data.issues : [];
     const total = issues.length;
@@ -252,7 +298,7 @@ export class ImportService {
         createdById: userId,
         startedAt: new Date(),
         totalItems: total,
-        config: { projectId, format: 'json' } as Prisma.InputJsonValue,
+        config: { projectId, format: 'json' },
       },
       select: { id: true },
     });
@@ -272,30 +318,27 @@ export class ImportService {
           where: { projectId },
           select: { id: true, name: true },
         }),
+        // Chỉ thành viên workspace: người ngoài (hoặc tenant khác) coi như email không khớp → không có assignee.
         this.prisma.user.findMany({
+          where: { workspaceMemberships: { some: { workspaceId } } },
           select: { id: true, email: true },
         }),
       ]);
 
       const typeByName = new Map(types.map((t) => [t.name.toLowerCase(), t.id]));
-      const priorityByName = new Map(
-        priorities.map((p) => [p.name.toLowerCase(), p.id]),
-      );
+      const priorityByName = new Map(priorities.map((p) => [p.name.toLowerCase(), p.id]));
       // Map label theo tên (lowercase) → id; tạo mới khi thiếu (unique [projectId,name]).
-      const labelByName = new Map(
-        projectLabels.map((l) => [l.name.toLowerCase(), l.id]),
-      );
+      const labelByName = new Map(projectLabels.map((l) => [l.name.toLowerCase(), l.id]));
       const userByEmail = new Map(users.map((u) => [u.email.toLowerCase(), u.id]));
       const defaultTypeId = typeByName.get('task') ?? types[0]?.id;
 
-      // 4. Tái tạo từng issue.
+      // 4. Chuẩn bị từng issue (kèm bước gắn label + comment chạy trong CÙNG transaction của lô).
       const errors: RowError[] = [];
-      let created = 0;
-      let commentsCreated = 0;
-      let labelsLinked = 0;
+      const items: PreparedItem[] = [];
+      let skippedAssignees = 0;
 
       for (let i = 0; i < issues.length; i++) {
-        const issue = issues[i];
+        const issue = issues[i]!;
         const summary = issue?.summary?.trim();
         if (!summary) {
           errors.push({ row: i, error: 'Thiếu summary (tiêu đề) — bỏ qua' });
@@ -305,72 +348,76 @@ export class ImportService {
         try {
           const typeId = this.lookup(typeByName, issue.type ?? '') ?? defaultTypeId;
           if (!typeId) {
-            throw new Error('Không tìm thấy loại công việc phù hợp — hãy kiểm tra cột loại trong tệp hoặc thêm loại công việc đó vào cấu hình');
+            throw new Error(
+              'Không tìm thấy loại công việc phù hợp — hãy kiểm tra cột loại trong tệp hoặc thêm loại công việc đó vào cấu hình',
+            );
           }
 
           const priorityId = this.lookup(priorityByName, issue.priority ?? '');
           const assigneeId = this.lookupUser(userByEmail, issue.assignee);
+          // Có ghi assignee nhưng không khớp thành viên nào → issue vẫn tạo, chỉ bỏ gán: đếm để báo lại.
+          const assigneeDropped =
+            !assigneeId && typeof issue.assignee === 'string' && issue.assignee.trim() !== '';
 
-          const input: CreateIssueInput = {
-            projectId,
-            typeId,
-            summary,
-            description: issue.description ?? null,
-            descriptionFormat: 'MARKDOWN',
-            priorityId: priorityId ?? undefined,
-            assigneeId: assigneeId ?? undefined,
-            storyPoints:
-              typeof issue.storyPoints === 'number' ? issue.storyPoints : undefined,
-          };
-
-          const createdIssue = await this.issues.create(workspaceId, userId, input);
-
-          // 4a. Gắn label: resolve-or-create theo project, chống trùng.
-          const labelNames = Array.isArray(issue.labels) ? issue.labels : [];
-          for (const rawName of labelNames) {
-            const name = typeof rawName === 'string' ? rawName.trim() : '';
-            if (!name) continue;
-            const labelId = await this.resolveOrCreateLabel(
+          items.push({
+            row: i,
+            onCreated: assigneeDropped ? () => void skippedAssignees++ : undefined,
+            input: {
               projectId,
-              name,
-              labelByName,
-            );
-            try {
-              await this.prisma.issueLabel.create({
-                data: { issueId: createdIssue.id, labelId },
-              });
-              labelsLinked++;
-            } catch {
-              // Trùng [issueId,labelId] (label lặp trong export) → bỏ qua.
-            }
-          }
+              typeId,
+              summary,
+              description: issue.description ?? null,
+              descriptionFormat: 'MARKDOWN',
+              priorityId: priorityId ?? undefined,
+              assigneeId: assigneeId ?? undefined,
+              storyPoints: typeof issue.storyPoints === 'number' ? issue.storyPoints : undefined,
+            },
+            after: async (tx, createdIssue, labelCache) => {
+              // 4a. Gắn label: resolve-or-create theo project (cache), chống trùng.
+              const labelIds = new Set<string>();
+              for (const rawName of Array.isArray(issue.labels) ? issue.labels : []) {
+                const name = typeof rawName === 'string' ? rawName.trim() : '';
+                if (!name) continue;
+                labelIds.add(await this.resolveOrCreateLabel(tx, projectId, name, labelCache));
+              }
+              if (labelIds.size) {
+                await tx.issueLabel.createMany({
+                  data: [...labelIds].map((labelId) => ({ issueId: createdIssue.id, labelId })),
+                  skipDuplicates: true,
+                });
+              }
 
-          // 4b. Tái tạo comment theo thứ tự trong export.
-          const comments = Array.isArray(issue.comments) ? issue.comments : [];
-          for (const c of comments) {
-            const body = typeof c?.body === 'string' ? c.body : '';
-            if (!body) continue;
-            await this.prisma.comment.create({
-              data: {
-                issueId: createdIssue.id,
-                authorId: this.lookupUser(userByEmail, c.author),
-                body,
-                bodyFormat: 'MARKDOWN',
-              },
-            });
-            commentsCreated++;
-          }
-
-          created++;
+              // 4b. Tái tạo comment theo thứ tự trong export.
+              const commentRows: Prisma.CommentCreateManyInput[] = [];
+              for (const c of Array.isArray(issue.comments) ? issue.comments : []) {
+                const body = typeof c?.body === 'string' ? c.body : '';
+                if (!body) continue;
+                commentRows.push({
+                  issueId: createdIssue.id,
+                  authorId: this.lookupUser(userByEmail, c.author) ?? null,
+                  body,
+                  bodyFormat: 'MARKDOWN',
+                });
+              }
+              if (commentRows.length) await tx.comment.createMany({ data: commentRows });
+              return { labels: labelIds.size, comments: commentRows.length };
+            },
+          });
         } catch (err) {
           errors.push({ row: i, error: this.errMessage(err) });
         }
       }
 
+      const written = await this.createIssuesInChunks(workspaceId, userId, items, labelByName);
+      errors.push(...written.errors);
+      errors.sort((x, y) => x.row - y.row);
+      const created = written.created;
+      const commentsCreated = written.comments;
+      const labelsLinked = written.labels;
+
       // 5. Cập nhật ImportJob.
       const failed = total - created;
-      const status: 'COMPLETED' | 'FAILED' =
-        created === 0 && total > 0 ? 'FAILED' : 'COMPLETED';
+      const status: 'COMPLETED' | 'FAILED' = created === 0 && total > 0 ? 'FAILED' : 'COMPLETED';
 
       await this.prisma.importJob.update({
         where: { id: job.id },
@@ -385,6 +432,7 @@ export class ImportService {
             failed,
             comments: commentsCreated,
             labels: labelsLinked,
+            skippedAssignees,
             errors: errors.slice(0, 50),
           } as unknown as Prisma.InputJsonValue,
         },
@@ -398,6 +446,7 @@ export class ImportService {
         failed,
         total,
         errors: errors.slice(0, 20),
+        skippedAssignees,
       };
     } catch (err) {
       const message = this.errMessage(err);
@@ -445,6 +494,24 @@ export class ImportService {
     }));
   }
 
+  /** Một ImportJob của workspace (để web poll tiến độ). */
+  async getJob(workspaceId: string, id: string): Promise<ImportJobDto> {
+    const j = await this.prisma.importJob.findFirst({ where: { id, workspaceId } });
+    if (!j) throw new NotFoundAppException('Lần nhập dữ liệu');
+    return {
+      id: j.id,
+      source: j.source,
+      status: j.status,
+      progress: j.progress,
+      totalItems: j.totalItems,
+      processedItems: j.processedItems,
+      result: (j.result as Record<string, unknown> | null) ?? null,
+      errorLog: j.errorLog,
+      createdAt: j.createdAt.toISOString(),
+      completedAt: j.completedAt?.toISOString() ?? null,
+    };
+  }
+
   // ---------- helpers ----------
 
   /**
@@ -482,9 +549,10 @@ export class ImportService {
 
   /**
    * Resolve-or-create label trong project (label phạm vi project, unique [projectId,name]).
-   * Cập nhật cache để các issue sau tái dùng id, tránh tạo trùng.
+   * Chỉ chạm DB khi cache chưa có; upsert để chống đua/trùng theo unique [projectId,name].
    */
-  private async resolveOrCreateLabel(
+  async resolveOrCreateLabel(
+    db: Prisma.TransactionClient,
     projectId: string,
     name: string,
     cache: Map<string, string>,
@@ -493,8 +561,7 @@ export class ImportService {
     const existing = cache.get(key);
     if (existing) return existing;
 
-    // upsert chống đua/trùng theo unique [projectId,name].
-    const label = await this.prisma.label.upsert({
+    const label = await db.label.upsert({
       where: { projectId_name: { projectId, name } },
       update: {},
       create: { projectId, name },
@@ -502,6 +569,115 @@ export class ImportService {
     });
     cache.set(key, label.id);
     return label.id;
+  }
+
+  /**
+   * Ghi issue theo lô (IMPORT_CHUNK_SIZE dòng / transaction). Một dòng lỗi DB làm cả lô rollback
+   * (Postgres huỷ transaction sau lỗi) → chạy lại từng dòng của lô đó để cô lập dòng lỗi.
+   * Sự kiện ISSUE_CREATED chỉ phát sau khi transaction commit. `labelCache` chỉ được cập nhật
+   * khi transaction commit, tránh trỏ tới label đã bị rollback.
+   */
+  async createIssuesInChunks(
+    workspaceId: string,
+    userId: string,
+    items: PreparedItem[],
+    labelCache: Map<string, string>,
+    hooks: ChunkHooks = {},
+  ): Promise<{
+    created: number;
+    labels: number;
+    comments: number;
+    errors: RowError[];
+    /** Dòng đụng unique mã công việc (`fixedKey` trùng do nhập đồng thời) — coi là trùng, KHÔNG phải lỗi (L27). */
+    duplicates: RowError[];
+  }> {
+    const result = {
+      created: 0,
+      labels: 0,
+      comments: 0,
+      errors: [] as RowError[],
+      duplicates: [] as RowError[],
+    };
+    const fail = (it: PreparedItem, err: unknown): void => {
+      (it.fixedKey && isKeyConflict(err) ? result.duplicates : result.errors).push({
+        row: it.row,
+        error: this.errMessage(err),
+      });
+    };
+
+    const runBatch = async (batch: PreparedItem[]): Promise<void> => {
+      const local = new Map(labelCache);
+      const deferred: Array<() => void> = [];
+      const out = await this.prisma.$transaction(
+        async (tx) => {
+          const dtos: IssueDto[] = [];
+          let labels = 0;
+          let comments = 0;
+          for (const it of batch) {
+            const dto = await this.issues.createWithin(
+              tx,
+              workspaceId,
+              userId,
+              it.input,
+              deferred,
+              it.fixedKey,
+            );
+            if (it.after) {
+              const r = await it.after(tx, dto, local);
+              labels += r.labels;
+              comments += r.comments;
+            }
+            dtos.push(dto);
+          }
+          return { dtos, labels, comments };
+        },
+        { timeout: 120_000, maxWait: 10_000 },
+      );
+      for (const [k, v] of local) labelCache.set(k, v);
+      for (const fn of deferred) fn(); // sự kiện đánh số lại rank (nếu có) — sau commit
+      for (const dto of out.dtos) this.issues.emitCreated(dto, userId);
+      batch.forEach((it, i) => it.onCreated?.(out.dtos[i]!));
+      result.created += out.dtos.length;
+      result.labels += out.labels;
+      result.comments += out.comments;
+    };
+
+    for (let start = 0; start < items.length; start += IMPORT_CHUNK_SIZE) {
+      const chunk = items.slice(start, start + IMPORT_CHUNK_SIZE);
+      try {
+        await runBatch(chunk);
+      } catch (chunkErr) {
+        if (chunk.length === 1) {
+          fail(chunk[0]!, chunkErr);
+          await this.reportProgress(hooks, 1);
+          continue;
+        }
+        this.logger.warn(
+          `Lô import ${start}-${start + chunk.length - 1} lỗi, chạy lại từng dòng: ${this.errMessage(chunkErr)}`,
+        );
+        for (const it of chunk) {
+          try {
+            await runBatch([it]);
+          } catch (err) {
+            fail(it, err);
+          }
+        }
+      }
+      await this.reportProgress(hooks, chunk.length);
+    }
+    return result;
+  }
+
+  /**
+   * Báo tiến độ: lỗi ghi tiến độ chỉ log, KHÔNG ném — lô đã commit rồi, ném lên sẽ hoặc huỷ cả job
+   * giữa chừng hoặc (nếu bắt chung với lỗi ghi lô) chạy lại các dòng đã tạo và sinh trùng.
+   */
+  private async reportProgress(hooks: ChunkHooks, rows: number): Promise<void> {
+    try {
+      await hooks.onChunk?.(rows);
+    } catch (err) {
+      this.logger.warn(`Không cập nhật được tiến độ import: ${this.errMessage(err)}`);
+    }
   }
 
   /** Parse số (story points). undefined nếu rỗng/không hợp lệ. */

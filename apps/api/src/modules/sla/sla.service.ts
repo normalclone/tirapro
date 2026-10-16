@@ -3,6 +3,8 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertProjectIdWritable } from '../../common/project-writable';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import type { CreateSlaPolicyInput, UpdateSlaPolicyInput } from './sla.schemas';
 
 /**
@@ -14,15 +16,31 @@ import type { CreateSlaPolicyInput, UpdateSlaPolicyInput } from './sla.schemas';
 export class SlaService {
   private readonly logger = new Logger(SlaService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: ProjectAccessService,
+  ) {}
 
   // ───────────── Chính sách ─────────────
 
-  async list(workspaceId: string) {
+  /**
+   * Chính sách SLA mà `viewerId` được thấy: chính sách chung (không dự án) + của dự án người đó thấy — chính sách
+   * của dự án riêng tư người ngoài không thấy bị loại (tên chính sách/khoá/tên dự án không lộ).
+   */
+  async list(workspaceId: string, viewerId: string) {
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const rows = await this.prisma.slaPolicy.findMany({
-      where: { workspaceId },
+      where: {
+        workspaceId,
+        ...(Object.keys(visible).length
+          ? { OR: [{ projectId: null }, { project: { deletedAt: null, ...visible } }] }
+          : {}),
+      },
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
-      include: { priority: { select: { id: true, name: true, color: true } }, project: { select: { id: true, key: true, name: true } } },
+      include: {
+        priority: { select: { id: true, name: true, color: true } },
+        project: { select: { id: true, key: true, name: true } },
+      },
     });
     return rows.map((p) => ({
       id: p.id,
@@ -37,7 +55,9 @@ export class SlaService {
     }));
   }
 
-  async create(workspaceId: string, dto: CreateSlaPolicyInput) {
+  async create(workspaceId: string, dto: CreateSlaPolicyInput, viewerId: string) {
+    if (dto.projectId) await this.access.assertCanSee(viewerId, workspaceId, dto.projectId);
+    await assertProjectIdWritable(this.prisma, dto.projectId);
     await this.prisma.slaPolicy.create({
       data: {
         workspaceId,
@@ -49,12 +69,26 @@ export class SlaService {
         active: dto.active ?? true,
       },
     });
-    return this.list(workspaceId);
+    return this.list(workspaceId, viewerId);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateSlaPolicyInput) {
-    const found = await this.prisma.slaPolicy.findFirst({ where: { id, workspaceId }, select: { id: true } });
+  async update(workspaceId: string, id: string, dto: UpdateSlaPolicyInput, viewerId: string) {
+    const found = await this.prisma.slaPolicy.findFirst({
+      where: { id, workspaceId },
+      select: { id: true, projectId: true },
+    });
     if (!found) throw new NotFoundAppException('Cam kết thời gian xử lý');
+    // Chính sách của dự án riêng tư người gọi không thấy = không tồn tại; không gắn được sang dự án ẩn.
+    if (found.projectId)
+      await this.access.assertCanSee(
+        viewerId,
+        workspaceId,
+        found.projectId,
+        'Cam kết thời gian xử lý',
+      );
+    if (dto.projectId) await this.access.assertCanSee(viewerId, workspaceId, dto.projectId);
+    await assertProjectIdWritable(this.prisma, found.projectId);
+    if (dto.projectId !== undefined) await assertProjectIdWritable(this.prisma, dto.projectId);
     await this.prisma.slaPolicy.update({
       where: { id },
       data: {
@@ -66,10 +100,22 @@ export class SlaService {
         ...(dto.active !== undefined ? { active: dto.active } : {}),
       },
     });
-    return this.list(workspaceId);
+    return this.list(workspaceId, viewerId);
   }
 
-  async remove(workspaceId: string, id: string) {
+  async remove(workspaceId: string, id: string, viewerId: string) {
+    const found = await this.prisma.slaPolicy.findFirst({
+      where: { id, workspaceId },
+      select: { projectId: true },
+    });
+    if (found?.projectId)
+      await this.access.assertCanSee(
+        viewerId,
+        workspaceId,
+        found.projectId,
+        'Cam kết thời gian xử lý',
+      );
+    if (found) await assertProjectIdWritable(this.prisma, found.projectId);
     await this.prisma.slaPolicy.deleteMany({ where: { id, workspaceId } });
     return { success: true };
   }
@@ -77,7 +123,10 @@ export class SlaService {
   // ───────────── Trạng thái SLA của issue ─────────────
 
   async getForIssue(workspaceId: string, issueId: string) {
-    const issue = await this.prisma.issue.findFirst({ where: { id: issueId, workspaceId }, select: { id: true } });
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: issueId, workspaceId, deletedAt: null },
+      select: { id: true },
+    });
     if (!issue) throw new NotFoundAppException('Công việc');
     const row = await this.prisma.issueSla.findUnique({
       where: { issueId },
@@ -91,24 +140,42 @@ export class SlaService {
       resolveDueAt: row.resolveDueAt.toISOString(),
       firstRespondedAt: row.firstRespondedAt?.toISOString() ?? null,
       resolvedAt: row.resolvedAt?.toISOString() ?? null,
-      responseBreached: row.responseBreached || (!row.firstRespondedAt && row.responseDueAt.getTime() < now),
+      responseBreached:
+        row.responseBreached || (!row.firstRespondedAt && row.responseDueAt.getTime() < now),
       resolveBreached: row.resolveBreached || (!row.resolvedAt && row.resolveDueAt.getTime() < now),
-      responseRemainingMins: row.firstRespondedAt ? null : Math.round((row.responseDueAt.getTime() - now) / 60000),
-      resolveRemainingMins: row.resolvedAt ? null : Math.round((row.resolveDueAt.getTime() - now) / 60000),
+      responseRemainingMins: row.firstRespondedAt
+        ? null
+        : Math.round((row.responseDueAt.getTime() - now) / 60000),
+      resolveRemainingMins: row.resolvedAt
+        ? null
+        : Math.round((row.resolveDueAt.getTime() - now) / 60000),
     };
   }
 
-  /** Danh sách issue đang có SLA (theo dõi vi phạm / sắp trễ). */
-  async board(workspaceId: string) {
+  /**
+   * Danh sách issue đang có SLA (theo dõi vi phạm / sắp trễ) — chỉ việc của dự án `viewerId` thấy (khoá, tiêu đề,
+   * người phụ trách của dự án riêng tư người ngoài không lộ).
+   */
+  async board(workspaceId: string, viewerId: string) {
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const rows = await this.prisma.issueSla.findMany({
-      where: { issue: { workspaceId, deletedAt: null }, resolvedAt: null },
+      where: {
+        issue: {
+          workspaceId,
+          deletedAt: null,
+          ...(Object.keys(visible).length ? { project: { deletedAt: null, ...visible } } : {}),
+        },
+        resolvedAt: null,
+      },
       orderBy: { resolveDueAt: 'asc' },
       take: 200,
       include: {
         policy: { select: { name: true } },
         issue: {
           select: {
-            id: true, key: true, summary: true,
+            id: true,
+            key: true,
+            summary: true,
             status: { select: { name: true, category: true } },
             assignee: { select: { id: true, displayName: true, avatarUrl: true } },
             priority: { select: { name: true, color: true } },
@@ -128,7 +195,8 @@ export class SlaService {
       resolveDueAt: r.resolveDueAt.toISOString(),
       remainingMins: Math.round((r.resolveDueAt.getTime() - now) / 60000),
       responded: !!r.firstRespondedAt,
-      responseBreached: r.responseBreached || (!r.firstRespondedAt && r.responseDueAt.getTime() < now),
+      responseBreached:
+        r.responseBreached || (!r.firstRespondedAt && r.responseDueAt.getTime() < now),
       resolveBreached: r.resolveBreached || r.resolveDueAt.getTime() < now,
     }));
   }
@@ -154,9 +222,20 @@ export class SlaService {
   @OnEvent(DOMAIN_EVENTS.ISSUE_CREATED)
   async onIssueCreated(payload: unknown): Promise<void> {
     try {
-      const { issue } = payload as { issue: { id: string; workspaceId: string; projectId: string; priority?: { id: string } | null } };
+      const { issue } = payload as {
+        issue: {
+          id: string;
+          workspaceId: string;
+          projectId: string;
+          priority?: { id: string } | null;
+        };
+      };
       if (!issue?.id) return;
-      const policy = await this.pickPolicy(issue.workspaceId, issue.projectId, issue.priority?.id ?? null);
+      const policy = await this.pickPolicy(
+        issue.workspaceId,
+        issue.projectId,
+        issue.priority?.id ?? null,
+      );
       if (!policy) return;
       const now = Date.now();
       await this.prisma.issueSla.create({
@@ -168,7 +247,9 @@ export class SlaService {
         },
       });
     } catch (err) {
-      this.logger.warn(`Gắn SLA khi tạo issue thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(
+        `Gắn SLA khi tạo issue thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -177,7 +258,10 @@ export class SlaService {
     try {
       const { issueId } = payload as { issueId?: string };
       if (!issueId) return;
-      const sla = await this.prisma.issueSla.findUnique({ where: { issueId }, select: { firstRespondedAt: true, responseDueAt: true } });
+      const sla = await this.prisma.issueSla.findUnique({
+        where: { issueId },
+        select: { firstRespondedAt: true, responseDueAt: true },
+      });
       if (!sla || sla.firstRespondedAt) return;
       const now = new Date();
       await this.prisma.issueSla.update({
@@ -185,7 +269,9 @@ export class SlaService {
         data: { firstRespondedAt: now, responseBreached: now > sla.responseDueAt },
       });
     } catch (err) {
-      this.logger.warn(`Cập nhật SLA phản hồi thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(
+        `Cập nhật SLA phản hồi thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -194,7 +280,10 @@ export class SlaService {
     try {
       const { issue } = payload as { issue: { id: string; status?: { category?: string } | null } };
       if (!issue?.id) return;
-      const sla = await this.prisma.issueSla.findUnique({ where: { issueId: issue.id }, select: { resolvedAt: true, resolveDueAt: true } });
+      const sla = await this.prisma.issueSla.findUnique({
+        where: { issueId: issue.id },
+        select: { resolvedAt: true, resolveDueAt: true },
+      });
       if (!sla) return;
       const isDone = issue.status?.category === 'DONE';
       if (isDone && !sla.resolvedAt) {
@@ -205,10 +294,15 @@ export class SlaService {
         });
       } else if (!isDone && sla.resolvedAt) {
         // Mở lại ticket → bỏ mốc giải quyết.
-        await this.prisma.issueSla.update({ where: { issueId: issue.id }, data: { resolvedAt: null } });
+        await this.prisma.issueSla.update({
+          where: { issueId: issue.id },
+          data: { resolvedAt: null },
+        });
       }
     } catch (err) {
-      this.logger.warn(`Cập nhật SLA giải quyết thất bại: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(
+        `Cập nhật SLA giải quyết thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 }

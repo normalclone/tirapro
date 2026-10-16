@@ -2,6 +2,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { setAccessToken } from '@/lib/auth-token';
 import { queryClient } from '@/lib/queryClient';
+import { clearSessionCaches } from '@/lib/sessionCache';
+import { keys } from '@/lib/queryKeys';
 
 /** Không gian làm việc mà người dùng hiện tại là thành viên (kèm vai trò). */
 export interface MyWorkspace {
@@ -12,32 +14,24 @@ export interface MyWorkspace {
   roleName: string;
 }
 
+/** Phản hồi sau khi đổi/gỡ logo: thông tin rút gọn của không gian làm việc. */
+interface WorkspaceAvatarResult {
+  id: string;
+  name: string;
+  slug: string;
+  avatarUrl: string | null;
+}
+
 interface SwitchWorkspaceResponse {
   accessToken: string;
   expiresIn?: number;
   user: unknown;
 }
 
-interface InviteInput {
-  email: string;
-  displayName: string;
-  /** Vai trò chung gán cho người được mời (tuỳ chọn; BE mặc định nếu trống). */
-  roleIds?: string[];
-}
-
-interface InviteResponse {
-  userId: string;
-  email: string;
-  invited: boolean;
-  tempPassword?: string;
-}
-
-export const myWorkspacesKey = ['my-workspaces'] as const;
-
 /** Danh sách không gian làm việc của người dùng hiện tại. */
 export function useMyWorkspaces() {
   return useQuery({
-    queryKey: myWorkspacesKey,
+    queryKey: keys.workspaces.mine,
     queryFn: async () => (await api.get<MyWorkspace[]>('/auth/workspaces')).data,
   });
 }
@@ -55,17 +49,9 @@ export function useSwitchWorkspace() {
         .then((r) => r.data),
     onSuccess: (data) => {
       setAccessToken(data.accessToken);
-      queryClient.clear();
+      clearSessionCaches();
       window.location.assign('/');
     },
-  });
-}
-
-/** Mời thành viên vào không gian làm việc hiện tại. */
-export function useInvite() {
-  return useMutation({
-    mutationFn: (v: InviteInput) =>
-      api.post<InviteResponse>('/auth/invite', v).then((r) => r.data),
   });
 }
 
@@ -75,10 +61,10 @@ export function useUploadWorkspaceAvatar(workspaceId: string) {
     mutationFn: async (file: File) => {
       const fd = new FormData();
       fd.append('file', file);
-      return (await api.post(`/workspaces/${workspaceId}/avatar`, fd)).data;
+      return (await api.post<WorkspaceAvatarResult>(`/workspaces/${workspaceId}/avatar`, fd)).data;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: myWorkspacesKey });
+      void queryClient.invalidateQueries({ queryKey: keys.workspaces.mine });
     },
   });
 }
@@ -86,9 +72,10 @@ export function useUploadWorkspaceAvatar(workspaceId: string) {
 /** Gỡ logo/ảnh của không gian làm việc. */
 export function useRemoveWorkspaceAvatar(workspaceId: string) {
   return useMutation({
-    mutationFn: async () => (await api.delete(`/workspaces/${workspaceId}/avatar`)).data,
+    mutationFn: async () =>
+      (await api.delete<WorkspaceAvatarResult>(`/workspaces/${workspaceId}/avatar`)).data,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: myWorkspacesKey });
+      void queryClient.invalidateQueries({ queryKey: keys.workspaces.mine });
     },
   });
 }

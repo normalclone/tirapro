@@ -276,7 +276,7 @@ model WorkspaceMembership {
   workspaceId String
   userId      String
   roleId      String
-  invitedById String?
+  invitedById String?   // (UX vòng 2: luồng lời mời đã gỡ — cột này không còn ghi)
   joinedAt    DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1121,6 +1121,50 @@ Codes: `VALIDATION_ERROR(400)`, `JQL_PARSE_ERROR(400)`, `UNAUTHENTICATED/TOKEN_E
 **PHASE 8 — Hoàn thiện**
 33. **[infra]** Seed v2 đầy đủ (2 project SCRUM/KANBAN, sprints + snapshots, 30–50 issues, comments/mentions, dashboards, backfill embeddings nếu có key). *Dep: 18,22,23*
 34. **[infra]** CI (GitHub Actions: lint/typecheck/build/test/e2e, `ANTHROPIC_API_KEY=""` verify degrade) + README quickstart. *Dep: tất cả*
+
+
+### 5.1 Bảng trạng thái 34 chunk (cập nhật 2026-10-15)
+
+> Trạng thái đối chiếu với code thực tế: **Xong** = có và dùng được; **Một phần** = có lõi, còn thiếu phần ghi chú (đa số nằm ở Pha E của `docs/superpowers/plans/2026-10-15-review-fixes.md`); **Chưa** = chưa có.
+
+| # | Chunk | Trạng thái | Ghi chú |
+|---|---|---|---|
+| 1 | Monorepo skeleton | Xong | `docker-compose.yml` dùng `pgvector/pgvector:pg16`; container đã đổi tên `tirapro-*` (volume giữ `projira_*` để không mất dữ liệu dev) |
+| 2 | `@tirapro/types` | Xong | `enums.ts` sinh tự động bằng `pnpm gen:enums`, không sửa tay |
+| 3 | `@tirapro/shared` | Xong | zod, WS contracts, JQL, LexoRank |
+| 4 | Prisma schema + migrations | Xong | `sql/01_pgvector_fts.sql` (FTS/pgvector) là chuẩn bị, chưa dùng |
+| 5 | App bootstrap | Xong | pino, helmet, throttler (Redis), health |
+| 6 | AuthModule | Xong | |
+| 7 | UsersModule | Xong | |
+| 8 | RbacModule | Xong | Guard theo permission string `resource:action` (không dùng CASL) |
+| 9 | Seed v1 | Xong | |
+| 10 | Workspaces + Members | Xong | |
+| 11 | ProjectsModule | Xong | Sửa/lưu trữ project còn ở Pha E |
+| 12 | WorkflowsModule | Xong | Module `workflow-admin` |
+| 13 | CustomFieldsModule | Xong | |
+| 14 | IssuesModule | Xong | |
+| 15 | ActivityModule | Xong | |
+| 16 | Comments + Attachments | Xong | |
+| 17 | BoardsModule | Một phần | Admin cột, WIP enforce, filterJql, swimlane cấu hình: Pha E |
+| 18 | Sprints + Backlog | Một phần | Complete sprint chọn đích, snapshot hàng ngày, sửa/xoá sprint: Pha E |
+| 19 | Queue + Realtime | Một phần | Realtime + Redis adapter xong; BullMQ đã **bỏ** (không có queue); presence/typing: Pha E |
+| 20 | NotificationsModule | Một phần | In-app + WS; email (hạ tầng/template) là Pha E |
+| 21 | SearchModule | Một phần | JQL → Prisma `where` (ILIKE); full-text/semantic chưa dùng |
+| 22 | Reports + Dashboards | Một phần | `analytics` + `export` (CSV/JSON); chưa có PDF/Excel, chưa có dashboard kéo-thả |
+| 23 | AiModule | Một phần | `ClaudeService` + heuristic fallback; embeddings/semantic-search chưa |
+| 24 | Web foundation | Một phần | Primitives tự viết trên Radix; Dialog primitive đang bổ sung (Task D1) |
+| 25 | App shell | Xong | |
+| 26 | Auth pages | Xong | |
+| 27 | Projects + Issues UI | Xong | |
+| 28 | Board + Backlog + Sprints UI | Một phần | Theo tiến độ chunk 17–18 |
+| 29 | Comments/Attachments/Presence/Notifications UI | Một phần | Presence/typing: Pha E |
+| 30 | Search + Reports + Dashboard UI | Một phần | Theo tiến độ chunk 21–22 |
+| 31 | AI UI | Một phần | Theo tiến độ chunk 23 |
+| 32 | PWA + a11y | Một phần | `vite-plugin-pwa` có; chưa có lượt kiểm axe |
+| 33 | Seed v2 | Xong | `db:seed` + `db:seed:rich`; backfill embeddings chưa |
+| 34 | CI + README | Một phần | CI có (lint/typecheck/test); **chưa có README.md gốc**, chưa có e2e; có `apps/api/Dockerfile` |
+
+**Đã đổi tên module `dev` → `dev-links`** (`apps/api/src/modules/dev-links`; REST path `/dev/...` giữ nguyên).
 
 ---
 

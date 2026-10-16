@@ -1,8 +1,9 @@
 import type { SubtreeProgress } from '@/lib/issueTree';
 import { cn } from '@/lib/utils';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 /**
- * Thanh tiến trình của cây task con: 3 đoạn (Hoàn thành / Đang làm / Cần làm) theo tỉ lệ số lượng,
+ * Thanh tiến trình của cây task con: 3 đoạn (Done / In Progress / To Do) theo tỉ lệ số lượng,
  * cho task cha "nhìn" được trạng thái toàn bộ con cháu trong một liếc mắt.
  * - compact: chỉ thanh mảnh (cho card/dòng list).
  * - mặc định: thanh + "done/total".
@@ -11,13 +12,22 @@ export function TaskProgress({
   progress,
   compact,
   className,
+  title: titleOverride,
+  label = 'Tiến trình việc con',
 }: {
   progress: SubtreeProgress;
   compact?: boolean;
   className?: string;
+  /** Thay chú thích mặc định (vd tiến độ tiêu chí chấp nhận không có "đang làm"). */
+  title?: string;
+  /** Tên đối tượng cho aria-label của thanh. */
+  label?: string;
 }) {
   if (progress.total === 0) return null;
-  const title = `Hoàn thành ${progress.done}/${progress.total} (${progress.pct}%) · Đang làm ${progress.inProgress} · Cần làm ${progress.todo}`;
+  const unit = progress.unit === 'điểm' ? ' điểm' : '';
+  const title =
+    titleOverride ??
+    `${STATUS_CATEGORY_LABEL.DONE} ${progress.done}/${progress.total}${unit} (${progress.pct}%) · ${STATUS_CATEGORY_LABEL.IN_PROGRESS} ${progress.inProgress} · ${STATUS_CATEGORY_LABEL.TODO} ${progress.todo}`;
 
   const bar = (
     <div
@@ -27,13 +37,17 @@ export function TaskProgress({
       aria-valuenow={progress.pct}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label={`Tiến trình task con: ${progress.pct}%`}
+      aria-label={`${label}: ${progress.pct}%`}
     >
-      {progress.done > 0 && <span style={{ flexGrow: progress.done, background: 'var(--status-done)' }} />}
+      {progress.done > 0 && (
+        <span style={{ flexGrow: progress.done, background: 'var(--status-done)' }} />
+      )}
       {progress.inProgress > 0 && (
         <span style={{ flexGrow: progress.inProgress, background: 'var(--status-progress)' }} />
       )}
-      {progress.todo > 0 && <span style={{ flexGrow: progress.todo, background: 'var(--status-todo)' }} />}
+      {progress.todo > 0 && (
+        <span style={{ flexGrow: progress.todo, background: 'var(--status-todo)' }} />
+      )}
     </div>
   );
 
@@ -44,6 +58,7 @@ export function TaskProgress({
       <div className="min-w-[72px] flex-1">{bar}</div>
       <span className="tabular shrink-0 text-xs text-muted">
         {progress.done}/{progress.total}
+        {unit}
       </span>
     </div>
   );
