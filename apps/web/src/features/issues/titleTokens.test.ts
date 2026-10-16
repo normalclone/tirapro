@@ -3,6 +3,7 @@ import {
   changedTokenFields,
   parseDue,
   parseTitleTokens,
+  resolveCreateValues,
   shouldAcceptSuggestionOnKey,
   stripPartialTail,
   suggestFor,
@@ -201,5 +202,79 @@ describe('parseDue: ngày không có năm', () => {
   });
   it('ngày không có thật → không hiểu', () => {
     expect(parseDue('31/2', now)).toBeUndefined();
+  });
+});
+
+describe('#<số> là tham chiếu, không phải sprint (WC-I2)', () => {
+  const sp: TokenCtx = {
+    ...ctx,
+    sprints: [
+      { id: 's1', name: 'Sprint 1', state: 'ACTIVE' },
+      { id: 's12', name: 'Sprint 12', state: 'FUTURE' },
+      { id: 's120', name: 'Sprint 120', state: 'FUTURE' },
+    ],
+  };
+  it('#12 và #1 giữ nguyên trong tiêu đề, không gán sprint', () => {
+    expect(parseTitleTokens('Fix lỗi #12', sp)).toMatchObject({ clean: 'Fix lỗi #12' });
+    expect(parseTitleTokens('Fix lỗi #12', sp).sprintId).toBeUndefined();
+    const r = parseTitleTokens('Họp #1 với khách', sp);
+    expect(r.clean).toBe('Họp #1 với khách');
+    expect(r.sprintId).toBeUndefined();
+  });
+  it('#sprint12 khớp đúng Sprint 12 (không bị Sprint 120 chen)', () => {
+    expect(parseTitleTokens('A #sprint12', sp)).toMatchObject({ sprintId: 's12', clean: 'A' });
+    expect(parseTitleTokens('A #Sprint-120', sp).sprintId).toBe('s120');
+  });
+  it('#S12 và #sprint1 mơ hồ/không đủ chặt → không khớp sai', () => {
+    expect(parseTitleTokens('A #S12', sp).sprintId).toBeUndefined();
+    expect(parseTitleTokens('A #S12', sp).clean).toBe('A #S12');
+    // "sprint1" là tiền tố của sprint1, sprint12, sprint120 nhưng bằng đúng "Sprint 1" → khớp đúng.
+    expect(parseTitleTokens('A #sprint1', sp).sprintId).toBe('s1');
+  });
+  it('tiền tố duy nhất ≥ 3 ký tự có chữ cái khớp; mơ hồ thì không', () => {
+    const one: TokenCtx = {
+      ...ctx,
+      sprints: [{ id: 'a', name: 'Alpha release', state: 'FUTURE' }],
+    };
+    expect(parseTitleTokens('A #alp', one).sprintId).toBe('a');
+    expect(parseTitleTokens('A #al', one).sprintId).toBeUndefined();
+    const amb: TokenCtx = {
+      ...ctx,
+      sprints: [
+        { id: 'a', name: 'Alpha', state: 'FUTURE' },
+        { id: 'b', name: 'Alpine', state: 'FUTURE' },
+      ],
+    };
+    expect(parseTitleTokens('A #alp', amb).sprintId).toBeUndefined();
+  });
+  it('#12 không bị báo là token không nhận ra', () => {
+    expect(unmatchedTokens('Fix #12 và #1 fix', sp)).toEqual([]);
+  });
+  it('~2.5 và ~2,5 parse trọn, không để ".5" rác', () => {
+    expect(parseTitleTokens('Giá ~2.5 tỷ', sp)).toMatchObject({ points: 2.5, clean: 'Giá tỷ' });
+    expect(parseTitleTokens('Giá ~2,5 tỷ', sp)).toMatchObject({ points: 2.5, clean: 'Giá tỷ' });
+    expect(parseTitleTokens('Việc ~5', sp)).toMatchObject({ points: 5, clean: 'Việc' });
+  });
+});
+
+describe('ô đổi tay thắng token khi Tạo (WC-I1)', () => {
+  const cur = { priorityId: 'p2', assigneeId: 'u2', sprintId: '', points: '', due: '' };
+  const none = new Set<never>();
+  it('token đã đồng bộ + ô đổi tay → giữ giá trị ô', () => {
+    const tk = parseTitleTokens('Sửa !cao @Đức ', ctx);
+    // đã đồng bộ (synced = tk), người dùng sau đó đổi ưu tiên về Low tay → ô thắng
+    expect(resolveCreateValues(cur, tk, tk, new Set(['priorityId']))).toEqual(cur);
+    // kể cả khi không đánh dấu tay: token không đổi so với lần đồng bộ nên cũng không ghi đè
+    expect(resolveCreateValues(cur, tk, tk, none)).toEqual(cur);
+  });
+  it('token đuôi chưa đồng bộ → áp cho ô chưa đổi tay; ô đã đổi tay thì giữ', () => {
+    const tk = parseTitleTokens('Sửa !cao', ctx);
+    const synced = parseTitleTokens('Sửa', ctx);
+    expect(resolveCreateValues(cur, synced, tk, none).priorityId).toBe('p4');
+    expect(resolveCreateValues(cur, synced, tk, new Set(['priorityId'])).priorityId).toBe('p2');
+  });
+  it('điểm và hạn từ token chưa đồng bộ vào ô trống', () => {
+    const tk = parseTitleTokens('A ~3', ctx);
+    expect(resolveCreateValues(cur, { clean: '' }, tk, none).points).toBe('3');
   });
 });

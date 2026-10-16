@@ -28,10 +28,13 @@ import { epicChoices, parentChoices } from '@/lib/epic';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 import { TokenTitleInput } from './TokenTitleInput';
 import {
-  changedTokenFields,
   parseTitleTokens,
+  resolveCreateValues,
   stripPartialTail,
+  tokenFieldsToApply,
   type TokenCtx,
+  type TokenFieldKey,
+  type TokenFieldValues,
   type TokenResult,
 } from './titleTokens';
 
@@ -150,6 +153,10 @@ export function CreateIssueModal() {
   const [busy, setBusy] = useState(false);
   const prevTypeRef = useRef('');
   const lastTokens = useRef<TokenResult>({ clean: '' });
+  // Parse đầy đủ (kể cả token đuôi chưa đồng bộ) ở lần gõ trước, và các ô người dùng đổi tay sau lần token đổi gần nhất.
+  const lastFull = useRef<TokenResult>({ clean: '' });
+  const manualRef = useRef<Set<TokenFieldKey>>(new Set());
+  const markManual = (k: TokenFieldKey) => manualRef.current.add(k);
   // Lần chạy effect đồng bộ token ngay sau khi mở dùng `summary` cũ (trước khi nạp bản nháp) → bỏ qua.
   const skipSyncRef = useRef(false);
   // Chữ đang giữ (không tự lưu) sau khi chọn dự án đã có nháp riêng — xem ô Dự án.
@@ -200,6 +207,8 @@ export function CreateIssueModal() {
     setBusy(false);
     prevTypeRef.current = '';
     lastTokens.current = { clean: '' };
+    lastFull.current = { clean: '' };
+    manualRef.current.clear();
     skipSyncRef.current = true;
     if (draft.summary || draft.description || draft.acceptance)
       toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
@@ -301,25 +310,30 @@ export function CreateIssueModal() {
       skipSyncRef.current = false;
       return;
     }
+    // Token vừa xuất hiện/đổi giá trị (kể cả đuôi chưa áp) → ô tương ứng lại do token quản tới khi người dùng đổi tay.
+    const full = parseTitleTokens(summary, tokenCtx);
+    for (const k of Object.keys(tokenFieldsToApply(lastFull.current, full, new Set()))) {
+      manualRef.current.delete(k as TokenFieldKey);
+    }
+    lastFull.current = full;
     const next = parseTitleTokens(stripPartialTail(summary), tokenCtx);
-    const ch = changedTokenFields(lastTokens.current, next);
+    applyFields(tokenFieldsToApply(lastTokens.current, next, manualRef.current));
     lastTokens.current = next;
-    if (ch.priorityId) setPriorityId(ch.priorityId);
-    if (ch.assigneeId) setAssigneeId(ch.assigneeId);
-    if (ch.sprintId) setSprintId(ch.sprintId);
-    if (ch.points != null) setPoints(String(ch.points));
-    if (ch.dueLocal) setDue(ch.dueLocal);
   }, [open, summary, tokenCtx]);
 
   // Rời ô tiêu đề: CHỈ điền các trường suy ra từ token — GIỮ nguyên chữ đang gõ trong ô
   // (tránh cảm giác "mất chữ"/không undo được). Token chỉ được lược bỏ khi thực sự tạo (doCreate).
   function applyTokens() {
     const r = parseTitleTokens(summary, tokenCtx);
-    if (r.priorityId) setPriorityId(r.priorityId);
-    if (r.assigneeId) setAssigneeId(r.assigneeId);
-    if (r.sprintId) setSprintId(r.sprintId);
-    if (r.points != null) setPoints(String(r.points));
-    if (r.dueLocal) setDue(r.dueLocal);
+    applyFields(tokenFieldsToApply(lastTokens.current, r, manualRef.current));
+    lastTokens.current = r;
+  }
+  function applyFields(f: Partial<TokenFieldValues>) {
+    if (f.priorityId) setPriorityId(f.priorityId);
+    if (f.assigneeId) setAssigneeId(f.assigneeId);
+    if (f.sprintId) setSprintId(f.sprintId);
+    if (f.points != null) setPoints(f.points);
+    if (f.due) setDue(f.due);
   }
 
   // Đổi loại → tự điền mẫu mô tả (chỉ khi mô tả trống hoặc đang là mẫu; bỏ qua lần đặt mặc định đầu).
@@ -345,8 +359,15 @@ export function CreateIssueModal() {
     if (!canSubmit) return null;
     // Ô ngày/giờ đang gõ sai: chặn mọi đường gửi (nút Tạo & nhập tiếp, Cmd+Enter không đi qua form native).
     if (blockOnInvalidDate()) return null;
-    // Áp token gõ nhanh còn sót (nếu chưa blur) — token thắng giá trị đang chọn. Chỉ lược token khi TẠO.
+    // Giá trị trên ô = giá trị được gửi: ô đổi tay thắng; token chỉ chèn cho ô chưa bị đổi tay và token chưa kịp
+    // đồng bộ (đang gõ dở ở đuôi). Chỉ lược token khỏi tiêu đề khi TẠO.
     const tk = parseTitleTokens(summary, tokenCtx);
+    const v = resolveCreateValues(
+      { priorityId, assigneeId, sprintId, points, due },
+      lastTokens.current,
+      tk,
+      manualRef.current,
+    );
     const finalSummary = tk.clean.trim();
     if (!finalSummary) {
       toast.error('Hãy nhập tiêu đề mô tả việc cần làm');
@@ -361,17 +382,13 @@ export function CreateIssueModal() {
         description: description.trim() || null,
         descriptionFormat: 'MARKDOWN',
         acceptanceCriteria: isStory ? acceptance.trim() || null : null,
-        priorityId: (tk.priorityId ?? priorityId) || undefined,
-        assigneeId: (tk.assigneeId ?? assigneeId) || null,
+        priorityId: v.priorityId || undefined,
+        assigneeId: v.assigneeId || null,
         parentId: preset.parentId ?? (hideParent ? undefined : parentPick || undefined),
         epicId: hideEpic ? undefined : epicId || undefined,
-        storyPoints: tk.points ?? (points ? Number(points) : undefined),
-        sprintId: (tk.sprintId ?? sprintId) || undefined,
-        dueDate: tk.dueLocal
-          ? new Date(tk.dueLocal).toISOString()
-          : due
-            ? new Date(due).toISOString()
-            : undefined,
+        storyPoints: v.points ? Number(v.points) : undefined,
+        sprintId: v.sprintId || undefined,
+        dueDate: v.due ? new Date(v.due).toISOString() : undefined,
       });
       // Tải các tệp đính kèm song song → không dừng vì 1 tệp lỗi; báo rõ N/M nếu có lỗi.
       if (files.length > 0) {
@@ -438,6 +455,8 @@ export function CreateIssueModal() {
     setPoints('');
     setDue('');
     lastTokens.current = { clean: '' };
+    lastFull.current = { clean: '' };
+    manualRef.current.clear();
     requestAnimationFrame(() => document.getElementById('ci-summary')?.focus());
   }
 
@@ -529,6 +548,7 @@ export function CreateIssueModal() {
                 }
                 setSelKey(v);
                 setTypeId('');
+                manualRef.current.clear();
                 setPriorityId('');
                 setSprintId('');
                 setAssigneeId('');
@@ -615,7 +635,10 @@ export function CreateIssueModal() {
           >
             <PeoplePicker
               value={assigneeId}
-              onChange={setAssigneeId}
+              onChange={(v) => {
+                markManual('assigneeId');
+                setAssigneeId(v);
+              }}
               emptyLabel="Chưa gán"
               className={selectClass}
               options={assignees}
@@ -628,7 +651,10 @@ export function CreateIssueModal() {
           >
             <SearchSelect
               value={priorityId}
-              onChange={setPriorityId}
+              onChange={(v) => {
+                markManual('priorityId');
+                setPriorityId(v);
+              }}
               disabled={!meta}
               className={selectClass}
               options={[
@@ -649,7 +675,10 @@ export function CreateIssueModal() {
           >
             <SearchSelect
               value={sprintId}
-              onChange={setSprintId}
+              onChange={(v) => {
+                markManual('sprintId');
+                setSprintId(v);
+              }}
               disabled={!selId}
               className={selectClass}
               ariaLabel="Sprint"
@@ -666,7 +695,10 @@ export function CreateIssueModal() {
               min={0}
               inputMode="numeric"
               value={points}
-              onChange={(e) => setPoints(e.target.value)}
+              onChange={(e) => {
+                markManual('points');
+                setPoints(e.target.value);
+              }}
               placeholder="VD: 3"
               className="text-sm"
               aria-label="Điểm ước lượng"
@@ -681,7 +713,10 @@ export function CreateIssueModal() {
           >
             <DateTimeInput
               value={due}
-              onChange={setDue}
+              onChange={(v) => {
+                markManual('due');
+                setDue(v);
+              }}
               defaultTime="17:00"
               ariaLabel="Hạn hoàn thành"
             />
