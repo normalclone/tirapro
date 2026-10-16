@@ -10,3 +10,6 @@ export function requestAssign(issueKey: string): void {
     new CustomEvent<AssignRequestDetail>(ASSIGN_REQUEST_EVENT, { detail: { issueKey } }),
   );
 }
+
+/** Câu báo khi không được đổi người phụ trách (phím `a`, thả thẻ sang hàng người khác trên Board). */
+export const ASSIGN_DENIED_NOTICE = 'Bạn không có quyền đổi người phụ trách việc này.';

@@ -32,7 +32,7 @@ import { useDevLinks, useIssue } from './api';
 import { useCreateIssue } from './create-api';
 import { useProjects } from '@/features/projects/api';
 import { ProjectRail } from '@/features/projects/ProjectRail';
-import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
+import { useCanEditIssue, useCanIn, useProjectPermissions } from '@/features/projects/permissions';
 import { useMyWorkspaces } from '@/features/workspace/api';
 import { useDeleteIssue, useRetractIssue } from '@/features/issue-edit/api';
 import { RetractMenuItem } from './RetractMenuItem';
@@ -102,6 +102,9 @@ const WorkflowViewDialog = lazy<ComponentType<ComponentProps<typeof WorkflowView
     }),
 );
 
+/** Câu báo khi bấm `e` mà không sửa được công việc (cùng tinh thần với phím `a`). */
+const EDIT_DENIED_NOTICE = 'Bạn không có quyền sửa công việc này.';
+
 /** Nút trên thanh thao tác dưới tiêu đề (secondary, viền). */
 const TOOLBAR_BTN =
   'inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50';
@@ -158,17 +161,21 @@ export function IssueDetailPage() {
   const editRequested = useRef(
     (location.state as { editSummary?: boolean } | null)?.editSummary === true,
   );
+  const permsQ = useProjectPermissions(issue?.projectId);
+  const permsSettled = permsQ.isSuccess || permsQ.isError;
   useEffect(() => {
-    if (!editRequested.current || !issue || !canEditThis) return;
+    if (!editRequested.current || !issue || !permsSettled) return;
     editRequested.current = false;
-    setSummary(issue.summary);
-    setEditingSummary(true);
+    if (canEditThis) {
+      setSummary(issue.summary);
+      setEditingSummary(true);
+    } else toast.info(EDIT_DENIED_NOTICE);
     // Xoá cờ khỏi history để tải lại/Back không tự mở ô sửa lần nữa.
     navigate(
       { pathname: location.pathname, search: location.search },
       { replace: true, state: null },
     );
-  }, [issue, canEditThis, navigate, location.pathname, location.search]);
+  }, [issue, canEditThis, permsSettled, navigate, location.pathname, location.search]);
   const [activityTab, setActivityTab] = useState<'comments' | 'history'>('comments');
   const [wfOpen, setWfOpen] = useState(false);
   const [wfSeen, setWfSeen] = useState(false); // đã từng mở → giữ dialog trong cây để hiệu ứng đóng chạy được
@@ -289,8 +296,12 @@ export function IssueDetailPage() {
         return;
       }
       // e = sửa tiêu đề tại chỗ (cùng đường với bấm vào tiêu đề); preventDefault để chữ "e" không lọt vào ô vừa mở.
-      if ((e.key === 'e' || e.key === 'E') && canEditThis) {
+      if (e.key === 'e' || e.key === 'E') {
         e.preventDefault();
+        if (!canEditThis) {
+          toast.info(EDIT_DENIED_NOTICE);
+          return;
+        }
         setSummary(issue.summary);
         setEditingSummary(true);
         return;
@@ -545,7 +556,7 @@ export function IssueDetailPage() {
                         canEditThis && 'cursor-text hover:bg-surface-2',
                       )}
                       onClick={canEditThis ? () => setEditingSummary(true) : undefined}
-                      title={canEditThis ? 'Bấm để sửa tiêu đề' : undefined}
+                      title={canEditThis ? withKey('Bấm để sửa tiêu đề', 'issue.edit') : undefined}
                     >
                       {issue.summary}
                     </h1>

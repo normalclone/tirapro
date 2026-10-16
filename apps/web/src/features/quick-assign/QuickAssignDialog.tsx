@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog } from '@/components/ui/Dialog';
@@ -9,10 +9,7 @@ import { useIssue, useUpdateIssue } from '@/features/issues/api';
 import { useCanEditIssue, useCanIn, useProjectPermissions } from '@/features/projects/permissions';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { ASSIGN_REQUEST_EVENT, type AssignRequestDetail } from './events';
-
-/** Cùng câu chữ với `BoardPage` khi thả thẻ sang hàng người khác mà không được đổi người phụ trách. */
-export const ASSIGN_DENIED_NOTICE = 'Bạn không có quyền đổi người phụ trách việc này.';
+import { ASSIGN_DENIED_NOTICE, ASSIGN_REQUEST_EVENT, type AssignRequestDetail } from './events';
 
 type Phase = 'idle' | 'checking' | 'open';
 
@@ -122,6 +119,7 @@ function AssignBody({ issueKey, onClose }: { issueKey: string; onClose: () => vo
   const { data: issue } = useIssue(issueKey);
   const options = useAssigneeOptions(issue?.projectId);
   const updateIssue = useUpdateIssue(issue?.projectId);
+  const listId = useId();
   const [q, setQ] = useState('');
   // -1 = chưa chạm: mũi tên bắt đầu từ người đang phụ trách (nếu có), để Enter ngay không đổi gì.
   const [active, setActive] = useState(-1);
@@ -175,6 +173,13 @@ function AssignBody({ issueKey, onClose }: { issueKey: string; onClose: () => vo
       </p>
       <Input
         autoFocus
+        role="combobox"
+        aria-expanded
+        aria-controls={listId}
+        aria-activedescendant={
+          rows[activeIdx] ? `${listId}-${rows[activeIdx].id || 'none'}` : undefined
+        }
+        aria-autocomplete="list"
         value={q}
         onChange={(e) => {
           setQ(e.target.value);
@@ -196,6 +201,7 @@ function AssignBody({ issueKey, onClose }: { issueKey: string; onClose: () => vo
         }}
       />
       <ul
+        id={listId}
         className="mt-2 max-h-72 overflow-y-auto"
         role="listbox"
         aria-label="Người có thể phụ trách"
@@ -204,6 +210,7 @@ function AssignBody({ issueKey, onClose }: { issueKey: string; onClose: () => vo
           <li key={o.id || 'none'} role="presentation">
             <button
               type="button"
+              id={`${listId}-${o.id || 'none'}`}
               role="option"
               aria-selected={o.id === current}
               tabIndex={-1}

@@ -13,9 +13,15 @@ import { useCreateTarget } from './useCreateTarget';
 import { SHORTCUTS_EVENT } from '@/components/layout/ShortcutsDialog';
 import { activeDrag } from './activeDrag';
 import { moveNavFocus } from './listNav';
+import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import { PEEK_PARAM } from '@/features/issues/peek/peekParam';
 import { requestAssign } from '@/features/quick-assign/events';
-import { isOverlayOpen, isTypingTarget, shouldIgnoreGlobalHotkey } from './hotkeys';
+import {
+  isOverlayOpen,
+  isTypingTarget,
+  shouldIgnoreGlobalHotkey,
+  shouldSkipListHotkey,
+} from './hotkeys';
 
 /**
  * Công việc mà phím `a`/`e` nhắm tới: dòng/thẻ đang focus (`data-issue-key` ở chính nó hoặc tổ tiên) → trang `/issue/:key`
@@ -50,9 +56,12 @@ export function useGlobalHotkeys() {
   const navigate = useNavigate();
   const { data: projects } = useProjects();
   const openCreate = useCreateIssueModal((s) => s.openCreate);
+  const { open: openPeek } = useIssuePeek();
   // Giữ tham chiếu mới nhất để listener (đăng ký 1 lần) luôn dùng dữ liệu hiện thời.
   const projectsRef = useRef(projects);
   projectsRef.current = projects;
+  const openPeekRef = useRef(openPeek);
+  openPeekRef.current = openPeek;
   const create = useCreateTarget();
   const createRef = useRef(create);
   createRef.current = create;
@@ -112,13 +121,24 @@ export function useGlobalHotkeys() {
           focusSearch();
           break;
         case 'j':
+        case 'J':
         case 'k':
+        case 'K':
           // Đang kéo bằng bàn phím (Space nhấc thẻ): phím thuộc về dnd-kit, không dời focus.
-          if (activeDrag.get()) break;
-          if (moveNavFocus(key === 'j' ? 1 : -1)) e.preventDefault();
+          if (shouldSkipListHotkey(key, { dragging: !!activeDrag.get(), onIssuePage: false }))
+            break;
+          if (
+            moveNavFocus(key.toLowerCase() === 'j' ? 1 : -1, {
+              peekKey: new URLSearchParams(window.location.search).get(PEEK_PARAM),
+              onPeek: openPeekRef.current,
+            })
+          )
+            e.preventDefault();
           break;
-        case 'a': {
-          if (activeDrag.get()) break;
+        case 'a':
+        case 'A': {
+          if (shouldSkipListHotkey(key, { dragging: !!activeDrag.get(), onIssuePage: false }))
+            break;
           const issueKey = targetIssueKey();
           if (issueKey) {
             e.preventDefault();
@@ -126,9 +146,11 @@ export function useGlobalHotkeys() {
           }
           break;
         }
-        case 'e': {
+        case 'e':
+        case 'E': {
           // Trang công việc tự xử lý `e` (sửa tiêu đề tại chỗ); ở danh sách thì mở trang công việc ở chế độ sửa tiêu đề.
-          if (activeDrag.get() || issueKeyFromPathname(window.location.pathname)) break;
+          const onIssuePage = !!issueKeyFromPathname(window.location.pathname);
+          if (shouldSkipListHotkey(key, { dragging: !!activeDrag.get(), onIssuePage })) break;
           const issueKey = targetIssueKey();
           if (issueKey) {
             e.preventDefault();

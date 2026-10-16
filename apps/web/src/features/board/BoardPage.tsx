@@ -17,6 +17,7 @@ import {
 import { BoardSettingsDialog, SWIMLANE_LABEL } from './BoardSettingsDialog';
 import { BoardDnd } from './BoardDnd';
 import { PeekShell } from '@/features/issues/peek/PeekShell';
+import { ASSIGN_DENIED_NOTICE } from '@/features/quick-assign/events';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import { Column } from './Column';
 import { freshenBoardIssues } from './boardIssues';
@@ -467,8 +468,7 @@ export function BoardPage() {
 
     if (plan === 'ignore') {
       // Thả sang hàng người khác nhưng không được đổi người phụ trách việc này → nói rõ thay vì lặng lẽ không làm gì.
-      if (wantsReassign && !assigneeChanged)
-        toast.info('Bạn không có quyền đổi người phụ trách việc này.');
+      if (wantsReassign && !assigneeChanged) toast.info(ASSIGN_DENIED_NOTICE);
       else if (rankDenied)
         toast.info(
           'Bạn không có quyền đổi thứ tự thẻ trong cột — hãy kéo sang cột khác để đổi trạng thái.',
@@ -480,12 +480,12 @@ export function BoardPage() {
       return;
     }
     if (plan === 'blocked') {
-      if (wantsReassign) toast.info('Bạn không có quyền đổi người phụ trách việc này.');
+      if (wantsReassign) toast.info(ASSIGN_DENIED_NOTICE);
       toast.error(blockedMsg);
       return;
     }
     if (plan === 'status' || plan === 'status-only') {
-      if (wantsReassign) toast.info('Bạn không có quyền đổi người phụ trách việc này.');
+      if (wantsReassign) toast.info(ASSIGN_DENIED_NOTICE);
       if (only) void runMove(issue, col, only.id, p, { statusName: labelFor(only) });
       else if (res.kind === 'move')
         setPick({ issue, col, options: res.options, version: null, placement: p });
