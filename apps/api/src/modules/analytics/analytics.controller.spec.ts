@@ -141,8 +141,11 @@ describe('AnalyticsController.qa — guard thật', () => {
     const hidden = sc === 'private-outsider';
     const prisma = {
       project: {
-        findFirst: vi.fn((args: { where: Record<string, unknown> }) => {
-          if (args.where.isPrivate === true) return Promise.resolve({ memberships: [] });
+        findFirst: vi.fn((args: { select?: Record<string, unknown> }) => {
+          // assertProjectVisible (quyết định công khai/riêng tư + thành viên) vs assertProjectInWorkspace (chỉ tồn tại).
+          if (args.select?.isPrivate) {
+            return Promise.resolve(hidden ? { isPrivate: true, memberships: [] } : null);
+          }
           return Promise.resolve(hidden ? { id: 'P1' } : null);
         }),
       },

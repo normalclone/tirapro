@@ -277,7 +277,7 @@ describe('PermissionsGuard — dự án riêng tư', () => {
       req: { user: { ...user }, params: { projectId: 'P1' } },
     });
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(NotFoundAppException);
-    expect(rbac.assertProjectVisible).toHaveBeenCalledWith('U1', 'W1', 'P1', 'Dự án');
+    expect(rbac.assertProjectVisible).toHaveBeenCalledWith('U1', 'W1', 'P1', 'Dự án', false);
     expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
   });
 
@@ -288,7 +288,13 @@ describe('PermissionsGuard — dự án riêng tư', () => {
       req: { user: { ...user }, params: { id: 'I1' } },
     });
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(NotFoundAppException);
-    expect(rbac.assertProjectVisible).toHaveBeenCalledWith('U1', 'W1', 'P-cua-I1', 'Tài nguyên');
+    expect(rbac.assertProjectVisible).toHaveBeenCalledWith(
+      'U1',
+      'W1',
+      'P-cua-I1',
+      'Tài nguyên',
+      false,
+    );
   });
 
   it('admin hệ thống return sớm, không gọi assertProjectVisible', async () => {

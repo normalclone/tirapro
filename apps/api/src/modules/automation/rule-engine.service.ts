@@ -244,8 +244,11 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     workspaceId: string,
     rule: CachedRule,
     issueKey: string,
+    viewerId: string,
   ): Promise<AutomationRuleTestResultDto> {
-    const issue = await this.issues.getByKey(workspaceId, issueKey);
+    // Mã việc do người dùng gõ tự do (guard chỉ kiểm dự án của QUY TẮC) → lọc theo người xem: mã việc của dự án riêng tư
+    // họ không thấy trả 404 giống mã không tồn tại. Phần chạy nội bộ của engine (loadIssue, cron) giữ `null` (hệ thống).
+    const issue = await this.issues.getByKey(workspaceId, issueKey, viewerId);
     if (rule.projectId && rule.projectId !== issue.projectId) {
       return {
         status: 'SKIPPED',
@@ -389,7 +392,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
   }
 
   private async loadIssue(workspaceId: string, issueId: string): Promise<IssueDto | null> {
-    const page = await this.issues.query(workspaceId, { id: issueId }, [], undefined, 1);
+    const page = await this.issues.query(workspaceId, { id: issueId }, [], undefined, 1, null);
     return page.data[0] ?? null;
   }
 
@@ -494,6 +497,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
       [],
       undefined,
       SCHEDULED_ISSUE_LIMIT,
+      null,
     );
     for (const issue of page.data) {
       if (this.stopping) return;

@@ -33,6 +33,7 @@ export class IntakeController {
   @Get('duplicates')
   async duplicates(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query('projectId') projectId: string,
     @Query('summary') summary: string,
     @Query('limit') limit?: string,
@@ -42,6 +43,7 @@ export class IntakeController {
       workspaceId,
       projectId ?? '',
       summary ?? '',
+      user.id,
       Number.isFinite(n) && n > 0 ? n : undefined,
     );
   }

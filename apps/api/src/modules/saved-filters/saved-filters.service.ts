@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { parseJql, JqlParseError, FilterVisibility, type IssueDto } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { SearchService } from '../search/search.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import {
   BusinessRuleException,
   ForbiddenAppException,
@@ -58,6 +59,7 @@ export class SavedFiltersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly search: SearchService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   /** Liệt kê filter mà user xem được trong workspace: của mình HOẶC WORKSPACE HOẶC PROJECT. */
@@ -66,7 +68,7 @@ export class SavedFiltersService {
       where: {
         workspaceId,
         deletedAt: null,
-        OR: this.visibilityScope(userId),
+        OR: await this.visibilityScope(workspaceId, userId),
       },
       select: filterSelect,
       orderBy: { createdAt: 'desc' },
@@ -81,6 +83,7 @@ export class SavedFiltersService {
     input: CreateSavedFilterInput,
   ): Promise<SavedFilterDto> {
     this.validateJql(input.jql);
+    await this.assertSharedProjectVisible(workspaceId, userId, input.sharedProjectId);
     const row = await this.prisma.savedFilter.create({
       data: {
         workspaceId,
@@ -104,6 +107,7 @@ export class SavedFiltersService {
   ): Promise<SavedFilterDto> {
     await this.requireOwned(workspaceId, userId, id);
     if (input.jql !== undefined) this.validateJql(input.jql);
+    await this.assertSharedProjectVisible(workspaceId, userId, input.sharedProjectId);
 
     const data: Prisma.SavedFilterUncheckedUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
@@ -141,13 +145,22 @@ export class SavedFiltersService {
     });
   }
 
-  /** Điều kiện OR cho phạm vi xem: của mình / WORKSPACE / PROJECT. */
-  private visibilityScope(userId: string): Prisma.SavedFilterWhereInput[] {
-    return [
-      { ownerId: userId },
-      { visibility: FilterVisibility.WORKSPACE },
-      { visibility: FilterVisibility.PROJECT },
-    ];
+  /**
+   * Điều kiện OR cho phạm vi xem: của mình / WORKSPACE / PROJECT. Bộ lọc người khác chia sẻ gắn với dự án riêng tư
+   * (`sharedProjectId`) mà người xem không thấy thì ẩn (không lộ tên/JQL của dự án đó).
+   */
+  private async visibilityScope(
+    workspaceId: string,
+    userId: string,
+  ): Promise<Prisma.SavedFilterWhereInput[]> {
+    const visible = await this.access.visibleWhere(userId, workspaceId);
+    const shared: Prisma.SavedFilterWhereInput = {
+      visibility: { in: [FilterVisibility.WORKSPACE, FilterVisibility.PROJECT] },
+      ...(Object.keys(visible).length === 0
+        ? {}
+        : { OR: [{ sharedProjectId: null }, { sharedProject: visible }] }),
+    };
+    return [{ ownerId: userId }, shared];
   }
 
   /** Nạp filter user xem được (của mình / WORKSPACE / PROJECT) — nếu không có thì 404. */
@@ -161,7 +174,7 @@ export class SavedFiltersService {
         id,
         workspaceId,
         deletedAt: null,
-        OR: this.visibilityScope(userId),
+        OR: await this.visibilityScope(workspaceId, userId),
       },
       select: filterSelect,
     });
@@ -183,6 +196,16 @@ export class SavedFiltersService {
     if (row.ownerId !== userId)
       throw new ForbiddenAppException('Chỉ chủ sở hữu mới sửa được bộ lọc này');
     return row;
+  }
+
+  /** Không gắn bộ lọc vào dự án riêng tư mình không thấy (404 'Dự án' như không tồn tại). */
+  private async assertSharedProjectVisible(
+    workspaceId: string,
+    userId: string,
+    sharedProjectId: string | null | undefined,
+  ): Promise<void> {
+    if (sharedProjectId)
+      await this.access.assertCanSee(userId, workspaceId, sharedProjectId, 'Dự án');
   }
 
   /** Validate cú pháp JQL; ném BusinessRuleException kèm message + vị trí khi sai. */

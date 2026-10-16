@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DEFAULT_PROJECT_ROLE_BY_WS_ROLE } from '@tirapro/types';
+import { DEFAULT_PROJECT_ROLE_BY_WS_ROLE, PERMISSIONS } from '@tirapro/types';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import type { ProjectResourceKind } from '../../common/decorators/project-ref.decorator';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -310,27 +310,60 @@ export class RbacService {
   }
 
   /**
-   * Dự án riêng tư: người không phải thành viên dự án và không có `workspace:admin` nhận 404.
-   * Dự án công khai / không tồn tại / đã xoá → qua (các kiểm tra khác lo phần 404 của chúng).
+   * MỘT định nghĩa duy nhất của "thấy dự án" (ProjectAccessService.visibleWhere/visibleProjectIds/canSee/assertCanSee và
+   * guard đều đi qua đây):
+   * - `all`: admin hệ thống hoặc `workspace:admin` — thấy mọi dự án.
+   * - `standard`: vai cấp workspace có `project:view` — thấy dự án công khai + dự án riêng tư mình là thành viên.
+   * - `memberOnly`: vai cấp workspace KHÔNG có `project:view` (vai tuỳ biến) — chỉ dự án mình có vai trò (thành viên),
+   *   kể cả công khai.
+   * `knownSystemAdmin`: đã biết người gọi có phải admin hệ thống không (guard biết) → bỏ một truy vấn user.
+   */
+  async projectVisibilityMode(
+    userId: string,
+    workspaceId: string,
+    knownSystemAdmin?: boolean,
+  ): Promise<'all' | 'standard' | 'memberOnly'> {
+    const isSystemAdmin =
+      knownSystemAdmin ??
+      (
+        await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { isSystemAdmin: true },
+        })
+      )?.isSystemAdmin;
+    if (isSystemAdmin) return 'all';
+    const perms = await this.getEffectivePermissions(userId, workspaceId);
+    if (perms.has('workspace:admin')) return 'all';
+    return perms.has(PERMISSIONS.PROJECT_VIEW) ? 'standard' : 'memberOnly';
+  }
+
+  /**
+   * Người gọi không thấy dự án (theo `projectVisibilityMode`) → `NotFoundAppException(notFoundLabel)`.
+   * Dự án không tồn tại / đã xoá / khác workspace → cũng 404 (trừ admin, thấy mọi thứ: `all` return sớm).
    * `notFoundLabel`: nhãn của thông điệp 404 — người gọi truyền đúng nhãn của đường "không tồn tại" cùng loại để
-   * 404 của dự án riêng tư giống hệt 404 của tài nguyên không có thật (không lộ sự tồn tại).
-   * Một truy vấn theo khoá chính; admin hệ thống đã được guard cho qua sớm.
+   * 404 của dự án ẩn giống hệt 404 của tài nguyên không có thật (không lộ sự tồn tại).
    */
   async assertProjectVisible(
     userId: string,
     workspaceId: string,
     projectId: string,
     notFoundLabel = 'Dự án',
+    knownSystemAdmin?: boolean,
   ): Promise<void> {
+    const mode = await this.projectVisibilityMode(userId, workspaceId, knownSystemAdmin);
+    if (mode === 'all') return;
     const row = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null, isPrivate: true },
-      select: { memberships: { where: { userId }, select: { id: true }, take: 1 } },
+      where: { id: projectId, workspaceId, deletedAt: null },
+      select: {
+        isPrivate: true,
+        memberships: { where: { userId }, select: { id: true }, take: 1 },
+      },
     });
-    if (!row) return;
+    // Không tồn tại / đã xoá / khác workspace: với người không phải admin coi như KHÔNG thấy (nhất quán visibleWhere, vốn lọc
+    // deletedAt/workspace). Guard đã 404 các ca này ở bước tra dự án trước đó nên không đổi hành vi HTTP.
+    if (!row) throw new NotFoundAppException(notFoundLabel);
     if (row.memberships.length > 0) return;
-    const perms = await this.getEffectivePermissions(userId, workspaceId);
-    if (perms.has('workspace:admin')) return;
-    throw new NotFoundAppException(notFoundLabel);
+    if (mode === 'memberOnly' || row.isPrivate) throw new NotFoundAppException(notFoundLabel);
   }
 
   /** Invalidate cache khi đổi vai trò của 1 user (gọi từ MembersModule). */

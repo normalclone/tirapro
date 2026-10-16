@@ -26,19 +26,24 @@ export class RaidController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   async list(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query('kind') kind?: string,
     @Query('status') status?: string,
     @Query('projectId') projectId?: string,
     @Query('ownerId') ownerId?: string,
   ) {
-    return this.raid.list(workspaceId, { kind, status, projectId, ownerId });
+    return this.raid.list(workspaceId, { kind, status, projectId, ownerId }, user.id);
   }
 
   @ProjectRef('raid', 'id')
   @Get(':id')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
-  async get(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.raid.get(workspaceId, id);
+  async get(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.raid.get(workspaceId, id, user.id);
   }
 
   @Post()
@@ -66,7 +71,11 @@ export class RaidController {
   @ProjectRef('raid', 'id')
   @Delete(':id')
   @Permissions(PERMISSIONS.RISK_MANAGE)
-  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.raid.remove(workspaceId, id);
+  async remove(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.raid.remove(workspaceId, id, user.id);
   }
 }

@@ -77,13 +77,13 @@ function make(
 describe('ProjectsService — lưu trữ / sửa / xoá', () => {
   it('list(): mặc định ẩn dự án đã lưu trữ, includeArchived=true thì hiện', async () => {
     const { service, prisma } = make();
-    await service.list('w1');
+    await service.list('w1', false, 'u1');
     expect(prisma.project.findMany.mock.calls[0]![0].where).toMatchObject({
       workspaceId: 'w1',
       deletedAt: null,
       archivedAt: null,
     });
-    await service.list('w1', true);
+    await service.list('w1', true, 'u1');
     expect(prisma.project.findMany.mock.calls[1]![0].where).not.toHaveProperty('archivedAt');
   });
 
@@ -244,7 +244,7 @@ describe('ProjectsService.setHealth — ghi đè sức khoẻ dự án', () => {
       healthUpdatedById: 'u1',
     });
     expect(call.data.healthUpdatedAt).toBeInstanceOf(Date);
-    expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1']);
+    expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1'], null);
     expect(dto).toMatchObject({ level: 'RED' });
   });
 
@@ -420,14 +420,6 @@ describe('ProjectsService — dự án riêng tư', () => {
       archivedAt: null,
       ...visible,
     });
-  });
-
-  it('list() không có viewerId: không lọc riêng tư (đường nội bộ)', async () => {
-    const { service, prisma } = make();
-    ACCESS.visibleWhere.mockClear();
-    await service.list('w1');
-    expect(ACCESS.visibleWhere).not.toHaveBeenCalled();
-    expect(prisma.project.findMany.mock.calls.at(-1)![0].where).not.toHaveProperty('OR');
   });
 
   it('create: isPrivate được ghi (mặc định false) và có trong DTO', async () => {

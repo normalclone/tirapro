@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { LIVE_PROJECT } from '../../common/live-project';
 import {
   BusinessRuleException,
   ForbiddenAppException,
@@ -9,24 +8,27 @@ import {
 } from '../../common/exceptions/app.exception';
 import type { ProjectHealthDto } from '@tirapro/shared';
 import { ProjectHealthService } from '../analytics/project-health.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import type { CreateProgramInput, UpdateProgramInput } from './programs.schemas';
 
-const PROGRAM_SELECT = {
-  id: true,
-  workspaceId: true,
-  name: true,
-  description: true,
-  color: true,
-  startDate: true,
-  targetDate: true,
-  createdAt: true,
-  owner: { select: { id: true, displayName: true, avatarUrl: true } },
-  projects: {
-    where: { deletedAt: null },
-    orderBy: { name: 'asc' as const },
-    select: { id: true, key: true, name: true, isArchived: true },
-  },
-} satisfies Prisma.ProgramSelect;
+/** `visible` = điều kiện hiển thị dự án của người xem (`{}` = thấy hết): dự án riêng tư không thấy không hiện trong chương trình. */
+const programSelect = (visible: Prisma.ProjectWhereInput) =>
+  ({
+    id: true,
+    workspaceId: true,
+    name: true,
+    description: true,
+    color: true,
+    startDate: true,
+    targetDate: true,
+    createdAt: true,
+    owner: { select: { id: true, displayName: true, avatarUrl: true } },
+    projects: {
+      where: { deletedAt: null, ...visible },
+      orderBy: { name: 'asc' as const },
+      select: { id: true, key: true, name: true, isArchived: true },
+    },
+  }) satisfies Prisma.ProgramSelect;
 
 /** Số liệu tổng hợp cho một dự án hoặc một chương trình. */
 export interface RollupStats {
@@ -67,6 +69,11 @@ export interface RollupGroup extends RollupStats {
   projects: RollupProject[];
 }
 
+interface RollupResult {
+  groups: RollupGroup[];
+  totals: RollupStats & { projectCount: number; programCount: number; scoped: boolean };
+}
+
 const EMPTY_STATS: RollupStats = {
   issueCount: 0,
   doneCount: 0,
@@ -87,27 +94,33 @@ export class ProgramsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly health: ProjectHealthService,
+    private readonly access: ProjectAccessService,
   ) {}
 
-  async list(workspaceId: string) {
+  /** Điều kiện hiển thị dự án của người xem (`{}` = thấy hết). `viewerId` bắt buộc ở mọi đường đọc. */
+  private visibleFor(workspaceId: string, viewerId: string): Promise<Prisma.ProjectWhereInput> {
+    return this.access.visibleWhere(viewerId, workspaceId);
+  }
+
+  async list(workspaceId: string, viewerId: string) {
     const rows = await this.prisma.program.findMany({
       where: { workspaceId },
       orderBy: [{ startDate: 'asc' }, { name: 'asc' }],
-      select: PROGRAM_SELECT,
+      select: programSelect(await this.visibleFor(workspaceId, viewerId)),
     });
     return rows.map((p) => this.toDto(p));
   }
 
-  async get(workspaceId: string, id: string) {
+  async get(workspaceId: string, id: string, viewerId: string) {
     const p = await this.prisma.program.findFirst({
       where: { id, workspaceId },
-      select: PROGRAM_SELECT,
+      select: programSelect(await this.visibleFor(workspaceId, viewerId)),
     });
     if (!p) throw new NotFoundAppException('Chương trình');
     return this.toDto(p);
   }
 
-  async create(workspaceId: string, dto: CreateProgramInput) {
+  async create(workspaceId: string, dto: CreateProgramInput, viewerId: string) {
     const name = dto.name.trim();
     await this.assertNameFree(workspaceId, name);
     const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
@@ -123,11 +136,12 @@ export class ProgramsService {
       },
       select: { id: true },
     });
-    if (dto.projectIds?.length) await this.setProjects(workspaceId, created.id, dto.projectIds);
-    return this.get(workspaceId, created.id);
+    if (dto.projectIds?.length)
+      await this.setProjects(workspaceId, created.id, dto.projectIds, viewerId);
+    return this.get(workspaceId, created.id, viewerId);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateProgramInput) {
+  async update(workspaceId: string, id: string, dto: UpdateProgramInput, viewerId: string) {
     await this.require(workspaceId, id);
     const data: Prisma.ProgramUpdateInput = {};
 
@@ -147,8 +161,9 @@ export class ProgramsService {
     }
 
     await this.prisma.program.update({ where: { id }, data });
-    if (dto.projectIds !== undefined) await this.setProjects(workspaceId, id, dto.projectIds);
-    return this.get(workspaceId, id);
+    if (dto.projectIds !== undefined)
+      await this.setProjects(workspaceId, id, dto.projectIds, viewerId);
+    return this.get(workspaceId, id, viewerId);
   }
 
   async remove(workspaceId: string, id: string) {
@@ -157,13 +172,18 @@ export class ProgramsService {
     return { success: true };
   }
 
-  /** Đặt lại TOÀN BỘ tập dự án của chương trình: ngoài danh sách → gỡ khỏi chương trình. */
-  async setProjects(workspaceId: string, id: string, projectIds: string[]) {
+  /**
+   * Đặt lại TOÀN BỘ tập dự án của chương trình (trong phạm vi người gọi thấy): ngoài danh sách → gỡ khỏi chương trình.
+   * Dự án riêng tư người gọi không thấy không gắn được (cùng lỗi với dự án ngoài workspace — không lộ sự tồn tại) và
+   * cũng không bị gỡ nhầm khi người gọi gửi lại danh sách chỉ gồm phần họ thấy.
+   */
+  async setProjects(workspaceId: string, id: string, projectIds: string[], viewerId: string) {
     await this.require(workspaceId, id);
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const ids = [...new Set(projectIds)];
     if (ids.length > 0) {
       const found = await this.prisma.project.findMany({
-        where: { id: { in: ids }, workspaceId, deletedAt: null },
+        where: { id: { in: ids }, workspaceId, deletedAt: null, ...visible },
         select: { id: true },
       });
       if (found.length !== ids.length)
@@ -173,7 +193,12 @@ export class ProgramsService {
     }
     await this.prisma.$transaction([
       this.prisma.project.updateMany({
-        where: { workspaceId, programId: id, ...(ids.length ? { id: { notIn: ids } } : {}) },
+        where: {
+          workspaceId,
+          programId: id,
+          ...visible,
+          ...(ids.length ? { id: { notIn: ids } } : {}),
+        },
         data: { programId: null },
       }),
       ...(ids.length
@@ -185,17 +210,17 @@ export class ProgramsService {
           ]
         : []),
     ]);
-    return this.get(workspaceId, id);
+    return this.get(workspaceId, id, viewerId);
   }
 
   /**
    * Rollup toàn workspace: mỗi chương trình + nhóm "Chưa thuộc chương trình",
    * kèm số liệu issue của từng dự án con (tổng / xong / quá hạn / % tiến độ).
+   * Chỉ gồm dự án `viewerId` được thấy (chương trình vẫn hiện; số liệu hai người xem có thể khác nhau).
    */
-  async rollup(workspaceId: string): Promise<{
-    groups: RollupGroup[];
-    totals: RollupStats & { projectCount: number; programCount: number };
-  }> {
+  async rollup(workspaceId: string, viewerId: string): Promise<RollupResult> {
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    const issueScope = { workspaceId, deletedAt: null, project: { deletedAt: null, ...visible } };
     const [programs, projects, statuses] = await Promise.all([
       this.prisma.program.findMany({
         where: { workspaceId },
@@ -211,7 +236,7 @@ export class ProgramsService {
         },
       }),
       this.prisma.project.findMany({
-        where: { workspaceId, deletedAt: null },
+        where: { workspaceId, deletedAt: null, ...visible },
         orderBy: { name: 'asc' },
         select: {
           id: true,
@@ -235,15 +260,13 @@ export class ProgramsService {
     const [byStatus, overdue, spans] = await Promise.all([
       this.prisma.issue.groupBy({
         by: ['projectId', 'statusId'],
-        where: { workspaceId, deletedAt: null, ...LIVE_PROJECT },
+        where: issueScope,
         _count: { _all: true },
       }),
       this.prisma.issue.groupBy({
         by: ['projectId'],
         where: {
-          workspaceId,
-          deletedAt: null,
-          ...LIVE_PROJECT,
+          ...issueScope,
           dueDate: { lt: now },
           ...(doneStatusIds.length ? { statusId: { notIn: doneStatusIds } } : {}),
         },
@@ -251,7 +274,7 @@ export class ProgramsService {
       }),
       this.prisma.issue.groupBy({
         by: ['projectId'],
-        where: { workspaceId, deletedAt: null, ...LIVE_PROJECT },
+        where: issueScope,
         _min: { startDate: true },
         _max: { dueDate: true },
       }),
@@ -282,6 +305,7 @@ export class ProgramsService {
     const healthOf = await this.health.forProjects(
       workspaceId,
       projects.filter((p) => !p.isArchived).map((p) => p.id),
+      viewerId,
     );
 
     const rollupProjects: RollupProject[] = projects.map((p) => {
@@ -346,6 +370,8 @@ export class ProgramsService {
       groups,
       totals: {
         ...sum(rollupProjects),
+        // true = số liệu đã bị thu hẹp theo quyền xem của người gọi
+        scoped: Object.keys(visible).length > 0,
         projectCount: projects.length,
         programCount: programs.length,
       },

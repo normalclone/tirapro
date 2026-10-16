@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { VersionConflictException } from '../../common/exceptions/app.exception';
+import {
+  NotFoundAppException,
+  VersionConflictException,
+} from '../../common/exceptions/app.exception';
 import { MAX_AUTOMATION_DEPTH, RuleEngineService } from './rule-engine.service';
 
 const SYS = 'SYS';
@@ -381,7 +384,7 @@ describe('RuleEngineService — chạy thử, lịch, người dùng hệ thốn
       ],
     });
     const { engine, issues, comments, prisma } = setup(rule);
-    const res = await engine.dryRun('w1', rule as never, 'P-TASK-1');
+    const res = await engine.dryRun('w1', rule as never, 'P-TASK-1', 'u1');
     expect(res.status).toBe('SUCCESS');
     expect(res.log.length).toBeGreaterThanOrEqual(3);
     expect(issues.update).not.toHaveBeenCalled();
@@ -393,7 +396,26 @@ describe('RuleEngineService — chạy thử, lịch, người dùng hệ thốn
   it('dryRun ngoài phạm vi dự án của quy tắc => SKIPPED', async () => {
     const rule = makeRule({ projectId: 'other' });
     const { engine } = setup(rule);
-    expect((await engine.dryRun('w1', rule as never, 'P-TASK-1')).status).toBe('SKIPPED');
+    expect((await engine.dryRun('w1', rule as never, 'P-TASK-1', 'u1')).status).toBe('SKIPPED');
+  });
+
+  it('dryRun: mã việc dự án riêng tư người dùng không thấy → 404 y hệt mã không tồn tại; nạp việc theo người xem', async () => {
+    const rule = makeRule();
+    const hidden = setup(rule);
+    hidden.issues.getByKey.mockRejectedValue(new NotFoundAppException('Công việc'));
+    const missing = setup(rule);
+    missing.issues.getByKey.mockRejectedValue(new NotFoundAppException('Công việc'));
+    const e1 = await hidden.engine
+      .dryRun('w1', rule as never, 'HR-1', 'u1')
+      .catch((e: unknown) => e);
+    const e2 = await missing.engine
+      .dryRun('w1', rule as never, 'NOPE-9', 'u1')
+      .catch((e: unknown) => e);
+    expect(e1).toMatchObject({ status: 404 });
+    expect((e1 as Error).message).toBe((e2 as Error).message);
+    expect(hidden.issues.getByKey).toHaveBeenCalledWith('w1', 'HR-1', 'u1');
+    // Không có SKIPPED/log nào rò ra, không tạo AutomationRun.
+    expect(hidden.prisma.automationRun.create).not.toHaveBeenCalled();
   });
 
   it('cronMatches khớp đúng phút', () => {

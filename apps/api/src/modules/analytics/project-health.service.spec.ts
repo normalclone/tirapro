@@ -76,7 +76,8 @@ function make() {
       ),
     },
   };
-  return { service: new ProjectHealthService(prisma as never), prisma };
+  const access = { visibleWhere: vi.fn((..._a: unknown[]) => Promise.resolve({})) };
+  return { service: new ProjectHealthService(prisma as never, access as never), prisma, access };
 }
 
 describe('ProjectHealthService.forProjects', () => {
@@ -85,7 +86,7 @@ describe('ProjectHealthService.forProjects', () => {
     vi.setSystemTime(new Date('2026-10-15T10:00:00Z'));
     try {
       const { service } = make();
-      const map = await service.forProjects('w1', ['p1', 'p2', 'p3']);
+      const map = await service.forProjects('w1', ['p1', 'p2', 'p3'], null);
 
       // p1: 2/6 quá hạn (33%) => RED
       expect(map.get('p1')).toMatchObject({
@@ -126,7 +127,7 @@ describe('ProjectHealthService.forProjects', () => {
         healthUpdatedBy: null,
       },
     ] as never);
-    const dto = (await service.forProjects('w1', ['p1'])).get('p1')!;
+    const dto = (await service.forProjects('w1', ['p1'], null)).get('p1')!;
     expect(dto.level).toBe('GREEN');
     expect(dto.auto.level).not.toBe('GREEN');
     expect(dto.override).toMatchObject({ level: 'GREEN', updatedBy: null });
@@ -134,7 +135,7 @@ describe('ProjectHealthService.forProjects', () => {
 
   it('chỉ một lô truy vấn gom nhóm cho cả danh sách (không N+1) và mọi truy vấn ràng projectId IN', async () => {
     const { service, prisma } = make();
-    await service.forProjects('w1', ['p1', 'p2', 'p3']);
+    await service.forProjects('w1', ['p1', 'p2', 'p3'], null);
     expect(prisma.project.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.sprint.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.raidItem.findMany).toHaveBeenCalledTimes(1);
@@ -175,11 +176,11 @@ describe('ProjectHealthService.forProjects', () => {
 
   it('danh sách rỗng => Map rỗng, không chạm DB; id không thuộc workspace/đã xoá bị bỏ qua', async () => {
     const { service, prisma } = make();
-    expect((await service.forProjects('w1', [])).size).toBe(0);
+    expect((await service.forProjects('w1', [], null)).size).toBe(0);
     expect(prisma.project.findMany).not.toHaveBeenCalled();
 
     prisma.project.findMany.mockResolvedValueOnce([] as never);
-    expect((await service.forProjects('w1', ['x'])).size).toBe(0);
+    expect((await service.forProjects('w1', ['x'], null)).size).toBe(0);
     expect(prisma.issue.groupBy).not.toHaveBeenCalled();
   });
 
@@ -188,10 +189,54 @@ describe('ProjectHealthService.forProjects', () => {
     vi.setSystemTime(new Date('2026-10-20T10:00:00Z'));
     try {
       const { service } = make();
-      const dto = (await service.forProjects('w1', ['p1'])).get('p1')!;
+      const dto = (await service.forProjects('w1', ['p1'], null)).get('p1')!;
       expect(dto.auto.reasons.join(' | ')).toContain('Sprint 2 trễ 3 ngày, còn 8 điểm');
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('ProjectHealthService.forProjects — người xem (dự án riêng tư)', () => {
+  const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+
+  it('có viewerId: project.findMany chỉ lấy dự án thấy được; dự án ẩn không có trong kết quả, RAID chỉ của dự án thấy', async () => {
+    const { service, prisma, access } = make();
+    access.visibleWhere.mockResolvedValue(visible);
+    // Cơ sở dữ liệu (đã lọc theo visible) chỉ trả p3; p1/p2 là dự án riêng tư người xem không thuộc.
+    prisma.project.findMany.mockResolvedValueOnce([
+      {
+        id: 'p3',
+        createdAt: new Date('2026-01-01'),
+        healthOverride: 'RED',
+        healthNote: 'ghi chú riêng của PM',
+        healthUpdatedAt: new Date('2026-10-10T00:00:00Z'),
+        healthUpdatedBy: { id: 'u2', displayName: 'PM' },
+      },
+    ]);
+    const map = await service.forProjects('w1', ['p1', 'p2', 'p3'], 'u1');
+    expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+    expect(
+      (prisma.project.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
+    ).toMatchObject({
+      id: { in: ['p1', 'p2', 'p3'] },
+      workspaceId: 'w1',
+      deletedAt: null,
+      ...visible,
+    });
+    expect([...map.keys()]).toEqual(['p3']);
+    expect(map.has('p1')).toBe(false);
+    expect(map.has('p2')).toBe(false);
+    // Mọi truy vấn phụ (issue/sprint/RAID) chỉ nhận id dự án đã qua lọc.
+    expect(
+      (prisma.raidItem.findMany.mock.calls[0] as unknown as [{ where: { projectId: unknown } }])[0]
+        .where.projectId,
+    ).toEqual({ in: ['p3'] });
+  });
+
+  it('không có viewerId (hệ thống) → không hỏi quyền xem', async () => {
+    const { service, access } = make();
+    await service.forProjects('w1', ['p1'], null);
+    expect(access.visibleWhere).not.toHaveBeenCalled();
   });
 });

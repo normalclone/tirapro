@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/types/request';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
@@ -30,50 +32,61 @@ export class GoalsController {
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async list(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query('period') period?: string,
     @Query('projectId') projectId?: string,
     @Query('status') status?: string,
     @Query('ownerId') ownerId?: string,
   ) {
-    return this.goals.list(workspaceId, { period, projectId, status, ownerId });
+    return this.goals.list(workspaceId, { period, projectId, status, ownerId }, user.id);
   }
 
   /** Danh sách kỳ đã dùng (vd "2026-Q3") — dựng bộ chọn kỳ. */
   @Get('periods')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async periods(@WorkspaceId() workspaceId: string) {
-    return this.goals.periods(workspaceId);
+  async periods(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
+    return this.goals.periods(workspaceId, user.id);
   }
 
   @Get(':id')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async get(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.goals.get(workspaceId, id);
+  async get(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.goals.get(workspaceId, id, user.id);
   }
 
   @Post()
   @Permissions(PERMISSIONS.GOAL_MANAGE)
   async create(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createGoalSchema)) dto: CreateGoalInput,
   ) {
-    return this.goals.create(workspaceId, dto);
+    return this.goals.create(workspaceId, dto, user.id);
   }
 
   @Put(':id')
   @Permissions(PERMISSIONS.GOAL_MANAGE)
   async update(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateGoalSchema)) dto: UpdateGoalInput,
   ) {
-    return this.goals.update(workspaceId, id, dto);
+    return this.goals.update(workspaceId, id, dto, user.id);
   }
 
   @Delete(':id')
   @Permissions(PERMISSIONS.GOAL_MANAGE)
-  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.goals.remove(workspaceId, id);
+  async remove(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.goals.remove(workspaceId, id, user.id);
   }
 
   // ── Key Result lồng trong mục tiêu ──
@@ -82,31 +95,34 @@ export class GoalsController {
   @Permissions(PERMISSIONS.GOAL_MANAGE)
   async addKeyResult(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(createKeyResultSchema)) dto: CreateKeyResultInput,
   ) {
-    return this.goals.addKeyResult(workspaceId, id, dto);
+    return this.goals.addKeyResult(workspaceId, id, dto, user.id);
   }
 
   @Put(':id/key-results/:krId')
   @Permissions(PERMISSIONS.GOAL_MANAGE)
   async updateKeyResult(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Param('krId') krId: string,
     @Body(new ZodValidationPipe(updateKeyResultSchema)) dto: UpdateKeyResultInput,
   ) {
-    return this.goals.updateKeyResult(workspaceId, id, krId, dto);
+    return this.goals.updateKeyResult(workspaceId, id, krId, dto, user.id);
   }
 
   @Delete(':id/key-results/:krId')
   @Permissions(PERMISSIONS.GOAL_MANAGE)
   async removeKeyResult(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Param('krId') krId: string,
   ) {
-    return this.goals.removeKeyResult(workspaceId, id, krId);
+    return this.goals.removeKeyResult(workspaceId, id, krId, user.id);
   }
 
   // ── Gắn / gỡ issue (epic) vào mục tiêu ──
@@ -115,19 +131,21 @@ export class GoalsController {
   @Permissions(PERMISSIONS.GOAL_MANAGE)
   async addIssues(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(goalIssuesSchema)) dto: GoalIssuesInput,
   ) {
-    return this.goals.addIssues(workspaceId, id, dto.issueIds);
+    return this.goals.addIssues(workspaceId, id, dto.issueIds, user.id);
   }
 
   @Delete(':id/issues')
   @Permissions(PERMISSIONS.GOAL_MANAGE)
   async removeIssues(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(goalIssuesSchema)) dto: GoalIssuesInput,
   ) {
-    return this.goals.removeIssues(workspaceId, id, dto.issueIds);
+    return this.goals.removeIssues(workspaceId, id, dto.issueIds, user.id);
   }
 }

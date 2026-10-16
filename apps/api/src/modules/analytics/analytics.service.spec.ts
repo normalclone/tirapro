@@ -20,6 +20,12 @@ function healthStub() {
   };
 }
 
+/** ProjectAccessService giả cho người xem thấy mọi dự án (admin). */
+const ACCESS_ALL = {
+  visibleWhere: vi.fn(() => Promise.resolve({})),
+  visibleProjectIds: vi.fn(() => Promise.resolve(null)),
+};
+
 describe('AnalyticsService.projectReport — aggregate SQL', () => {
   const statuses = [
     { id: 's-todo', name: 'To Do', category: 'TODO', order: 0 },
@@ -96,7 +102,7 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
     };
     const health = healthStub();
     return {
-      service: new AnalyticsService(prisma as never, health as never),
+      service: new AnalyticsService(prisma as never, health as never, ACCESS_ALL as never),
       prisma,
       groupBy,
       count,
@@ -157,7 +163,7 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
     const { service, health } = make();
     const r = await service.projectReport('w1', 'p1');
     expect(r.health).toEqual(HEALTH_DTO);
-    expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1']);
+    expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1'], null);
   });
 
   it('project không thuộc workspace => 404', async () => {
@@ -177,7 +183,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
   const DAY = 24 * 3600 * 1000;
 
-  function make() {
+  function make(access: unknown = ACCESS_ALL) {
     const rows = (args: { by: string[] }) => {
       const by = args.by.join(',');
       if (by === 'projectId,statusId') {
@@ -296,7 +302,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
     };
     const health = healthStub();
     return {
-      service: new AnalyticsService(prisma as never, health as never),
+      service: new AnalyticsService(prisma as never, health as never, access as never),
       prisma,
       queryRaw,
       health,
@@ -305,7 +311,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
   it('mọi truy vấn issue của tổng quan loại dự án đã xoá mềm; raw SQL có EXISTS Project.deletedAt IS NULL', async () => {
     const { service, prisma, queryRaw } = make();
-    await service.workspaceOverview('w1');
+    await service.workspaceOverview('w1', 'u0');
     expect(prisma.issue.groupBy.mock.calls.length).toBeGreaterThan(0);
     for (const c of prisma.issue.groupBy.mock.calls)
       expect(JSON.stringify((c[0] as { where: unknown }).where)).toContain(
@@ -326,7 +332,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
   it('totals gồm cả project lưu trữ, byProject chỉ gồm project đang hiển thị', async () => {
     const { service } = make();
-    const r = await service.workspaceOverview('w1');
+    const r = await service.workspaceOverview('w1', 'u0');
     expect(r.projectCount).toBe(2);
     expect(r.totals).toEqual({ total: 10, todo: 6, inProgress: 1, done: 3, overdue: 2, bug: 6 });
     expect(r.projects).toEqual([
@@ -361,14 +367,14 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
   it('sức khoẻ lấy một lô cho các dự án đang hiển thị (không gồm dự án lưu trữ)', async () => {
     const { service, health } = make();
-    await service.workspaceOverview('w1');
+    await service.workspaceOverview('w1', 'u0');
     expect(health.forProjects).toHaveBeenCalledTimes(1);
-    expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1', 'p2']);
+    expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1', 'p2'], 'u0');
   });
 
   it('byType/byPriority/trend/warnings/attention giữ đúng hình dạng cũ', async () => {
     const { service } = make();
-    const r = await service.workspaceOverview('w1');
+    const r = await service.workspaceOverview('w1', 'u0');
     expect(r.byType).toEqual([
       { name: 'Bug', color: '#f00', count: 6 },
       { name: 'Task', color: '#0af', count: 4 },
@@ -420,7 +426,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
   it('không kéo từng issue + câu raw xu hướng bind tham số, không nội suy chuỗi', async () => {
     const { service, prisma, queryRaw } = make();
-    await service.workspaceOverview('w1');
+    await service.workspaceOverview('w1', 'u0');
     const bys = prisma.issue.groupBy.mock.calls.map((c) => c[0].by.join(','));
     expect(bys).toEqual(['projectId,statusId', 'projectId,typeId', 'priorityId', 'projectId']);
     // findMany của issue chỉ cho danh sách "cần chú ý" và luôn có take 8
@@ -436,6 +442,56 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
     expect(sqlOf(queryRaw.mock.calls[0]!)).toContain('"createdAt"');
     expect(sqlOf(queryRaw.mock.calls[1]!)).toContain('"resolvedAt"');
   });
+
+  describe('dự án riêng tư (P14)', () => {
+    const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+    const accessFor = (ids: string[] | null) => ({
+      visibleWhere: vi.fn(() => Promise.resolve(visible)),
+      visibleProjectIds: vi.fn(() => Promise.resolve(ids)),
+    });
+
+    it('workspaceOverview(w, viewer): project.findMany và mọi truy vấn issue chỉ tính dự án người xem thấy', async () => {
+      const access = accessFor(['p1']);
+      const { service, prisma, health } = make(access);
+      const overview = await service.workspaceOverview('w1', 'u1');
+      expect(overview.scoped).toBe(true);
+      expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+      // Sức khoẻ chỉ tính cho dự án đã lọc theo người xem (và truyền người xem tiếp làm lớp phòng thủ).
+      expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1', 'p2'], 'u1');
+      expect(
+        (prisma.project.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
+      ).toMatchObject({ workspaceId: 'w1', deletedAt: null, ...visible });
+      const calls = [
+        ...prisma.issue.groupBy.mock.calls,
+        ...prisma.issue.count.mock.calls,
+        ...prisma.issue.findMany.mock.calls,
+      ];
+      expect(calls.length).toBeGreaterThan(0);
+      for (const c of calls) {
+        expect(JSON.stringify((c[0] as { where: unknown }).where)).toContain('"isPrivate":false');
+      }
+    });
+
+    it('raw SQL xu hướng 8 tuần giới hạn theo id dự án thấy được', async () => {
+      const { service, queryRaw } = make(accessFor(['p1']));
+      await service.workspaceOverview('w1', 'u1');
+      expect(queryRaw.mock.calls.length).toBe(2);
+      for (const c of queryRaw.mock.calls as unknown[][]) {
+        const text = JSON.stringify(c[0]) + JSON.stringify(c.slice(1));
+        expect(text).toContain('projectId');
+        expect(JSON.stringify(c.slice(1))).toContain('p1');
+      }
+    });
+
+    it('người xem là admin (visibleWhere {}, ids null) → không lọc dự án riêng tư', async () => {
+      const admin = make(ACCESS_ALL);
+      await admin.service.workspaceOverview('w1', 'u9');
+      for (const c of admin.prisma.issue.groupBy.mock.calls)
+        expect(JSON.stringify((c[0] as { where: unknown }).where)).not.toContain('isPrivate');
+      for (const c of admin.queryRaw.mock.calls as unknown[][])
+        expect(JSON.stringify(c.slice(1))).not.toContain('projectId" = ANY');
+    });
+  });
 });
 
 describe('AnalyticsService.cfd — sự kiện STATUS cuối cùng thắng', () => {
@@ -445,7 +501,10 @@ describe('AnalyticsService.cfd — sự kiện STATUS cuối cùng thắng', () 
       project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
       $queryRaw: queryRaw,
     };
-    return { service: new AnalyticsService(prisma as never, healthStub() as never), queryRaw };
+    return {
+      service: new AnalyticsService(prisma as never, healthStub() as never, ACCESS_ALL as never),
+      queryRaw,
+    };
   }
 
   it('chỉ một câu SQL: window LEAD theo issue, không phụ thuộc oldCategory, tham số bind', async () => {
@@ -531,7 +590,11 @@ describe('AnalyticsService.createdResolved — đếm theo ngày bằng SQL', ()
       project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
       $queryRaw: queryRaw,
     };
-    const service = new AnalyticsService(prisma as never, healthStub() as never);
+    const service = new AnalyticsService(
+      prisma as never,
+      healthStub() as never,
+      ACCESS_ALL as never,
+    );
     const r = await service.createdResolved('w1', 'p1', '2026-10-01', '2026-10-03');
     expect(r.series).toEqual([
       { date: '2026-10-01', created: 2, resolved: 0 },
@@ -587,7 +650,10 @@ function makeBurndown(
     },
     sprintSnapshot: { findMany: vi.fn(() => Promise.resolve(snaps)) },
   };
-  return { service: new AnalyticsService(prisma as never, healthStub() as never), prisma };
+  return {
+    service: new AnalyticsService(prisma as never, healthStub() as never, ACCESS_ALL as never),
+    prisma,
+  };
 }
 
 describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính từ lịch sử', () => {
@@ -889,7 +955,10 @@ function make(
     },
     issue: { findMany: vi.fn((_args: unknown) => Promise.resolve(issues)) },
   };
-  return { service: new AnalyticsService(prisma as never, healthStub() as never), prisma };
+  return {
+    service: new AnalyticsService(prisma as never, healthStub() as never, ACCESS_ALL as never),
+    prisma,
+  };
 }
 
 describe('AnalyticsService.sprintSummary', () => {

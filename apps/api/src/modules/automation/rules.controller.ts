@@ -94,6 +94,7 @@ export class RulesController {
   @Post(':id/test')
   async test(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(testRuleSchema)) dto: TestRuleInput,
   ) {
@@ -102,6 +103,7 @@ export class RulesController {
       workspaceId,
       { ...rule, lastRunAt: rule.lastRunAt?.toISOString() ?? null },
       dto.issueKey,
+      user.id,
     );
   }
 }

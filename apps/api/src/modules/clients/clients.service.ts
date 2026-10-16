@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import type {
   CreateClientInput,
   UpdateClientInput,
@@ -24,22 +25,24 @@ const CONTRACT_SELECT = {
   project: { select: { id: true, key: true, name: true } },
 } satisfies Prisma.ContractSelect;
 
-const CLIENT_SELECT = {
-  id: true,
-  workspaceId: true,
-  name: true,
-  contactName: true,
-  email: true,
-  phone: true,
-  note: true,
-  createdAt: true,
-  projects: {
-    where: { deletedAt: null },
-    orderBy: { name: 'asc' as const },
-    select: { id: true, key: true, name: true, isArchived: true },
-  },
-  contracts: { orderBy: { createdAt: 'desc' as const }, select: CONTRACT_SELECT },
-} satisfies Prisma.ClientSelect;
+/** `visible` = điều kiện hiển thị dự án của người xem (`{}` = thấy hết). */
+const clientSelect = (visible: Prisma.ProjectWhereInput) =>
+  ({
+    id: true,
+    workspaceId: true,
+    name: true,
+    contactName: true,
+    email: true,
+    phone: true,
+    note: true,
+    createdAt: true,
+    projects: {
+      where: { deletedAt: null, ...visible },
+      orderBy: { name: 'asc' as const },
+      select: { id: true, key: true, name: true, isArchived: true },
+    },
+    contracts: { orderBy: { createdAt: 'desc' as const }, select: CONTRACT_SELECT },
+  }) satisfies Prisma.ClientSelect;
 
 type ContractRow = {
   id: string;
@@ -63,27 +66,42 @@ type ContractRow = {
  */
 @Injectable()
 export class ClientsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: ProjectAccessService,
+  ) {}
 
-  async list(workspaceId: string) {
+  /** Điều kiện hiển thị dự án của người xem (`{}` = thấy hết). `viewerId` bắt buộc ở mọi đường đọc. */
+  private visibleFor(workspaceId: string, viewerId: string): Promise<Prisma.ProjectWhereInput> {
+    return this.access.visibleWhere(viewerId, workspaceId);
+  }
+
+  /** Tập id dự án người xem thấy (null = thấy hết / không có viewer) — để ẩn dự án riêng tư trong hợp đồng. */
+  private async visibleSet(workspaceId: string, viewerId: string): Promise<Set<string> | null> {
+    const ids = await this.access.visibleProjectIds(viewerId, workspaceId);
+    return ids === null ? null : new Set(ids);
+  }
+
+  async list(workspaceId: string, viewerId: string) {
     const rows = await this.prisma.client.findMany({
       where: { workspaceId },
       orderBy: { name: 'asc' },
-      select: CLIENT_SELECT,
+      select: clientSelect(await this.visibleFor(workspaceId, viewerId)),
     });
-    return rows.map((c) => this.toDto(c));
+    const seen = await this.visibleSet(workspaceId, viewerId);
+    return rows.map((c) => this.toDto(c, seen));
   }
 
-  async get(workspaceId: string, id: string) {
+  async get(workspaceId: string, id: string, viewerId: string) {
     const c = await this.prisma.client.findFirst({
       where: { id, workspaceId },
-      select: CLIENT_SELECT,
+      select: clientSelect(await this.visibleFor(workspaceId, viewerId)),
     });
     if (!c) throw new NotFoundAppException('Khách hàng');
-    return this.toDto(c);
+    return this.toDto(c, await this.visibleSet(workspaceId, viewerId));
   }
 
-  async create(workspaceId: string, dto: CreateClientInput) {
+  async create(workspaceId: string, dto: CreateClientInput, viewerId: string) {
     const name = dto.name.trim();
     await this.assertNameFree(workspaceId, name);
     const created = await this.prisma.client.create({
@@ -97,11 +115,12 @@ export class ClientsService {
       },
       select: { id: true },
     });
-    if (dto.projectIds?.length) await this.setProjects(workspaceId, created.id, dto.projectIds);
-    return this.get(workspaceId, created.id);
+    if (dto.projectIds?.length)
+      await this.setProjects(workspaceId, created.id, dto.projectIds, viewerId);
+    return this.get(workspaceId, created.id, viewerId);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateClientInput) {
+  async update(workspaceId: string, id: string, dto: UpdateClientInput, viewerId: string) {
     await this.require(workspaceId, id);
     const data: Prisma.ClientUpdateInput = {};
     if (dto.name !== undefined && dto.name !== null) {
@@ -116,8 +135,9 @@ export class ClientsService {
     if (dto.note !== undefined) data.note = blankToNull(dto.note);
 
     await this.prisma.client.update({ where: { id }, data });
-    if (dto.projectIds !== undefined) await this.setProjects(workspaceId, id, dto.projectIds);
-    return this.get(workspaceId, id);
+    if (dto.projectIds !== undefined)
+      await this.setProjects(workspaceId, id, dto.projectIds, viewerId);
+    return this.get(workspaceId, id, viewerId);
   }
 
   async remove(workspaceId: string, id: string) {
@@ -126,13 +146,22 @@ export class ClientsService {
     return { success: true };
   }
 
-  /** Đặt lại TOÀN BỘ tập dự án của khách hàng (ngoài danh sách → gỡ liên kết). */
-  async setProjects(workspaceId: string, id: string, projectIds: string[]) {
+  /**
+   * Đặt lại TOÀN BỘ tập dự án của khách hàng trong phạm vi người gọi thấy (ngoài danh sách → gỡ liên kết).
+   * Dự án riêng tư không thấy không gắn được và không bị gỡ nhầm.
+   */
+  async setProjects(workspaceId: string, id: string, projectIds: string[], viewerId: string) {
     await this.require(workspaceId, id);
-    const ids = await this.validateProjects(workspaceId, projectIds);
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    const ids = await this.validateProjects(workspaceId, projectIds, visible);
     await this.prisma.$transaction([
       this.prisma.project.updateMany({
-        where: { workspaceId, clientId: id, ...(ids.length ? { id: { notIn: ids } } : {}) },
+        where: {
+          workspaceId,
+          clientId: id,
+          ...visible,
+          ...(ids.length ? { id: { notIn: ids } } : {}),
+        },
         data: { clientId: null },
       }),
       ...(ids.length
@@ -144,24 +173,30 @@ export class ClientsService {
           ]
         : []),
     ]);
-    return this.get(workspaceId, id);
+    return this.get(workspaceId, id, viewerId);
   }
 
   // ───────────────────────── hợp đồng ─────────────────────────
 
-  async listContracts(workspaceId: string, clientId: string) {
+  async listContracts(workspaceId: string, clientId: string, viewerId: string) {
     await this.require(workspaceId, clientId);
     const rows = await this.prisma.contract.findMany({
       where: { clientId },
       orderBy: { createdAt: 'desc' },
       select: CONTRACT_SELECT,
     });
-    return rows.map((c) => this.toContractDto(c));
+    const seen = await this.visibleSet(workspaceId, viewerId);
+    return rows.filter((c) => this.canSeeContract(c, seen)).map((c) => this.toContractDto(c));
   }
 
-  async createContract(workspaceId: string, clientId: string, dto: CreateContractInput) {
+  async createContract(
+    workspaceId: string,
+    clientId: string,
+    dto: CreateContractInput,
+    viewerId: string,
+  ) {
     await this.require(workspaceId, clientId);
-    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
+    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, viewerId);
     const created = await this.prisma.contract.create({
       data: {
         clientId,
@@ -184,8 +219,9 @@ export class ClientsService {
     clientId: string,
     contractId: string,
     dto: UpdateContractInput,
+    viewerId: string,
   ) {
-    await this.requireContract(workspaceId, clientId, contractId);
+    await this.requireContract(workspaceId, clientId, contractId, viewerId);
     const data: Prisma.ContractUpdateInput = {};
     if (dto.name !== undefined && dto.name !== null) {
       const name = dto.name.trim();
@@ -199,7 +235,7 @@ export class ClientsService {
     if (dto.endDate !== undefined) data.endDate = toDate(dto.endDate);
     if (dto.note !== undefined) data.note = blankToNull(dto.note);
     if (dto.projectId !== undefined) {
-      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
+      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, viewerId);
       data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
     }
     const updated = await this.prisma.contract.update({
@@ -210,8 +246,13 @@ export class ClientsService {
     return this.toContractDto(updated);
   }
 
-  async removeContract(workspaceId: string, clientId: string, contractId: string) {
-    await this.requireContract(workspaceId, clientId, contractId);
+  async removeContract(
+    workspaceId: string,
+    clientId: string,
+    contractId: string,
+    viewerId: string,
+  ) {
+    await this.requireContract(workspaceId, clientId, contractId, viewerId);
     await this.prisma.contract.delete({ where: { id: contractId } });
     return { success: true };
   }
@@ -227,10 +268,21 @@ export class ClientsService {
     return c;
   }
 
-  private async requireContract(workspaceId: string, clientId: string, contractId: string) {
+  /** Hợp đồng gắn dự án người xem không thấy = không tồn tại (404 'Hợp đồng') — không sửa/xoá "mù". */
+  private async requireContract(
+    workspaceId: string,
+    clientId: string,
+    contractId: string,
+    viewerId: string,
+  ) {
     await this.require(workspaceId, clientId);
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const c = await this.prisma.contract.findFirst({
-      where: { id: contractId, clientId },
+      where: {
+        id: contractId,
+        clientId,
+        ...(Object.keys(visible).length ? { OR: [{ projectId: null }, { project: visible }] } : {}),
+      },
       select: { id: true },
     });
     if (!c) throw new NotFoundAppException('Hợp đồng');
@@ -245,11 +297,15 @@ export class ClientsService {
     if (clash) throw new BusinessRuleException('Tên khách hàng đã tồn tại');
   }
 
-  private async validateProjects(workspaceId: string, projectIds: string[]): Promise<string[]> {
+  private async validateProjects(
+    workspaceId: string,
+    projectIds: string[],
+    visible: Prisma.ProjectWhereInput = {},
+  ): Promise<string[]> {
     const ids = [...new Set(projectIds)];
     if (ids.length === 0) return [];
     const found = await this.prisma.project.findMany({
-      where: { id: { in: ids }, workspaceId, deletedAt: null },
+      where: { id: { in: ids }, workspaceId, deletedAt: null, ...visible },
       select: { id: true },
     });
     if (found.length !== ids.length)
@@ -262,10 +318,20 @@ export class ClientsService {
   private async resolveProject(
     workspaceId: string,
     projectId: string | null,
+    viewerId: string,
   ): Promise<string | null> {
     if (!projectId) return null;
-    const [id] = await this.validateProjects(workspaceId, [projectId]);
+    const [id] = await this.validateProjects(
+      workspaceId,
+      [projectId],
+      await this.visibleFor(workspaceId, viewerId),
+    );
     return id ?? null;
+  }
+
+  /** Hợp đồng gắn dự án người xem không thấy bị loại hẳn (`seen` null = không lọc). */
+  private canSeeContract(c: ContractRow, seen: Set<string> | null): boolean {
+    return seen === null || c.project === null || seen.has(c.project.id);
   }
 
   private toContractDto(c: ContractRow) {
@@ -284,19 +350,24 @@ export class ClientsService {
     };
   }
 
-  private toDto(c: {
-    id: string;
-    workspaceId: string;
-    name: string;
-    contactName: string | null;
-    email: string | null;
-    phone: string | null;
-    note: string | null;
-    createdAt: Date;
-    projects: { id: string; key: string; name: string; isArchived: boolean }[];
-    contracts: ContractRow[];
-  }) {
-    const contracts = c.contracts.map((x) => this.toContractDto(x));
+  private toDto(
+    c: {
+      id: string;
+      workspaceId: string;
+      name: string;
+      contactName: string | null;
+      email: string | null;
+      phone: string | null;
+      note: string | null;
+      createdAt: Date;
+      projects: { id: string; key: string; name: string; isArchived: boolean }[];
+      contracts: ContractRow[];
+    },
+    seen: Set<string> | null = null,
+  ) {
+    const contracts = c.contracts
+      .filter((x) => this.canSeeContract(x, seen))
+      .map((x) => this.toContractDto(x));
     // Tổng giá trị chỉ cộng các hợp đồng cùng tiền tệ chiếm đa số → tránh cộng nhầm VND với USD.
     const byCurrency = new Map<string, number>();
     for (const ct of contracts) {

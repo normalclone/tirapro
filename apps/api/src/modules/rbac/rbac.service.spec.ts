@@ -417,43 +417,77 @@ describe('RbacService — dự án riêng tư', () => {
   });
 
   describe('assertProjectVisible', () => {
-    it('không có dự án riêng tư khớp => qua (công khai)', async () => {
-      const { svc, prisma } = setup('down');
-      prisma.project.findFirst.mockResolvedValue(null);
+    function withRow(row: unknown, perms: string[] = ['project:view'], sysAdmin = false) {
+      const ctx = setup('down');
+      (ctx.prisma as Record<string, unknown>).user = {
+        findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: sysAdmin })),
+      };
+      ctx.prisma.project.findFirst.mockResolvedValue(row);
+      ctx.prisma.workspaceMembership.findUnique.mockResolvedValue({
+        roleId: 'r',
+        roles: [{ role: { id: 'r', name: 'Workspace Member' } }],
+      } as never);
+      ctx.prisma.rolePermission.findMany.mockResolvedValue(
+        perms.map((key) => ({ permission: { key } })) as never,
+      );
+      return ctx;
+    }
+
+    it('dự án công khai + vai có project:view => qua', async () => {
+      const { svc, prisma } = withRow({ isPrivate: false, memberships: [] });
       await expect(svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
       expect(prisma.project.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'P1', workspaceId: 'W1', deletedAt: null, isPrivate: true },
-        }),
+        expect.objectContaining({ where: { id: 'P1', workspaceId: 'W1', deletedAt: null } }),
       );
     });
 
-    it('riêng tư + là thành viên => qua, không cần tính quyền', async () => {
-      const { svc, prisma } = setup('down');
-      prisma.project.findFirst.mockResolvedValue({ memberships: [{ id: 'pm' }] });
-      await expect(svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
-      expect(prisma.workspaceMembership.findUnique).not.toHaveBeenCalled();
-    });
-
-    it('riêng tư + không thành viên + không admin => 404 "Dự án"', async () => {
-      const { svc, prisma } = setup('down');
-      prisma.project.findFirst.mockResolvedValue({ memberships: [] });
+    it('dự án không tồn tại/đã xoá/khác workspace => 404 với người thường (nhất quán visibleWhere); admin vẫn qua', async () => {
+      const { svc } = withRow(null);
       await expect(svc.assertProjectVisible('U1', 'W1', 'P1')).rejects.toBeInstanceOf(
         NotFoundAppException,
       );
+      const admin = withRow(null, ['workspace:admin']);
+      await expect(admin.svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
     });
 
-    it('riêng tư + không thành viên + workspace:admin => qua', async () => {
-      const { svc, prisma } = setup('down');
-      prisma.project.findFirst.mockResolvedValue({ memberships: [] });
-      prisma.workspaceMembership.findUnique.mockResolvedValue({
-        roleId: 'r',
-        roles: [{ role: { id: 'r', name: 'Workspace Admin' } }],
-      } as never);
-      prisma.rolePermission.findMany.mockResolvedValue([
-        { permission: { key: 'workspace:admin' } },
-      ] as never);
+    it('riêng tư + là thành viên => qua', async () => {
+      const { svc } = withRow({ isPrivate: true, memberships: [{ id: 'pm' }] });
       await expect(svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
+    });
+
+    it('riêng tư + không thành viên + không admin => 404 "Dự án" (đúng nhãn truyền vào)', async () => {
+      const { svc } = withRow({ isPrivate: true, memberships: [] });
+      await expect(svc.assertProjectVisible('U1', 'W1', 'P1')).rejects.toBeInstanceOf(
+        NotFoundAppException,
+      );
+      await expect(svc.assertProjectVisible('U1', 'W1', 'P1', 'Tài nguyên')).rejects.toThrow(
+        'Tài nguyên không tồn tại',
+      );
+    });
+
+    it('riêng tư + không thành viên + workspace:admin => qua; admin hệ thống => qua không cần tra dự án', async () => {
+      const a = withRow({ isPrivate: true, memberships: [] }, ['workspace:admin']);
+      await expect(a.svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
+      const s = withRow({ isPrivate: true, memberships: [] }, [], true);
+      await expect(s.svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
+      expect(s.prisma.project.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('vai không có project:view: dự án công khai mình không là thành viên cũng 404; là thành viên thì qua', async () => {
+      const no = withRow({ isPrivate: false, memberships: [] }, ['workspace:view']);
+      await expect(no.svc.assertProjectVisible('U1', 'W1', 'P1')).rejects.toBeInstanceOf(
+        NotFoundAppException,
+      );
+      const yes = withRow({ isPrivate: false, memberships: [{ id: 'pm' }] }, ['workspace:view']);
+      await expect(yes.svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
+    });
+
+    it('knownSystemAdmin=false: không truy vấn user (guard đã biết)', async () => {
+      const { svc, prisma } = withRow({ isPrivate: false, memberships: [] });
+      await svc.assertProjectVisible('U1', 'W1', 'P1', 'Dự án', false);
+      expect(
+        (prisma as unknown as { user: { findUnique: ReturnType<typeof vi.fn> } }).user.findUnique,
+      ).not.toHaveBeenCalled();
     });
   });
 });

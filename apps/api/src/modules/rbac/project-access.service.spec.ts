@@ -9,17 +9,25 @@ import { RbacService } from './rbac.service';
  * - `perms`: quyền hợp nhất của người gọi ở cấp workspace (qua vai trò workspace → rolePermission).
  */
 function make(
-  opts: { sysAdmin?: boolean; perms?: string[]; priv?: { memberCount: number } | null } = {},
+  opts: {
+    sysAdmin?: boolean;
+    perms?: string[];
+    priv?: { memberCount: number } | null;
+    /** Dự án công khai/riêng tư khi không dùng `priv`; `members` = người gọi là thành viên (số dòng khớp). */
+    isPrivate?: boolean;
+    members?: number;
+  } = {},
 ) {
   const prisma = {
     user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: !!opts.sysAdmin })) },
     project: {
       findFirst: vi.fn((_a?: unknown) =>
-        Promise.resolve(
-          opts.priv
-            ? { memberships: Array.from({ length: opts.priv.memberCount }, () => ({ id: 'pm' })) }
-            : null,
-        ),
+        Promise.resolve({
+          isPrivate: opts.priv ? true : (opts.isPrivate ?? false),
+          memberships: Array.from({ length: opts.priv?.memberCount ?? opts.members ?? 0 }, () => ({
+            id: 'pm',
+          })),
+        }),
       ),
       findMany: vi.fn((_a?: unknown) => Promise.resolve([{ id: 'p-pub' }, { id: 'p-mine' }])),
     },
@@ -101,5 +109,78 @@ describe('ProjectAccessService', () => {
     const boom = make();
     boom.prisma.project.findFirst.mockRejectedValueOnce(new Error('db down'));
     await expect(boom.svc.canSee('u1', 'w1', 'p1')).rejects.toThrow('db down');
+  });
+
+  it('visibleWhere/visibleProjectIds: vai trò cấp workspace không có project:view → chỉ dự án mình có vai trò (kể cả dự án công khai)', async () => {
+    const { svc, prisma } = make({ perms: ['workspace:view'] });
+    expect(await svc.visibleWhere('u1', 'w1')).toEqual({ memberships: { some: { userId: 'u1' } } });
+    await svc.visibleProjectIds('u1', 'w1');
+    expect(
+      (prisma.project.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
+    ).toMatchObject({
+      workspaceId: 'w1',
+      deletedAt: null,
+      memberships: { some: { userId: 'u1' } },
+    });
+  });
+
+  it('canSee: dự án không tồn tại/đã xoá → false với người thường (như visibleWhere loại dự án đã xoá), admin → true', async () => {
+    const nobody = make({ perms: ['project:view'] });
+    nobody.prisma.project.findFirst.mockResolvedValue(null as never);
+    expect(await nobody.svc.canSee('u1', 'w1', 'p-gone')).toBe(false);
+    const admin = make({ perms: ['workspace:admin'] });
+    admin.prisma.project.findFirst.mockResolvedValue(null as never);
+    expect(await admin.svc.canSee('u1', 'w1', 'p-gone')).toBe(true);
+  });
+
+  describe('bảng chân trị: MỘT định nghĩa "thấy" cho canSee/assertCanSee và visibleWhere/visibleProjectIds', () => {
+    /** Đánh giá điều kiện Prisma mà `visibleWhere` trả ra trên một dự án giả (đủ cho 3 dạng điều kiện của dịch vụ). */
+    const matches = (
+      where: Record<string, unknown>,
+      proj: { isPrivate: boolean; member: boolean },
+    ): boolean => {
+      if (Object.keys(where).length === 0) return true;
+      if ('OR' in where)
+        return (where.OR as Record<string, unknown>[]).some((w) => matches(w, proj));
+      if ('isPrivate' in where) return where.isPrivate === proj.isPrivate;
+      if ('memberships' in where) return proj.member;
+      throw new Error('điều kiện lạ');
+    };
+    const actors: { name: string; opts: Parameters<typeof make>[0]; see: (p: P) => boolean }[] = [
+      { name: 'admin hệ thống', opts: { sysAdmin: true, perms: [] }, see: () => true },
+      { name: 'workspace:admin', opts: { perms: ['workspace:admin'] }, see: () => true },
+      {
+        name: 'project:view cấp workspace',
+        opts: { perms: ['project:view'] },
+        see: (p) => !p.isPrivate || p.member,
+      },
+      {
+        name: 'không project:view, có vai dự án',
+        opts: { perms: ['workspace:view', 'report:view'] },
+        see: (p) => p.member,
+      },
+    ];
+    type P = { isPrivate: boolean; member: boolean };
+    const projects: P[] = [
+      { isPrivate: false, member: false },
+      { isPrivate: false, member: true },
+      { isPrivate: true, member: false },
+      { isPrivate: true, member: true },
+    ];
+
+    for (const a of actors) {
+      for (const p of projects) {
+        const label = `${a.name} × ${p.isPrivate ? 'riêng tư' : 'công khai'} × ${p.member ? 'là thành viên' : 'không thành viên'}`;
+        it(`${label} → ${a.see(p) ? 'thấy' : 'không thấy'} (canSee và visibleWhere/visibleProjectIds khớp nhau)`, async () => {
+          const { svc } = make({ ...a.opts, isPrivate: p.isPrivate, members: p.member ? 1 : 0 });
+          expect(await svc.canSee('u1', 'w1', 'p1')).toBe(a.see(p));
+          const where = await svc.visibleWhere('u1', 'w1');
+          expect(matches(where as Record<string, unknown>, p)).toBe(a.see(p));
+          // visibleProjectIds: null = thấy tất cả; ngược lại phụ thuộc cùng điều kiện (truy vấn thật ở DB).
+          const ids = await make({ ...a.opts }).svc.visibleProjectIds('u1', 'w1');
+          expect(ids === null).toBe(Object.keys(where).length === 0);
+        });
+      }
+    }
   });
 });

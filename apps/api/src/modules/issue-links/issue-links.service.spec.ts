@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { IssueLinksService } from './issue-links.service';
 
 const end = (id: string, projectId: string, over: Record<string, unknown> = {}) => ({
@@ -32,7 +33,10 @@ function setup(perms: string[], issues: Record<string, ReturnType<typeof end>>) 
       ),
     },
   };
-  const rbac = { getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(perms))) };
+  const rbac = {
+    getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(perms))),
+    assertProjectVisible: vi.fn(() => Promise.resolve()),
+  };
   return { service: new IssueLinksService(prisma as never, rbac as never), prisma, rbac };
 }
 const input = { targetIssueId: 'b', linkTypeId: 'lt' };
@@ -201,6 +205,7 @@ function listSetup(perms: Record<string, string[]>, rows: unknown[]) {
     getEffectivePermissions: vi.fn((_u: string, _w: string, projectId: string) =>
       Promise.resolve(new Set(perms[projectId] ?? [])),
     ),
+    assertProjectVisible: vi.fn(() => Promise.resolve()),
   };
   return { service: new IssueLinksService(prisma as never, rbac as never), prisma, rbac };
 }
@@ -254,5 +259,39 @@ describe('IssueLinksService.listForIssue — không rò issue ở dự án khôn
     expect(where).toContain('"deletedAt":null');
     expect(where).toContain('"project":{"deletedAt":null}');
     expect(where).toContain('"workspaceId":"w1"'); // phòng thủ link chéo workspace cũ
+  });
+});
+
+describe('IssueLinksService — dự án riêng tư (P13)', () => {
+  const hidden = () =>
+    vi.fn((_u: string, _w: string, projectId: string) =>
+      projectId === 'p2' ? Promise.reject(new NotFoundAppException('Dự án')) : Promise.resolve(),
+    );
+
+  it('create: đích thuộc dự án riêng tư người gọi không thấy -> 403 cùng lỗi với đích không tồn tại', async () => {
+    const hiddenTarget = setup(['issue:edit'], { a: end('a', 'p1'), b: end('b', 'p2') });
+    hiddenTarget.rbac.assertProjectVisible = hidden();
+    const missing = setup(['issue:edit'], { a: end('a', 'p1') });
+    const e1 = await hiddenTarget.service.create('w1', 'a', input, user).catch((e: unknown) => e);
+    const e2 = await missing.service.create('w1', 'a', input, user).catch((e: unknown) => e);
+    expect(e1).toMatchObject({ status: 403 });
+    expect((e1 as Error).message).toBe((e2 as Error).message);
+    expect(hiddenTarget.prisma.issueLink.create).not.toHaveBeenCalled();
+  });
+
+  it('create: thành viên dự án riêng tư (thấy được) -> tạo được', async () => {
+    const { service, prisma } = setup(['issue:edit'], { a: end('a', 'p1'), b: end('b', 'p2') });
+    await expect(service.create('w1', 'a', input, user)).resolves.toMatchObject({ id: 'l1' });
+    expect(prisma.issueLink.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('listForIssue: đầu kia ở dự án riêng tư người xem không thấy -> ẩn dù có project:view', async () => {
+    const { service, rbac } = listSetup({ p2: ['project:view'] }, [
+      linkRow('l1', end('b', 'p2')),
+      linkRow('l2', end('c', 'p1')),
+    ]);
+    rbac.assertProjectVisible = hidden();
+    const out = await service.listForIssue('w1', 'a', user);
+    expect(out.map((l) => l.id)).toEqual(['l2']);
   });
 });
