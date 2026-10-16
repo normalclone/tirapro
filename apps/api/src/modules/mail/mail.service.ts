@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { render as renderDigest } from './templates/digest';
 import { render as renderNotification, toDropped, toItems } from './templates/notification';
 import { render as renderPasswordReset } from './templates/password-reset';
 import type { RenderedMail } from './templates/layout';
 
-export type MailTemplate = 'password-reset' | 'notification';
+export type MailTemplate = 'password-reset' | 'notification' | 'digest';
 
 export interface EnqueueInput {
   to: string;
@@ -16,6 +17,7 @@ export interface EnqueueInput {
 const RENDERERS: Record<MailTemplate, (payload: Record<string, unknown>) => RenderedMail> = {
   'password-reset': renderPasswordReset,
   notification: renderNotification,
+  digest: renderDigest,
 };
 
 /** Các template chứa liên kết dùng-một-lần: phải xoá nội dung khỏi outbox sau khi xử lý xong. */

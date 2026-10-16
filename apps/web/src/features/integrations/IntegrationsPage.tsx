@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { CalendarClock } from 'lucide-react';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
@@ -7,7 +8,11 @@ import { DigestsSection } from '@/features/digests/DigestsSection';
 import { PlatformLogo } from './PlatformLogo';
 import { TelegramSection } from './TelegramSection';
 import { RepositorySection, RepoStackIcon } from './RepositorySection';
-import { integrationSections, type IntegrationSectionId } from './sections';
+import {
+  integrationSections,
+  parseIntegrationSection,
+  type IntegrationSectionId,
+} from './sections';
 
 /* ------------------------------------------------------------------ */
 /* Submenu — rail dọc trên desktop, hàng pill cuộn ngang trên mobile  */
@@ -22,7 +27,14 @@ const SECTION_ICON: Record<IntegrationSectionId, ReactNode> = {
 const INTEGRATION_NAV = integrationSections(FEATURES);
 
 export function IntegrationsPage() {
-  const [picked, setPicked] = useState<IntegrationSectionId>('telegram');
+  // Lối vào trực tiếp: /connect/integrations?section=digest (vd từ Tổng quan → "Báo cáo định kỳ").
+  const [params] = useSearchParams();
+  const fromUrl = parseIntegrationSection(params.get('section'), FEATURES);
+  const [picked, setPicked] = useState<IntegrationSectionId>(fromUrl ?? 'telegram');
+  // Đang ở trang này mà bấm liên kết mang `?section=` khác thì phải chuyển mục theo.
+  useEffect(() => {
+    if (fromUrl) setPicked(fromUrl);
+  }, [fromUrl]);
   // Mục đang chọn không còn trong danh sách (cờ tắt) → rơi về Telegram.
   const active = INTEGRATION_NAV.some((s) => s.id === picked) ? picked : 'telegram';
 

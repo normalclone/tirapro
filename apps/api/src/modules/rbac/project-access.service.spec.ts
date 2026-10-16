@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
-import { ProjectAccessService } from './project-access.service';
+import { ProjectAccessService, PUBLIC_VIEWER } from './project-access.service';
 import { RbacService } from './rbac.service';
 
 /**
@@ -182,5 +182,18 @@ describe('ProjectAccessService', () => {
         });
       }
     }
+  });
+});
+
+describe('ProjectAccessService — PUBLIC_VIEWER (nội dung gửi nơi chung)', () => {
+  it('visibleWhere chỉ dự án công khai, không tra quyền người dùng', async () => {
+    const { svc, prisma } = make({ sysAdmin: true });
+    await expect(svc.visibleWhere(PUBLIC_VIEWER, 'w1')).resolves.toEqual({ isPrivate: false });
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('visibleProjectIds trả danh sách (không phải null = thấy tất cả)', async () => {
+    const { svc } = make();
+    await expect(svc.visibleProjectIds(PUBLIC_VIEWER, 'w1')).resolves.toEqual(['p-pub', 'p-mine']);
   });
 });

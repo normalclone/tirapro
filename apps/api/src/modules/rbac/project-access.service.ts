@@ -5,6 +5,12 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RbacService } from './rbac.service';
 
 /**
+ * "Người xem" giả cho nội dung gửi vào nơi chung (nhóm Telegram): chỉ dự án CÔNG KHAI, kể cả khi người tạo là admin.
+ * Không phải id người dùng thật (CUID không bao giờ trùng) nên không đi qua RbacService.
+ */
+export const PUBLIC_VIEWER = '__public__';
+
+/**
  * NGUỒN SỰ THẬT duy nhất cho "người này có thấy dự án này không" (dự án riêng tư).
  * Mọi đường đọc chéo dự án (danh sách, tìm kiếm/JQL, Cmd+K, thông báo, dashboard, digest, wiki, OKR…)
  * phải dùng `visibleWhere` / `visibleProjectIds` / `canSee` thay vì tự viết điều kiện.
@@ -32,6 +38,7 @@ export class ProjectAccessService {
    * Người thường: công khai HOẶC là thành viên dự án; người không có `project:view` cấp workspace: chỉ dự án có vai trò.
    */
   async visibleWhere(userId: string, workspaceId: string): Promise<Prisma.ProjectWhereInput> {
+    if (userId === PUBLIC_VIEWER) return { isPrivate: false };
     const mode = await this.rbac.projectVisibilityMode(userId, workspaceId);
     if (mode === 'all') return {};
     return mode === 'memberOnly' ? this.memberOnly(userId) : this.memberOrPublic(userId);

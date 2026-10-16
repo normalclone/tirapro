@@ -2,13 +2,22 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
+import { DIGEST_BLOCK_IDS } from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
+import { isValidTimeZone } from './digest-schedule';
 import { DigestsService } from './digests.service';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
+
+const blocksSchema = z.array(z.enum(DIGEST_BLOCK_IDS)).max(DIGEST_BLOCK_IDS.length);
+
+const recipientsSchema = z.array(z.string().min(1)).max(50);
+const weekdaySchema = z.number().int().min(0).max(6);
+const hourSchema = z.number().int().min(0).max(23);
+const timezoneSchema = z.string().refine(isValidTimeZone, 'Múi giờ không hợp lệ');
 
 const scheduleEnum = z.enum(['DAILY', 'WEEKLY', 'SPRINT_END', 'MANUAL']);
 
@@ -17,8 +26,13 @@ export const createDigestSchema = z.object({
   schedule: scheduleEnum.optional(),
   projectId: z.string().optional(),
   channelId: z.string().min(1).optional(),
-  metrics: z.array(z.string()).optional(),
-  recipients: z.array(z.string()).optional(),
+  metrics: blocksSchema.optional(),
+  recipients: recipientsSchema.optional(),
+  deliverEmail: z.boolean().optional(),
+  allowPrivateToChannel: z.boolean().optional(),
+  weekday: weekdaySchema.optional(),
+  hour: hourSchema.optional(),
+  timezone: timezoneSchema.optional(),
 });
 type CreateDigestBody = z.infer<typeof createDigestSchema>;
 
@@ -27,9 +41,23 @@ export const updateDigestSchema = z.object({
   schedule: scheduleEnum.optional(),
   isEnabled: z.boolean().optional(),
   channelId: z.string().min(1).nullable().optional(),
-  metrics: z.array(z.string()).optional(),
+  metrics: blocksSchema.optional(),
+  recipients: recipientsSchema.optional(),
+  deliverEmail: z.boolean().optional(),
+  allowPrivateToChannel: z.boolean().optional(),
+  weekday: weekdaySchema.optional(),
+  hour: hourSchema.optional(),
+  timezone: timezoneSchema.optional(),
 });
 type UpdateDigestBody = z.infer<typeof updateDigestSchema>;
+
+export const previewDigestSchema = z.object({
+  projectId: z.string().min(1).optional(),
+  metrics: blocksSchema.optional(),
+  as: z.enum(['channel', 'me']).optional(),
+  allowPrivateToChannel: z.boolean().optional(),
+});
+type PreviewDigestBody = z.infer<typeof previewDigestSchema>;
 
 @ApiTags('digests')
 @Controller('digests')
@@ -45,6 +73,17 @@ export class DigestsController {
     @Query('projectId') projectId?: string,
   ) {
     return this.digests.list(workspaceId, projectId, user.id);
+  }
+
+  /** Xem trước nội dung (chưa lưu) theo quyền xem của người bấm. Khai báo TRƯỚC `:id/run` cho rõ ràng. */
+  @Post('preview')
+  @Permissions(PERMISSIONS.DIGEST_MANAGE)
+  async preview(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(previewDigestSchema)) dto: PreviewDigestBody,
+  ) {
+    return this.digests.preview(workspaceId, user.id, dto);
   }
 
   @Post()

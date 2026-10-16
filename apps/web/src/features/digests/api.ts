@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { useIntegrations, type Channel } from '@/features/integrations/api';
 
 /* ------------------------------------------------------------------ */
 /* Kiểu dữ liệu                                                       */
@@ -15,7 +16,16 @@ export interface Digest {
   projectId: string | null;
   channelId: string | null;
   metrics: string[];
+  /** userId của thành viên workspace nhận email. */
   recipients: string[];
+  deliverEmail: boolean;
+  /** Digest gắn dự án RIÊNG TƯ: cho phép đăng nội dung vào nhóm Telegram (mặc định không). */
+  allowPrivateToChannel: boolean;
+  /** 0 = Chủ nhật … 6 = Thứ Bảy (chỉ WEEKLY). */
+  weekday: number;
+  /** 0–23 theo `timezone`. */
+  hour: number;
+  timezone: string;
   isEnabled: boolean;
   lastRunAt: string | null;
   createdAt: string;
@@ -28,6 +38,11 @@ export interface CreateDigestInput {
   channelId?: string;
   metrics?: string[];
   recipients?: string[];
+  deliverEmail?: boolean;
+  allowPrivateToChannel?: boolean;
+  weekday?: number;
+  hour?: number;
+  timezone?: string;
 }
 
 export interface UpdateDigestInput {
@@ -35,11 +50,32 @@ export interface UpdateDigestInput {
   name?: string;
   schedule?: DigestSchedule;
   isEnabled?: boolean;
+  /** null = gỡ kênh Telegram. */
+  channelId?: string | null;
+  metrics?: string[];
+  recipients?: string[];
+  deliverEmail?: boolean;
+  allowPrivateToChannel?: boolean;
+  weekday?: number;
+  hour?: number;
+  timezone?: string;
+}
+
+export interface PreviewDigestInput {
+  projectId?: string;
+  metrics?: string[];
+  /** `channel` = đúng bản sẽ đăng vào nhóm Telegram; `me` (mặc định) = bản theo quyền của bạn. */
+  as?: 'channel' | 'me';
+  allowPrivateToChannel?: boolean;
 }
 
 export interface RunDigestResult {
   sent: boolean;
   summaryText: string;
+  /** Có kênh Telegram nhưng KHÔNG đăng (dự án riêng tư chưa được phép đăng vào nhóm). */
+  channelSkipped: boolean;
+  /** Tên người nhận email bị bỏ qua vì không thấy dự án gắn kèm. */
+  skippedRecipients: string[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -102,4 +138,40 @@ export function useRunDigest() {
       void qc.invalidateQueries({ queryKey: keys.digests.all });
     },
   });
+}
+
+/** Xem trước nội dung (chưa lưu) theo quyền xem của người bấm — văn bản thuần. */
+export function usePreviewDigest() {
+  return useMutation({
+    mutationFn: (input: PreviewDigestInput) =>
+      api
+        .post<{ summaryText: string; channelSkipped: boolean }>('/digests/preview', input)
+        .then((r) => r.data),
+  });
+}
+
+/** Một kênh Telegram đã liên kết kèm tên tích hợp (để chọn nơi gửi digest). */
+export interface DigestChannelOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * Mọi kênh Telegram ĐÃ BẬT của workspace (gộp qua các tích hợp). `loading` đúng khi còn đang tải — để giao diện
+ * không vội nói "chưa có kênh".
+ */
+export function useDigestChannels(): { options: DigestChannelOption[]; loading: boolean } {
+  const integrations = useIntegrations();
+  const results = useQueries({
+    queries: (integrations.data ?? []).map((i) => ({
+      queryKey: keys.integrations.channels(i.id),
+      queryFn: async () => (await api.get<Channel[]>(`/integrations/${i.id}/channels`)).data,
+    })),
+  });
+  const options = (integrations.data ?? []).flatMap((i, idx) =>
+    (results[idx]?.data ?? [])
+      .filter((c) => c.isEnabled)
+      .map((c) => ({ id: c.id, label: `${c.title ?? c.externalId} · ${i.name}` })),
+  );
+  return { options, loading: integrations.isLoading || results.some((r) => r.isLoading) };
 }

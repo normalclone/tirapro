@@ -184,3 +184,32 @@ describe('LeadershipService.get', () => {
     });
   });
 });
+
+describe('LeadershipService.get — tuỳ chọn cho digest', () => {
+  it('cards: chỉ tải thẻ được chọn, các nguồn còn lại không bị gọi', async () => {
+    const { svc, raid, goals, resources } = make();
+    await svc.get('w1', 'u1', NOW, { cards: ['topRisks'] });
+    expect(raid.list).toHaveBeenCalledTimes(1);
+    expect(goals.list).not.toHaveBeenCalled();
+    expect(resources.workload).not.toHaveBeenCalled();
+  });
+
+  it('projectId: thu hẹp rủi ro/OKR vào dự án và bỏ thẻ nhân lực (cấp workspace)', async () => {
+    const { svc, raid, goals, resources } = make();
+    await svc.get('w1', 'u1', NOW, { projectId: 'p1' });
+    expect(raid.list).toHaveBeenCalledWith(
+      'w1',
+      { kind: 'RISK', status: 'OPEN', projectId: 'p1' },
+      'u1',
+    );
+    expect(goals.list).toHaveBeenCalledWith('w1', { status: 'ACTIVE', projectId: 'p1' }, 'u1');
+    expect(resources.workload).not.toHaveBeenCalled();
+  });
+
+  it('không tuỳ chọn → như cũ (cả ba thẻ, không projectId)', async () => {
+    const { svc, raid, resources } = make();
+    await svc.get('w1', 'u1', NOW);
+    expect(raid.list).toHaveBeenCalledWith('w1', { kind: 'RISK', status: 'OPEN' }, 'u1');
+    expect(resources.workload).toHaveBeenCalledTimes(1);
+  });
+});

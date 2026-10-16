@@ -887,9 +887,14 @@ describe('dự án riêng tư — R4: điểm gửi ra kênh chung giữ thành 
   it.each([
     // Telegram: tin của dự án riêng tư chỉ tới kênh gắn đúng dự án.
     ['integrations/integrations.service.ts', 'IntegrationsService', 'fanout', 'isPrivate'],
-    // Digest cấp workspace gửi ra kênh/cron: chỉ dự án công khai.
-    ['digests/digests.service.ts', 'DigestsService', 'sendScheduled', 'publicProjectIdsCached'],
-    ['digests/digests.service.ts', 'DigestsService', 'run', 'publicProjectIds'],
+    // Digest gửi ra kênh chung (cron, sự kiện sprint, "Chạy ngay" đều qua `deliver`): người xem do `channelViewer` chọn —
+    // PUBLIC_VIEWER (chỉ dự án công khai) trừ dự án riêng tư được người tạo bật tường minh `allowPrivateToChannel`.
+    ['digests/digests.service.ts', 'DigestsService', 'deliver', 'channelViewer'],
+    ['digests/digests.service.ts', 'DigestsService', 'channelViewer', 'PUBLIC_VIEWER'],
+    ['digests/digests.service.ts', 'DigestsService', 'channelViewer', 'isPrivate'],
+    ['digests/digests.service.ts', 'DigestsService', 'channelViewer', 'allowPrivateToChannel'],
+    // Báo cáo gắn dự án ẩn: update/remove/run đều qua requireSubscription → assertCanSee (404).
+    ['digests/digests.service.ts', 'DigestsService', 'requireSubscription', 'assertCanSee'],
     // Tạo digest cho dự án ẩn bị chặn.
     ['digests/digests.service.ts', 'DigestsService', 'create', 'assertCanSee'],
     // Automation notify chỉ báo người xem được việc.
