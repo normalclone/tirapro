@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { format } from 'date-fns';
 import { useMyWorkspaces } from '@/features/workspace/api';
+import { fmtDateTime } from '@/lib/dateFormat';
 import { useAuth } from '@/stores/auth';
 
 /**
@@ -26,7 +26,7 @@ export function PrintHeader({ title, subtitle }: { title: string; subtitle?: str
       <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">{title}</h1>
       {subtitle && <p className="mt-0.5 text-sm text-ink">{subtitle}</p>}
       <p className="mt-1 text-xs text-muted">
-        In lúc {format(at, 'dd/MM/yyyy HH:mm')}
+        In lúc {fmtDateTime(at)}
         {user?.displayName ? ` bởi ${user.displayName}` : ''}
       </p>
     </div>

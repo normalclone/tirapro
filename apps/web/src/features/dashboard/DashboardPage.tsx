@@ -161,7 +161,8 @@ function AdminOverview() {
         title="Tổng quan chung"
         subtitle={data ? `Toàn bộ ${data.projectCount} dự án đang hoạt động` : undefined}
       />
-      <div className="mb-3 flex items-center justify-between gap-4">
+      {/* Bản in đã có PrintHeader (tiêu đề + số dự án) → ẩn hàng tiêu đề này để không lặp. */}
+      <div className="mb-3 flex items-center justify-between gap-4 print:hidden">
         <h2 className="text-base font-semibold text-ink-strong">Tổng quan chung</h2>
         <span className="flex items-center gap-3">
           {data && <span className="text-xs text-faint tabular">{data.projectCount} dự án</span>}
@@ -548,12 +549,14 @@ function sprintDue(daysLeft: number | null): { text: string; className: string }
 
 function ProjectStatsTable({ projects }: { projects: OverviewProject[] }) {
   return (
-    <div className="print-avoid-break overflow-hidden rounded-lg border border-border bg-surface">
+    <div className="overflow-hidden rounded-lg border border-border bg-surface">
       {/* Header cột — ẩn ở mobile để dồn không gian cho số liệu */}
       {/* Khổ A4 dọc hẹp hơn md nhưng vẫn cần đủ cột → `print:` dựng lại bố cục md với cột co hẹp (L4). */}
       <div className="hidden items-center gap-3 border-b border-border px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-faint sm:flex print:flex print:gap-2 print:px-2">
         <span className="min-w-0 flex-1 print:basis-24">Dự án</span>
-        <span className="w-12 md:w-28 print:w-28">Sức khoẻ</span>
+        <span className="w-12 md:w-32 print:w-32">
+          <span className="sr-only md:not-sr-only print:not-sr-only">Sức khoẻ</span>
+        </span>
         <span className="hidden w-40 md:block print:block print:w-24">Sprint đang chạy</span>
         <span className="w-14 text-right tabular print:w-12">Tổng</span>
         <span className="w-16 text-right tabular print:w-12">Đang làm</span>
@@ -595,7 +598,7 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
         </Link>
 
         {/* Sức khoẻ: dưới md chỉ còn icon (tên truy cập vẫn đủ); bấm xem lý do */}
-        <span className="w-12 shrink-0 md:w-28 print:w-28">
+        <span className="w-12 shrink-0 md:w-32 print:w-32">
           <HealthBadge health={p.health} projectKey={p.key} compact />
         </span>
 
