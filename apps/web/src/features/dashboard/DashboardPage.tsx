@@ -550,15 +550,16 @@ function ProjectStatsTable({ projects }: { projects: OverviewProject[] }) {
   return (
     <div className="print-avoid-break overflow-hidden rounded-lg border border-border bg-surface">
       {/* Header cột — ẩn ở mobile để dồn không gian cho số liệu */}
-      <div className="hidden items-center gap-3 border-b border-border px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-faint sm:flex">
-        <span className="min-w-0 flex-1">Dự án</span>
-        <span className="w-12 md:w-28">Sức khoẻ</span>
-        <span className="hidden w-40 md:block">Sprint đang chạy</span>
-        <span className="w-14 text-right tabular">Tổng</span>
-        <span className="w-16 text-right tabular">Đang làm</span>
-        <span className="w-16 text-right tabular">Xong</span>
-        <span className="w-16 text-right tabular">Quá hạn</span>
-        <span className="w-24 text-right">Tiến độ</span>
+      {/* Khổ A4 dọc hẹp hơn md nhưng vẫn cần đủ cột → `print:` dựng lại bố cục md với cột co hẹp (L4). */}
+      <div className="hidden items-center gap-3 border-b border-border px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-faint sm:flex print:flex print:gap-2 print:px-2">
+        <span className="min-w-0 flex-1 print:basis-24">Dự án</span>
+        <span className="w-12 md:w-28 print:w-28">Sức khoẻ</span>
+        <span className="hidden w-40 md:block print:block print:w-24">Sprint đang chạy</span>
+        <span className="w-14 text-right tabular print:w-12">Tổng</span>
+        <span className="w-16 text-right tabular print:w-12">Đang làm</span>
+        <span className="w-16 text-right tabular print:w-12">Xong</span>
+        <span className="w-16 text-right tabular print:w-12">Quá hạn</span>
+        <span className="w-24 text-right print:w-12">Tiến độ</span>
       </div>
 
       <ul className="divide-y divide-border">
@@ -577,8 +578,11 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
 
   return (
     <li className="print-avoid-break">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-surface-2">
-        <Link to={`/p/${p.key}/board`} className="group flex min-w-0 flex-1 items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-surface-2 print:gap-x-2 print:px-2">
+        <Link
+          to={`/p/${p.key}/board`}
+          className="group flex min-w-0 flex-1 basis-40 items-center gap-2.5 print:basis-24"
+        >
           <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-primary-subtle font-mono text-[11px] font-bold text-primary">
             {p.key.slice(0, 3)}
           </span>
@@ -591,12 +595,12 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
         </Link>
 
         {/* Sức khoẻ: dưới md chỉ còn icon (tên truy cập vẫn đủ); bấm xem lý do */}
-        <span className="w-12 shrink-0 md:w-28">
+        <span className="w-12 shrink-0 md:w-28 print:w-28">
           <HealthBadge health={p.health} projectKey={p.key} compact />
         </span>
 
         {/* Sprint đang chạy (ẩn dưới md để dồn chỗ cho số liệu) */}
-        <span className="hidden w-40 shrink-0 md:block">
+        <span className="hidden w-40 shrink-0 md:block print:block print:w-24">
           {p.sprint && due ? (
             <>
               <span className="block truncate text-sm text-ink" title={p.sprint.name}>
@@ -609,21 +613,27 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
           )}
         </span>
 
-        <span className="w-14 text-right text-sm tabular text-ink-strong">{p.total}</span>
-        <span className="w-16 text-right text-sm tabular text-status-progress">{p.inProgress}</span>
-        <span className="w-16 text-right text-sm tabular text-status-done">{p.done}</span>
+        <span className="w-14 text-right text-sm tabular text-ink-strong print:w-12">
+          {p.total}
+        </span>
+        <span className="w-16 text-right text-sm tabular text-status-progress print:w-12">
+          {p.inProgress}
+        </span>
+        <span className="w-16 text-right text-sm tabular text-status-done print:w-12">
+          {p.done}
+        </span>
         <span
           className={cn(
-            'w-16 text-right text-sm tabular',
+            'w-16 text-right text-sm tabular print:w-12',
             p.overdue > 0 ? 'font-semibold text-danger' : 'text-faint',
           )}
         >
           {p.overdue}
         </span>
 
-        <span className="flex w-24 items-center justify-end gap-2">
+        <span className="flex w-24 items-center justify-end gap-2 print:w-12">
           <span
-            className="h-1.5 w-14 overflow-hidden rounded-full bg-surface-3"
+            className="h-1.5 w-14 overflow-hidden print:hidden rounded-full bg-surface-3"
             role="progressbar"
             aria-valuenow={pct}
             aria-valuemin={0}

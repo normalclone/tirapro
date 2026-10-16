@@ -76,7 +76,7 @@ export function HealthOverrideCard({
           <div className="mb-2">
             <HealthBadge health={health} />
           </div>
-          <HealthDetails health={health} />
+          <HealthDetails health={health} showLevel={false} />
         </div>
 
         {canOverride ? (

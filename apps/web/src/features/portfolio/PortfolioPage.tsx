@@ -108,7 +108,7 @@ function StatLine({ stats, className }: { stats: RollupStats; className?: string
 function ProjectRow({ project }: { project: RollupProject }) {
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="flex min-w-0 flex-1 basis-40 items-center gap-2">
         <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted">
           {project.key}
         </span>

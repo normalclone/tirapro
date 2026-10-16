@@ -25,11 +25,18 @@ const TONE: Record<
   NONE: { icon: CircleDashed, chip: 'border-border bg-surface-2', iconCls: 'text-muted' },
 };
 
-export function HealthDetails({ health }: { health: ProjectHealthDto | null }) {
+export function HealthDetails({
+  health,
+  showLevel = true,
+}: {
+  health: ProjectHealthDto | null;
+  /** Ẩn dòng mức khi nơi dùng đã hiện huy hiệu ngay trên. */
+  showLevel?: boolean;
+}) {
   if (!health) return <p className="text-sm text-muted">Chưa có dữ liệu sức khoẻ cho dự án này.</p>;
   return (
     <div className="space-y-2 text-sm">
-      <p className="font-medium text-ink-strong">{healthLabel(health.level)}</p>
+      {showLevel && <p className="font-medium text-ink-strong">{healthLabel(health.level)}</p>}
       {health.override && (
         <p className="text-ink">
           <span className="text-muted">
@@ -94,7 +101,7 @@ export function HealthBadge({
           )}
         >
           <Icon className={cn('h-3.5 w-3.5 shrink-0', tone.iconCls)} aria-hidden />
-          <span className={cn(compact && 'hidden md:inline')}>{label}</span>
+          <span className={cn(compact && 'hidden md:inline print:inline')}>{label}</span>
           {health?.override && <PenLine className="h-3 w-3 shrink-0 text-faint" aria-hidden />}
         </button>
       </Popover.Trigger>
