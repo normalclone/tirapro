@@ -42,3 +42,10 @@ export const filterLinkCandidates = (
   selfId: string,
   linkedIds: Set<string>,
 ): IssueDto[] => results.filter((i) => i.id !== selfId && !linkedIds.has(i.id));
+
+/**
+ * Gợi ý đang hiện có khớp ĐÚNG chuỗi người dùng gõ không (để Enter chọn mà không dính kết quả cũ):
+ * debounce đã chốt (`typed` đã bỏ khoảng trắng == `settled`) và truy vấn không còn tải/đang giữ dữ liệu của chuỗi trước.
+ */
+export const suggestionsReady = (typed: string, settled: string, pending: boolean): boolean =>
+  typed.trim() !== '' && typed.trim() === settled && !pending;

@@ -8,7 +8,7 @@ import { QUICK_SEARCH_MIN_LENGTH, useQuickSearch } from '@/features/command/api'
 import { useIssue } from '@/features/issues/api';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { cn } from '@/lib/utils';
-import { filterLinkCandidates, looksLikeIssueKey } from './linkOptions';
+import { filterLinkCandidates, looksLikeIssueKey, suggestionsReady } from './linkOptions';
 
 /**
  * Ô tìm công việc để liên kết: gõ mã hoặc tiêu đề (máy chủ tìm không dấu, `useQuickSearch` như Cmd+K); gõ đúng mã
@@ -30,8 +30,8 @@ export function IssueSearchBox({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const term = useDebouncedValue(q.trim(), 250);
-  const waiting = q.trim() !== term; // còn đang chờ debounce
-  const search = useQuickSearch(term);
+  // Lấy dư (20) vì sẽ loại chính nó và các việc đã liên kết ở phía này.
+  const search = useQuickSearch(term, 20);
   const exact = useIssue(looksLikeIssueKey(term) ? term.toUpperCase() : null);
 
   const options = useMemo(() => {
@@ -49,8 +49,18 @@ export function IssueSearchBox({
   useEffect(() => setActive(0), [options]);
 
   const searching = term.length >= QUICK_SEARCH_MIN_LENGTH || looksLikeIssueKey(term);
-  const loading = waiting || search.isFetching || exact.isFetching;
+  // `placeholderData: keepPreviousData` của useQuickSearch giữ kết quả chuỗi trước trong lúc tải chuỗi mới.
+  const pending = search.isFetching || search.isPlaceholderData || exact.isFetching;
+  const ready = suggestionsReady(q, term, pending);
   const showList = open && q.trim().length >= QUICK_SEARCH_MIN_LENGTH && searching;
+  // Vùng live LUÔN tồn tại (mount sẵn) để trình đọc màn hình đọc được thay đổi; chỉ có chữ khi danh sách đang mở.
+  const statusText = !showList
+    ? ''
+    : !ready
+      ? 'Đang tìm…'
+      : options.length === 0
+        ? 'Không có công việc nào khớp — thử mã hoặc từ khác.'
+        : `${options.length} công việc gợi ý`;
   const optId = (i: number) => `${listId}-opt-${i}`;
 
   function pick(issue: IssueDto) {
@@ -66,9 +76,10 @@ export function IssueSearchBox({
       if (options.length)
         setActive((a) => (a + (e.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length);
     } else if (e.key === 'Enter') {
-      if (showList && options[active]) {
-        e.preventDefault();
-        pick(options[active]);
+      if (showList) {
+        e.preventDefault(); // không để Enter lọt ra ngoài khi đang mở danh sách
+        // Chỉ chọn khi danh sách khớp đúng chuỗi đang gõ — không chọn nhầm gợi ý cũ còn trong cửa sổ debounce/đang tải.
+        if (ready && options[active]) pick(options[active]);
       }
     } else if (e.key === 'Escape' && showList) {
       e.stopPropagation(); // đóng danh sách trước, chưa đóng cả form/panel
@@ -102,11 +113,15 @@ export function IssueSearchBox({
         autoComplete="off"
         className="pl-8"
       />
+      <span role="status" aria-live="polite" className="sr-only">
+        {statusText}
+      </span>
       {showList && (
         <ul
           id={listId}
           role="listbox"
           aria-label="Công việc gợi ý"
+          aria-busy={!ready}
           // onMouseDown.preventDefault: bấm vào mục không làm ô nhập mất focus (nếu không onBlur đóng danh sách trước khi click).
           onMouseDown={(e) => e.preventDefault()}
           className="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-auto rounded-md border border-border bg-surface py-1 shadow-lg"
@@ -122,7 +137,7 @@ export function IssueSearchBox({
               className={cn(
                 'flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-sm',
                 i === active && 'bg-surface-2',
-                issue.status.category === 'DONE' && 'opacity-70',
+                (issue.status.category === 'DONE' || !ready) && 'opacity-70',
               )}
             >
               <IssueTypeIcon type={issue.type} />
@@ -132,8 +147,8 @@ export function IssueSearchBox({
             </li>
           ))}
           {options.length === 0 && (
-            <li role="presentation" className="px-2.5 py-2 text-sm text-faint" aria-live="polite">
-              {loading ? 'Đang tìm…' : 'Không có công việc nào khớp — thử mã hoặc từ khác.'}
+            <li role="presentation" className="px-2.5 py-2 text-sm text-faint">
+              {statusText}
             </li>
           )}
         </ul>

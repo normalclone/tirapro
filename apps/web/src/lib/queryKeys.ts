@@ -80,7 +80,7 @@ export const keys = {
 
   search: {
     jql: (jql: string) => ['search', jql] as const,
-    quick: (q: string) => ['quick-search', q] as const,
+    quick: (q: string, limit = 8) => ['quick-search', q, limit] as const,
   },
 
   clients: { all: ['clients'] as const },

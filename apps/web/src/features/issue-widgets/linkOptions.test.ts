@@ -3,6 +3,7 @@ import type { IssueDto } from '@tirapro/types';
 import {
   filterLinkCandidates,
   looksLikeIssueKey,
+  suggestionsReady,
   parseRelationValue,
   relationOptions,
 } from './linkOptions';
@@ -45,5 +46,22 @@ describe('filterLinkCandidates', () => {
     expect(
       filterLinkCandidates([r('a'), r('b'), r('c')], 'a', new Set(['c'])).map((i) => i.id),
     ).toEqual(['b']);
+  });
+});
+
+describe('suggestionsReady — Enter chỉ chọn khi gợi ý khớp đúng chuỗi đang gõ', () => {
+  it('đã debounce xong, không còn tải/dữ liệu cũ => sẵn sàng', () => {
+    expect(suggestionsReady('dang nhap', 'dang nhap', false)).toBe(true);
+    expect(suggestionsReady('  dang nhap ', 'dang nhap', false)).toBe(true); // khoảng trắng đầu/cuối bỏ qua
+  });
+  it('còn trong cửa sổ debounce (chuỗi gõ khác chuỗi đã chốt) => chưa sẵn sàng', () => {
+    expect(suggestionsReady('dang nhap', 'dang', false)).toBe(false);
+    expect(suggestionsReady('d', 'dang nhap', false)).toBe(false);
+  });
+  it('đang tải hoặc đang hiện kết quả cũ (keepPreviousData) => chưa sẵn sàng', () => {
+    expect(suggestionsReady('abc', 'abc', true)).toBe(false);
+  });
+  it('chuỗi rỗng không bao giờ sẵn sàng', () => {
+    expect(suggestionsReady('  ', '', false)).toBe(false);
   });
 });
