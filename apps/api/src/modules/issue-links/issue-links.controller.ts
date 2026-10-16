@@ -39,7 +39,7 @@ export class IssueLinksController {
     return this.links.listForIssue(workspaceId, issueId, user);
   }
 
-  /** Tạo liên kết từ issue nguồn (:issueId) tới issue đích. */
+  /** Tạo liên kết giữa :issueId và issue đích; `direction` chọn công việc đang xem là nguồn (outward) hay đích (inward). */
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/links')

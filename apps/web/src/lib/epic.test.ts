@@ -13,6 +13,7 @@ import {
   epicIdOf,
   epicMembers,
   epicProgress,
+  buildRowRollups,
   parentChoices,
   rollupPoints,
 } from './epic';
@@ -67,15 +68,63 @@ describe('epicProgress (theo điểm)', () => {
   });
 });
 
-describe('rollupPoints (Cây việc, đệ quy)', () => {
-  it('cộng con cháu qua epicId lẫn parentId, bỏ sub-task và chính root', () => {
+describe('rollupPoints (Cây việc, việc thường — đệ quy con cháu)', () => {
+  it('cộng con cháu theo cha-trong-cây, bỏ sub-task và chính root', () => {
     const list = [
-      mk('e', { t: 'epic', storyPoints: 99 }),
-      mk('s', { epicId: 'e', storyPoints: 5, done: true }),
-      mk('t', { parentId: 's', storyPoints: 3 }),
+      mk('s', { storyPoints: 99 }),
+      mk('t', { parentId: 's', storyPoints: 3, done: true }),
+      mk('t2', { parentId: 't', storyPoints: 2 }),
       mk('u', { parentId: 's', t: 'sub', storyPoints: 1 }),
     ];
-    expect(rollupPoints(list, 'e')).toEqual({ donePoints: 5, totalPoints: 8, count: 2 });
+    expect(rollupPoints(list, 's')).toEqual({ donePoints: 3, totalPoints: 5, count: 2 });
+  });
+});
+
+describe('buildRowRollups — ô Điểm của Cây việc dùng cùng định nghĩa thành viên epic', () => {
+  const ids = (list: ReturnType<typeof mk>[]) => new Set(list.map((i) => i.id));
+  const rollupOf = (list: ReturnType<typeof mk>[], id: string) =>
+    buildRowRollups(list, ids(list)).get(id);
+
+  it('Story 5đ có Task con 3đ trong Epic: khớp panel/Việc chờ (5, không tính trùng 8)', () => {
+    const list = [
+      mk('e', { t: 'epic' }),
+      mk('s', { epicId: 'e', storyPoints: 5, done: true }),
+      mk('t', { parentId: 's', storyPoints: 3 }),
+    ];
+    const panel = epicProgress(list, 'e');
+    expect(rollupOf(list, 'e')).toEqual({
+      donePoints: panel.donePoints,
+      totalPoints: panel.totalPoints,
+      count: panel.totalCount,
+    });
+    expect(rollupOf(list, 'e')).toEqual({ donePoints: 5, totalPoints: 5, count: 1 });
+    // dòng việc thường vẫn cộng dồn con của nó
+    expect(rollupOf(list, 's')).toEqual({ donePoints: 0, totalPoints: 3, count: 1 });
+  });
+
+  it('parentId việc thường + epicId=E: thuộc E (dù cây đặt dưới việc cha), E có rollup dù không có con trong cây', () => {
+    const list = [
+      mk('e', { t: 'epic' }),
+      mk('p'),
+      mk('x', { parentId: 'p', epicId: 'e', storyPoints: 4, done: true }),
+    ];
+    expect(rollupOf(list, 'e')).toEqual({ donePoints: 4, totalPoints: 4, count: 1 });
+  });
+
+  it('parentId=E nhưng epicId=E2: tính vào E2 (epicId thắng), không tính vào E', () => {
+    const list = [
+      mk('e', { t: 'epic' }),
+      mk('e2', { t: 'epic' }),
+      mk('x', { parentId: 'e', epicId: 'e2', storyPoints: 6 }),
+    ];
+    expect(rollupOf(list, 'e2')).toEqual({ donePoints: 0, totalPoints: 6, count: 1 });
+    expect(rollupOf(list, 'e')).toEqual({ donePoints: 0, totalPoints: 0, count: 0 });
+  });
+
+  it('dòng không thuộc tập id truyền vào thì không có mục; sub-task con của Epic không tính', () => {
+    const list = [mk('e', { t: 'epic' }), mk('u', { t: 'sub', parentId: 'e', storyPoints: 1 })];
+    expect(rollupOf(list, 'e')).toEqual({ donePoints: 0, totalPoints: 0, count: 0 });
+    expect(buildRowRollups(list, new Set(['zzz'])).has('zzz')).toBe(false);
   });
 });
 

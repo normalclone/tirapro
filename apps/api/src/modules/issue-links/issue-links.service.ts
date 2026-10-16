@@ -49,6 +49,8 @@ export interface IssueLinkView {
 export interface CreateIssueLinkInput {
   targetIssueId: string;
   linkTypeId: string;
+  /** 'inward' = công việc `:issueId` là phía ĐÍCH, `targetIssueId` là NGUỒN. Mặc định 'outward'. */
+  direction?: 'outward' | 'inward';
 }
 
 // Cùng một lời từ chối cho "đích không tồn tại / đã xoá / dự án đã xoá" và "không có quyền ở dự án đích",
@@ -101,7 +103,10 @@ export class IssueLinksService {
     return rows.map((r) => this.toTypeView(r));
   }
 
-  /** Tạo liên kết: issue nguồn = issueId, đích = targetIssueId. */
+  /**
+   * Tạo liên kết. Mặc định (outward) nguồn = issueId, đích = targetIssueId; `direction: 'inward'` hoán đổi vai
+   * ("issueId is caused by targetIssueId" ⇒ lưu target causes issueId). Quyền/lưu trữ kiểm như nhau cho cả hai chiều.
+   */
   async create(
     workspaceId: string,
     issueId: string,
@@ -134,13 +139,13 @@ export class IssueLinksService {
     });
     if (!linkType) throw new NotFoundAppException('Loại liên kết');
 
+    const [sourceId, targetId] =
+      input.direction === 'inward'
+        ? [input.targetIssueId, issueId]
+        : [issueId, input.targetIssueId];
     try {
       const link = await this.prisma.issueLink.create({
-        data: {
-          sourceIssueId: issueId,
-          targetIssueId: input.targetIssueId,
-          linkTypeId: linkType.id,
-        },
+        data: { sourceIssueId: sourceId, targetIssueId: targetId, linkTypeId: linkType.id },
       });
       return {
         id: link.id,

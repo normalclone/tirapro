@@ -1,4 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { IssueDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -24,7 +25,7 @@ export interface LinkedIssue {
   id: string;
   key: string;
   summary: string;
-  status: { name: string; category: string };
+  status: Pick<IssueDto['status'], 'name' | 'category'>;
 }
 
 export interface IssueLink {
@@ -84,10 +85,16 @@ export function useLinkTypes() {
 export function useCreateLink(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { targetIssueId: string; linkTypeId: string }) =>
-      (await api.post<IssueLink>(`/issues/${issueId}/links`, v)).data,
-    onSuccess: () => {
+    mutationFn: async (v: {
+      targetIssueId: string;
+      linkTypeId: string;
+      /** 'inward' = công việc đang xem là phía ĐÍCH ("is blocked by"); mặc định 'outward'. */
+      direction?: 'outward' | 'inward';
+    }) => (await api.post<IssueLink>(`/issues/${issueId}/links`, v)).data,
+    onSuccess: (_res, v) => {
       void qc.invalidateQueries({ queryKey: keys.issues.links(issueId) });
+      // Đầu kia thấy liên kết theo chiều ngược lại → nạp lại danh sách liên kết của nó nếu đang có trong cache.
+      void qc.invalidateQueries({ queryKey: keys.issues.links(v.targetIssueId) });
     },
   });
 }

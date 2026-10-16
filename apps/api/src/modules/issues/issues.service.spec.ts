@@ -2910,6 +2910,48 @@ describe('IssuesService.bulkUpdate — ca biên nhãn/epic/điểm (B7)', () => 
     ).rejects.toMatchObject({ status: 422 });
     expect(t.issue.updateMany).not.toHaveBeenCalled();
   });
+  it('epicId cho lô có một Epic => 422 (không epic lồng epic), chưa ghi', async () => {
+    const epicRowA = issueRow({
+      id: 'a',
+      type: { ...issueRow().type, key: 'EPIC', hierarchyLevel: 1 },
+    });
+    const base = b7Tx();
+    const t = b7Tx({
+      issue: {
+        ...base.issue,
+        findMany: vi.fn(() => Promise.resolve([epicRowA, issueRow({ id: 'b' })])),
+      },
+    });
+    const { service } = makeService(t);
+    await expect(
+      service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { epicId: 'e1' } }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('epicId: epic đang nằm dưới việc trong lô qua parentId => 422 (vòng theo parentId ?? epicId)', async () => {
+    const chain: Record<string, Record<string, unknown>> = {
+      e1: {
+        projectId: 'p1',
+        parentId: 'x1',
+        epicId: null,
+        type: { key: 'EPIC', hierarchyLevel: 1 },
+      },
+      x1: { parentId: 'a', epicId: null },
+    };
+    const t = b7Tx({
+      issue: {
+        ...b7Tx().issue,
+        findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(chain[where.id] ?? null),
+        ),
+      },
+    });
+    const { service } = makeService(t);
+    await expect(
+      service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { epicId: 'e1' } }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
   it('storyPoints: null xoá điểm', async () => {
     const t = b7Tx({
       issue: {
@@ -3089,5 +3131,138 @@ describe('IssuesService.update — lịch sử mô tả (B19)', () => {
     const { service } = makeService(t);
     await service.update('w1', 'u1', 'i1', { version: 3, description: '' });
     expect(t.issueHistory.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('IssuesService — cây việc: server chặn đích sai của parentId/epicId (B22)', () => {
+  const T = {
+    task: { key: 'TASK', hierarchyLevel: 0, isSubtask: false },
+    epic: { key: 'EPIC', hierarchyLevel: 1, isSubtask: false },
+    sub: { key: 'SUBTASK', hierarchyLevel: -1, isSubtask: true },
+  };
+  const row = (over: Record<string, unknown> = {}) => ({
+    projectId: 'p1',
+    parentId: null,
+    epicId: null,
+    type: T.task,
+    ...over,
+  });
+
+  /** `others`: id → hàng của các việc khác (mọi truy vấn id lạ → null = không tồn tại). */
+  function treeTx(current: Record<string, unknown>, others: Record<string, unknown> = {}) {
+    return {
+      issue: {
+        findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(where.id === 'i1' ? current : (others[where.id] ?? null)),
+        ),
+        updateMany: vi.fn((_args: { data: Record<string, unknown> }) =>
+          Promise.resolve({ count: 1 }),
+        ),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(current)),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+  }
+  const patch = (tx: ReturnType<typeof treeTx>, input: Record<string, unknown>) =>
+    makeService(tx).service.update('w1', 'u1', 'i1', { version: 3, ...input });
+
+  it('Epic đặt parentId => 422 (không epic lồng, Epic không có cha), không ghi', async () => {
+    const tx = treeTx(issueRow({ type: { ...issueRow().type, ...T.epic } }), { p9: row() });
+    await expect(patch(tx, { parentId: 'p9' })).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('cha là sub-task => 422', async () => {
+    const tx = treeTx(issueRow(), { p9: row({ type: T.sub }) });
+    await expect(patch(tx, { parentId: 'p9' })).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('cha ở dự án khác => 422; cha không tồn tại/ngoài workspace => 404', async () => {
+    const tx = treeTx(issueRow(), { p9: row({ projectId: 'p2' }) });
+    await expect(patch(tx, { parentId: 'p9' })).rejects.toMatchObject({ status: 422 });
+    await expect(patch(tx, { parentId: 'ghost' })).rejects.toMatchObject({ status: 404 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('vòng trực tiếp: cha là con của chính nó (parentId) => 422', async () => {
+    const tx = treeTx(issueRow(), { c1: row({ parentId: 'i1' }) });
+    await expect(patch(tx, { parentId: 'c1' })).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('vòng HỖN HỢP theo parentId ?? epicId: cha là việc thuộc epic = chính nó => 422', async () => {
+    // c1.epicId = i1 (cây thấy c1 dưới i1); chỉ đi theo parentId thì không thấy vòng.
+    const tx = treeTx(issueRow(), { c1: row({ epicId: 'i1' }) });
+    await expect(patch(tx, { parentId: 'c1' })).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('vòng qua epic mới: epic e1 đang nằm dưới một việc con của chính nó => 422', async () => {
+    const tx = treeTx(issueRow(), {
+      e1: row({ type: T.epic, parentId: 'x1' }),
+      x1: row({ parentId: 'i1' }),
+    });
+    await expect(patch(tx, { epicId: 'e1' })).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('chuỗi tổ tiên quá sâu (> 100 cấp) => 422, không treo', async () => {
+    const chain: Record<string, unknown> = { p0: row() };
+    for (let k = 0; k < 120; k++) chain[`p${k}`] = row({ parentId: `p${k + 1}` });
+    const tx = treeTx(issueRow(), chain);
+    await expect(patch(tx, { parentId: 'p0' })).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('cha hợp lệ (cùng dự án, việc thường) => ghi parentId; vòng cũ không liên quan tới việc này không chặn oan', async () => {
+    const tx = treeTx(issueRow(), {
+      p9: row({ parentId: 'a1' }),
+      a1: row({ parentId: 'a2' }),
+      a2: row({ parentId: 'a1' }),
+    });
+    await expect(patch(tx, { parentId: 'p9' })).resolves.toBeDefined();
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ parentId: 'p9' });
+  });
+
+  it('gỡ parentId (null) hoặc gửi lại cha hiện tại => không áp luật cấu trúc lên dữ liệu cũ', async () => {
+    // Epic có cha + cha là sub-task = dữ liệu cũ; gửi lại đúng cha đó (hoặc gỡ) không bị 422 oan.
+    const tx = treeTx(issueRow({ parentId: 'old', type: { ...issueRow().type, ...T.epic } }), {
+      old: row({ type: T.sub }),
+    });
+    await expect(patch(tx, { parentId: null })).resolves.toBeDefined();
+    await expect(patch(tx, { parentId: 'old' })).resolves.toBeDefined();
+  });
+
+  describe('create (đường API)', () => {
+    const input = (extra: Record<string, unknown>) => ({
+      projectId: 'p1',
+      typeId: 't1',
+      summary: 's',
+      descriptionFormat: 'MARKDOWN' as const,
+      ...extra,
+    });
+    it.each([
+      ['cha là sub-task', { p9: row({ type: T.sub }) }],
+      ['cha khác dự án', { p9: row({ projectId: 'p2' }) }],
+    ])('%s => 422, không tạo', async (_n, others) => {
+      const { tx, created } = createTxFor(others);
+      const { service } = makeService(tx);
+      await expect(service.create('w1', 'u1', input({ parentId: 'p9' }))).rejects.toMatchObject({
+        status: 422,
+      });
+      expect(created).not.toHaveBeenCalled();
+    });
+    it('tạo Epic có parentId => 422; việc thường với cha hợp lệ => tạo', async () => {
+      const bad = createTxFor({ p9: row() });
+      bad.tx.issueType.findFirst = vi.fn(() => Promise.resolve({ id: 't1', ...T.epic }));
+      await expect(
+        makeService(bad.tx).service.create('w1', 'u1', input({ parentId: 'p9' })),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(bad.created).not.toHaveBeenCalled();
+      const ok = createTxFor({ p9: row() });
+      await makeService(ok.tx).service.create('w1', 'u1', input({ parentId: 'p9' }));
+      expect(ok.created.mock.calls[0]![0].data.parentId).toBe('p9');
+    });
   });
 });

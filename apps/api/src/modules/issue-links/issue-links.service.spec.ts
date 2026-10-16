@@ -27,7 +27,7 @@ function setup(perms: string[], issues: Record<string, ReturnType<typeof end>>) 
       ),
     },
     issueLink: {
-      create: vi.fn(() =>
+      create: vi.fn((_args: { data: Record<string, unknown> }) =>
         Promise.resolve({ id: 'l1', sourceIssueId: 'a', targetIssueId: 'b', linkTypeId: 'lt' }),
       ),
     },
@@ -80,6 +80,35 @@ describe('IssueLinksService.create — link liên dự án', () => {
     const admin = setup([], { a: end('a', 'p1'), b: end('b', 'p2') });
     await admin.service.create('w1', 'a', input, { id: 'u9', isSystemAdmin: true });
     expect(admin.rbac.getEffectivePermissions).not.toHaveBeenCalled();
+  });
+});
+
+describe('IssueLinksService.create — chiều liên kết (B23)', () => {
+  it('mặc định outward: nguồn = công việc đang xem', async () => {
+    const { service, prisma } = setup([], { a: end('a', 'p1'), b: end('b', 'p1') });
+    await service.create('w1', 'a', input, user);
+    expect(prisma.issueLink.create.mock.calls[0]![0].data).toMatchObject({
+      sourceIssueId: 'a',
+      targetIssueId: 'b',
+    });
+  });
+  it('inward: nguồn = công việc kia, đích = công việc đang xem ("a is caused by b" ⇒ b causes a)', async () => {
+    const { service, prisma } = setup([], { a: end('a', 'p1'), b: end('b', 'p1') });
+    const res = await service.create('w1', 'a', { ...input, direction: 'inward' }, user);
+    expect(prisma.issueLink.create.mock.calls[0]![0].data).toMatchObject({
+      sourceIssueId: 'b',
+      targetIssueId: 'a',
+    });
+    // `targetIssue` trong kết quả vẫn là đầu KIA (công việc b), như khi tạo outward.
+    expect(res.targetIssue).toMatchObject({ id: 'b' });
+  });
+  it('inward liên dự án vẫn đòi quyền ở dự án đầu kia', async () => {
+    const { service, rbac, prisma } = setup([], { a: end('a', 'p1'), b: end('b', 'p2') });
+    await expect(
+      service.create('w1', 'a', { ...input, direction: 'inward' }, user),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', 'p2');
+    expect(prisma.issueLink.create).not.toHaveBeenCalled();
   });
 });
 

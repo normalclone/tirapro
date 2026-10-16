@@ -85,6 +85,8 @@ export const DEFAULT_LINK_TYPES: LinkTypeSeed[] = [
   { name: 'Relates', outwardName: 'relates to', inwardName: 'relates to' },
   { name: 'Duplicates', outwardName: 'duplicates', inwardName: 'is duplicated by' },
   { name: 'Clones', outwardName: 'clones', inwardName: 'is cloned by' },
+  { name: 'Causes', outwardName: 'causes', inwardName: 'is caused by' },
+  { name: 'Tests', outwardName: 'tests', inwardName: 'is tested by' },
 ];
 
 export interface IssueTypeSeed {
