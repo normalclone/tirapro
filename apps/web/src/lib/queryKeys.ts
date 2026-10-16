@@ -184,6 +184,9 @@ export const keys = {
 
   integrations: {
     byType: (type: IntegrationType) => ['integrations', type] as const,
+    platform: ['integrations', 'telegram-platform'] as const,
+    linkCode: (integrationId: string, code: string) =>
+      ['integration-link-code', integrationId, code] as const,
     channels: (integrationId: string) => ['integration-channels', integrationId] as const,
     repositories: ['repositories'] as const,
   },

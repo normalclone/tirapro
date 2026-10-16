@@ -153,8 +153,8 @@ export class IssuesService {
   }
 
   /**
-   * Hạn (dueDate) chỉ người TẠO/BÁO CÁO issue hoặc QUẢN TRỊ (project admin /
-   * workspace admin / system admin) được sửa. Ném lỗi nếu vi phạm.
+   * Hạn (dueDate) & Ngày bắt đầu (startDate) — một luật "ai đổi lịch" — chỉ người TẠO/BÁO CÁO issue hoặc QUẢN TRỊ
+   * (project admin / workspace admin / system admin) được sửa. Ném lỗi nếu vi phạm.
    * Story points KHÔNG qua đây: ai sửa được công việc (`issue:edit`, hoặc `:own` với việc của mình) thì sửa được điểm.
    */
   private async assertCanEditRestrictedFields(
@@ -170,7 +170,18 @@ export class IssuesService {
       select: { isSystemAdmin: true },
     });
     if (u?.isSystemAdmin) return;
-    throw new ForbiddenAppException('Chỉ người tạo hoặc quản trị mới được sửa Hạn');
+    throw new ForbiddenAppException('Chỉ người tạo hoặc quản trị mới được sửa Hạn/Ngày bắt đầu');
+  }
+
+  /** Bắt đầu phải trước hoặc bằng hạn — chỉ kiểm khi cả hai có giá trị (xoá một trong hai luôn được). */
+  private assertScheduleOrder(
+    start: Date | string | null | undefined,
+    due: Date | string | null | undefined,
+  ): void {
+    if (!start || !due) return;
+    if (new Date(start).getTime() > new Date(due).getTime()) {
+      throw new BusinessRuleException('Ngày bắt đầu phải trước hoặc bằng hạn — hãy chọn lại ngày');
+    }
   }
 
   /** Người chỉ có `issue:edit:own` chỉ sửa được việc mình báo cáo, được giao hoặc đã tạo. */
@@ -532,6 +543,7 @@ export class IssuesService {
     });
     if (!project) throw new NotFoundAppException('Dự án');
     assertNotArchived(project.archivedAt);
+    this.assertScheduleOrder(input.startDate, input.dueDate);
     await this.assertMetaInWorkspace(
       workspaceId,
       {
@@ -901,9 +913,20 @@ export class IssuesService {
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
       await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
 
-    // Field-level: Hạn chỉ người tạo hoặc admin sửa được (điểm: ai sửa được công việc thì sửa được).
-    if (input.dueDate !== undefined && opts?.automationDepth === undefined) {
+    // Field-level: Hạn / Ngày bắt đầu chỉ người tạo hoặc admin sửa được (điểm: ai sửa được công việc thì sửa được).
+    if (
+      (input.dueDate !== undefined || input.startDate !== undefined) &&
+      opts?.automationDepth === undefined
+    ) {
       await this.assertCanEditRestrictedFields(userId, workspaceId, current);
+    }
+    // Thứ tự ngày tính trên giá trị HIỆU LỰC sau khi sửa (trường không gửi giữ giá trị hiện có) — và CHỈ khi request
+    // đổi startDate/dueDate: dữ liệu cũ sai thứ tự (API trước đây không kiểm) không được làm mọi chỉnh sửa khác 422.
+    if (input.startDate !== undefined || input.dueDate !== undefined) {
+      this.assertScheduleOrder(
+        input.startDate !== undefined ? input.startDate : current.startDate,
+        input.dueDate !== undefined ? input.dueDate : current.dueDate,
+      );
     }
 
     const data: Prisma.IssueUncheckedUpdateManyInput = { updatedById: userId };
