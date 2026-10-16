@@ -170,6 +170,43 @@ export function applyEpicFilter(
   );
 }
 
+export type EpicAssignPlan =
+  | { kind: 'ignore' }
+  | { kind: 'reject'; reason: string }
+  | {
+      kind: 'set';
+      patch: { epicId: string | null; parentId?: null };
+      restore: { epicId: string | null; parentId?: string | null };
+    };
+
+/**
+ * Kết quả khi thả `issue` lên một mục panel Epic (`target` = id epic hoặc 'none'). Con trực tiếp của một epic (cha là epic)
+ * đổi sang epic khác thì gỡ luôn `parentId` để không thuộc hai epic cùng lúc; `restore` giữ cả hai cho Hoàn tác.
+ * Dùng cùng định nghĩa thành viên với danh sách/tiến độ (`epicIdOf`).
+ */
+export function planEpicAssign(
+  issue: IssueDto,
+  target: string,
+  byId: Map<string, IssueDto>,
+): EpicAssignPlan {
+  if (isEpicIssue(issue))
+    return { kind: 'reject', reason: 'Epic là cấp cao nhất — không đặt vào epic khác' };
+  if (issue.type.isSubtask)
+    return { kind: 'reject', reason: 'Việc con đi theo việc cha — hãy gắn epic cho việc cha' };
+  const next = target === 'none' ? null : target;
+  if (epicIdOf(issue, byId) === next) return { kind: 'ignore' };
+  const parent = issue.parentId ? byId.get(issue.parentId) : undefined;
+  const parentIsEpic = !!parent && isEpicIssue(parent);
+  return {
+    kind: 'set',
+    patch: { epicId: next, ...(parentIsEpic ? { parentId: null } : {}) },
+    restore: {
+      epicId: issue.epicId ?? null,
+      ...(parentIsEpic ? { parentId: issue.parentId } : {}),
+    },
+  };
+}
+
 export const EPIC_DROP_PREFIX = 'epic:';
 /** id droppable của một mục ở panel Epic (`'none'` = "Không thuộc epic"); không đụng id sprint/backlog/dòng việc. */
 export const epicDropId = (id: string): string => `${EPIC_DROP_PREFIX}${id}`;

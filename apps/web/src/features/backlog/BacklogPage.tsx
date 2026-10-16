@@ -50,7 +50,14 @@ import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjectLabels, type ProjectLabel } from '@/features/issue-meta/api';
 import { useWorkflows } from '@/features/workflow-settings/api';
-import { applyEpicFilter, buildListProgressMap, epicChoices, epicCounts } from '@/lib/epic';
+import {
+  applyEpicFilter,
+  buildListProgressMap,
+  epicChoices,
+  epicCounts,
+  parseEpicDropId,
+  planEpicAssign,
+} from '@/lib/epic';
 import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
@@ -333,10 +340,58 @@ export function BacklogPage() {
     return (sprints ?? []).find((s) => s.id === id)?.name ?? 'sprint khác';
   }
 
+  // Thả dòng lên mục panel Epic: gắn/gỡ epic bằng PATCH (không đi rank/move → không đổi vị trí hay sprint của dòng) + Hoàn tác.
+  function assignToEpic(issue: IssueDto, target: string) {
+    if (!canEditIssue(issue)) {
+      toast.info('Bạn không có quyền sửa công việc này.');
+      return;
+    }
+    const plan = planEpicAssign(issue, target, byIdAll);
+    if (plan.kind === 'ignore') return;
+    if (plan.kind === 'reject') {
+      toast.info(plan.reason);
+      return;
+    }
+    const epicKey = byIdAll.get(target)?.key;
+    mutateIssue(
+      { id: issue.id, key: issue.key, patch: plan.patch, version: issue.version },
+      {
+        onSuccess: (res) =>
+          toast.success(
+            target === 'none'
+              ? `Đã gỡ ${issue.key} khỏi epic`
+              : `Đã gắn ${issue.key} vào ${epicKey}`,
+            {
+              duration: 5000,
+              action: {
+                label: 'Hoàn tác',
+                onClick: () =>
+                  mutateIssue(
+                    {
+                      id: issue.id,
+                      key: issue.key,
+                      patch: plan.restore,
+                      version: res.data.version,
+                    },
+                    { onError: (err) => toast.error(apiErrorMessage(err)) },
+                  ),
+              },
+            },
+          ),
+        onError: (err) => toast.error(apiErrorMessage(err)),
+      },
+    );
+  }
+
   async function onDragEnd(e: DragEndEvent) {
     setDragging(null);
     clearDragFeedback();
     const issue = (issues ?? []).find((i) => i.id === e.active.id);
+    const epicTarget = e.over ? parseEpicDropId(String(e.over.id)) : null;
+    if (epicTarget) {
+      if (issue) assignToEpic(issue, epicTarget);
+      return;
+    }
     const p = placementFromDnd(e);
     if (!issue || !p || !dragRoute) return;
     const plan = planBacklogDrop(issue, p, BACKLOG_ID);
@@ -398,6 +453,12 @@ export function BacklogPage() {
   useEffect(() => clearDragFeedback, []);
   // Vạch chèn + viền khu đích đi qua store nhỏ (không qua `useDndContext`, vốn đổi mỗi nhịp con trỏ và vẽ lại mọi khu).
   const onDragMove = (e: DragMoveEvent) => {
+    // Đang rê trên panel Epic: không phải sắp xếp/đổi sprint → bỏ vạch chèn và viền khu.
+    if (e.over && parseEpicDropId(String(e.over.id))) {
+      dropHint.set(null);
+      dropContainer.set(null);
+      return;
+    }
     const p = placementFromDnd(e);
     dropHint.set(hintOf(p));
     dropContainer.set(p?.crossContainer ? p.containerId : null);
@@ -414,7 +475,18 @@ export function BacklogPage() {
         ? 'Backlog'
         : `sprint “${(sprints ?? []).find((s) => s.id === containerId)?.name ?? 'khác'}”`;
     const at = (p: Placement) => `vị trí ${p.index + 1}/${p.total}`;
+    // Mục panel Epic đang rê/thả: 'none' = bỏ khỏi epic, còn lại = tên epic, null = không phải panel Epic.
+    const epicTargetOf = (over: { id: string | number } | null) => {
+      const t = over ? parseEpicDropId(String(over.id)) : null;
+      if (t === null) return null;
+      return t === 'none' ? 'none' : `epic ${keyOf(t)}`;
+    };
     const overText = (e: Parameters<NonNullable<Announcements['onDragOver']>>[0]) => {
+      const et = epicTargetOf(e.over);
+      if (et)
+        return et === 'none'
+          ? `${keyOf(e.active.id)} trên mục Không thuộc epic — thả để gỡ khỏi epic.`
+          : `${keyOf(e.active.id)} trên ${et} — thả để gắn vào epic.`;
       const p = placementFromDnd(e);
       if (!p) return `${keyOf(e.active.id)} đang ở ngoài các danh sách.`;
       return p.crossContainer
@@ -428,12 +500,17 @@ export function BacklogPage() {
           | undefined;
         return `Đã nhấc ${keyOf(active.id)}${
           s ? ` ở ${whereOf(String(s.containerId))}, vị trí ${s.index + 1}/${s.items.length}` : ''
-        }. Mũi tên lên xuống đổi thứ tự, tới sprint khác để chuyển sprint, Space để thả, Esc để huỷ.`;
+        }. Mũi tên lên xuống đổi thứ tự, tới sprint khác để chuyển sprint, tới panel Epic để gắn epic, Space để thả, Esc để huỷ.`;
       },
       onDragOver: overText,
       // Cùng câu với onDragOver: vị trí đổi (nửa trên/dưới của dòng đích) mà `over` không đổi vẫn được đọc đúng.
       onDragMove: overText,
       onDragEnd: (e) => {
+        const et = epicTargetOf(e.over);
+        if (et)
+          return et === 'none'
+            ? `Đã thả ${keyOf(e.active.id)} vào Không thuộc epic — gỡ khỏi epic.`
+            : `Đã thả ${keyOf(e.active.id)} vào ${et} — gắn vào epic.`;
         const p = placementFromDnd(e);
         if (!p) return `Đã thả ${keyOf(e.active.id)} ra ngoài các danh sách, giữ nguyên.`;
         if (p.unchanged)
@@ -712,7 +789,7 @@ export function BacklogPage() {
               counts={counts}
               selected={epicFilter}
               onSelect={setEpicFilter}
-              dropEnabled={false /* B16 bật: kéo việc thả vào epic */}
+              dropEnabled={dragRoute !== null}
               collapsed={!epicPanelOpen}
               onToggle={toggleEpicPanel}
             />

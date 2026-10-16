@@ -5,6 +5,7 @@ import {
   epicDropId,
   epicProgressLabel,
   parseEpicDropId,
+  planEpicAssign,
   epicTaskProgress,
   childrenForPanel,
   epicChoices,
@@ -227,5 +228,67 @@ describe('epic drop id', () => {
   it('id không phải epic => null (id sprint/backlog/dòng việc)', () => {
     expect(parseEpicDropId('backlog')).toBeNull();
     expect(parseEpicDropId('cm1abc')).toBeNull();
+  });
+});
+
+describe('planEpicAssign', () => {
+  const e1 = mk('e1', { t: 'epic' });
+  const e2 = mk('e2', { t: 'epic' });
+  const s = mk('s');
+  const inE1 = mk('i1', { epicId: 'e1' });
+  const childOfE1 = mk('c1', { parentId: 'e1' });
+  const byId = new Map([e1, e2, s, inE1, childOfE1].map((i) => [i.id, i]));
+
+  it('gắn việc chưa thuộc epic', () =>
+    expect(planEpicAssign(s, 'e1', byId)).toEqual({
+      kind: 'set',
+      patch: { epicId: 'e1' },
+      restore: { epicId: null },
+    }));
+  it('đã thuộc đúng epic đó => bỏ qua', () =>
+    expect(planEpicAssign(inE1, 'e1', byId)).toEqual({ kind: 'ignore' }));
+  it('con trực tiếp của epic đó cũng là đã thuộc => bỏ qua', () =>
+    expect(planEpicAssign(childOfE1, 'e1', byId)).toEqual({ kind: 'ignore' }));
+  it('đổi epic', () =>
+    expect(planEpicAssign(inE1, 'e2', byId)).toEqual({
+      kind: 'set',
+      patch: { epicId: 'e2' },
+      restore: { epicId: 'e1' },
+    }));
+  it('"Không thuộc epic": gỡ epicId; việc chưa thuộc epic nào => bỏ qua', () => {
+    expect(planEpicAssign(inE1, 'none', byId)).toEqual({
+      kind: 'set',
+      patch: { epicId: null },
+      restore: { epicId: 'e1' },
+    });
+    expect(planEpicAssign(s, 'none', byId)).toEqual({ kind: 'ignore' });
+  });
+  it('con trực tiếp của epic X chuyển sang Y: gỡ luôn parentId, Hoàn tác giữ cả hai', () =>
+    expect(planEpicAssign(childOfE1, 'e2', byId)).toEqual({
+      kind: 'set',
+      patch: { epicId: 'e2', parentId: null },
+      restore: { epicId: null, parentId: 'e1' },
+    }));
+  it('con trực tiếp của epic gỡ khỏi epic: gỡ parentId', () =>
+    expect(planEpicAssign(childOfE1, 'none', byId)).toEqual({
+      kind: 'set',
+      patch: { epicId: null, parentId: null },
+      restore: { epicId: null, parentId: 'e1' },
+    }));
+  it('việc có cha thường giữ nguyên cha khi đổi epic', () => {
+    const p = mk('p');
+    const x = mk('x', { parentId: 'p', epicId: 'e1' });
+    const m = new Map([e1, e2, p, x].map((i) => [i.id, i]));
+    expect(planEpicAssign(x, 'e2', m)).toEqual({
+      kind: 'set',
+      patch: { epicId: 'e2' },
+      restore: { epicId: 'e1' },
+    });
+  });
+  it('epic và sub-task không vào epic', () => {
+    expect(planEpicAssign(e1, 'e2', byId)).toMatchObject({ kind: 'reject' });
+    expect(planEpicAssign(mk('u', { t: 'sub', parentId: 's' }), 'e1', byId)).toMatchObject({
+      kind: 'reject',
+    });
   });
 });
