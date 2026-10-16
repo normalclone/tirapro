@@ -24,7 +24,7 @@ import type { WidgetProps } from './widgets/types';
 import { VelocityWidget } from './widgets/VelocityWidget';
 import type { WidgetWidth } from './widgetLayout';
 
-export type ProjectNeed = 'none' | 'optional' | 'required';
+type ProjectNeed = 'none' | 'optional' | 'required';
 
 export interface WidgetDef {
   label: string;

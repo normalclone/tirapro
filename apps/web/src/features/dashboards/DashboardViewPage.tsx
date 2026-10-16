@@ -1,8 +1,10 @@
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Copy, LayoutDashboard } from 'lucide-react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Copy, LayoutDashboard, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { NoAccess } from '@/components/ui/NoAccess';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { PrintButton } from '@/components/ui/PrintButton';
 import { PrintHeader } from '@/components/ui/PrintHeader';
 import { Badge, EmptyState } from '@/components/ui/primitives';
@@ -10,30 +12,65 @@ import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import type { CustomDashboardDto } from '@tirapro/shared';
-import { useDashboard, useDuplicateDashboard } from './api';
+import { useDashboard, useDeleteDashboard, useDuplicateDashboard } from './api';
+import { DashboardEditor } from './DashboardEditor';
 import { scopeBadge, scopeDescription } from './dashboardMeta';
 import { DashboardSwitcher } from './DashboardSwitcher';
 import { widgetDefOf } from './registry';
 import { DASHBOARD_GRID_CLASS, widgetSpanClass } from './widgetLayout';
 import { WidgetBoundary, WidgetFrame } from './WidgetFrame';
 
-/** `/dashboards/:id` — xem một dashboard tuỳ biến: lưới ô số liệu (1 cột trên mobile). */
+/**
+ * `/dashboards/:id` — xem một dashboard tuỳ biến (lưới ô số liệu, 1 cột trên mobile); `?edit=1` vào chế độ soạn (chỉ chủ);
+ * `/dashboards/new` soạn dashboard mới.
+ */
 export function DashboardViewPage() {
   const { id } = useParams<{ id: string }>();
-  const query = useDashboard(id);
+  const [params] = useSearchParams();
+  const canManage = useAuth((s) => s.can('dashboard:manage'));
+  const isNew = id === 'new';
+  const query = useDashboard(isNew ? undefined : id);
+
+  if (isNew) {
+    return canManage ? (
+      <DashboardEditor dashboard={null} />
+    ) : (
+      <NoAccess who="người được cấp quyền quản lý dashboard" />
+    );
+  }
+  const editing = params.get('edit') === '1';
   return (
-    <div className={pageContainer('xl', 'py-6')}>
-      <QueryBoundary query={query}>
-        {(dashboard) => <DashboardView dashboard={dashboard} />}
-      </QueryBoundary>
-    </div>
+    <QueryBoundary query={query}>
+      {(dashboard) =>
+        editing && dashboard.canEdit && canManage ? (
+          // `key`: nạp lại bản mới (sau "Tải lại" khi bị 409) thì khởi tạo lại bản nháp từ dữ liệu mới.
+          <DashboardEditor
+            key={dashboard.updatedAt}
+            dashboard={dashboard}
+            onReload={() => void query.refetch()}
+          />
+        ) : (
+          <div className={pageContainer('xl', 'py-6')}>
+            <DashboardView dashboard={dashboard} canManage={canManage} />
+          </div>
+        )
+      }
+    </QueryBoundary>
   );
 }
 
-function DashboardView({ dashboard }: { dashboard: CustomDashboardDto }) {
+function DashboardView({
+  dashboard,
+  canManage,
+}: {
+  dashboard: CustomDashboardDto;
+  canManage: boolean;
+}) {
   const navigate = useNavigate();
-  const canManage = useAuth((s) => s.can('dashboard:manage'));
+  const [, setParams] = useSearchParams();
+  const confirm = useConfirm();
   const duplicate = useDuplicateDashboard();
+  const remove = useDeleteDashboard();
   const widgets = [...dashboard.widgets].sort((a, b) => a.position.order - b.position.order);
 
   function copy() {
@@ -41,6 +78,25 @@ function DashboardView({ dashboard }: { dashboard: CustomDashboardDto }) {
       onSuccess: (copy) => {
         toast.success('Đã tạo bản sao riêng tư của bạn');
         navigate(`/dashboards/${copy.id}?edit=1`);
+      },
+      onError: (err) => toast.error(apiErrorMessage(err)),
+    });
+  }
+
+  async function onDelete() {
+    const ok = await confirm({
+      title: `Xoá dashboard “${dashboard.name}”?`,
+      description:
+        dashboard.scope === 'PRIVATE'
+          ? 'Dashboard bị xoá không khôi phục được.'
+          : 'Những người đang được chia sẻ sẽ không còn thấy dashboard này. Không khôi phục được.',
+      destructive: true,
+    });
+    if (!ok) return;
+    remove.mutate(dashboard.id, {
+      onSuccess: () => {
+        toast.success('Đã xoá dashboard');
+        navigate('/');
       },
       onError: (err) => toast.error(apiErrorMessage(err)),
     });
@@ -77,7 +133,24 @@ function DashboardView({ dashboard }: { dashboard: CustomDashboardDto }) {
               <Copy className="h-4 w-4" aria-hidden /> Tạo bản sao để chỉnh sửa
             </Button>
           )}
+          {dashboard.canEdit && canManage && (
+            <Button size="sm" onClick={() => setParams({ edit: '1' })}>
+              <Pencil className="h-4 w-4" aria-hidden /> Chỉnh sửa
+            </Button>
+          )}
           {widgets.length > 0 && <PrintButton title={dashboard.name} />}
+          {dashboard.canDelete && canManage && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void onDelete()}
+              loading={remove.isPending}
+              aria-label="Xoá dashboard"
+              title="Xoá dashboard"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+            </Button>
+          )}
         </div>
       </header>
 
@@ -89,6 +162,13 @@ function DashboardView({ dashboard }: { dashboard: CustomDashboardDto }) {
             dashboard.canEdit
               ? 'Thêm ô số liệu, biểu đồ hay danh sách việc để dashboard có nội dung.'
               : 'Chủ dashboard chưa thêm ô nào.'
+          }
+          action={
+            dashboard.canEdit && canManage ? (
+              <Button onClick={() => setParams({ edit: '1' })}>
+                <Plus className="h-4 w-4" aria-hidden /> Thêm widget
+              </Button>
+            ) : undefined
           }
         />
       ) : (
