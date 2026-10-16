@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { navCurrentIndex, nextNavIndex } from './listNav';
+import { issueKeyOf, navCurrentIndex, nextNavIndex } from './listNav';
 
 describe('nextNavIndex', () => {
   it('chưa focus thẻ nào: j → đầu, k → cuối', () => {
@@ -28,5 +28,14 @@ describe('navCurrentIndex', () => {
   it('dòng đang xem không còn trong DOM, hoặc không có peek → -1', () => {
     expect(navCurrentIndex(keys, -1, 'A-9')).toBe(-1);
     expect(navCurrentIndex(keys, -1, null)).toBe(-1);
+  });
+});
+
+describe('issueKeyOf', () => {
+  it('lấy data-issue-key từ chính phần tử hoặc tổ tiên (li > div[data-nav-item] của Việc mới vào)', () => {
+    const li = { getAttribute: (n: string) => (n === 'data-issue-key' ? 'T-1' : null) };
+    const div = { closest: () => li } as unknown as Element;
+    expect(issueKeyOf(div)).toBe('T-1');
+    expect(issueKeyOf({ closest: () => null } as unknown as Element)).toBeNull();
   });
 });

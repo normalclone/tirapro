@@ -65,5 +65,9 @@ describe('kho phím tắt khớp nơi xử lý', () => {
     expect(dnd).toMatch(/activeDrag\.set\(String\(e\.active\.id\)\)/);
     // clearFeedback (gọi ở onDragEnd/onDragCancel và khi unmount) phải xoá activeDrag.
     expect(dnd).toMatch(/const clearFeedback = \(\) => \{[^}]*activeDrag\.set\(null\)/);
+    // ... và clearFeedback phải được gọi ở onDragEnd, onDragCancel và cleanup unmount.
+    expect(dnd).toMatch(/const onDragEnd = useCallback\(\s*\([^)]*\) => \{[^}]*clearFeedback\(\)/);
+    expect(dnd).toMatch(/const onDragCancel = useCallback\(\(\) => \{[^}]*clearFeedback\(\)/);
+    expect(dnd).toMatch(/useEffect\(\(\) => clearFeedback, \[\]\)/);
   });
 });

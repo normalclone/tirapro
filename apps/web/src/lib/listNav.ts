@@ -24,6 +24,14 @@ export function navCurrentIndex(
   return peekKey ? keys.indexOf(peekKey) : -1;
 }
 
+/**
+ * Mã công việc của phần tử điều hướng: `data-issue-key` trên chính nó hoặc tổ tiên gần nhất (vd dòng Việc mới vào là
+ * `<li data-issue-key><div data-nav-item>`).
+ */
+export function issueKeyOf(el: Element): string | null {
+  return el.closest('[data-issue-key]')?.getAttribute('data-issue-key') ?? null;
+}
+
 /** Phần tử có đang hiển thị không (loại phần tử nằm trong khu đã thu gọn / `display:none`). */
 function isVisible(el: HTMLElement): boolean {
   return el.offsetParent !== null || el.getClientRects().length > 0;
@@ -42,16 +50,12 @@ export function moveNavFocus(
   const items = Array.from(root.querySelectorAll<HTMLElement>(NAV_ITEM_SELECTOR)).filter(isVisible);
   const active = document.activeElement;
   const focusedIdx = items.findIndex((el) => el === active || el.contains(active));
-  const current = navCurrentIndex(
-    items.map((el) => el.getAttribute('data-issue-key')),
-    focusedIdx,
-    opts.peekKey ?? null,
-  );
+  const current = navCurrentIndex(items.map(issueKeyOf), focusedIdx, opts.peekKey ?? null);
   const target = items[nextNavIndex(items.length, current, dir)];
   if (!target) return false;
   target.focus({ preventScroll: true });
   target.scrollIntoView({ block: 'nearest' });
-  const key = target.getAttribute('data-issue-key');
+  const key = issueKeyOf(target);
   if (opts.peekKey && key && key !== opts.peekKey) opts.onPeek?.(key);
   return true;
 }
