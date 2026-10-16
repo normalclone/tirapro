@@ -40,6 +40,17 @@ interface Lit {
   before: string;
 }
 
+/** `/` ở vị trí `i` mở regex literal (không phải phép chia)? Dựa vào ký tự có nghĩa đứng ngay trước. */
+function regexAllowedAfter(src: string, i: number): boolean {
+  let j = i - 1;
+  while (j >= 0 && /[ \t]/.test(src[j]!)) j--;
+  if (j < 0 || src[j] === '\n') return true;
+  if (/[(,=:[!&|?{};+\-*%<>~^]/.test(src[j]!)) return true;
+  return /\b(?:return|typeof|case|throw|yield|await|in|of)$/.test(
+    src.slice(Math.max(0, j - 7), j + 1),
+  );
+}
+
 /** Tách mọi chuỗi ('…', "…", `…` — bỏ phần ${…}) ra khỏi mã, bỏ qua comment; ghi dòng bắt đầu + đoạn mã ngay trước. */
 export function extractStrings(src: string): Lit[] {
   const out: Lit[] = [];
@@ -61,6 +72,19 @@ export function extractStrings(src: string): Lit[] {
         i++;
       }
       i += 2;
+    } else if (c === '/' && regexAllowedAfter(src, i)) {
+      // Regex literal (vd /`{3,}/): bỏ qua tới dấu `/` đóng (không tính `/` trong lớp [...] hoặc sau `\`), tránh lật chẵn lẻ nháy.
+      i++;
+      let inClass = false;
+      while (i < n && src[i] !== '\n') {
+        const ch = src[i]!;
+        if (ch === '\\') i++;
+        else if (ch === '[') inClass = true;
+        else if (ch === ']') inClass = false;
+        else if (ch === '/' && !inClass) break;
+        i++;
+      }
+      i++;
     } else if (c === "'" || c === '"' || c === '`') {
       const start = i;
       const startLine = line;
@@ -130,6 +154,14 @@ describe('thuật ngữ API', () => {
     expect(lits('const t = \'Xuất từ Jira bằng "Export issues"\';')).toHaveLength(0);
     // chuỗi toàn tiếng Anh/mã (không có chữ Việt) và comment không tính
     expect(lits("const k = 'issue'; // Dòng này nói về issue tiếng Việt")).toHaveLength(0);
+    // regex literal chứa backtick không lật chẵn lẻ nháy: chuỗi sau đó vẫn được quét đúng (đúng dòng 3)
+    expect(
+      extractStrings("const R = /`/;\nconst ok = 'Việc chờ';\nconst bad = 'Còn issue';")
+        .filter(isViolation)
+        .map((l) => l.line),
+    ).toEqual([3]);
+    // phép chia không bị nhầm là regex
+    expect(lits("const d = a / b; const m = 'Còn issue'; const e = c / d;")).toHaveLength(1);
     // biến trong ${…} không tính là chữ
     expect(lits('const m = `Đã đóng ${issue.key}`;')).toHaveLength(0);
   });
