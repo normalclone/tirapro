@@ -66,6 +66,7 @@ import { ResourcesModule } from './modules/resources/resources.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ProgramsModule } from './modules/programs/programs.module';
 import { RaidModule } from './modules/raid/raid.module';
+import { DashboardsModule } from './modules/dashboards/dashboards.module';
 import { GoalsModule } from './modules/goals/goals.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
@@ -182,6 +183,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     ProgramsModule,
     RaidModule,
     GoalsModule,
+    DashboardsModule,
     AdminModule,
   ],
   providers: [

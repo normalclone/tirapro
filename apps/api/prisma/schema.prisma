@@ -130,6 +130,7 @@ enum DashboardScope {
   PRIVATE
   PROJECT
   GLOBAL
+  TEAM
 }
 
 enum WidgetType {
@@ -143,6 +144,9 @@ enum WidgetType {
   ISSUE_LIST
   PIE_BY_FIELD
   AI_INSIGHT
+  TOP_RISKS
+  SLOW_GOALS
+  OVERLOAD
 }
 
 enum NotificationType {
@@ -454,6 +458,7 @@ model Team {
   workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   lead      User?        @relation("TeamLead", fields: [leadId], references: [id], onDelete: SetNull)
   members   TeamMember[]
+  dashboards Dashboard[]
 
   @@unique([workspaceId, name])
   @@unique([workspaceId, key])
@@ -1286,6 +1291,8 @@ model Dashboard {
   workspaceId String
   ownerId     String
   projectId   String?
+  /// Chỉ khi scope = TEAM: dashboard chia sẻ cho thành viên/trưởng nhóm này.
+  teamId      String?
   name        String
   description String?
   scope       DashboardScope @default(PRIVATE)
@@ -1298,9 +1305,11 @@ model Dashboard {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team      Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
   widgets   Widget[]
   @@index([workspaceId, ownerId])
   @@index([projectId, scope])
+  @@index([teamId, scope])
 }
 
 model Widget {

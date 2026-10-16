@@ -135,6 +135,7 @@ export const DashboardScope = {
   PRIVATE: 'PRIVATE',
   PROJECT: 'PROJECT',
   GLOBAL: 'GLOBAL',
+  TEAM: 'TEAM',
 } as const;
 export type DashboardScope = (typeof DashboardScope)[keyof typeof DashboardScope];
 
@@ -149,6 +150,9 @@ export const WidgetType = {
   ISSUE_LIST: 'ISSUE_LIST',
   PIE_BY_FIELD: 'PIE_BY_FIELD',
   AI_INSIGHT: 'AI_INSIGHT',
+  TOP_RISKS: 'TOP_RISKS',
+  SLOW_GOALS: 'SLOW_GOALS',
+  OVERLOAD: 'OVERLOAD',
 } as const;
 export type WidgetType = (typeof WidgetType)[keyof typeof WidgetType];
 
