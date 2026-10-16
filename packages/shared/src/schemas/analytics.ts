@@ -111,3 +111,33 @@ export interface CreatedResolvedReport {
   to: string;
   series: CreatedResolvedPoint[];
 }
+
+/** Báo cáo chất lượng (QA) của một dự án — chỉ tính công việc loại Bug. */
+export interface QaReportDto {
+  range: { from: string; to: string };
+  totals: { open: number; created: number; closed: number; reopened: number };
+  /** `severityId = null` ⇒ "Chưa đặt" (luôn đứng cuối). */
+  openBySeverity: Array<{
+    severityId: string | null;
+    name: string;
+    color: string | null;
+    rank: number;
+    open: number;
+  }>;
+  /** 0..1; null khi không có bug đóng trong kỳ. */
+  reopenRate: number | null;
+  closeTime: { avgHours: number | null; medianHours: number | null; sample: number };
+  byRelease: {
+    basis: 'AFFECTS' | 'FIX';
+    rows: Array<{
+      versionId: string;
+      name: string;
+      status: 'UNRELEASED' | 'RELEASED' | 'ARCHIVED';
+      releaseDate: string | null;
+      total: number;
+      open: number;
+      closed: number;
+      leaked: number;
+    }>;
+  };
+}

@@ -90,6 +90,8 @@ export interface StatItem {
   tone?: StatTone;
   /** Nền nhấn nhẹ (vd quá hạn > 0). */
   highlight?: boolean;
+  /** Giải nghĩa số liệu, hiện khi rê chuột (tooltip toàn cục bắt thuộc tính `title`). */
+  title?: string;
 }
 
 /** Hàng chỉ số liền khối (không phải lưới thẻ lặp): mỗi ô nhãn + giá trị + dòng phụ. */
@@ -104,6 +106,7 @@ export function StatStrip({ items, className }: { items: StatItem[]; className?:
       {items.map((s) => (
         <div
           key={s.label}
+          title={s.title}
           className={cn('px-4 py-2.5', s.highlight ? 'bg-danger/5' : 'bg-surface')}
         >
           <p className="text-xs font-medium text-muted">{s.label}</p>

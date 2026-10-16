@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto } from '../../common/mappers/user.mapper';
 import {
+  BusinessRuleException,
   NotFoundAppException,
   VersionConflictException,
 } from '../../common/exceptions/app.exception';
@@ -172,6 +173,7 @@ export class TriageService {
     const current = await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     this.assertVersion(current.version, input.version);
+    this.assertInQueue(current, 'từ chối');
 
     const dto = await this.applyAndEmit(
       issueId,
@@ -197,6 +199,7 @@ export class TriageService {
     const current = await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     this.assertVersion(current.version, input.version);
+    this.assertInQueue(current, 'tạm hoãn');
 
     return this.applyAndEmit(
       issueId,
@@ -262,6 +265,17 @@ export class TriageService {
     });
     if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
+  }
+
+  /**
+   * Từ chối/tạm hoãn chỉ áp cho việc còn trong hàng đợi (PENDING hoặc SNOOZED) — cùng quy tắc với `appendReport`.
+   * Việc đã Nhận / đang làm / đã đóng (ACCEPTED hoặc không qua triage) mà bị DECLINED/SNOOZED sẽ biến khỏi Board.
+   */
+  private assertInQueue(issue: TriageRow, verb: 'từ chối' | 'tạm hoãn'): void {
+    if (issue.triageState === 'PENDING' || issue.triageState === 'SNOOZED') return;
+    throw new BusinessRuleException(
+      `Không thể ${verb} ${issue.key}: công việc này không còn trong hàng đợi duyệt (đã nhận, đã xử lý hoặc không qua duyệt).`,
+    );
   }
 
   private assertVersion(currentVersion: number, inputVersion: number): void {

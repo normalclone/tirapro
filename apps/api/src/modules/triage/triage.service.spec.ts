@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { TriageService } from './triage.service';
 
 const row = (over: Record<string, unknown> = {}) => ({
@@ -197,6 +198,44 @@ describe('TriageService.decline', () => {
       service.decline('w1', 'u1', 'i1', { version: 4, reason: 'Ngoài phạm vi' }),
     ).resolves.toBeDefined();
     expect(update.mock.calls[0]![0]).toMatchObject({ data: { triageState: 'DECLINED' } });
+  });
+});
+
+describe('TriageService.decline/snooze — chỉ việc còn trong hàng đợi', () => {
+  const until = '2026-10-20T00:00:00.000Z';
+
+  it.each(['ACCEPTED', 'DECLINED', null])(
+    'decline việc triageState=%s => lỗi nghiệp vụ, không ghi gì, không bình luận',
+    async (state) => {
+      const { service, update, events, comments } = make({ triageState: state });
+      await expect(
+        service.decline('w1', 'u1', 'i1', { version: 4, reason: 'Ngoài phạm vi' }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+      expect(update).not.toHaveBeenCalled();
+      expect(events.emit).not.toHaveBeenCalled();
+      expect(comments.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['ACCEPTED', 'DECLINED', null])(
+    'snooze việc triageState=%s => lỗi nghiệp vụ, không ghi gì',
+    async (state) => {
+      const { service, update, events } = make({ triageState: state });
+      await expect(service.snooze('w1', 'u1', 'i1', { version: 4, until })).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+      expect(update).not.toHaveBeenCalled();
+      expect(events.emit).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['PENDING', 'SNOOZED'])('decline và snooze việc %s vẫn chạy', async (state) => {
+    const { service, update } = make({ triageState: state });
+    await service.decline('w1', 'u1', 'i1', { version: 4 });
+    await service.snooze('w1', 'u1', 'i1', { version: 4, until });
+    expect(
+      update.mock.calls.map((c) => (c[0] as { data: { triageState: string } }).data.triageState),
+    ).toEqual(['DECLINED', 'SNOOZED']);
   });
 });
 

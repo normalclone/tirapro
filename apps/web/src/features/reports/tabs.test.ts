@@ -13,10 +13,14 @@ describe('parseReportTab', () => {
     expect(parseReportTab('hack')).toBe('sprint');
   });
 
-  it('chỉ nhận tab có trong danh sách truyền vào (tab QA do nhóm Q đăng ký sau)', () => {
-    const withQa = [...REPORT_TABS, { id: 'qa' as const, label: 'Chất lượng (QA)' }];
-    expect(parseReportTab('qa', withQa)).toBe('qa');
-    expect(parseReportTab('qa', REPORT_TABS)).toBe('sprint');
+  it('tab QA đã đăng ký; chỉ nhận tab có trong danh sách truyền vào', () => {
+    expect(parseReportTab('qa')).toBe('qa');
+    expect(
+      parseReportTab(
+        'qa',
+        REPORT_TABS.filter((t) => t.id !== 'qa'),
+      ),
+    ).toBe('sprint');
   });
 
   it('tab đầu tiên của danh sách là sprint', () => {

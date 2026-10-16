@@ -6,6 +6,7 @@ import { QueryError } from '@/components/ui/QueryError';
 import { cn } from '@/lib/utils';
 import { FlowTab } from './FlowTab';
 import { OverviewTab } from './OverviewTab';
+import { QaReportPanel } from './QaReportPanel';
 import { SprintTab } from './SprintTab';
 import { REPORT_TABS, useReportTab } from './tabs';
 
@@ -97,6 +98,8 @@ export function ReportsPage() {
           <OverviewTab projectId={projectId} />
         ) : tab === 'flow' ? (
           <FlowTab projectId={projectId} />
+        ) : tab === 'qa' ? (
+          <QaReportPanel projectId={projectId} />
         ) : null}
       </div>
     </div>
