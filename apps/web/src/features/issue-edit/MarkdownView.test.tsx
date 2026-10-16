@@ -58,4 +58,20 @@ describe('MarkdownView — an toàn đầu ra (không dangerouslySetInnerHTML)',
     expect(out).not.toContain('@Admin');
     expect(out).toContain('@Lạ'); // không tìm thấy → tên trong token
   });
+
+  it('ảnh attachment:ID dựng nút phóng to (không <img src=attachment:…>); id lạ không thành ảnh', () => {
+    const out = html('![bằng chứng](attachment:cmabc123)');
+    expect(out).toContain('aria-label="Xem ảnh bằng chứng"');
+    expect(out).not.toContain('src="attachment:');
+    const bad = html('![x](attachment:../../etc/passwd) ![y](attachment:a b)');
+    expect(bad).not.toContain('Xem ảnh');
+    expect(bad).not.toContain('<img');
+  });
+
+  it('ảnh blob đã có trong cache query hiển thị đúng và alt không phá HTML', () => {
+    const client = new QueryClient();
+    client.setQueryData(keys.attachments.blob('cm1'), 'blob:http://x/abc');
+    const out = html('![a"><script>](attachment:cm1)', undefined, client);
+    expect(out).not.toContain('<script');
+  });
 });

@@ -38,7 +38,9 @@ export function TriagePage() {
   const peek = useIssuePeek();
   // Panel mở → cột danh sách hẹp: bỏ chip phụ, nút chỉ còn biểu tượng (tên nút vẫn có cho trình đọc màn hình + tooltip).
   const compact = !!peek.peekKey;
+  // Giữ `declining` sau khi đóng để hộp kịp chạy hiệu ứng đóng (và nhớ lý do đang gõ nếu mở lại cùng việc).
   const [declining, setDeclining] = useState<TriageItemDto | null>(null);
+  const [declineOpen, setDeclineOpen] = useState(false);
 
   const inboxCount = count?.count ?? issues?.length ?? 0;
 
@@ -62,7 +64,7 @@ export function TriagePage() {
       {
         onError: (e) => toast.error(apiErrorMessage(e)),
         onSuccess: () => {
-          setDeclining(null);
+          setDeclineOpen(false);
           toast.success(`Đã từ chối ${issue.key} — người gửi sẽ nhận được lý do`, {
             duration: 4000,
           });
@@ -137,7 +139,10 @@ export function TriagePage() {
                     pending={accept.isPending || decline.isPending || snooze.isPending}
                     onPeek={peek.open}
                     onAccept={onAccept}
-                    onDecline={setDeclining}
+                    onDecline={(i) => {
+                      setDeclining(i);
+                      setDeclineOpen(true);
+                    }}
                     onSnooze={onSnooze}
                   />
                 ))}
@@ -149,11 +154,11 @@ export function TriagePage() {
       {declining && (
         <DeclineDialog
           key={declining.id}
-          open
+          open={declineOpen}
           issueKey={declining.key}
           projectId={declining.projectId}
           loading={decline.isPending}
-          onCancel={() => setDeclining(null)}
+          onCancel={() => setDeclineOpen(false)}
           onConfirm={(reason) => onDecline(declining, reason)}
         />
       )}

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Download, Paperclip, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { Lightbox } from '@/components/ui/Lightbox';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
@@ -11,6 +12,8 @@ import {
   useUploadAttachment,
   type Attachment,
 } from './api';
+import { AttachmentPicture } from './AttachmentImage';
+import { isImageMime } from './ref';
 
 /** Định dạng byte → "x B" / "x KB" / "x.x MB". */
 function formatBytes(bytes: number): string {
@@ -27,8 +30,11 @@ export function AttachmentsPanel({ issueId, canEdit }: { issueId: string; canEdi
   const inputRef = useRef<HTMLInputElement>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<number | null>(null);
 
   const items = attachments ?? [];
+  // Mọi ảnh của issue, theo thứ tự hiện trong danh sách: ←/→ trong lightbox đi qua đúng các ảnh này.
+  const images = items.filter((a) => isImageMime(a.mimeType));
 
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -103,7 +109,23 @@ export function AttachmentsPanel({ issueId, canEdit }: { issueId: string; canEdi
                 key={a.id}
                 className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
               >
-                <Paperclip className="h-4 w-4 shrink-0 text-muted" />
+                {isImageMime(a.mimeType) ? (
+                  <button
+                    type="button"
+                    onClick={() => setViewing(images.findIndex((i) => i.id === a.id))}
+                    aria-label={`Xem ảnh ${a.fileName}`}
+                    className="h-10 w-10 shrink-0 cursor-zoom-in overflow-hidden rounded border border-border bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                  >
+                    <AttachmentPicture
+                      id={a.id}
+                      alt={a.fileName}
+                      className="h-full w-full object-cover"
+                      placeholderClassName="h-full w-full rounded-none"
+                    />
+                  </button>
+                ) : (
+                  <Paperclip className="h-4 w-4 shrink-0 text-muted" />
+                )}
                 <span className="min-w-0 flex-1 truncate text-ink" title={a.fileName}>
                   {a.fileName}
                 </span>
@@ -161,6 +183,21 @@ export function AttachmentsPanel({ issueId, canEdit }: { issueId: string; canEdi
           })}
         </ul>
       )}
+      <Lightbox
+        open={viewing !== null}
+        onOpenChange={(o) => !o && setViewing(null)}
+        items={images.map((a) => ({ id: a.id, name: a.fileName }))}
+        index={Math.max(viewing ?? 0, 0)}
+        onIndexChange={setViewing}
+        renderImage={(it) => (
+          <AttachmentPicture
+            id={it.id}
+            alt={it.name}
+            className="max-h-[70dvh] max-w-full rounded-md object-contain"
+          />
+        )}
+        onDownload={(it) => void onDownload(items.find((a) => a.id === it.id)!)}
+      />
     </div>
   );
 }

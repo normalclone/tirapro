@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { AttachmentImage } from '@/features/attachments/AttachmentImage';
+import { parseAttachmentRef } from '@/features/attachments/ref';
 import { cn } from '@/lib/utils';
 import { parseMarkdown, type MdBlock } from './markdownParse';
 import { MentionChip } from './MentionChip';
@@ -28,9 +30,12 @@ function renderInline(text: string): ReactNode[] {
     const g = m.groups ?? {};
     if (m.index > last) out.push(text.slice(last, m.index));
     if (g.img !== undefined) {
-      const src = safeImg(g.imgSrc!);
+      const attachmentId = parseAttachmentRef(g.imgSrc!);
+      const src = attachmentId ? null : safeImg(g.imgSrc!);
       out.push(
-        src ? (
+        attachmentId ? (
+          <AttachmentImage key={k++} id={attachmentId} alt={g.imgAlt ?? ''} />
+        ) : src ? (
           <img
             key={k++}
             src={src}

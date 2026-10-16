@@ -253,4 +253,9 @@ export const keys = {
     cfd: (projectId: string) => ['report', 'cfd', projectId] as const,
     createdResolved: (projectId: string) => ['report', 'created-resolved', projectId] as const,
   },
+
+  attachments: {
+    /** Blob URL của ảnh đính kèm (đã tải bằng fetch có token) — không phải danh sách tệp của issue. */
+    blob: (id: string) => ['attachments', 'blob', id] as const,
+  },
 } as const;
