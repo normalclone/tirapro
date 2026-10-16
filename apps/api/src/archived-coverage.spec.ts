@@ -44,6 +44,7 @@ const EXEMPT: Record<string, string> = {
   'members/members.service.ts': 'phân quyền truy cập (quản trị cần chỉnh khi lưu trữ)',
   'config-catalog/config-catalog.service.ts': 'danh mục cấp workspace',
   'guides/guides.service.ts': 'hướng dẫn workspace',
+  'guides/guides-bootstrap.service.ts': 'nạp hướng dẫn mặc định',
   'system-settings/system-settings.service.ts': 'cấu hình hệ thống',
   'integrations/integrations.service.ts': 'hạ tầng tích hợp cấp workspace',
   'integrations/link-codes.service.ts':

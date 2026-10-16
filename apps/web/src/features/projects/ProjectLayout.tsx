@@ -219,6 +219,7 @@ export function ProjectLayout() {
                 disabled={!project?.id || !!project.archivedAt}
                 title={project?.archivedAt ? 'Dự án đã lưu trữ — chỉ đọc' : undefined}
                 aria-label="Tạo công việc"
+                data-tour="project-create-issue"
               >
                 <Plus className="h-4 w-4" />
                 <span className="hidden sm:inline">Tạo công việc</span>
@@ -245,6 +246,7 @@ export function ProjectLayout() {
               'order-last flex w-full items-center gap-0.5 overflow-x-auto whitespace-nowrap lg:order-none lg:ml-auto lg:w-auto lg:gap-1',
               notFound && 'hidden',
             )}
+            data-tour="project-views"
           >
             {VIEWS.map((v) => (
               <NavLink

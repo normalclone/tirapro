@@ -117,7 +117,7 @@ export function DashboardPage() {
 
       <RecentsStrip />
 
-      {isAdmin ? <AdminOverview /> : <PersonalOverview />}
+      <div data-tour="home-overview">{isAdmin ? <AdminOverview /> : <PersonalOverview />}</div>
     </div>
   );
 }

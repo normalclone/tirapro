@@ -18,6 +18,7 @@ import {
   Sun,
 } from 'lucide-react';
 import { useProjects } from '@/features/projects/api';
+import { routeToScreen, useHasTour } from '@/features/guides/routeToScreen';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { openReportIssue } from '@/stores/reportIssue';
 import { useTheme } from '@/stores/theme';
@@ -41,6 +42,8 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const issueRouteKey = ISSUE_ROUTE_RE.exec(pathname)?.[1];
+  // Mục "Bắt đầu tour màn này" chỉ có khi màn hiện tại CÓ tour (nếu không, sự kiện sẽ không làm gì).
+  const hasTour = useHasTour(routeToScreen(pathname));
   const openCreate = useCreateIssueModal((s) => s.openCreate);
   const theme = useTheme((s) => s.theme);
   const toggleTheme = useTheme((s) => s.toggle);
@@ -210,12 +213,14 @@ export function CommandPalette() {
             label={theme === 'dark' ? 'Chuyển giao diện sáng' : 'Chuyển giao diện tối'}
             onSelect={() => runAction(toggleTheme)}
           />
-          <ActionItem
-            value="bat dau tour huong dan man nay"
-            icon={<Sparkles className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
-            label="Bắt đầu tour màn này"
-            onSelect={() => runAction(() => window.dispatchEvent(new Event('tirapro:tour')))}
-          />
+          {hasTour && (
+            <ActionItem
+              value="bat dau tour huong dan man nay"
+              icon={<Sparkles className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
+              label="Bắt đầu tour màn này"
+              onSelect={() => runAction(() => window.dispatchEvent(new Event('tirapro:tour')))}
+            />
+          )}
           <ActionItem
             value="mo tai lieu documentation huong dan"
             icon={<BookOpen className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}

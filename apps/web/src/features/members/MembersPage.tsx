@@ -62,6 +62,7 @@ export function MembersPage() {
         className="mb-6 flex gap-1 border-b border-border"
         role="tablist"
         aria-label="Thành viên & nhóm"
+        data-tour="members-tabs"
       >
         {tabs.map((t) => (
           <button
@@ -87,7 +88,7 @@ export function MembersPage() {
         <div className="space-y-8">
           <AddMemberPanel />
 
-          <section className="rounded-lg border border-border bg-surface">
+          <section className="rounded-lg border border-border bg-surface" data-tour="members-list">
             <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
               <h2 className="text-base font-semibold text-ink-strong">Danh sách thành viên</h2>
               <div className="flex items-center gap-3">
