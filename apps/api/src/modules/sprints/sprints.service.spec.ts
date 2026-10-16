@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
+import { hasTriageVisible } from '../../common/triage-visibility.testutil';
 import { SprintsService } from './sprints.service';
 
 /** expect.stringContaining có kiểu any — bọc lại để không phát sinh cảnh báo lint. */
@@ -510,6 +511,42 @@ describe('SprintsService.complete — payload của snapshot CLOSE', () => {
       sprintId: 's9',
       sprintName: 'Sprint 1', // tên do mock findFirst trả (sprintRow)
     });
+  });
+});
+
+describe('SprintsService — việc chưa duyệt không tính vào snapshot/payload sprint', () => {
+  it('snapshot(): where issue lọc TRIAGE_VISIBLE (cam kết/hoàn thành/velocity không lẫn việc chưa duyệt)', async () => {
+    const t = tx();
+    const { service } = make(t);
+    await service.snapshot(t as never, 's1', 'DAILY');
+    const arg = t.issue.findMany.mock.calls[0]![0] as unknown as { where: unknown };
+    expect(hasTriageVisible(arg.where)).toBe(true);
+  });
+
+  it('complete(): việc chưa duyệt vẫn được đưa ra khỏi sprint nhưng KHÔNG liệt vào carriedOver của payload', async () => {
+    const t = tx();
+    t.issue.findMany.mockImplementation((args: { select: { id?: boolean } }) =>
+      Promise.resolve(
+        args.select.id
+          ? [
+              { id: 'i1', key: 'D-1', summary: 'Một', storyPoints: 3, triageState: null },
+              { id: 'i2', key: 'D-2', summary: 'Hai', storyPoints: 1, triageState: 'PENDING' },
+              { id: 'i3', key: 'D-3', summary: 'Ba', storyPoints: 2, triageState: 'ACCEPTED' },
+            ]
+          : [],
+      ),
+    );
+    const { service } = make(t);
+    await service.complete('w1', 's1', 'u1');
+    expect((closePayload(t).carriedOver as { key: string }[]).map((c) => c.key)).toEqual([
+      'D-1',
+      'D-3',
+    ]);
+    // cả ba vẫn bị chuyển ra khỏi sprint (không bỏ sót việc trong sprint đã đóng)
+    const moved = t.issue.updateMany.mock.calls[0]![0] as unknown as {
+      where: { id: { in: string[] } };
+    };
+    expect(moved.where.id.in).toEqual(['i1', 'i2', 'i3']);
   });
 });
 

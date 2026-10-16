@@ -17,6 +17,7 @@ import type {
 } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { iso } from '../../common/mappers/date';
 import { assertNotArchived } from '../../common/project-writable';
@@ -25,6 +26,14 @@ import { ProjectHealthService } from '../analytics/project-health.service';
 import { AuditService, type AuditEntry } from '../audit/audit.service';
 import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
+
+/**
+ * `issueCount` của thẻ dự án: chưa xoá mềm và KHÔNG tính việc chưa duyệt (cùng số với Board/Tổng quan/Việc chờ). Prisma
+ * `_count` không tự lọc xoá mềm nên `deletedAt: null` ghi rõ ở đây.
+ */
+const ISSUE_COUNT = {
+  select: { issues: { where: { deletedAt: null, ...TRIAGE_VISIBLE } } },
+} satisfies Prisma.ProjectCountOutputTypeDefaultArgs;
 
 @Injectable()
 export class ProjectsService {
@@ -212,7 +221,7 @@ export class ProjectsService {
         ...visible,
       },
       orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { issues: true } }, lead: true },
+      include: { _count: ISSUE_COUNT, lead: true },
     });
     return projects.map((p) => this.toDto(p, p._count.issues, p.lead));
   }
@@ -220,7 +229,7 @@ export class ProjectsService {
   async getByKey(workspaceId: string, key: string): Promise<ProjectDto> {
     const p = await this.prisma.project.findFirst({
       where: { workspaceId, key, deletedAt: null },
-      include: { _count: { select: { issues: true } }, lead: true },
+      include: { _count: ISSUE_COUNT, lead: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return this.toDto(p, p._count.issues, p.lead);
@@ -486,7 +495,7 @@ export class ProjectsService {
   private async getById(workspaceId: string, projectId: string): Promise<ProjectDto> {
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      include: { _count: { select: { issues: true } }, lead: true },
+      include: { _count: ISSUE_COUNT, lead: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return this.toDto(p, p._count.issues, p.lead);

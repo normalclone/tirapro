@@ -23,6 +23,7 @@ import {
   WORKSPACE_ONLY_DIGEST_BLOCKS,
 } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { RedisService } from '../../infra/redis/redis.service';
 import { withCronLock } from '../../common/cron-lock';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
@@ -646,6 +647,7 @@ export class DigestsService implements OnApplicationShutdown {
         deletedAt: null,
         project: { deletedAt: null, ...visible }, // dự án đã xoá mềm / riêng tư người xem không thấy → không lọt vào số liệu
         ...(projectId ? { projectId } : {}),
+        AND: [TRIAGE_VISIBLE], // việc chưa duyệt/từ chối/hoãn không lẫn vào số liệu (như Board/Việc chờ/QA)
       },
       cards: wanted.flatMap((b) => (LEADERSHIP_CARD_OF[b] ? [LEADERSHIP_CARD_OF[b]] : [])),
       leadership: undefined,
@@ -787,6 +789,7 @@ export class DigestsService implements OnApplicationShutdown {
       where: {
         sprintId: { in: sprints.map((s) => s.id) },
         deletedAt: null,
+        ...TRIAGE_VISIBLE,
         status: { category: { not: StatusCategory.DONE } },
       },
       _sum: { storyPoints: true },

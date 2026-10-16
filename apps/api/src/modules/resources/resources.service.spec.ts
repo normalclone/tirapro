@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ResourcesService } from './resources.service';
+import { hasTriageVisible } from '../../common/triage-visibility.testutil';
 
 /** ProjectAccessService giả: người xem thấy mọi dự án (admin) / không có viewer. */
 const ACCESS_ALL = { visibleWhere: vi.fn(() => Promise.resolve({})) };
@@ -120,5 +121,27 @@ describe('ResourcesService — dự án riêng tư (P14)', () => {
         project: { workspaceId: 'w1', deletedAt: null, ...visible },
       });
     expect(prisma.allocation.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('ResourcesService.workload — việc chưa duyệt không tính vào tải', () => {
+  it('issue.findMany lọc TRIAGE_VISIBLE mà không đè khoá OR theo khoảng ngày', async () => {
+    const empty = () => vi.fn(() => Promise.resolve([]));
+    const prisma = {
+      workspaceMembership: {
+        findMany: vi.fn(() =>
+          Promise.resolve([{ user: { id: 'u1', displayName: 'An', email: 'a@x.vn' } }]),
+        ),
+      },
+      allocation: { findMany: empty() },
+      timeOff: { findMany: empty() },
+      issue: { findMany: empty() },
+      workLog: { findMany: empty() },
+    };
+    await new ResourcesService(prisma as never, ACCESS_ALL as never).workload('w1', {}, 'u0');
+    const where = (prisma.issue.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where;
+    expect(hasTriageVisible(where)).toBe(true);
+    // khoảng ngày (OR gốc) vẫn còn
+    expect(JSON.stringify(where)).toContain('"startDate"');
   });
 });

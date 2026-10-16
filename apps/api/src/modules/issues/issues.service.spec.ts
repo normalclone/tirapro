@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
+import { rankBetween, RANK_MAX_LEN } from '@tirapro/shared';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { IssuesService } from './issues.service';
 
@@ -1681,6 +1682,154 @@ function createTx(
 
 const WF_DEFAULT = [{ id: 's1', category: 'TODO', isInitial: true }];
 const createTxFor = (epics: Record<string, unknown>) => createTx(WF_DEFAULT, epics);
+
+describe('IssuesService.create — rank "cuối danh sách" đọc SAU khi giữ khoá dự án (smoke: 10 POST song song trùng rank)', () => {
+  const input = {
+    projectId: 'p1',
+    typeId: 't1',
+    summary: 's',
+    descriptionFormat: 'MARKDOWN' as const,
+  };
+
+  /** tx giả ghi thứ tự: `project.update` (tăng issueSequence = giữ khoá hàng dự án) và lần đọc rank cuối. */
+  function setup() {
+    const { tx, created } = createTx(WF_DEFAULT);
+    const order: string[] = [];
+    const rankReads: string[] = [];
+    const baseFindFirst = tx.issue.findFirst;
+    tx.issue.findFirst = vi.fn((args: { where: { id?: string; projectId?: string } }) => {
+      if (args.where.projectId && !args.where.id) {
+        order.push('rank-read');
+        rankReads.push('tx');
+        return Promise.resolve({ rank: 'n' });
+      }
+      return baseFindFirst(args);
+    });
+    const baseUpdate = tx.project.update;
+    tx.project.update = vi.fn(() => {
+      order.push('sequence-update');
+      return baseUpdate();
+    });
+    // đường NGOÀI transaction (this.prisma): nếu rank còn đọc ở đây thì nó chạy trước khi giữ khoá
+    const outside = vi.fn((_args: unknown) => {
+      rankReads.push('outside');
+      return Promise.resolve({ rank: 'n' });
+    });
+    return { tx, created, order, rankReads, outside };
+  }
+
+  it('rank cuối danh sách được đọc qua tx, SAU bước tăng issueSequence', async () => {
+    const { tx, order, rankReads, outside } = setup();
+    const { service } = makeService(tx, { issue: { ...tx.issue, findFirst: outside } });
+    await service.create('w1', 'u1', input);
+    expect(order).toEqual(['sequence-update', 'rank-read']);
+    expect(rankReads).toEqual(['tx']);
+    expect(outside).not.toHaveBeenCalled();
+  });
+
+  it('rank ghi vào việc mới = rankBetween(rank cuối đọc được, null) — vẫn xếp cuối danh sách', async () => {
+    const { tx, created } = setup();
+    const { service } = makeService(tx);
+    await service.create('w1', 'u1', input);
+    const data = (created.mock.calls[0] as unknown as [{ data: { rank: string } }])[0].data;
+    expect(data.rank).toBe(rankBetween('n', null));
+    expect(data.rank > 'n').toBe(true);
+  });
+
+  it('createWithin (import, tx của bên gọi): cũng đọc rank trong tx sau khi tăng issueSequence', async () => {
+    const { tx, order } = setup();
+    const { service } = makeService(tx);
+    await service.createWithin(tx as never, 'w1', 'u1', input, []);
+    expect(order).toEqual(['sequence-update', 'rank-read']);
+  });
+});
+
+describe('IssuesService.create — hết chỗ chèn rank: rebalance trong tx, sự kiện chỉ phát sau commit', () => {
+  const input = {
+    projectId: 'p1',
+    typeId: 't1',
+    summary: 's',
+    descriptionFormat: 'MARKDOWN' as const,
+  };
+  /** rank cuối đã dài tối đa → rankBetween(last, null) ném RankGapError → phải đánh số lại cả dự án */
+  const FULL = 'z'.repeat(RANK_MAX_LEN);
+
+  function setup() {
+    const { tx, created } = createTx(WF_DEFAULT);
+    const log: string[] = [];
+    let rebalanced = false;
+    const txx = tx as unknown as Record<string, unknown> & {
+      issue: Record<string, unknown>;
+    };
+    txx.issue.findFirst = vi.fn((args: { where: { id?: string } }) => {
+      if (args.where.id) return Promise.resolve(null);
+      return Promise.resolve({ rank: rebalanced ? 'r' : FULL });
+    });
+    txx.issue.findMany = vi.fn(() => Promise.resolve([{ id: 'i1' }, { id: 'i2' }]));
+    txx.$executeRaw = vi.fn(() => {
+      rebalanced = true;
+      log.push('rebalance-update');
+      return Promise.resolve(2);
+    });
+    const outside = { $executeRaw: vi.fn() };
+    const transaction = vi.fn(async (fn: (t: unknown) => Promise<unknown>, _opts?: unknown) => {
+      const r = await fn(tx);
+      log.push('commit');
+      return r;
+    });
+    return { tx, created, log, outside, transaction };
+  }
+  const rebalanceEmits = (events: { emit: ReturnType<typeof vi.fn> }) =>
+    events.emit.mock.calls.filter((c) => c[0] === DOMAIN_EVENTS.PROJECT_RANKS_REBALANCED);
+
+  it('create(): rebalance chạy qua tx (không qua this.prisma), PROJECT_RANKS_REBALANCED phát SAU commit, tx có timeout 30s', async () => {
+    const { tx, log, outside, transaction } = setup();
+    const { service, events } = makeService(tx, { $transaction: transaction, ...outside });
+    events.emit.mockImplementation((name: string) => {
+      if (name === DOMAIN_EVENTS.PROJECT_RANKS_REBALANCED) log.push('emit-rebalanced');
+    });
+    await service.create('w1', 'u1', input);
+    expect(outside.$executeRaw).not.toHaveBeenCalled();
+    expect(log).toEqual(['rebalance-update', 'commit', 'emit-rebalanced']);
+    expect(rebalanceEmits(events)).toEqual([
+      [DOMAIN_EVENTS.PROJECT_RANKS_REBALANCED, { projectId: 'p1' }],
+    ]);
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(transaction.mock.calls[0]![1]).toEqual({ timeout: 30_000 });
+  });
+
+  it('create(): tx ném lỗi sau khi đã rebalance => KHÔNG phát PROJECT_RANKS_REBALANCED', async () => {
+    const { tx, created, log, transaction } = setup();
+    created.mockRejectedValueOnce(new Error('boom'));
+    const { service, events } = makeService(tx, { $transaction: transaction });
+    await expect(service.create('w1', 'u1', input)).rejects.toThrow('boom');
+    expect(log).toEqual(['rebalance-update']); // chưa commit
+    expect(rebalanceEmits(events)).toHaveLength(0);
+  });
+
+  it('createWithin (tx của bên gọi): sự kiện đi vào `deferred`, không phát cho tới khi bên gọi chạy nó', async () => {
+    const { tx } = setup();
+    const { service, events } = makeService(tx);
+    const deferred: Array<() => void> = [];
+    await service.createWithin(tx as never, 'w1', 'u1', input, deferred);
+    expect(deferred).toHaveLength(1);
+    expect(rebalanceEmits(events)).toHaveLength(0);
+    deferred[0]!();
+    expect(rebalanceEmits(events)).toHaveLength(1);
+  });
+
+  it('không hết chỗ chèn => không rebalance, không sự kiện, vẫn tx timeout 30s', async () => {
+    const { tx, transaction } = setup();
+    (tx.issue as { findFirst: unknown }).findFirst = vi.fn(() => Promise.resolve({ rank: 'n' }));
+    const { service, events } = makeService(tx, { $transaction: transaction });
+    await service.create('w1', 'u1', input);
+    expect(
+      (tx as unknown as { $executeRaw: ReturnType<typeof vi.fn> }).$executeRaw,
+    ).not.toHaveBeenCalled();
+    expect(rebalanceEmits(events)).toHaveLength(0);
+    expect(transaction.mock.calls[0]![1]).toEqual({ timeout: 30_000 });
+  });
+});
 
 describe('IssuesService.create — statusId phải thuộc workflow của dự án (I1)', () => {
   const baseInput = {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { hasTriageVisible } from '../../common/triage-visibility.testutil';
 import { ProjectsService } from './projects.service';
 
 const ACTIVE_USER = { status: 'ACTIVE', email: 'u@x.vn' };
@@ -719,5 +720,32 @@ describe('ProjectsService.create — điều kiện cho dự án riêng tư / ng
     const { svc, prisma } = setup();
     await svc.create('w1', 'u1', { key: 'HR', name: 'HR', type: 'SCRUM' });
     expect(prisma.workspaceMembership.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectsService — issueCount của thẻ dự án không tính việc chưa duyệt/đã xoá', () => {
+  const countWhere = (args: unknown) =>
+    (
+      args as {
+        include: { _count: { select: { issues: { where: Record<string, unknown> } } } };
+      }
+    ).include._count.select.issues.where;
+
+  it('list / getByKey / getById: `_count.issues` lọc deletedAt:null + TRIAGE_VISIBLE', async () => {
+    const { service, prisma } = make();
+    await service.list('w1', false, 'u1');
+    await service.getByKey('w1', 'DEMO');
+    // getById (private) qua đường công khai `update`: tìm bằng findFirst có include
+    await service.archive('w1', 'p1', 'u1');
+    const calls = [
+      ...prisma.project.findMany.mock.calls.map((c) => c[0]),
+      ...prisma.project.findFirst.mock.calls.map((c) => c[0]),
+    ].filter((a) => (a as { include?: unknown }).include);
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    for (const a of calls) {
+      const where = countWhere(a);
+      expect(where.deletedAt).toBeNull();
+      expect(hasTriageVisible(where)).toBe(true);
+    }
   });
 });

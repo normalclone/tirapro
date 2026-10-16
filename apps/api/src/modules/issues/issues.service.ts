@@ -796,16 +796,9 @@ export class IssuesService {
     const assigneeId =
       input.assigneeId ?? (project.defaultAssigneeMode === 'PROJECT_LEAD' ? project.leadId : null);
 
-    // Rank: cuối danh sách trong project
-    const rank = await this.rankService.resolveRank(project.id, db, deferred, null, async () => {
-      const last = await db.issue.findFirst({
-        where: { projectId: project.id, deletedAt: null },
-        orderBy: [{ rank: 'desc' }, { id: 'desc' }],
-        select: { rank: true },
-      });
-      return { prev: last?.rank ?? null, next: null };
-    });
-
+    // Sự kiện đánh số lại rank (nếu hết chỗ chèn) chỉ phát SAU commit: tự mở transaction → chạy ngay sau `$transaction`;
+    // nằm trong transaction của bên gọi (import) → đẩy vào `deferred` của họ.
+    const afterCommit: Array<() => void> = [];
     const body = async (tx: Prisma.TransactionClient) => {
       const updated = await tx.project.update({
         where: { id: project.id },
@@ -813,6 +806,8 @@ export class IssuesService {
         select: { issueSequence: true },
       });
       const number = updated.issueSequence;
+      // Rank "cuối danh sách" đọc SAU khi đã giữ khoá hàng dự án (UPDATE issueSequence ở trên), qua `tx` — xem `rankAtEnd`.
+      const rank = await this.rankAtEnd(tx, project.id, outerTx ? deferred : afterCommit);
       const key =
         importedKey ?? (await this.nextTiraproKey(tx, project.id, project.key, input.typeId));
       const created = await tx.issue.create({
@@ -876,8 +871,32 @@ export class IssuesService {
       });
       return created;
     };
-    const issue = outerTx ? await body(outerTx) : await this.prisma.$transaction(body);
+    // timeout 30s như transaction đánh số lại rank riêng trước đây (dự án lớn hết chỗ chèn thì rebalance chạy trong đây).
+    const issue = outerTx
+      ? await body(outerTx)
+      : await this.prisma.$transaction(body, { timeout: 30_000 });
+    for (const fn of afterCommit) fn();
     return this.toDto(issue);
+  }
+
+  /**
+   * Rank "cuối danh sách" của dự án. PHẢI gọi sau khi đã giữ khoá hàng dự án trong `tx` (bước tăng `issueSequence`): các lần
+   * tạo song song trong cùng dự án xếp hàng ở khoá đó nên mỗi lần thấy rank của lần trước. Đọc trước khoá từng ra 10 việc
+   * cùng rank khi 10 POST đồng thời.
+   */
+  private rankAtEnd(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    deferred: Array<() => void> | null,
+  ): Promise<string> {
+    return this.rankService.resolveRank(projectId, tx, deferred, null, async () => {
+      const last = await tx.issue.findFirst({
+        where: { projectId, deletedAt: null },
+        orderBy: [{ rank: 'desc' }, { id: 'desc' }],
+        select: { rank: true },
+      });
+      return { prev: last?.rank ?? null, next: null };
+    });
   }
 
   /**

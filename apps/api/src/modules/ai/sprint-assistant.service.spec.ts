@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SprintAssistantService } from './sprint-assistant.service';
+import { hasTriageVisible } from '../../common/triage-visibility.testutil';
 
 const sprint = { id: 's1', projectId: 'p1', state: 'FUTURE', name: 'Sprint 5' };
 let n = 0;
@@ -229,5 +230,15 @@ describe('SprintAssistantService — heuristic (U20)', () => {
     const r = await svc.plan('w', 'u', input);
     expect(r.source).toBe('heuristic');
     expect(r.reason).toBeUndefined();
+  });
+});
+
+describe('SprintAssistantService — việc chưa duyệt không được gợi ý vào sprint', () => {
+  it('truy vấn backlog lọc TRIAGE_VISIBLE', async () => {
+    n = 0;
+    const { svc, prisma } = make([row(5)]);
+    await svc.plan('ws1', 'me', { ...input, capacityPoints: 10 });
+    const arg = prisma.issue.findMany.mock.calls[0]![0] as { where: unknown };
+    expect(hasTriageVisible(arg.where)).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 /**
  * Việc chưa duyệt (chờ/tạm hoãn/đã từ chối ở "Việc mới vào") không lẫn vào Board / Việc chờ / số đếm sprint:
@@ -16,4 +16,13 @@ export const TRIAGE_VISIBLE: Prisma.IssueWhereInput = {
  */
 export function isUnreviewed(triageState: string | null | undefined): boolean {
   return !!triageState && triageState !== 'ACCEPTED';
+}
+
+/**
+ * Dạng SQL thô của `TRIAGE_VISIBLE` cho `$queryRaw` (bảng `Issue`, quy ước 1 ô lọc đặt sau `AND`). `alias` là tên/bí danh
+ * bảng đã quote sẵn (mặc định `"Issue"`); chỉ nhận literal cố định trong code, KHÔNG truyền dữ liệu người dùng.
+ */
+export function triageVisibleSql(alias: string = '"Issue"'): Prisma.Sql {
+  const a = Prisma.raw(alias);
+  return Prisma.sql`(${a}."triageState" IS NULL OR ${a}."triageState" = 'ACCEPTED')`;
 }
