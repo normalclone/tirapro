@@ -29,6 +29,10 @@ export interface AiGenerateIssuesResult {
   /** Có khi `source = 'heuristic'` do Claude quá thời gian chờ / lỗi — client có thể gợi ý "thử lại". */
   reason?: AiFallbackReason;
   issues: AiGeneratedIssue[];
+  /** Chỉ heuristic: tổng số mục tách được khi vượt số mục hiển thị (còn mục chưa trả về). */
+  total?: number;
+  /** Chỉ heuristic: phần văn bản của các mục chưa trả về — gửi lại làm đầu vào để phân tích tiếp. */
+  remainingText?: string;
 }
 
 export interface AiSummaryResult {

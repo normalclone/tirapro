@@ -105,4 +105,30 @@ describe('stripText — @mention', () => {
       ['Sửa lỗi: giỏ hàng mất sản phẩm sau khi tải lại', 'Bug'],
     ]);
   });
+
+  it('generateIssues (heuristic): > 15 mục → trả total + remainingText, không cắt im lặng', async () => {
+    const extract = vi
+      .fn<(arg: ExtractArg) => Promise<{ data: null; reason?: string }>>()
+      .mockResolvedValue({ data: null, reason: 'unconfigured' });
+    const text = Array.from({ length: 23 }, (_, i) => `Mục số ${i + 1}`).join('\n');
+    const out = await make({ extract }).generateIssues('ws1', 'u1', { projectId: 'p1', text });
+    expect(out.issues).toHaveLength(15);
+    expect(out.total).toBe(23);
+    expect(out.remainingText?.split('\n')).toEqual(
+      Array.from({ length: 8 }, (_, i) => `Mục số ${i + 16}`),
+    );
+  });
+
+  it('generateIssues (heuristic): tiêu đề cắt theo code point, không chẻ surrogate', async () => {
+    const extract = vi
+      .fn<(arg: ExtractArg) => Promise<{ data: null; reason?: string }>>()
+      .mockResolvedValue({ data: null });
+    const out = await make({ extract }).generateIssues('ws1', 'u1', {
+      projectId: 'p1',
+      text: '😀'.repeat(130),
+    });
+    expect([...out.issues[0]!.summary]).toHaveLength(120);
+    expect(out.issues[0]!.summary).not.toMatch(/[\uD800-\uDBFF]$/);
+    expect(out.total).toBeUndefined();
+  });
 });

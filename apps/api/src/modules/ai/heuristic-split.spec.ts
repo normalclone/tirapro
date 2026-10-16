@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guessIssueType, splitRequirements } from './heuristic-split';
+import { guessIssueType, splitRequirements, splitRequirementsAll } from './heuristic-split';
 
 const sample = [
   'Hệ thống cửa hàng online cần các chức năng sau:',
@@ -42,6 +42,34 @@ describe('splitRequirements', () => {
     const many = Array.from({ length: 20 }, (_, i) => `Mục số ${i + 1}`).join('\n');
     expect(splitRequirements(many)).toHaveLength(15);
     expect(splitRequirements('Giỏ hàng\nGiỏ hàng\nThanh toán')).toEqual(['Giỏ hàng', 'Thanh toán']);
+  });
+});
+describe('splitRequirements — danh sách một dòng và rác markdown', () => {
+  it('danh sách đánh số trên MỘT dòng tách theo số', () => {
+    expect(splitRequirements('1. Làm A 2. Làm B 3) Làm C')).toEqual(['Làm A', 'Làm B', 'Làm C']);
+  });
+  it('bỏ hàng rào mã, dòng kẻ, tiêu đề; tiền tố checkbox giữ nội dung', () => {
+    const t = [
+      '```js',
+      '-----',
+      '## Danh sách',
+      '- [ ] Làm A',
+      '- [x] Làm B',
+      '1.Làm C',
+      '***',
+    ].join('\n');
+    expect(splitRequirements(t)).toEqual(['Làm A', 'Làm B', 'Làm C']);
+  });
+  it('"2.5 giây" và "2FA" không bị coi là số thứ tự', () => {
+    expect(splitRequirements('2.5 giây timeout\n2FA cho admin')).toEqual([
+      '2.5 giây timeout',
+      '2FA cho admin',
+    ]);
+  });
+  it('splitRequirementsAll không cắt ở 15; splitRequirements cắt 15 đầu', () => {
+    const many = Array.from({ length: 23 }, (_, i) => `Mục số ${i + 1}`).join('\n');
+    expect(splitRequirementsAll(many)).toHaveLength(23);
+    expect(splitRequirements(many)).toEqual(splitRequirementsAll(many).slice(0, 15));
   });
 });
 describe('guessIssueType', () => {

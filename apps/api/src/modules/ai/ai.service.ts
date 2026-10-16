@@ -11,7 +11,8 @@ import { mentionsToPlain } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ClaudeService } from './claude.service';
-import { guessIssueType, splitRequirements } from './heuristic-split';
+import { MAX_ITEMS, guessIssueType, splitRequirementsAll } from './heuristic-split';
+import { truncateCodePoints } from '../search/vi-text';
 
 /** JSON Schema cho structured outputs: đề xuất issues. */
 const GENERATE_ISSUES_SCHEMA: Record<string, unknown> = {
@@ -107,16 +108,22 @@ export class AiService {
     return {
       source: 'heuristic',
       ...(reason ? { reason } : {}),
-      issues: this.heuristicIssues(input.text),
+      ...this.heuristicIssues(input.text),
     };
   }
 
-  private heuristicIssues(text: string): AiGeneratedIssue[] {
-    return splitRequirements(text).map((s) => ({
-      summary: s.slice(0, 120),
+  /** Heuristic tách theo dòng/câu. Quá `MAX_ITEMS` mục thì trả thêm `total` + `remainingText` để UI phân tích tiếp. */
+  private heuristicIssues(
+    text: string,
+  ): Pick<AiGenerateIssuesResult, 'issues' | 'total' | 'remainingText'> {
+    const all = splitRequirementsAll(text);
+    const issues = all.slice(0, MAX_ITEMS).map((s) => ({
+      summary: truncateCodePoints(s, 120),
       type: guessIssueType(s),
       description: s,
     }));
+    if (all.length <= MAX_ITEMS) return { issues };
+    return { issues, total: all.length, remainingText: all.slice(MAX_ITEMS).join('\n') };
   }
 
   // ---------- Tóm tắt issue ----------
