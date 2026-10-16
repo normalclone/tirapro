@@ -386,7 +386,7 @@ describe('IntakeService.findDuplicates', () => {
 /** Redis giả đủ cho khoá chống gửi đôi: SET NX EX / GET / DEL trên một Map dùng chung giữa các "node". */
 function fakeRedis(store = new Map<string, string>(), available = true) {
   const client = {
-    set: vi.fn((k: string, v: string, ...args: unknown[]) => {
+    set: vi.fn((k: string, v: string, ...args: unknown[]): Promise<string | null> => {
       if (args.includes('NX') && store.has(k)) return Promise.resolve(null);
       store.set(k, v);
       return Promise.resolve('OK');
@@ -469,7 +469,7 @@ describe('IntakeService.report — chống gửi đôi qua Redis (SET NX EX 8)',
 describe('IntakeService.report — Redis lỗi lúc ghi kết quả', () => {
   it('ghi kết quả thất bại => xoá khoá pending (node khác không bị kẹt chờ)', async () => {
     const r = fakeRedis();
-    r.client.set.mockImplementation((k: string, v: string, ...a: unknown[]) =>
+    r.client.set.mockImplementation((_k: string, _v: string, ...a: unknown[]) =>
       a.includes('NX') ? Promise.resolve('OK') : Promise.reject(new Error('boom')),
     );
     const { service } = make({ redis: r.service });
