@@ -490,7 +490,7 @@ describe('WikiService.visibleIssueFilter — lọc lúc đọc theo quyền xem 
   });
 });
 
-describe('WikiService — lịch sử phiên bản (A18)', () => {
+describe('WikiService — chụp phiên bản khi lưu (A18)', () => {
   const lastOf = (version: number, title: string, body: string) => ({ version, title, body });
 
   it('create(): ghi phiên bản 1 (tiêu đề, nội dung, người tạo)', async () => {
@@ -574,6 +574,10 @@ describe('WikiService — lịch sử phiên bản (A18)', () => {
     await service.move('w1', 'g1', { order: 0 });
     expect(prisma.wikiPageVersion.create).not.toHaveBeenCalled();
   });
+});
+
+describe('WikiService — xem/khôi phục phiên bản (A18)', () => {
+  const lastOf = (version: number, title: string, body: string) => ({ version, title, body });
 
   it('listVersions(): mới nhất trước, không trả body, kèm tên người lưu', async () => {
     const { service, prisma } = setup(false);
