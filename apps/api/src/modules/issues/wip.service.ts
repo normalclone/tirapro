@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PERMISSIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { RbacService } from '../rbac/rbac.service';
 import {
   ForbiddenAppException,
@@ -95,6 +96,8 @@ export class WipService {
         projectId: ctx.projectId,
         deletedAt: null,
         statusId: { in: wip.statusIds },
+        // Board ẩn việc chưa duyệt nên giới hạn WIP phải khớp số thẻ thấy được
+        ...TRIAGE_VISIBLE,
         ...sprintFilter,
       },
     });

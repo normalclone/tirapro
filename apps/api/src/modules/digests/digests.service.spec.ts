@@ -513,8 +513,9 @@ describe('DigestsService.buildDigest — việc chưa duyệt không tính', () 
         expect(hasTriageVisible(c[0].where)).toBe(true);
     // groupBy gồm "đang mở" (summary) và "điểm còn lại" (sprint) — cả hai
     expect(s.groupBy.mock.calls.length).toBeGreaterThanOrEqual(2);
-    for (const c of s.historyFind.mock.calls as unknown as [{ where: unknown }][])
-      expect(hasTriageVisible(c[0].where)).toBe(true);
+    expect(s.historyFind.mock.calls.length).toBeGreaterThan(0);
+    for (const c of s.historyFind.mock.calls as unknown as [{ where: { issue: unknown } }][])
+      expect(hasTriageVisible(c[0].where.issue)).toBe(true);
   });
 });
 

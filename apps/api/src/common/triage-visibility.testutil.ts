@@ -1,11 +1,18 @@
-/**
- * Test: `where` (Prisma) có chứa điều kiện TRIAGE_VISIBLE không — dù nằm ở gốc (`OR`) hay trong `AND: [...]`.
- * Dò theo cặp điều kiện nguyên văn nên sẽ FAIL nếu một `OR` khác ghi đè khoá `OR` của nó khi spread.
- */
-const TRIAGE_OR_JSON = '[{"triageState":null},{"triageState":"ACCEPTED"}]';
+import { TRIAGE_VISIBLE } from './triage-visibility';
 
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Test: `where` (Prisma) có điều kiện TRIAGE_VISIBLE ĐÚNG CẤU TRÚC ở GỐC không: hoặc `OR` gốc bằng `TRIAGE_VISIBLE.OR`
+ * (spread trực tiếp), hoặc `AND` (mảng/đối tượng) có phần tử bằng `TRIAGE_VISIBLE`. Cặp điều kiện nằm trong `NOT`, một
+ * nhánh `OR` khác, hay bị một `OR` khác ghi đè khoá `OR` đều KHÔNG tính.
+ */
 export function hasTriageVisible(where: unknown): boolean {
-  return JSON.stringify(where).includes(TRIAGE_OR_JSON);
+  if (!where || typeof where !== 'object') return false;
+  const w = where as { OR?: unknown; AND?: unknown };
+  if (same(w.OR, TRIAGE_VISIBLE.OR)) return true;
+  const and = Array.isArray(w.AND) ? w.AND : w.AND ? [w.AND] : [];
+  return and.some((c) => same(c, TRIAGE_VISIBLE));
 }
 
 /**
