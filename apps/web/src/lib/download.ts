@@ -53,6 +53,13 @@ async function fetchAuthed(url: string, token: string | null): Promise<Response>
   }
 }
 
+/** `X-Export-Rows` (số dòng dữ liệu, không tính tiêu đề) → số; thiếu/hỏng → null (không biết). */
+function parseRows(header: string | null): number | null {
+  if (header === null || header.trim() === '') return null;
+  const n = Number(header);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
 /**
  * Gọi API lấy file (chưa lưu). Access token chỉ nằm trong bộ nhớ nên `<a href>` trực tiếp sẽ 401; gặp 401 thì
  * refresh một lần theo cơ chế dùng chung của `api` client (single-flight) rồi thử lại đúng một lần.
@@ -60,7 +67,7 @@ async function fetchAuthed(url: string, token: string | null): Promise<Response>
 export async function fetchDownload(
   path: string,
   opts: DownloadOptions = {},
-): Promise<{ blob: Blob; filename: string; truncated: boolean }> {
+): Promise<{ blob: Blob; filename: string; truncated: boolean; rows: number | null }> {
   const baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1';
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(opts.params ?? {})) {
@@ -83,17 +90,22 @@ export async function fetchDownload(
       opts.fallbackName ?? 'tirapro-export',
     ),
     truncated: res.headers.get('X-Export-Truncated') === 'true',
+    rows: parseRows(res.headers.get('X-Export-Rows')),
   };
 }
 
-/** Tải file từ API rồi kích hoạt lưu về máy. */
+/**
+ * Tải file từ API rồi kích hoạt lưu về máy. `skipIfEmpty`: máy chủ báo 0 dòng dữ liệu (`X-Export-Rows: 0`) thì KHÔNG
+ * lưu file chỉ có tiêu đề — nơi gọi báo "không có gì để xuất" (`saved: false`).
+ */
 export async function downloadFile(
   path: string,
-  opts: DownloadOptions = {},
-): Promise<{ filename: string; truncated: boolean }> {
-  const { blob, filename, truncated } = await fetchDownload(path, opts);
+  opts: DownloadOptions & { skipIfEmpty?: boolean } = {},
+): Promise<{ filename: string; truncated: boolean; rows: number | null; saved: boolean }> {
+  const { blob, filename, truncated, rows } = await fetchDownload(path, opts);
+  if (opts.skipIfEmpty && rows === 0) return { filename, truncated, rows, saved: false };
   saveBlob(blob, filename);
-  return { filename, truncated };
+  return { filename, truncated, rows, saved: true };
 }
 
 /** Tải nội dung dựng ở client (vd CSV từ dữ liệu đã có trong cache). */

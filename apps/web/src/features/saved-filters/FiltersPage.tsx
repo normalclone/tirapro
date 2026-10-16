@@ -245,6 +245,13 @@ export function FiltersPage() {
             onPageChange={setPage}
             projectKeyById={projectKeyById}
             onOpen={openIssue}
+            exportJql={
+              active.kind === 'adhoc'
+                ? active.jql
+                : active.kind === 'filter'
+                  ? active.filter.jql
+                  : undefined
+            }
           />
         </div>
       </div>
