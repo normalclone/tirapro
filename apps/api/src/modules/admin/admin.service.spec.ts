@@ -58,6 +58,7 @@ function setup(status = 'ACTIVE') {
     ),
     audit,
     prisma,
+    events,
   };
 }
 
@@ -92,6 +93,15 @@ describe('AdminService.update — nhật ký khoá/mở khoá', () => {
     expect(entry.action).toBe('account.permissions_changed');
     expect(entry.summary).toContain('cấp quyền admin hệ thống');
     expect(entry.summary).toContain('cho phép lập không gian làm việc');
+  });
+
+  it('bật/tắt isSystemAdmin phát access.changed {userIds:[id]} (gateway rà socket mọi workspace); đổi tên thì không', async () => {
+    const a = setup('ACTIVE');
+    await a.service.update('u1', { isSystemAdmin: true }, 'admin');
+    expect(a.events.emit).toHaveBeenCalledWith('access.changed', { userIds: ['u1'] });
+    const b = setup('ACTIVE');
+    await b.service.update('u1', { displayName: 'An B' }, 'admin');
+    expect(b.events.emit).not.toHaveBeenCalledWith('access.changed', expect.anything());
   });
 
   it('create(): ghi account.created, không đưa mật khẩu vào nhật ký', async () => {

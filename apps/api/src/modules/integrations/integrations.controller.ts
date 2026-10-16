@@ -84,8 +84,12 @@ export class IntegrationsController {
   /** Liệt kê kênh của một integration. */
   @Get(':id/channels')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async listChannels(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.integrations.listChannels(workspaceId, id);
+  async listChannels(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.integrations.listChannels(workspaceId, id, user.id);
   }
 
   /** Thêm kênh vào integration. */

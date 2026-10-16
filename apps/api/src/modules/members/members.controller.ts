@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -46,6 +46,7 @@ export class WorkspaceMembersController {
    * và chỉ khi không truyền `password`.
    */
   @Post('accounts')
+  @Header('Cache-Control', 'no-store') // phản hồi mang mật khẩu tạm — không để trình duyệt/proxy lưu
   @Permissions(PERMISSIONS.MEMBER_MANAGE)
   async createAccount(
     @CurrentUser() user: AuthUser,

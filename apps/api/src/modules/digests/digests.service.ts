@@ -292,7 +292,13 @@ export class DigestsService implements OnApplicationShutdown {
     });
     if (!project) return null;
     if (!project.isPrivate) return PUBLIC_VIEWER;
-    return allowPrivateToChannel && createdById ? createdById : null;
+    if (!allowPrivateToChannel || !createdById) return null;
+    // Dự án riêng tư đăng bằng QUYỀN người tạo: người tạo đã bị khoá thì không còn ai chịu trách nhiệm cho quyền đó → bỏ qua kênh.
+    const creator = await this.prisma.user.findUnique({
+      where: { id: createdById },
+      select: { status: true },
+    });
+    return creator && creator.status !== 'DEACTIVATED' ? createdById : null;
   }
 
   /**

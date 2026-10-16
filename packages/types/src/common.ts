@@ -63,6 +63,10 @@ export const ERROR_CODES = {
   /** Mốc kéo-thả (afterId/beforeId) của client đã cũ — thứ tự hai mốc đảo; client nạp lại danh sách rồi thả lại. */
   RANK_NEIGHBORS_STALE: 'RANK_NEIGHBORS_STALE',
   CONFLICT: 'CONFLICT',
+  /** Thêm người đã là thành viên (không âm thầm ghi đè vai trò) — đổi vai trò ở trang Thành viên. */
+  ALREADY_MEMBER: 'ALREADY_MEMBER',
+  /** Hạ/gỡ quản trị workspace cuối cùng — workspace sẽ không còn ai quản trị. */
+  LAST_WORKSPACE_ADMIN: 'LAST_WORKSPACE_ADMIN',
   INTERNAL: 'INTERNAL',
 } as const;
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

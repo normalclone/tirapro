@@ -32,11 +32,12 @@ export const DOMAIN_EVENTS = {
   MEMBER_REMOVED: 'member.removed', // payload { workspaceId, userId } — gateway ngắt socket của user khỏi workspace
   // payload { workspaceId, projectId, userId } — người dùng bị gỡ khỏi dự án (riêng tư): gateway rút socket của họ khỏi room project nếu không còn thấy dự án
   PROJECT_MEMBER_REMOVED: 'project.member_removed',
-  // payload { workspaceId, projectId } — cờ riêng tư của dự án đổi: gateway rà lại socket trong room project, ai không còn thấy thì bị rút
+  // payload { workspaceId, projectId, isPrivate, actorId? } — cờ riêng tư của dự án đổi: gateway rà lại socket trong room project, ai không còn thấy thì bị rút;
+  // sang riêng tư (isPrivate=true) thì kênh Telegram sự kiện gắn dự án bị tắt, digest bị xoá cờ allowPrivateToChannel
   PROJECT_VISIBILITY_CHANGED: 'project.visibility_changed',
   // payload { userId } — phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị): gateway ngắt mọi socket của user
   ACCOUNT_SESSIONS_REVOKED: 'account.sessions_revoked',
-  // payload { workspaceId, userIds?: string[] } (userIds vắng = cả workspace) — quyền xem của người dùng có thể đã đổi (vai trò
+  // payload { workspaceId?, userIds?: string[] } (userIds vắng = cả workspace; có userIds mà không có workspaceId = mọi workspace của họ) — quyền xem của người dùng có thể đã đổi (vai trò
   // workspace/dự án, bộ quyền vai trò, quản trị hệ thống…, SAU commit): gateway kiểm lại `canSee` cho socket đang ở room project/issue
   ACCESS_CHANGED: 'access.changed',
   NOTIFICATION_CREATED: 'notification.created',

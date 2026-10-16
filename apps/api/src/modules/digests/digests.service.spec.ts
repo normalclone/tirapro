@@ -612,6 +612,20 @@ describe('DigestsService — người xem của nội dung gửi nơi chung', ()
     expect(r.channelSkipped).toBe(true);
   });
 
+  it('dự án riêng tư đã bật cờ nhưng NGƯỜI TẠO đã bị khoá → không gửi kênh (không dùng quyền tài khoản đã khoá)', async () => {
+    const { service, prisma, telegram } = setup({ kind: 'global' });
+    prisma.project.findFirst.mockResolvedValue({ isPrivate: true });
+    prisma.user.findUnique.mockResolvedValue({ status: 'DEACTIVATED' } as never);
+    prisma.reportSubscription.findFirst.mockResolvedValue(
+      subRow({ projectId: 'p1', allowPrivateToChannel: true, createdById: 'creator' }),
+    );
+    const spy = vi.spyOn(service, 'buildDigest');
+    const r = await service.run('w1', 's1', 'u1');
+    expect(telegram.send).not.toHaveBeenCalled();
+    expect(r.channelSkipped).toBe(true);
+    expect(spy.mock.calls.map((c) => c[3])).not.toContain('creator');
+  });
+
   it('I3: dự án đã xoá → không gửi kênh', async () => {
     const { service, prisma, telegram } = setup({ kind: 'global' });
     prisma.project.findFirst.mockResolvedValue(null);

@@ -6,6 +6,8 @@ import {
   AUDIT_ACTIONS,
   DEFAULT_PROJECT_ROLE_BY_WS_ROLE,
   DOMAIN_EVENTS,
+  ERROR_CODES,
+  PERMISSIONS,
   roleLabel,
   type RoleScope,
 } from '@tirapro/types';
@@ -13,6 +15,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto, USER_DTO_SELECT, type UserDtoSource } from '../../common/mappers/user.mapper';
 import {
   BusinessRuleException,
+  ConflictAppException,
   EmailAlreadyRegisteredException,
   ForbiddenAppException,
   NotFoundAppException,
@@ -68,18 +71,27 @@ export class MembersService {
       where: { workspaceId_userId: { workspaceId, userId } },
       select: { id: true },
     });
-    if (existing) return this.setWorkspaceRoles(workspaceId, userId, roleIds, actorId); // đã là thành viên → cập nhật vai trò
+    // Đã là thành viên → 409 (KHÔNG âm thầm ghi đè vai trò: thêm nhầm một Admin với vai trò Member = hạ quyền không cảnh
+    // báo). Đổi vai trò đi qua `PUT /members/:userId/roles`.
+    if (existing) throw this.alreadyMember();
     this.assertAddable([user]);
     const ids = await this.validateRoles(workspaceId, roleIds, 'WORKSPACE');
-    await this.prisma.workspaceMembership.create({
-      data: {
-        workspaceId,
-        userId,
-        roleId: ids[0]!,
-        joinedAt: new Date(),
-        roles: { create: ids.map((roleId) => ({ roleId })) },
-      },
-    });
+    try {
+      await this.prisma.workspaceMembership.create({
+        data: {
+          workspaceId,
+          userId,
+          roleId: ids[0]!,
+          joinedAt: new Date(),
+          roles: { create: ids.map((roleId) => ({ roleId })) },
+        },
+      });
+    } catch (e) {
+      // Hai request đồng thời cùng thêm một người: người thua nhận 409 (không phải 500).
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
+        throw this.alreadyMember();
+      throw e;
+    }
     await this.rbac.invalidate(userId, workspaceId);
     const member = await this.getWorkspaceMember(workspaceId, userId);
     await this.audit.record({
@@ -112,6 +124,14 @@ export class MembersService {
       userIds,
       actorId,
     });
+  }
+
+  /**
+   * Quyền xem của người dùng có thể đã đổi (đổi vai trò workspace/dự án) — phát SAU khi cache quyền đã xoá để gateway kiểm lại
+   * socket của họ đang ở room project/issue và rút khi không còn thấy (không chờ tải lại trang).
+   */
+  private emitAccessChanged(workspaceId: string, userIds: string[]): void {
+    this.events.emit(DOMAIN_EVENTS.ACCESS_CHANGED, { workspaceId, userIds });
   }
 
   /**
@@ -224,6 +244,55 @@ export class MembersService {
     }
   }
 
+  private alreadyMember(): ConflictAppException {
+    return new ConflictAppException(
+      ERROR_CODES.ALREADY_MEMBER,
+      'Người này đã là thành viên của không gian làm việc — đổi vai trò ở trang Thành viên',
+    );
+  }
+
+  /** Số quản trị workspace (còn hoạt động) NGOÀI `exceptUserId`: giữ vai trò có quyền `workspace:admin`. */
+  private countOtherWorkspaceAdmins(workspaceId: string, exceptUserId: string): Promise<number> {
+    return this.prisma.workspaceMembership.count({
+      where: {
+        workspaceId,
+        userId: { not: exceptUserId },
+        user: { status: { not: 'DEACTIVATED' } },
+        roles: {
+          some: {
+            role: { permissions: { some: { permission: { key: PERMISSIONS.WORKSPACE_ADMIN } } } },
+          },
+        },
+      },
+    });
+  }
+
+  /** `userId` đang là quản trị workspace (giữ vai trò có `workspace:admin`)? */
+  private async isWorkspaceAdmin(workspaceId: string, userId: string): Promise<boolean> {
+    const n = await this.prisma.workspaceMembership.count({
+      where: {
+        workspaceId,
+        userId,
+        roles: {
+          some: {
+            role: { permissions: { some: { permission: { key: PERMISSIONS.WORKSPACE_ADMIN } } } },
+          },
+        },
+      },
+    });
+    return n > 0;
+  }
+
+  /** Chặn hạ/gỡ quản trị workspace CUỐI CÙNG — tự hạ vai trò hết admin sẽ buộc phải nhờ admin hệ thống khôi phục. */
+  private async assertNotLastWorkspaceAdmin(workspaceId: string, userId: string): Promise<void> {
+    if (!(await this.isWorkspaceAdmin(workspaceId, userId))) return;
+    if ((await this.countOtherWorkspaceAdmins(workspaceId, userId)) > 0) return;
+    throw new ConflictAppException(
+      ERROR_CODES.LAST_WORKSPACE_ADMIN,
+      'Đây là quản trị viên cuối cùng của không gian làm việc — hãy cấp quyền quản trị cho người khác trước',
+    );
+  }
+
   async setWorkspaceRoles(
     workspaceId: string,
     userId: string,
@@ -236,6 +305,15 @@ export class MembersService {
     });
     if (!membership) throw new NotFoundAppException('Thành viên');
     const ids = await this.validateRoles(workspaceId, roleIds, 'WORKSPACE');
+    // Bộ vai trò mới không còn quyền quản trị workspace → người này không được là quản trị viên cuối cùng.
+    const keepsAdmin =
+      (await this.prisma.role.count({
+        where: {
+          id: { in: ids },
+          permissions: { some: { permission: { key: PERMISSIONS.WORKSPACE_ADMIN } } },
+        },
+      })) > 0;
+    if (!keepsAdmin) await this.assertNotLastWorkspaceAdmin(workspaceId, userId);
     await this.prisma.$transaction([
       this.prisma.workspaceMembershipRole.deleteMany({ where: { membershipId: membership.id } }),
       this.prisma.workspaceMembershipRole.createMany({
@@ -247,6 +325,7 @@ export class MembersService {
       }),
     ]);
     await this.rbac.invalidate(userId, workspaceId);
+    this.emitAccessChanged(workspaceId, [userId]);
     const member = await this.getWorkspaceMember(workspaceId, userId);
     await this.audit.record({
       workspaceId,
@@ -327,13 +406,24 @@ export class MembersService {
       throw new ForbiddenAppException(
         'Không thể gỡ chủ sở hữu của không gian làm việc — hãy chuyển quyền sở hữu cho người khác trước',
       );
+    await this.assertNotLastWorkspaceAdmin(workspaceId, userId);
     const who = await this.userLabel(userId);
     // Không để dự án riêng tư mất người cuối cùng (chỉ còn quản trị workspace thấy) — chặn kèm lối thoát.
     const sole = await this.privateProjectsWithOnlyMember(workspaceId, userId);
-    if (sole.length > 0)
+    if (sole.length > 0) {
+      // Chỉ nêu khoá dự án người gọi XEM ĐƯỢC; phần còn lại gộp "và N dự án khác" (không lộ mã dự án riêng tư của người khác).
+      const visible: string[] = [];
+      for (const p of sole)
+        if (await this.canSeeProject(actingUserId, workspaceId, p.id)) visible.push(p.key);
+      const hidden = sole.length - visible.length;
+      const parts = [
+        visible.length ? `dự án riêng tư ${visible.join(', ')}` : '',
+        hidden ? `${visible.length ? 'và ' : ''}${hidden} dự án riêng tư khác` : '',
+      ].filter(Boolean);
       throw new BusinessRuleException(
-        `${who} là thành viên duy nhất của dự án riêng tư ${sole.join(', ')} — hãy thêm người khác vào dự án (Cấu hình dự án → Thành viên) hoặc chuyển dự án sang công khai trước khi gỡ`,
+        `${who} là thành viên duy nhất của ${parts.join(' ')} — hãy thêm người khác vào dự án (Cấu hình dự án → Thành viên) hoặc chuyển dự án sang công khai trước khi gỡ`,
       );
+    }
     // Một transaction: gỡ membership + xoá ghi đè vai trò dự án của workspace này + thu hồi API key.
     // Thiếu bước nào thì người bị gỡ vẫn giữ được quyền qua key/ghi đè dự án còn sót.
     const revokedPrefixes = await this.prisma.$transaction(async (tx) => {
@@ -358,14 +448,29 @@ export class MembersService {
     return { success: true };
   }
 
-  /** Mã các dự án riêng tư (chưa xoá) mà `userId` là thành viên DUY NHẤT còn thuộc workspace. */
+  private async canSeeProject(
+    viewerId: string,
+    workspaceId: string,
+    projectId: string,
+  ): Promise<boolean> {
+    try {
+      await this.rbac.assertProjectVisible(viewerId, workspaceId, projectId);
+      return true;
+    } catch (e) {
+      if (e instanceof NotFoundAppException) return false;
+      throw e;
+    }
+  }
+
+  /** Các dự án riêng tư (chưa xoá) mà `userId` là thành viên DUY NHẤT còn thuộc workspace. */
   private async privateProjectsWithOnlyMember(
     workspaceId: string,
     userId: string,
-  ): Promise<string[]> {
+  ): Promise<Array<{ id: string; key: string }>> {
     const rows = await this.prisma.project.findMany({
       where: { workspaceId, deletedAt: null, isPrivate: true, memberships: { some: { userId } } },
       select: {
+        id: true,
         key: true,
         // Chỉ tính thành viên còn thuộc workspace (dòng của người đã rời workspace không còn ý nghĩa).
         memberships: {
@@ -375,7 +480,9 @@ export class MembersService {
       },
       orderBy: { key: 'asc' },
     });
-    return rows.filter((p) => p.memberships.every((m) => m.userId === userId)).map((p) => p.key);
+    return rows
+      .filter((p) => p.memberships.every((m) => m.userId === userId))
+      .map((p) => ({ id: p.id, key: p.key }));
   }
 
   // ───────────────────────── Project ─────────────────────────
@@ -570,6 +677,7 @@ export class MembersService {
       }),
     ]);
     await this.rbac.invalidate(userId, workspaceId);
+    this.emitAccessChanged(workspaceId, [userId]);
     const member = await this.getProjectMember(projectId, userId);
     await this.audit.record({
       workspaceId,
@@ -617,6 +725,7 @@ export class MembersService {
       },
     });
     await this.rbac.invalidate(userId, workspaceId);
+    this.emitAccessChanged(workspaceId, [userId]); // vai trò riêng ở dự án có thể HẠ quyền so với vai trò workspace
     return this.getProjectMember(projectId, userId);
   }
 

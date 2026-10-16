@@ -176,6 +176,10 @@ export class AdminService {
           return tx.user.update({ where: { id }, data, select: USER_SELECT });
         })
       : await this.prisma.user.update({ where: { id }, data, select: USER_SELECT });
+    // Bật/tắt admin hệ thống đổi phạm vi thấy dự án ở MỌI workspace: gateway rà lại socket đang mở của người đó
+    // (isSystemAdmin đọc trực tiếp từ DB, không có cache quyền để xoá).
+    if (input.isSystemAdmin !== undefined && input.isSystemAdmin !== found.isSystemAdmin)
+      this.events.emit(DOMAIN_EVENTS.ACCESS_CHANGED, { userIds: [id] });
     // Đổi quyền hệ thống (admin hệ thống / được lập workspace) — thao tác quản trị giá trị cao nhất.
     const permChanges: string[] = [];
     if (input.isSystemAdmin !== undefined && input.isSystemAdmin !== found.isSystemAdmin) {

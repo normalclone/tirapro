@@ -47,6 +47,13 @@ export class BusinessRuleException extends AppException {
   }
 }
 
+/** 409 với mã nghiệp vụ riêng (ALREADY_MEMBER, LAST_WORKSPACE_ADMIN…) để client nhận ra mà không so khớp câu chữ. */
+export class ConflictAppException extends AppException {
+  constructor(code: ErrorCode | (string & {}), message: string) {
+    super(code, message, HttpStatus.CONFLICT);
+  }
+}
+
 /** Email đã có tài khoản dùng được — mã riêng để client nhận ra mà không so khớp câu chữ. */
 export class EmailAlreadyRegisteredException extends AppException {
   constructor(
