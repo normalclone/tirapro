@@ -5,7 +5,7 @@ import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 
 /** Tác nhân (người dùng) đã được phân giải cho một dòng lịch sử. */
-export interface ActivityActor {
+interface ActivityActor {
   id: string;
   displayName: string;
   avatarUrl: string | null;

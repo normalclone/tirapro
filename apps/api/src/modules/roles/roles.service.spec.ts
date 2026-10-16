@@ -76,11 +76,14 @@ describe('RolesService — ghi nhật ký quản trị', () => {
       },
       permission: { findMany: vi.fn(() => Promise.resolve([{ id: 'p1' }])) },
       rolePermission: { deleteMany: vi.fn(() => Promise.resolve({ count: 0 })) },
+      // dạng mảng (xoá bộ quyền cũ + ghi vai trò cùng một transaction): trả kết quả từng lệnh
+      $transaction: vi.fn((ops: Array<Promise<unknown>>) => Promise.all(ops)),
     };
     const audit = { record: vi.fn() };
     const rbac = { invalidateWorkspace: vi.fn() };
-    const svc = new RolesService(prisma as never, rbac as never, audit as never);
-    return { svc, audit };
+    const events = { emit: vi.fn() };
+    const svc = new RolesService(prisma as never, rbac as never, audit as never, events as never);
+    return { svc, audit, prisma, events };
   }
 
   function recorded(audit: { record: { mock: { calls: unknown[][] } } }) {
@@ -113,6 +116,33 @@ describe('RolesService — ghi nhật ký quản trị', () => {
       action: 'role.updated',
       entityId: 'r9',
     });
+  });
+
+  it('update(bộ quyền): xoá quyền cũ + ghi vai trò trong MỘT transaction và phát access.changed cả workspace (S-I6)', async () => {
+    const { svc, prisma, events } = setup();
+    await svc.update('w1', 'r9', { permissionKeys: ['issue:view'] }, 'u1');
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    const ops = prisma.$transaction.mock.calls[0]![0];
+    expect(ops).toHaveLength(2);
+    expect(prisma.rolePermission.deleteMany).toHaveBeenCalledWith({ where: { roleId: 'r9' } });
+    expect(prisma.role.update).toHaveBeenCalledTimes(1);
+    expect(events.emit).toHaveBeenCalledWith('access.changed', { workspaceId: 'w1' });
+  });
+
+  it('update(chỉ đổi tên/màu): không xoá quyền, không transaction, không phát access.changed', async () => {
+    const { svc, prisma, events } = setup();
+    await svc.update('w1', 'r9', { name: 'QA 2' }, 'u1');
+    expect(prisma.rolePermission.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('update(bộ quyền): ghi vai trò lỗi (vd tên trùng) thì KHÔNG để vai trò mất sạch quyền — lỗi lan ra, không xoá riêng lẻ', async () => {
+    const { svc, prisma } = setup();
+    prisma.$transaction.mockRejectedValueOnce(new Error('unique'));
+    await expect(
+      svc.update('w1', 'r9', { name: 'Trùng', permissionKeys: ['issue:view'] }, 'u1'),
+    ).rejects.toThrow('unique');
   });
 
   it('remove(): ghi role.deleted với tên vai trò', async () => {

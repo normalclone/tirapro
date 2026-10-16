@@ -48,5 +48,7 @@ Dự án dùng skill **impeccable** cho frontend. **Ưu tiên cao nhất: thật
 - `pnpm gen:enums` — sinh `packages/types/src/enums.ts` từ Prisma schema (file sinh tự động, không sửa tay).
 - `pnpm knip` — liệt kê dependency/file/export không dùng (export/type thừa chỉ cảnh báo; file/dependency thừa làm lệnh thoát 1 — xem `knip.jsonc`; xoá thì `grep -r` xác nhận 0 import trước).
 - Vận hành (một lần, cần `DATABASE_URL` + `INTEGRATION_ENCRYPTION_KEY` trong môi trường): `pnpm --filter @tirapro/api run integrations:rekey|automation:seal-secrets [-- --dry-run]`. Thứ tự triển khai `migrate deploy → db:raw → rekey → seal-secrets` và cảnh báo khoá bảng `Issue`: `docs/DEPLOY.md` mục "Checklist triển khai".
+- `pnpm --filter @tirapro/api db:check-roles` — so bộ quyền vai trò hệ thống trong DB với `SYSTEM_ROLE_PERMISSIONS` (in `+thiếu`/`-thừa`, thoát 1 nếu lệch); chạy sau `migrate deploy`, cần `DATABASE_URL`.
+- `pnpm --filter @tirapro/web mobile:audit` — bộ đo mobile 390×844 qua mọi route chính (`-- --dialogs` đo hộp thoại, `-- --route=/a,/b` chọn route); cần web + API + DB seed đang chạy, không nằm trong `pnpm test`/CI; DoD UX bắt buộc chạy khi đổi màn.
 - `pnpm --filter @tirapro/api db:seed:rich` — nạp demo giàu dữ liệu (cần API chạy ở :4000).
 - Docker API: `docker build -f apps/api/Dockerfile -t tirapro-api .` (build từ gốc repo).

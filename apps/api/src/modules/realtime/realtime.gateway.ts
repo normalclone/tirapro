@@ -521,6 +521,79 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   /**
+   * Quyền của người dùng có thể đã đổi (vai trò workspace/dự án, bộ quyền của vai trò, quản trị hệ thống…) → kiểm lại
+   * `canSee` cho MỌI room `project:*`/`issue:*` mà socket của họ đang ở; dự án không còn thấy thì rút khỏi room dự án + các room
+   * issue của dự án (tái dùng `evictFromProjectRooms`). `userIds` vắng = cả workspace (vd sửa bộ quyền của một vai trò
+   * tuỳ biến). Mỗi (người, dự án) kiểm một lần dù nhiều tab. Phát SAU khi cache quyền đã xoá nên `canSee` đọc quyền mới.
+   */
+  @OnEvent(DOMAIN_EVENTS.ACCESS_CHANGED)
+  async onAccessChanged(p: { workspaceId?: string; userIds?: string[] }): Promise<void> {
+    // Phải có userIds (mọi workspace của họ) hoặc workspaceId (cả workspace). Quản trị hệ thống đổi quyền chỉ có userIds.
+    if (!this.server || (!p?.userIds?.length && !p?.workspaceId)) return;
+    try {
+      type Remote = Awaited<ReturnType<ReturnType<Server['in']>['fetchSockets']>>[number];
+      let sockets: Remote[] = [];
+      if (p.userIds?.length) {
+        for (const userId of new Set(p.userIds)) {
+          const mine = await this.server.in(rooms.user(userId)).fetchSockets();
+          sockets.push(...mine.filter((s) => (s.data as { userId?: string }).userId === userId));
+        }
+      } else {
+        sockets = await this.server.in(rooms.workspace(p.workspaceId!)).fetchSockets();
+      }
+      const projectPrefix = rooms.project('');
+      const issuePrefix = rooms.issue('');
+      // issue room -> projectId (một truy vấn cho mọi room issue của các socket cần rà)
+      const issueIds = new Set<string>();
+      for (const s of sockets)
+        for (const r of s.rooms ?? [])
+          if (r.startsWith(issuePrefix)) issueIds.add(r.slice(issuePrefix.length));
+      const projectOfIssue = new Map<string, string>();
+      if (issueIds.size) {
+        // allow-deleted: chỉ cần biết room issue thuộc dự án nào để rút socket (kể cả việc đã xoá mềm)
+        const rows = await this.prisma.issue.findMany({
+          where: { id: { in: [...issueIds] } },
+          select: { id: true, projectId: true },
+        });
+        for (const r of rows) projectOfIssue.set(r.id, r.projectId);
+      }
+      const verdict = new Map<string, boolean>(); // `${userId}|${projectId}`
+      const evict = new Map<string, Remote[]>(); // projectId -> sockets cần rút
+      for (const s of sockets) {
+        const { userId, workspaceId: socketWs } = s.data as {
+          userId?: string;
+          workspaceId?: string | null;
+        };
+        // Quyền tính theo workspace của CHÍNH socket (userIds không kèm workspaceId khi quản trị hệ thống đổi quyền).
+        const workspaceId = socketWs ?? p.workspaceId;
+        if (!userId || !workspaceId) continue;
+        const projects = new Set<string>();
+        for (const r of s.rooms ?? []) {
+          if (r.startsWith(projectPrefix)) projects.add(r.slice(projectPrefix.length));
+          else if (r.startsWith(issuePrefix)) {
+            const pid = projectOfIssue.get(r.slice(issuePrefix.length));
+            if (pid) projects.add(pid);
+          }
+        }
+        for (const projectId of projects) {
+          const key = `${userId}|${workspaceId}|${projectId}`;
+          if (!verdict.has(key))
+            verdict.set(key, await this.access.canSee(userId, workspaceId, projectId));
+          if (verdict.get(key)) continue;
+          const list = evict.get(projectId) ?? [];
+          list.push(s);
+          evict.set(projectId, list);
+        }
+      }
+      for (const [projectId, list] of evict) await this.evictFromProjectRooms(list, projectId);
+    } catch (err) {
+      this.logger.warn(
+        `Rà socket sau khi đổi quyền thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
    * Phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị / đổi mật khẩu) → ngắt socket của họ.
    * `in(room).disconnectSockets` đi qua Redis adapter nên ngắt cả socket đang ở node khác.
    * Có `revokedAtMs` (vd tự đổi mật khẩu): chỉ ngắt socket mang token cấp TRƯỚC mốc đó — socket mới của thiết bị đang đổi

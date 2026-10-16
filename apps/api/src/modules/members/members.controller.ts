@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -26,8 +26,9 @@ export class WorkspaceMembersController {
   /** Thành viên workspace + vai trò (cho trang Thành viên). */
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get()
-  async list(@WorkspaceId() workspaceId: string) {
-    return this.members.listWorkspace(workspaceId);
+  async list(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
+    // `user` đi vào service: isSystemAdmin/lastSeenAt của từng người chỉ trả khi người xem có member:manage.
+    return this.members.listWorkspace(workspaceId, user);
   }
 
   /** Thêm 1 user CÓ SẴN (từ pool hệ thống) vào workspace + gán vai trò. */
@@ -46,6 +47,7 @@ export class WorkspaceMembersController {
    * và chỉ khi không truyền `password`.
    */
   @Post('accounts')
+  @Header('Cache-Control', 'no-store') // phản hồi mang mật khẩu tạm — không để trình duyệt/proxy lưu
   @Permissions(PERMISSIONS.MEMBER_MANAGE)
   async createAccount(
     @CurrentUser() user: AuthUser,
@@ -96,8 +98,12 @@ export class ProjectMembersController {
   /** Thành viên dự án + vai trò. Dự án phải thuộc workspace người gọi (chống chéo tenant). */
   @Get()
   @Permissions(PERMISSIONS.PROJECT_VIEW)
-  async list(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
-    return this.members.listProject(workspaceId, projectId);
+  async list(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.members.listProject(workspaceId, projectId, user);
   }
 
   @Post()

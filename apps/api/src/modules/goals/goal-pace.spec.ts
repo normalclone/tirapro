@@ -15,6 +15,13 @@ describe('periodRange', () => {
   });
 });
 
+describe('expectedProgress — ngày lịch VN (Q-M7)', () => {
+  it('18:00Z ngày 15/11 là 01:00 ngày 16/11 giờ VN → tính theo 16/11 (51%), không phải 15/11 (49%)', () => {
+    expect(expectedProgress('2026-Q4', new Date('2026-11-15T18:00:00Z'))).toBe(51);
+    expect(expectedProgress('2026-Q4', new Date('2026-11-15T16:00:00Z'))).toBe(49); // 23:00 VN 15/11
+  });
+});
+
 describe('expectedProgress', () => {
   it('đầu quý 0, giữa quý ~50%, cuối quý 100', () => {
     expect(expectedProgress('2026-Q4', new Date('2026-10-01T00:00:00Z'))).toBe(0);

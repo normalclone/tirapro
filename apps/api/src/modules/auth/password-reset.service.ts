@@ -9,7 +9,7 @@ import { MailService } from '../mail/mail.service';
 import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
 import { generateOneTimeToken, hashOneTimeToken } from './auth-token';
 
-export const PASSWORD_RESET_TTL_MS = 60 * 60_000;
+const PASSWORD_RESET_TTL_MS = 60 * 60_000;
 /** Mỗi tài khoản tối đa một thư đặt lại mỗi 60 giây — không để người lạ bom hộp thư của người khác. */
 const RESEND_COOLDOWN_MS = 60_000;
 

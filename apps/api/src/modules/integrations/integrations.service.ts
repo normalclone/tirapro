@@ -4,6 +4,7 @@ import { AUDIT_ACTIONS, DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma, IntegrationType, IntegrationStatus } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { isUnreviewed } from '../../common/triage-visibility';
 import { AuditService } from '../audit/audit.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import {
@@ -78,8 +79,22 @@ interface IssueEventPayload {
     summary: string;
     status?: { name?: string } | null;
     projectId: string;
+    /** Trạng thái duyệt (Triage) — việc chưa duyệt chưa báo lên kênh chung. */
+    triageState?: string | null;
   };
   actorId?: string;
+  /** Hệ thống phát hàng loạt (tự gán việc Jira…) — không gửi tin nào. */
+  bulk?: boolean;
+  /** Người dùng sửa hàng loạt — đã có một tin gộp (`ISSUES_BULK_UPDATED`). */
+  batch?: { id: string; size: number };
+}
+
+/** Payload của `DOMAIN_EVENTS.ISSUES_BULK_UPDATED`. */
+interface BulkUpdatedPayload {
+  workspaceId: string;
+  projectId: string;
+  actorId: string;
+  count: number;
 }
 
 /** Comment payload đi kèm comment.added. */
@@ -261,12 +276,20 @@ export class IntegrationsService {
     }
   }
 
-  async listChannels(workspaceId: string, integrationId: string) {
+  /** Kênh của một tích hợp; kênh gắn dự án riêng tư mà người xem không thấy thì ẨN (như `addChannel` đòi thấy dự án). */
+  async listChannels(workspaceId: string, integrationId: string, viewerId?: string) {
     await this.requireIntegration(workspaceId, integrationId);
-    return this.prisma.integrationChannel.findMany({
+    const channels = await this.prisma.integrationChannel.findMany({
       where: { integrationId, workspaceId },
       orderBy: { createdAt: 'desc' },
     });
+    if (!viewerId) return channels;
+    const projectIds = [
+      ...new Set(channels.map((c) => c.projectId).filter((x): x is string => !!x)),
+    ];
+    const seen = new Map<string, boolean>();
+    for (const id of projectIds) seen.set(id, await this.access.canSee(viewerId, workspaceId, id));
+    return channels.filter((c) => !c.projectId || seen.get(c.projectId));
   }
 
   async removeChannel(
@@ -276,9 +299,16 @@ export class IntegrationsService {
   ): Promise<{ success: true }> {
     const channel = await this.prisma.integrationChannel.findFirst({
       where: { id: channelId, workspaceId },
-      select: { id: true, title: true, externalId: true, integrationId: true },
+      select: { id: true, title: true, externalId: true, integrationId: true, projectId: true },
     });
     if (!channel) throw new NotFoundAppException('Kênh');
+    // Kênh của dự án riêng tư người gọi không thấy → 404 như không tồn tại (không xoá/lộ sự tồn tại).
+    if (
+      channel.projectId &&
+      actorId &&
+      !(await this.access.canSee(actorId, workspaceId, channel.projectId))
+    )
+      throw new NotFoundAppException('Kênh');
     await this.prisma.integrationChannel.delete({ where: { id: channelId } });
     await this.audit.record({
       workspaceId,
@@ -290,6 +320,48 @@ export class IntegrationsService {
       meta: { integrationId: channel.integrationId },
     });
     return { success: true };
+  }
+
+  /**
+   * Dự án chuyển công khai → riêng tư (sau commit): TẮT mọi kênh sự kiện gắn dự án đó. Kênh là nhóm chat có thể có người
+   * ngoài dự án — nếu cứ nhận, khoá + tiêu đề việc vẫn đổ vào nhóm sau khi dự án đã riêng tư (digest cũng tự reset cờ
+   * `allowPrivateToChannel`). Muốn gửi tiếp thì quản trị bật lại kênh một cách có chủ ý. Ghi nhật ký quản trị kèm số kênh đã tắt.
+   */
+  @OnEvent(DOMAIN_EVENTS.PROJECT_VISIBILITY_CHANGED)
+  async onProjectVisibilityChanged(p: {
+    workspaceId?: string;
+    projectId?: string;
+    isPrivate?: boolean;
+    actorId?: string;
+  }): Promise<void> {
+    if (!p?.workspaceId || !p.projectId || p.isPrivate !== true) return;
+    try {
+      const channels = await this.prisma.integrationChannel.findMany({
+        where: { workspaceId: p.workspaceId, projectId: p.projectId, isEnabled: true },
+        select: { id: true },
+      });
+      if (channels.length === 0) return;
+      const { count } = await this.prisma.integrationChannel.updateMany({
+        where: { id: { in: channels.map((c) => c.id) } },
+        data: { isEnabled: false },
+      });
+      this.logger.log(
+        `Dự án ${p.projectId} chuyển riêng tư: đã tắt ${count} kênh tích hợp gắn dự án`,
+      );
+      await this.audit.record({
+        workspaceId: p.workspaceId,
+        actorId: p.actorId,
+        action: AUDIT_ACTIONS.INTEGRATION_CHANNELS_DISABLED,
+        entityType: 'project',
+        entityId: p.projectId,
+        summary: `Tắt ${count} kênh tích hợp gắn dự án vì dự án chuyển sang riêng tư`,
+        meta: { projectId: p.projectId, channelIds: channels.map((c) => c.id), count },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Không tắt được kênh tích hợp của dự án riêng tư ${p.projectId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   // ------------------------------ Test ----------------------------
@@ -348,12 +420,43 @@ export class IntegrationsService {
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_TRANSITIONED)
   async onIssueTransitioned(payload: IssueEventPayload): Promise<void> {
+    // Cùng ISSUE_UPDATED: lô sửa hàng loạt đã có MỘT tin gộp (`onIssuesBulkUpdated`); hệ thống phát hàng loạt thì im.
+    if (payload?.bulk || payload?.batch) return;
     await this.dispatchIssue(payload, 'STATUS_CHANGED');
   }
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
   async onIssueUpdated(payload: IssueEventPayload): Promise<void> {
+    // Hàng loạt: hệ thống (`bulk`: tự gán việc Jira…) không gửi tin nào; người dùng sửa hàng loạt (`batch`) đã có MỘT tin
+    // gộp ở `onIssuesBulkUpdated` — không gửi từng việc (tránh N tin liên tiếp, 429 của Telegram).
+    if (payload?.bulk || payload?.batch) return;
+    // Việc đang chờ duyệt / tạm hoãn / bị từ chối chưa vào backlog: không đẩy lên kênh chung (khi được Nhận thì có tin).
+    if (isUnreviewed(payload?.issue?.triageState)) return;
     await this.dispatchIssue(payload, 'ISSUE_UPDATED');
+  }
+
+  /** Một lần sửa hàng loạt (`PATCH /issues/bulk`) → MỘT tin "N việc được cập nhật bởi X" cho mỗi dự án/kênh. */
+  @OnEvent(DOMAIN_EVENTS.ISSUES_BULK_UPDATED)
+  async onIssuesBulkUpdated(payload: BulkUpdatedPayload): Promise<void> {
+    try {
+      if (!payload?.workspaceId || !payload.count) return;
+      const [actor, project] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: payload.actorId },
+          select: { displayName: true },
+        }),
+        this.prisma.project.findFirst({
+          where: { id: payload.projectId, workspaceId: payload.workspaceId, deletedAt: null },
+          select: { key: true },
+        }),
+      ]);
+      const msg = `✏️ <b>${payload.count}</b> việc${project ? ` của <b>${esc(project.key)}</b>` : ''} được cập nhật bởi <i>${esc(actor?.displayName ?? 'một thành viên')}</i>`;
+      await this.fanout(payload.workspaceId, payload.projectId, 'ISSUE_UPDATED', msg);
+    } catch (err) {
+      this.logger.warn(
+        `Telegram producer (issue.bulk_updated) lỗi: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   @OnEvent(DOMAIN_EVENTS.COMMENT_ADDED)

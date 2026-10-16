@@ -226,13 +226,13 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
           key: 'A-1',
           summary: 'Trễ 2 ngày',
           projectId: 'p1',
-          dueDate: new Date(NOW.getTime() - 1.5 * DAY),
+          dueDate: new Date('2026-10-13T00:00:00Z'), // ngày lịch VN: hôm nay 15/10 → trễ 2 ngày
         },
         {
           key: 'A-2',
           summary: 'Trễ 5 ngày',
           projectId: 'p2',
-          dueDate: new Date(NOW.getTime() - 5 * DAY),
+          dueDate: new Date('2026-10-10T00:00:00Z'),
         },
       ])
       .mockResolvedValueOnce([
@@ -243,7 +243,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
           key: 'A-4',
           summary: 'Sắp hạn',
           projectId: 'p2',
-          dueDate: new Date(NOW.getTime() + 1.2 * DAY),
+          dueDate: new Date('2026-10-17T00:00:00Z'),
         },
       ]);
     const queryRaw = vi
@@ -422,6 +422,18 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
         level: 'warning',
       },
     ]);
+  });
+
+  it('"Quá hạn" theo NGÀY VN: where dùng dueDate < đầu ngày VN (hạn hôm nay chưa quá hạn), không phải < bây giờ', async () => {
+    const { service, prisma } = make();
+    await service.workspaceOverview('w1', 'u0');
+    // NOW = 19:00 VN ngày 15/10 → ranh giới = 2026-10-15T00:00Z
+    const cutoff = new Date('2026-10-15T00:00:00.000Z');
+    const overdueWheres = prisma.issue.groupBy.mock.calls
+      .map((c) => c[0].where as { dueDate?: { lt?: Date } })
+      .filter((w) => w.dueDate?.lt);
+    expect(overdueWheres.length).toBeGreaterThan(0);
+    for (const w of overdueWheres) expect(w.dueDate!.lt!.toISOString()).toBe(cutoff.toISOString());
   });
 
   it('không kéo từng issue + câu raw xu hướng bind tham số, không nội suy chuỗi', async () => {

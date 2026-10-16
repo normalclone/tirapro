@@ -8,6 +8,9 @@
 export const DOMAIN_EVENTS = {
   ISSUE_CREATED: 'issue.created',
   ISSUE_UPDATED: 'issue.updated',
+  // payload { workspaceId, projectId, actorId, count, issueIds } — MỘT sự kiện cho cả lô `PATCH /issues/bulk` (SAU commit): Telegram gửi
+  // một tin gộp "N việc được cập nhật bởi X"; từng việc vẫn có ISSUE_UPDATED riêng kèm `batch: { id, size }`
+  ISSUES_BULK_UPDATED: 'issue.bulk_updated',
   ISSUE_SETS_CHANGED: 'issue.sets_changed', // payload IssueSetsChangedPayload — gắn/bỏ thành phần/phiên bản (KHÔNG đổi version của việc)
   ISSUE_MOVED: 'issue.moved',
   PROJECT_RANKS_REBALANCED: 'project.ranks_rebalanced', // payload { projectId } — rank cả project vừa được đánh số lại
@@ -29,10 +32,14 @@ export const DOMAIN_EVENTS = {
   MEMBER_REMOVED: 'member.removed', // payload { workspaceId, userId } — gateway ngắt socket của user khỏi workspace
   // payload { workspaceId, projectId, userId } — người dùng bị gỡ khỏi dự án (riêng tư): gateway rút socket của họ khỏi room project nếu không còn thấy dự án
   PROJECT_MEMBER_REMOVED: 'project.member_removed',
-  // payload { workspaceId, projectId } — cờ riêng tư của dự án đổi: gateway rà lại socket trong room project, ai không còn thấy thì bị rút
+  // payload { workspaceId, projectId, isPrivate, actorId? } — cờ riêng tư của dự án đổi: gateway rà lại socket trong room project, ai không còn thấy thì bị rút;
+  // sang riêng tư (isPrivate=true) thì kênh Telegram sự kiện gắn dự án bị tắt, digest bị xoá cờ allowPrivateToChannel
   PROJECT_VISIBILITY_CHANGED: 'project.visibility_changed',
   // payload { userId } — phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị): gateway ngắt mọi socket của user
   ACCOUNT_SESSIONS_REVOKED: 'account.sessions_revoked',
+  // payload { workspaceId?, userIds?: string[] } (userIds vắng = cả workspace; có userIds mà không có workspaceId = mọi workspace của họ) — quyền xem của người dùng có thể đã đổi (vai trò
+  // workspace/dự án, bộ quyền vai trò, quản trị hệ thống…, SAU commit): gateway kiểm lại `canSee` cho socket đang ở room project/issue
+  ACCESS_CHANGED: 'access.changed',
   NOTIFICATION_CREATED: 'notification.created',
   MENTION_CREATED: 'mention.created',
   WORKLOG_CREATED: 'worklog.created',

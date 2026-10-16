@@ -16,8 +16,8 @@ interface AiConfig {
 }
 
 /** Thời gian chờ tối đa cho MỖI lần gọi Claude (ms). SDK thử lại tối đa 1 lần → worst case ~60s. */
-export const CLAUDE_TIMEOUT_MS = 30_000;
-export const CLAUDE_MAX_RETRIES = 1;
+const CLAUDE_TIMEOUT_MS = 30_000;
+const CLAUDE_MAX_RETRIES = 1;
 
 /** Ngữ cảnh ghi `AiGenerationLog` + kiểm hạn mức cho mỗi lần gọi. */
 export interface AiCallContext {

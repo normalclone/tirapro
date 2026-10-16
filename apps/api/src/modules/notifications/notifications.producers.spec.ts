@@ -240,6 +240,26 @@ describe('NotificationsService — @mention kèm trích đoạn', () => {
 describe('NotificationsService — @mention trong mô tả công việc', () => {
   const withDesc = { ...issue, description: 'cc @[Ba](user:u3)' };
 
+  it('mọi truy vấn đọc (canSee, cài đặt người nhận, tên người thực hiện) chạy TRƯỚC khi mở transaction', async () => {
+    const { service, prisma, access } = setup(['u3']);
+    let readsInsideTx = 0;
+    const reads = [access.canSee, prisma.user.findUnique];
+    prisma.$transaction.mockImplementation(async (fn: (t: unknown) => unknown) => {
+      const before = reads.map((r) => r.mock.calls.length);
+      const out = await fn(prisma);
+      readsInsideTx = reads.reduce((n, r, i) => n + r.mock.calls.length - before[i]!, 0);
+      return out;
+    });
+    await service.onIssueDescriptionMentions({
+      issue: withDesc,
+      actorId: 'a1',
+      changedFields: ['description'],
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(access.canSee).toHaveBeenCalled();
+    expect(readsInsideTx).toBe(0);
+  });
+
   it('@ mới trong mô tả → ghi sổ + thông báo CÙNG transaction, một MENTIONED where=description', async () => {
     const { service, prisma, created } = setup(['u3']);
     await service.onIssueDescriptionMentions({

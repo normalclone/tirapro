@@ -12,14 +12,14 @@ import { PERMISSIONS } from '@tirapro/types';
 
 const visibilitySchema = z.nativeEnum(FilterVisibility);
 
-export const createSavedFilterSchema = z.object({
+const createSavedFilterSchema = z.object({
   name: z.string().min(1, 'Tên bắt buộc').max(120),
   jql: z.string().min(1, 'JQL bắt buộc').max(10_000),
   visibility: visibilitySchema.optional(),
   sharedProjectId: z.string().min(1).optional().nullable(),
 });
 
-export const updateSavedFilterSchema = z
+const updateSavedFilterSchema = z
   .object({
     name: z.string().min(1).max(120).optional(),
     jql: z.string().min(1).max(10_000).optional(),

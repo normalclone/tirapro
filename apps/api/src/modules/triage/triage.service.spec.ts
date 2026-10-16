@@ -68,18 +68,20 @@ function make(current: Record<string, unknown> = {}) {
     issueWatcher: { createMany: vi.fn(() => Promise.resolve({ count: 1 })) },
     user: { findUnique: vi.fn(() => Promise.resolve({ displayName: 'Phúc' })) },
   };
-  const events = { emit: vi.fn() };
-  const issues = { update: vi.fn((..._a: unknown[]) => Promise.resolve({ version: 5 })) };
+  const issues = {
+    update: vi.fn((..._a: unknown[]) => Promise.resolve({ version: 5 })),
+    isAssignableMember: vi.fn((..._a: unknown[]) => Promise.resolve(true)),
+    emitUpdatedFor: vi.fn((..._a: unknown[]) => Promise.resolve({ id: 'i1' })),
+  };
   const comments = { create: vi.fn((..._a: unknown[]) => Promise.resolve({ id: 'c1' })) };
   const access = { visibleWhere: vi.fn((..._a: unknown[]) => Promise.resolve({})) };
   const service = new TriageService(
     prisma as never,
-    events as never,
     issues as never,
     comments as never,
     access as never,
   );
-  return { service, prisma, update, events, issues, comments, access };
+  return { service, prisma, update, issues, comments, access };
 }
 
 describe('TriageService.accept', () => {
@@ -101,8 +103,6 @@ describe('TriageService.accept', () => {
         priorityId: 'pHigh',
         sprintId: 'sp1',
       }),
-      undefined,
-      false,
     );
     expect(update.mock.calls[0]![0]).toMatchObject({
       data: { triageState: 'ACCEPTED', version: { increment: 1 } },
@@ -113,16 +113,14 @@ describe('TriageService.accept', () => {
     );
   });
 
-  it('truyền ownOnly xuống IssuesService.update; sprintId null = đưa về Việc chờ', async () => {
+  it('sprintId null = đưa về Việc chờ', async () => {
     const { service, issues } = make();
-    await service.accept('w1', 'u1', 'i1', { version: 4, sprintId: null }, true);
+    await service.accept('w1', 'u1', 'i1', { version: 4, sprintId: null });
     expect(issues.update).toHaveBeenCalledWith(
       'w1',
       'u1',
       'i1',
       expect.objectContaining({ sprintId: null }),
-      undefined,
-      true,
     );
   });
 
@@ -209,12 +207,12 @@ describe('TriageService.decline/snooze — chỉ việc còn trong hàng đợi'
   it.each(['ACCEPTED', 'DECLINED', null])(
     'decline việc triageState=%s => lỗi nghiệp vụ, không ghi gì, không bình luận',
     async (state) => {
-      const { service, update, events, comments } = make({ triageState: state });
+      const { service, update, issues, comments } = make({ triageState: state });
       await expect(
         service.decline('w1', 'u1', 'i1', { version: 4, reason: 'Ngoài phạm vi' }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
       expect(update).not.toHaveBeenCalled();
-      expect(events.emit).not.toHaveBeenCalled();
+      expect(issues.emitUpdatedFor).not.toHaveBeenCalled();
       expect(comments.create).not.toHaveBeenCalled();
     },
   );
@@ -222,12 +220,12 @@ describe('TriageService.decline/snooze — chỉ việc còn trong hàng đợi'
   it.each(['ACCEPTED', 'DECLINED', null])(
     'snooze việc triageState=%s => lỗi nghiệp vụ, không ghi gì',
     async (state) => {
-      const { service, update, events } = make({ triageState: state });
+      const { service, update, issues } = make({ triageState: state });
       await expect(service.snooze('w1', 'u1', 'i1', { version: 4, until })).rejects.toBeInstanceOf(
         BusinessRuleException,
       );
       expect(update).not.toHaveBeenCalled();
-      expect(events.emit).not.toHaveBeenCalled();
+      expect(issues.emitUpdatedFor).not.toHaveBeenCalled();
     },
   );
 
@@ -269,7 +267,11 @@ describe('TriageService — dự án riêng tư: hộp triage không lộ việc
     await service.inbox('w1', undefined, undefined, 50, 'u1');
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
     const where = (prisma.issue.findMany.mock.calls[0] as unknown as [{ where: object }])[0].where;
-    expect(where).toMatchObject({ workspaceId: 'w1', deletedAt: null, project: visible });
+    expect(where).toMatchObject({
+      workspaceId: 'w1',
+      deletedAt: null,
+      project: { deletedAt: null, ...visible },
+    });
     expect(where).not.toHaveProperty('projectId');
   });
 
@@ -279,13 +281,89 @@ describe('TriageService — dự án riêng tư: hộp triage không lộ việc
     (prisma.issue as Record<string, unknown>).count = vi.fn(() => Promise.resolve(3));
     await service.count('w1', undefined, 'u1');
     const count = prisma.issue as unknown as { count: { mock: { calls: [[{ where: object }]] } } };
-    expect(count.count.mock.calls[0][0].where).toMatchObject({ project: visible });
+    expect(count.count.mock.calls[0][0].where).toMatchObject({
+      project: { deletedAt: null, ...visible },
+    });
   });
 
-  it('người thấy hết dự án (visible = {}) → không thêm điều kiện project', async () => {
+  it('người thấy hết dự án (visible = {}) → vẫn loại dự án đã xoá mềm (D-M5)', async () => {
     const { service, prisma } = make();
     await service.inbox('w1', undefined, undefined, 50, 'u1');
     const where = (prisma.issue.findMany.mock.calls[0] as unknown as [{ where: object }])[0].where;
-    expect(where).not.toHaveProperty('project');
+    expect(where).toMatchObject({ project: { deletedAt: null } });
+  });
+});
+
+describe('TriageService — phát sự kiện đúng dạng IssueDto (S-I2)', () => {
+  it('Nhận một chạm: nạp lại IssueDto qua emitUpdatedFor với changedFields gồm triageState', async () => {
+    const { service, issues } = make();
+    await service.accept('w1', 'u1', 'i1', { version: 4 });
+    expect(issues.emitUpdatedFor).toHaveBeenCalledTimes(1);
+    expect(issues.emitUpdatedFor).toHaveBeenCalledWith('w1', 'i1', 'u1', ['triageState']);
+  });
+
+  it('Nhận kèm người phụ trách mới => changedFields có assigneeId (ISSUE_ASSIGNED cho người được giao) và typeId đổi', async () => {
+    const { service, issues, update } = make();
+    update.mockResolvedValueOnce(
+      row({ triageState: 'ACCEPTED', assigneeId: 'u5', typeId: 't2', version: 6 }),
+    );
+    await service.accept('w1', 'u1', 'i1', { version: 4, typeId: 't2', assigneeId: 'u5' });
+    const fields = issues.emitUpdatedFor.mock.calls[0]![3] as string[];
+    expect(fields).toEqual(expect.arrayContaining(['triageState', 'assigneeId', 'typeId']));
+    expect(fields.filter((f) => f === 'assigneeId')).toHaveLength(1);
+  });
+
+  it('Nhận việc ĐÃ có người phụ trách mặc định (không đổi) => vẫn báo assigneeId vì thông báo bị hoãn từ lúc tạo', async () => {
+    const { service, issues, update } = make({ assigneeId: 'u7' });
+    update.mockResolvedValueOnce(row({ triageState: 'ACCEPTED', assigneeId: 'u7', version: 6 }));
+    await service.accept('w1', 'u1', 'i1', { version: 4 });
+    expect(issues.emitUpdatedFor.mock.calls[0]![3]).toEqual(['triageState', 'assigneeId']);
+  });
+
+  it('từ chối / tạm hoãn phát changedFields chỉ gồm triageState', async () => {
+    const { service, issues, update } = make();
+    update.mockResolvedValue(row({ triageState: 'DECLINED', version: 6 }));
+    await service.decline('w1', 'u1', 'i1', { version: 4 });
+    update.mockResolvedValue(row({ triageState: 'SNOOZED', version: 6 }));
+    await service.snooze('w1', 'u1', 'i1', { version: 4, until: '2026-10-20T00:00:00.000Z' });
+    expect(issues.emitUpdatedFor.mock.calls.map((c) => c[3])).toEqual([
+      ['triageState'],
+      ['triageState'],
+    ]);
+  });
+
+  it('lỗi nạp lại để phát sự kiện không làm hỏng request (dữ liệu đã ghi)', async () => {
+    const { service, issues } = make();
+    issues.emitUpdatedFor.mockRejectedValueOnce(new Error('db tạm'));
+    await expect(service.accept('w1', 'u1', 'i1', { version: 4 })).resolves.toBeDefined();
+  });
+});
+
+describe('TriageService.accept — kiểm người phụ trách (S-I3)', () => {
+  it('một chạm: người không gán được (khác workspace / đã khoá / không thấy dự án) => 422 và không ghi gì', async () => {
+    const { service, issues, update } = make();
+    issues.isAssignableMember.mockResolvedValueOnce(false);
+    await expect(
+      service.accept('w1', 'u1', 'i1', { version: 4, assigneeId: 'uX' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(issues.isAssignableMember).toHaveBeenCalledWith('w1', 'uX', undefined, 'p1');
+    expect(update).not.toHaveBeenCalled();
+    expect(issues.update).not.toHaveBeenCalled();
+  });
+
+  it('có trường khác: cũng kiểm TRƯỚC khi IssuesService.update ghi bất cứ thứ gì', async () => {
+    const { service, issues } = make();
+    issues.isAssignableMember.mockResolvedValueOnce(false);
+    await expect(
+      service.accept('w1', 'u1', 'i1', { version: 4, typeId: 't2', assigneeId: 'uX' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(issues.update).not.toHaveBeenCalled();
+  });
+
+  it('giữ nguyên người phụ trách hiện tại / bỏ gán (null, rỗng) => không kiểm', async () => {
+    const { service, issues } = make({ assigneeId: 'u7' });
+    await service.accept('w1', 'u1', 'i1', { version: 4, assigneeId: 'u7' });
+    await service.accept('w1', 'u1', 'i1', { version: 4, assigneeId: '' });
+    expect(issues.isAssignableMember).not.toHaveBeenCalled();
   });
 });

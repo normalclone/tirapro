@@ -550,6 +550,10 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
     'INTERNAL',
     'cron quy tắc theo lịch chạy bằng người dùng hệ thống trên mọi dự án (không có người xem); hành động ghi qua IssuesService',
   ],
+  'integrations/integrations.service.ts::IntegrationsService.onIssuesBulkUpdated': [
+    'INTERNAL',
+    'bộ lắng nghe sự kiện (không phải route): chỉ tra khoá dự án để ghi vào tin gộp rồi gửi qua fanout — fanout loại dự án riêng tư khỏi kênh cấp workspace',
+  ],
   'integrations/integrations.service.ts::IntegrationsService.onCommentAdded': [
     'INTERNAL',
     'bộ lắng nghe sự kiện (không phải route): chỉ tra khoá/tiêu đề việc rồi gửi qua fanout — fanout loại dự án riêng tư khỏi kênh cấp workspace',

@@ -8,7 +8,7 @@ import { runTransition } from './transition';
 import type { ActionContext } from './types';
 import { runWebhook } from './webhook';
 
-export type { ActionContext, ActionDeps } from './types';
+export type { ActionContext } from './types';
 export type { StepLog } from './issue-patch';
 
 /**

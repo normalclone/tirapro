@@ -99,31 +99,43 @@ export function plainExcerpt(md: string | null | undefined, max = 80): string {
 const ISSUE_KEY_BODY = '[A-Z][A-Z0-9_]*(?:-[A-Z][A-Z0-9]*)*-\\d+';
 
 /**
- * MỘT regex nhận mã công việc cho chip markdown, `extractIssueKeys`, `issueRefs`, Cmd+K/URL: mã Tirapro `PROJ-TYPE-N`
- * và mã Jira gốc `KEY-N` (khoá Jira có thể chứa `_`, vd `MY_APP-12`). Lookbehind/lookahead cấm cả `_` để
- * `MY_APP-12` không khớp một phần `APP-12`.
+ * Nhận mã công việc cho chip markdown, `extractIssueKeys`, `issueRefs`, Cmd+K/URL: mã Tirapro `PROJ-TYPE-N` và mã Jira gốc
+ * `KEY-N` (khoá Jira có thể chứa `_`, vd `MY_APP-12`). KHÔNG dùng regex lookbehind (khẳng định nhìn lại phía trước): hằng regex tạo ở cấp module nằm trong
+ * chunk đầu của web, mà Safari/iOS < 16.4 báo SyntaxError lúc nạp → trắng trang. Thay vào đó "ranh giới trước" là nhóm bắt
+ * `(^|[^…])` và `matchIssueKeys` tính lại vị trí thật của mã.
+ * - Mặc định: cấm chữ/số/`_`/`-` liền kề cả hai phía (`MY_APP-12` không khớp một phần `APP-12`).
+ * - `embedded` (tên nhánh/commit, dev-links): cho phép `-` liền kề (`feature/DEMO-5-login`, `fix-DEMO-5`) nhưng vẫn cấm chữ/số/`_`.
  */
-export const ISSUE_KEY_RE = new RegExp(`(?<![A-Za-z0-9_-])${ISSUE_KEY_BODY}(?![A-Za-z0-9_-])`, 'g');
+function issueKeyRegex(embedded: boolean): RegExp {
+  const before = embedded ? '[^A-Za-z0-9_]' : '[^A-Za-z0-9_-]';
+  const notAfter = embedded ? '[A-Za-z0-9_]' : '[A-Za-z0-9_-]';
+  return new RegExp(`(^|${before})(${ISSUE_KEY_BODY})(?!${notAfter})`, 'g');
+}
 
-/**
- * Biến thể cho mã NHÚNG trong tên nhánh/commit (dev-links): cho phép `-` liền kề (`feature/DEMO-5-login`, `DEMO-5-fix`,
- * `fix-DEMO-5`) nhưng vẫn cấm chữ/số/`_` liền kề — `MY_APP-12` không khớp một phần `APP-12`.
- */
-export const ISSUE_KEY_EMBEDDED_RE = new RegExp(
-  `(?<![A-Za-z0-9_])${ISSUE_KEY_BODY}(?![A-Za-z0-9_])`,
-  'g',
-);
+export interface IssueKeyMatch {
+  /** Mã công việc (vd `DEMO-BUG-1`). */
+  key: string;
+  /** Vị trí bắt đầu của mã trong văn bản (không tính ký tự ranh giới đứng trước). */
+  index: number;
+}
+
+/** Mọi mã công việc trong `text`, theo thứ tự xuất hiện (cùng một mã có thể lặp). */
+export function matchIssueKeys(text: string, embedded = false): IssueKeyMatch[] {
+  const out: IssueKeyMatch[] = [];
+  for (const m of text.matchAll(issueKeyRegex(embedded))) {
+    out.push({ key: m[2]!, index: m.index + m[1]!.length });
+  }
+  return out;
+}
 
 /** `s` (đã trim) CHÍNH LÀ một mã công việc (không phải văn bản chứa mã). */
 export function isIssueKey(s: string): boolean {
-  const m = new RegExp(ISSUE_KEY_RE.source).exec(s);
-  return m !== null && m[0] === s;
+  return new RegExp(`^${ISSUE_KEY_BODY}$`).test(s);
 }
 export function extractIssueKeys(text: string, max = 50, embedded = false): string[] {
   const keys = new Set<string>();
-  const re = embedded ? ISSUE_KEY_EMBEDDED_RE : ISSUE_KEY_RE;
-  for (const m of text.matchAll(new RegExp(re.source, 'g'))) {
-    keys.add(m[0]);
+  for (const { key } of matchIssueKeys(text, embedded)) {
+    keys.add(key);
     if (keys.size >= max) break;
   }
   return [...keys];

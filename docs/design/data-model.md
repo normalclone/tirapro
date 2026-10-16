@@ -1050,3 +1050,35 @@ File `apps/api/prisma/seed.ts` phải tạo:
 **Hai lưu ý kiến trúc quan trọng nhất cần các subsystem nắm:**
 1. **Anthropic Claude không có embedding API** → semantic search dùng pgvector + embedding provider tách biệt (mặc định MiniLM local, degrade về full-text).
 2. **Issue key cấp phát bằng atomic increment `Project.issueSequence` trong transaction**, key denormalized & immutable; mọi ordering dùng **LexoRank** để drag-drop chỉ update 1 row.
+---
+
+## Bổ sung vòng UX 2 (2026-10-16)
+
+Chỉ liệt kê phần **thêm/đổi** so với nội dung phía trên (đã trôi so với `apps/api/prisma/schema.prisma`, nguồn sự thật là file đó); 28 migration `20261016110000` … `20261016315000` — danh sách và cách triển khai: `docs/RELEASE_NOTES_2026-10-follow-ups.md` (mục "UX vòng 2") và `docs/DEPLOY.md` (Bước 1b).
+
+**Model mới**
+
+| Model | Trường chính | Ghi chú |
+|---|---|---|
+| `AuditLog` | `workspaceId?`, `actorId?` (không FK), `action` (chuỗi, `AUDIT_ACTIONS`), `entityType`, `entityId?`, `summary`, `meta Json` | Nhật ký kiểm toán quản trị; chỉ mục `(workspaceId,createdAt)`, `(workspaceId,action,createdAt)`, `(actorId,createdAt)` |
+| `WikiPageVersion` | `wikiPageId`, `version` (thứ tự bản lịch sử), `title`, `body`, `authorId?`, `note?` | Unique `(wikiPageId,version)`; migration backfill mỗi trang một bản v1 |
+| `WikiPageIssue` | PK `(wikiPageId,issueId)` | Trang wiki nhắc công việc nào (suy ra khi lưu); chỉ mục `issueId`; backfill từ nội dung |
+| `KeyResultCheckIn` | `keyResultId`, `value`, `previousValue?`, `note?` (≤500), `authorId?`, `source` (`CheckInSource`: MANUAL/AUTO), `snapshotDate? @db.Date` | Bất biến; unique `(keyResultId,snapshotDate)` (mỗi KR ≤ 1 bản chụp tự động/ngày UTC) |
+| `ImportPendingAssignee` | `workspaceId`, `projectId`, `issueId` (unique), `email` (chữ thường), `sourceName` | Email người phụ trách Jira chưa có tài khoản; xoá khi đã gán |
+
+**Model bị gỡ:** `InviteToken` (xoá luồng lời mời); `User.inviteTokens` → không còn; `EmailOutbox.template` chỉ còn `password-reset | notification`.
+
+**Trường/enum mới trên model sẵn có**
+
+- `User.sessionsRevokedAt DateTime?` — access token cấp trước mốc này bị từ chối.
+- `Project`: `isPrivate Boolean @default(false)` (+ index `(workspaceId,isPrivate)`); `healthOverride ProjectHealth?`, `healthNote` (≤500), `healthUpdatedAt`, `healthUpdatedById` (FK `User`, SetNull). Enum `ProjectHealth` = GREEN/YELLOW/RED.
+- `Issue`: `acceptanceCriteria Text?`, `environment Json?` (`{env,browser,os,build,url,viewport}`). Index mới trên bảng nối `IssueComponent(componentId)`, `IssueFixVersion(versionId)`.
+- `WikiPage`: `version Int @default(0)` (OCC nội dung), `deletedAt`, `deletedById` (xoá mềm; index `(workspaceId,deletedAt)`).
+- `KeyResult`: `source KeyResultSource @default(MANUAL)` (MANUAL/OPEN_BUGS/SPRINT_COMPLETION/ISSUE_COUNT_JQL), `sourceConfig Json?`, `unitLabel ≤20`.
+- `ReportSubscription` (digest): `weekday Int @default(1)`, `hour Int @default(8)`, `timezone @default("Asia/Ho_Chi_Minh")`, `deliverEmail`, `allowPrivateToChannel`.
+- `Dashboard.teamId` (FK `Team`, cascade; index `(teamId,scope)`); enum `DashboardScope` + `TEAM`; `WidgetType` + `TOP_RISKS`, `SLOW_GOALS`, `OVERLOAD`.
+- `ChannelLinkToken.integrationId` (FK `Integration`, cascade) — mã liên kết nhóm Telegram gắn đúng một kết nối.
+- `Mention`: unique `(commentId,mentionedUserId)` + chỉ mục duy nhất có điều kiện cho @ ở mô tả (`WHERE commentId IS NULL`, chỉ có trong SQL migration `…299000`, Prisma không biểu diễn).
+- `HistoryField` + `DESCRIPTION`, `COMPONENT`, `FIX_VERSION`.
+
+**Dữ liệu seed qua migration (không phải cột):** loại liên kết `Causes`/`Tests` mỗi workspace; quyền vai trò hệ thống (Scrum Master `issue:create`+`issue:triage`, Product Owner `issue:transition`, `wiki:manage` chuyển scope PROJECT cho 6 vai + vai tuỳ biến có `project:admin`/`workspace:admin`); dòng nối `WorkspaceMembershipRole`/`ProjectMembershipRole` cho membership chưa có.

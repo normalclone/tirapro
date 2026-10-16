@@ -953,3 +953,81 @@ export type WsServerEvent =
 - **Action không trả body:** HTTP `204 No Content`.
 - **Async (AI nặng):** HTTP `202 Accepted` + `{ jobId }`, kết quả qua WS `ai.job.completed`.
 - Mọi response kèm header `X-Request-Id` để trace xuyên REST ↔ WS ↔ log.
+
+---
+
+## 21. Bổ sung vòng UX 2 (2026-10-16)
+
+Chỉ liệt kê route **mới** và route **đổi hành vi/quyền** so với nội dung phía trên (đã trôi so với code; nguồn sự thật là controller trong `apps/api/src/modules/**`, tra bằng `grep -rn "@(Get|Post|Patch|Put|Delete)" apps/api/src/modules`). Mọi route gắn dự án đi qua `@ProjectRef` → dự án riêng tư/không xem được trả `404` như không tồn tại. Danh sách thay đổi người dùng thấy và breaking: `docs/RELEASE_NOTES_2026-10-follow-ups.md` (mục 3). Quyền ghi theo tên trong `@tirapro/types` (`PERMISSIONS`).
+
+### 21.1. Route mới
+
+| Method | Path | Permission | Mô tả |
+|---|---|---|---|
+| POST | `/auth/logout-all` | đăng nhập (không dùng API key) | Đăng xuất mọi thiết bị: thu hồi mọi phiên web, ngắt socket |
+| POST | `/members/accounts` | `member:manage` | Tạo tài khoản + thêm vào workspace một lần; trả `tempPassword` một lần khi không truyền `password`; trùng email → `422 EMAIL_ALREADY_REGISTERED` |
+| POST | `/admin/users/{id}/reset-password` | admin hệ thống | Đặt mật khẩu tạm (trả một lần) + thu hồi mọi phiên |
+| POST | `/admin/users/{id}/revoke-sessions` | admin hệ thống | Đăng xuất mọi thiết bị của người dùng |
+| POST | `/admin/users/{id}/workspaces` | admin hệ thống | Thêm tài khoản vào một workspace |
+| GET | `/audit` | `workspace:admin` | Nhật ký kiểm toán của workspace (keyset; lọc `action`/`actor`/`from`/`to`) |
+| POST | `/intake/report` | `issue:create` | Báo lỗi/gửi yêu cầu: gộp vào việc cũ (`mergeIntoIssueId`), tự gộp khi tiêu đề giống hệt, hoặc tạo mới (`forceNew`) |
+| GET | `/intake/duplicates` | `issue:create` + `@ProjectRef(query projectId)` | Gợi ý bug trùng (bỏ dấu/trigram) |
+| POST | `/issues/{id}/retract` | `issue:create` | Người báo thu hồi (xoá mềm) việc của mình trong 10 phút đầu |
+| GET | `/projects/{projectId}/trash` | `issue:delete` | Thùng rác công việc của dự án |
+| POST | `/projects/{projectId}/trash/{issueId}/restore` | `issue:delete` | Khôi phục công việc từ thùng rác |
+| GET | `/issues/{issueId}/activity/{activityId}` | `project:view` | Chi tiết một dòng lịch sử (bản mô tả cũ/mới đầy đủ) |
+| POST | `/issues/{issueId}/comment-attachments` | `comment:create` | Tải ảnh đính kèm cho bình luận/mô tả (dán ảnh) |
+| PATCH | `/projects/{id}/health` | `project:admin` | Ghi đè sức khoẻ dự án (`GREEN\|YELLOW\|RED` + ghi chú; `null` về tự tính) |
+| GET | `/reports/leadership` | `report:view` | Thẻ lãnh đạo: Top rủi ro, OKR chậm, người quá tải |
+| GET | `/reports/sprint-summary` | `report:view` | Tóm tắt sprint (`projectId`, `sprintId`): cam kết/hoàn thành, velocity, việc chuyển tiếp |
+| GET | `/reports/qa` | `report:view` | Báo cáo QA (`projectId`, `from`, `to`): bug mở theo mức, tỷ lệ mở lại, thời gian đóng, theo phiên bản |
+| GET | `/export/issues.csv` | `project:view` | Xuất CSV công việc (`projectId`, `jql` \| `preset=backlog\|bugs`, `sprintId`, `columns`, `delimiter`); tối đa 5.000 dòng (`X-Export-Truncated`) |
+| GET | `/dashboards` | `workspace:view` | Dashboard tuỳ biến nhìn thấy được (riêng tư/workspace/dự án/nhóm) |
+| GET | `/dashboards/{id}` | `workspace:view` | Chi tiết + widget (che cấu hình dự án ẩn) |
+| POST | `/dashboards` | `dashboard:manage` | Tạo dashboard (tối đa 12 widget, 30 dashboard) |
+| PUT | `/dashboards/{id}` | `dashboard:manage` | Thay widget/mức chia sẻ (chỉ chủ; OCC `updatedAt` → `409`) |
+| POST | `/dashboards/{id}/duplicate` | `dashboard:manage` | Nhân bản (che JQL/dự án ẩn) |
+| DELETE | `/dashboards/{id}` | `dashboard:manage` | Xoá (chủ; admin chỉ xoá bản đã chia sẻ) |
+| POST | `/digests/preview` | `digest:manage` | Xem trước digest (khối + định dạng) theo quyền người bấm |
+| GET | `/goals/{id}/progress-history` | `workspace:view` | Đường tiến độ mục tiêu (check-in tay + bản chụp hằng ngày) |
+| POST | `/goals/{id}/key-results/{krId}/check-ins` | `goal:manage` | Check-in KR nhập tay (giá trị + ghi chú); KR tự đo → `422` |
+| GET | `/goals/{id}/key-results/{krId}/check-ins` | `workspace:view` | Lịch sử check-in của KR |
+| GET | `/wiki/admins` | `workspace:view` | Quản trị dự án để xin quyền viết wiki (`projectId`) |
+| GET | `/wiki/by-issue/{issueId}` | `project:view` | Tài liệu liên quan tới một công việc |
+| GET | `/wiki/trash` | `project:admin` | Thùng rác wiki |
+| POST | `/wiki/{id}/undelete` | `project:admin` | Khôi phục trang wiki đã xoá mềm |
+| GET | `/wiki/{id}/versions` | `workspace:view` | Lịch sử phiên bản trang (không kèm nội dung; lọc theo quyền xem dự án) |
+| GET | `/wiki/{id}/versions/{version}` | `workspace:view` | Nội dung một phiên bản |
+| POST | `/wiki/{id}/versions/{version}/restore` | `wiki:manage` | Khôi phục bản cũ (tạo bản mới; `expectedVersion` bắt buộc → `409` nếu vừa bị sửa) |
+| GET | `/guides/onboarding` | `workspace:admin` | Checklist "Bắt đầu" tính từ dữ liệu thật |
+| POST | `/guides/onboarding/dismiss` | `workspace:admin` | Ẩn checklist |
+| GET | `/integrations/telegram/platform` | `integration:manage` | Hệ thống có bot chung (`TELEGRAM_BOT_TOKEN`) hay không |
+| POST | `/integrations/{id}/link-codes` | `integration:manage` | Tạo mã liên kết nhóm Telegram (6 ký tự, 15 phút, gắn đúng kết nối) |
+| POST | `/integrations/{id}/link-codes/{code}/poll` | `integration:manage` | Hỏi bot xem nhóm đã gửi `/link@bot MÃ` chưa (`waiting\|linked\|expired`) |
+
+### 21.2. Route đổi hành vi / quyền / tham số
+
+| Method | Path | Permission | Thay đổi |
+|---|---|---|---|
+| POST | `/auth/invites`, `/auth/invites/accept` | — | **Đã gỡ** (không còn lời mời; thêm người trực tiếp bằng `POST /members`, `POST /members/accounts`) |
+| POST | `/users/me/change-password` | đăng nhập (không dùng API key) | Thu hồi mọi phiên, trả phiên mới + cookie refresh cho thiết bị đang đổi |
+| GET | `/users` | `workspace:view` | Picker người trong workspace (`?search`). *Đợt sửa cuối đang mở rộng theo `projectId`/`limit`/`includeInactive` — chưa có trong cây này; cập nhật khi merge* |
+| GET | `/users/all` | `member:manage` | Pool người dùng chung, trả `PoolUserDto` (ít trường, bỏ tài khoản vô hiệu hoá) |
+| GET | `/admin/users` | admin hệ thống | Thêm `?search&status`; sắp theo hoạt động gần nhất |
+| POST | `/issues/{id}/transition` | `issue:transition` | Nhận `comment` (cần `comment:create`); sang Done tự gán Resolution mặc định |
+| PATCH | `/issues/bulk` | `issue:edit` | `patch` nhận `storyPoints`, `epicId`, `labels{add,remove}` |
+| GET | `/issues`, `/issues/{key}` | `project:view` | Lọc dự án riêng tư (404); `GET /issues` ẩn việc triage `PENDING\|SNOOZED\|DECLINED` |
+| GET | `/triage`, `/triage/count` | `project:view` | Lọc theo quyền xem dự án |
+| POST | `/triage/{issueId}/accept` | `issue:edit` | Nhận kèm `typeId`/`priorityId`/`sprintId`/`assigneeId` |
+| POST | `/triage/{issueId}/decline` | `issue:edit` | `reason` bắt buộc (≤ 2000), báo lại người gửi |
+| POST | `/sprints/{id}/start` | `sprint:manage` | Body tuỳ chọn `{startDate,endDate,goal}` (kết thúc ≥ bắt đầu) |
+| GET | `/reports/burndown` | `report:view` | Sprint đang chạy: ngày sau hôm nay `remaining: null`, thêm `today` |
+| GET | `/notifications` | đăng nhập | `?filter=all\|unread\|mentioned\|assigned` |
+| POST | `/search/validate` | `workspace:view` | Kiểm cú pháp + giá trị JQL, trả `suggestions` ("ý bạn là") |
+| PUT | `/wiki/{id}` | `wiki:manage` | `expectedVersion` (OCC → `409 VERSION_CONFLICT`); `wiki:manage` là quyền cấp dự án |
+| DELETE | `/wiki/{id}` | `project:admin` | Xoá mềm (khôi phục qua `/wiki/{id}/undelete`) |
+| GET | `/admin/system/audit` | admin hệ thống | Thêm `?kind=admin\|activity` (nhật ký quản trị / hoạt động công việc) |
+| GET | `/sprints`, `/boards` | `project:view` | Thiếu `projectId` → `422` (trước trả mọi dự án) |
+
+Mã lỗi mới: `422 EMAIL_ALREADY_REGISTERED`. WebSocket: `issue:sets_changed` (gắn/bỏ thành phần/phiên bản, không đổi `version`); payload thông báo `{key,summary,excerpt,where,actors,count}`.
+

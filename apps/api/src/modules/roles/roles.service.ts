@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   AUDIT_ACTIONS,
+  DOMAIN_EVENTS,
   PERMISSION_CATALOG,
   SYSTEM_ROLE_META,
   type RoleScope,
@@ -55,6 +57,8 @@ export class RolesService {
     private readonly prisma: PrismaService,
     private readonly rbac: RbacService,
     private readonly audit: AuditService,
+    // Tuỳ chọn để chỗ dựng service bằng 3 đối số (spec cũ) vẫn chạy; Nest DI tiêm bản thật.
+    private readonly events?: EventEmitter2,
   ) {}
 
   async list(workspaceId: string, scope?: RoleScope) {
@@ -98,17 +102,24 @@ export class RolesService {
     if (input.name !== undefined) data.name = input.name.trim();
     if (input.description !== undefined) data.description = input.description;
     if (input.color !== undefined) data.color = input.color;
+    let permIds: string[] | null = null;
     if (input.permissionKeys) {
-      const permIds = await this.permIds(input.permissionKeys);
-      await this.prisma.rolePermission.deleteMany({ where: { roleId: id } });
+      permIds = await this.permIds(input.permissionKeys);
       data.permissions = { create: permIds.map((permissionId) => ({ permissionId })) };
     }
-    const role = await this.prisma.role.update({
-      where: { id },
-      data,
-      select: roleSelect(workspaceId),
-    });
+    // Xoá bộ quyền cũ + ghi vai trò (kèm bộ quyền mới) trong MỘT transaction: đổi tên trùng/lỗi giữa chừng không làm vai
+    // trò mất sạch quyền.
+    const role = permIds
+      ? (
+          await this.prisma.$transaction([
+            this.prisma.rolePermission.deleteMany({ where: { roleId: id } }),
+            this.prisma.role.update({ where: { id }, data, select: roleSelect(workspaceId) }),
+          ])
+        )[1]
+      : await this.prisma.role.update({ where: { id }, data, select: roleSelect(workspaceId) });
     await this.rbac.invalidateWorkspace(workspaceId); // quyền role đổi → xoá cache toàn workspace
+    // Bộ quyền đổi → ảnh hưởng mọi người giữ vai trò này: gateway rà lại socket cả workspace (rút người mất quyền xem).
+    if (input.permissionKeys) this.events?.emit(DOMAIN_EVENTS.ACCESS_CHANGED, { workspaceId });
     await this.audit.record({
       workspaceId,
       actorId,

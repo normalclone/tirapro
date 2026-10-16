@@ -707,7 +707,12 @@ function make(opts: {
       ),
     },
     keyResultCheckIn: {
-      findMany: vi.fn((_a?: unknown) => Promise.resolve(opts.rows)),
+      // `opts.rows` theo thứ tự cũ → mới; mô phỏng DB: orderBy desc + take thì trả N dòng MỚI nhất (mới → cũ).
+      findMany: vi.fn((a?: { orderBy?: Array<{ createdAt?: string }>; take?: number }) => {
+        const desc = a?.orderBy?.[0]?.createdAt === 'desc';
+        const ordered = desc ? [...opts.rows].reverse() : opts.rows;
+        return Promise.resolve(a?.take ? ordered.slice(0, a.take) : ordered);
+      }),
     },
   };
   const access = {
@@ -783,6 +788,20 @@ describe('GoalsService.progressHistory (L29)', () => {
   });
 });
 
+describe('GoalsService.progressHistory — quá trần giữ dòng mới nhất (D-M8)', () => {
+  it('KR có nhiều check-in hơn trần 365: phần CUỐI của đường vẫn còn (trước đây bị cắt mất)', async () => {
+    const rows = Array.from({ length: 400 }, (_, i) =>
+      // 400 lần check-in tay trong 2 ngày gần nhất, giá trị tăng dần theo thời gian
+      row('k1', i < 399 ? '2026-10-15' : '2026-10-16', i),
+    );
+    const { service } = make({ krs: [kr('k1', { startValue: 0, targetValue: 399 })], rows });
+    const h = await service.progressHistory('w1', 'o1', 'u1', 2, TODAY);
+    const pts = h.keyResults[0]!.points;
+    expect(pts.at(-1)).toMatchObject({ date: '2026-10-16', value: 399 }); // dòng mới nhất còn
+    expect(pts.find((p) => p.date === '2026-10-15')!.value).toBe(398); // muộn nhất trong ngày thắng
+  });
+});
+
 describe('GoalsService.progressHistory — phạm vi xem, kỳ vọng, giới hạn (L29)', () => {
   it('KR có projectId mà người xem không thấy → points [] + scopeNote; không truy vấn lịch sử của nó', async () => {
     const { service, prisma } = make({
@@ -835,7 +854,8 @@ describe('GoalsService.progressHistory — phạm vi xem, kỳ vọng, giới h�
       take: number;
     };
     expect(arg.take).toBe(365 * 2);
-    expect(arg.orderBy).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
+    // N dòng MỚI nhất (desc + take) rồi đảo lại — quá trần thì mất phần đầu, không mất phần cuối đường tiến độ
+    expect(arg.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
   });
 
   it('mục tiêu người xem không thấy → 404 (cùng điều kiện phạm vi)', async () => {

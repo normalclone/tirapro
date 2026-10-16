@@ -77,7 +77,8 @@ export class DigestsController {
 
   /** Xem trước nội dung (chưa lưu) theo quyền xem của người bấm. Khai báo TRƯỚC `:id/run` cho rõ ràng. */
   @Post('preview')
-  @Permissions(PERMISSIONS.DIGEST_MANAGE)
+  // Cùng quyền với tạo/sửa/chạy digest (`integration:manage`, phạm vi workspace) — xem trước là bước của chính luồng đó.
+  @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async preview(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,

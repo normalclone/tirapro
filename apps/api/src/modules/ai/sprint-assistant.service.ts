@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { overdueCutoff } from '@tirapro/shared';
 import type {
   AiFallbackReason,
   AiSprintPick,
@@ -224,7 +225,7 @@ export class SprintAssistantService {
     const parts: string[] = [];
     if (c.matched.length) parts.push(`Khớp mục tiêu: ${c.matched.map((w) => `“${w}”`).join(' ')}`);
     if (c.dueSoon && c.dueDate) {
-      const late = c.dueDate.getTime() < Date.now();
+      const late = c.dueDate.getTime() < overdueCutoff().getTime(); // ngày VN: hạn hôm nay chưa quá hạn
       parts.push(`${late ? 'Quá hạn' : 'Đến hạn'} ${fmtDayMonth(c.dueDate)}`);
     }
     if (c.priority && c.priority.rank >= HIGH_PRIORITY_RANK) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isJiraKey, isTiraproKey, normalizeJiraKey } from './issue-key';
+import { isIssueKey } from './markdown-text';
+import { isJiraKey, isTiraproKey, issueTypePrefix, normalizeJiraKey } from './issue-key';
 
 describe('normalizeJiraKey (L27)', () => {
   it('trim + HOA', () => {
@@ -45,5 +46,35 @@ describe('isJiraKey / isTiraproKey (L27) — hai dải mã rời nhau', () => {
     // loại tên "1" cho ra PROJ-1-9: vẫn là mã Tirapro (hai gạch), không phải mã Jira
     expect(isTiraproKey('PROJ-1-9')).toBe(true);
     expect(isJiraKey('PROJ-1-9')).toBe(false);
+  });
+});
+
+describe('issueTypePrefix — tiền tố loại luôn bắt đầu bằng chữ (Q-M5a)', () => {
+  it('loại hệ thống giữ nguyên tiền tố', () => {
+    expect(issueTypePrefix('BUG', 'Lỗi')).toBe('BUG');
+    expect(issueTypePrefix('SUBTASK', 'Sub-task')).toBe('SUB');
+  });
+
+  it.each([
+    ['3D Model', 'DMOD'],
+    ['2024 Roadmap', 'ROAD'],
+    ['  7up', 'UP'],
+    ['Design', 'DESI'],
+    ['QA-Test', 'QATE'],
+    ['Lỗi', 'LI'],
+  ])('tên "%s" → %s', (name, expected) => {
+    expect(issueTypePrefix(null, name)).toBe(expected);
+  });
+
+  it.each(['123', '', '___', 'ƒƒ', '9'])('tên "%s" không còn chữ → ISSUE (dự phòng)', (name) => {
+    expect(issueTypePrefix(null, name)).toBe('ISSUE');
+  });
+
+  it('mã sinh ra luôn là mã công việc hợp lệ (isIssueKey) và là mã Tirapro', () => {
+    for (const name of ['3D Model', '2024 Roadmap', '123', 'Design', 'Lỗi']) {
+      const key = `PROJ-${issueTypePrefix(null, name)}-1`;
+      expect(isIssueKey(key), key).toBe(true);
+      expect(isTiraproKey(key), key).toBe(true);
+    }
   });
 });

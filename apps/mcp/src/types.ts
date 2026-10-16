@@ -9,7 +9,7 @@ export interface UserLite {
   email: string;
   displayName: string;
 }
-export interface NamedRef {
+interface NamedRef {
   id: string;
   name: string;
   key?: string;

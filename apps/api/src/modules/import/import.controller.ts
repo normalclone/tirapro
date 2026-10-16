@@ -22,7 +22,7 @@ import { ImportService } from './import.service';
 import { JIRA_MAX_UPLOAD_BYTES, JiraImportService } from './jira/jira-import.service';
 
 /** Body cho import CSV (validate qua ZodValidationPipe). */
-export const importCsvSchema = z.object({
+const importCsvSchema = z.object({
   projectId: z.string().min(1),
   csv: z.string().min(1),
 });
@@ -33,7 +33,7 @@ export type ImportCsvBody = z.infer<typeof importCsvSchema>;
  * Schema permissive — chỉ ràng buộc `data` là object có mảng `issues`,
  * giữ nguyên các field khác để round-trip với mọi schemaVersion.
  */
-export const importJsonSchema = z.object({
+const importJsonSchema = z.object({
   projectId: z.string().min(1),
   data: z.object({ issues: z.array(z.any()) }).passthrough(),
 });

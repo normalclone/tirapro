@@ -60,7 +60,7 @@ const TIME_OFF_SELECT = {
   user: { select: USER_SELECT },
 } satisfies Prisma.TimeOffSelect;
 
-export interface WorkloadWeekCell {
+interface WorkloadWeekCell {
   weekStart: string;
   capacityHours: number;
   assignedHours: number;
@@ -75,7 +75,7 @@ export interface WorkloadWeekCell {
   overloaded: boolean;
 }
 
-export interface WorkloadRow {
+interface WorkloadRow {
   user: { id: string; email: string; displayName: string; avatarUrl: string | null };
   weeks: WorkloadWeekCell[];
   totals: {

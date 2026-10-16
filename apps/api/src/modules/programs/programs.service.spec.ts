@@ -25,6 +25,34 @@ describe('ProgramsService.rollup — bỏ issue của dự án xoá mềm', () =
   });
 });
 
+describe('ProgramsService.rollup — quá hạn theo ngày VN', () => {
+  it('groupBy quá hạn dùng dueDate < đầu ngày VN (hạn hôm nay chưa quá hạn)', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-16T02:00:00Z')); // 09:00 VN
+    try {
+      const groupBy = vi.fn(() => Promise.resolve([]));
+      const prisma = {
+        program: { findMany: vi.fn(() => Promise.resolve([])) },
+        project: { findMany: vi.fn(() => Promise.resolve([])) },
+        status: { findMany: vi.fn(() => Promise.resolve([])) },
+        issue: { groupBy },
+      };
+      await new ProgramsService(
+        prisma as never,
+        { forProjects: vi.fn(() => Promise.resolve(new Map())) } as never,
+        ACCESS_ALL as never,
+      ).rollup('w1', 'u0');
+      const wheres = (groupBy.mock.calls as unknown as [{ where: { dueDate?: { lt: Date } } }][])
+        .map((c) => c[0].where)
+        .filter((w) => w.dueDate);
+      expect(wheres).toHaveLength(1);
+      expect(wheres[0]!.dueDate!.lt.toISOString()).toBe('2026-10-16T00:00:00.000Z');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('ProgramsService.rollup — sức khoẻ dự án', () => {
   const HEALTH = {
     level: 'RED',

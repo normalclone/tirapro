@@ -44,3 +44,13 @@ export function vnTodayUtc(now: Date = new Date()): Date {
   const p = vnParts(now);
   return new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
 }
+
+/**
+ * Ranh giới "quá hạn" theo NGÀY LỊCH Việt Nam: việc quá hạn khi `dueDate < overdueCutoff()`; việc có hạn HÔM NAY (giờ VN)
+ * CHƯA quá hạn. `dueDate` lưu `YYYY-MM-DDT00:00:00Z` (ngày lịch) nên so với "bây giờ" (`lt: now`) sẽ tính quá hạn từ 07:00 VN
+ * của chính ngày hạn — MỘT định nghĩa này dùng cho Tổng quan, Sức khoẻ dự án, Danh mục, digest và thẻ OKR để các màn khớp nhau.
+ * Cùng giá trị với `vnTodayUtc` (đầu ngày VN dưới dạng nửa đêm UTC).
+ */
+export function overdueCutoff(now: Date = new Date()): Date {
+  return vnTodayUtc(now);
+}

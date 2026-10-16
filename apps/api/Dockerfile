@@ -40,14 +40,15 @@ FROM node:22-alpine AS runtime
 RUN apk add --no-cache openssl
 ENV NODE_ENV=production
 WORKDIR /app
-# Chỉ lấy dist + node_modules + prisma (migrations/schema/sql) + 2 script vận hành — không có mã nguồn, devDependencies hay web.
+# Chỉ lấy dist + node_modules + prisma (migrations/schema/sql) + 3 script vận hành — không có mã nguồn, devDependencies hay web.
 COPY --from=build --chown=node:node /out/package.json ./package.json
 COPY --from=build --chown=node:node /out/node_modules ./node_modules
 COPY --from=build --chown=node:node /out/dist ./dist
 COPY --from=build --chown=node:node /out/prisma ./prisma
 # Script vận hành một lần (không phải một phần server): `docker run --rm --env-file … <image> node scripts/seal-webhook-secrets.mjs --dry-run`.
 # Chỉ cần node:crypto + @prisma/client (đã có trong node_modules production). Xem docs/DEPLOY.md mục "Checklist triển khai".
-COPY --from=build --chown=node:node /repo/apps/api/scripts/rekey-integrations.mjs /repo/apps/api/scripts/seal-webhook-secrets.mjs ./scripts/
+# `check-system-roles.mjs` kiểm bộ quyền vai trò hệ thống (docker run … node scripts/check-system-roles.mjs) — cùng cách chạy với hai script trên.
+COPY --from=build --chown=node:node /repo/apps/api/scripts/rekey-integrations.mjs /repo/apps/api/scripts/seal-webhook-secrets.mjs /repo/apps/api/scripts/check-system-roles.mjs ./scripts/
 # Thư mục upload (STORAGE_DRIVER=local) — mount volume vào đây nếu cần giữ file.
 RUN mkdir -p /app/uploads && chown node:node /app/uploads
 USER node

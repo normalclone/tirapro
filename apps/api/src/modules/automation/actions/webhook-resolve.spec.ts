@@ -1,8 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const lookup = vi.hoisted(() => vi.fn<(...a: unknown[]) => Promise<unknown>>());
 vi.mock('node:dns/promises', () => ({ lookup: (...a: unknown[]) => lookup(...a) }));
 import { resolveSafeTarget, runWebhook } from './webhook';
+
+// Kết quả KHÔNG được phụ thuộc môi trường chạy: `.env` ở máy dev/CI có thể đặt AUTOMATION_WEBHOOK_ALLOW_PRIVATE=true (cho phép
+// địa chỉ nội bộ) làm các ca "chặn SSRF" đỏ. Luôn bắt đầu từ trạng thái chặn; ca cần cho phép tự stub 'true'. Hoàn nguyên sau mỗi ca.
+beforeEach(() => vi.stubEnv('AUTOMATION_WEBHOOK_ALLOW_PRIVATE', 'false'));
+afterEach(() => vi.unstubAllEnvs());
 
 beforeEach(() => {
   // Dùng khối lệnh: nếu trả mock về, vitest coi nó là hàm dọn dẹp và gọi lại (lookup treo => hook treo).

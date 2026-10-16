@@ -10,7 +10,7 @@ const boolEnv = (def: boolean) =>
     .transform((v) => (typeof v === 'boolean' ? v : v === 'true' || v === '1'))
     .default(def);
 
-export const envSchema = z.object({
+const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
   DATABASE_URL: z.string().min(1),
@@ -100,7 +100,7 @@ export const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 /** Lỗi cấu hình chỉ áp dụng ở production (fail-fast khi khởi động). Trả danh sách thông báo. */
-export function productionConfigProblems(
+function productionConfigProblems(
   env: Pick<Env, 'NODE_ENV' | 'INTEGRATION_ENCRYPTION_KEY'>,
 ): string[] {
   if (env.NODE_ENV !== 'production') return [];

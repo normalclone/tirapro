@@ -515,6 +515,8 @@ describe('ProjectsService.update — đổi riêng tư', () => {
     expect(changed.events.emit).toHaveBeenCalledWith('project.visibility_changed', {
       workspaceId: 'w1',
       projectId: 'p1',
+      isPrivate: true, // hướng đổi: sang riêng tư mới tắt kênh Telegram gắn dự án
+      actorId: 'actor1',
     });
     const same = setup({ cur: { isPrivate: true } });
     await same.svc.update('w1', 'p1', 'actor1', { isPrivate: true });

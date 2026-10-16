@@ -70,7 +70,7 @@ const MAX_LISTED_VALUES = 8;
 /** Thông điệp khi JQL của KR tự đo phụ thuộc người xem (không có nghĩa với lịch sử chung). */
 export const VIEWER_JQL_MESSAGE = 'JQL của KR tự đo không được dùng currentUser/me';
 
-export interface JqlValueSuggestion {
+interface JqlValueSuggestion {
   field: string;
   value: string;
   didYouMean: string | null;
@@ -88,7 +88,7 @@ interface InvalidValue extends JqlValueSuggestion {
 }
 
 /** Một lựa chọn cho bộ dựng truy vấn (value đúng dạng JQL khớp, label hiển thị). */
-export interface FieldOption {
+interface FieldOption {
   value: string;
   label: string;
   color?: string | null;
@@ -173,7 +173,9 @@ export class SearchService {
         select: { name: true, color: true },
       }),
       this.prisma.status.findMany({
-        where: { workflow: { workspaceId } },
+        // Quy trình riêng của dự án riêng tư (mỗi dự án có bản sao quy trình) có thể mang tên trạng thái nhạy cảm: chỉ gom từ
+        // quy trình dùng chung (projectId null) và quy trình của dự án người hỏi xem được.
+        where: { workflow: this.workflowScope(workspaceId, visible) },
         orderBy: { order: 'asc' },
         select: { name: true, color: true },
       }),
@@ -568,6 +570,17 @@ export class SearchService {
     return new Set(rows.map((r) => r.name.toLowerCase()));
   }
 
+  /** Quy trình mà người xem được thấy tên trạng thái: dùng chung (không gắn dự án) hoặc của dự án xem được. */
+  private workflowScope(
+    workspaceId: string,
+    visible: Prisma.ProjectWhereInput,
+  ): Prisma.WorkflowWhereInput {
+    return {
+      workspaceId,
+      OR: [{ projectId: null }, { project: { deletedAt: null, ...visible } }],
+    };
+  }
+
   /** Tên các giá trị có thật của một trường JQL trong workspace (cùng nguồn với `fields()` nên sprint bị cắt 100 — chỉ dùng để gợi ý/liệt kê, KHÔNG để kiểm tồn tại; dự án: khoá dự án còn sống). */
   private async catalogNames(
     workspaceId: string,
@@ -588,7 +601,7 @@ export class SearchService {
       case 'status':
         return names(
           await this.prisma.status.findMany({
-            where: { workflow: { workspaceId } },
+            where: { workflow: this.workflowScope(workspaceId, visible) },
             orderBy: { order: 'asc' },
             select: { name: true },
           }),
