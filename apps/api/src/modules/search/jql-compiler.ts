@@ -225,9 +225,9 @@ function compileComparison(
       const col = cfg.idColumn!;
       if (op === 'IS') return { [col]: null };
       if (op === 'IS NOT') return { NOT: { [col]: null } };
-      if (op === 'IN') return { [col]: { in: listStrings(value, ctx) } };
-      if (op === 'NOT IN') return { [col]: { notIn: listStrings(value, ctx) } };
-      const v = scalarString(value, ctx);
+      if (op === 'IN') return { [col]: { in: listStrings(value, ctx, userScalar) } };
+      if (op === 'NOT IN') return { [col]: { notIn: listStrings(value, ctx, userScalar) } };
+      const v = userScalar(value, ctx);
       if (op === '!=') return { [col]: { not: v } };
       return { [col]: v };
     }
@@ -287,6 +287,13 @@ function scalarString(v: JqlValue, ctx: JqlCompileContext): string {
   return '';
 }
 
+/** Alias `me` (không phân biệt hoa thường) — chỉ dùng cho trường người (assignee/reporter), ≡ `currentUser()`. */
+const isMe = (v: JqlValue): boolean => v.kind === 'string' && v.value.trim().toLowerCase() === 'me';
+
+function userScalar(v: JqlValue, ctx: JqlCompileContext): string {
+  return isMe(v) ? ctx.currentUserId : scalarString(v, ctx);
+}
+
 /** Giải giá trị ngày: tương đối (-7d), mốc (startOfWeek()), hoặc ngày tuyệt đối. */
 function resolveDateValue(v: JqlValue, ctx: JqlCompileContext): Date {
   if (v.kind === 'relativeDate') return applyOffset(new Date(), v.amount, v.unit);
@@ -344,9 +351,13 @@ function scalarNumber(v: JqlValue): number {
   return NaN;
 }
 
-function listStrings(v: JqlValue, ctx: JqlCompileContext): string[] {
-  if (v.kind === 'list') return v.value.map((x) => scalarString(x, ctx));
-  return [scalarString(v, ctx)];
+function listStrings(
+  v: JqlValue,
+  ctx: JqlCompileContext,
+  map: (v: JqlValue, ctx: JqlCompileContext) => string = scalarString,
+): string[] {
+  if (v.kind === 'list') return v.value.map((x) => map(x, ctx));
+  return [map(v, ctx)];
 }
 
 function listNumbers(v: JqlValue): number[] {

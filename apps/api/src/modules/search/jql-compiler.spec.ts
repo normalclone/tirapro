@@ -205,3 +205,26 @@ describe('severity', () => {
     ]);
   });
 });
+
+describe('alias me', () => {
+  it('assignee = me ≡ currentUser()', () => {
+    const a = compileJql(ast('assignee = me'), { currentUserId: 'U1' }).where;
+    expect(a).toEqual(compileJql(ast('assignee = currentUser()'), { currentUserId: 'U1' }).where);
+    expect(a).toEqual({ assigneeId: 'U1' });
+  });
+  it('IN (me, "ME", U2) và !=', () => {
+    expect(compileJql(ast('reporter IN (me, "ME")'), { currentUserId: 'U1' }).where).toEqual({
+      reporterId: { in: ['U1', 'U1'] },
+    });
+    expect(compileJql(ast('assignee != me'), { currentUserId: 'U1' }).where).toEqual({
+      assigneeId: { not: 'U1' },
+    });
+    expect(compileJql(ast('assignee IN (me, U2)'), { currentUserId: 'U1' }).where).toEqual({
+      assigneeId: { in: ['U1', 'U2'] },
+    });
+  });
+  it('labels = me KHÔNG bị đổi', () => {
+    const w = compileJql(ast('labels = me'), { currentUserId: 'U1' }).where;
+    expect(JSON.stringify(w)).not.toContain('U1');
+  });
+});

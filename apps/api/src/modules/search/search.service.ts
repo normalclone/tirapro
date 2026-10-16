@@ -1,6 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { parseJql, JqlParseError, type IssueDto, type JqlNode } from '@tirapro/shared';
+import {
+  parseJql,
+  closestMatch,
+  foldForMatch,
+  JqlParseError,
+  type IssueDto,
+  type JqlFieldName,
+  type JqlNode,
+  type JqlValue,
+} from '@tirapro/shared';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import type { PageResult } from '../../common/dto/page-result';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -24,6 +33,40 @@ export interface SearchOptions {
   limit: number;
   /** Không có ORDER BY tường minh thì xếp theo `rank` (thứ tự thả trên board/backlog) thay vì độ liên quan/updatedAt. */
   orderByRank?: boolean;
+  /**
+   * Báo lỗi 422 khi giá trị của type/status/priority/… không có trong workspace (kèm "ý bạn là …") thay vì trả rỗng im lặng.
+   * Chỉ bật cho truy vấn gõ tay (`GET /search`); board và bộ lọc đã lưu giữ hành vi cũ để dữ liệu đổi tên không làm sập chúng.
+   */
+  checkValues?: boolean;
+}
+
+/** Trường JQL được kiểm giá trị → tên tiếng Việt dùng trong câu báo lỗi. */
+const CHECKED_FIELD_LABEL: Partial<Record<JqlFieldName, string>> = {
+  type: 'loại',
+  status: 'trạng thái',
+  priority: 'mức ưu tiên',
+  severity: 'mức nghiêm trọng',
+  resolution: 'kết luận xử lý',
+  sprint: 'sprint',
+  project: 'dự án',
+};
+const MAX_LISTED_VALUES = 8;
+
+export interface JqlValueSuggestion {
+  field: string;
+  value: string;
+  didYouMean: string | null;
+}
+
+export interface JqlValidation {
+  valid: boolean;
+  error?: string;
+  position?: number;
+  suggestions?: JqlValueSuggestion[];
+}
+
+interface InvalidValue extends JqlValueSuggestion {
+  message: string;
 }
 
 /** Một lựa chọn cho bộ dựng truy vấn (value đúng dạng JQL khớp, label hiển thị). */
@@ -144,6 +187,10 @@ export class SearchService {
 
     if (opts.jql && opts.jql.trim()) {
       const ast = this.parse(opts.jql);
+      if (opts.checkValues) {
+        const [first] = await this.findInvalidValues(workspaceId, ast.where);
+        if (first) throw new BusinessRuleException(first.message);
+      }
       const fulltext = new Map<string, readonly string[]>();
       const terms = collectFulltextTerms(ast.where);
       const scopeIds = terms.length
@@ -230,15 +277,147 @@ export class SearchService {
     return this.issues.query(workspaceId, where, [], opts.cursor, opts.limit);
   }
 
-  /** Kiểm tra cú pháp JQL (cho FE highlight lỗi inline). */
-  validate(jql: string): { valid: boolean; error?: string; position?: number } {
+  /**
+   * Kiểm tra JQL cho FE báo lỗi inline: cú pháp (kèm vị trí), rồi giá trị không có trong workspace
+   * (kèm "ý bạn là …"). Lỗi giá trị có `valid:false` + `error` (câu đầu tiên) + `suggestions` (mọi giá trị sai).
+   */
+  async validate(workspaceId: string, jql: string): Promise<JqlValidation> {
+    let ast;
     try {
-      parseJql(jql);
-      return { valid: true };
+      ast = parseJql(jql);
     } catch (e) {
       if (e instanceof JqlParseError)
         return { valid: false, error: e.message, position: e.position };
       throw e;
+    }
+    const bad = await this.findInvalidValues(workspaceId, ast.where);
+    if (!bad.length) return { valid: true };
+    return {
+      valid: false,
+      error: bad[0]!.message,
+      suggestions: bad.map(({ field, value, didYouMean }) => ({ field, value, didYouMean })),
+    };
+  }
+
+  /**
+   * Giá trị chuỗi của `type/status/priority/severity/resolution/sprint/project` (toán tử `=`, `!=`, `IN`, `NOT IN`)
+   * không khớp (không phân biệt hoa thường/dấu) giá trị nào có thật trong workspace. Chỉ tra danh mục của các trường
+   * có mặt trong truy vấn. Không kiểm nhãn (tự do), summary/text, ngày, số, người.
+   */
+  private async findInvalidValues(
+    workspaceId: string,
+    where: JqlNode | null,
+  ): Promise<InvalidValue[]> {
+    const wanted: { field: JqlFieldName; value: string }[] = [];
+    const walk = (n: JqlNode): void => {
+      if (n.type === 'logical') {
+        walk(n.left);
+        walk(n.right);
+      } else if (n.type === 'not') {
+        walk(n.node);
+      } else if (
+        CHECKED_FIELD_LABEL[n.field] &&
+        (n.operator === '=' ||
+          n.operator === '!=' ||
+          n.operator === 'IN' ||
+          n.operator === 'NOT IN')
+      ) {
+        const vs: JqlValue[] = n.value.kind === 'list' ? n.value.value : [n.value];
+        for (const v of vs)
+          if (v.kind === 'string') wanted.push({ field: n.field, value: v.value });
+      }
+    };
+    if (where) walk(where);
+    if (!wanted.length) return [];
+
+    const catalogs = new Map<JqlFieldName, string[]>();
+    for (const field of new Set(wanted.map((w) => w.field)))
+      catalogs.set(field, await this.catalogNames(workspaceId, field));
+
+    const out: InvalidValue[] = [];
+    const seen = new Set<string>();
+    for (const { field, value } of wanted) {
+      const options = catalogs.get(field)!;
+      const folded = foldForMatch(value);
+      if (options.some((o) => foldForMatch(o) === folded)) continue;
+      const dedupeKey = `${field}\u0000${folded}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      const didYouMean = closestMatch(value, options);
+      const label = CHECKED_FIELD_LABEL[field]!;
+      const message = didYouMean
+        ? `Không có ${label} "${value}" — ý bạn là "${didYouMean}"?`
+        : options.length
+          ? `Không có ${label} "${value}". Các giá trị hiện có: ${options.slice(0, MAX_LISTED_VALUES).join(', ')}${options.length > MAX_LISTED_VALUES ? '…' : ''}`
+          : `Không có ${label} "${value}".`;
+      out.push({ field, value, didYouMean, message });
+    }
+    return out;
+  }
+
+  /** Tên các giá trị có thật của một trường JQL trong workspace (cùng nguồn với `fields()`; dự án: khoá dự án còn sống). */
+  private async catalogNames(workspaceId: string, field: JqlFieldName): Promise<string[]> {
+    const names = (rows: { name: string }[]) => [...new Set(rows.map((r) => r.name))];
+    switch (field) {
+      case 'type':
+        return names(
+          await this.prisma.issueType.findMany({
+            where: { workspaceId },
+            orderBy: { hierarchyLevel: 'asc' },
+            select: { name: true },
+          }),
+        );
+      case 'status':
+        return names(
+          await this.prisma.status.findMany({
+            where: { workflow: { workspaceId } },
+            orderBy: { order: 'asc' },
+            select: { name: true },
+          }),
+        );
+      case 'priority':
+        return names(
+          await this.prisma.priority.findMany({
+            where: { workspaceId },
+            orderBy: { rank: 'desc' },
+            select: { name: true },
+          }),
+        );
+      case 'severity':
+        return names(
+          await this.prisma.severity.findMany({
+            where: { workspaceId },
+            orderBy: { rank: 'desc' },
+            select: { name: true },
+          }),
+        );
+      case 'resolution':
+        return names(
+          await this.prisma.resolution.findMany({
+            where: { workspaceId },
+            orderBy: { rank: 'asc' },
+            select: { name: true },
+          }),
+        );
+      case 'sprint':
+        return names(
+          await this.prisma.sprint.findMany({
+            where: { project: { workspaceId, deletedAt: null } },
+            orderBy: { sequence: 'desc' },
+            select: { name: true },
+            take: 100,
+          }),
+        );
+      case 'project':
+        return (
+          await this.prisma.project.findMany({
+            where: { workspaceId, deletedAt: null },
+            orderBy: { key: 'asc' },
+            select: { key: true },
+          })
+        ).map((p) => p.key);
+      default:
+        return [];
     }
   }
 

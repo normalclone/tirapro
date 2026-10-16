@@ -161,3 +161,67 @@ describe('SearchService.similarIssueIds', () => {
     expect(await service.similarIssueIds('W1', 'P1', 'giỏ hàng')).toEqual([]);
   });
 });
+
+describe('SearchService — kiểm giá trị JQL (U15)', () => {
+  function make() {
+    const issues = { query: vi.fn().mockResolvedValue({ data: [], meta: {} }) };
+    const prisma = {
+      status: { findMany: vi.fn().mockResolvedValue([{ name: 'In Progress' }, { name: 'Done' }]) },
+      priority: { findMany: vi.fn().mockResolvedValue([{ name: 'High' }, { name: 'Low' }]) },
+      project: { findMany: vi.fn().mockResolvedValue([{ key: 'DEMO' }]) },
+    };
+    return { service: new SearchService(issues as never, prisma as never), issues, prisma };
+  }
+  const run = (svc: SearchService, jql: string, checkValues?: boolean) =>
+    svc.search('w1', 'u1', { mode: 'jql', jql, limit: 10, checkValues });
+
+  it('checkValues: giá trị gần đúng → 422 kèm "ý bạn là"', async () => {
+    const { service, issues } = make();
+    await expect(run(service, 'status = "In Progresss"', true)).rejects.toThrow(
+      'ý bạn là "In Progress"',
+    );
+    expect(issues.query).not.toHaveBeenCalled();
+  });
+  it('không bật checkValues (board / bộ lọc đã lưu) → KHÔNG ném, vẫn truy vấn như cũ', async () => {
+    const { service, issues, prisma } = make();
+    await run(service, 'status = "In Progresss"');
+    expect(issues.query).toHaveBeenCalledTimes(1);
+    expect(prisma.status.findMany).not.toHaveBeenCalled();
+  });
+  it('khác hoa thường / dấu vẫn coi là hợp lệ', async () => {
+    const { service, issues } = make();
+    await run(service, 'status = done', true);
+    expect(issues.query).toHaveBeenCalledTimes(1);
+  });
+  it('quá xa → liệt kê giá trị hiện có', async () => {
+    const { service } = make();
+    await expect(run(service, 'priority = zzzzzz', true)).rejects.toThrow(
+      'Không có mức ưu tiên "zzzzzz". Các giá trị hiện có: High, Low',
+    );
+  });
+  it('IN / NOT IN kiểm từng giá trị; trường khác (labels/summary/assignee) không bị kiểm', async () => {
+    const { service, issues, prisma } = make();
+    await expect(run(service, 'status IN (Done, Dne)', true)).rejects.toThrow('ý bạn là "Done"');
+    await run(service, 'labels = lol AND summary ~ "x" AND assignee = me', true);
+    expect(issues.query).toHaveBeenCalledTimes(1);
+    expect(prisma.status.findMany).toHaveBeenCalledTimes(1); // chỉ lần của truy vấn đầu
+  });
+  it('toán tử ~ / IS không bị kiểm', async () => {
+    const { service, issues } = make();
+    await run(service, 'status ~ "xyz" AND priority IS EMPTY', true);
+    expect(issues.query).toHaveBeenCalledTimes(1);
+  });
+  it('validate: cú pháp sai giữ nguyên (kèm vị trí); giá trị sai → valid:false + suggestions', async () => {
+    const { service } = make();
+    expect(await service.validate('w1', 'status =')).toMatchObject({ valid: false });
+    expect((await service.validate('w1', 'status =')).position).toBeTypeOf('number');
+    const r = await service.validate('w1', 'status = "In Progresss" AND project = DEMX');
+    expect(r.valid).toBe(false);
+    expect(r.error).toContain('ý bạn là "In Progress"');
+    expect(r.suggestions).toEqual([
+      { field: 'status', value: 'In Progresss', didYouMean: 'In Progress' },
+      { field: 'project', value: 'DEMX', didYouMean: 'DEMO' },
+    ]);
+    expect(await service.validate('w1', 'status = Done')).toEqual({ valid: true });
+  });
+});
