@@ -123,7 +123,7 @@ export function IssueRowBody({
       ) : (
         <PriorityDot priority={issue.priority} />
       )}
-      <IssueTypeIcon type={issue.type} />
+      <IssueTypeIcon type={issue.type} className="hidden sm:block" />
       {onOpen && !overlay ? (
         <IssueKeyLink issueKey={issue.key} onPeek={onOpen} />
       ) : (
@@ -144,8 +144,9 @@ export function IssueRowBody({
           </span>
         </span>
       )}
-      <DueBadge issue={issue} warnOnly className="shrink-0" />
-      <StatusPill status={issue.status} />
+      {/* Dưới sm ẩn: viền đỏ/cam của dòng đã báo quá hạn/sắp hạn, nhường chỗ cho tiêu đề. */}
+      <DueBadge issue={issue} warnOnly className="hidden shrink-0 sm:inline-flex" />
+      <StatusPill status={issue.status} className="hidden sm:inline-flex" />
       {edit ? (
         <InlinePoints
           issue={issue}

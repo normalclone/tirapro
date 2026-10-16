@@ -43,6 +43,13 @@ export function PointsChip({ points, title }: { points: number | null; title?: s
   );
 }
 
+/**
+ * Cảm ứng (`pointer: coarse`): mở rộng VÙNG BẤM của điều khiển nhỏ trên dòng lên ≥ 44px bằng pseudo-element
+ * (không đổi bố cục/kích thước hiển thị, desktop giữ nguyên). Phần tử phải `relative`.
+ */
+const TOUCH_HIT =
+  'relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-[13px]';
+
 const POINTS_TIP = 'Điểm ước lượng — bấm để đặt lại (Enter lưu, Esc huỷ)';
 export const NO_EDIT_TIP = 'Bạn không có quyền sửa công việc này';
 
@@ -126,6 +133,7 @@ export function InlinePoints({
       aria-label={`Điểm của ${issue.key}: ${issue.storyPoints ?? 'chưa đặt'}. Bấm để sửa`}
       className={cn(
         'grid min-h-5 min-w-6 shrink-0 place-items-center rounded-full px-0.5 transition-colors hover:bg-surface-2',
+        TOUCH_HIT,
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
       )}
     >
@@ -170,7 +178,10 @@ export function InlinePriority({
         options={options}
         hideChevron
         align="start"
-        className="h-5 w-5 justify-center rounded-full border-transparent bg-transparent p-0 hover:bg-surface-2"
+        className={cn(
+          'h-5 w-5 justify-center rounded-full border-transparent bg-transparent p-0 hover:bg-surface-2',
+          TOUCH_HIT,
+        )}
         onChange={(v) => {
           if (v === (issue.priority?.id ?? '')) return;
           const p = priorities.find((x) => x.id === v);
