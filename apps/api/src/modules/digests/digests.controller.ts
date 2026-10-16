@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
+import { DIGEST_BLOCK_IDS } from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -10,6 +11,8 @@ import type { AuthUser } from '../../common/types/request';
 import { DigestsService } from './digests.service';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 
+const blocksSchema = z.array(z.enum(DIGEST_BLOCK_IDS)).max(DIGEST_BLOCK_IDS.length);
+
 const scheduleEnum = z.enum(['DAILY', 'WEEKLY', 'SPRINT_END', 'MANUAL']);
 
 export const createDigestSchema = z.object({
@@ -17,7 +20,7 @@ export const createDigestSchema = z.object({
   schedule: scheduleEnum.optional(),
   projectId: z.string().optional(),
   channelId: z.string().min(1).optional(),
-  metrics: z.array(z.string()).optional(),
+  metrics: blocksSchema.optional(),
   recipients: z.array(z.string()).optional(),
 });
 type CreateDigestBody = z.infer<typeof createDigestSchema>;
@@ -27,9 +30,15 @@ export const updateDigestSchema = z.object({
   schedule: scheduleEnum.optional(),
   isEnabled: z.boolean().optional(),
   channelId: z.string().min(1).nullable().optional(),
-  metrics: z.array(z.string()).optional(),
+  metrics: blocksSchema.optional(),
 });
 type UpdateDigestBody = z.infer<typeof updateDigestSchema>;
+
+export const previewDigestSchema = z.object({
+  projectId: z.string().min(1).optional(),
+  metrics: blocksSchema.optional(),
+});
+type PreviewDigestBody = z.infer<typeof previewDigestSchema>;
 
 @ApiTags('digests')
 @Controller('digests')
@@ -39,8 +48,23 @@ export class DigestsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('query', 'projectId')
   @Get()
-  async list(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
-    return this.digests.list(workspaceId, projectId);
+  async list(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.digests.list(workspaceId, user.id, projectId);
+  }
+
+  /** Xem trước nội dung (chưa lưu) theo quyền xem của người bấm. Khai báo TRƯỚC `:id/run` cho rõ ràng. */
+  @Post('preview')
+  @Permissions(PERMISSIONS.DIGEST_MANAGE)
+  async preview(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(previewDigestSchema)) dto: PreviewDigestBody,
+  ) {
+    return this.digests.preview(workspaceId, user.id, dto);
   }
 
   @Post()

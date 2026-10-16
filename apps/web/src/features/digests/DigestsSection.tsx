@@ -39,11 +39,6 @@ const SCHEDULE_OPTIONS: DigestSchedule[] = ['DAILY', 'WEEKLY', 'SPRINT_END', 'MA
 const SELECT_CLASS =
   'h-9 w-full rounded-md border border-border bg-bg px-3 text-base text-ink focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
 
-/** Bỏ thẻ HTML (vd <b>) khỏi summaryText — backend trả về chuỗi dạng HTML-ish. */
-function stripTags(text: string): string {
-  return text.replace(/<[^>]*>/g, '').trim();
-}
-
 function truncate(text: string, max = 140): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
@@ -294,7 +289,8 @@ function DigestRow({
   function handleRun() {
     run.mutate(digest.id, {
       onSuccess: (res) => {
-        const text = stripTags(res.summaryText ?? '');
+        // Backend trả văn bản thuần (escape HTML chỉ ở kênh Telegram) — không cần xử lý thẻ/entity ở đây.
+        const text = (res.summaryText ?? '').trim();
         setSummary(text);
         setExpanded(true);
         if (res.sent) {

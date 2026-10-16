@@ -1,6 +1,30 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createDigestSchema, updateDigestSchema } from './digests.controller';
+import type { DigestModel } from '@tirapro/shared';
+import { PUBLIC_VIEWER } from '../rbac/project-access.service';
+import { createDigestSchema, previewDigestSchema, updateDigestSchema } from './digests.controller';
 import { DigestsService } from './digests.service';
+
+const MODEL: DigestModel = {
+  title: 'Tổng kết tuần',
+  subtitle: '',
+  sections: [{ id: 'summary', title: 'Tổng kết tuần', lines: ['tổng kết'] }],
+};
+
+/** Phụ thuộc phân tích/quyền cho digest — mặc định "người xem thấy tất cả". */
+function extras(visible: object = {}) {
+  const access = {
+    visibleWhere: vi.fn(() => Promise.resolve(visible)),
+    visibleProjectIds: vi.fn(() => Promise.resolve(null)),
+    assertCanSee: vi.fn(() => Promise.resolve()),
+  };
+  const leadership = {
+    get: vi.fn(() =>
+      Promise.resolve({ topRisks: [], slowGoals: [], overloaded: [], unavailable: [] }),
+    ),
+  };
+  const health = { forProjects: vi.fn(() => Promise.resolve(new Map())) };
+  return { access, leadership, health };
+}
 
 function setup(
   resolution: { kind: 'global' } | { kind: 'own'; token: string } | { kind: 'unusable' },
@@ -32,14 +56,18 @@ function setup(
     send: vi.fn(() => Promise.resolve(true)),
   };
   const integrations = { reportUnusableToken: vi.fn(() => Promise.resolve()) };
+  const ex = extras();
   const service = new DigestsService(
     prisma as never,
     telegram as never,
     {} as never,
     integrations as never,
+    ex.access as never,
+    ex.leadership as never,
+    ex.health as never,
   );
-  vi.spyOn(service, 'buildDigest').mockResolvedValue('tổng kết');
-  return { service, prisma, telegram, integrations };
+  vi.spyOn(service, 'buildDigest').mockResolvedValue(MODEL);
+  return { service, prisma, telegram, integrations, ...ex };
 }
 
 describe('DigestsService.run — token không dùng được', () => {
@@ -88,13 +116,13 @@ describe('DigestsService.run — token không dùng được', () => {
   it('global → gửi với token null', async () => {
     const { service, telegram } = setup({ kind: 'global' });
     await expect(service.run('w1', 's1')).resolves.toMatchObject({ sent: true });
-    expect(telegram.send).toHaveBeenCalledWith(null, 'c1', 'tổng kết');
+    expect(telegram.send).toHaveBeenCalledWith(null, 'c1', expect.stringContaining('tổng kết'));
   });
 
   it('own/global → gửi như cũ', async () => {
     const { service, telegram } = setup({ kind: 'own', token: 'T' });
     await expect(service.run('w1', 's1')).resolves.toMatchObject({ sent: true });
-    expect(telegram.send).toHaveBeenCalledWith('T', 'c1', 'tổng kết');
+    expect(telegram.send).toHaveBeenCalledWith('T', 'c1', expect.stringContaining('tổng kết'));
   });
 });
 
@@ -201,16 +229,20 @@ function makeNode(
       updateMany,
     },
   };
+  const ex = extras();
   const service = new DigestsService(
     prisma as never,
     {} as never,
     { isAvailable: () => false, getClient: () => null } as never,
     {} as never,
+    ex.access as never,
+    ex.leadership as never,
+    ex.health as never,
   );
   const send = vi.spyOn(service as never, 'send' as never);
   if (opts.sendFails) send.mockRejectedValue(new Error('telegram down'));
   else send.mockResolvedValue({ sent: true, tokenUnusable: false, integrationError: false });
-  vi.spyOn(service, 'buildDigest').mockResolvedValue('t');
+  vi.spyOn(service, 'buildDigest').mockResolvedValue(MODEL);
   return { service, updateMany, send };
 }
 
@@ -241,7 +273,7 @@ describe('DigestsService.runScheduled — chống gửi đôi (CAS lastRunAt)', 
     const { service, send, updateMany } = makeNode([{ id: 's1', lastRunAt: null }]);
     await service.runScheduled();
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledWith('w1', 'c1', 't'); // ràng workspaceId của subscription
+    expect(send).toHaveBeenCalledWith('w1', 'c1', expect.stringContaining('tổng kết')); // ràng workspaceId của subscription
     expect(updateMany.mock.invocationCallOrder[0]!).toBeLessThan(send.mock.invocationCallOrder[0]!);
   });
 
@@ -280,26 +312,250 @@ describe('DigestsService.runScheduled — chống gửi đôi (CAS lastRunAt)', 
   });
 });
 
-describe('DigestsService.buildDigest — bỏ qua dự án đã xoá mềm (I3)', () => {
-  it('mọi truy vấn issue/sprint/history đều lọc project.deletedAt = null', async () => {
-    const issueCount = vi.fn(() => Promise.resolve(1));
-    const groupBy = vi.fn(() => Promise.resolve([]));
-    const aggregate = vi.fn(() => Promise.resolve({ _sum: { storyPoints: 3 } }));
-    const historyFind = vi.fn(() => Promise.resolve([]));
-    const sprintFind = vi.fn(() => Promise.resolve({ id: 'sp1', name: 'S1' }));
-    const prisma = {
-      issue: { count: issueCount, groupBy, aggregate },
-      issueHistory: { findMany: historyFind },
-      sprint: { findFirst: sprintFind },
-      status: { findMany: vi.fn(() => Promise.resolve([])) },
-    };
-    const service = new DigestsService(prisma as never, {} as never, {} as never, {} as never);
-    await service.buildDigest('w1');
-    const arg = (m: { mock: { calls: unknown[][] } }) =>
-      JSON.stringify((m.mock.calls[0] as unknown[])[0]);
-    expect(arg(issueCount)).toContain('"project":{"deletedAt":null}');
-    expect(arg(groupBy)).toContain('"project":{"deletedAt":null}');
-    expect(arg(historyFind)).toContain('"project":{"deletedAt":null}');
-    expect(arg(sprintFind)).toContain('"project":{"workspaceId":"w1","deletedAt":null}');
+/** Prisma giả đủ cho buildDigest: mỗi nguồn là vi.fn để kiểm điều kiện lọc. */
+function buildSetup(opts: { visible?: object; project?: { name: string } | null } = {}) {
+  const issueCount = vi.fn(() => Promise.resolve(1));
+  const issueFindMany = vi.fn(() =>
+    Promise.resolve([{ key: 'A-1', summary: 'Việc trễ', dueDate: new Date('2026-10-10') }]),
+  );
+  const groupBy = vi.fn(() => Promise.resolve([]));
+  const historyFind = vi.fn(() => Promise.resolve([]));
+  const sprintFindMany = vi.fn(() =>
+    Promise.resolve([
+      { id: 'sp1', name: 'Tài khoản & Giỏ hàng', endDate: null, project: { key: 'A' } },
+    ]),
+  );
+  const projectFindFirst = vi.fn(() =>
+    Promise.resolve(opts.project === undefined ? { name: 'Dự án A' } : opts.project),
+  );
+  const projectFindMany = vi.fn(() => Promise.resolve([{ id: 'p1', key: 'A', name: 'Dự án A' }]));
+  const prisma = {
+    issue: { count: issueCount, findMany: issueFindMany, groupBy },
+    issueHistory: { findMany: historyFind },
+    sprint: { findMany: sprintFindMany },
+    status: { findMany: vi.fn(() => Promise.resolve([])) },
+    project: { findFirst: projectFindFirst, findMany: projectFindMany },
+  };
+  const ex = extras(opts.visible);
+  const service = new DigestsService(
+    prisma as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    ex.access as never,
+    ex.leadership as never,
+    ex.health as never,
+  );
+  return {
+    service,
+    prisma,
+    issueCount,
+    issueFindMany,
+    groupBy,
+    historyFind,
+    sprintFindMany,
+    ...ex,
+  };
+}
+
+const json = (m: { mock: { calls: unknown[][] } }, call = 0) =>
+  JSON.stringify((m.mock.calls[call] as unknown[])[0]);
+const ids = (model: DigestModel) => model.sections.map((s) => s.id);
+
+describe('DigestsService.buildDigest — chọn khối', () => {
+  it('metrics rỗng → chỉ summary + sprint (tương thích digest cũ), không gọi LeadershipService', async () => {
+    const { service, leadership, health } = buildSetup();
+    const model = await service.buildDigest('w1', undefined, [], 'u1');
+    expect(ids(model)).toEqual(['summary', 'sprint']);
+    expect(leadership.get).not.toHaveBeenCalled();
+    expect(health.forProjects).not.toHaveBeenCalled();
+    expect(model.sections[0]!.lines).toHaveLength(3);
+  });
+
+  it('metrics có risks → gọi LeadershipService đúng một lần với đúng thẻ; không có → không gọi', async () => {
+    const { service, leadership } = buildSetup();
+    const model = await service.buildDigest('w1', undefined, ['risks', 'okr'], 'u1');
+    expect(ids(model)).toEqual(['risks', 'okr']);
+    expect(leadership.get).toHaveBeenCalledTimes(1);
+    expect(leadership.get).toHaveBeenCalledWith('w1', 'u1', expect.any(Date), {
+      cards: ['topRisks', 'slowGoals'],
+      projectId: undefined,
+    });
+  });
+
+  it('digest gắn dự án bỏ khối workload (cấp workspace) và thu hẹp rủi ro/OKR vào dự án', async () => {
+    const { service, leadership } = buildSetup();
+    const model = await service.buildDigest('w1', 'p1', ['risks', 'workload'], 'u1');
+    expect(ids(model)).toEqual(['risks']);
+    expect(model.subtitle).toBe('Dự án: Dự án A');
+    expect(leadership.get).toHaveBeenCalledWith('w1', 'u1', expect.any(Date), {
+      cards: ['topRisks'],
+      projectId: 'p1',
+    });
+  });
+
+  it('khối rủi ro/OKR/nhân lực/sức khoẻ in số liệu thật; nguồn lỗi báo "Không tải được"', async () => {
+    const { service, leadership, health } = buildSetup();
+    leadership.get.mockResolvedValue({
+      topRisks: [
+        { levelLabel: 'Nghiêm trọng', score: 20, title: 'Lộ dữ liệu', project: { key: 'A' } },
+      ],
+      slowGoals: [],
+      overloaded: [
+        { user: { displayName: 'An' }, assignedHours: 90, capacityHours: 80, weekLabel: 'T1' },
+      ],
+      unavailable: ['slowGoals'],
+    } as never);
+    health.forProjects.mockResolvedValue(
+      new Map([
+        [
+          'p1',
+          { level: 'RED', auto: { level: 'RED', reasons: ['3/9 việc quá hạn'] }, override: null },
+        ],
+      ]) as never,
+    );
+    const model = await service.buildDigest(
+      'w1',
+      undefined,
+      ['risks', 'okr', 'workload', 'health'],
+      'u1',
+    );
+    const by = Object.fromEntries(model.sections.map((s) => [s.id, s.lines]));
+    expect(by.risks![0]).toBe('Nghiêm trọng (20) · Lộ dữ liệu · A');
+    expect(by.okr).toEqual(['Không tải được mục này.']);
+    expect(by.workload![0]).toBe('An: 90h / 80h (T1)');
+    expect(by.health![0]).toBe('A — Dự án A: Nguy cơ (3/9 việc quá hạn)');
+  });
+
+  it('một khối ném lỗi chỉ làm khối đó biến mất (degrade-graceful)', async () => {
+    const { service, sprintFindMany } = buildSetup();
+    sprintFindMany.mockRejectedValue(new Error('db'));
+    const model = await service.buildDigest('w1', undefined, ['summary', 'sprint'], 'u1');
+    expect(ids(model)).toEqual(['summary']);
+  });
+
+  it('tên sprint giữ nguyên "&" (không escape ở mô hình dữ liệu)', async () => {
+    const { service } = buildSetup();
+    const model = await service.buildDigest('w1', undefined, ['sprint'], 'u1');
+    expect(model.sections[0]!.lines[0]).toContain('Tài khoản & Giỏ hàng');
+    expect(JSON.stringify(model)).not.toContain('&amp;');
+  });
+
+  it('khối quá hạn: số lượng + việc trễ nhất kèm mã', async () => {
+    const { service } = buildSetup();
+    const model = await service.buildDigest('w1', undefined, ['overdue'], 'u1');
+    expect(model.sections[0]!.lines[0]).toBe('1 việc quá hạn');
+    expect(model.sections[0]!.lines[1]).toMatch(/^A-1 — Việc trễ \(trễ \d+ ngày\)$/);
+  });
+});
+
+describe('DigestsService.buildDigest — quyền xem (dự án riêng tư)', () => {
+  const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+
+  it('MỌI truy vấn (kể cả summary) lọc dự án sống + visibleWhere của người xem', async () => {
+    const s = buildSetup({ visible });
+    await s.service.buildDigest('w1', undefined, ['summary', 'overdue', 'sprint', 'health'], 'u1');
+    expect(s.access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+    const want =
+      '"project":{"deletedAt":null,"OR":[{"isPrivate":false},{"memberships":{"some":{"userId":"u1"}}}]}';
+    expect(json(s.issueCount)).toContain(want);
+    expect(json(s.groupBy)).toContain(want);
+    expect(json(s.historyFind)).toContain(want);
+    expect(json(s.issueFindMany)).toContain(want);
+    expect(json(s.sprintFindMany)).toContain('"isPrivate":false');
+    expect(json(s.prisma.project.findMany)).toContain('"isPrivate":false');
+  });
+
+  it('dự án người xem không thấy → không có số liệu, không lộ tên dự án', async () => {
+    const s = buildSetup({ visible, project: null });
+    const model = await s.service.buildDigest('w1', 'p-private', ['summary', 'risks'], 'u1');
+    expect(model.subtitle).toBe('');
+    expect(ids(model)).toEqual(['unavailable']);
+    expect(s.issueCount).not.toHaveBeenCalled();
+    expect(s.leadership.get).not.toHaveBeenCalled();
+  });
+
+  it('truyền viewerId xuống LeadershipService và ProjectHealthService', async () => {
+    const s = buildSetup();
+    await s.service.buildDigest('w1', undefined, ['risks', 'health'], 'u9');
+    expect(s.leadership.get).toHaveBeenCalledWith('w1', 'u9', expect.any(Date), expect.anything());
+    expect(s.health.forProjects).toHaveBeenCalledWith('w1', ['p1'], 'u9');
+  });
+});
+
+describe('DigestsService — người xem của nội dung gửi nơi chung', () => {
+  it('run: digest toàn workspace dùng PUBLIC_VIEWER (kể cả khi người tạo là admin)', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    prisma.reportSubscription.findFirst.mockResolvedValue({
+      id: 's1',
+      workspaceId: 'w1',
+      projectId: null,
+      channelId: 'ch1',
+      metrics: [],
+      createdById: 'admin',
+    } as never);
+    const spy = vi.spyOn(service, 'buildDigest');
+    await service.run('w1', 's1');
+    expect(spy).toHaveBeenCalledWith('w1', undefined, [], PUBLIC_VIEWER);
+  });
+
+  it('run: digest gắn dự án theo quyền người tạo (đã chọn rõ dự án đó)', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    prisma.reportSubscription.findFirst.mockResolvedValue({
+      id: 's1',
+      workspaceId: 'w1',
+      projectId: 'p1',
+      channelId: 'ch1',
+      metrics: ['summary'],
+      createdById: 'creator',
+    } as never);
+    const spy = vi.spyOn(service, 'buildDigest');
+    await service.run('w1', 's1');
+    expect(spy).toHaveBeenCalledWith('w1', 'p1', ['summary'], 'creator');
+  });
+
+  it('preview: theo quyền người bấm; dự án không thấy → ném 404 từ ProjectAccessService', async () => {
+    const { service, access } = setup({ kind: 'global' });
+    const spy = vi.spyOn(service, 'buildDigest');
+    await expect(
+      service.preview('w1', 'u7', { projectId: 'p1', metrics: ['risks'] }),
+    ).resolves.toEqual({
+      summaryText: expect.stringContaining('tổng kết') as unknown,
+    });
+    expect(access.assertCanSee).toHaveBeenCalledWith('u7', 'w1', 'p1', 'Dự án');
+    expect(spy).toHaveBeenCalledWith('w1', 'p1', ['risks'], 'u7');
+  });
+
+  it('list lọc digest gắn dự án riêng tư người xem không thấy; admin (null) không lọc', async () => {
+    const { service, prisma, access } = setup({ kind: 'global' });
+    const findMany = vi.fn(() => Promise.resolve([]));
+    (prisma.reportSubscription as Record<string, unknown>).findMany = findMany;
+    access.visibleProjectIds.mockResolvedValueOnce(['p-pub'] as never);
+    await service.list('w1', 'u1');
+    expect(json(findMany)).toContain('"OR":[{"projectId":null},{"projectId":{"in":["p-pub"]}}]');
+    await service.list('w1', 'admin');
+    expect(json(findMany, 1)).not.toContain('"OR"');
+  });
+
+  it('create gắn dự án: người tạo phải thấy dự án', async () => {
+    const { service, prisma, access } = setup({ kind: 'global' });
+    (prisma.reportSubscription as Record<string, unknown>).create = vi.fn();
+    await service.create('w1', 'u1', { name: 'n', projectId: 'p1' });
+    expect(access.assertCanSee).toHaveBeenCalledWith('u1', 'w1', 'p1', 'Dự án');
+  });
+});
+
+describe('digest schemas', () => {
+  it('createDigestSchema từ chối khối lạ', () => {
+    expect(createDigestSchema.safeParse({ name: 'x', metrics: ['abc'] }).success).toBe(false);
+    expect(createDigestSchema.safeParse({ name: 'x', metrics: ['risks', 'okr'] }).success).toBe(
+      true,
+    );
+    expect(updateDigestSchema.safeParse({ metrics: ['abc'] }).success).toBe(false);
+  });
+
+  it('previewDigestSchema: khối lạ bị từ chối, trống hợp lệ', () => {
+    expect(previewDigestSchema.safeParse({ metrics: ['abc'] }).success).toBe(false);
+    expect(previewDigestSchema.safeParse({}).success).toBe(true);
   });
 });

@@ -44,7 +44,14 @@ export interface LeadershipOverview {
   unavailable: LeadershipCard[];
 }
 
-type LeadershipCard = 'topRisks' | 'slowGoals' | 'overloaded';
+export type LeadershipCard = 'topRisks' | 'slowGoals' | 'overloaded';
+
+export interface LeadershipOptions {
+  /** Chỉ tính các thẻ này (mặc định cả ba) — digest chỉ tải khối người dùng đã chọn. */
+  cards?: readonly LeadershipCard[];
+  /** Thu hẹp rủi ro/OKR vào một dự án; thẻ nhân lực (cấp workspace) bị bỏ qua. */
+  projectId?: string;
+}
 
 const person = (o: { id: string; displayName: string } | null) =>
   o ? { id: o.id, displayName: o.displayName } : null;
@@ -63,7 +70,13 @@ export class LeadershipService {
     private readonly resources: ResourcesService,
   ) {}
 
-  async get(workspaceId: string, viewerId: string, now = new Date()): Promise<LeadershipOverview> {
+  async get(
+    workspaceId: string,
+    viewerId: string,
+    now = new Date(),
+    opts: LeadershipOptions = {},
+  ): Promise<LeadershipOverview> {
+    const want = (card: LeadershipCard) => !opts.cards || opts.cards.includes(card);
     const unavailable: LeadershipCard[] = [];
     const safe = async <T>(card: LeadershipCard, run: () => Promise<T[]>): Promise<T[]> => {
       try {
@@ -77,9 +90,15 @@ export class LeadershipService {
       }
     };
     const [topRisks, slowGoals, overloaded] = await Promise.all([
-      safe('topRisks', () => this.topRisks(workspaceId, viewerId)),
-      safe('slowGoals', () => this.slowGoals(workspaceId, viewerId, now)),
-      safe('overloaded', () => this.overloaded(workspaceId, viewerId, now)),
+      want('topRisks')
+        ? safe('topRisks', () => this.topRisks(workspaceId, viewerId, opts.projectId))
+        : [],
+      want('slowGoals')
+        ? safe('slowGoals', () => this.slowGoals(workspaceId, viewerId, now, opts.projectId))
+        : [],
+      want('overloaded') && !opts.projectId
+        ? safe('overloaded', () => this.overloaded(workspaceId, viewerId, now))
+        : [],
     ]);
     return { topRisks, slowGoals, overloaded, unavailable };
   }
@@ -87,8 +106,13 @@ export class LeadershipService {
   private async topRisks(
     workspaceId: string,
     viewerId: string,
+    projectId?: string,
   ): Promise<LeadershipOverview['topRisks']> {
-    const items = await this.raid.list(workspaceId, { kind: 'RISK', status: 'OPEN' }, viewerId);
+    const items = await this.raid.list(
+      workspaceId,
+      { kind: 'RISK', status: 'OPEN', ...(projectId ? { projectId } : {}) },
+      viewerId,
+    );
     const due = (d: string | null) => (d ? Date.parse(d) : Number.POSITIVE_INFINITY);
     return items
       .filter((r) => r.kind === 'RISK' && r.status === 'OPEN')
@@ -110,8 +134,13 @@ export class LeadershipService {
     workspaceId: string,
     viewerId: string,
     now: Date,
+    projectId?: string,
   ): Promise<LeadershipOverview['slowGoals']> {
-    const goals = await this.goals.list(workspaceId, { status: 'ACTIVE' }, viewerId);
+    const goals = await this.goals.list(
+      workspaceId,
+      { status: 'ACTIVE', ...(projectId ? { projectId } : {}) },
+      viewerId,
+    );
     const out: Array<LeadershipOverview['slowGoals'][number] & { gap: number }> = [];
     for (const g of goals) {
       if (g.status !== 'ACTIVE') continue;
