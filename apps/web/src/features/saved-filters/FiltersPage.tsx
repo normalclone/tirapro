@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ComponentProps } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { Bookmark, Filter as FilterIcon, Play, Plus, Trash2 } from 'lucide-react';
+import { Bookmark, ChevronDown, Filter as FilterIcon, Play, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
@@ -73,6 +73,7 @@ export function FiltersPage() {
   const [results, setResults] = useState<IssueDto[] | null>(null);
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
   // JQL đổ sẵn vào hộp "Tạo bộ lọc" (nút "Lưu truy vấn" cạnh "Chạy JQL"); '' = mở hộp trống.
   const [createInitialJql, setCreateInitialJql] = useState('');
   const [searchParams] = useSearchParams();
@@ -177,34 +178,63 @@ export function FiltersPage() {
         )}
       >
         <div className="flex items-center justify-between gap-2 px-1 lg:px-2">
-          <h1 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-faint">
+          <h1 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-faint max-lg:hidden">
             <Bookmark className="h-3.5 w-3.5" aria-hidden />
             Bộ lọc đã lưu
           </h1>
+          {/* < lg: rail thu thành một nút (mặc định đóng) để thấy ô JQL ngay; mở ra xổ danh sách tại chỗ. */}
+          <button
+            type="button"
+            onClick={() => setRailOpen((v) => !v)}
+            aria-expanded={railOpen}
+            aria-controls="saved-filters-body"
+            className="flex min-h-9 w-full items-center gap-1.5 rounded-md px-1 text-left text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] lg:hidden"
+          >
+            <Bookmark className="h-4 w-4 text-faint" aria-hidden />
+            <span>
+              Bộ lọc đã lưu
+              {savedFilters.data ? ` (${savedFilters.data.length})` : ''}
+            </span>
+            <ChevronDown
+              className={cn(
+                'ml-auto h-4 w-4 text-faint transition-transform',
+                railOpen && 'rotate-180',
+              )}
+              aria-hidden
+            />
+          </button>
         </div>
 
-        {canManageFilters && (
-          <Button
-            size="sm"
-            onClick={() => {
-              setCreateInitialJql('');
-              setCreateOpen(true);
-            }}
-            className="w-full"
-          >
-            <Plus className="h-4 w-4" aria-hidden />
-            Tạo bộ lọc
-          </Button>
-        )}
+        <div
+          id="saved-filters-body"
+          className={cn('flex flex-col gap-2', !railOpen && 'max-lg:hidden')}
+        >
+          {canManageFilters && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setCreateInitialJql('');
+                setCreateOpen(true);
+              }}
+              className="w-full"
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              Tạo bộ lọc
+            </Button>
+          )}
 
-        <SavedFilterList
-          query={savedFilters}
-          activeId={activeFilterId}
-          onSelect={loadAndRunSaved}
-          onDelete={handleDelete}
-          canManage={canManageFilters}
-          deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
-        />
+          <SavedFilterList
+            query={savedFilters}
+            activeId={activeFilterId}
+            onSelect={(f) => {
+              setRailOpen(false);
+              void loadAndRunSaved(f);
+            }}
+            onDelete={handleDelete}
+            canManage={canManageFilters}
+            deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
+          />
+        </div>
       </aside>
 
       {/* Nội dung: JQL nhanh + kết quả có phân trang */}

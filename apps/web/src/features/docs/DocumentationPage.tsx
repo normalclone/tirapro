@@ -10,6 +10,7 @@ import { useTheme } from '@/stores/theme';
 import { cn } from '@/lib/utils';
 import { SHORTCUT_GROUPS, shortcutsOf, type ShortcutScope } from '@/lib/shortcuts';
 import { SHOW_DEMO_ACCOUNTS } from '@/features/auth/demoLogin';
+import { ScrollX } from '@/components/ui/ScrollX';
 
 /* ============================ Khối trợ giúp UI ============================ */
 
@@ -75,7 +76,7 @@ function Feature({ icon, title, children }: { icon: ReactNode; title: string; ch
 }
 function Table({ head, rows }: { head: [string, string]; rows: [ReactNode, ReactNode][] }) {
   return (
-    <div className="mb-3 overflow-x-auto rounded-lg border border-border">
+    <ScrollX className="mb-3 rounded-lg border border-border">
       <table className="w-full text-sm">
         <thead><tr className="border-b border-border bg-surface-2 text-left text-xs text-muted">
           <th className="px-4 py-2.5 font-semibold">{head[0]}</th><th className="px-4 py-2.5 font-semibold">{head[1]}</th>
@@ -84,7 +85,7 @@ function Table({ head, rows }: { head: [string, string]; rows: [ReactNode, React
           {rows.map((r, i) => <tr key={i}><td className="whitespace-nowrap px-4 py-2.5 align-top">{r[0]}</td><td className="px-4 py-2.5 align-top text-muted">{r[1]}</td></tr>)}
         </tbody>
       </table>
-    </div>
+    </ScrollX>
   );
 }
 
@@ -171,7 +172,7 @@ function Perm({ v }: { v: 'yes' | 'own' | 'view' | 'cfg' | 'no' }) {
 }
 function Matrix({ cols, rows }: { cols: string[]; rows: [string, ...ReactNode[]][] }) {
   return (
-    <div className="mb-3 overflow-x-auto rounded-lg border border-border">
+    <ScrollX className="mb-3 rounded-lg border border-border">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border bg-surface-2 text-left text-xs text-muted">
@@ -188,7 +189,7 @@ function Matrix({ cols, rows }: { cols: string[]; rows: [string, ...ReactNode[]]
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollX>
   );
 }
 function Legend() {

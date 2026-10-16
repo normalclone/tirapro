@@ -22,3 +22,10 @@ export const CHIP_STRIP_COARSE_PAD = '[@media(pointer:coarse)]:max-sm:py-2';
  */
 export const LINK_TOUCH_HIT =
   'relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-1.5';
+
+/**
+ * Công tắc (switch) 20px: mở vùng bấm THEO CHIỀU DỌC 12px mỗi phía (→ 44px), không mở ngang. Hàng chứa công tắc phải
+ * cao ≥ 44px trên cảm ứng (`min-h-11`) để vùng của hai công tắc xếp dọc không chồng nhau.
+ */
+export const SWITCH_TOUCH_HIT =
+  'relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-3';
