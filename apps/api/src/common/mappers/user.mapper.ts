@@ -1,3 +1,4 @@
+import { PERMISSIONS, type MemberUserDto, type UserRefDto } from '@tirapro/types';
 import { iso } from './date';
 
 /** Cột user công khai trả cho client — dùng làm `select` để không lộ passwordHash & co. */
@@ -42,4 +43,43 @@ export function toUserDto<S extends string>(u: UserDtoSource<S>) {
     lastSeenAt: iso(u.lastSeenAt),
     createdAt: u.createdAt.toISOString(),
   };
+}
+
+/**
+ * Người dùng NHÚNG trong dữ liệu khác (người phụ trách/báo lỗi của công việc, tác giả bình luận): chỉ định danh + hiển thị,
+ * KHÔNG mang `isSystemAdmin` / `lastSeenAt` — mọi người xem việc đều nhận DTO này, không nên biết ai là quản trị hệ thống
+ * hay ai vừa hoạt động lúc nào.
+ */
+export function toUserRefDto(u: Omit<UserDtoSource, 'isSystemAdmin' | 'lastSeenAt'>): UserRefDto {
+  return {
+    id: u.id,
+    email: u.email,
+    displayName: u.displayName,
+    avatarUrl: u.avatarUrl,
+    timezone: u.timezone,
+    locale: u.locale,
+    status: u.status as UserRefDto['status'],
+    createdAt: u.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Người dùng trong danh sách thành viên / `GET /users`: `isSystemAdmin` và `lastSeenAt` CHỈ khi người xem có
+ * `member:manage` (`privileged`); người khác nhận bản rút gọn như `toUserRefDto`.
+ */
+export function memberUserForViewer(
+  u: ReturnType<typeof toUserDto>,
+  privileged: boolean,
+): MemberUserDto {
+  if (privileged) return u as MemberUserDto;
+  const { isSystemAdmin: _a, lastSeenAt: _b, ...ref } = u;
+  return ref as MemberUserDto;
+}
+
+/** Người xem có thấy các trường quản trị của người khác (`isSystemAdmin`, `lastSeenAt`) không: admin hệ thống hoặc `member:manage`. */
+export function canSeeAdminUserFields(viewer: {
+  isSystemAdmin?: boolean;
+  permissions?: readonly string[];
+}): boolean {
+  return !!viewer.isSystemAdmin || !!viewer.permissions?.includes(PERMISSIONS.MEMBER_MANAGE);
 }

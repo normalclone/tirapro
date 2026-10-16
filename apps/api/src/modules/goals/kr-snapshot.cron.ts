@@ -1,5 +1,6 @@
 import { Injectable, Logger, type OnApplicationShutdown } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { vnTodayUtc } from '@tirapro/shared';
 import type { Prisma } from '@prisma/client';
 import { withCronLock } from '../../common/cron-lock';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -7,9 +8,12 @@ import { RedisService } from '../../infra/redis/redis.service';
 import { periodRange } from './goal-pace';
 import { KrMeasureService, type MeasurableKr } from './kr-measure.service';
 
-/** Ngày UTC (00:00) của `d` — khớp cột `@db.Date`. */
-export function utcDay(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+/**
+ * Ngày LỊCH Việt Nam đang diễn ra tại `d`, dạng nửa đêm UTC — khớp cột `@db.Date`. Cùng một "hôm nay" với thẻ người quá tải,
+ * digest và "quá hạn" (`overdueCutoff`): 00:00–07:00 VN không còn lệch một ngày so với UTC.
+ */
+export function vnDay(d: Date): Date {
+  return vnTodayUtc(d);
 }
 
 const GRACE_DAYS = 7;
@@ -64,7 +68,7 @@ export class KrSnapshotCron implements OnApplicationShutdown {
   /** Chụp mọi KR của mục tiêu ACTIVE ở mọi workspace. Trả số dòng đã ghi. Mỗi workspace bọc try/catch riêng. */
   async snapshotAll(now: Date = new Date()): Promise<number> {
     if (this.stopping) return 0;
-    const snapshotDate = utcDay(now);
+    const snapshotDate = vnDay(now);
     const workspaces = await this.prisma.workspace.findMany({
       where: { deletedAt: null },
       select: { id: true },
@@ -138,7 +142,7 @@ export class KrSnapshotCron implements OnApplicationShutdown {
    * (đổi nguồn giữa ngày thì số cũ không còn đúng). Bỏ qua im lặng nếu mục tiêu không ACTIVE/dự án đã xoá-lưu trữ.
    */
   async snapshotKeyResult(keyResultId: string, now: Date = new Date()): Promise<void> {
-    const snapshotDate = utcDay(now);
+    const snapshotDate = vnDay(now);
     const kr = await this.prisma.keyResult.findFirst({
       where: { id: keyResultId },
       select: {

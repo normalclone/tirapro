@@ -70,6 +70,10 @@ describe('ExportService.exportIssuesCsv', () => {
       status: { category: { not: 'DONE' } },
     });
     expect(query.mock.calls[0]![2]).toEqual([{ rank: 'asc' }]);
+    // cùng tập với màn Việc chờ: ẩn việc chưa duyệt/đã từ chối (TRIAGE_VISIBLE)
+    expect(query.mock.calls[0]![1]).toMatchObject({
+      AND: [{ OR: [{ triageState: null }, { triageState: 'ACCEPTED' }] }],
+    });
     // viewerId luôn truyền (dự án riêng tư): tham số thứ 6 của IssuesService.query
     expect(query.mock.calls[0]![5]).toBe('u1');
     expect(out.csv.startsWith('﻿Mã,')).toBe(true);
@@ -81,7 +85,12 @@ describe('ExportService.exportIssuesCsv', () => {
   it('preset bugs: loại BUG, mới nhất trước', async () => {
     const { svc, query } = setup();
     const out = await svc.exportIssuesCsv('w1', 'u1', { projectId: 'p1', preset: 'bugs' });
-    expect(query.mock.calls[0]![1]).toMatchObject({ projectId: 'p1', type: { key: 'BUG' } });
+    // định nghĩa "bug" dùng chung với báo cáo QA / KR OPEN_BUGS (key BUG hoặc tên "Bug") + chỉ việc đã duyệt
+    expect(query.mock.calls[0]![1]).toMatchObject({
+      projectId: 'p1',
+      type: { OR: [{ key: 'BUG' }, { name: { equals: 'Bug', mode: 'insensitive' } }] },
+      AND: [{ OR: [{ triageState: null }, { triageState: 'ACCEPTED' }] }],
+    });
     expect(query.mock.calls[0]![2]).toEqual([{ createdAt: 'desc' }]);
     expect(out.filename).toMatch(/-bugs-/);
   });
@@ -96,7 +105,11 @@ describe('ExportService.exportIssuesCsv', () => {
       projectId: 'p1',
       deletedAt: null,
     });
-    expect(query.mock.calls[0]![1]).toMatchObject({ projectId: 'p1', sprintId: 'sp1' });
+    expect(query.mock.calls[0]![1]).toMatchObject({
+      projectId: 'p1',
+      sprintId: 'sp1',
+      AND: [{ OR: [{ triageState: null }, { triageState: 'ACCEPTED' }] }],
+    });
     expect(out.csv).toContain('Sprint 1');
     expect(out.filename).toMatch(/^tirapro-DEMO-sprint-sprint-1-\d{8}\.csv$/);
   });

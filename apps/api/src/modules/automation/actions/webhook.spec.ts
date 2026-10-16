@@ -1,8 +1,13 @@
 import { createHmac } from 'node:crypto';
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isPrivateAddress, pinnedLookup, resolveSafeTarget, runWebhook } from './webhook';
+
+// Kết quả KHÔNG được phụ thuộc môi trường chạy: `.env` ở máy dev/CI có thể đặt AUTOMATION_WEBHOOK_ALLOW_PRIVATE=true (cho phép
+// địa chỉ nội bộ) làm các ca "chặn SSRF" đỏ. Luôn bắt đầu từ trạng thái chặn; ca cần cho phép tự stub 'true'. Hoàn nguyên sau mỗi ca.
+beforeEach(() => vi.stubEnv('AUTOMATION_WEBHOOK_ALLOW_PRIVATE', 'false'));
+afterEach(() => vi.unstubAllEnvs());
 
 /** Lấy hostname đúng như code thật thấy sau khi URL chuẩn hoá (127.1, 0x7f000001, [::ffff:…] đều bị đổi dạng). */
 const hostOf = (u: string) => new URL(u).hostname;

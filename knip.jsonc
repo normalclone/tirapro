@@ -7,7 +7,7 @@
     ".": { "ignoreDependencies": ["vitest"] }, // vitest cài ở từng workspace; bản gốc để IDE/npx nhận cùng phiên bản
     "apps/api": {
       "entry": ["src/main.ts", "prisma/*.mjs", "scripts/*.mjs"],
-      "ignoreDependencies": ["pino-pretty", "@nestjs/testing"], // pino-pretty nạp bằng chuỗi transport.target; @nestjs/testing dành cho spec DI tương lai
+      "ignoreDependencies": ["pino-pretty"], // pino-pretty nạp bằng chuỗi transport.target
     },
     "apps/web": {
       "entry": ["scripts/*.mjs"],

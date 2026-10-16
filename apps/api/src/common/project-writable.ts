@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { BusinessRuleException } from './exceptions/app.exception';
 
-export const PROJECT_ARCHIVED_MESSAGE = 'Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi';
+const PROJECT_ARCHIVED_MESSAGE = 'Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi';
 
 /**
  * Bộ lọc quan hệ `project` cho truy vấn issue ở đường KHÔNG có người dùng để báo lỗi (webhook, cron): chỉ khớp

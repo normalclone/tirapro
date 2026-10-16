@@ -311,3 +311,47 @@ describe('WatchersService.onIssueUpdated — cập nhật hàng loạt (L28 fix)
     expect(rows.map((r) => r.type)).toEqual(['WATCHING_UPDATE']);
   });
 });
+
+describe('Việc chưa duyệt (Triage) chưa báo "được giao" (S-I1)', () => {
+  const pending = { ...issue, assigneeId: 'u2', triageState: 'PENDING' };
+
+  it('ISSUE_CREATED của việc PENDING có assignee mặc định → không báo; việc thường/đã Nhận vẫn báo', async () => {
+    const { rows, notifications } = setup({ watchers: [] });
+    await notifications.onIssueCreated({ issue: pending, actorId: 'a1' });
+    expect(rows).toHaveLength(0);
+    await notifications.onIssueCreated({ issue: { ...pending, triageState: null }, actorId: 'a1' });
+    await notifications.onIssueCreated({
+      issue: { ...pending, triageState: 'ACCEPTED' },
+      actorId: 'a1',
+    });
+    expect(rows.map((r) => r.type)).toEqual(['ISSUE_ASSIGNED', 'ISSUE_ASSIGNED']);
+  });
+
+  it('ISSUE_UPDATED khi đang PENDING không báo; khi Nhận (ACCEPTED + changedFields có assigneeId) báo ISSUE_ASSIGNED cho người được giao', async () => {
+    const { rows, notifications } = setup({ watchers: [] });
+    await notifications.onIssueUpdated({
+      issue: pending,
+      actorId: 'a1',
+      changedFields: ['assigneeId'],
+    });
+    expect(rows).toHaveLength(0);
+    await notifications.onIssueUpdated({
+      issue: { ...pending, triageState: 'ACCEPTED' },
+      actorId: 'a1',
+      changedFields: ['triageState', 'assigneeId'],
+    });
+    expect(rows.map((r) => r.type)).toEqual(['ISSUE_ASSIGNED']);
+    expect(rows[0]!.recipientId).toBe('u2');
+  });
+
+  it('người báo (watcher) nhận thông báo khi triage phát IssueDto đầy đủ (có workspaceId)', async () => {
+    const { rows, watchers } = setup({ watchers: ['w1'] });
+    await watchers.onIssueUpdated({
+      issue: { ...issue, triageState: 'ACCEPTED' },
+      actorId: 'a1',
+      changedFields: ['triageState'],
+    });
+    expect(rows.map((r) => r.type)).toEqual(['WATCHING_UPDATE']);
+    expect(rows[0]!.recipientId).toBe('w1');
+  });
+});

@@ -457,7 +457,16 @@ describe('SearchService — chỉ liệt kê/gợi ý dự án người hỏi đ
       },
       label: { findMany: vi.fn().mockResolvedValue([]) },
       issueType: { findMany: vi.fn().mockResolvedValue([]) },
-      status: { findMany: vi.fn().mockResolvedValue([]) },
+      // Quy trình riêng của dự án riêng tư có trạng thái "Chờ pháp chế": chỉ lộ khi truy vấn KHÔNG lọc theo dự án xem được.
+      status: {
+        findMany: vi.fn((a: { where: { workflow?: { OR?: unknown } } }) =>
+          Promise.resolve(
+            a.where.workflow?.OR
+              ? rows('Đang làm')
+              : rows('Đang làm', 'Chờ pháp chế duyệt thâu tóm'),
+          ),
+        ),
+      },
       priority: { findMany: vi.fn().mockResolvedValue([]) },
       severity: { findMany: vi.fn().mockResolvedValue([]) },
       resolution: { findMany: vi.fn().mockResolvedValue([]) },
@@ -494,6 +503,32 @@ describe('SearchService — chỉ liệt kê/gợi ý dự án người hỏi đ
       expect(r.error ?? '', jql).not.toMatch(/ý bạn là "(Sprint Secret|Secret Comp|v9-secret)"/);
       expect(r.error ?? '', jql).not.toMatch(/hiện có:.*(Secret|secret)/);
     }
+  });
+  it('trạng thái riêng của quy trình dự án riêng tư không lộ qua fields() và validate() ("ý bạn là", cũng không coi là hợp lệ)', async () => {
+    const { service, prisma } = make();
+    const out = await service.fields('w1', 'u1');
+    expect(JSON.stringify(out)).not.toContain('pháp chế');
+    expect(prisma.status.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          workflow: {
+            workspaceId: 'w1',
+            OR: [{ projectId: null }, { project: { deletedAt: null, ...VISIBLE } }],
+          },
+        },
+      }),
+    );
+    // gõ gần đúng tên nhạy cảm: không được gợi ý lại; gõ đúng tên: coi như không tồn tại
+    for (const jql of ['status = "Chờ pháp chế"', 'status = "Chờ pháp chế duyệt thâu tóm"']) {
+      const r = await service.validate('w1', 'u1', jql);
+      expect(r.valid, jql).toBe(false);
+      // `value` là chữ người dùng gõ; chỉ `didYouMean` (gợi ý từ danh mục) mới có thể lộ tên nhạy cảm
+      expect(r.suggestions?.map((x) => x.didYouMean ?? '').join('|') ?? '', jql).not.toContain(
+        'thâu tóm',
+      );
+      expect(r.error ?? '', jql).not.toMatch(/ý bạn là|hiện có:.*thâu tóm/);
+    }
+    expect(await service.validate('w1', 'u1', 'status = "đang làm"')).toEqual({ valid: true });
   });
   it('giá trị công khai vẫn hợp lệ (không phân biệt hoa/thường)', async () => {
     const { service } = make();

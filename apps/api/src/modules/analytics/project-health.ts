@@ -10,11 +10,11 @@ import { raidLevel } from '../raid/raid.service';
  *       (d) còn việc chưa xong nhưng 14 ngày qua không việc nào hoàn tất.
  * XANH: ngược lại. NONE: dự án chưa có công việc nào.
  */
-export const HEALTH_RED_OVERDUE_RATIO = 0.25;
-export const HEALTH_RED_OVERDUE_MIN = 2;
-export const HEALTH_SPRINT_NEAR_DAYS = 2;
-export const HEALTH_SPRINT_REMAINING_RATIO = 0.4;
-export const HEALTH_STALL_DAYS = 14;
+const HEALTH_RED_OVERDUE_RATIO = 0.25;
+const HEALTH_RED_OVERDUE_MIN = 2;
+const HEALTH_SPRINT_NEAR_DAYS = 2;
+const HEALTH_SPRINT_REMAINING_RATIO = 0.4;
+const HEALTH_STALL_DAYS = 14;
 
 const DAY_MS = 86_400_000;
 

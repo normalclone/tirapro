@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-export const objectiveStatusEnum = z.enum(['DRAFT', 'ACTIVE', 'CLOSED']);
-export const keyResultUnitEnum = z.enum(['NUMBER', 'PERCENT', 'CURRENCY']);
+const objectiveStatusEnum = z.enum(['DRAFT', 'ACTIVE', 'CLOSED']);
+const keyResultUnitEnum = z.enum(['NUMBER', 'PERCENT', 'CURRENCY']);
 
 const keyResultSourceEnum = z.enum(['MANUAL', 'OPEN_BUGS', 'SPRINT_COMPLETION', 'ISSUE_COUNT_JQL']);
 

@@ -4,7 +4,7 @@ import { ForbiddenAppException } from '../exceptions/app.exception';
 import type { AuthedRequest } from '../types/request';
 
 /** Thông báo khi người dùng chưa có workspace hiện tại. */
-export const NO_WORKSPACE_MESSAGE =
+const NO_WORKSPACE_MESSAGE =
   'Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại';
 
 /** Lấy `workspaceId` của user đã xác thực; chưa chọn workspace thì từ chối 403. */

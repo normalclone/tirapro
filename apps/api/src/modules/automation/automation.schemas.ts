@@ -27,7 +27,7 @@ export const updateTemplateSchema = createTemplateSchema.partial();
 
 /* ----------------------------- Việc lặp lại ---------------------------- */
 
-export const recurrenceFreqSchema = z.enum(['DAILY', 'WEEKLY', 'MONTHLY']);
+const recurrenceFreqSchema = z.enum(['DAILY', 'WEEKLY', 'MONTHLY']);
 
 export const createRecurringSchema = z.object({
   projectId: z.string().min(1, 'Chọn dự án'),

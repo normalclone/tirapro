@@ -1,4 +1,4 @@
-import { ISSUE_KEY_RE } from '@tirapro/shared';
+import { matchIssueKeys } from '@tirapro/shared';
 import type { WikiIssueRef } from '@/features/wiki/api';
 
 /** Công việc đã được máy chủ xác nhận có thật, tra theo mã (để vẽ chip trong `MarkdownView`). */
@@ -20,11 +20,11 @@ export function splitIssueKeys(text: string, known: ReadonlySet<string>): IssueK
     if (prev?.type === 'text') prev.value += value;
     else parts.push({ type: 'text', value });
   };
-  for (const m of text.matchAll(new RegExp(ISSUE_KEY_RE.source, 'g'))) {
-    if (!known.has(m[0])) continue;
+  for (const m of matchIssueKeys(text)) {
+    if (!known.has(m.key)) continue;
     pushText(text.slice(last, m.index));
-    parts.push({ type: 'key', value: m[0] });
-    last = m.index + m[0].length;
+    parts.push({ type: 'key', value: m.key });
+    last = m.index + m.key.length;
   }
   pushText(text.slice(last));
   return parts.length ? parts : [{ type: 'text', value: text }];

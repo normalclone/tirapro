@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { toUserDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
+import { toUserRefDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertIssueWritable } from '../../common/project-writable';
 
@@ -27,7 +27,7 @@ export class IssueExtrasService {
       orderBy: { createdAt: 'asc' },
       select: { user: { select: USER_DTO_SELECT } },
     });
-    return rows.map((r) => toUserDto(r.user));
+    return rows.map((r) => toUserRefDto(r.user));
   }
 
   /** Đặt lại toàn bộ danh sách người tham gia (chỉ nhận thành viên workspace). */

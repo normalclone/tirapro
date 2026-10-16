@@ -1,3 +1,5 @@
+import { vnTodayUtc } from '@tirapro/shared';
+
 /** Mục tiêu có kỳ dạng `YYYY-Qn` mới so được với thời gian; kỳ tự do (vd `FY26`) thì không. */
 const QUARTER = /^(\d{4})-Q([1-4])$/i;
 const DAY_MS = 86_400_000;
@@ -22,7 +24,7 @@ export function periodRange(period: string): { start: string; end: string } | nu
 }
 
 /**
- * Phần trăm thời gian đã trôi (0–100, làm tròn số nguyên) của quý trong `period` tại ngày UTC của `now`: ngày đầu quý
+ * Phần trăm thời gian đã trôi (0–100, làm tròn số nguyên) của quý trong `period` tại ngày lịch VN của `now`: ngày đầu quý
  * = 0, ngày cuối quý = 100. Kỳ chưa tới → 0, đã qua → 100, không phải dạng `YYYY-Qn` → null (không đánh giá được).
  * MỘT công thức cho thẻ lãnh đạo (OKR chậm) và mốc kỳ vọng của đường tiến độ.
  */
@@ -31,7 +33,7 @@ export function expectedProgress(period: string, now: Date): number | null {
   if (!range) return null;
   const start = Date.parse(`${range.start}T00:00:00Z`);
   const end = Date.parse(`${range.end}T00:00:00Z`);
-  const day = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const day = vnTodayUtc(now).getTime(); // ngày lịch VN (cùng 'hôm nay' với digest/quá hạn/người quá tải)
   const ratio = (day - start) / (end - start);
   return Math.round(Math.min(1, Math.max(0, ratio)) * 100);
 }

@@ -2,6 +2,7 @@ import type { RuleAction } from '@tirapro/shared';
 import { BusinessRuleException } from '../../../common/exceptions/app.exception';
 import type { ActionContext, ActionResult } from './types';
 import { renderTemplate } from './util';
+import { claimBatchNotice } from './batch-notice';
 
 /**
  * Gửi thông báo trong ứng dụng cho người/vai trò chỉ định. Đi qua `NotificationsService.publish` (chốt trung tâm):
@@ -52,7 +53,12 @@ export async function runNotify(
   const message = await renderTemplate(ctx, a.message);
   if (ctx.dryRun) return `Sẽ gửi thông báo cho ${visible.length} người: ${message.slice(0, 200)}`;
 
+  let sent = 0;
   for (const recipientId of visible) {
+    // Sửa hàng loạt: chỉ việc ĐẦU TIÊN của lô gửi (kèm cỡ lô); các việc sau cùng quy tắc + người nhận bị gộp vào đó.
+    if (ctx.batch && !claimBatchNotice(ctx.batch.id, ctx.rule.id, recipientId)) continue;
+    sent++;
+    const text = ctx.batch ? `${message} (sửa hàng loạt ${ctx.batch.size} việc)` : message;
     await ctx.deps.notifications.publish(
       {
         recipientId,
@@ -61,10 +67,12 @@ export async function runNotify(
         issueId: ctx.issue.id,
         projectId: ctx.issue.projectId,
         actorId: ctx.actorId,
-        payload: { key: ctx.issue.key, summary: message, automation: ctx.rule.name },
+        payload: { key: ctx.issue.key, summary: text, automation: ctx.rule.name },
       },
       { force: true },
     );
   }
+  if (ctx.batch && sent === 0)
+    return `Đã gộp vào thông báo của lần sửa hàng loạt (${visible.length} người nhận)`;
   return `Đã gửi thông báo cho ${visible.length} người`;
 }

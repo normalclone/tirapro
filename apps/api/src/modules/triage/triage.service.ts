@@ -1,14 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import {
-  DOMAIN_EVENTS,
-  type IssueEnvironment,
-  type TriageItemDto,
-  type TriageKind,
-} from '@tirapro/types';
+import { type IssueEnvironment, type TriageItemDto, type TriageKind } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { toUserDto } from '../../common/mappers/user.mapper';
+import { toUserRefDto } from '../../common/mappers/user.mapper';
 import {
   BusinessRuleException,
   NotFoundAppException,
@@ -62,7 +56,6 @@ export class TriageService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly events: EventEmitter2,
     private readonly issues: IssuesService,
     private readonly comments: CommentsService,
     private readonly access: ProjectAccessService,
@@ -83,7 +76,8 @@ export class TriageService {
       workspaceId,
       deletedAt: null,
       ...(projectId ? { projectId } : {}),
-      ...(Object.keys(visible).length ? { project: visible } : {}),
+      // Dự án đã xoá mềm không đếm/liệt kê (kể cả quản trị: `visible` = `{}`).
+      project: { deletedAt: null, ...visible },
       OR: [{ triageState: 'PENDING' }, { triageState: 'SNOOZED', triageSnoozeUntil: { lte: now } }],
     };
   }
@@ -135,14 +129,15 @@ export class TriageService {
   /**
    * Chấp nhận issue vào backlog: ACCEPTED, xóa snooze. Tùy chọn đổi loại/ưu tiên/sprint/người phụ trách:
    * các trường đó đi qua MỘT lần `IssuesService.update` (cùng kiểm tra workspace/dự án, sprint đã đóng, lịch sử, OCC)
-   * rồi mới đặt ACCEPTED. Không có trường nào ngoài triage thì giữ đường nhận một chạm.
+   * rồi mới đặt ACCEPTED. Không có trường nào ngoài triage thì giữ đường nhận một chạm — người phụ trách vẫn qua
+   * `isAssignableMember` (thành viên workspace còn hoạt động + thấy dự án) như `PATCH /issues/:id`.
+   * Quyền: `issue:triage` (controller) đủ cho mọi trường đổi kèm.
    */
   async accept(
     workspaceId: string,
     userId: string,
     issueId: string,
     input: AcceptTriageInput,
-    ownOnly = false,
   ): Promise<TriageItemDto> {
     const current = await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
@@ -151,21 +146,27 @@ export class TriageService {
     const { typeId, priorityId, sprintId, assigneeId } = input;
     const hasIssueFields =
       typeId !== undefined || priorityId !== undefined || sprintId !== undefined;
-    if (hasIssueFields) {
-      await this.issues.update(
+    // Gán MỚI mới kiểm (giữ người cũ không làm hỏng việc nhận) — cùng quy tắc `IssuesService.update`.
+    if (assigneeId && assigneeId !== current.assigneeId) {
+      const ok = await this.issues.isAssignableMember(
         workspaceId,
-        userId,
-        issueId,
-        {
-          version: input.version,
-          ...(typeId ? { typeId } : {}),
-          ...(priorityId !== undefined ? { priorityId } : {}),
-          ...(sprintId !== undefined ? { sprintId } : {}),
-          ...(assigneeId !== undefined ? { assigneeId: assigneeId || null } : {}),
-        },
+        assigneeId,
         undefined,
-        ownOnly,
+        current.projectId,
       );
+      if (!ok)
+        throw new BusinessRuleException(
+          'Người được giao không thuộc không gian làm việc này hoặc không xem được dự án — hãy chọn một thành viên khác',
+        );
+    }
+    if (hasIssueFields) {
+      await this.issues.update(workspaceId, userId, issueId, {
+        version: input.version,
+        ...(typeId ? { typeId } : {}),
+        ...(priorityId !== undefined ? { priorityId } : {}),
+        ...(sprintId !== undefined ? { sprintId } : {}),
+        ...(assigneeId !== undefined ? { assigneeId: assigneeId || null } : {}),
+      });
     }
 
     const data: Prisma.IssueUpdateInput = {
@@ -177,7 +178,7 @@ export class TriageService {
     if (!hasIssueFields && assigneeId !== undefined) {
       data.assignee = assigneeId ? { connect: { id: assigneeId } } : { disconnect: true };
     }
-    return this.applyAndEmit(issueId, data, userId);
+    return this.applyAndEmit(workspaceId, current, data, userId, true);
   }
 
   /**
@@ -196,7 +197,8 @@ export class TriageService {
     this.assertInQueue(current, 'từ chối');
 
     const dto = await this.applyAndEmit(
-      issueId,
+      workspaceId,
+      current,
       {
         triageState: 'DECLINED',
         version: { increment: 1 },
@@ -222,7 +224,8 @@ export class TriageService {
     this.assertInQueue(current, 'tạm hoãn');
 
     return this.applyAndEmit(
-      issueId,
+      workspaceId,
+      current,
       {
         triageState: 'SNOOZED',
         triageSnoozeUntil: new Date(input.until),
@@ -263,19 +266,51 @@ export class TriageService {
     }
   }
 
+  /**
+   * Ghi trạng thái duyệt rồi phát `ISSUE_UPDATED` bằng `IssueDto` ĐẦY ĐỦ (nạp lại qua `IssuesService`) + `changedFields` —
+   * cùng dạng với `IssuesService.update` nên người theo dõi (kể cả người báo), người được giao, tích hợp và cache realtime
+   * của web nhận đúng. `TriageItemDto` chỉ là phản hồi HTTP.
+   * Khi Nhận: việc chưa duyệt đã bị chặn thông báo "được giao"/automation "khi tạo việc" lúc tạo → `assigneeId` được đưa vào
+   * `changedFields` nếu đang có người phụ trách (NotificationsService báo ISSUE_ASSIGNED, người dùng không tự báo mình),
+   * còn `triageState` → ACCEPTED là tín hiệu để automation chạy quy tắc "khi tạo việc".
+   */
   private async applyAndEmit(
-    issueId: string,
+    workspaceId: string,
+    before: TriageRow,
     data: Prisma.IssueUpdateInput,
     userId: string,
+    accepting = false,
   ): Promise<TriageItemDto> {
     const updated = await this.prisma.issue.update({
-      where: { id: issueId },
+      where: { id: before.id },
       data,
       include: triageInclude,
     });
-    const dto = this.toDto(updated);
-    this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId: userId });
-    return dto;
+    const changedFields: string[] = [];
+    if (before.triageState !== updated.triageState) changedFields.push('triageState');
+    const diff: Array<[string, unknown, unknown]> = [
+      ['assigneeId', before.assigneeId, updated.assigneeId],
+      ['typeId', before.typeId, updated.typeId],
+      ['priorityId', before.priorityId, updated.priorityId],
+      ['sprintId', before.sprintId, updated.sprintId],
+    ];
+    for (const [field, a, b] of diff) if (a !== b) changedFields.push(field);
+    if (
+      accepting &&
+      changedFields.includes('triageState') &&
+      updated.assigneeId &&
+      !changedFields.includes('assigneeId')
+    )
+      changedFields.push('assigneeId');
+    try {
+      await this.issues.emitUpdatedFor(workspaceId, before.id, userId, changedFields);
+    } catch (err) {
+      // Dữ liệu ĐÃ ghi: lỗi nạp lại để phát realtime không được biến thành lỗi của request.
+      this.logger.warn(
+        `Đã cập nhật duyệt ${before.key} nhưng không phát được sự kiện: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return this.toDto(updated);
   }
 
   private async requireIssue(workspaceId: string, issueId: string): Promise<TriageRow> {
@@ -314,7 +349,7 @@ export class TriageService {
       summary: i.summary,
       projectId: i.projectId,
       description: i.description,
-      reporter: i.reporter ? toUserDto(i.reporter) : null,
+      reporter: i.reporter ? toUserRefDto(i.reporter) : null,
       kind: TRIAGE_KINDS.includes(i.triageSource ?? '') ? (i.triageSource as TriageKind) : null,
       environment: (i.environment as IssueEnvironment | null) ?? null,
       type: {
@@ -355,7 +390,7 @@ export class TriageService {
             isDefault: i.severity.isDefault,
           }
         : null,
-      assignee: i.assignee ? toUserDto(i.assignee) : null,
+      assignee: i.assignee ? toUserRefDto(i.assignee) : null,
       sprintId: i.sprintId,
       occurrenceCount: i.occurrenceCount,
       lastOccurredAt: i.lastOccurredAt?.toISOString() ?? null,

@@ -38,6 +38,7 @@ function setup(
   const audit = { record: vi.fn() };
   const access = {
     assertCanSee: vi.fn((..._a: unknown[]): Promise<void> => Promise.resolve()),
+    canSee: vi.fn((..._a: unknown[]): Promise<boolean> => Promise.resolve(true)),
   };
   const telegram = {
     resolveBotToken: vi.fn(() => resolution),
@@ -406,5 +407,143 @@ describe('IntegrationsService.addChannel — gắn kênh vào dự án riêng t�
     access.assertCanSee.mockClear();
     await service.addChannel('w1', 'g1', { externalId: '-101' }, 'u1');
     expect(access.assertCanSee).not.toHaveBeenCalled();
+  });
+});
+
+describe('IntegrationsService — sửa hàng loạt không spam kênh (D-I2)', () => {
+  const ch = { externalId: 'c1', events: [], projectId: null, isEnabled: true };
+
+  it('ISSUE_UPDATED có bulk: true (hệ thống) hoặc batch (người dùng) => không gửi tin nào', async () => {
+    const { service, telegram } = setup({ kind: 'global' }, integ({ channels: [ch] }));
+    await service.onIssueUpdated({ ...payload, bulk: true });
+    await service.onIssueUpdated({ ...payload, batch: { id: 'b1', size: 30 } });
+    expect(telegram.send).not.toHaveBeenCalled();
+    await service.onIssueUpdated(payload);
+    expect(telegram.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('N1: ISSUE_TRANSITIONED có bulk/batch => không gửi từng việc; chuyển trạng thái đơn lẻ vẫn gửi', async () => {
+    const { service, telegram } = setup({ kind: 'global' }, integ({ channels: [ch] }));
+    await service.onIssueTransitioned({ ...payload, bulk: true });
+    await service.onIssueTransitioned({ ...payload, batch: { id: 'b1', size: 30 } });
+    expect(telegram.send).not.toHaveBeenCalled();
+    await service.onIssueTransitioned(payload);
+    expect(telegram.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('việc chưa duyệt (PENDING/SNOOZED/DECLINED) không đẩy ISSUE_UPDATED lên kênh; ACCEPTED/không qua duyệt thì có', async () => {
+    const { service, telegram } = setup({ kind: 'global' }, integ({ channels: [ch] }));
+    for (const triageState of ['PENDING', 'SNOOZED', 'DECLINED'])
+      await service.onIssueUpdated({
+        issue: { ...payload.issue, triageState },
+      });
+    expect(telegram.send).not.toHaveBeenCalled();
+    await service.onIssueUpdated({ issue: { ...payload.issue, triageState: 'ACCEPTED' } });
+    await service.onIssueUpdated({ issue: { ...payload.issue, triageState: null } });
+    expect(telegram.send).toHaveBeenCalledTimes(2);
+  });
+
+  it('ISSUES_BULK_UPDATED => MỘT tin gộp "N việc … cập nhật bởi X" tới mỗi kênh của dự án', async () => {
+    const { service, prisma, telegram } = setup({ kind: 'global' }, integ({ channels: [ch] }));
+    (prisma as Record<string, unknown>).user = {
+      findUnique: vi.fn(() => Promise.resolve({ displayName: 'Phúc' })),
+    };
+    prisma.project.findFirst.mockImplementation((a: unknown) =>
+      Promise.resolve((a as { select?: { key?: boolean } }).select?.key ? { key: 'DEMO' } : null),
+    );
+    await service.onIssuesBulkUpdated({
+      workspaceId: 'w1',
+      projectId: 'p1',
+      actorId: 'u1',
+      count: 30,
+    });
+    expect(telegram.send).toHaveBeenCalledTimes(1);
+    const text = (telegram.send.mock.calls[0] as unknown as [unknown, string, string])[2];
+    expect(text).toContain('30');
+    expect(text).toContain('DEMO');
+    expect(text).toContain('Phúc');
+  });
+});
+
+describe('IntegrationsService — dự án chuyển riêng tư tắt kênh gắn dự án (S-I5)', () => {
+  const evt = { workspaceId: 'w1', projectId: 'p1', isPrivate: true, actorId: 'u1' };
+
+  it('sang riêng tư: tắt MỌI kênh đang bật gắn đúng dự án + ghi nhật ký với số kênh', async () => {
+    const { service, prisma, audit } = setup({ kind: 'global' });
+    const channel = {
+      findMany: vi.fn((..._a: unknown[]) => Promise.resolve([{ id: 'c1' }, { id: 'c2' }])),
+      updateMany: vi.fn((..._a: unknown[]) => Promise.resolve({ count: 2 })),
+    };
+    (prisma as Record<string, unknown>).integrationChannel = channel;
+    await service.onProjectVisibilityChanged(evt);
+    expect(channel.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { workspaceId: 'w1', projectId: 'p1', isEnabled: true },
+      }),
+    );
+    expect(channel.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['c1', 'c2'] } },
+      data: { isEnabled: false },
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'integration.channels_disabled',
+        workspaceId: 'w1',
+        entityId: 'p1',
+        meta: expect.objectContaining({ count: 2 }) as unknown,
+      }),
+    );
+  });
+
+  it('mở công khai trở lại (isPrivate=false) hoặc không có kênh => không đụng kênh, không ghi nhật ký', async () => {
+    const { service, prisma, audit } = setup({ kind: 'global' });
+    const channel = {
+      findMany: vi.fn((..._a: unknown[]) => Promise.resolve([])),
+      updateMany: vi.fn((..._a: unknown[]) => Promise.resolve({ count: 0 })),
+    };
+    (prisma as Record<string, unknown>).integrationChannel = channel;
+    await service.onProjectVisibilityChanged({ ...evt, isPrivate: false });
+    expect(channel.findMany).not.toHaveBeenCalled();
+    await service.onProjectVisibilityChanged(evt);
+    expect(channel.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+});
+
+describe('IntegrationsService.listChannels/removeChannel — kênh của dự án riêng tư (S-minor)', () => {
+  const rows = [
+    { id: 'c-ws', externalId: 'a', projectId: null },
+    { id: 'c-pub', externalId: 'b', projectId: 'pPublic' },
+    { id: 'c-hid', externalId: 'c', projectId: 'pHidden' },
+  ];
+
+  it('liệt kê: ẩn kênh gắn dự án người xem không thấy; kênh cấp workspace/dự án thấy được vẫn hiện', async () => {
+    const { service, prisma, access } = setup({ kind: 'global' });
+    prisma.integrationChannel.findMany.mockResolvedValue(rows as never);
+    access.canSee.mockImplementation((_u: unknown, _w: unknown, p: unknown) =>
+      Promise.resolve(p !== 'pHidden'),
+    );
+    const out = await service.listChannels('w1', 'g1', 'u1');
+    expect(out.map((c) => c.id)).toEqual(['c-ws', 'c-pub']);
+  });
+
+  it('gỡ kênh của dự án riêng tư người gọi không thấy => 404, không xoá', async () => {
+    const { service, prisma, access } = setup({ kind: 'global' });
+    const del = vi.fn();
+    (prisma.integrationChannel as unknown as Record<string, unknown>).findFirst = vi.fn(() =>
+      Promise.resolve({
+        id: 'c-hid',
+        title: null,
+        externalId: 'c',
+        integrationId: 'g1',
+        projectId: 'pHidden',
+      }),
+    );
+    (prisma.integrationChannel as unknown as Record<string, unknown>).delete = del;
+    access.canSee.mockResolvedValue(false);
+    await expect(service.removeChannel('w1', 'c-hid', 'u1')).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(del).not.toHaveBeenCalled();
   });
 });

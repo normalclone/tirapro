@@ -31,6 +31,7 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
+import { canSeeAdminUserFields } from '../../common/mappers/user.mapper';
 import { UsersService } from './users.service';
 import { AuthService } from '../auth/auth.service';
 import { setRefreshCookie } from '../auth/refresh-cookie';
@@ -46,11 +47,32 @@ export class UsersController {
     private readonly events: EventEmitter2,
   ) {}
 
-  /** Danh sách thành viên workspace hiện tại (picker assignee/@mention). */
+  /**
+   * Danh sách thành viên workspace hiện tại (picker người phụ trách / @mention / bộ lọc), lọc phía server:
+   * `search`, `projectId` (chỉ người xem được dự án; người gọi phải xem được dự án — 404 nếu không), `limit` (mặc định 50,
+   * tối đa 200), `includeInactive=true` (giữ tài khoản đã khoá + tài khoản hệ thống).
+   */
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get()
-  async list(@WorkspaceId() workspaceId: string, @Query('search') search?: string) {
-    return this.users.listWorkspaceMembers(workspaceId, search);
+  async list(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('search') search?: string,
+    @Query('projectId') projectId?: string,
+    @Query('limit') limit?: string,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return this.users.listWorkspaceMembers(
+      workspaceId,
+      user.id,
+      {
+        search: search?.slice(0, 100),
+        projectId: projectId || undefined,
+        limit: Number(limit) || undefined,
+        includeInactive: includeInactive === 'true',
+      },
+      canSeeAdminUserFields(user),
+    );
   }
 
   /** Toàn bộ user trong hệ thống (pool do admin hệ thống quản trị) — để thêm thành viên. */
@@ -121,7 +143,11 @@ export class UsersController {
 
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get(':id')
-  async getOne(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.users.getById(workspaceId, id);
+  async getOne(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.users.getById(workspaceId, id, canSeeAdminUserFields(user));
   }
 }

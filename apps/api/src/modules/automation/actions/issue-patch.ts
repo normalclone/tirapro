@@ -4,7 +4,7 @@ import type { RuleAction } from '@tirapro/shared';
 import type { ActionContext } from './types';
 import { withFreshIssue } from './util';
 
-export type PatchFields = Partial<
+type PatchFields = Partial<
   Pick<UpdateIssueInput, 'priorityId' | 'assigneeId' | 'sprintId' | 'dueDate' | 'storyPoints'>
 >;
 export type PatchAction = Extract<RuleAction, { type: 'setField' | 'assign' }>;

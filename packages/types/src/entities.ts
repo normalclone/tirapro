@@ -44,6 +44,18 @@ export interface UserDto {
   createdAt: ISODate;
 }
 
+/**
+ * Người dùng NHÚNG trong dữ liệu khác (người phụ trách/báo lỗi của công việc, tác giả bình luận): chỉ định danh + hiển thị,
+ * KHÔNG mang `isSystemAdmin` / `lastSeenAt` (không lộ ai là quản trị hệ thống hay lần hoạt động gần nhất cho mọi người xem việc).
+ */
+export type UserRefDto = Omit<UserDto, 'isSystemAdmin' | 'lastSeenAt' | 'canCreateWorkspace'>;
+
+/**
+ * Người dùng trong danh sách thành viên / `GET /users`: `isSystemAdmin` và `lastSeenAt` chỉ có khi người xem có
+ * `member:manage` (quản trị thành viên); người khác nhận bản rút gọn như `UserRefDto`.
+ */
+export type MemberUserDto = UserRefDto & { isSystemAdmin?: boolean; lastSeenAt?: ISODate | null };
+
 /** Người dùng trong pool chung (picker "thêm thành viên") — chỉ những trường picker cần. */
 export type PoolUserDto = Pick<UserDto, 'id' | 'email' | 'displayName' | 'avatarUrl' | 'status'>;
 
@@ -91,7 +103,7 @@ export interface RoleDto {
 /** Một thành viên kèm danh sách vai trò (workspace hoặc project). */
 export interface MemberDto {
   membershipId: ID;
-  user: UserDto;
+  user: MemberUserDto;
   roles: RoleRefDto[];
   joinedAt?: ISODate | null;
   /**
@@ -250,7 +262,7 @@ export interface IssueSummaryDto {
   type: IssueTypeDto;
   status: StatusDto;
   priority: PriorityDto | null;
-  assignee?: UserDto | null;
+  assignee?: UserRefDto | null;
 }
 
 /** Môi trường phát sinh lỗi (Bug): do người báo điền hoặc "Điền từ phiên hiện tại". */
@@ -273,7 +285,7 @@ export interface TriageItemDto {
   summary: string;
   projectId: ID;
   description: string | null;
-  reporter: UserDto | null;
+  reporter: UserRefDto | null;
   /** Loại yêu cầu người gửi chọn; null với việc không đi qua form báo lỗi. */
   kind: TriageKind | null;
   environment: IssueEnvironment | null;
@@ -281,7 +293,7 @@ export interface TriageItemDto {
   status: StatusDto;
   priority: PriorityDto | null;
   severity: SeverityDto | null;
-  assignee: UserDto | null;
+  assignee: UserRefDto | null;
   sprintId: ID | null;
   occurrenceCount: number;
   lastOccurredAt: ISODate | null;
@@ -320,7 +332,7 @@ export interface IssueDto extends IssueSummaryDto {
   acceptanceCriteria?: string | null;
   /** Số tiêu chí đã đạt, tính từ `acceptanceCriteria`; null khi không có mục tick. */
   acceptanceProgress: { done: number; total: number } | null;
-  reporter?: UserDto | null;
+  reporter?: UserRefDto | null;
   reporterId: ID | null;
   /** Người tạo (có thể khác `reporterId`); cùng với reporter/assignee quyết định "việc của mình" cho `issue:edit:own`. */
   createdById: ID | null;
@@ -362,7 +374,7 @@ export interface CommentDto {
   id: ID;
   issueId: ID;
   authorId: ID | null;
-  author?: UserDto | null;
+  author?: UserRefDto | null;
   body: string;
   bodyFormat: RichTextFormat;
   parentId: ID | null;

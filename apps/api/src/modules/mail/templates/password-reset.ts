@@ -1,10 +1,5 @@
 import { escapeHtml, layout, safeUrl, str, type RenderedMail } from './layout';
 
-export interface PasswordResetMailPayload {
-  displayName?: string;
-  resetUrl: string;
-}
-
 /** Thư đặt lại mật khẩu — liên kết dùng một lần, hết hạn sau 1 giờ. */
 export function render(payload: Record<string, unknown>): RenderedMail {
   const name = str(payload.displayName);

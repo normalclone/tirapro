@@ -4,7 +4,7 @@ import { DOMAIN_EVENTS, type AutomationEventMeta, type CommentDto } from '@tirap
 import { extractMentionIds, MENTION_LIMIT, type CreateCommentInput } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { toUserDto } from '../../common/mappers/user.mapper';
+import { toUserRefDto } from '../../common/mappers/user.mapper';
 import {
   ForbiddenAppException,
   NotFoundAppException,
@@ -59,6 +59,20 @@ export class CommentsService {
   ): Promise<CommentDto> {
     const issue = await this.requireIssue(workspaceId, issueId);
     await assertIssueWritable(this.prisma, issueId);
+    // Người được nhắc = token trong body ∪ mentionUserIds (client cũ / API key), lọc theo thành viên workspace và quyền xem
+    // dự án. Tính TRƯỚC khi mở transaction: không giữ một connection của pool trong lúc truy vấn bằng `this.prisma`.
+    const mentionIds = (
+      await this.mentionableIn(
+        workspaceId,
+        issue.projectId,
+        await resolveMentionedMembers(
+          this.prisma,
+          workspaceId,
+          [...extractMentionIds(input.body), ...(input.mentionUserIds ?? [])],
+          userId,
+        ),
+      )
+    ).slice(0, MENTION_LIMIT); // hợp hai nguồn có thể tới 40 → cắt về 20
     const comment = await this.prisma.$transaction(async (tx) => {
       const c = await tx.comment.create({
         data: {
@@ -70,19 +84,6 @@ export class CommentsService {
         },
         include: commentInclude,
       });
-      // Người được nhắc = token trong body ∪ mentionUserIds (client cũ / API key), lọc theo thành viên workspace.
-      const mentionIds = (
-        await this.mentionableIn(
-          workspaceId,
-          issue.projectId,
-          await resolveMentionedMembers(
-            tx,
-            workspaceId,
-            [...extractMentionIds(input.body), ...(input.mentionUserIds ?? [])],
-            userId,
-          ),
-        )
-      ).slice(0, MENTION_LIMIT); // hợp hai nguồn có thể tới 40 → cắt về 20
       if (mentionIds.length) {
         await tx.mention.createMany({
           data: mentionIds.map((mentionedUserId) => ({
@@ -122,6 +123,14 @@ export class CommentsService {
       throw new VersionConflictException(
         'Người khác vừa sửa bình luận này — hãy tải lại để xem bản mới nhất',
       );
+    // Ứng viên @nhắc tính TRƯỚC khi mở transaction (không gọi `this.prisma` bên trong tx đang giữ connection).
+    const candidates = (
+      await this.mentionableIn(
+        workspaceId,
+        current.issue.projectId,
+        await resolveMentionedMembers(this.prisma, workspaceId, extractMentionIds(body), userId),
+      )
+    ).slice(0, MENTION_LIMIT);
     const { updated, fresh } = await this.prisma.$transaction(async (tx) => {
       // OCC nguyên tử: điều kiện `version` nằm TRONG câu UPDATE — hai lần ghi đồng thời (hai tab, hai cú tick)
       // thì chỉ một bên khớp, bên kia count=0 → 409 (kiểm ở ngoài transaction chỉ là fast-fail).
@@ -139,13 +148,6 @@ export class CommentsService {
       });
       // Sổ "đã báo ai": chèn tất cả ứng viên với ON CONFLICT DO NOTHING (chỉ mục duy nhất commentId+người);
       // chỉ những dòng THỰC SỰ được chèn mới là người mới → không báo đôi kể cả khi hai lần sửa chạy song song.
-      const candidates = (
-        await this.mentionableIn(
-          workspaceId,
-          current.issue.projectId,
-          await resolveMentionedMembers(tx, workspaceId, extractMentionIds(body), userId),
-        )
-      ).slice(0, MENTION_LIMIT);
       const inserted = candidates.length
         ? await tx.mention.createManyAndReturn({
             data: candidates.map((mentionedUserId) => ({
@@ -216,7 +218,7 @@ export class CommentsService {
       id: c.id,
       issueId: c.issueId,
       authorId: c.authorId,
-      author: c.author ? toUserDto(c.author) : null,
+      author: c.author ? toUserRefDto(c.author) : null,
       body: c.body,
       bodyFormat: c.bodyFormat,
       parentId: c.parentId,

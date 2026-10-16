@@ -38,15 +38,17 @@ function make(
       createMany: mentionCreateMany,
       createManyAndReturn: mentionCreateManyAndReturn,
     },
-    workspaceMembership: {
-      findMany: vi.fn((a: { where: { userId: { in: string[] } } }) =>
-        Promise.resolve(
-          a.where.userId.in.filter((id) => members.includes(id)).map((userId) => ({ userId })),
-        ),
+  };
+  // @nhắc được tính bằng `prisma` TRƯỚC khi mở transaction (tx KHÔNG có workspaceMembership: dùng nhầm sẽ ném lỗi).
+  const workspaceMembership = {
+    findMany: vi.fn((a: { where: { userId: { in: string[] } } }) =>
+      Promise.resolve(
+        a.where.userId.in.filter((id) => members.includes(id)).map((userId) => ({ userId })),
       ),
-    },
+    ),
   };
   const prisma = {
+    workspaceMembership,
     comment: {
       findFirst: vi.fn().mockResolvedValue({
         id: 'c1',
@@ -70,6 +72,8 @@ function make(
   };
   const service = new CommentsService(prisma as never, events as never, access as never);
   return {
+    prisma,
+    access,
     service,
     update,
     updateMany,
@@ -292,5 +296,28 @@ describe('CommentsService.update — OCC nguyên tử + giới hạn @', () => {
     });
     const data = (mentionCreateMany.mock.calls[0]![0] as { data: unknown[] }).data;
     expect(data).toHaveLength(20);
+  });
+});
+
+describe('CommentsService — không đọc bằng prisma bên trong transaction (S-minor)', () => {
+  it('create(): thành viên/quyền xem của người được @ tính TRƯỚC khi mở transaction', async () => {
+    const { service, prisma, access } = make('u1', null, { members: ['u2'] });
+    await service.create('w1', 'u1', 'i1', {
+      body: 'chào @[Hai](user:u2)',
+      bodyFormat: 'MARKDOWN',
+      mentionUserIds: ['u2'],
+    });
+    expect(access.canSee).toHaveBeenCalled();
+    expect(prisma.workspaceMembership.findMany).toHaveBeenCalled();
+    const txOrder = prisma.$transaction.mock.invocationCallOrder[0]!;
+    expect(prisma.workspaceMembership.findMany.mock.invocationCallOrder[0]!).toBeLessThan(txOrder);
+    expect(access.canSee.mock.invocationCallOrder[0]!).toBeLessThan(txOrder);
+  });
+
+  it('update(): cũng tính ứng viên @ trước transaction', async () => {
+    const { service, prisma, access } = make('u1', null, { members: ['u2'] });
+    await service.update('w1', 'u1', 'c1', 'sửa @[Hai](user:u2)', 1);
+    const txOrder = prisma.$transaction.mock.invocationCallOrder[0]!;
+    expect(access.canSee.mock.invocationCallOrder[0]!).toBeLessThan(txOrder);
   });
 });

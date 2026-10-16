@@ -77,7 +77,7 @@ export interface WikiNodeDto {
 }
 
 /** Công việc được nhắc trong trang wiki (để vẽ chip). */
-export interface WikiIssueRefDto {
+interface WikiIssueRefDto {
   id: string;
   key: string;
   summary: string;

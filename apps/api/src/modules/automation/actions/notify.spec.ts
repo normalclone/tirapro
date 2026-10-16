@@ -189,3 +189,44 @@ describe('automation notify — dự án riêng tư', () => {
     ).toHaveLength(1);
   });
 });
+
+describe('automation notify — sửa hàng loạt gộp thông báo (D-I2)', () => {
+  it('5 việc cùng lô (cùng quy tắc + người nhận) => chỉ MỘT thông báo, kèm cỡ lô', async () => {
+    const { ctx, created } = setup({});
+    for (let i = 0; i < 5; i++) {
+      const c = {
+        ...ctx,
+        batch: { id: 'batch-A', size: 5 },
+        issue: { ...ctx.issue, id: `i${i}`, key: `HRX-${i}` },
+      } as ActionContext;
+      await runNotify(c, { type: 'notify', userIds: [MEMBER], message: msg });
+    }
+    expect(created).toHaveLength(1);
+    expect(JSON.stringify(created[0]!.payload)).toContain('sửa hàng loạt 5 việc');
+  });
+
+  it('lô khác nhau (hoặc không có lô) không bị gộp với nhau', async () => {
+    const { ctx, created } = setup({});
+    await runNotify(
+      { ...ctx, batch: { id: 'batch-B', size: 2 } },
+      {
+        type: 'notify',
+        userIds: [MEMBER],
+        message: msg,
+      },
+    );
+    await runNotify(
+      { ...ctx, batch: { id: 'batch-C', size: 2 } },
+      {
+        type: 'notify',
+        userIds: [MEMBER],
+        message: msg,
+      },
+    );
+    expect(created).toHaveLength(2);
+    const { ctx: c2, created: created2 } = setup({});
+    await runNotify(c2, { type: 'notify', userIds: [MEMBER], message: msg });
+    expect(created2).toHaveLength(1);
+    expect(JSON.stringify(created2[0]!.payload)).not.toContain('hàng loạt');
+  });
+});

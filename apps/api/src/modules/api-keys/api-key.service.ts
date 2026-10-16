@@ -8,7 +8,7 @@ import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { offsetPage } from '../../common/dto/page-result';
 import type { CreateApiKeyInput } from './api-keys.schemas';
 
-export type ApiScope = 'read' | 'write';
+type ApiScope = 'read' | 'write';
 
 /** Ngữ cảnh khi xác thực bằng API key (guard gắn vào request). */
 export interface ApiKeyContext {

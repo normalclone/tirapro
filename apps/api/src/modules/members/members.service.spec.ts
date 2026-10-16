@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { MembersService } from './members.service';
 
 describe('MembersService.addWorkspaceMany', () => {
@@ -80,8 +81,13 @@ describe('MembersService.removeWorkspace', () => {
         findUnique: vi.fn(() => Promise.resolve({ displayName: 'Bình', email: 'ba@x.vn' })),
       },
       project: { findMany: vi.fn((_a?: unknown) => Promise.resolve([] as unknown[])) },
+      // mặc định người bị gỡ KHÔNG phải quản trị workspace (count=0); ca quản trị cuối cùng ghi đè
+      workspaceMembership: { count: vi.fn((_a?: unknown) => Promise.resolve(0)) },
     };
-    const rbac = { invalidate: vi.fn(() => Promise.resolve()) };
+    const rbac = {
+      invalidate: vi.fn(() => Promise.resolve()),
+      assertProjectVisible: vi.fn((..._a: unknown[]) => Promise.resolve()),
+    };
     const apiKeys = {
       revokeAllForUser: vi.fn(() => Promise.resolve(['pfx1', 'pfx2'])),
       dropCaches: vi.fn(() => Promise.resolve()),
@@ -132,8 +138,8 @@ describe('MembersService.removeWorkspace', () => {
   it('là thành viên DUY NHẤT của dự án riêng tư => chặn, nêu mã dự án + lối thoát, không xoá gì', async () => {
     const { service, prisma, tx } = setup();
     prisma.project.findMany.mockResolvedValue([
-      { key: 'HR', memberships: [{ userId: 'u1' }] },
-      { key: 'FIN', memberships: [{ userId: 'u1' }, { userId: 'u9' }] },
+      { id: 'pHR', key: 'HR', memberships: [{ userId: 'u1' }] },
+      { id: 'pFIN', key: 'FIN', memberships: [{ userId: 'u1' }, { userId: 'u9' }] },
     ]);
     await expect(service.removeWorkspace('w1', 'u1', 'admin')).rejects.toMatchObject({
       status: 422,
@@ -146,6 +152,39 @@ describe('MembersService.removeWorkspace', () => {
       expect(e.message).toContain('HR');
       expect(e.message).not.toContain('FIN');
     });
+  });
+
+  it('lời lỗi chỉ nêu khoá dự án người gọi xem được; phần còn lại là "và N dự án riêng tư khác"', async () => {
+    const { service, prisma, rbac } = setup();
+    prisma.project.findMany.mockResolvedValue([
+      { id: 'pHR', key: 'HR', memberships: [{ userId: 'u1' }] },
+      { id: 'pSEC', key: 'SECRET', memberships: [{ userId: 'u1' }] },
+      { id: 'pSEC2', key: 'SECRET2', memberships: [{ userId: 'u1' }] },
+    ]);
+    rbac.assertProjectVisible.mockImplementation((_u: unknown, _w: unknown, p: unknown) =>
+      p === 'pHR' ? Promise.resolve() : Promise.reject(new NotFoundAppException('Dự án')),
+    );
+    const err = await service.removeWorkspace('w1', 'u1', 'admin').catch((e: Error) => e);
+    expect((err as Error).message).toContain('HR');
+    expect((err as Error).message).not.toContain('SECRET');
+    expect((err as Error).message).toContain('2 dự án riêng tư khác');
+  });
+
+  it('gỡ quản trị workspace CUỐI CÙNG => 409 LAST_WORKSPACE_ADMIN, không xoá gì', async () => {
+    const { service, prisma, tx } = setup();
+    // count lần 1: người này là admin (1); lần 2: admin khác (0)
+    prisma.workspaceMembership.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    await expect(service.removeWorkspace('w1', 'u1', 'admin')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({ code: 'LAST_WORKSPACE_ADMIN' }) as unknown,
+    });
+    expect(tx.workspaceMembership.delete).not.toHaveBeenCalled();
+  });
+
+  it('gỡ một quản trị khi còn quản trị khác => được phép', async () => {
+    const { service, prisma } = setup();
+    prisma.workspaceMembership.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    await expect(service.removeWorkspace('w1', 'u1', 'admin')).resolves.toEqual({ success: true });
   });
 
   it('truy vấn dự án riêng tư lọc workspace + chưa xoá + người đó là thành viên; không có dự án => gỡ bình thường', async () => {
@@ -231,17 +270,24 @@ describe('MembersService — ghi nhật ký quản trị', () => {
     roles: [{ role: { id: 'r1', name: 'Workspace Member', color: null } }],
   };
 
-  function setup(opts: { existing?: boolean } = {}) {
+  function setup(opts: { existing?: boolean; keepsAdmin?: boolean; createError?: unknown } = {}) {
     const prisma = {
       user: {
         findUnique: vi.fn(() =>
           Promise.resolve({ id: 'u2', displayName: 'Bình', email: 'ba@x.vn' }),
         ),
       },
-      role: { findMany: vi.fn(() => Promise.resolve([{ id: 'r1' }])) },
+      // role.count: bộ vai trò mới còn quyền workspace:admin (mặc định có → không đụng chốt "quản trị cuối cùng")
+      role: {
+        findMany: vi.fn(() => Promise.resolve([{ id: 'r1' }])),
+        count: vi.fn(() => Promise.resolve(opts.keepsAdmin === false ? 0 : 1)),
+      },
       workspaceMembership: {
+        count: vi.fn((_a?: unknown) => Promise.resolve(0)),
         findUnique: vi.fn(() => Promise.resolve(opts.existing ? { id: 'm2' } : null)),
-        create: vi.fn(() => Promise.resolve({})),
+        create: vi.fn(() =>
+          opts.createError ? Promise.reject(opts.createError as Error) : Promise.resolve({}),
+        ),
         update: vi.fn(() => Promise.resolve({})),
         findUniqueOrThrow: vi.fn(() => Promise.resolve(memberRow)),
       },
@@ -252,17 +298,73 @@ describe('MembersService — ghi nhật ký quản trị', () => {
       $transaction: vi.fn(() => Promise.resolve([])),
     };
     const audit = { record: vi.fn() };
+    const events = { emit: vi.fn() };
     const svc = new MembersService(
       prisma as never,
       { invalidate: vi.fn() } as never,
       {} as never,
-      { emit: vi.fn() } as never,
+      events as never,
       audit as never,
     );
-    return { svc, audit };
+    return { svc, audit, events, prisma };
   }
   const first = (audit: { record: { mock: { calls: unknown[][] } } }) =>
     audit.record.mock.calls[0]![0] as Record<string, unknown>;
+
+  it('setWorkspaceRoles(): phát access.changed {workspaceId, userIds:[user]} để gateway rà socket (S-I6)', async () => {
+    const { svc, events } = setup({ existing: true });
+    await svc.setWorkspaceRoles('w1', 'u2', ['r1'], 'actor');
+    expect(events.emit).toHaveBeenCalledWith('access.changed', {
+      workspaceId: 'w1',
+      userIds: ['u2'],
+    });
+  });
+
+  it('addWorkspace(): người ĐÃ là thành viên => 409 ALREADY_MEMBER, không ghi đè vai trò, không nhật ký', async () => {
+    const { svc, audit, prisma, events } = setup({ existing: true });
+    await expect(svc.addWorkspace('w1', 'u2', ['r1'], 'actor')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({ code: 'ALREADY_MEMBER' }) as unknown,
+    });
+    expect(prisma.workspaceMembershipRole.deleteMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('addWorkspace(): hai request đồng thời (P2002 khi tạo) => 409, không phải 500', async () => {
+    const { Prisma } = await import('@prisma/client');
+    const { svc } = setup({
+      createError: new Prisma.PrismaClientKnownRequestError('dup', {
+        code: 'P2002',
+        clientVersion: 'x',
+      }),
+    });
+    await expect(svc.addWorkspace('w1', 'u2', ['r1'], 'actor')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({ code: 'ALREADY_MEMBER' }) as unknown,
+    });
+  });
+
+  it('setWorkspaceRoles(): hạ quản trị workspace CUỐI CÙNG (vai trò mới không còn workspace:admin) => 409 LAST_WORKSPACE_ADMIN', async () => {
+    const { svc, prisma } = setup({ existing: true, keepsAdmin: false });
+    // lần 1: người này là admin; lần 2: không còn admin nào khác
+    prisma.workspaceMembership.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    await expect(svc.setWorkspaceRoles('w1', 'u2', ['r1'], 'actor')).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({ code: 'LAST_WORKSPACE_ADMIN' }) as unknown,
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('setWorkspaceRoles(): còn admin khác, hoặc vai trò mới vẫn có workspace:admin, hoặc người này không phải admin => được phép', async () => {
+    const a = setup({ existing: true, keepsAdmin: false });
+    a.prisma.workspaceMembership.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    await expect(a.svc.setWorkspaceRoles('w1', 'u2', ['r1'], 'actor')).resolves.toBeDefined();
+    const b = setup({ existing: true, keepsAdmin: true });
+    await expect(b.svc.setWorkspaceRoles('w1', 'u2', ['r1'], 'actor')).resolves.toBeDefined();
+    const c = setup({ existing: true, keepsAdmin: false }); // count mặc định 0 → không phải admin
+    await expect(c.svc.setWorkspaceRoles('w1', 'u2', ['r1'], 'actor')).resolves.toBeDefined();
+  });
 
   it('addWorkspace(): thành viên mới → member.added kèm tên, vai trò và người thực hiện', async () => {
     const { svc, audit } = setup();
@@ -275,13 +377,6 @@ describe('MembersService — ghi nhật ký quản trị', () => {
       summary: 'Thêm Bình (ba@x.vn) với vai trò Thành viên',
     });
     expect(audit.record).toHaveBeenCalledTimes(1);
-  });
-
-  it('addWorkspace(): đã là thành viên → chỉ ghi member.roles_changed (không ghi đôi)', async () => {
-    const { svc, audit } = setup({ existing: true });
-    await svc.addWorkspace('w1', 'u2', ['r1'], 'actor');
-    expect(audit.record).toHaveBeenCalledTimes(1);
-    expect(first(audit)).toMatchObject({ action: 'member.roles_changed', actorId: 'actor' });
   });
 
   it('setWorkspaceRoles(): ghi member.roles_changed', async () => {
@@ -549,6 +644,23 @@ function setupProject(opts: {
   );
   return { svc, audit, prisma, events };
 }
+
+describe('MembersService — đổi vai trò dự án phát access.changed (S-I6)', () => {
+  it('setProjectRoles: đổi vai trò đang có VÀ tạo ghi đè mới đều phát access.changed cho người đó', async () => {
+    const upd = setupProject({ hasOverride: true });
+    await upd.svc.setProjectRoles('w1', 'p1', 'u2', ['pr1'], 'a');
+    expect(upd.events.emit).toHaveBeenCalledWith('access.changed', {
+      workspaceId: 'w1',
+      userIds: ['u2'],
+    });
+    const created = setupProject({ hasOverride: false });
+    await created.svc.setProjectRoles('w1', 'p1', 'u2', ['pr1'], 'a');
+    expect(created.events.emit).toHaveBeenCalledWith('access.changed', {
+      workspaceId: 'w1',
+      userIds: ['u2'],
+    });
+  });
+});
 
 describe('MembersService — nhật ký dự án (M11)', () => {
   const setup = setupProject;
@@ -837,9 +949,11 @@ describe('MembersService — phát member.added SAU commit (L28)', () => {
     expect(order.indexOf('emit:member.added')).toBeGreaterThan(order.indexOf('commit'));
   });
 
-  it('addWorkspace (đã là thành viên → chỉ đổi vai trò): KHÔNG phát member.added', async () => {
+  it('addWorkspace (đã là thành viên → 409): KHÔNG phát member.added', async () => {
     const { svc, events } = setup({ existing: true });
-    await svc.addWorkspace('w1', 'u2', ['r1'], 'actor');
+    await expect(svc.addWorkspace('w1', 'u2', ['r1'], 'actor')).rejects.toMatchObject({
+      status: 409,
+    });
     expect(added(events)).toHaveLength(0);
   });
 
@@ -932,5 +1046,62 @@ describe('MembersService — thử gán lại việc Jira khi được thêm và
     );
     await b.svc.addProjectMany('w1', 'p1', ['u2'], ['pr1'], 'actor');
     expect(b.events.emit).not.toHaveBeenCalledWith('project.access_changed', expect.anything());
+  });
+});
+
+describe('MembersService.listWorkspace/listProject — lastSeenAt/isSystemAdmin chỉ cho member:manage (S-minor)', () => {
+  const userRow = {
+    id: 'u1',
+    email: 'a@x.vn',
+    displayName: 'An',
+    avatarUrl: null,
+    timezone: 'UTC',
+    locale: 'vi',
+    status: 'ACTIVE',
+    isSystemAdmin: true,
+    lastSeenAt: new Date('2026-10-16T01:00:00Z'),
+    createdAt: new Date('2026-10-01T00:00:00Z'),
+  };
+  const wsRow = {
+    id: 'm1',
+    joinedAt: null,
+    roleId: 'r1',
+    role: { id: 'r1', name: 'Workspace Member', color: null },
+    user: userRow,
+    roles: [{ role: { id: 'r1', name: 'Workspace Member', color: null } }],
+  };
+  function setup() {
+    const prisma = {
+      workspaceMembership: { findMany: vi.fn(() => Promise.resolve([wsRow])) },
+      projectMembership: { findMany: vi.fn(() => Promise.resolve([])) },
+      project: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'p1', name: 'Demo', isPrivate: false })),
+      },
+      role: { findMany: vi.fn(() => Promise.resolve([])) },
+    };
+    return new MembersService(prisma as never, {} as never, {} as never, {} as never, {} as never);
+  }
+  const plain = { id: 'v', permissions: ['workspace:view'] };
+  const manager = { id: 'v', permissions: ['member:manage'] };
+
+  it('workspace: người xem thường nhận bản rút gọn; member:manage / admin hệ thống / nội bộ (không viewer) nhận đủ', async () => {
+    const svc = setup();
+    const [a] = await svc.listWorkspace('w1', plain);
+    expect(a!.user).not.toHaveProperty('isSystemAdmin');
+    expect(a!.user).not.toHaveProperty('lastSeenAt');
+    expect((await svc.listWorkspace('w1', manager))[0]!.user).toMatchObject({
+      isSystemAdmin: true,
+      lastSeenAt: '2026-10-16T01:00:00.000Z',
+    });
+    expect((await svc.listWorkspace('w1', { isSystemAdmin: true }))[0]!.user).toHaveProperty(
+      'lastSeenAt',
+    );
+    expect((await svc.listWorkspace('w1'))[0]!.user).toHaveProperty('lastSeenAt');
+  });
+
+  it('dự án: cùng quy tắc', async () => {
+    const svc = setup();
+    expect((await svc.listProject('w1', 'p1', plain))[0]!.user).not.toHaveProperty('lastSeenAt');
+    expect((await svc.listProject('w1', 'p1', manager))[0]!.user).toHaveProperty('lastSeenAt');
   });
 });

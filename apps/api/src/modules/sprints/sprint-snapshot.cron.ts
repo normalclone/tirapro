@@ -6,7 +6,7 @@ import { withCronLock } from '../../common/cron-lock';
 import { SprintsService } from './sprints.service';
 
 /** Cuối ngày UTC (23:59:59.999) của ngày chứa `d`. */
-export function endOfUtcDay(d: Date): Date {
+function endOfUtcDay(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
 }
 

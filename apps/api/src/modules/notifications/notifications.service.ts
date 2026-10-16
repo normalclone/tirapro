@@ -22,6 +22,7 @@ import { cursorPage, type PageResult } from '../../common/dto/page-result';
 import { MailService } from '../mail/mail.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { resolveMentionedMembers } from '../../common/mentions';
+import { isUnreviewed } from '../../common/triage-visibility';
 import { COALESCE_TYPES, COALESCE_WINDOW_MS, mergeNotificationPayload } from './notification-merge';
 
 /** DTO trả về cho client — Date đã chuyển sang ISO string. */
@@ -46,7 +47,7 @@ const NOTIFICATION_TYPES = Object.values(NotificationTypeEnum) as NotificationTy
  * Mặc định "im lặng": chỉ bật các thông báo trực tiếp / tín hiệu cao,
  * tắt các loại ồn ào để không spam người dùng.
  */
-export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   ISSUE_ASSIGNED: true,
   MENTIONED: true,
   COMMENT_ADDED: true,
@@ -61,9 +62,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
  * Gộp tùy chọn đã lưu (trong `User.settings.notifications`) lên trên mặc định.
  * Bỏ qua mọi khóa lạ / giá trị không phải boolean để luôn trả về map đầy đủ & hợp lệ.
  */
-export function effectivePrefs(
-  userSettings: Prisma.JsonValue | null | undefined,
-): NotificationPrefs {
+function effectivePrefs(userSettings: Prisma.JsonValue | null | undefined): NotificationPrefs {
   const result: NotificationPrefs = { ...DEFAULT_NOTIFICATION_PREFS };
   const stored = readNotificationsSettings(userSettings);
   for (const type of NOTIFICATION_TYPES) {
@@ -74,7 +73,7 @@ export function effectivePrefs(
 }
 
 /** Mặc định gửi email: chỉ bật loại trực tiếp (nhắc tên, được giao việc); bình luận / đổi trạng thái tắt. */
-export const DEFAULT_EMAIL_PREFS: NotificationEmailPrefs = {
+const DEFAULT_EMAIL_PREFS: NotificationEmailPrefs = {
   mention: true,
   assigned: true,
   comment: false,
@@ -136,6 +135,8 @@ interface IssueEventShape {
   assigneeId: string | null;
   status?: { name?: string } | null;
   description?: string | null;
+  /** Trạng thái duyệt (Triage) — việc chưa duyệt chưa báo "được giao". */
+  triageState?: string | null;
 }
 
 interface IssueTransitionedPayload {
@@ -154,6 +155,15 @@ interface IssueUpdatedPayload {
    * cho người nhận nên bỏ qua thông báo "được giao"/"cập nhật" cho từng việc (không spam N thông báo).
    */
   bulk?: boolean;
+}
+
+/** Kết quả bước đọc của `createDeferred` — đủ để ghi mà không cần đọc thêm bằng `this.prisma`. */
+interface PreparedNotification {
+  input: NotificationInput;
+  recipientEmail: string;
+  inApp: boolean;
+  emailOn: boolean;
+  payload: NotificationPayload;
 }
 
 interface IssueCreatedPayload {
@@ -386,6 +396,8 @@ export class NotificationsService {
     try {
       const { issue, actorId } = payload as IssueCreatedPayload;
       if (!issue?.assigneeId || issue.assigneeId === actorId) return;
+      // Việc chưa duyệt (báo lỗi chờ Triage): chưa báo "được giao" — báo khi được Nhận (TriageService phát assigneeId).
+      if (isUnreviewed(issue.triageState)) return;
       await this.notifyAssigned(issue, actorId);
     } catch (err) {
       this.logger.warn(`onIssueCreated thất bại: ${this.errMsg(err)}`);
@@ -398,6 +410,7 @@ export class NotificationsService {
       const { issue, actorId, changedFields, bulk } = payload as IssueUpdatedPayload;
       if (bulk) return;
       if (!issue?.assigneeId || issue.assigneeId === actorId) return;
+      if (isUnreviewed(issue.triageState)) return;
       // Người phụ trách vừa được đổi sang người này → "được giao việc" (thay cho "việc được cập nhật" để khỏi báo trùng).
       if (changedFields?.includes('assigneeId')) {
         await this.notifyAssigned(issue, actorId);
@@ -518,6 +531,22 @@ export class NotificationsService {
       // Sổ + thông báo trong CÙNG transaction. Chỉ mục duy nhất (issueId, người) WHERE commentId IS NULL làm
       // `ON CONFLICT DO NOTHING` quyết định ai thắng khi nhiều sự kiện chạy đồng thời → chỉ báo dòng thực sự chèn được.
       // Email/đẩy realtime chạy SAU commit; lỗi giữa chừng thì rollback cả sổ lẫn thông báo (lần sau còn được báo).
+      // Phần ĐỌC (quyền xem, cài đặt người nhận, tên người thực hiện) làm TRƯỚC khi mở transaction cho mọi ứng viên — không gọi
+      // `this.prisma` bên trong tx tương tác đang giữ connection (≥ pool đồng thời có thể làm cạn pool → P2028).
+      const prepared = new Map<string, PreparedNotification | null>();
+      for (const mentionedUserId of members)
+        prepared.set(
+          mentionedUserId,
+          await this.prepare({
+            recipientId: mentionedUserId,
+            workspaceId: issue.workspaceId,
+            type: 'MENTIONED',
+            issueId: issue.id,
+            projectId: issue.projectId,
+            actorId,
+            payload: this.mentionPayload(issue, issue.description, 'description'),
+          }),
+        );
       const after: Array<() => Promise<void>> = [];
       await this.prisma.$transaction(async (tx) => {
         const inserted = await tx.mention.createManyAndReturn({
@@ -526,20 +555,8 @@ export class NotificationsService {
           select: { mentionedUserId: true },
         });
         for (const { mentionedUserId } of inserted) {
-          after.push(
-            await this.createDeferred(
-              {
-                recipientId: mentionedUserId,
-                workspaceId: issue.workspaceId,
-                type: 'MENTIONED',
-                issueId: issue.id,
-                projectId: issue.projectId,
-                actorId,
-                payload: this.mentionPayload(issue, issue.description, 'description'),
-              },
-              tx,
-            ),
-          );
+          const p = prepared.get(mentionedUserId);
+          if (p) after.push(await this.writePrepared(p, tx));
         }
       });
       for (const run of after) await run();
@@ -652,18 +669,30 @@ export class NotificationsService {
     db: Pick<Prisma.TransactionClient, 'notification'> = this.prisma,
     opts?: PublishOptions,
   ): Promise<() => Promise<void>> {
-    const noop = (): Promise<void> => Promise.resolve();
+    const prepared = await this.prepare(input, opts);
+    return prepared ? this.writePrepared(prepared, db) : (): Promise<void> => Promise.resolve();
+  }
+
+  /**
+   * Bước ĐỌC của việc tạo thông báo (quyền xem, cài đặt người nhận, tên người thực hiện) — toàn bộ dùng `this.prisma`, nên
+   * chạy TRƯỚC khi mở transaction nếu bên gọi sắp ghi trong tx (không giữ một connection của pool trong lúc đọc bằng
+   * connection khác). `null` = không tạo gì (chính người thao tác / người nhận không xem được việc / đã tắt cài đặt).
+   */
+  private async prepare(
+    input: NotificationInput,
+    opts?: PublishOptions,
+  ): Promise<PreparedNotification | null> {
     // Quiet-by-default: tôn trọng tùy chọn của người nhận. In-app và email là hai tuỳ chọn độc lập.
     // Chốt chặn trung tâm: không bao giờ báo cho chính người thao tác (dù producer quên lọc).
-    if (input.actorId && input.actorId === input.recipientId) return noop;
+    if (input.actorId && input.actorId === input.recipientId) return null;
     // Chốt chặn trung tâm (dự án riêng tư): người nhận không xem được công việc thì KHÔNG tạo thông báo, KHÔNG đẩy
     // realtime, KHÔNG xếp email — làm TRƯỚC khi dựng payload (trích đoạn, tiêu đề) nên nội dung không bị đọc/gửi đi.
-    if (!(await this.recipientCanSee(input))) return noop;
+    if (!(await this.recipientCanSee(input))) return null;
     const recipient = await this.prisma.user.findUnique({
       where: { id: input.recipientId },
       select: { settings: true, email: true, status: true },
     });
-    if (!recipient) return noop;
+    if (!recipient) return null;
     const prefs = effectivePrefs(recipient.settings);
     const emailKey = EMAIL_KEY_BY_TYPE[input.type];
     const emailOn =
@@ -673,9 +702,19 @@ export class NotificationsService {
     // `force` chỉ thay MẶC ĐỊNH (loại tắt-mặc-định như WATCHING_UPDATE); người dùng đã TẮT tường minh thì luôn thắng.
     const explicitlyOff = readNotificationsSettings(recipient.settings)[input.type] === false;
     const inApp = prefs[input.type] || (!!opts?.force && !explicitlyOff);
-    if (!inApp && !emailOn) return noop;
+    if (!inApp && !emailOn) return null;
     const payload = await this.withActor(input);
+    return { input, recipientEmail: recipient.email, inApp, emailOn, payload };
+  }
 
+  /** Bước GHI: chỉ dùng `db` (tx đang mở được) — không đọc bằng `this.prisma` cho tới khi trả `after()`. */
+  private async writePrepared(
+    prepared: PreparedNotification,
+    db: Pick<Prisma.TransactionClient, 'notification'>,
+  ): Promise<() => Promise<void>> {
+    const noop = (): Promise<void> => Promise.resolve();
+    const { input, inApp, emailOn, payload } = prepared;
+    const recipientEmail = prepared.recipientEmail;
     let saved: Notification | null = null;
     if (inApp) {
       const since = new Date(Date.now() - COALESCE_WINDOW_MS);
@@ -767,7 +806,7 @@ export class NotificationsService {
           notification: this.toDto(saved),
         });
       }
-      if (emailOn) await this.enqueueEmail(recipient.email, input.type, payload);
+      if (emailOn) await this.enqueueEmail(recipientEmail, input.type, payload);
     };
   }
 

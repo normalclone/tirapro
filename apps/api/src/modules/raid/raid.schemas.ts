@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-export const raidKindEnum = z.enum(['RISK', 'ASSUMPTION', 'ISSUE', 'DEPENDENCY']);
-export const raidStatusEnum = z.enum(['OPEN', 'MITIGATING', 'CLOSED', 'ACCEPTED']);
+const raidKindEnum = z.enum(['RISK', 'ASSUMPTION', 'ISSUE', 'DEPENDENCY']);
+const raidStatusEnum = z.enum(['OPEN', 'MITIGATING', 'CLOSED', 'ACCEPTED']);
 
 const scale = z.number().int().min(1, 'Giá trị từ 1 đến 5').max(5, 'Giá trị từ 1 đến 5');
 

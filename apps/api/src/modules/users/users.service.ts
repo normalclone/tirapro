@@ -2,9 +2,13 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import type { Request } from 'express';
 import type { UpdateProfileInput } from '@tirapro/shared';
-import { ERROR_CODES, type PoolUserDto } from '@tirapro/types';
+import { ERROR_CODES, type MemberUserDto, type PoolUserDto } from '@tirapro/types';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { insensitiveContains } from '../../common/like';
+import { escapeLike, insensitiveContains } from '../../common/like';
+import { memberUserForViewer } from '../../common/mappers/user.mapper';
+import { normalizeVi, VI_TRANSLATE_FROM, VI_TRANSLATE_TO } from '../search/vi-text';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { AppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { MediaService } from '../media/media.service';
 import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
@@ -14,6 +18,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly media: MediaService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   private toDto(u: {
@@ -42,25 +47,94 @@ export class UsersService {
     };
   }
 
-  /** Thành viên của workspace (cho picker assignee/mention). */
-  async listWorkspaceMembers(workspaceId: string, search?: string) {
-    const members = await this.prisma.workspaceMembership.findMany({
-      where: {
-        workspaceId,
-        user: search
+  /**
+   * Thành viên của workspace (picker người phụ trách / @mention / bộ lọc). Lọc phía SERVER:
+   * - mặc định loại tài khoản đã khoá (DEACTIVATED) và người dùng hệ thống automation; `includeInactive` giữ cả hai
+   *   (màn bộ lọc theo người phụ trách cũ vẫn thấy tài khoản đã khoá);
+   * - `projectId`: người gọi phải xem được dự án (404 như không tồn tại); chỉ trả người `canSee` dự án đó (cùng quyết định
+   *   với `IssuesService.isAssignableMember` — không "giao việc rồi họ không mở được");
+   * - `search` theo tên/email không phân biệt hoa thường VÀ dấu tiếng Việt ("nguyen" tìm "Nguyễn");
+   * - `limit` (mặc định 50, tối đa 200) áp SAU lọc quyền xem dự án.
+   * `isSystemAdmin`/`lastSeenAt` chỉ khi `privileged` (người xem có `member:manage`).
+   */
+  async listWorkspaceMembers(
+    workspaceId: string,
+    viewerId: string,
+    q: { search?: string; projectId?: string; limit?: number; includeInactive?: boolean },
+    privileged: boolean,
+  ): Promise<MemberUserDto[]> {
+    const limit = Math.min(Math.max(Math.trunc(q.limit ?? 50) || 50, 1), 200);
+    if (q.projectId) await this.access.assertCanSee(viewerId, workspaceId, q.projectId);
+    const search = q.search?.trim();
+    const matchingIds = search ? await this.accentInsensitiveIds(workspaceId, search) : [];
+    const where: Prisma.WorkspaceMembershipWhereInput = {
+      workspaceId,
+      user: {
+        ...(q.includeInactive
+          ? {}
+          : { status: { not: 'DEACTIVATED' }, email: { not: SYSTEM_USER_EMAIL } }),
+        ...(search
           ? {
               OR: [
                 { displayName: insensitiveContains(search) },
                 { email: insensitiveContains(search) },
+                ...(matchingIds.length ? [{ id: { in: matchingIds } }] : []),
               ],
             }
-          : undefined,
+          : {}),
       },
-      select: { user: true },
-      take: 50,
-      orderBy: { createdAt: 'asc' },
-    });
-    return members.map((m) => this.toDto(m.user));
+    };
+    const orderBy = [{ createdAt: 'asc' as const }, { id: 'asc' as const }];
+    const out: ReturnType<typeof this.toDto>[] = [];
+    if (!q.projectId) {
+      const rows = await this.prisma.workspaceMembership.findMany({
+        where,
+        select: { user: true },
+        take: limit,
+        orderBy,
+      });
+      for (const m of rows) out.push(this.toDto(m.user));
+    } else {
+      // Lọc quyền xem dự án sau truy vấn → lấy theo lô cho tới khi đủ `limit` hoặc hết người (chặn trên 10 lô).
+      const batch = Math.min(limit * 2, 400);
+      let cursor: string | undefined;
+      for (let i = 0; i < 10 && out.length < limit; i++) {
+        const rows = await this.prisma.workspaceMembership.findMany({
+          where,
+          select: { id: true, user: true },
+          take: batch,
+          orderBy,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        });
+        for (const m of rows) {
+          if (out.length >= limit) break;
+          if (await this.access.canSee(m.user.id, workspaceId, q.projectId))
+            out.push(this.toDto(m.user));
+        }
+        if (rows.length < batch) break;
+        cursor = rows[rows.length - 1]!.id;
+      }
+    }
+    return out.map((u) => memberUserForViewer(u, privileged));
+  }
+
+  /**
+   * Id thành viên có tên khớp KHÔNG phân biệt dấu (bỏ dấu cả hai phía bằng `translate`, như tìm công việc). Chỉ bổ sung cho
+   * so khớp `contains` có dấu của Prisma; lỗi truy vấn thì bỏ qua (vẫn còn so khớp có dấu).
+   */
+  private async accentInsensitiveIds(workspaceId: string, search: string): Promise<string[]> {
+    const needle = normalizeVi(search);
+    if (!needle) return [];
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT u."id" FROM "WorkspaceMembership" m JOIN "User" u ON u."id" = m."userId"
+        WHERE m."workspaceId" = ${workspaceId}
+          AND lower(translate(u."displayName", ${VI_TRANSLATE_FROM}, ${VI_TRANSLATE_TO})) LIKE ${`%${escapeLike(needle)}%`}
+        LIMIT 500`;
+      return rows.map((r) => r.id);
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -102,13 +176,13 @@ export class UsersService {
   }
 
   /** Chỉ tra được người dùng cùng workspace — không lộ email/hồ sơ của user ngoài workspace. */
-  async getById(workspaceId: string, id: string) {
+  async getById(workspaceId: string, id: string, privileged = false) {
     const m = await this.prisma.workspaceMembership.findUnique({
       where: { workspaceId_userId: { workspaceId, userId: id } },
       select: { user: true },
     });
     if (!m) throw new NotFoundAppException('Người dùng');
-    return this.toDto(m.user);
+    return memberUserForViewer(this.toDto(m.user), privileged);
   }
 
   async updateProfile(id: string, data: UpdateProfileInput) {

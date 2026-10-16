@@ -512,3 +512,70 @@ describe('RuleEngineService — chạy thử, lịch, người dùng hệ thốn
     ).resolves.toBeUndefined();
   });
 });
+
+describe('RuleEngineService — việc chưa duyệt + sửa hàng loạt (S-I1, D-I2)', () => {
+  it('ISSUE_CREATED của việc PENDING => không chạy quy tắc; việc đã Nhận/không qua duyệt vẫn chạy', async () => {
+    const { engine, issues } = setup();
+    await engine.handle('ISSUE_CREATED', {
+      issue: issueDto({ triageState: 'PENDING' }) as never,
+      actorId: 'u1',
+    });
+    expect(issues.update).not.toHaveBeenCalled();
+    await engine.handle('ISSUE_CREATED', {
+      issue: issueDto({ triageState: null }) as never,
+      actorId: 'u1',
+    });
+    expect(issues.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('Nhận việc (ISSUE_UPDATED có triageState + ACCEPTED) => chạy quy tắc "khi tạo việc"', async () => {
+    const { engine, issues } = setup(makeRule({ trigger: 'ISSUE_CREATED' }));
+    await engine.onIssueUpdated({
+      issue: issueDto({ triageState: 'ACCEPTED' }) as never,
+      actorId: 'u1',
+      changedFields: ['triageState'],
+    });
+    expect(issues.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('ISSUE_UPDATED bulk: true do hệ thống phát => bỏ qua hẳn (không chạy quy tắc, không ghi lần chạy)', async () => {
+    const { engine, issues, prisma, rules } = setup();
+    await engine.onIssueUpdated({
+      issue: issueDto() as never,
+      actorId: 'u1',
+      changedFields: ['assigneeId'],
+      bulk: true,
+    });
+    expect(rules.activeFor).not.toHaveBeenCalled();
+    expect(issues.update).not.toHaveBeenCalled();
+    expect(prisma.automationRun.create).not.toHaveBeenCalled();
+  });
+
+  it('sửa hàng loạt của người dùng (batch) vẫn chạy quy tắc cho từng việc', async () => {
+    const { engine, rules } = setup(makeRule({ trigger: 'ISSUE_UPDATED' }));
+    await engine.onIssueUpdated({
+      issue: issueDto() as never,
+      actorId: 'u1',
+      changedFields: ['assigneeId'],
+      batch: { id: 'b1', size: 5 },
+    });
+    expect(rules.activeFor).toHaveBeenCalled();
+  });
+
+  it('N1: ISSUE_TRANSITIONED của lô sửa hàng loạt vẫn chạy quy tắc và chuyển `batch` xuống runRule (notify gộp như ISSUE_UPDATED)', async () => {
+    const { engine } = setup(
+      makeRule({ trigger: 'ISSUE_TRANSITIONED', triggerConfig: {}, conditions: [] }),
+    );
+    const runRule = vi
+      .spyOn(engine as unknown as { runRule: (i: unknown) => Promise<void> }, 'runRule')
+      .mockResolvedValue(undefined);
+    await engine.onIssueTransitioned({
+      issue: issueDto() as never,
+      actorId: 'u1',
+      batch: { id: 'b1', size: 30 },
+    });
+    expect(runRule).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: 'ISSUE_TRANSITIONED', batch: { id: 'b1', size: 30 } }),
+    );
+  });
+});

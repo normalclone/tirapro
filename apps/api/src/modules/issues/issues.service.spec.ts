@@ -676,11 +676,35 @@ describe('IssuesService.bulkUpdate', () => {
     expect(res.updated[0]).toMatchObject({ id: 'a', version: 4 });
     expect(res.conflicts).toEqual([{ id: 'b', version: 5 }]);
     expect(tx.issueHistory.createMany).toHaveBeenCalledTimes(1); // chỉ item a
-    expect(events.emit).toHaveBeenCalledTimes(1);
+    // 1 ISSUE_UPDATED (item a) + 1 ISSUES_BULK_UPDATED gộp cho cả lô.
+    expect(events.emit).toHaveBeenCalledTimes(2);
     expect(events.emit).toHaveBeenCalledWith(
       'issue.updated',
       expect.objectContaining({ actorId: 'u1' }),
     );
+  });
+
+  it('sửa hàng loạt: mỗi ISSUE_UPDATED mang `batch` (không phải `bulk`) và có MỘT ISSUES_BULK_UPDATED cho cả lô', async () => {
+    const tx = bulkTx();
+    const { service, events } = makeService(tx);
+    await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { assigneeId: 'u2' } });
+    const calls = events.emit.mock.calls as unknown as Array<[string, Record<string, unknown>]>;
+    const updated = calls.filter(([n]) => n === 'issue.updated').map(([, p]) => p);
+    expect(updated).toHaveLength(2);
+    const batchId = (updated[0]!.batch as { id: string }).id;
+    for (const p of updated) {
+      expect(p.batch).toEqual({ id: batchId, size: 2 });
+      // `bulk: true` = hệ thống phát hàng loạt (thông báo "được giao" sẽ bị bỏ qua) — người dùng sửa thì KHÔNG đặt.
+      expect(p).not.toHaveProperty('bulk');
+    }
+    const summary = calls.filter(([n]) => n === 'issue.bulk_updated');
+    expect(summary).toHaveLength(1);
+    expect(summary[0]![1]).toMatchObject({
+      workspaceId: 'w1',
+      projectId: 'p1',
+      actorId: 'u1',
+      count: 2,
+    });
   });
 
   it('version đã lệch từ lúc đọc => conflict ngay, không gọi updateMany cho item đó', async () => {
@@ -791,7 +815,8 @@ describe('IssuesService.bulkUpdate', () => {
     });
     expect(res.updated).toHaveLength(2);
     expect(tx.issueHistory.create).toHaveBeenCalledTimes(2);
-    expect(events.emit).toHaveBeenCalledTimes(2);
+    // 2 ISSUE_TRANSITIONED (cùng batch) + 1 ISSUES_BULK_UPDATED gộp cho cả lô (N1).
+    expect(events.emit).toHaveBeenCalledTimes(3);
     expect(events.emit).toHaveBeenCalledWith(
       'issue.transitioned',
       expect.objectContaining({ fromStatusId: 's1' }),
@@ -1732,6 +1757,30 @@ describe('IssuesService.create — statusId phải thuộc workflow của dự �
     expect(created.mock.calls[0]![0].data.resolvedAt).toBeNull();
   });
 
+  it('intake (báo lỗi chờ duyệt): trạng thái duyệt ghi CÙNG LẦN tạo, trước khi phát ISSUE_CREATED', async () => {
+    const { tx, created } = createTx(WF);
+    const { service, events } = makeService(tx);
+    const lastOccurredAt = new Date('2026-10-16T01:00:00Z');
+    await service.create('w1', 'u1', baseInput, undefined, {
+      triageState: 'PENDING',
+      triageSource: 'BUG',
+      occurrenceCount: 1,
+      lastOccurredAt,
+    });
+    expect(created).toHaveBeenCalledTimes(1);
+    expect(created.mock.calls[0]![0].data).toMatchObject({
+      triageState: 'PENDING',
+      triageSource: 'BUG',
+      occurrenceCount: 1,
+      lastOccurredAt,
+    });
+    expect(events.emit).toHaveBeenCalledWith('issue.created', expect.anything());
+    // Không có intake => không đụng cột duyệt (việc thường không qua Triage).
+    const plain = createTx(WF);
+    await makeService(plain.tx).service.create('w1', 'u1', baseInput);
+    expect(plain.created.mock.calls[0]![0].data).not.toHaveProperty('triageState');
+  });
+
   it('acceptanceCriteria: create ghi văn bản; chuỗi trắng -> null', async () => {
     const a = createTx(WF);
     await makeService(a.tx).service.create('w1', 'u1', {
@@ -2368,8 +2417,8 @@ describe('IssuesService.bulkUpdate — đổi status cùng field khác', () => {
     order: 1,
     isInitial: false,
   };
-  function tx2(afterOver: Record<string, unknown>) {
-    const rows = [issueRow({ id: 'a' })];
+  function tx2(afterOver: Record<string, unknown>, ids: string[] = ['a']) {
+    const rows = ids.map((id) => issueRow({ id }));
     return {
       issue: {
         findMany: vi.fn(() => Promise.resolve(rows)),
@@ -2398,8 +2447,9 @@ describe('IssuesService.bulkUpdate — đổi status cùng field khác', () => {
     expect(events.emit.mock.calls.map((c) => c[0] as string)).toEqual([
       'issue.transitioned',
       'issue.updated',
+      'issue.bulk_updated',
     ]);
-    expect(events.emit).toHaveBeenLastCalledWith(
+    expect(events.emit).toHaveBeenCalledWith(
       'issue.updated',
       expect.objectContaining({ changedFields: ['assigneeId'], actorId: 'u1' }),
     );
@@ -2414,7 +2464,39 @@ describe('IssuesService.bulkUpdate — đổi status cùng field khác', () => {
       items: [{ id: 'a', version: 3 }],
       patch: { statusId: 's2' },
     });
-    expect(events.emit.mock.calls.map((c) => c[0] as string)).toEqual(['issue.transitioned']);
+    // N1: status-only cũng thuộc lô — TRANSITIONED mang `batch` + MỘT ISSUES_BULK_UPDATED (Telegram gộp 1 tin).
+    expect(events.emit.mock.calls.map((c) => c[0] as string)).toEqual([
+      'issue.transitioned',
+      'issue.bulk_updated',
+    ]);
+    expect(events.emit).toHaveBeenCalledWith(
+      'issue.transitioned',
+      expect.objectContaining({
+        actorId: 'u1',
+        batch: { id: expect.any(String) as string, size: 1 },
+      }),
+    );
+  });
+
+  it('N1: lô 30 việc chỉ đổi status => 30 TRANSITIONED cùng batch {id,size:30} + đúng MỘT ISSUES_BULK_UPDATED count 30', async () => {
+    const ids = Array.from({ length: 30 }, (_, i) => `i${i}`);
+    const tx = tx2({ statusId: 's2', status: stage2 }, ids);
+    const { service, events, rbac } = makeService(tx);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:transition']));
+    await service.bulkUpdate('w1', 'u1', {
+      projectId: 'p1',
+      items: ids.map((id) => ({ id, version: 3 })),
+      patch: { statusId: 's2' },
+    });
+    const calls = events.emit.mock.calls as unknown as Array<[string, Record<string, unknown>]>;
+    const transitioned = calls.filter(([n]) => n === 'issue.transitioned').map(([, p]) => p);
+    expect(transitioned).toHaveLength(30);
+    const batchId = (transitioned[0]!.batch as { id: string }).id;
+    for (const p of transitioned) expect(p.batch).toEqual({ id: batchId, size: 30 });
+    expect(calls.filter(([n]) => n === 'issue.updated')).toHaveLength(0);
+    const summary = calls.filter(([n]) => n === 'issue.bulk_updated');
+    expect(summary).toHaveLength(1);
+    expect(summary[0]![1]).toMatchObject({ projectId: 'p1', actorId: 'u1', count: 30 });
   });
 });
 

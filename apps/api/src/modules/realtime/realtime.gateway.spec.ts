@@ -796,3 +796,84 @@ describe('RealtimeGateway.onProjectVisibilityChanged (P16)', () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe('RealtimeGateway.onAccessChanged — đổi vai trò/quyền rà lại socket (S-I6/D-I1)', () => {
+  const issueProjects: Record<string, string> = { 'IP-1': 'P1', 'IP-2': 'P1', 'IX-1': 'P2' };
+  function setup(canSee: (userId: string, ws: string, projectId: string) => boolean) {
+    const ctx = makeGateway(null, null, canSee);
+    // issue.findMany dùng chung cho tra "room issue thuộc dự án nào" (mới) và "rút theo dự án" (cũ)
+    ctx.prisma.issue.findMany.mockImplementation(
+      (a: { where: { projectId?: string; id: { in: string[] } } }) =>
+        Promise.resolve(
+          a.where.id.in
+            .filter(
+              (id) =>
+                id in issueProjects &&
+                (!a.where.projectId || issueProjects[id] === a.where.projectId),
+            )
+            .map((id) => ({ id, projectId: issueProjects[id] })),
+        ),
+    );
+    return ctx;
+  }
+
+  it('userIds: rà socket của đúng user; mất quyền xem P1 → rút khỏi project:P1 + issue của P1, giữ dự án còn thấy (P2)', async () => {
+    const { gateway, fetchSockets, access, presence } = setup((_u, _w, p) => p !== 'P1');
+    const tab1 = {
+      data: { userId: 'U1' },
+      rooms: new Set(['user:U1', 'project:P1', 'project:P2', 'issue:IP-1', 'issue:IX-1']),
+      leave: vi.fn(),
+    };
+    const tab2 = {
+      data: { userId: 'U1' },
+      rooms: new Set(['user:U1', 'issue:IP-2']),
+      leave: vi.fn(),
+    };
+    const other = {
+      data: { userId: 'U2' },
+      rooms: new Set(['user:U1', 'project:P1']),
+      leave: vi.fn(),
+    };
+    fetchSockets.mockResolvedValue([tab1, tab2, other]);
+    await gateway.onAccessChanged({ workspaceId: 'W1', userIds: ['U1'] });
+    const server = (gateway as unknown as { server: { in: ReturnType<typeof vi.fn> } }).server;
+    expect(server.in).toHaveBeenCalledWith('user:U1');
+    expect(tab1.leave).toHaveBeenCalledWith('project:P1');
+    expect(tab1.leave).toHaveBeenCalledWith('issue:IP-1');
+    expect(tab1.leave).not.toHaveBeenCalledWith('project:P2');
+    expect(tab1.leave).not.toHaveBeenCalledWith('issue:IX-1');
+    expect(tab2.leave).toHaveBeenCalledWith('issue:IP-2'); // tab chỉ mở một việc của P1
+    expect(other.leave).not.toHaveBeenCalled(); // socket của người khác (không thuộc userIds) không bị đụng
+    expect(presence.leave).toHaveBeenCalledWith('project:P1', 'U1');
+    // mỗi (người, dự án) kiểm một lần dù nhiều tab: P1 và P2 cho U1
+    expect(access.canSee).toHaveBeenCalledTimes(2);
+  });
+
+  it('còn thấy mọi dự án → không rút socket nào', async () => {
+    const { gateway, fetchSockets } = setup(() => true);
+    const s = { data: { userId: 'U1' }, rooms: new Set(['project:P1']), leave: vi.fn() };
+    fetchSockets.mockResolvedValue([s]);
+    await gateway.onAccessChanged({ workspaceId: 'W1', userIds: ['U1'] });
+    expect(s.leave).not.toHaveBeenCalled();
+  });
+
+  it('userIds vắng = cả workspace: rà mọi socket trong room ws:<id>, rút từng người mất quyền', async () => {
+    const { gateway, fetchSockets } = setup((u) => u === 'U2');
+    const a = { data: { userId: 'U1' }, rooms: new Set(['ws:W1', 'project:P1']), leave: vi.fn() };
+    const b = { data: { userId: 'U2' }, rooms: new Set(['ws:W1', 'project:P1']), leave: vi.fn() };
+    fetchSockets.mockResolvedValue([a, b]);
+    await gateway.onAccessChanged({ workspaceId: 'W1' });
+    const server = (gateway as unknown as { server: { in: ReturnType<typeof vi.fn> } }).server;
+    expect(server.in).toHaveBeenCalledWith('ws:W1');
+    expect(a.leave).toHaveBeenCalledWith('project:P1');
+    expect(b.leave).not.toHaveBeenCalled();
+  });
+
+  it('payload thiếu bị bỏ qua; lỗi bị nuốt', async () => {
+    const { gateway, fetchSockets } = setup(() => true);
+    await gateway.onAccessChanged({});
+    expect(fetchSockets).not.toHaveBeenCalled();
+    fetchSockets.mockRejectedValue(new Error('redis'));
+    await expect(gateway.onAccessChanged({ workspaceId: 'W1' })).resolves.toBeUndefined();
+  });
+});

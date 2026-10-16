@@ -4,6 +4,8 @@ import { toCsv, vnDayStamp } from '@tirapro/shared';
 import type { IssueDto } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { BUG_TYPE_WHERE } from '../../common/bug-type';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import type { PageResult } from '../../common/dto/page-result';
 import { IssuesService } from '../issues/issues.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
@@ -157,14 +159,17 @@ export class ExportService {
           limit: CSV_PAGE_SIZE,
         });
     } else {
-      const where: Prisma.IssueWhereInput = { projectId };
+      // Preset/sprint = cùng tập với màn hình (Việc chờ, Bug, Sprint đều ẩn việc chưa duyệt/đã từ chối: TRIAGE_VISIBLE) nên số
+      // dòng CSV khớp số việc trên màn. JQL giữ nguyên (người báo vẫn tìm lại được việc của mình — Q15).
+      const where: Prisma.IssueWhereInput = { projectId, AND: [TRIAGE_VISIBLE] };
       let orderBy: Prisma.IssueOrderByWithRelationInput[] = [{ createdAt: 'desc' }];
       if (preset === 'backlog') {
         where.sprintId = null;
         where.status = { category: { not: 'DONE' } };
         orderBy = [{ rank: 'asc' }];
       }
-      if (preset === 'bugs') where.type = { key: 'BUG' };
+      // Cùng định nghĩa 'bug' với báo cáo QA / KR OPEN_BUGS (key BUG hoặc tên Bug).
+      if (preset === 'bugs') where.type = BUG_TYPE_WHERE;
       if (sprint) {
         where.sprintId = sprint.id;
         orderBy = [{ rank: 'asc' }];

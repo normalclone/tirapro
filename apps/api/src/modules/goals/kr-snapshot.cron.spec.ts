@@ -71,8 +71,25 @@ const createdRows = (prisma: ReturnType<typeof make>['prisma']) =>
     (c) => (c[0] as { data: Array<Record<string, unknown>> }).data,
   );
 
+describe('KrSnapshotCron — "hôm nay" là ngày lịch VN (Q-M7)', () => {
+  it('17:30Z (00:30 VN ngày kế tiếp): bản chụp ghi snapshotDate = ngày VN, không phải ngày UTC', async () => {
+    const { cron, prisma } = make({
+      objectives: { w1: [{ id: 'o1', period: '2026-Q4', keyResults: [kr('k1', 'MANUAL', 7)] }] },
+    });
+    await cron.snapshotAll(new Date('2026-10-16T17:30:00Z'));
+    expect(createdRows(prisma)).toEqual([
+      {
+        keyResultId: 'k1',
+        value: 7,
+        source: 'AUTO',
+        snapshotDate: new Date('2026-10-17T00:00:00.000Z'),
+      },
+    ]);
+  });
+});
+
 describe('KrSnapshotCron.snapshotAll (L29)', () => {
-  it('KR nhập tay: ghi currentValue, source AUTO, snapshotDate = ngày UTC, createMany skipDuplicates', async () => {
+  it('KR nhập tay: ghi currentValue, source AUTO, snapshotDate = ngày lịch VN, createMany skipDuplicates', async () => {
     const { cron, prisma } = make({
       objectives: { w1: [{ id: 'o1', period: '2026-Q4', keyResults: [kr('k1', 'MANUAL', 7)] }] },
     });

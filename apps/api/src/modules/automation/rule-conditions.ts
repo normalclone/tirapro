@@ -7,7 +7,7 @@ export type JqlCondition = Extract<RuleCondition, { jql: string }>;
 export const isJqlCondition = (c: RuleCondition): c is JqlCondition => 'jql' in c;
 
 /** Giá trị trường issue theo tên điều kiện (id cho quan hệ, mảng id cho nhãn). */
-export function readIssueField(issue: IssueDto, field: FieldCondition['field']): unknown {
+function readIssueField(issue: IssueDto, field: FieldCondition['field']): unknown {
   switch (field) {
     case 'statusId':
       return issue.status.id;

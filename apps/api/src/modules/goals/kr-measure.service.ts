@@ -5,6 +5,8 @@ import {
   BusinessRuleException,
   NotFoundAppException,
 } from '../../common/exceptions/app.exception';
+import { BUG_TYPE_WHERE } from '../../common/bug-type';
+import { TtlCache } from '../../common/ttl-cache';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
@@ -24,6 +26,12 @@ export interface MeasurableKr {
  */
 export type MeasureScope = { viewerId: string } | 'public';
 
+/** Số phép đo chạy song song tối đa (tránh dồn pool Prisma khi có vài chục KR tự đo). */
+const MEASURE_CONCURRENCY = 4;
+/** Kết quả đo thành công được giữ trong bộ nhớ chừng này (mở Mục tiêu + thẻ "OKR chậm" liên tục không đo lại). */
+const MEASURE_CACHE_TTL_MS = 30_000;
+const MEASURE_CACHE_MAX = 2_000;
+
 export interface MeasureResult {
   /** Số đo được; `null` khi đo lỗi (nơi gọi giữ giá trị cũ để không nhảy về 0 gây hiểu nhầm). */
   value: number | null;
@@ -40,6 +48,8 @@ export interface MeasureResult {
 @Injectable()
 export class KrMeasureService {
   private readonly logger = new Logger(KrMeasureService.name);
+  /** Cache 30s theo (workspace, người xem, nguồn+cấu hình): số đo phụ thuộc dự án người xem thấy nên khoá có viewerId. */
+  private readonly cache = new TtlCache<MeasureResult>(MEASURE_CACHE_TTL_MS, MEASURE_CACHE_MAX);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -64,21 +74,46 @@ export class KrMeasureService {
       else groups.set(key, { kr, ids: [kr.id] });
     }
 
+    // Phạm vi công khai (cron chụp lịch sử) luôn đo mới; đường đọc (theo người xem) dùng cache ngắn.
+    const cacheable = scope !== 'public';
+    const now = Date.now();
+    const pending: Array<{ key: string; kr: MeasurableKr; ids: string[] }> = [];
+    for (const [key, g] of groups) {
+      const hit = cacheable
+        ? this.cache.read(this.cacheKey(workspaceId, scope, key), now)
+        : undefined;
+      if (hit) for (const id of g.ids) out.set(id, hit);
+      else pending.push({ key, kr: g.kr, ids: g.ids });
+    }
+    if (pending.length === 0) return out;
+
     const visible = await this.projectFilter(workspaceId, scope);
     const measuredAt = new Date().toISOString();
-    await Promise.all(
-      [...groups.values()].map(async ({ kr, ids }) => {
-        let result: MeasureResult;
-        try {
-          const value = await this.measureOne(workspaceId, scope, visible, kr);
-          result = { value, measuredAt, error: null };
-        } catch (err) {
-          result = { value: null, measuredAt, error: this.messageOf(err) };
-        }
-        for (const id of ids) out.set(id, result);
-      }),
-    );
+    await this.inPool(pending, async ({ key, kr, ids }) => {
+      let result: MeasureResult;
+      try {
+        const value = await this.measureOne(workspaceId, scope, visible, kr);
+        result = { value, measuredAt, error: null };
+        if (cacheable) this.cache.put(this.cacheKey(workspaceId, scope, key), result);
+      } catch (err) {
+        result = { value: null, measuredAt, error: this.messageOf(err) };
+      }
+      for (const id of ids) out.set(id, result);
+    });
     return out;
+  }
+
+  private cacheKey(workspaceId: string, scope: MeasureScope, groupKey: string): string {
+    return `${workspaceId}|${scope === 'public' ? 'public' : scope.viewerId}|${groupKey}`;
+  }
+
+  /** Chạy `fn` cho từng phần tử với tối đa `MEASURE_CONCURRENCY` việc đồng thời. `fn` tự bắt lỗi (không ném). */
+  private async inPool<T>(items: T[], fn: (item: T) => Promise<void>): Promise<void> {
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (next < items.length) await fn(items[next++]!);
+    };
+    await Promise.all(Array.from({ length: Math.min(MEASURE_CONCURRENCY, items.length) }, worker));
   }
 
   /**
@@ -155,7 +190,7 @@ export class KrMeasureService {
           where: {
             workspaceId,
             deletedAt: null,
-            type: { key: 'BUG' },
+            type: BUG_TYPE_WHERE,
             status: { category: { not: 'DONE' } },
             project: { deletedAt: null, ...this.filterFor(scope, visible, !!projectId) },
             ...(projectId ? { projectId } : {}),

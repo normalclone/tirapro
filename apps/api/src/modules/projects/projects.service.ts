@@ -307,7 +307,12 @@ export class ProjectsService {
     if (privacyChanged) {
       await this.access.onVisibilityChanged(workspaceId);
       // Sau commit: socket của người không còn thấy dự án bị rút khỏi room project (gateway kiểm lại quyền từng người).
-      this.events?.emit(DOMAIN_EVENTS.PROJECT_VISIBILITY_CHANGED, { workspaceId, projectId });
+      this.events?.emit(DOMAIN_EVENTS.PROJECT_VISIBILITY_CHANGED, {
+        workspaceId,
+        projectId,
+        isPrivate: input.isPrivate === true,
+        actorId: userId,
+      });
     } else await this.access.onMembersChanged(workspaceId, mustBeMembers);
     this.emitProjectAccess(workspaceId, projectId, userId, {
       nowPublic: privacyChanged && input.isPrivate === false,

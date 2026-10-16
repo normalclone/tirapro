@@ -10,7 +10,7 @@ import {
 } from './vi-text';
 
 /** Số issue tối đa trả về từ một lần tìm full-text (xếp theo rank). */
-export const FULLTEXT_LIMIT = 200;
+const FULLTEXT_LIMIT = 200;
 /** Độ dài tối đa của chuỗi tìm (tính theo ký tự/code point, không phải đơn vị UTF-16). */
 const MAX_QUERY_LENGTH = 200;
 /** Khoảng tối thiểu giữa hai lần log cảnh báo "đường phòng thủ 42601 chạy lại" (tránh ngập log). */
@@ -64,7 +64,7 @@ export function isMissingSearchObject(err: unknown): boolean {
 }
 
 /** Lỗi cú pháp (42601) — phòng thủ khi `to_tsquery` vẫn nhận chuỗi lạ mà bước lọc token bỏ sót. */
-export function isSyntaxError(err: unknown): boolean {
+function isSyntaxError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
   const e = err as { code?: unknown; meta?: { code?: unknown }; message?: unknown };
   if (e.code === '42601' || e.meta?.code === '42601') return true;
@@ -84,7 +84,7 @@ export interface SearchOptions {
  * HOẶC gõ sai nhẹ so với summary (`<%` = word_similarity ≥ ngưỡng, dùng chỉ mục trigram). Description không
  * quét fuzzy (dài, tốn kém, nhiều nhiễu); từ ≤ 4 ký tự gõ sai không được tha.
  */
-export function buildTextMatchSql(built: FulltextQuery): Prisma.Sql {
+function buildTextMatchSql(built: FulltextQuery): Prisma.Sql {
   return Prisma.sql`(i."searchVector" @@ q.tsq
     OR lower(immutable_unaccent(i."summary")) LIKE ${built.likeNorm}
     OR lower(immutable_unaccent(i."description")) LIKE ${built.likeNorm}

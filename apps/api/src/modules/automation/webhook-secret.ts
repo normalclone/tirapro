@@ -2,7 +2,7 @@ import { WEBHOOK_SECRET_MAX_LENGTH, WEBHOOK_SECRET_PREFIX } from '@tirapro/share
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 
 /** Tiền tố `enc:v1:` phân biệt tuyệt đối "đã mã hoá" với dữ liệu cũ lưu plaintext (secret thuần có thể chứa dấu ':'). */
-export { WEBHOOK_SECRET_MAX_LENGTH, WEBHOOK_SECRET_PREFIX };
+export { WEBHOOK_SECRET_MAX_LENGTH };
 /** Giá trị API trả thay khoá bí mật; client gửi lại nguyên giá trị này = "giữ khoá cũ". */
 export const WEBHOOK_SECRET_MASK = '********';
 
