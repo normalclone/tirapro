@@ -268,6 +268,15 @@ Gộp vào PR #1 (`fix/review-findings`), đè lên đợt follow-up ở trên. 
 - **Bộ lọc/JQL:** khi còn kết quả ghi "100 công việc đầu tiên" + nút **Tải thêm** (+ gợi ý Xuất CSV), hết thì "N công việc" (trước đây hiện 100 như tổng).
 - **Khác:** hotkey không chặn khi đã bấm ô tick chọn hàng, nhường tour hướng dẫn, Esc trong bộ gõ (IME) không phá bộ gõ; menu Tạm hoãn là Radix menu; nút "Xem trước" digest hiện theo `integration:manage`.
 
+### Chỉnh cuối sau smoke vòng 2
+
+- **Số liệu tổng hợp chỉ tính việc đã qua duyệt** (hoặc không đi qua "Việc mới vào"): Tổng quan, báo cáo dự án, CFD và "Tạo vs Xong", burndown/tổng kết sprint, velocity, Danh mục, digest, tải nhân lực, trợ lý sprint, **số việc trên thẻ dự án** và **giới hạn WIP** của cột. Số "Bug", "Đang mở", "Đã hoàn thành x/y" nay khớp Board, Việc chờ và báo cáo QA. Tìm kiếm/JQL/bộ lọc đã lưu/gadget theo JQL vẫn thấy mọi việc, kể cả việc chưa duyệt (người báo tìm lại được việc của mình). Sprint kết thúc không liệt việc chưa duyệt vào "chuyển tiếp".
+- **Snapshot sprint đã lưu trước bản này giữ nguyên số đã chụp** (velocity, sprint đã đóng, burndown theo snapshot); chỉ snapshot ghi từ nay mới loại việc chưa duyệt. Số liệu tính lại từ dữ liệu hiện tại tự đúng ngay khi tải lại, không cần migration.
+- **Tạo nhiều việc cùng lúc trong một dự án** (nhập liệu, automation, nhiều người cùng tạo) không còn ra các việc trùng rank: mỗi việc mới nằm đúng cuối danh sách theo thứ tự tạo (đã kiểm 10 lệnh tạo song song → 10 rank khác nhau). Vận hành: transaction tạo việc có timeout 30 giây (trước 5 giây) để chịu được lần đánh số lại rank hiếm gặp ở dự án rất lớn.
+- **Board và Việc chờ trên điện thoại gọn hơn:** Mọi người / Nhóm theo người / Báo lỗi / Sprint (Việc chờ: Tạo sprint / Epic / Mọi người / Xuất) gom vào một dải cuộn ngang dưới hàng chip nhanh; Cài đặt bảng thành nút ⚙ đầu dải, "Tạo sprint" đứng đầu dải nên thấy ngay; cột đầu tiên của Board lên cao khoảng 90px. Màn từ 640px trở lên không đổi.
+- **"Việc mới vào"** là tên thống nhất ở tiêu đề trang, tab và lệnh ⌘K (trước đây tiêu đề trang là "Phân loại (Triage)").
+- **Báo cáo định kỳ:** múi giờ hiển thị dễ đọc ("Giờ Việt Nam (UTC+7)", "Asia/Tokyo (UTC+9)"), báo cáo cũ lưu `Asia/Saigon` mở ra đúng một dòng "Giờ Việt Nam", ô chọn múi giờ mở nhanh hơn; giá trị lưu vẫn là tên IANA. Danh sách báo cáo trên điện thoại hiện đủ tên và lịch (xuống dòng thay vì cắt cụt).
+
 ## 3. Thay đổi API
 
 Cập nhật `docs/design/api-contract.md` theo từng route khi sửa.
@@ -384,3 +393,4 @@ Cập nhật `docs/design/api-contract.md` theo từng route khi sửa.
 - Triage: `accept` có đổi trường là hai bước không cùng giao dịch (lỗi bước hai → việc đã đổi loại/sprint nhưng vẫn PENDING, thử lại được).
 - Hiệu năng chưa đo ở quy mô lớn: `GET /users?projectId` với workspace rất lớn mà ít người xem được dự án (tối đa 10 lô × `min(2·limit, 400)` hàng + `canSee` mỗi người); `IssueHistory`/`Notification`/`WikiPageVersion` hàng triệu dòng; migration `…303000_wiki_page_history` nhân đôi dung lượng `WikiPage.body` một lần và hai `CREATE INDEX` thường (`…299000_mention_unique`, `…120000_*_index`) khoá ghi bảng đó lúc dựng (bảng nhỏ nên rủi ro thấp; `DEPLOY.md` chưa nhắc cạnh cảnh báo `perf_indexes`).
 - Mô tả (`DEFAULT_RESOLUTIONS`) và quyền ở DB cũ chỉ cập nhật khi chạy lại `db:seed` (đã nêu ở mục 2).
+- **Sau smoke vòng 2 (ruling, chưa sửa):** Wiki "Tạo trang mới" tạo ngay một trang rỗng trên máy chủ — bỏ ngang thì trang rỗng còn trong cây (có từ trước, xoá tay). `GET /triage` vẫn trả danh sách việc chờ duyệt cho người xem được dự án mà không có `issue:triage` (việc đó vẫn tìm được qua JQL; mọi nút Nhận/Từ chối/Tạm hoãn chặn bằng `issue:triage`). Kéo-thả xếp hạng đọc mốc ngoài khoá dự án — kéo xuống cuối đúng lúc có người tạo việc có thể ra hai việc cùng rank (server tự đánh số lại ở lần thả kế tiếp). Ô "Múi giờ" ở hồ sơ cá nhân vẫn là ô gõ tên IANA.

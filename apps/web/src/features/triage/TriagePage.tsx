@@ -121,7 +121,7 @@ export function TriagePage() {
             <div className={pageContainer('md')}>
               <EmptyState
                 icon={<Inbox className="h-8 w-8" />}
-                title="Hộp phân loại trống — mọi yêu cầu đã được xử lý"
+                title="Không còn việc mới vào — mọi yêu cầu đã được xử lý"
                 description="Đây là nơi tiếp nhận công việc do người ngoài dự án báo lên. Hiện không còn việc nào chờ bạn duyệt."
               />
             </div>
