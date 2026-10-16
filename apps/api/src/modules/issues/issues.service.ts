@@ -350,6 +350,23 @@ export class IssuesService {
       );
   }
 
+  /** Epic khi TẠO việc: epic đích hợp lệ (+ chính việc không phải Epic, chỉ đường API — import giữ nguyên dữ liệu gốc). */
+  private async assertEpicForCreate(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    input: { epicId?: string | null; typeId: string },
+    projectId: string,
+    strict: boolean,
+  ): Promise<void> {
+    await this.assertEpicValid(db, workspaceId, input.epicId!, projectId, null, strict);
+    if (!strict) return;
+    const t = await db.issueType.findFirst({
+      where: { id: input.typeId, workspaceId },
+      select: { key: true, hierarchyLevel: true },
+    });
+    if (t) this.assertNotEpicWithEpic(t);
+  }
+
   /**
    * Epic của issue: phải tồn tại trong workspace, CÙNG dự án, đúng loại Epic (`key = EPIC` hoặc `hierarchyLevel >= 1`;
    * bỏ qua kiểm LOẠI khi `checkType = false` — đường import),
@@ -553,16 +570,8 @@ export class IssuesService {
       },
       db,
     );
-    if (input.epicId) {
-      await this.assertEpicValid(db, workspaceId, input.epicId, project.id, null, origin === 'api');
-      if (origin === 'api') {
-        const t = await db.issueType.findFirst({
-          where: { id: input.typeId, workspaceId },
-          select: { key: true, hierarchyLevel: true },
-        });
-        if (t) this.assertNotEpicWithEpic(t);
-      }
-    }
+    if (input.epicId)
+      await this.assertEpicForCreate(db, workspaceId, input, project.id, origin === 'api');
     await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId, db);
 
     // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project

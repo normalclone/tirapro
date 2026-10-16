@@ -1849,6 +1849,42 @@ describe('IssuesService — epicId được lưu và hợp lệ (FW11 + review)'
     }
   });
 
+  it('create: epic hợp lệ => tạo với epicId', async () => {
+    const { tx, created } = createTxFor({ e1: epicRow() });
+    const { service } = makeService(tx);
+    await service.create('w1', 'u1', {
+      projectId: 'p1',
+      typeId: 't1',
+      summary: 's',
+      descriptionFormat: 'MARKDOWN',
+      epicId: 'e1',
+    });
+    expect(created.mock.calls[0]![0].data.epicId).toBe('e1');
+  });
+});
+
+describe('IssuesService — Epic không có epicId (không epic lồng epic)', () => {
+  const epicRow = () => ({
+    projectId: 'p1',
+    epicId: null,
+    type: { key: 'EPIC', hierarchyLevel: 1 },
+  });
+
+  function epicTx(current: Record<string, unknown>) {
+    return {
+      issue: {
+        findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(where.id === 'e1' ? epicRow() : where.id === 'i1' ? current : null),
+        ),
+        updateMany: vi.fn((_args: { data: Record<string, unknown> }) =>
+          Promise.resolve({ count: 1 }),
+        ),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(current)),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+  }
+
   it('create: chính việc là Epic mà có epicId => 422, không tạo (không epic lồng epic)', async () => {
     const { tx, created } = createTxFor({ e1: epicRow() });
     tx.issueType.findFirst = vi.fn(() =>
@@ -1869,7 +1905,7 @@ describe('IssuesService — epicId được lưu và hợp lệ (FW11 + review)'
 
   it('update: việc là Epic mà gắn epicId => 422, không ghi; gỡ epicId (null) vẫn được', async () => {
     const epicIssue = issueRow({ type: { ...issueRow().type, key: 'EPIC', hierarchyLevel: 1 } });
-    const tx = epicTx(epicIssue, epicIssue, { e1: epicRow() });
+    const tx = epicTx(epicIssue);
     const { service } = makeService(tx);
     await expect(
       service.update('w1', 'u1', 'i1', { version: 3, epicId: 'e1' }),
@@ -1878,19 +1914,6 @@ describe('IssuesService — epicId được lưu và hợp lệ (FW11 + review)'
     await expect(
       service.update('w1', 'u1', 'i1', { version: 3, epicId: null }),
     ).resolves.toBeDefined();
-  });
-
-  it('create: epic hợp lệ => tạo với epicId', async () => {
-    const { tx, created } = createTxFor({ e1: epicRow() });
-    const { service } = makeService(tx);
-    await service.create('w1', 'u1', {
-      projectId: 'p1',
-      typeId: 't1',
-      summary: 's',
-      descriptionFormat: 'MARKDOWN',
-      epicId: 'e1',
-    });
-    expect(created.mock.calls[0]![0].data.epicId).toBe('e1');
   });
 });
 
