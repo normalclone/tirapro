@@ -57,6 +57,8 @@ import {
 import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
+import { ExportMenu } from '@/components/ui/ExportMenu';
+import { exportIssuesCsvWithToast } from '@/features/export/api';
 import { SprintTimeText } from '@/components/ui/SprintTimeText';
 import { Input } from '@/components/ui/Input';
 import { Badge, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -711,62 +713,79 @@ export function BacklogPage() {
           </div>
           <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
           <AssigneeFilter options={assigneeOptions} value={assignee} onChange={setAssignee} />
-          {canManageSprint &&
-            (creating ? (
-              <form
-                className="ml-auto flex items-center gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleCreate();
-                }}
-              >
-                <Input
-                  autoFocus
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
+          <div className="ml-auto flex items-center gap-2">
+            <ExportMenu
+              items={[
+                {
+                  id: 'backlog',
+                  label: 'Việc chờ (CSV)',
+                  hint: 'Việc chưa xong và chưa vào sprint',
+                  run: () => exportIssuesCsvWithToast({ projectId, preset: 'backlog' }),
+                },
+                {
+                  id: 'bugs',
+                  label: 'Danh sách bug (CSV)',
+                  hint: 'Mọi công việc loại Bug của dự án',
+                  run: () => exportIssuesCsvWithToast({ projectId, preset: 'bugs' }),
+                },
+              ]}
+            />
+            {canManageSprint &&
+              (creating ? (
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleCreate();
+                  }}
+                >
+                  <Input
+                    autoFocus
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setCreating(false);
+                        setNewName('');
+                      }
+                    }}
+                    placeholder="VD: Sprint 1 — tuần 1 và 2"
+                    className="h-8 w-56"
+                    aria-label="Tên sprint mới"
+                    title={SPRINT_TIP}
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    loading={createSprint.isPending}
+                    disabled={!newName.trim()}
+                  >
+                    Tạo
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
                       setCreating(false);
                       setNewName('');
-                    }
-                  }}
-                  placeholder="VD: Sprint 1 — tuần 1 và 2"
-                  className="h-8 w-56"
-                  aria-label="Tên sprint mới"
-                  title={SPRINT_TIP}
-                />
+                    }}
+                  >
+                    Hủy
+                  </Button>
+                </form>
+              ) : (
                 <Button
-                  type="submit"
                   size="sm"
-                  loading={createSprint.isPending}
-                  disabled={!newName.trim()}
+                  variant="secondary"
+                  title={`Tạo một đợt làm việc mới. ${SPRINT_TIP}`}
+                  onClick={() => setCreating(true)}
                 >
-                  Tạo
+                  <Plus className="h-4 w-4" />
+                  Tạo sprint
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setCreating(false);
-                    setNewName('');
-                  }}
-                >
-                  Hủy
-                </Button>
-              </form>
-            ) : (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="ml-auto"
-                title={`Tạo một đợt làm việc mới. ${SPRINT_TIP}`}
-                onClick={() => setCreating(true)}
-              >
-                <Plus className="h-4 w-4" />
-                Tạo sprint
-              </Button>
-            ))}
+              ))}
+          </div>
         </div>
 
         <DndContext

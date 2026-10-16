@@ -7,6 +7,8 @@ import { dueState } from '@/components/ui/DueBadge';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
+import { ExportMenu } from '@/components/ui/ExportMenu';
+import { exportIssuesCsvWithToast } from '@/features/export/api';
 import { openOnClick, openOnRowKey } from '@/lib/rowOpen';
 import { categoryColor } from '@/lib/statusColor';
 import { useMediaQuery } from '@/lib/useMediaQuery';
@@ -61,6 +63,7 @@ export function ResultsTable({
   onPageChange,
   projectKeyById,
   onOpen,
+  exportJql,
 }: {
   issues: IssueDto[] | null;
   loading: boolean;
@@ -71,6 +74,8 @@ export function ResultsTable({
   onPageChange: (p: number) => void;
   projectKeyById: Map<string, string>;
   onOpen: (key: string) => void;
+  /** JQL của kết quả đang xem; có thì hiện nút Xuất CSV (tải ĐỦ mọi dòng ở máy chủ, theo cột đang chọn). */
+  exportJql?: string;
 }) {
   const { columns, toggle } = useResultColumns();
   const wide = useMediaQuery('(min-width: 640px)', true);
@@ -124,6 +129,20 @@ export function ResultsTable({
             {totalPages > 1 && ` · ${start + 1}–${Math.min(start + RESULTS_PAGE_SIZE, total)}`}
           </span>
           {wide && <ColumnPicker columns={columns} onToggle={toggle} />}
+          {exportJql && (
+            <ExportMenu
+              items={[
+                {
+                  id: 'csv',
+                  label: 'Kết quả (CSV)',
+                  hint: wide
+                    ? 'Đủ mọi công việc khớp, theo cột đang chọn'
+                    : 'Đủ mọi công việc khớp',
+                  run: () => exportIssuesCsvWithToast({ jql: exportJql, columns }),
+                },
+              ]}
+            />
+          )}
         </div>
       </div>
 
