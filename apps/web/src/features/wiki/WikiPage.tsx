@@ -210,13 +210,14 @@ export function WikiPage() {
     setEditIssue(null);
   }
 
-  function startEditing(pg: { title: string; body: string; version: number }) {
+  // Chỉ đặt state nên ổn định giữa các lần render (dùng được trong deps của effect `?edit=1`).
+  const startEditing = useCallback((pg: { title: string; body: string; version: number }) => {
     setDraftTitle(pg.title);
     setDraftBody(pg.body);
     setBaseVersion(pg.version);
     setEditIssue(null);
     setEditing(true);
-  }
+  }, []);
 
   // `?edit=1`: khi trang về và người xem có quyền viết thì vào chế độ sửa MỘT lần rồi xoá `edit` khỏi URL.
   const loaded = page.data && page.data.id === selectedId ? page.data : undefined;
@@ -233,7 +234,7 @@ export function WikiPage() {
       },
       { replace: true },
     );
-  }, [wantEdit, loaded, editing, loadedCanWrite, loadedWriteLoading, setSp]);
+  }, [wantEdit, loaded, editing, loadedCanWrite, loadedWriteLoading, setSp, startEditing]);
 
   function open(id: string) {
     setSelectedId(id);

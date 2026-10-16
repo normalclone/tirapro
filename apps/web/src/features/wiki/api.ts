@@ -214,6 +214,7 @@ export function useCreateWikiPage() {
 }
 
 export function useUpdateWikiPage() {
+  const qc = useQueryClient();
   const invalidate = useInvalidateWiki();
   return useMutation({
     mutationFn: ({
@@ -226,7 +227,12 @@ export function useUpdateWikiPage() {
       /** `version` của trang lúc mở sửa — API trả 409 VERSION_CONFLICT nếu người khác đã lưu trước, 404 nếu trang đã bị xoá. */
       expectedVersion?: number;
     }) => api.put<WikiPageDetail>(`/wiki/${id}`, patch).then((r) => r.data),
-    onSuccess: (page) => invalidate(page.id),
+    // Ghi ngay bản vừa lưu (kèm `version` mới) vào cache TRƯỚC khi làm mới nền: thao tác nối tiếp (tick liên tiếp)
+    // đọc đúng version mới, không dùng version cũ → không 409 giả.
+    onSuccess: (page) => {
+      qc.setQueryData(keys.wiki.page(page.id), page);
+      invalidate(page.id);
+    },
     // Xung đột: làm mới bản của trang để "Huỷ → mở lại" thấy ngay nội dung người kia vừa lưu.
     onError: (e, vars) => {
       const code = apiErrorCode(e);
@@ -241,6 +247,7 @@ export function useUpdateWikiPage() {
  * người bấm đang xem: 409 VERSION_CONFLICT nếu trang vừa được sửa, 404 nếu trang đã bị xoá.
  */
 export function useRestoreWikiVersion() {
+  const qc = useQueryClient();
   const invalidate = useInvalidateWiki();
   return useMutation({
     mutationFn: ({
@@ -255,7 +262,10 @@ export function useRestoreWikiVersion() {
       api
         .post<WikiPageDetail>(`/wiki/${id}/versions/${version}/restore`, { expectedVersion })
         .then((r) => r.data),
-    onSuccess: (page) => invalidate(page.id),
+    onSuccess: (page) => {
+      qc.setQueryData(keys.wiki.page(page.id), page);
+      invalidate(page.id);
+    },
     onError: (e, vars) => {
       const code = apiErrorCode(e);
       if (code === 'VERSION_CONFLICT') invalidate(vars.id);

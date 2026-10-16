@@ -23,8 +23,13 @@ export function RelatedDocsPanel({
   const navigate = useNavigate();
 
   const list = docs.data ?? [];
-  if (docs.isPending || docs.isError) return null;
+  // Đang tải: người có quyền viết chắc chắn sẽ thấy khối (nút hoặc danh sách) → giữ chỗ để không nhảy bố cục;
+  // người chỉ đọc có thể không có khối nào nên không giữ chỗ.
+  if (docs.isPending) return canWrite ? <div className="min-h-16" aria-hidden /> : null;
+  if (docs.isError) return null;
   if (list.length === 0 && !canWrite) return null;
+  // Đã có tài liệu → không mời viết thêm (tránh tạo trùng); dự án lưu trữ → `useCanIn` đã tắt quyền.
+  const canWriteNew = canWrite && list.length === 0;
 
   async function write() {
     try {
@@ -46,7 +51,7 @@ export function RelatedDocsPanel({
           <FileText className="h-4 w-4" aria-hidden /> Tài liệu liên quan
           {list.length > 0 ? ` (${list.length})` : ''}
         </p>
-        {canWrite && (
+        {canWriteNew && (
           <Button
             size="sm"
             variant="secondary"
