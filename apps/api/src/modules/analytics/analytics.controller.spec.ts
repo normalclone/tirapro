@@ -13,6 +13,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RbacService } from '../rbac/rbac.service';
 import { AnalyticsController } from './analytics.controller';
 import type { AnalyticsService } from './analytics.service';
+import type { LeadershipService } from './leadership.service';
 import type { QaReportService } from './qa-report.service';
 
 describe('AnalyticsController.burndown — metadata', () => {
@@ -34,6 +35,7 @@ describe('AnalyticsController.sprintSummary — metadata', () => {
     const controller = new AnalyticsController(
       analytics as unknown as AnalyticsService,
       {} as unknown as QaReportService,
+      {} as unknown as LeadershipService,
     );
     await expect(controller.sprintSummary('w1', 'sp1', undefined)).rejects.toBeInstanceOf(
       BusinessRuleException,
@@ -61,6 +63,7 @@ describe('AnalyticsController.burndown — guard thật + controller', () => {
     const controller = new AnalyticsController(
       analytics as unknown as AnalyticsService,
       {} as unknown as QaReportService,
+      {} as unknown as LeadershipService,
     );
     const req = { user: { id: 'U1', workspaceId: 'w1', isSystemAdmin: false }, params: {}, query };
     const ctx = {
@@ -113,6 +116,7 @@ describe('AnalyticsController.qa — metadata', () => {
     const controller = new AnalyticsController(
       {} as unknown as AnalyticsService,
       qaReport as unknown as QaReportService,
+      {} as unknown as LeadershipService,
     );
     await expect(controller.qa('w1', undefined)).rejects.toBeInstanceOf(BusinessRuleException);
     await controller.qa('w1', 'p1', '2026-10-01', '2026-10-15');
@@ -200,5 +204,23 @@ describe('AnalyticsController.qa — guard thật', () => {
     await expect(
       mk([PERMISSIONS.REPORT_VIEW]).canActivate(ctxOf({ projectId: 'p1' })),
     ).resolves.toBe(true);
+  });
+});
+
+describe('AnalyticsController.leadershipOverview', () => {
+  const h = AnalyticsController.prototype.leadershipOverview;
+  it('workspace-level như overview: report:view, không gắn ProjectRef', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, h)).toEqual([PERMISSIONS.REPORT_VIEW]);
+    expect(Reflect.getMetadata(PROJECT_REF_KEY, h)).toBeUndefined();
+  });
+  it('truyền id người xem xuống service (lọc dự án riêng tư)', async () => {
+    const leadership = { get: vi.fn().mockResolvedValue({ topRisks: [] }) };
+    const controller = new AnalyticsController(
+      {} as unknown as AnalyticsService,
+      {} as unknown as QaReportService,
+      leadership as unknown as LeadershipService,
+    );
+    await controller.leadershipOverview('w1', { id: 'u9' } as never);
+    expect(leadership.get).toHaveBeenCalledWith('w1', 'u9');
   });
 });

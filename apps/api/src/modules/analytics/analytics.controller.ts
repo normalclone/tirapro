@@ -8,6 +8,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { AnalyticsService } from './analytics.service';
+import { LeadershipService } from './leadership.service';
 import { QaReportService } from './qa-report.service';
 
 @ApiTags('reports')
@@ -16,6 +17,7 @@ export class AnalyticsController {
   constructor(
     private readonly analytics: AnalyticsService,
     private readonly qaReport: QaReportService,
+    private readonly leadership: LeadershipService,
   ) {}
 
   /** Tổng hợp toàn workspace cho Tổng quan — chỉ gồm dự án người xem được thấy (dự án riêng tư chỉ cho thành viên/admin). */
@@ -23,6 +25,13 @@ export class AnalyticsController {
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async overview(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
     return this.analytics.workspaceOverview(workspaceId, user.id);
+  }
+
+  /** Ba thẻ lãnh đạo (Top rủi ro, OKR chậm, người quá tải) — workspace-level như `overview`, lọc theo dự án người xem thấy. */
+  @Get('leadership')
+  @Permissions(PERMISSIONS.REPORT_VIEW)
+  async leadershipOverview(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
+    return this.leadership.get(workspaceId, user.id);
   }
 
   /** Báo cáo tổng hợp một dự án (phân bố trạng thái/loại/ưu tiên/người phụ trách). */

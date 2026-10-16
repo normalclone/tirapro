@@ -1,23 +1,15 @@
 import { useSearchParams } from 'react-router-dom';
-import { toast } from 'sonner';
 import type { SprintSummaryReport } from '@tirapro/shared';
-import type { SprintDto } from '@tirapro/types';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { ExportMenu } from '@/components/ui/ExportMenu';
+import { exportIssuesCsvWithToast } from '@/features/export/api';
 import { PrintButton } from '@/components/ui/PrintButton';
 import { PrintHeader } from '@/components/ui/PrintHeader';
 import { QueryError } from '@/components/ui/QueryError';
 import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
 import { fmtDate } from '@/lib/dateFormat';
-import { downloadText } from '@/lib/download';
 import { sprintTimeInfo } from '@/lib/sprintTime';
-import {
-  fetchSprintIssues,
-  useBurndown,
-  useProjectSprints,
-  useSprintSummary,
-  useVelocity,
-} from './api';
+import { useBurndown, useProjectSprints, useSprintSummary, useVelocity } from './api';
 import { orderSprints, resolveSprint, SPRINT_STATE_LABEL } from './burndown';
 import {
   BurndownChart,
@@ -28,7 +20,6 @@ import {
   type StatItem,
 } from './charts';
 import { SprintSummaryPanel } from './SprintSummaryPanel';
-import { sprintCsvFilename, sprintIssuesCsv } from './exportCsv';
 import { completionPct, fmtPoints } from './sprintSummary';
 
 /** Tab "Sprint": chọn sprint (mặc định đang chạy), thẻ tóm tắt, Burndown và Velocity của sprint đó. */
@@ -121,7 +112,7 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
           {statusLine}
         </p>
         <PrintButton title={`Báo cáo ${sprint.name} ${projectKey}`} />
-        <SprintExport projectId={projectId} projectKey={projectKey} sprint={sprint} />
+        <SprintExport projectId={projectId} sprintId={sprint.id} />
       </div>
 
       {closed && summary.data && (
@@ -188,16 +179,8 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
   );
 }
 
-/** Xuất việc của sprint đang chọn ra CSV, dựa trên danh sách việc dự án (dùng lại cache nếu đã có). */
-function SprintExport({
-  projectId,
-  projectKey,
-  sprint,
-}: {
-  projectId: string;
-  projectKey: string;
-  sprint: SprintDto;
-}) {
+/** Xuất việc của sprint đang chọn ra CSV — máy chủ dựng file (đủ mọi việc, cùng bộ cột với các nơi xuất khác). */
+function SprintExport({ projectId, sprintId }: { projectId: string; sprintId: string }) {
   return (
     <ExportMenu
       items={[
@@ -205,19 +188,7 @@ function SprintExport({
           id: 'csv',
           label: 'Việc trong sprint (CSV)',
           hint: 'Mở được bằng Excel',
-          run: async () => {
-            const { issues: rows, truncated } = await fetchSprintIssues(projectId, sprint.id);
-            if (rows.length === 0) {
-              toast.info('Sprint này chưa có việc nào để xuất.');
-              return;
-            }
-            downloadText(sprintCsvFilename(projectKey, sprint.name), sprintIssuesCsv(rows));
-            if (truncated) {
-              toast.warning(
-                `Chỉ xuất được ${rows.length} việc đầu của sprint (đã chạm giới hạn). File chưa đủ — hãy lọc bớt rồi xuất lại.`,
-              );
-            } else toast.success(`Đã xuất ${rows.length} việc.`);
-          },
+          run: () => exportIssuesCsvWithToast({ projectId, sprintId }),
         },
       ]}
     />

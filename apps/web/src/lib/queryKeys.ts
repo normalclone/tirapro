@@ -193,6 +193,7 @@ export const keys = {
     myIssues: ['my-issues'] as const,
     myBugs: ['my-bugs'] as const,
     workspaceOverview: ['workspace-overview'] as const,
+    leadership: ['leadership-overview'] as const,
   },
 
   integrations: {
