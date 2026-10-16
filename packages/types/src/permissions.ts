@@ -70,54 +70,78 @@ export interface PermissionDef {
 }
 
 export const PERMISSION_CATALOG: PermissionDef[] = [
-  { key: PERMISSIONS.WORKSPACE_ADMIN, description: 'Quản trị workspace', scope: 'WORKSPACE' },
-  { key: PERMISSIONS.WORKSPACE_VIEW, description: 'Xem workspace', scope: 'WORKSPACE' },
+  {
+    key: PERMISSIONS.WORKSPACE_ADMIN,
+    description: 'Quản trị không gian làm việc',
+    scope: 'WORKSPACE',
+  },
+  { key: PERMISSIONS.WORKSPACE_VIEW, description: 'Xem không gian làm việc', scope: 'WORKSPACE' },
   {
     key: PERMISSIONS.MEMBER_MANAGE,
     description: 'Quản lý thành viên & vai trò',
     scope: 'WORKSPACE',
   },
   { key: PERMISSIONS.TEAM_MANAGE, description: 'Quản lý nhóm (team)', scope: 'WORKSPACE' },
-  { key: PERMISSIONS.PROJECT_CREATE, description: 'Tạo project', scope: 'WORKSPACE' },
-  { key: PERMISSIONS.PROJECT_ADMIN, description: 'Quản trị project', scope: 'PROJECT' },
-  { key: PERMISSIONS.PROJECT_VIEW, description: 'Xem project', scope: 'PROJECT' },
-  { key: PERMISSIONS.ISSUE_CREATE, description: 'Tạo issue', scope: 'PROJECT' },
-  { key: PERMISSIONS.ISSUE_EDIT, description: 'Sửa mọi issue', scope: 'PROJECT' },
+  { key: PERMISSIONS.PROJECT_CREATE, description: 'Tạo dự án', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.PROJECT_ADMIN, description: 'Quản trị dự án', scope: 'PROJECT' },
+  { key: PERMISSIONS.PROJECT_VIEW, description: 'Xem dự án', scope: 'PROJECT' },
+  { key: PERMISSIONS.ISSUE_CREATE, description: 'Tạo công việc', scope: 'PROJECT' },
+  { key: PERMISSIONS.ISSUE_EDIT, description: 'Sửa mọi công việc', scope: 'PROJECT' },
   {
     key: PERMISSIONS.ISSUE_EDIT_OWN,
-    description: 'Sửa issue mình tạo/được giao',
+    description: 'Sửa công việc mình tạo hoặc được giao',
     scope: 'PROJECT',
   },
-  { key: PERMISSIONS.ISSUE_DELETE, description: 'Xóa issue', scope: 'PROJECT' },
-  { key: PERMISSIONS.ISSUE_TRANSITION, description: 'Chuyển trạng thái issue', scope: 'PROJECT' },
+  { key: PERMISSIONS.ISSUE_DELETE, description: 'Xoá công việc', scope: 'PROJECT' },
+  {
+    key: PERMISSIONS.ISSUE_TRANSITION,
+    description: 'Chuyển trạng thái công việc',
+    scope: 'PROJECT',
+  },
   { key: PERMISSIONS.ISSUE_ASSIGN, description: 'Gán người thực hiện', scope: 'PROJECT' },
-  { key: PERMISSIONS.ISSUE_LINK, description: 'Liên kết issue', scope: 'PROJECT' },
+  { key: PERMISSIONS.ISSUE_LINK, description: 'Liên kết công việc', scope: 'PROJECT' },
   {
     key: PERMISSIONS.ISSUE_TRIAGE,
-    description: 'Triage issue (accept/duplicate/decline/snooze)',
+    description: 'Xử lý việc mới vào (nhận/trùng/từ chối/hoãn)',
     scope: 'PROJECT',
   },
   { key: PERMISSIONS.WORKLOG_CREATE, description: 'Ghi nhận thời gian làm việc', scope: 'PROJECT' },
-  { key: PERMISSIONS.WORKLOG_UPDATE, description: 'Sửa worklog của mình', scope: 'PROJECT' },
-  { key: PERMISSIONS.WORKLOG_DELETE, description: 'Xoá worklog của mình', scope: 'PROJECT' },
+  {
+    key: PERMISSIONS.WORKLOG_UPDATE,
+    description: 'Sửa nhật ký thời gian của mình',
+    scope: 'PROJECT',
+  },
+  {
+    key: PERMISSIONS.WORKLOG_DELETE,
+    description: 'Xoá nhật ký thời gian của mình',
+    scope: 'PROJECT',
+  },
   { key: PERMISSIONS.COMMENT_CREATE, description: 'Bình luận', scope: 'PROJECT' },
   { key: PERMISSIONS.COMMENT_EDIT_OWN, description: 'Sửa bình luận của mình', scope: 'PROJECT' },
-  { key: PERMISSIONS.COMMENT_DELETE, description: 'Xóa bình luận', scope: 'PROJECT' },
+  { key: PERMISSIONS.COMMENT_DELETE, description: 'Xoá bình luận', scope: 'PROJECT' },
   { key: PERMISSIONS.SPRINT_MANAGE, description: 'Quản lý sprint', scope: 'PROJECT' },
-  { key: PERMISSIONS.BOARD_MANAGE, description: 'Quản lý board', scope: 'PROJECT' },
-  { key: PERMISSIONS.BACKLOG_MANAGE, description: 'Quản lý backlog', scope: 'PROJECT' },
-  { key: PERMISSIONS.WORKFLOW_EDIT, description: 'Chỉnh sửa workflow', scope: 'PROJECT' },
-  { key: PERMISSIONS.CUSTOM_FIELD_MANAGE, description: 'Quản lý custom field', scope: 'PROJECT' },
+  { key: PERMISSIONS.BOARD_MANAGE, description: 'Quản lý bảng việc', scope: 'PROJECT' },
+  { key: PERMISSIONS.BACKLOG_MANAGE, description: 'Quản lý việc chờ', scope: 'PROJECT' },
+  { key: PERMISSIONS.WORKFLOW_EDIT, description: 'Chỉnh sửa quy trình', scope: 'PROJECT' },
+  {
+    key: PERMISSIONS.CUSTOM_FIELD_MANAGE,
+    description: 'Quản lý trường thông tin thêm',
+    scope: 'PROJECT',
+  },
   { key: PERMISSIONS.REPORT_VIEW, description: 'Xem báo cáo', scope: 'PROJECT' },
-  { key: PERMISSIONS.DASHBOARD_MANAGE, description: 'Quản lý dashboard', scope: 'WORKSPACE' },
-  { key: PERMISSIONS.FILTER_MANAGE, description: 'Quản lý saved filter', scope: 'WORKSPACE' },
+  {
+    key: PERMISSIONS.DASHBOARD_MANAGE,
+    description: 'Quản lý bảng tổng quan tuỳ biến',
+    scope: 'WORKSPACE',
+  },
+  { key: PERMISSIONS.FILTER_MANAGE, description: 'Quản lý bộ lọc đã lưu', scope: 'WORKSPACE' },
   { key: PERMISSIONS.AI_USE, description: 'Dùng tính năng AI', scope: 'WORKSPACE' },
   {
     key: PERMISSIONS.INTEGRATION_MANAGE,
     description: 'Quản lý tích hợp (Telegram, Jira...)',
     scope: 'WORKSPACE',
   },
-  { key: PERMISSIONS.IMPORT_RUN, description: 'Chạy migration/import', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.IMPORT_RUN, description: 'Nhập dữ liệu (CSV, Jira)', scope: 'WORKSPACE' },
   {
     key: PERMISSIONS.DIGEST_MANAGE,
     description: 'Quản lý báo cáo định kỳ (digest)',
@@ -125,7 +149,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   },
   {
     key: PERMISSIONS.GUIDE_MANAGE,
-    description: 'Tùy biến hướng dẫn/tour cho workspace',
+    description: 'Tuỳ biến hướng dẫn cho không gian làm việc',
     scope: 'WORKSPACE',
   },
   {
@@ -135,7 +159,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   },
   { key: PERMISSIONS.GOAL_MANAGE, description: 'Quản lý mục tiêu (OKR)', scope: 'WORKSPACE' },
   { key: PERMISSIONS.RISK_MANAGE, description: 'Quản lý sổ rủi ro (RAID)', scope: 'PROJECT' },
-  { key: PERMISSIONS.SLA_MANAGE, description: 'Cấu hình SLA', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.SLA_MANAGE, description: 'Cấu hình cam kết thời gian', scope: 'WORKSPACE' },
   {
     key: PERMISSIONS.WIKI_MANAGE,
     description: 'Tạo/sửa tài liệu nội bộ (wiki) của dự án',
@@ -442,7 +466,7 @@ export const SYSTEM_ROLE_SCOPE: Record<SystemRoleName, 'WORKSPACE' | 'PROJECT'> 
 /** Mô tả ngắn + màu nhãn cho vai trò hệ thống (UI badge/catalog). */
 export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; color: string }> = {
   [SYSTEM_ROLES.WORKSPACE_ADMIN]: {
-    description: 'Toàn quyền quản trị workspace',
+    description: 'Toàn quyền quản trị không gian làm việc',
     color: 'oklch(0.55 0.20 25)',
   },
   [SYSTEM_ROLES.WORKSPACE_MEMBER]: {
@@ -450,7 +474,7 @@ export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; col
     color: 'oklch(0.55 0.13 245)',
   },
   [SYSTEM_ROLES.WORKSPACE_VIEWER]: {
-    description: 'Chỉ xem ở cấp workspace',
+    description: 'Chỉ xem ở cấp không gian làm việc',
     color: 'oklch(0.60 0.018 256)',
   },
   [SYSTEM_ROLES.PROJECT_ADMIN]: {
@@ -463,15 +487,15 @@ export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; col
     color: 'oklch(0.55 0.13 245)',
   },
   [SYSTEM_ROLES.PROJECT_REPORTER]: {
-    description: 'Báo cáo & tạo issue của mình',
+    description: 'Báo cáo & tạo công việc của mình',
     color: 'oklch(0.60 0.018 256)',
   },
   [SYSTEM_ROLES.BUSINESS_ANALYST]: {
-    description: 'Phân tích nghiệp vụ, backlog, yêu cầu',
+    description: 'Phân tích nghiệp vụ, việc chờ, yêu cầu',
     color: 'oklch(0.55 0.16 300)',
   },
   [SYSTEM_ROLES.PRODUCT_OWNER]: {
-    description: 'Chủ sản phẩm: ưu tiên & backlog',
+    description: 'Chủ sản phẩm: ưu tiên & việc chờ',
     color: 'oklch(0.58 0.16 330)',
   },
   [SYSTEM_ROLES.SCRUM_MASTER]: {
@@ -479,7 +503,7 @@ export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; col
     color: 'oklch(0.60 0.13 200)',
   },
   [SYSTEM_ROLES.DEVELOPER]: {
-    description: 'Lập trình viên: làm & chuyển issue',
+    description: 'Lập trình viên: làm & chuyển trạng thái công việc',
     color: 'oklch(0.55 0.13 245)',
   },
   [SYSTEM_ROLES.TESTER]: {
@@ -488,7 +512,10 @@ export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; col
   },
   [SYSTEM_ROLES.DESIGNER]: { description: 'Thiết kế UI/UX', color: 'oklch(0.62 0.13 285)' },
   [SYSTEM_ROLES.DEVOPS]: { description: 'CI/CD, hạ tầng, vận hành', color: 'oklch(0.55 0.10 220)' },
-  [SYSTEM_ROLES.REVIEWER]: { description: 'Review & duyệt issue', color: 'oklch(0.60 0.12 160)' },
+  [SYSTEM_ROLES.REVIEWER]: {
+    description: 'Review & duyệt công việc',
+    color: 'oklch(0.60 0.12 160)',
+  },
   [SYSTEM_ROLES.STAKEHOLDER]: {
     description: 'Bên liên quan: xem & góp ý',
     color: 'oklch(0.65 0.05 256)',

@@ -35,7 +35,7 @@ export function WatchButton({ issueId }: { issueId: string }) {
         type="button"
         onClick={() => void setWatch(true)}
         disabled={busy}
-        title="Theo dõi vấn đề này để nhận cập nhật"
+        title="Theo dõi công việc này để nhận cập nhật"
         className={PILL}
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}

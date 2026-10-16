@@ -51,7 +51,7 @@ export const jiraImportRunSchema = z
     options: jiraImportOptionsSchema.default({}),
   })
   .refine((v) => Boolean(v.projectId) !== Boolean(v.newProject), {
-    message: 'Hãy chọn một project có sẵn hoặc nhập thông tin project mới (chỉ một trong hai)',
+    message: 'Hãy chọn một dự án có sẵn hoặc nhập thông tin dự án mới (chỉ một trong hai)',
     path: ['projectId'],
   });
 

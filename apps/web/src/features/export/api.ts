@@ -47,17 +47,23 @@ export function exportEmptyMessage(input: Pick<ExportIssuesCsvInput, 'sprintId'>
   return input.sprintId ? 'Sprint chưa có việc nào để xuất.' : 'Không có công việc nào để xuất.';
 }
 
-/** Câu báo sau khi tải: cảnh báo khi file bị cắt ở trần, ngược lại xác nhận ngắn. */
-export function exportResultToast(truncated: boolean): {
+/**
+ * Câu báo sau khi tải: cảnh báo khi file bị cắt ở trần, ngược lại xác nhận ngắn.
+ * Chỉ khuyên "thu hẹp bộ lọc" khi nơi xuất CÓ bộ lọc (JQL); Việc chờ / bug / sprint không có bộ lọc để thu hẹp.
+ */
+export function exportResultToast(
+  truncated: boolean,
+  hasFilter = false,
+): {
   kind: 'warning' | 'success';
   text: string;
 } {
-  return truncated
-    ? {
-        kind: 'warning',
-        text: `Chỉ xuất ${EXPORT_ROW_CAP.toLocaleString('vi-VN')} công việc đầu tiên — hãy thu hẹp bộ lọc.`,
-      }
-    : { kind: 'success', text: 'Đã tải tệp CSV.' };
+  if (!truncated) return { kind: 'success', text: 'Đã tải tệp CSV.' };
+  const head = `Chỉ xuất ${EXPORT_ROW_CAP.toLocaleString('vi-VN')} công việc đầu tiên`;
+  return {
+    kind: 'warning',
+    text: hasFilter ? `${head} — hãy thu hẹp bộ lọc.` : `${head} (giới hạn mỗi lần xuất).`,
+  };
 }
 
 /** `exportIssuesCsv` + toast kết quả; lỗi ném lên cho `ExportMenu` hiện toast lỗi. */
@@ -67,7 +73,7 @@ export async function exportIssuesCsvWithToast(input: ExportIssuesCsvInput): Pro
     toast.info(exportEmptyMessage(input));
     return;
   }
-  const t = exportResultToast(truncated);
+  const t = exportResultToast(truncated, !!input.jql?.trim());
   if (t.kind === 'warning') toast.warning(t.text);
   else toast.success(t.text);
 }
