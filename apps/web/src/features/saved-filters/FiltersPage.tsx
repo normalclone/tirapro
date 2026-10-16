@@ -178,7 +178,7 @@ export function FiltersPage() {
         )}
       >
         <div className="flex items-center justify-between gap-2 px-1 lg:px-2">
-          <h1 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-faint max-lg:hidden">
+          <h1 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-faint max-lg:sr-only">
             <Bookmark className="h-3.5 w-3.5" aria-hidden />
             Bộ lọc đã lưu
           </h1>

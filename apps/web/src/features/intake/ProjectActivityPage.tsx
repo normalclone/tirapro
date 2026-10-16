@@ -210,10 +210,10 @@ function TimelineEvent({ a }: { a: ProjectActivityItem }) {
           {/* MỘT liên kết (mã + tiêu đề): mobile xuống dòng riêng, hai phần là ô flex nên không đè nhau khi tiêu đề dài. */}
           <Link
             to={`/issue/${a.issueKey}`}
-            className="mt-0.5 flex min-w-0 items-baseline gap-1.5 py-1.5 sm:mt-0 sm:inline-flex sm:py-0"
+            className="mt-0.5 flex min-w-0 items-baseline gap-1.5 py-1.5 sm:mt-0 sm:inline sm:py-0"
             title={a.issueSummary}
           >
-            <span className="shrink-0 font-mono text-[0.8125rem] font-medium text-primary underline-offset-2 hover:underline">
+            <span className="shrink-0 font-mono text-[0.8125rem] font-medium text-primary underline-offset-2 hover:underline sm:mr-1.5">
               {a.issueKey}
             </span>
             <span className="min-w-0 break-words text-muted hover:text-ink">{a.issueSummary}</span>

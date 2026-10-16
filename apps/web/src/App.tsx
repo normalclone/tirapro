@@ -7,7 +7,7 @@ import { InstantTooltip } from '@/components/ui/InstantTooltip';
 import { router } from '@/app/router';
 import { useAuth } from '@/stores/auth';
 import { useTheme } from '@/stores/theme';
-import { FAB_CLEARANCE_PX, FAB_EDGE_PX } from '@/lib/layoutTokens';
+import { FAB_RIGHT_CSS, TOAST_BOTTOM_CSS } from '@/lib/layoutTokens';
 
 export function App() {
   const bootstrap = useAuth((s) => s.bootstrap);
@@ -25,8 +25,12 @@ export function App() {
       <Toaster
         position="bottom-right"
         // Toast nằm trên nút nổi (FAB), không đè lên nó.
-        offset={{ bottom: FAB_CLEARANCE_PX, right: FAB_EDGE_PX }}
-        mobileOffset={{ bottom: FAB_CLEARANCE_PX, left: 16, right: 16 }}
+        offset={{ bottom: TOAST_BOTTOM_CSS, right: FAB_RIGHT_CSS }}
+        mobileOffset={{
+          bottom: TOAST_BOTTOM_CSS,
+          left: 'max(16px, env(safe-area-inset-left))',
+          right: 'max(16px, env(safe-area-inset-right))',
+        }}
         theme={theme}
         toastOptions={{
           style: {

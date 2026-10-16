@@ -765,6 +765,9 @@ export function GanttPage() {
                       <button
                         type="button"
                         onClick={() => navigate(`/issue/${issue.key}`)}
+                        // Dưới sm tiêu đề bị ẩn (cột nhãn hẹp) — tên truy cập vẫn đủ mã + tiêu đề.
+                        aria-label={`${issue.key} ${issue.summary}`}
+                        title={issue.summary}
                         className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-border bg-surface px-2 text-left hover:bg-surface-2 sm:px-3"
                         style={{ width: labelW, height: ROW_H }}
                       >

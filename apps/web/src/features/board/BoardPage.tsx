@@ -42,7 +42,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
-import { CHIP_TOUCH_HIT } from '@/lib/touchHit';
+import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT } from '@/lib/touchHit';
 import { useAuth } from '@/stores/auth';
 import { openReportIssue } from '@/stores/reportIssue';
 import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
@@ -632,7 +632,12 @@ export function BoardPage() {
       <PeekShell>
         <div className="flex min-h-0 flex-1 flex-col">
           <TruncatedBanner projectId={project?.id} />
-          <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3">
+          <div
+            className={cn(
+              'flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3',
+              CHIP_ROW_GAP_COARSE,
+            )}
+          >
             <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
             <AssigneeFilter options={assigneeOptions} value={assignee} onChange={changeAssignee} />
             <button

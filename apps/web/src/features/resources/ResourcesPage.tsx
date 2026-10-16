@@ -26,6 +26,7 @@ import {
   type WorkloadRow,
 } from './api';
 import { ScrollX } from '@/components/ui/ScrollX';
+import { useScrollFade } from '@/lib/useScrollFade';
 
 type Tab = 'load' | 'allocations' | 'time-off';
 
@@ -140,6 +141,46 @@ function ResourcesHeader({
   );
 }
 
+/** Dải tab "Xem theo": cuộn ngang trên điện thoại có mờ mép, tab đang chọn tự cuộn vào khung. */
+function ResourceTabs({
+  tabs,
+  tab,
+  onPick,
+}: {
+  tabs: { id: Tab; label: string }[];
+  tab: Tab;
+  onPick: (t: Tab) => void;
+}) {
+  const tabsFade = useScrollFade<HTMLDivElement>(tab, '[aria-selected="true"]');
+  // Chỉ cuộn ngang < sm: bọc overflow-x-auto cả desktop sẽ cắt 1px gạch chân của tab (`-mb-px`).
+  return (
+    <div
+      ref={tabsFade.ref}
+      style={tabsFade.style}
+      className="scroll-fade-x relative mb-5 flex gap-1 border-b border-border max-sm:overflow-x-auto max-sm:scrollbar-none"
+      role="tablist"
+      aria-label="Xem theo"
+    >
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          role="tab"
+          aria-selected={tab === t.id}
+          onClick={() => onPick(t.id)}
+          className={cn(
+            '-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+            tab === t.id
+              ? 'border-primary text-ink-strong'
+              : 'border-transparent text-muted hover:text-ink',
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Nhân lực & khối lượng việc — bảng nhiệt NGƯỜI × TUẦN, phân bổ theo dự án,
  * nghỉ phép & ngày lễ chung.
@@ -247,28 +288,7 @@ export function ResourcesPage() {
         )}
       </div>
 
-      <ScrollX
-        className="mb-5 flex gap-1 border-b border-border scrollbar-none"
-        role="tablist"
-        aria-label="Xem theo"
-      >
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              '-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              tab === t.id
-                ? 'border-primary text-ink-strong'
-                : 'border-transparent text-muted hover:text-ink',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </ScrollX>
+      <ResourceTabs tabs={tabs} tab={tab} onPick={setTab} />
 
       {tab === 'load' && (
         <section aria-label="Bảng khối lượng việc theo tuần">

@@ -34,6 +34,7 @@
  *   dialog-offscreen   (--dialogs) hộp thoại tràn ra ngoài màn hình
  *   dialog-action-cut  (--dialogs) nút hành động ngoài vùng cuộn của hộp bị cắt khỏi khung nhìn
  *   dialog-h-scroll    (--dialogs) nội dung hộp cuộn ngang
+ *   input-font-small   ô nhập (input/textarea/select) có font-size tính toán < 16px — iOS Safari phóng to trang khi focus
  *   small-targets      > 6 nút/link cao hiệu dụng < 28px (tính cả vùng bấm mở rộng ::after) (CẢNH BÁO — không làm exit code = 1)
  *
  * Giới hạn heuristic: `text-overlap` chỉ so mỗi phần tử lá với 40 phần tử kế tiếp theo thứ tự DOM nên sót chữ
@@ -299,7 +300,14 @@ function measure({ W, H, isProjectRoute, dialog = false }) {
     if (w > own.width + 60 || h > own.height + 60) continue;
     for (const o of controls) {
       if (o === el || o.contains(el) || el.contains(o)) continue;
-      const q = o.getBoundingClientRect();
+      // So với vùng bấm của điều khiển kề (nếu nó cũng mở rộng) hoặc hộp của nó — hai vùng bấm không được chồng nhau.
+      const ob = hitBox(o);
+      const orect = o.getBoundingClientRect();
+      const oStretched = ob && (ob.w > orect.width + 60 || ob.h > orect.height + 60);
+      const q =
+        ob && !oStretched
+          ? { left: ob.l, top: ob.t, right: ob.l + ob.w, bottom: ob.t + ob.h }
+          : orect;
       const ix = Math.min(l + w, q.right) - Math.max(l, q.left);
       const iy = Math.min(t + h, q.bottom) - Math.max(t, q.top);
       if (ix > 1 && iy > 1) {
@@ -311,8 +319,28 @@ function measure({ W, H, isProjectRoute, dialog = false }) {
   if (hitOver.length)
     issues.push({ t: 'touch-overlap', n: hitOver.length, sample: hitOver.slice(0, 4) });
 
+  // (12) ô nhập chữ < 16px: iOS Safari tự phóng to trang khi focus. Đo font-size tính toán thật (đã qua cascade).
+  const NO_TEXT_INPUT = new Set([
+    'checkbox',
+    'radio',
+    'range',
+    'color',
+    'file',
+    'hidden',
+    'submit',
+    'button',
+    'image',
+    'reset',
+  ]);
+  const smallInputs = [...document.querySelectorAll(`${R} input, ${R} textarea, ${R} select`)]
+    .filter((e) => vis(e) && !NO_TEXT_INPUT.has((e.getAttribute('type') || '').toLowerCase()))
+    .filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16 - 0.01)
+    .map((e) => desc(e) + ' ' + getComputedStyle(e).fontSize);
+  if (smallInputs.length)
+    issues.push({ t: 'input-font-small', n: smallInputs.length, sample: smallInputs.slice(0, 4) });
+
   // (6) vùng chạm nhỏ (cảnh báo)
-  const small = [
+  const smallEls = [
     ...document.querySelectorAll(`${R} button, ${R} a[href], ${R} [role=button]`),
   ].filter(
     // Chiều cao hiệu dụng = lớn hơn giữa phần tử và vùng bấm mở rộng (TOUCH_HIT…) — cảm ứng bấm theo vùng đó.
@@ -320,9 +348,24 @@ function measure({ W, H, isProjectRoute, dialog = false }) {
       vis(e) &&
       Math.max(e.getBoundingClientRect().height, hitBox(e)?.h ?? 0) < 28 &&
       e.getBoundingClientRect().bottom < 4000,
+  );
+  const small = smallEls.length;
+  // Định nghĩa CŨ (chỉ chiều cao phần tử, không tính vùng bấm mở rộng) — để so trước/sau cùng thước đo.
+  window.__auditSmallElem = [
+    ...document.querySelectorAll(`${R} button, ${R} a[href], ${R} [role=button]`),
+  ].filter(
+    (e) =>
+      vis(e) && e.getBoundingClientRect().height < 28 && e.getBoundingClientRect().bottom < 4000,
   ).length;
   window.__auditSmall = small; // số thô (kể cả ≤ 6) để báo cáo trước/sau
-  if (small > 6) issues.push({ t: 'small-targets', n: small });
+  if (small > 6)
+    issues.push({
+      t: 'small-targets',
+      n: small,
+      sample: smallEls
+        .slice(0, 8)
+        .map((e) => desc(e) + ' h=' + Math.round(e.getBoundingClientRect().height)),
+    });
 
   if (dialog) {
     const dlg = document.querySelector(R);
@@ -389,6 +432,10 @@ async function dismissTour(page) {
       .catch(() => {});
     await page.waitForTimeout(300);
   }
+  // Bấm đóng tour để lại con trỏ/tiêu điểm trên trang → tooltip nổi (fixed) che nút gây báo sai: bỏ con trỏ + tiêu điểm.
+  await page.mouse.move(0, 0).catch(() => {});
+  await page.evaluate(() => document.activeElement?.blur?.()).catch(() => {});
+  await page.waitForTimeout(250);
 }
 
 /** Kịch bản hộp thoại (`--dialogs`): `route` (SPA) → `open(page)` mở hộp. Ném lỗi `SKIP: lý do` nếu không đủ dữ liệu. */
@@ -495,7 +542,20 @@ const DIALOG_SCENARIOS = [
 ];
 
 const allow = await loadAllow();
-const isAllowed = (route, t) => `${route}|${t}` in allow || `${tokenize(route)}|${t}` in allow;
+/**
+ * Khoá allowlist: `<route>|<loại>` (cả route) hoặc `<route>|<loại>~<mẫu>` (chỉ khi MỌI phần tử trong `sample` của lỗi có
+ * chứa <mẫu> — thu hẹp theo phần tử để lỗi thật khác trên cùng route không bị che; lỗi không có `sample` đầy đủ không khớp).
+ */
+const isAllowed = (route, issue) => {
+  const keys = [route, tokenize(route)].map((r) => `${r}|${issue.t}`);
+  if (keys.some((k) => k in allow)) return true;
+  const samples = issue.sample ?? [];
+  if (!samples.length || (issue.n ?? samples.length) > samples.length) return false;
+  return Object.keys(allow).some((k) => {
+    const [head, needle] = k.split('~');
+    return needle && keys.includes(head) && samples.every((x) => x.includes(needle));
+  });
+};
 
 const browser = await launch();
 const ctx = await browser.newContext({
@@ -563,7 +623,7 @@ try {
       });
       await page.screenshot({ path: join(outDir, `dlg-${sc.name}.png`), fullPage: false });
       const issues = await page.evaluate(measure, { W, H, isProjectRoute: false, dialog: true });
-      for (const i of issues) if (isAllowed(key, i.t)) i.allowed = true;
+      for (const i of issues) if (isAllowed(key, i)) i.allowed = true;
       report.push({ route: key, finalPath: sc.route, issues });
       const label = issues
         .map((x) => `${x.t}${x.n ? `(${x.n})` : ''}${x.allowed ? '[cho phép]' : ''}`)
@@ -595,11 +655,12 @@ try {
       H,
       isProjectRoute: /^\/p\/[^/]+\//.test(route),
     });
-    for (const i of issues) if (isAllowed(route, i.t)) i.allowed = true;
+    for (const i of issues) if (isAllowed(route, i)) i.allowed = true;
     if (finalPath.endsWith('/login') && !route.endsWith('/login'))
       issues.push({ t: 'redirected-to-login' });
     const smallTargets = await page.evaluate(() => window.__auditSmall ?? 0);
-    report.push({ route, finalPath, issues, smallTargets });
+    const smallElem = await page.evaluate(() => window.__auditSmallElem ?? 0);
+    report.push({ route, finalPath, issues, smallTargets, smallElem });
     const label = issues
       .map((x) => `${x.t}${x.n ? `(${x.n})` : ''}${x.allowed ? '[cho phép]' : ''}`)
       .join(', ');
@@ -618,11 +679,13 @@ const warns = report.flatMap((r) =>
   r.issues.filter((i) => !i.allowed && WARN_ONLY.has(i.t)).map((i) => `${r.route}|${i.t}`),
 );
 const smallTotal = report.reduce((a, r) => a + (r.smallTargets ?? 0), 0);
+const smallElemTotal = report.reduce((a, r) => a + (r.smallElem ?? 0), 0);
+const smallElemRoutes = report.filter((r) => (r.smallElem ?? 0) > 6);
 const byType = {};
 for (const r of report)
   for (const i of r.issues) if (!i.allowed) byType[i.t] = (byType[i.t] ?? 0) + 1;
 console.log(
   `\nTổng ${report.length} route · lỗi chặn ${blocking.length} · cảnh báo ${warns.length}` +
-    ` · tổng vùng chạm nhỏ (<28px hiệu dụng) ${smallTotal} · theo loại ${JSON.stringify(byType)}\nBáo cáo: ${join(outDir, 'report.json')}`,
+    ` · vùng chạm nhỏ: hiệu dụng (gồm vùng bấm mở rộng) ${smallTotal}, theo chiều cao phần tử (định nghĩa cũ) ${smallElemTotal} (${smallElemRoutes.length} route > 6: ${smallElemRoutes.reduce((a, r) => a + r.smallElem, 0)} phần tử) · theo loại ${JSON.stringify(byType)}\nBáo cáo: ${join(outDir, 'report.json')}`,
 );
 if (blocking.length) process.exitCode = 1;

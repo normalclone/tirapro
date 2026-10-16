@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Avatar, DelayedSpinner } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
-import { CHIP_TOUCH_HIT } from '@/lib/touchHit';
+import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT } from '@/lib/touchHit';
 import { fmtRelative } from '@/lib/dateFormat';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useRetained } from '@/lib/useRetained';
@@ -36,7 +36,7 @@ export function ActivityPanel({ issueId }: { issueId: string }) {
       <div
         role="group"
         aria-label="Lọc lịch sử theo loại thay đổi"
-        className="mb-3 flex flex-wrap gap-x-1.5 gap-y-2"
+        className={cn('mb-3 flex flex-wrap gap-x-1.5 gap-y-2', CHIP_ROW_GAP_COARSE)}
       >
         {ACTIVITY_FILTERS.map((f) => {
           const on = f.id === filter;

@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { CHIP_STRIP_COARSE_PAD, CHIP_TOUCH_HIT } from '@/lib/touchHit';
+import { CHIP_ROW_GAP_COARSE, CHIP_STRIP_COARSE_PAD, CHIP_TOUCH_HIT } from '@/lib/touchHit';
 import { useScrollFade } from '@/lib/useScrollFade';
 import { QUICK_FILTERS, type QuickFilterId } from './useQuickFilters';
 
@@ -31,6 +31,7 @@ export function QuickFilterChips({
       aria-label="Bộ lọc nhanh"
       className={cn(
         'flex flex-wrap items-center gap-x-1.5 gap-y-2',
+        CHIP_ROW_GAP_COARSE,
         // Mobile: một dòng riêng, cuộn ngang. `relative` để tính vị trí chip khi tự cuộn.
         'max-sm:relative max-sm:order-first max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:[mask-image:var(--scroll-fade)]',
         'max-sm:-mx-4 max-sm:w-[calc(100%+2rem)] max-sm:px-4',

@@ -131,7 +131,7 @@ export function AdminUsersPage() {
                 <li key={u.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
                   <Avatar name={u.displayName} src={u.avatarUrl} size={36} />
                   <div className={cn('min-w-0 flex-1', u.status === 'DEACTIVATED' && 'opacity-60')}>
-                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-ink">
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-ink sm:flex-nowrap">
                       {u.displayName}
                       {u.isSystemAdmin && (
                         <Badge className="bg-primary-subtle text-primary">Admin hệ thống</Badge>

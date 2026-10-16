@@ -175,7 +175,7 @@ function GroupCard({
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           aria-controls={listId}
-          className="flex w-full min-w-0 items-start gap-2.5 rounded text-left focus-visible sm:w-auto sm:flex-1:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          className="flex w-full min-w-0 items-start gap-2.5 rounded text-left sm:w-auto sm:flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
           {open ? (
             <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-faint" aria-hidden />

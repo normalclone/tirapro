@@ -27,7 +27,7 @@ import { createPresetFromTarget } from '@/lib/currentProject';
 import { keyLabel } from '@/lib/shortcuts';
 import { useCreateTarget } from '@/lib/useCreateTarget';
 import { cn } from '@/lib/utils';
-import { FAB_EDGE_PX } from '@/lib/layoutTokens';
+import { FAB_BOTTOM_CSS, FAB_RIGHT_CSS } from '@/lib/layoutTokens';
 
 function projectKeyFromPath(pathname: string): string {
   const parts = pathname.split('/').filter(Boolean);
@@ -187,7 +187,7 @@ export function FloatingActions() {
 
       <div
         className="fixed z-sticky flex flex-col items-end gap-3"
-        style={{ bottom: `max(${FAB_EDGE_PX}px, env(safe-area-inset-bottom))`, right: FAB_EDGE_PX }}
+        style={{ bottom: FAB_BOTTOM_CSS, right: FAB_RIGHT_CSS }}
       >
         {open && customizing && (
           <div

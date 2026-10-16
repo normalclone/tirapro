@@ -88,6 +88,7 @@ import {
   useProjectPermissions,
 } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
+import { CHIP_ROW_GAP_COARSE } from '@/lib/touchHit';
 import { IssueRow, IssueRowBody, type RowEdit } from './IssueRow';
 import { useBulkEdit } from './useBulkEdit';
 import { commonNextStatuses } from './bulkEdit';
@@ -755,7 +756,12 @@ export function BacklogPage() {
     <PeekShell>
       <div className="flex min-h-0 flex-1 flex-col">
         <TruncatedBanner projectId={projectId} />
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-6">
+        <div
+          className={cn(
+            'flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-6',
+            CHIP_ROW_GAP_COARSE,
+          )}
+        >
           {!epicPanelOpen && (
             <Button
               size="sm"
