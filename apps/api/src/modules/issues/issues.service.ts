@@ -703,6 +703,8 @@ export class IssuesService {
       typeId: filter.typeId,
       sprintId: filter.sprintId,
       ...(filter.search ? { summary: insensitiveContains(filter.search) } : {}),
+      // Việc chưa duyệt (chờ/tạm hoãn/đã từ chối ở Việc mới vào) không lẫn vào Board/Việc chờ; JQL/tìm kiếm vẫn thấy.
+      OR: [{ triageState: null }, { triageState: 'ACCEPTED' }],
     };
     const rows = await this.prisma.issue.findMany({
       where,

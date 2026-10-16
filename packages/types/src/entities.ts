@@ -260,6 +260,34 @@ export interface IssueEnvironment {
   viewport?: string;
 }
 
+/** Loại yêu cầu người gửi chọn ở form Báo lỗi / Gửi yêu cầu (lưu ở `triageSource`). */
+export type TriageKind = 'BUG' | 'FEATURE' | 'QUESTION';
+
+/** Thẻ Việc mới vào (Triage): đủ thông tin để duyệt mà không mở trang công việc. Dùng chung API và web. */
+export interface TriageItemDto {
+  id: ID;
+  key: string;
+  summary: string;
+  projectId: ID;
+  description: string | null;
+  reporter: UserDto | null;
+  /** Loại yêu cầu người gửi chọn; null với việc không đi qua form báo lỗi. */
+  kind: TriageKind | null;
+  environment: IssueEnvironment | null;
+  type: IssueTypeDto;
+  status: StatusDto;
+  priority: PriorityDto | null;
+  severity: SeverityDto | null;
+  assignee: UserDto | null;
+  sprintId: ID | null;
+  occurrenceCount: number;
+  lastOccurredAt: ISODate | null;
+  triageState: TriageState | null;
+  triageSnoozeUntil: ISODate | null;
+  createdAt: ISODate;
+  version: number;
+}
+
 /** Kết quả POST /issues/:id/transition: issue + cờ cho biết lý do (comment) có được lưu thành bình luận không. */
 export interface IssueTransitionResultDto extends IssueDto {
   /** Chỉ có khi request gửi `comment`; `false` = chuyển trạng thái xong nhưng KHÔNG ghi được bình luận lý do. */
