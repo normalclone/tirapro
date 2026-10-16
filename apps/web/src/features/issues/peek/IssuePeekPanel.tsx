@@ -14,6 +14,7 @@ import {
   IssueTypeSelect,
 } from '@/features/issue-edit/IssueProperties';
 import { EpicParentField } from '@/features/issue-meta/EpicParentField';
+import { IssueComponentsPicker } from '@/features/issue-meta/IssueComponentsPicker';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { ChecklistPanel } from '@/features/issue-extras/ChecklistPanel';
 import { LinksPanel } from '@/features/issue-widgets/LinksPanel';
@@ -212,6 +213,8 @@ function PeekContent({ issue }: { issue: IssueDto }) {
       <EpicParentField issue={issue} />
 
       <IssuePeoplePanel issue={issue} />
+
+      <IssueComponentsPicker issue={issue} />
 
       <div>
         <p className="mb-1.5 text-sm font-medium text-muted">Mô tả</p>
