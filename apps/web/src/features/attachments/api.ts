@@ -121,7 +121,7 @@ const blobUrls = new BlobUrlCache(BLOB_CACHE_LIMIT, (url) => URL.revokeObjectURL
  * Ảnh đính kèm cần header `Authorization` nên không dùng thẳng `<img src=".../download">`: tải bằng fetch
  * rồi dựng blob URL (không mở route công khai/ký URL — ảnh không lộ ra ngoài). Chỉ nhận ảnh an toàn (không SVG).
  */
-export async function fetchAttachmentBlobUrl(id: string): Promise<string> {
+async function fetchAttachmentBlobUrl(id: string): Promise<string> {
   const hit = blobUrls.get(id);
   if (hit) return hit;
   const res = await fetch(`${BASE_URL}/attachments/${encodeURIComponent(id)}/download`, {

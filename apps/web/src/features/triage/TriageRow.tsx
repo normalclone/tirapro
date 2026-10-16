@@ -301,7 +301,8 @@ export function TriageRow({
           />
         )}
 
-        {!compact && (
+        {/* Có loại yêu cầu thì chip ở trên đã đủ nghĩa (Bug / Yêu cầu tính năng / Câu hỏi) — bớt một chip cho dòng thoáng. */}
+        {!compact && !issue.kind && (
           <span className="hidden shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted md:inline">
             {issue.type.name}
           </span>

@@ -10,7 +10,7 @@ import { downloadAttachment, useAttachmentUrl, type Attachment } from './api';
  * Ảnh đính kèm (blob có token) với khung giữ chỗ chống nhảy layout và khung lỗi "Không xem được ảnh".
  * Blob URL bị đẩy khỏi bộ nhớ đệm (quá 60 ảnh) thì `onError` nạp lại đúng một lần.
  */
-export function AttachmentPicture({
+function AttachmentPicture({
   id,
   alt,
   className,

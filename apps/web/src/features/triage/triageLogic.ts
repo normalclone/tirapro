@@ -73,7 +73,7 @@ export function formatEnvironmentLine(e: IssueEnvironment | null | undefined): s
   return parts.length ? parts.join(' · ') : null;
 }
 
-export const TRIAGE_BACKLOG_LABEL = 'Việc chờ — chưa vào sprint';
+const TRIAGE_BACKLOG_LABEL = 'Việc chờ — chưa vào sprint';
 
 /** Lựa chọn sprint khi nhận: Việc chờ + các sprint chưa đóng (sprint đóng không nhận việc mới). */
 export function triageSprintOptions(

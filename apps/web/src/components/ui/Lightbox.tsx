@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
@@ -31,6 +31,12 @@ export function Lightbox({
 }) {
   const count = items.length;
   const current = items[index];
+  // Phần tử đang giữ focus lúc mở (thumbnail / ảnh nhúng) — Esc trả focus về đó. Chụp ở layout effect, TRƯỚC khi
+  // Radix chuyển focus vào hộp (effect thường của nó chạy sau).
+  const opener = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (open) opener.current = document.activeElement as HTMLElement | null;
+  }, [open]);
   const go = (delta: number) => count > 1 && onIndexChange((index + delta + count) % count);
 
   // Nghe ở document để ←/→ chạy cả khi focus đang ở nút Đóng (nằm ngoài vùng nội dung của hộp).
@@ -54,6 +60,19 @@ export function Lightbox({
       onOpenChange={onOpenChange}
       title={`Xem ảnh ${current?.name ?? ''}`.trim()}
       hideTitle
+      className="outline-none"
+      // Focus vào khung hộp (không nhảy sang nút "Ảnh trước" làm hiện vòng focus ngay khi mở bằng chuột); Tab vẫn đi tiếp tới nút.
+      onOpenAutoFocus={(e) => {
+        e.preventDefault();
+        (e.target as HTMLElement | null)?.focus?.({ preventScroll: true });
+      }}
+      onCloseAutoFocus={(e) => {
+        const el = opener.current;
+        if (el && el.isConnected && el !== document.body) {
+          e.preventDefault();
+          el.focus({ preventScroll: true });
+        }
+      }}
       size="xl"
       bodyClassName="p-0"
       footer={

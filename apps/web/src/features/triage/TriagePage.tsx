@@ -107,18 +107,18 @@ export function TriagePage() {
 
         <div className="flex-1 overflow-y-auto">
           {inbox.isError ? (
-            <div className={pageContainer('sm')}>
+            <div className={pageContainer('md')}>
               <QueryError error={inbox.error} onRetry={() => inbox.refetch()} />
             </div>
           ) : isLoading ? (
-            <div className={pageContainer('sm', 'space-y-2')}>
+            <div className={pageContainer('md', 'space-y-2')}>
               {[0, 1, 2, 3].map((i) => (
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
               <DelayedSpinner />
             </div>
           ) : !issues || issues.length === 0 ? (
-            <div className={pageContainer('sm')}>
+            <div className={pageContainer('md')}>
               <EmptyState
                 icon={<Inbox className="h-8 w-8" />}
                 title="Hộp phân loại trống — mọi yêu cầu đã được xử lý"
@@ -126,7 +126,7 @@ export function TriagePage() {
               />
             </div>
           ) : (
-            <div className={pageContainer('sm')}>
+            <div className={pageContainer('md')}>
               <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
                 {issues.map((issue) => (
                   <TriageRow
