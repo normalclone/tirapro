@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Archive, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { useProjects } from './api';
 import { CreateProjectModal } from './CreateProjectModal';
 import { useShowArchived } from './showArchived';
-import { railStorageKey, resolveRailCollapsed } from '@/lib/railPref';
+import { railAutoKey, railStorageKey, resolveRailCollapsed } from '@/lib/railPref';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 
@@ -29,14 +29,41 @@ function readRailPref(key: string): string | null {
  *  activeKey — key dự án đang xem (tô sáng).
  *  view      — segment view để link sang (board/backlog/…); mặc định "board".
  */
-export function ProjectRail({ activeKey, view = 'board' }: { activeKey: string; view?: string }) {
+export function ProjectRail(props: { activeKey: string; view?: string }) {
+  const userId = useAuth((s) => s.user?.id);
+  // `key` theo người dùng → đổi tài khoản thì rail dựng lại và đọc đúng lựa chọn của người đó.
+  return <RailInner key={userId ?? 'anon'} userId={userId} {...props} />;
+}
+
+function RailInner({
+  userId,
+  activeKey,
+  view = 'board',
+}: {
+  userId: string | undefined;
+  activeKey: string;
+  view?: string;
+}) {
   const [showArchived, toggleArchived] = useShowArchived();
   const { data: projects } = useProjects(showArchived);
   const [createProject, setCreateProject] = useState(false);
   const canCreate = useAuth((s) => s.can('project:create'));
-  const storageKey = railStorageKey(useAuth((s) => s.user?.id));
+  const storageKey = railStorageKey(userId);
+  const autoKey = railAutoKey(userId);
+  // Đọc đồng bộ trước lần vẽ đầu: lựa chọn của người dùng + kết quả tự động lần trước (cache trống vẫn vẽ đúng, không nháy).
   const [pref, setPref] = useState<string | null>(() => readRailPref(storageKey));
-  const collapsed = resolveRailCollapsed(pref, projects?.length);
+  const [lastAuto] = useState(() => readRailPref(autoKey) === '1');
+  // Ngưỡng tự thu chỉ đếm dự án đang hoạt động → đổi ô "Hiện đã lưu trữ" không làm rail tự đổi dưới con trỏ.
+  const activeCount = projects ? projects.filter((p) => !p.archivedAt).length : undefined;
+  const collapsed = resolveRailCollapsed(pref, activeCount, lastAuto);
+  useEffect(() => {
+    if (pref !== null || activeCount === undefined) return;
+    try {
+      localStorage.setItem(autoKey, collapsed ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [pref, activeCount, collapsed, autoKey]);
   const toggleCollapsed = () => {
     const next = collapsed ? '0' : '1';
     setPref(next);
@@ -75,6 +102,18 @@ export function ProjectRail({ activeKey, view = 'board' }: { activeKey: string; 
                 <Plus className="h-4 w-4" />
               </button>
             )}
+            {collapsed && (
+              <button
+                type="button"
+                onClick={() => toggleArchived(!showArchived)}
+                aria-pressed={showArchived}
+                aria-label="Hiện dự án đã lưu trữ"
+                title={showArchived ? 'Đang hiện dự án đã lưu trữ' : 'Hiện dự án đã lưu trữ'}
+                className={cn(iconBtn, showArchived && 'bg-primary-subtle text-primary')}
+              >
+                <Archive className="h-4 w-4" />
+              </button>
+            )}
             <button
               type="button"
               onClick={toggleCollapsed}
@@ -98,8 +137,8 @@ export function ProjectRail({ activeKey, view = 'board' }: { activeKey: string; 
             <NavLink
               key={p.id}
               to={`/p/${p.key}/${view}`}
-              title={collapsed ? p.name : undefined}
-              aria-label={collapsed ? p.name : undefined}
+              title={collapsed ? `${p.name}${p.archivedAt ? ' (đã lưu trữ)' : ''}` : undefined}
+              aria-label={collapsed ? `${p.name}${p.archivedAt ? ' (đã lưu trữ)' : ''}` : undefined}
               className={cn(
                 'flex items-center gap-2 rounded-md text-sm transition-colors',
                 collapsed ? 'justify-center px-1 py-1.5' : 'px-2.5 py-2',
@@ -108,8 +147,21 @@ export function ProjectRail({ activeKey, view = 'board' }: { activeKey: string; 
                   : 'text-ink hover:bg-surface-2',
               )}
             >
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-surface-2 font-mono text-[10px] font-bold text-muted">
+              <span
+                className={cn(
+                  'relative grid h-6 w-6 shrink-0 place-items-center rounded bg-surface-2 font-mono text-[10px] font-bold text-muted',
+                  collapsed &&
+                    p.archivedAt &&
+                    'border border-dashed border-border-strong opacity-60',
+                )}
+              >
                 {p.key.slice(0, 3)}
+                {collapsed && p.archivedAt && (
+                  <Archive
+                    className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-surface text-faint"
+                    aria-hidden
+                  />
+                )}
               </span>
               {!collapsed && <span className="min-w-0 flex-1 truncate">{p.name}</span>}
               {!collapsed && p.archivedAt && (
