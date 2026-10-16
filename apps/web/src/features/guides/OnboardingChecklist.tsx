@@ -135,7 +135,8 @@ export function OnboardingChecklist() {
           if (!o) refresh();
         }}
         title="Thêm thành viên"
-        description="Chọn người có sẵn trong hệ thống hoặc tạo tài khoản mới."
+        // Tiêu đề + mô tả đã nằm trong hộp AddMemberPanel → chỉ giữ tên cho trình đọc màn hình, không lặp.
+        hideTitle
         size="lg"
       >
         <AddMemberPanel />

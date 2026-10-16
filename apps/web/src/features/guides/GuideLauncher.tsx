@@ -74,17 +74,25 @@ export function GuideLauncher() {
   const autoStart =
     primaryTour !== undefined && (primaryTour.content as TourContent).autoStart === true;
 
+  // `runTour` đổi danh tính mỗi lần render (phụ thuộc kết quả useMutation) → giữ bản mới nhất trong ref để hẹn giờ auto-start
+  // KHÔNG bị huỷ/chạy lại mỗi lần render (trước đây hẹn giờ bị huỷ ngay mà `autoStarted` đã đánh dấu ⇒ tour không bao giờ tự chạy).
+  const runTourRef = useRef(runTour);
+  useEffect(() => {
+    runTourRef.current = runTour;
+  }, [runTour]);
+
   // Auto-start CHỈ tour có `autoStart` (Tổng quan), chưa xem, một lần duy nhất / màn / phiên — các màn khác chạy khi bấm "?".
   useEffect(() => {
     if (!primaryTour || !autoStart || primaryTour.seen) return;
     if (autoStarted.current.has(screen)) return;
-    autoStarted.current.add(screen);
-    // Đợi 1 frame cho DOM (data-tour targets) render xong.
+    // Đợi một nhịp cho DOM (data-tour targets) render xong; đánh dấu "đã chạy" lúc thật sự chạy.
     const t = window.setTimeout(() => {
-      void runTour(primaryTour, { markSeen: true });
+      if (autoStarted.current.has(screen)) return;
+      autoStarted.current.add(screen);
+      void runTourRef.current(primaryTour, { markSeen: true });
     }, 350);
     return () => window.clearTimeout(t);
-  }, [primaryTour, autoStart, screen, runTour]);
+  }, [primaryTour, autoStart, screen]);
 
   // Bảng lệnh có thể yêu cầu chạy tour màn hiện tại (sự kiện dùng chung).
   useEffect(() => {
