@@ -26,6 +26,18 @@ export interface IssueActivityDto {
   pointsDelta: number | null;
   actor: ActivityActor | null;
   occurredAt: string;
+  /** `true` khi dòng có bản cũ/mới đầy đủ để so sánh (DESCRIPTION); khi đó oldValue/newValue/oldLabel/newLabel chỉ là bản xem trước. */
+  hasDiff: boolean;
+}
+
+/** Một dòng lịch sử với giá trị ĐẦY ĐỦ (không cắt) — cho hộp so sánh mô tả. */
+export interface IssueActivityDetailDto {
+  id: string;
+  field: HistoryField;
+  oldValue: string | null;
+  newValue: string | null;
+  occurredAt: string;
+  actor: ActivityActor | null;
 }
 
 /** DTO cho hoạt động ở phạm vi project — kèm issue đích (id + key + summary). */
@@ -34,6 +46,14 @@ export interface ProjectActivityDto extends IssueActivityDto {
   issueKey: string;
   issueSummary: string;
 }
+
+/** Số ký tự tối đa của bản xem trước mô tả trong danh sách (đầy đủ lấy qua `getOne`). */
+const PREVIEW = 200;
+const preview = (s: string | null): string | null => {
+  if (s == null) return null;
+  const chars = [...s];
+  return chars.length > PREVIEW ? `${chars.slice(0, PREVIEW).join('')}…` : s;
+};
 
 /** Các trường cần lấy từ IssueHistory cho truy vấn activity của một issue. */
 const historySelect = {
@@ -69,16 +89,19 @@ interface LabelMaps {
 export class ActivityService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Hoạt động của một issue — mới nhất trước, tối đa 100 dòng. Trả mảng phẳng. */
-  async listForIssue(workspaceId: string, issueId: string): Promise<IssueActivityDto[]> {
-    const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!issue) throw new NotFoundAppException('Công việc');
+  /**
+   * Hoạt động của một issue — mới nhất trước, tối đa 100 dòng. Trả mảng phẳng.
+   * `fields` (tuỳ chọn) lọc theo loại thay đổi; mô tả chỉ trả bản xem trước (xem `getOne` cho bản đầy đủ).
+   */
+  async listForIssue(
+    workspaceId: string,
+    issueId: string,
+    fields?: HistoryField[],
+  ): Promise<IssueActivityDto[]> {
+    await this.requireIssue(workspaceId, issueId);
 
     const rows = await this.prisma.issueHistory.findMany({
-      where: { issueId },
+      where: { issueId, ...(fields?.length ? { field: { in: fields } } : {}) },
       select: historySelect,
       orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
       take: 100,
@@ -86,6 +109,37 @@ export class ActivityService {
 
     const maps = await this.resolveLabels(rows);
     return rows.map((r) => this.toIssueDto(r, maps));
+  }
+
+  /** Một dòng lịch sử với giá trị đầy đủ (không cắt). 404 nếu không thuộc công việc này. */
+  async getOne(
+    workspaceId: string,
+    issueId: string,
+    activityId: string,
+  ): Promise<IssueActivityDetailDto> {
+    await this.requireIssue(workspaceId, issueId);
+    const row = await this.prisma.issueHistory.findFirst({
+      where: { id: activityId, issueId },
+      select: historySelect,
+    });
+    if (!row) throw new NotFoundAppException('Lịch sử');
+    const maps = await this.resolveLabels([row]);
+    return {
+      id: row.id,
+      field: row.field,
+      oldValue: row.oldValue,
+      newValue: row.newValue,
+      occurredAt: row.occurredAt.toISOString(),
+      actor: maps.actors.get(row.actorId) ?? null,
+    };
+  }
+
+  private async requireIssue(workspaceId: string, issueId: string): Promise<void> {
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: issueId, workspaceId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!issue) throw new NotFoundAppException('Công việc');
   }
 
   /**
@@ -195,13 +249,18 @@ export class ActivityService {
   }
 
   private toIssueDto(row: HistoryRow, maps: LabelMaps): IssueActivityDto {
+    // Mô tả có thể tới 50k ký tự/dòng × 100 dòng: danh sách chỉ mang bản xem trước.
+    const isDesc = row.field === 'DESCRIPTION';
+    const oldValue = isDesc ? preview(row.oldValue) : row.oldValue;
+    const newValue = isDesc ? preview(row.newValue) : row.newValue;
     return {
       id: row.id,
       field: row.field,
-      oldValue: row.oldValue,
-      newValue: row.newValue,
-      oldLabel: this.labelFor(row.field, row.oldValue, maps),
-      newLabel: this.labelFor(row.field, row.newValue, maps),
+      oldValue,
+      newValue,
+      oldLabel: isDesc ? oldValue : this.labelFor(row.field, row.oldValue, maps),
+      newLabel: isDesc ? newValue : this.labelFor(row.field, row.newValue, maps),
+      hasDiff: isDesc,
       oldCategory: row.oldCategory,
       newCategory: row.newCategory,
       pointsDelta: row.pointsDelta,

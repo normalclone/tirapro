@@ -1700,6 +1700,15 @@ export class IssuesService {
       });
     if (before.sprintId !== after.sprintId)
       rows.push({ ...base, field: 'SPRINT', oldValue: before.sprintId, newValue: after.sprintId });
+    // Lưu nguyên văn cũ/mới (FE tự tính diff). null và '' coi như nhau để khỏi tạo dòng rác.
+    // Chỉ `update()` đổi được mô tả — bulkUpdate/move đi qua đây nhưng before/after luôn cùng mô tả.
+    if ((before.description ?? '') !== (after.description ?? ''))
+      rows.push({
+        ...base,
+        field: 'DESCRIPTION',
+        oldValue: before.description,
+        newValue: after.description,
+      });
     if (rows.length) await tx.issueHistory.createMany({ data: rows });
   }
 

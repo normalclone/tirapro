@@ -3049,3 +3049,36 @@ describe('IssuesService — Ngày bắt đầu (L14): start <= hạn và cùng l
     ).rejects.toMatchObject({ status: 422, message: has('Ngày bắt đầu') });
   });
 });
+
+describe('IssuesService.update — lịch sử mô tả (B19)', () => {
+  const tx = (after: Record<string, unknown>) => ({
+    issue: {
+      findFirst: vi.fn(() => Promise.resolve(issueRow({ description: 'cũ' }))),
+      updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+      findFirstOrThrow: vi.fn(() => Promise.resolve(after)),
+    },
+    issueHistory: { createMany: vi.fn() },
+  });
+  it('đổi mô tả => ghi DESCRIPTION với bản cũ/mới đầy đủ', async () => {
+    const t = tx(issueRow({ description: 'mới', version: 4 }));
+    const { service } = makeService(t);
+    await service.update('w1', 'u1', 'i1', { version: 3, description: 'mới' });
+    expect(t.issueHistory.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          field: 'DESCRIPTION',
+          oldValue: 'cũ',
+          newValue: 'mới',
+          actorId: 'u1',
+        }),
+      ],
+    });
+  });
+  it('null và chuỗi rỗng coi như nhau => không ghi', async () => {
+    const t = tx(issueRow({ description: '', version: 4 }));
+    t.issue.findFirst.mockResolvedValue(issueRow({ description: null }));
+    const { service } = makeService(t);
+    await service.update('w1', 'u1', 'i1', { version: 3, description: '' });
+    expect(t.issueHistory.createMany).not.toHaveBeenCalled();
+  });
+});

@@ -193,6 +193,7 @@ export const HistoryField = {
   SCOPE: 'SCOPE',
   PRIORITY: 'PRIORITY',
   TIME_SPENT: 'TIME_SPENT',
+  DESCRIPTION: 'DESCRIPTION',
 } as const;
 export type HistoryField = (typeof HistoryField)[keyof typeof HistoryField];
 

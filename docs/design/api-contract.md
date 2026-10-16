@@ -319,7 +319,8 @@ Issue type: `EPIC | STORY | TASK | BUG | SUBTASK`. Hỗ trợ custom fields (gia
 | GET | `/issues/{id}/links` | `issue:read` | Liên kết (blocks, relates, duplicates) |
 | POST | `/issues/{id}/links` | `issue:update` | Tạo link tới issue khác |
 | DELETE | `/issues/{id}/links/{linkId}` | `issue:update` | Xóa link |
-| GET | `/issues/{id}/activity` | `issue:read` | Activity log của issue (cursor) — giao tiếp Notifications/Activity |
+| GET | `/issues/{id}/activity` | `issue:read` | Activity log của issue (cursor) — giao tiếp Notifications/Activity. `?fields=STATUS,DESCRIPTION` (CSV `HistoryField`) lọc theo loại thay đổi, giá trị lạ → 422. Dòng `DESCRIPTION` có `hasDiff: true` và `oldValue/newValue/oldLabel/newLabel` chỉ là bản xem trước ≤ 200 ký tự (kèm `…`) |
+| GET | `/issues/{id}/activity/{activityId}` | `issue:read` | Một dòng lịch sử với `oldValue/newValue` ĐẦY ĐỦ (dùng cho hộp so sánh mô tả); không thuộc công việc → 404 |
 | GET | `/issues/{id}/watchers` | `issue:read` | Danh sách watcher |
 | POST | `/issues/{id}/watchers` | `issue:read` | Tự watch / thêm watcher |
 
