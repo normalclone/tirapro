@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { AuthMeDto, PermissionKey, UserDto } from '@tirapro/types';
 import { api, refreshAccessToken } from '@/lib/api';
 import { setAccessToken } from '@/lib/auth-token';
-import { queryClient } from '@/lib/queryClient';
+import { clearSessionCaches } from '@/lib/sessionCache';
 import { disconnectSocket } from '@/lib/socket';
 
 interface AuthState {
@@ -48,7 +48,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
     setAccessToken(null);
     disconnectSocket(); // ngắt socket của phiên cũ → không giữ room/quyền của tài khoản trước
-    queryClient.clear(); // xoá cache theo phiên → không rò dữ liệu sang tài khoản khác
+    clearSessionCaches(); // xoá cache theo phiên → không rò dữ liệu sang tài khoản khác
     set({ status: 'guest', user: null, workspaceId: null, permissions: [] });
   },
 
@@ -87,7 +87,7 @@ async function loadMe(set: (p: Partial<AuthState>) => void) {
 if (typeof window !== 'undefined') {
   window.addEventListener('tirapro:logout', () => {
     setAccessToken(null);
-    queryClient.clear();
+    clearSessionCaches();
     useAuth.setState({ status: 'guest', user: null, workspaceId: null, permissions: [] });
   });
 }

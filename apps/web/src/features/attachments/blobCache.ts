@@ -32,4 +32,10 @@ export class BlobUrlCache {
       this.revoke(oldest[1]);
     }
   }
+
+  /** Giải phóng và bỏ mọi blob URL (đăng xuất / đổi workspace). */
+  clear(): void {
+    for (const url of this.map.values()) this.revoke(url);
+    this.map.clear();
+  }
 }

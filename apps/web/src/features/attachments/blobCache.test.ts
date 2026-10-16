@@ -30,4 +30,16 @@ describe('BlobUrlCache', () => {
     c.set('b', 'blob:b');
     expect(revoke).not.toHaveBeenCalled();
   });
+
+  it('clear: revoke TẤT CẢ URL và rỗng cache', () => {
+    const revoke = vi.fn();
+    const c = new BlobUrlCache(5, revoke);
+    c.set('a', 'blob:a');
+    c.set('b', 'blob:b');
+    c.clear();
+    expect(revoke.mock.calls.map((x) => x[0]).sort()).toEqual(['blob:a', 'blob:b']);
+    expect(c.get('a')).toBeUndefined();
+    c.set('a', 'blob:a2');
+    expect(c.get('a')).toBe('blob:a2');
+  });
 });

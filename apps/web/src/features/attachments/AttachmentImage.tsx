@@ -60,6 +60,9 @@ function AttachmentPicture({
       src={url}
       alt={alt}
       className={className}
+      onLoad={() => {
+        retried.current = false; // tải được rồi thì lần revoke sau vẫn nạp lại được
+      }}
       onError={() => {
         if (retried.current) return setBroken(true);
         retried.current = true;

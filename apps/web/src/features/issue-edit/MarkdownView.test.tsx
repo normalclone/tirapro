@@ -73,5 +73,6 @@ describe('MarkdownView — an toàn đầu ra (không dangerouslySetInnerHTML)',
     client.setQueryData(keys.attachments.blob('cm1'), 'blob:http://x/abc');
     const out = html('![a"><script>](attachment:cm1)', undefined, client);
     expect(out).not.toContain('<script');
+    expect(out).toContain('src="blob:http://x/abc"'); // ảnh thật được dựng từ cache
   });
 });

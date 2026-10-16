@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { setAccessToken } from '@/lib/auth-token';
 import { queryClient } from '@/lib/queryClient';
+import { clearSessionCaches } from '@/lib/sessionCache';
 import { keys } from '@/lib/queryKeys';
 
 /** Không gian làm việc mà người dùng hiện tại là thành viên (kèm vai trò). */
@@ -48,7 +49,7 @@ export function useSwitchWorkspace() {
         .then((r) => r.data),
     onSuccess: (data) => {
       setAccessToken(data.accessToken);
-      queryClient.clear();
+      clearSessionCaches();
       window.location.assign('/');
     },
   });

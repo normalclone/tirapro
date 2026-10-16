@@ -2,6 +2,8 @@ import { useCallback } from 'react';
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth-token';
+import { fetchDownload, downloadFile } from '@/lib/download';
+import { registerSessionCleaner } from '@/lib/sessionCache';
 import { keys } from '@/lib/queryKeys';
 import { BlobUrlCache } from './blobCache';
 import { isImageMime } from './ref';
@@ -80,42 +82,18 @@ export function useDeleteAttachment(issueId: string) {
   });
 }
 
-/** Tên tệp trong `Content-Disposition: attachment; filename="..."` (server mã hoá phần trăm); không có → undefined. */
-function filenameFromDisposition(h: string | null): string | undefined {
-  const m = /filename="?([^";]+)"?/i.exec(h ?? '');
-  if (!m?.[1]) return undefined;
-  try {
-    return decodeURIComponent(m[1]);
-  } catch {
-    return m[1];
-  }
-}
-
-/** Tải file về máy: fetch kèm token → blob → object URL → click anchor tạm → revoke. */
+/** Tải file về máy (qua `lib/download`: token + tự refresh khi 401). Tên lấy từ server, `fileName` chỉ là dự phòng. */
 export async function downloadAttachment(id: string, fileName?: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/attachments/${id}/download`, {
-    headers: { Authorization: `Bearer ${getAccessToken()}` },
-    credentials: 'include',
+  await downloadFile(`/attachments/${encodeURIComponent(id)}/download`, {
+    fallbackName: fileName ?? 'tep-dinh-kem',
   });
-  if (!res.ok) throw new Error(`Tải xuống thất bại (${res.status})`);
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  try {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download =
-      fileName ?? filenameFromDisposition(res.headers.get('Content-Disposition')) ?? 'tep-dinh-kem';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } finally {
-    URL.revokeObjectURL(url);
-  }
 }
 
 /** Tối đa 60 blob URL ảnh cùng lúc trong bộ nhớ trình duyệt; mục cũ nhất bị giải phóng khi vượt. */
 const BLOB_CACHE_LIMIT = 60;
 const blobUrls = new BlobUrlCache(BLOB_CACHE_LIMIT, (url) => URL.revokeObjectURL(url));
+// Cache theo phiên: người đăng nhập sau (cùng tab) không được nhận blob của người trước qua cache.
+registerSessionCleaner(() => blobUrls.clear());
 
 /**
  * Ảnh đính kèm cần header `Authorization` nên không dùng thẳng `<img src=".../download">`: tải bằng fetch
@@ -124,12 +102,7 @@ const blobUrls = new BlobUrlCache(BLOB_CACHE_LIMIT, (url) => URL.revokeObjectURL
 async function fetchAttachmentBlobUrl(id: string): Promise<string> {
   const hit = blobUrls.get(id);
   if (hit) return hit;
-  const res = await fetch(`${BASE_URL}/attachments/${encodeURIComponent(id)}/download`, {
-    headers: { Authorization: `Bearer ${getAccessToken()}` },
-    credentials: 'include',
-  });
-  if (!res.ok) throw new Error(`Không xem được ảnh (${res.status})`);
-  const blob = await res.blob();
+  const { blob } = await fetchDownload(`/attachments/${encodeURIComponent(id)}/download`);
   if (!isImageMime(blob.type)) throw new Error('Tệp này không phải ảnh xem được');
   const url = URL.createObjectURL(blob);
   blobUrls.set(id, url);
