@@ -33,7 +33,9 @@ function statItems(r: QaReport): StatItem[] {
       label: 'Tỷ lệ mở lại',
       value: formatPercent(r.reopenRate),
       sub:
-        r.reopenRate == null ? 'chưa có bug đóng trong kỳ' : `trên ${r.totals.closed} bug đã đóng`,
+        r.reopenRate == null
+          ? 'chưa có bug đóng trong kỳ'
+          : `trên ${r.totals.closed} bug đóng trong kỳ`,
       tone: shouldWarnReopen(r.reopenRate, r.totals.closed) ? 'warning' : 'default',
       title: REOPEN_HINT,
     },
