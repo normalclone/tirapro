@@ -16,10 +16,10 @@ export class TelegramUnreachableError extends Error {
   }
 }
 
-/** getUpdates trả 409: bot đang gắn webhook nên không đọc được tin nhắn bằng getUpdates. */
+/** getUpdates trả 409: bot đang gắn webhook HOẶC có tiến trình khác đang getUpdates cùng bot. */
 export class TelegramWebhookConflictError extends Error {
   constructor() {
-    super('Bot đang gắn webhook');
+    super('Bot đang gắn webhook hoặc có tiến trình khác đang đọc getUpdates');
     this.name = 'TelegramWebhookConflictError';
   }
 }

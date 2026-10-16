@@ -122,18 +122,19 @@ describe('createCode', () => {
     expect(LINK_CODE_ALPHABET).toHaveLength(31);
   });
 
-  it('từ chối khi đã có 5 mã còn hiệu lực', async () => {
+  it('tạo mã mới vô hiệu mọi mã còn hiệu lực chưa dùng của tích hợp (không bị chặn khi bấm Tạo mã mới liên tục)', async () => {
     const { service, prisma } = setup();
-    prisma.channelLinkToken.count.mockResolvedValue(5);
-    await expect(service.createCode('w1', 'g1', 'u1')).rejects.toMatchObject({ status: 422 });
-    expect(prisma.channelLinkToken.create).not.toHaveBeenCalled();
-    expect(prisma.channelLinkToken.count).toHaveBeenCalledWith({
-      where: {
-        integrationId: 'g1',
-        consumedAt: null,
-        expiresAt: { gt: NOW },
-      },
+    await service.createCode('w1', 'g1', 'u1');
+    expect(prisma.channelLinkToken.updateMany).toHaveBeenCalledWith({
+      where: { integrationId: 'g1', consumedAt: null, expiresAt: { gt: NOW } },
+      data: { expiresAt: NOW },
     });
+    // vô hiệu TRƯỚC khi tạo mã mới
+    const inval = prisma.channelLinkToken.updateMany.mock.invocationCallOrder[0]!;
+    const created = prisma.channelLinkToken.create.mock.invocationCallOrder[0]!;
+    expect(inval).toBeLessThan(created);
+    for (let i = 0; i < 8; i += 1) await service.createCode('w1', 'g1', 'u1');
+    expect(prisma.channelLinkToken.create).toHaveBeenCalledTimes(9);
   });
 
   it('dọn mã hết hạn/đã dùng quá 1 ngày của integration', async () => {
@@ -230,6 +231,20 @@ describe('poll', () => {
     expect(prisma.channelLinkToken.updateMany).not.toHaveBeenCalled();
   });
 
+  it('hai nhóm cùng gõ mã → bản tin khớp CŨ NHẤT thắng (người sau không chen vào)', async () => {
+    const { service, integrations } = setup({
+      updates: [
+        groupUpdate('/link@TiraproBot K7M2QX', { chatId: -111, chatTitle: 'Nhóm đúng' }),
+        groupUpdate('/link@TiraproBot K7M2QX', { chatId: -222, chatTitle: 'Nhóm lạ' }),
+      ],
+    });
+    await expect(service.poll('w1', 'g1', 'K7M2QX')).resolves.toMatchObject({
+      status: 'linked',
+      channel: { externalId: '-111' },
+    });
+    expect(integrations.addChannel).toHaveBeenCalledTimes(1);
+  });
+
   it('lệnh gọi bot khác (@OtherBot) trong nhóm → bỏ qua', async () => {
     const { service } = setup({ updates: [groupUpdate('/link@OtherBot K7M2QX')] });
     await expect(service.poll('w1', 'g1', 'K7M2QX')).resolves.toEqual({ status: 'waiting' });
@@ -291,12 +306,14 @@ describe('poll — hết hạn, lỗi và va chạm', () => {
     expect(integrations.addChannel).not.toHaveBeenCalled();
   });
 
-  it('409 từ Telegram → status error + gợi ý webhook', async () => {
+  it('409 từ Telegram → status error, hint nêu CẢ webhook lẫn tiến trình khác đang getUpdates', async () => {
     const { service, telegram } = setup();
     telegram.recentUpdates.mockRejectedValue(new TelegramWebhookConflictError());
     const res = await service.poll('w1', 'g1', 'K7M2QX');
     expect(res.status).toBe('error');
-    expect((res as { hint: string }).hint).toContain('webhook');
+    const { hint } = res as { hint: string };
+    expect(hint).toContain('webhook');
+    expect(hint).toContain('getUpdates');
   });
 
   it('token bị Telegram từ chối → error + đánh dấu như reportUnusableToken', async () => {

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, IntegrationType } from '@prisma/client';
 import { randomInt } from 'node:crypto';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { IntegrationsService } from './integrations.service';
 import {
   TELEGRAM_TOKEN_UNUSABLE_MESSAGE,
@@ -17,7 +17,6 @@ import {
 export const LINK_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const LINK_CODE_LENGTH = 6;
 const LINK_CODE_TTL_MS = 15 * 60_000;
-const MAX_ACTIVE_CODES = 5;
 const CLEANUP_AFTER_MS = 24 * 3600_000;
 const ACCEPTED_CHAT_TYPES = new Set(['group', 'supergroup', 'private']);
 const CODE_SHAPE = /^[A-Z0-9]{6}$/;
@@ -103,14 +102,12 @@ export class LinkCodesService {
         OR: [{ expiresAt: { lt: dayAgo } }, { consumedAt: { lt: dayAgo } }],
       },
     });
-    const active = await this.prisma.channelLinkToken.count({
+    // Mã mới thay mã cũ: vô hiệu mọi mã còn hiệu lực chưa dùng của tích hợp (bấm "Tạo mã mới"/Quay lại không dồn mã,
+    // và mã cũ lộ trong nhóm không còn dùng được). Mã bị vô hiệu → poll trả `expired`.
+    await this.prisma.channelLinkToken.updateMany({
       where: { integrationId, consumedAt: null, expiresAt: { gt: now } },
+      data: { expiresAt: now },
     });
-    if (active >= MAX_ACTIVE_CODES) {
-      throw new BusinessRuleException(
-        'Đã có quá nhiều mã liên kết còn hiệu lực — hãy dùng mã đã tạo hoặc chờ vài phút cho mã cũ hết hạn',
-      );
-    }
     const expiresAt = new Date(now.getTime() + LINK_CODE_TTL_MS);
     let code = '';
     for (let attempt = 0; ; attempt += 1) {
@@ -175,7 +172,7 @@ export class LinkCodesService {
       if (err instanceof TelegramWebhookConflictError) {
         return {
           status: 'error',
-          hint: 'Bot này đang gắn webhook nên không đọc được tin nhắn — hãy gỡ webhook hoặc dùng bot khác',
+          hint: 'Telegram không cho đọc tin nhắn của bot này: bot đang gắn webhook hoặc có tiến trình khác đang đọc tin của nó (getUpdates) — hãy gỡ webhook/tắt tiến trình đó, hoặc dùng bot riêng cho Tirapro',
         };
       }
       if (err instanceof TelegramTokenRejectedError) {
@@ -192,13 +189,11 @@ export class LinkCodesService {
     }
 
     const botUsername = this.configBotUsername(integration.config);
-    // Mới nhất trước — nhóm có thể gõ lại lệnh.
-    const hit = [...updates]
-      .reverse()
-      .find(
-        (u) =>
-          ACCEPTED_CHAT_TYPES.has(u.chatType) && parseLinkCommand(u.text, botUsername) === code,
-      );
+    // Bản tin khớp CŨ NHẤT thắng (Telegram trả theo thứ tự thời gian): người khác thấy mã trong nhóm rồi gõ lại ở
+    // nhóm lạ sau đó không chen vào được.
+    const hit = updates.find(
+      (u) => ACCEPTED_CHAT_TYPES.has(u.chatType) && parseLinkCommand(u.text, botUsername) === code,
+    );
     if (!hit) return { status: 'waiting' };
 
     // Tiêu thụ mã bằng CAS: hai request song song chỉ một bên thắng.
