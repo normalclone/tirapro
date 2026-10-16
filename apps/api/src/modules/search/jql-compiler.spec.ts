@@ -277,3 +277,25 @@ describe('so khớp tên không phân biệt hoa/thường', () => {
     });
   });
 });
+
+describe('JQL key — mã công việc, cả mã Jira (JRA-1) lẫn mã Tirapro (L27)', () => {
+  const w = (jql: string) => compileJql(ast(jql), { currentUserId: 'U' }).where;
+  it('key = "JRA-1" → khớp đúng; literal có gạch ngang trong nháy parse được', () => {
+    expect(w('key = "JRA-1"')).toEqual({ key: 'JRA-1' });
+    expect(w('key = "PROJ-STORY-7"')).toEqual({ key: 'PROJ-STORY-7' });
+  });
+  it('mã luôn lưu HOA nên = / != chuẩn hoá HOA giá trị gõ', () => {
+    expect(w('key = "jra-1"')).toEqual({ key: 'JRA-1' });
+    expect(w('key != "jra-1"')).toEqual({ key: { not: 'JRA-1' } });
+  });
+  it('key ~ "JRA" → contains; key !~ → NOT contains', () => {
+    expect(w('key ~ "JRA"')).toEqual({ key: { contains: 'JRA', mode: 'insensitive' } });
+    expect(w('key !~ "JRA"')).toEqual({
+      NOT: { key: { contains: 'JRA', mode: 'insensitive' } },
+    });
+  });
+  it('ORDER BY key', () => {
+    const r = compileJql(ast('project = X ORDER BY key ASC'), { currentUserId: 'U' });
+    expect(r.orderBy).toEqual([{ key: 'asc' }]);
+  });
+});

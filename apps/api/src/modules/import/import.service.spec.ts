@@ -23,6 +23,8 @@ function setup(failSummary?: string, members: Array<{ id: string; email: string 
         _w: string,
         _u: string,
         input: { summary: string; assigneeId?: string },
+        _deferred?: unknown,
+        _fixedKey?: string,
       ) => {
         await Promise.resolve();
         if (input.summary === failSummary) throw new Error('lỗi DB giả lập');
@@ -313,5 +315,63 @@ describe('ImportService.importJson — skippedAssignees khi lô lỗi rồi ch�
     });
     expect(res).toMatchObject({ created: 3, failed: 1 });
     expect(res.skippedAssignees).toBe(2); // ok1 + ok2, mỗi dòng đúng một lần
+  });
+});
+
+describe('ImportService.createIssuesInChunks — fixedKey (L27)', () => {
+  const p2002 = (target: unknown) =>
+    Object.assign(new Error('Unique constraint failed'), { code: 'P2002', meta: { target } });
+  const item = (row: number, summary: string, fixedKey?: string) => ({
+    row,
+    input: { summary } as never,
+    fixedKey,
+  });
+
+  it('truyền fixedKey của từng dòng vào createWithin (tham số thứ 6)', async () => {
+    const { service, issues } = setup();
+    await service.createIssuesInChunks(
+      'w1',
+      'u1',
+      [item(1, 'a', 'JRA-1'), item(2, 'b')],
+      new Map(),
+    );
+    expect(issues.createWithin.mock.calls.map((c) => c[5])).toEqual(['JRA-1', undefined]);
+  });
+
+  it('dòng đụng unique mã (P2002 trên key) → vào duplicates, KHÔNG vào errors; dòng khác vẫn tạo', async () => {
+    const { service, issues } = setup();
+    issues.createWithin.mockImplementation(async (_t, _w, _u, input: { summary: string }) => {
+      await Promise.resolve();
+      if (input.summary === 'dup') throw p2002(['workspaceId', 'key']);
+      return { id: `id-${input.summary}` };
+    });
+    const res = await service.createIssuesInChunks(
+      'w1',
+      'u1',
+      [item(1, 'ok1', 'JRA-1'), item(2, 'dup', 'JRA-2'), item(3, 'ok2', 'JRA-3')],
+      new Map(),
+    );
+    expect(res.created).toBe(2);
+    expect(res.errors).toEqual([]);
+    expect(res.duplicates).toHaveLength(1);
+    expect(res.duplicates[0]!.row).toBe(2);
+  });
+
+  it('P2002 trên cột khác, hoặc dòng không có fixedKey → vẫn là lỗi thường', async () => {
+    const { service, issues } = setup();
+    issues.createWithin.mockImplementation(async (_t, _w, _u, input: { summary: string }) => {
+      await Promise.resolve();
+      if (input.summary === 'x') throw p2002(['projectId', 'number']);
+      if (input.summary === 'y') throw p2002(['workspaceId', 'key']);
+      return { id: `id-${input.summary}` };
+    });
+    const res = await service.createIssuesInChunks(
+      'w1',
+      'u1',
+      [item(1, 'x', 'JRA-1'), item(2, 'y')],
+      new Map(),
+    );
+    expect(res.duplicates).toEqual([]);
+    expect(res.errors.map((e) => e.row)).toEqual([1, 2]);
   });
 });

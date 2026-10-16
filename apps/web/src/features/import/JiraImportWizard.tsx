@@ -361,8 +361,8 @@ function OptionsPanel({ options, onChange }: { options: Options; onChange: (o: O
       <Checkbox
         checked={options.keepJiraKey}
         onChange={(v) => onChange({ ...options, keepJiraKey: v })}
-        label="Giữ mã Jira trong mô tả"
-        hint="Thêm dòng “Nhập từ Jira: KEY-123” ở đầu mô tả mỗi công việc."
+        label="Giữ mã Jira làm mã công việc (JRA-1)"
+        hint="Công việc mang đúng mã Jira. Việc tạo mới sau này vẫn theo mã Tirapro (vd JRA-STORY-7). Nhập lại cùng tệp sẽ bỏ qua việc đã có mã."
       />
       <Checkbox
         checked={options.importComments}
@@ -387,6 +387,16 @@ function DryRunSummary({ result }: { result: JiraDryRunResult }) {
         Sẽ nhập {result.total} công việc ({result.epics} epic, {result.subtasks} việc con),{' '}
         {result.sprints} sprint, {result.labels} nhãn, {result.comments} bình luận.
       </p>
+      {result.duplicateKeys > 0 && (
+        <p className="mt-1 text-warning">
+          {result.duplicateKeys} việc trùng mã đã có — sẽ bỏ qua, không ghi đè.
+        </p>
+      )}
+      {result.invalidKeys > 0 && (
+        <p className="mt-1 text-warning">
+          {result.invalidKeys} việc có mã Jira sai dạng — vẫn nhập nhưng dùng mã Tirapro tự sinh.
+        </p>
+      )}
       {result.warnings.length > 0 && (
         <details className="mt-2">
           <summary className="cursor-pointer text-warning">
@@ -699,7 +709,7 @@ function ProgressStep({
             )}
           >
             {job.status === 'COMPLETED'
-              ? `Đã nhập ${summary.created ?? 0}/${job.totalItems ?? 0} công việc${summary.failed ? `, ${summary.failed} dòng lỗi` : ''}.`
+              ? `Đã nhập ${summary.created ?? 0}/${job.totalItems ?? 0} công việc${summary.duplicateKeys ? `, ${summary.duplicateKeys} việc trùng mã — bỏ qua` : ''}${summary.failed ? `, ${summary.failed} dòng lỗi` : ''}.`
               : 'Nhập thất bại — không có công việc nào được tạo. Tải nhật ký lỗi để xem lý do.'}
           </p>
           <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -709,6 +719,7 @@ function ProgressStep({
               ['Sprint', summary.sprints],
               ['Nhãn gắn', summary.labels],
               ['Bình luận', summary.comments],
+              ['Bỏ qua (trùng mã)', summary.duplicateKeys],
               ['Cảnh báo', summary.warnings],
               ['Chưa có người phụ trách', summary.skippedAssignees],
               ['Để trống có chủ đích', summary.blankedAssignees],

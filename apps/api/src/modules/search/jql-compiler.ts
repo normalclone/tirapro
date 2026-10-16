@@ -129,6 +129,7 @@ const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
     kind: 'array',
     arrayRel: { relation: 'fixVersions', ref: 'version', type: 'AFFECTS' },
   },
+  key: { kind: 'text', column: 'key' },
   summary: { kind: 'text', column: 'summary' },
   text: { kind: 'fulltext' },
   created: { kind: 'date', column: 'createdAt' },
@@ -250,7 +251,9 @@ function compileComparison(
     }
     case 'text': {
       const col = cfg.column!;
-      const v = scalarString(value, ctx);
+      const raw = scalarString(value, ctx);
+      // Mã công việc luôn lưu HOA → so khớp chính xác không phân biệt hoa/thường người gõ.
+      const v = field === 'key' && (op === '=' || op === '!=') ? raw.toUpperCase() : raw;
       if (op === '~') return containsWhere(col, v, cfg.nullable);
       if (op === '!~') return { NOT: containsWhere(col, v, cfg.nullable) };
       if (op === '!=') return { [col]: { not: v } };

@@ -13,8 +13,8 @@ export interface WebhookAuth {
   rawBody?: Buffer;
 }
 
-/** Regex bắt issue key kiểu "DEMO-1", "PROJ2-123" trong message commit / tiêu đề PR. */
-const ISSUE_KEY_RE = /\b[A-Z][A-Z0-9]+-\d+\b/g;
+/** Regex bắt issue key kiểu "DEMO-1", "PROJ2-123", "MY_APP-12" (mã Jira gốc có thể có `_`) trong message commit / tiêu đề PR. */
+const ISSUE_KEY_RE = /\b[A-Z][A-Z0-9_]+-\d+\b/g;
 
 /** Input tạo repo (đã validate bằng zod ở controller). */
 export interface CreateRepositoryInput {

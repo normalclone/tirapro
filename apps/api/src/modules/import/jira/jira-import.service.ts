@@ -8,6 +8,7 @@ import type { Prisma } from '@prisma/client';
 import {
   JIRA_CREATE,
   jiraAnalyzeIdSchema,
+  normalizeJiraKey,
   type JiraImportOptions,
   type JiraImportRunInput,
 } from '@tirapro/shared';
@@ -92,6 +93,31 @@ interface Plan {
   labels: number;
   comments: number;
 }
+
+/** Việc đã có mã này trong workspace (kể cả đã xoá mềm — unique `(workspaceId, key)` vẫn giữ mã). */
+interface ExistingKey {
+  id: string;
+  key: string;
+  projectId: string;
+  projectKey: string;
+  deleted: boolean;
+}
+
+/** Kế hoạch mã Jira cho một lượt nhập (L27): dòng nào dùng mã gốc, dòng nào bỏ qua vì trùng, dòng nào sai dạng. */
+interface KeyPlan {
+  /** Dòng → mã Jira đã chuẩn hoá, dùng làm `Issue.key`. */
+  fixed: Map<JiraIssueRow, string>;
+  /** Dòng bị bỏ qua vì mã trùng (đã có trong workspace, hoặc lặp trong tệp — `existing` rỗng). */
+  skip: Map<JiraIssueRow, { message: string; existing?: ExistingKey }>;
+  /** Dòng có mã sai dạng → vẫn tạo bằng mã Tirapro tự sinh. */
+  invalid: Map<JiraIssueRow, string>;
+}
+
+const NO_KEY_PLAN = (): KeyPlan => ({ fixed: new Map(), skip: new Map(), invalid: new Map() });
+/** Số mã tra mỗi truy vấn (tránh vượt giới hạn tham số bind của Postgres). */
+const KEY_LOOKUP_CHUNK = 5000;
+/** Dry-run chỉ liệt kê tối đa chừng này dòng cảnh báo mã (còn lại gộp một dòng). */
+const DRY_RUN_KEY_WARNINGS = 20;
 
 interface AnalyzeMeta {
   workspaceId: string;
@@ -313,6 +339,10 @@ export class JiraImportService implements OnApplicationBootstrap {
     const plan = this.plan(parsed, input, catalog);
 
     if (input.options.dryRun) {
+      const keyPlan = input.options.keepJiraKey
+        ? await this.planKeys(workspaceId, parsed.issues)
+        : NO_KEY_PLAN();
+      const keyWarnings = this.keyWarnings(keyPlan);
       return {
         dryRun: true,
         total: parsed.issues.length,
@@ -321,7 +351,13 @@ export class JiraImportService implements OnApplicationBootstrap {
         sprints: input.options.importSprints ? plan.sprintNames.length : 0,
         labels: plan.labels,
         comments: input.options.importComments ? plan.comments : 0,
+        duplicateKeys: keyPlan.skip.size,
+        invalidKeys: keyPlan.invalid.size,
         warnings: [
+          ...keyWarnings.slice(0, DRY_RUN_KEY_WARNINGS),
+          ...(keyWarnings.length > DRY_RUN_KEY_WARNINGS
+            ? [`… và ${keyWarnings.length - DRY_RUN_KEY_WARNINGS} cảnh báo về mã nữa`]
+            : []),
           ...[...plan.links.entries()].flatMap(([r, l]) =>
             l.warnings.map((w) => this.line(r, w, true)),
           ),
@@ -452,7 +488,19 @@ export class JiraImportService implements OnApplicationBootstrap {
       const idByRow = new Map<JiraIssueRow, string>();
       const rowByNo = new Map(parsed.issues.map((r) => [r.row, r]));
       const errorLines: string[] = [];
-      const counters = { created: 0, failed: 0, labels: 0, comments: 0, warnings: 0 };
+      const counters = {
+        created: 0,
+        failed: 0,
+        labels: 0,
+        comments: 0,
+        warnings: 0,
+        duplicates: 0,
+        invalid: 0,
+      };
+      // Mã Jira gốc (L27): tra một lần trước khi ghi theo lô — dòng trùng bỏ qua, dòng sai dạng dùng mã Tirapro.
+      const keyPlan = opts.keepJiraKey
+        ? await this.planKeys(workspaceId, parsed.issues)
+        : NO_KEY_PLAN();
       // Người phụ trách Jira không được gán: không khớp (cảnh báo) hoặc chủ động "Để trống" (trung tính) — đếm theo việc ĐÃ tạo được.
       const assigneeTally = newAssigneeTally();
       let processed = 0;
@@ -472,7 +520,25 @@ export class JiraImportService implements OnApplicationBootstrap {
 
       for (const layer of plan.layers) {
         const items: PreparedItem[] = [];
+        let skippedInLayer = 0;
         for (const row of layer) {
+          const dup = keyPlan.skip.get(row);
+          if (dup) {
+            errorLines.push(this.line(row, dup.message, true));
+            counters.warnings++;
+            counters.duplicates++;
+            skippedInLayer++;
+            // Việc đã có CÙNG dự án đích (còn sống) làm cha/epic cho dòng con ở tầng sau.
+            if (dup.existing && !dup.existing.deleted && dup.existing.projectId === projectId)
+              idByRow.set(row, dup.existing.id);
+            continue;
+          }
+          const invalidKey = keyPlan.invalid.get(row);
+          if (invalidKey) {
+            errorLines.push(this.line(row, invalidKey, true));
+            counters.warnings++;
+            counters.invalid++;
+          }
           const links = plan.links.get(row)!;
           for (const w of links.warnings) {
             errorLines.push(this.line(row, w, true));
@@ -509,6 +575,7 @@ export class JiraImportService implements OnApplicationBootstrap {
               sprintId: opts.importSprints
                 ? sprintIds.get(row.sprints[row.sprints.length - 1] ?? '')
                 : undefined,
+              fixedKey: keyPlan.fixed.get(row),
               assigneeId: row.assignee ? userFor(row.assignee) : undefined,
               reporterId: row.reporter ? userFor(row.reporter) : undefined,
               resolutionByName,
@@ -522,6 +589,7 @@ export class JiraImportService implements OnApplicationBootstrap {
             }),
           );
         }
+        if (skippedInLayer) await hooks.onChunk(skippedInLayer); // dòng bỏ qua vẫn tính vào tiến độ
         const written = await this.importService.createIssuesInChunks(
           workspaceId,
           userId,
@@ -532,6 +600,14 @@ export class JiraImportService implements OnApplicationBootstrap {
         counters.created += written.created;
         counters.labels += written.labels;
         counters.comments += written.comments;
+        // Lọt qua bước tra mã (hai lượt nhập đồng thời cùng mã): coi là trùng, không phải lỗi.
+        for (const d of written.duplicates) {
+          counters.duplicates++;
+          counters.warnings++;
+          const r = rowByNo.get(d.row);
+          const msg = 'Mã vừa được một lượt nhập khác tạo — bỏ qua';
+          errorLines.push(r ? this.line(r, msg, true) : `Dòng ${d.row} [Cảnh báo]: ${msg}`);
+        }
         for (const e of written.errors) {
           counters.failed++;
           const r = rowByNo.get(e.row);
@@ -549,7 +625,7 @@ export class JiraImportService implements OnApplicationBootstrap {
 
       // 6. Tổng kết.
       const status: 'COMPLETED' | 'FAILED' =
-        counters.created === 0 && total > 0 ? 'FAILED' : 'COMPLETED';
+        counters.created === 0 && total - counters.duplicates > 0 ? 'FAILED' : 'COMPLETED';
       await this.prisma.importJob.update({
         where: { id: jobId },
         data: {
@@ -572,6 +648,8 @@ export class JiraImportService implements OnApplicationBootstrap {
             sprints: opts.importSprints ? plan.sprintNames.length : 0,
             labels: counters.labels,
             comments: counters.comments,
+            duplicateKeys: counters.duplicates,
+            invalidKeys: counters.invalid,
           },
           errorLog: this.joinLog(errorLines),
         },
@@ -606,6 +684,8 @@ export class JiraImportService implements OnApplicationBootstrap {
     category: Category;
     priorityId?: string;
     sprintId?: string;
+    /** Mã Jira gốc làm `Issue.key` (đã kiểm định dạng + trùng). */
+    fixedKey?: string;
     assigneeId?: string;
     reporterId?: string;
     resolutionByName: Map<string, string>;
@@ -620,7 +700,6 @@ export class JiraImportService implements OnApplicationBootstrap {
     const longSummary = row.summary.length > SUMMARY_MAX;
     const summary = longSummary ? `${row.summary.slice(0, SUMMARY_MAX - 1)}…` : row.summary;
     const descParts: string[] = [];
-    if (options.keepJiraKey) descParts.push(`Nhập từ Jira: ${row.key}`);
     if (longSummary) descParts.push(`Tiêu đề gốc: ${row.summary}`);
     if (row.description) descParts.push(row.description);
 
@@ -643,6 +722,7 @@ export class JiraImportService implements OnApplicationBootstrap {
     return {
       row: row.row,
       input,
+      fixedKey: a.fixedKey,
       onCreated: a.onCreated,
       after: async (tx, issue, labelCache) => {
         // 1. Các field IssuesService.create không nhận: ngày gốc, thời gian, người báo cáo, resolution.
@@ -1092,6 +1172,83 @@ export class JiraImportService implements OnApplicationBootstrap {
       options: input.options,
       ...extra,
     };
+  }
+
+  /**
+   * Quyết định mã cho từng dòng khi giữ mã Jira (L27). Kiểm trùng bằng truy vấn trước + `Set` trong lượt, KHÔNG dựa
+   * vào bắt P2002 trong transaction (Postgres huỷ cả transaction sau lỗi unique). Trùng = bỏ qua (idempotent, không
+   * ghi đè chỉnh sửa người dùng đã làm trên Tirapro): mã đang có trong workspace (mọi dự án, kể cả đã xoá mềm) hoặc
+   * mã lặp lại trong chính tệp (dòng sau bị bỏ). Mã sai dạng `KEY-123` → không dùng làm mã, việc vẫn được tạo.
+   */
+  private async planKeys(workspaceId: string, rows: JiraIssueRow[]): Promise<KeyPlan> {
+    const plan = NO_KEY_PLAN();
+    const normalized = new Map<JiraIssueRow, string>();
+    for (const r of rows) {
+      const key = normalizeJiraKey(r.key);
+      if (key) normalized.set(r, key);
+      else
+        plan.invalid.set(
+          r,
+          r.key
+            ? `Mã "${r.key}" không đúng dạng KEY-123 — tạo bằng mã Tirapro tự sinh`
+            : 'Dòng không có mã Jira — tạo bằng mã Tirapro tự sinh',
+        );
+    }
+    const keys = [...new Set(normalized.values())];
+    const existing = new Map<string, ExistingKey>();
+    for (let i = 0; i < keys.length; i += KEY_LOOKUP_CHUNK) {
+      const found = await this.prisma.issue.findMany({
+        // allow-deleted: việc đã xoá mềm vẫn giữ mã → vẫn trùng unique (workspaceId, key)
+        where: { workspaceId, key: { in: keys.slice(i, i + KEY_LOOKUP_CHUNK) } },
+        select: {
+          id: true,
+          key: true,
+          projectId: true,
+          deletedAt: true,
+          project: { select: { key: true } },
+        },
+      });
+      for (const f of found)
+        existing.set(f.key, {
+          id: f.id,
+          key: f.key,
+          projectId: f.projectId,
+          projectKey: f.project.key,
+          deleted: f.deletedAt !== null,
+        });
+    }
+    const firstRow = new Map<string, JiraIssueRow>();
+    for (const [row, key] of normalized) {
+      const had = existing.get(key);
+      if (had) {
+        plan.skip.set(row, {
+          existing: had,
+          message: had.deleted
+            ? `Mã ${key} đã tồn tại (việc đã xoá, nằm trong Thùng rác của dự án ${had.projectKey}) — bỏ qua`
+            : `Mã ${key} đã tồn tại (ở dự án ${had.projectKey}) — bỏ qua`,
+        });
+        continue;
+      }
+      const first = firstRow.get(key);
+      if (first) {
+        plan.skip.set(row, {
+          message: `Mã ${key} lặp lại trong tệp (đã dùng ở dòng ${first.row}) — bỏ qua dòng này`,
+        });
+        continue;
+      }
+      firstRow.set(key, row);
+      plan.fixed.set(row, key);
+    }
+    return plan;
+  }
+
+  /** Cảnh báo dạng chữ (dry-run) từ kế hoạch mã, theo thứ tự dòng. */
+  private keyWarnings(plan: KeyPlan): string[] {
+    const lines: Array<[JiraIssueRow, string]> = [
+      ...[...plan.skip].map(([r, v]) => [r, v.message] as [JiraIssueRow, string]),
+      ...plan.invalid,
+    ];
+    return lines.sort((a, b) => a[0].row - b[0].row).map(([r, m]) => this.line(r, m, true));
   }
 
   /** Dòng cảnh báo gộp của dry-run: người phụ trách sẽ bị bỏ gán vì không khớp (rỗng nếu không có). */

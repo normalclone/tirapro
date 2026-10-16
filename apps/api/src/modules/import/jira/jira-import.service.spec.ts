@@ -22,7 +22,22 @@ const CSV = readFileSync(join(__dirname, '..', 'fixtures', 'jira-sample.csv'));
 const tmpRoot = mkdtempSync(join(tmpdir(), 'jira-import-spec-'));
 afterAll(() => rmSync(tmpRoot, { recursive: true, force: true }));
 
-function setup(opts: { failSummaries?: string[] } = {}) {
+type ExistingIssue = {
+  id: string;
+  key: string;
+  projectId: string;
+  deletedAt: Date | null;
+  project: { key: string };
+};
+
+function setup(
+  opts: {
+    failSummaries?: string[];
+    /** Việc mà ImportService báo "đụng unique mã" (nhập đồng thời) — nằm trong `duplicates`, không phải `errors`. */
+    conflictSummaries?: string[];
+    existingIssues?: ExistingIssue[];
+  } = {},
+) {
   const localDir = mkdtempSync(join(tmpRoot, 'storage-'));
   const created: PreparedItem[] = [];
   const phases: PreparedItem[][] = [];
@@ -93,7 +108,15 @@ function setup(opts: { failSummaries?: string[] } = {}) {
       ),
     },
     label: { findMany: vi.fn(() => Promise.resolve([])) },
-    issue: { update: vi.fn(() => Promise.resolve({})) },
+    issue: {
+      update: vi.fn(() => Promise.resolve({})),
+      // L27: tra mã đã có trong workspace (kể cả việc đã xoá mềm — `// allow-deleted`).
+      findMany: vi.fn((args: { where: { key: { in: string[] } } }) =>
+        Promise.resolve(
+          (opts.existingIssues ?? []).filter((i) => args.where.key.in.includes(i.key)),
+        ),
+      ),
+    },
     issueLabel: { createMany: vi.fn(() => Promise.resolve({})) },
     comment: { createMany: vi.fn(() => Promise.resolve({})) },
   };
@@ -109,8 +132,13 @@ function setup(opts: { failSummaries?: string[] } = {}) {
         await Promise.resolve();
         phases.push(items);
         const errors: Array<{ row: number; error: string }> = [];
+        const duplicates: Array<{ row: number; error: string }> = [];
         let ok = 0;
         for (const it of items) {
+          if (opts.conflictSummaries?.includes(it.input.summary)) {
+            duplicates.push({ row: it.row, error: 'Unique constraint failed on key' });
+            continue;
+          }
           if (opts.failSummaries?.includes(it.input.summary)) {
             errors.push({ row: it.row, error: 'lỗi DB giả lập' });
             continue;
@@ -122,7 +150,7 @@ function setup(opts: { failSummaries?: string[] } = {}) {
           ok++;
         }
         await hooks?.onChunk?.(items.length);
-        return { created: ok, labels: 0, comments: 0, errors };
+        return { created: ok, labels: 0, comments: 0, errors, duplicates };
       },
     ),
     resolveOrCreateLabel: vi.fn((_tx: unknown, _p: string, name: string) =>
@@ -374,7 +402,10 @@ describe('JiraImportService.run — chạy thật', () => {
       assigneeId: 'u-an',
       storyPoints: 8,
     });
-    expect(story.input.description).toMatch(/^Nhập từ Jira: PROJ-3\n\nTích hợp VNPay\./);
+    // L27: mã Jira nay là Issue.key (fixedKey) nên KHÔNG còn dòng "Nhập từ Jira: …" trong mô tả.
+    expect(story.fixedKey).toBe('PROJ-3');
+    expect(story.input.description).toMatch(/^Tích hợp VNPay\./);
+    expect(story.input.description).not.toContain('Nhập từ Jira');
     expect(find('Tài liệu hướng dẫn triển khai').input.priorityId).toBe('pr-new-Lowest');
     expect(find('Cấu hình CI/CD').input.assigneeId).toBeUndefined(); // Lê Minh Cường → để trống
     expect(ctx.prisma.priority.create).toHaveBeenCalledTimes(2);
@@ -677,7 +708,7 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
     const gate = new Promise<void>((r) => (release = r));
     c.importService.createIssuesInChunks.mockImplementationOnce(async () => {
       await gate;
-      return { created: 0, labels: 0, comments: 0, errors: [] };
+      return { created: 0, labels: 0, comments: 0, errors: [], duplicates: [] };
     });
     const first = await c.service.run('w1', 'u1', c.input);
     expect(first).toEqual({ jobId: 'job1' });
@@ -876,7 +907,7 @@ describe('JiraImportService — heartbeat và vòng đời job đang chạy', ()
     const gate = new Promise<void>((r) => (release = r));
     c.importService.createIssuesInChunks.mockImplementationOnce(async () => {
       await gate;
-      return { created: 0, labels: 0, comments: 0, errors: [] };
+      return { created: 0, labels: 0, comments: 0, errors: [], duplicates: [] };
     });
     const { analyzeId } = await c.service.analyze('w1', 'u1', file());
     await c.service.run('w1', 'u1', runInput(analyzeId));
@@ -897,7 +928,7 @@ describe('JiraImportService — heartbeat và vòng đời job đang chạy', ()
       const gate = new Promise<void>((r) => (release = r));
       c.importService.createIssuesInChunks.mockImplementationOnce(async () => {
         await gate;
-        return { created: 0, labels: 0, comments: 0, errors: [] };
+        return { created: 0, labels: 0, comments: 0, errors: [], duplicates: [] };
       });
       const { analyzeId } = await c.service.analyze('w1', 'u1', file());
       await c.service.run('w1', 'u1', runInput(analyzeId));
@@ -930,5 +961,230 @@ describe('JiraImportService — heartbeat và vòng đời job đang chạy', ()
     await expect(c.service.onApplicationBootstrap()).resolves.toBeUndefined();
     c.prisma.importJob.updateMany.mockRejectedValueOnce(new Error('DB chưa sẵn sàng'));
     await expect(c.service.sweepStaleJobs()).resolves.toBeUndefined();
+  });
+});
+
+describe('JiraImportService — mã Jira thật làm Issue.key (L27)', () => {
+  const existing = (key: string, over: Partial<ExistingIssue> = {}): ExistingIssue => ({
+    id: `old-${key}`,
+    key,
+    projectId: 'p1',
+    deletedAt: null,
+    project: { key: 'PROJ' },
+    ...over,
+  });
+  const csvWith = (edit: (text: string) => string): Buffer =>
+    Buffer.from(edit(CSV.toString('utf8')), 'utf8');
+
+  async function runAndWait(
+    c: ReturnType<typeof setup>,
+    patch: Partial<JiraImportRunInput> = {},
+    buf: Buffer = CSV,
+  ) {
+    const { analyzeId } = await c.service.analyze('w1', 'u1', file(buf));
+    const res = await c.service.run('w1', 'u1', runInput(analyzeId, patch));
+    if ('jobId' in res) await c.service.waitForJob(res.jobId);
+    return res;
+  }
+  const lastUpdate = (c: ReturnType<typeof setup>) =>
+    (
+      c.prisma.importJob.update.mock.calls as unknown as Array<[{ data: Record<string, unknown> }]>
+    ).at(-1)![0].data;
+  const createdKeys = (c: ReturnType<typeof setup>) => c.created.map((p) => p.fixedKey);
+  const off = { importComments: true, importSprints: true, keepJiraKey: false, dryRun: false };
+
+  it('keepJiraKey bật: mỗi việc mang fixedKey = mã Jira, mô tả không có "Nhập từ Jira"', async () => {
+    const c = setup();
+    await runAndWait(c);
+    expect(c.created).toHaveLength(20);
+    const keys = createdKeys(c);
+    expect(keys).toContain('PROJ-1');
+    expect(keys).toContain('PROJ-20');
+    expect(c.created.every((p) => !p.input.description?.includes('Nhập từ Jira'))).toBe(true);
+    expect(lastUpdate(c).result).toMatchObject({ created: 20, duplicateKeys: 0, invalidKeys: 0 });
+  });
+
+  it('keepJiraKey tắt: không fixedKey (mã Tirapro tự sinh), mô tả cũng không có dòng "Nhập từ Jira"', async () => {
+    const c = setup();
+    await runAndWait(c, { options: off });
+    expect(c.created.every((p) => p.fixedKey === undefined)).toBe(true);
+    expect(c.created.every((p) => !p.input.description?.includes('Nhập từ Jira'))).toBe(true);
+    expect(c.prisma.issue.findMany).not.toHaveBeenCalled();
+  });
+
+  it('đã có sẵn PROJ-1 trong workspace → bỏ qua dòng đó, cảnh báo trong errorLog, duplicateKeys = 1', async () => {
+    const c = setup({ existingIssues: [existing('PROJ-1')] });
+    await runAndWait(c);
+    expect(createdKeys(c)).not.toContain('PROJ-1');
+    expect(c.created).toHaveLength(19);
+    const done = lastUpdate(c);
+    expect(done.result).toMatchObject({ created: 19, failed: 0, duplicateKeys: 1 });
+    expect(done.errorLog as string).toContain('Dòng 1 (PROJ-1) [Cảnh báo]: Mã PROJ-1 đã tồn tại');
+    expect(done.errorLog as string).toContain('bỏ qua');
+    expect(done.status).toBe('COMPLETED');
+    // tra mã theo workspace, kể cả việc đã xoá mềm (unique vẫn giữ mã)
+    const where = (
+      c.prisma.issue.findMany.mock.calls[0] as unknown as [{ where: Record<string, unknown> }]
+    )[0].where;
+    expect(where).toMatchObject({ workspaceId: 'w1' });
+    expect(JSON.stringify(where)).not.toContain('deletedAt');
+  });
+
+  it('việc đã xoá mềm giữ mã → vẫn coi là trùng, ghi chú nằm trong Thùng rác', async () => {
+    const c = setup({ existingIssues: [existing('PROJ-2', { deletedAt: new Date() })] });
+    await runAndWait(c);
+    expect(createdKeys(c)).not.toContain('PROJ-2');
+    const done = lastUpdate(c);
+    expect(done.result).toMatchObject({ duplicateKeys: 1 });
+    expect(done.errorLog as string).toContain('Thùng rác');
+  });
+
+  it('mã trùng ở dự án khác → bỏ qua, nêu mã dự án đang giữ', async () => {
+    const c = setup({
+      existingIssues: [existing('PROJ-4', { projectId: 'p-other', project: { key: 'OTH' } })],
+    });
+    await runAndWait(c);
+    expect(createdKeys(c)).not.toContain('PROJ-4');
+    expect(lastUpdate(c).errorLog as string).toContain('OTH');
+  });
+
+  it('mã lặp hai lần trong tệp → dòng sau bị bỏ qua, dòng đầu vẫn tạo', async () => {
+    const c = setup();
+    const buf = csvWith((t) =>
+      t.replace('Tài liệu hướng dẫn triển khai,PROJ-9,', 'Tài liệu hướng dẫn triển khai,PROJ-8,'),
+    );
+    await runAndWait(c, {}, buf);
+    expect(createdKeys(c).filter((k) => k === 'PROJ-8')).toHaveLength(1);
+    expect(c.created.map((p) => p.input.summary)).toContain('Cấu hình CI/CD');
+    expect(c.created.map((p) => p.input.summary)).not.toContain('Tài liệu hướng dẫn triển khai');
+    const done = lastUpdate(c);
+    expect(done.result).toMatchObject({ created: 19, duplicateKeys: 1 });
+    expect(done.errorLog as string).toContain('lặp lại trong tệp');
+  });
+
+  it('mã sai dạng (PROJ-STORY-10) → vẫn tạo với mã Tirapro tự sinh, invalidKeys = 1, có cảnh báo', async () => {
+    const c = setup();
+    const buf = csvWith((t) =>
+      t.replace('Sửa lỗi đăng nhập SSO,PROJ-10,', 'Sửa lỗi đăng nhập SSO,PROJ-STORY-10,'),
+    );
+    await runAndWait(c, {}, buf);
+    expect(c.created).toHaveLength(20);
+    const bad = c.created.find((p) => p.input.summary === 'Sửa lỗi đăng nhập SSO')!;
+    expect(bad.fixedKey).toBeUndefined();
+    const done = lastUpdate(c);
+    expect(done.result).toMatchObject({ created: 20, invalidKeys: 1, duplicateKeys: 0 });
+    expect(done.errorLog as string).toContain('PROJ-STORY-10');
+  });
+
+  it('chữ thường trong tệp được chuẩn hoá HOA', async () => {
+    const c = setup();
+    const buf = csvWith((t) =>
+      t.replace('Thiết kế lại trang chủ,PROJ-14,', 'Thiết kế lại trang chủ,proj-14,'),
+    );
+    await runAndWait(c, {}, buf);
+    expect(createdKeys(c)).toContain('PROJ-14');
+  });
+
+  it('con của dòng bị bỏ qua (cùng dự án đích) vẫn gắn đúng cha là việc đã có', async () => {
+    const c = setup({ existingIssues: [existing('PROJ-3')] });
+    await runAndWait(c);
+    const child = c.created.find((p) => p.input.summary === 'Gọi API VNPay: tạo chữ ký')!;
+    expect(child.input.parentId).toBe('old-PROJ-3');
+    // epic cha bị bỏ qua cùng dự án: story vẫn gắn epic đã có
+    const c2 = setup({ existingIssues: [existing('PROJ-1')] });
+    await runAndWait(c2);
+    const story = c2.created.find((p) => p.input.summary === 'Tích hợp cổng VNPay')!;
+    expect(story.input.epicId).toBe('old-PROJ-1');
+  });
+
+  it('cha trùng mã nhưng thuộc dự án KHÁC → không gắn, cảnh báo "tạo không có việc cha"', async () => {
+    const c = setup({
+      existingIssues: [existing('PROJ-3', { projectId: 'p-other', project: { key: 'OTH' } })],
+    });
+    await runAndWait(c);
+    const child = c.created.find((p) => p.input.summary === 'Gọi API VNPay: tạo chữ ký')!;
+    expect(child.input.parentId).toBeUndefined();
+    expect(lastUpdate(c).errorLog as string).toContain('tạo không có việc cha');
+  });
+});
+
+describe('JiraImportService — mã Jira thật làm Issue.key (L27) — cha/con, nhập lại, dry-run', () => {
+  const existing = (key: string, over: Partial<ExistingIssue> = {}): ExistingIssue => ({
+    id: `old-${key}`,
+    key,
+    projectId: 'p1',
+    deletedAt: null,
+    project: { key: 'PROJ' },
+    ...over,
+  });
+  const csvWith = (edit: (text: string) => string): Buffer =>
+    Buffer.from(edit(CSV.toString('utf8')), 'utf8');
+
+  async function runAndWait(
+    c: ReturnType<typeof setup>,
+    patch: Partial<JiraImportRunInput> = {},
+    buf: Buffer = CSV,
+  ) {
+    const { analyzeId } = await c.service.analyze('w1', 'u1', file(buf));
+    const res = await c.service.run('w1', 'u1', runInput(analyzeId, patch));
+    if ('jobId' in res) await c.service.waitForJob(res.jobId);
+    return res;
+  }
+  const lastUpdate = (c: ReturnType<typeof setup>) =>
+    (
+      c.prisma.importJob.update.mock.calls as unknown as Array<[{ data: Record<string, unknown> }]>
+    ).at(-1)![0].data;
+  const off = { importComments: true, importSprints: true, keepJiraKey: false, dryRun: false };
+
+  it('việc cha đã xoá mềm (cùng dự án) → không gắn làm cha', async () => {
+    const c = setup({ existingIssues: [existing('PROJ-3', { deletedAt: new Date() })] });
+    await runAndWait(c);
+    const child = c.created.find((p) => p.input.summary === 'Gọi API VNPay: tạo chữ ký')!;
+    expect(child.input.parentId).toBeUndefined();
+  });
+
+  it('nhập lại cùng tệp (mọi mã đã có) → không tạo gì, job COMPLETED (không FAILED), duplicateKeys = 20', async () => {
+    const all = Array.from({ length: 20 }, (_, i) => existing(`PROJ-${i + 1}`));
+    const c = setup({ existingIssues: all });
+    await runAndWait(c);
+    expect(c.created).toHaveLength(0);
+    const done = lastUpdate(c);
+    expect(done).toMatchObject({ status: 'COMPLETED', progress: 100, processedItems: 20 });
+    expect(done.result).toMatchObject({ created: 0, failed: 0, duplicateKeys: 20 });
+  });
+
+  it('dry-run: không ghi gì nhưng đếm duplicateKeys/invalidKeys và liệt kê cảnh báo', async () => {
+    const c = setup({ existingIssues: [existing('PROJ-1'), existing('PROJ-2')] });
+    const buf = csvWith((t) =>
+      t.replace('Sửa lỗi đăng nhập SSO,PROJ-10,', 'Sửa lỗi đăng nhập SSO,PROJ-STORY-10,'),
+    );
+    const res = await runAndWait(
+      c,
+      { options: { importComments: true, importSprints: true, keepJiraKey: true, dryRun: true } },
+      buf,
+    );
+    expect(res).toMatchObject({ dryRun: true, total: 20, duplicateKeys: 2, invalidKeys: 1 });
+    const warnings = (res as { warnings: string[] }).warnings.join('\n');
+    expect(warnings).toContain('PROJ-1 đã tồn tại');
+    expect(c.prisma.importJob.create).not.toHaveBeenCalled();
+    expect(c.importService.createIssuesInChunks).not.toHaveBeenCalled();
+  });
+
+  it('dry-run với keepJiraKey tắt: duplicateKeys = 0, không tra mã', async () => {
+    const c = setup({ existingIssues: [existing('PROJ-1')] });
+    const res = await runAndWait(c, { options: { ...off, dryRun: true } });
+    expect(res).toMatchObject({ dryRun: true, duplicateKeys: 0, invalidKeys: 0 });
+    expect(c.prisma.issue.findMany).not.toHaveBeenCalled();
+  });
+
+  it('trùng mã lọt qua bước tra (nhập đồng thời, P2002) → tính là trùng + cảnh báo, không phải failed', async () => {
+    const c = setup({ conflictSummaries: ['Cấu hình CI/CD'] });
+    await runAndWait(c);
+    const done = lastUpdate(c);
+    expect(done).toMatchObject({ status: 'COMPLETED' });
+    expect(done.result).toMatchObject({ created: 19, failed: 0, duplicateKeys: 1 });
+    expect(done.errorLog as string).toContain(
+      'Dòng 8 (PROJ-8) [Cảnh báo]: Mã vừa được một lượt nhập khác tạo',
+    );
   });
 });

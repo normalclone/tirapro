@@ -82,6 +82,11 @@ const IMPORT_CHUNK_SIZE = 100;
 export interface PreparedItem {
   row: number;
   input: CreateIssueInput;
+  /**
+   * Mã Jira gốc làm `Issue.key` (L27) — chỉ Jira import đặt, đi thẳng vào `createWithin` (không qua DTO/zod).
+   * Người đặt phải kiểm trùng trước; trùng lọt qua (nhập đồng thời) sẽ vào `duplicates` của kết quả.
+   */
+  fixedKey?: string;
   after?: (
     tx: Prisma.TransactionClient,
     issue: IssueDto,
@@ -95,6 +100,15 @@ export interface PreparedItem {
 export interface ChunkHooks {
   /** Gọi sau mỗi lô (kể cả lô phải chạy lại từng dòng) với số dòng vừa xử lý xong (thành công + lỗi). */
   onChunk?: (rowsProcessed: number) => Promise<void> | void;
+}
+
+/** Lỗi unique của Prisma (P2002) trên cột `key` của Issue — hai lượt nhập đồng thời cùng mã Jira. */
+function isKeyConflict(err: unknown): boolean {
+  const e = err as { code?: string; meta?: { target?: unknown } } | null;
+  if (e?.code !== 'P2002') return false;
+  const target = e.meta?.target;
+  if (Array.isArray(target)) return target.includes('key');
+  return typeof target === 'string' && /key/i.test(target);
 }
 
 @Injectable()
@@ -569,8 +583,27 @@ export class ImportService {
     items: PreparedItem[],
     labelCache: Map<string, string>,
     hooks: ChunkHooks = {},
-  ): Promise<{ created: number; labels: number; comments: number; errors: RowError[] }> {
-    const result = { created: 0, labels: 0, comments: 0, errors: [] as RowError[] };
+  ): Promise<{
+    created: number;
+    labels: number;
+    comments: number;
+    errors: RowError[];
+    /** Dòng đụng unique mã công việc (`fixedKey` trùng do nhập đồng thời) — coi là trùng, KHÔNG phải lỗi (L27). */
+    duplicates: RowError[];
+  }> {
+    const result = {
+      created: 0,
+      labels: 0,
+      comments: 0,
+      errors: [] as RowError[],
+      duplicates: [] as RowError[],
+    };
+    const fail = (it: PreparedItem, err: unknown): void => {
+      (it.fixedKey && isKeyConflict(err) ? result.duplicates : result.errors).push({
+        row: it.row,
+        error: this.errMessage(err),
+      });
+    };
 
     const runBatch = async (batch: PreparedItem[]): Promise<void> => {
       const local = new Map(labelCache);
@@ -581,7 +614,14 @@ export class ImportService {
           let labels = 0;
           let comments = 0;
           for (const it of batch) {
-            const dto = await this.issues.createWithin(tx, workspaceId, userId, it.input, deferred);
+            const dto = await this.issues.createWithin(
+              tx,
+              workspaceId,
+              userId,
+              it.input,
+              deferred,
+              it.fixedKey,
+            );
             if (it.after) {
               const r = await it.after(tx, dto, local);
               labels += r.labels;
@@ -608,7 +648,7 @@ export class ImportService {
         await runBatch(chunk);
       } catch (chunkErr) {
         if (chunk.length === 1) {
-          result.errors.push({ row: chunk[0]!.row, error: this.errMessage(chunkErr) });
+          fail(chunk[0]!, chunkErr);
           await this.reportProgress(hooks, 1);
           continue;
         }
@@ -619,7 +659,7 @@ export class ImportService {
           try {
             await runBatch([it]);
           } catch (err) {
-            result.errors.push({ row: it.row, error: this.errMessage(err) });
+            fail(it, err);
           }
         }
       }

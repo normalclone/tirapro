@@ -82,4 +82,8 @@ export interface JiraImportSummary extends Pick<ImportResult, 'skippedAssignees'
   sprints?: number;
   labels?: number;
   comments?: number;
+  /** Việc bị bỏ qua vì mã Jira đã có trong workspace / lặp trong tệp (L27). */
+  duplicateKeys?: number;
+  /** Việc có mã Jira sai dạng — vẫn tạo bằng mã Tirapro tự sinh (L27). */
+  invalidKeys?: number;
 }

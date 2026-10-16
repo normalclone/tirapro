@@ -52,6 +52,7 @@ export const JQL_FIELD_HINTS: Record<JqlFieldName, string> = {
   component: 'Thành phần',
   fixVersion: 'Phiên bản sửa',
   affectedVersion: 'Phiên bản bị ảnh hưởng',
+  key: 'Mã công việc (vd PROJ-STORY-7, hoặc mã Jira JRA-1)',
   summary: 'Tiêu đề',
   text: 'Tìm trong tiêu đề, mô tả và mã',
   created: 'Ngày tạo',

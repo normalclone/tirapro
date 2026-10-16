@@ -22,7 +22,7 @@ export const jiraMappingSchema = z.object({
 export const jiraImportOptionsSchema = z.object({
   importComments: z.boolean().default(true),
   importSprints: z.boolean().default(true),
-  /** Ghi `Nhập từ Jira: KEY-123` ở đầu mô tả. */
+  /** Dùng mã Jira gốc (`JRA-1`) làm mã công việc; nhập lại cùng tệp thì bỏ qua việc đã có mã. Tắt = mã Tirapro tự sinh. */
   keepJiraKey: z.boolean().default(false),
   /** Chỉ kiểm tra và đếm, không ghi gì vào DB. */
   dryRun: z.boolean().default(false),
