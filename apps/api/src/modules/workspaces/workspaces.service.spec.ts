@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_LINK_TYPES } from '@tirapro/types';
+import { linkIssueSchema } from '@tirapro/shared';
 import { WorkspacesService } from './workspaces.service';
 
 describe('WorkspacesService.create — ghi bảng vai trò đa vai', () => {
@@ -36,5 +38,27 @@ describe('WorkspacesService.create — ghi bảng vai trò đa vai', () => {
       roles: { create: [{ roleId: 'r-admin' }] },
     });
     expect(arg[0].data.joinedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('loại liên kết mặc định (B23)', () => {
+  it('có Causes (gây ra / gây ra bởi) và Tests (kiểm thử / được kiểm thử bởi)', () => {
+    expect(DEFAULT_LINK_TYPES.map((l) => l.name)).toEqual(
+      expect.arrayContaining(['Causes', 'Tests']),
+    );
+    expect(DEFAULT_LINK_TYPES.find((l) => l.name === 'Causes')).toMatchObject({
+      outwardName: 'causes',
+      inwardName: 'is caused by',
+    });
+    expect(DEFAULT_LINK_TYPES.find((l) => l.name === 'Tests')).toMatchObject({
+      outwardName: 'tests',
+      inwardName: 'is tested by',
+    });
+  });
+  it('linkIssueSchema: direction mặc định outward, chỉ nhận outward|inward', () => {
+    const base = { targetIssueId: 'b', linkTypeId: 't' };
+    expect(linkIssueSchema.parse(base).direction).toBe('outward');
+    expect(linkIssueSchema.parse({ ...base, direction: 'inward' }).direction).toBe('inward');
+    expect(linkIssueSchema.safeParse({ ...base, direction: 'sideways' }).success).toBe(false);
   });
 });

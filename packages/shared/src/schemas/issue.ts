@@ -89,6 +89,8 @@ export const bulkUpdateIssuesSchema = z.object({
 export const linkIssueSchema = z.object({
   targetIssueId: z.string().min(1),
   linkTypeId: z.string().min(1),
+  // 'outward': công việc đang xem là NGUỒN ("blocks"); 'inward': công việc đang xem là ĐÍCH ("is blocked by").
+  direction: z.enum(['outward', 'inward']).default('outward'),
 });
 
 export const moveIssueSchema = z.object({
