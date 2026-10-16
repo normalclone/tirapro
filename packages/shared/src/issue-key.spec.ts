@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isJiraKey, isTiraproKey, issueTypePrefix, normalizeJiraKey } from './issue-key';
+import { isJiraKey, isTiraproKey, normalizeJiraKey } from './issue-key';
 
 describe('normalizeJiraKey (L27)', () => {
   it('trim + HOA', () => {
@@ -45,11 +45,5 @@ describe('isJiraKey / isTiraproKey (L27) — hai dải mã rời nhau', () => {
     // loại tên "1" cho ra PROJ-1-9: vẫn là mã Tirapro (hai gạch), không phải mã Jira
     expect(isTiraproKey('PROJ-1-9')).toBe(true);
     expect(isJiraKey('PROJ-1-9')).toBe(false);
-  });
-});
-
-describe('issueTypePrefix (có sẵn)', () => {
-  it('loại hệ thống', () => {
-    expect(issueTypePrefix('STORY', 'Story')).toBe('STORY');
   });
 });

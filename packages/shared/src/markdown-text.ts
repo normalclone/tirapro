@@ -96,8 +96,19 @@ export function plainExcerpt(md: string | null | undefined, max = 80): string {
   return plain.length > max ? `${plain.slice(0, max - 1).trimEnd()}…` : plain;
 }
 
+/**
+ * MỘT regex nhận mã công việc cho chip markdown, `extractIssueKeys`, `issueRefs`, Cmd+K/URL: mã Tirapro `PROJ-TYPE-N`
+ * và mã Jira gốc `KEY-N` (khoá Jira có thể chứa `_`, vd `MY_APP-12`). Lookbehind/lookahead cấm cả `_` để
+ * `MY_APP-12` không khớp một phần `APP-12`.
+ */
 export const ISSUE_KEY_RE =
-  /(?<![A-Za-z0-9-])[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+(?![A-Za-z0-9-])/g;
+  /(?<![A-Za-z0-9_-])[A-Z][A-Z0-9_]*(?:-[A-Z][A-Z0-9]*)*-\d+(?![A-Za-z0-9_-])/g;
+
+/** `s` (đã trim) CHÍNH LÀ một mã công việc (không phải văn bản chứa mã). */
+export function isIssueKey(s: string): boolean {
+  const m = new RegExp(ISSUE_KEY_RE.source).exec(s);
+  return m !== null && m[0] === s;
+}
 export function extractIssueKeys(text: string, max = 50): string[] {
   const keys = new Set<string>();
   for (const m of text.matchAll(new RegExp(ISSUE_KEY_RE.source, 'g'))) {

@@ -497,14 +497,16 @@ describe('ProjectsService.update — đổi riêng tư', () => {
     AUDIT.record.mockClear();
     ACCESS.onVisibilityChanged.mockClear();
     ACCESS.onMembersChanged.mockClear();
+    const events = { emit: vi.fn() };
     const svc = new ProjectsService(
       prisma as never,
       {} as never,
       {} as never,
       ACCESS as never,
       AUDIT as never,
+      events as never,
     );
-    return { svc, prisma, tx };
+    return { svc, prisma, tx, events };
   }
 
   it('false → true: trong transaction bảo đảm người thao tác và người phụ trách là thành viên (Project Admin), ghi nhật ký, xoá cache quyền', async () => {
@@ -588,6 +590,32 @@ describe('ProjectsService.update — đổi riêng tư', () => {
       status: 422,
     });
     expect(tx.projectMembership.upsert).not.toHaveBeenCalled();
+  });
+
+  it('true → false (mở công khai): phát project.access_changed userIds null để thử gán lại việc Jira đang chờ', async () => {
+    const { svc, events } = setup({ cur: { isPrivate: true } });
+    await svc.update('w1', 'p1', 'actor1', { isPrivate: false });
+    expect(events.emit).toHaveBeenCalledWith('project.access_changed', {
+      workspaceId: 'w1',
+      projectId: 'p1',
+      userIds: null,
+      actorId: 'actor1',
+    });
+  });
+
+  it('đang riêng tư, người phụ trách mới vào dự án: phát project.access_changed với người đó; bật riêng tư thì không phát', async () => {
+    const a = setup({ cur: { isPrivate: true } });
+    (a.prisma as unknown as { workspaceMembership: unknown }).workspaceMembership = {
+      findUnique: vi.fn(() => Promise.resolve({ id: 'm', user: ACTIVE_USER })),
+    };
+    await a.svc.update('w1', 'p1', 'actor1', { leadId: 'lead2' });
+    expect(a.events.emit).toHaveBeenCalledWith(
+      'project.access_changed',
+      expect.objectContaining({ projectId: 'p1', userIds: ['lead2'] }),
+    );
+    const b = setup();
+    await b.svc.update('w1', 'p1', 'actor1', { isPrivate: true });
+    expect(b.events.emit).not.toHaveBeenCalled();
   });
 
   it('true → false: không xoá thành viên, ghi nhật ký "mở cho mọi thành viên"', async () => {

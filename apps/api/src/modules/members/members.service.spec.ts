@@ -483,72 +483,75 @@ describe('MembersService — chặn tài khoản không hợp lệ (M2/M3/M4)', 
   });
 });
 
+function setupProject(opts: {
+  hasOverride: boolean;
+  deleteCount?: number;
+  userStatus?: string;
+  userEmail?: string;
+}) {
+  const member = {
+    id: 'pm1',
+    roleId: 'pr1',
+    role: { id: 'pr1', name: 'Project Developer', color: null },
+    roles: [{ role: { id: 'pr1', name: 'Project Developer', color: null } }],
+    user: {
+      id: 'u2',
+      email: 'ba@x.vn',
+      displayName: 'Bình',
+      avatarUrl: null,
+      timezone: 'UTC',
+      locale: 'vi',
+      status: 'ACTIVE',
+      isSystemAdmin: false,
+      lastSeenAt: null,
+      createdAt: new Date(),
+    },
+  };
+  const prisma = {
+    project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1', name: 'Demo' })) },
+    workspaceMembership: { findUnique: vi.fn(() => Promise.resolve({ id: 'm1' })) },
+    projectMembership: {
+      findUnique: vi.fn(() => Promise.resolve(opts.hasOverride ? { id: 'pm1' } : null)),
+      create: vi.fn(() => Promise.resolve({})),
+      update: vi.fn(() => Promise.resolve({})),
+      findUniqueOrThrow: vi.fn(() => Promise.resolve(member)),
+      deleteMany: vi.fn(() => Promise.resolve({ count: opts.deleteCount ?? 1 })),
+    },
+    projectMembershipRole: {
+      deleteMany: vi.fn(() => Promise.resolve({})),
+      createMany: vi.fn(() => Promise.resolve({})),
+    },
+    role: { findMany: vi.fn(() => Promise.resolve([{ id: 'pr1' }])) },
+    user: {
+      findUnique: vi.fn(() =>
+        Promise.resolve({
+          displayName: 'Bình',
+          email: opts.userEmail ?? 'ba@x.vn',
+          status: opts.userStatus ?? 'ACTIVE',
+        }),
+      ),
+      findMany: vi.fn(() =>
+        Promise.resolve([
+          { email: opts.userEmail ?? 'ba@x.vn', status: opts.userStatus ?? 'ACTIVE' },
+        ]),
+      ),
+    },
+    $transaction: vi.fn(() => Promise.resolve([])),
+  };
+  const audit = { record: vi.fn() };
+  const events = { emit: vi.fn() };
+  const svc = new MembersService(
+    prisma as never,
+    { invalidate: vi.fn(), invalidateWorkspace: vi.fn() } as never,
+    {} as never,
+    events as never,
+    audit as never,
+  );
+  return { svc, audit, prisma, events };
+}
+
 describe('MembersService — nhật ký dự án (M11)', () => {
-  function setup(opts: {
-    hasOverride: boolean;
-    deleteCount?: number;
-    userStatus?: string;
-    userEmail?: string;
-  }) {
-    const member = {
-      id: 'pm1',
-      roleId: 'pr1',
-      role: { id: 'pr1', name: 'Project Developer', color: null },
-      roles: [{ role: { id: 'pr1', name: 'Project Developer', color: null } }],
-      user: {
-        id: 'u2',
-        email: 'ba@x.vn',
-        displayName: 'Bình',
-        avatarUrl: null,
-        timezone: 'UTC',
-        locale: 'vi',
-        status: 'ACTIVE',
-        isSystemAdmin: false,
-        lastSeenAt: null,
-        createdAt: new Date(),
-      },
-    };
-    const prisma = {
-      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1', name: 'Demo' })) },
-      workspaceMembership: { findUnique: vi.fn(() => Promise.resolve({ id: 'm1' })) },
-      projectMembership: {
-        findUnique: vi.fn(() => Promise.resolve(opts.hasOverride ? { id: 'pm1' } : null)),
-        create: vi.fn(() => Promise.resolve({})),
-        update: vi.fn(() => Promise.resolve({})),
-        findUniqueOrThrow: vi.fn(() => Promise.resolve(member)),
-        deleteMany: vi.fn(() => Promise.resolve({ count: opts.deleteCount ?? 1 })),
-      },
-      projectMembershipRole: {
-        deleteMany: vi.fn(() => Promise.resolve({})),
-        createMany: vi.fn(() => Promise.resolve({})),
-      },
-      role: { findMany: vi.fn(() => Promise.resolve([{ id: 'pr1' }])) },
-      user: {
-        findUnique: vi.fn(() =>
-          Promise.resolve({
-            displayName: 'Bình',
-            email: opts.userEmail ?? 'ba@x.vn',
-            status: opts.userStatus ?? 'ACTIVE',
-          }),
-        ),
-        findMany: vi.fn(() =>
-          Promise.resolve([
-            { email: opts.userEmail ?? 'ba@x.vn', status: opts.userStatus ?? 'ACTIVE' },
-          ]),
-        ),
-      },
-      $transaction: vi.fn(() => Promise.resolve([])),
-    };
-    const audit = { record: vi.fn() };
-    const svc = new MembersService(
-      prisma as never,
-      { invalidate: vi.fn() } as never,
-      {} as never,
-      { emit: vi.fn() } as never,
-      audit as never,
-    );
-    return { svc, audit, prisma };
-  }
+  const setup = setupProject;
   const first = (audit: { record: { mock: { calls: unknown[][] } } }) =>
     audit.record.mock.calls[0]![0] as Record<string, unknown>;
 
@@ -832,5 +835,60 @@ describe('MembersService — phát member.added SAU commit (L28)', () => {
       ['member.added', { workspaceId: 'w1', userIds: ['u9'], actorId: 'actor' }],
     ]);
     expect(order.indexOf('emit:member.added')).toBeGreaterThan(order.indexOf('commit'));
+  });
+});
+
+describe('MembersService — thử gán lại việc Jira khi được thêm vào dự án (L28 fix)', () => {
+  const setup = setupProject;
+  it('addProject (mới) phát project.access_changed {projectId, userIds} để thử lại việc Jira đang chờ; người đã ở dự án thì không', async () => {
+    const a = setup({ hasOverride: false });
+    await a.svc.addProject('w1', 'p1', 'u2', ['pr1'], 'actor');
+    expect(a.events.emit).toHaveBeenCalledWith('project.access_changed', {
+      workspaceId: 'w1',
+      projectId: 'p1',
+      userIds: ['u2'],
+      actorId: 'actor',
+    });
+    const b = setup({ hasOverride: true });
+    await b.svc.addProject('w1', 'p1', 'u2', ['pr1'], 'actor'); // đã ở dự án → chỉ đổi vai trò
+    expect(b.events.emit).not.toHaveBeenCalledWith('project.access_changed', expect.anything());
+  });
+
+  it('setProjectRoles tạo ghi đè mới (người vào dự án) phát project.access_changed; đổi vai trò người đã có thì không', async () => {
+    const a = setup({ hasOverride: false });
+    await a.svc.setProjectRoles('w1', 'p1', 'u2', ['pr1'], 'actor');
+    expect(a.events.emit).toHaveBeenCalledWith(
+      'project.access_changed',
+      expect.objectContaining({ projectId: 'p1', userIds: ['u2'] }),
+    );
+    const b = setup({ hasOverride: true });
+    await b.svc.setProjectRoles('w1', 'p1', 'u2', ['pr1'], 'actor');
+    expect(b.events.emit).not.toHaveBeenCalledWith('project.access_changed', expect.anything());
+  });
+
+  it('addProjectMany phát một lần với những người thực sự được thêm; không ai mới thì không phát', async () => {
+    const a = setup({ hasOverride: false });
+    (a.prisma.workspaceMembership as unknown as { findMany: unknown }).findMany = vi.fn(() =>
+      Promise.resolve([{ userId: 'u2' }]),
+    );
+    (a.prisma.projectMembership as unknown as { findMany: unknown }).findMany = vi.fn(() =>
+      Promise.resolve([]),
+    );
+    await a.svc.addProjectMany('w1', 'p1', ['u2'], ['pr1'], 'actor');
+    expect(a.events.emit).toHaveBeenCalledWith('project.access_changed', {
+      workspaceId: 'w1',
+      projectId: 'p1',
+      userIds: ['u2'],
+      actorId: 'actor',
+    });
+    const b = setup({ hasOverride: false });
+    (b.prisma.workspaceMembership as unknown as { findMany: unknown }).findMany = vi.fn(() =>
+      Promise.resolve([{ userId: 'u2' }]),
+    );
+    (b.prisma.projectMembership as unknown as { findMany: unknown }).findMany = vi.fn(() =>
+      Promise.resolve([{ userId: 'u2' }]),
+    );
+    await b.svc.addProjectMany('w1', 'p1', ['u2'], ['pr1'], 'actor');
+    expect(b.events.emit).not.toHaveBeenCalledWith('project.access_changed', expect.anything());
   });
 });

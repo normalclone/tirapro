@@ -294,6 +294,12 @@ describe('JQL key — mã công việc, cả mã Jira (JRA-1) lẫn mã Tirapro 
       NOT: { key: { contains: 'JRA', mode: 'insensitive' } },
     });
   });
+  it('key IN / NOT IN danh sách mã (không im lặng ra 0 kết quả)', () => {
+    expect(w('key IN ("JRA-1", "proj-story-2")')).toEqual({
+      key: { in: ['JRA-1', 'PROJ-STORY-2'] },
+    });
+    expect(w('key NOT IN ("JRA-1")')).toEqual({ key: { notIn: ['JRA-1'] } });
+  });
   it('ORDER BY key', () => {
     const r = compileJql(ast('project = X ORDER BY key ASC'), { currentUserId: 'U' });
     expect(r.orderBy).toEqual([{ key: 'asc' }]);

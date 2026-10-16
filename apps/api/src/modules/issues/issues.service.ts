@@ -1029,6 +1029,19 @@ export class IssuesService {
     );
   }
 
+  /**
+   * DTO của NHIỀU việc theo id trong MỘT truy vấn — ngữ cảnh HỆ THỐNG có chủ đích (không lọc dự án riêng tư): chỉ dùng
+   * để phát sự kiện realtime sau khi nghiệp vụ đã tự kiểm quyền (vd tự gán việc Jira). Không dùng cho đường đọc của người dùng.
+   */
+  async getDtosByIdsForSystem(workspaceId: string, ids: string[]): Promise<IssueDto[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.issue.findMany({
+      where: { workspaceId, id: { in: ids }, deletedAt: null, project: { deletedAt: null } },
+      include: issueInclude,
+    });
+    return rows.map((r) => this.toDto(r));
+  }
+
   async getByKey(workspaceId: string, key: string, viewerId: string | null): Promise<IssueDto> {
     const issue = await this.prisma.issue.findFirst({
       where: {

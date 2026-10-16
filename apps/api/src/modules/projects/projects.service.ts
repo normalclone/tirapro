@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Request } from 'express';
 import {
   AUDIT_ACTIONS,
   DEFAULT_WORKFLOW_TEMPLATES,
+  DOMAIN_EVENTS,
   PROJECT_TEMPLATES,
   SYSTEM_ROLES,
   type ProjectDto,
@@ -32,6 +34,7 @@ export class ProjectsService {
     private readonly health: ProjectHealthService,
     private readonly access: ProjectAccessService,
     private readonly audit: AuditService,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   async create(
@@ -302,7 +305,38 @@ export class ProjectsService {
     // Cache quyền (60s) giữ tập quyền cũ của người vừa được/bị đổi quyền thấy dự án → xoá ngay.
     if (privacyChanged) await this.access.onVisibilityChanged(workspaceId);
     else await this.access.onMembersChanged(workspaceId, mustBeMembers);
+    this.emitProjectAccess(workspaceId, projectId, userId, {
+      nowPublic: privacyChanged && input.isPrivate === false,
+      newMembers: privacyChanged ? [] : mustBeMembers,
+    });
     return this.getById(workspaceId, projectId);
+  }
+
+  /**
+   * Quyền xem dự án vừa rộng ra (mở công khai hoặc có người mới vào dự án riêng tư) → báo SAU commit để việc Jira đang
+   * chờ ở dự án đó (từng bị giữ vì người phụ trách chưa thấy dự án) được thử gán lại.
+   */
+  private emitProjectAccess(
+    workspaceId: string,
+    projectId: string,
+    actorId: string,
+    change: { nowPublic: boolean; newMembers: (string | null | undefined)[] },
+  ): void {
+    const ids = [...new Set(change.newMembers.filter((u): u is string => !!u))];
+    if (change.nowPublic)
+      this.events?.emit(DOMAIN_EVENTS.PROJECT_ACCESS_CHANGED, {
+        workspaceId,
+        projectId,
+        userIds: null,
+        actorId,
+      });
+    else if (ids.length)
+      this.events?.emit(DOMAIN_EVENTS.PROJECT_ACCESS_CHANGED, {
+        workspaceId,
+        projectId,
+        userIds: ids,
+        actorId,
+      });
   }
 
   /**

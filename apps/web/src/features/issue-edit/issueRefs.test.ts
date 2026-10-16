@@ -22,4 +22,18 @@ describe('splitIssueKeys', () => {
       { type: 'text', value: 'DEMO-STORY-3' },
     ]);
   });
+  it('mã Jira gốc có "_" được chip nguyên mã, không chip nhầm APP-12', () => {
+    const k = new Set(['MY_APP-12', 'JRA-1', 'PROJ-STORY-1', 'APP-12']);
+    expect(splitIssueKeys('Xem MY_APP-12, JRA-1 và PROJ-STORY-1', k)).toEqual([
+      { type: 'text', value: 'Xem ' },
+      { type: 'key', value: 'MY_APP-12' },
+      { type: 'text', value: ', ' },
+      { type: 'key', value: 'JRA-1' },
+      { type: 'text', value: ' và ' },
+      { type: 'key', value: 'PROJ-STORY-1' },
+    ]);
+    expect(splitIssueKeys('MY_APP-12', new Set(['APP-12']))).toEqual([
+      { type: 'text', value: 'MY_APP-12' },
+    ]);
+  });
 });

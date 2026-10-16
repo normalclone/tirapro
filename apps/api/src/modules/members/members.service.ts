@@ -96,6 +96,25 @@ export class MembersService {
   }
 
   /**
+   * Báo "người vừa được thêm vào dự án" SAU commit: việc Jira đang chờ ở dự án riêng tư (từng bị giữ vì người đó chưa
+   * thấy dự án) được thử gán lại.
+   */
+  private emitProjectAccess(
+    workspaceId: string,
+    projectId: string,
+    userIds: string[],
+    actorId?: string,
+  ): void {
+    if (userIds.length === 0) return;
+    this.events.emit(DOMAIN_EVENTS.PROJECT_ACCESS_CHANGED, {
+      workspaceId,
+      projectId,
+      userIds,
+      actorId,
+    });
+  }
+
+  /**
    * Báo "người mới vào workspace" SAU khi đã commit (L28: Jira import tự gán các việc đã nhớ email của họ).
    * Chỉ cho người thật sự được thêm — đổi vai trò của người đã là thành viên không phát.
    */
@@ -503,6 +522,7 @@ export class MembersService {
       summary: `Thêm ${this.label(member.user)} vào dự án "${project.name}" với vai trò ${this.roleNames(member.roles)}`,
       meta: { projectId, roleIds: ids },
     });
+    this.emitProjectAccess(workspaceId, projectId, [userId], actorId);
     return member;
   }
 
@@ -533,6 +553,7 @@ export class MembersService {
         summary: `Đặt vai trò riêng của ${this.label(created.user)} trong dự án "${project.name}" thành ${this.roleNames(created.roles)}`,
         meta: { projectId, roleIds: newIds },
       });
+      this.emitProjectAccess(workspaceId, projectId, [userId], actorId);
       return created;
     }
     const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
@@ -649,6 +670,7 @@ export class MembersService {
         summary: `Thêm ${toAdd.length} người vào dự án "${project.name}"`,
         meta: { projectId, userIds: toAdd, roleIds: ids },
       });
+      this.emitProjectAccess(workspaceId, projectId, toAdd, actorId);
     }
     return { added: toAdd.length, skipped: unique.length - toAdd.length };
   }

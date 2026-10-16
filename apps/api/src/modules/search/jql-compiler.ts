@@ -251,6 +251,13 @@ function compileComparison(
     }
     case 'text': {
       const col = cfg.column!;
+      // `IN`/`NOT IN` (vd `key IN ("JRA-1", "PROJ-STORY-2")`): so khớp chính xác từng giá trị; mã luôn lưu HOA.
+      if (op === 'IN' || op === 'NOT IN') {
+        const norm = (x: JqlValue, c: JqlCompileContext): string =>
+          field === 'key' ? scalarString(x, c).toUpperCase() : scalarString(x, c);
+        const list = listStrings(value, ctx, norm);
+        return op === 'IN' ? { [col]: { in: list } } : { [col]: { notIn: list } };
+      }
       const raw = scalarString(value, ctx);
       // Mã công việc luôn lưu HOA → so khớp chính xác không phân biệt hoa/thường người gõ.
       const v = field === 'key' && (op === '=' || op === '!=') ? raw.toUpperCase() : raw;

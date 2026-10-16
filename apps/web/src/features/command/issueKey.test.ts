@@ -17,6 +17,7 @@ describe('guessIssueKey (L27) — hai kiểu mã cùng tồn tại', () => {
     expect(guessIssueKey('JRA-')).toBeNull();
     expect(guessIssueKey('-1')).toBeNull();
     expect(guessIssueKey('1-2')).toBeNull();
+    expect(guessIssueKey('xem JRA-1')).toBeNull();
     expect(guessIssueKey('')).toBeNull();
   });
 });

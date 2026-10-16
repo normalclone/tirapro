@@ -75,9 +75,6 @@ export interface JiraImportSummary extends Pick<ImportResult, 'skippedAssignees'
   blankedAssignees?: number;
   /** Việc đã nhớ email người phụ trách (chưa là thành viên) — tự gán khi họ được thêm vào workspace (L28). */
   rememberedAssignees?: number;
-  /** Email đã nhớ (khác nhau, ≤ 20) và số email khác không được liệt kê. */
-  rememberedEmails?: string[];
-  rememberedEmailsMore?: number;
   projectKey?: string;
   created?: number;
   failed?: number;

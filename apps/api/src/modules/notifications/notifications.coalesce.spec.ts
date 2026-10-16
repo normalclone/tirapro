@@ -250,3 +250,24 @@ describe('gộp thông báo — kịch bản thực tế', () => {
     expect(rows[0]!.payload.count).toBe(3);
   });
 });
+
+describe('ISSUE_UPDATED giao việc hàng loạt (L28 fix)', () => {
+  it('bulk: true → không tạo thông báo "được giao" cho từng việc (producer gửi một thông báo gộp)', async () => {
+    const { rows, notifications } = setup({ watchers: [] });
+    const assigned = { ...issue, assigneeId: 'u2', description: null };
+    await notifications.onIssueUpdated({
+      issue: assigned,
+      actorId: 'a1',
+      changedFields: ['assigneeId'],
+      bulk: true,
+    });
+    expect(rows).toHaveLength(0);
+    // không có cờ: vẫn báo như cũ
+    await notifications.onIssueUpdated({
+      issue: assigned,
+      actorId: 'a1',
+      changedFields: ['assigneeId'],
+    });
+    expect(rows.map((r) => r.type)).toEqual(['ISSUE_ASSIGNED']);
+  });
+});

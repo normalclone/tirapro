@@ -1,11 +1,10 @@
-/**
- * Nhận dạng mã công việc người dùng gõ vào Cmd+K để nhảy thẳng tới `/issue/:key`.
- * Chấp nhận cả hai kiểu mã: Tirapro `DEMO-BUG-1` và Jira gốc `JRA-1` — khoá dự án Jira được phép có `_` (`MY_APP-12`).
- */
-export const ISSUE_KEY_RE = /^[A-Z][A-Z0-9_]*(?:-[A-Z0-9]+)+$/;
+import { isIssueKey } from '@tirapro/shared';
 
-/** Mã chuẩn hoá (HOA) nếu `raw` đúng dạng mã công việc, ngược lại `null`. */
+/**
+ * Nhận dạng mã công việc người dùng gõ vào Cmd+K để nhảy thẳng tới `/issue/:key`. Dùng chung regex với chip
+ * markdown/`issueRefs` (`ISSUE_KEY_RE` của shared): mã Tirapro `DEMO-BUG-1` và mã Jira gốc `JRA-1`, `MY_APP-12`.
+ */
 export function guessIssueKey(raw: string): string | null {
   const key = raw.trim().toUpperCase();
-  return ISSUE_KEY_RE.test(key) ? key : null;
+  return isIssueKey(key) ? key : null;
 }

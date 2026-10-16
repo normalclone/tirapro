@@ -23,6 +23,9 @@ export const DOMAIN_EVENTS = {
   MEMBER_ROLE_CHANGED: 'member.role_changed',
   // payload { workspaceId, userIds: string[], actorId?: string } — người mới được thêm vào workspace (SAU commit); Jira import tự gán việc theo email đã nhớ
   MEMBER_ADDED: 'member.added',
+  // payload { workspaceId, projectId, userIds?: string[] | null, actorId? } — người được thêm vào dự án (userIds) hoặc dự án
+  // vừa mở công khai (userIds null = mọi người): việc Jira đang chờ ở dự án đó có thể được gán (SAU commit)
+  PROJECT_ACCESS_CHANGED: 'project.access_changed',
   MEMBER_REMOVED: 'member.removed', // payload { workspaceId, userId } — gateway ngắt socket của user khỏi workspace
   // payload { userId } — phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị): gateway ngắt mọi socket của user
   ACCOUNT_SESSIONS_REVOKED: 'account.sessions_revoked',

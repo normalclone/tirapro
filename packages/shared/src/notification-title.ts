@@ -18,6 +18,8 @@ export interface NotificationPayload {
   excerpt?: string;
   /** MENTIONED: nhắc ở bình luận hay mô tả. */
   where?: 'comment' | 'description';
+  /** ISSUE_ASSIGNED gộp: nhiều việc được giao một lượt từ cùng một nguồn (vd nhập Jira) — một thông báo duy nhất. */
+  bulk?: 'jira-import';
   /** STATUS_CHANGED. */
   statusName?: string;
   fromStatusName?: string;
@@ -70,6 +72,7 @@ export function buildNotificationTitle(type: NotificationType, p: NotificationPa
         ? `${who(p)} nhắc đến bạn trong mô tả của ${key}`
         : `${who(p)} nhắc đến bạn trong ${key}`;
     case 'ISSUE_ASSIGNED':
+      if (p.bulk === 'jira-import') return `Bạn được giao ${p.count ?? 1} việc từ nhập Jira`;
       return `${who(p)} giao ${key} cho bạn`;
     case 'ISSUE_UPDATED':
       return `${who(p)} cập nhật ${key}${times(p)}`;

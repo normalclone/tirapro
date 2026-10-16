@@ -27,7 +27,7 @@ export function issueTypePrefix(typeKey: string | null | undefined, typeName: st
  */
 export const JIRA_KEY_RE = /^[A-Z][A-Z0-9_]*-\d+$/;
 export const TIRAPRO_KEY_RE = /^[A-Z][A-Z0-9]*-[A-Z0-9]+-\d+$/;
-/** Cột `Issue.key` là VarChar — giữ mã nhập dưới mức này để chắc chắn vừa cột. */
+/** Cột `Issue.key` là text không giới hạn; đặt trần để mã nhập bất thường (rác) không thành mã công việc. */
 export const MAX_JIRA_KEY_LENGTH = 40;
 
 export function isJiraKey(s: string): boolean {

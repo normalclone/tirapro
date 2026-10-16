@@ -343,7 +343,8 @@ export class JiraImportService implements OnApplicationBootstrap {
 
     if (input.options.dryRun) {
       const keyPlan = input.options.keepJiraKey
-        ? await this.planKeys(workspaceId, parsed.issues)
+        ? // Phản hồi dry-run chỉ đến tay quản trị (jira/run = workspace:admin, thấy mọi dự án) nên nêu mã dự án đang giữ mã.
+          await this.planKeys(workspaceId, parsed.issues, { revealProjects: true })
         : NO_KEY_PLAN();
       const keyWarnings = this.keyWarnings(keyPlan);
       const assigneeNotes = this.dryRunAssignees(parsed.issues, input.mapping);
@@ -504,7 +505,11 @@ export class JiraImportService implements OnApplicationBootstrap {
       };
       // Mã Jira gốc (L27): tra một lần trước khi ghi theo lô — dòng trùng bỏ qua, dòng sai dạng dùng mã Tirapro.
       const keyPlan = opts.keepJiraKey
-        ? await this.planKeys(workspaceId, parsed.issues)
+        ? // Nhật ký job đọc được qua `import:run` (rộng hơn quản trị): không nêu mã dự án khác (có thể là dự án riêng tư).
+          await this.planKeys(workspaceId, parsed.issues, {
+            revealProjects: false,
+            targetProjectId: projectId,
+          })
         : NO_KEY_PLAN();
       // Người phụ trách Jira không được gán: không khớp (cảnh báo) hoặc chủ động "Để trống" (trung tính) — đếm theo việc ĐÃ tạo được.
       const assigneeTally = newAssigneeTally();
@@ -633,6 +638,7 @@ export class JiraImportService implements OnApplicationBootstrap {
       const unmatched = summarizeUnmatchedAssignees(assigneeTally.unmatched);
       // L28: người đã nhớ email → ghi chú (KHÔNG phải cảnh báo): việc của họ sẽ tự gán khi họ được thêm vào workspace.
       const remembered = summarizeRemembered(assigneeTally.remembered);
+      // (không nêu email: result/errorLog đọc được qua `import:run`; wizard tự giữ email vừa nhập để hiển thị)
       if (remembered) errorLines.unshift(`[Ghi chú]: ${formatRemembered(remembered)}`);
       if (unmatched) {
         // Đặt ĐẦU nhật ký: dòng gộp này không bị `joinLog` cắt khi có hàng nghìn dòng lỗi.
@@ -658,8 +664,6 @@ export class JiraImportService implements OnApplicationBootstrap {
             warnings: counters.warnings,
             skippedAssignees: (unmatched?.skipped ?? 0) + (remembered?.total ?? 0),
             rememberedAssignees: remembered?.total ?? 0,
-            rememberedEmails: remembered?.emails ?? [],
-            rememberedEmailsMore: remembered?.more ?? 0,
             unmatchedAssignees: unmatched?.listed ?? [],
             unmatchedAssigneesMore: unmatched?.more ?? 0,
             blankedAssignees: assigneeTally.blank,
@@ -1216,7 +1220,11 @@ export class JiraImportService implements OnApplicationBootstrap {
    * ghi đè chỉnh sửa người dùng đã làm trên Tirapro): mã đang có trong workspace (mọi dự án, kể cả đã xoá mềm) hoặc
    * mã lặp lại trong chính tệp (dòng sau bị bỏ). Mã sai dạng `KEY-123` → không dùng làm mã, việc vẫn được tạo.
    */
-  private async planKeys(workspaceId: string, rows: JiraIssueRow[]): Promise<KeyPlan> {
+  private async planKeys(
+    workspaceId: string,
+    rows: JiraIssueRow[],
+    scope: { revealProjects: boolean; targetProjectId?: string },
+  ): Promise<KeyPlan> {
     const plan = NO_KEY_PLAN();
     const normalized = new Map<JiraIssueRow, string>();
     for (const r of rows) {
@@ -1257,11 +1265,17 @@ export class JiraImportService implements OnApplicationBootstrap {
     for (const [row, key] of normalized) {
       const had = existing.get(key);
       if (had) {
+        const where =
+          scope.targetProjectId === had.projectId
+            ? 'dự án này'
+            : scope.revealProjects
+              ? `dự án ${had.projectKey}`
+              : 'một dự án khác';
         plan.skip.set(row, {
           existing: had,
           message: had.deleted
-            ? `Mã ${key} đã tồn tại (việc đã xoá, nằm trong Thùng rác của dự án ${had.projectKey}) — bỏ qua`
-            : `Mã ${key} đã tồn tại (ở dự án ${had.projectKey}) — bỏ qua`,
+            ? `Mã ${key} đã tồn tại (việc đã xoá, nằm trong Thùng rác của ${where}) — bỏ qua`
+            : `Mã ${key} đã tồn tại (ở ${where}) — bỏ qua`,
         });
         continue;
       }

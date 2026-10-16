@@ -1040,13 +1040,22 @@ describe('JiraImportService — mã Jira thật làm Issue.key (L27)', () => {
     expect(done.errorLog as string).toContain('Thùng rác');
   });
 
-  it('mã trùng ở dự án khác → bỏ qua, nêu mã dự án đang giữ', async () => {
+  it('mã trùng ở dự án khác → bỏ qua; nhật ký job KHÔNG nêu mã dự án khác (có thể riêng tư), dry-run (chỉ quản trị) thì nêu', async () => {
     const c = setup({
       existingIssues: [existing('PROJ-4', { projectId: 'p-other', project: { key: 'OTH' } })],
     });
     await runAndWait(c);
     expect(createdKeys(c)).not.toContain('PROJ-4');
-    expect(lastUpdate(c).errorLog as string).toContain('OTH');
+    const log = lastUpdate(c).errorLog as string;
+    expect(log).toContain('một dự án khác');
+    expect(log).not.toContain('OTH');
+    const d = setup({
+      existingIssues: [existing('PROJ-4', { projectId: 'p-other', project: { key: 'OTH' } })],
+    });
+    const res = (await runAndWait(d, {
+      options: { importComments: true, importSprints: true, keepJiraKey: true, dryRun: true },
+    })) as { warnings: string[] };
+    expect(res.warnings.join('\n')).toContain('dự án OTH');
   });
 
   it('mã lặp hai lần trong tệp → dòng sau bị bỏ qua, dòng đầu vẫn tạo', async () => {
@@ -1253,7 +1262,6 @@ describe('JiraImportService — nhớ email người phụ trách chưa có (L28
     expect(lastUpdate(c).result).toMatchObject({
       skippedAssignees: 4,
       rememberedAssignees: 0,
-      rememberedEmails: [],
     });
   });
 
@@ -1280,13 +1288,14 @@ describe('JiraImportService — nhớ email người phụ trách chưa có (L28
     expect(done.result).toMatchObject({
       skippedAssignees: 4,
       rememberedAssignees: 4,
-      rememberedEmails: ['cuong@x.com'],
-      rememberedEmailsMore: 0,
       unmatchedAssignees: [],
       warnings: 0,
     });
     expect(done.errorLog as string).toContain('[Ghi chú]');
-    expect(done.errorLog as string).toContain('cuong@x.com');
+    // result/errorLog đọc được qua import:run → KHÔNG chứa email
+    expect(JSON.stringify(done.result)).not.toContain('cuong@x.com');
+    expect(done.errorLog as string).not.toContain('cuong@x.com');
+    expect(done.result).not.toHaveProperty('rememberedEmails');
     expect(done.errorLog as string).not.toContain('KHÔNG có người phụ trách');
   });
 

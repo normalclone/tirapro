@@ -146,6 +146,11 @@ interface IssueUpdatedPayload {
   actorId: string;
   /** Các trường vừa đổi (có từ E3); thiếu → coi như không rõ, không suy ra việc giao lại. */
   changedFields?: string[];
+  /**
+   * Giao việc hàng loạt (vd tự gán việc Jira khi người phụ trách vào workspace): producer tự gửi MỘT thông báo gộp
+   * cho người nhận nên bỏ qua thông báo "được giao"/"cập nhật" cho từng việc (không spam N thông báo).
+   */
+  bulk?: boolean;
 }
 
 interface IssueCreatedPayload {
@@ -353,7 +358,8 @@ export class NotificationsService {
   @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
   async onIssueUpdated(payload: unknown): Promise<void> {
     try {
-      const { issue, actorId, changedFields } = payload as IssueUpdatedPayload;
+      const { issue, actorId, changedFields, bulk } = payload as IssueUpdatedPayload;
+      if (bulk) return;
       if (!issue?.assigneeId || issue.assigneeId === actorId) return;
       // Người phụ trách vừa được đổi sang người này → "được giao việc" (thay cho "việc được cập nhật" để khỏi báo trùng).
       if (changedFields?.includes('assigneeId')) {

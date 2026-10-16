@@ -8,13 +8,12 @@ import type { JiraImportSummary } from './api';
 export function unmatchedAssigneesNotice(
   s: Pick<
     JiraImportSummary,
-    | 'skippedAssignees'
-    | 'unmatchedAssignees'
-    | 'unmatchedAssigneesMore'
-    | 'rememberedAssignees'
-    | 'rememberedEmails'
-    | 'rememberedEmailsMore'
-  >,
+    'skippedAssignees' | 'unmatchedAssignees' | 'unmatchedAssigneesMore' | 'rememberedAssignees'
+  > & {
+    /** Email do trình duyệt tự giữ (server không trả email trong kết quả job). */
+    rememberedEmails?: string[];
+    rememberedEmailsMore?: number;
+  },
 ): string | null {
   const remembered = s.rememberedAssignees ?? 0;
   // `skippedAssignees` gồm cả việc đã nhớ email — phần còn lại mới là việc thật sự không có hướng gán.

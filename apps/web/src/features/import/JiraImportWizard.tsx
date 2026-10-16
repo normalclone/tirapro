@@ -165,6 +165,8 @@ export function JiraImportWizard() {
   const [step, setStep] = useState(0);
   const [analysis, setAnalysis] = useState<JiraAnalyzeResult | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  // Email vừa nhập ở bước ghép: server không trả email trong kết quả (job đọc được qua import:run), wizard tự giữ để hiển thị.
+  const [rememberedEmails, setRememberedEmails] = useState<string[]>([]);
   const [session, setSession] = useState(0);
   const job = useImportJob(jobId);
 
@@ -193,8 +195,9 @@ export function JiraImportWizard() {
             key={analysis.analyzeId}
             analysis={analysis}
             onBack={() => setStep(0)}
-            onStarted={(id) => {
+            onStarted={(id, emails) => {
               setJobId(id);
+              setRememberedEmails(emails);
               setStep(2);
             }}
           />
@@ -204,6 +207,7 @@ export function JiraImportWizard() {
         <ProgressStep
           job={job.data}
           error={job.isError ? apiErrorMessage(job.error) : null}
+          rememberedEmails={rememberedEmails}
           onReset={reset}
         />
       )}
@@ -545,7 +549,7 @@ function MappingStep({
 }: {
   analysis: JiraAnalyzeResult;
   onBack: () => void;
-  onStarted: (jobId: string) => void;
+  onStarted: (jobId: string, rememberedEmails: string[]) => void;
 }) {
   const defaultKey = (analysis.projectKeys[0] ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const [projectChoice, setProjectChoice] = useState<string>(NEW_PROJECT);
@@ -611,7 +615,7 @@ function MappingStep({
     run.mutate(body, {
       onSuccess: (res) => {
         if ('dryRun' in res) setDryRun(res);
-        else onStarted(res.jobId);
+        else onStarted(res.jobId, [...new Set(Object.values(body.mapping.pendingEmails))]);
       },
       onError: (err) => toast.error(apiErrorMessage(err)),
     });
@@ -694,10 +698,13 @@ function MappingStep({
 function ProgressStep({
   job,
   error,
+  rememberedEmails,
   onReset,
 }: {
   job: ReturnType<typeof useImportJob>['data'];
   error: string | null;
+  /** Email đã nhập ở bước ghép (chỉ giữ ở trình duyệt). */
+  rememberedEmails: string[];
   onReset: () => void;
 }) {
   if (error) {
@@ -717,7 +724,11 @@ function ProgressStep({
   }
   const running = job.status === 'RUNNING' || job.status === 'PENDING';
   const summary = (job.result ?? {}) as JiraImportSummary;
-  const assigneeNotice = unmatchedAssigneesNotice(summary);
+  const assigneeNotice = unmatchedAssigneesNotice({
+    ...summary,
+    rememberedEmails: rememberedEmails.slice(0, 20),
+    rememberedEmailsMore: Math.max(0, rememberedEmails.length - 20),
+  });
 
   function downloadLog() {
     if (!job?.errorLog) return;

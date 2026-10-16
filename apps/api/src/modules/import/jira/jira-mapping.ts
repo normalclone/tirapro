@@ -256,10 +256,11 @@ export function summarizeRemembered(
 
 /** Câu ghi chú (không phải cảnh báo) cho báo cáo/chạy thử: việc nào sẽ tự gán khi ai vào workspace. */
 export function formatRemembered(r: RememberedAssignees, dryRun = false): string {
+  // Chạy thử (phản hồi chỉ tới quản trị) nêu email; nhật ký job (đọc được qua import:run) thì KHÔNG nêu email.
+  if (!dryRun)
+    return `${r.total} việc chưa có người phụ trách — sẽ tự gán khi họ được thêm vào không gian làm việc.`;
   const who = `${r.emails.join(', ')}${r.more > 0 ? ` và ${r.more} email khác` : ''}`;
-  return dryRun
-    ? `${r.total} việc sẽ tự gán khi ${who} được thêm vào không gian làm việc.`
-    : `${r.total} việc chưa có người phụ trách — sẽ tự gán khi ${who} được thêm vào không gian làm việc.`;
+  return `${r.total} việc sẽ tự gán khi ${who} được thêm vào không gian làm việc.`;
 }
 
 export interface UnmatchedAssignees {
