@@ -653,15 +653,16 @@ describe('MembersService — dự án riêng tư', () => {
       user: { findUnique: vi.fn(() => Promise.resolve({ displayName: 'x', email: 'x@x.vn' })) },
     };
     const audit = { record: vi.fn() };
+    const events = { emit: vi.fn() };
     const rbac = { invalidate: vi.fn() };
     const svc = new MembersService(
       prisma as never,
       rbac as never,
       {} as never,
-      { emit: vi.fn() } as never,
+      events as never,
       audit as never,
     );
-    return { svc, prisma, audit };
+    return { svc, prisma, audit, events };
   }
 
   it('listProject: dự án riêng tư chỉ trả người có ProjectMembership (isOverride)', async () => {
@@ -699,5 +700,46 @@ describe('MembersService — dự án riêng tư', () => {
     const { svc, prisma } = setup({ isPrivate: false });
     await svc.clearProjectOverride('w1', 'p1', 'u1', 'a');
     expect(prisma.projectMembership.deleteMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('MembersService.clearProjectOverride — phát sự kiện rút socket (P16)', () => {
+  function build(deleteCount: number) {
+    const prisma = {
+      project: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'p1', name: 'Demo', isPrivate: true })),
+      },
+      projectMembership: {
+        count: vi.fn(() => Promise.resolve(2)),
+        findUnique: vi.fn(() => Promise.resolve({ id: 'pm1' })),
+        deleteMany: vi.fn(() => Promise.resolve({ count: deleteCount })),
+      },
+      user: { findUnique: vi.fn(() => Promise.resolve({ displayName: 'x', email: 'x@x.vn' })) },
+    };
+    const events = { emit: vi.fn() };
+    const svc = new MembersService(
+      prisma as never,
+      { invalidate: vi.fn() } as never,
+      {} as never,
+      events as never,
+      { record: vi.fn() } as never,
+    );
+    return { svc, events };
+  }
+
+  it('gỡ khỏi dự án -> phát project.member_removed {workspaceId, projectId, userId} SAU khi xoá', async () => {
+    const { svc, events } = build(1);
+    await svc.clearProjectOverride('w1', 'p1', 'u2', 'a');
+    expect(events.emit).toHaveBeenCalledWith('project.member_removed', {
+      workspaceId: 'w1',
+      projectId: 'p1',
+      userId: 'u2',
+    });
+  });
+
+  it('không có gì để gỡ (count 0) -> không phát sự kiện', async () => {
+    const { svc, events } = build(0);
+    await svc.clearProjectOverride('w1', 'p1', 'u2', 'a');
+    expect(events.emit).not.toHaveBeenCalled();
   });
 });

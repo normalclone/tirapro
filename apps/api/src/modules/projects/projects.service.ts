@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Request } from 'express';
 import {
   AUDIT_ACTIONS,
   DEFAULT_WORKFLOW_TEMPLATES,
+  DOMAIN_EVENTS,
   PROJECT_TEMPLATES,
   SYSTEM_ROLES,
   type ProjectDto,
@@ -32,6 +34,8 @@ export class ProjectsService {
     private readonly health: ProjectHealthService,
     private readonly access: ProjectAccessService,
     private readonly audit: AuditService,
+    // Tuỳ chọn để spec dựng bằng 5 đối số vẫn chạy; Nest DI tiêm bản thật (phát sự kiện đổi riêng tư cho realtime).
+    private readonly events?: EventEmitter2,
   ) {}
 
   async create(
@@ -300,8 +304,11 @@ export class ProjectsService {
       throw e;
     }
     // Cache quyền (60s) giữ tập quyền cũ của người vừa được/bị đổi quyền thấy dự án → xoá ngay.
-    if (privacyChanged) await this.access.onVisibilityChanged(workspaceId);
-    else await this.access.onMembersChanged(workspaceId, mustBeMembers);
+    if (privacyChanged) {
+      await this.access.onVisibilityChanged(workspaceId);
+      // Sau commit: socket của người không còn thấy dự án bị rút khỏi room project (gateway kiểm lại quyền từng người).
+      this.events?.emit(DOMAIN_EVENTS.PROJECT_VISIBILITY_CHANGED, { workspaceId, projectId });
+    } else await this.access.onMembersChanged(workspaceId, mustBeMembers);
     return this.getById(workspaceId, projectId);
   }
 

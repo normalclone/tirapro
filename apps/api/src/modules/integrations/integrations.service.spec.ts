@@ -31,6 +31,8 @@ function setup(
       delete: vi.fn(() => Promise.resolve(row)),
     },
     $executeRaw: vi.fn((..._a: unknown[]) => Promise.resolve(1)),
+    // Mặc định dự án công khai (findFirst với isPrivate:true không khớp); ca riêng tư đặt lại.
+    project: { findFirst: vi.fn((..._a: unknown[]): Promise<unknown> => Promise.resolve(null)) },
     integrationChannel: { findMany: vi.fn(() => Promise.resolve(row.channels)) },
   };
   const audit = { record: vi.fn() };
@@ -317,5 +319,54 @@ describe('createTelegramSchema — hình dạng token ở server', () => {
     'a b',
   ])('từ chối token lạ %s', (bad) => {
     expect(createTelegramSchema.safeParse({ name: 'n', botToken: bad }).success).toBe(false);
+  });
+});
+
+describe('IntegrationsService.fanout — dự án riêng tư (P16)', () => {
+  const ch = (over: Record<string, unknown>) => ({
+    externalId: 'c1',
+    events: [],
+    projectId: null,
+    isEnabled: true,
+    ...over,
+  });
+
+  it('dự án riêng tư: kênh cấp workspace KHÔNG nhận; kênh gắn đúng dự án đó thì nhận', async () => {
+    const row = integ({
+      channels: [
+        ch({ externalId: 'ws-wide', projectId: null }),
+        ch({ externalId: 'bound', projectId: 'p1' }),
+      ],
+    });
+    const { service, prisma, telegram } = setup({ kind: 'global' }, row);
+    prisma.project.findFirst.mockResolvedValue({ id: 'p1' });
+    await service.onIssueUpdated(payload);
+    expect(telegram.send).toHaveBeenCalledTimes(1);
+    expect(telegram.send).toHaveBeenCalledWith(null, 'bound', expect.any(String));
+    expect(prisma.project.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'p1', workspaceId: 'w1', deletedAt: null, isPrivate: true },
+      }),
+    );
+  });
+
+  it('dự án công khai: kênh cấp workspace vẫn nhận như cũ', async () => {
+    const row = integ({ channels: [ch({ externalId: 'ws-wide' })] });
+    const { service, telegram } = setup({ kind: 'global' }, row);
+    await service.onIssueUpdated(payload);
+    expect(telegram.send).toHaveBeenCalledWith(null, 'ws-wide', expect.any(String));
+  });
+
+  it('bình luận mới của dự án riêng tư cũng đi qua cùng lọc', async () => {
+    const row = integ({ channels: [ch({ externalId: 'ws-wide' })] });
+    const { service, prisma, telegram } = setup({ kind: 'global' }, row);
+    (prisma as Record<string, unknown>).issue = {
+      findUnique: vi.fn(() =>
+        Promise.resolve({ workspaceId: 'w1', key: 'P-1', summary: 's', projectId: 'p1' }),
+      ),
+    };
+    prisma.project.findFirst.mockResolvedValue({ id: 'p1' });
+    await service.onCommentAdded({ issueId: 'i1' });
+    expect(telegram.send).not.toHaveBeenCalled();
   });
 });

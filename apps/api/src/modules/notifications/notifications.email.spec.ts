@@ -59,6 +59,7 @@ function setup(settings: unknown) {
     events as never,
     mail as never,
     config as never,
+    { canSee: vi.fn(() => Promise.resolve(true)) } as never,
   );
   const create = (type: string) =>
     service.publish({

@@ -574,17 +574,22 @@ export class IssuesService {
     if (valid.length !== ids.length) throw new NotFoundAppException('Nhãn');
   }
 
-  /** Có thể gán mới cho user này không: là thành viên workspace và tài khoản chưa bị vô hiệu hoá. */
+  /**
+   * Có thể gán mới cho user này không: là thành viên workspace, tài khoản chưa bị vô hiệu hoá và (có `projectId`) thấy
+   * được dự án — dự án riêng tư chỉ giao cho thành viên dự án/quản trị, để không "giao việc rồi họ không mở được".
+   */
   async isAssignableMember(
     workspaceId: string,
     userId: string,
     db: Prisma.TransactionClient = this.prisma,
+    projectId?: string,
   ): Promise<boolean> {
     const member = await db.workspaceMembership.findFirst({
       where: { workspaceId, userId, user: { status: { not: 'DEACTIVATED' } } },
       select: { userId: true },
     });
-    return !!member;
+    if (!member) return false;
+    return !projectId || (await this.access.canSee(userId, workspaceId, projectId));
   }
 
   /**
@@ -596,12 +601,32 @@ export class IssuesService {
     workspaceId: string,
     assigneeId: string | null | undefined,
     db: Prisma.TransactionClient = this.prisma,
+    projectId?: string,
   ): Promise<void> {
     if (!assigneeId) return;
-    if (!(await this.isAssignableMember(workspaceId, assigneeId, db)))
+    if (!(await this.isAssignableMember(workspaceId, assigneeId, db, projectId)))
       throw new BusinessRuleException(
-        'Người được giao không thuộc không gian làm việc này — hãy chọn một thành viên khác',
+        'Người được giao không thuộc không gian làm việc này hoặc không xem được dự án — hãy chọn một thành viên khác',
       );
+  }
+
+  /**
+   * Kiểm người được giao lúc tạo. Import chạy trong transaction có thể vừa tạo dự án (chưa commit) nên không kiểm quyền xem
+   * dự án ở đó (chỉ kiểm thành viên workspace như trước).
+   */
+  private assertCreateAssignee(
+    workspaceId: string,
+    assigneeId: string | null | undefined,
+    db: Prisma.TransactionClient,
+    projectId: string,
+    origin: 'api' | 'import',
+  ): Promise<void> {
+    return this.assertAssigneeInWorkspace(
+      workspaceId,
+      assigneeId,
+      db,
+      origin === 'import' ? undefined : projectId,
+    );
   }
 
   async create(
@@ -684,7 +709,7 @@ export class IssuesService {
     if (input.epicId)
       await this.assertEpicForCreate(db, workspaceId, input, project.id, origin === 'api');
     await this.assertParentForCreate(db, workspaceId, input, project.id, origin === 'api');
-    await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId, db);
+    await this.assertCreateAssignee(workspaceId, input.assigneeId, db, project.id, origin);
 
     // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project
     const workflowId = project.defaultWorkflowId ?? '';
@@ -1056,7 +1081,12 @@ export class IssuesService {
     for (const start of [newParent, newEpic])
       if (start && start !== id) await this.assertNoTreeCycle(this.prisma, workspaceId, id, start);
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
-      await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
+      await this.assertAssigneeInWorkspace(
+        workspaceId,
+        input.assigneeId,
+        this.prisma,
+        current.projectId,
+      );
 
     // Field-level: Hạn / Ngày bắt đầu chỉ người tạo hoặc admin sửa được (điểm: ai sửa được công việc thì sửa được).
     if (
@@ -1153,7 +1183,7 @@ export class IssuesService {
     });
     // Chỉ kiểm khi có hàng thật sự đổi assignee (hàng đã giữ đúng assignee đó thì bỏ qua).
     if (patch.assigneeId !== undefined && rows.some((r) => r.assigneeId !== patch.assigneeId))
-      await this.assertAssigneeInWorkspace(workspaceId, patch.assigneeId);
+      await this.assertAssigneeInWorkspace(workspaceId, patch.assigneeId, this.prisma, projectId);
     // storyPoints không cần kiểm quyền riêng: `ownOnly` ở trên đã 403 cả lô khi có việc của người khác.
     if (patch.epicId) for (const r of rows) this.assertNotEpicWithEpic(r.type);
     if (patch.epicId)

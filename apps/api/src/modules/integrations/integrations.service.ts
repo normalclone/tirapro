@@ -387,6 +387,8 @@ export class IntegrationsService {
   /**
    * Tìm integration TELEGRAM ACTIVE + kênh đang bật trong workspace (lọc theo project nếu kênh có
    * projectId) mà events rỗng (=tất cả) hoặc chứa notificationType; gửi message.
+   * Dự án RIÊNG TƯ: tin chỉ tới kênh gắn ĐÚNG dự án đó — kênh cấp workspace (không gắn dự án) là nhóm chat không rõ người
+   * đọc có thuộc dự án không nên không nhận khoá/tiêu đề việc của dự án riêng tư.
    */
   private async fanout(
     workspaceId: string,
@@ -398,6 +400,13 @@ export class IntegrationsService {
       where: { workspaceId, type: IntegrationType.TELEGRAM, status: IntegrationStatus.ACTIVE },
       include: { channels: { where: { isEnabled: true } } },
     });
+    if (integrations.length === 0) return;
+    const privateProject = projectId
+      ? await this.prisma.project.findFirst({
+          where: { id: projectId, workspaceId, deletedAt: null, isPrivate: true },
+          select: { id: true },
+        })
+      : null;
     for (const integration of integrations) {
       const res = this.telegram.resolveBotToken(integration.config);
       if (res.kind === 'unusable') {
@@ -407,6 +416,7 @@ export class IntegrationsService {
       const token = res.kind === 'own' ? res.token : null;
       for (const channel of integration.channels) {
         if (channel.projectId && projectId && channel.projectId !== projectId) continue;
+        if (privateProject && channel.projectId !== projectId) continue;
         const wantsAll = channel.events.length === 0;
         if (!wantsAll && !channel.events.includes(notificationType)) continue;
         await this.telegram.send(token, channel.externalId, message);
