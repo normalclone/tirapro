@@ -1,6 +1,7 @@
 import { skipToken, useQuery } from '@tanstack/react-query';
 import type { IssueDto, ListResponse } from '@tirapro/types';
 import type { ProjectHealthDto } from '@tirapro/shared';
+import type { RaidLevel } from '@/features/raid/api';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -110,6 +111,46 @@ export function useWorkspaceOverview(enabled: boolean) {
     queryKey: keys.dashboard.workspaceOverview,
     queryFn: enabled
       ? async () => (await api.get<WorkspaceOverview>('/reports/overview')).data
+      : skipToken,
+    staleTime: 30_000,
+  });
+}
+
+/** Ba thẻ lãnh đạo trên Tổng quan — `GET /reports/leadership` (mỗi mảng ≤5, đã lọc theo dự án người xem thấy). */
+export interface LeadershipOverview {
+  topRisks: Array<{
+    id: string;
+    title: string;
+    score: number;
+    level: RaidLevel;
+    levelLabel: string;
+    project: { key: string; name: string } | null;
+    owner: { id: string; displayName: string } | null;
+    dueDate: string | null;
+  }>;
+  slowGoals: Array<{
+    id: string;
+    name: string;
+    period: string;
+    progress: number;
+    expectedProgress: number;
+    owner: { id: string; displayName: string } | null;
+  }>;
+  overloaded: Array<{
+    user: { id: string; displayName: string; avatarUrl: string | null };
+    worstRatio: number;
+    weekLabel: string;
+    assignedHours: number;
+    capacityHours: number;
+  }>;
+}
+
+/** Thẻ lãnh đạo của Tổng quan admin; `enabled` = chỉ người có quyền xem báo cáo (tránh 403). */
+export function useLeadership(enabled: boolean) {
+  return useQuery({
+    queryKey: keys.dashboard.leadership,
+    queryFn: enabled
+      ? async () => (await api.get<LeadershipOverview>('/reports/leadership')).data
       : skipToken,
     staleTime: 30_000,
   });

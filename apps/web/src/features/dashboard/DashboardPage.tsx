@@ -39,6 +39,7 @@ import {
   type OverviewTrendPoint,
   type OverviewWarning,
 } from './api';
+import { LeadershipCards } from './LeadershipCards';
 import { MyBugsSection } from './MyBugsSection';
 import { useAuth } from '@/stores/auth';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -228,6 +229,9 @@ function AdminOverview() {
 
           {/* Bảng dự án — đặt trên phần dự báo & cần chú ý */}
           <ProjectStatsTable projects={data.projects} />
+
+          {/* Thẻ lãnh đạo: Top rủi ro · OKR chậm · Người quá tải */}
+          <LeadershipCards />
 
           {/* Dự báo (bằng chữ) + Task cần chú ý */}
           <div className="grid gap-3 lg:grid-cols-3">
