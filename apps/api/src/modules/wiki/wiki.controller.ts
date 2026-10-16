@@ -54,14 +54,22 @@ export class WikiController {
   @ProjectRef('issue', 'issueId')
   @Get('by-issue/:issueId')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
-  async byIssue(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
-    return this.wiki.byIssue(workspaceId, issueId);
+  async byIssue(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('issueId') issueId: string,
+  ) {
+    return this.wiki.byIssue(workspaceId, issueId, user);
   }
 
   @Get(':id')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async get(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.wiki.get(workspaceId, id);
+  async get(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.wiki.get(workspaceId, id, user);
   }
 
   @ProjectRef('body', 'projectId')
@@ -72,7 +80,7 @@ export class WikiController {
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createWikiPageSchema)) dto: CreateWikiPageInput,
   ) {
-    return this.wiki.create(workspaceId, dto, user.id);
+    return this.wiki.create(workspaceId, dto, user);
   }
 
   @ProjectRef('wikiPage', 'id')
@@ -84,7 +92,7 @@ export class WikiController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateWikiPageSchema)) dto: UpdateWikiPageInput,
   ) {
-    return this.wiki.update(workspaceId, id, dto, user.id);
+    return this.wiki.update(workspaceId, id, dto, user);
   }
 
   /** Đổi trang cha và/hoặc thứ tự. Trả về cây đã cập nhật của phạm vi tương ứng. */
@@ -93,11 +101,10 @@ export class WikiController {
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async move(
     @WorkspaceId() workspaceId: string,
-    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(moveWikiPageSchema)) dto: MoveWikiPageInput,
   ) {
-    return this.wiki.move(workspaceId, id, dto, user.id);
+    return this.wiki.move(workspaceId, id, dto);
   }
 
   /** Xoá trang: chỉ Quản trị dự án (hoặc Workspace Admin với trang chung / mọi dự án). */

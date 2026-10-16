@@ -74,7 +74,8 @@ export function WikiPage() {
   const confirm = useConfirm();
   const wsCanWrite = useAuth((s) => s.can('wiki:manage'));
   const wsCanDelete = useAuth((s) => s.can('project:admin'));
-  const { data: projects } = useProjects();
+  const projectsQuery = useProjects();
+  const projects = projectsQuery.data;
   const projectIds = useMemo(() => (projects ?? []).map((p) => p.id), [projects]);
   // Quyền theo TỪNG dự án (dùng chung cache với các màn khác): sửa/tạo/đổi chỗ = wiki:manage, xoá = project:admin.
   const projectCanWrite = useProjectsCan(projectIds, 'wiki:manage');
@@ -90,9 +91,9 @@ export function WikiPage() {
     const key = currentProjectKey(projects);
     return (key && projects?.find((p) => p.key === key)?.id) || '';
   }, [projects]);
-  const scopeReady = scopeChoice !== null || projects !== undefined;
+  // Chỉ chờ danh sách dự án khi nó còn đang tải (lỗi mạng thì vẫn tải cây ở phạm vi "Tất cả").
+  const scopeReady = scopeChoice !== null || !projectsQuery.isPending;
   const scope = scopeChoice ?? defaultScope;
-  const setScope = setScopeChoice;
   const scopeProjectId = scope && scope !== WIKI_SCOPE_SHARED ? scope : null;
   const scopeWritable = canWrite(scopeProjectId);
   const pageWriteLoading = (pid: string | null) =>
@@ -114,10 +115,12 @@ export function WikiPage() {
   const remove = useDeleteWikiPage();
 
   const [editing, setEditing] = useState(false);
+  // Đang sửa mà trang lệch phiên bản (có người lưu trước) hoặc đã bị xoá → khối xử lý ngay trong ô sửa.
+  const [editIssue, setEditIssue] = useState<'conflict' | 'deleted' | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftBody, setDraftBody] = useState('');
-  // `updatedAt` của trang lúc BẮT ĐẦU sửa (không lấy lại từ cache vì nền có thể tự làm mới giữa chừng).
-  const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | null>(null);
+  // `version` của trang lúc BẮT ĐẦU sửa (không lấy lại từ cache vì nền có thể tự làm mới giữa chừng).
+  const [baseVersion, setBaseVersion] = useState<number | null>(null);
 
   const slots = useMemo(
     () => indexTree(tree.data ?? [], null, new Map<string, Slot>()),
@@ -164,10 +167,29 @@ export function WikiPage() {
     });
   }
 
+  function stopEditing() {
+    setEditing(false);
+    setEditIssue(null);
+  }
+
+  function startEditing(pg: { title: string; body: string; version: number }) {
+    setDraftTitle(pg.title);
+    setDraftBody(pg.body);
+    setBaseVersion(pg.version);
+    setEditIssue(null);
+    setEditing(true);
+  }
+
   function open(id: string) {
     setSelectedId(id);
-    setEditing(false);
+    stopEditing();
     setTreeOpen(false);
+  }
+
+  /** Đổi phạm vi: bỏ chọn trang cũ (nó có thể thuộc phạm vi khác) trừ khi đang soạn dở. */
+  function setScope(v: string) {
+    setScopeChoice(v);
+    if (!editing) setSelectedId(null);
   }
 
   /** Tạo trang mới (gốc ở phạm vi đang chọn) hoặc trang con (luôn cùng phạm vi với trang cha). */
@@ -182,17 +204,14 @@ export function WikiPage() {
       });
       if (parentId) setExpanded((prev) => new Set(prev).add(parentId));
       setSelectedId(created.id);
-      setDraftTitle(created.title);
-      setDraftBody(created.body);
-      setBaseUpdatedAt(created.updatedAt);
-      setEditing(true);
+      startEditing(created);
       setTreeOpen(false);
     } catch (e) {
       toast.error(apiErrorMessage(e));
     }
   }
 
-  async function save() {
+  async function save(opts?: { overwrite?: boolean }) {
     if (!page.data) return;
     const title = draftTitle.trim();
     if (!title) {
@@ -200,24 +219,33 @@ export function WikiPage() {
       return;
     }
     try {
-      await update.mutateAsync({
-        id: page.data.id,
-        title,
-        body: draftBody,
-        expectedUpdatedAt: baseUpdatedAt ?? page.data.updatedAt,
-      });
-      setEditing(false);
+      let expectedVersion = baseVersion ?? page.data.version;
+      // Ghi đè có xác nhận: lấy phiên bản mới nhất của máy chủ rồi lưu bản của tôi đè lên.
+      if (opts?.overwrite)
+        expectedVersion = (await page.refetch()).data?.version ?? expectedVersion;
+      await update.mutateAsync({ id: page.data.id, title, body: draftBody, expectedVersion });
+      stopEditing();
       toast.success('Đã lưu trang');
     } catch (e) {
-      // Người khác lưu trước: giữ chế độ sửa để bản đang soạn không mất. `apiErrorMessage` luôn được gọi
-      // (đánh dấu đã báo) để toast chung của MutationCache không chen thêm câu chung chung.
+      // Lỗi nào cũng giữ chế độ sửa để bản đang soạn không mất. `apiErrorMessage` luôn được gọi (đánh dấu đã báo)
+      // để toast chung của MutationCache không chen thêm câu chung chung.
       const generic = apiErrorMessage(e);
-      toast.error(
-        apiErrorCode(e) === 'VERSION_CONFLICT'
-          ? 'Trang vừa được người khác sửa. Bản bạn đang soạn vẫn còn trong ô — hãy sao chép lại, bấm Huỷ, mở lại trang để xem bản mới.'
-          : generic,
-      );
+      const code = apiErrorCode(e);
+      if (code === 'VERSION_CONFLICT') setEditIssue('conflict');
+      else if (code === 'NOT_FOUND') setEditIssue('deleted');
+      else toast.error(generic);
     }
+  }
+
+  async function overwrite() {
+    const ok = await confirm({
+      title: 'Ghi đè bản mới của người khác bằng bản của bạn?',
+      description:
+        'Thay đổi người kia vừa lưu trên trang này sẽ bị thay bằng nội dung bạn đang soạn. Hãy xem bản mới trước nếu chưa chắc.',
+      confirmLabel: 'Ghi đè',
+      destructive: true,
+    });
+    if (ok) await save({ overwrite: true });
   }
 
   async function shift(id: string, delta: -1 | 1) {
@@ -480,11 +508,21 @@ export function WikiPage() {
                         autoFocus
                         className="h-10 text-lg font-semibold"
                       />
+                      {editIssue && (
+                        <EditIssueBanner
+                          kind={editIssue}
+                          latest={pg}
+                          draftBody={draftBody}
+                          busy={update.isPending}
+                          onOverwrite={() => void overwrite()}
+                          onClose={stopEditing}
+                        />
+                      )}
                       <MarkdownEditor
                         value={draftBody}
                         onChange={setDraftBody}
                         onSubmit={() => void save()}
-                        onCancel={() => setEditing(false)}
+                        onCancel={stopEditing}
                         rows={18}
                         placeholder="Viết nội dung ở đây. Hỗ trợ Markdown cơ bản: # tiêu đề, **đậm**, - gạch đầu dòng…"
                       />
@@ -495,10 +533,15 @@ export function WikiPage() {
                         >
                           Hỗ trợ Markdown cơ bản · Ctrl/⌘+Enter để lưu · Esc để huỷ
                         </span>
-                        <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+                        <Button size="sm" variant="ghost" onClick={stopEditing}>
                           Huỷ
                         </Button>
-                        <Button size="sm" loading={update.isPending} onClick={() => void save()}>
+                        <Button
+                          size="sm"
+                          loading={update.isPending}
+                          disabled={editIssue === 'deleted'}
+                          onClick={() => void save()}
+                        >
                           Lưu trang
                         </Button>
                       </div>
@@ -520,16 +563,7 @@ export function WikiPage() {
                         </div>
                         {canWrite(pg.projectId) && (
                           <div className="flex shrink-0 flex-wrap items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => {
-                                setDraftTitle(pg.title);
-                                setDraftBody(pg.body);
-                                setBaseUpdatedAt(pg.updatedAt);
-                                setEditing(true);
-                              }}
-                            >
+                            <Button size="sm" variant="secondary" onClick={() => startEditing(pg)}>
                               <Pencil className="h-4 w-4" /> Sửa trang
                             </Button>
                             <Button
@@ -740,5 +774,85 @@ function ReadOnlyNote({ scope }: { scope: string }) {
       <span className="font-medium text-ink">Chỉ đọc</span>
       {!admins.isPending && <span>· {noWriteMessage(names)}</span>}
     </p>
+  );
+}
+
+/**
+ * Khối xử lý ngay trong ô sửa khi lưu thất bại vì có người lưu trước (conflict) hoặc trang đã bị xoá (deleted):
+ * xem bản mới cạnh bản nháp, sao chép nội dung của tôi, hoặc ghi đè có xác nhận (chỉ khi conflict).
+ */
+function EditIssueBanner({
+  kind,
+  latest,
+  draftBody,
+  busy,
+  onOverwrite,
+  onClose,
+}: {
+  kind: 'conflict' | 'deleted';
+  latest: { body: string; updatedAt: string; updatedBy: { displayName: string } | null };
+  draftBody: string;
+  busy: boolean;
+  onOverwrite: () => void;
+  onClose: () => void;
+}) {
+  const [showLatest, setShowLatest] = useState(false);
+
+  async function copyMine() {
+    try {
+      await navigator.clipboard.writeText(draftBody);
+      toast.success('Đã sao chép nội dung của bạn');
+    } catch {
+      toast.error('Không sao chép được — hãy bôi đen nội dung trong ô rồi sao chép thủ công');
+    }
+  }
+
+  return (
+    <div
+      role="alert"
+      className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"
+    >
+      <p className="font-medium text-ink-strong">
+        {kind === 'conflict'
+          ? 'Trang vừa được người khác sửa.'
+          : 'Trang này đã bị xoá nên không lưu được.'}
+      </p>
+      <p className="text-muted">
+        Bản bạn đang soạn vẫn còn trong ô bên dưới
+        {kind === 'conflict' ? ' — chọn một cách xử lý:' : ' — hãy sao chép lại nếu cần.'}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {kind === 'conflict' && (
+          <Button size="sm" variant="secondary" onClick={() => setShowLatest((v) => !v)}>
+            {showLatest ? 'Ẩn bản mới' : 'Xem bản mới'}
+          </Button>
+        )}
+        <Button size="sm" variant="secondary" onClick={() => void copyMine()}>
+          Sao chép nội dung của tôi
+        </Button>
+        {kind === 'conflict' ? (
+          <Button size="sm" variant="secondary" disabled={busy} onClick={onOverwrite}>
+            Ghi đè bằng bản của tôi
+          </Button>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={onClose}>
+            Đóng
+          </Button>
+        )}
+      </div>
+      {kind === 'conflict' && showLatest && (
+        <div className="max-h-64 overflow-y-auto rounded-md border border-border bg-surface p-3">
+          <p className="mb-2 text-xs text-faint">
+            Bản mới nhất · {dateTime(latest.updatedAt)}
+            {latest.updatedBy ? ` · ${latest.updatedBy.displayName}` : ''}
+          </p>
+          {latest.body.trim() ? (
+            <MarkdownView text={latest.body} />
+          ) : (
+            <p className="text-sm text-faint">Trang chưa có nội dung.</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

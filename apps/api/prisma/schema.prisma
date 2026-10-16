@@ -1970,6 +1970,8 @@ model WikiPage {
   title       String
   body        String   @db.Text
   order       Int      @default(0)
+  /// Số phiên bản NỘI DUNG (tiêu đề/nội dung) — OCC; đổi chỗ/đổi cha KHÔNG tăng.
+  version     Int      @default(0)
   createdById String?
   updatedById String?
   createdAt   DateTime @default(now())

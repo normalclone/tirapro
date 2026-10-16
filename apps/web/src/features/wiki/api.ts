@@ -21,6 +21,8 @@ export interface WikiPageDetail {
   title: string;
   body: string;
   order: number;
+  /** Số phiên bản nội dung — gửi lại ở `expectedVersion` khi lưu (OCC). */
+  version: number;
   createdBy: { id: string; displayName: string } | null;
   updatedBy: { id: string; displayName: string } | null;
   breadcrumb: { id: string; title: string }[];
@@ -126,13 +128,15 @@ export function useUpdateWikiPage() {
       id: string;
       title?: string;
       body?: string;
-      /** `updatedAt` của trang lúc mở sửa — API trả 409 VERSION_CONFLICT nếu người khác đã lưu trước. */
-      expectedUpdatedAt?: string;
+      /** `version` của trang lúc mở sửa — API trả 409 VERSION_CONFLICT nếu người khác đã lưu trước, 404 nếu trang đã bị xoá. */
+      expectedVersion?: number;
     }) => api.put<WikiPageDetail>(`/wiki/${id}`, patch).then((r) => r.data),
     onSuccess: (page) => invalidate(page.id),
     // Xung đột: làm mới bản của trang để "Huỷ → mở lại" thấy ngay nội dung người kia vừa lưu.
     onError: (e, vars) => {
-      if (apiErrorCode(e) === 'VERSION_CONFLICT') invalidate(vars.id);
+      const code = apiErrorCode(e);
+      if (code === 'VERSION_CONFLICT') invalidate(vars.id);
+      else if (code === 'NOT_FOUND') invalidate(); // trang đã bị xoá → làm mới cây
     },
   });
 }

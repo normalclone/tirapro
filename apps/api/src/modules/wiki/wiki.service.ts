@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PERMISSIONS } from '@tirapro/types';
 import { extractIssueKeys } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { RbacService } from '../rbac/rbac.service';
 import { insensitiveContains } from '../../common/like';
 import {
   BusinessRuleException,
@@ -10,6 +11,9 @@ import {
 } from '../../common/exceptions/app.exception';
 import { assertNotArchived, assertProjectIdWritable } from '../../common/project-writable';
 import type { CreateWikiPageInput, MoveWikiPageInput, UpdateWikiPageInput } from './wiki.schemas';
+
+/** Số mã công việc tối đa ghi liên kết cho một trang. */
+const MAX_LINKED_ISSUES = 500;
 
 /** Giá trị `projectId` đặc biệt trên query: chỉ lấy tài liệu chung của workspace. */
 const SCOPE_WORKSPACE = 'none';
@@ -39,6 +43,12 @@ type NodeRow = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+/** Người đang thao tác/đọc (để lọc theo quyền xem dự án). */
+export interface WikiActor {
+  id: string;
+  isSystemAdmin?: boolean;
+}
 
 export interface WikiNodeDto {
   id: string;
@@ -76,6 +86,8 @@ export interface WikiPageDto {
   title: string;
   body: string;
   order: number;
+  /** Số phiên bản nội dung (OCC): gửi lại ở `expectedVersion` khi lưu. Đổi chỗ/đổi cha không tăng. */
+  version: number;
   createdBy: { id: string; displayName: string } | null;
   updatedBy: { id: string; displayName: string } | null;
   /** Đường dẫn từ gốc tới trang (không gồm chính nó) — dùng cho breadcrumb. */
@@ -106,7 +118,10 @@ export interface WikiSearchHit {
 export class WikiService {
   private readonly logger = new Logger(WikiService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rbac: RbacService,
+  ) {}
 
   /** Cây trang theo phạm vi. `projectId` bỏ trống = mọi trang trong workspace. */
   async tree(workspaceId: string, projectId?: string): Promise<WikiNodeDto[]> {
@@ -158,6 +173,7 @@ export class WikiService {
     const ws = await this.prisma.workspaceMembership.findMany({
       where: { workspaceId, user: active, ...holder },
       select,
+      orderBy: { user: { displayName: 'asc' } },
       take: 8,
     });
     const proj =
@@ -165,6 +181,7 @@ export class WikiService {
         ? await this.prisma.projectMembership.findMany({
             where: { projectId, user: active, ...holder },
             select,
+            orderBy: { user: { displayName: 'asc' } },
             take: 8,
           })
         : [];
@@ -174,7 +191,7 @@ export class WikiService {
       .slice(0, 8);
   }
 
-  async get(workspaceId: string, id: string): Promise<WikiPageDto> {
+  async get(workspaceId: string, id: string, viewer: WikiActor): Promise<WikiPageDto> {
     const page = await this.prisma.wikiPage.findFirst({ where: { id, workspaceId } });
     if (!page) throw new NotFoundAppException('Trang tài liệu');
 
@@ -188,7 +205,7 @@ export class WikiService {
       : [];
     const byId = new Map(users.map((u) => [u.id, u]));
     const links = await this.prisma.wikiPageIssue.findMany({
-      where: { wikiPageId: id, issue: { deletedAt: null, project: { deletedAt: null } } },
+      where: { wikiPageId: id, issue: await this.visibleIssueFilter(viewer, workspaceId) },
       select: {
         issue: {
           select: {
@@ -210,6 +227,7 @@ export class WikiService {
       title: page.title,
       body: page.body,
       order: page.order,
+      version: page.version,
       createdBy: (page.createdById && byId.get(page.createdById)) || null,
       updatedBy: (page.updatedById && byId.get(page.updatedById)) || null,
       breadcrumb,
@@ -227,9 +245,19 @@ export class WikiService {
   }
 
   /** Các trang wiki nhắc tới một công việc (cho khối "Tài liệu liên quan"). */
-  async byIssue(workspaceId: string, issueId: string): Promise<WikiByIssueDto[]> {
+  async byIssue(
+    workspaceId: string,
+    issueId: string,
+    viewer: WikiActor,
+  ): Promise<WikiByIssueDto[]> {
+    // Trang chung (không dự án) luôn thấy; trang của dự án chỉ khi người gọi xem được dự án đó.
+    const { project } = await this.visibleIssueFilter(viewer, workspaceId);
     const rows = await this.prisma.wikiPage.findMany({
-      where: { workspaceId, issues: { some: { issueId } } },
+      where: {
+        workspaceId,
+        issues: { some: { issueId } },
+        OR: [{ projectId: null }, { project }],
+      },
       orderBy: { updatedAt: 'desc' },
       take: 50,
       select: {
@@ -252,7 +280,7 @@ export class WikiService {
   async create(
     workspaceId: string,
     dto: CreateWikiPageInput,
-    actingUserId: string,
+    actor: WikiActor,
   ): Promise<WikiPageDto> {
     const title = dto.title.trim();
     if (!title) throw new BusinessRuleException('Tiêu đề bắt buộc');
@@ -278,20 +306,20 @@ export class WikiService {
         title,
         body: dto.body ?? '',
         order: await this.nextOrder(workspaceId, projectId, parentId),
-        createdById: actingUserId,
-        updatedById: actingUserId,
+        createdById: actor.id,
+        updatedById: actor.id,
       },
       select: { id: true },
     });
     if (dto.body) await this.syncIssueLinks(workspaceId, created.id, dto.body);
-    return this.get(workspaceId, created.id);
+    return this.get(workspaceId, created.id, actor);
   }
 
   async update(
     workspaceId: string,
     id: string,
     dto: UpdateWikiPageInput,
-    actingUserId: string,
+    actor: WikiActor,
   ): Promise<WikiPageDto> {
     await this.requireWritablePage(workspaceId, id);
     const title = dto.title?.trim();
@@ -299,24 +327,31 @@ export class WikiService {
     const data = {
       ...(title !== undefined ? { title } : {}),
       ...(dto.body !== undefined ? { body: dto.body } : {}),
-      updatedById: actingUserId,
+      updatedById: actor.id,
+      version: { increment: 1 },
     };
-    if (dto.expectedUpdatedAt) {
-      // Kiểm-và-ghi trong MỘT câu lệnh (không có khe giữa đọc và ghi): lệch updatedAt → không dòng nào khớp.
+    if (dto.expectedVersion !== undefined) {
+      // Kiểm-và-ghi trong MỘT câu lệnh (không có khe giữa đọc và ghi): lệch version → không dòng nào khớp.
       const r = await this.prisma.wikiPage.updateMany({
-        where: { id, workspaceId, updatedAt: new Date(dto.expectedUpdatedAt) },
+        where: { id, workspaceId, version: dto.expectedVersion },
         data,
       });
       if (r.count === 0) {
+        // Phân biệt "trang vừa bị xoá" (404) với "người khác vừa lưu" (409).
+        const still = await this.prisma.wikiPage.findFirst({
+          where: { id, workspaceId },
+          select: { id: true },
+        });
+        if (!still) throw new NotFoundAppException('Trang tài liệu');
         throw new VersionConflictException(
-          'Trang vừa được người khác sửa — hãy sao chép phần bạn vừa viết, tải lại trang rồi dán/hợp nhất.',
+          'Trang vừa được người khác sửa — hãy xem bản mới, sao chép phần bạn vừa viết hoặc ghi đè có xác nhận.',
         );
       }
     } else {
       await this.prisma.wikiPage.update({ where: { id }, data });
     }
     if (dto.body !== undefined) await this.syncIssueLinks(workspaceId, id, dto.body);
-    return this.get(workspaceId, id);
+    return this.get(workspaceId, id, actor);
   }
 
   /**
@@ -324,12 +359,7 @@ export class WikiService {
    * Chặn chu trình (không cho chuyển vào chính nó hoặc con cháu của nó);
    * đánh lại `order` liên tục 0..n cho nhóm anh em cũ và mới.
    */
-  async move(
-    workspaceId: string,
-    id: string,
-    dto: MoveWikiPageInput,
-    actingUserId: string,
-  ): Promise<WikiNodeDto[]> {
+  async move(workspaceId: string, id: string, dto: MoveWikiPageInput): Promise<WikiNodeDto[]> {
     const page = await this.requireWritablePage(workspaceId, id);
     const nextParentId = dto.parentId === undefined ? page.parentId : dto.parentId;
 
@@ -354,24 +384,35 @@ export class WikiService {
         NOT: { id },
       },
       orderBy: [{ order: 'asc' }, { title: 'asc' }],
-      select: { id: true },
+      select: { id: true, order: true, updatedAt: true },
     });
     const target = Math.min(Math.max(dto.order ?? siblings.length, 0), siblings.length);
     const ordered = [
-      ...siblings.slice(0, target).map((s) => s.id),
-      id,
-      ...siblings.slice(target).map((s) => s.id),
+      ...siblings.slice(0, target),
+      { id, order: page.order, updatedAt: page.updatedAt },
+      ...siblings.slice(target),
     ];
 
-    await this.prisma.$transaction([
-      this.prisma.wikiPage.update({
-        where: { id },
-        data: { parentId: nextParentId, updatedById: actingUserId },
-      }),
-      ...ordered.map((pid, idx) =>
-        this.prisma.wikiPage.update({ where: { id: pid }, data: { order: idx } }),
-      ),
-    ]);
+    // Chỉ ghi hàng có vị trí/cha THỰC SỰ đổi; giữ nguyên `updatedAt` và không đụng `version`/`updatedById`
+    // (đổi chỗ không phải sửa nội dung → không làm người đang sửa trang anh em bị 409 giả).
+    const writes = ordered.flatMap((row, idx) => {
+      const isMoved = row.id === id;
+      const changed = isMoved
+        ? nextParentId !== page.parentId || row.order !== idx
+        : row.order !== idx;
+      if (!changed) return [];
+      return [
+        this.prisma.wikiPage.update({
+          where: { id: row.id },
+          data: {
+            order: idx,
+            updatedAt: row.updatedAt,
+            ...(isMoved ? { parentId: nextParentId } : {}),
+          },
+        }),
+      ];
+    });
+    if (writes.length) await this.prisma.$transaction(writes);
 
     // Nhóm anh em cũ có thể thủng số thứ tự → đánh lại cho gọn.
     if (page.parentId !== nextParentId)
@@ -397,13 +438,48 @@ export class WikiService {
   // ───────────────────────── helpers ─────────────────────────
 
   /**
+   * Điều kiện Prisma cho công việc mà `viewer` được thấy: còn sống, dự án còn sống và dự án người gọi xem được
+   * (`project:view`; theo luật hiện có: quyền cấp workspace có `project:view` = thấy mọi dự án). MỌI đường đọc công việc/trang
+   * liên quan trong wiki (get, byIssue) đi qua đây — điểm cắm duy nhất cho dự án riêng tư (P15: thay phần tính
+   * `hidden` bằng ProjectAccessService).
+   */
+  async visibleIssueFilter(
+    viewer: WikiActor,
+    workspaceId: string,
+  ): Promise<{ deletedAt: null; project: { deletedAt: null; id?: { notIn: string[] } } }> {
+    const hidden: string[] = [];
+    if (!viewer.isSystemAdmin) {
+      const wsPerms = await this.rbac.getEffectivePermissions(viewer.id, workspaceId, null);
+      if (!wsPerms.has(PERMISSIONS.PROJECT_VIEW)) {
+        const projects = await this.prisma.project.findMany({
+          where: { workspaceId, deletedAt: null },
+          select: { id: true },
+        });
+        for (let i = 0; i < projects.length; i += 10) {
+          const chunk = projects.slice(i, i + 10);
+          const perms = await Promise.all(
+            chunk.map((p) => this.rbac.getEffectivePermissions(viewer.id, workspaceId, p.id)),
+          );
+          chunk.forEach((p, k) => {
+            if (!perms[k]!.has(PERMISSIONS.PROJECT_VIEW)) hidden.push(p.id);
+          });
+        }
+      }
+    }
+    return {
+      deletedAt: null,
+      project: { deletedAt: null, ...(hidden.length ? { id: { notIn: hidden } } : {}) },
+    };
+  }
+
+  /**
    * Ghi lại liên kết trang → công việc theo mã công việc trong nội dung (xoá & ghi lại, nguyên tử).
    * Chạy SAU khi lưu trang: lỗi chỉ log, không làm hỏng việc lưu. Mã giống-mã nhưng không phải
    * công việc (vd "UTF-8") bị loại ở truy vấn.
    */
   private async syncIssueLinks(workspaceId: string, pageId: string, body: string): Promise<void> {
     try {
-      const keys = extractIssueKeys(body);
+      const keys = extractIssueKeys(body, MAX_LINKED_ISSUES);
       const issues = keys.length
         ? await this.prisma.issue.findMany({
             where: {
@@ -440,7 +516,14 @@ export class WikiService {
   private async requirePage(workspaceId: string, id: string) {
     const page = await this.prisma.wikiPage.findFirst({
       where: { id, workspaceId },
-      select: { id: true, projectId: true, parentId: true, title: true },
+      select: {
+        id: true,
+        projectId: true,
+        parentId: true,
+        title: true,
+        order: true,
+        updatedAt: true,
+      },
     });
     if (!page) throw new NotFoundAppException('Trang tài liệu');
     return page;
@@ -484,13 +567,20 @@ export class WikiService {
     const rows = await this.prisma.wikiPage.findMany({
       where: { workspaceId, projectId, parentId },
       orderBy: [{ order: 'asc' }, { title: 'asc' }],
-      select: { id: true },
+      select: { id: true, order: true, updatedAt: true },
     });
-    await this.prisma.$transaction(
-      rows.map((r, idx) =>
-        this.prisma.wikiPage.update({ where: { id: r.id }, data: { order: idx } }),
-      ),
+    // Chỉ ghi hàng lệch số thứ tự, giữ nguyên `updatedAt` (xem `move`).
+    const writes = rows.flatMap((r, idx) =>
+      r.order === idx
+        ? []
+        : [
+            this.prisma.wikiPage.update({
+              where: { id: r.id },
+              data: { order: idx, updatedAt: r.updatedAt },
+            }),
+          ],
     );
+    if (writes.length) await this.prisma.$transaction(writes);
   }
 
   /** `candidateId` có nằm trong nhánh con của `rootId` không (đi ngược lên theo parent). */
