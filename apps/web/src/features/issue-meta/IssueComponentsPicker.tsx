@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Package, Plus, X } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
@@ -35,7 +36,9 @@ export function IssueComponentsPicker({ issue }: { issue: IssueDto }) {
           Thành phần &amp; phiên bản
         </span>
         <span className="text-faint">
-          {canEdit ? 'Dự án chưa có — quản trị dự án tạo ở Cấu hình' : '—'}
+          {canEdit
+            ? 'Dự án chưa có thành phần hay phiên bản nào — quản trị dự án tạo ở Cấu hình'
+            : '—'}
         </span>
       </div>
     );
@@ -63,7 +66,7 @@ export function IssueComponentsPicker({ issue }: { issue: IssueDto }) {
         }))}
         canEdit={canEdit}
         catalogEmpty={catalogC.length === 0}
-        catalogHint="Dự án chưa có thành phần — quản trị dự án tạo ở Cấu hình"
+        catalogHint="Dự án chưa có thành phần nào — quản trị dự án tạo ở Cấu hình"
         options={optsC}
         addLabel="Thêm thành phần"
         onAdd={(id) => comp.attach.mutate({ componentId: id, name: nameOf(catalogC, id) })}
@@ -79,7 +82,7 @@ export function IssueComponentsPicker({ issue }: { issue: IssueDto }) {
         }))}
         canEdit={canEdit}
         catalogEmpty={catalogV.length === 0}
-        catalogHint="Dự án chưa có phiên bản — quản trị dự án tạo ở Cấu hình"
+        catalogHint="Dự án chưa có phiên bản nào — quản trị dự án tạo ở Cấu hình"
         options={versionOpts('FIX')}
         addLabel="Thêm phiên bản sửa"
         onAdd={(id) =>
@@ -97,7 +100,7 @@ export function IssueComponentsPicker({ issue }: { issue: IssueDto }) {
         }))}
         canEdit={canEdit}
         catalogEmpty={catalogV.length === 0}
-        catalogHint="Dự án chưa có phiên bản — quản trị dự án tạo ở Cấu hình"
+        catalogHint="Dự án chưa có phiên bản nào — quản trị dự án tạo ở Cấu hình"
         options={versionOpts('AFFECTS')}
         addLabel="Thêm phiên bản bị ảnh hưởng"
         onAdd={(id) =>
@@ -136,12 +139,19 @@ function ChipGroup({
   addLabel: string;
   onAdd: (id: string) => void;
 }) {
-  // Danh mục rỗng: không có gì để thêm → bỏ hẳn nhóm nếu cũng chưa gắn gì (gợi ý chỉ hiện ở dòng gọn/nhóm đầu).
   const showAdd = canEdit && !catalogEmpty && options.length > 0;
+  const groupRef = useRef<HTMLDivElement>(null);
   return (
-    <div>
-      <p className="mb-1.5 text-sm font-medium text-muted">{label}</p>
-      <div className="flex flex-wrap items-center gap-1.5">
+    // Một hàng mỗi nhóm (nhãn trái, chip phải) để ba nhóm rỗng không chiếm sáu dòng.
+    <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+      <p className="w-44 shrink-0 pt-0.5 text-sm font-medium text-muted">{label}</p>
+      <div
+        ref={groupRef}
+        role="group"
+        aria-label={label}
+        tabIndex={-1}
+        className="flex min-w-[10rem] flex-1 flex-wrap items-center gap-1.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+      >
         {chips.map((c) => (
           <span
             key={c.id}
@@ -153,7 +163,11 @@ function ChipGroup({
               <button
                 type="button"
                 aria-label={c.removeLabel}
-                onClick={c.onRemove}
+                onClick={() => {
+                  // Nút sắp biến mất: đưa focus về nhóm để người dùng bàn phím không bị rơi ra đầu trang.
+                  groupRef.current?.focus();
+                  c.onRemove();
+                }}
                 className="-mr-1 grid h-4 w-4 shrink-0 place-items-center rounded-full text-faint transition-colors hover:bg-surface-3 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
                 <X className="h-3 w-3" aria-hidden />

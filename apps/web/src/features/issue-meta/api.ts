@@ -1,13 +1,8 @@
-import {
-  skipToken,
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IssueDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { patchIssueSets } from './patchIssueSets';
 import { withComponent, withoutComponent, withVersion, withoutVersion } from './issueSets';
 
 /** Nhãn / thành phần / phiên bản ở cấp dự án — cho picker trong chi tiết issue. */
@@ -87,45 +82,26 @@ export function useToggleLabel(
 
 /* ------------------- Thành phần & phiên bản của MỘT công việc ------------------- */
 
-/**
- * Vá `components`/`fixVersions` của một công việc ở cache chi tiết lẫn cache danh sách dự án, rồi trả hàm hoàn lại.
- * Cố ý KHÔNG đổi `version`: máy chủ không tăng version khi gắn/gỡ thành phần-phiên bản (khác `optimisticPatchIssue`),
- * tăng ở FE sẽ làm lệch OCC ở lần sửa kế tiếp.
- */
-function patchIssueSets(
-  qc: QueryClient,
-  issue: IssueDto,
-  fn: (i: IssueDto) => Partial<IssueDto>,
-): () => void {
-  const detailKey = keys.issues.byKey(issue.key);
-  const listKey = keys.issues.byProject(issue.projectId);
-  const prevDetail = qc.getQueryData<IssueDto>(detailKey);
-  const prevListItem = qc.getQueryData<IssueDto[]>(listKey)?.find((i) => i.id === issue.id);
-  qc.setQueryData<IssueDto>(detailKey, (o) => (o ? { ...o, ...fn(o) } : o));
-  qc.setQueryData<IssueDto[]>(listKey, (l) =>
-    l?.map((i) => (i.id === issue.id ? { ...i, ...fn(i) } : i)),
-  );
-  return () => {
-    // Chỉ hoàn lại phần tập hợp của đúng việc này — không đè thay đổi hợp lệ khác (realtime) của việc/việc khác.
-    const restore = (i: IssueDto, prev: IssueDto | undefined): IssueDto =>
-      prev ? { ...i, components: prev.components, fixVersions: prev.fixVersions } : i;
-    qc.setQueryData<IssueDto>(detailKey, (o) => (o ? restore(o, prevDetail) : o));
-    qc.setQueryData<IssueDto[]>(listKey, (l) =>
-      l?.map((i) => (i.id === issue.id ? restore(i, prevListItem) : i)),
-    );
-  };
-}
-
 function useSyncIssue(issue: IssueDto) {
   const qc = useQueryClient();
   return () => {
     void qc.invalidateQueries({ queryKey: keys.issues.byKey(issue.key) });
     void qc.invalidateQueries({ queryKey: keys.issues.byProject(issue.projectId) });
+    // Lịch sử có thêm dòng gắn/bỏ.
+    void qc.invalidateQueries({ queryKey: keys.issues.activity(issue.id) });
   };
 }
 
 interface UndoCtx {
   undo: () => void;
+}
+
+/** Huỷ fetch đang bay để kết quả cũ không đè bản vá lạc quan (các cache chứa việc này). */
+async function cancelIssueQueries(qc: ReturnType<typeof useQueryClient>, issue: IssueDto) {
+  await Promise.all([
+    qc.cancelQueries({ queryKey: keys.issues.byKey(issue.key) }),
+    qc.cancelQueries({ queryKey: keys.issues.byProject(issue.projectId) }),
+  ]);
 }
 
 export function useToggleComponent(issue: IssueDto) {
@@ -134,22 +110,45 @@ export function useToggleComponent(issue: IssueDto) {
   const attach = useMutation({
     mutationFn: (v: { componentId: string; name: string }) =>
       api.post(`/issues/${issue.id}/components`, { componentId: v.componentId }),
-    onMutate: (v): UndoCtx => ({
-      undo: patchIssueSets(qc, issue, (i) => ({
-        components: withComponent(i.components, { id: v.componentId, name: v.name }),
-      })),
-    }),
+    onMutate: async (v): Promise<UndoCtx> => {
+      await cancelIssueQueries(qc, issue);
+      const ref = { id: v.componentId, name: v.name };
+      return {
+        undo: patchIssueSets(
+          qc,
+          issue,
+          (i) => ({ components: withComponent(i.components, ref), fixVersions: i.fixVersions }),
+          (i) => ({
+            components: withoutComponent(i.components, v.componentId),
+            fixVersions: i.fixVersions,
+          }),
+        ),
+      };
+    },
     onError: (_e, _v, ctx) => ctx?.undo(),
     onSettled: sync,
   });
   const detach = useMutation({
     mutationFn: (componentId: string) =>
       api.delete(`/issues/${issue.id}/components/${componentId}`),
-    onMutate: (componentId): UndoCtx => ({
-      undo: patchIssueSets(qc, issue, (i) => ({
-        components: withoutComponent(i.components, componentId),
-      })),
-    }),
+    onMutate: async (componentId): Promise<UndoCtx> => {
+      await cancelIssueQueries(qc, issue);
+      const ref = issue.components.find((c) => c.id === componentId);
+      return {
+        undo: patchIssueSets(
+          qc,
+          issue,
+          (i) => ({
+            components: withoutComponent(i.components, componentId),
+            fixVersions: i.fixVersions,
+          }),
+          (i) => ({
+            components: ref ? withComponent(i.components, ref) : i.components,
+            fixVersions: i.fixVersions,
+          }),
+        ),
+      };
+    },
     onError: (_e, _v, ctx) => ctx?.undo(),
     onSettled: sync,
   });
@@ -162,22 +161,45 @@ export function useToggleVersion(issue: IssueDto) {
   const attach = useMutation({
     mutationFn: (v: { versionId: string; name: string; type: VersionType }) =>
       api.post(`/issues/${issue.id}/versions`, { versionId: v.versionId, type: v.type }),
-    onMutate: (v): UndoCtx => ({
-      undo: patchIssueSets(qc, issue, (i) => ({
-        fixVersions: withVersion(i.fixVersions, { id: v.versionId, name: v.name, type: v.type }),
-      })),
-    }),
+    onMutate: async (v): Promise<UndoCtx> => {
+      await cancelIssueQueries(qc, issue);
+      const ref = { id: v.versionId, name: v.name, type: v.type };
+      return {
+        undo: patchIssueSets(
+          qc,
+          issue,
+          (i) => ({ components: i.components, fixVersions: withVersion(i.fixVersions, ref) }),
+          (i) => ({
+            components: i.components,
+            fixVersions: withoutVersion(i.fixVersions, v.versionId, v.type),
+          }),
+        ),
+      };
+    },
     onError: (_e, _v, ctx) => ctx?.undo(),
     onSettled: sync,
   });
   const detach = useMutation({
     mutationFn: (v: { versionId: string; type: VersionType }) =>
       api.delete(`/issues/${issue.id}/versions/${v.versionId}/${v.type}`),
-    onMutate: (v): UndoCtx => ({
-      undo: patchIssueSets(qc, issue, (i) => ({
-        fixVersions: withoutVersion(i.fixVersions, v.versionId, v.type),
-      })),
-    }),
+    onMutate: async (v): Promise<UndoCtx> => {
+      await cancelIssueQueries(qc, issue);
+      const ref = issue.fixVersions.find((x) => x.id === v.versionId && x.type === v.type);
+      return {
+        undo: patchIssueSets(
+          qc,
+          issue,
+          (i) => ({
+            components: i.components,
+            fixVersions: withoutVersion(i.fixVersions, v.versionId, v.type),
+          }),
+          (i) => ({
+            components: i.components,
+            fixVersions: ref ? withVersion(i.fixVersions, ref) : i.fixVersions,
+          }),
+        ),
+      };
+    },
     onError: (_e, _v, ctx) => ctx?.undo(),
     onSettled: sync,
   });

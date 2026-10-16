@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import type { IssueDto } from '@tirapro/types';
-import type { IssueMovedPayload } from '@tirapro/shared';
+import type { IssueMovedPayload, IssueSetsChangedPayload } from '@tirapro/shared';
+import { applyIssueSets } from '@/features/issue-meta/patchIssueSets';
 import { keys } from './queryKeys';
 import { queryClient } from './queryClient';
 import { acquireRoom, getSocket } from './socket';
@@ -154,6 +155,9 @@ export function useProjectRealtime(projectId: string | undefined) {
     const onUpdated = ({ issue }: { issue: IssueDto }) => {
       if (issue.projectId === projectId) applyIssueUpdated(qc, issue);
     };
+    const onSets = (p: IssueSetsChangedPayload) => {
+      if (p.projectId === projectId) applyIssueSets(qc, p);
+    };
     const onMoved = (p: IssueMovedPayload) => {
       if (p.projectId === projectId) applyIssueMoved(qc, p);
     };
@@ -176,6 +180,7 @@ export function useProjectRealtime(projectId: string | undefined) {
 
     s.on('issue:created', onCreated);
     s.on('issue:updated', onUpdated);
+    s.on('issue:sets_changed', onSets);
     s.on('issue:moved', onMoved);
     s.on('issue:deleted', onDeleted);
     s.on('project:ranks_rebalanced', onRebalanced);
@@ -187,6 +192,7 @@ export function useProjectRealtime(projectId: string | undefined) {
     return () => {
       s.off('issue:created', onCreated);
       s.off('issue:updated', onUpdated);
+      s.off('issue:sets_changed', onSets);
       s.off('issue:moved', onMoved);
       s.off('issue:deleted', onDeleted);
       s.off('project:ranks_rebalanced', onRebalanced);
