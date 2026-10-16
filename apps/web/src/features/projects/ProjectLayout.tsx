@@ -199,7 +199,7 @@ export function ProjectLayout() {
           <h1
             className={cn(
               'min-w-0 truncate text-lg font-semibold tracking-tight',
-              hasPicker ? 'hidden lg:block' : 'max-sm:flex-1',
+              hasPicker && 'hidden lg:block',
             )}
           >
             {project?.name ?? key}
@@ -283,8 +283,8 @@ export function ProjectLayout() {
                     <v.icon className="h-4 w-4 shrink-0" />
                     <span
                       className={cn(
-                        'max-sm:text-[10px] max-sm:leading-none',
-                        !tabLabelVisible(isActive, true) && 'hidden sm:inline',
+                        'max-sm:text-[11px] max-sm:leading-none',
+                        !tabLabelVisible(isActive) && 'hidden sm:inline',
                       )}
                     >
                       {v.label}
@@ -297,8 +297,8 @@ export function ProjectLayout() {
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
-                  aria-label="Thêm"
-                  title="Thêm"
+                  aria-label={moreLabel ?? 'Thêm'}
+                  title={moreLabel ?? 'Thêm'}
                   aria-current={moreSeg ? 'page' : undefined}
                   className={cn(
                     'flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] data-[state=open]:bg-surface-2 sm:px-2.5',
@@ -311,7 +311,7 @@ export function ProjectLayout() {
                   {/* Mobile: biểu tượng "…" (+ tên màn đang mở nếu thuộc Thêm); từ sm: chữ "Thêm" + mũi tên như cũ. */}
                   <MoreHorizontal className="h-4 w-4 shrink-0 sm:hidden" aria-hidden />
                   {moreLabel && (
-                    <span className="max-w-[5.5rem] truncate text-[10px] leading-none sm:hidden">
+                    <span className="max-w-[5.5rem] truncate text-[11px] leading-none sm:hidden">
                       {moreLabel}
                     </span>
                   )}

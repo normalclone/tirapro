@@ -2,9 +2,9 @@
 const MORE_SEGMENTS = ['triage', 'activity', 'trash', 'config'] as const;
 export type MoreSeg = (typeof MORE_SEGMENTS)[number];
 
-/** Nhãn chữ của tab hiện không? Màn hẹp: chỉ tab đang mở (để biết đang ở view nào); từ `sm` trở lên: luôn hiện. */
-export function tabLabelVisible(isActive: boolean, narrow: boolean): boolean {
-  return !narrow || isActive;
+/** Nhãn chữ của tab hiện không (màn hẹp, dưới `sm`)? Chỉ tab đang mở, để biết đang ở view nào; từ `sm` trở lên luôn hiện (CSS lo). */
+export function tabLabelVisible(isActive: boolean): boolean {
+  return isActive;
 }
 
 /** Đang ở màn thuộc menu "Thêm" (Việc mới vào, Hoạt động, Thùng rác, Cấu hình)? → nút "Thêm" sáng + hiện tên màn. */

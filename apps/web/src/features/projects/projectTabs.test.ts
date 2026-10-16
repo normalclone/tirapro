@@ -2,13 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { activeMoreSeg, tabLabelVisible } from './projectTabs';
 
 describe('tabLabelVisible', () => {
-  it('desktop (>= sm): mọi tab hiện nhãn', () => {
-    expect(tabLabelVisible(true, false)).toBe(true);
-    expect(tabLabelVisible(false, false)).toBe(true);
-  });
-  it('mobile: chỉ tab đang mở hiện nhãn, tab khác chỉ biểu tượng', () => {
-    expect(tabLabelVisible(true, true)).toBe(true);
-    expect(tabLabelVisible(false, true)).toBe(false);
+  it('màn hẹp: chỉ tab đang mở hiện nhãn, tab khác chỉ biểu tượng', () => {
+    expect(tabLabelVisible(true)).toBe(true);
+    expect(tabLabelVisible(false)).toBe(false);
   });
 });
 

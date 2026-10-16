@@ -17,11 +17,26 @@ export function useScrollFade<T extends HTMLElement>(revealKey?: string, revealS
     const update = () => setMask(fadeMask(scrollFadeState(el)));
     update();
     el.addEventListener('scroll', update, { passive: true });
+    // Quan sát cả khung lẫn từng phần tử con: nội dung đổi kích thước (vd nút "Thêm" hiện nhãn) hoặc thêm/bớt mục thì cập nhật mặt nạ.
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
-    ro?.observe(el);
+    const watch = () => {
+      ro?.disconnect();
+      ro?.observe(el);
+      for (const child of Array.from(el.children)) ro?.observe(child);
+    };
+    watch();
+    const mo =
+      typeof MutationObserver === 'undefined'
+        ? null
+        : new MutationObserver(() => {
+            watch();
+            update();
+          });
+    mo?.observe(el, { childList: true });
     return () => {
       el.removeEventListener('scroll', update);
       ro?.disconnect();
+      mo?.disconnect();
     };
   }, []);
 
