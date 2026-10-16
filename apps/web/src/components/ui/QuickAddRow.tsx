@@ -6,28 +6,13 @@ import { useProjectSprints } from '@/features/backlog/api';
 import { useWorkspaceUsers } from '@/features/issue-edit/api';
 import { useCreateIssue, type CreateIssueInput } from '@/features/issues/create-api';
 import { buildQuickAddInput, pickDefaultType } from '@/features/issues/quickAdd';
+import { setQuickAddTypeKey, useQuickAddTypeKey } from '@/features/issues/quickAddType';
 import { TokenTitleInput } from '@/features/issues/TokenTitleInput';
 import type { TokenCtx } from '@/features/issues/titleTokens';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { IssueTypeIcon } from './IssueTypeIcon';
 import { SearchSelect } from './SearchSelect';
-
-const TYPE_KEY_STORAGE = 'tirapro:quickAddTypeKey';
-function readStoredTypeKey(): string | null {
-  try {
-    return localStorage.getItem(TYPE_KEY_STORAGE);
-  } catch {
-    return null;
-  }
-}
-function storeTypeKey(key: string | null) {
-  try {
-    if (key) localStorage.setItem(TYPE_KEY_STORAGE, key);
-  } catch {
-    /* bỏ qua: chế độ riêng tư / bị chặn lưu trữ */
-  }
-}
 
 /**
  * Hàng "thêm nhanh" issue — gõ tiêu đề + Enter là tạo ngay (keyboard-first, UX §3).
@@ -58,7 +43,7 @@ export function QuickAddRow({
   const [summary, setSummary] = useState('');
   // Người dùng/sprint chỉ để gợi ý token → tải khi ô được focus lần đầu (Board nhiều cột không bắn nhiều request).
   const [touched, setTouched] = useState(false);
-  const [pickedKey, setPickedKey] = useState<string | null>(readStoredTypeKey);
+  const pickedKey = useQuickAddTypeKey();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const { data: meta } = useProjectMeta(projectKey || undefined);
   const { data: users } = useWorkspaceUsers({ enabled: touched });
@@ -111,8 +96,7 @@ export function QuickAddRow({
           value={typeId}
           onChange={(id) => {
             const t = types.find((x) => x.id === id);
-            setPickedKey(t?.key ?? null);
-            storeTypeKey(t?.key ?? null);
+            setQuickAddTypeKey(t?.key ?? null);
             inputRef.current?.focus();
           }}
           options={selectable.map((t) => ({ value: t.id, label: t.name, color: t.color }))}
@@ -130,13 +114,17 @@ export function QuickAddRow({
           }}
         />
       )}
-      <div className="min-w-0 flex-1">
+      <div
+        className="min-w-0 flex-1"
+        title="Gõ !ưu-tiên ~điểm @người ^hạn #sprint ngay trong tiêu đề"
+      >
         <TokenTitleInput
           bare
           value={summary}
           onChange={setSummary}
           ctx={ctx}
           placeholder={placeholder}
+          ariaLabel="Thêm nhanh việc mới"
           inputRef={inputRef}
           onEnter={submit}
         />

@@ -30,6 +30,7 @@ export function TokenTitleInput({
   bare,
   onEnter,
   inputRef,
+  ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -43,6 +44,7 @@ export function TokenTitleInput({
   /** Enter trơn (không có popup gợi ý) — dùng cho quick-add; hộp tạo việc không truyền. */
   onEnter?: () => void;
   inputRef?: Ref<HTMLInputElement>;
+  ariaLabel?: string;
 }) {
   const Field = bare ? 'input' : Input;
   const ref = useRef<HTMLInputElement | null>(null);
@@ -145,6 +147,7 @@ export function TokenTitleInput({
         <Field
           ref={setRefs}
           id={id}
+          aria-label={ariaLabel}
           autoFocus={autoFocus}
           value={value}
           placeholder={placeholder}
