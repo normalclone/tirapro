@@ -101,6 +101,17 @@ describe('extractIssueKeys', () => {
   });
 });
 
+describe('extractIssueKeys — chế độ nhúng (tên nhánh/commit)', () => {
+  it("cho phép '-' liền kề, vẫn cấm '_'/chữ liền kề", () => {
+    expect(extractIssueKeys('feature/DEMO-5-login', 50, true)).toEqual(['DEMO-5']);
+    expect(extractIssueKeys('DEMO-5-fix, fix-DEMO-7', 50, true)).toEqual(['DEMO-5', 'DEMO-7']);
+    expect(extractIssueKeys('x_APP-12 fooDEMO-9', 50, true)).toEqual([]);
+    expect(extractIssueKeys('MY_APP-12', 50, true)).toEqual(['MY_APP-12']);
+    // chế độ thường (chip markdown) vẫn chặt: không khớp trong "DEMO-5-login"
+    expect(extractIssueKeys('feature/DEMO-5-login')).toEqual([]);
+  });
+});
+
 describe('isIssueKey', () => {
   it('đúng cho cả hai kiểu mã, sai cho văn bản khác', () => {
     for (const k of ['MY_APP-12', 'JRA-1', 'PROJ-STORY-1', 'DEMO-BUG-12'])

@@ -20,6 +20,8 @@ export interface NotificationPayload {
   where?: 'comment' | 'description';
   /** ISSUE_ASSIGNED gộp: nhiều việc được giao một lượt từ cùng một nguồn (vd nhập Jira) — một thông báo duy nhất. */
   bulk?: 'jira-import';
+  /** JQL mở danh sách các việc của thông báo gộp (bấm thông báo → bộ lọc). */
+  listJql?: string;
   /** STATUS_CHANGED. */
   statusName?: string;
   fromStatusName?: string;

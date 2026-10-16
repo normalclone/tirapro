@@ -300,6 +300,13 @@ describe('JQL key — mã công việc, cả mã Jira (JRA-1) lẫn mã Tirapro 
     });
     expect(w('key NOT IN ("JRA-1")')).toEqual({ key: { notIn: ['JRA-1'] } });
   });
+  it('JQL của thông báo gộp nhập Jira (assignee = me AND key IN (...)) biên dịch được', () => {
+    const r = compileJql(ast('assignee = me AND key IN ("PROJ-9", "PROJ-2")'), {
+      currentUserId: 'U',
+    }).where;
+    expect(JSON.stringify(r)).toContain('"key":{"in":["PROJ-9","PROJ-2"]}');
+    expect(JSON.stringify(r)).toContain('"assigneeId":"U"');
+  });
   it('ORDER BY key', () => {
     const r = compileJql(ast('project = X ORDER BY key ASC'), { currentUserId: 'U' });
     expect(r.orderBy).toEqual([{ key: 'asc' }]);

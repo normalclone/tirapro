@@ -24,6 +24,9 @@ export interface ProjectAccessChangedPayload {
   actorId?: string;
 }
 
+/** Số mã tối đa đưa vào JQL của thông báo gộp. */
+const MAX_KEYS_IN_LIST_JQL = 30;
+
 interface Claim {
   rowId: string;
   issueId: string;
@@ -208,6 +211,16 @@ export class PendingAssigneeService {
   }
 
   /**
+   * JQL mở danh sách việc vừa được giao: liệt kê mã khi ít (<= 30), nhiều quá thì "việc của tôi chưa xong"
+   * (tránh JQL/URL dài; `me` = người mở thông báo, chính là người nhận).
+   */
+  private listJql(keys: string[]): string {
+    if (keys.length <= MAX_KEYS_IN_LIST_JQL)
+      return `assignee = me AND key IN (${keys.map((k) => `"${k}"`).join(', ')})`;
+    return 'assignee = me AND statusCategory != DONE';
+  }
+
+  /**
    * Sau commit: realtime/tích hợp cho từng việc (DTO lấy bằng MỘT truy vấn, cờ `bulk` để thông báo "được giao" từng việc bị
    * bỏ qua) + MỘT thông báo gộp cho mỗi người. Lỗi ở đây chỉ log — việc đã gán rồi.
    */
@@ -252,6 +265,7 @@ export class PendingAssigneeService {
             summary: first.summary,
             count: list.length,
             bulk: 'jira-import',
+            listJql: this.listJql(list.map((a) => a.key)),
           },
         });
       } catch (err) {

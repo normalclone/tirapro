@@ -295,3 +295,18 @@ describe('ISSUE_UPDATED giao việc hàng loạt (L28 fix)', () => {
     expect(rows[1]!.payload).toMatchObject({ count: 1 });
   });
 });
+
+describe('WatchersService.onIssueUpdated — cập nhật hàng loạt (L28 fix)', () => {
+  it('bulk: true → không báo người theo dõi từng việc; không có cờ vẫn báo', async () => {
+    const { rows, watchers } = setup({ watchers: ['w1'] });
+    await watchers.onIssueUpdated({
+      issue,
+      actorId: 'a1',
+      changedFields: ['assigneeId'],
+      bulk: true,
+    });
+    expect(rows).toHaveLength(0);
+    await watchers.onIssueUpdated({ issue, actorId: 'a1', changedFields: ['assigneeId'] });
+    expect(rows.map((r) => r.type)).toEqual(['WATCHING_UPDATE']);
+  });
+});

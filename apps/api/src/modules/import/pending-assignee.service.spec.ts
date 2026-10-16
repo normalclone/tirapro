@@ -259,6 +259,21 @@ describe('PendingAssigneeService — gán hàng loạt không spam (L28 fix)', (
     );
   });
 
+  it('thông báo gộp trỏ tới DANH SÁCH: listJql liệt kê mã khi ít, rơi về "việc của tôi chưa xong" khi quá nhiều', async () => {
+    const few = setup({ pending: many(3) });
+    await few.svc.claimFor('w1', ['u1']);
+    const jqlFew = (
+      few.notifications.publish.mock.calls[0] as unknown as [{ payload: { listJql: string } }]
+    )[0].payload.listJql;
+    expect(jqlFew).toBe('assignee = me AND key IN ("K-i0", "K-i1", "K-i2")');
+    const lots = setup({ pending: many(500) });
+    await lots.svc.claimFor('w1', ['u1']);
+    const jqlLots = (
+      lots.notifications.publish.mock.calls[0] as unknown as [{ payload: { listJql: string } }]
+    )[0].payload.listJql;
+    expect(jqlLots).toBe('assignee = me AND statusCategory != DONE');
+  });
+
   it('mỗi người một thông báo gộp riêng; người không được gán việc nào không nhận thông báo', async () => {
     const { svc, notifications } = setup({
       users: [

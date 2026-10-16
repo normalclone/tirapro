@@ -334,8 +334,8 @@ export class DevLinksService {
 
   private extractKeys(text: string): string[] {
     if (!text) return [];
-    // Cùng regex với chip markdown: nhận cả mã Tirapro (DEMO-BUG-1) lẫn mã Jira gốc (JRA-1, MY_APP-12).
-    return extractIssueKeys(text, 200);
+    // Cùng thân regex với chip markdown (biến thể nhúng: cho phép `-` liền kề như `feature/DEMO-5-login`): nhận cả mã Tirapro (DEMO-BUG-1) lẫn mã Jira gốc (JRA-1, MY_APP-12).
+    return extractIssueKeys(text, 200, true);
   }
 
   private async findIssue(workspaceId: string, key: string): Promise<{ id: string } | null> {
