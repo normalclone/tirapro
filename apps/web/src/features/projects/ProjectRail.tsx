@@ -4,9 +4,16 @@ import { Archive, Lock, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react
 import { useProjects } from './api';
 import { CreateProjectModal } from './CreateProjectModal';
 import { useShowArchived } from './showArchived';
-import { railAutoKey, railStorageKey, resolveRailCollapsed } from '@/lib/railPref';
+import {
+  railAutoKey,
+  railEffectiveCollapsed,
+  railStorageKey,
+  railToggleOutcome,
+  resolveRailCollapsed,
+} from '@/lib/railPref';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
+import { useEpicPanel } from '@/stores/epicPanel';
 
 const iconBtn =
   'grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
@@ -28,8 +35,9 @@ function readRailPref(key: string): string | null {
  *
  *  activeKey — key dự án đang xem (tô sáng).
  *  view      — segment view để link sang (board/backlog/…); mặc định "board".
+ *  withEpicPanel — trang có panel Epic (Việc chờ): panel Epic mở thì rail thu TẠM, mở rail thì panel Epic thu (loại trừ nhau).
  */
-export function ProjectRail(props: { activeKey: string; view?: string }) {
+export function ProjectRail(props: { activeKey: string; view?: string; withEpicPanel?: boolean }) {
   const userId = useAuth((s) => s.user?.id);
   // `key` theo người dùng → đổi tài khoản thì rail dựng lại và đọc đúng lựa chọn của người đó.
   return <RailInner key={userId ?? 'anon'} userId={userId} {...props} />;
@@ -39,10 +47,12 @@ function RailInner({
   userId,
   activeKey,
   view = 'board',
+  withEpicPanel = false,
 }: {
   userId: string | undefined;
   activeKey: string;
   view?: string;
+  withEpicPanel?: boolean;
 }) {
   const [showArchived, toggleArchived] = useShowArchived();
   const { data: projects } = useProjects(showArchived);
@@ -55,17 +65,21 @@ function RailInner({
   const [lastAuto] = useState(() => readRailPref(autoKey) === '1');
   // Ngưỡng tự thu chỉ đếm dự án đang hoạt động → đổi ô "Hiện đã lưu trữ" không làm rail tự đổi dưới con trỏ.
   const activeCount = projects ? projects.filter((p) => !p.archivedAt).length : undefined;
-  const collapsed = resolveRailCollapsed(pref, activeCount, lastAuto);
+  // `baseCollapsed` = lựa chọn của người dùng/tự động; `collapsed` = cái đang thấy (thu tạm khi panel Epic mở).
+  const baseCollapsed = resolveRailCollapsed(pref, activeCount, lastAuto);
+  const epicOpen = useEpicPanel((s) => s.open) && withEpicPanel;
+  const collapsed = railEffectiveCollapsed(baseCollapsed, epicOpen);
   useEffect(() => {
     if (pref !== null || activeCount === undefined) return;
     try {
-      localStorage.setItem(autoKey, collapsed ? '1' : '0');
+      localStorage.setItem(autoKey, baseCollapsed ? '1' : '0');
     } catch {
       /* ignore */
     }
-  }, [pref, activeCount, collapsed, autoKey]);
+  }, [pref, activeCount, baseCollapsed, autoKey]);
   const toggleCollapsed = () => {
-    const next = collapsed ? '0' : '1';
+    const { pref: next, closeEpic } = railToggleOutcome(collapsed, epicOpen);
+    if (closeEpic) useEpicPanel.getState().setOpen(false);
     setPref(next);
     try {
       localStorage.setItem(storageKey, next);
@@ -119,7 +133,9 @@ function RailInner({
               onClick={toggleCollapsed}
               aria-label={collapsed ? 'Mở rộng danh sách dự án' : 'Thu gọn danh sách dự án'}
               aria-expanded={!collapsed}
-              title={collapsed ? 'Mở rộng' : 'Thu gọn'}
+              title={
+                collapsed ? (epicOpen ? 'Mở rộng (thu panel Epic lại)' : 'Mở rộng') : 'Thu gọn'
+              }
               className={iconBtn}
             >
               {collapsed ? (

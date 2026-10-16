@@ -156,7 +156,7 @@ export function ProjectLayout() {
   return (
     <div className="flex h-full min-h-0 print:block print:h-auto">
       {/* Rail dự án (submenu bên trái) — dùng chung với trang chi tiết issue */}
-      <ProjectRail activeKey={key} view={view} />
+      <ProjectRail activeKey={key} view={view} withEpicPanel={view === 'backlog'} />
 
       {/* Nội dung: thanh nav view cố định + view hiện tại */}
       <div className="flex min-w-0 flex-1 flex-col print:block">
