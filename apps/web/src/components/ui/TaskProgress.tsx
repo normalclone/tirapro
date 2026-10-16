@@ -13,7 +13,7 @@ export function TaskProgress({
   compact,
   className,
   title: titleOverride,
-  label = 'Tiến trình task con',
+  label = 'Tiến trình việc con',
 }: {
   progress: SubtreeProgress;
   compact?: boolean;

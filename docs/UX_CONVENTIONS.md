@@ -151,6 +151,10 @@ Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng A
 | Triage | **Việc mới vào** | Đúng tên tab hiện có. |
 | Loại liên kết | `blocks`, `is blocked by`, `relates to`, `duplicates`, `clones`, `is caused by`, `is tested by` | Giữ tiếng Anh; loại mới theo bảng này. |
 | Ngày / giờ | `dd/MM/yyyy`, `HH:mm` (24h) | Thời gian tương đối tiếng Việt ("khoảng 5 giờ trước"). |
+| Worklog / Saved filter / Custom field | **Nhật ký thời gian** / **Bộ lọc đã lưu** / **Trường thông tin thêm** | Chỉ ở mô tả quyền, lỗi, hướng dẫn. |
+| Trạng thái sprint (người dùng thấy) | **chưa bắt đầu / đang chạy / đã kết thúc** | Không lộ enum `FUTURE / ACTIVE / CLOSED` trong thông báo lỗi. |
+
+**Kiểm bằng máy (chặn tái phạm):** `apps/web/src/lib/terminology.test.ts` (Backlog / "đợt làm việc" / Cần làm–Đang làm / Board / issue / "vấn đề" ngoài RAID / task làm danh từ chung / mô tả quyền và vai trò), `apps/web/src/components/ui/noNativeDate.test.ts` (không `<input type=date|datetime-local|time>` ngoài `DateInput.tsx`), `apps/api/src/common/terminology.spec.ts` (chuỗi API trả cho người dùng). Ngoại lệ được ghi chú ngay trong test: gloss "Việc chờ (backlog)" / "Bảng việc (Board)" ở trang Hướng dẫn, tên menu thật của Jira ("Export issues", "Xem tất cả issue"), thẻ phân tách prompt `<issue>`, dòng RAID "vấn đề". Nhãn nhóm trạng thái dùng chung `STATUS_CATEGORY_LABEL` (`@tirapro/types`, web re-export ở `lib/terms.ts`).
 
 ## Definition of Done (UX) cho mỗi màn
 - [ ] Có thể hoàn thành task chính **chỉ bằng bàn phím**.

@@ -17,24 +17,17 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 const isComment = (l: string) => /^\s*(\/\/|\*|\/\*)/.test(l);
-/** File được phép chứa từ khoá cũ — mỗi mục phải có lý do. */
-const ALLOW = [
-  // Từ khoá tìm kiếm không dấu/đồng nghĩa: người dùng cũ gõ "backlog" vẫn ra "Việc chờ".
-  /features\/command\/commandFilter\.ts$/,
-];
 /** Dòng được phép: giải thích thuật ngữ lần đầu cho người mới ("Việc chờ (backlog)", "Bảng việc (Board)"). */
 const GLOSS = /Việc chờ \(backlog\)|Bảng việc \(Board\)/;
 
 export const hits = (re: RegExp, keep: (line: string) => boolean = () => true) =>
-  walk(join(__dirname, '..'))
-    .filter((f) => !ALLOW.some((a) => a.test(f.replace(/\\/g, '/'))))
-    .flatMap((f) =>
-      readFileSync(f, 'utf8')
-        .split('\n')
-        .map((l, i) => ({ f, i: i + 1, l }))
-        .filter((x) => !isComment(x.l) && !GLOSS.test(x.l) && keep(x.l) && re.test(x.l))
-        .map((x) => `${x.f.split('/src/')[1]}:${x.i}`),
-    );
+  walk(join(__dirname, '..')).flatMap((f) =>
+    readFileSync(f, 'utf8')
+      .split('\n')
+      .map((l, i) => ({ f, i: i + 1, l }))
+      .filter((x) => !isComment(x.l) && !GLOSS.test(x.l) && keep(x.l) && re.test(x.l))
+      .map((x) => `${x.f.split('/src/')[1]}:${x.i}`),
+  );
 
 describe('thuật ngữ (UX_CONVENTIONS §19) — bộ A', () => {
   it('không còn "Backlog" hiển thị (dùng "Việc chờ")', () => {
@@ -54,6 +47,9 @@ describe('thuật ngữ (UX_CONVENTIONS §19) — bộ A', () => {
 });
 
 describe('thuật ngữ (UX_CONVENTIONS §19) — bộ B', () => {
+  it('không dùng "task" làm danh từ chung trong chuỗi tiếng Việt (Task chỉ là tên loại, sub-task là tên loại)', () => {
+    expect(hits(/["'`>][^"'`<>]*[À-ỹ][^"'`<>]*\btasks?\b(?!-)/)).toEqual([]);
+  });
   it('không còn "issue" trong chuỗi hiển thị (chuỗi có chữ Việt, hoặc JSX kiểu "{n} issue")', () => {
     // Chỉ xét NỘI DUNG chuỗi ("…", '…', `…` bỏ phần ${…}) và chữ JSX giữa `>…<`; biến `issue.key`, khoá cache, quyền… không bị bắt.
     // Bỏ dòng dữ liệu/kỹ thuật: từ khoá tìm kiếm của bảng lệnh (`value="… issue …"`), id anchor, room, queryKey.

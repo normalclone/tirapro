@@ -589,7 +589,7 @@ export function DocumentationPage() {
               <H2 id="tich-hop">Tích hợp</H2>
               <P>Kết nối Tirapro với công cụ khác. Do quản trị chung bật (mỗi người tự liên kết chat cá nhân). Thiếu cấu hình thì tính năng tắt êm, app vẫn chạy.</P>
               <div className="border-t border-border">
-                <Feature icon={<Plug className="h-4 w-4" />} title="Telegram">Nhận thông báo vào chat; tạo task nhanh bằng <Mono>/newtask</Mono>; báo bug bằng <Mono>/bug</Mono> theo biểu mẫu; lấy digest bằng <Mono>/report</Mono>. Mỗi người dùng tự <Mono>/link</Mono> tài khoản.</Feature>
+                <Feature icon={<Plug className="h-4 w-4" />} title="Telegram">Nhận thông báo vào chat; tạo công việc nhanh bằng <Mono>/newtask</Mono>; báo bug bằng <Mono>/bug</Mono> theo biểu mẫu; lấy digest bằng <Mono>/report</Mono>. Mỗi người dùng tự <Mono>/link</Mono> tài khoản.</Feature>
                 <Feature icon={<ArrowUpRight className="h-4 w-4" />} title="Nhập từ Jira">Nhập dự án / công việc / bình luận / tệp đính kèm từ Jira Cloud hoặc tệp CSV/JSON; tự khớp loại & trạng thái. Chạy nền có hiển thị tiến độ.</Feature>
                 <Feature icon={<KeyRound className="h-4 w-4" />} title="API key & MCP">Tạo API key ở <strong>Cài đặt → API &amp; MCP</strong> cho phần mềm ngoài hoặc trợ lý AI (MCP) truy cập dữ liệu — chọn chỉ-đọc hoặc đọc-ghi, thu hồi bất cứ lúc nào.</Feature>
               </div>
