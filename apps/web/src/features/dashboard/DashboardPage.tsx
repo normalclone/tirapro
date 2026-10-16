@@ -40,6 +40,9 @@ import {
   type OverviewWarning,
 } from './api';
 import { MyBugsSection } from './MyBugsSection';
+import { OnboardingChecklist } from '@/features/guides/OnboardingChecklist';
+import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
+import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/stores/auth';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { DueBadge, dueState } from '@/components/ui/DueBadge';
@@ -154,9 +157,12 @@ function RecentsStrip() {
 
 function AdminOverview() {
   const { data, isLoading, isError } = useWorkspaceOverview(true);
+  const [createOpen, setCreateOpen] = useState(false);
 
   return (
     <section className="mb-12">
+      {/* Khối "Bắt đầu" ở ĐẦU Tổng quan (kể cả khi chưa có dự án nào): workspace mới thấy ngay việc cần làm tiếp. */}
+      <OnboardingChecklist />
       <PrintHeader
         title="Tổng quan chung"
         subtitle={data ? `Toàn bộ ${data.projectCount} dự án đang hoạt động` : undefined}
@@ -192,8 +198,10 @@ function AdminOverview() {
           icon={<FolderKanban className="h-8 w-8" />}
           title="Chưa có dự án nào để tổng hợp"
           description="Tạo dự án đầu tiên để bắt đầu theo dõi tiến độ."
+          action={<Button onClick={() => setCreateOpen(true)}>Tạo dự án</Button>}
         />
       )}
+      <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} />
 
       {data && data.projectCount > 0 && (
         <div className="space-y-3">

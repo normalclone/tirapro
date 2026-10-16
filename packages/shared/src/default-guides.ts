@@ -205,4 +205,23 @@ export const DEFAULT_GUIDES: GuideSeed[] = [
       ],
     },
   },
+  {
+    key: 'onboarding-start',
+    type: 'CHECKLIST',
+    screen: '/',
+    title: 'Bắt đầu với Tirapro',
+    description: 'Bốn bước để workspace của bạn chạy được',
+    order: 0,
+    version: 1,
+    // Tiến độ (`done`) tính từ dữ liệu thật theo `key` (OnboardingService); nhãn và đường dẫn lấy từ đây nên sửa không cần
+    // deploy giao diện. `href: null` = giao diện tự mở hộp/đường dẫn phù hợp (xem `onboardingTarget`).
+    content: {
+      items: [
+        { key: 'create_project', label: 'Tạo dự án đầu tiên' },
+        { key: 'add_members', label: 'Thêm thành viên', href: '/members' },
+        { key: 'start_sprint', label: 'Bắt đầu một Sprint' },
+        { key: 'connect_telegram', label: 'Kết nối Telegram', href: '/connect/integrations' },
+      ],
+    },
+  },
 ];

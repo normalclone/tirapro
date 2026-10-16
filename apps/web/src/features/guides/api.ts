@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { GuideContent } from '@tirapro/shared';
 import type { GuideType } from '@tirapro/types';
 import { api } from '@/lib/api';
@@ -39,5 +39,42 @@ export function useMarkGuide() {
   return useMutation({
     mutationFn: (v: { key: string; action: 'seen' | 'complete' }) =>
       api.post(`/guides/${v.key}/${v.action}`),
+  });
+}
+
+/** Một mục của checklist "Bắt đầu" (GET /guides/onboarding). `done` do server tính từ dữ liệu thật. */
+export interface OnboardingItem {
+  key: string;
+  label: string;
+  done: boolean;
+  href: string | null;
+}
+
+export interface Onboarding {
+  items: OnboardingItem[];
+  doneCount: number;
+  total: number;
+  dismissed: boolean;
+  /** Server quyết định hiện khối: chưa ẩn, chưa xong cả bốn, workspace dưới 30 ngày. */
+  visible: boolean;
+}
+
+/** Checklist "Bắt đầu" của workspace — chỉ quản trị gọi được (403 với người khác → khối không hiện). */
+export function useOnboarding(enabled = true) {
+  return useQuery({
+    queryKey: keys.guides.onboarding,
+    queryFn: async () => (await api.get<Onboarding>('/guides/onboarding')).data,
+    enabled,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+/** "Ẩn khối này": ghi ở server (theo người dùng) rồi làm mới để khối biến mất và reload vẫn ẩn. */
+export function useDismissOnboarding() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post('/guides/onboarding/dismiss'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.guides.onboarding }),
   });
 }
