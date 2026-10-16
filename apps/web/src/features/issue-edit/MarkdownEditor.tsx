@@ -116,6 +116,7 @@ export function MarkdownEditor({
   mentionPeople,
   textareaId,
   onPasteImages,
+  onBusyChange,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -130,10 +131,12 @@ export function MarkdownEditor({
   textareaId?: string;
   /** Có → Ctrl/Cmd+V ảnh vào ô được xử lý (tải lên và chèn `![tên](attachment:ID)`, hoặc gom tệp — xem `PasteImagesHandler`). */
   onPasteImages?: PasteImagesHandler;
+  /** Báo cho nơi dùng biết còn ảnh dán đang tải (để vô hiệu hoá Lưu/Gửi); Cmd/Ctrl+Enter cũng bị chặn trong lúc đó. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const mention = useMentionPopup(ref, mentionPeople, onChange);
-  const onPaste = usePasteImages(ref, value, onChange, onPasteImages);
+  const { onPaste, busy } = usePasteImages(ref, value, onChange, onPasteImages, onBusyChange);
 
   function insertAt() {
     const ta = ref.current;
@@ -244,7 +247,7 @@ export function MarkdownEditor({
             if (mention.handleKey(e)) return;
             if (onSubmit && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
               e.preventDefault();
-              onSubmit();
+              if (!busy) onSubmit(); // còn ảnh đang tải: chưa lưu/gửi để chữ giữ chỗ không bị lưu
             }
             if (onCancel && e.key === 'Escape') {
               e.preventDefault();
@@ -253,6 +256,11 @@ export function MarkdownEditor({
           }}
           className="block w-full resize-y bg-transparent px-3 py-2 text-sm text-ink outline-none placeholder:text-faint"
         />
+        {busy && (
+          <p role="status" className="border-t border-border px-3 py-1 text-xs text-muted">
+            Đang tải ảnh… chờ xong rồi hãy lưu
+          </p>
+        )}
       </div>
       {mention.popupOpen && (
         <MentionPopup

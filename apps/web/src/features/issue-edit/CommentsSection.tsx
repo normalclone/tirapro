@@ -11,6 +11,7 @@ import { Avatar } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import type { PersonOption } from '@/components/ui/PeoplePicker';
 import { apiErrorMessage } from '@/lib/api';
+import { stripPlaceholders } from './pasteImage';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownView } from './MarkdownView';
 import { useAssigneeOptions } from './useAssigneeOptions';
@@ -29,6 +30,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   const { data: comments } = useComments(issue.id);
   const addComment = useAddComment(issue.id);
   const pasteImages = usePastedImageUploader(issue.id, 'comment');
+  const [uploading, setUploading] = useState(false);
   const people = useAssigneeOptions(issue.projectId);
   const can = useCanIn(issue.projectId); // dự án lưu trữ / không có quyền → chỉ đọc
   const canComment = can('comment:create');
@@ -43,8 +45,8 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   }
 
   async function submit() {
-    const body = draft.trim();
-    if (!body) return;
+    const body = stripPlaceholders(draft).trim();
+    if (!body || uploading) return; // ảnh dán còn đang tải: chưa gửi (tránh gửi chữ giữ chỗ)
     stopTyping();
     try {
       await addComment.mutateAsync(body);
@@ -91,6 +93,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             mentionPeople={people}
             textareaId={COMMENT_INPUT_ID}
             onPasteImages={pasteImages}
+            onBusyChange={setUploading}
             placeholder="Viết bình luận… (viết được Markdown · dán ảnh bằng Ctrl+V · ⌘/Ctrl+Enter để gửi)"
           />
           <TypingIndicator issueId={issue.id} />
@@ -99,7 +102,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             <Button
               size="sm"
               loading={addComment.isPending}
-              disabled={!draft.trim()}
+              disabled={!draft.trim() || uploading}
               onClick={() => void submit()}
             >
               Gửi bình luận
@@ -124,6 +127,7 @@ function CommentRow({
 }) {
   const update = useUpdateComment(issueId);
   const pasteImages = usePastedImageUploader(issueId, 'comment');
+  const [uploading, setUploading] = useState(false);
   const toggleTask = useCommentTaskToggle(issueId);
   const remove = useDeleteComment(issueId);
   const [editing, setEditing] = useState(false);
@@ -131,8 +135,8 @@ function CommentRow({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function save() {
-    const next = body.trim();
-    if (!next) return;
+    const next = stripPlaceholders(body).trim();
+    if (!next || uploading) return; // ảnh dán còn đang tải: chưa lưu
     if (next === comment.body) {
       setEditing(false);
       return;
@@ -181,6 +185,7 @@ function CommentRow({
               rows={3}
               mentionPeople={people}
               onPasteImages={pasteImages}
+              onBusyChange={setUploading}
             />
             <div className="flex items-center gap-2">
               <span className="mr-auto text-xs text-faint">⌘/Ctrl+Enter để lưu · Esc huỷ</span>
@@ -194,7 +199,12 @@ function CommentRow({
               >
                 Huỷ
               </Button>
-              <Button size="sm" loading={update.isPending} onClick={() => void save()}>
+              <Button
+                size="sm"
+                loading={update.isPending}
+                disabled={uploading}
+                onClick={() => void save()}
+              >
                 Lưu
               </Button>
             </div>

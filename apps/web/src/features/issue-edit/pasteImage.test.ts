@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   attachmentMarkdown,
+  hasPlaceholder,
   imageFilesFromClipboard,
   insertPlaceholder,
   isTooLarge,
   MAX_PASTE_BYTES,
   pastedImageName,
   replacePlaceholder,
+  stripPlaceholders,
 } from './pasteImage';
 
 const file = (name: string, type: string, size = 10) => ({ name, type, size }) as File;
@@ -79,5 +81,19 @@ describe('attachmentMarkdown', () => {
     expect(attachmentMarkdown('a](javascript:alert(1)).png', 'attachment:x1')).toBe(
       '![ajavascript:alert1.png](attachment:x1)',
     );
+  });
+});
+
+describe('hasPlaceholder / stripPlaceholders', () => {
+  it('nhận ra và gỡ mọi chữ giữ chỗ, giữ nguyên ảnh thật và chữ khác', () => {
+    const v = 'a ![Đang tải ảnh-1…]() b ![x](attachment:z1) ![Đang tải ảnh-12…]()';
+    expect(hasPlaceholder(v)).toBe(true);
+    expect(hasPlaceholder('![x](attachment:z1) và ![](https://a/b.png)')).toBe(false);
+    expect(stripPlaceholders(v)).toBe('a  b ![x](attachment:z1) ');
+    expect(stripPlaceholders('không có gì')).toBe('không có gì');
+  });
+  it('dùng lặp được (regex toàn cục không giữ lastIndex)', () => {
+    const v = '![Đang tải ảnh-1…]()';
+    expect([hasPlaceholder(v), hasPlaceholder(v), hasPlaceholder(v)]).toEqual([true, true, true]);
   });
 });

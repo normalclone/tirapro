@@ -1,4 +1,4 @@
-import { useRef, type ClipboardEvent, type RefObject } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type RefObject } from 'react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import {
@@ -35,19 +35,27 @@ export function usePasteImages(
   value: string,
   onChange: (v: string) => void,
   onPasteImages: PasteImagesHandler | undefined,
+  onBusyChange?: (busy: boolean) => void,
 ) {
   // Các lần thay chữ giữ chỗ chạy bất đồng bộ nên phải đọc giá trị MỚI NHẤT, không phải giá trị lúc dán.
   const latest = useRef(value);
   latest.current = value;
   const seq = useRef(0);
-  if (!onPasteImages) return undefined;
+  // Số ảnh đang tải: editor dùng để chặn Lưu/Gửi (chữ giữ chỗ chưa thay bằng ảnh thật thì chưa được lưu).
+  const [pending, setPending] = useState(0);
+  const busy = pending > 0;
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false); // editor đóng giữa chừng: nơi dùng không kẹt ở trạng thái bận
+  }, [busy, onBusyChange]);
+  if (!onPasteImages) return { onPaste: undefined, busy };
 
   const apply = (v: string) => {
     latest.current = v;
     onChange(v);
   };
 
-  return (e: ClipboardEvent<HTMLTextAreaElement>) => {
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const images = imageFilesFromClipboard(Array.from(e.clipboardData.files));
     if (images.length === 0) return;
     e.preventDefault();
@@ -79,9 +87,12 @@ export function usePasteImages(
       caret = ins.caret;
       placed += 1;
       apply(ins.value);
+      setPending((n) => n + 1);
 
-      const finish = (r?: PastedImageRef) =>
+      const finish = (r?: PastedImageRef) => {
         apply(replacePlaceholder(latest.current, id, r ? attachmentMarkdown(r.name, r.ref) : ''));
+        setPending((n) => Math.max(0, n - 1));
+      };
       result.then(
         (res) => finish(res?.[0]),
         (err: unknown) => {
@@ -96,4 +107,5 @@ export function usePasteImages(
         ta.setSelectionRange(caret, caret);
       });
   };
+  return { onPaste, busy };
 }

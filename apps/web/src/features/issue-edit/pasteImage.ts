@@ -29,6 +29,14 @@ export function pastedImageName(f: Pick<File, 'type'>, now: Date, seq = 0): stri
 }
 
 const placeholder = (id: number) => `![Đang tải ảnh-${id}…]()`;
+const PLACEHOLDER_ANY = /!\[Đang tải ảnh-\d+…\]\(\)/g;
+
+/** Còn chữ giữ chỗ "Đang tải ảnh" trong nội dung (vd nháp cũ được khôi phục). */
+export const hasPlaceholder = (value: string): boolean =>
+  new RegExp(PLACEHOLDER_ANY.source).test(value);
+
+/** Gỡ mọi chữ giữ chỗ còn sót trước khi lưu/gửi — không để chữ "Đang tải ảnh-1…" nằm vĩnh viễn trong dữ liệu. */
+export const stripPlaceholders = (value: string): string => value.replace(PLACEHOLDER_ANY, '');
 
 /** Chèn chữ giữ chỗ tại con trỏ trong lúc ảnh đang tải; trả giá trị mới + vị trí con trỏ sau chữ giữ chỗ. */
 export function insertPlaceholder(value: string, caret: number, id: number) {
