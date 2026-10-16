@@ -643,7 +643,8 @@ export class GoalsService {
     }
     const shown = objective.keyResults.filter((kr) => !hidden.has(kr.id));
 
-    const rows = shown.length
+    // Lấy N dòng MỚI nhất (desc + take) rồi đảo lại thứ tự cũ → mới: nếu quá trần thì mất phần ĐẦU của đường, không mất phần cuối.
+    const newestFirst = shown.length
       ? await this.prisma.keyResultCheckIn.findMany({
           where: {
             keyResultId: { in: shown.map((k) => k.id) },
@@ -652,7 +653,7 @@ export class GoalsService {
               { snapshotDate: null, createdAt: { gte: fromDate } },
             ],
           },
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           take: 365 * shown.length,
           select: {
             keyResultId: true,
@@ -663,6 +664,7 @@ export class GoalsService {
           },
         })
       : [];
+    const rows = [...newestFirst].reverse();
 
     // Mỗi KR: ngày → {giá trị, tự động?}; dòng muộn hơn trong cùng ngày thắng (check-in tay sau bản chụp 01:30).
     type DayValue = { value: number; auto: boolean };

@@ -166,6 +166,8 @@ describe('ProjectHealthService.forProjects', () => {
     for (const call of prisma.issue.groupBy.mock.calls) {
       const where = call[0].where;
       expect(where.deletedAt).toBeNull();
+      // việc chưa duyệt / đã từ chối không tính vào tổng/mở/quá hạn/điểm sprint (D-M4)
+      expect(where.OR).toEqual([{ triageState: null }, { triageState: 'ACCEPTED' }]);
       const scope = (where.projectId ?? where.sprintId) as { in: string[] };
       expect(scope.in.length).toBeGreaterThan(0);
     }

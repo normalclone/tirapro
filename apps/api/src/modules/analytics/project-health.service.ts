@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { ProjectHealthDto } from '@tirapro/shared';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { computeProjectHealth } from './project-health';
 
@@ -45,7 +46,12 @@ export class ProjectHealthService {
     if (projects.length === 0) return out;
     const ids = projects.map((p) => p.id);
 
-    const live: Prisma.IssueWhereInput = { projectId: { in: ids }, deletedAt: null };
+    // Việc chưa duyệt / đã từ chối (Việc mới vào) không tính vào tổng/mở/quá hạn/điểm sprint — như danh sách sprint, KR, QA.
+    const live: Prisma.IssueWhereInput = {
+      projectId: { in: ids },
+      deletedAt: null,
+      ...TRIAGE_VISIBLE,
+    };
     const notDone: Prisma.IssueWhereInput = { status: { category: { not: 'DONE' } } };
     const [totalGroups, openGroups, overdueGroups, activeSprints, risks] = await Promise.all([
       // Tổng việc + lần hoàn tất gần nhất (`_max resolvedAt` bỏ qua NULL).
@@ -85,12 +91,12 @@ export class ProjectHealthService {
       ? await Promise.all([
           this.prisma.issue.groupBy({
             by: ['sprintId'],
-            where: { sprintId: { in: sprintIds }, deletedAt: null },
+            where: { sprintId: { in: sprintIds }, deletedAt: null, ...TRIAGE_VISIBLE },
             _sum: { storyPoints: true },
           }),
           this.prisma.issue.groupBy({
             by: ['sprintId'],
-            where: { sprintId: { in: sprintIds }, deletedAt: null, ...notDone },
+            where: { sprintId: { in: sprintIds }, deletedAt: null, ...TRIAGE_VISIBLE, ...notDone },
             _sum: { storyPoints: true },
           }),
         ])

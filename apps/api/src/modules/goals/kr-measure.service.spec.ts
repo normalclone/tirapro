@@ -226,3 +226,63 @@ describe("KrMeasureService.measure — phạm vi 'public' (cron chụp lịch s�
     expect(out.get('k1')).toMatchObject({ value: 5, error: null });
   });
 });
+
+describe('KrMeasureService.measure — giới hạn song song + cache 30s (D-M7)', () => {
+  const jqlKr = (n: number) => kr(`k${n}`, 'ISSUE_COUNT_JQL', { jql: `project = P${n}` });
+
+  it('tối đa 4 phép đo chạy cùng lúc dù có nhiều nhóm KR', async () => {
+    const { service, search } = make();
+    let running = 0;
+    let peak = 0;
+    search.count.mockImplementation(async () => {
+      running++;
+      peak = Math.max(peak, running);
+      await new Promise((r) => setTimeout(r, 5));
+      running--;
+      return 7;
+    });
+    const krs = Array.from({ length: 12 }, (_, i) => jqlKr(i));
+    const out = await service.measure('w1', { viewerId: 'u1' }, krs);
+    expect(out.size).toBe(12);
+    expect(search.count).toHaveBeenCalledTimes(12);
+    expect(peak).toBeLessThanOrEqual(4);
+    expect(peak).toBeGreaterThan(1); // vẫn song song, không tuần tự hoá hoàn toàn
+  });
+
+  it('gọi lại trong 30s với cùng (workspace, người xem, cấu hình) → không đo lại; quá 30s → đo lại', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-10-16T10:00:00Z'));
+      const { service, search } = make();
+      const first = await service.measure('w1', { viewerId: 'u1' }, [jqlKr(1)]);
+      const again = await service.measure('w1', { viewerId: 'u1' }, [jqlKr(1)]);
+      expect(search.count).toHaveBeenCalledTimes(1);
+      expect(again.get('k1')).toEqual(first.get('k1'));
+      vi.setSystemTime(new Date('2026-10-16T10:00:31Z'));
+      await service.measure('w1', { viewerId: 'u1' }, [jqlKr(1)]);
+      expect(search.count).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cache khoá theo người xem (số đo phụ thuộc dự án họ thấy) và theo cấu hình; phạm vi public luôn đo mới', async () => {
+    const { service, search } = make();
+    await service.measure('w1', { viewerId: 'u1' }, [jqlKr(1)]);
+    await service.measure('w1', { viewerId: 'u2' }, [jqlKr(1)]); // người khác
+    await service.measure('w1', { viewerId: 'u1' }, [jqlKr(2)]); // cấu hình khác
+    expect(search.count).toHaveBeenCalledTimes(3);
+    await service.measure('w1', 'public', [jqlKr(1)]);
+    await service.measure('w1', 'public', [jqlKr(1)]);
+    expect(search.countPublic).toHaveBeenCalledTimes(2);
+  });
+
+  it('kết quả LỖI không bị cache (lần sau thử đo lại)', async () => {
+    const { service, search } = make();
+    search.count.mockRejectedValueOnce(new BusinessRuleException('JQL sai'));
+    const bad = await service.measure('w1', { viewerId: 'u1' }, [jqlKr(1)]);
+    expect(bad.get('k1')!.error).toBe('JQL sai');
+    const ok = await service.measure('w1', { viewerId: 'u1' }, [jqlKr(1)]);
+    expect(ok.get('k1')).toMatchObject({ value: 7, error: null });
+  });
+});
