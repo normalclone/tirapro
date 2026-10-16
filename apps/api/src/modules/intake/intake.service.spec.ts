@@ -462,8 +462,8 @@ describe('IntakeService.report — chống gửi đôi qua Redis (SET NX EX 8)',
 describe('IntakeService.report — dấu vân tay gồm severity/môi trường/loại', () => {
   const run = async (a: Record<string, unknown>, b: Record<string, unknown>) => {
     const { service, issues } = make();
-    await service.report('w1', 'u9', { ...dupInput, ...a } as never);
-    await service.report('w1', 'u9', { ...dupInput, ...b } as never);
+    await service.report('w1', 'u9', { ...dupInput, ...a });
+    await service.report('w1', 'u9', { ...dupInput, ...b });
     return issues.create.mock.calls.length;
   };
   it('khác severity, khác loại (typeId) hoặc khác môi trường => KHÔNG bị coi là gửi đôi', async () => {
