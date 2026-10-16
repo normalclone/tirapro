@@ -118,6 +118,8 @@ Cập nhật trong `docs/design/api-contract.md` (đợt cuối FW-OPS I4).
 - **Thông báo lỗi và lý do gợi ý của API** dùng cùng bảng: sprint không còn lộ `FUTURE/ACTIVE` ("Đã có sprint đang chạy — hãy kết thúc nó trước"); digest ghi *To Do / In Progress*; lý do gợi ý người nhận và lời chỉ dẫn gửi Claude dùng "công việc" (tên thẻ phân tách prompt `<issue>` giữ nguyên). Mã lỗi `error.code` không đổi.
 - **Ô ngày/giờ:** không còn `<input type="date|datetime-local">` trong web — mọi form dùng `DateInput`/`DateTimeInput` (`dd/MM/yyyy`, `HH:mm` 24h; gõ `0508`, báo ngày sai). Giá trị gửi API không đổi. "Hạn hoàn thành" khi tạo công việc tối thiểu là hôm nay. Trường tuỳ biến kiểu ngày lưu khi chốt giá trị (Enter / rời ô / chọn lịch), không lưu mỗi phím.
 - **Lời nhắn ngày:** "Ngày kết thúc không được trước ngày bắt đầu" (luật cho phép trùng ngày). Toast xuất CSV chỉ khuyên "thu hẹp bộ lọc" khi nơi xuất có bộ lọc.
+- **Hạn hoàn thành khi tạo công việc:** không chặn ngày quá khứ — chỉ cảnh báo mềm "Hạn đã qua"; token không có năm (`^15/8`) đã qua trong năm nay được hiểu là **năm sau**. Ô ngày đang gõ sai chặn mọi đường lưu (kể cả hộp thoại không có `<form>` và Cmd/Ctrl+Enter).
+- **CSV Danh mục (chương trình):** tiêu đề cột đổi `Xong / Đang làm / Cần làm` -> `Done / In Progress / To Do` (ai đang dùng bảng tính đọc theo tên cột cần cập nhật).
 - **Chặn tái phạm:** ba bộ quét mã nguồn (`terminology.test.ts`, `noNativeDate.test.ts`, `terminology.spec.ts`) chạy trong `pnpm test`.
 
 ## Tài liệu khớp tính năng thật (L8)

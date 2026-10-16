@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { CalendarOff, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -20,6 +20,7 @@ import {
   type TimeOffDto,
   type TimeOffKind,
 } from './api';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 const KIND_META: Record<TimeOffKind, { label: string; className: string }> = {
   LEAVE: { label: 'Nghỉ phép', className: 'bg-primary-subtle text-primary' },
@@ -71,6 +72,7 @@ export function TimeOffPanel({
   const remove = useDeleteTimeOff();
 
   const [form, setForm] = useState<FormState | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
   const [pendingDelete, setPendingDelete] = useState<TimeOffDto | null>(null);
 
   const people: PersonOption[] = useMemo(
@@ -101,6 +103,7 @@ export function TimeOffPanel({
 
   function submit() {
     if (!form) return;
+    if (blockOnInvalidDate(formRef.current)) return;
     if (form.scope === 'person' && !form.userId)
       return toast.error('Hãy chọn người nghỉ, hoặc đổi phạm vi sang “Cả tổ chức”');
     if (!form.startDate || !form.endDate)
@@ -155,7 +158,7 @@ export function TimeOffPanel({
       </div>
 
       {form && (
-        <div className="border-b border-border bg-surface-2/60 px-5 py-4">
+        <div ref={formRef} className="border-b border-border bg-surface-2/60 px-5 py-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Phạm vi" htmlFor="off-scope">
               <SearchSelect
@@ -209,6 +212,8 @@ export function TimeOffPanel({
               <DateInput
                 id="off-end"
                 value={form.endDate}
+                min={form.startDate || undefined}
+                rangeError="Ngày kết thúc không được trước ngày bắt đầu"
                 onChange={(iso) => setForm({ ...form, endDate: iso })}
                 className="text-sm"
               />

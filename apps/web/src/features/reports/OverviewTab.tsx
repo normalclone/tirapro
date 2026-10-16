@@ -270,7 +270,7 @@ function AssigneeTable({ rows }: { rows: ReportAssignee[] }) {
           <tr className="border-b border-border text-left text-[11px] font-medium uppercase tracking-wide text-faint">
             <th className="py-2 pr-2 font-medium">Người phụ trách</th>
             <th className="w-14 py-2 px-1 text-right font-medium tabular">Tổng</th>
-            <th className="w-16 py-2 px-1 text-right font-medium tabular">
+            <th className="w-24 whitespace-nowrap py-2 px-1 text-right font-medium tabular">
               {STATUS_CATEGORY_LABEL.IN_PROGRESS}
             </th>
             <th className="w-14 py-2 px-1 text-right font-medium tabular">

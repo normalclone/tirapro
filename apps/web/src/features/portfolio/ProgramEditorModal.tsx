@@ -12,6 +12,7 @@ import { useProjects } from '@/features/projects/api';
 import { cn } from '@/lib/utils';
 import { useCreateProgram, useUpdateProgram, type ProgramDto } from './api';
 import { toDateInput } from '@/lib/dateFormat';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 /** Bảng màu nhãn chương trình — cùng hệ với nhãn nhóm để đọc nhanh trên dòng thời gian. */
 const PROGRAM_COLORS = [
@@ -113,6 +114,7 @@ export function ProgramEditorModal({
 
   async function save() {
     if (!canSave) return;
+    if (blockOnInvalidDate()) return;
     const payload = {
       name: name.trim(),
       color,

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { Check, Flag, Link2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -26,6 +26,7 @@ import {
   type MilestoneDto,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 const MILESTONE_COLORS = ['#7c3aed', '#2563eb', '#0d9488', '#16a34a', '#f59e0b', '#dc2626'];
 /** Tên màu đọc được, dùng cho nhãn trợ năng thay vì mã hex. */
@@ -285,12 +286,14 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
   const remove = useDeleteMilestone(projectId);
 
   const [name, setName] = useState('');
+  const formRef = useRef<HTMLDivElement>(null);
   const [dueDate, setDueDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [color, setColor] = useState(MILESTONE_COLORS[0]);
 
   async function add() {
     const trimmed = name.trim();
     if (!trimmed || !dueDate) return;
+    if (blockOnInvalidDate(formRef.current)) return;
     try {
       await create.mutateAsync({ name: trimmed, dueDate: dateInputToIso(dueDate), color });
       toast.success('Đã thêm cột mốc');
@@ -398,7 +401,10 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
       </QueryBoundary>
 
       {canManage && (
-        <div className="mt-3 space-y-2 rounded-md border border-border bg-surface-2 p-3">
+        <div
+          ref={formRef}
+          className="mt-3 space-y-2 rounded-md border border-border bg-surface-2 p-3"
+        >
           <div>
             <label className="mb-1 block text-xs font-medium text-muted" htmlFor="ms-name">
               Tên cột mốc

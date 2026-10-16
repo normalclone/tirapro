@@ -33,11 +33,11 @@ const CAN_PICK =
   typeof HTMLInputElement.prototype.showPicker === 'function';
 
 /** Thông điệp lỗi của chữ đang gõ ('' nếu trống hoặc hợp lệ). */
-function dateError(text: string, min?: string, max?: string): string {
+function dateError(text: string, min?: string, max?: string, rangeError = RANGE_ERR): string {
   if (text === '') return '';
   const iso = parseViDate(text);
   if (iso === null) return DATE_ERR;
-  return inDateRange(iso, min, max) ? '' : RANGE_ERR;
+  return inDateRange(iso, min, max) ? '' : rangeError;
 }
 
 /**
@@ -98,6 +98,8 @@ export interface DateInputProps {
   ariaLabel?: string;
   min?: string;
   max?: string;
+  /** Câu báo khi ngày nằm ngoài [min, max] (mặc định chung chung; nên nói rõ, vd "Ngày kết thúc không được trước ngày bắt đầu"). */
+  rangeError?: string;
   required?: boolean;
   disabled?: boolean;
   className?: string;
@@ -112,6 +114,7 @@ export function DateInput({
   ariaLabel,
   min,
   max,
+  rangeError,
   required,
   disabled,
   className,
@@ -132,7 +135,7 @@ export function DateInput({
     setTouched(false);
   }, [value]);
 
-  const err = dateError(text, min, max);
+  const err = dateError(text, min, max, rangeError);
   const showErr = err !== '' && (touched || text.length === 10);
   useCustomValidity(inputRef, err);
   useEffect(() => onErrorChange?.(err), [err, onErrorChange]);

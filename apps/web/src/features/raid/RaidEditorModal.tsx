@@ -29,6 +29,7 @@ import {
   SCALE,
   raidLevelOf,
 } from './constants';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 function Field({
   label,
@@ -164,6 +165,7 @@ export function RaidEditorModal({
 
   async function save() {
     if (!canSave) return;
+    if (blockOnInvalidDate()) return;
     const payload = {
       kind,
       title: title.trim(),

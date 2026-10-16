@@ -12,20 +12,21 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const toLocal = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-export function parseDue(val: string): string | undefined {
+/** `now` chỉ để test. Ngày không có năm (`15/8`) đã qua trong năm nay → hiểu là năm sau. */
+export function parseDue(val: string, now: Date = new Date()): string | undefined {
   const v = normalize(val);
   const at17 = (d: Date) => {
     d.setHours(17, 0, 0, 0);
     return toLocal(d);
   };
-  if (v === 'nay' || v === 'homnay') return at17(new Date());
+  if (v === 'nay' || v === 'homnay') return at17(new Date(now));
   if (v === 'mai' || v === 'ngaymai') {
-    const d = new Date();
+    const d = new Date(now);
     d.setDate(d.getDate() + 1);
     return at17(d);
   }
   if (v === 'mot' || v === 'ngaymot' || v === 'kia') {
-    const d = new Date();
+    const d = new Date(now);
     d.setDate(d.getDate() + 2);
     return at17(d);
   }
@@ -33,7 +34,7 @@ export function parseDue(val: string): string | undefined {
   if (off) {
     const n = Number(off[1]);
     const unit = off[2]!;
-    const d = new Date();
+    const d = new Date(now);
     if (unit === 'w' || unit === 'tuan') d.setDate(d.getDate() + n * 7);
     else if (unit === 'm' || unit === 'thang') d.setMonth(d.getMonth() + n);
     else d.setDate(d.getDate() + n);
@@ -50,7 +51,7 @@ export function parseDue(val: string): string | undefined {
     chunhat: 0,
   };
   if (v in wd) {
-    const d = new Date();
+    const d = new Date(now);
     let add = (wd[v]! - d.getDay() + 7) % 7;
     if (add === 0) add = 7;
     d.setDate(d.getDate() + add);
@@ -58,10 +59,18 @@ export function parseDue(val: string): string | undefined {
   }
   const md = /^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/.exec(val);
   if (md) {
-    let year = md[3] ? Number(md[3]) : new Date().getFullYear();
+    const day = Number(md[1]);
+    const month = Number(md[2]) - 1;
+    let year = md[3] ? Number(md[3]) : now.getFullYear();
     if (year < 100) year += 2000;
-    const d = new Date(year, Number(md[2]) - 1, Number(md[1]), 17, 0, 0, 0);
-    if (!Number.isNaN(d.getTime())) return toLocal(d);
+    let d = new Date(year, month, day, 17, 0, 0, 0);
+    if (!md[3]) {
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      if (d < today) d = new Date(year + 1, month, day, 17, 0, 0, 0);
+    }
+    // Ngày không có thật (31/02) làm Date tràn sang tháng sau → bỏ.
+    if (!Number.isNaN(d.getTime()) && d.getDate() === day && d.getMonth() === month)
+      return toLocal(d);
   }
   return undefined;
 }

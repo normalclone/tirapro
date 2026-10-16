@@ -607,7 +607,7 @@ function ProjectStatsTable({ projects }: { projects: OverviewProject[] }) {
         </span>
         <span className="hidden w-40 md:block print:block print:w-24">Sprint đang chạy</span>
         <span className="w-14 text-right tabular print:w-12">Tổng</span>
-        <span className="w-16 text-right tabular print:w-12">
+        <span className="w-20 whitespace-nowrap text-right tabular print:w-16">
           {STATUS_CATEGORY_LABEL.IN_PROGRESS}
         </span>
         <span className="w-16 text-right tabular print:w-12">{STATUS_CATEGORY_LABEL.DONE}</span>
@@ -669,7 +669,7 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
         <span className="w-14 text-right text-sm tabular text-ink-strong print:w-12">
           {p.total}
         </span>
-        <span className="w-16 text-right text-sm tabular text-status-progress print:w-12">
+        <span className="w-20 text-right text-sm tabular text-status-progress print:w-16">
           {p.inProgress}
         </span>
         <span className="w-16 text-right text-sm tabular text-status-done print:w-12">

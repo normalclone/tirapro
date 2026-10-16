@@ -25,7 +25,7 @@ import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
 import { useProjectIssues } from './api';
 import { epicChoices, parentChoices } from '@/lib/epic';
-import { toDateInput } from '@/lib/dateFormat';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 import { TokenTitleInput } from './TokenTitleInput';
 import {
   changedTokenFields,
@@ -337,10 +337,14 @@ export function CreateIssueModal() {
   const trimmed = summary.trim();
   const canSubmit =
     !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
+  // Cảnh báo mềm: không chặn gửi (đường Tạo / Tạo & nhập tiếp / Cmd+Enter đều như nhau).
+  const dueInPast = due !== '' && new Date(due).getTime() < Date.now();
   const title = preset.subtask ? 'Tạo việc con' : 'Tạo công việc';
 
   async function doCreate() {
     if (!canSubmit) return null;
+    // Ô ngày/giờ đang gõ sai: chặn mọi đường gửi (nút Tạo & nhập tiếp, Cmd+Enter không đi qua form native).
+    if (blockOnInvalidDate()) return null;
     // Áp token gõ nhanh còn sót (nếu chưa blur) — token thắng giá trị đang chọn. Chỉ lược token khi TẠO.
     const tk = parseTitleTokens(summary, tokenCtx);
     const finalSummary = tk.clean.trim();
@@ -668,8 +672,9 @@ export function CreateIssueModal() {
               aria-label="Điểm ước lượng"
             />
           </Field>
-          {/* Ô ngày + giờ cần cả một cột (ô ngày dd/MM/yyyy + ô giờ HH:mm) nên không chung hàng với Điểm. */}
+          {/* Cả hàng: ô ngày dd/MM/yyyy + ô giờ HH:mm cần chỗ, và không để cột phải trống. */}
           <Field
+            className="sm:col-span-2"
             label="Hạn hoàn thành"
             hint="(tùy chọn)"
             title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
@@ -677,10 +682,14 @@ export function CreateIssueModal() {
             <DateTimeInput
               value={due}
               onChange={setDue}
-              min={toDateInput(new Date())}
               defaultTime="17:00"
               ariaLabel="Hạn hoàn thành"
             />
+            {dueInPast && (
+              <p role="status" className="mt-1 text-xs text-warning-ink">
+                Hạn đã qua — việc sẽ hiện quá hạn ngay khi tạo. Vẫn tạo được.
+              </p>
+            )}
           </Field>
 
           {(!hideEpic || !hideParent) && (

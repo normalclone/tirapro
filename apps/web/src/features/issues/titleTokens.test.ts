@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   changedTokenFields,
+  parseDue,
   parseTitleTokens,
   shouldAcceptSuggestionOnKey,
   stripPartialTail,
@@ -181,5 +182,24 @@ describe('unmatchedHint', () => {
     expect(h).toContain('~5');
     expect(h).toContain('mai');
     expect(h.match(/mức ưu tiên/g)).toHaveLength(1);
+  });
+});
+
+describe('parseDue: ngày không có năm', () => {
+  const now = new Date(2026, 9, 16, 9, 0); // 16/10/2026
+  it('ngày còn lại trong năm → năm nay', () => {
+    expect(parseDue('15/12', now)).toBe('2026-12-15T17:00');
+    expect(parseDue('16/10', now)).toBe('2026-10-16T17:00'); // hôm nay không phải "đã qua"
+  });
+  it('đã qua trong năm nay → hiểu là năm sau', () => {
+    expect(parseDue('15/8', now)).toBe('2027-08-15T17:00');
+    expect(parseDue('15/10', now)).toBe('2027-10-15T17:00');
+  });
+  it('có năm → giữ nguyên kể cả quá khứ (chỉ cảnh báo mềm ở form)', () => {
+    expect(parseDue('15/8/2026', now)).toBe('2026-08-15T17:00');
+    expect(parseDue('15/8/25', now)).toBe('2025-08-15T17:00');
+  });
+  it('ngày không có thật → không hiểu', () => {
+    expect(parseDue('31/2', now)).toBeUndefined();
   });
 });

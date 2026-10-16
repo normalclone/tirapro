@@ -70,6 +70,9 @@ describe('thuật ngữ (UX_CONVENTIONS §19) — bộ B', () => {
     });
     expect([...new Set(found)]).toEqual([]);
   });
+  it('không còn "worklog" trong chuỗi tiếng Việt (dùng "nhật ký thời gian")', () => {
+    expect(hits(/["'`>][^"'`<>]*[À-ỹ][^"'`<>]*\bworklogs?\b/i)).toEqual([]);
+  });
   it('"vấn đề" chỉ còn ở sổ rủi ro (RAID)', () => {
     // Ngoại lệ: trang Hướng dẫn giải thích bốn nhóm RAID (dòng nhắc "giả định").
     const raidDoc = (l: string) => !/giả định/.test(l);

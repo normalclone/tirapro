@@ -174,7 +174,7 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
             const done = () => {
               setFormOpen(false);
               setEditing(null);
-              toast.success(editing ? 'Đã cập nhật worklog' : 'Đã ghi thời gian', {
+              toast.success(editing ? 'Đã cập nhật nhật ký thời gian' : 'Đã ghi thời gian', {
                 duration: 2000,
               });
             };
@@ -223,8 +223,8 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7"
-                        title="Sửa worklog"
-                        aria-label="Sửa worklog"
+                        title="Sửa nhật ký thời gian"
+                        aria-label="Sửa nhật ký thời gian"
                         onClick={() => {
                           setEditing(w);
                           setFormOpen(true);
@@ -236,8 +236,8 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-muted hover:text-danger"
-                        title="Xoá worklog"
-                        aria-label="Xoá worklog"
+                        title="Xoá nhật ký thời gian"
+                        aria-label="Xoá nhật ký thời gian"
                         onClick={() => setDeleting(w)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -267,7 +267,7 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
           remove.mutate(deleting.id, {
             onSuccess: () => {
               setDeleting(null);
-              toast.success('Đã xoá worklog', { duration: 2000 });
+              toast.success('Đã xoá nhật ký thời gian', { duration: 2000 });
             },
             onError: (e) => toast.error(apiErrorMessage(e)),
           });
@@ -332,7 +332,7 @@ function WorklogForm({
       onKeyDown={(e) => {
         if (e.key === 'Escape') onCancel();
       }}
-      aria-label={initial ? 'Sửa worklog' : 'Ghi thời gian'}
+      aria-label={initial ? 'Sửa nhật ký thời gian' : 'Ghi thời gian'}
     >
       <div>
         <label htmlFor="wl-time" className="mb-1 block text-xs font-medium text-muted">

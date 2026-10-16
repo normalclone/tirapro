@@ -9,6 +9,7 @@ import { DateInput } from '@/components/ui/DateInput';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { apiErrorMessage } from '@/lib/api';
 import { useDeleteSprint, useUpdateSprint } from './api';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : '');
 /** Ngày (yyyy-mm-dd) → ISO UTC 00:00 — burndown cũng tính theo ngày UTC nên không lệch ngày. */
@@ -40,8 +41,8 @@ export function SprintEditDialog({
   const [end, setEnd] = useState(toDateInput(sprint.endDate));
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const dateError =
-    start && end && end < start ? 'Ngày kết thúc không được trước ngày bắt đầu.' : null;
+  // Câu báo hiện MỘT lần, ngay tại ô Ngày kết thúc (DateInput `rangeError`); ở đây chỉ để khoá nút Lưu.
+  const dateError = !!start && !!end && end < start;
   const dirty =
     (future && name.trim() !== sprint.name) ||
     goal.trim() !== (sprint.goal ?? '') ||
@@ -50,6 +51,7 @@ export function SprintEditDialog({
   const canSave = dirty && !!name.trim() && !dateError && !update.isPending;
 
   async function save() {
+    if (blockOnInvalidDate()) return;
     try {
       await update.mutateAsync({
         id: sprint.id,
@@ -169,16 +171,12 @@ export function SprintEditDialog({
                 id="sprint-end"
                 value={end}
                 min={start || undefined}
+                rangeError="Ngày kết thúc không được trước ngày bắt đầu"
                 onChange={setEnd}
                 className="text-sm"
               />
             </div>
           </div>
-          {dateError && (
-            <p role="alert" className="text-xs text-danger">
-              {dateError}
-            </p>
-          )}
         </div>
       </Dialog>
 

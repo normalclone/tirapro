@@ -454,8 +454,8 @@ export function DocumentationPage() {
               <H3>Báo một bug</H3>
               <Steps items={[
                 <>Mở <Kbd>⌘</Kbd> <Kbd>K</Kbd> → <em>Báo lỗi</em> (hoặc nút <em>Báo lỗi</em> ở đầu Bảng việc / nút nổi).</>,
-                'Nhập tiêu đề ngắn gọn; chế độ Cơ bản chỉ cần thêm mô tả ngắn (môi trường và mức nghiêm trọng mặc định tự điền), chế độ Nâng cao có mẫu tái hiện, mức nghiêm trọng, môi trường (trình duyệt / hệ điều hành / bản build / URL) và ảnh dán trực tiếp.',
-                'Nếu có bug tương tự, hệ thống gợi ý: chọn “Thêm ghi chú vào bug cũ” (bạn thành người theo dõi) hoặc “Vẫn tạo mới”.',
+                'Nhập tiêu đề ngắn gọn; chế độ Cơ bản chỉ bắt buộc tiêu đề (mô tả ngắn là tuỳ chọn; môi trường và mức nghiêm trọng mặc định tự điền), chế độ Nâng cao có mẫu tái hiện, mức nghiêm trọng, môi trường (trình duyệt / hệ điều hành / bản build / URL) và ảnh dán trực tiếp.',
+                'Nếu có bug tương tự, hệ thống gợi ý: chọn “Thêm ghi chú vào <mã bug cũ>” (bạn thành người theo dõi bug đó) hoặc “Vẫn tạo mới”.',
                 <>Gửi. Bạn được tự động <strong>theo dõi</strong> công việc đó và sẽ nhận thông báo khi có cập nhật.</>,
               ]} />
             </section>
@@ -588,7 +588,7 @@ export function DocumentationPage() {
                 ['CFD (Cumulative Flow)', 'Luồng công việc qua các trạng thái — phát hiện nghẽn.'],
                 ['Tổng kết sprint — hiện sau khi Kết thúc sprint', 'Những gì hoàn tất / dở dang và việc dở được chuyển đi đâu.'],
                 ['QA', 'Bug đang mở theo mức nghiêm trọng, tỷ lệ mở lại, thời gian đóng trung bình, theo phiên bản.'],
-                ['Dashboard tuỳ biến — Tổng quan → bộ chọn dashboard', 'Ghép các widget số liệu; chia sẻ riêng tư, cả không gian làm việc, theo dự án hoặc theo nhóm.'],
+                ['Dashboard tuỳ biến — Tổng quan → bộ chọn dashboard', 'Bộ chọn ở đầu Tổng quan (mặc định “Tổng quan chung”): chọn “Tạo dashboard mới…” để ghép widget kéo-thả. Chia sẻ: Chỉ mình tôi · Cả không gian làm việc · Thành viên dự án · Thành viên nhóm. Chỉ chủ dashboard được sửa.'],
               ]} />
               <H3>Dành cho lãnh đạo</H3>
               <div className="border-t border-border">

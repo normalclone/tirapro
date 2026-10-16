@@ -10,6 +10,7 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useProjects } from '@/features/projects/api';
 import { useCreateContract, useUpdateContract, formatMoney, type ContractDto } from './api';
 import { toDateInput } from '@/lib/dateFormat';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 const CURRENCIES = [
   { value: 'VND', label: 'VND — Đồng' },
@@ -113,6 +114,7 @@ export function ContractEditorModal({
 
   async function save() {
     if (!canSave || !clientId) return;
+    if (blockOnInvalidDate()) return;
     const payload = {
       name: name.trim(),
       code: code.trim() || null,

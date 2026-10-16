@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pencil, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -21,6 +21,7 @@ import {
   useUpdateAllocation,
   type AllocationDto,
 } from './api';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 interface FormState {
   id: string | null;
@@ -64,6 +65,7 @@ export function AllocationsPanel({
   const remove = useDeleteAllocation();
 
   const [form, setForm] = useState<FormState | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
   const [pendingDelete, setPendingDelete] = useState<AllocationDto | null>(null);
 
   const people: PersonOption[] = useMemo(
@@ -102,6 +104,7 @@ export function AllocationsPanel({
 
   function submit() {
     if (!form) return;
+    if (blockOnInvalidDate(formRef.current)) return;
     const percent = Number(form.percent);
     if (!form.userId) return toast.error('Hãy chọn người được phân bổ');
     if (!form.projectId) return toast.error('Hãy chọn dự án');
@@ -161,7 +164,7 @@ export function AllocationsPanel({
       </div>
 
       {form && (
-        <div className="border-b border-border bg-surface-2/60 px-5 py-4">
+        <div ref={formRef} className="border-b border-border bg-surface-2/60 px-5 py-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Thành viên" htmlFor="alloc-user">
               <PeoplePicker
@@ -208,6 +211,8 @@ export function AllocationsPanel({
               <DateInput
                 id="alloc-end"
                 value={form.endDate}
+                min={form.startDate || undefined}
+                rangeError="Ngày kết thúc không được trước ngày bắt đầu"
                 onChange={(iso) => setForm({ ...form, endDate: iso })}
                 className="text-sm"
               />

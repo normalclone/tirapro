@@ -1131,7 +1131,7 @@ export class JiraImportService implements OnApplicationBootstrap {
         fs.readFile(path.join(this.dir(), `${analyzeId}.json`), 'utf8'),
       ]);
       const meta = JSON.parse(metaRaw) as AnalyzeMeta;
-      if (meta.workspaceId !== workspaceId) throw new Error('khác workspace');
+      if (meta.workspaceId !== workspaceId) throw new Error('khác không gian làm việc');
       if (Date.now() - stat.mtimeMs > ANALYZE_TTL_MS) {
         await this.removeFiles(analyzeId);
         throw new Error('hết hạn');
