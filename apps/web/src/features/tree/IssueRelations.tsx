@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ListTree } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import { byPriorityThenStatus } from '@/lib/issueOrder';
-import { childrenForPanel } from '@/lib/epic';
+import { childrenForPanel, epicTaskProgress } from '@/lib/epic';
 import { isEpicIssue } from '@/lib/issueRefs';
 import { subtreeProgress } from '@/lib/issueTree';
 import { TaskProgress } from '@/components/ui/TaskProgress';
@@ -23,7 +23,11 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
     [issues, issue],
   );
   const isEpic = isEpicIssue(issue);
-  const progress = useMemo(() => subtreeProgress(issues, issue.id), [issues, issue.id]);
+  // Epic: tiến độ theo đúng tập thành viên đang liệt kê (số việc khớp danh sách, % theo điểm); việc thường: cả nhánh con cháu.
+  const progress = useMemo(
+    () => (isEpic ? epicTaskProgress(issues, issue.id) : subtreeProgress(issues, issue.id)),
+    [issues, issue.id, isEpic],
+  );
 
   // Chỉ hiển thị mục Việc con khi thực sự có việc con.
   if (children.length === 0) return null;

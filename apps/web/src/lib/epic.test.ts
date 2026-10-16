@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyEpicFilter,
+  buildListProgressMap,
+  epicDropId,
+  epicProgressLabel,
+  parseEpicDropId,
+  epicTaskProgress,
   childrenForPanel,
   epicChoices,
   epicCounts,
@@ -135,5 +140,92 @@ describe('childrenForPanel khớp epicProgress', () => {
         .map((i) => i.id)
         .sort(),
     ).toEqual(['both', 'sub']);
+  });
+});
+
+describe('một định nghĩa thành viên epic (danh sách = tiến độ = panel = lọc = đếm)', () => {
+  const e1 = mk('e1', { t: 'epic' });
+  const e2 = mk('e2', { t: 'epic' });
+  const p = mk('p');
+  const inE1 = mk('inE1', { epicId: 'e1', storyPoints: 2 });
+  const viaParent = mk('viaParent', { parentId: 'e1', storyPoints: 3, done: true });
+  const underP = mk('underP', { parentId: 'p', epicId: 'e1', storyPoints: 5 }); // cha thường + gắn epic
+  const subOfE = mk('subOfE', { t: 'sub', parentId: 'e1', storyPoints: 1 }); // sub-task: không phải thành viên
+  const inE2 = mk('inE2', { epicId: 'e2' });
+  const all = [e1, e2, p, inE1, viaParent, underP, subOfE, inE2];
+  const byId = new Map(all.map((i) => [i.id, i]));
+  const ids = (l: { id: string }[]) => l.map((i) => i.id).sort();
+
+  it('sub-task không là thành viên: panel Epic không liệt kê (khớp epicProgress)', () => {
+    expect(ids(childrenForPanel(all, e1))).toEqual(['inE1', 'underP', 'viaParent']);
+    expect(childrenForPanel(all, e1)).toHaveLength(epicProgress(all, 'e1').totalCount);
+  });
+  it('tiến độ, panel, lọc và đếm cùng một tập', () => {
+    const members = ids(epicMembers(all, 'e1'));
+    expect(ids(applyEpicFilter(all, 'e1', byId))).toEqual(members);
+    expect(ids(applyEpicFilter(all, 'none', byId))).toContain('subOfE'); // sub-task không thuộc epic nào
+    expect(epicCounts(all).get('e1')).toBe(members.length);
+    expect(epicProgress(all, 'e1', byId)).toMatchObject({
+      totalPoints: 10,
+      donePoints: 3,
+      totalCount: 3,
+    });
+  });
+  it('việc vừa có cha là epic X vừa epicId = Y: chỉ thuộc MỘT epic (epicId thắng, như ô Epic hiển thị)', () => {
+    const dual = mk('dual', { parentId: 'e1', epicId: 'e2' });
+    const l = [...all, dual];
+    expect(ids(epicMembers(l, 'e2'))).toContain('dual');
+    expect(ids(epicMembers(l, 'e1'))).not.toContain('dual');
+    expect(ids(childrenForPanel(l, e1))).not.toContain('dual');
+  });
+  it('epic không là thành viên của chính nó hay của epic khác', () => {
+    expect(ids(epicMembers([e1, mk('e3', { t: 'epic', epicId: 'e1' })], 'e1'))).toEqual([]);
+  });
+  it('epicTaskProgress: đếm theo thành viên, % theo điểm — khớp số việc ở panel', () => {
+    expect(epicTaskProgress(all, 'e1')).toEqual({
+      total: 3,
+      done: 1,
+      inProgress: 0,
+      todo: 2,
+      pct: 30,
+    });
+  });
+});
+
+describe('buildListProgressMap (dòng/thẻ epic dùng tập thành viên)', () => {
+  const e = mk('e', { t: 'epic' });
+  const p = mk('p');
+  const list = [
+    e,
+    p,
+    mk('a', { epicId: 'e', storyPoints: 2, done: true }),
+    mk('b', { parentId: 'p', epicId: 'e', storyPoints: 2 }),
+  ];
+  it('epic: số việc bằng thành viên (kể cả việc có cha thường); việc thường giữ tiến độ cây', () => {
+    const m = buildListProgressMap(list);
+    expect(m.get('e')).toMatchObject({ total: 2, done: 1, pct: 50 });
+    expect(m.get('p')).toMatchObject({ total: 1 });
+  });
+  it('epic không có thành viên => không có thanh', () =>
+    expect(buildListProgressMap([e]).has('e')).toBe(false));
+});
+
+describe('epicProgressLabel', () => {
+  const p = { donePoints: 5, totalPoints: 13, doneCount: 1, totalCount: 4, pct: 38 };
+  it('có điểm: x/y điểm · n việc', () => expect(epicProgressLabel(p)).toBe('5/13 điểm · 4 việc'));
+  it('chưa có điểm: n/m việc', () =>
+    expect(
+      epicProgressLabel({ ...p, donePoints: 0, totalPoints: 0, doneCount: 2, totalCount: 4 }),
+    ).toBe('2/4 việc'));
+});
+
+describe('epic drop id', () => {
+  it('khứ hồi', () => {
+    expect(parseEpicDropId(epicDropId('e1'))).toBe('e1');
+    expect(parseEpicDropId(epicDropId('none'))).toBe('none');
+  });
+  it('id không phải epic => null (id sprint/backlog/dòng việc)', () => {
+    expect(parseEpicDropId('backlog')).toBeNull();
+    expect(parseEpicDropId('cm1abc')).toBeNull();
   });
 });
