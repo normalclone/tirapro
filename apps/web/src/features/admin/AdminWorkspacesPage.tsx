@@ -10,6 +10,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAdminWorkspaces, usePatchWorkspace, type AdminWorkspace } from './api';
 import { fmtInt, relTime } from './_ui';
+import { ScrollX } from '@/components/ui/ScrollX';
 
 const PLANS = ['FREE', 'PRO', 'ENTERPRISE'] as const;
 const PLAN_STYLE: Record<string, string> = {
@@ -121,7 +122,7 @@ export function AdminWorkspacesPage() {
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <ScrollX className="rounded-lg border border-border">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-2 text-left text-xs text-faint">
@@ -206,7 +207,7 @@ export function AdminWorkspacesPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       )}
     </div>
   );

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Avatar } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
+import { CHIP_TOUCH_HIT } from '@/lib/touchHit';
 
 /** Giá trị đặc biệt cho bộ lọc: '' = mọi người, dưới đây = việc chưa có người phụ trách. */
 export const ASSIGNEE_UNASSIGNED = '__unassigned__';
@@ -111,6 +112,7 @@ export function AssigneeFilter({
           }
           className={cn(
             'inline-flex h-7 items-center gap-1.5 rounded-full border pl-1.5 pr-2 text-xs font-medium transition-colors',
+            CHIP_TOUCH_HIT,
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
             active
               ? 'border-transparent bg-primary-subtle text-primary'

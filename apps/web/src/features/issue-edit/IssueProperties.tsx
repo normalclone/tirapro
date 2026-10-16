@@ -30,7 +30,7 @@ import { DateInput, DateTimeInput } from '@/components/ui/DateInput';
 
 /** Trigger SearchSelect ở dạng badge/label (không viền, hover nền) — bấm để đổi. */
 export const INLINE_TRIGGER =
-  'inline-flex h-auto w-auto gap-1 border-transparent bg-transparent px-1 py-0.5 hover:bg-surface-2';
+  'inline-flex h-auto w-auto gap-1 border-transparent bg-transparent px-1 py-0.5 hover:bg-surface-2 [@media(pointer:coarse)]:min-h-9';
 
 /** Khung 1 mục (tiêu đề + gạch chân) — không phải card có viền. */
 export function PanelSection({ title, children }: { title: string; children: ReactNode }) {
@@ -426,7 +426,7 @@ export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; ca
       type="button"
       onClick={() => setEditing(true)}
       title={`${tip} Bấm để đặt lại.`}
-      className="-mx-1 rounded px-1 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+      className="-mx-1 rounded px-1 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-9"
     >
       {text ?? <span className="text-faint">Đặt điểm ước lượng</span>}
     </button>
@@ -628,7 +628,7 @@ function DateRowShell({
             valueTip ? `${valueTip} — bấm để đổi` : `Bấm để đặt hoặc đổi ${label.toLowerCase()}`
           }
           className={cn(
-            'rounded px-1.5 py-0.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+            'rounded px-1.5 py-0.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-9',
             display ? valueClass : 'text-faint',
           )}
         >

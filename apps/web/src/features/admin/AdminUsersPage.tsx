@@ -17,6 +17,7 @@ import { passwordPolicyError } from '@/features/members/passwordPolicy';
 import { AccountActionsMenu } from './AccountActionsMenu';
 import { filterAccounts, type AccountStatusFilter } from './accountFilter';
 import { useAdminUsers, useCreateAdminUser, useUpdateAdminUser, type AdminUser } from './api';
+import { SWITCH_TOUCH_HIT } from '@/lib/touchHit';
 
 const STATUS_FILTERS: { label: string; value: AccountStatusFilter | undefined }[] = [
   { label: 'Tất cả', value: undefined },
@@ -127,10 +128,10 @@ export function AdminUsersPage() {
           ) : (
             <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
               {visible.map((u) => (
-                <li key={u.id} className="flex items-center gap-3 px-4 py-3">
+                <li key={u.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
                   <Avatar name={u.displayName} src={u.avatarUrl} size={36} />
                   <div className={cn('min-w-0 flex-1', u.status === 'DEACTIVATED' && 'opacity-60')}>
-                    <p className="flex items-center gap-2 truncate text-sm font-medium text-ink">
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-ink sm:flex-nowrap">
                       {u.displayName}
                       {u.isSystemAdmin && (
                         <Badge className="bg-primary-subtle text-primary">Admin hệ thống</Badge>
@@ -151,7 +152,8 @@ export function AdminUsersPage() {
                         : 'Chưa từng đăng nhập'}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-4">
+                  {/* < sm: công tắc xuống hàng riêng, xếp dọc (nhãn trái, công tắc phải); menu thao tác lên cạnh tên. */}
+                  <div className="flex shrink-0 items-center gap-4 max-sm:order-3 max-sm:w-full max-sm:flex-col max-sm:items-stretch max-sm:gap-0">
                     <Toggle
                       label="Được lập không gian làm việc"
                       on={u.canCreateWorkspace}
@@ -165,7 +167,11 @@ export function AdminUsersPage() {
                       onChange={() => toggle(u, 'isSystemAdmin')}
                     />
                   </div>
-                  {u.id !== me?.id && !u.isAutomation && <AccountActionsMenu user={u} />}
+                  {u.id !== me?.id && !u.isAutomation && (
+                    <span className="max-sm:order-2">
+                      <AccountActionsMenu user={u} />
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -191,7 +197,12 @@ function Toggle({
   onChange: () => void;
 }) {
   return (
-    <label className={cn('flex items-center gap-2 text-xs', disabled && 'opacity-50')}>
+    <label
+      className={cn(
+        'flex items-center gap-2 text-xs max-sm:justify-between [@media(pointer:coarse)]:max-sm:min-h-11',
+        disabled && 'opacity-50',
+      )}
+    >
       <span className="text-muted">{label}</span>
       <button
         type="button"
@@ -202,6 +213,7 @@ function Toggle({
         onClick={onChange}
         className={cn(
           'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+          SWITCH_TOUCH_HIT,
           on ? 'bg-primary' : 'bg-surface-3',
         )}
       >

@@ -65,7 +65,7 @@ export function ParticipantsRow({ issueId, projectId, owner }: ParticipantsRowPr
               type="button"
               aria-label="Chọn người tham gia"
               title="Bấm để thêm hoặc bớt người tham gia"
-              className="inline-flex max-w-[70%] items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              className="inline-flex max-w-[70%] items-center gap-1.5 rounded px-1 py-0.5 [@media(pointer:coarse)]:min-h-9 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               {list.length === 0 ? (
                 <span className="flex items-center gap-1 text-faint">

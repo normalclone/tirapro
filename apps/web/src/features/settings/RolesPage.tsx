@@ -261,7 +261,7 @@ function RoleRow({ role, onOpen }: { role: RoleDto; onOpen: () => void }) {
       type="button"
       onClick={onOpen}
       className={cn(
-        'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors',
+        'flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-3 py-2.5 text-left transition-colors',
         'hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
       )}
     >
@@ -273,9 +273,16 @@ function RoleRow({ role, onOpen }: { role: RoleDto; onOpen: () => void }) {
         </span>
       )}
       {role.description && (
-        <span className="min-w-0 flex-1 truncate text-sm text-muted">{role.description}</span>
+        <span className="min-w-0 text-sm text-muted max-sm:order-last max-sm:basis-full max-sm:line-clamp-2 sm:flex-1 sm:truncate">
+          {role.description}
+        </span>
       )}
-      <span className={cn('ml-auto shrink-0 text-xs text-faint', role.description && 'ml-3')}>
+      <span
+        className={cn(
+          'ml-auto shrink-0 text-xs text-faint max-sm:ml-0 max-sm:basis-full',
+          role.description && 'sm:ml-3',
+        )}
+      >
         {memberCount} thành viên · {permCount} quyền
       </span>
     </button>

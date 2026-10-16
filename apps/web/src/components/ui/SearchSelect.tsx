@@ -112,7 +112,7 @@ export function SearchSelect({
               onChange={(e) => setQ(e.target.value)}
               placeholder={searchPlaceholder}
               autoFocus
-              className="h-8 text-sm"
+              className="h-8 text-sm max-sm:text-[16px]"
               onKeyDown={(e) => {
                 const first = filtered.find((o) => !o.disabled);
                 if (e.key === 'Enter' && first) {

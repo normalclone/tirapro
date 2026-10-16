@@ -13,6 +13,7 @@ import {
   parseIntegrationSection,
   type IntegrationSectionId,
 } from './sections';
+import { useScrollFade } from '@/lib/useScrollFade';
 
 /* ------------------------------------------------------------------ */
 /* Submenu — rail dọc trên desktop, hàng pill cuộn ngang trên mobile  */
@@ -37,15 +38,18 @@ export function IntegrationsPage() {
   }, [fromUrl]);
   // Mục đang chọn không còn trong danh sách (cờ tắt) → rơi về Telegram.
   const active = INTEGRATION_NAV.some((s) => s.id === picked) ? picked : 'telegram';
+  const navFade = useScrollFade<HTMLElement>(active, '[aria-current="page"]');
 
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       {/* Submenu: rail dọc trên desktop, hàng pill cuộn ngang trên mobile */}
       <nav
         aria-label="Mục tích hợp"
+        ref={navFade.ref}
+        style={navFade.style}
         className={cn(
           'shrink-0 border-border bg-surface',
-          'flex gap-1 overflow-x-auto border-b px-3 py-2',
+          'scroll-fade-x relative flex gap-1 overflow-x-auto border-b px-3 py-2 max-lg:scrollbar-none',
           'lg:w-60 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
         )}
       >

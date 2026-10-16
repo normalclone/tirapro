@@ -175,6 +175,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         aria-label="Điều hướng chính"
         className={cn(
           'fixed inset-y-0 left-0 z-nav-drawer flex w-64 flex-col border-r border-border bg-surface',
+          // Xoay ngang iPhone: drawer tránh tai thỏ/thanh home (root đã đệm cho phần còn lại).
+          'max-lg:pb-[env(safe-area-inset-bottom)] max-lg:pl-[env(safe-area-inset-left)] max-lg:pt-[env(safe-area-inset-top)]',
           'transition-transform duration-200 ease-out-quart motion-reduce:transition-none',
           'lg:static lg:z-auto lg:w-48 lg:shrink-0 lg:translate-x-0 lg:shadow-none',
           'print:hidden',

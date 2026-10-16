@@ -1,3 +1,4 @@
 {
-  "/p/:project/gantt|small-targets": "Gantt cuộn ngang trong khung; thanh công việc nhỏ có chủ đích. LƯU Ý: small-targets vốn chỉ là cảnh báo (WARN_ONLY) — mục này chỉ ẩn khỏi báo cáo, không phải ngoại lệ thật của loại chặn."
+  "/manage/risks|covered-by-fixed~button.flex.h-11.w-full": "Chỉ ô ma trận rủi ro 5×5 (button.flex.h-11.w-full): ma trận cao hơn màn hình nên nút nổi (FAB) phủ tạm một ô góc dưới-phải khi trang ở đầu; cuộn nhẹ là ô lộ ra (trang chừa đệm đáy pb-28). Lỗi che nút khác trên route này (vd Sửa/Xoá) KHÔNG nằm trong ngoại lệ.",
+  "/p/:project/gantt|small-targets~button.absolute.top-1/2.flex": "8 phần tử đều là THANH công việc trên biểu đồ (button.absolute.top-1/2.flex, cao 26px = ROW_H-14), không phải nút thanh công cụ: thanh có chiều cao cố định theo hàng 40px; cảm ứng chỉ xem + cuộn (kéo ngày bằng cảm ứng ngoài phạm vi). small-targets vốn chỉ là cảnh báo (WARN_ONLY) nên mục này chỉ ẩn khỏi báo cáo."
 }

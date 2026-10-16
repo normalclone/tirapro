@@ -24,9 +24,11 @@ import { ROOT_DROP_ID, rowDropId, useTreeDrag, type DropState } from './useTreeD
 /**
  * Bố cục cột dùng chung cho hàng tiêu đề (header) và mọi hàng dữ liệu, để các cột
  * luôn thẳng hàng dù nội dung dài ngắn khác nhau. Cột đầu co giãn (tiêu đề), phần
- * còn lại cố định bề rộng cho dễ quét mắt.
+ * còn lại cố định bề rộng cho dễ quét mắt. Dưới `sm` chỉ còn cột tiêu đề (4 cột phụ không vừa 390px): trạng thái
+ * hiện bằng chấm màu cạnh mã, hạn chót vẫn có nhãn.
  */
-const GRID_COLS = 'grid grid-cols-[minmax(0,1fr)_9rem_11rem_6rem_4.5rem] items-center gap-3';
+const GRID_COLS =
+  'grid grid-cols-[minmax(0,1fr)] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_9rem_11rem_6rem_4.5rem]';
 
 /** Bậc thụt lề mỗi cấp (px) ở cột tiêu đề. */
 const INDENT_STEP = 20;
@@ -167,11 +169,11 @@ export function TreePage() {
                     </button>
                     <span>Tiêu đề</span>
                   </div>
-                  <span>Trạng thái</span>
-                  <span>Người phụ trách</span>
-                  <span>Ưu tiên</span>
+                  <span className="max-sm:hidden">Trạng thái</span>
+                  <span className="max-sm:hidden">Người phụ trách</span>
+                  <span className="max-sm:hidden">Ưu tiên</span>
                   <span
-                    className="text-right tabular"
+                    className="text-right tabular max-sm:hidden"
                     title="Dòng có việc bên trong hiện điểm cộng dồn: đã xong / tổng"
                   >
                     Điểm
@@ -306,9 +308,16 @@ function TreeRow({
             e.stopPropagation();
             onOpen();
           }}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left focus-visible:rounded max-sm:py-1 sm:flex-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           title={issue.summary}
         >
+          <span
+            role="img"
+            aria-label={`Trạng thái: ${issue.status.name}`}
+            title={issue.status.name}
+            className="h-2 w-2 shrink-0 rounded-full sm:hidden"
+            style={{ background: categoryColor(issue.status.category) }}
+          />
           <span
             className="shrink-0 rounded bg-surface-2 px-1 py-0.5 text-[10px] text-muted group-hover:bg-surface-3"
             style={issue.type.color ? { color: issue.type.color } : undefined}
@@ -316,7 +325,7 @@ function TreeRow({
             {issue.type.name}
           </span>
           <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
-          <span className="min-w-0 flex-1 truncate text-sm text-ink group-hover:text-ink-strong">
+          <span className="min-w-0 text-sm text-ink group-hover:text-ink-strong max-sm:order-last max-sm:basis-full max-sm:line-clamp-2 sm:flex-1 sm:truncate">
             {issue.summary}
           </span>
           {showProgress && (
@@ -327,7 +336,7 @@ function TreeRow({
       </div>
 
       {/* Cột 2 — Trạng thái: chấm theo nhóm + tên trạng thái */}
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="hidden min-w-0 items-center gap-2 sm:flex">
         <span
           className="h-2 w-2 shrink-0 rounded-full"
           style={{ background: categoryColor(issue.status.category) }}
@@ -337,7 +346,7 @@ function TreeRow({
       </div>
 
       {/* Cột 3 — Người phụ trách */}
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="hidden min-w-0 items-center gap-2 sm:flex">
         {issue.assignee ? (
           <>
             <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={20} />
@@ -349,7 +358,7 @@ function TreeRow({
       </div>
 
       {/* Cột 4 — Ưu tiên */}
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="hidden min-w-0 items-center gap-2 sm:flex">
         {issue.priority ? (
           <>
             <span
@@ -366,7 +375,10 @@ function TreeRow({
 
       {/* Cột 5 — Story points (số căn phải, chữ số tabular) */}
       <span
-        className={cn('text-right text-sm tabular', cell.strong ? 'text-ink-strong' : 'text-faint')}
+        className={cn(
+          'hidden text-right text-sm tabular sm:block',
+          cell.strong ? 'text-ink-strong' : 'text-faint',
+        )}
         title={cell.title}
       >
         {cell.text}

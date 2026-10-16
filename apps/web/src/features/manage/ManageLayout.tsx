@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { AlarmClock, Briefcase, CalendarClock, Handshake, ShieldAlert, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
+import { useScrollFade } from '@/lib/useScrollFade';
 
 /**
  * Khung "Danh mục" — gom các màn theo dõi cấp công ty (không thuộc riêng dự án nào)
@@ -22,13 +23,17 @@ const MANAGE_NAV: { to: string; label: string; icon: ReactNode }[] = [
 ];
 
 export function ManageLayout() {
+  const { pathname } = useLocation();
+  const navFade = useScrollFade<HTMLElement>(pathname, '[aria-current="page"]');
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       <nav
         aria-label="Mục danh mục"
+        ref={navFade.ref}
+        style={navFade.style}
         className={cn(
           'shrink-0 border-border bg-surface',
-          'flex gap-1 overflow-x-auto border-b px-3 py-2',
+          'scroll-fade-x relative flex gap-1 overflow-x-auto border-b px-3 py-2 max-lg:scrollbar-none',
           'lg:w-64 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
         )}
       >

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useQaReport, type QaReport } from './api';
 import { Card, StatStrip, type StatItem } from './charts';
 import { barWidthPct, formatHours, formatPercent, shouldWarnReopen } from './qaFormat';
+import { ScrollX } from '@/components/ui/ScrollX';
 
 const PERIODS = [7, 30, 90] as const;
 const DEFAULT_DAYS = 30;
@@ -115,7 +116,7 @@ function ReleaseTable({ byRelease }: { byRelease: QaReport['byRelease'] }) {
   // "Rò rỉ" chỉ có nghĩa với phiên bản bị ảnh hưởng (bug phát hiện SAU phát hành); với phiên bản sửa thì ẩn cột.
   const showLeaked = byRelease.basis === 'AFFECTS';
   return (
-    <div className="overflow-x-auto">
+    <ScrollX>
       <table className="w-full min-w-[420px] text-sm">
         <thead>
           <tr className="border-b border-border text-left">
@@ -170,7 +171,7 @@ function ReleaseTable({ byRelease }: { byRelease: QaReport['byRelease'] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollX>
   );
 }
 

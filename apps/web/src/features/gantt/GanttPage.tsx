@@ -25,6 +25,7 @@ import {
   toIssuePatch,
   type UnscheduledPatch,
 } from './dragMath';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useBarDrag, type BarDragMode } from './useBarDrag';
 import { UnscheduledPanel } from './UnscheduledPanel';
 import { PlanningPanel } from '@/features/planning/PlanningPanel';
@@ -41,7 +42,9 @@ import {
   type ScheduleItemDto,
 } from '@/features/planning/api';
 
+/** Bề rộng cột nhãn: đầy đủ (mã + tiêu đề) từ `sm`; điện thoại chỉ còn mã để vùng biểu đồ đủ rộng. */
 const LABEL_W = 240;
+const LABEL_W_NARROW = 112;
 const DAY_W = 30;
 const ROW_H = 40;
 /** Chiều cao thật của một hàng = ROW_H + 1px viền dưới → dùng để đặt mũi tên phụ thuộc. */
@@ -120,6 +123,8 @@ function LegendItem({
 }
 
 export function GanttPage() {
+  const narrow = useMediaQuery('(max-width: 639px)');
+  const labelW = narrow ? LABEL_W_NARROW : LABEL_W;
   const { key = '' } = useParams();
   const navigate = useNavigate();
   const {
@@ -584,12 +589,12 @@ export function GanttPage() {
           />
         ) : (
           <div className="inline-block min-w-full overflow-hidden rounded-lg border border-border bg-surface">
-            <div style={{ width: LABEL_W + trackW }}>
+            <div style={{ width: labelW + trackW }}>
               {/* Header: dải tháng + số ngày */}
               <div className="sticky top-0 z-20 flex border-b border-border bg-surface">
                 <div
                   className="sticky left-0 z-10 shrink-0 border-r border-border bg-surface px-3 py-2 text-xs font-semibold uppercase tracking-wide text-faint"
-                  style={{ width: LABEL_W }}
+                  style={{ width: labelW }}
                 >
                   Công việc
                 </div>
@@ -632,7 +637,7 @@ export function GanttPage() {
                 <div className="flex border-b border-border">
                   <div
                     className="sticky left-0 z-10 shrink-0 border-r border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted"
-                    style={{ width: LABEL_W }}
+                    style={{ width: labelW }}
                   >
                     Cột mốc
                   </div>
@@ -680,7 +685,7 @@ export function GanttPage() {
                 {/* Đường "hôm nay" xuyên suốt */}
                 <div
                   className="pointer-events-none absolute bottom-0 top-0 z-0 w-px bg-primary/60"
-                  style={{ left: LABEL_W + offset(model.today) * DAY_W + DAY_W / 2 }}
+                  style={{ left: labelW + offset(model.today) * DAY_W + DAY_W / 2 }}
                   aria-hidden
                 />
                 {/* Vạch dọc cho từng cột mốc */}
@@ -688,7 +693,7 @@ export function GanttPage() {
                   <div
                     key={m.id}
                     className="pointer-events-none absolute bottom-0 top-0 z-0 w-0 border-l border-dashed opacity-50"
-                    style={{ left: LABEL_W + x, borderColor: m.color ?? 'var(--primary)' }}
+                    style={{ left: labelW + x, borderColor: m.color ?? 'var(--primary)' }}
                     aria-hidden
                   />
                 ))}
@@ -697,11 +702,11 @@ export function GanttPage() {
                 {deps.length > 0 && (
                   <svg
                     className="pointer-events-none absolute left-0 top-0 z-[5]"
-                    width={LABEL_W + trackW}
+                    width={labelW + trackW}
                     height={model.spans.length * ROW_STRIDE}
                     aria-hidden
                   >
-                    <g transform={`translate(${LABEL_W},0)`}>
+                    <g transform={`translate(${labelW},0)`}>
                       {deps.map((dep) => {
                         const from = model.layout.get(dep.predecessorId);
                         const to = model.layout.get(dep.successorId);
@@ -760,8 +765,11 @@ export function GanttPage() {
                       <button
                         type="button"
                         onClick={() => navigate(`/issue/${issue.key}`)}
-                        className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-border bg-surface px-3 text-left hover:bg-surface-2"
-                        style={{ width: LABEL_W, height: ROW_H }}
+                        // Dưới sm tiêu đề bị ẩn (cột nhãn hẹp) — tên truy cập vẫn đủ mã + tiêu đề.
+                        aria-label={`${issue.key} ${issue.summary}`}
+                        title={issue.summary}
+                        className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-border bg-surface px-2 text-left hover:bg-surface-2 sm:px-3"
+                        style={{ width: labelW, height: ROW_H }}
                       >
                         {isCritical && (
                           <span
@@ -771,7 +779,7 @@ export function GanttPage() {
                           />
                         )}
                         <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
-                        <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                        <span className="hidden min-w-0 flex-1 truncate text-sm text-ink sm:block">
                           {issue.summary}
                         </span>
                       </button>

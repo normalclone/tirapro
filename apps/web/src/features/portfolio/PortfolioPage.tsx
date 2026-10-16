@@ -175,7 +175,7 @@ function GroupCard({
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           aria-controls={listId}
-          className="flex min-w-0 flex-1 items-start gap-2.5 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          className="flex w-full min-w-0 items-start gap-2.5 rounded text-left sm:w-auto sm:flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
           {open ? (
             <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-faint" aria-hidden />
@@ -189,7 +189,9 @@ function GroupCard({
           />
           <span className="min-w-0">
             <span className="flex flex-wrap items-center gap-2">
-              <span className="truncate text-sm font-medium text-ink-strong">{group.name}</span>
+              <span className="min-w-0 break-words text-sm font-medium text-ink-strong sm:truncate">
+                {group.name}
+              </span>
               <span
                 className="shrink-0 text-xs text-faint"
                 title="Số dự án đang thuộc chương trình này"
@@ -216,13 +218,13 @@ function GroupCard({
           </span>
         </button>
 
-        <div className="flex min-w-[12rem] flex-1 flex-col gap-1.5 sm:max-w-xs">
+        <div className="flex w-full flex-col gap-1.5 sm:min-w-[12rem] sm:max-w-xs sm:flex-1">
           <ProgressBar stats={group} />
           <StatLine stats={group} />
         </div>
 
         {canManage && !unassigned && (
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1 max-sm:ml-auto">
             <Button
               variant="ghost"
               size="icon"

@@ -5,6 +5,7 @@ import type { ProjectHealthDto, ProjectHealthLevel } from '@tirapro/shared';
 import { fmtRelative } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 import { healthAutoText, healthLabel, healthSummaryText } from './healthLabel';
+import { CHIP_TOUCH_HIT } from '@/lib/touchHit';
 
 /** Mỗi mức một HÌNH icon khác nhau + chữ → không phụ thuộc màu (a11y). Màu chỉ là lớp phụ. */
 const TONE: Record<
@@ -97,6 +98,7 @@ export function HealthBadge({
           className={cn(
             'inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full border px-2 text-xs font-medium text-ink transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
             tone.chip,
+            CHIP_TOUCH_HIT,
             className,
           )}
         >

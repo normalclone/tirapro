@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { parsePointsInput } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
+import { TOUCH_HIT } from '@/lib/touchHit';
 
 /** Một mức ưu tiên của dự án (đủ để vẽ chấm + dựng bản vá lạc quan). */
 export type PriorityChoice = Pick<PriorityDto, 'id' | 'name' | 'color' | 'rank' | 'isDefault'>;
@@ -42,13 +43,6 @@ export function PointsChip({ points, title }: { points: number | null; title?: s
     </span>
   );
 }
-
-/**
- * Cảm ứng (`pointer: coarse`): mở rộng VÙNG BẤM của điều khiển nhỏ trên dòng lên ≥ 44px bằng pseudo-element
- * (không đổi bố cục/kích thước hiển thị, desktop giữ nguyên). Phần tử phải `relative`.
- */
-const TOUCH_HIT =
-  'relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-[13px]';
 
 const POINTS_TIP = 'Điểm ước lượng — bấm để đặt lại (Enter lưu, Esc huỷ)';
 export const NO_EDIT_TIP = 'Bạn không có quyền sửa công việc này';

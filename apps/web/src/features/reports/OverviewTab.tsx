@@ -32,6 +32,7 @@ import {
   type StatItem,
 } from './charts';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
+import { ScrollX } from '@/components/ui/ScrollX';
 
 /** Tab "Tổng quan": số liệu tổng hợp, phân bố trạng thái/loại/ưu tiên và khối lượng theo người phụ trách. */
 export function OverviewTab({
@@ -264,7 +265,7 @@ function AssigneeBar({ rows }: { rows: ReportAssignee[] }) {
 
 function AssigneeTable({ rows }: { rows: ReportAssignee[] }) {
   return (
-    <div className="overflow-x-auto">
+    <ScrollX>
       <table className="w-full min-w-[420px] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-[11px] font-medium uppercase tracking-wide text-faint">
@@ -309,6 +310,6 @@ function AssigneeTable({ rows }: { rows: ReportAssignee[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollX>
   );
 }

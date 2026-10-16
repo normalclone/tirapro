@@ -25,10 +25,13 @@ import {
   type WorkloadReport,
   type WorkloadRow,
 } from './api';
+import { ScrollX } from '@/components/ui/ScrollX';
+import { useScrollFade } from '@/lib/useScrollFade';
 
 type Tab = 'load' | 'allocations' | 'time-off';
 
 const WEEK_OPTIONS = [
+  { value: '2', label: '2 tuần' },
   { value: '4', label: '4 tuần' },
   { value: '6', label: '6 tuần' },
   { value: '8', label: '8 tuần' },
@@ -138,6 +141,46 @@ function ResourcesHeader({
   );
 }
 
+/** Dải tab "Xem theo": cuộn ngang trên điện thoại có mờ mép, tab đang chọn tự cuộn vào khung. */
+function ResourceTabs({
+  tabs,
+  tab,
+  onPick,
+}: {
+  tabs: { id: Tab; label: string }[];
+  tab: Tab;
+  onPick: (t: Tab) => void;
+}) {
+  const tabsFade = useScrollFade<HTMLDivElement>(tab, '[aria-selected="true"]');
+  // Chỉ cuộn ngang < sm: bọc overflow-x-auto cả desktop sẽ cắt 1px gạch chân của tab (`-mb-px`).
+  return (
+    <div
+      ref={tabsFade.ref}
+      style={tabsFade.style}
+      className="scroll-fade-x relative mb-5 flex gap-1 border-b border-border max-sm:overflow-x-auto max-sm:scrollbar-none"
+      role="tablist"
+      aria-label="Xem theo"
+    >
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          role="tab"
+          aria-selected={tab === t.id}
+          onClick={() => onPick(t.id)}
+          className={cn(
+            '-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+            tab === t.id
+              ? 'border-primary text-ink-strong'
+              : 'border-transparent text-muted hover:text-ink',
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Nhân lực & khối lượng việc — bảng nhiệt NGƯỜI × TUẦN, phân bổ theo dự án,
  * nghỉ phép & ngày lễ chung.
@@ -146,7 +189,10 @@ export function ResourcesPage() {
   const canManage = useAuth((s) => s.can('resource:manage'));
   const [tab, setTab] = useState<Tab>('load');
   const [startWeek, setStartWeek] = useState(() => isoDay(mondayOf(new Date())));
-  const [weeks, setWeeks] = useState('6');
+  // Điện thoại: mặc định 2 tuần (6 tuần không vừa khung nhìn — cuộn ngang trong bảng, cột tên dính).
+  const [weeks, setWeeks] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia?.('(max-width: 639px)').matches ? '2' : '6',
+  );
   const [projectId, setProjectId] = useState('');
 
   const from = startWeek;
@@ -242,24 +288,7 @@ export function ResourcesPage() {
         )}
       </div>
 
-      <div className="mb-5 flex gap-1 border-b border-border" role="tablist" aria-label="Xem theo">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              tab === t.id
-                ? 'border-primary text-ink-strong'
-                : 'border-transparent text-muted hover:text-ink',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <ResourceTabs tabs={tabs} tab={tab} onPick={setTab} />
 
       {tab === 'load' && (
         <section aria-label="Bảng khối lượng việc theo tuần">
@@ -338,14 +367,14 @@ function HeatMap({
 }) {
   return (
     <Tooltip.Provider delayDuration={0} skipDelayDuration={0}>
-      <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+      <ScrollX className="rounded-lg border border-border bg-surface">
         <table className="w-full border-collapse text-sm">
           <caption className="sr-only">Khối lượng việc theo từng người và từng tuần</caption>
           <thead>
             <tr className="border-b border-border">
               <th
                 scope="col"
-                className="sticky left-0 z-[1] bg-surface px-4 py-2.5 text-left text-xs font-medium text-muted"
+                className="sticky left-0 z-[1] bg-surface px-3 py-2.5 text-left text-xs font-medium text-muted sm:px-4"
               >
                 Thành viên
               </th>
@@ -373,7 +402,7 @@ function HeatMap({
               <tr key={row.user.id} className="border-b border-border last:border-0">
                 <th
                   scope="row"
-                  className="sticky left-0 z-[1] max-w-[16rem] bg-surface px-4 py-2 text-left font-normal"
+                  className="sticky left-0 z-[1] max-w-[9rem] bg-surface px-3 py-2 text-left font-normal sm:max-w-[16rem] sm:px-4"
                 >
                   <span className="flex items-center gap-2">
                     <Avatar name={row.user.displayName} src={row.user.avatarUrl} size={26} />
@@ -422,7 +451,7 @@ function HeatMap({
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollX>
     </Tooltip.Provider>
   );
 }

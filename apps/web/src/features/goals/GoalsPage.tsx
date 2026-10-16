@@ -266,9 +266,11 @@ function GoalCard({
   return (
     <article className="rounded-lg border border-border bg-surface">
       <div className="flex flex-wrap items-start gap-3 px-4 py-3.5 sm:px-5">
-        <div className="min-w-0 flex-1">
+        <div className="w-full min-w-0 sm:w-auto sm:flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-semibold text-ink-strong">{goal.name}</h3>
+            <h3 className="min-w-0 break-words text-base font-semibold text-ink-strong">
+              {goal.name}
+            </h3>
             <Badge className={status.className}>
               <span title={status.hint}>{status.label}</span>
             </Badge>
@@ -281,7 +283,7 @@ function GoalCard({
           {goal.description && <p className="mt-1 text-sm text-muted">{goal.description}</p>}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 max-sm:w-full max-sm:justify-between">
           {goal.owner ? (
             <span
               className="flex items-center gap-1.5"

@@ -88,6 +88,7 @@ import {
   useProjectPermissions,
 } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
+import { CHIP_ROW_GAP_COARSE } from '@/lib/touchHit';
 import { IssueRow, IssueRowBody, type RowEdit } from './IssueRow';
 import { useBulkEdit } from './useBulkEdit';
 import { commonNextStatuses } from './bulkEdit';
@@ -755,7 +756,12 @@ export function BacklogPage() {
     <PeekShell>
       <div className="flex min-h-0 flex-1 flex-col">
         <TruncatedBanner projectId={projectId} />
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-6">
+        <div
+          className={cn(
+            'flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-6',
+            CHIP_ROW_GAP_COARSE,
+          )}
+        >
           {!epicPanelOpen && (
             <Button
               size="sm"
@@ -784,7 +790,7 @@ export function BacklogPage() {
           </div>
           <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
           <AssigneeFilter options={assigneeOptions} value={assignee} onChange={setAssignee} />
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap">
             <ExportMenu
               items={[
                 {
@@ -804,7 +810,7 @@ export function BacklogPage() {
             {canManageSprint &&
               (creating ? (
                 <form
-                  className="flex items-center gap-2"
+                  className="flex w-full items-center gap-2 sm:w-auto"
                   onSubmit={(e) => {
                     e.preventDefault();
                     handleCreate();
@@ -821,7 +827,7 @@ export function BacklogPage() {
                       }
                     }}
                     placeholder="VD: Sprint 1 — tuần 1 và 2"
-                    className="h-8 w-56"
+                    className="h-8 min-w-0 flex-1 sm:w-56 sm:flex-none"
                     aria-label="Tên sprint mới"
                     title={SPRINT_TIP}
                   />
@@ -884,7 +890,7 @@ export function BacklogPage() {
               ref={setScrollEl}
               // Có thanh hàng loạt: chừa đáy danh sách trên mobile để cuộn dòng cuối lên khỏi thanh.
               className={cn(
-                'min-w-0 flex-1 space-y-4 overflow-y-auto p-6 pb-24',
+                'min-w-0 flex-1 space-y-4 overflow-y-auto p-3 pb-24 sm:p-6 sm:pb-24',
                 selected.size > 0 && 'max-sm:pb-28',
               )}
             >
@@ -926,7 +932,7 @@ export function BacklogPage() {
                       peekedKey={peek.peekKey}
                       action={
                         canManageSprint ? (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
                             <Button
                               size="icon"
                               variant="ghost"
@@ -948,6 +954,7 @@ export function BacklogPage() {
                                     size="sm"
                                     variant="secondary"
                                     title="Gợi ý việc trong Việc chờ vừa với năng lực của đội"
+                                    aria-label="Trợ lý lập sprint"
                                     onClick={() =>
                                       setAssistantFor({
                                         id: sprint.id,
@@ -957,7 +964,7 @@ export function BacklogPage() {
                                     }
                                   >
                                     <Sparkles className="h-4 w-4" />
-                                    Trợ lý lập sprint
+                                    <span className="hidden sm:inline">Trợ lý lập sprint</span>
                                   </Button>
                                 )}
                                 <Button

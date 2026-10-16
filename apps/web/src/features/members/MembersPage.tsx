@@ -89,7 +89,7 @@ export function MembersPage() {
           <AddMemberPanel />
 
           <section className="rounded-lg border border-border bg-surface" data-tour="members-list">
-            <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border px-4 py-4 sm:px-5">
               <h2 className="text-base font-semibold text-ink-strong">Danh sách thành viên</h2>
               <div className="flex items-center gap-3">
                 {members && members.length > 0 && (
@@ -243,24 +243,29 @@ function MemberRow({
   }
 
   return (
-    <li className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-      <Avatar name={user.displayName} src={user.avatarUrl} size={36} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-ink">
-          {user.displayName}
-          {isSelf && <span className="ml-1.5 text-xs font-normal text-faint">(bạn)</span>}
-        </p>
-        <p className="truncate text-xs text-faint">{user.email}</p>
-        {/* Hoạt động của người khác chỉ hiện cho người quản lý thành viên (không phô cho vai Người xem). */}
-        {canManage && (
-          <p className="truncate text-xs text-faint">
-            {user.lastSeenAt ? `Hoạt động ${fmtRelative(user.lastSeenAt)}` : 'Chưa từng đăng nhập'}
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 first:pt-0 last:pb-0">
+      {/* < sm: dòng 1 = avatar + tên/email; dòng 2 = vai trò + trạng thái + nút sửa. ≥ sm: một hàng (`sm:contents`). */}
+      <div className="flex min-w-0 basis-full items-center gap-3 sm:contents">
+        <Avatar name={user.displayName} src={user.avatarUrl} size={36} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-ink">
+            {user.displayName}
+            {isSelf && <span className="ml-1.5 text-xs font-normal text-faint">(bạn)</span>}
           </p>
-        )}
+          <p className="truncate text-xs text-faint">{user.email}</p>
+          {/* Hoạt động của người khác chỉ hiện cho người quản lý thành viên (không phô cho vai Người xem). */}
+          {canManage && (
+            <p className="truncate text-xs text-faint">
+              {user.lastSeenAt
+                ? `Hoạt động ${fmtRelative(user.lastSeenAt)}`
+                : 'Chưa từng đăng nhập'}
+            </p>
+          )}
+        </div>
       </div>
 
       <div
-        className="flex flex-wrap items-center justify-end gap-1.5"
+        className="flex flex-wrap items-center gap-1.5 sm:justify-end"
         title="Vai trò quyết định người này được xem và làm gì ở đây"
       >
         {member.roles.length > 0 ? (
@@ -273,7 +278,7 @@ function MemberRow({
       <Badge className={status.className}>{status.label}</Badge>
 
       {canManage && (
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1 max-sm:ml-auto">
           <EditRolesPopover
             roles={roleOptions}
             current={member.roles}
