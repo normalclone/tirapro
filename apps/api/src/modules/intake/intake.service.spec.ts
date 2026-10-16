@@ -8,10 +8,11 @@ function make(
     types?: Record<string, string>;
     archivedAt?: Date | null;
     redis?: unknown;
+    targetState?: string | null;
   } = {},
 ) {
   const project = { id: 'p1', archivedAt: over.archivedAt ?? null };
-  const issueUpdate = vi.fn(() =>
+  const issueUpdate = vi.fn((_a: unknown) =>
     Promise.resolve({ id: 'old1', key: 'DEMO-BUG-2', occurrenceCount: 2 }),
   );
   const prisma = {
@@ -19,7 +20,13 @@ function make(
     issue: {
       findMany: vi.fn(() => Promise.resolve(over.existing ?? [])),
       findFirst: vi.fn(() =>
-        Promise.resolve({ id: 'old1', key: 'DEMO-BUG-2', projectId: 'p1', severityId: null }),
+        Promise.resolve({
+          id: 'old1',
+          key: 'DEMO-BUG-2',
+          projectId: 'p1',
+          severityId: null,
+          triageState: over.targetState ?? null,
+        }),
       ),
       update: issueUpdate,
     },
@@ -459,6 +466,18 @@ describe('IntakeService.report — chống gửi đôi qua Redis (SET NX EX 8)',
   });
 });
 
+describe('IntakeService.report — Redis lỗi lúc ghi kết quả', () => {
+  it('ghi kết quả thất bại => xoá khoá pending (node khác không bị kẹt chờ)', async () => {
+    const r = fakeRedis();
+    r.client.set.mockImplementation((k: string, v: string, ...a: unknown[]) =>
+      a.includes('NX') ? Promise.resolve('OK') : Promise.reject(new Error('boom')),
+    );
+    const { service } = make({ redis: r.service });
+    await expect(service.report('w1', 'u9', dupInput)).resolves.toMatchObject({ deduped: false });
+    expect(r.client.del).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('IntakeService.report — dấu vân tay gồm severity/môi trường/loại', () => {
   const run = async (a: Record<string, unknown>, b: Record<string, unknown>) => {
     const { service, issues } = make();
@@ -480,5 +499,51 @@ describe('IntakeService.report — dấu vân tay gồm severity/môi trường/
         { environment: { os: 'm', browser: 'C' } },
       ),
     ).toBe(1);
+  });
+});
+
+describe('IntakeService.report — báo trùng không đổi trạng thái duyệt của việc đã Nhận', () => {
+  const dataOf = (m: { mock: { calls: unknown[][] } }) =>
+    (m.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
+  const merge = {
+    projectId: 'p1',
+    kind: 'BUG' as const,
+    summary: 'Khác',
+    mergeIntoIssueId: 'old1',
+  };
+
+  it.each([null, 'ACCEPTED', 'PENDING', 'SNOOZED'])(
+    'việc đang ở triageState=%s: chỉ đếm báo lại + bình luận + watcher, KHÔNG ghi triageState',
+    async (state) => {
+      const { service, issueUpdate, comments, prisma } = make({ targetState: state });
+      await service.report('w1', 'u9', merge);
+      const data = dataOf(issueUpdate);
+      expect(data).not.toHaveProperty('triageState');
+      expect(data).toMatchObject({ occurrenceCount: { increment: 1 } });
+      expect(comments.create).toHaveBeenCalledTimes(1);
+      expect(prisma.issueWatcher.createMany).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('việc đã bị Từ chối (DECLINED) mà có người báo lại => quay về hàng chờ PENDING', async () => {
+    const { service, issueUpdate } = make({ targetState: 'DECLINED' });
+    await service.report('w1', 'u9', merge);
+    expect(dataOf(issueUpdate)).toMatchObject({ triageState: 'PENDING' });
+  });
+
+  it('gộp tự động vào bug đang làm (ACCEPTED, status chưa Done) cũng giữ nguyên ACCEPTED', async () => {
+    const accepted = { ...live, triageState: 'ACCEPTED', status: { category: 'IN_PROGRESS' } };
+    const { service, issueUpdate } = make({
+      existing: [accepted],
+      similar: ['old1'],
+      targetState: 'ACCEPTED',
+    });
+    const r = await service.report('w1', 'u9', {
+      projectId: 'p1',
+      kind: 'BUG',
+      summary: 'Giỏ hàng bị mất sản phẩm',
+    });
+    expect(r).toMatchObject({ deduped: true, merged: 'auto' });
+    expect(dataOf(issueUpdate)).not.toHaveProperty('triageState');
   });
 });

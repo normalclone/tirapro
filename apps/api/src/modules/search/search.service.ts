@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { parseJql, JqlParseError, type IssueDto, type JqlNode } from '@tirapro/shared';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import type { PageResult } from '../../common/dto/page-result';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { IssuesService } from '../issues/issues.service';
 import { FulltextSearcher } from './fulltext';
@@ -24,6 +25,8 @@ export interface SearchOptions {
   limit: number;
   /** Không có ORDER BY tường minh thì xếp theo `rank` (thứ tự thả trên board/backlog) thay vì độ liên quan/updatedAt. */
   orderByRank?: boolean;
+  /** Ẩn việc chưa duyệt (PENDING/SNOOZED/DECLINED) — dùng cho board có `filterJql` để khớp board không lọc. */
+  excludeUntriaged?: boolean;
 }
 
 /** Một lựa chọn cho bộ dựng truy vấn (value đúng dạng JQL khớp, label hiển thị). */
@@ -171,6 +174,9 @@ export class SearchService {
       where = Object.keys(where).length
         ? { AND: [where, { projectId: opts.projectId }] }
         : { projectId: opts.projectId };
+    }
+    if (opts.excludeUntriaged) {
+      where = Object.keys(where).length ? { AND: [where, TRIAGE_VISIBLE] } : TRIAGE_VISIBLE;
     }
     return this.issues.query(
       workspaceId,

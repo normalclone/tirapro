@@ -78,6 +78,7 @@ interface MergeTarget {
   id: string;
   key: string;
   severityId?: string | null;
+  triageState?: string | null;
 }
 
 /** Cửa sổ chống gửi đôi cho cùng một báo cáo (giây, cho Redis `EX`; bản bộ nhớ dùng mili giây tương ứng). */
@@ -211,9 +212,11 @@ export class IntakeService {
       const result = await this.doReport(workspaceId, userId, input, opts);
       await client
         .set(key, JSON.stringify(result), 'EX', RECENT_REPORT_TTL_SEC)
-        .catch((e: unknown) =>
-          this.logger.warn(`Không ghi được kết quả chống gửi đôi: ${errMsg(e)}`),
-        );
+        .catch(async (e: unknown) => {
+          this.logger.warn(`Không ghi được kết quả chống gửi đôi: ${errMsg(e)}`);
+          // Gỡ khoá `pending` để node khác không phải chờ hết hạn rồi báo "đang xử lý" cho một báo cáo đã thành công.
+          await client.del(key).catch(() => undefined);
+        });
       return result;
     } catch (err) {
       await client.del(key).catch(() => undefined);
@@ -263,7 +266,7 @@ export class IntakeService {
       if (!canComment) throw new ForbiddenAppException('Bạn không có quyền bình luận ở dự án này');
       const target = await this.prisma.issue.findFirst({
         where: { id: input.mergeIntoIssueId, projectId: input.projectId, deletedAt: null },
-        select: { id: true, key: true, severityId: true },
+        select: { id: true, key: true, severityId: true, triageState: true },
       });
       if (!target) throw new NotFoundAppException('Công việc cần gộp');
       return this.appendReport(workspaceId, userId, target, input, 'chosen');
@@ -397,7 +400,9 @@ export class IntakeService {
         where: { id: target.id },
         data: {
           occurrenceCount: { increment: 1 },
-          triageState: 'PENDING', // bug đã đóng tái diễn: không tự mở lại, chỉ để PM thấy ở Triage
+          // Chỉ việc đã bị Từ chối mới quay lại hàng chờ. Việc đã Nhận / đang làm / đã đóng GIỮ NGUYÊN trạng thái duyệt
+          // (không biến khỏi Board/Việc chờ): PM thấy báo lại qua đếm, bình luận và thông báo cho người theo dõi.
+          ...(target.triageState === 'DECLINED' ? { triageState: 'PENDING' as const } : {}),
           lastOccurredAt: new Date(),
           version: { increment: 1 },
         },

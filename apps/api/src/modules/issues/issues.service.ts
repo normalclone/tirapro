@@ -36,6 +36,7 @@ import {
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 import { assertNotArchived, assertProjectWritable } from '../../common/project-writable';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { LIVE_PROJECT } from '../../common/live-project';
 import { RankService } from './rank.service';
 import { WipService } from './wip.service';
@@ -704,7 +705,7 @@ export class IssuesService {
       sprintId: filter.sprintId,
       ...(filter.search ? { summary: insensitiveContains(filter.search) } : {}),
       // Việc chưa duyệt (chờ/tạm hoãn/đã từ chối ở Việc mới vào) không lẫn vào Board/Việc chờ; JQL/tìm kiếm vẫn thấy.
-      OR: [{ triageState: null }, { triageState: 'ACCEPTED' }],
+      ...TRIAGE_VISIBLE,
     };
     const rows = await this.prisma.issue.findMany({
       where,
