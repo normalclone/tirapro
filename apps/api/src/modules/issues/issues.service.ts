@@ -432,6 +432,23 @@ export class IssuesService {
       );
   }
 
+  /** Việc cha khi TẠO việc (chỉ đường API, `strict`): cùng luật `assertParentPlacement` với loại của việc sắp tạo. */
+  private async assertParentForCreate(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    input: { parentId?: string | null; typeId: string },
+    projectId: string,
+    strict: boolean,
+  ): Promise<void> {
+    if (!strict || !input.parentId) return; // import giữ nguyên dữ liệu gốc
+    const type = await db.issueType.findFirst({
+      where: { id: input.typeId, workspaceId },
+      select: { key: true, hierarchyLevel: true },
+    });
+    if (type)
+      await this.assertParentPlacement(db, workspaceId, { projectId, type }, input.parentId);
+  }
+
   /** Epic khi TẠO việc: epic đích hợp lệ (+ chính việc không phải Epic, chỉ đường API — import giữ nguyên dữ liệu gốc). */
   private async assertEpicForCreate(
     db: Prisma.TransactionClient,
@@ -654,19 +671,7 @@ export class IssuesService {
     );
     if (input.epicId)
       await this.assertEpicForCreate(db, workspaceId, input, project.id, origin === 'api');
-    if (input.parentId && origin === 'api') {
-      const t = await db.issueType.findFirst({
-        where: { id: input.typeId, workspaceId },
-        select: { key: true, hierarchyLevel: true },
-      });
-      if (t)
-        await this.assertParentPlacement(
-          db,
-          workspaceId,
-          { projectId: project.id, type: t },
-          input.parentId,
-        );
-    }
+    await this.assertParentForCreate(db, workspaceId, input, project.id, origin === 'api');
     await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId, db);
 
     // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project
