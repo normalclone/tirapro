@@ -157,6 +157,8 @@ export const keys = {
     search: (scope: string, q: string) => ['wiki', 'search', scope, q] as const,
     page: (id: string) => ['wiki', 'page', id] as const,
     admins: (scope: string) => ['wiki', 'admins', scope] as const,
+    versions: (id: string) => ['wiki', 'versions', id] as const,
+    version: (id: string, v: number) => ['wiki', 'version', id, v] as const,
     byIssueRoot: ['wiki', 'byIssue'] as const,
     byIssue: (issueId: string) => ['wiki', 'byIssue', issueId] as const,
   },

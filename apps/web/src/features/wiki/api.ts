@@ -51,6 +51,21 @@ export interface WikiPageDetail {
   updatedAt: string;
 }
 
+/** Một dòng trong lịch sử trang (không kèm nội dung). */
+export interface WikiVersionSummary {
+  version: number;
+  title: string;
+  authorName: string | null;
+  note: string | null;
+  createdAt: string;
+  /** Độ dài nội dung (ký tự). */
+  size: number;
+}
+
+export interface WikiVersion extends WikiVersionSummary {
+  body: string;
+}
+
 export interface WikiSearchHit {
   id: string;
   projectId: string | null;
@@ -97,6 +112,28 @@ export function useWikiPage(id: string | null) {
   });
 }
 
+/** Lịch sử phiên bản của trang (mới nhất trước). Chỉ tải khi `enabled` (hộp thoại đang mở). */
+export function useWikiVersions(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.wiki.versions(id),
+    queryFn: enabled
+      ? async () => (await api.get<WikiVersionSummary[]>(`/wiki/${id}/versions`)).data
+      : skipToken,
+  });
+}
+
+/** Nội dung một phiên bản (bất biến nên cache lâu). */
+export function useWikiVersion(id: string, version: number | null) {
+  return useQuery({
+    queryKey: keys.wiki.version(id, version ?? 0),
+    queryFn:
+      version === null
+        ? skipToken
+        : async () => (await api.get<WikiVersion>(`/wiki/${id}/versions/${version}`)).data,
+    staleTime: 5 * 60_000,
+  });
+}
+
 /** Các trang wiki nhắc tới công việc `issueId`. */
 export function useIssueDocs(issueId: string) {
   return useQuery({
@@ -127,7 +164,10 @@ function useInvalidateWiki() {
     void qc.invalidateQueries({ queryKey: keys.wiki.treeRoot });
     void qc.invalidateQueries({ queryKey: keys.wiki.searchRoot });
     void qc.invalidateQueries({ queryKey: keys.wiki.byIssueRoot });
-    if (pageId) void qc.invalidateQueries({ queryKey: keys.wiki.page(pageId) });
+    if (pageId) {
+      void qc.invalidateQueries({ queryKey: keys.wiki.page(pageId) });
+      void qc.invalidateQueries({ queryKey: keys.wiki.versions(pageId) });
+    }
   };
 }
 
@@ -167,6 +207,34 @@ export function useUpdateWikiPage() {
       const code = apiErrorCode(e);
       if (code === 'VERSION_CONFLICT') invalidate(vars.id);
       else if (code === 'NOT_FOUND') invalidate(); // trang đã bị xoá → làm mới cây
+    },
+  });
+}
+
+/**
+ * Khôi phục một phiên bản cũ (tạo phiên bản mới, lịch sử giữ nguyên). `expectedVersion` = `version` của trang
+ * người bấm đang xem: 409 VERSION_CONFLICT nếu trang vừa được sửa, 404 nếu trang đã bị xoá.
+ */
+export function useRestoreWikiVersion() {
+  const invalidate = useInvalidateWiki();
+  return useMutation({
+    mutationFn: ({
+      id,
+      version,
+      expectedVersion,
+    }: {
+      id: string;
+      version: number;
+      expectedVersion: number;
+    }) =>
+      api
+        .post<WikiPageDetail>(`/wiki/${id}/versions/${version}/restore`, { expectedVersion })
+        .then((r) => r.data),
+    onSuccess: (page) => invalidate(page.id),
+    onError: (e, vars) => {
+      const code = apiErrorCode(e);
+      if (code === 'VERSION_CONFLICT') invalidate(vars.id);
+      else if (code === 'NOT_FOUND') invalidate();
     },
   });
 }
