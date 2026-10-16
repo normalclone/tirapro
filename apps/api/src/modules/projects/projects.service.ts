@@ -357,7 +357,15 @@ export class ProjectsService {
       this.prisma.issueType.findMany({
         where: { workspaceId },
         orderBy: { hierarchyLevel: 'asc' },
-        select: { id: true, name: true, key: true, color: true, iconUrl: true, isSubtask: true },
+        select: {
+          id: true,
+          name: true,
+          key: true,
+          color: true,
+          iconUrl: true,
+          isSubtask: true,
+          hierarchyLevel: true,
+        },
       }),
       this.prisma.priority.findMany({
         where: { workspaceId },

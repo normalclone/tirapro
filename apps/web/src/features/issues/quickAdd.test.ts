@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TokenCtx } from './titleTokens';
-import { buildQuickAddInput, pickDefaultType } from './quickAdd';
+import { buildQuickAddInput, isEpicType, pickDefaultType, typeRef } from './quickAdd';
 
 const ctx: TokenCtx = {
   priorities: [
@@ -45,6 +45,19 @@ describe('buildQuickAddInput', () => {
     expect(r.input.summary).toBe('A !xyz');
     expect(r.unmatched).toEqual(['!xyz']);
   });
+  it('loại Epic: bỏ epicId khỏi extra (không epic lồng epic), giữ các trường khác', () => {
+    const r = buildQuickAddInput('Mảng mới', ctx, {
+      ...d,
+      typeIsEpic: true,
+      extra: { sprintId: 's1', epicId: 'e1' },
+    })!;
+    expect(r.input).not.toHaveProperty('epicId');
+    expect(r.input.sprintId).toBe('s1');
+  });
+  it('loại thường: giữ epicId của extra', () =>
+    expect(buildQuickAddInput('A', ctx, { ...d, extra: { epicId: 'e1' } })!.input.epicId).toBe(
+      'e1',
+    ));
   it('chỉ có token (tiêu đề rỗng) => null', () =>
     expect(buildQuickAddInput('!cao ~5', ctx, d)).toBeNull());
 });
@@ -62,5 +75,24 @@ describe('pickDefaultType', () => {
     expect(pickDefaultType(types, 'SUBTASK')).toBe('st');
     expect(pickDefaultType(types, 'GONE')).toBe('st');
   });
+  it('loại tuỳ chỉnh không có key: nhớ theo tên', () => {
+    const custom = [
+      { id: 'st', key: 'STORY', name: 'Story', isSubtask: false },
+      { id: 'sp', key: null, name: 'Spike', isSubtask: false },
+    ];
+    expect(typeRef(custom[1]!)).toBe('name:Spike');
+    expect(typeRef(custom[0]!)).toBe('STORY');
+    expect(pickDefaultType(custom, typeRef(custom[1]!))).toBe('sp');
+    expect(pickDefaultType(custom, 'name:Gone')).toBe('st');
+  });
   it('chỉ có sub-task => loại đầu', () => expect(pickDefaultType([types[0]!], null)).toBe('sub'));
+});
+
+describe('isEpicType', () => {
+  it('theo key hoặc hierarchyLevel >= 1', () => {
+    expect(isEpicType({ key: 'EPIC' })).toBe(true);
+    expect(isEpicType({ key: null, hierarchyLevel: 2 })).toBe(true);
+    expect(isEpicType({ key: 'STORY', hierarchyLevel: 0 })).toBe(false);
+    expect(isEpicType({ key: null })).toBe(false);
+  });
 });

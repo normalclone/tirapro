@@ -5,7 +5,12 @@ import { useProjectMeta } from '@/features/ai/api';
 import { useProjectSprints } from '@/features/backlog/api';
 import { useWorkspaceUsers } from '@/features/issue-edit/api';
 import { useCreateIssue, type CreateIssueInput } from '@/features/issues/create-api';
-import { buildQuickAddInput, pickDefaultType } from '@/features/issues/quickAdd';
+import {
+  buildQuickAddInput,
+  isEpicType,
+  pickDefaultType,
+  typeRef,
+} from '@/features/issues/quickAdd';
 import { setQuickAddTypeKey, useQuickAddTypeKey } from '@/features/issues/quickAddType';
 import { TokenTitleInput } from '@/features/issues/TokenTitleInput';
 import type { TokenCtx } from '@/features/issues/titleTokens';
@@ -59,13 +64,31 @@ export function QuickAddRow({
   );
 
   function submit() {
-    if (!typeId || create.isPending) return;
-    const built = buildQuickAddInput(summary, ctx, { projectId, typeId, extra });
-    if (!built) return;
+    if (create.isPending || !summary.trim()) return;
+    if (!typeId) {
+      toast.info('Đang tải danh sách loại việc — thử lại sau giây lát.');
+      return;
+    }
+    const picked = types.find((t) => t.id === typeId);
+    const built = buildQuickAddInput(summary, ctx, {
+      projectId,
+      typeId,
+      typeIsEpic: !!picked && isEpicType(picked),
+      extra,
+    });
+    if (!built) {
+      toast.info('Cần có tiêu đề — hãy gõ tên việc trước các token (! ~ @ ^ #) rồi nhấn Enter.');
+      return;
+    }
+    const epicDropped = !!picked && isEpicType(picked) && !!extra?.epicId;
     create.mutate(built.input, {
-      onSuccess: () => {
+      onSuccess: (issue) => {
         setSummary('');
         inputRef.current?.focus();
+        if (epicDropped)
+          toast.info(
+            `Đã tạo epic ${issue.key}. Epic không nằm trong epic khác nên không hiện khi đang lọc theo epic — chọn “Tất cả việc” để thấy.`,
+          );
         if (built.unmatched.length > 0)
           toast.info(`${built.unmatched.join(', ')} chưa nhận ra nên được giữ trong tiêu đề`);
       },
@@ -96,7 +119,7 @@ export function QuickAddRow({
           value={typeId}
           onChange={(id) => {
             const t = types.find((x) => x.id === id);
-            setQuickAddTypeKey(t?.key ?? null);
+            setQuickAddTypeKey(t ? typeRef(t) : null);
             inputRef.current?.focus();
           }}
           options={selectable.map((t) => ({ value: t.id, label: t.name, color: t.color }))}

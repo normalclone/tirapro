@@ -342,6 +342,14 @@ export class IssuesService {
     );
   }
 
+  /** Epic là cấp cao nhất: chính việc là Epic thì không được có `epicId` (không epic lồng epic) — 422. */
+  private assertNotEpicWithEpic(type: { key: string | null; hierarchyLevel: number }): void {
+    if (type.key === 'EPIC' || type.hierarchyLevel >= 1)
+      throw new BusinessRuleException(
+        'Epic là cấp cao nhất — không thể đặt một Epic vào epic khác',
+      );
+  }
+
   /**
    * Epic của issue: phải tồn tại trong workspace, CÙNG dự án, đúng loại Epic (`key = EPIC` hoặc `hierarchyLevel >= 1`;
    * bỏ qua kiểm LOẠI khi `checkType = false` — đường import),
@@ -545,8 +553,16 @@ export class IssuesService {
       },
       db,
     );
-    if (input.epicId)
+    if (input.epicId) {
       await this.assertEpicValid(db, workspaceId, input.epicId, project.id, null, origin === 'api');
+      if (origin === 'api') {
+        const t = await db.issueType.findFirst({
+          where: { id: input.typeId, workspaceId },
+          select: { key: true, hierarchyLevel: true },
+        });
+        if (t) this.assertNotEpicWithEpic(t);
+      }
+    }
     await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId, db);
 
     // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project
@@ -896,8 +912,10 @@ export class IssuesService {
       parentId: input.parentId,
       projectId: current.projectId,
     });
-    if (input.epicId && input.epicId !== current.epicId)
+    if (input.epicId && input.epicId !== current.epicId) {
       await this.assertEpicValid(this.prisma, workspaceId, input.epicId, current.projectId, id);
+      this.assertNotEpicWithEpic(current.type);
+    }
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
       await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
 

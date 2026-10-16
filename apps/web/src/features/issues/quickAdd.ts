@@ -9,17 +9,24 @@ import { parseTitleTokens, unmatchedTokens, type TokenCtx } from './titleTokens'
 export function buildQuickAddInput(
   text: string,
   ctx: TokenCtx,
-  d: { projectId: string; typeId: string; extra?: Partial<CreateIssueInput> },
+  d: {
+    projectId: string;
+    typeId: string;
+    /** Loại được chọn là Epic → bỏ `extra.epicId` (Epic là cấp cao nhất, API cũng từ chối epic lồng epic). */
+    typeIsEpic?: boolean;
+    extra?: Partial<CreateIssueInput>;
+  },
 ): { input: CreateIssueInput; unmatched: string[] } | null {
   const tk = parseTitleTokens(text, ctx);
   const summary = tk.clean.trim();
   if (!summary) return null;
+  const { epicId: _epicId, ...extraNoEpic } = d.extra ?? {};
   const input: CreateIssueInput = {
     projectId: d.projectId,
     typeId: d.typeId,
     summary,
     descriptionFormat: 'MARKDOWN',
-    ...d.extra,
+    ...(d.typeIsEpic ? extraNoEpic : d.extra),
     ...(tk.priorityId ? { priorityId: tk.priorityId } : {}),
     ...(tk.assigneeId ? { assigneeId: tk.assigneeId } : {}),
     ...(tk.sprintId ? { sprintId: tk.sprintId } : {}),
@@ -29,16 +36,27 @@ export function buildQuickAddInput(
   return { input, unmatched: unmatchedTokens(text, ctx).map((u) => u.text) };
 }
 
-/** Loại mặc định cho ô thêm nhanh: khoá đã lưu nếu còn và không phải sub-task; không thì loại đầu không phải sub-task; không thì loại đầu. */
+/** Mã nhớ một loại việc giữa các dự án/lần mở: `key` nếu có, loại tuỳ chỉnh không key thì theo tên. */
+export const typeRef = (t: { key: string | null; name?: string }): string =>
+  t.key ?? `name:${t.name ?? ''}`;
+
+/**
+ * Loại mặc định cho ô thêm nhanh: loại khớp mã đã lưu (`typeRef`) nếu còn và không phải sub-task;
+ * không thì loại đầu không phải sub-task; không thì loại đầu.
+ */
 export function pickDefaultType(
-  types: { id: string; key: string | null; isSubtask: boolean }[],
-  storedKey: string | null,
+  types: { id: string; key: string | null; name?: string; isSubtask: boolean }[],
+  storedRef: string | null,
 ): string {
   const usable = types.filter((t) => !t.isSubtask);
   return (
-    (storedKey ? usable.find((t) => t.key === storedKey)?.id : undefined) ??
+    (storedRef ? usable.find((t) => typeRef(t) === storedRef)?.id : undefined) ??
     usable[0]?.id ??
     types[0]?.id ??
     ''
   );
 }
+
+/** Loại Epic: `key = EPIC` hoặc cấp phân cấp >= 1 (cùng luật với API `assertEpicValid`). */
+export const isEpicType = (t: { key: string | null; hierarchyLevel?: number }): boolean =>
+  t.key === 'EPIC' || (t.hierarchyLevel ?? 0) >= 1;

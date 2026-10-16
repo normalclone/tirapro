@@ -1849,6 +1849,37 @@ describe('IssuesService — epicId được lưu và hợp lệ (FW11 + review)'
     }
   });
 
+  it('create: chính việc là Epic mà có epicId => 422, không tạo (không epic lồng epic)', async () => {
+    const { tx, created } = createTxFor({ e1: epicRow() });
+    tx.issueType.findFirst = vi.fn(() =>
+      Promise.resolve({ id: 't-epic', key: 'EPIC', hierarchyLevel: 1 }),
+    );
+    const { service } = makeService(tx);
+    await expect(
+      service.create('w1', 'u1', {
+        projectId: 'p1',
+        typeId: 't-epic',
+        summary: 's',
+        descriptionFormat: 'MARKDOWN',
+        epicId: 'e1',
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(created).not.toHaveBeenCalled();
+  });
+
+  it('update: việc là Epic mà gắn epicId => 422, không ghi; gỡ epicId (null) vẫn được', async () => {
+    const epicIssue = issueRow({ type: { ...issueRow().type, key: 'EPIC', hierarchyLevel: 1 } });
+    const tx = epicTx(epicIssue, epicIssue, { e1: epicRow() });
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, epicId: 'e1' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, epicId: null }),
+    ).resolves.toBeDefined();
+  });
+
   it('create: epic hợp lệ => tạo với epicId', async () => {
     const { tx, created } = createTxFor({ e1: epicRow() });
     const { service } = makeService(tx);
