@@ -46,7 +46,7 @@ function useJqlCatalog(): JqlCatalog {
  * Ô nhập JQL có gợi ý tự hoàn thành (combobox ARIA tự dựng — Radix Popover sẽ cướp focus khỏi ô khi gõ) và
  * báo lỗi cú pháp / giá trị sai ngay dưới ô (kèm nút "Dùng …" cho "ý bạn là …"). Không chặn việc chạy truy vấn.
  *
- * Phím: ↑↓ chọn · Tab/Enter chấp nhận · Esc đóng gợi ý (không đóng hộp thoại cha) · Ctrl+Space mở ·
+ * Phím: ↑↓ chọn · Tab/Enter chấp nhận mục đang chọn (không có mục chọn: Tab đi tiếp, Enter chạy) · Esc đóng gợi ý (không đóng hộp thoại cha) · Ctrl+Space mở ·
  * Cmd/Ctrl+Enter chạy (`onRun`).
  */
 export function JqlEditor({
@@ -77,7 +77,8 @@ export function JqlEditor({
   const pendingCaret = useRef<number | null>(null);
   const [caret, setCaret] = useState(0);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
+  // null = chưa chọn tay: mặc định chọn mục đầu CHỈ khi người dùng đang gõ dở một từ.
+  const [active, setActive] = useState<number | null>(null);
 
   const result = useMemo(
     () => (open ? suggestJql(value, caret, catalog) : null),
@@ -85,7 +86,10 @@ export function JqlEditor({
   );
   const items = result?.items ?? [];
   const expanded = open && items.length > 0;
-  const activeIndex = Math.min(active, Math.max(0, items.length - 1));
+  const defaultIndex = result && result.from < result.to ? 0 : -1;
+  // -1 = không mục nào được chọn → Tab/Enter không nhận gợi ý (Tab ra khỏi ô, Enter chạy truy vấn).
+  const activeIndex =
+    active === null ? defaultIndex : Math.min(active, Math.max(0, items.length - 1));
 
   // Sau khi áp gợi ý, đặt lại con trỏ khi React đã cập nhật giá trị của ô.
   useLayoutEffect(() => {
@@ -105,7 +109,7 @@ export function JqlEditor({
   function accept(item: JqlSuggestion) {
     if (!result) return;
     const next = applySuggestion(value, result, item);
-    setActive(0);
+    setActive(null);
     if (next.text === value) {
       areaRef.current?.setSelectionRange(next.caret, next.caret);
       setCaret(next.caret);
@@ -119,7 +123,7 @@ export function JqlEditor({
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
     onChange(e.target.value);
     setCaret(e.target.selectionStart);
-    setActive(0);
+    setActive(null);
     setOpen(true);
   }
 
@@ -132,24 +136,24 @@ export function JqlEditor({
     if (e.ctrlKey && e.key === ' ') {
       e.preventDefault();
       syncCaret();
-      setActive(0);
+      setActive(null);
       setOpen(true);
       return;
     }
-    if (!expanded) return;
-    if (e.key === 'ArrowDown') {
+    const plainKey = !e.shiftKey && !e.nativeEvent.isComposing;
+    if (expanded && e.key === 'ArrowDown') {
       e.preventDefault();
       setActive((activeIndex + 1) % items.length);
-    } else if (e.key === 'ArrowUp') {
+    } else if (expanded && e.key === 'ArrowUp') {
       e.preventDefault();
-      setActive((activeIndex - 1 + items.length) % items.length);
-    } else if (
-      (e.key === 'Enter' || e.key === 'Tab') &&
-      !e.shiftKey &&
-      !e.nativeEvent.isComposing
-    ) {
+      setActive(activeIndex <= 0 ? items.length - 1 : activeIndex - 1);
+    } else if (expanded && activeIndex >= 0 && plainKey && (e.key === 'Enter' || e.key === 'Tab')) {
       e.preventDefault();
       accept(items[activeIndex]!);
+    } else if (e.key === 'Enter' && plainKey && onRun) {
+      // Không có gợi ý được chọn: Enter chạy truy vấn (JQL một dòng; Shift+Enter xuống dòng).
+      e.preventDefault();
+      onRun();
     }
   }
 
@@ -180,9 +184,11 @@ export function JqlEditor({
           autoCapitalize="off"
           role="combobox"
           aria-expanded={expanded}
-          aria-controls={listId}
+          aria-controls={expanded ? listId : undefined}
           aria-autocomplete="list"
-          aria-activedescendant={expanded ? `${listId}-${activeIndex}` : undefined}
+          aria-activedescendant={
+            expanded && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined
+          }
           aria-invalid={invalid ? true : undefined}
           className={cn(
             'w-full resize-y rounded-md border bg-bg px-3 py-2 font-mono text-sm text-ink',

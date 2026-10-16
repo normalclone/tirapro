@@ -59,6 +59,33 @@ describe('applyDidYouMean', () => {
       'status IN (done, Done)',
     );
   });
+  it('thay đúng lần xuất hiện bị báo lỗi, không phải lần đầu của tên trường', () => {
+    expect(applyDidYouMean('status = Done OR status = Dne', 'status', 'Dne', 'Done')).toBe(
+      'status = Done OR status = Done',
+    );
+    expect(applyDidYouMean('status = Dne OR status = Dne', 'status', 'Dne', 'Done')).toBe(
+      'status = Done OR status = Done',
+    );
+  });
+  it('chữ "status" nằm trong chuỗi nháy hoặc là phần của từ khác không bị nhầm', () => {
+    expect(
+      applyDidYouMean('summary ~ "status = Dne" AND status = Dne', 'status', 'Dne', 'Done'),
+    ).toBe('summary ~ "status = Dne" AND status = Done');
+    expect(applyDidYouMean('statusCategory = Dne AND status = Dne', 'status', 'Dne', 'Done')).toBe(
+      'statusCategory = Dne AND status = Done',
+    );
+  });
+  it('NOT IN, != và giá trị có khoảng trắng trong nháy', () => {
+    expect(
+      applyDidYouMean(
+        'status NOT IN (Dne, "In Progresss")',
+        'status',
+        'In Progresss',
+        'In Progress',
+      ),
+    ).toBe('status NOT IN (Dne, "In Progress")');
+    expect(applyDidYouMean('status != Dne', 'status', 'Dne', 'Done')).toBe('status != Done');
+  });
   it('không tìm thấy → giữ nguyên', () => {
     expect(applyDidYouMean('status = Done', 'status', 'zzz', 'Done')).toBe('status = Done');
   });
