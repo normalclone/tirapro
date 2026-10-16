@@ -208,7 +208,8 @@ export function BacklogPage() {
   const completeSprint = useCompleteSprint(projectId ?? '');
   const move = useMoveIssue(projectId ?? '');
   const pending = usePendingMoves(projectId);
-  const assigneeOptions = useAssigneeOptions(projectId);
+  // Bộ lọc theo người: gồm cả tài khoản đã khoá (lọc được việc cũ của họ), tối đa 200 người.
+  const assigneeOptions = useAssigneeOptions(projectId, { includeInactive: true, limit: 200 });
 
   // Bộ lọc nhanh (dùng chung với board) — áp client-side trong mỗi section.
   const { active: quickFilters, toggle: toggleQuickFilter } = useQuickFilters();
@@ -1083,7 +1084,7 @@ export function BacklogPage() {
               {selected.size > 0 && (
                 <BulkActionBar
                   count={selected.size}
-                  assigneeOptions={assigneeOptions}
+                  projectId={projectId}
                   sprints={visibleSprints}
                   busy={bulk.busy}
                   canAssign={canAssign}

@@ -20,6 +20,12 @@ export interface PersonOption {
   search: string;
 }
 
+/** Người đã từng thấy trong phiên (từ kết quả tìm) — để ô chọn vẫn hiện tên khi người đang chọn không nằm trong 50 dòng đầu. */
+const knownPeople = new Map<string, PersonOption>();
+export function rememberPeople(options: readonly PersonOption[]): void {
+  for (const o of options) knownPeople.set(o.id, o);
+}
+
 function MiniTeam({ name, color }: { name: string; color?: string | null }) {
   const c = color ?? 'var(--faint)';
   return (
@@ -50,6 +56,9 @@ export function PeoplePicker({
   id,
   searchPlaceholder = 'Tìm tên, vị trí, nhóm…',
   renderTrigger,
+  onSearchChange,
+  moreHint,
+  selectedFallback,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -63,11 +72,29 @@ export function PeoplePicker({
   id?: string;
   searchPlaceholder?: string;
   renderTrigger?: (selected: PersonOption | undefined) => ReactNode;
+  /** Tìm phía máy chủ: báo từ khoá gõ (nơi gọi debounce rồi nạp lại `options`). Bỏ trống = lọc tại chỗ như cũ. */
+  onSearchChange?: (q: string) => void;
+  /** Danh sách đã đầy mà chưa gõ → hiện dòng "Gõ để tìm thêm". */
+  moreHint?: boolean;
+  /** Người đang chọn khi họ không nằm trong `options` (vd người được giao nằm ngoài 50 dòng đầu). */
+  selectedFallback?: { id: string; displayName: string; avatarUrl?: string | null };
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
 
-  const selected = options.find((o) => o.id === value);
+  const selected: PersonOption | undefined =
+    options.find((o) => o.id === value) ??
+    (value
+      ? (knownPeople.get(value) ??
+        (selectedFallback?.id === value
+          ? {
+              id: selectedFallback.id,
+              name: selectedFallback.displayName,
+              avatarUrl: selectedFallback.avatarUrl,
+              search: '',
+            }
+          : undefined))
+      : undefined);
   const query = q.trim().toLowerCase();
   const filtered = query ? options.filter((o) => o.search.includes(query)) : options;
 
@@ -75,6 +102,7 @@ export function PeoplePicker({
     onChange(v);
     setOpen(false);
     setQ('');
+    onSearchChange?.('');
   }
 
   return (
@@ -82,7 +110,10 @@ export function PeoplePicker({
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
-        if (!o) setQ('');
+        if (!o) {
+          setQ('');
+          onSearchChange?.('');
+        }
       }}
     >
       <Popover.Trigger asChild>
@@ -120,7 +151,10 @@ export function PeoplePicker({
           <div className="border-b border-border p-2">
             <Input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {
+                setQ(e.target.value);
+                onSearchChange?.(e.target.value);
+              }}
               placeholder={searchPlaceholder}
               autoFocus
               className="h-8 text-sm"
@@ -195,6 +229,9 @@ export function PeoplePicker({
             })}
             {filtered.length === 0 && (
               <li className="px-2 py-3 text-center text-sm text-muted">Không tìm thấy</li>
+            )}
+            {moreHint && query === '' && (
+              <li className="px-2 py-2 text-center text-xs text-faint">Gõ để tìm thêm</li>
             )}
           </ul>
         </Popover.Content>

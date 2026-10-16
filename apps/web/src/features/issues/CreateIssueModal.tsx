@@ -6,7 +6,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
 import { useProjectSprints } from '@/features/backlog/api';
-import { useWorkspaceUsers } from '@/features/issue-edit/api';
+import { useSearchUsers } from '@/features/members/api';
 import { uploadAttachmentFile } from '@/features/attachments/api';
 import { FileDrop } from '@/features/attachments/FileDrop';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/Input';
 import { DateTimeInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
-import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { openReportIssue } from '@/stores/reportIssue';
 import { isBugType } from '@/features/issue-edit/severity';
@@ -176,8 +176,13 @@ export function CreateIssueModal() {
   const { data: meta } = useProjectMeta(open && selKey ? selKey : undefined);
   const { data: sprints } = useProjectSprints(open ? selId || undefined : undefined);
   const { data: projIssues = [] } = useProjectIssues(open && selId ? selId : undefined);
-  const { data: users } = useWorkspaceUsers();
-  const assignees = useAssigneeOptions(selId || undefined);
+  // Người cho token `@tên` trong tiêu đề: thành viên của dự án đang chọn (máy chủ lọc theo dự án, bỏ tài khoản khoá).
+  const { data: users } = useSearchUsers({
+    projectId: selId || undefined,
+    limit: 200,
+    enabled: open,
+  });
+  const assignees = useAssigneePicker(selId || undefined);
   const create = useCreateIssue(selId);
 
   const last = useMemo(() => loadLast(), [open]);
@@ -641,7 +646,7 @@ export function CreateIssueModal() {
               }}
               emptyLabel="Chưa gán"
               className={selectClass}
-              options={assignees}
+              {...assignees}
             />
           </Field>
           <Field
@@ -777,7 +782,8 @@ export function CreateIssueModal() {
               onChange={setDescription}
               onSubmit={() => void submitCreate()}
               rows={10}
-              mentionPeople={assignees}
+              mentionPeople={assignees.options}
+              mentionProjectId={selId || undefined}
               onPasteImages={(fs) => setFiles((prev) => [...prev, ...fs])}
               placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn) hoặc dán ảnh)"
             />
@@ -795,7 +801,8 @@ export function CreateIssueModal() {
                 onChange={setAcceptance}
                 onSubmit={() => void submitCreate()}
                 rows={4}
-                mentionPeople={assignees}
+                mentionPeople={assignees.options}
+                mentionProjectId={selId || undefined}
                 placeholder="- [ ] Người dùng đăng nhập được bằng email&#10;- [ ] Báo lỗi rõ khi sai mật khẩu"
               />
             </Field>

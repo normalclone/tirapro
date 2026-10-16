@@ -3,6 +3,7 @@ import type { IssueDto, ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
+import { RESULT_FETCH_LIMIT, toResultSet, type ResultSet } from './resultPaging';
 
 export type FilterVisibility = 'PRIVATE' | 'WORKSPACE' | 'PROJECT';
 
@@ -60,22 +61,23 @@ export function useFilterFields() {
   });
 }
 
+/** Một trang kết quả JQL ad-hoc (GET /search); `cursor` = `endCursor` của trang trước. */
+export async function fetchJqlPage(jql: string, cursor?: string | null): Promise<ResultSet> {
+  const q = `jql=${encodeURIComponent(jql)}&limit=${RESULT_FETCH_LIMIT}${
+    cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''
+  }`;
+  return toResultSet((await api.get<ListResponse<IssueDto>>(`/search?${q}`)).data);
+}
+
 /**
  * Chạy JQL ad-hoc qua GET /search. `enabled` để chỉ chạy khi người dùng bấm "Chạy"
  * (tránh gọi liên tục khi đang gõ). Lỗi JQL (422) được trả qua `query.error`.
+ * Trả trang ĐẦU kèm `hasMore`/`nextCursor` — trang kế nạp bằng `fetchJqlPage`.
  */
 export function useRunJql(jql: string, enabled: boolean) {
   return useQuery({
     queryKey: keys.search.jql(jql),
-    queryFn:
-      enabled && jql.trim().length > 0
-        ? async () =>
-            (
-              await api.get<ListResponse<IssueDto>>(
-                `/search?jql=${encodeURIComponent(jql)}&limit=100`,
-              )
-            ).data.data
-        : skipToken,
+    queryFn: enabled && jql.trim().length > 0 ? () => fetchJqlPage(jql) : skipToken,
     retry: false,
   });
 }
@@ -116,15 +118,16 @@ export function useDeleteFilter() {
   });
 }
 
-/** Chạy 1 bộ lọc đã lưu theo id (GET /filters/:id/run) — helper fetch thủ công. */
-async function runFilter(id: string): Promise<IssueDto[]> {
-  return (await api.get<ListResponse<IssueDto>>(`/filters/${id}/run?limit=100`)).data.data;
+/** Một trang kết quả của bộ lọc đã lưu (GET /filters/:id/run); `cursor` = `endCursor` của trang trước. */
+export async function fetchFilterPage(id: string, cursor?: string | null): Promise<ResultSet> {
+  const q = `limit=${RESULT_FETCH_LIMIT}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+  return toResultSet((await api.get<ListResponse<IssueDto>>(`/filters/${id}/run?${q}`)).data);
 }
 
-/** Mutation chạy bộ lọc đã lưu — dùng để nạp & chạy khi bấm vào 1 bộ lọc. */
+/** Mutation chạy bộ lọc đã lưu — dùng để nạp & chạy khi bấm vào 1 bộ lọc (trang đầu). */
 export function useRunFilter() {
   return useMutation({
-    mutationFn: (id: string) => runFilter(id),
+    mutationFn: (id: string) => fetchFilterPage(id),
   });
 }
 

@@ -71,6 +71,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             comment={c}
             issueId={issue.id}
             people={people}
+            projectId={issue.projectId}
             canEdit={canEditOwn && !!currentUser && c.author?.id === currentUser.id}
           />
         ))}
@@ -91,6 +92,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             onSubmit={() => void submit()}
             rows={3}
             mentionPeople={people}
+            mentionProjectId={issue.projectId}
             textareaId={COMMENT_INPUT_ID}
             onPasteImages={pasteImages}
             onBusyChange={setUploading}
@@ -118,11 +120,13 @@ function CommentRow({
   comment,
   issueId,
   people,
+  projectId,
   canEdit,
 }: {
   comment: CommentDto;
   issueId: string;
   people: PersonOption[];
+  projectId: string;
   canEdit: boolean;
 }) {
   const update = useUpdateComment(issueId);
@@ -184,6 +188,7 @@ function CommentRow({
               autoFocus
               rows={3}
               mentionPeople={people}
+              mentionProjectId={projectId}
               onPasteImages={pasteImages}
               onBusyChange={setUploading}
             />

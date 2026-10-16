@@ -1,4 +1,10 @@
-import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  skipToken,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import type { MemberDto, PoolUserDto, UserDto } from '@tirapro/types';
 import { api, type Ack } from '@/lib/api';
 import { setAccessToken } from '@/lib/auth-token';
@@ -6,6 +12,7 @@ import { queryClient } from '@/lib/queryClient';
 import { reconnectSocket } from '@/lib/socket';
 import { useAuth } from '@/stores/auth';
 import { keys } from '@/lib/queryKeys';
+import { userSearchQuery, USER_PICKER_LIMIT, type UserSearchOpts } from './userSearch';
 
 /** Thân request cập nhật hồ sơ cá nhân (PATCH /users/me). */
 export interface UpdateProfileInput {
@@ -26,6 +33,24 @@ export function useWorkspaceUsers() {
   return useQuery({
     queryKey: keys.users.workspace,
     queryFn: async () => (await api.get<UserDto[]>('/users')).data,
+  });
+}
+
+/**
+ * Tìm người PHÍA MÁY CHỦ (GET /users?projectId&search&limit): dự án riêng tư chỉ trả người xem được dự án, loại tài khoản
+ * đã khoá (trừ khi `includeInactive`). Giữ kết quả cũ trong lúc gõ tiếp để danh sách không nháy trống.
+ */
+export function useSearchUsers(opts: UserSearchOpts & { enabled?: boolean } = {}) {
+  const { enabled = true, ...q } = opts;
+  const search = q.search?.trim() ?? '';
+  const limit = q.limit ?? USER_PICKER_LIMIT;
+  return useQuery({
+    queryKey: keys.users.search(q.projectId ?? '', search, limit, q.includeInactive ?? false),
+    queryFn: enabled
+      ? async () => (await api.get<UserDto[]>(`/users?${userSearchQuery({ ...q, search })}`)).data
+      : skipToken,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 

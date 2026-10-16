@@ -12,6 +12,7 @@ import { exportIssuesCsvWithToast } from '@/features/export/api';
 import { openOnClick, openOnRowKey } from '@/lib/rowOpen';
 import { categoryColor } from '@/lib/statusColor';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { resultCountLabel } from './resultPaging';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import {
@@ -64,6 +65,9 @@ export function ResultsTable({
   projectKeyById,
   onOpen,
   exportJql,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
 }: {
   issues: IssueDto[] | null;
   loading: boolean;
@@ -76,6 +80,10 @@ export function ResultsTable({
   onOpen: (key: string) => void;
   /** JQL của kết quả đang xem; có thì hiện nút Xuất CSV (tải ĐỦ mọi dòng ở máy chủ, theo cột đang chọn). */
   exportJql?: string;
+  /** Máy chủ còn kết quả sau phần đã nạp: nhãn đếm không ghi như tổng, có nút "Tải thêm" + gợi ý Xuất CSV. */
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }) {
   const { columns, toggle } = useResultColumns();
   const wide = useMediaQuery('(min-width: 640px)', true);
@@ -125,7 +133,7 @@ export function ResultsTable({
         <span className="text-sm font-medium text-ink-strong">Kết quả</span>
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted">
-            {total} công việc
+            {resultCountLabel(total, hasMore)}
             {totalPages > 1 && ` · ${start + 1}–${Math.min(start + RESULTS_PAGE_SIZE, total)}`}
           </span>
           {wide && <ColumnPicker columns={columns} onToggle={toggle} />}
@@ -145,6 +153,15 @@ export function ResultsTable({
           )}
         </div>
       </div>
+
+      {hasMore && (
+        <p className="border-b border-border bg-surface-2 px-4 py-1.5 text-xs text-muted">
+          Còn nhiều công việc khớp hơn số đang hiện.
+          {exportJql
+            ? ' Bấm “Tải thêm” để xem tiếp, hoặc Xuất CSV để lấy đủ.'
+            : ' Bấm “Tải thêm” để xem tiếp.'}
+        </p>
+      )}
 
       {wide ? (
         <div className="overflow-x-auto">
@@ -208,6 +225,13 @@ export function ResultsTable({
           >
             Sau
             <ChevronRight className="h-4 w-4" aria-hidden />
+          </Button>
+        </div>
+      )}
+      {hasMore && onLoadMore && (
+        <div className="flex justify-center border-t border-border px-4 py-2.5">
+          <Button variant="secondary" size="sm" loading={loadingMore} onClick={onLoadMore}>
+            Tải thêm
           </Button>
         </div>
       )}

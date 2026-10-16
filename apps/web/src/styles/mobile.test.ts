@@ -16,6 +16,14 @@ describe('mobile nền chung', () => {
     expect(src('components/ui/Input.tsx')).toMatch(/max-sm:text-\[16px\]/);
     expect(src('components/ui/SearchSelect.tsx')).toMatch(/max-sm:text-\[16px\]/);
   });
+  it('16px là TỐI THIỂU: ô tiêu đề cỡ lớn (text-lg/xl…) không bị ép xuống 16px (CSS toàn cục + <Input>)', () => {
+    const rule =
+      /@media \(max-width: 639px\)\s*\{[^@]*?font-size:\s*16px\s*!important/.exec(css)?.[0] ?? '';
+    for (const cls of ['text-lg', 'text-xl', 'text-2xl', 'text-3xl']) {
+      expect(rule).toContain(`.${cls}`);
+    }
+    expect(src('components/ui/Input.tsx')).toMatch(/LARGE_TEXT/);
+  });
   it('có lớp scroll-fade-x', () => expect(css).toMatch(/\.scroll-fade-x/));
   it('viewport-fit=cover', () => expect(html).toMatch(/viewport-fit=cover/));
   it('nút nổi tránh thanh home iOS (hằng vị trí dùng env(safe-area-inset-bottom))', () =>

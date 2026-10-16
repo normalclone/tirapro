@@ -5,6 +5,8 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/primitives';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
+import { showTypeToSearchHint } from '@/features/members/userSearch';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { useIssue, useUpdateIssue } from '@/features/issues/api';
 import { useCanEditIssue, useCanIn, useProjectPermissions } from '@/features/projects/permissions';
 import { apiErrorMessage } from '@/lib/api';
@@ -117,10 +119,11 @@ function AssignGate({
 
 function AssignBody({ issueKey, onClose }: { issueKey: string; onClose: () => void }) {
   const { data: issue } = useIssue(issueKey);
-  const options = useAssigneeOptions(issue?.projectId);
+  const [q, setQ] = useState('');
+  const search = useDebouncedValue(q, 200);
+  const options = useAssigneeOptions(issue?.projectId, { search });
   const updateIssue = useUpdateIssue(issue?.projectId);
   const listId = useId();
-  const [q, setQ] = useState('');
   // -1 = chưa chạm: mũi tên bắt đầu từ người đang phụ trách (nếu có), để Enter ngay không đổi gì.
   const [active, setActive] = useState(-1);
 
@@ -245,6 +248,9 @@ function AssignBody({ issueKey, onClose }: { issueKey: string; onClose: () => vo
         ))}
         {rows.length === 0 && (
           <li className="px-2 py-3 text-center text-sm text-muted">Không tìm thấy</li>
+        )}
+        {showTypeToSearchHint(options.length, q) && (
+          <li className="px-2 py-2 text-center text-xs text-faint">Gõ để tìm thêm</li>
         )}
       </ul>
     </div>

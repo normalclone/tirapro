@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
-import type { PersonOption } from '@/components/ui/PeoplePicker';
-import { useWorkspaceUsers, useProjectMembers } from '@/features/members/api';
+import { useEffect, useMemo, useState } from 'react';
+import { rememberPeople, type PersonOption } from '@/components/ui/PeoplePicker';
+import { useProjectMembers, useSearchUsers } from '@/features/members/api';
 import { useTeams } from '@/features/teams/api';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
+import { showTypeToSearchHint } from '@/features/members/userSearch';
 
 /**
  * Danh sách người có thể gán (assignee) trong ngữ cảnh 1 dự án, kèm:
@@ -10,12 +12,23 @@ import { useTeams } from '@/features/teams/api';
  * Gộp `search` để dropdown tìm theo tên / vị trí / nhóm cùng lúc.
  * Tự giảm cấp: thiếu dữ liệu vai trò/nhóm vẫn trả về danh sách người (chỉ tên).
  */
-export function useAssigneeOptions(projectId?: string): PersonOption[] {
-  const { data: users } = useWorkspaceUsers();
+export function useAssigneeOptions(
+  projectId?: string,
+  opts: {
+    /** Từ khoá tìm phía máy chủ (đã debounce ở nơi gọi). */
+    search?: string;
+    enabled?: boolean;
+    /** Gồm cả tài khoản đã khoá — chỉ cho bộ lọc theo người, KHÔNG cho chọn người để giao. */
+    includeInactive?: boolean;
+    limit?: number;
+  } = {},
+): PersonOption[] {
+  // Máy chủ lọc theo dự án (dự án riêng tư chỉ người xem được), bỏ tài khoản đã khoá, tìm theo từ khoá.
+  const { data: users } = useSearchUsers({ projectId, ...opts });
   const { data: members } = useProjectMembers(projectId);
   const { data: teams } = useTeams();
 
-  return useMemo(() => {
+  const options = useMemo(() => {
     const roleByUser = new Map<string, string[]>();
     for (const m of members ?? [])
       roleByUser.set(
@@ -52,4 +65,24 @@ export function useAssigneeOptions(projectId?: string): PersonOption[] {
       };
     });
   }, [users, members, teams]);
+  useEffect(() => rememberPeople(options), [options]);
+  return options;
+}
+
+/** Debounce từ khoá tìm người trước khi hỏi máy chủ. */
+const SEARCH_DEBOUNCE_MS = 200;
+
+/**
+ * Bộ chọn người được giao có tìm phía máy chủ: `{...picker}` rải thẳng vào `<PeoplePicker>` (options + onSearchChange
+ * + moreHint). Chưa gõ → 50 người đầu của dự án; gõ → máy chủ lọc (kể cả người ngoài 50 dòng đầu).
+ */
+export function useAssigneePicker(projectId?: string) {
+  const [q, setQ] = useState('');
+  const search = useDebouncedValue(q, SEARCH_DEBOUNCE_MS);
+  const options = useAssigneeOptions(projectId, { search });
+  return {
+    options,
+    onSearchChange: setQ,
+    moreHint: showTypeToSearchHint(options.length, q),
+  };
 }

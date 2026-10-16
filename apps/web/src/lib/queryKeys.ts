@@ -131,6 +131,9 @@ export const keys = {
 
   users: {
     workspace: ['workspace-users'] as const,
+    /** Tìm người phía máy chủ (theo dự án/từ khoá) — chung tiền tố `workspace-users` để invalidate cùng nhau. */
+    search: (projectId: string, search: string, limit: number, includeInactive: boolean) =>
+      ['workspace-users', 'search', projectId, search, limit, includeInactive] as const,
     allRoot: ['all-users'] as const,
     all: (search?: string) => ['all-users', search ?? ''] as const,
   },

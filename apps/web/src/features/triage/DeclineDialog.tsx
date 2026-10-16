@@ -65,6 +65,7 @@ export function DeclineDialog({
           rows={3}
           autoFocus
           mentionPeople={people}
+          mentionProjectId={projectId}
           placeholder="Vì sao không nhận yêu cầu này? (gõ @ để nhắc người)"
         />
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Lý do nhanh">

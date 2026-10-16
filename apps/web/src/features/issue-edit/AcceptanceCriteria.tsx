@@ -111,6 +111,7 @@ export function AcceptanceCriteria({ issue }: { issue: IssueDto }) {
             autoFocus
             rows={5}
             mentionPeople={people}
+            mentionProjectId={issue.projectId}
             placeholder="Mỗi dòng một tiêu chí, dạng - [ ] Người dùng đăng nhập được bằng email"
           />
           <div className="flex items-center gap-2">
