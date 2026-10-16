@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { CreateIssueInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { RedisService } from '../../infra/redis/redis.service';
 import {
   BusinessRuleException,
   ForbiddenAppException,
@@ -79,10 +80,30 @@ interface MergeTarget {
   severityId?: string | null;
 }
 
-/** Cửa sổ chống gửi đôi cho cùng một báo cáo. */
-const RECENT_REPORT_TTL_MS = 8_000;
+/** Cửa sổ chống gửi đôi cho cùng một báo cáo (giây, cho Redis `EX`; bản bộ nhớ dùng mili giây tương ứng). */
+const RECENT_REPORT_TTL_SEC = 8;
+const RECENT_REPORT_TTL_MS = RECENT_REPORT_TTL_SEC * 1000;
+/** Node khác đang chạy cùng báo cáo: hỏi lại Redis mỗi `POLL` ms, tối đa `WAIT` ms rồi báo bận. */
+const SHARED_POLL_MS = 100;
+const SHARED_WAIT_MS = 6_000;
+const PENDING = 'pending';
 
-/** Dấu vân tay của một báo cáo: người + dự án + đích gộp + tiêu đề chuẩn hoá + loại + mô tả + tệp. */
+/** JSON ổn định (khoá sắp xếp) để cùng một môi trường luôn ra cùng một chuỗi dù thứ tự khoá khác nhau. */
+function stableJson(v: unknown): string {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? '';
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`;
+  const o = v as Record<string, unknown>;
+  return `{${Object.keys(o)
+    .filter((k) => o[k] !== undefined)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`)
+    .join(',')}}`;
+}
+
+/**
+ * Dấu vân tay của một báo cáo: người + dự án + đích gộp + tiêu đề chuẩn hoá + loại yêu cầu + loại công việc +
+ * mức nghiêm trọng + môi trường + mô tả + tệp. Hai báo cáo khác bất kỳ mục nào là việc KHÁC nhau, không phải gửi đôi.
+ */
 function reportFingerprint(userId: string, input: ReportIssueInput): string {
   const body = createHash('sha1')
     .update(input.description ?? '')
@@ -93,11 +114,26 @@ function reportFingerprint(userId: string, input: ReportIssueInput): string {
     input.mergeIntoIssueId ?? '',
     input.forceNew ? 'new' : '',
     input.kind,
+    input.typeId ?? '',
+    input.severityId ?? '',
+    stableJson(input.environment ?? null),
     normalizeSummary(input.summary),
     body,
     [...(input.attachmentIds ?? [])].sort().join(','),
   ].join('|');
 }
+
+/** Phần tối thiểu của ioredis mà khoá chống gửi đôi cần. */
+interface DedupeClient {
+  set(key: string, value: string, mode: 'EX', ttlSec: number, flag: 'NX'): Promise<'OK' | null>;
+  set(key: string, value: string, mode: 'EX', ttlSec: number): Promise<unknown>;
+  get(key: string): Promise<string | null>;
+  del(key: string): Promise<unknown>;
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 @Injectable()
 export class IntakeService {
@@ -109,6 +145,7 @@ export class IntakeService {
     private readonly issues: IssuesService,
     private readonly comments: CommentsService,
     private readonly search: SearchService,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   /**
@@ -124,16 +161,87 @@ export class IntakeService {
     opts: ReportOptions = {},
   ): Promise<ReportResult> {
     // Chống gửi đôi (bấm đúp, thử lại sau lỗi mạng): cùng người + cùng nội dung trong vài giây dùng chung MỘT kết quả
-    // (kể cả khi lần đầu còn đang chạy) — không tạo bug / bình luận thứ hai. Lỗi thì bỏ khỏi bộ nhớ để thử lại được.
+    // (kể cả khi lần đầu còn đang chạy) — không tạo bug / bình luận thứ hai. Lớp bộ nhớ (cùng tiến trình) luôn có;
+    // Redis thêm lớp xuyên tiến trình khi chạy nhiều node. Lỗi thì bỏ khỏi bộ nhớ/Redis để thử lại được.
     const dedupeKey = reportFingerprint(userId, input);
     const now = Date.now();
     for (const [k, v] of this.recent) if (now - v.at > RECENT_REPORT_TTL_MS) this.recent.delete(k);
     const hit = this.recent.get(dedupeKey);
     if (hit) return hit.promise;
-    const promise = this.doReport(workspaceId, userId, input, opts);
+    const promise = this.reportOnce(dedupeKey, workspaceId, userId, input, opts);
     this.recent.set(dedupeKey, { at: now, promise });
     promise.catch(() => this.recent.delete(dedupeKey));
     return promise;
+  }
+
+  /**
+   * Lớp Redis của chống gửi đôi: `SET key pending NX EX 8` — ai lấy được khoá thì chạy rồi ghi kết quả vào khoá
+   * (node khác trong 8 giây nhận lại đúng kết quả đó); không lấy được thì chờ kết quả. Redis không sẵn sàng/lỗi
+   * ở bất kỳ bước nào thì rơi về chạy thẳng (khoá bộ nhớ ở `report()` vẫn che gửi đôi cùng tiến trình).
+   */
+  private async reportOnce(
+    dedupeKey: string,
+    workspaceId: string,
+    userId: string,
+    input: ReportIssueInput,
+    opts: ReportOptions,
+  ): Promise<ReportResult> {
+    const client = (
+      this.redis?.isAvailable() ? this.redis.getClient() : null
+    ) as DedupeClient | null;
+    if (!client) return this.doReport(workspaceId, userId, input, opts);
+
+    const key = `intake:report:${createHash('sha1').update(dedupeKey).digest('hex')}`;
+    let acquired: boolean;
+    try {
+      acquired = (await client.set(key, PENDING, 'EX', RECENT_REPORT_TTL_SEC, 'NX')) === 'OK';
+    } catch (err) {
+      this.logger.warn(`Redis lỗi khi lấy khoá chống gửi đôi — dùng khoá bộ nhớ: ${errMsg(err)}`);
+      return this.doReport(workspaceId, userId, input, opts);
+    }
+
+    if (!acquired) {
+      const shared = await this.waitForSharedResult(client, key);
+      if (shared) return shared;
+      // Khoá đã biến mất (lần đầu lỗi hoặc hết hạn) hoặc Redis lỗi giữa chừng: tự chạy, không để mất báo cáo.
+      return this.doReport(workspaceId, userId, input, opts);
+    }
+
+    try {
+      const result = await this.doReport(workspaceId, userId, input, opts);
+      await client
+        .set(key, JSON.stringify(result), 'EX', RECENT_REPORT_TTL_SEC)
+        .catch((e: unknown) =>
+          this.logger.warn(`Không ghi được kết quả chống gửi đôi: ${errMsg(e)}`),
+        );
+      return result;
+    } catch (err) {
+      await client.del(key).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  /** Chờ node khác ghi xong kết quả; null = khoá biến mất/Redis lỗi (để người gọi tự chạy). Chờ quá lâu thì báo bận. */
+  private async waitForSharedResult(
+    client: DedupeClient,
+    key: string,
+  ): Promise<ReportResult | null> {
+    const deadline = Date.now() + SHARED_WAIT_MS;
+    try {
+      for (;;) {
+        const v = await client.get(key);
+        if (v === null) return null;
+        if (v !== PENDING) return JSON.parse(v) as ReportResult;
+        if (Date.now() >= deadline) break;
+        await sleep(SHARED_POLL_MS);
+      }
+    } catch (err) {
+      this.logger.warn(`Redis lỗi khi chờ kết quả chống gửi đôi: ${errMsg(err)}`);
+      return null;
+    }
+    throw new BusinessRuleException(
+      'Báo cáo giống hệt đang được xử lý — hãy chờ vài giây rồi kiểm tra danh sách trước khi gửi lại',
+    );
   }
 
   private async doReport(
