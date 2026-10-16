@@ -16,6 +16,7 @@ import {
   ratioText,
   riskMetaText,
 } from './leadershipText';
+import { TOUCH_HIT } from '@/lib/touchHit';
 
 /**
  * Ba thẻ cho lãnh đạo trên Tổng quan: 5 rủi ro mở điểm cao nhất · OKR chậm so với thời gian · người quá tải.
@@ -213,7 +214,10 @@ function LeadershipCard({
               <button
                 type="button"
                 aria-label={`Cách tính: ${title}`}
-                className="inline-flex rounded p-1.5 text-faint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary print:hidden"
+                className={cn(
+                  'inline-flex rounded p-1.5 text-faint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary print:hidden',
+                  TOUCH_HIT,
+                )}
               >
                 <Info className="h-3.5 w-3.5" aria-hidden />
               </button>
@@ -232,7 +236,7 @@ function LeadershipCard({
         </h3>
         <Link
           to={to}
-          className="shrink-0 text-xs text-primary hover:underline print:hidden"
+          className={cn('shrink-0 text-xs text-primary hover:underline print:hidden', TOUCH_HIT)}
           aria-label={`Xem tất cả: ${title}`}
         >
           Xem tất cả →

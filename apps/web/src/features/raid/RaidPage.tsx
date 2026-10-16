@@ -35,6 +35,7 @@ import {
 } from './constants';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { useScopeParam } from '@/lib/scopeParam';
+import { ScrollX } from '@/components/ui/ScrollX';
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'Mọi trạng thái' },
@@ -84,8 +85,8 @@ function HeatMatrix({
         <p className="text-xs text-faint">Bấm một ô để chỉ xem các mục trong ô đó</p>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="flex min-w-[26rem] gap-2">
+      <div>
+        <div className="flex gap-2">
           <div className="flex shrink-0 items-center">
             <span
               className="whitespace-nowrap text-xs font-medium text-muted [writing-mode:vertical-rl] rotate-180"
@@ -188,21 +189,10 @@ function HeatMatrix({
   );
 }
 
-function RaidRow({
-  item,
-  canManage,
-  onEdit,
-}: {
-  item: RaidItemDto;
-  canManage: boolean;
-  onEdit: (item: RaidItemDto) => void;
-}) {
+/** Xoá một mục (xác nhận → xoá → thông báo) — dùng chung cho dòng bảng (≥ sm) và thẻ (< sm). */
+function useRemoveRaidItem(item: RaidItemDto) {
   const confirm = useConfirm();
   const remove = useDeleteRaidItem();
-  const level = RAID_LEVEL_META[item.level];
-  const status = RAID_STATUS_META[item.status];
-  const closed = item.status === 'CLOSED' || item.status === 'ACCEPTED';
-
   async function handleRemove() {
     if (
       !(await confirm({
@@ -219,6 +209,95 @@ function RaidRow({
       toast.error(apiErrorMessage(e));
     }
   }
+  return { handleRemove, isPending: remove.isPending };
+}
+
+/** Thẻ một mục RAID cho điện thoại (< sm): mã + tiêu đề + điểm + trạng thái + người phụ trách + hạn, không cần cuộn ngang. */
+function RaidCard({
+  item,
+  canManage,
+  onEdit,
+}: {
+  item: RaidItemDto;
+  canManage: boolean;
+  onEdit: (item: RaidItemDto) => void;
+}) {
+  const { handleRemove, isPending } = useRemoveRaidItem(item);
+  const level = RAID_LEVEL_META[item.level];
+  const status = RAID_STATUS_META[item.status];
+  const closed = item.status === 'CLOSED' || item.status === 'ACCEPTED';
+  return (
+    <li className="border-t border-border px-3 py-3">
+      <div className="flex items-start gap-2">
+        <p className="min-w-0 flex-1 break-words text-sm font-medium text-ink">{item.title}</p>
+        <Badge
+          className={cn('shrink-0 tabular-nums', level.badge)}
+          title={`Xác suất ${item.probability} × ảnh hưởng ${item.impact} = ${item.score} điểm — mức ${item.levelLabel}`}
+        >
+          {item.score} · {item.levelLabel}
+        </Badge>
+      </div>
+      {item.mitigation && (
+        <p className="mt-1 break-words text-xs text-muted">Cách xử lý: {item.mitigation}</p>
+      )}
+      {item.project && <p className="mt-0.5 text-xs text-faint">{item.project.name}</p>}
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <Badge className={status.className}>{status.label}</Badge>
+        {item.dueDate && (
+          <DueBadge
+            issue={{ dueDate: item.dueDate, status: { category: closed ? 'DONE' : 'TODO' } }}
+          />
+        )}
+        {item.owner ? (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <Avatar name={item.owner.displayName} src={item.owner.avatarUrl} size={20} />
+            <span className="truncate text-xs text-muted">{item.owner.displayName}</span>
+          </span>
+        ) : (
+          <span className="text-xs text-faint">Chưa gán</span>
+        )}
+        {canManage && (
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onEdit(item)}
+              title="Sửa mục này"
+              aria-label={`Sửa ${item.title}`}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted hover:text-danger"
+              title="Xoá khỏi danh sách theo dõi"
+              aria-label={`Xoá ${item.title}`}
+              loading={isPending}
+              onClick={() => void handleRemove()}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function RaidRow({
+  item,
+  canManage,
+  onEdit,
+}: {
+  item: RaidItemDto;
+  canManage: boolean;
+  onEdit: (item: RaidItemDto) => void;
+}) {
+  const { handleRemove, isPending } = useRemoveRaidItem(item);
+  const level = RAID_LEVEL_META[item.level];
+  const status = RAID_STATUS_META[item.status];
+  const closed = item.status === 'CLOSED' || item.status === 'ACCEPTED';
 
   return (
     <tr className="border-t border-border align-top">
@@ -290,7 +369,7 @@ function RaidRow({
               className="text-muted hover:text-danger"
               title="Xoá khỏi danh sách theo dõi"
               aria-label={`Xoá ${item.title}`}
-              loading={remove.isPending}
+              loading={isPending}
               onClick={() => void handleRemove()}
             >
               <Trash2 className="h-4 w-4" />
@@ -494,48 +573,56 @@ export function RaidPage() {
                   />
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[46rem] text-left">
-                    <thead>
-                      <tr className="text-xs font-medium text-faint">
-                        <th scope="col" className="px-3 py-2">
-                          Nội dung
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-3 py-2"
-                          title="Người chịu trách nhiệm theo dõi và xử lý"
-                        >
-                          Người phụ trách
-                        </th>
-                        <th scope="col" className="px-3 py-2" title={RAID_LEVEL_LEGEND}>
-                          Xác suất × ảnh hưởng
-                        </th>
-                        <th scope="col" className="px-3 py-2">
-                          Trạng thái
-                        </th>
-                        <th scope="col" className="px-3 py-2" title="Ngày cần xử lý xong">
-                          Hạn xử lý
-                        </th>
-                        {canManage && (
-                          <th scope="col" className="px-3 py-2 text-right">
-                            Thao tác
+                <>
+                  {/* < sm: danh sách thẻ (bảng 46rem không vừa 390px); ≥ sm: bảng như cũ. */}
+                  <ul className="sm:hidden">
+                    {rows.map((item) => (
+                      <RaidCard key={item.id} item={item} canManage={canManage} onEdit={openEdit} />
+                    ))}
+                  </ul>
+                  <ScrollX className="max-sm:hidden">
+                    <table className="w-full min-w-[46rem] text-left">
+                      <thead>
+                        <tr className="text-xs font-medium text-faint">
+                          <th scope="col" className="px-3 py-2">
+                            Nội dung
                           </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((item) => (
-                        <RaidRow
-                          key={item.id}
-                          item={item}
-                          canManage={canManage}
-                          onEdit={openEdit}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                          <th
+                            scope="col"
+                            className="px-3 py-2"
+                            title="Người chịu trách nhiệm theo dõi và xử lý"
+                          >
+                            Người phụ trách
+                          </th>
+                          <th scope="col" className="px-3 py-2" title={RAID_LEVEL_LEGEND}>
+                            Xác suất × ảnh hưởng
+                          </th>
+                          <th scope="col" className="px-3 py-2">
+                            Trạng thái
+                          </th>
+                          <th scope="col" className="px-3 py-2" title="Ngày cần xử lý xong">
+                            Hạn xử lý
+                          </th>
+                          {canManage && (
+                            <th scope="col" className="px-3 py-2 text-right">
+                              Thao tác
+                            </th>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((item) => (
+                          <RaidRow
+                            key={item.id}
+                            item={item}
+                            canManage={canManage}
+                            onEdit={openEdit}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </ScrollX>
+                </>
               )}
             </section>
           </div>

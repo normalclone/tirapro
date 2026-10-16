@@ -1,3 +1,4 @@
 {
-  "/p/:project/gantt|small-targets": "Gantt cuộn ngang trong khung; thanh công việc nhỏ có chủ đích. LƯU Ý: small-targets vốn chỉ là cảnh báo (WARN_ONLY) — mục này chỉ ẩn khỏi báo cáo, không phải ngoại lệ thật của loại chặn."
+  "/p/:project/gantt|small-targets": "Gantt cuộn ngang trong khung; thanh công việc nhỏ có chủ đích. LƯU Ý: small-targets vốn chỉ là cảnh báo (WARN_ONLY) — mục này chỉ ẩn khỏi báo cáo, không phải ngoại lệ thật của loại chặn.",
+  "/manage/risks|covered-by-fixed": "Ma trận rủi ro 5×5 cao hơn màn hình: nút nổi (FAB) chỉ phủ tạm một ô góc dưới-phải khi trang ở đầu; cuộn nhẹ là ô lộ ra (trang đã chừa đệm đáy pb-28 cho FAB). Co ma trận để né FAB sẽ làm ô quá nhỏ."
 }
