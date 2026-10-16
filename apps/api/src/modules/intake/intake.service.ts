@@ -289,18 +289,27 @@ export class IntakeService {
     projectId: string,
     summary: string,
     limit = SUGGESTION_LIMIT,
+    viewerId?: string,
   ): Promise<DuplicateSuggestion[]> {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
+    // Dự án riêng tư người báo không thấy → 404 như dự án không tồn tại (kể cả khi tiêu đề quá ngắn để tìm).
+    if (viewerId) await this.search.assertProjectVisibleTo(viewerId, workspaceId, projectId);
 
     const query = summary.trim();
     if ([...query].length < MIN_QUERY_LENGTH) return [];
     const take = Math.min(Math.max(Math.trunc(limit) || SUGGESTION_LIMIT, 1), SUGGESTION_LIMIT);
 
-    const ids = await this.search.similarIssueIds(workspaceId, projectId, query, CANDIDATE_LIMIT);
+    const ids = await this.search.similarIssueIds(
+      workspaceId,
+      projectId,
+      query,
+      CANDIDATE_LIMIT,
+      viewerId,
+    );
     if (ids.length === 0) return [];
 
     const rows = await this.prisma.issue.findMany({

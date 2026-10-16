@@ -3091,3 +3091,93 @@ describe('IssuesService.update — lịch sử mô tả (B19)', () => {
     expect(t.issueHistory.createMany).not.toHaveBeenCalled();
   });
 });
+
+describe('IssuesService — dự án riêng tư (P13)', () => {
+  const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+
+  function makeWithAccess(visibleWhere: unknown = visible) {
+    const issue = {
+      findMany: vi.fn(() => Promise.resolve([])),
+      findFirst: vi.fn(() => Promise.resolve(null)),
+    };
+    const prisma = { issue };
+    const access = { visibleWhere: vi.fn(() => Promise.resolve(visibleWhere)) };
+    const service = new IssuesService(
+      prisma as never,
+      { emit: vi.fn() } as never,
+      {} as never,
+      undefined,
+      undefined,
+      undefined,
+      access as never,
+    );
+    return { service, prisma, access };
+  }
+  const whereOf = (fn: ReturnType<typeof vi.fn>) =>
+    (fn.mock.calls[0] as unknown as [{ where: unknown }])[0].where;
+
+  it('list(): nhúng điều kiện hiển thị vào project của scope', async () => {
+    const { service, prisma, access } = makeWithAccess();
+    await service.list('w1', {}, undefined, 20, 'u1');
+    expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+    expect(whereOf(prisma.issue.findMany)).toMatchObject({
+      workspaceId: 'w1',
+      deletedAt: null,
+      project: { deletedAt: null, ...visible },
+    });
+  });
+
+  it('list(): viewerId trống (đường hệ thống như board) → không lọc riêng tư', async () => {
+    const { service, prisma, access } = makeWithAccess();
+    await service.list('w1', {}, undefined, 20);
+    expect(access.visibleWhere).not.toHaveBeenCalled();
+    expect(JSON.stringify(whereOf(prisma.issue.findMany))).not.toContain('isPrivate');
+    expect(whereOf(prisma.issue.findMany)).toMatchObject({ project: { deletedAt: null } });
+  });
+
+  it('query(): scope có điều kiện hiển thị; viewerId trống → không lọc (đường hệ thống)', async () => {
+    const a = makeWithAccess();
+    await a.service.query('w1', { id: 'x' }, [], undefined, 1, undefined, undefined, 'u1');
+    expect(JSON.stringify(whereOf(a.prisma.issue.findMany))).toContain('"isPrivate":false');
+    const b = makeWithAccess();
+    await b.service.query('w1', { id: 'x' }, [], undefined, 1);
+    expect(JSON.stringify(whereOf(b.prisma.issue.findMany))).not.toContain('isPrivate');
+  });
+
+  it('query() với rawIds (full-text): scope cuối vẫn lọc dự án riêng tư', async () => {
+    const a = makeWithAccess();
+    await a.service.query('w1', {}, [], undefined, 5, ['i1', 'i2'], undefined, 'u1');
+    expect(JSON.stringify(whereOf(a.prisma.issue.findMany))).toContain('"isPrivate":false');
+  });
+
+  it('query() rankHint: cả hai pha đều lọc dự án riêng tư', async () => {
+    const a = makeWithAccess();
+    await a.service.query('w1', {}, [], undefined, 5, undefined, ['i1'], 'u1');
+    for (const c of a.prisma.issue.findMany.mock.calls as unknown as [{ where: unknown }][]) {
+      expect(JSON.stringify(c[0].where)).toContain('"isPrivate":false');
+    }
+  });
+
+  it('getByKey(): dự án riêng tư không thấy → 404 cùng thông điệp với công việc không tồn tại', async () => {
+    const { service, prisma } = makeWithAccess();
+    const hidden = await service.getByKey('w1', 'HR-1', 'u1').catch((e: unknown) => e);
+    expect(whereOf(prisma.issue.findFirst)).toMatchObject({
+      workspaceId: 'w1',
+      key: 'HR-1',
+      project: { deletedAt: null, ...visible },
+    });
+    // Cùng đường "không tồn tại": gọi lại không viewer (mã không có thật) cho đúng cùng lỗi.
+    const missing = await makeWithAccess()
+      .service.getByKey('w1', 'NOPE-1')
+      .catch((e: unknown) => e);
+    expect((hidden as Error).message).toBe((missing as Error).message);
+    expect((hidden as { getStatus?: () => number }).getStatus?.()).toBe(404);
+  });
+
+  it('getByKey(): thành viên thấy dự án riêng tư', async () => {
+    const { service, prisma } = makeWithAccess();
+    prisma.issue.findFirst.mockResolvedValue(issueRow() as never);
+    const dto = await service.getByKey('w1', 'P-TASK-1', 'u1');
+    expect(dto.key).toBe('P-TASK-1');
+  });
+});

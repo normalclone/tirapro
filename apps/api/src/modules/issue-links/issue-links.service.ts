@@ -11,6 +11,7 @@ import { LIVE_PROJECT } from '../../common/live-project';
 import { assertIssueWritable } from '../../common/project-writable';
 import { isIssueOwner, type IssueOwners } from '../rbac/issue-ownership.service';
 import { RbacService } from '../rbac/rbac.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 
 /** Loại liên kết khả dụng trong workspace. */
 export interface LinkTypeView {
@@ -90,6 +91,8 @@ export class IssueLinksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rbac: RbacService,
+    // Mặc định dựng từ cùng prisma/rbac (chỗ dựng cũ vẫn chạy); Nest DI tiêm bản thật.
+    private readonly access: ProjectAccessService = new ProjectAccessService(prisma, rbac),
   ) {}
 
   /** Danh sách loại liên kết của workspace. */
@@ -124,6 +127,12 @@ export class IssueLinksService {
     // Guard chỉ kiểm quyền ở đầu NGUỒN → link liên dự án phải kiểm thêm quyền ở đầu ĐÍCH.
     // Kiểm quyền TRƯỚC trạng thái lưu trữ của đích để không lộ trạng thái dự án cho người không có quyền.
     if (target.projectId !== source.projectId) {
+      // Dự án riêng tư của đích mà người gọi không thấy → cùng lỗi với "đích không tồn tại" (không lộ sự tồn tại).
+      if (
+        !actor.isSystemAdmin &&
+        !(await this.access.canSee(actor.id, workspaceId, target.projectId))
+      )
+        throw new ForbiddenAppException(LINK_TARGET_DENIED);
       await this.assertCanEditAcrossProject(workspaceId, actor, target);
     }
     await assertIssueWritable(this.prisma, input.targetIssueId);
@@ -222,7 +231,10 @@ export class IssueLinksService {
         const perms = actor.isSystemAdmin
           ? null
           : await this.rbac.getEffectivePermissions(actor.id, workspaceId, other.projectId);
-        ok = perms === null || perms.has(PERMISSIONS.PROJECT_VIEW);
+        ok =
+          perms === null ||
+          (perms.has(PERMISSIONS.PROJECT_VIEW) &&
+            (await this.access.canSee(actor.id, workspaceId, other.projectId)));
         canView.set(other.projectId, ok);
       }
       if (ok) visible.push(row);

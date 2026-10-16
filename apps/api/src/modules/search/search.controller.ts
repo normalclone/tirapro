@@ -56,8 +56,8 @@ export class SearchController {
   /** Danh mục giá trị cho bộ dựng truy vấn trực quan (type/status/priority/sprint/label/resolution). */
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get('fields')
-  async fields(@WorkspaceId() workspaceId: string) {
-    return this.search.fields(workspaceId);
+  async fields(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
+    return this.search.fields(workspaceId, user.id);
   }
 
   // Chỉ phân tích cú pháp JQL, không đọc dữ liệu workspace.

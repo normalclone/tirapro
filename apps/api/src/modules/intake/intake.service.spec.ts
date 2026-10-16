@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { IntakeService } from './intake.service';
 
 function make(
@@ -43,7 +44,10 @@ function make(
   };
   const issues = { create: vi.fn(() => Promise.resolve({ id: 'new1', key: 'DEMO-BUG-7' })) };
   const comments = { create: vi.fn((..._a: unknown[]) => Promise.resolve({ id: 'c1' })) };
-  const search = { similarIssueIds: vi.fn(() => Promise.resolve(over.similar ?? [])) };
+  const search = {
+    similarIssueIds: vi.fn((..._a: unknown[]) => Promise.resolve(over.similar ?? [])),
+    assertProjectVisibleTo: vi.fn((..._a: unknown[]) => Promise.resolve()),
+  };
   const service = new IntakeService(
     prisma as never,
     issues as never,
@@ -350,8 +354,8 @@ describe('IntakeService.findDuplicates', () => {
         createdAt: new Date(),
       },
     ] as never);
-    const out = await service.findDuplicates('w1', 'p1', 'gio hang');
-    expect(search.similarIssueIds).toHaveBeenCalledWith('w1', 'p1', 'gio hang', 8);
+    const out = await service.findDuplicates('w1', 'p1', 'gio hang', undefined, 'u1');
+    expect(search.similarIssueIds).toHaveBeenCalledWith('w1', 'p1', 'gio hang', 8, 'u1');
     expect(out.map((o) => o.id)).toEqual(['b', 'a']);
     expect(out[1]).toMatchObject({ closed: true, resolution: "Won't Do", reporterName: 'X' });
     expect(out[0]).toMatchObject({
@@ -368,6 +372,19 @@ describe('IntakeService.findDuplicates', () => {
         }) as unknown,
       }),
     );
+  });
+
+  it('dự án riêng tư người báo không thấy => 404 như dự án không tồn tại, kể cả tiêu đề quá ngắn; không gọi tìm kiếm (P13)', async () => {
+    const { service, search } = make();
+    search.assertProjectVisibleTo.mockRejectedValue(new NotFoundAppException('Dự án'));
+    await expect(service.findDuplicates('w1', 'p1', 'ab', undefined, 'u1')).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(
+      service.findDuplicates('w1', 'p1', 'gio hang', undefined, 'u1'),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(search.assertProjectVisibleTo).toHaveBeenCalledWith('u1', 'w1', 'p1');
+    expect(search.similarIssueIds).not.toHaveBeenCalled();
   });
 
   it('truy vấn dưới 3 ký tự => [] và không gọi tìm kiếm', async () => {

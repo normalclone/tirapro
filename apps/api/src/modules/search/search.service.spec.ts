@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { SearchService } from './search.service';
+
+const ACCESS = {
+  visibleWhere: vi.fn().mockResolvedValue({}),
+  visibleProjectIds: vi.fn().mockResolvedValue(null),
+};
 
 function makeService(rows: Array<{ id: string; rank: number }> | Error) {
   const queryRaw = vi.fn(() =>
@@ -10,7 +16,18 @@ function makeService(rows: Array<{ id: string; rank: number }> | Error) {
     $queryRaw: queryRaw,
     project: { findMany: vi.fn().mockResolvedValue([{ id: 'P1' }]) },
   };
-  return { service: new SearchService(issues as never, prisma as never), issues, queryRaw, prisma };
+  const access = {
+    visibleWhere: vi.fn().mockResolvedValue({}),
+    visibleProjectIds: vi.fn().mockResolvedValue(null),
+    assertCanSee: vi.fn().mockResolvedValue(undefined),
+  };
+  return {
+    service: new SearchService(issues as never, prisma as never, access as never),
+    issues,
+    queryRaw,
+    prisma,
+    access,
+  };
 }
 
 describe('SearchService.search', () => {
@@ -20,7 +37,16 @@ describe('SearchService.search', () => {
       { id: 'I1', rank: 0.5 },
     ]);
     await service.search('W1', 'U1', { mode: 'text', q: 'đăng nhập', limit: 8 });
-    expect(issues.query).toHaveBeenCalledWith('W1', {}, [], undefined, 8, ['I2', 'I1']);
+    expect(issues.query).toHaveBeenCalledWith(
+      'W1',
+      {},
+      [],
+      undefined,
+      8,
+      ['I2', 'I1'],
+      undefined,
+      'U1',
+    );
   });
 
   it('mode=text: FTS trả null (nhánh phòng thủ) -> contains ĐÃ ESCAPE trên summary/description/key', async () => {
@@ -46,7 +72,7 @@ describe('SearchService.search', () => {
     const { service, issues, queryRaw } = makeService([]);
     await service.search('W1', 'U1', { mode: 'text', q: ' ', limit: 8 });
     expect(queryRaw).not.toHaveBeenCalled();
-    expect(issues.query).toHaveBeenCalledWith('W1', {}, [], undefined, 8, []);
+    expect(issues.query).toHaveBeenCalledWith('W1', {}, [], undefined, 8, [], undefined, 'U1');
   });
 
   it('JQL text ~ trên chuỗi AND, không ORDER BY -> where lai (id in | contains) + rankHint theo rank', async () => {
@@ -152,7 +178,7 @@ describe('SearchService.fields — severities', () => {
       version: { findMany: empty },
       severity,
     };
-    const service = new SearchService({} as never, prisma as never);
+    const service = new SearchService({} as never, prisma as never, ACCESS as never);
     const out = await service.fields('W1');
     expect(severity.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { workspaceId: 'W1' }, orderBy: { rank: 'desc' } }),
@@ -180,7 +206,7 @@ describe('SearchService.fields — components/versions (B17)', () => {
       },
       version: { findMany: vi.fn().mockResolvedValue([{ name: 'v1.0' }, { name: 'v1.0' }]) },
     };
-    const service = new SearchService({} as never, prisma as never);
+    const service = new SearchService({} as never, prisma as never, ACCESS as never);
     const out = await service.fields('W1');
     expect(prisma.component.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -208,5 +234,98 @@ describe('SearchService.similarIssueIds', () => {
       search: () => Promise.resolve(null),
     };
     expect(await service.similarIssueIds('W1', 'P1', 'giỏ hàng')).toEqual([]);
+  });
+});
+
+describe('SearchService — dự án riêng tư (P13)', () => {
+  const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+
+  function makePrivate(visibleIds: string[] | null = ['P1']) {
+    const base = makeService([{ id: 'I1', rank: 1 }]);
+    base.access.visibleWhere.mockResolvedValue(visible);
+    base.access.visibleProjectIds.mockResolvedValue(visibleIds);
+    return base;
+  }
+
+  it('fields(w, viewer): sprint/nhãn/thành phần/phiên bản chỉ lấy từ dự án người xem thấy', async () => {
+    const empty = vi.fn().mockResolvedValue([]);
+    const prisma = {
+      issueType: { findMany: empty },
+      status: { findMany: empty },
+      priority: { findMany: empty },
+      severity: { findMany: empty },
+      resolution: { findMany: empty },
+      sprint: { findMany: vi.fn().mockResolvedValue([]) },
+      label: { findMany: vi.fn().mockResolvedValue([]) },
+      component: { findMany: vi.fn().mockResolvedValue([]) },
+      version: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const access = { visibleWhere: vi.fn().mockResolvedValue(visible) };
+    const service = new SearchService({} as never, prisma as never, access as never);
+    await service.fields('w1', 'u1');
+    for (const m of [prisma.sprint, prisma.label, prisma.component, prisma.version]) {
+      expect(m.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { project: { workspaceId: 'w1', deletedAt: null, ...visible } },
+        }),
+      );
+    }
+  });
+
+  it('JQL: truyền người xem làm đối số thứ 8 của issues.query', async () => {
+    const { service, issues } = makePrivate();
+    await service.search('W1', 'u1', { jql: 'summary ~ "x"', limit: 50 });
+    expect((issues.query.mock.calls[0] as unknown[])[7]).toBe('u1');
+  });
+
+  it('JQL có excludeUntriaged vẫn giữ TRIAGE_VISIBLE và vẫn truyền người xem', async () => {
+    const { service, issues } = makePrivate();
+    await service.search('W1', 'u1', {
+      jql: 'summary ~ "x"',
+      limit: 50,
+      excludeUntriaged: true,
+    });
+    const call = issues.query.mock.calls[0] as unknown[];
+    expect(JSON.stringify(call[1])).toContain('triageState');
+    expect(call[7]).toBe('u1');
+  });
+
+  it('text ~ trong JQL: full-text chỉ tìm trong dự án người xem thấy (không phí top-200 vào dự án ẩn)', async () => {
+    const { service, queryRaw } = makePrivate(['P1', 'P3']);
+    await service.search('W1', 'u1', { jql: 'text ~ "foo"', limit: 50 });
+    const bound = JSON.stringify((queryRaw.mock.calls[0] as unknown[]).slice(1));
+    expect(bound).toContain('P1');
+    expect(bound).toContain('P3');
+  });
+
+  it('mode=text: giao projectId của người gọi với tập dự án thấy được; dự án ẩn → không kết quả', async () => {
+    const { service, queryRaw, issues } = makePrivate(['P1']);
+    await service.search('W1', 'u1', { mode: 'text', q: 'foo', projectId: 'HIDDEN', limit: 8 });
+    // Giao rỗng → full-text không chạy SQL, kết quả rỗng; query cuối vẫn lọc theo người xem.
+    expect(queryRaw).not.toHaveBeenCalled();
+    expect((issues.query.mock.calls[0] as unknown[])[5]).toEqual([]);
+    expect((issues.query.mock.calls[0] as unknown[])[7]).toBe('u1');
+  });
+
+  it('admin (visibleProjectIds = null): không thu hẹp full-text', async () => {
+    const { service, queryRaw } = makePrivate(null);
+    await service.search('W1', 'u1', { mode: 'text', q: 'foo', limit: 8 });
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('similarIssueIds(…, viewer): dự án riêng tư không thấy → 404 "Dự án", không chạm full-text', async () => {
+    const { service, access, queryRaw } = makePrivate();
+    access.assertCanSee.mockRejectedValue(new NotFoundAppException('Dự án'));
+    await expect(service.similarIssueIds('W1', 'HR', 'lỗi', 8, 'u1')).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(access.assertCanSee).toHaveBeenCalledWith('u1', 'W1', 'HR', 'Dự án');
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('similarIssueIds không viewer (hệ thống) → không kiểm quyền xem', async () => {
+    const { service, access } = makePrivate();
+    await service.similarIssueIds('W1', 'HR', 'lỗi');
+    expect(access.assertCanSee).not.toHaveBeenCalled();
   });
 });

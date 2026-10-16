@@ -34,6 +34,7 @@ export class IssuesController {
   @Get()
   async list(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
     @Query('statusId') statusId?: string,
     @Query('assigneeId') assigneeId?: string,
@@ -48,13 +49,22 @@ export class IssuesController {
       { projectId, statusId, assigneeId, typeId, sprintId, search },
       cursor,
       Math.min(Math.max(Number(limit) || 50, 1), 100),
+      user.id,
     );
   }
 
+  /**
+   * Không có `@ProjectRef` (dự án suy ra từ mã, không phải id): người ngoài dự án riêng tư nhận 404 do
+   * `getByKey` lọc theo `viewerId` — cùng thông điệp với mã không tồn tại.
+   */
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get(':key')
-  async getByKey(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
-    return this.issues.getByKey(workspaceId, key.toUpperCase());
+  async getByKey(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('key') key: string,
+  ) {
+    return this.issues.getByKey(workspaceId, key.toUpperCase(), user.id);
   }
 
   @Permissions(PERMISSIONS.ISSUE_CREATE)

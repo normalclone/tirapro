@@ -26,6 +26,7 @@ import { iso } from '../../common/mappers/date';
 import { insensitiveContains } from '../../common/like';
 import { assertIssueOwner } from '../rbac/issue-ownership.service';
 import { RbacService } from '../rbac/rbac.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { CommentsService } from '../comments/comments.service';
 import {
   BusinessRuleException,
@@ -37,7 +38,6 @@ import {
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 import { assertNotArchived, assertProjectWritable } from '../../common/project-writable';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
-import { LIVE_PROJECT } from '../../common/live-project';
 import { mapIssueSets } from './issue-sets';
 import { RankService } from './rank.service';
 import { WipService } from './wip.service';
@@ -126,7 +126,22 @@ export class IssuesService {
     private readonly wipService: WipService = new WipService(prisma, rbac),
     // Tuỳ chọn (như rank/wip) để chỗ dựng service bằng 3 đối số vẫn chạy; Nest DI tiêm bản thật. Chỉ dùng để ghi lý do chuyển trạng thái.
     private readonly comments?: CommentsService,
+    // Mặc định dựng từ prisma/rbac để spec dựng bằng ít đối số vẫn chạy; Nest DI tiêm bản thật (dự án riêng tư — P13).
+    private readonly access: ProjectAccessService = new ProjectAccessService(prisma, rbac),
   ) {}
+
+  /**
+   * Điều kiện `project` của mọi truy vấn đọc cấp workspace: dự án chưa xoá mềm + (có `viewerId`) dự án người đó được thấy.
+   * `viewerId` trống = ngữ cảnh hệ thống (rule-engine, worklogs, cron, board đã qua guard) — không lọc riêng tư.
+   * Gộp vào scope gốc (không lọc sau) để cursor/phân trang đúng và không lộ qua đếm.
+   */
+  private async projectScope(
+    workspaceId: string,
+    viewerId?: string,
+  ): Promise<Prisma.ProjectWhereInput> {
+    const visible = viewerId ? await this.access.visibleWhere(viewerId, workspaceId) : {};
+    return { deletedAt: null, ...visible };
+  }
 
   /**
    * Resolution khi một việc VÀO nhóm Done. Ưu tiên: `explicit` (kể cả `null` rõ ràng = "không đặt")
@@ -721,11 +736,12 @@ export class IssuesService {
     filter: IssueListFilter,
     cursor: string | undefined,
     limit: number,
+    viewerId?: string,
   ): Promise<PageResult<IssueDto>> {
     const where: Prisma.IssueWhereInput = {
       workspaceId,
       deletedAt: null,
-      ...LIVE_PROJECT,
+      project: await this.projectScope(workspaceId, viewerId),
       projectId: filter.projectId,
       statusId: filter.statusId,
       assigneeId: filter.assigneeId,
@@ -764,9 +780,13 @@ export class IssuesService {
     limit: number,
     rawIds?: string[],
     rankHint?: string[],
+    viewerId?: string,
   ): Promise<PageResult<IssueDto>> {
     const scope: Prisma.IssueWhereInput = {
-      AND: [{ workspaceId, deletedAt: null, ...LIVE_PROJECT }, where],
+      AND: [
+        { workspaceId, deletedAt: null, project: await this.projectScope(workspaceId, viewerId) },
+        where,
+      ],
     };
     if (rawIds) {
       if (rawIds.length === 0) return cursorPage<IssueDto>([], limit, (i) => i.id);
@@ -905,9 +925,14 @@ export class IssuesService {
     );
   }
 
-  async getByKey(workspaceId: string, key: string): Promise<IssueDto> {
+  async getByKey(workspaceId: string, key: string, viewerId?: string): Promise<IssueDto> {
     const issue = await this.prisma.issue.findFirst({
-      where: { workspaceId, key, deletedAt: null, ...LIVE_PROJECT },
+      where: {
+        workspaceId,
+        key,
+        deletedAt: null,
+        project: await this.projectScope(workspaceId, viewerId),
+      },
       include: issueInclude,
     });
     if (!issue) throw new NotFoundAppException('Công việc');
