@@ -75,9 +75,9 @@ function DashboardView({
 
   function copy() {
     duplicate.mutate(dashboard.id, {
-      onSuccess: (copy) => {
+      onSuccess: (created) => {
         toast.success('Đã tạo bản sao riêng tư của bạn');
-        navigate(`/dashboards/${copy.id}?edit=1`);
+        navigate(`/dashboards/${created.id}?edit=1`);
       },
       onError: (err) => toast.error(apiErrorMessage(err)),
     });
@@ -157,7 +157,11 @@ function DashboardView({
       {widgets.length === 0 ? (
         <EmptyState
           icon={<LayoutDashboard className="h-8 w-8" />}
-          title="Dashboard trống — thêm widget đầu tiên"
+          title={
+            dashboard.canEdit
+              ? 'Dashboard trống — thêm widget đầu tiên'
+              : 'Dashboard này chưa có widget nào'
+          }
           description={
             dashboard.canEdit
               ? 'Thêm ô số liệu, biểu đồ hay danh sách việc để dashboard có nội dung.'

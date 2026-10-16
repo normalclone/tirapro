@@ -34,7 +34,17 @@ export interface DashboardDraft {
 
 /** Id tạm cho ô mới. */
 export function newClientId(): string {
-  return `new-${crypto.randomUUID()}`;
+  return `new-${randomToken()}`;
+}
+
+let tokenCounter = 0;
+
+/** `crypto.randomUUID` chỉ có ở secure context (HTTPS/localhost) — truy cập qua HTTP thường phải có đường lùi. */
+function randomToken(): string {
+  const c = globalThis.crypto as Crypto | undefined;
+  if (typeof c?.randomUUID === 'function') return c.randomUUID();
+  tokenCounter += 1;
+  return `${Date.now().toString(36)}-${tokenCounter.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /** Sắp theo `order` (ổn định) rồi đánh lại 0..n-1 liên tục. */

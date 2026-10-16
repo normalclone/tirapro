@@ -31,7 +31,7 @@ export function WidgetFrame({
   error,
   onRetry,
   emptyText = 'Chưa có dữ liệu',
-  forbiddenText = 'Bạn không có quyền xem dự án này',
+  forbiddenText = 'Bạn không có quyền xem số liệu này',
   to,
   children,
   className,

@@ -180,6 +180,7 @@ export class DashboardsService {
     const ctx = await this.ctx(workspaceId, userId);
     const row = await this.requireVisible(ctx, id);
     await this.assertQuota(ctx);
+    const sanitize = await this.copySanitizer(ctx, row);
     const suffix = ' (bản sao)';
     const created = await this.prisma.dashboard.create({
       data: {
@@ -195,7 +196,7 @@ export class DashboardsService {
           create: row.widgets.map((w) => ({
             type: w.type,
             title: w.title,
-            config: w.config as Prisma.InputJsonValue,
+            config: sanitize((w.config ?? {}) as Record<string, unknown>) as Prisma.InputJsonValue,
             position: w.position as Prisma.InputJsonValue,
           })),
         },
@@ -343,6 +344,47 @@ export class DashboardsService {
         'Có ô trỏ tới dự án không tồn tại hoặc bạn không có quyền xem',
       );
     }
+  }
+
+  /**
+   * Bản sao thuộc về người nhân bản nên `get` sẽ trả cấu hình KHÔNG che: chỉ được giữ phần cấu hình người nhân bản tự xem
+   * được. JQL nhắc dự án họ không thấy (cùng `jqlMasker`) bị bỏ thành chuỗi rỗng; `projectId` của dự án họ không thấy bị
+   * bỏ khỏi config (ô hiện "cần chọn lại dự án"). Cờ `masked` không mang sang bản sao.
+   */
+  private async copySanitizer(
+    ctx: Ctx,
+    row: DetailRow,
+  ): Promise<(config: Record<string, unknown>) => Record<string, unknown>> {
+    const ids = [
+      ...new Set(
+        row.widgets.flatMap((w) => {
+          const pid = (w.config as { projectId?: unknown } | null)?.projectId;
+          return typeof pid === 'string' ? [pid] : [];
+        }),
+      ),
+    ];
+    const [masker, visible] = await Promise.all([
+      this.jqlMasker(ctx, row),
+      ids.length === 0 || ctx.isAdmin
+        ? Promise.resolve(null)
+        : this.prisma.project
+            .findMany({
+              where: {
+                id: { in: ids },
+                workspaceId: ctx.workspaceId,
+                deletedAt: null,
+                ...ctx.projectVisible,
+              },
+              select: { id: true },
+            })
+            .then((found) => new Set(found.map((p) => p.id))),
+    ]);
+    return (config) => {
+      const { masked: _masked, ...rest } = masker(config);
+      const pid = rest.projectId;
+      if (visible && typeof pid === 'string' && !visible.has(pid)) delete rest.projectId;
+      return rest;
+    };
   }
 
   private widgetData(w: WidgetInput) {

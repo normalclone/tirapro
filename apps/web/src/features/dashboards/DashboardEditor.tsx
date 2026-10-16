@@ -12,7 +12,7 @@ import { pageContainer } from '@/components/layout/page';
 import { useProjects } from '@/features/projects/api';
 import { useTeams } from '@/features/teams/api';
 import { apiErrorCode, apiErrorMessage } from '@/lib/api';
-import { isOverlayOpen, isTypingTarget } from '@/lib/hotkeys';
+import { isOverlayOpen, isTypingTarget, shouldLeaveEditorOnEscape } from '@/lib/hotkeys';
 import { useSaveDashboard } from './api';
 import { AddWidgetDialog } from './AddWidgetDialog';
 import {
@@ -130,7 +130,7 @@ function useSaveDraft({
         : await save.mutateAsync({ body });
       exitingRef.current = true;
       toast.success('Đã lưu dashboard');
-      navigate(`/dashboards/${dto.id}`, { replace: dashboard === null });
+      navigate(`/dashboards/${dto.id}`, { replace: true });
     } catch (err) {
       const message = apiErrorMessage(err); // đánh dấu đã báo → toast chung không báo lần hai
       if (httpStatusOf(err) === 409 || apiErrorCode(err) === 'VERSION_CONFLICT') {
@@ -163,11 +163,16 @@ function useEditorHotkeys({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (draggingRef.current || isTypingTarget(e.target) || isOverlayOpen()) return;
-        leaveRef.current();
+        const leaving = shouldLeaveEditorOnEscape(e, {
+          typing: isTypingTarget(e.target),
+          overlayOpen: isOverlayOpen(),
+          dragging: draggingRef.current,
+        });
+        if (leaving) leaveRef.current();
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        void saveRef.current();
+        // Hộp cấu hình/chia sẻ đang mở: thay đổi trong hộp chưa áp dụng, lưu lúc này sẽ bỏ sót chúng.
+        if (!isOverlayOpen()) void saveRef.current();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -311,15 +316,15 @@ export function DashboardEditor({
   const exitingRef = useRef(false);
   const draggingRef = useRef(false);
   draggingRef.current = dragging;
-  const removeToastRef = useRef<string | number | null>(null);
+  const removeToastsRef = useRef(new Set<string | number>());
 
   const viewUrl = dashboard ? `/dashboards/${dashboard.id}` : '/';
-  const leave = () => navigate(viewUrl);
+  const leave = () => navigate(viewUrl, { replace: true });
 
   useLeaveGuard(dirty, dirtyRef, exitingRef);
   useEffect(
     () => () => {
-      if (removeToastRef.current !== null) toast.dismiss(removeToastRef.current);
+      removeToastsRef.current.forEach((id) => toast.dismiss(id));
     },
     [],
   );
@@ -339,14 +344,15 @@ export function DashboardEditor({
   function onRemove(widget: DraftWidget) {
     const index = widgets.findIndex((w) => w.id === widget.id);
     patch((l) => removeWidget(l, widget.id));
-    if (removeToastRef.current !== null) toast.dismiss(removeToastRef.current);
-    removeToastRef.current = toast('Đã gỡ widget', {
+    // Mỗi lần gỡ có toast Hoàn tác riêng (gỡ A rồi B trong 6 giây vẫn hoàn tác được cả hai).
+    const toastId = toast('Đã gỡ widget', {
       duration: 6000,
       action: {
         label: 'Hoàn tác',
         onClick: () => patch((l) => insertWidget(l, widget, index)),
       },
     });
+    removeToastsRef.current.add(toastId);
   }
 
   const share: ShareValue = {

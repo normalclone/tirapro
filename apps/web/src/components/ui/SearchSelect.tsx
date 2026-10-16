@@ -3,6 +3,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { filterByQuery } from '@/lib/text';
+import { groupHeadingAt } from './searchSelectGroups';
 import { cn } from '@/lib/utils';
 
 export interface SearchSelectOption {
@@ -124,7 +125,7 @@ export function SearchSelect({
           <ul className="max-h-64 overflow-y-auto p-1" role="listbox" aria-label={ariaLabel}>
             {filtered.map((o, i) => {
               const active = o.value === value;
-              const heading = o.group && o.group !== filtered[i - 1]?.group ? o.group : null;
+              const heading = groupHeadingAt(filtered, i);
               return (
                 <Fragment key={o.value || '__empty__'}>
                   {heading && (

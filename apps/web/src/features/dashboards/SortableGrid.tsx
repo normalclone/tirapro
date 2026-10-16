@@ -167,7 +167,7 @@ function SortableWidget({
           {...attributes}
           {...listeners}
           aria-label={`Kéo để đổi vị trí ô “${widget.title}”, đang ở vị trí ${index + 1}/${total}`}
-          className="inline-flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] active:cursor-grabbing"
+          className="inline-flex h-8 w-8 max-sm:h-11 max-sm:w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] active:cursor-grabbing"
         >
           <GripVertical className="h-4 w-4" aria-hidden />
         </button>
@@ -177,7 +177,7 @@ function SortableWidget({
         <div
           role="group"
           aria-label={`Cỡ ô “${widget.title}”`}
-          className="flex rounded-md border border-border"
+          className="hidden rounded-md border border-border md:flex"
         >
           {([1, 2, 3] as const).map((w) => (
             <button
@@ -202,7 +202,7 @@ function SortableWidget({
           onClick={onConfig}
           aria-label={`Cấu hình ô “${widget.title}”`}
           title="Cấu hình"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          className="inline-flex h-8 w-8 max-sm:h-11 max-sm:w-11 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
           <Settings2 className="h-4 w-4" aria-hidden />
         </button>
@@ -211,7 +211,7 @@ function SortableWidget({
           onClick={onRemove}
           aria-label={`Gỡ ô “${widget.title}”`}
           title="Gỡ widget"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          className="inline-flex h-8 w-8 max-sm:h-11 max-sm:w-11 items-center justify-center rounded-md text-muted hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
           <Trash2 className="h-4 w-4" aria-hidden />
         </button>

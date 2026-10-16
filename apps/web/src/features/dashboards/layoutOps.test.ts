@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dashboardInputSchema, DASHBOARD_LIMITS } from '@tirapro/shared';
 import {
   addWidget,
@@ -6,6 +6,7 @@ import {
   insertWidget,
   isDirty,
   moveWidget,
+  newClientId,
   normalizeOrder,
   removeWidget,
   resizeWidget,
@@ -219,5 +220,19 @@ describe('draftIssues / toDashboardBody', () => {
     expect(toDashboardBody(base).teamId).toBeUndefined();
     expect(toDashboardBody({ ...base, scope: 'TEAM' }).projectId).toBeUndefined();
     expect(toDashboardBody({ ...base, scope: 'TEAM' }).teamId).toBe('t1');
+  });
+});
+
+describe('newClientId', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('có đường lùi khi không có crypto.randomUUID (HTTP không phải secure context); id vẫn duy nhất và mang tiền tố new-', () => {
+    vi.stubGlobal('crypto', {});
+    const a = newClientId();
+    const b = newClientId();
+    expect(a).toMatch(/^new-/);
+    expect(a).not.toBe(b);
+    vi.stubGlobal('crypto', undefined);
+    expect(newClientId()).toMatch(/^new-/);
   });
 });

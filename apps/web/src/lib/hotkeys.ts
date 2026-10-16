@@ -123,6 +123,20 @@ export function shouldClosePeekOnEscape(
   );
 }
 
+/**
+ * Esc có nên thoát chế độ soạn dashboard không: không nếu Esc đã có người xử lý (`defaultPrevented` — Radix đóng hộp/popover,
+ * dnd-kit huỷ kéo bằng phím; React flush state của chúng trước listener `window` nên `overlayOpen`/`dragging` có thể đã
+ * thành false rồi), đang gõ, đang kéo hoặc có lớp phủ mở.
+ */
+export function shouldLeaveEditorOnEscape(
+  e: Pick<KeyLike, 'key' | 'defaultPrevented'>,
+  ctx: { typing: boolean; overlayOpen: boolean; dragging: boolean },
+): boolean {
+  return (
+    e.key === 'Escape' && !e.defaultPrevented && !ctx.typing && !ctx.overlayOpen && !ctx.dragging
+  );
+}
+
 /** Phần tử nhập liệu đang chứa chữ (ô input/textarea có giá trị, hoặc contenteditable có nội dung) — tức có nháp chưa gửi. */
 export function hasDraftText(
   t: {

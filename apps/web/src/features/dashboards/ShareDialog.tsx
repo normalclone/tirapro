@@ -56,13 +56,14 @@ export function ShareDialog({
 
   const user = useAuth((s) => s.user);
   const isAdmin = useAuth((s) => s.can('workspace:admin'));
-  const { data: projects } = useProjects();
+  const { data: projects } = useProjects(true);
   const { data: teams } = useTeams();
 
   const projectOptions = useMemo<SearchSelectOption[]>(() => {
-    const list = (projects ?? []).filter((p) => !p.isArchived);
+    // Dự án đang gắn vào dashboard luôn hiện, kể cả khi vừa bị lưu trữ (giá trị vẫn hợp lệ, không hiện ô trống).
+    const list = (projects ?? []).filter((p) => !p.isArchived || p.id === value.projectId);
     return list.map((p) => ({ value: p.id, label: p.name, hint: p.key }));
-  }, [projects]);
+  }, [projects, value.projectId]);
 
   const teamOptions = useMemo<SearchSelectOption[]>(() => {
     const mine = (teams ?? []).filter(
