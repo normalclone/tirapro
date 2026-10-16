@@ -87,7 +87,7 @@ function AuditFilterBar({
       </div>
       <label className="flex flex-col gap-1 text-xs text-muted">
         Từ ngày
-        <div className="w-44">
+        <div className="w-40">
           <DateInput
             value={filters.from}
             max={filters.to || undefined}
@@ -97,7 +97,7 @@ function AuditFilterBar({
       </label>
       <label className="flex flex-col gap-1 text-xs text-muted">
         Đến ngày
-        <div className="w-44">
+        <div className="w-40">
           <DateInput
             value={filters.to}
             min={filters.from || undefined}

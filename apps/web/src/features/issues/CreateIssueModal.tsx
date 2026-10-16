@@ -652,37 +652,36 @@ export function CreateIssueModal() {
               options={sprintOptions}
             />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field
-              label="Điểm ước lượng"
-              hint="(tùy chọn)"
-              title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint."
-            >
-              <Input
-                type="number"
-                min={0}
-                inputMode="numeric"
-                value={points}
-                onChange={(e) => setPoints(e.target.value)}
-                placeholder="VD: 3"
-                className="text-sm"
-                aria-label="Điểm ước lượng"
-              />
-            </Field>
-            <Field
-              label="Hạn hoàn thành"
-              hint="(tùy chọn)"
-              title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
-            >
-              <DateTimeInput
-                value={due}
-                onChange={setDue}
-                min={toDateInput(new Date())}
-                defaultTime="17:00"
-                ariaLabel="Hạn hoàn thành"
-              />
-            </Field>
-          </div>
+          <Field
+            label="Điểm ước lượng"
+            hint="(tùy chọn)"
+            title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint."
+          >
+            <Input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={points}
+              onChange={(e) => setPoints(e.target.value)}
+              placeholder="VD: 3"
+              className="text-sm"
+              aria-label="Điểm ước lượng"
+            />
+          </Field>
+          {/* Ô ngày + giờ cần cả một cột (ô ngày dd/MM/yyyy + ô giờ HH:mm) nên không chung hàng với Điểm. */}
+          <Field
+            label="Hạn hoàn thành"
+            hint="(tùy chọn)"
+            title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
+          >
+            <DateTimeInput
+              value={due}
+              onChange={setDue}
+              min={toDateInput(new Date())}
+              defaultTime="17:00"
+              ariaLabel="Hạn hoàn thành"
+            />
+          </Field>
 
           {(!hideEpic || !hideParent) && (
             <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">

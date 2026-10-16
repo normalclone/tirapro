@@ -548,7 +548,7 @@ function DateValueControl({ value, onChange }: { value: string; onChange: (v: st
         <option value={ABS_SENTINEL}>Ngày cụ thể…</option>
       </SelectField>
       {absolute && (
-        <div className="w-44">
+        <div className="w-40">
           <DateInput
             ariaLabel="Ngày cụ thể"
             value={value}
