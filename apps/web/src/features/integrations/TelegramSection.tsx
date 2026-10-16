@@ -35,7 +35,10 @@ const TONE_CLASS: Record<StatusTone, string> = {
 /** Nhãn trạng thái THẬT do server tính (không còn "Hoạt động" giả chỉ vì bản ghi tồn tại). */
 function HealthBadge({ health }: { health: TelegramHealth }) {
   return (
-    <Badge className={TONE_CLASS[HEALTH_TONE[health.state]]} dotColor="currentColor">
+    <Badge
+      className={`shrink-0 whitespace-nowrap ${TONE_CLASS[HEALTH_TONE[health.state]]}`}
+      dotColor="currentColor"
+    >
       {health.label}
     </Badge>
   );
@@ -188,11 +191,11 @@ function TelegramRow({
 
   return (
     <li className="rounded-md border border-border">
-      <div className="flex items-center gap-3 px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] rounded-sm"
+          className="flex min-w-[14rem] flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] rounded-sm"
           aria-expanded={expanded}
         >
           {expanded ? (

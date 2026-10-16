@@ -330,16 +330,19 @@ function LinkStep({
   onBack: () => void;
   onClose: () => void;
 }) {
-  const {
-    mutate: issueCode,
-    isError: codeFailed,
-    error: codeError,
-  } = useCreateLinkCode(integrationId);
+  const { mutateAsync: issueCode } = useCreateLinkCode(integrationId);
+  const [codeError, setCodeError] = useState<unknown>(null);
+  const codeFailed = codeError !== null;
   const [session, setSession] = useState<{ code: LinkCode; startedAt: number } | null>(null);
   const started = useRef(false);
   const issue = useCallback(() => {
     setSession(null);
-    issueCode(undefined, { onSuccess: (code) => setSession({ code, startedAt: Date.now() }) });
+    setCodeError(null);
+    // mutateAsync (không phải callback của mutate): vẫn chạy khi StrictMode tháo/gắn lại observer ở lần mount đầu.
+    issueCode().then(
+      (code) => setSession({ code, startedAt: Date.now() }),
+      (e: unknown) => setCodeError(e ?? new Error('unknown')),
+    );
   }, [issueCode]);
   useEffect(() => {
     if (started.current) return;
