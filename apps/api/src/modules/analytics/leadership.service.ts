@@ -44,7 +44,7 @@ export interface LeadershipOverview {
   unavailable: LeadershipCard[];
 }
 
-export type LeadershipCard = 'topRisks' | 'slowGoals' | 'overloaded';
+type LeadershipCard = 'topRisks' | 'slowGoals' | 'overloaded';
 
 export interface LeadershipOptions {
   /** Chỉ tính các thẻ này (mặc định cả ba) — digest chỉ tải khối người dùng đã chọn. */

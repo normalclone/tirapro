@@ -155,6 +155,8 @@ function RecentsStrip() {
 
 function AdminOverview() {
   const { data, isLoading, isError } = useWorkspaceOverview(true);
+  // Lối vào báo cáo định kỳ: chỉ người quản lý được tích hợp mới tạo/sửa được.
+  const canDigest = useAuth((s) => s.can('integration:manage'));
 
   return (
     <section className="mb-12">
@@ -166,6 +168,15 @@ function AdminOverview() {
       <div className="mb-3 flex items-center justify-between gap-4 print:hidden">
         <h2 className="text-base font-semibold text-ink-strong">Tổng quan chung</h2>
         <span className="flex items-center gap-3">
+          {canDigest && (
+            <Link
+              to="/connect/integrations?section=digest"
+              className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            >
+              <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+              Báo cáo định kỳ
+            </Link>
+          )}
           {data && <span className="text-xs text-faint tabular">{data.projectCount} dự án</span>}
           {data && data.projectCount > 0 && <PrintButton title="Tổng quan" />}
         </span>

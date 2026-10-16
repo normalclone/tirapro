@@ -4,7 +4,7 @@ import type { DigestModel } from '@tirapro/shared';
 export const TELEGRAM_MAX_LENGTH = 4096;
 
 /** Escape ký tự HTML — CHỈ gọi ở lớp render Telegram (mô hình dữ liệu luôn là văn bản thuần). */
-export function escapeHtml(value: string): string {
+function escapeHtml(value: string): string {
   return value.replace(/[&<>]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'));
 }
 

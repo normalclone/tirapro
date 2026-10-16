@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MailService } from './mail.service';
+import { MailService, SENSITIVE_TEMPLATES } from './mail.service';
 import { render as renderPasswordReset } from './templates/password-reset';
 
 function setup() {
@@ -110,5 +110,24 @@ describe('MailService.enqueue', () => {
     expect(args.where).toMatchObject({ id: 'm1', status: 'PENDING' });
     expect(args.data.payload.items).toHaveLength(2);
     expect(args.data.subject).toContain('2');
+  });
+});
+
+describe('MailService.enqueue — digest', () => {
+  it('ghi outbox với subject/html/text của template digest; không phải template nhạy cảm', async () => {
+    const { service, emailOutbox } = setup();
+    const payload = {
+      title: 'Tổng kết',
+      subtitle: '',
+      sections: [{ id: 's', title: 'Sprint', lines: ['A & B'] }],
+    };
+    await service.enqueue({ to: 'a@x.vn', template: 'digest', payload });
+    const data = emailOutbox.create.mock.calls[0]![0].data;
+    expect(data).toMatchObject({ to: 'a@x.vn', template: 'digest', subject: 'Tổng kết' });
+    expect(String(data.html)).toContain('A &amp; B');
+    expect(String(data.text)).toContain('A & B');
+    expect(data.payload).toEqual(payload);
+    expect(data.scheduledAt).toBeUndefined(); // không gộp như thông báo — gửi ở lượt cron kế tiếp
+    expect(SENSITIVE_TEMPLATES).not.toContain('digest');
   });
 });

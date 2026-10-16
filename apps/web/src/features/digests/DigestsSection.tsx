@@ -1,46 +1,38 @@
 import { useState } from 'react';
-import { CalendarClock, Play, Trash2, Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  CalendarClock,
+  Play,
+  Trash2,
+  Plus,
+  Pencil,
+  ChevronDown,
+  ChevronRight,
+  Mail,
+  Send,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
-import { Input } from '@/components/ui/Input';
-import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { cn } from '@/lib/utils';
-import { useProjects } from '@/features/projects/api';
-import {
-  useDigests,
-  useCreateDigest,
-  useUpdateDigest,
-  useDeleteDigest,
-  useRunDigest,
-  type Digest,
-  type DigestSchedule,
-} from './api';
+import { useDigests, useUpdateDigest, useDeleteDigest, useRunDigest, type Digest } from './api';
+import { DigestEditorDialog } from './DigestEditorDialog';
+import { describeSchedule } from './schedule';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { fmtRelative } from '@/lib/dateFormat';
 
-/* ------------------------------------------------------------------ */
-/* Hằng số                                                            */
-/* ------------------------------------------------------------------ */
-
-const SCHEDULE_LABEL: Record<DigestSchedule, string> = {
-  DAILY: 'Hằng ngày',
-  WEEKLY: 'Hằng tuần',
-  SPRINT_END: 'Cuối sprint',
-  MANUAL: 'Thủ công',
-};
-
-const SCHEDULE_OPTIONS: DigestSchedule[] = ['DAILY', 'WEEKLY', 'SPRINT_END', 'MANUAL'];
-
-const SELECT_CLASS =
-  'h-9 w-full rounded-md border border-border bg-bg px-3 text-base text-ink focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
-
 function truncate(text: string, max = 140): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
+}
+
+/** Hộp thoại tạo/sửa: `nonce` đổi mỗi lần mở để form khởi tạo lại; đóng chỉ hạ `open` (giữ nội dung cho hiệu ứng đóng). */
+interface EditorState {
+  open: boolean;
+  digest: Digest | null;
+  nonce: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -51,49 +43,14 @@ export function DigestsSection() {
   const confirm = useConfirm();
   const digestsQuery = useDigests();
   const { data } = digestsQuery;
-  const { data: projectsData } = useProjects();
-  const create = useCreateDigest();
   const remove = useDeleteDigest();
   // Ghi digest (tạo/sửa/xoá/chạy) cần `integration:manage`; người không có quyền chỉ xem.
   const canManage = useAuth((s) => s.can('integration:manage'));
-
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState('');
-  const [schedule, setSchedule] = useState<DigestSchedule>('WEEKLY');
-  const [projectId, setProjectId] = useState('');
+  const [editor, setEditor] = useState<EditorState>({ open: false, digest: null, nonce: 0 });
 
   const digests = data ?? [];
-  const projects = projectsData ?? [];
-
-  function resetAdd() {
-    setName('');
-    setSchedule('WEEKLY');
-    setProjectId('');
-    setAdding(false);
-  }
-
-  function submitAdd() {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      toast.error('Vui lòng nhập tên báo cáo.');
-      return;
-    }
-    create.mutate(
-      {
-        name: trimmed,
-        schedule,
-        projectId: projectId === '' ? undefined : projectId,
-        // channel/metrics để mặc định ở MVP — sẽ cấu hình kênh gửi sau.
-      },
-      {
-        onSuccess: () => {
-          resetAdd();
-          toast.success('Đã tạo báo cáo định kỳ.');
-        },
-        onError: (e) => toast.error(apiErrorMessage(e)),
-      },
-    );
-  }
+  const openEditor = (digest: Digest | null) =>
+    setEditor((e) => ({ open: true, digest, nonce: e.nonce + 1 }));
 
   async function handleDelete(digest: Digest) {
     if (
@@ -115,12 +72,18 @@ export function DigestsSection() {
         <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
           <CalendarClock className="h-4 w-4" />
         </span>
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">Báo cáo định kỳ (Digest)</h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold text-ink-strong">Báo cáo định kỳ</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Tổng hợp tiến độ dự án theo lịch và gửi qua Telegram nếu có kênh được cấu hình.
+            Tổng hợp tiến độ dự án theo lịch rồi gửi qua Telegram và/hoặc email.
           </p>
         </div>
+        {canManage && digests.length > 0 && (
+          <Button size="sm" className="shrink-0" onClick={() => openEditor(null)}>
+            <Plus className="h-4 w-4" />
+            Tạo báo cáo định kỳ
+          </Button>
+        )}
       </div>
 
       <div className="p-5">
@@ -134,21 +97,21 @@ export function DigestsSection() {
               ))}
             </div>
           }
-          empty={() => digests.length === 0 && !adding}
+          empty={() => digests.length === 0}
           emptyState={
             <EmptyState
               icon={<CalendarClock className="h-6 w-6" />}
-              title="Chưa có digest nào"
+              title="Chưa có báo cáo định kỳ nào"
               description={
                 canManage
-                  ? 'Tạo báo cáo định kỳ để tự động tổng hợp tiến độ dự án theo lịch.'
+                  ? 'Tạo báo cáo để tự động tổng hợp tiến độ dự án theo lịch.'
                   : 'Chưa có báo cáo định kỳ nào. Nhờ quản trị chung tạo giúp.'
               }
               action={
                 canManage ? (
-                  <Button size="sm" onClick={() => setAdding(true)}>
+                  <Button size="sm" onClick={() => openEditor(null)}>
                     <Plus className="h-4 w-4" />
-                    Tạo báo cáo
+                    Tạo báo cáo định kỳ
                   </Button>
                 ) : undefined
               }
@@ -162,6 +125,7 @@ export function DigestsSection() {
                   key={digest.id}
                   digest={digest}
                   canManage={canManage}
+                  onEdit={() => openEditor(digest)}
                   onDelete={() => handleDelete(digest)}
                   deleting={remove.isPending}
                 />
@@ -169,87 +133,14 @@ export function DigestsSection() {
             </ul>
           )}
         </QueryBoundary>
-
-        {/* Form tạo báo cáo */}
-        {!canManage ? null : adding ? (
-          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label htmlFor="digest-name" className="mb-1 block text-xs font-medium text-muted">
-                  Tên báo cáo
-                </label>
-                <Input
-                  id="digest-name"
-                  value={name}
-                  autoFocus
-                  placeholder="VD: Tổng kết tuần"
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitAdd();
-                    if (e.key === 'Escape') resetAdd();
-                  }}
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="digest-schedule"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
-                  Lịch gửi
-                </label>
-                <select
-                  id="digest-schedule"
-                  value={schedule}
-                  onChange={(e) => setSchedule(e.target.value as DigestSchedule)}
-                  className={SELECT_CLASS}
-                >
-                  {SCHEDULE_OPTIONS.map((value) => (
-                    <option key={value} value={value}>
-                      {SCHEDULE_LABEL[value]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="sm:col-span-2">
-                <label
-                  htmlFor="digest-project"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
-                  Dự án <span className="text-faint">(tùy chọn)</span>
-                </label>
-                <SearchSelect
-                  id="digest-project"
-                  value={projectId}
-                  onChange={setProjectId}
-                  options={[
-                    { value: '', label: 'Tất cả dự án' },
-                    ...projects.map((project) => ({ value: project.id, label: project.name })),
-                  ]}
-                  className="w-full"
-                />
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-faint">
-              Báo cáo sẽ gửi qua Telegram nếu có kênh được cấu hình.
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              <Button size="sm" onClick={submitAdd} loading={create.isPending}>
-                Tạo báo cáo
-              </Button>
-              <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
-                Huỷ
-              </Button>
-            </div>
-          </div>
-        ) : (
-          digests.length > 0 && (
-            <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
-              <Plus className="h-4 w-4" />
-              Tạo báo cáo
-            </Button>
-          )
-        )}
       </div>
+
+      <DigestEditorDialog
+        key={editor.nonce}
+        open={editor.open}
+        onOpenChange={(open) => setEditor((e) => ({ ...e, open }))}
+        digest={editor.digest}
+      />
     </section>
   );
 }
@@ -261,11 +152,13 @@ export function DigestsSection() {
 function DigestRow({
   digest,
   canManage,
+  onEdit,
   onDelete,
   deleting,
 }: {
   digest: Digest;
   canManage: boolean;
+  onEdit: () => void;
   onDelete: () => void;
   deleting: boolean;
 }) {
@@ -308,11 +201,27 @@ function DigestRow({
   return (
     <li className="rounded-md border border-border">
       <div className="flex items-center gap-3 px-3 py-2.5">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate text-sm font-medium text-ink">{digest.name}</span>
-          <Badge className="bg-surface-2 text-muted">{SCHEDULE_LABEL[digest.schedule]}</Badge>
-          {!digest.isEnabled && <Badge className="bg-surface-2 text-faint">Tạm dừng</Badge>}
-          <span className="hidden truncate text-xs text-faint sm:inline">{lastRunLabel}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="truncate text-sm font-medium text-ink">{digest.name}</span>
+            {!digest.isEnabled && <Badge className="bg-surface-2 text-faint">Tạm dừng</Badge>}
+            {digest.channelId && (
+              <Badge className="bg-surface-2 text-muted">
+                <Send className="h-3 w-3" aria-hidden />
+                Telegram
+              </Badge>
+            )}
+            {digest.deliverEmail && (
+              <Badge className="bg-surface-2 text-muted">
+                <Mail className="h-3 w-3" aria-hidden />
+                Email · {digest.recipients.length} người
+              </Badge>
+            )}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-muted">
+            {describeSchedule(digest)}
+            <span className="hidden text-faint sm:inline"> · {lastRunLabel}</span>
+          </p>
         </div>
 
         {canManage && (
@@ -348,6 +257,16 @@ function DigestRow({
             >
               <Play className="h-4 w-4" />
               Chạy ngay
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onEdit}
+              className="text-muted hover:text-ink"
+              title="Sửa báo cáo"
+            >
+              <Pencil className="h-4 w-4" />
+              <span className="sr-only">Sửa {digest.name}</span>
             </Button>
             <Button
               variant="ghost"

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { MailModule } from '../mail/mail.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { DigestsController } from './digests.controller';
 import { DigestsService } from './digests.service';
@@ -12,7 +13,7 @@ import { DigestsService } from './digests.service';
  * (LeadershipService + ProjectHealthService cho các khối rủi ro/OKR/nhân lực/sức khoẻ).
  */
 @Module({
-  imports: [IntegrationsModule, AnalyticsModule],
+  imports: [IntegrationsModule, AnalyticsModule, MailModule],
   controllers: [DigestsController],
   providers: [DigestsService],
   exports: [DigestsService],

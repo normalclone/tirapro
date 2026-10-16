@@ -16,6 +16,7 @@ function extras(visible: object = {}) {
     visibleWhere: vi.fn(() => Promise.resolve(visible)),
     visibleProjectIds: vi.fn(() => Promise.resolve(null)),
     assertCanSee: vi.fn(() => Promise.resolve()),
+    canSee: vi.fn((..._a: unknown[]) => Promise.resolve(true)),
   };
   const leadership = {
     get: vi.fn(() =>
@@ -23,7 +24,9 @@ function extras(visible: object = {}) {
     ),
   };
   const health = { forProjects: vi.fn(() => Promise.resolve(new Map())) };
-  return { access, leadership, health };
+  const mail = { enqueue: vi.fn(() => Promise.resolve()) };
+  const config = { get: vi.fn(() => 'http://app.test') };
+  return { access, leadership, health, mail, config };
 }
 
 function setup(
@@ -33,9 +36,22 @@ function setup(
   const prisma = {
     reportSubscription: {
       findFirst: vi.fn(() =>
-        Promise.resolve({ id: 's1', workspaceId: 'w1', projectId: null, channelId: 'ch1' }),
+        Promise.resolve({
+          id: 's1',
+          workspaceId: 'w1',
+          projectId: null,
+          channelId: 'ch1',
+          metrics: [],
+          createdById: 'u1',
+          deliverEmail: false,
+          recipients: [] as string[],
+        }),
       ),
       update: vi.fn(() => Promise.resolve({})),
+    },
+    user: {
+      findMany: vi.fn(() => Promise.resolve([] as unknown[])),
+      findUnique: vi.fn(() => Promise.resolve({ displayName: 'Lan' })),
     },
     integrationChannel: {
       findFirst: vi.fn(() =>
@@ -65,6 +81,8 @@ function setup(
     ex.access as never,
     ex.leadership as never,
     ex.health as never,
+    ex.mail as never,
+    ex.config as never,
   );
   vi.spyOn(service, 'buildDigest').mockResolvedValue(MODEL);
   return { service, prisma, telegram, integrations, ...ex };
@@ -248,6 +266,8 @@ function makeNode(
     ex.access as never,
     ex.leadership as never,
     ex.health as never,
+    ex.mail as never,
+    ex.config as never,
   );
   const send = vi.spyOn(service as never, 'send' as never);
   if (opts.sendFails) send.mockRejectedValue(new Error('telegram down'));
@@ -370,6 +390,8 @@ function buildSetup(opts: { visible?: object; project?: { name: string } | null 
     ex.access as never,
     ex.leadership as never,
     ex.health as never,
+    ex.mail as never,
+    ex.config as never,
   );
   return {
     service,
@@ -761,5 +783,232 @@ describe('digest schedule schemas (L20)', () => {
       where: { id: 's1' },
       data: { weekday: 2, hour: 9, timezone: 'Asia/Bangkok' },
     });
+  });
+});
+
+const USERS = [
+  { id: 'u2', email: 'b@x.vn', displayName: 'Bình' },
+  { id: 'u3', email: 'c@x.vn', displayName: 'Cúc' },
+];
+
+function emailSetup(over: Record<string, unknown> = {}, users: unknown[] = USERS) {
+  const t = setup({ kind: 'global' });
+  t.prisma.reportSubscription.findFirst.mockResolvedValue({
+    id: 's1',
+    workspaceId: 'w1',
+    projectId: null,
+    channelId: null,
+    metrics: ['summary'],
+    createdById: 'u1',
+    deliverEmail: true,
+    recipients: ['u2', 'u3'],
+    name: 'Tuần',
+    ...over,
+  } as never);
+  t.prisma.user.findMany.mockResolvedValue(users);
+  return t;
+}
+
+describe('DigestsService — gửi Email (L21)', () => {
+  it('deliverEmail + 2 người nhận → mail.enqueue 2 lần, template digest, to = email từng người', async () => {
+    const t = emailSetup();
+    await t.service.run('w1', 's1');
+    expect(t.mail.enqueue).toHaveBeenCalledTimes(2);
+    const calls = t.mail.enqueue.mock.calls as unknown as Array<
+      [{ to: string; template: string; payload: Record<string, unknown> }]
+    >;
+    expect(calls.map((c) => c[0].to)).toEqual(['b@x.vn', 'c@x.vn']);
+    expect(calls.every((c) => c[0].template === 'digest')).toBe(true);
+    expect(calls[0]![0].payload).toMatchObject({
+      title: 'Tổng kết tuần',
+      url: 'http://app.test',
+      sections: expect.any(Array) as unknown,
+    });
+  });
+
+  it('chỉ lấy thành viên workspace chưa bị khoá (không gửi cho người ngoài/đã vô hiệu hoá)', async () => {
+    const t = emailSetup();
+    await t.service.run('w1', 's1');
+    expect(json(t.prisma.user.findMany)).toBe(
+      JSON.stringify({
+        where: {
+          id: { in: ['u2', 'u3'] },
+          status: { not: 'DEACTIVATED' },
+          workspaceMemberships: { some: { workspaceId: 'w1' } },
+        },
+        select: { id: true, email: true, displayName: true },
+      }),
+    );
+  });
+
+  it('mỗi người nhận một bản dựng theo quyền xem của CHÍNH họ', async () => {
+    const t = emailSetup();
+    const spy = vi.spyOn(t.service, 'buildDigest');
+    await t.service.run('w1', 's1');
+    const viewers = spy.mock.calls.map((c) => c[3]);
+    expect(viewers).toContain('u2');
+    expect(viewers).toContain('u3');
+    expect(viewers).toContain(PUBLIC_VIEWER); // bản tóm tắt cho giao diện/nhóm chung
+  });
+
+  it('digest gắn dự án: người nhận không thấy dự án thì KHÔNG được gửi thư', async () => {
+    const t = emailSetup({ projectId: 'p1' });
+    t.access.canSee.mockImplementation(((uid: string) => Promise.resolve(uid !== 'u3')) as never);
+    const r = await t.service.run('w1', 's1');
+    expect(t.mail.enqueue).toHaveBeenCalledTimes(1);
+    expect(t.mail.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'b@x.vn' }) as unknown,
+    );
+    expect(r.sent).toBe(true);
+  });
+
+  it('chỉ email (không channelId) vẫn sent:true và ghi lastRunAt', async () => {
+    const t = emailSetup();
+    const r = await t.service.run('w1', 's1');
+    expect(r.sent).toBe(true);
+    expect(t.telegram.send).not.toHaveBeenCalled();
+    expect(t.prisma.reportSubscription.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('không người nhận nào gửi được (0 thư, không kênh) → sent:false, không ghi lastRunAt', async () => {
+    const t = emailSetup({}, []);
+    const r = await t.service.run('w1', 's1');
+    expect(r.sent).toBe(false);
+    expect(t.prisma.reportSubscription.update).not.toHaveBeenCalled();
+  });
+
+  it('lỗi xếp thư của một người không chặn người còn lại', async () => {
+    const t = emailSetup();
+    t.mail.enqueue.mockRejectedValueOnce(new Error('db'));
+    const r = await t.service.run('w1', 's1');
+    expect(t.mail.enqueue).toHaveBeenCalledTimes(2);
+    expect(r.sent).toBe(true);
+  });
+
+  it('Telegram + Email độc lập: cả hai đều đi', async () => {
+    const t = emailSetup({ channelId: 'ch1' });
+    const r = await t.service.run('w1', 's1');
+    expect(t.telegram.send).toHaveBeenCalledTimes(1);
+    expect(t.mail.enqueue).toHaveBeenCalledTimes(2);
+    expect(r.sent).toBe(true);
+  });
+
+  it('không bật deliverEmail → không gửi thư dù có recipients', async () => {
+    const t = emailSetup({ deliverEmail: false });
+    await t.service.run('w1', 's1');
+    expect(t.mail.enqueue).not.toHaveBeenCalled();
+  });
+});
+
+describe('DigestsService — cấu hình kênh Email (L21)', () => {
+  it('create: deliverEmail bắt buộc ≥1 người nhận (422)', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    const create = vi.fn();
+    (prisma.reportSubscription as Record<string, unknown>).create = create;
+    await expect(
+      service.create('w1', 'u1', { name: 'n', deliverEmail: true }),
+    ).rejects.toMatchObject({ status: 422 });
+    await expect(
+      service.create('w1', 'u1', { name: 'n', deliverEmail: true, recipients: [] }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('create: người nhận ngoài workspace → 422, không ghi', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    const create = vi.fn();
+    (prisma.reportSubscription as Record<string, unknown>).create = create;
+    prisma.user.findMany.mockResolvedValue([{ id: 'u2' }]); // 'u9' không phải thành viên
+    await expect(
+      service.create('w1', 'u1', { name: 'n', deliverEmail: true, recipients: ['u2', 'u9'] }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('create hợp lệ lưu deliverEmail + recipients (bỏ trùng)', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    const create = vi.fn();
+    (prisma.reportSubscription as Record<string, unknown>).create = create;
+    prisma.user.findMany.mockResolvedValue([{ id: 'u2' }]);
+    await service.create('w1', 'u1', {
+      name: 'n',
+      deliverEmail: true,
+      recipients: ['u2', 'u2'],
+    });
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ deliverEmail: true, recipients: ['u2'] }) as unknown,
+    });
+  });
+
+  it('update: bật deliverEmail khi chưa có người nhận → 422; tắt thì không cần', async () => {
+    const t = setup({ kind: 'global' });
+    await expect(t.service.update('w1', 's1', { deliverEmail: true })).rejects.toMatchObject({
+      status: 422,
+    });
+    await expect(t.service.update('w1', 's1', { deliverEmail: false })).resolves.toBeDefined();
+  });
+
+  it('update: gỡ hết người nhận khi đang bật email → 422', async () => {
+    const t = emailSetup();
+    await expect(t.service.update('w1', 's1', { recipients: [] })).rejects.toMatchObject({
+      status: 422,
+    });
+  });
+
+  it('cron/sự kiện cũng gửi email (không chỉ Telegram)', async () => {
+    const t = emailSetup();
+    vi.useFakeTimers();
+    vi.setSystemTime(MONDAY_0810_VN);
+    try {
+      (t.service as unknown as { redis: unknown }).redis = {
+        isAvailable: () => false,
+        getClient: () => null,
+      };
+      const prisma = prismaOf(t.service);
+      prisma.reportSubscription.findMany = vi.fn(() =>
+        Promise.resolve([
+          {
+            id: 's1',
+            workspaceId: 'w1',
+            projectId: null,
+            channelId: null,
+            schedule: 'DAILY',
+            weekday: 1,
+            hour: 8,
+            timezone: 'Asia/Ho_Chi_Minh',
+            metrics: ['summary'],
+            createdById: 'u1',
+            deliverEmail: true,
+            recipients: ['u2', 'u3'],
+            name: 'Tuần',
+            lastRunAt: null,
+          },
+        ]),
+      );
+      (prisma.reportSubscription as unknown as { updateMany: Mock }).updateMany = vi.fn(() =>
+        Promise.resolve({ count: 1 }),
+      );
+      await t.service.runScheduled();
+      expect(t.mail.enqueue).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('digest email schemas (L21)', () => {
+  it('deliverEmail boolean; recipients ≤ 50 chuỗi không rỗng', () => {
+    expect(createDigestSchema.safeParse({ name: 'x', deliverEmail: true }).success).toBe(true);
+    expect(createDigestSchema.safeParse({ name: 'x', deliverEmail: 'yes' }).success).toBe(false);
+    expect(createDigestSchema.safeParse({ name: 'x', recipients: [''] }).success).toBe(false);
+    expect(
+      createDigestSchema.safeParse({
+        name: 'x',
+        recipients: Array.from({ length: 51 }, (_, i) => `u${i}`),
+      }).success,
+    ).toBe(false);
+    expect(updateDigestSchema.safeParse({ deliverEmail: false, recipients: ['u1'] }).success).toBe(
+      true,
+    );
   });
 });

@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { DOMAIN_EVENTS } from '@tirapro/types';
 import {
@@ -10,6 +11,7 @@ import {
   Prisma,
   SprintState,
   StatusCategory,
+  UserStatus,
 } from '@prisma/client';
 import {
   type DigestBlockId,
@@ -25,6 +27,7 @@ import { withCronLock } from '../../common/cron-lock';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { TELEGRAM_TOKEN_UNUSABLE_MESSAGE, TelegramService } from '../integrations/telegram.service';
+import { MailService } from '../mail/mail.service';
 import { LeadershipService } from '../analytics/leadership.service';
 import { ProjectHealthService } from '../analytics/project-health.service';
 import { ProjectAccessService, PUBLIC_VIEWER } from '../rbac/project-access.service';
@@ -38,7 +41,9 @@ export interface CreateDigestInput {
   projectId?: string;
   channelId?: string;
   metrics?: string[];
+  /** userId của thành viên workspace (nhận email khi `deliverEmail`). */
   recipients?: string[];
+  deliverEmail?: boolean;
   weekday?: number;
   hour?: number;
   timezone?: string;
@@ -51,6 +56,8 @@ export interface UpdateDigestInput {
   isEnabled?: boolean;
   channelId?: string | null;
   metrics?: string[];
+  recipients?: string[];
+  deliverEmail?: boolean;
   weekday?: number;
   hour?: number;
   timezone?: string;
@@ -77,6 +84,9 @@ const DIGEST_DEDUPE_MS = 30 * 60 * 1000;
 /** Trường cần để gửi một subscription (cron + sự kiện). */
 const DISPATCH_SELECT = {
   id: true,
+  name: true,
+  deliverEmail: true,
+  recipients: true,
   workspaceId: true,
   projectId: true,
   channelId: true,
@@ -89,15 +99,25 @@ const DISPATCH_SELECT = {
   lastRunAt: true,
 } as const;
 
-type DispatchSub = DigestScheduleFields & {
-  id: string;
+/** Phần của subscription cần để dựng + gửi. */
+interface DeliverSub {
+  name: string;
   workspaceId: string;
   projectId: string | null;
   channelId: string | null;
   metrics: string[];
   createdById: string | null;
-  lastRunAt: Date | null;
-};
+  deliverEmail: boolean;
+  recipients: string[];
+}
+
+type DispatchSub = DeliverSub &
+  DigestScheduleFields & {
+    id: string;
+    lastRunAt: Date | null;
+  };
+
+const uniq = (xs: readonly string[]): string[] => [...new Set(xs)];
 
 /** Ngữ cảnh dùng chung của các khối trong MỘT lượt dựng digest. */
 interface BlockContext {
@@ -128,6 +148,8 @@ export class DigestsService implements OnApplicationShutdown {
     private readonly access: ProjectAccessService,
     private readonly leadership: LeadershipService,
     private readonly health: ProjectHealthService,
+    private readonly mail: MailService,
+    private readonly config: ConfigService,
   ) {}
 
   onApplicationShutdown(): void {
@@ -158,6 +180,8 @@ export class DigestsService implements OnApplicationShutdown {
     // `!== undefined` (không phải truthy): chuỗi rỗng cũng phải bị từ chối, không được lưu như một channelId.
     if (input.channelId !== undefined)
       await this.assertChannelInWorkspace(workspaceId, input.channelId);
+    const recipients = uniq(input.recipients ?? []);
+    await this.assertEmailSettings(workspaceId, input.deliverEmail ?? false, recipients);
     return this.prisma.reportSubscription.create({
       data: {
         workspaceId,
@@ -166,7 +190,8 @@ export class DigestsService implements OnApplicationShutdown {
         projectId: input.projectId ?? null,
         channelId: input.channelId ?? null,
         metrics: input.metrics ?? [],
-        recipients: input.recipients ?? [],
+        recipients,
+        ...(input.deliverEmail !== undefined ? { deliverEmail: input.deliverEmail } : {}),
         ...(input.weekday !== undefined ? { weekday: input.weekday } : {}),
         ...(input.hour !== undefined ? { hour: input.hour } : {}),
         ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
@@ -177,12 +202,25 @@ export class DigestsService implements OnApplicationShutdown {
 
   /** Cập nhật subscription (name/schedule/isEnabled/channelId/metrics). */
   async update(workspaceId: string, id: string, input: UpdateDigestInput) {
-    await this.requireSubscription(workspaceId, id);
+    const current = await this.requireSubscription(workspaceId, id);
     // null = gỡ kênh (không cần kiểm).
     if (input.channelId !== undefined && input.channelId !== null) {
       await this.assertChannelInWorkspace(workspaceId, input.channelId);
     }
+    // Kiểm trên trạng thái SAU khi sửa: bật email mà không có người nhận (hoặc gỡ hết người nhận) đều bị chặn.
+    const recipients = input.recipients !== undefined ? uniq(input.recipients) : current.recipients;
+    const deliverEmail = input.deliverEmail ?? current.deliverEmail;
+    if (input.recipients !== undefined || input.deliverEmail !== undefined) {
+      await this.assertEmailSettings(
+        workspaceId,
+        deliverEmail,
+        recipients,
+        input.recipients !== undefined,
+      );
+    }
     const data: Prisma.ReportSubscriptionUpdateInput = {};
+    if (input.recipients !== undefined) data.recipients = recipients;
+    if (input.deliverEmail !== undefined) data.deliverEmail = input.deliverEmail;
     if (input.name !== undefined) data.name = input.name;
     if (input.schedule !== undefined) data.schedule = input.schedule;
     if (input.isEnabled !== undefined) data.isEnabled = input.isEnabled;
@@ -217,26 +255,115 @@ export class DigestsService implements OnApplicationShutdown {
    */
   async run(workspaceId: string, id: string): Promise<{ sent: boolean; summaryText: string }> {
     const sub = await this.requireSubscription(workspaceId, id);
-    const model = await this.buildDigest(
-      workspaceId,
-      sub.projectId ?? undefined,
-      sub.metrics,
-      this.sharedViewer(sub),
-    );
-    const { sent, tokenUnusable, integrationError } = await this.send(
-      workspaceId,
-      sub.channelId,
-      renderTelegramHtml(model),
-    );
-    if (tokenUnusable) throw new BusinessRuleException(TELEGRAM_TOKEN_UNUSABLE_MESSAGE);
-    if (integrationError) throw new BusinessRuleException(INTEGRATION_ERROR_MESSAGE);
+    const d = await this.deliver(sub, 'run');
+    if (d.tokenUnusable) throw new BusinessRuleException(TELEGRAM_TOKEN_UNUSABLE_MESSAGE);
+    if (d.integrationError) throw new BusinessRuleException(INTEGRATION_ERROR_MESSAGE);
+    const sent = d.telegram === true || d.emails > 0;
     if (sent) {
       await this.prisma.reportSubscription.update({
         where: { id },
         data: { lastRunAt: new Date() },
       });
     }
-    return { sent, summaryText: renderPlainText(model) };
+    return { sent, summaryText: d.summaryText };
+  }
+
+  /**
+   * Dựng + gửi MỘT subscription qua mọi kênh đã bật (Telegram và Email độc lập nhau).
+   * `mode: 'run'` (nút "Chạy ngay"): Telegram hỏng token/tích hợp thì dừng NGAY, chưa gửi email, để báo lỗi rõ.
+   * `mode: 'scheduled'` (cron/sự kiện): một kênh hỏng không chặn kênh còn lại.
+   * `telegram`: null = chưa cấu hình kênh; true/false = đã thử gửi.
+   */
+  private async deliver(
+    sub: DeliverSub,
+    mode: 'run' | 'scheduled',
+  ): Promise<{
+    telegram: boolean | null;
+    emails: number;
+    tokenUnusable: boolean;
+    integrationError: boolean;
+    summaryText: string;
+  }> {
+    const model = await this.buildDigest(
+      sub.workspaceId,
+      sub.projectId ?? undefined,
+      sub.metrics,
+      this.sharedViewer(sub),
+    );
+    const summaryText = renderPlainText(model);
+    let telegram: boolean | null = null;
+    let tokenUnusable = false;
+    let integrationError = false;
+    if (sub.channelId) {
+      const r = await this.send(sub.workspaceId, sub.channelId, renderTelegramHtml(model));
+      telegram = r.sent;
+      tokenUnusable = r.tokenUnusable;
+      integrationError = r.integrationError;
+      if (mode === 'run' && (tokenUnusable || integrationError)) {
+        return { telegram, emails: 0, tokenUnusable, integrationError, summaryText };
+      }
+    }
+    const emails = sub.deliverEmail ? await this.sendEmails(sub) : 0;
+    return { telegram, emails, tokenUnusable, integrationError, summaryText };
+  }
+
+  /**
+   * Email: một thư/người nhận (không lộ danh sách), qua outbox (cron MailOutboxService gửi). Người nhận chỉ là thành
+   * viên workspace chưa bị khoá; nội dung dựng theo quyền xem của CHÍNH người nhận; digest gắn dự án thì người không
+   * thấy dự án đó không nhận thư. Lỗi xếp thư của một người không chặn người khác. Trả số thư đã xếp.
+   */
+  private async sendEmails(sub: DeliverSub): Promise<number> {
+    const ids = sub.recipients;
+    if (ids.length === 0) return 0;
+    let users: Array<{ id: string; email: string; displayName: string }>;
+    try {
+      users = await this.prisma.user.findMany({
+        where: {
+          id: { in: ids },
+          status: { not: UserStatus.DEACTIVATED },
+          workspaceMemberships: { some: { workspaceId: sub.workspaceId } },
+        },
+        select: { id: true, email: true, displayName: true },
+      });
+    } catch (err) {
+      this.warn('sendEmails.recipients', err);
+      return 0;
+    }
+    const creator = sub.createdById
+      ? await this.prisma.user
+          .findUnique({ where: { id: sub.createdById }, select: { displayName: true } })
+          .catch(() => null)
+      : null;
+    const url = this.config.get<string>('mail.appWebUrl') ?? '';
+    let queued = 0;
+    for (const user of users) {
+      try {
+        if (sub.projectId && !(await this.access.canSee(user.id, sub.workspaceId, sub.projectId))) {
+          continue;
+        }
+        const model = await this.buildDigest(
+          sub.workspaceId,
+          sub.projectId ?? undefined,
+          sub.metrics,
+          user.id,
+        );
+        await this.mail.enqueue({
+          to: user.email,
+          template: 'digest',
+          payload: {
+            title: model.title,
+            subtitle: [sub.name, model.subtitle].filter(Boolean).join(' · '),
+            sections: model.sections,
+            createdBy: creator?.displayName ?? '',
+            url,
+          },
+        });
+        queued += 1;
+      } catch (err) {
+        this.warn(`sendEmails:${user.id}`, err);
+      }
+    }
+    return queued;
   }
 
   /** Xem trước (chưa lưu): nội dung theo quyền xem của CHÍNH người bấm. */
@@ -732,13 +859,7 @@ export class DigestsService implements OnApplicationShutdown {
       });
       if (claimed.count === 0) return;
       try {
-        const model = await this.buildDigest(
-          sub.workspaceId,
-          sub.projectId ?? undefined,
-          sub.metrics,
-          this.sharedViewer(sub),
-        );
-        await this.send(sub.workspaceId, sub.channelId, renderTelegramHtml(model));
+        await this.deliver(sub, 'scheduled');
       } catch (err) {
         await this.prisma.reportSubscription
           .updateMany({
@@ -762,6 +883,31 @@ export class DigestsService implements OnApplicationShutdown {
       select: { id: true },
     });
     if (!channel) throw new NotFoundAppException('Kênh thông báo');
+  }
+
+  /**
+   * `deliverEmail` bắt buộc ≥1 người nhận; mọi người nhận phải là thành viên workspace (không nhập email tự do —
+   * tránh dùng Tirapro gửi thư ra ngoài; muốn thêm người = thêm vào workspace). `checkMembers`: chỉ tra DB khi
+   * danh sách người nhận vừa đổi (bật/tắt cờ không cần tra lại).
+   */
+  private async assertEmailSettings(
+    workspaceId: string,
+    deliverEmail: boolean,
+    recipients: string[],
+    checkMembers = true,
+  ): Promise<void> {
+    if (deliverEmail && recipients.length === 0) {
+      throw new BusinessRuleException('Bật gửi email thì cần chọn ít nhất một người nhận.');
+    }
+    if (!checkMembers || recipients.length === 0) return;
+    const members = await this.prisma.user.findMany({
+      where: { id: { in: recipients }, workspaceMemberships: { some: { workspaceId } } },
+      select: { id: true },
+    });
+    const ok = new Set(members.map((m) => m.id));
+    if (recipients.some((r) => !ok.has(r))) {
+      throw new BusinessRuleException('Người nhận phải là thành viên của workspace.');
+    }
   }
 
   private async requireSubscription(workspaceId: string, id: string) {

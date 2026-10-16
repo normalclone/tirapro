@@ -14,6 +14,7 @@ import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 
 const blocksSchema = z.array(z.enum(DIGEST_BLOCK_IDS)).max(DIGEST_BLOCK_IDS.length);
 
+const recipientsSchema = z.array(z.string().min(1)).max(50);
 const weekdaySchema = z.number().int().min(0).max(6);
 const hourSchema = z.number().int().min(0).max(23);
 const timezoneSchema = z.string().refine(isValidTimeZone, 'Múi giờ không hợp lệ');
@@ -26,7 +27,8 @@ export const createDigestSchema = z.object({
   projectId: z.string().optional(),
   channelId: z.string().min(1).optional(),
   metrics: blocksSchema.optional(),
-  recipients: z.array(z.string()).optional(),
+  recipients: recipientsSchema.optional(),
+  deliverEmail: z.boolean().optional(),
   weekday: weekdaySchema.optional(),
   hour: hourSchema.optional(),
   timezone: timezoneSchema.optional(),
@@ -39,6 +41,8 @@ export const updateDigestSchema = z.object({
   isEnabled: z.boolean().optional(),
   channelId: z.string().min(1).nullable().optional(),
   metrics: blocksSchema.optional(),
+  recipients: recipientsSchema.optional(),
+  deliverEmail: z.boolean().optional(),
   weekday: weekdaySchema.optional(),
   hour: hourSchema.optional(),
   timezone: timezoneSchema.optional(),
