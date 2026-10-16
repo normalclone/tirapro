@@ -1,8 +1,10 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { AttachmentImage } from '@/features/attachments/AttachmentImage';
 import { parseAttachmentRef } from '@/features/attachments/ref';
 import { cn } from '@/lib/utils';
 import { parseMarkdown, type MdBlock } from './markdownParse';
+import { IssueRefChip } from './IssueRefChip';
+import { splitIssueKeys, type IssueRef } from './issueRefs';
 import { MentionChip } from './MentionChip';
 import { safeHref, safeImg } from './safeUrl';
 
@@ -20,7 +22,7 @@ const INLINE_SOURCE =
   '|_(?<em2>[^_]+)_' +
   '|(?<mention>@\\[(?<mentionName>[^\\]\\n]{1,80})\\]\\(user:(?<mentionId>[A-Za-z0-9_-]{1,64})\\))';
 
-function renderInline(text: string): ReactNode[] {
+function renderInline(text: string, refs?: Record<string, IssueRef>): ReactNode[] {
   const out: ReactNode[] = [];
   const re = new RegExp(INLINE_SOURCE, 'g');
   let last = 0;
@@ -93,7 +95,21 @@ function renderInline(text: string): ReactNode[] {
     last = m.index + m[0].length;
   }
   if (last < text.length) out.push(text.slice(last));
-  return out;
+  return refs ? linkIssueKeys(out, refs) : out;
+}
+
+/** Biến mã công việc đã xác nhận trong các đoạn CHỮ THƯỜNG thành chip (không đụng mã trong `code`/liên kết/đậm). */
+function linkIssueKeys(nodes: ReactNode[], refs: Record<string, IssueRef>): ReactNode[] {
+  const known = new Set(Object.keys(refs));
+  if (known.size === 0) return nodes;
+  return nodes.flatMap<ReactNode>((n, i) => {
+    if (typeof n !== 'string') return [n];
+    const parts = splitIssueKeys(n, known);
+    if (parts.length === 1 && parts[0]!.type === 'text') return [n];
+    return parts.map((p, j) =>
+      p.type === 'key' ? <IssueRefChip key={`ik${i}-${j}`} issue={refs[p.value]!} /> : p.value,
+    );
+  });
 }
 
 const HEADING_CLASS = {
@@ -106,20 +122,22 @@ function renderBlock(
   b: MdBlock,
   key: number,
   onToggleTask: ((index: number, checked: boolean, itemText: string) => void) | undefined,
+  refs: Record<string, IssueRef> | undefined,
 ): ReactNode {
+  const inline = (t: string) => renderInline(t, refs);
   switch (b.type) {
     case 'blank':
       return <div key={key} className="h-2" />;
     case 'heading':
       return (
         <p key={key} className={cn('mt-2 text-ink-strong', HEADING_CLASS[b.level])}>
-          {renderInline(b.text)}
+          {inline(b.text)}
         </p>
       );
     case 'paragraph':
       return (
         <p key={key} className="leading-relaxed">
-          {renderInline(b.text)}
+          {inline(b.text)}
         </p>
       );
     case 'quote':
@@ -127,7 +145,7 @@ function renderBlock(
         <blockquote key={key} className="my-1 rounded-md bg-surface-2 px-3 py-1.5 text-muted">
           {b.lines.map((l, i) => (
             <p key={i} className="leading-relaxed">
-              {renderInline(l)}
+              {inline(l)}
             </p>
           ))}
         </blockquote>
@@ -171,11 +189,11 @@ function renderBlock(
                     className="mt-1 h-4 w-4 shrink-0 accent-[var(--primary)]"
                   />
                   <span className={cn(it.task.checked && 'text-muted line-through')}>
-                    {renderInline(it.text)}
+                    {inline(it.text)}
                   </span>
                 </label>
               ) : (
-                renderInline(it.text)
+                inline(it.text)
               )}
             </li>
           ))}
@@ -194,7 +212,7 @@ function renderBlock(
                     className="border border-border bg-surface-2 px-2 py-1 text-left font-medium"
                     style={b.align[i] ? { textAlign: b.align[i] } : undefined}
                   >
-                    {renderInline(c)}
+                    {inline(c)}
                   </th>
                 ))}
               </tr>
@@ -208,7 +226,7 @@ function renderBlock(
                       className="border border-border px-2 py-1"
                       style={b.align[ci] ? { textAlign: b.align[ci] } : undefined}
                     >
-                      {renderInline(c)}
+                      {inline(c)}
                     </td>
                   ))}
                 </tr>
@@ -228,13 +246,17 @@ function renderBlock(
 export function MarkdownView({
   text,
   onToggleTask,
+  issueRefs,
 }: {
   text: string;
   onToggleTask?: (index: number, checked: boolean, itemText: string) => void;
+  /** Công việc đã được máy chủ xác nhận (tra theo mã): mã tương ứng trong chữ thường hiện thành chip. */
+  issueRefs?: Record<string, IssueRef>;
 }) {
+  const blocks = useMemo(() => parseMarkdown(text), [text]);
   return (
     <div className="text-sm text-ink">
-      {parseMarkdown(text).map((b, i) => renderBlock(b, i, onToggleTask))}
+      {blocks.map((b, i) => renderBlock(b, i, onToggleTask, issueRefs))}
     </div>
   );
 }

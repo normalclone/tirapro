@@ -17,6 +17,7 @@ export const SOFT_DELETE_MODELS = new Set([
   'Dashboard',
   'SavedFilter',
   'Team',
+  'WikiPage',
 ]);
 
 @Injectable()

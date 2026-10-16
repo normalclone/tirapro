@@ -1991,15 +1991,37 @@ model WikiPage {
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  /// Xoá mềm: trang biến khỏi cây/tìm kiếm nhưng quản trị khôi phục lại được (kèm lịch sử phiên bản).
+  deletedAt   DateTime?
+  deletedById String?
 
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   parent    WikiPage?  @relation("WikiTree", fields: [parentId], references: [id], onDelete: SetNull)
   children  WikiPage[] @relation("WikiTree")
   issues    WikiPageIssue[]
+  versions  WikiPageVersion[]
 
   @@index([workspaceId, projectId])
   @@index([parentId])
+  @@index([workspaceId, deletedAt])
+}
+
+/// Lịch sử trang wiki — một dòng cho mỗi lần lưu có thay đổi (hoặc khôi phục). `version` là số thứ tự bản
+/// trong lịch sử của trang (KHÁC `WikiPage.version` là bộ đếm OCC); `authorId` không khoá ngoại (giữ lịch sử khi xoá người dùng).
+model WikiPageVersion {
+  id         String   @id @default(cuid())
+  wikiPageId String
+  version    Int
+  title      String
+  body       String   @db.Text
+  authorId   String?
+  note       String?
+  createdAt  DateTime @default(now())
+
+  wikiPage WikiPage @relation(fields: [wikiPageId], references: [id], onDelete: Cascade)
+
+  @@unique([wikiPageId, version])
 }
 
 /// Trang wiki nhắc tới công việc nào (suy ra từ nội dung trang mỗi lần lưu).
