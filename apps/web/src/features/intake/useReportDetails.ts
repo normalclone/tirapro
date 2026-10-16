@@ -3,12 +3,13 @@ import { toDraft, type EnvironmentDraft } from '@/features/issue-edit/environmen
 import { loadDetailsOpen, saveDetailsOpen } from './useReportDraft';
 
 /** Trạng thái khối "Thêm chi tiết": đóng/mở (nhớ theo người), mức nghiêm trọng, môi trường, tệp đính kèm. */
-export function useReportDetails() {
-  const [open, setOpen] = useState(loadDetailsOpen);
+export function useReportDetails(initialFiles: File[] = []) {
+  // Có tệp mang sang từ form khác → mở sẵn khối để người dùng thấy tệp của mình.
+  const [open, setOpen] = useState(() => initialFiles.length > 0 || loadDetailsOpen());
   const [severityId, setSeverityId] = useState('');
   const [envDraft, setEnvDraft] = useState(() => toDraft(null));
   const [envError, setEnvError] = useState<string | null>(null);
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<File[]>(initialFiles);
   const severityTouched = useRef(false);
 
   const updateEnv = useCallback((u: (d: EnvironmentDraft) => EnvironmentDraft) => {

@@ -13,7 +13,7 @@ const MAX_SUGGESTIONS = 5;
 function MergeChosen({ keyText, onChange }: { keyText: string; onChange: () => void }) {
   return (
     <div
-      id="ri-dup"
+      id="ri-dup-merged"
       className="mt-2 flex items-center gap-2 rounded-md border border-primary/30 bg-primary-subtle/50 px-2.5 py-1.5 text-sm"
     >
       <span className="min-w-0 flex-1 text-ink">
@@ -39,7 +39,8 @@ function MatchRow({
   m: DuplicateSuggestion;
   showMerge: boolean;
   index: number;
-  onMerge: () => void;
+  /** undefined = người xem không gộp được (thiếu quyền bình luận): chỉ xem. */
+  onMerge: (() => void) | undefined;
 }) {
   return (
     <li className="group rounded-md px-1.5 py-1 hover:bg-surface-2 focus-within:bg-surface-2">
@@ -80,17 +81,21 @@ function MatchRow({
           </span>
         )}
         {/* Dòng đầu luôn có nút; dòng khác chỉ hiện khi rê/focus (tránh cả danh sách đầy nút). */}
-        <button
-          type="button"
-          data-dup-merge={index}
-          onClick={onMerge}
-          className={cn(
-            'ml-auto rounded-md border border-border bg-surface px-2 py-0.5 font-medium text-ink transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            !showMerge && 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
-          )}
-        >
-          Thêm ghi chú vào {m.key}
-        </button>
+        {onMerge && (
+          <button
+            type="button"
+            data-dup-merge={index}
+            onClick={onMerge}
+            className={cn(
+              'ml-auto rounded-md border border-border bg-surface px-2 py-0.5 font-medium text-ink transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+              // Chuột: dòng đầu luôn có nút, dòng khác hiện khi rê/focus. Cảm ứng (không có hover): luôn hiện ở mọi dòng.
+              !showMerge &&
+                '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100',
+            )}
+          >
+            Thêm ghi chú vào {m.key}
+          </button>
+        )}
       </div>
     </li>
   );
@@ -105,12 +110,15 @@ export function DuplicatePanel({
   matches,
   selection,
   exact,
+  canMerge,
   onSelect,
 }: {
   matches: DuplicateSuggestion[];
   selection: DupSelection;
   /** Bug còn sống có tiêu đề giống hệt (nếu có) — hiện dòng nhắc nổi bật khi chưa chọn gì. */
   exact: DuplicateSuggestion | undefined;
+  /** false = thiếu quyền bình luận: chỉ liệt kê để xem (không nút gộp), gửi luôn là tạo mới. */
+  canMerge: boolean;
   onSelect: (s: DupSelection) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -135,15 +143,14 @@ export function DuplicatePanel({
       ref={ref}
       role="region"
       aria-label="Công việc có thể trùng"
-      aria-live="polite"
       onKeyDown={onKeyDown}
       className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-2.5"
     >
       <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
         <AlertTriangle className="h-3.5 w-3.5 text-warning" aria-hidden />
-        Có thể trùng ({shown.length}):
+        Có thể trùng ({shown.length}){canMerge ? ':' : ' — chỉ để xem:'}
       </p>
-      {exact && selection.mode === 'none' && (
+      {canMerge && exact && selection.mode === 'none' && (
         <p className="mb-2 rounded bg-warning/20 px-2 py-1.5 text-xs font-medium text-ink">
           Tiêu đề giống hệt {exact.key} — bấm Gửi sẽ thêm vào bug đó (nội dung của bạn được giữ
           thành bình luận).
@@ -156,25 +163,27 @@ export function DuplicatePanel({
             m={m}
             index={i}
             showMerge={i === 0}
-            onMerge={() => onSelect({ mode: 'merge', key: m.key, id: m.id })}
+            onMerge={canMerge ? () => onSelect({ mode: 'merge', key: m.key, id: m.id }) : undefined}
           />
         ))}
       </ul>
-      <div className="mt-2 flex justify-end">
-        <button
-          type="button"
-          aria-pressed={selection.mode === 'new'}
-          onClick={() => onSelect(selection.mode === 'new' ? { mode: 'none' } : { mode: 'new' })}
-          className={cn(
-            'rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            selection.mode === 'new'
-              ? 'bg-primary-subtle text-primary'
-              : 'text-muted hover:bg-surface-2 hover:text-ink',
-          )}
-        >
-          {selection.mode === 'new' ? 'Sẽ tạo mới ✓ — bấm để bỏ' : 'Vẫn tạo mới'}
-        </button>
-      </div>
+      {canMerge && (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            aria-pressed={selection.mode === 'new'}
+            onClick={() => onSelect(selection.mode === 'new' ? { mode: 'none' } : { mode: 'new' })}
+            className={cn(
+              'rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+              selection.mode === 'new'
+                ? 'bg-primary-subtle text-primary'
+                : 'text-muted hover:bg-surface-2 hover:text-ink',
+            )}
+          >
+            {selection.mode === 'new' ? 'Sẽ tạo mới ✓ — bấm để bỏ' : 'Vẫn tạo mới'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

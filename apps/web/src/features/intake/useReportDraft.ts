@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { ReportIssuePreset } from '@/stores/reportIssue';
 import { hasDraftContent, reportTemplate, type ReportDraft, type RequestKind } from './reportForm';
@@ -72,12 +72,41 @@ export function useReportInitial(
   return initial;
 }
 
-/** Tự lưu bản nháp theo dự án (UX_CONVENTIONS #17) — chỉ khi đang mở và có chữ thật. */
+/**
+ * Tự lưu bản nháp theo dự án (UX_CONVENTIONS #17) — chỉ khi đang mở và có chữ thật; lưu NGAY khi đóng hộp
+ * (không rơi nháp của <400ms gõ cuối). `discard()` xoá nháp và huỷ lần lưu đang chờ (gọi sau khi gửi thành công).
+ */
 export function useDraftAutosave(open: boolean, projectKey: string, draft: ReportDraft) {
   const { kind, summary, description } = draft;
+  const latest = useRef({ projectKey, draft: { kind, summary, description } });
+  latest.current = { projectKey, draft: { kind, summary, description } };
+  const dirty = useRef(false);
+
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => saveDraft(projectKey, { kind, summary, description }), 400);
+    dirty.current = true;
+    const t = setTimeout(() => {
+      saveDraft(latest.current.projectKey, latest.current.draft);
+      dirty.current = false;
+    }, 400);
     return () => clearTimeout(t);
   }, [open, projectKey, kind, summary, description]);
+
+  // Đóng hộp (hoặc rời trang) khi còn lần lưu chờ → lưu ngay.
+  useEffect(() => {
+    const flush = () => {
+      if (!dirty.current) return;
+      dirty.current = false;
+      saveDraft(latest.current.projectKey, latest.current.draft);
+    };
+    if (!open) flush();
+    return flush;
+  }, [open]);
+
+  return {
+    discard: () => {
+      dirty.current = false;
+      clearDraft(latest.current.projectKey);
+    },
+  };
 }

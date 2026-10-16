@@ -51,10 +51,23 @@ export interface DupDecision {
 /**
  * Quyết định gửi: người dùng chọn gộp → gộp vào bug đó; "vẫn tạo mới" → forceNew; chưa chọn mà tiêu đề giống hệt
  * một bug còn sống → gộp vào bug đó một cách TƯỜNG MINH (cùng kết quả server tự gộp, nhưng ảnh/tệp tải được lên đúng
- * chỗ) và nhãn nút nói rõ trước — người dùng không bao giờ bị bất ngờ.
+ * chỗ) và nhãn nút nói rõ trước — người dùng không bao giờ bị bất ngờ. Thiếu quyền bình luận hoặc loại khác Bug thì không
+ * tự gộp.
  */
-export function dupDecision(sel: DupSelection, matches: DupMatch[], summary: string): DupDecision {
-  const exact = matches.find((m) => isExactTitle(m.summary, summary) && isLive(m));
+export function dupDecision(
+  sel: DupSelection,
+  matches: DupMatch[],
+  summary: string,
+  opts: { canComment?: boolean; kind?: string } = {},
+): DupDecision {
+  // Người thiếu `comment:create` không gộp được (gộp = bình luận): chỉ xem gợi ý, luôn tạo mới — khớp nhánh an toàn của server.
+  if (opts.canComment === false)
+    return { exact: undefined, label: 'Gửi', mergeInto: null, forceNew: false };
+  // Server chỉ tự gộp theo tiêu đề cho Bug; yêu cầu tính năng/câu hỏi trùng tên một Bug vẫn là việc riêng.
+  const autoMerge = (opts.kind ?? 'BUG') === 'BUG';
+  const exact = autoMerge
+    ? matches.find((m) => isExactTitle(m.summary, summary) && isLive(m))
+    : undefined;
   const label = submitLabel(sel, exact ? { key: exact.key, exact: true } : null);
   if (sel.mode === 'merge') {
     const id = sel.id ?? matches.find((m) => m.key === sel.key)?.id;

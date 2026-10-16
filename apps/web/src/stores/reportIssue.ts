@@ -8,6 +8,10 @@ export interface ReportIssuePreset {
   kind?: RequestKind;
   summary?: string;
   description?: string;
+  /** Tệp đã chọn ở nơi gọi (vd form Tạo việc) — mang sang để không mất khi chuyển form. */
+  files?: File[];
+  /** Chạy SAU khi gửi thành công (vd xoá bản nháp của form đã chuyển đi). */
+  onSent?: () => void;
 }
 
 interface ReportIssueModalState {

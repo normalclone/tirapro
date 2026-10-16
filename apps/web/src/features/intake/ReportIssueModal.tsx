@@ -19,6 +19,7 @@ import { useDupChoice } from './useDupChoice';
 import type { DupSelection } from './dupDecision';
 import { FIELD_LABEL, ReportDetails } from './ReportDetails';
 import { clearDraft, useDraftAutosave, useReportInitial } from './useReportDraft';
+import { useCanComment } from './useCanComment';
 import { useReportDetails } from './useReportDetails';
 import { useReportSubmit } from './useReportSubmit';
 import {
@@ -185,6 +186,7 @@ function TitleField({
   matches,
   checking,
   dup,
+  canMerge,
   onSelect,
 }: {
   kind: RequestKind;
@@ -193,6 +195,7 @@ function TitleField({
   matches: DuplicateSuggestion[];
   checking: boolean;
   dup: ReturnType<typeof useDupChoice>;
+  canMerge: boolean;
   onSelect: (s: DupSelection) => void;
 }) {
   const long = summary.trim().length >= 4;
@@ -218,14 +221,18 @@ function TitleField({
         className="text-sm"
         aria-describedby={showPanel ? 'ri-dup' : undefined}
       />
-      {showPanel && (
-        <DuplicatePanel
-          matches={matches}
-          selection={dup.sel}
-          exact={matches.find((m) => m.id === dup.decision.exact?.id)}
-          onSelect={onSelect}
-        />
-      )}
+      {/* Vùng aria-live luôn có trong DOM để trình đọc màn hình đọc được khi panel xuất hiện. */}
+      <div aria-live="polite">
+        {showPanel && (
+          <DuplicatePanel
+            canMerge={canMerge}
+            matches={matches}
+            selection={dup.sel}
+            exact={matches.find((m) => m.id === dup.decision.exact?.id)}
+            onSelect={onSelect}
+          />
+        )}
+      </div>
       {checking && !showPanel && long && (
         <p className="mt-1.5 text-xs text-faint">Đang kiểm tra trùng lặp…</p>
       )}
@@ -254,7 +261,7 @@ function ReportIssueForm({
   const initial = useReportInitial(open, preset, target.projectKey);
   const [selKey, setSelKey] = useState(initial.key);
   const [changingProject, setChangingProject] = useState(false);
-  const details = useReportDetails();
+  const details = useReportDetails(preset.files);
   const [kind, setKind] = useState<RequestKind>(initial.kind);
   const [summary, setSummary] = useState(initial.summary);
   const [description, setDescription] = useState(initial.description);
@@ -271,7 +278,8 @@ function ReportIssueForm({
     summary,
   );
   const matches = duplicates ?? [];
-  const dup = useDupChoice(matches, summary);
+  const canComment = useCanComment(projectId);
+  const dup = useDupChoice(matches, summary, { canComment, kind });
 
   const form = {
     projectId,
@@ -288,11 +296,12 @@ function ReportIssueForm({
     files: details.files,
     onEnvInvalid: details.showEnvError,
     onDone: () => {
-      clearDraft(selKey);
+      draft.discard();
+      preset.onSent?.();
       onClose();
     },
   });
-  useDraftAutosave(open, selKey, { kind, summary, description });
+  const draft = useDraftAutosave(open, selKey, { kind, summary, description });
   const merging = !!dup.decision.mergeInto;
 
   function changeKind(next: RequestKind) {
@@ -344,6 +353,7 @@ function ReportIssueForm({
           picking={changingProject}
           onPick={() => setChangingProject(true)}
           onChange={(k) => {
+            if (k !== selKey) clearDraft(selKey); // nháp theo chữ đang gõ — chuyển sang dự án mới, không để bản cũ mồ côi
             setSelKey(k);
             setChangingProject(false);
           }}
@@ -358,6 +368,7 @@ function ReportIssueForm({
           matches={matches}
           checking={checkingDup}
           dup={dup}
+          canMerge={canComment}
           onSelect={chooseDup}
         />
         <div>

@@ -76,4 +76,24 @@ describe('dupDecision', () => {
     expect(fresh.forceNew).toBe(true);
     expect(fresh.label).toBe('Gửi (tạo mới)');
   });
+
+  it('thiếu comment:create: không gộp ngầm, không gộp có chọn, nhãn "Gửi" (luôn tạo mới)', () => {
+    const noPerm = { canComment: false };
+    const auto = dupDecision({ mode: 'none' }, [live], 'Giỏ hàng bị mất sản phẩm', noPerm);
+    expect(auto).toEqual({ exact: undefined, label: 'Gửi', mergeInto: null, forceNew: false });
+    const chosen = dupDecision({ mode: 'merge', key: 'D-1', id: 'a' }, [live], 'x', noPerm);
+    expect(chosen.mergeInto).toBeNull();
+    expect(chosen.label).toBe('Gửi');
+  });
+
+  it('chỉ Bug mới tự gộp theo tiêu đề giống hệt', () => {
+    const f = dupDecision({ mode: 'none' }, [live], 'Giỏ hàng bị mất sản phẩm', {
+      kind: 'FEATURE',
+    });
+    expect(f.exact).toBeUndefined();
+    expect(f.mergeInto).toBeNull();
+    expect(f.label).toBe('Gửi');
+    const b = dupDecision({ mode: 'none' }, [live], 'Giỏ hàng bị mất sản phẩm', { kind: 'BUG' });
+    expect(b.mergeInto).toEqual({ id: 'a', key: 'D-1' });
+  });
 });

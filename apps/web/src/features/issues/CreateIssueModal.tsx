@@ -394,17 +394,21 @@ export function CreateIssueModal() {
     }
   }
 
-  // Mang tiêu đề/mô tả sang form Báo lỗi (có kiểm tra trùng + mức nghiêm trọng) rồi đóng hộp tạo việc; mẫu mô tả
-  // của hộp này bỏ đi (form Báo lỗi có mẫu riêng) và bản nháp được xoá vì chữ đã chuyển sang bên kia.
+  // Mang tiêu đề (giữ nguyên cả token đã gõ), mô tả và tệp đính sang form Báo lỗi (có kiểm tra trùng + mức nghiêm trọng)
+  // rồi đóng hộp tạo việc. Mẫu mô tả của hộp này bỏ đi (form Báo lỗi có mẫu riêng). Bản nháp tạo việc GIỮ NGUYÊN tới khi
+  // báo lỗi gửi thành công (`onSent`) — lỡ đóng form Báo lỗi vẫn còn chữ để quay lại.
   function switchToReport() {
     const text = description.trim() && !isTemplate(description) ? description : undefined;
+    const key = selKey;
+    saveDraft(key, { summary, description, acceptance }); // chốt nháp ngay (không chờ debounce)
     openReportIssue({
-      projectKey: selKey || undefined,
+      projectKey: key || undefined,
       kind: 'BUG',
-      summary: parseTitleTokens(summary, tokenCtx).clean.trim(),
+      summary: summary.trim(),
       description: text,
+      files,
+      onSent: () => clearDraft(key),
     });
-    clearDraft(selKey);
     close();
   }
 

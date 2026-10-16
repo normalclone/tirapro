@@ -138,6 +138,9 @@ export function FloatingActions() {
         onClick: run(() => setGenAi(true)),
       },
     hasProject &&
+      !project?.archivedAt &&
+      createAccess !== 'deny' &&
+      canCreate !== false &&
       enabled.report && {
         key: 'report',
         icon: <Bug className="h-5 w-5" />,
