@@ -10,7 +10,7 @@ import {
   ForbiddenAppException,
 } from '../../common/exceptions/app.exception';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import type { RbacService } from '../rbac/rbac.service';
+import { RbacService } from '../rbac/rbac.service';
 import { AnalyticsController } from './analytics.controller';
 import type { AnalyticsService } from './analytics.service';
 import type { QaReportService } from './qa-report.service';
@@ -117,5 +117,85 @@ describe('AnalyticsController.qa — metadata', () => {
     await expect(controller.qa('w1', undefined)).rejects.toBeInstanceOf(BusinessRuleException);
     await controller.qa('w1', 'p1', '2026-10-01', '2026-10-15');
     expect(qaReport.report).toHaveBeenCalledWith('w1', 'p1', '2026-10-01', '2026-10-15');
+  });
+});
+
+describe('AnalyticsController.qa — guard thật', () => {
+  const handler = AnalyticsController.prototype.qa;
+  const ctxOf = (query: Record<string, string>) =>
+    ({
+      getHandler: () => handler,
+      getClass: () => AnalyticsController,
+      switchToHttp: () => ({
+        getRequest: () => ({
+          user: { id: 'U1', workspaceId: 'w1', isSystemAdmin: false },
+          params: {},
+          query,
+          body: {},
+        }),
+      }),
+    }) as unknown as ExecutionContext;
+
+  /** RbacService THẬT trên Prisma giả: dự án tồn tại hay không, riêng tư hay không, người gọi có phải thành viên không. */
+  async function run(sc: 'missing' | 'private-outsider') {
+    const hidden = sc === 'private-outsider';
+    const prisma = {
+      project: {
+        findFirst: vi.fn((args: { where: Record<string, unknown> }) => {
+          if (args.where.isPrivate === true) return Promise.resolve({ memberships: [] });
+          return Promise.resolve(hidden ? { id: 'P1' } : null);
+        }),
+      },
+      workspaceMembership: {
+        findUnique: vi.fn(() =>
+          Promise.resolve({
+            roleId: 'r',
+            roles: [{ role: { id: 'r', name: 'Workspace Member' } }],
+          }),
+        ),
+      },
+      rolePermission: {
+        findMany: vi.fn(() => Promise.resolve([{ permission: { key: PERMISSIONS.REPORT_VIEW } }])),
+      },
+      role: { findMany: vi.fn(() => Promise.resolve([])) },
+      projectMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
+    };
+    const rbac = new RbacService(
+      prisma as never,
+      { getClient: () => null, isAvailable: () => false } as never,
+    );
+    const guard = new PermissionsGuard(new Reflector(), rbac);
+    try {
+      await guard.canActivate(ctxOf({ projectId: 'P1' }));
+    } catch (e) {
+      const ex = e as { getStatus(): number; getResponse(): unknown };
+      return { status: ex.getStatus(), body: ex.getResponse() };
+    }
+    throw new Error('guard không ném lỗi');
+  }
+
+  it('dự án riêng tư người ngoài => 404 GIỐNG HỆT dự án không tồn tại (không lộ sự tồn tại)', async () => {
+    const missing = await run('missing');
+    const hidden = await run('private-outsider');
+    expect(missing.status).toBe(404);
+    expect(hidden).toEqual(missing);
+  });
+
+  it('thiếu report:view ở dự án => 403; có report:view ở dự án => cho qua và service nhận đủ tham số', async () => {
+    const mk = (perms: string[]) => {
+      const rbac = {
+        getEffectivePermissions: vi.fn(() => Promise.resolve(new Set<string>(perms))),
+        resolveProjectId: vi.fn(),
+        assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+        assertProjectVisible: vi.fn(() => Promise.resolve()),
+      };
+      return new PermissionsGuard(new Reflector(), rbac as unknown as RbacService);
+    };
+    await expect(mk([]).canActivate(ctxOf({ projectId: 'p1' }))).rejects.toBeInstanceOf(
+      ForbiddenAppException,
+    );
+    await expect(
+      mk([PERMISSIONS.REPORT_VIEW]).canActivate(ctxOf({ projectId: 'p1' })),
+    ).resolves.toBe(true);
   });
 });

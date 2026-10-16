@@ -1,40 +1,32 @@
-/** Hàm thuần của báo cáo QA — tách khỏi Prisma để test trực tiếp. */
-
-type Category = 'TODO' | 'IN_PROGRESS' | 'DONE';
+/** Hàm thuần của báo cáo QA — phần còn lại (đếm, trung vị, gom theo phiên bản) do SQL aggregate lo, không có trần dòng. */
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-function median(xs: number[]): number {
-  const s = [...xs].sort((a, b) => a - b);
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
-}
+/** Dòng kết quả SQL: số lượng có thể là bigint, giá trị thời gian có thể null/chuỗi (numeric). */
+type Num = number | bigint | string | null;
+const num = (v: Num): number => (v == null ? 0 : Number(v));
 
-/** Thời gian đóng (giờ) = resolvedAt − createdAt. Bỏ dòng chưa có resolvedAt hoặc mốc âm (dữ liệu nhập lệch). */
-export function closeTimeStats(rows: Array<{ createdAt: Date; resolvedAt: Date | null }>): {
+/** Thống kê thời gian đóng (giờ) từ dòng aggregate; không có mẫu → null. */
+export function closeTimeFromRow(row: { n: Num; avgHours: Num; medianHours: Num } | undefined): {
   avgHours: number | null;
   medianHours: number | null;
   sample: number;
 } {
-  const hours = rows.flatMap((r) =>
-    r.resolvedAt && r.resolvedAt >= r.createdAt
-      ? [(r.resolvedAt.getTime() - r.createdAt.getTime()) / 3_600_000]
-      : [],
-  );
-  if (hours.length === 0) return { avgHours: null, medianHours: null, sample: 0 };
+  const sample = num(row?.n ?? 0);
+  if (!row || sample === 0 || row.avgHours == null || row.medianHours == null) {
+    return { avgHours: null, medianHours: null, sample: 0 };
+  }
   return {
-    avgHours: round2(hours.reduce((a, b) => a + b, 0) / hours.length),
-    medianHours: round2(median(hours)),
-    sample: hours.length,
+    avgHours: round2(num(row.avgHours)),
+    medianHours: round2(num(row.medianHours)),
+    sample,
   };
 }
 
-/** Tỷ lệ mở lại = |đóng ∩ mở lại| / |đóng| (luôn ≤ 1); null khi không có bug đóng trong kỳ. */
-export function reopenRate(closed: Set<string>, reopened: Set<string>): number | null {
-  if (closed.size === 0) return null;
-  let n = 0;
-  for (const id of reopened) if (closed.has(id)) n++;
-  return n / closed.size;
+/** Tỷ lệ mở lại = (bug đóng VÀ mở lại trong kỳ) / (bug đóng trong kỳ) (luôn ≤ 1); null khi không có bug đóng. */
+export function reopenRate(closed: number, closedAndReopened: number): number | null {
+  if (closed <= 0) return null;
+  return Math.min(1, closedAndReopened / closed);
 }
 
 export interface SeverityBucket {
@@ -69,10 +61,12 @@ export function bucketOpenBySeverity(
   return known;
 }
 
-export interface ReleaseBugRow {
+export interface ReleaseAggRow {
   versionId: string;
-  createdAt: Date;
-  category: Category;
+  total: Num;
+  open: Num;
+  closed: Num;
+  leaked: Num;
 }
 export interface ReleaseVersion {
   id: string;
@@ -92,39 +86,74 @@ export interface ReleaseBucket {
 }
 
 /**
- * Gom bug theo phiên bản. `leaked` = bug thuộc phiên bản RELEASED được báo SAU ngày phát hành.
- * Chỉ liệt kê phiên bản có ít nhất một bug; chưa phát hành (không có ngày) lên trước, còn lại theo ngày phát hành mới nhất.
+ * Ghép dòng aggregate theo phiên bản với tên/trạng thái/ngày phát hành. Chỉ liệt kê phiên bản có bug;
+ * chưa có ngày phát hành lên trước, còn lại theo ngày phát hành mới nhất.
  */
-export function bucketByRelease(
-  rows: ReleaseBugRow[],
-  versions: ReleaseVersion[],
-): ReleaseBucket[] {
+export function mapReleaseRows(rows: ReleaseAggRow[], versions: ReleaseVersion[]): ReleaseBucket[] {
   const vById = new Map(versions.map((v) => [v.id, v]));
-  const acc = new Map<string, ReleaseBucket>();
+  const out: ReleaseBucket[] = [];
   for (const r of rows) {
     const v = vById.get(r.versionId);
-    if (!v) continue;
-    const b = acc.get(v.id) ?? {
+    if (!v || num(r.total) === 0) continue;
+    out.push({
       versionId: v.id,
       name: v.name,
       status: v.status,
       releaseDate: v.releaseDate ? v.releaseDate.toISOString() : null,
-      total: 0,
-      open: 0,
-      closed: 0,
-      leaked: 0,
-    };
-    b.total++;
-    if (r.category === 'DONE') b.closed++;
-    else b.open++;
-    if (v.status === 'RELEASED' && v.releaseDate && r.createdAt > v.releaseDate) b.leaked++;
-    acc.set(v.id, b);
+      total: num(r.total),
+      open: num(r.open),
+      closed: num(r.closed),
+      leaked: num(r.leaked),
+    });
   }
-  return [...acc.values()].sort((a, b) => {
+  return out.sort((a, b) => {
     if (!a.releaseDate !== !b.releaseDate) return a.releaseDate ? 1 : -1;
     if (a.releaseDate && b.releaseDate && a.releaseDate !== b.releaseDate) {
       return a.releaseDate < b.releaseDate ? 1 : -1;
     }
     return a.name.localeCompare(b.name);
   });
+}
+
+const DAY = 86_400_000;
+const MAX_RANGE_DAYS = 366;
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
+
+export type QaRangeResult = { from: Date; to: Date } | { error: string };
+
+/**
+ * Khoảng thời gian của báo cáo. `YYYY-MM-DD` = trọn ngày theo UTC (đầu ngày / cuối ngày); ISO đầy đủ có múi giờ
+ * (`2026-10-10T00:00:00+07:00`, `…Z`) được dùng NGUYÊN VĂN để client chọn ranh giới ngày theo giờ địa phương.
+ * Mặc định: 30 ngày tính tới `now`. Lỗi trả `{ error }` để nơi gọi ném 422.
+ */
+export function parseQaRange(
+  fromStr: string | undefined,
+  toStr: string | undefined,
+  now: Date,
+): QaRangeResult {
+  const parse = (s: string, end: boolean): Date | null => {
+    if (DATE_ONLY.test(s)) {
+      const d = new Date(`${s}T00:00:00.000Z`);
+      if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) return null;
+      return end ? new Date(d.getTime() + DAY - 1) : d;
+    }
+    if (!ISO_INSTANT.test(s)) return null;
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  const to = toStr ? parse(toStr, true) : now;
+  if (!to) return { error: 'Khoảng thời gian không hợp lệ' };
+  let from: Date | null;
+  if (fromStr) from = parse(fromStr, false);
+  else {
+    const d = new Date(to.getTime() - 29 * DAY);
+    from = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  }
+  if (!from) return { error: 'Khoảng thời gian không hợp lệ' };
+  if (from > to) return { error: 'Ngày bắt đầu phải trước ngày kết thúc' };
+  if (to.getTime() - from.getTime() > MAX_RANGE_DAYS * DAY) {
+    return { error: `Khoảng thời gian tối đa ${MAX_RANGE_DAYS} ngày` };
+  }
+  return { from, to };
 }

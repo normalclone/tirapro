@@ -1,34 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { bucketByRelease, bucketOpenBySeverity, closeTimeStats, reopenRate } from './qa-report';
+import {
+  bucketOpenBySeverity,
+  closeTimeFromRow,
+  mapReleaseRows,
+  parseQaRange,
+  reopenRate,
+} from './qa-report';
 
-const H = 3_600_000;
-describe('closeTimeStats', () => {
-  it('trung bình và trung vị theo giờ, bỏ dòng thiếu mốc/âm', () => {
-    const t0 = new Date('2026-10-01T00:00:00Z');
-    const rows = [
-      { createdAt: t0, resolvedAt: new Date(t0.getTime() + 2 * H) },
-      { createdAt: t0, resolvedAt: new Date(t0.getTime() + 4 * H) },
-      { createdAt: t0, resolvedAt: new Date(t0.getTime() + 24 * H) },
-      { createdAt: t0, resolvedAt: null },
-      { createdAt: new Date(t0.getTime() + H), resolvedAt: t0 },
-    ];
-    expect(closeTimeStats(rows)).toEqual({ avgHours: 10, medianHours: 4, sample: 3 });
-    expect(closeTimeStats([])).toEqual({ avgHours: null, medianHours: null, sample: 0 });
+describe('closeTimeFromRow', () => {
+  it('làm tròn 2 số, chấp nhận bigint/chuỗi từ Postgres', () => {
+    expect(closeTimeFromRow({ n: 5n, avgHours: 225.6099, medianHours: '72.015' })).toEqual({
+      avgHours: 225.61,
+      medianHours: 72.02,
+      sample: 5,
+    });
   });
-  it('trung vị của số lượng chẵn là trung bình hai giá trị giữa', () => {
-    const t0 = new Date('2026-10-01T00:00:00Z');
-    const rows = [1, 3, 5, 100].map((h) => ({
-      createdAt: t0,
-      resolvedAt: new Date(t0.getTime() + h * H),
-    }));
-    expect(closeTimeStats(rows).medianHours).toBe(4);
+  it('không có mẫu (n=0, null, hoặc không có dòng) => null/0', () => {
+    expect(closeTimeFromRow({ n: 0, avgHours: null, medianHours: null })).toEqual({
+      avgHours: null,
+      medianHours: null,
+      sample: 0,
+    });
+    expect(closeTimeFromRow(undefined)).toEqual({ avgHours: null, medianHours: null, sample: 0 });
   });
 });
 
 describe('reopenRate', () => {
-  it('giao tập đã mở lại với tập đã đóng; null khi không có bug đóng', () => {
-    expect(reopenRate(new Set(['a', 'b', 'c', 'd']), new Set(['b', 'x']))).toBe(0.25);
-    expect(reopenRate(new Set(), new Set(['x']))).toBeNull();
+  it('(đóng ∩ mở lại) / đóng; null khi không có bug đóng; không vượt 1', () => {
+    expect(reopenRate(4, 1)).toBe(0.25);
+    expect(reopenRate(0, 3)).toBeNull();
+    expect(reopenRate(2, 5)).toBe(1);
   });
 });
 
@@ -64,33 +65,75 @@ describe('bucketOpenBySeverity', () => {
   });
 });
 
-describe('bucketByRelease', () => {
+describe('mapReleaseRows', () => {
   const v = (id: string, status: 'UNRELEASED' | 'RELEASED', releaseDate: string | null) => ({
     id,
     name: id,
     status,
     releaseDate: releaseDate ? new Date(releaseDate) : null,
   });
-  it('đếm tổng/mở/đóng và rò rỉ (tạo sau ngày phát hành của bản RELEASED)', () => {
-    const rows = [
-      { versionId: 'v1', createdAt: new Date('2026-09-01'), category: 'DONE' as const },
-      { versionId: 'v1', createdAt: new Date('2026-10-05'), category: 'TODO' as const },
-      { versionId: 'v2', createdAt: new Date('2026-10-05'), category: 'TODO' as const },
-    ];
-    const out = bucketByRelease(rows, [
-      v('v1', 'RELEASED', '2026-10-01'),
-      v('v2', 'UNRELEASED', null),
-    ]);
-    expect(out.find((r) => r.versionId === 'v1')).toMatchObject({
-      total: 2,
-      open: 1,
-      closed: 1,
-      leaked: 1,
-    });
-    expect(out.find((r) => r.versionId === 'v2')).toMatchObject({ total: 1, leaked: 0 });
+  it('ghép tên/trạng thái, ép số, chưa phát hành lên trước rồi ngày mới nhất', () => {
+    const out = mapReleaseRows(
+      [
+        { versionId: 'v1', total: 2n, open: 1n, closed: 1n, leaked: 1n },
+        { versionId: 'v2', total: 1, open: 1, closed: 0, leaked: 0 },
+        { versionId: 'v0', total: 3, open: 0, closed: 3, leaked: 0 },
+      ],
+      [
+        v('v0', 'RELEASED', '2026-09-01'),
+        v('v1', 'RELEASED', '2026-10-01'),
+        v('v2', 'UNRELEASED', null),
+      ],
+    );
+    expect(out.map((r) => r.versionId)).toEqual(['v2', 'v1', 'v0']);
+    expect(out[1]).toMatchObject({ total: 2, open: 1, closed: 1, leaked: 1, status: 'RELEASED' });
   });
-  it('phiên bản không có bug vẫn bị bỏ (chỉ liệt kê phiên bản có dữ liệu)', () => {
-    const out = bucketByRelease([], [v('v1', 'RELEASED', '2026-10-01')]);
-    expect(out).toEqual([]);
+  it('bỏ dòng của phiên bản không còn / không có bug', () => {
+    expect(
+      mapReleaseRows([{ versionId: 'x', total: 1, open: 1, closed: 0, leaked: 0 }], []),
+    ).toEqual([]);
+    expect(mapReleaseRows([], [v('v1', 'RELEASED', '2026-10-01')])).toEqual([]);
+  });
+});
+
+describe('parseQaRange', () => {
+  const now = new Date('2026-10-16T05:00:00.000Z');
+  it('YYYY-MM-DD = trọn ngày UTC', () => {
+    expect(parseQaRange('2026-10-01', '2026-10-15', now)).toEqual({
+      from: new Date('2026-10-01T00:00:00.000Z'),
+      to: new Date('2026-10-15T23:59:59.999Z'),
+    });
+  });
+  it('ISO đầy đủ có múi giờ được dùng nguyên văn (ranh giới ngày theo giờ địa phương)', () => {
+    expect(parseQaRange('2026-10-10T00:00:00+07:00', '2026-10-16T23:59:59.999+07:00', now)).toEqual(
+      {
+        from: new Date('2026-10-09T17:00:00.000Z'),
+        to: new Date('2026-10-16T16:59:59.999Z'),
+      },
+    );
+  });
+  it('sự kiện 00:00-07:00 giờ địa phương nằm trong kỳ, 23:59:59.999 ngày trước thì không', () => {
+    const r = parseQaRange('2026-10-10T00:00:00+07:00', undefined, now);
+    if ('error' in r) throw new Error(r.error);
+    expect(new Date('2026-10-09T17:00:00.000Z') >= r.from).toBe(true); // 00:00 địa phương
+    expect(new Date('2026-10-09T16:59:59.999Z') >= r.from).toBe(false); // 23:59:59.999 ngày trước
+  });
+  it('mặc định 30 ngày tới now, bắt đầu đầu ngày UTC', () => {
+    expect(parseQaRange(undefined, undefined, now)).toEqual({
+      from: new Date('2026-09-17T00:00:00.000Z'),
+      to: now,
+    });
+  });
+  it('sai định dạng, ngày không tồn tại, đảo ngược, quá 366 ngày => lỗi', () => {
+    for (const [f, t] of [
+      ['abc', undefined],
+      ['1/2/2026', undefined],
+      ['2026-02-30', undefined],
+      ['2026-10-10T00:00:00', undefined], // thiếu múi giờ
+      ['2026-10-10', '2026-10-01'],
+      ['2024-01-01', '2026-10-01'],
+    ] as const) {
+      expect(parseQaRange(f, t, now)).toHaveProperty('error');
+    }
   });
 });

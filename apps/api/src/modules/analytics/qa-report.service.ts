@@ -1,14 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import type { QaReportDto } from '@tirapro/shared';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import {
-  bucketByRelease,
   bucketOpenBySeverity,
-  closeTimeStats,
+  closeTimeFromRow,
+  mapReleaseRows,
+  parseQaRange,
   reopenRate,
-  type ReleaseBugRow,
+  type ReleaseAggRow,
 } from './qa-report';
 
 /** "Bug" = loại công việc có key BUG hoặc tên "Bug" (không phân biệt hoa thường) — cùng quy ước `isBugType` ở FE. */
@@ -16,36 +18,40 @@ const BUG_TYPE: Prisma.IssueTypeWhereInput = {
   OR: [{ key: 'BUG' }, { name: { equals: 'Bug', mode: 'insensitive' } }],
 };
 
-const DAY = 86_400_000;
-const MAX_RANGE_DAYS = 366;
-const CLOSE_TIME_LIMIT = 5000;
-const HISTORY_LIMIT = 20_000;
-const RELEASE_LIMIT = 10_000;
+/**
+ * Mảnh SQL dùng chung (alias: i = Issue, t = IssueType). Cùng định nghĩa với `BUG_TYPE` + `TRIAGE_VISIBLE`:
+ * bug còn sống, và đã qua duyệt (không ở hàng "Việc mới vào" chờ/tạm hoãn/từ chối).
+ */
+const IS_LIVE_VISIBLE_BUG = Prisma.sql`i."deletedAt" IS NULL
+  AND (t."key"::text = 'BUG' OR lower(t."name") = 'bug')
+  AND (i."triageState" IS NULL OR i."triageState"::text = 'ACCEPTED')`;
 
-/** Đầu ngày UTC / cuối ngày UTC để kỳ lọc bao trọn ngày cuối (client gửi `YYYY-MM-DD`). */
-const startOfDay = (d: Date) =>
-  new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-const endOfDay = (d: Date) => new Date(startOfDay(d).getTime() + DAY - 1);
+/**
+ * Tham số Date trong $queryRaw được Prisma gửi dưới dạng timestamptz, còn cột là timestamp(3) không múi giờ (UTC):
+ * đổi tường minh về "timestamp UTC" để kết quả không phụ thuộc múi giờ session Postgres.
+ */
+const utc = (d: Date) => Prisma.sql`(${d}::timestamptz AT TIME ZONE 'UTC')`;
 
-function parseRange(fromStr?: string, toStr?: string): { from: Date; to: Date } {
-  const toRaw = toStr ? new Date(toStr) : new Date();
-  const fromRaw = fromStr ? new Date(fromStr) : new Date(toRaw.getTime() - 29 * DAY);
-  if (Number.isNaN(toRaw.getTime()) || Number.isNaN(fromRaw.getTime())) {
-    throw new BusinessRuleException('Khoảng thời gian không hợp lệ');
-  }
-  const from = startOfDay(fromRaw);
-  const to = endOfDay(toRaw);
-  if (from > to) throw new BusinessRuleException('Ngày bắt đầu phải trước ngày kết thúc');
-  if (to.getTime() - from.getTime() > MAX_RANGE_DAYS * DAY) {
-    throw new BusinessRuleException(`Khoảng thời gian tối đa ${MAX_RANGE_DAYS} ngày`);
-  }
-  return { from, to };
+interface EventRow {
+  closed: bigint | number;
+  reopened: bigint | number;
+  both: bigint | number;
+}
+interface CloseRow {
+  n: bigint | number;
+  avgHours: number | null;
+  medianHours: number | null;
 }
 
 /**
  * Báo cáo QA của một dự án (chỉ đọc). Quyền xem (`report:view` + dự án riêng tư → 404) do PermissionsGuard
- * kiểm qua `@ProjectRef('query','projectId')` trước khi vào đây; service chỉ khoá phạm vi theo dự án.
- * Dự án rất lớn (> ~50k bug) sẽ cần bảng tổng hợp — ngoài phạm vi.
+ * kiểm qua `@ProjectRef('query','projectId')` trước khi vào đây; service khoá phạm vi theo dự án.
+ * Mọi số đếm / trung bình / trung vị do Postgres tính (aggregate), không đọc dòng về bộ nhớ nên không có trần cắt.
+ *
+ * Định nghĩa:
+ * - Bug mở / mới trong kỳ: chỉ bug đã qua duyệt (TRIAGE_VISIBLE).
+ * - Đóng = sự kiện STATUS chuyển từ KHÔNG-DONE (hoặc chưa có trạng thái trước) sang DONE; mở lại = từ DONE sang không-DONE.
+ * - Thời gian đóng: bug HIỆN đang ở DONE có `resolvedAt` trong kỳ (khác tập "đóng" ở trên: bug bị mở lại không tính).
  */
 @Injectable()
 export class QaReportService {
@@ -62,40 +68,26 @@ export class QaReportService {
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
-    const { from, to } = parseRange(fromStr, toStr);
+    const range = parseQaRange(fromStr, toStr, new Date());
+    if ('error' in range) throw new BusinessRuleException(range.error);
+    const { from, to } = range;
 
-    const bugs: Prisma.IssueWhereInput = { projectId, deletedAt: null, type: BUG_TYPE };
-    const inRange = { gte: from, lte: to };
-    const statusEvents = (extra: Prisma.IssueHistoryWhereInput) =>
-      this.prisma.issueHistory.findMany({
-        where: {
-          projectId,
-          field: 'STATUS',
-          occurredAt: inRange,
-          issue: { deletedAt: null, type: BUG_TYPE },
-          ...extra,
-        },
-        select: { issueId: true },
-        distinct: ['issueId'],
-        take: HISTORY_LIMIT,
-      });
-
-    const [openGroups, created, closedEvents, reopenedEvents, closedRows, severities, versions] =
+    const bugs: Prisma.IssueWhereInput = {
+      projectId,
+      deletedAt: null,
+      type: BUG_TYPE,
+      ...TRIAGE_VISIBLE,
+    };
+    const [openGroups, created, events, closeRow, severities, versions, affects] =
       await Promise.all([
         this.prisma.issue.groupBy({
           by: ['severityId'],
           where: { ...bugs, status: { category: { not: 'DONE' } } },
           _count: { _all: true },
         }),
-        this.prisma.issue.count({ where: { ...bugs, createdAt: inRange } }),
-        statusEvents({ newCategory: 'DONE' }),
-        statusEvents({ oldCategory: 'DONE', newCategory: { not: 'DONE' } }),
-        this.prisma.issue.findMany({
-          where: { ...bugs, status: { category: 'DONE' }, resolvedAt: inRange },
-          select: { createdAt: true, resolvedAt: true },
-          orderBy: { resolvedAt: 'desc' },
-          take: CLOSE_TIME_LIMIT,
-        }),
+        this.prisma.issue.count({ where: { ...bugs, createdAt: { gte: from, lte: to } } }),
+        this.statusEvents(projectId, from, to),
+        this.closeTime(projectId, from, to),
         this.prisma.severity.findMany({
           where: { workspaceId },
           select: { id: true, name: true, color: true, rank: true },
@@ -104,53 +96,102 @@ export class QaReportService {
           where: { projectId },
           select: { id: true, name: true, status: true, releaseDate: true },
         }),
+        this.releaseRows(projectId, 'AFFECTS'),
       ]);
 
-    const closedIds = new Set(closedEvents.map((e) => e.issueId));
-    const reopenedIds = new Set(reopenedEvents.map((e) => e.issueId));
+    // Ưu tiên "phiên bản bị ảnh hưởng" (phát hiện trên bản nào); dự án chưa có dòng nào thì dùng "phiên bản sửa".
+    let basis: 'AFFECTS' | 'FIX' = 'AFFECTS';
+    let releaseRows = affects;
+    if (affects.length === 0) {
+      const fix = await this.releaseRows(projectId, 'FIX');
+      if (fix.length > 0) {
+        basis = 'FIX';
+        releaseRows = fix;
+      }
+    }
+
     const openBySeverity = bucketOpenBySeverity(
       openGroups.map((g) => ({ severityId: g.severityId, count: g._count._all })),
       severities,
     );
-
-    // Ưu tiên "phiên bản bị ảnh hưởng" (phát hiện trên bản nào); dự án chưa có dòng nào thì dùng "phiên bản sửa".
-    const loadRelease = async (type: 'AFFECTS' | 'FIX'): Promise<ReleaseBugRow[]> => {
-      const links = await this.prisma.issueFixVersion.findMany({
-        where: { type, version: { projectId }, issue: { deletedAt: null, type: BUG_TYPE } },
-        select: {
-          versionId: true,
-          issue: { select: { createdAt: true, status: { select: { category: true } } } },
-        },
-        take: RELEASE_LIMIT,
-      });
-      return links.map((l) => ({
-        versionId: l.versionId,
-        createdAt: l.issue.createdAt,
-        category: l.issue.status.category,
-      }));
-    };
-    let basis: 'AFFECTS' | 'FIX' = 'AFFECTS';
-    let releaseRows = await loadRelease('AFFECTS');
-    if (releaseRows.length === 0) {
-      const fixRows = await loadRelease('FIX');
-      if (fixRows.length > 0) {
-        basis = 'FIX';
-        releaseRows = fixRows;
-      }
-    }
-
+    const closed = Number(events.closed);
     return {
       range: { from: from.toISOString(), to: to.toISOString() },
       totals: {
         open: openBySeverity.reduce((n, s) => n + s.open, 0),
         created,
-        closed: closedIds.size,
-        reopened: reopenedIds.size,
+        closed,
+        reopened: Number(events.reopened),
       },
       openBySeverity,
-      reopenRate: reopenRate(closedIds, reopenedIds),
-      closeTime: closeTimeStats(closedRows),
-      byRelease: { basis, rows: bucketByRelease(releaseRows, versions) },
+      reopenRate: reopenRate(closed, Number(events.both)),
+      closeTime: closeTimeFromRow(closeRow),
+      byRelease: { basis, rows: mapReleaseRows(releaseRows, versions) },
     };
+  }
+
+  /** Số bug (distinct) có sự kiện đóng / mở lại / cả hai trong kỳ — gom theo bug rồi đếm, không phụ thuộc số sự kiện. */
+  private async statusEvents(projectId: string, from: Date, to: Date): Promise<EventRow> {
+    const rows = await this.prisma.$queryRaw<EventRow[]>(Prisma.sql`
+      WITH ev AS (
+        SELECT h."issueId",
+          bool_or(h."newCategory"::text = 'DONE'
+                  AND (h."oldCategory" IS NULL OR h."oldCategory"::text <> 'DONE')) AS closed,
+          bool_or(h."oldCategory"::text = 'DONE'
+                  AND h."newCategory" IS NOT NULL AND h."newCategory"::text <> 'DONE') AS reopened
+        FROM "IssueHistory" h
+        JOIN "Issue" i ON i."id" = h."issueId"
+        JOIN "IssueType" t ON t."id" = i."typeId"
+        WHERE h."projectId" = ${projectId} AND h."field"::text = 'STATUS'
+          AND h."occurredAt" >= ${utc(from)} AND h."occurredAt" <= ${utc(to)}
+          AND ${IS_LIVE_VISIBLE_BUG}
+        GROUP BY h."issueId"
+      )
+      SELECT count(*) FILTER (WHERE closed) AS closed,
+             count(*) FILTER (WHERE reopened) AS reopened,
+             count(*) FILTER (WHERE closed AND reopened) AS both
+      FROM ev`);
+    return rows[0] ?? { closed: 0, reopened: 0, both: 0 };
+  }
+
+  /** Trung bình + trung vị (percentile_cont) của resolvedAt − createdAt, tính trong Postgres trên mọi bug thoả điều kiện. */
+  private async closeTime(projectId: string, from: Date, to: Date): Promise<CloseRow | undefined> {
+    const rows = await this.prisma.$queryRaw<CloseRow[]>(Prisma.sql`
+      SELECT count(*) AS "n",
+             avg(x."hours")::float8 AS "avgHours",
+             (percentile_cont(0.5) WITHIN GROUP (ORDER BY x."hours"))::float8 AS "medianHours"
+      FROM (
+        SELECT extract(epoch FROM (i."resolvedAt" - i."createdAt")) / 3600.0 AS "hours"
+        FROM "Issue" i
+        JOIN "IssueType" t ON t."id" = i."typeId"
+        JOIN "Status" s ON s."id" = i."statusId"
+        WHERE i."projectId" = ${projectId} AND s."category"::text = 'DONE'
+          AND i."resolvedAt" >= ${utc(from)} AND i."resolvedAt" <= ${utc(to)}
+          AND i."resolvedAt" >= i."createdAt"
+          AND ${IS_LIVE_VISIBLE_BUG}
+      ) x`);
+    return rows[0];
+  }
+
+  /**
+   * Bug theo phiên bản (mọi thời điểm, không theo kỳ). `leaked` = bug của phiên bản RELEASED được báo SAU hết ngày
+   * phát hành (`releaseDate` thường nằm 00:00 nên bug báo ngay trong ngày phát hành không bị tính là rò rỉ).
+   */
+  private async releaseRows(projectId: string, type: 'AFFECTS' | 'FIX'): Promise<ReleaseAggRow[]> {
+    return this.prisma.$queryRaw<ReleaseAggRow[]>(Prisma.sql`
+      SELECT l."versionId" AS "versionId",
+             count(*) AS "total",
+             count(*) FILTER (WHERE s."category"::text <> 'DONE') AS "open",
+             count(*) FILTER (WHERE s."category"::text = 'DONE') AS "closed",
+             count(*) FILTER (WHERE v."status"::text = 'RELEASED' AND v."releaseDate" IS NOT NULL
+               AND i."createdAt" >= date_trunc('day', v."releaseDate") + interval '1 day') AS "leaked"
+      FROM "IssueFixVersion" l
+      JOIN "Version" v ON v."id" = l."versionId"
+      JOIN "Issue" i ON i."id" = l."issueId"
+      JOIN "IssueType" t ON t."id" = i."typeId"
+      JOIN "Status" s ON s."id" = i."statusId"
+      WHERE v."projectId" = ${projectId} AND l."type"::text = ${type}
+        AND ${IS_LIVE_VISIBLE_BUG}
+      GROUP BY l."versionId"`);
   }
 }
