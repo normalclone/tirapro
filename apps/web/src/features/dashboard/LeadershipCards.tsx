@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Avatar, Skeleton } from '@/components/ui/primitives';
 import { RAID_LEVEL_META } from '@/features/raid/constants';
 import { cn } from '@/lib/utils';
-import { useLeadership } from './api';
+import { useLeadership, type LeadershipOverview } from './api';
 import {
   LEADERSHIP_EMPTY,
   LEADERSHIP_HINT,
@@ -73,24 +73,7 @@ export function LeadershipCards() {
       >
         {data.topRisks.map((r) => (
           <li key={r.id}>
-            <Link to="/manage/risks" className={rowClass}>
-              <span
-                className={cn(
-                  'tabular w-8 shrink-0 rounded px-1 py-0.5 text-center text-xs font-semibold',
-                  RAID_LEVEL_META[r.level].badge,
-                )}
-                title={`Điểm ${r.score} — mức ${r.levelLabel.toLowerCase()}`}
-              >
-                {r.score}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-ink">{r.title}</span>
-                <span className="block truncate text-xs text-muted">
-                  {[riskMetaText(r), r.owner?.displayName].filter(Boolean).join(' · ') ||
-                    'Chưa có người phụ trách'}
-                </span>
-              </span>
-            </Link>
+            <RiskRow risk={r} />
           </li>
         ))}
       </LeadershipCard>
@@ -108,16 +91,7 @@ export function LeadershipCards() {
       >
         {data.slowGoals.map((g) => (
           <li key={g.id}>
-            <Link to="/manage/goals" className={cn(rowClass, 'flex-col items-stretch gap-1.5')}>
-              <span className="flex items-baseline justify-between gap-2">
-                <span className="min-w-0 truncate text-sm text-ink">{g.name}</span>
-                {g.owner && (
-                  <span className="shrink-0 text-xs text-muted">{g.owner.displayName}</span>
-                )}
-              </span>
-              <PaceBar progress={g.progress} expected={g.expectedProgress} />
-              <span className="text-xs text-muted tabular">{goalPaceText(g)}</span>
-            </Link>
+            <GoalRow goal={g} />
           </li>
         ))}
       </LeadershipCard>
@@ -135,18 +109,7 @@ export function LeadershipCards() {
       >
         {data.overloaded.map((o) => (
           <li key={o.user.id}>
-            <Link to="/manage/resources" className={rowClass}>
-              <Avatar name={o.user.displayName} src={o.user.avatarUrl} size={28} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-ink">{o.user.displayName}</span>
-                <span className="block truncate text-xs text-muted tabular">
-                  {overloadDetailText(o)}
-                </span>
-              </span>
-              <span className="tabular shrink-0 text-sm font-semibold text-danger">
-                {ratioText(o.worstRatio)}
-              </span>
-            </Link>
+            <OverloadRow item={o} />
           </li>
         ))}
       </LeadershipCard>
@@ -156,6 +119,64 @@ export function LeadershipCards() {
 
 const rowClass =
   'flex items-center gap-2.5 px-3 py-2 transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none';
+
+type Risk = LeadershipOverview['topRisks'][number];
+type Goal = LeadershipOverview['slowGoals'][number];
+type Overloaded = LeadershipOverview['overloaded'][number];
+
+/** Một dòng rủi ro — dùng chung cho thẻ ở Tổng quan và ô "Top rủi ro" của dashboard tuỳ biến. */
+export function RiskRow({ risk: r }: { risk: Risk }) {
+  return (
+    <Link to="/manage/risks" className={rowClass}>
+      <span
+        className={cn(
+          'tabular w-8 shrink-0 rounded px-1 py-0.5 text-center text-xs font-semibold',
+          RAID_LEVEL_META[r.level].badge,
+        )}
+        title={`Điểm ${r.score} — mức ${r.levelLabel.toLowerCase()}`}
+      >
+        {r.score}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-ink">{r.title}</span>
+        <span className="block truncate text-xs text-muted">
+          {[riskMetaText(r), r.owner?.displayName].filter(Boolean).join(' · ') ||
+            'Chưa có người phụ trách'}
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+/** Một dòng OKR chậm. */
+export function GoalRow({ goal: g }: { goal: Goal }) {
+  return (
+    <Link to="/manage/goals" className={cn(rowClass, 'flex-col items-stretch gap-1.5')}>
+      <span className="flex items-baseline justify-between gap-2">
+        <span className="min-w-0 truncate text-sm text-ink">{g.name}</span>
+        {g.owner && <span className="shrink-0 text-xs text-muted">{g.owner.displayName}</span>}
+      </span>
+      <PaceBar progress={g.progress} expected={g.expectedProgress} />
+      <span className="text-xs text-muted tabular">{goalPaceText(g)}</span>
+    </Link>
+  );
+}
+
+/** Một dòng người quá tải. */
+export function OverloadRow({ item: o }: { item: Overloaded }) {
+  return (
+    <Link to="/manage/resources" className={rowClass}>
+      <Avatar name={o.user.displayName} src={o.user.avatarUrl} size={28} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-ink">{o.user.displayName}</span>
+        <span className="block truncate text-xs text-muted tabular">{overloadDetailText(o)}</span>
+      </span>
+      <span className="tabular shrink-0 text-sm font-semibold text-danger">
+        {ratioText(o.worstRatio)}
+      </span>
+    </Link>
+  );
+}
 
 function LeadershipCard({
   icon,

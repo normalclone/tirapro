@@ -470,6 +470,74 @@ describe('DashboardsService.duplicate / remove', () => {
   });
 });
 
+describe('DashboardsService.duplicate — bản sao chỉ giữ cấu hình người nhân bản xem được (fix round 1, I2)', () => {
+  const rowWith = (ownerId: string) =>
+    rowOf({
+      ownerId,
+      scope: 'GLOBAL',
+      widgets: [
+        {
+          id: 'a',
+          type: 'ISSUE_LIST',
+          title: 'Bí mật',
+          config: { jql: 'project = SECRET AND status = Open', limit: 10 },
+          position: { order: 0, w: 1 },
+        },
+        {
+          id: 'b',
+          type: 'ISSUE_LIST',
+          title: 'Của tôi',
+          config: { jql: 'assignee = currentUser()', limit: 5 },
+          position: { order: 1, w: 1 },
+        },
+        {
+          id: 'c',
+          type: 'BURNDOWN',
+          title: 'Dự án ẩn',
+          config: { projectId: 'hidden' },
+          position: { order: 2, w: 2 },
+        },
+        {
+          id: 'd',
+          type: 'BURNDOWN',
+          title: 'Dự án thấy',
+          config: { projectId: 'p1' },
+          position: { order: 3, w: 2 },
+        },
+      ],
+    });
+
+  const copied = (prisma: ReturnType<typeof make>['prisma']) =>
+    (
+      prisma.dashboard.create.mock.calls[0] as unknown as [
+        {
+          data: { widgets: { create: Array<{ title: string; config: Record<string, unknown> }> } };
+        },
+      ]
+    )[0].data.widgets.create;
+
+  it('JQL nhắc dự án ẩn bị bỏ (không kèm masked), projectId ẩn bị bỏ; phần xem được giữ nguyên', async () => {
+    const { svc, prisma } = make({ row: rowWith('other'), visibleWhere: { isPrivate: false } });
+    prisma.project.findMany.mockImplementation(((a: { where: { NOT?: unknown } }) =>
+      Promise.resolve(a.where.NOT ? [{ id: 'cabc123', key: 'SECRET' }] : [{ id: 'p1' }])) as never);
+    await svc.duplicate('w1', 'd1', 'u1');
+    const w = copied(prisma);
+    expect(w[0]!.config).toEqual({ jql: '', limit: 10 });
+    expect(JSON.stringify(w)).not.toContain('SECRET');
+    expect(w[1]!.config).toEqual({ jql: 'assignee = currentUser()', limit: 5 });
+    expect(w[2]!.config).toEqual({});
+    expect(w[3]!.config).toEqual({ projectId: 'p1' });
+  });
+
+  it('admin thấy hết nên bản sao giữ nguyên cấu hình', async () => {
+    const { svc, prisma } = make({ row: rowWith('other'), isAdmin: true });
+    await svc.duplicate('w1', 'd1', 'adm');
+    const w = copied(prisma);
+    expect(w[0]!.config).toMatchObject({ jql: 'project = SECRET AND status = Open' });
+    expect(w[2]!.config).toEqual({ projectId: 'hidden' });
+  });
+});
+
 describe('DashboardsService.get — che chuỗi JQL nhắc tới dự án người xem không thấy (M7)', () => {
   const jqlRow = (ownerId: string) =>
     rowOf({

@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { filterByQuery } from '@/lib/text';
+import { groupHeadingAt } from './searchSelectGroups';
 import { cn } from '@/lib/utils';
 
 export interface SearchSelectOption {
@@ -11,8 +12,12 @@ export interface SearchSelectOption {
   color?: string | null;
   /** Nội dung phụ bên phải (vd: key issue, mã). */
   hint?: string;
+  /** Huy hiệu chữ thường (không mono) bên phải — vd mức chia sẻ của dashboard. */
+  badge?: string;
   /** Không chọn được (hiện mờ, kèm `hint` giải thích nếu có). */
   disabled?: boolean;
+  /** Tiêu đề nhóm: hiện một hàng tiêu đề (không chọn được) trước lựa chọn đầu tiên của mỗi nhóm liên tiếp. */
+  group?: string;
 }
 
 /**
@@ -118,43 +123,21 @@ export function SearchSelect({
             />
           </div>
           <ul className="max-h-64 overflow-y-auto p-1" role="listbox" aria-label={ariaLabel}>
-            {filtered.map((o) => {
+            {filtered.map((o, i) => {
               const active = o.value === value;
+              const heading = groupHeadingAt(filtered, i);
               return (
-                <li key={o.value || '__empty__'}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    aria-disabled={o.disabled || undefined}
-                    disabled={o.disabled}
-                    onClick={() => pick(o.value)}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2',
-                      active && 'bg-surface-2',
-                      o.disabled && 'cursor-not-allowed text-muted hover:bg-transparent',
-                    )}
-                  >
-                    <Check
-                      className={cn(
-                        'h-4 w-4 shrink-0 text-primary',
-                        active ? 'opacity-100' : 'opacity-0',
-                      )}
-                      aria-hidden
-                    />
-                    {o.color && (
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ background: o.color }}
-                        aria-hidden
-                      />
-                    )}
-                    <span className="min-w-0 flex-1 truncate">{o.label}</span>
-                    {o.hint && (
-                      <span className="shrink-0 font-mono text-xs text-faint">{o.hint}</span>
-                    )}
-                  </button>
-                </li>
+                <Fragment key={o.value || '__empty__'}>
+                  {heading && (
+                    <li
+                      role="presentation"
+                      className="px-2 pb-1 pt-2 text-xs font-medium text-muted first:pt-1"
+                    >
+                      {heading}
+                    </li>
+                  )}
+                  <OptionRow option={o} active={active} onPick={pick} />
+                </Fragment>
               );
             })}
             {filtered.length === 0 && (
@@ -164,5 +147,53 @@ export function SearchSelect({
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+/** Một dòng lựa chọn của SearchSelect (nhãn, chấm màu, mã `hint`, huy hiệu `badge`). */
+function OptionRow({
+  option: o,
+  active,
+  onPick,
+}: {
+  option: SearchSelectOption;
+  active: boolean;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        role="option"
+        aria-selected={active}
+        aria-disabled={o.disabled || undefined}
+        disabled={o.disabled}
+        onClick={() => onPick(o.value)}
+        className={cn(
+          'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2',
+          active && 'bg-surface-2',
+          o.disabled && 'cursor-not-allowed text-muted hover:bg-transparent',
+        )}
+      >
+        <Check
+          className={cn('h-4 w-4 shrink-0 text-primary', active ? 'opacity-100' : 'opacity-0')}
+          aria-hidden
+        />
+        {o.color && (
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ background: o.color }}
+            aria-hidden
+          />
+        )}
+        <span className="min-w-0 flex-1 truncate">{o.label}</span>
+        {o.hint && <span className="shrink-0 font-mono text-xs text-faint">{o.hint}</span>}
+        {o.badge && (
+          <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
+            {o.badge}
+          </span>
+        )}
+      </button>
+    </li>
   );
 }

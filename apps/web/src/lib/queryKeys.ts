@@ -195,6 +195,15 @@ export const keys = {
 
   trash: (projectId: string) => ['trash', projectId] as const,
 
+  /** Dashboard tuỳ biến (L6/L7) — `all` là tiền tố của `list` và mọi `detail`. */
+  dashboards: {
+    all: ['dashboards'] as const,
+    list: ['dashboards', 'list'] as const,
+    detail: (id: string) => ['dashboards', 'detail', id] as const,
+    /** Kết quả `/search?jql=` của ô ISSUE_LIST. */
+    jql: (jql: string, limit: number) => ['dashboards', 'jql', jql, limit] as const,
+  },
+
   dashboard: {
     myIssues: ['my-issues'] as const,
     myBugs: ['my-bugs'] as const,
