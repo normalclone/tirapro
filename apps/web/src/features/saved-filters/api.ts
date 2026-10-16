@@ -18,7 +18,7 @@ export interface SavedFilter {
 }
 
 /** Một giá trị JQL không có trong workspace, kèm giá trị gần đúng nhất (nếu có). */
-export interface JqlValueSuggestion {
+interface JqlValueSuggestion {
   field: string;
   value: string;
   didYouMean: string | null;

@@ -20,7 +20,7 @@ import {
   type ResultColumnId,
 } from './resultColumns';
 
-export const RESULTS_PAGE_SIZE = 25;
+const RESULTS_PAGE_SIZE = 25;
 
 /**
  * Cột đang chọn của người dùng (nhớ trong localStorage theo `userId`). `columns` luôn có `key` + `summary`.
