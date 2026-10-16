@@ -339,7 +339,7 @@ export class RbacService {
 
   /**
    * Người gọi không thấy dự án (theo `projectVisibilityMode`) → `NotFoundAppException(notFoundLabel)`.
-   * Dự án không tồn tại / đã xoá → qua (các kiểm tra khác lo phần 404 của chúng).
+   * Dự án không tồn tại / đã xoá / khác workspace → cũng 404 (trừ admin, thấy mọi thứ: `all` return sớm).
    * `notFoundLabel`: nhãn của thông điệp 404 — người gọi truyền đúng nhãn của đường "không tồn tại" cùng loại để
    * 404 của dự án ẩn giống hệt 404 của tài nguyên không có thật (không lộ sự tồn tại).
    */
@@ -359,7 +359,9 @@ export class RbacService {
         memberships: { where: { userId }, select: { id: true }, take: 1 },
       },
     });
-    if (!row) return;
+    // Không tồn tại / đã xoá / khác workspace: với người không phải admin coi như KHÔNG thấy (nhất quán visibleWhere, vốn lọc
+    // deletedAt/workspace). Guard đã 404 các ca này ở bước tra dự án trước đó nên không đổi hành vi HTTP.
+    if (!row) throw new NotFoundAppException(notFoundLabel);
     if (row.memberships.length > 0) return;
     if (mode === 'memberOnly' || row.isPrivate) throw new NotFoundAppException(notFoundLabel);
   }

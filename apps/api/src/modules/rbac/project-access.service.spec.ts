@@ -124,6 +124,15 @@ describe('ProjectAccessService', () => {
     });
   });
 
+  it('canSee: dự án không tồn tại/đã xoá → false với người thường (như visibleWhere loại dự án đã xoá), admin → true', async () => {
+    const nobody = make({ perms: ['project:view'] });
+    nobody.prisma.project.findFirst.mockResolvedValue(null as never);
+    expect(await nobody.svc.canSee('u1', 'w1', 'p-gone')).toBe(false);
+    const admin = make({ perms: ['workspace:admin'] });
+    admin.prisma.project.findFirst.mockResolvedValue(null as never);
+    expect(await admin.svc.canSee('u1', 'w1', 'p-gone')).toBe(true);
+  });
+
   describe('bảng chân trị: MỘT định nghĩa "thấy" cho canSee/assertCanSee và visibleWhere/visibleProjectIds', () => {
     /** Đánh giá điều kiện Prisma mà `visibleWhere` trả ra trên một dự án giả (đủ cho 3 dạng điều kiện của dịch vụ). */
     const matches = (

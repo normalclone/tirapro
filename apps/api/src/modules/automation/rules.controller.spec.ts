@@ -65,3 +65,19 @@ describe('RulesController.list — guard thật (người chỉ quản trị M�
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenAppException);
   });
 });
+
+describe('RulesController.test — truyền người xem xuống dryRun (mã việc dự án ẩn → 404)', () => {
+  it('gọi engine.dryRun(workspaceId, rule, issueKey, user.id)', async () => {
+    const rule = { id: 'r1', lastRunAt: null };
+    const engine = { dryRun: vi.fn(() => Promise.resolve({ status: 'SUCCESS', log: [] })) };
+    const rules = { require: vi.fn(() => Promise.resolve(rule)) };
+    const controller = new RulesController(rules as never, engine as never);
+    await controller.test('w1', { id: 'u1' } as never, 'r1', { issueKey: 'HR-1' });
+    expect(engine.dryRun).toHaveBeenCalledWith(
+      'w1',
+      expect.objectContaining({ id: 'r1' }),
+      'HR-1',
+      'u1',
+    );
+  });
+});

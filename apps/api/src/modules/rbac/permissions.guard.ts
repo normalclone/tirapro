@@ -41,7 +41,8 @@ export class PermissionsGuard implements CanActivate {
       );
 
     const { projectId, notFoundLabel } = await this.resolveProject(context, req, user.workspaceId);
-    // Dự án riêng tư: người ngoài nhận 404 TRƯỚC khi tính quyền, với CÙNG nhãn như khi tài nguyên không tồn tại
+    // Dự án người gọi không xem được (riêng tư không là thành viên; hoặc vai thiếu `project:view` cấp workspace) nhận 404
+    // TRƯỚC khi tính quyền, với CÙNG nhãn như khi tài nguyên không tồn tại
     // (cùng code/message/shape) — không lộ sự tồn tại của dự án/khoá dự án riêng tư.
     if (projectId)
       await this.rbac.assertProjectVisible(

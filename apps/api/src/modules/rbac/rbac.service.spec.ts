@@ -441,9 +441,13 @@ describe('RbacService — dự án riêng tư', () => {
       );
     });
 
-    it('dự án không tồn tại/đã xoá => qua (kiểm tra khác lo 404)', async () => {
+    it('dự án không tồn tại/đã xoá/khác workspace => 404 với người thường (nhất quán visibleWhere); admin vẫn qua', async () => {
       const { svc } = withRow(null);
-      await expect(svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
+      await expect(svc.assertProjectVisible('U1', 'W1', 'P1')).rejects.toBeInstanceOf(
+        NotFoundAppException,
+      );
+      const admin = withRow(null, ['workspace:admin']);
+      await expect(admin.svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
     });
 
     it('riêng tư + là thành viên => qua', async () => {

@@ -244,8 +244,11 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     workspaceId: string,
     rule: CachedRule,
     issueKey: string,
+    viewerId: string,
   ): Promise<AutomationRuleTestResultDto> {
-    const issue = await this.issues.getByKey(workspaceId, issueKey, null); // ngữ cảnh hệ thống (người dùng đã qua guard dự án)
+    // Mã việc do người dùng gõ tự do (guard chỉ kiểm dự án của QUY TẮC) → lọc theo người xem: mã việc của dự án riêng tư
+    // họ không thấy trả 404 giống mã không tồn tại. Phần chạy nội bộ của engine (loadIssue, cron) giữ `null` (hệ thống).
+    const issue = await this.issues.getByKey(workspaceId, issueKey, viewerId);
     if (rule.projectId && rule.projectId !== issue.projectId) {
       return {
         status: 'SKIPPED',
