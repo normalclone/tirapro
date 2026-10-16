@@ -55,18 +55,25 @@ const preview = (s: string | null): string | null => {
   return chars.length > PREVIEW ? `${chars.slice(0, PREVIEW).join('')}…` : s;
 };
 
-/** Các trường cần lấy từ IssueHistory cho truy vấn activity của một issue. */
+/**
+ * Cột của IssueHistory cho DANH SÁCH — KHÔNG gồm oldValue/newValue: mô tả có thể tới 50k ký tự/dòng × 100 dòng, nên giá trị
+ * được đọc riêng (`withValues`) và cắt xem trước ngay trong SQL. Bản đầy đủ chỉ qua `getOne` (`historyFullSelect`).
+ */
 const historySelect = {
   id: true,
   issueId: true,
   field: true,
-  oldValue: true,
-  newValue: true,
   oldCategory: true,
   newCategory: true,
   pointsDelta: true,
   actorId: true,
   occurredAt: true,
+} satisfies Prisma.IssueHistorySelect;
+
+const historyFullSelect = {
+  ...historySelect,
+  oldValue: true,
+  newValue: true,
 } satisfies Prisma.IssueHistorySelect;
 
 /** Với activity phạm vi project, kèm thêm key + summary của issue đích để hiển thị. */
@@ -75,8 +82,10 @@ const projectHistorySelect = {
   issue: { select: { key: true, summary: true } },
 } satisfies Prisma.IssueHistorySelect;
 
-type HistoryRow = Prisma.IssueHistoryGetPayload<{ select: typeof historySelect }>;
-type ProjectHistoryRow = Prisma.IssueHistoryGetPayload<{ select: typeof projectHistorySelect }>;
+type HistoryMeta = Prisma.IssueHistoryGetPayload<{ select: typeof historySelect }>;
+type HistoryRow = HistoryMeta & { oldValue: string | null; newValue: string | null };
+type ProjectHistoryRow = Prisma.IssueHistoryGetPayload<{ select: typeof projectHistorySelect }> &
+  HistoryRow;
 
 /** Bảng phân giải id → nhãn hiển thị cho các field lưu id (ASSIGNEE, SPRINT). */
 interface LabelMaps {
@@ -100,15 +109,41 @@ export class ActivityService {
   ): Promise<IssueActivityDto[]> {
     await this.requireIssue(workspaceId, issueId);
 
-    const rows = await this.prisma.issueHistory.findMany({
+    const meta = await this.prisma.issueHistory.findMany({
       where: { issueId, ...(fields?.length ? { field: { in: fields } } : {}) },
       select: historySelect,
       orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
       take: 100,
     });
+    const rows = await this.withValues(meta);
 
     const maps = await this.resolveLabels(rows);
     return rows.map((r) => this.toIssueDto(r, maps));
+  }
+
+  /**
+   * Gắn oldValue/newValue cho các dòng của danh sách, ĐỌC TỪ DB đã cắt xem trước: dòng DESCRIPTION chỉ lấy `PREVIEW + 1`
+   * ký tự đầu (`left` đếm theo ký tự, đủ để biết có bị cắt không) — không kéo toàn văn mô tả qua mạng/bộ nhớ.
+   */
+  private async withValues<T extends HistoryMeta>(
+    rows: T[],
+  ): Promise<(T & { oldValue: string | null; newValue: string | null })[]> {
+    if (rows.length === 0) return [];
+    const n = Prisma.raw(String(PREVIEW + 1));
+    const vals = await this.prisma.$queryRaw<
+      { id: string; oldValue: string | null; newValue: string | null }[]
+    >(Prisma.sql`
+      SELECT "id",
+             CASE WHEN "field" = 'DESCRIPTION' THEN left("oldValue", ${n}) ELSE "oldValue" END AS "oldValue",
+             CASE WHEN "field" = 'DESCRIPTION' THEN left("newValue", ${n}) ELSE "newValue" END AS "newValue"
+      FROM "IssueHistory"
+      WHERE "id" IN (${Prisma.join(rows.map((r) => r.id))})`);
+    const byId = new Map(vals.map((v) => [v.id, v]));
+    return rows.map((r) => ({
+      ...r,
+      oldValue: byId.get(r.id)?.oldValue ?? null,
+      newValue: byId.get(r.id)?.newValue ?? null,
+    }));
   }
 
   /** Một dòng lịch sử với giá trị đầy đủ (không cắt). 404 nếu không thuộc công việc này. */
@@ -120,7 +155,7 @@ export class ActivityService {
     await this.requireIssue(workspaceId, issueId);
     const row = await this.prisma.issueHistory.findFirst({
       where: { id: activityId, issueId },
-      select: historySelect,
+      select: historyFullSelect,
     });
     if (!row) throw new NotFoundAppException('Lịch sử');
     const maps = await this.resolveLabels([row]);
@@ -172,12 +207,13 @@ export class ActivityService {
       }
     }
 
-    const rows = await this.prisma.issueHistory.findMany({
+    const meta = await this.prisma.issueHistory.findMany({
       where,
       select: projectHistorySelect,
       orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
     });
+    const rows = await this.withValues(meta);
 
     const maps = await this.resolveLabels(rows);
     return cursorPage(

@@ -5,21 +5,7 @@ import { ActivityService } from './activity.service';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { PERMISSIONS } from '@tirapro/types';
-import { HistoryField } from '@prisma/client';
-import { BusinessRuleException } from '../../common/exceptions/app.exception';
-
-/** `?fields=STATUS,DESCRIPTION` → danh sách loại thay đổi; giá trị lạ → 422. Rỗng/thiếu → không lọc. */
-function parseFields(csv?: string): HistoryField[] | undefined {
-  const parts = (csv ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (!parts.length) return undefined;
-  const valid = new Set<string>(Object.values(HistoryField));
-  for (const p of parts)
-    if (!valid.has(p)) throw new BusinessRuleException(`Loại thay đổi không hợp lệ: ${p}`);
-  return parts as HistoryField[];
-}
+import { parseFields } from './activity.fields';
 
 @ApiTags('activity')
 @Controller()
@@ -32,9 +18,9 @@ export class ActivityController {
   async forIssue(
     @WorkspaceId() workspaceId: string,
     @Param('issueId') issueId: string,
-    @Query('fields') fieldsCsv?: string,
+    @Query('fields') fields?: string | string[],
   ) {
-    return this.activity.listForIssue(workspaceId, issueId, parseFields(fieldsCsv));
+    return this.activity.listForIssue(workspaceId, issueId, parseFields(fields));
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)

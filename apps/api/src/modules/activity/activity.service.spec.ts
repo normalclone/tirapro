@@ -22,6 +22,16 @@ function setup(rows: unknown[]) {
       findMany: vi.fn((_a: { where: unknown }) => Promise.resolve(rows)),
       findFirst: vi.fn((_a: { where: unknown }) => Promise.resolve(rows[0] ?? null)),
     },
+    // Giả lập DB: dòng DESCRIPTION được `left(…, 201)` ngay trong SQL.
+    $queryRaw: vi.fn((_q: { sql: string }) =>
+      Promise.resolve(
+        (rows as ReturnType<typeof row>[]).map((r) => {
+          const cut = (v: string | null) =>
+            r.field === 'DESCRIPTION' && v != null ? [...v].slice(0, 201).join('') : v;
+          return { id: r.id, oldValue: cut(r.oldValue), newValue: cut(r.newValue) };
+        }),
+      ),
+    ),
     user: {
       findMany: vi.fn(() => Promise.resolve([{ id: 'u1', displayName: 'An', avatarUrl: null }])),
     },
@@ -56,6 +66,23 @@ describe('ActivityService (B19)', () => {
     const { service } = setup([row({ field: 'PRIORITY', oldValue: 'High', newValue: 'Low' })]);
     const [d] = await service.listForIssue('w1', 'i1');
     expect(d).toMatchObject({ hasDiff: false, oldValue: 'High', newValue: 'Low' });
+  });
+  it('danh sách KHÔNG chọn oldValue/newValue từ bảng; giá trị đọc riêng, mô tả cắt bằng left() trong SQL', async () => {
+    const { service, prisma } = setup([row({ oldValue: 'a'.repeat(5000) })]);
+    const [d] = await service.listForIssue('w1', 'i1');
+    const select = prisma.issueHistory.findMany.mock.calls[0]![0] as unknown as {
+      select: object;
+    };
+    expect(select.select).not.toHaveProperty('oldValue');
+    expect(select.select).not.toHaveProperty('newValue');
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$queryRaw.mock.calls[0]![0].sql).toMatch(/left\("oldValue", 201\)/);
+    expect([...d!.oldValue!]).toHaveLength(201); // 200 ký tự + …
+  });
+  it('không có dòng nào => không truy vấn giá trị', async () => {
+    const { service, prisma } = setup([]);
+    await service.listForIssue('w1', 'i1');
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
   it('getOne trả bản ĐẦY ĐỦ, thuộc đúng issue; không thấy => 404', async () => {
     const { service, prisma } = setup([row()]);
