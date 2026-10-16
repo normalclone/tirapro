@@ -105,4 +105,12 @@ describe('suggestJql', () => {
       expect(labels(`${f} `).length).toBeGreaterThan(0);
     }
   });
+  it('con trỏ giữa chuỗi nháy đã đóng → thay cả nháy đóng (không ra "" thừa)', () => {
+    const r = suggestJql('status = "In"', 12, cat);
+    expect(r.items.map((i) => i.insert)).toContain('"In Progress"');
+    expect([r.from, r.to]).toEqual([9, 13]);
+    // nháy sau đó thuộc chuỗi khác (liền chữ) → không nuốt
+    const r2 = suggestJql('status = "In AND summary ~ "x"', 12, cat);
+    expect(r2.to).toBe(12);
+  });
 });

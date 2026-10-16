@@ -412,7 +412,15 @@ export function suggestJql(text: string, caret: number, catalog: JqlCatalog): Jq
   const prefix = foldForMatch(raw);
   const from = partial ? partial.start : pos;
   let to = pos;
-  if (partial?.kind === 'word') {
+  if (partial?.kind === 'str') {
+    // con trỏ nằm TRONG chuỗi nháy đã đóng (`status = "In|"`) → thay luôn phần còn lại và nháy đóng
+    const open = text[partial.start]!;
+    const rest = text.slice(pos);
+    const close = rest.indexOf(open);
+    const next = rest[close + 1];
+    const endsValue = next === undefined || /[\s),]/.test(next);
+    if (close >= 0 && endsValue && !rest.slice(0, close).includes('\\')) to = pos + close + 1;
+  } else if (partial?.kind === 'word') {
     // con trỏ nằm giữa từ → thay cả phần còn lại của từ
     const m = /^[^\s(),=<>!~"']*/.exec(text.slice(pos));
     to = pos + (m ? m[0].length : 0);
