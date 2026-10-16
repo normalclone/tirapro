@@ -56,9 +56,9 @@ describe('describeActivity', () => {
       'đổi người phụ trách: Chưa gán → Dũng',
     );
   });
-  it('sprint có tên, Backlog khi null', () => {
+  it('sprint có tên, Việc chờ khi null', () => {
     expect(describeActivity(a({ field: 'SPRINT', oldLabel: 'Sprint 1', newLabel: null }))).toBe(
-      'chuyển sprint: Sprint 1 → Backlog',
+      'chuyển sprint: Sprint 1 → Việc chờ',
     );
   });
   it('mô tả, điểm, trạng thái', () => {

@@ -32,6 +32,9 @@
 - Trung tâm **thông báo** (in-app realtime + đánh dấu đã đọc), **watch/unwatch** issue.
 - **Command palette (Cmd+K)**: điều hướng nhanh, nhảy tới issue/project, chạy hành động bằng phím tắt.
 - Đổi **theme sáng/tối**, tìm kiếm nhanh, saved filter **cá nhân**, dashboard **cá nhân**.
+- **Phím tắt** có bảng `?` theo nhóm (danh sách `j/k` + Enter, `a`, `e`, `m`, `i`, `w`, `g b` / `g l`…), **Cmd+K** có lệnh sprint/điều hướng/Báo lỗi; **JQL** có gợi ý tự hoàn thành, `me`, lưu truy vấn, kết quả dạng bảng + xuất CSV.
+- Trang **/notifications** lọc Chưa đọc / Được nhắc / Được giao; thông báo có người + hành động + giá trị, gộp theo công việc.
+- Mọi ô ngày/giờ nhập `dd/MM/yyyy` + `HH:mm`; thuật ngữ thống nhất (công việc, Việc chờ, Bảng việc — `docs/UX_CONVENTIONS.md` §19).
 - Hồ sơ hoạt động của bản thân (issue được giao, đã báo, đang theo dõi).
 
 ### 2.2 System Admin
@@ -42,11 +45,15 @@
 
 ### 2.3 Workspace Admin
 - Tạo / sửa / lưu trữ / xóa **project** trong workspace.
-- **Quản lý thành viên workspace**: thêm (chọn người có sẵn hoặc tạo tài khoản mới), gỡ, gán vai trò workspace cho từng người.
+- **Quản lý thành viên workspace**: **thêm trực tiếp** (chọn người có sẵn trong pool người dùng chung hoặc tạo tài khoản mới — **không có lời mời**, người được thêm vào ngay), gỡ, gán vai trò workspace; khoá / mở khoá tài khoản (chặn ngay cả khi access token còn hạn), đặt lại mật khẩu, đăng xuất mọi thiết bị.
+- Đặt **dự án riêng tư** (chỉ thành viên được thêm riêng + admin thấy; người ngoài nhận 404 ở mọi đường đọc: danh sách, tìm kiếm/JQL, Cmd+K, thông báo, dashboard, digest, wiki, OKR); tạo dự án từ **mẫu** (Scrum / Kanban / Quản lý yêu cầu).
+- Xem **Nhật ký quản trị** (vai trò, thành viên, quyền, khoá tài khoản, tích hợp).
 - Tạo & quản lý **vai trò tùy biến** và gán bộ quyền (RBAC).
 - Cấu hình workspace (tên, slug, settings, gói plan).
 - Quản lý **custom field cấp workspace**, **issue types**.
-- Tạo & chia sẻ **dashboard toàn workspace**, **saved filter** chia sẻ.
+- Tạo & chia sẻ **dashboard tuỳ biến** (4 mức: riêng tư / cả workspace / theo dự án / theo nhóm; chỉ chủ sửa, admin xoá được bản đã chia sẻ), **saved filter** chia sẻ.
+- Cấu hình **Telegram** (trình hướng dẫn 4 bước, liên kết nhóm bằng `/link@bot MÃ`) và **Digest** có cấu trúc (thứ/giờ/múi giờ hoặc khi kết thúc sprint, khối nội dung, người nhận, Email + Telegram); **Nhập từ Jira** giữ mã gốc.
+- Xem thẻ lãnh đạo trên Tổng quan: **Sức khoẻ dự án**, Top rủi ro, OKR chậm, người quá tải.
 - Toàn quyền nội dung của mọi project (kế thừa quyền Project Admin ở tất cả project).
 
 ### 2.4 Workspace Member
@@ -60,8 +67,10 @@
 - Không tạo/sửa/xóa bất cứ thứ gì; không dùng hành động ghi của AI (chỉ xem tóm tắt nếu được chia sẻ).
 
 ### 2.6 Project Admin (Lead) — trong phạm vi 1 project
-- Cấu hình project: **board** (cột ↔ status, WIP, swimlane), **workflow** (status + transition), **custom field** cấp project, label/component/version.
-- Quản lý **thành viên project** & gán vai trò project.
+- Cấu hình project: **board** (cột ↔ status, WIP, swimlane), **workflow** (status + transition), **custom field** cấp project, label/component/version (gắn/bỏ thật cho từng công việc, lọc được).
+- Quản lý **thành viên project** & gán vai trò project (thêm trực tiếp, không lời mời); bật **dự án riêng tư**.
+- **Ghi đè Sức khoẻ dự án** (Tốt / Cần chú ý / Nguy cơ + ghi chú bắt buộc) ở tab Tổng quan của Báo cáo; xử lý **Việc mới vào** (nhận chọn loại + ưu tiên + sprint, từ chối có lý do báo lại người gửi); khôi phục từ **Thùng rác**.
+- **Wiki** của dự án: quyền viết theo dự án (mặc định gồm Quản trị dự án, BA, PO, Scrum Master, Developer, Tester) + lịch sử phiên bản.
 - **Sprint**: tạo, start, complete (sinh snapshot báo cáo), xóa.
 - Mọi thao tác issue: tạo/sửa/xóa, transition bất kỳ, gán, liên kết, di chuyển.
 - Quản lý backlog, xóa comment của bất kỳ ai, cấu hình thông báo project.
@@ -71,12 +80,15 @@
 - **Issue**: tạo, sửa (mọi issue trong project), **chuyển trạng thái** theo workflow, **gán** người, đặt story points/estimate, **liên kết** issue, tạo sub-task/epic link.
 - **Board**: kéo-thả card giữa các cột (realtime + optimistic), lọc/nhóm.
 - **Backlog**: xếp ưu tiên (rank), kéo issue vào/ra sprint (nếu có `backlog:manage`).
-- **Comment** + @mention, đính kèm file, **log work** (worklog).
+- **Comment** + @mention (popup chọn người, chip, thông báo kèm trích đoạn; cả mô tả), đính kèm / dán ảnh, **log work** (worklog).
+- **Bug**: Mức nghiêm trọng (Severity) tách khỏi ưu tiên; sang nhóm Done hỏi **Resolution** (mặc định Done); Mở lại / Trả lại ghi lý do; liên kết `is caused by` / `is tested by`.
+- **Việc chờ / Bảng việc**: click mở panel xem nhanh (Cmd/Ctrl+click = trang đầy đủ); sửa điểm / ưu tiên inline (ai có `issue:edit` sửa được điểm); bulk Đặt điểm / ưu tiên / nhãn / epic / trạng thái; ô Epic / Việc cha + khung Epic.
 - Dùng **AI**: sinh issue từ NL, tóm tắt, gợi ý assignee/priority/points; semantic search.
 - Xem report, presence realtime (ai đang xem issue).
 
 ### 2.8 Project Reporter (Stakeholder) — trong phạm vi 1 project
-- **Tạo issue** (báo bug/yêu cầu), sửa **issue do mình tạo/được giao** (`issue:edit:own`).
+- **Tạo issue** (báo bug/yêu cầu) — có form **Báo lỗi** riêng (Cơ bản / Nâng cao, gợi ý bug trùng, môi trường có cấu trúc), gửi **yêu cầu** vào Việc mới vào (Bug / Yêu cầu tính năng / Câu hỏi); sửa **issue do mình tạo/được giao** (`issue:edit:own`); tự xoá bug mình vừa báo trong 10 phút đầu (vào Thùng rác).
+- Trang chủ có khối **Bug tôi báo chưa đóng / Chờ tôi xác nhận**.
 - **Comment** + @mention, đính kèm file, watch issue.
 - Xem board, backlog, issue, **report** (chỉ đọc).
 - (Tùy quyền) dùng AI tóm tắt/sinh mô tả issue mình tạo.
@@ -93,11 +105,12 @@ Chú thích: ✅ toàn quyền · 👁 chỉ xem · ➖ không có · ⚙️ tù
 | Xem workspace & project được phép | ✅ | ✅ | ✅ | 👁 |
 | Tạo project | ✅ | ✅ | ⚙️ | ➖ |
 | Lưu trữ / xóa project | ✅ | ✅ | ➖ | ➖ |
-| Thêm / gỡ thành viên workspace | ✅ | ✅ | ➖ | ➖ |
+| Thêm trực tiếp / gỡ thành viên workspace (không lời mời); khoá tài khoản | ✅ | ✅ | ➖ | ➖ |
+| Đặt dự án riêng tư; xem Nhật ký quản trị | ✅ | ✅ | ➖ | ➖ |
 | Tạo vai trò & gán quyền (RBAC) | ✅ | ✅ | ➖ | ➖ |
 | Cấu hình workspace (settings/plan) | ✅ | ✅ | ➖ | ➖ |
 | Custom field / issue type cấp workspace | ✅ | ✅ | ➖ | ➖ |
-| Dashboard toàn workspace | ✅ | ✅ | ➖ | 👁 |
+| Dashboard chia sẻ (cả workspace / theo dự án / theo nhóm) | ✅ | ✅ | ➖ | 👁 |
 | Saved filter / dashboard cá nhân | ✅ | ✅ | ✅ | 👁 |
 | Dùng AI (ai:use) | ✅ | ✅ | ✅ | ➖ |
 | Quản trị nền tảng (đa workspace) | ✅ | ➖ | ➖ | ➖ |
@@ -144,9 +157,11 @@ Cột Viewer = Workspace Viewer (đối chiếu read-only).
 | | Sprint planning assistant | Project Admin / Scrum Master |
 | | Semantic search | Mọi người xem được project |
 | **Realtime** | Board/issue cập nhật tức thời, presence, typing | Mọi người đang xem board/issue (theo quyền view) |
-| **Analytics** | Burndown / Velocity / CFD / Sprint report | Reporter trở lên (xem); Project Admin (cấu hình) |
-| | Dashboard tùy biến + widget | Member tạo cá nhân; WS Admin tạo toàn workspace |
-| | Export PDF / Excel | Reporter trở lên |
+| **Analytics** | Báo cáo Sprint (tab đầu) / Burndown / Velocity / CFD / Tổng kết sprint (sau khi Kết thúc sprint) / QA | Reporter trở lên (xem); Project Admin (cấu hình) |
+| | Dashboard tùy biến + widget (Tổng quan → bộ chọn dashboard) | Người có `dashboard:manage` tạo; chia sẻ riêng tư / cả workspace / theo dự án / theo nhóm; chỉ chủ sửa |
+| | Xuất CSV (bộ lọc/JQL, Việc chờ, bug, sprint, Danh mục, rủi ro, nhân lực) + In / Lưu PDF (Tổng quan, báo cáo sprint) | Người xem được dữ liệu đó (Excel mở được CSV; không có xuất `.xlsx`/PDF phía máy chủ) |
+| **Lãnh đạo** | Sức khoẻ dự án (tự tính + PM ghi đè), thẻ Top rủi ro / OKR chậm / người quá tải, Digest | WS Admin / Project Admin; người nhận digest |
+| | OKR tự đo (số bug mở, % sprint, số công việc theo JQL) + lịch sử giá trị hằng ngày + check-in | Người có `goal:manage` |
 | **UX** | Command palette (Cmd+K), phím tắt, dark mode, PWA | Mọi người dùng đã đăng nhập |
 
 ---
@@ -155,11 +170,9 @@ Cột Viewer = Workspace Viewer (đối chiếu read-only).
 
 | Tính năng | Mô tả | Actor cấu hình | Actor dùng |
 |---|---|---|---|
-| **Migration từ Jira** | Import projects/issues/comments/attachments từ Jira Cloud (REST API) hoặc file CSV/JSON; map issue type/status/priority → config Tirapro; chạy nền có tiến độ. | Workspace Admin (`import:run`) | — |
-| **Telegram — thông báo** | Đẩy issue assigned / mention / đổi trạng thái / comment vào chat theo subscription. Bot toàn cục hoặc BYO token/workspace. | WS Admin (`integration:manage`) đặt bot; mỗi user `/link` chat cá nhân | Mọi user đã link |
-| **Telegram — tạo task** | `/newtask` tạo issue từ chat (chọn project/type/summary/assignee). | — | Member+ (theo quyền project) |
-| **Telegram — log bug** | `/bug` form hướng dẫn chọn field (steps, severity, environment...) theo cấu hình. | Project Admin định field set | Reporter+ |
-| **Báo cáo / digest** | `ReportSubscription`: chọn **metric blocks** cần tổng hợp + lịch (daily/weekly/sprint-end) → gửi Telegram/email; `/report` lấy nhanh. | Project Admin / WS Admin (`digest:manage`) | Người nhận |
+| **Migration từ Jira** | Import issues/comments/attachments từ **file CSV xuất từ Jira** (và CSV/JSON export của Tirapro vào dự án có sẵn); map issue type/status/priority → config Tirapro; chạy nền có tiến độ. **Giữ mã gốc** (`JRA-1`; việc tạo mới theo mã Tirapro), nhập lại bỏ qua việc đã có mã, nhớ email Jira để tự gán khi người đó được thêm vào workspace. Không có kết nối Jira Cloud REST. | Workspace Admin (`import:run`) | — |
+| **Telegram — thông báo** | Chỉ **gửi** tin: issue assigned / mention / đổi trạng thái / comment vào **nhóm** đã liên kết (thêm bot vào nhóm → `/link@bot MÃ`, mã do WS Admin sinh trong trình hướng dẫn). Dự án riêng tư chỉ lên kênh khi bật rõ. | WS Admin (`integration:manage`) | Thành viên nhóm Telegram |
+| **Báo cáo / digest** | `ReportSubscription`: chọn **khối nội dung** + lịch (thứ / giờ / múi giờ, hoặc tự gửi khi kết thúc sprint) → gửi **Email và/hoặc Telegram** theo người nhận; có xem trước. Không có lệnh bot (`/report`, `/newtask`, `/bug` không tồn tại). | Project Admin / WS Admin (`digest:manage`) | Người nhận |
 
 Secrets tích hợp (bot token, Jira API token) **mã hóa AES-256-GCM** trước khi lưu `Integration.config`. Tất cả degrade gracefully: thiếu cấu hình → tính năng tắt êm, app vẫn chạy.
 

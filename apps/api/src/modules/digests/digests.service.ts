@@ -2,7 +2,7 @@ import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
-import { DOMAIN_EVENTS } from '@tirapro/types';
+import { DOMAIN_EVENTS, STATUS_CATEGORY_LABEL } from '@tirapro/types';
 import {
   DigestSchedule,
   HistoryField,
@@ -722,7 +722,7 @@ export class DigestsService implements OnApplicationShutdown {
       lines: [
         `Tạo mới (7 ngày): ${created}`,
         `Đã xong (7 ngày): ${resolved}`,
-        `Đang mở: ${openTotal} (Cần làm: ${openByCategory.todo} · Đang làm: ${openByCategory.inProgress})`,
+        `Đang mở: ${openTotal} (${STATUS_CATEGORY_LABEL.TODO}: ${openByCategory.todo} · ${STATUS_CATEGORY_LABEL.IN_PROGRESS}: ${openByCategory.inProgress})`,
       ],
     };
   }
@@ -1167,7 +1167,7 @@ export class DigestsService implements OnApplicationShutdown {
     });
     const ok = new Set(members.map((m) => m.id));
     if (recipients.some((r) => !ok.has(r))) {
-      throw new BusinessRuleException('Người nhận phải là thành viên của workspace.');
+      throw new BusinessRuleException('Người nhận phải là thành viên của không gian làm việc.');
     }
   }
 

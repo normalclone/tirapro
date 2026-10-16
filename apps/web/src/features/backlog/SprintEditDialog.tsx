@@ -5,9 +5,11 @@ import type { SprintDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { apiErrorMessage } from '@/lib/api';
 import { useDeleteSprint, useUpdateSprint } from './api';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : '');
 /** Ngày (yyyy-mm-dd) → ISO UTC 00:00 — burndown cũng tính theo ngày UTC nên không lệch ngày. */
@@ -39,7 +41,8 @@ export function SprintEditDialog({
   const [end, setEnd] = useState(toDateInput(sprint.endDate));
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const dateError = start && end && end < start ? 'Ngày kết thúc phải sau ngày bắt đầu.' : null;
+  // Câu báo hiện MỘT lần, ngay tại ô Ngày kết thúc (DateInput `rangeError`); ở đây chỉ để khoá nút Lưu.
+  const dateError = !!start && !!end && end < start;
   const dirty =
     (future && name.trim() !== sprint.name) ||
     goal.trim() !== (sprint.goal ?? '') ||
@@ -48,6 +51,7 @@ export function SprintEditDialog({
   const canSave = dirty && !!name.trim() && !dateError && !update.isPending;
 
   async function save() {
+    if (blockOnInvalidDate()) return;
     try {
       await update.mutateAsync({
         id: sprint.id,
@@ -70,7 +74,7 @@ export function SprintEditDialog({
   async function doDelete() {
     try {
       await remove.mutateAsync(sprint.id);
-      toast.success(`Đã xoá sprint “${sprint.name}”. Việc trong sprint đã về Backlog.`);
+      toast.success(`Đã xoá sprint “${sprint.name}”. Việc trong sprint đã về Việc chờ.`);
       setConfirmDelete(false);
       onClose();
     } catch (e) {
@@ -151,12 +155,11 @@ export function SprintEditDialog({
               <label htmlFor="sprint-start" className="mb-1.5 block text-sm font-medium text-muted">
                 Ngày bắt đầu
               </label>
-              <Input
+              <DateInput
                 id="sprint-start"
-                type="date"
                 value={start}
                 disabled={!future}
-                onChange={(e) => setStart(e.target.value)}
+                onChange={setStart}
                 className="text-sm"
               />
             </div>
@@ -164,21 +167,16 @@ export function SprintEditDialog({
               <label htmlFor="sprint-end" className="mb-1.5 block text-sm font-medium text-muted">
                 Ngày kết thúc
               </label>
-              <Input
+              <DateInput
                 id="sprint-end"
-                type="date"
                 value={end}
                 min={start || undefined}
-                onChange={(e) => setEnd(e.target.value)}
+                rangeError="Ngày kết thúc không được trước ngày bắt đầu"
+                onChange={setEnd}
                 className="text-sm"
               />
             </div>
           </div>
-          {dateError && (
-            <p role="alert" className="text-xs text-danger">
-              {dateError}
-            </p>
-          )}
         </div>
       </Dialog>
 
@@ -187,7 +185,7 @@ export function SprintEditDialog({
         title={`Xoá sprint “${sprint.name}”?`}
         description={
           sprint.issueCount
-            ? `${sprint.issueCount} việc trong sprint sẽ quay về Backlog. Sprint đã xoá không khôi phục được.`
+            ? `${sprint.issueCount} việc trong sprint sẽ quay về Việc chờ. Sprint đã xoá không khôi phục được.`
             : 'Sprint trống sẽ bị xoá. Không thể khôi phục.'
         }
         confirmLabel="Xoá sprint"

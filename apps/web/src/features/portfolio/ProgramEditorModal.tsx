@@ -4,6 +4,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
 import { useWorkspaceUsers } from '@/features/members/api';
@@ -11,6 +12,7 @@ import { useProjects } from '@/features/projects/api';
 import { cn } from '@/lib/utils';
 import { useCreateProgram, useUpdateProgram, type ProgramDto } from './api';
 import { toDateInput } from '@/lib/dateFormat';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 /** Bảng màu nhãn chương trình — cùng hệ với nhãn nhóm để đọc nhanh trên dòng thời gian. */
 const PROGRAM_COLORS = [
@@ -112,6 +114,7 @@ export function ProgramEditorModal({
 
   async function save() {
     if (!canSave) return;
+    if (blockOnInvalidDate()) return;
     const payload = {
       name: name.trim(),
       color,
@@ -212,20 +215,10 @@ export function ProgramEditorModal({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Ngày bắt đầu" hint="(tùy chọn)" htmlFor="program-start">
-            <Input
-              id="program-start"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
+            <DateInput id="program-start" value={startDate} onChange={setStartDate} />
           </Field>
           <Field label="Ngày mục tiêu" hint="(tùy chọn — ngày muốn xong)" htmlFor="program-target">
-            <Input
-              id="program-target"
-              type="date"
-              value={targetDate}
-              onChange={(e) => setTargetDate(e.target.value)}
-            />
+            <DateInput id="program-target" value={targetDate} onChange={setTargetDate} />
           </Field>
         </div>
         {dateOrderInvalid && (

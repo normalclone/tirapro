@@ -44,7 +44,7 @@ describe('noWriteMessage', () => {
   });
   it('không có quản trị nào → câu dự phòng', () => {
     expect(noWriteMessage([])).toBe(
-      'Hãy liên hệ quản trị workspace để được cấp quyền viết tài liệu.',
+      'Hãy liên hệ quản trị không gian làm việc để được cấp quyền viết tài liệu.',
     );
   });
 });

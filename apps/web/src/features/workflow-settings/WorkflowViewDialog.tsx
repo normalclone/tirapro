@@ -17,17 +17,13 @@ import { DelayedSpinner } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import { useWorkflows, type StatusCategory, type Workflow } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 const ANY_ID = '__any__';
 const CATEGORY_VAR: Record<StatusCategory, string> = {
   TODO: 'var(--status-todo)',
   IN_PROGRESS: 'var(--status-progress)',
   DONE: 'var(--status-done)',
-};
-const CATEGORY_LABEL: Record<StatusCategory, string> = {
-  TODO: 'Cần làm',
-  IN_PROGRESS: 'Đang làm',
-  DONE: 'Hoàn thành',
 };
 const CATEGORY_COL: Record<StatusCategory, number> = { TODO: 1, IN_PROGRESS: 2, DONE: 3 };
 const COL_W = 240;
@@ -153,7 +149,9 @@ function StatusNode({ data }: NodeProps<NodeData>) {
         )}
       </div>
       {data.category && (
-        <span className="mt-0.5 block text-[11px] text-faint">{CATEGORY_LABEL[data.category]}</span>
+        <span className="mt-0.5 block text-[11px] text-faint">
+          {STATUS_CATEGORY_LABEL[data.category]}
+        </span>
       )}
       <Handle
         type="source"

@@ -3,6 +3,7 @@ import { useAuth } from '@/stores/auth';
 import { useWorkspaceOverview, type OverviewSlice } from '@/features/dashboard/api';
 import { useProjectReport } from '@/features/reports/api';
 import { TOOLTIP_STYLE } from '@/features/reports/charts';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import { cfgString } from '../widgetConfig';
 import { queryWidgetState } from '../widgetState';
 import { WidgetFrame } from '../WidgetFrame';
@@ -51,9 +52,13 @@ export function PieByFieldWidget({ title, config }: WidgetProps) {
         : field === 'priority'
           ? overview.data.byPriority
           : [
-              { name: 'Cần làm', color: 'var(--status-todo)', count: t.todo },
-              { name: 'Đang làm', color: 'var(--status-progress)', count: t.inProgress },
-              { name: 'Hoàn thành', color: 'var(--status-done)', count: t.done },
+              { name: STATUS_CATEGORY_LABEL.TODO, color: 'var(--status-todo)', count: t.todo },
+              {
+                name: STATUS_CATEGORY_LABEL.IN_PROGRESS,
+                color: 'var(--status-progress)',
+                count: t.inProgress,
+              },
+              { name: STATUS_CATEGORY_LABEL.DONE, color: 'var(--status-done)', count: t.done },
             ];
   }
   const data = (slices ?? []).filter((s) => s.count > 0);

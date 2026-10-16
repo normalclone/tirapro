@@ -59,6 +59,7 @@ import { pageContainer } from '@/components/layout/page';
 import { useRecents } from '@/stores/recentIssues';
 import { cn } from '@/lib/utils';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 const CATEGORY_COLOR: Record<StatusCategory, string> = {
   TODO: 'var(--status-todo)',
@@ -240,8 +241,12 @@ function AdminOverview() {
             stats={[
               { label: 'Tổng công việc', value: data.totals.total },
               { label: 'Bug', value: data.totals.bug, tone: 'bug' },
-              { label: 'Đang làm', value: data.totals.inProgress, tone: 'progress' },
-              { label: 'Hoàn thành', value: data.totals.done, tone: 'done' },
+              {
+                label: STATUS_CATEGORY_LABEL.IN_PROGRESS,
+                value: data.totals.inProgress,
+                tone: 'progress',
+              },
+              { label: STATUS_CATEGORY_LABEL.DONE, value: data.totals.done, tone: 'done' },
               { label: 'Quá hạn', value: data.totals.overdue, tone: 'danger' },
             ]}
           />
@@ -463,9 +468,13 @@ function EmptyChart() {
 function StatusDonut({ totals }: { totals: OverviewTotals }) {
   if (totals.total === 0) return <EmptyChart />;
   const data = [
-    { name: 'Cần làm', value: totals.todo, color: 'var(--status-todo)' },
-    { name: 'Đang làm', value: totals.inProgress, color: 'var(--status-progress)' },
-    { name: 'Hoàn thành', value: totals.done, color: 'var(--status-done)' },
+    { name: STATUS_CATEGORY_LABEL.TODO, value: totals.todo, color: 'var(--status-todo)' },
+    {
+      name: STATUS_CATEGORY_LABEL.IN_PROGRESS,
+      value: totals.inProgress,
+      color: 'var(--status-progress)',
+    },
+    { name: STATUS_CATEGORY_LABEL.DONE, value: totals.done, color: 'var(--status-done)' },
   ].filter((d) => d.value > 0);
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -598,8 +607,10 @@ function ProjectStatsTable({ projects }: { projects: OverviewProject[] }) {
         </span>
         <span className="hidden w-40 md:block print:block print:w-24">Sprint đang chạy</span>
         <span className="w-14 text-right tabular print:w-12">Tổng</span>
-        <span className="w-16 text-right tabular print:w-12">Đang làm</span>
-        <span className="w-16 text-right tabular print:w-12">Xong</span>
+        <span className="w-20 whitespace-nowrap text-right tabular print:w-16">
+          {STATUS_CATEGORY_LABEL.IN_PROGRESS}
+        </span>
+        <span className="w-16 text-right tabular print:w-12">{STATUS_CATEGORY_LABEL.DONE}</span>
         <span className="w-16 text-right tabular print:w-12">Quá hạn</span>
         <span className="w-24 text-right print:w-12">Tiến độ</span>
       </div>
@@ -658,7 +669,7 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
         <span className="w-14 text-right text-sm tabular text-ink-strong print:w-12">
           {p.total}
         </span>
-        <span className="w-16 text-right text-sm tabular text-status-progress print:w-12">
+        <span className="w-20 text-right text-sm tabular text-status-progress print:w-16">
           {p.inProgress}
         </span>
         <span className="w-16 text-right text-sm tabular text-status-done print:w-12">
@@ -748,7 +759,11 @@ function PersonalOverview() {
           <StatRow
             stats={[
               { label: 'Việc của tôi', value: counts.total },
-              { label: 'Đang làm', value: counts.inProgress, tone: 'progress' },
+              {
+                label: STATUS_CATEGORY_LABEL.IN_PROGRESS,
+                value: counts.inProgress,
+                tone: 'progress',
+              },
               { label: 'Quá hạn', value: counts.overdue, tone: 'danger' },
             ]}
           />

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { Check, Flag, Link2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -7,6 +7,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Skeleton } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,7 @@ import {
   type MilestoneDto,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 const MILESTONE_COLORS = ['#7c3aed', '#2563eb', '#0d9488', '#16a34a', '#f59e0b', '#dc2626'];
 /** Tên màu đọc được, dùng cho nhãn trợ năng thay vì mã hex. */
@@ -284,12 +286,14 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
   const remove = useDeleteMilestone(projectId);
 
   const [name, setName] = useState('');
+  const formRef = useRef<HTMLDivElement>(null);
   const [dueDate, setDueDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [color, setColor] = useState(MILESTONE_COLORS[0]);
 
   async function add() {
     const trimmed = name.trim();
     if (!trimmed || !dueDate) return;
+    if (blockOnInvalidDate(formRef.current)) return;
     try {
       await create.mutateAsync({ name: trimmed, dueDate: dateInputToIso(dueDate), color });
       toast.success('Đã thêm cột mốc');
@@ -397,7 +401,10 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
       </QueryBoundary>
 
       {canManage && (
-        <div className="mt-3 space-y-2 rounded-md border border-border bg-surface-2 p-3">
+        <div
+          ref={formRef}
+          className="mt-3 space-y-2 rounded-md border border-border bg-surface-2 p-3"
+        >
           <div>
             <label className="mb-1 block text-xs font-medium text-muted" htmlFor="ms-name">
               Tên cột mốc
@@ -419,13 +426,7 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
               <label className="mb-1 block text-xs font-medium text-muted" htmlFor="ms-date">
                 Ngày phải đạt
               </label>
-              <Input
-                id="ms-date"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="text-sm"
-              />
+              <DateInput id="ms-date" value={dueDate} onChange={setDueDate} className="text-sm" />
             </div>
             <div className="flex shrink-0 gap-1.5 pb-1.5">
               {MILESTONE_COLORS.map((c, i) => (

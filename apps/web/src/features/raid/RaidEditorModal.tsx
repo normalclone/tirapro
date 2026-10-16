@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
 import { Badge } from '@/components/ui/primitives';
@@ -28,6 +29,7 @@ import {
   SCALE,
   raidLevelOf,
 } from './constants';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 function Field({
   label,
@@ -163,6 +165,7 @@ export function RaidEditorModal({
 
   async function save() {
     if (!canSave) return;
+    if (blockOnInvalidDate()) return;
     const payload = {
       kind,
       title: title.trim(),
@@ -307,12 +310,7 @@ export function RaidEditorModal({
             />
           </Field>
           <Field label="Hạn xử lý" hint="(tùy chọn — ngày cần xong)" htmlFor="raid-due">
-            <Input
-              id="raid-due"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
+            <DateInput id="raid-due" value={dueDate} onChange={setDueDate} />
           </Field>
           <Field label="Dự án" hint="(để trống = ảnh hưởng cả tổ chức)" htmlFor="raid-project">
             <SearchSelect

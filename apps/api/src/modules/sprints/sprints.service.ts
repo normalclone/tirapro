@@ -122,7 +122,7 @@ export class SprintsService {
         select: { state: true, startDate: true, endDate: true },
       });
       if (cur?.state !== 'FUTURE')
-        throw new BusinessRuleException('Chỉ sprint FUTURE mới start được');
+        throw new BusinessRuleException('Chỉ bắt đầu được sprint chưa bắt đầu');
       // Ngày hiệu lực tính từ giá trị đọc SAU khi khoá (không dùng bản đọc trước đó) để không ghi đè một PATCH ngày xen giữa.
       const startDate = input.startDate ? new Date(input.startDate) : (cur.startDate ?? new Date());
       const endDate =
@@ -143,13 +143,13 @@ export class SprintsService {
         where: { projectId: sprint.projectId, state: 'ACTIVE', deletedAt: null },
         select: { id: true },
       });
-      if (active) throw new BusinessRuleException('Đã có sprint đang ACTIVE; hoàn thành nó trước');
+      if (active) throw new BusinessRuleException('Đã có sprint đang chạy — hãy kết thúc nó trước');
       // Chuyển trạng thái có điều kiện: chỉ thắng khi sprint vẫn còn FUTURE.
       const { count } = await tx.sprint.updateMany({
         where: { id: sprintId, state: 'FUTURE', deletedAt: null },
         data,
       });
-      if (count === 0) throw new BusinessRuleException('Chỉ sprint FUTURE mới start được');
+      if (count === 0) throw new BusinessRuleException('Chỉ bắt đầu được sprint chưa bắt đầu');
       await this.snapshot(tx, sprintId, 'START');
       return tx.sprint.findUniqueOrThrow({ where: { id: sprintId } });
     });
@@ -181,7 +181,7 @@ export class SprintsService {
         where: { id: sprintId, state: 'ACTIVE', deletedAt: null },
         data: { state: 'CLOSED', completeDate: new Date() },
       });
-      if (count === 0) throw new BusinessRuleException('Chỉ sprint ACTIVE mới complete được');
+      if (count === 0) throw new BusinessRuleException('Chỉ kết thúc được sprint đang chạy');
 
       // Thứ tự: (1) đóng sprint ở trên, (2) tính việc chưa Done, (3) tạo/khoá sprint đích, (4) snapshot CLOSE kèm
       // payload (việc chuyển tiếp + nơi chuyển), (5) mới chuyển issue ra. Snapshot vẫn chụp TOÀN BỘ sprint (cả việc sắp
@@ -211,7 +211,7 @@ export class SprintsService {
         });
         if (lock.count === 0)
           throw new BusinessRuleException(
-            'Sprint đích không còn hợp lệ — hãy chọn một sprint chưa bắt đầu (FUTURE) của dự án này',
+            'Sprint đích không còn hợp lệ — hãy chọn một sprint chưa bắt đầu của dự án này',
           );
         targetSprintId = dest.sprintId;
         const target = await tx.sprint.findFirst({
@@ -285,7 +285,9 @@ export class SprintsService {
     const start = 'startDate' in data ? (data.startDate as Date | null) : sprint.startDate;
     const end = 'endDate' in data ? (data.endDate as Date | null) : sprint.endDate;
     if (start && end && end < start)
-      throw new BusinessRuleException('Ngày kết thúc phải sau ngày bắt đầu — hãy chọn lại ngày');
+      throw new BusinessRuleException(
+        'Ngày kết thúc không được trước ngày bắt đầu — hãy chọn lại ngày',
+      );
     // Có điều kiện theo state đã đọc: sprint vừa được start/complete/xoá giữa chừng thì không ghi đè.
     const { count } = await this.prisma.sprint.updateMany({
       where: { id: sprintId, state: sprint.state, deletedAt: null },
@@ -303,7 +305,7 @@ export class SprintsService {
     const sprint = await this.requireSprint(workspaceId, sprintId);
     if (sprint.state !== 'FUTURE') {
       throw new BusinessRuleException(
-        'Chỉ xoá được sprint chưa bắt đầu (FUTURE) — sprint đang chạy hãy hoàn thành, sprint đã đóng được giữ làm lịch sử',
+        'Chỉ xoá được sprint chưa bắt đầu — sprint đang chạy hãy kết thúc, sprint đã đóng được giữ làm lịch sử',
       );
     }
     await this.prisma.$transaction(async (tx) => {

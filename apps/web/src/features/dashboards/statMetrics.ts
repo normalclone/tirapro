@@ -5,12 +5,12 @@ export type StatMetric = 'open' | 'overdue' | 'bugs' | 'done14' | 'projects';
 
 /** Nhãn + giải nghĩa số liệu của ô STAT_NUMBER (dùng cả ở khung ô lẫn hộp cấu hình). */
 export const STAT_METRIC_META: Record<StatMetric, { label: string; hint: string }> = {
-  open: { label: 'Việc đang mở', hint: 'Công việc chưa hoàn thành (Cần làm + Đang làm).' },
+  open: { label: 'Việc đang mở', hint: 'Công việc chưa hoàn thành (To Do + In Progress).' },
   overdue: { label: 'Quá hạn', hint: 'Việc chưa xong đã qua hạn.' },
   bugs: { label: 'Bug', hint: 'Công việc loại Bug.' },
   done14: {
-    label: 'Xong 14 ngày qua',
-    hint: 'Số việc chuyển sang trạng thái Hoàn thành trong 14 ngày gần nhất.',
+    label: 'Done 14 ngày qua',
+    hint: 'Số việc chuyển sang nhóm Done trong 14 ngày gần nhất.',
   },
   projects: { label: 'Dự án', hint: 'Số dự án đang hoạt động bạn xem được.' },
 };

@@ -54,7 +54,7 @@ describe('portfolioCsv', () => {
     const csv = portfolioCsv(rollup).replace('﻿', '');
     const lines = csv.trim().split('\r\n');
     expect(lines[0]).toBe(
-      'Chương trình,Mã dự án,Tên dự án,Người phụ trách,Tổng việc,Xong,Đang làm,Cần làm,Quá hạn,Tiến độ %,Bắt đầu,Hạn,Sức khoẻ,Lý do',
+      'Chương trình,Mã dự án,Tên dự án,Người phụ trách,Tổng việc,Done,In Progress,To Do,Quá hạn,Tiến độ %,Bắt đầu,Hạn,Sức khoẻ,Lý do',
     );
     expect(lines).toHaveLength(1 + 3);
     expect(lines[1]).toContain('Nền tảng thanh toán');

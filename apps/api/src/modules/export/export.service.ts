@@ -124,7 +124,7 @@ export class ExportService {
     }
     if (!hasJql && !preset && !sprintId) {
       throw new BusinessRuleException(
-        'Thiếu điều kiện xuất — dùng jql=…, hoặc preset=backlog|bugs, hoặc sprintId=… (kèm projectId).',
+        'Thiếu điều kiện xuất — dùng jql=…, hoặc preset=… (việc chờ hoặc bug), hoặc sprintId=… (kèm projectId).',
       );
     }
 

@@ -1,15 +1,4 @@
-import type { StatusCategory } from '@tirapro/types';
-
-/**
- * Nhãn hiển thị của nhóm trạng thái (category) — MỘT nguồn duy nhất.
- * Dùng thuật ngữ Agile tiếng Anh, khớp tên trạng thái mặc định (To Do / In Progress / Done).
- * "Hoàn thành" chỉ dùng làm động từ (nút "Hoàn thành sprint"). Xem docs/UX_CONVENTIONS.md §19.
- */
-export const STATUS_CATEGORY_LABEL: Record<StatusCategory, string> = {
-  TODO: 'To Do',
-  IN_PROGRESS: 'In Progress',
-  DONE: 'Done',
-};
+export { STATUS_CATEGORY_LABEL } from '@tirapro/types';
 
 /**
  * Thuật ngữ danh từ dùng chung (một khái niệm = một từ). Xem docs/UX_CONVENTIONS.md §19.

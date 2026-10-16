@@ -4,11 +4,13 @@ import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { useRetained } from '@/lib/useRetained';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useProjects } from '@/features/projects/api';
 import { useCreateContract, useUpdateContract, formatMoney, type ContractDto } from './api';
 import { toDateInput } from '@/lib/dateFormat';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 const CURRENCIES = [
   { value: 'VND', label: 'VND — Đồng' },
@@ -112,6 +114,7 @@ export function ContractEditorModal({
 
   async function save() {
     if (!canSave || !clientId) return;
+    if (blockOnInvalidDate()) return;
     const payload = {
       name: name.trim(),
       code: code.trim() || null,
@@ -224,20 +227,10 @@ export function ContractEditorModal({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Ngày bắt đầu" hint="(tùy chọn)" htmlFor="contract-start">
-            <Input
-              id="contract-start"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
+            <DateInput id="contract-start" value={startDate} onChange={setStartDate} />
           </Field>
           <Field label="Ngày kết thúc" hint="(tùy chọn)" htmlFor="contract-end">
-            <Input
-              id="contract-end"
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
+            <DateInput id="contract-end" value={endDate} onChange={setEndDate} />
           </Field>
         </div>
         {dateOrderInvalid && (

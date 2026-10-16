@@ -94,8 +94,8 @@ export class AiService {
       ctx: { workspaceId, userId, feature: 'generate-issues' },
       model: this.claude.modelPrimary,
       system:
-        'Bạn là trợ lý quản lý dự án Agile. Phân rã yêu cầu thành các issue rõ ràng, khả thi. ' +
-        'Mỗi issue có tiêu đề ngắn gọn, loại (Task/Bug/Story/Epic), mô tả, tiêu chí chấp nhận, ' +
+        'Bạn là trợ lý quản lý dự án Agile. Phân rã yêu cầu thành các công việc rõ ràng, khả thi. ' +
+        'Mỗi công việc có tiêu đề ngắn gọn, loại (Task/Bug/Story/Epic), mô tả, tiêu chí chấp nhận, ' +
         'ước lượng story points (Fibonacci) và độ ưu tiên. Trả lời bằng tiếng Việt, không bịa thông tin.' +
         DATA_NOT_INSTRUCTIONS,
       prompt: `Dự án: ${project.name} (${project.key}).\n\nYêu cầu của người dùng:\n${wrap('user_request', input.text)}`,
@@ -141,7 +141,7 @@ export class AiService {
     });
 
     const issueCtx =
-      `Issue ${issue.key}: ${issue.summary}\n` +
+      `Công việc ${issue.key}: ${issue.summary}\n` +
       `Loại: ${issue.type?.name ?? '—'} | Trạng thái: ${issue.status?.name ?? '—'} | ` +
       `Ưu tiên: ${issue.priority?.name ?? '—'} | Phụ trách: ${issue.assignee?.displayName ?? 'chưa gán'}\n` +
       `Mô tả: ${stripText(issue.description) || '(trống)'}`;
@@ -155,7 +155,7 @@ export class AiService {
       ctx: { workspaceId, userId, feature: 'summarize' },
       model: this.claude.modelFast,
       system:
-        'Tóm tắt issue ngắn gọn bằng 3-5 gạch đầu dòng: bối cảnh, tình trạng hiện tại, ' +
+        'Tóm tắt công việc ngắn gọn bằng 3-5 gạch đầu dòng: bối cảnh, tình trạng hiện tại, ' +
         'blocker/điểm cần chú ý, và bước tiếp theo đề xuất. Trả lời bằng tiếng Việt.' +
         DATA_NOT_INSTRUCTIONS,
       prompt: `${wrap('issue', issueCtx)}\n\n${wrap('comments', commentsCtx)}`,
@@ -178,7 +178,7 @@ export class AiService {
   async suggest(workspaceId: string, userId: string, issueId: string): Promise<AiSuggestResult> {
     const issue = await this.loadIssue(workspaceId, issueId);
     const issueCtx =
-      `Issue ${issue.key}: ${issue.summary}\nLoại: ${issue.type?.name ?? '—'}\n` +
+      `Công việc ${issue.key}: ${issue.summary}\nLoại: ${issue.type?.name ?? '—'}\n` +
       `Mô tả: ${stripText(issue.description) || '(trống)'}`;
 
     const { data: out, reason } = await this.claude.extract<{
@@ -189,7 +189,7 @@ export class AiService {
       ctx: { workspaceId, userId, feature: 'suggest' },
       model: this.claude.modelFast,
       system:
-        'Bạn là trợ lý Agile. Dựa trên nội dung issue, đề xuất độ ưu tiên (Highest..Lowest) và ' +
+        'Bạn là trợ lý Agile. Dựa trên nội dung công việc, đề xuất độ ưu tiên (Highest..Lowest) và ' +
         'story points (Fibonacci: 1,2,3,5,8,13). Giải thích ngắn gọn bằng tiếng Việt.' +
         DATA_NOT_INSTRUCTIONS,
       prompt: wrap('issue', issueCtx),

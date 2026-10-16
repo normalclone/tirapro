@@ -19,7 +19,7 @@ export function noActiveSprintHint(a: { canManageSprint: boolean; archived: bool
   const head = 'Bảng Scrum chỉ hiện việc của sprint đang chạy.';
   if (a.archived) return `${head} Dự án đã lưu trữ nên không thể bắt đầu sprint mới.`;
   return a.canManageSprint
-    ? `${head} Lên kế hoạch và bắt đầu một sprint ở Backlog.`
+    ? `${head} Lên kế hoạch và bắt đầu một sprint ở Việc chờ.`
     : `${head} Nhờ quản trị dự án bắt đầu một sprint.`;
 }
 

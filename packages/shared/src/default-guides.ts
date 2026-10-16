@@ -210,7 +210,7 @@ export const DEFAULT_GUIDES: GuideSeed[] = [
     type: 'CHECKLIST',
     screen: '/',
     title: 'Bắt đầu với Tirapro',
-    description: 'Bốn bước để workspace của bạn chạy được',
+    description: 'Bốn bước để không gian làm việc của bạn chạy được',
     order: 0,
     version: 1,
     // Tiến độ (`done`) tính từ dữ liệu thật theo `key` (OnboardingService); nhãn và đường dẫn lấy từ đây nên sửa không cần

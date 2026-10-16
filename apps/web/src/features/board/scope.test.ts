@@ -26,9 +26,9 @@ describe('scopeBoardIssues', () => {
 });
 
 describe('noActiveSprintHint — câu hướng dẫn khi Scrum chưa có sprint chạy', () => {
-  it('người quản lý sprint: được dẫn tới Backlog để bắt đầu', () => {
+  it('người quản lý sprint: được dẫn tới Việc chờ để bắt đầu', () => {
     expect(noActiveSprintHint({ canManageSprint: true, archived: false })).toBe(
-      'Bảng Scrum chỉ hiện việc của sprint đang chạy. Lên kế hoạch và bắt đầu một sprint ở Backlog.',
+      'Bảng Scrum chỉ hiện việc của sprint đang chạy. Lên kế hoạch và bắt đầu một sprint ở Việc chờ.',
     );
   });
   it('không có sprint:manage: nhờ quản trị dự án', () => {

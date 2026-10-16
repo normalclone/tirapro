@@ -332,7 +332,7 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
   }
   return (
     <SearchSelect
-      ariaLabel="Sprint — đợt làm việc chứa việc này"
+      ariaLabel="Sprint chứa việc này"
       value={issue.sprintId ?? ''}
       disabled={moveToSprint.isPending}
       options={sprintOptions}
@@ -340,7 +340,7 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
       renderTrigger={(sel) => (
         <span
           className="truncate"
-          title="Sprint: đợt làm việc ngắn, thường 1–2 tuần. Bấm để chuyển việc sang đợt khác."
+          title="Sprint: khoảng thời gian làm việc ngắn, thường 1–2 tuần. Bấm để chuyển việc sang sprint khác."
         >
           {sel?.label ?? BACKLOG_LABEL}
         </span>
@@ -354,9 +354,7 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
           {
             onSuccess: () =>
               toast.success(
-                next
-                  ? `Đã chuyển sang ${nextName ?? 'sprint đã chọn'}`
-                  : 'Đã đưa về Backlog (danh sách chờ)',
+                next ? `Đã chuyển sang ${nextName ?? 'sprint đã chọn'}` : 'Đã đưa về Việc chờ',
                 { duration: 1800 },
               ),
             onError: (e) => toast.error(apiErrorMessage(e)),

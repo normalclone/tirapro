@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Tag, Plus, Pencil, Trash2, Check, X, Rocket } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
@@ -18,6 +19,7 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 /** Nhãn + style cho từng trạng thái phiên bản. */
 const VERSION_STATUS: Record<VersionStatus, { label: string; className: string }> = {
@@ -288,8 +290,10 @@ function VersionEditRow({
   const [description, setDescription] = useState(version.description ?? '');
   const [status, setStatus] = useState<VersionStatus>(version.status);
   const [releaseDate, setReleaseDate] = useState(toDateInput(version.releaseDate));
+  const rowRef = useRef<HTMLLIElement>(null);
 
   function save() {
+    if (blockOnInvalidDate(rowRef.current)) return;
     const trimmed = name.trim();
     if (!trimmed) {
       toast.error('Tên không được để trống.');
@@ -304,7 +308,7 @@ function VersionEditRow({
   }
 
   return (
-    <li className="flex flex-wrap items-end gap-3 py-3 first:pt-0">
+    <li ref={rowRef} className="flex flex-wrap items-end gap-3 py-3 first:pt-0">
       <div className="min-w-[9rem] flex-1">
         <label className="mb-1 block text-xs font-medium text-muted">Tên</label>
         <Input
@@ -337,12 +341,7 @@ function VersionEditRow({
       </div>
       <div className="w-40">
         <label className="mb-1 block text-xs font-medium text-muted">Ngày phát hành</label>
-        <Input
-          type="date"
-          aria-label="Ngày phát hành"
-          value={releaseDate}
-          onChange={(e) => setReleaseDate(e.target.value)}
-        />
+        <DateInput ariaLabel="Ngày phát hành" value={releaseDate} onChange={setReleaseDate} />
       </div>
       <div className="flex items-center gap-1">
         <Button size="icon" onClick={save} loading={saving} title="Lưu">

@@ -560,7 +560,8 @@ export class ResourcesService {
   private requireRange(start: Date | string, end: Date | string) {
     const startDate = toUtcDay(start);
     const endDate = toUtcDay(end);
-    if (endDate < startDate) throw new BusinessRuleException('Ngày kết thúc phải sau ngày bắt đầu');
+    if (endDate < startDate)
+      throw new BusinessRuleException('Ngày kết thúc không được trước ngày bắt đầu');
     return { startDate, endDate };
   }
 

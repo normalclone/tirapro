@@ -106,3 +106,25 @@ Cập nhật trong `docs/design/api-contract.md` (đợt cuối FW-OPS I4).
 
 - **Cố ý (quyết định sản phẩm / ruling):** `!=`/`NOT IN` trên quan hệ nullable giữ ngữ nghĩa Jira; Resources → Allocation và clients → Contract trên dự án lưu trữ vẫn ghi được; snapshot sprint của dự án lưu trữ vẫn ghi; `recoverStaleJobs` chỉ cho job `jira-csv` (import generic mồ côi vẫn kẹt RUNNING như trước C6).
 - **Nợ còn lại:** ratchet lint 91 cảnh báo (65 `max-lines-per-function` ở web, 12 `no-unsafe-*` ở api…); `knip.jsonc` còn che `@nestjs/testing` và `AiIssuePanel.tsx` (chưa nối UI). `pnpm knip` thoát 0.
+
+---
+
+# UX vòng 2 — nhóm U (thuật ngữ, ngày giờ, validation tiếng Việt)
+
+## Thuật ngữ, ngày giờ, validation tiếng Việt (U22–U26)
+
+- **Thuật ngữ thống nhất** (bảng `docs/UX_CONVENTIONS.md` §19): *Việc chờ* (không "Backlog"), *Bảng việc*, *sprint* (không "đợt làm việc"), nhóm trạng thái *To Do / In Progress / Done* (Tổng quan, Báo cáo, Bộ lọc, Quy trình, CSV chương trình dùng chung `STATUS_CATEGORY_LABEL`), *công việc/việc* (không "issue", "vấn đề" — trừ sổ RAID), *dự án*, *quy trình*, *không gian làm việc*.
+- **Danh mục quyền, vai trò hệ thống, khối báo cáo** bằng tiếng Việt (không đổi `key` quyền/enum, không cần migration). Vai trò hệ thống đọc mô tả từ `SYSTEM_ROLE_META` nên có hiệu lực ngay. **Lưu ý:** mô tả `Resolution` (`DEFAULT_RESOLUTIONS`) chỉ gieo khi seed lần đầu nên workspace đã có dữ liệu giữ chữ cũ ("Trùng với issue khác"); mô tả quyền ở bảng `Permission` của DB cũ chỉ cập nhật khi chạy lại `db:seed` (web hiển thị mô tả lấy từ `@tirapro/types` nên không bị ảnh hưởng).
+- **Thông báo lỗi và lý do gợi ý của API** dùng cùng bảng: sprint không còn lộ `FUTURE/ACTIVE` ("Đã có sprint đang chạy — hãy kết thúc nó trước"); digest ghi *To Do / In Progress*; lý do gợi ý người nhận và lời chỉ dẫn gửi Claude dùng "công việc" (tên thẻ phân tách prompt `<issue>` giữ nguyên). Mã lỗi `error.code` không đổi.
+- **Ô ngày/giờ:** không còn `<input type="date|datetime-local">` trong web — mọi form dùng `DateInput`/`DateTimeInput` (`dd/MM/yyyy`, `HH:mm` 24h; gõ `0508`, báo ngày sai). Giá trị gửi API không đổi. Trường tuỳ biến kiểu ngày lưu khi chốt giá trị (Enter / rời ô / chọn lịch), không lưu mỗi phím.
+- **Lời nhắn ngày:** "Ngày kết thúc không được trước ngày bắt đầu" (luật cho phép trùng ngày). Toast xuất CSV chỉ khuyên "thu hẹp bộ lọc" khi nơi xuất có bộ lọc.
+- **Hạn hoàn thành khi tạo công việc:** không chặn ngày quá khứ — chỉ cảnh báo mềm "Hạn đã qua"; token không có năm (`^15/8`) đã qua trong năm nay được hiểu là **năm sau**. Ô ngày đang gõ sai chặn mọi đường lưu (kể cả hộp thoại không có `<form>` và Cmd/Ctrl+Enter).
+- **CSV Danh mục (chương trình):** tiêu đề cột đổi `Xong / Đang làm / Cần làm` -> `Done / In Progress / To Do` (ai đang dùng bảng tính đọc theo tên cột cần cập nhật).
+- **Chặn tái phạm:** ba bộ quét mã nguồn (`terminology.test.ts`, `noNativeDate.test.ts`, `terminology.spec.ts`) chạy trong `pnpm test`.
+
+## Tài liệu khớp tính năng thật (L8)
+
+- Trang **Hướng dẫn** (`/documentation`) và `docs/FEATURES_BY_ACTOR.md` mô tả đúng đợt 2: thêm thành viên trực tiếp (không lời mời), dự án riêng tư, wiki quyền theo dự án + lịch sử phiên bản, Mức nghiêm trọng / Resolution, form Báo lỗi, xem nhanh, @mention, JQL gợi ý, thông báo, Sức khoẻ dự án + thẻ lãnh đạo, Digest (thứ/giờ/múi giờ, Email + Telegram), dashboard 4 mức chia sẻ, OKR tự đo, nhập Jira giữ mã gốc, phím tắt.
+- **Bỏ lời hứa không có thật:** xuất "PDF/Excel" -> "Xuất CSV (mở được bằng Excel) + In / Lưu PDF"; bỏ lệnh Telegram `/newtask`, `/bug`, `/report` (bot chỉ gửi tin; `/link@bot MÃ` liên kết **nhóm**, không phải từng người).
+- Phần "Dashboard tuỳ biến — Tổng quan → bộ chọn dashboard" viết theo UI dashboard của nhóm L (L6/L7); nếu nhánh đó chưa vào thì đoạn này đi trước tính năng.
+

@@ -7,6 +7,7 @@ import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { useUpdateProfile, useUploadUserAvatar, useRemoveUserAvatar } from './api';
+import { browserTimeZone, timeZoneOptions } from '@/features/digests/schedule';
 
 const LOCALES: { value: string; label: string }[] = [
   { value: 'vi', label: 'Tiếng Việt' },
@@ -98,11 +99,17 @@ export function ProfilePanel() {
             </span>
             <Input
               value={timezone}
-              placeholder="VD: Asia/Ho_Chi_Minh"
+              placeholder={`VD: ${browserTimeZone()}`}
+              list="profile-timezones"
               autoComplete="off"
               onChange={(e) => setTimezone(e.target.value)}
               disabled={update.isPending}
             />
+            <datalist id="profile-timezones">
+              {timeZoneOptions().map((tz) => (
+                <option key={tz} value={tz} />
+              ))}
+            </datalist>
           </label>
 
           <label className="block space-y-1.5">

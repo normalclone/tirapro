@@ -15,12 +15,14 @@ import {
 } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useWorkspaceUsers } from '@/features/members/api';
 import { useFilterFields, type FieldOption } from './api';
 import { toDateInput } from '@/lib/dateFormat';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 /* ------------------------------------------------------------------ */
 /* Metadata field (nhãn tiếng Việt + thứ tự hiển thị)                  */
@@ -52,9 +54,9 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
 
 /** Nhóm trạng thái: enum cố định, khớp Status.category ở backend. */
 const STATUS_CATEGORY_OPTIONS: FieldOption[] = [
-  { value: 'TODO', label: 'Cần làm' },
-  { value: 'IN_PROGRESS', label: 'Đang làm' },
-  { value: 'DONE', label: 'Hoàn thành' },
+  { value: 'TODO', label: STATUS_CATEGORY_LABEL.TODO },
+  { value: 'IN_PROGRESS', label: STATUS_CATEGORY_LABEL.IN_PROGRESS },
+  { value: 'DONE', label: STATUS_CATEGORY_LABEL.DONE },
 ];
 
 const ME_OPTION: FieldOption = { value: CURRENT_USER_TOKEN, label: 'Tôi' };
@@ -546,13 +548,14 @@ function DateValueControl({ value, onChange }: { value: string; onChange: (v: st
         <option value={ABS_SENTINEL}>Ngày cụ thể…</option>
       </SelectField>
       {absolute && (
-        <Input
-          type="date"
-          aria-label="Ngày cụ thể"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-40 text-sm"
-        />
+        <div className="w-40">
+          <DateInput
+            ariaLabel="Ngày cụ thể"
+            value={value}
+            onChange={onChange}
+            className="text-sm"
+          />
+        </div>
       )}
     </div>
   );

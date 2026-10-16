@@ -2,7 +2,7 @@ import type { IssueDto } from '@tirapro/types';
 import { categoryColor } from '@/lib/statusColor';
 import { cn } from '@/lib/utils';
 
-/** Chip TRẠNG THÁI: chấm theo nhóm (Cần làm/Đang làm/Xong) + tên (ẩn tên dưới `md`, chấm vẫn có tooltip). */
+/** Chip TRẠNG THÁI: chấm theo nhóm (To Do / In Progress / Done) + tên (ẩn tên dưới `md`, chấm vẫn có tooltip). */
 export function StatusPill({
   status,
   className,

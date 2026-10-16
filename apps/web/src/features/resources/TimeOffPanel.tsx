@@ -1,9 +1,10 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { CalendarOff, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
@@ -19,6 +20,7 @@ import {
   type TimeOffDto,
   type TimeOffKind,
 } from './api';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 const KIND_META: Record<TimeOffKind, { label: string; className: string }> = {
   LEAVE: { label: 'Nghỉ phép', className: 'bg-primary-subtle text-primary' },
@@ -70,6 +72,7 @@ export function TimeOffPanel({
   const remove = useDeleteTimeOff();
 
   const [form, setForm] = useState<FormState | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
   const [pendingDelete, setPendingDelete] = useState<TimeOffDto | null>(null);
 
   const people: PersonOption[] = useMemo(
@@ -100,12 +103,13 @@ export function TimeOffPanel({
 
   function submit() {
     if (!form) return;
+    if (blockOnInvalidDate(formRef.current)) return;
     if (form.scope === 'person' && !form.userId)
       return toast.error('Hãy chọn người nghỉ, hoặc đổi phạm vi sang “Cả tổ chức”');
     if (!form.startDate || !form.endDate)
       return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
     if (form.endDate < form.startDate)
-      return toast.error('Ngày kết thúc phải bằng hoặc sau ngày bắt đầu');
+      return toast.error('Ngày kết thúc không được trước ngày bắt đầu');
 
     const payload = {
       userId: form.scope === 'workspace' ? null : form.userId,
@@ -154,7 +158,7 @@ export function TimeOffPanel({
       </div>
 
       {form && (
-        <div className="border-b border-border bg-surface-2/60 px-5 py-4">
+        <div ref={formRef} className="border-b border-border bg-surface-2/60 px-5 py-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Phạm vi" htmlFor="off-scope">
               <SearchSelect
@@ -197,20 +201,20 @@ export function TimeOffPanel({
               />
             </Field>
             <Field label="Từ ngày" htmlFor="off-start">
-              <Input
+              <DateInput
                 id="off-start"
-                type="date"
                 value={form.startDate}
-                onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                onChange={(iso) => setForm({ ...form, startDate: iso })}
                 className="text-sm"
               />
             </Field>
             <Field label="Đến ngày" htmlFor="off-end">
-              <Input
+              <DateInput
                 id="off-end"
-                type="date"
                 value={form.endDate}
-                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                min={form.startDate || undefined}
+                rangeError="Ngày kết thúc không được trước ngày bắt đầu"
+                onChange={(iso) => setForm({ ...form, endDate: iso })}
                 className="text-sm"
               />
             </Field>

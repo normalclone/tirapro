@@ -243,7 +243,7 @@ function UploadStep({
       <p className="text-sm text-muted">
         Trong Jira:{' '}
         <span className="text-ink">Bộ lọc → Xem tất cả issue → Xuất → CSV (tất cả các trường)</span>
-        . Tệp tối đa 25MB; nếu lớn hơn, hãy xuất theo từng project hoặc khoảng thời gian.
+        . Tệp tối đa 25MB; nếu lớn hơn, hãy xuất theo từng dự án hoặc khoảng thời gian.
       </p>
       <input
         ref={fileRef}
@@ -268,9 +268,9 @@ function UploadStep({
 
       {analysis && (
         <div className="rounded-md border border-border bg-surface-2 p-4 text-sm">
-          <p className="font-medium text-ink-strong">Đã đọc {analysis.rows} issue</p>
+          <p className="font-medium text-ink-strong">Đã đọc {analysis.rows} công việc</p>
           <ul className="mt-2 grid gap-1 text-muted sm:grid-cols-2">
-            <li>Project Jira: {analysis.projectKeys.join(', ') || '—'}</li>
+            <li>Dự án Jira: {analysis.projectKeys.join(', ') || '—'}</li>
             <li>{analysis.issueTypes.length} loại công việc</li>
             <li>{analysis.statuses.length} trạng thái</li>
             <li>{analysis.priorities.length} mức ưu tiên</li>
@@ -318,15 +318,15 @@ function ProjectPicker({
 }) {
   return (
     <div>
-      <h3 className="text-sm font-medium text-ink-strong">Project đích</h3>
+      <h3 className="text-sm font-medium text-ink-strong">Dự án đích</h3>
       <div className="mt-2 grid gap-3 sm:grid-cols-2">
         <select
-          aria-label="Project đích"
+          aria-label="Dự án đích"
           className={selectClass}
           value={choice}
           onChange={(e) => onChoice(e.target.value)}
         >
-          <option value={NEW_PROJECT}>Tạo project mới…</option>
+          <option value={NEW_PROJECT}>Tạo dự án mới…</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.key} — {p.name}
@@ -338,7 +338,7 @@ function ProjectPicker({
         <div className="mt-3 grid gap-3 sm:grid-cols-[8rem_1fr]">
           <div>
             <label htmlFor="jira-new-key" className="mb-1 block text-xs font-medium text-muted">
-              Mã project
+              Mã dự án
             </label>
             <Input
               id="jira-new-key"
@@ -349,7 +349,7 @@ function ProjectPicker({
           </div>
           <div>
             <label htmlFor="jira-new-name" className="mb-1 block text-xs font-medium text-muted">
-              Tên project
+              Tên dự án
             </label>
             <Input
               id="jira-new-name"
@@ -468,8 +468,8 @@ function MappingTables({
         title="Trạng thái"
         hint={
           newProject
-            ? 'Project mới: trạng thái trùng tên với quy trình mặc định được dùng lại, còn lại tự tạo.'
-            : 'Trạng thái mới tạo sẽ được thêm vào quy trình và bảng của project.'
+            ? 'Dự án mới: trạng thái trùng tên với quy trình mặc định được dùng lại, còn lại tự tạo.'
+            : 'Trạng thái mới tạo sẽ được thêm vào quy trình và bảng của dự án.'
         }
         rows={analysis.statuses}
         value={maps.statuses[0]}
@@ -820,7 +820,7 @@ function ProgressStep({
                 to={`/p/${summary.projectKey}/backlog`}
                 className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-fg hover:bg-primary-hover"
               >
-                Mở project {summary.projectKey}
+                Mở dự án {summary.projectKey}
               </Link>
             )}
             <Button variant="ghost" size="sm" onClick={onReset}>

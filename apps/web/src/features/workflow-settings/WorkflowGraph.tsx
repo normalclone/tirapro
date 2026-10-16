@@ -32,6 +32,7 @@ import {
   type StatusCategory,
   type Workflow,
 } from './api';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 const ANY_ID = '__any__';
 
@@ -39,11 +40,6 @@ const CATEGORY_VAR: Record<StatusCategory, string> = {
   TODO: 'var(--status-todo)',
   IN_PROGRESS: 'var(--status-progress)',
   DONE: 'var(--status-done)',
-};
-const CATEGORY_LABEL: Record<StatusCategory, string> = {
-  TODO: 'Cần làm',
-  IN_PROGRESS: 'Đang làm',
-  DONE: 'Hoàn thành',
 };
 const CATEGORY_COL: Record<StatusCategory, number> = { TODO: 1, IN_PROGRESS: 2, DONE: 3 };
 const COL_W = 240;
@@ -75,7 +71,7 @@ function savePos(workflowId: string, map: PosMap) {
   }
 }
 
-/** Bố cục tự động: cột theo nhóm trạng thái (Bất kỳ → Cần làm → Đang làm → Hoàn thành). */
+/** Bố cục tự động: cột theo nhóm trạng thái (Bất kỳ → To Do → In Progress → Done). */
 function autoLayout(wf: Workflow): PosMap {
   const counts: Record<StatusCategory, number> = { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
   const pos: PosMap = { [ANY_ID]: { x: 0, y: 24 } };
@@ -188,7 +184,9 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
         )}
       </div>
       {data.category && (
-        <span className="mt-0.5 block text-[11px] text-faint">{CATEGORY_LABEL[data.category]}</span>
+        <span className="mt-0.5 block text-[11px] text-faint">
+          {STATUS_CATEGORY_LABEL[data.category]}
+        </span>
       )}
       {data.onDelete && (
         <button
@@ -412,7 +410,7 @@ function AddStatusForm({
         >
           {CATEGORIES.map((c) => (
             <option key={c} value={c}>
-              {CATEGORY_LABEL[c]}
+              {STATUS_CATEGORY_LABEL[c]}
             </option>
           ))}
         </select>

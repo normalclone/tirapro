@@ -13,6 +13,7 @@ import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateTimeInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
@@ -24,6 +25,7 @@ import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
 import { useProjectIssues } from './api';
 import { epicChoices, parentChoices } from '@/lib/epic';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 import { TokenTitleInput } from './TokenTitleInput';
 import {
   changedTokenFields,
@@ -240,7 +242,7 @@ export function CreateIssueModal() {
 
   const sprintOptions = useMemo(
     () => [
-      { value: '', label: 'Backlog — chưa xếp vào sprint' },
+      { value: '', label: 'Việc chờ — chưa xếp vào sprint' },
       ...(sprints ?? [])
         .filter((s) => s.state !== 'CLOSED')
         .map((s) => ({
@@ -335,10 +337,14 @@ export function CreateIssueModal() {
   const trimmed = summary.trim();
   const canSubmit =
     !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
+  // Cảnh báo mềm: không chặn gửi (đường Tạo / Tạo & nhập tiếp / Cmd+Enter đều như nhau).
+  const dueInPast = due !== '' && new Date(due).getTime() < Date.now();
   const title = preset.subtask ? 'Tạo việc con' : 'Tạo công việc';
 
   async function doCreate() {
     if (!canSubmit) return null;
+    // Ô ngày/giờ đang gõ sai: chặn mọi đường gửi (nút Tạo & nhập tiếp, Cmd+Enter không đi qua form native).
+    if (blockOnInvalidDate()) return null;
     // Áp token gõ nhanh còn sót (nếu chưa blur) — token thắng giá trị đang chọn. Chỉ lược token khi TẠO.
     const tk = parseTitleTokens(summary, tokenCtx);
     const finalSummary = tk.clean.trim();
@@ -639,7 +645,7 @@ export function CreateIssueModal() {
           <Field
             label="Sprint"
             hint="(tùy chọn)"
-            title="Sprint là đợt làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Backlog — danh sách chờ."
+            title="Sprint là khoảng thời gian làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Việc chờ."
           >
             <SearchSelect
               value={sprintId}
@@ -650,37 +656,41 @@ export function CreateIssueModal() {
               options={sprintOptions}
             />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field
-              label="Điểm ước lượng"
-              hint="(tùy chọn)"
-              title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint."
-            >
-              <Input
-                type="number"
-                min={0}
-                inputMode="numeric"
-                value={points}
-                onChange={(e) => setPoints(e.target.value)}
-                placeholder="VD: 3"
-                className="text-sm"
-                aria-label="Điểm ước lượng"
-              />
-            </Field>
-            <Field
-              label="Hạn hoàn thành"
-              hint="(tùy chọn)"
-              title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
-            >
-              <Input
-                type="datetime-local"
-                value={due}
-                onChange={(e) => setDue(e.target.value)}
-                className="text-sm"
-                aria-label="Hạn hoàn thành"
-              />
-            </Field>
-          </div>
+          <Field
+            label="Điểm ước lượng"
+            hint="(tùy chọn)"
+            title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint."
+          >
+            <Input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={points}
+              onChange={(e) => setPoints(e.target.value)}
+              placeholder="VD: 3"
+              className="text-sm"
+              aria-label="Điểm ước lượng"
+            />
+          </Field>
+          {/* Cả hàng: ô ngày dd/MM/yyyy + ô giờ HH:mm cần chỗ, và không để cột phải trống. */}
+          <Field
+            className="sm:col-span-2"
+            label="Hạn hoàn thành"
+            hint="(tùy chọn)"
+            title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
+          >
+            <DateTimeInput
+              value={due}
+              onChange={setDue}
+              defaultTime="17:00"
+              ariaLabel="Hạn hoàn thành"
+            />
+            {dueInPast && (
+              <p role="status" className="mt-1 text-xs text-warning-ink">
+                Hạn đã qua — việc sẽ hiện quá hạn ngay khi tạo. Vẫn tạo được.
+              </p>
+            )}
+          </Field>
 
           {(!hideEpic || !hideParent) && (
             <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">

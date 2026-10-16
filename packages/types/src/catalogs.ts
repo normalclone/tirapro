@@ -69,7 +69,7 @@ export interface ResolutionSeed {
 export const DEFAULT_RESOLUTIONS: ResolutionSeed[] = [
   { name: 'Done', description: 'Hoàn thành', rank: 1, isDefault: true },
   { name: "Won't Do", description: 'Quyết định không làm', rank: 2 },
-  { name: 'Duplicate', description: 'Trùng với issue khác', rank: 3 },
+  { name: 'Duplicate', description: 'Trùng với công việc khác', rank: 3 },
   { name: 'Cannot Reproduce', description: 'Không tái hiện được', rank: 4 },
   { name: 'Incomplete', description: 'Thiếu thông tin', rank: 5 },
 ];
@@ -110,6 +110,16 @@ export const DEFAULT_ISSUE_TYPES: IssueTypeSeed[] = [
     isSubtask: true,
   },
 ];
+
+/**
+ * Nhãn hiển thị của nhóm trạng thái (category) — MỘT nguồn cho web và API (digest, tin nhắn).
+ * Thuật ngữ Agile tiếng Anh, khớp tên trạng thái mặc định. Xem docs/UX_CONVENTIONS.md §19.
+ */
+export const STATUS_CATEGORY_LABEL: Record<StatusCategory, string> = {
+  TODO: 'To Do',
+  IN_PROGRESS: 'In Progress',
+  DONE: 'Done',
+};
 
 export interface WorkflowStatusSeed {
   name: string;
@@ -268,45 +278,45 @@ export interface ReportMetricBlock {
 export const REPORT_METRIC_BLOCKS: ReportMetricBlock[] = [
   {
     key: 'open_count',
-    label: 'Số issue đang mở',
-    description: 'Tổng issue chưa Done',
+    label: 'Số công việc đang mở',
+    description: 'Tổng công việc chưa Done',
     scope: 'both',
   },
   {
     key: 'closed_count',
-    label: 'Số issue đã đóng',
-    description: 'Issue chuyển Done trong kỳ',
+    label: 'Số công việc đã đóng',
+    description: 'Công việc chuyển Done trong kỳ',
     scope: 'both',
   },
   {
     key: 'by_status',
     label: 'Theo trạng thái',
-    description: 'Phân bố issue theo status',
+    description: 'Phân bố công việc theo trạng thái',
     scope: 'both',
   },
   {
     key: 'by_assignee',
     label: 'Theo người thực hiện',
-    description: 'Khối lượng theo assignee',
+    description: 'Khối lượng theo người thực hiện',
     scope: 'both',
   },
   {
     key: 'by_priority',
     label: 'Theo độ ưu tiên',
-    description: 'Phân bố theo priority',
+    description: 'Phân bố theo độ ưu tiên',
     scope: 'both',
   },
-  { key: 'by_type', label: 'Theo loại issue', description: 'Story/Task/Bug...', scope: 'both' },
+  { key: 'by_type', label: 'Theo loại công việc', description: 'Story/Task/Bug...', scope: 'both' },
   {
     key: 'overdue',
     label: 'Quá hạn',
-    description: 'Issue quá dueDate chưa xong',
+    description: 'Công việc quá hạn chưa xong',
     scope: 'project',
   },
   {
     key: 'recently_updated',
     label: 'Cập nhật gần đây',
-    description: 'Issue đổi trong kỳ',
+    description: 'Công việc đổi trong kỳ',
     scope: 'both',
   },
   {

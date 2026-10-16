@@ -9,7 +9,7 @@ import type { MoveIncompleteTo } from './api';
 type Choice = 'backlog' | 'new' | 'existing';
 
 /**
- * Hộp thoại hoàn thành sprint: nếu còn việc chưa xong, chọn chúng đi đâu — về Backlog, sang sprint mới
+ * Hộp thoại hoàn thành sprint: nếu còn việc chưa xong, chọn chúng đi đâu — về Việc chờ, sang sprint mới
  * (máy chủ tự tạo "Sprint N+1" ở trạng thái FUTURE) hoặc sang một sprint chưa bắt đầu có sẵn.
  */
 export function CompleteSprintDialog({
@@ -42,7 +42,7 @@ export function CompleteSprintDialog({
   }
 
   const options: Array<{ id: Choice; label: string; hint: string; disabled?: boolean }> = [
-    { id: 'backlog', label: 'Về Backlog', hint: 'Xếp lại vào sprint sau khi lập kế hoạch.' },
+    { id: 'backlog', label: 'Về Việc chờ', hint: 'Xếp lại vào sprint sau khi lập kế hoạch.' },
     {
       id: 'new',
       label: 'Sang sprint mới',

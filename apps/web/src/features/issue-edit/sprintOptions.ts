@@ -1,6 +1,6 @@
 import type { SprintDto } from '@tirapro/types';
 
-export const BACKLOG_LABEL = 'Backlog — chưa xếp vào sprint';
+export const BACKLOG_LABEL = 'Việc chờ — chưa xếp vào sprint';
 
 /**
  * Lựa chọn sprint cho một issue. Sprint đã CLOSED không cho CHUYỂN VÀO, nhưng nếu issue đang nằm trong đó thì vẫn phải

@@ -11,7 +11,7 @@ const sprints = [
 ];
 
 describe('buildSprintOptions', () => {
-  it('issue ở sprint đã đóng: hiện đúng tên, không phải Backlog', () => {
+  it('issue ở sprint đã đóng: hiện đúng tên, không phải Việc chờ', () => {
     const o = buildSprintOptions(sprints, 's1');
     expect(o.find((x) => x.value === 's1')?.label).toBe('Sprint 1 · đã đóng');
   });
@@ -24,7 +24,7 @@ describe('buildSprintOptions', () => {
     expect(o[0]).toEqual({ value: '', label: BACKLOG_LABEL });
     expect(o.find((x) => x.value === 's2')?.label).toBe('Sprint 2 · đang chạy');
   });
-  it('chưa tải danh sách / sprint không còn: nhãn trung tính, không nhầm thành Backlog', () => {
+  it('chưa tải danh sách / sprint không còn: nhãn trung tính, không nhầm thành Việc chờ', () => {
     expect(buildSprintOptions(undefined, 'sX').find((o) => o.value === 'sX')?.label).toBe(
       'Đang tải sprint…',
     );

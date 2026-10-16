@@ -13,7 +13,7 @@ export const offsetPaginationQuerySchema = z.object({
 });
 
 export const createWorkspaceSchema = z.object({
-  name: z.string().min(1, 'Tên workspace bắt buộc').max(120),
+  name: z.string().min(1, 'Tên không gian làm việc bắt buộc').max(120),
 });
 
 export const createProjectSchema = z.object({

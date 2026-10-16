@@ -18,7 +18,7 @@ describe('statValue', () => {
     expect(statValue('projects', overview)).toBe(5);
   });
 
-  it('open = Cần làm + Đang làm (không tính việc đã xong)', () => {
+  it('open = To Do + In Progress (không tính việc đã xong)', () => {
     expect(statValue('open', overview)).toBe(21);
   });
 

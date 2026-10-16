@@ -13,6 +13,7 @@ import {
 import { EmptyState } from '@/components/ui/primitives';
 import { useCfd, useCreatedResolved } from './api';
 import { AXIS_PROPS, Card, ChartSkeleton, LEGEND_STYLE, TOOLTIP_STYLE } from './charts';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 /** Tab "Luồng công việc": Cumulative Flow và Tạo mới vs Đã xử lý. */
 export function FlowTab({ projectId }: { projectId: string }) {
@@ -37,7 +38,7 @@ export function FlowTab({ projectId }: { projectId: string }) {
               <Area
                 type="monotone"
                 dataKey="todo"
-                name="Cần làm"
+                name={STATUS_CATEGORY_LABEL.TODO}
                 stackId="1"
                 stroke="var(--status-todo)"
                 fill="var(--status-todo)"
@@ -45,7 +46,7 @@ export function FlowTab({ projectId }: { projectId: string }) {
               <Area
                 type="monotone"
                 dataKey="inProgress"
-                name="Đang làm"
+                name={STATUS_CATEGORY_LABEL.IN_PROGRESS}
                 stackId="1"
                 stroke="var(--status-progress)"
                 fill="var(--status-progress)"
@@ -53,7 +54,7 @@ export function FlowTab({ projectId }: { projectId: string }) {
               <Area
                 type="monotone"
                 dataKey="done"
-                name="Hoàn thành"
+                name={STATUS_CATEGORY_LABEL.DONE}
                 stackId="1"
                 stroke="var(--status-done)"
                 fill="var(--status-done)"
