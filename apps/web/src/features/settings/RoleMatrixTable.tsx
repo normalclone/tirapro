@@ -59,7 +59,10 @@ export function RoleMatrixTable({ roles }: { roles: RoleDto[] }) {
       scoped.filter((r) => r.isSystem && !LEGACY_DEFAULT_OFF.has(r.name)).map((r) => r.id),
     [picked, scope, scoped],
   );
-  const columns = scoped.filter((r) => selectedIds.includes(r.id));
+  const columns = useMemo(
+    () => scoped.filter((r) => selectedIds.includes(r.id)),
+    [scoped, selectedIds],
+  );
   const matrix = useMemo(
     () => buildRoleMatrix(columns, PERMISSION_CATALOG, { scope, onlyDiff }),
     [columns, scope, onlyDiff],
