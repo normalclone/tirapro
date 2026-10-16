@@ -43,6 +43,7 @@ import { MyBugsSection } from './MyBugsSection';
 import { useAuth } from '@/stores/auth';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { DueBadge, dueState } from '@/components/ui/DueBadge';
+import { HealthBadge } from '@/components/ui/HealthBadge';
 import { pageContainer } from '@/components/layout/page';
 import { useRecents } from '@/stores/recentIssues';
 import { cn } from '@/lib/utils';
@@ -538,6 +539,7 @@ function ProjectStatsTable({ projects }: { projects: OverviewProject[] }) {
       {/* Header cột — ẩn ở mobile để dồn không gian cho số liệu */}
       <div className="hidden items-center gap-3 border-b border-border px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-faint sm:flex">
         <span className="min-w-0 flex-1">Dự án</span>
+        <span className="w-12 md:w-28">Sức khoẻ</span>
         <span className="hidden w-40 md:block">Sprint đang chạy</span>
         <span className="w-14 text-right tabular">Tổng</span>
         <span className="w-16 text-right tabular">Đang làm</span>
@@ -574,6 +576,11 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
             <span className="block truncate font-mono text-[11px] text-muted">{p.key}</span>
           </span>
         </Link>
+
+        {/* Sức khoẻ: dưới md chỉ còn icon (tên truy cập vẫn đủ); bấm xem lý do */}
+        <span className="w-12 shrink-0 md:w-28">
+          <HealthBadge health={p.health} projectKey={p.key} compact />
+        </span>
 
         {/* Sprint đang chạy (ẩn dưới md để dồn chỗ cho số liệu) */}
         <span className="hidden w-40 shrink-0 md:block">

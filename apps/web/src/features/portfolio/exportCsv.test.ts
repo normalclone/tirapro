@@ -18,6 +18,7 @@ const project = (key: string, name: string, extra: Partial<RollupProject> = {}):
   leadName: 'Nguyễn An',
   startDate: '2026-10-01T00:00:00.000Z',
   targetDate: '2026-12-31T00:00:00.000Z',
+  health: null,
   ...stats,
   ...extra,
 });
@@ -53,7 +54,7 @@ describe('portfolioCsv', () => {
     const csv = portfolioCsv(rollup).replace('﻿', '');
     const lines = csv.trim().split('\r\n');
     expect(lines[0]).toBe(
-      'Chương trình,Mã dự án,Tên dự án,Người phụ trách,Tổng việc,Xong,Đang làm,Cần làm,Quá hạn,Tiến độ %,Bắt đầu,Hạn',
+      'Chương trình,Mã dự án,Tên dự án,Người phụ trách,Tổng việc,Xong,Đang làm,Cần làm,Quá hạn,Tiến độ %,Bắt đầu,Hạn,Sức khoẻ,Lý do',
     );
     expect(lines).toHaveLength(1 + 3);
     expect(lines[1]).toContain('Nền tảng thanh toán');
@@ -63,9 +64,9 @@ describe('portfolioCsv', () => {
     const csv = portfolioCsv(rollup);
     expect(csv.startsWith('﻿')).toBe(true);
     const lines = csv.replace('﻿', '').trim().split('\r\n');
-    expect(lines[1]).toMatch(/,01\/10\/2026,31\/12\/2026$/);
+    expect(lines[1]).toMatch(/,01\/10\/2026,31\/12\/2026,,$/);
     expect(lines[2]).toContain('"Ví, nội bộ"');
-    expect(lines[3]).toMatch(/,PSL,PSL,,10,4,3,3,1,40,,$/);
+    expect(lines[3]).toMatch(/,PSL,PSL,,10,4,3,3,1,40,,,,$/);
   });
 
   it('ngày bắt đầu/hạn là ngày lịch: 23:30Z vẫn ra đúng ngày', () => {
@@ -81,7 +82,41 @@ describe('portfolioCsv', () => {
       ],
     });
     expect(csv.replace('\uFEFF', '').trim().split('\r\n')[1]).toMatch(
-      /,01\/10\/2026,31\/12\/2026$/,
+      /,01\/10\/2026,31\/12\/2026,,$/,
     );
+  });
+
+  it('cột Sức khoẻ + Lý do: ghi đè kèm ghi chú; không ghi đè → lý do tự tính; lưu trữ/không có → rỗng', () => {
+    const csv = portfolioCsv({
+      ...rollup,
+      groups: [
+        group('g1', 'X', [
+          project('P1', 'Một', {
+            health: {
+              level: 'RED',
+              auto: { level: 'YELLOW', reasons: ['3/9 việc quá hạn'] },
+              override: {
+                level: 'RED',
+                note: 'Chờ khách duyệt',
+                updatedAt: '2026-10-13T00:00:00.000Z',
+                updatedBy: null,
+              },
+            },
+          }),
+          project('P2', 'Hai', {
+            health: {
+              level: 'YELLOW',
+              auto: { level: 'YELLOW', reasons: ['a', 'b'] },
+              override: null,
+            },
+          }),
+          project('P3', 'Ba', { isArchived: true, health: null }),
+        ]),
+      ],
+    });
+    const lines = csv.replace('\uFEFF', '').trim().split('\r\n');
+    expect(lines[1]).toMatch(/,Nguy cơ,Ghi đè: Chờ khách duyệt \| Tự tính: 3\/9 việc quá hạn$/);
+    expect(lines[2]).toMatch(/,Cần chú ý,a; b$/);
+    expect(lines[3]).toMatch(/,,$/);
   });
 });

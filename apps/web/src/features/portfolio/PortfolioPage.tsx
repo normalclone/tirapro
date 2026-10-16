@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { ExportMenu } from '@/components/ui/ExportMenu';
+import { HealthBadge } from '@/components/ui/HealthBadge';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
@@ -136,18 +137,13 @@ function ProjectRow({ project }: { project: RollupProject }) {
           project.overdueCount > 0 ? 'text-danger' : 'text-faint',
         )}
         title={
-          project.overdueCount > 0
-            ? 'Số công việc chưa xong mà đã qua hạn hoàn thành'
-            : project.targetDate
-              ? 'Không có công việc nào quá hạn'
-              : undefined
+          project.overdueCount > 0 ? 'Số công việc chưa xong mà đã qua hạn hoàn thành' : undefined
         }
       >
-        {project.overdueCount > 0
-          ? `${project.overdueCount} quá hạn`
-          : project.targetDate
-            ? 'đúng hạn'
-            : ''}
+        {project.overdueCount > 0 ? `${project.overdueCount} quá hạn` : ''}
+      </span>
+      <span className="flex w-32 shrink-0 justify-end">
+        {!project.isArchived && <HealthBadge health={project.health} projectKey={project.key} />}
       </span>
     </li>
   );

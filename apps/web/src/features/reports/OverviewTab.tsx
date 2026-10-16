@@ -15,6 +15,7 @@ import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
 import { cn } from '@/lib/utils';
+import { HealthOverrideCard } from '@/features/projects/HealthOverrideCard';
 import {
   useProjectReport,
   type ProjectReportTotals,
@@ -32,8 +33,12 @@ import {
 } from './charts';
 
 /** Tab "Tổng quan": số liệu tổng hợp, phân bố trạng thái/loại/ưu tiên và khối lượng theo người phụ trách. */
-export function OverviewTab({ projectId }: { projectId: string }) {
-  const report = useProjectReport(projectId);
+export function OverviewTab({
+  project,
+}: {
+  project: { id: string; key: string; archivedAt: string | null };
+}) {
+  const report = useProjectReport(project.id);
 
   if (report.isError) {
     return <QueryError error={report.error} onRetry={() => void report.refetch()} />;
@@ -41,6 +46,13 @@ export function OverviewTab({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-4">
+      {/* Sức khoẻ dự án: tự tính + ghi đè của PM */}
+      {report.isLoading ? (
+        <Skeleton className="h-[120px] w-full" />
+      ) : (
+        report.data && <HealthOverrideCard project={project} health={report.data.health} />
+      )}
+
       {/* Số liệu tổng hợp */}
       {report.isLoading ? (
         <Skeleton className="h-[76px] w-full" />

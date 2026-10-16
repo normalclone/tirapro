@@ -94,7 +94,7 @@ export function ReportsPage() {
         ) : tab === 'sprint' ? (
           <SprintTab projectId={projectId} projectKey={project.key} />
         ) : tab === 'overview' ? (
-          <OverviewTab projectId={projectId} />
+          <OverviewTab project={project} />
         ) : tab === 'flow' ? (
           <FlowTab projectId={projectId} />
         ) : null}

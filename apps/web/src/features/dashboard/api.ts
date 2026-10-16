@@ -1,5 +1,6 @@
 import { skipToken, useQuery } from '@tanstack/react-query';
 import type { IssueDto, ListResponse } from '@tirapro/types';
+import type { ProjectHealthDto } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -54,6 +55,7 @@ export interface OverviewProject extends OverviewTotals {
   key: string;
   name: string;
   sprint: OverviewSprint | null;
+  health: ProjectHealthDto | null;
 }
 
 /** Một lát cắt cho sơ đồ (theo loại / theo ưu tiên). */
