@@ -29,6 +29,7 @@ export const createDigestSchema = z.object({
   metrics: blocksSchema.optional(),
   recipients: recipientsSchema.optional(),
   deliverEmail: z.boolean().optional(),
+  allowPrivateToChannel: z.boolean().optional(),
   weekday: weekdaySchema.optional(),
   hour: hourSchema.optional(),
   timezone: timezoneSchema.optional(),
@@ -43,6 +44,7 @@ export const updateDigestSchema = z.object({
   metrics: blocksSchema.optional(),
   recipients: recipientsSchema.optional(),
   deliverEmail: z.boolean().optional(),
+  allowPrivateToChannel: z.boolean().optional(),
   weekday: weekdaySchema.optional(),
   hour: hourSchema.optional(),
   timezone: timezoneSchema.optional(),
@@ -52,6 +54,8 @@ type UpdateDigestBody = z.infer<typeof updateDigestSchema>;
 export const previewDigestSchema = z.object({
   projectId: z.string().min(1).optional(),
   metrics: blocksSchema.optional(),
+  as: z.enum(['channel', 'me']).optional(),
+  allowPrivateToChannel: z.boolean().optional(),
 });
 type PreviewDigestBody = z.infer<typeof previewDigestSchema>;
 
@@ -68,7 +72,7 @@ export class DigestsController {
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
   ) {
-    return this.digests.list(workspaceId, user.id, projectId);
+    return this.digests.list(workspaceId, projectId, user.id);
   }
 
   /** Xem trước nội dung (chưa lưu) theo quyền xem của người bấm. Khai báo TRƯỚC `:id/run` cho rõ ràng. */
@@ -84,6 +88,7 @@ export class DigestsController {
 
   @Post()
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
+  @ProjectRef('body', 'projectId')
   async create(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -96,21 +101,30 @@ export class DigestsController {
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async update(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateDigestSchema)) dto: UpdateDigestBody,
   ) {
-    return this.digests.update(workspaceId, id, dto);
+    return this.digests.update(workspaceId, id, dto, user.id);
   }
 
   @Delete(':id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.digests.remove(workspaceId, id);
+  async remove(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.digests.remove(workspaceId, id, user.id);
   }
 
   @Post(':id/run')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async run(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.digests.run(workspaceId, id);
+  async run(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.digests.run(workspaceId, id, user.id);
   }
 }

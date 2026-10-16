@@ -10,7 +10,6 @@ import {
   type CustomWidgetDto,
   type WidgetInput,
 } from '@tirapro/shared';
-import { PERMISSIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import {
   BusinessRuleException,
@@ -20,8 +19,8 @@ import {
 } from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
 import { ProjectAccessService } from '../rbac/project-access.service';
-import { RbacService } from '../rbac/rbac.service';
 import {
+  canDeleteDashboard,
   canEditDashboard,
   dashboardVisibleWhere,
   sortDashboards,
@@ -71,7 +70,6 @@ export class DashboardsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: ProjectAccessService,
-    private readonly rbac: RbacService,
   ) {}
 
   // ------------------------------ đọc ------------------------------
@@ -131,7 +129,7 @@ export class DashboardsService {
   ): Promise<CustomDashboardDto> {
     const ctx = await this.ctx(workspaceId, userId);
     const row = await this.requireVisible(ctx, id);
-    await this.assertCanEdit(ctx, row);
+    this.assertCanEdit(ctx, row);
     this.assertWidgetCount(input.widgets);
     const target = await this.resolveTarget(ctx, input, row);
     const stored = new Set(
@@ -210,7 +208,9 @@ export class DashboardsService {
   async remove(workspaceId: string, id: string, userId: string): Promise<{ success: true }> {
     const ctx = await this.ctx(workspaceId, userId);
     const row = await this.requireVisible(ctx, id);
-    await this.assertCanEdit(ctx, row);
+    if (!canDeleteDashboard(ctx, row)) {
+      throw new ForbiddenAppException('Bạn không có quyền xoá dashboard này');
+    }
     await this.prisma.dashboard.update({ where: { id }, data: { deletedAt: new Date() } });
     return { success: true };
   }
@@ -239,38 +239,13 @@ export class DashboardsService {
     return row;
   }
 
-  private async assertCanEdit(ctx: Ctx, row: SummaryRow): Promise<void> {
-    const isProjectAdmin = await this.isProjectAdmin(ctx, row);
-    if (
-      !canEditDashboard(
-        ctx,
-        { ownerId: row.ownerId, scope: row.scope, team: row.team },
-        isProjectAdmin,
-      )
-    ) {
+  /** Chỉ CHỦ sửa nội dung/đổi mức chia sẻ (admin chỉ được xoá để kiểm duyệt); người khác nhân bản. */
+  private assertCanEdit(ctx: Ctx, row: SummaryRow): void {
+    if (!canEditDashboard(ctx, row)) {
       throw new ForbiddenAppException(
-        'Bạn không có quyền sửa dashboard này — hãy nhân bản để chỉnh bản của riêng bạn',
+        'Chỉ người tạo mới sửa được dashboard này — hãy nhân bản để chỉnh bản của riêng bạn',
       );
     }
-  }
-
-  private async isProjectAdmin(
-    ctx: Ctx,
-    row: SummaryRow,
-    memo?: Map<string, boolean>,
-  ): Promise<boolean> {
-    if (row.scope !== 'PROJECT' || !row.projectId || row.ownerId === ctx.userId || ctx.isAdmin)
-      return false;
-    const cached = memo?.get(row.projectId);
-    if (cached !== undefined) return cached;
-    const perms = await this.rbac.getEffectivePermissions(
-      ctx.userId,
-      ctx.workspaceId,
-      row.projectId,
-    );
-    const result = perms.has(PERMISSIONS.PROJECT_ADMIN);
-    memo?.set(row.projectId, result);
-    return result;
   }
 
   private assertWidgetCount(widgets: readonly unknown[]): void {
@@ -406,20 +381,13 @@ export class DashboardsService {
 
   private async toSummaries(ctx: Ctx, rows: SummaryRow[]): Promise<CustomDashboardSummaryDto[]> {
     const visible = await this.visibleProjectIds(ctx, rows);
-    const memo = new Map<string, boolean>();
-    const out: CustomDashboardSummaryDto[] = [];
-    for (const r of rows) {
-      const isProjectAdmin = await this.isProjectAdmin(ctx, r, memo);
-      out.push(this.summary(ctx, r, visible, isProjectAdmin));
-    }
-    return out;
+    return rows.map((r) => this.summary(ctx, r, visible));
   }
 
   private summary(
     ctx: Ctx,
     r: SummaryRow,
     visibleProjects: Set<string> | null,
-    isProjectAdmin: boolean,
   ): CustomDashboardSummaryDto {
     const showProject =
       r.project && (visibleProjects === null || visibleProjects.has(r.project.id));
@@ -430,11 +398,8 @@ export class DashboardsService {
       scope: r.scope,
       widgetCount: r._count.widgets,
       isMine: r.ownerId === ctx.userId,
-      canEdit: canEditDashboard(
-        ctx,
-        { ownerId: r.ownerId, scope: r.scope, team: r.team },
-        isProjectAdmin,
-      ),
+      canEdit: canEditDashboard(ctx, r),
+      canDelete: canDeleteDashboard(ctx, r),
       owner: r.owner,
       project: showProject && r.project ? r.project : null,
       team: r.team ? { id: r.team.id, name: r.team.name } : null,
@@ -443,9 +408,9 @@ export class DashboardsService {
   }
 
   private async toDetail(ctx: Ctx, row: DetailRow): Promise<CustomDashboardDto> {
-    const [visible, isProjectAdmin] = await Promise.all([
+    const [visible, masker] = await Promise.all([
       this.visibleProjectIds(ctx, [row]),
-      this.isProjectAdmin(ctx, row),
+      this.jqlMasker(ctx, row),
     ]);
     const orderOf = (w: DetailRow['widgets'][number]) =>
       (w.position as { order?: number } | null)?.order ?? 0;
@@ -455,9 +420,41 @@ export class DashboardsService {
         id: w.id,
         type: w.type,
         title: w.title,
-        config: (w.config ?? {}) as Record<string, unknown>,
+        config: masker((w.config ?? {}) as Record<string, unknown>),
         position: (w.position ?? { order: 0, w: 1 }) as CustomWidgetDto['position'],
       }));
-    return { ...this.summary(ctx, row, visible, isProjectAdmin), widgets };
+    return { ...this.summary(ctx, row, visible), widgets };
+  }
+
+  /**
+   * Người XEM (không phải chủ, không phải admin) không được đọc chuỗi `jql` có nhắc tới dự án họ không thấy (mã dự án =
+   * thông tin về dự án riêng tư). Ô đó trả `jql: ''` + `masked: true` — dữ liệu vốn đã lọc theo quyền người xem, đây chỉ
+   * che phần cấu hình. Chủ dashboard thấy nguyên văn (họ tự viết).
+   */
+  private async jqlMasker(
+    ctx: Ctx,
+    row: DetailRow,
+  ): Promise<(config: Record<string, unknown>) => Record<string, unknown>> {
+    const identity = (c: Record<string, unknown>) => c;
+    const hasJql = row.widgets.some(
+      (w) => typeof (w.config as { jql?: unknown })?.jql === 'string',
+    );
+    if (!hasJql || ctx.isAdmin || row.ownerId === ctx.userId) return identity;
+    const hidden = await this.prisma.project.findMany({
+      where: { workspaceId: ctx.workspaceId, deletedAt: null, NOT: ctx.projectVisible },
+      select: { id: true, key: true },
+    });
+    if (hidden.length === 0) return identity;
+    const tokens = hidden.flatMap((p) => [p.key.toLowerCase(), p.id.toLowerCase()]);
+    return (config) => {
+      const jql = config.jql;
+      if (typeof jql !== 'string') return config;
+      const words = new Set(jql.toLowerCase().match(/[a-z0-9_-]+/g) ?? []);
+      // Khoá issue dạng KEY-12 cũng nhắc tới dự án: tách phần trước dấu '-' cuối.
+      const mentions = tokens.some(
+        (t) => words.has(t) || [...words].some((w) => w.startsWith(`${t}-`)),
+      );
+      return mentions ? { ...config, jql: '', masked: true } : config;
+    };
   }
 }

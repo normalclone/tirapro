@@ -17,6 +17,7 @@ import {
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 import { assertIssueWritable } from '../../common/project-writable';
 import { IssuesService } from '../issues/issues.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { CommentsService } from '../comments/comments.service';
 
 /**
@@ -64,21 +65,25 @@ export class TriageService {
     private readonly events: EventEmitter2,
     private readonly issues: IssuesService,
     private readonly comments: CommentsService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   /**
    * Bộ lọc inbox: chưa xóa, đang chờ (PENDING) hoặc snooze đã tới hạn (SNOOZED && until <= now),
-   * trong workspace hiện tại, tùy chọn lọc theo project.
+   * trong workspace hiện tại, tùy chọn lọc theo project. `visible` = điều kiện dự án người xem thấy (`{}` = thấy hết):
+   * luôn áp, kể cả khi không có `projectId` (huy hiệu/đếm cấp workspace không đếm việc của dự án riêng tư người ngoài).
    */
   private inboxWhere(
     workspaceId: string,
     projectId: string | undefined,
     now: Date,
+    visible: Prisma.ProjectWhereInput,
   ): Prisma.IssueWhereInput {
     return {
       workspaceId,
       deletedAt: null,
       ...(projectId ? { projectId } : {}),
+      ...(Object.keys(visible).length ? { project: visible } : {}),
       OR: [{ triageState: 'PENDING' }, { triageState: 'SNOOZED', triageSnoozeUntil: { lte: now } }],
     };
   }
@@ -89,9 +94,15 @@ export class TriageService {
     projectId: string | undefined,
     cursor: string | undefined,
     limit: number,
+    viewerId: string,
   ): Promise<PageResult<TriageItemDto>> {
     const rows = await this.prisma.issue.findMany({
-      where: this.inboxWhere(workspaceId, projectId, new Date()),
+      where: this.inboxWhere(
+        workspaceId,
+        projectId,
+        new Date(),
+        await this.access.visibleWhere(viewerId, workspaceId),
+      ),
       include: triageInclude,
       orderBy: [{ occurrenceCount: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }],
       take: limit + 1,
@@ -105,9 +116,18 @@ export class TriageService {
   }
 
   /** Số lượng issue đang chờ triage (cùng bộ lọc với inbox). */
-  async count(workspaceId: string, projectId: string | undefined): Promise<{ count: number }> {
+  async count(
+    workspaceId: string,
+    projectId: string | undefined,
+    viewerId: string,
+  ): Promise<{ count: number }> {
     const count = await this.prisma.issue.count({
-      where: this.inboxWhere(workspaceId, projectId, new Date()),
+      where: this.inboxWhere(
+        workspaceId,
+        projectId,
+        new Date(),
+        await this.access.visibleWhere(viewerId, workspaceId),
+      ),
     });
     return { count };
   }

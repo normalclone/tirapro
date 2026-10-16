@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { toast } from 'sonner';
-import { DEFAULT_DIGEST_BLOCKS, resolveDigestBlocks } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useCreateDigest, usePreviewDigest, useUpdateDigest, type Digest } from './api';
 import {
@@ -14,49 +14,16 @@ import {
   ChannelFields,
   Field,
   ScheduleFields,
-  type DigestFormState,
   type SetDigestForm,
 } from './DigestFormFields';
-import { browserTimeZone } from './schedule';
-
-function initialForm(digest: Digest | null): DigestFormState {
-  if (!digest) {
-    return {
-      name: '',
-      projectId: '',
-      schedule: 'WEEKLY',
-      weekday: 1,
-      hour: 8,
-      // Đề xuất múi giờ trình duyệt; người dùng ở Việt Nam sẽ thấy sẵn Asia/Ho_Chi_Minh.
-      timezone: browserTimeZone(),
-      channelId: '',
-      deliverEmail: false,
-      recipients: [],
-      blocks: [...DEFAULT_DIGEST_BLOCKS],
-    };
-  }
-  return {
-    name: digest.name,
-    projectId: digest.projectId ?? '',
-    schedule: digest.schedule,
-    weekday: digest.weekday,
-    hour: digest.hour,
-    timezone: digest.timezone,
-    channelId: digest.channelId ?? '',
-    deliverEmail: digest.deliverEmail,
-    recipients: digest.recipients,
-    // Digest cũ (metrics rỗng) hiện đúng 2 khối nó vẫn gửi từ trước tới nay.
-    blocks: resolveDigestBlocks(digest.metrics),
-  };
-}
-
-/** Lỗi nhập liệu phía giao diện (server vẫn kiểm lại); null = hợp lệ. */
-function validate(f: DigestFormState): string | null {
-  if (!f.name.trim()) return 'Vui lòng nhập tên báo cáo.';
-  if (f.blocks.length === 0) return 'Chọn ít nhất một khối nội dung.';
-  if (f.deliverEmail && f.recipients.length === 0) return 'Chọn ít nhất một người nhận email.';
-  return null;
-}
+import {
+  effectiveAllowPrivate,
+  initialForm,
+  toCreatePayload,
+  toUpdatePayload,
+  validateForm,
+  type DigestFormState,
+} from './digestForm';
 
 /**
  * Tạo / sửa báo cáo định kỳ trong MỘT hộp thoại: tên, phạm vi, lịch, kênh (Telegram + Email), khối nội dung, xem
@@ -72,32 +39,19 @@ export function DigestEditorDialog({
   digest: Digest | null;
 }) {
   const [form, setForm] = useState<DigestFormState>(() => initialForm(digest));
-  const [preview, setPreview] = useState<string | null>(null);
+  const projects = useProjects();
   const create = useCreateDigest();
   const update = useUpdateDigest();
-  const previewMutation = usePreviewDigest();
   const saving = create.isPending || update.isPending;
-  const set: SetDigestForm = (key, value) => {
-    setForm((f) => ({ ...f, [key]: value }));
-    setPreview(null); // nội dung xem trước không còn khớp cấu hình
-  };
+  const projectIsPrivate = !!projects.data?.find((p) => p.id === form.projectId)?.isPrivate;
+  const set: SetDigestForm = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
   function submit() {
-    const error = validate(form);
+    const error = validateForm(form);
     if (error) {
       toast.error(error);
       return;
     }
-    const common = {
-      name: form.name.trim(),
-      schedule: form.schedule,
-      weekday: form.weekday,
-      hour: form.hour,
-      timezone: form.timezone,
-      metrics: form.blocks,
-      deliverEmail: form.deliverEmail,
-      recipients: form.recipients,
-    };
     const done = {
       onSuccess: () => {
         toast.success(digest ? 'Đã lưu báo cáo.' : 'Đã tạo báo cáo định kỳ.');
@@ -105,28 +59,8 @@ export function DigestEditorDialog({
       },
       onError: (e: unknown) => toast.error(apiErrorMessage(e)),
     };
-    if (digest) {
-      update.mutate({ id: digest.id, ...common, channelId: form.channelId || null }, done);
-    } else {
-      create.mutate(
-        {
-          ...common,
-          projectId: form.projectId || undefined,
-          channelId: form.channelId || undefined,
-        },
-        done,
-      );
-    }
-  }
-
-  function showPreview() {
-    previewMutation.mutate(
-      { projectId: form.projectId || undefined, metrics: form.blocks },
-      {
-        onSuccess: (r) => setPreview(r.summaryText),
-        onError: (e) => toast.error(apiErrorMessage(e)),
-      },
-    );
+    if (digest) update.mutate(toUpdatePayload(digest.id, form), done);
+    else create.mutate(toCreatePayload(form), done);
   }
 
   return (
@@ -154,7 +88,6 @@ export function DigestEditorDialog({
             <Input
               id="digest-name"
               value={form.name}
-              autoFocus
               placeholder="VD: Tổng kết tuần"
               onChange={(e) => set('name', e.target.value)}
             />
@@ -162,34 +95,107 @@ export function DigestEditorDialog({
           <ProjectField form={form} set={set} locked={digest !== null} />
         </div>
         <ScheduleFields form={form} set={set} />
-        <ChannelFields form={form} set={set} />
+        <ChannelFields form={form} set={set} projectIsPrivate={projectIsPrivate} />
         <BlocksField value={form.blocks} onChange={(v) => set('blocks', v)} />
-        <div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={showPreview}
-            loading={previewMutation.isPending}
-            disabled={form.blocks.length === 0}
-          >
-            <Eye className="h-4 w-4" />
-            Xem trước
-          </Button>
-          <p className="mt-1 text-xs text-faint">
-            Xem trước theo quyền của bạn. Tin gửi vào nhóm Telegram chỉ gồm dữ liệu dự án công khai
-            (trừ báo cáo gắn một dự án cụ thể); mỗi email theo quyền của người nhận.
-          </p>
-          {preview !== null && (
-            <pre
-              aria-label="Nội dung xem trước"
-              className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-surface-2 p-3 font-mono text-xs text-ink"
-            >
-              {preview || 'Không có nội dung.'}
-            </pre>
-          )}
-        </div>
+        <PreviewPanel form={form} />
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * Xem trước KHỚP nội dung thật: "Nhóm Telegram" = đúng bản sẽ đăng (công khai; dự án riêng tư chỉ khi đã bật cho phép),
+ * "Email của tôi" = bản theo quyền của bạn như một người nhận. Đổi cấu hình thì bản đã xem bị xoá (không còn khớp).
+ */
+function PreviewPanel({ form }: { form: DigestFormState }) {
+  const hasChannel = form.channelId !== '';
+  const [as, setAs] = useState<'channel' | 'me'>(hasChannel ? 'channel' : 'me');
+  const mode = hasChannel ? as : 'me';
+  const preview = usePreviewDigest();
+  const { reset } = preview;
+  const signature = JSON.stringify([
+    form.projectId,
+    form.blocks,
+    form.channelId,
+    form.allowPrivateToChannel,
+    mode,
+  ]);
+  useEffect(() => reset(), [signature, reset]);
+
+  function run() {
+    preview.mutate(
+      {
+        projectId: form.projectId || undefined,
+        metrics: form.blocks,
+        as: mode,
+        allowPrivateToChannel: effectiveAllowPrivate(form),
+      },
+      { onError: (e) => toast.error(apiErrorMessage(e)) },
+    );
+  }
+
+  const result = preview.data;
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2">
+        {hasChannel && (
+          <div
+            role="group"
+            aria-label="Xem trước như"
+            className="inline-flex rounded-md border border-border p-0.5"
+          >
+            {(
+              [
+                ['channel', 'Nhóm Telegram'],
+                ['me', 'Email của tôi'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={mode === value}
+                onClick={() => setAs(value)}
+                className={cn(
+                  'rounded px-2.5 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                  mode === value ? 'bg-primary-subtle text-primary' : 'text-muted hover:text-ink',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={run}
+          loading={preview.isPending}
+          disabled={form.blocks.length === 0}
+        >
+          <Eye className="h-4 w-4" />
+          Xem trước
+        </Button>
+      </div>
+      <p className="mt-1 text-xs text-faint">
+        {mode === 'channel'
+          ? 'Đúng nội dung sẽ đăng vào nhóm Telegram: chỉ dự án công khai (dự án riêng tư chỉ khi bạn cho phép).'
+          : 'Theo quyền xem của bạn; mỗi người nhận email thấy nội dung theo quyền của chính họ.'}
+      </p>
+      {result?.channelSkipped && (
+        <p className="mt-2 rounded-md bg-surface-2 p-3 text-sm text-muted">
+          Dự án riêng tư chưa được phép đăng vào nhóm Telegram nên báo cáo này sẽ KHÔNG gửi vào nhóm
+          (chỉ email nếu có).
+        </p>
+      )}
+      {result && !result.channelSkipped && (
+        <pre
+          aria-label="Nội dung xem trước"
+          className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-surface-2 p-3 font-mono text-xs text-ink"
+        >
+          {result.summaryText || 'Không có nội dung.'}
+        </pre>
+      )}
+    </div>
   );
 }
 

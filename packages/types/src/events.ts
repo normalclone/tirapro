@@ -22,6 +22,10 @@ export const DOMAIN_EVENTS = {
   SPRINT_UPDATED: 'sprint.updated',
   MEMBER_ROLE_CHANGED: 'member.role_changed',
   MEMBER_REMOVED: 'member.removed', // payload { workspaceId, userId } — gateway ngắt socket của user khỏi workspace
+  // payload { workspaceId, projectId, userId } — người dùng bị gỡ khỏi dự án (riêng tư): gateway rút socket của họ khỏi room project nếu không còn thấy dự án
+  PROJECT_MEMBER_REMOVED: 'project.member_removed',
+  // payload { workspaceId, projectId } — cờ riêng tư của dự án đổi: gateway rà lại socket trong room project, ai không còn thấy thì bị rút
+  PROJECT_VISIBILITY_CHANGED: 'project.visibility_changed',
   // payload { userId } — phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị): gateway ngắt mọi socket của user
   ACCOUNT_SESSIONS_REVOKED: 'account.sessions_revoked',
   NOTIFICATION_CREATED: 'notification.created',

@@ -19,6 +19,24 @@ export interface JqlCompileContext {
   fulltext?: ReadonlyMap<string, readonly string[]>;
 }
 
+/**
+ * JQL có phụ thuộc người đang xem không: hàm `currentUser` (có/không ngoặc) ở bất kỳ trường nào, hoặc alias `me`
+ * ở trường người (assignee/reporter) — những điều kiện này không có nghĩa khi đo cho cả workspace (cron lịch sử KR).
+ */
+export function jqlDependsOnViewer(node: JqlNode | null): boolean {
+  const isViewerValue = (v: JqlValue, userField: boolean): boolean => {
+    if (v.kind === 'list') return v.value.some((x) => isViewerValue(x, userField));
+    if (v.kind === 'function') return v.name === 'currentUser';
+    return userField && isMe(v);
+  };
+  const walk = (n: JqlNode): boolean => {
+    if (n.type === 'logical') return walk(n.left) || walk(n.right);
+    if (n.type === 'not') return walk(n.node);
+    return isViewerValue(n.value, FIELD_MAP[n.field]?.kind === 'idUser');
+  };
+  return node ? walk(node) : false;
+}
+
 /** Các giá trị `text ~ "..."` (toán tử `~`, không rỗng) trong cây điều kiện — để tra full-text trước khi compile. */
 export function collectFulltextTerms(node: JqlNode | null): string[] {
   const out = new Set<string>();

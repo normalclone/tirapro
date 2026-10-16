@@ -27,6 +27,7 @@ import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { WRITABLE_PROJECT_FILTER } from '../../common/project-writable';
 import { CommentsService } from '../comments/comments.service';
 import { IssuesService } from '../issues/issues.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { compileJql } from '../search/jql-compiler';
 import { runActions, type ActionContext, type StepLog } from './actions';
 import { describeCondition, evalFieldCondition, isJqlCondition } from './rule-conditions';
@@ -90,6 +91,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     private readonly rules: RulesService,
     private readonly events: EventEmitter2,
     private readonly redis: RedisService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -335,6 +337,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
         prisma: this.prisma,
         issues: this.issues,
         comments: this.comments,
+        notifications: this.notifications,
         events: this.events,
         openSecret: (s: string) => this.rules.openSecret(s),
       },

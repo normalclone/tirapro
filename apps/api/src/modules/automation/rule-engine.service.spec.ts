@@ -119,6 +119,7 @@ function setup(rule = makeRule(), issue = issueDto()) {
     rules as never,
     events as never,
     redis as never,
+    { filterCanSee: vi.fn((ids: string[]) => Promise.resolve(ids)), publish: vi.fn() } as never,
   );
   return { engine, prisma, issues, comments, rules, events };
 }

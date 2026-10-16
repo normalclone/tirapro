@@ -12,6 +12,7 @@ import {
   TelegramWebhookConflictError,
   parseLinkCommand,
 } from './telegram.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 
 /** Bảng chữ không nhập nhằng (bỏ 0 O 1 I L). */
 export const LINK_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -59,6 +60,7 @@ export class LinkCodesService {
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramService,
     private readonly integrations: IntegrationsService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   /** Đồng hồ — thuộc tính thường (KHÔNG phải tham số constructor: Nest sẽ cố tiêm) để test đặt giờ cố định. */
@@ -93,6 +95,8 @@ export class LinkCodesService {
         select: { id: true },
       });
       if (!project) throw new NotFoundAppException('Dự án');
+      // Mã gắn với dự án ⇒ nhóm chat nhập mã sẽ nhận thông báo dự án đó: người tạo mã phải thấy dự án (404 như không tồn tại).
+      await this.access.assertCanSee(userId, workspaceId, projectId, 'Dự án');
     }
     const now = this.clock();
     const dayAgo = new Date(now.getTime() - CLEANUP_AFTER_MS);

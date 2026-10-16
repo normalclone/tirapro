@@ -362,6 +362,14 @@ export const KeyResultUnit = {
 } as const;
 export type KeyResultUnit = (typeof KeyResultUnit)[keyof typeof KeyResultUnit];
 
+export const KeyResultSource = {
+  MANUAL: 'MANUAL',
+  OPEN_BUGS: 'OPEN_BUGS',
+  SPRINT_COMPLETION: 'SPRINT_COMPLETION',
+  ISSUE_COUNT_JQL: 'ISSUE_COUNT_JQL',
+} as const;
+export type KeyResultSource = (typeof KeyResultSource)[keyof typeof KeyResultSource];
+
 export const RecurrenceFreq = {
   DAILY: 'DAILY',
   WEEKLY: 'WEEKLY',
@@ -375,6 +383,12 @@ export const TimeOffKind = {
   OTHER: 'OTHER',
 } as const;
 export type TimeOffKind = (typeof TimeOffKind)[keyof typeof TimeOffKind];
+
+export const CheckInSource = {
+  MANUAL: 'MANUAL',
+  AUTO: 'AUTO',
+} as const;
+export type CheckInSource = (typeof CheckInSource)[keyof typeof CheckInSource];
 
 export const MailStatus = {
   PENDING: 'PENDING',

@@ -28,6 +28,7 @@ export * from './notification-title';
 export * from './duration';
 export * from './lexorank';
 export * from './guides';
+export * from './default-guides';
 export * from './csv';
 export * from './vn-date';
 export * from './digest';

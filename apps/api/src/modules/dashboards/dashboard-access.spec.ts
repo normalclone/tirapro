@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { canEditDashboard, dashboardVisibleWhere, sortDashboards } from './dashboard-access';
+import { matches } from './where-matcher.testutil';
+import {
+  canDeleteDashboard,
+  canEditDashboard,
+  dashboardVisibleWhere,
+  sortDashboards,
+} from './dashboard-access';
 
 const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
 
@@ -39,43 +45,96 @@ describe('dashboardVisibleWhere', () => {
   });
 });
 
-describe('canEditDashboard', () => {
-  const base = { ownerId: 'owner', scope: 'GLOBAL' as const, team: null };
+describe('canEditDashboard / canDeleteDashboard — I1: chỉ chủ sửa, admin chỉ xoá', () => {
   const me = (isAdmin = false) => ({ userId: 'u1', isAdmin });
-
-  it('chủ luôn sửa được', () => {
-    expect(canEditDashboard({ userId: 'owner', isAdmin: false }, base, false)).toBe(true);
-    expect(
-      canEditDashboard({ userId: 'owner', isAdmin: false }, { ...base, scope: 'PRIVATE' }, false),
-    ).toBe(true);
+  const d = (scope: 'PRIVATE' | 'GLOBAL' | 'PROJECT' | 'TEAM', ownerId = 'owner') => ({
+    ownerId,
+    scope,
   });
 
-  it('người khác không sửa được GLOBAL; admin sửa được GLOBAL', () => {
-    expect(canEditDashboard(me(), base, false)).toBe(false);
-    expect(canEditDashboard(me(true), base, false)).toBe(true);
+  it('chỉ chủ sửa được, ở mọi mức', () => {
+    for (const scope of ['PRIVATE', 'GLOBAL', 'PROJECT', 'TEAM'] as const) {
+      expect(canEditDashboard({ userId: 'owner', isAdmin: false }, d(scope))).toBe(true);
+      expect(canEditDashboard(me(), d(scope))).toBe(false);
+    }
   });
 
-  it('admin KHÔNG sửa được PRIVATE của người khác', () => {
-    expect(canEditDashboard(me(true), { ...base, scope: 'PRIVATE' }, false)).toBe(false);
+  it('admin workspace KHÔNG sửa/đổi mức chia sẻ dashboard người khác', () => {
+    for (const scope of ['PRIVATE', 'GLOBAL', 'PROJECT', 'TEAM'] as const) {
+      expect(canEditDashboard(me(true), d(scope))).toBe(false);
+    }
   });
 
-  it('PROJECT: project:admin của dự án đó sửa được', () => {
-    expect(canEditDashboard(me(), { ...base, scope: 'PROJECT' }, true)).toBe(true);
-    expect(canEditDashboard(me(), { ...base, scope: 'PROJECT' }, false)).toBe(false);
+  it('chủ xoá được; người thường không xoá của người khác', () => {
+    expect(canDeleteDashboard({ userId: 'owner', isAdmin: false }, d('PRIVATE'))).toBe(true);
+    expect(canDeleteDashboard(me(), d('GLOBAL'))).toBe(false);
+    expect(canDeleteDashboard(me(), d('PROJECT'))).toBe(false);
+    expect(canDeleteDashboard(me(), d('TEAM'))).toBe(false);
   });
 
-  it('TEAM: trưởng nhóm sửa được, thành viên thường thì không', () => {
-    const team = { leadId: 'u1' };
-    expect(canEditDashboard(me(), { ...base, scope: 'TEAM', team }, false)).toBe(true);
-    expect(canEditDashboard(me(), { ...base, scope: 'TEAM', team: { leadId: 'x' } }, false)).toBe(
-      false,
-    );
-    expect(canEditDashboard(me(), { ...base, scope: 'TEAM', team: null }, false)).toBe(false);
+  it('admin xoá được dashboard ĐÃ chia sẻ (kiểm duyệt) nhưng không bao giờ PRIVATE của người khác', () => {
+    expect(canDeleteDashboard(me(true), d('GLOBAL'))).toBe(true);
+    expect(canDeleteDashboard(me(true), d('PROJECT'))).toBe(true);
+    expect(canDeleteDashboard(me(true), d('TEAM'))).toBe(true);
+    expect(canDeleteDashboard(me(true), d('PRIVATE'))).toBe(false);
+  });
+});
+
+describe('dashboardVisibleWhere — đánh giá trên ma trận dữ liệu (không chỉ hình dạng where)', () => {
+  const pub = { deletedAt: null, isPrivate: false, memberships: [] };
+  const priv = { deletedAt: null, isPrivate: true, memberships: [{ userId: 'pm' }] };
+  const team = { deletedAt: null, leadId: 'lead', members: [{ userId: 'tm' }] };
+  const row = (over: Record<string, unknown>) => ({
+    workspaceId: 'w1',
+    deletedAt: null,
+    ownerId: 'someone',
+    scope: 'GLOBAL',
+    project: null,
+    team: null,
+    ...over,
+  });
+  const rows = {
+    privMine: row({ scope: 'PRIVATE', ownerId: 'u' }),
+    privOther: row({ scope: 'PRIVATE', ownerId: 'x' }),
+    global: row({ scope: 'GLOBAL' }),
+    projPub: row({ scope: 'PROJECT', project: pub }),
+    projPriv: row({ scope: 'PROJECT', project: priv }),
+    projDeleted: row({ scope: 'PROJECT', project: { ...pub, deletedAt: new Date() } }),
+    teamD: row({ scope: 'TEAM', team }),
+    teamDeleted: row({ scope: 'TEAM', team: { ...team, deletedAt: new Date() } }),
+    deletedDash: row({ scope: 'GLOBAL', deletedAt: new Date() }),
+    otherWs: row({ scope: 'GLOBAL', workspaceId: 'w2' }),
+  };
+  const visibleFor = (userId: string, isAdmin = false) => {
+    const projectVisible = isAdmin
+      ? {}
+      : { OR: [{ isPrivate: false }, { memberships: { some: { userId } } }] };
+    const where = dashboardVisibleWhere({ userId, isAdmin }, 'w1', projectVisible);
+    return Object.entries(rows)
+      .filter(([, r]) => matches(r, where as Record<string, unknown>))
+      .map(([k]) => k)
+      .sort();
+  };
+
+  it('người lạ: chỉ GLOBAL + PROJECT công khai (không PRIVATE, không dự án riêng tư, không nhóm)', () => {
+    expect(visibleFor('stranger')).toEqual(['global', 'projPub']);
   });
 
-  it('isProjectAdmin chỉ có nghĩa với mức PROJECT', () => {
-    expect(canEditDashboard(me(), { ...base, scope: 'TEAM', team: null }, true)).toBe(false);
-    expect(canEditDashboard(me(), { ...base, scope: 'GLOBAL' }, true)).toBe(false);
+  it('chủ thấy thêm bản PRIVATE của mình', () => {
+    expect(visibleFor('u')).toEqual(['global', 'privMine', 'projPub']);
+  });
+
+  it('thành viên dự án riêng tư thấy dashboard của dự án đó; dự án đã xoá thì không', () => {
+    expect(visibleFor('pm')).toEqual(['global', 'projPriv', 'projPub']);
+  });
+
+  it('thành viên và trưởng nhóm thấy dashboard TEAM; nhóm đã xoá thì không', () => {
+    expect(visibleFor('tm')).toEqual(['global', 'projPub', 'teamD']);
+    expect(visibleFor('lead')).toEqual(['global', 'projPub', 'teamD']);
+  });
+
+  it('admin: mọi GLOBAL/PROJECT/TEAM còn sống; KHÔNG có PRIVATE của người khác; không có dashboard/dự án/nhóm đã xoá', () => {
+    expect(visibleFor('adm', true)).toEqual(['global', 'projPriv', 'projPub', 'teamD']);
   });
 });
 

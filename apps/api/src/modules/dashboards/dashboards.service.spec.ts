@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DashboardsService } from './dashboards.service';
+import { matches } from './where-matcher.testutil';
 
 const NOW = new Date('2026-10-16T01:00:00.000Z');
 
@@ -9,7 +10,6 @@ interface Opts {
   canSee?: boolean;
   /** Dòng dashboard trả về từ findFirst. */
   row?: Record<string, unknown> | null;
-  perms?: string[];
   team?: Record<string, unknown> | null;
   project?: Record<string, unknown> | null;
   dashboardCount?: number;
@@ -88,11 +88,8 @@ function make(opts: Opts = {}) {
     visibleWhere: vi.fn(() => Promise.resolve(opts.visibleWhere ?? {})),
     canSee: vi.fn(() => Promise.resolve(opts.canSee ?? true)),
   };
-  const rbac = {
-    getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(opts.perms ?? []))),
-  };
-  const svc = new DashboardsService(prisma as never, access as never, rbac as never);
-  return { svc, prisma, access, rbac, tx };
+  const svc = new DashboardsService(prisma as never, access as never);
+  return { svc, prisma, access, tx };
 }
 
 const widget = (over: Record<string, unknown> = {}) => ({
@@ -130,8 +127,18 @@ describe('DashboardsService.list', () => {
     ]);
     const out = await svc.list('w1', 'u1');
     expect(out.map((d) => d.id)).toEqual(['b', 'a']);
-    expect(out[0]).toMatchObject({ isMine: true, canEdit: true, widgetCount: 0 });
-    expect(out[1]).toMatchObject({ isMine: false, canEdit: false, widgetCount: 2 });
+    expect(out[0]).toMatchObject({
+      isMine: true,
+      canEdit: true,
+      canDelete: true,
+      widgetCount: 0,
+    });
+    expect(out[1]).toMatchObject({
+      isMine: false,
+      canEdit: false,
+      canDelete: false,
+      widgetCount: 2,
+    });
     expect(out[0]).not.toHaveProperty('widgets');
   });
 });
@@ -178,11 +185,10 @@ describe('DashboardsService.get', () => {
           { id: 'w1', type: 'OVERLOAD', title: 'A', config: {}, position: { order: 0, w: 2 } },
         ],
       }),
-      perms: ['project:admin'],
     });
     const d = await svc.get('w1', 'd1', 'u2');
     expect(d.widgets.map((w) => w.id)).toEqual(['w1', 'w2']);
-    expect(d.canEdit).toBe(true);
+    expect(d.canEdit).toBe(false); // u2 không phải chủ
     expect(d.project).toEqual({ id: 'p1', key: 'A', name: 'Dự án A' });
   });
 
@@ -303,17 +309,36 @@ describe('DashboardsService.update', () => {
     expect(call[0].data).toMatchObject({ scope: 'GLOBAL', projectId: null, teamId: null });
   });
 
-  it('người không có quyền sửa → 403; project:admin của dự án sửa được', async () => {
-    const row = rowOf({ scope: 'PROJECT', projectId: 'p1', ownerId: 'other' });
-    const denied = make({ row });
-    await expect(
-      denied.svc.update('w1', 'd1', 'u1', update({ scope: 'PROJECT', projectId: 'p1' })),
-    ).rejects.toMatchObject({ status: 403 });
-    expect(denied.prisma.$transaction).not.toHaveBeenCalled();
-    const ok = make({ row, perms: ['project:admin'] });
-    await ok.svc.update('w1', 'd1', 'u1', update({ scope: 'PROJECT', projectId: 'p1' }));
-    expect(ok.prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(ok.rbac.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', 'p1');
+  it('I1: chỉ CHỦ sửa/đổi mức chia sẻ — admin, project:admin, trưởng nhóm đều 403, không mở giao dịch', async () => {
+    const cases = [
+      { row: rowOf({ scope: 'GLOBAL', ownerId: 'other' }), isAdmin: true }, // admin workspace
+      { row: rowOf({ scope: 'PROJECT', projectId: 'p1', ownerId: 'other' }), isAdmin: false },
+      {
+        row: rowOf({
+          scope: 'TEAM',
+          teamId: 't1',
+          ownerId: 'other',
+          team: { id: 't1', name: 'N', leadId: 'u1' },
+        }),
+        isAdmin: false,
+      }, // u1 là trưởng nhóm
+    ];
+    for (const c of cases) {
+      const t = make({ row: c.row, isAdmin: c.isAdmin });
+      await expect(
+        t.svc.update('w1', 'd1', 'u1', update({ scope: 'PRIVATE' })),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(t.prisma.$transaction).not.toHaveBeenCalled();
+    }
+  });
+
+  it('chủ đổi PROJECT → PRIVATE rồi đọc lại: không còn lỗi 404 (chủ luôn thấy bản của mình)', async () => {
+    const { svc, prisma } = make({
+      row: rowOf({ scope: 'PROJECT', projectId: 'p1', ownerId: 'u1' }),
+    });
+    await expect(svc.update('w1', 'd1', 'u1', update({ scope: 'PRIVATE' }))).resolves.toBeDefined();
+    const where = JSON.stringify(prisma.dashboard.findFirst.mock.calls.at(-1));
+    expect(where).toContain('"ownerId":"u1"');
   });
 
   it('thay widget trong 1 $transaction: giữ id cũ (update), tạo mới, xoá widget thiếu', async () => {
@@ -422,7 +447,7 @@ describe('DashboardsService.duplicate / remove', () => {
     });
   });
 
-  it('remove: xoá mềm (deletedAt) khi có quyền; người khác → 403; không thấy → 404', async () => {
+  it('remove: chủ xoá mềm (deletedAt); người khác → 403; không thấy → 404', async () => {
     const ok = make();
     await ok.svc.remove('w1', 'd1', 'u1');
     expect(ok.prisma.dashboard.update).toHaveBeenCalledWith({
@@ -434,5 +459,123 @@ describe('DashboardsService.duplicate / remove', () => {
     await expect(make({ row: null }).svc.remove('w1', 'd1', 'u1')).rejects.toMatchObject({
       status: 404,
     });
+  });
+
+  it('I1: admin chỉ XOÁ được (kiểm duyệt) dashboard đã chia sẻ của người khác', async () => {
+    for (const scope of ['GLOBAL', 'PROJECT', 'TEAM']) {
+      const t = make({ isAdmin: true, row: rowOf({ ownerId: 'other', scope }) });
+      await t.svc.remove('w1', 'd1', 'adm');
+      expect(t.prisma.dashboard.update).toHaveBeenCalledTimes(1);
+    }
+  });
+});
+
+describe('DashboardsService.get — che chuỗi JQL nhắc tới dự án người xem không thấy (M7)', () => {
+  const jqlRow = (ownerId: string) =>
+    rowOf({
+      ownerId,
+      scope: 'GLOBAL',
+      widgets: [
+        {
+          id: 'w1',
+          type: 'ISSUE_LIST',
+          title: 'Việc',
+          config: { jql: 'project = SECRET AND status = Open', limit: 10 },
+          position: { order: 0, w: 1 },
+        },
+        {
+          id: 'w2',
+          type: 'ISSUE_LIST',
+          title: 'Việc 2',
+          config: { jql: 'assignee = currentUser()', limit: 10 },
+          position: { order: 1, w: 1 },
+        },
+        {
+          id: 'w3',
+          type: 'ISSUE_LIST',
+          title: 'Việc 3',
+          config: { jql: 'key = SECRET-12', limit: 10 },
+          position: { order: 2, w: 1 },
+        },
+      ],
+    });
+
+  it('người xem khác chủ: jql nhắc dự án ẩn (mã dự án hoặc khoá việc) bị che + masked; jql khác giữ nguyên', async () => {
+    const { svc, prisma } = make({ row: jqlRow('other'), visibleWhere: { isPrivate: false } });
+    prisma.project.findMany.mockImplementation(((a: { where: { NOT?: unknown } }) =>
+      Promise.resolve(a.where.NOT ? [{ id: 'cabc123', key: 'SECRET' }] : [{ id: 'p1' }])) as never);
+    const d = await svc.get('w1', 'd1', 'u1');
+    expect(d.widgets[0]!.config).toMatchObject({ jql: '', masked: true });
+    expect(d.widgets[1]!.config).toEqual({ jql: 'assignee = currentUser()', limit: 10 });
+    expect(d.widgets[2]!.config).toMatchObject({ jql: '', masked: true });
+  });
+
+  it('chủ và admin thấy nguyên văn (không truy vấn dự án ẩn)', async () => {
+    const own = make({ row: jqlRow('u1') });
+    const d1 = await own.svc.get('w1', 'd1', 'u1');
+    expect(d1.widgets[0]!.config).toMatchObject({ jql: 'project = SECRET AND status = Open' });
+    const adm = make({ row: jqlRow('other'), isAdmin: true });
+    const d2 = await adm.svc.get('w1', 'd1', 'adm');
+    expect(d2.widgets[0]!.config).toMatchObject({ jql: 'project = SECRET AND status = Open' });
+    for (const t of [own, adm]) {
+      expect(JSON.stringify(t.prisma.project.findMany.mock.calls)).not.toContain('"NOT"');
+    }
+  });
+});
+
+describe('DashboardsService — 404 theo dữ liệu thật (where được đánh giá, không chỉ so hình dạng)', () => {
+  const pub = { deletedAt: null, isPrivate: false, memberships: [] };
+  const priv = { deletedAt: null, isPrivate: true, memberships: [{ userId: 'pm' }] };
+  const team = { deletedAt: null, leadId: 'lead', members: [{ userId: 'tm' }] };
+  const data = [
+    rowOf({ id: 'privOther', ownerId: 'x', scope: 'PRIVATE' }),
+    rowOf({ id: 'projPriv', ownerId: 'x', scope: 'PROJECT', project: priv, projectId: 'pp' }),
+    rowOf({ id: 'projPub', ownerId: 'x', scope: 'PROJECT', project: pub, projectId: 'pu' }),
+    rowOf({ id: 'teamD', ownerId: 'x', scope: 'TEAM', team, teamId: 't1' }),
+    rowOf({ id: 'global', ownerId: 'x', scope: 'GLOBAL' }),
+  ];
+
+  function real(userId: string, isAdmin: boolean) {
+    const t = make();
+    const visible = isAdmin
+      ? {}
+      : { OR: [{ isPrivate: false }, { memberships: { some: { userId } } }] };
+    t.access.seesAll.mockResolvedValue(isAdmin);
+    t.access.visibleWhere.mockResolvedValue(visible);
+    t.prisma.dashboard.findFirst.mockImplementation(((a: { where: Record<string, unknown> }) =>
+      Promise.resolve(data.find((r) => matches(r as never, a.where)) ?? null)) as never);
+    t.prisma.dashboard.findMany.mockImplementation(((a: { where: Record<string, unknown> }) =>
+      Promise.resolve(data.filter((r) => matches(r as never, a.where)))) as never);
+    t.prisma.project.findMany.mockImplementation(() =>
+      Promise.resolve([{ id: 'pp' }, { id: 'pu' }]),
+    );
+    return t;
+  }
+
+  it('người lạ: 404 cho PRIVATE người khác, dự án riêng tư, nhóm không thuộc; thấy GLOBAL và dự án công khai', async () => {
+    const { svc } = real('stranger', false);
+    for (const id of ['privOther', 'projPriv', 'teamD']) {
+      await expect(svc.get('w1', id, 'stranger')).rejects.toMatchObject({ status: 404 });
+    }
+    for (const id of ['global', 'projPub']) {
+      await expect(svc.get('w1', id, 'stranger')).resolves.toMatchObject({ id });
+    }
+    expect((await svc.list('w1', 'stranger')).map((d) => d.id).sort()).toEqual([
+      'global',
+      'projPub',
+    ]);
+  });
+
+  it('thành viên dự án riêng tư / nhóm thấy đúng phần của mình; admin không thấy PRIVATE người khác', async () => {
+    await expect(real('pm', false).svc.get('w1', 'projPriv', 'pm')).resolves.toMatchObject({
+      id: 'projPriv',
+    });
+    await expect(real('tm', false).svc.get('w1', 'teamD', 'tm')).resolves.toMatchObject({
+      id: 'teamD',
+    });
+    const admin = real('adm', true).svc;
+    await expect(admin.get('w1', 'privOther', 'adm')).rejects.toMatchObject({ status: 404 });
+    await expect(admin.get('w1', 'projPriv', 'adm')).resolves.toMatchObject({ id: 'projPriv' });
+    await expect(admin.get('w1', 'teamD', 'adm')).resolves.toMatchObject({ id: 'teamD' });
   });
 });

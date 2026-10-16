@@ -265,6 +265,7 @@ model User {
   timeOffs             TimeOff[]
   ownedPrograms        Program[]             @relation("ProgramOwner")
   ownedObjectives      Objective[]           @relation("ObjectiveOwner")
+  keyResultCheckIns    KeyResultCheckIn[]    @relation("KeyResultCheckInAuthor")
   ownedRaidItems       RaidItem[]            @relation("RaidOwner")
   passwordResetTokens  PasswordResetToken[]
 
@@ -1516,6 +1517,8 @@ model ReportSubscription {
   timezone    String   @default("Asia/Ho_Chi_Minh")
   /// Gửi email cho `recipients` (userId thành viên workspace) bên cạnh kênh Telegram.
   deliverEmail Boolean @default(false)
+  /// Digest gắn dự án riêng tư: cho phép đăng nội dung (tiêu đề việc, sprint, rủi ro) vào KÊNH chung. Mặc định tắt.
+  allowPrivateToChannel Boolean @default(false)
   cron        String?
   metrics     String[] // các khối metric chọn tổng hợp (xem REPORT_METRIC_BLOCKS)
   channelId   String?  // gửi tới IntegrationChannel (Telegram)
@@ -1674,6 +1677,14 @@ enum KeyResultUnit {
   NUMBER
   PERCENT
   CURRENCY
+}
+
+/// Nguồn số liệu của Key Result: nhập tay hoặc tự đo từ dữ liệu dự án (L25).
+enum KeyResultSource {
+  MANUAL
+  OPEN_BUGS
+  SPRINT_COMPLETION
+  ISSUE_COUNT_JQL
 }
 
 enum RecurrenceFreq {
@@ -1853,12 +1864,45 @@ model KeyResult {
   startValue   Float         @default(0)
   targetValue  Float
   currentValue Float         @default(0)
+  /// Nguồn số liệu (L25). KR tự đo: số hiện tại tính lúc đọc, `currentValue` giữ giá trị tay lần cuối.
+  source       KeyResultSource @default(MANUAL)
+  /// Cấu hình theo nguồn: { projectId? } | { projectId } | { jql } — kiểm ở goals.schemas.
+  sourceConfig Json?
+  /// Nhãn đơn vị hiển thị sau số ("4 bug", "12 điểm"); bỏ qua với đơn vị PERCENT (L26).
+  unitLabel    String?       @db.VarChar(20)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
   objective Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  checkIns  KeyResultCheckIn[]
 
   @@index([objectiveId])
+}
+
+/// Nguồn một dòng lịch sử KR: nhập tay (check-in) hoặc cron chụp hằng ngày (L29).
+enum CheckInSource {
+  MANUAL
+  AUTO
+}
+
+/// Lịch sử cập nhật giá trị của Key Result (check-in tay có ghi chú). Bất biến: không sửa/xoá — nhập sai thì check-in mới (L26).
+/// Bản chụp AUTO (L29): mỗi KR tối đa MỘT dòng/ngày UTC — unique (keyResultId, snapshotDate); NULL (check-in tay) không bị ràng.
+model KeyResultCheckIn {
+  id            String   @id @default(cuid())
+  keyResultId   String
+  value         Float
+  previousValue Float?
+  note          String?  @db.VarChar(500)
+  authorId      String?
+  source        CheckInSource @default(MANUAL)
+  snapshotDate  DateTime? @db.Date
+  createdAt     DateTime @default(now())
+
+  keyResult KeyResult @relation(fields: [keyResultId], references: [id], onDelete: Cascade)
+  author    User?     @relation("KeyResultCheckInAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([keyResultId, snapshotDate])
+  @@index([keyResultId, createdAt])
 }
 
 /// Gắn issue/epic vào mục tiêu để tính tiến độ theo công việc thực tế.

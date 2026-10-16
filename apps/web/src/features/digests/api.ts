@@ -19,6 +19,8 @@ export interface Digest {
   /** userId của thành viên workspace nhận email. */
   recipients: string[];
   deliverEmail: boolean;
+  /** Digest gắn dự án RIÊNG TƯ: cho phép đăng nội dung vào nhóm Telegram (mặc định không). */
+  allowPrivateToChannel: boolean;
   /** 0 = Chủ nhật … 6 = Thứ Bảy (chỉ WEEKLY). */
   weekday: number;
   /** 0–23 theo `timezone`. */
@@ -37,6 +39,7 @@ export interface CreateDigestInput {
   metrics?: string[];
   recipients?: string[];
   deliverEmail?: boolean;
+  allowPrivateToChannel?: boolean;
   weekday?: number;
   hour?: number;
   timezone?: string;
@@ -52,6 +55,7 @@ export interface UpdateDigestInput {
   metrics?: string[];
   recipients?: string[];
   deliverEmail?: boolean;
+  allowPrivateToChannel?: boolean;
   weekday?: number;
   hour?: number;
   timezone?: string;
@@ -60,11 +64,16 @@ export interface UpdateDigestInput {
 export interface PreviewDigestInput {
   projectId?: string;
   metrics?: string[];
+  /** `channel` = đúng bản sẽ đăng vào nhóm Telegram; `me` (mặc định) = bản theo quyền của bạn. */
+  as?: 'channel' | 'me';
+  allowPrivateToChannel?: boolean;
 }
 
 export interface RunDigestResult {
   sent: boolean;
   summaryText: string;
+  /** Có kênh Telegram nhưng KHÔNG đăng (dự án riêng tư chưa được phép đăng vào nhóm). */
+  channelSkipped: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -133,7 +142,9 @@ export function useRunDigest() {
 export function usePreviewDigest() {
   return useMutation({
     mutationFn: (input: PreviewDigestInput) =>
-      api.post<{ summaryText: string }>('/digests/preview', input).then((r) => r.data),
+      api
+        .post<{ summaryText: string; channelSkipped: boolean }>('/digests/preview', input)
+        .then((r) => r.data),
   });
 }
 

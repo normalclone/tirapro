@@ -4,6 +4,9 @@ import { WorkflowAdminService } from './workflow-admin.service';
 const ARCHIVED = 'Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi';
 
 /** Prisma giả: workflow `wf1` thuộc dự án `p1` (hoặc cấp workspace khi `projectId = null`). */
+/** Người xem thấy mọi dự án (admin): visibleWhere = {}. */
+const ALL_ACCESS = { visibleWhere: vi.fn(() => Promise.resolve({})) };
+
 function make(opts: { projectId: string | null; archived?: boolean }) {
   const wfRow = {
     id: 'wf1',
@@ -72,7 +75,7 @@ function make(opts: { projectId: string | null; archived?: boolean }) {
     issue: { count: vi.fn(() => Promise.resolve(0)) },
     $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
   };
-  const service = new WorkflowAdminService(prisma as never);
+  const service = new WorkflowAdminService(prisma as never, ALL_ACCESS as never);
   return { service, prisma };
 }
 
@@ -175,8 +178,8 @@ describe('WorkflowAdminService.listWorkflows — usedBy', () => {
         ),
       },
     };
-    const svc = new WorkflowAdminService(prisma as never);
-    const out = await svc.listWorkflows('ws1', {});
+    const svc = new WorkflowAdminService(prisma as never, ALL_ACCESS as never);
+    const out = await svc.listWorkflows('ws1', {}, 'u1');
     expect(out.find((w) => w.id === 'w1')!.usedBy).toEqual([
       { id: 'p1', key: 'WM', name: 'Website', deleted: false },
       { id: 'p2', key: 'OLD', name: 'Cũ', deleted: true },
@@ -196,7 +199,11 @@ describe('WorkflowAdminService.listWorkflows — usedBy', () => {
         ),
       },
     };
-    const out = await new WorkflowAdminService(prisma as never).getWorkflow('ws1', 'w1');
+    const out = await new WorkflowAdminService(prisma as never, ALL_ACCESS as never).getWorkflow(
+      'ws1',
+      'w1',
+      'u1',
+    );
     expect(out.usedBy).toEqual([{ id: 'p1', key: 'WM', name: 'Website', deleted: false }]);
   });
 
@@ -205,5 +212,83 @@ describe('WorkflowAdminService.listWorkflows — usedBy', () => {
     prisma.project.findMany.mockResolvedValueOnce([{ key: 'WM' }, { key: 'HR' }] as never);
     await expect(service.removeWorkflow('w1', 'wf1')).rejects.toThrow(/WM, HR.*kể cả dự án đã xoá/);
     expect(prisma.workflow.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('WorkflowAdminService — dự án riêng tư: quy trình và "Dùng bởi" (P15)', () => {
+  const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+  const wfRow = (id: string, projectId: string | null = null) => ({
+    id,
+    workspaceId: 'w1',
+    projectId,
+    name: id,
+    description: null,
+    isTemplate: false,
+    isDefault: false,
+    sourceTemplateId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    statuses: [],
+    transitions: [],
+  });
+
+  function build(visibleWhere: Record<string, unknown>) {
+    const prisma = {
+      workflow: {
+        findMany: vi.fn((..._a: unknown[]) => Promise.resolve([wfRow('tpl')])),
+        findFirst: vi.fn((..._a: unknown[]) => Promise.resolve(wfRow('tpl'))),
+      },
+      project: {
+        // dự án thấy được dùng 'tpl': WM; 1 dự án riêng tư HR cũng dùng nhưng bị loại ở truy vấn thứ nhất
+        findMany: vi.fn((..._a: unknown[]) =>
+          Promise.resolve([
+            { id: 'p1', key: 'WM', name: 'Website', defaultWorkflowId: 'tpl', deletedAt: null },
+          ]),
+        ),
+        groupBy: vi.fn((..._a: unknown[]) =>
+          Promise.resolve([{ defaultWorkflowId: 'tpl', _count: { _all: 1 } }]),
+        ),
+      },
+    };
+    const access = { visibleWhere: vi.fn(() => Promise.resolve(visibleWhere)) };
+    return { svc: new WorkflowAdminService(prisma as never, access as never), prisma, access };
+  }
+
+  it('usedBy chỉ gồm dự án thấy được; hiddenCount = số dự án riêng tư không thấy (không lộ khoá/tên)', async () => {
+    const { svc, prisma } = build(visible);
+    const [wf] = await svc.listWorkflows('w1', {}, 'u1');
+    expect(wf!.usedBy).toEqual([{ id: 'p1', key: 'WM', name: 'Website', deleted: false }]);
+    expect(wf!.hiddenCount).toBe(1);
+    expect(JSON.stringify(wf)).not.toContain('HR');
+    expect(prisma.project.findMany.mock.calls[0]![0]).toMatchObject({ where: { ...visible } });
+    expect(prisma.project.groupBy.mock.calls[0]![0]).toMatchObject({ where: { NOT: visible } });
+  });
+
+  it('thấy hết (admin): không groupBy, hiddenCount = 0', async () => {
+    const { svc, prisma } = build({});
+    const [wf] = await svc.listWorkflows('w1', {}, 'u1');
+    expect(wf!.hiddenCount).toBe(0);
+    expect(prisma.project.groupBy).not.toHaveBeenCalled();
+  });
+
+  it('listWorkflows: quy trình của dự án ẩn bị loại (OR [chung, dự án thấy được])', async () => {
+    const { svc, prisma } = build(visible);
+    await svc.listWorkflows('w1', {}, 'u1');
+    expect(prisma.workflow.findMany.mock.calls[0]![0]).toMatchObject({
+      where: { workspaceId: 'w1', OR: [{ projectId: null }, { project: visible }] },
+    });
+  });
+
+  it('getWorkflow quy trình của dự án ẩn → 404; thành viên thấy', async () => {
+    const hiddenOne = build(visible);
+    hiddenOne.prisma.workflow.findFirst.mockResolvedValueOnce(null as never);
+    await expect(hiddenOne.svc.getWorkflow('w1', 'wfHR', 'u1')).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(hiddenOne.prisma.workflow.findFirst.mock.calls[0]![0]).toMatchObject({
+      where: { id: 'wfHR', workspaceId: 'w1', OR: [{ projectId: null }, { project: visible }] },
+    });
+    const member = build(visible);
+    await expect(member.svc.getWorkflow('w1', 'tpl', 'u1')).resolves.toMatchObject({ id: 'tpl' });
   });
 });

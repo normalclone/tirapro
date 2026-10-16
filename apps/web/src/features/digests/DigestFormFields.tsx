@@ -8,22 +8,8 @@ import { Avatar } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import { useWorkspaceUsers } from '@/features/members/api';
 import { useDigestChannels, type DigestSchedule } from './api';
+import type { DigestFormState } from './digestForm';
 import { HOUR_OPTIONS, timeZoneOptions, WEEKDAY_OPTIONS } from './schedule';
-
-/** Trạng thái form tạo/sửa báo cáo định kỳ. */
-export interface DigestFormState {
-  name: string;
-  projectId: string;
-  schedule: DigestSchedule;
-  weekday: number;
-  hour: number;
-  timezone: string;
-  /** '' = không gửi Telegram. */
-  channelId: string;
-  deliverEmail: boolean;
-  recipients: string[];
-  blocks: DigestBlockId[];
-}
 
 export type SetDigestForm = <K extends keyof DigestFormState>(
   key: K,
@@ -145,7 +131,16 @@ export function ScheduleFields({ form, set }: { form: DigestFormState; set: SetD
 }
 
 /** Nơi gửi: Telegram (chọn kênh đã liên kết) và Email (chọn người nhận trong workspace) — độc lập nhau. */
-export function ChannelFields({ form, set }: { form: DigestFormState; set: SetDigestForm }) {
+export function ChannelFields({
+  form,
+  set,
+  projectIsPrivate,
+}: {
+  form: DigestFormState;
+  set: SetDigestForm;
+  /** Dự án đang gắn (nếu có) là dự án RIÊNG TƯ. */
+  projectIsPrivate: boolean;
+}) {
   const { options, loading } = useDigestChannels();
   return (
     <div className="space-y-3">
@@ -178,6 +173,12 @@ export function ChannelFields({ form, set }: { form: DigestFormState; set: SetDi
           disabled={options.length === 0 && form.channelId === ''}
         />
       </Field>
+      {projectIsPrivate && form.channelId !== '' && (
+        <PrivateChannelNotice
+          checked={form.allowPrivateToChannel}
+          onChange={(v) => set('allowPrivateToChannel', v)}
+        />
+      )}
       <div>
         <label className="flex cursor-pointer items-start gap-2.5 text-sm">
           <input
@@ -198,6 +199,47 @@ export function ChannelFields({ form, set }: { form: DigestFormState; set: SetDi
           <RecipientsPicker value={form.recipients} onChange={(v) => set('recipients', v)} />
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Dự án RIÊNG TƯ + kênh Telegram: mặc định KHÔNG đăng vào nhóm (nhóm có thể có người không thuộc dự án). Chỉ khi người
+ * tạo bật tường minh ô này mới đăng — nên cảnh báo nói thẳng nhóm sẽ thấy gì.
+ */
+function PrivateChannelNotice({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Dự án riêng tư và nhóm Telegram"
+      className="rounded-md border border-warning/40 bg-warning/5 p-3"
+    >
+      <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className={CHECKBOX_CLASS}
+        />
+        <span>
+          <span className="font-medium text-ink">Cho phép đăng vào nhóm Telegram</span>
+          <span className="block text-xs text-warning">
+            Mọi người trong nhóm Telegram sẽ thấy tiêu đề công việc, sprint, rủi ro của dự án riêng
+            tư này.
+          </span>
+          <span className="mt-1 block text-xs text-faint">
+            {checked
+              ? 'Đã bật: báo cáo đăng vào nhóm theo quyền xem của bạn.'
+              : 'Đang tắt: dự án riêng tư KHÔNG được đăng vào nhóm — chỉ gửi email theo quyền từng người nhận.'}
+          </span>
+        </span>
+      </label>
     </div>
   );
 }

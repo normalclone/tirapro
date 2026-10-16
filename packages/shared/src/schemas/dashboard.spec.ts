@@ -72,6 +72,15 @@ describe('dashboardInputSchema — luật theo mức chia sẻ', () => {
   });
 });
 
+describe('dashboardInputSchema — id ô', () => {
+  it('id ô trùng nhau trong cùng payload → từ chối (một ô bị cập nhật hai lần)', () => {
+    const dup = [widget({ id: 'a' }), widget({ id: 'a', position: { order: 1, w: 1 } })];
+    expect(dashboardInputSchema.safeParse(dash({ widgets: dup })).success).toBe(false);
+    const ok = [widget({ id: 'a' }), widget({ id: 'b', position: { order: 1, w: 1 } })];
+    expect(dashboardInputSchema.safeParse(dash({ widgets: ok })).success).toBe(true);
+  });
+});
+
 describe('widgetInputSchema', () => {
   it('loại chưa hỗ trợ (CFD…) → "Chưa hỗ trợ"', () => {
     for (const type of ['CFD', 'SPRINT_REPORT', 'CONTROL_CHART', 'AI_INSIGHT']) {

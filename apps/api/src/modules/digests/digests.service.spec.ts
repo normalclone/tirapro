@@ -44,10 +44,16 @@ function setup(
           metrics: [],
           createdById: 'u1',
           deliverEmail: false,
+          allowPrivateToChannel: false,
+          lastRunAt: null as Date | null,
           recipients: [] as string[],
         }),
       ),
       update: vi.fn(() => Promise.resolve({})),
+      updateMany: vi.fn((..._a: unknown[]) => Promise.resolve({ count: 1 })),
+    },
+    project: {
+      findFirst: vi.fn((..._a: unknown[]) => Promise.resolve({ isPrivate: false } as unknown)),
     },
     user: {
       findMany: vi.fn(() => Promise.resolve([] as unknown[])),
@@ -91,7 +97,7 @@ function setup(
 describe('DigestsService.run — token không dùng được', () => {
   it('unusable → 422, không gửi bằng bot toàn cục, đánh dấu tích hợp lỗi', async () => {
     const { service, telegram, integrations } = setup({ kind: 'unusable' });
-    await expect(service.run('w1', 's1')).rejects.toMatchObject({
+    await expect(service.run('w1', 's1', 'u1')).rejects.toMatchObject({
       status: 422,
       message: expect.stringContaining('không dùng được') as unknown,
     });
@@ -101,20 +107,20 @@ describe('DigestsService.run — token không dùng được', () => {
 
   it('tích hợp đã ERROR + token vẫn hỏng → run() vẫn ném 422 (không im lặng 200 sent:false)', async () => {
     const { service, telegram } = setup({ kind: 'unusable' }, 'ERROR');
-    await expect(service.run('w1', 's1')).rejects.toMatchObject({ status: 422 });
+    await expect(service.run('w1', 's1', 'u1')).rejects.toMatchObject({ status: 422 });
     expect(telegram.send).not.toHaveBeenCalled();
   });
 
   it('tích hợp status khác ACTIVE/ERROR → sent:false, không đụng token', async () => {
     const { service, telegram } = setup({ kind: 'unusable' }, 'DISABLED');
-    await expect(service.run('w1', 's1')).resolves.toMatchObject({ sent: false });
+    await expect(service.run('w1', 's1', 'u1')).resolves.toMatchObject({ sent: false });
     expect(telegram.resolveBotToken).not.toHaveBeenCalled();
     expect(telegram.send).not.toHaveBeenCalled();
   });
 
   it('tích hợp ERROR nhưng token dùng được → 422 gợi ý "Gửi thử", không gửi, không ghi lastRunAt', async () => {
     const { service, telegram, prisma } = setup({ kind: 'own', token: 'T' }, 'ERROR');
-    await expect(service.run('w1', 's1')).rejects.toMatchObject({
+    await expect(service.run('w1', 's1', 'u1')).rejects.toMatchObject({
       status: 422,
       message: expect.stringContaining('bấm Gửi thử') as unknown,
     });
@@ -124,22 +130,22 @@ describe('DigestsService.run — token không dùng được', () => {
 
   it('sent:false (kênh tắt/không có) → không ghi lastRunAt; sent:true → ghi lastRunAt', async () => {
     const off = setup({ kind: 'global' }, 'DISABLED');
-    await expect(off.service.run('w1', 's1')).resolves.toMatchObject({ sent: false });
+    await expect(off.service.run('w1', 's1', 'u1')).resolves.toMatchObject({ sent: false });
     expect(off.prisma.reportSubscription.update).not.toHaveBeenCalled();
     const ok = setup({ kind: 'global' });
-    await expect(ok.service.run('w1', 's1')).resolves.toMatchObject({ sent: true });
+    await expect(ok.service.run('w1', 's1', 'u1')).resolves.toMatchObject({ sent: true });
     expect(ok.prisma.reportSubscription.update).toHaveBeenCalledTimes(1);
   });
 
   it('global → gửi với token null', async () => {
     const { service, telegram } = setup({ kind: 'global' });
-    await expect(service.run('w1', 's1')).resolves.toMatchObject({ sent: true });
+    await expect(service.run('w1', 's1', 'u1')).resolves.toMatchObject({ sent: true });
     expect(telegram.send).toHaveBeenCalledWith(null, 'c1', expect.stringContaining('tổng kết'));
   });
 
   it('own/global → gửi như cũ', async () => {
     const { service, telegram } = setup({ kind: 'own', token: 'T' });
-    await expect(service.run('w1', 's1')).resolves.toMatchObject({ sent: true });
+    await expect(service.run('w1', 's1', 'u1')).resolves.toMatchObject({ sent: true });
     expect(telegram.send).toHaveBeenCalledWith('T', 'c1', expect.stringContaining('tổng kết'));
   });
 });
@@ -147,7 +153,7 @@ describe('DigestsService.run — token không dùng được', () => {
 describe('DigestsService — kênh phải thuộc workspace', () => {
   it('send(run) ràng workspaceId của subscription khi tra kênh', async () => {
     const { service, prisma } = setup({ kind: 'global' });
-    await service.run('w1', 's1');
+    await service.run('w1', 's1', 'u1');
     expect(prisma.integrationChannel.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -176,7 +182,7 @@ describe('DigestsService — kênh phải thuộc workspace', () => {
   it('update channelId của workspace khác -> 404, không ghi', async () => {
     const { service, prisma } = setup({ kind: 'global' });
     prisma.integrationChannel.findFirst.mockResolvedValueOnce(null as never);
-    await expect(service.update('w1', 's1', { channelId: 'khac-ws' })).rejects.toMatchObject({
+    await expect(service.update('w1', 's1', { channelId: 'khac-ws' }, 'u1')).rejects.toMatchObject({
       status: 404,
     });
     expect(prisma.reportSubscription.update).not.toHaveBeenCalled();
@@ -190,7 +196,7 @@ describe('DigestsService — kênh phải thuộc workspace', () => {
     await expect(service.create('w1', 'u1', { name: 'n', channelId: '' })).rejects.toMatchObject({
       status: 404,
     });
-    await expect(service.update('w1', 's1', { channelId: '' })).rejects.toMatchObject({
+    await expect(service.update('w1', 's1', { channelId: '' }, 'u1')).rejects.toMatchObject({
       status: 404,
     });
     expect(create).not.toHaveBeenCalled();
@@ -206,7 +212,7 @@ describe('DigestsService — kênh phải thuộc workspace', () => {
 
   it('update channelId null (gỡ kênh) không tra kênh', async () => {
     const { service, prisma } = setup({ kind: 'global' });
-    await service.update('w1', 's1', { channelId: null });
+    await service.update('w1', 's1', { channelId: null }, 'u1');
     expect(prisma.integrationChannel.findFirst).not.toHaveBeenCalled();
     expect(prisma.reportSubscription.update).toHaveBeenCalledTimes(1);
   });
@@ -531,46 +537,146 @@ describe('DigestsService.buildDigest — quyền xem (dự án riêng tư)', () 
 });
 
 describe('DigestsService — người xem của nội dung gửi nơi chung', () => {
-  it('run: digest toàn workspace dùng PUBLIC_VIEWER (kể cả khi người tạo là admin)', async () => {
-    const { service, prisma } = setup({ kind: 'global' });
-    prisma.reportSubscription.findFirst.mockResolvedValue({
+  const OPTS = { closedSprintId: undefined };
+  const subRow = (over: Record<string, unknown> = {}) =>
+    ({
       id: 's1',
       workspaceId: 'w1',
       projectId: null,
       channelId: 'ch1',
       metrics: [],
       createdById: 'admin',
-    } as never);
-    const spy = vi.spyOn(service, 'buildDigest');
-    await service.run('w1', 's1');
-    expect(spy).toHaveBeenCalledWith('w1', undefined, [], PUBLIC_VIEWER);
-  });
+      deliverEmail: false,
+      allowPrivateToChannel: false,
+      recipients: [],
+      lastRunAt: null,
+      ...over,
+    }) as never;
 
-  it('run: digest gắn dự án theo quyền người tạo (đã chọn rõ dự án đó)', async () => {
+  it('run: digest toàn workspace dùng PUBLIC_VIEWER (kể cả khi người tạo là admin)', async () => {
     const { service, prisma } = setup({ kind: 'global' });
-    prisma.reportSubscription.findFirst.mockResolvedValue({
-      id: 's1',
-      workspaceId: 'w1',
-      projectId: 'p1',
-      channelId: 'ch1',
-      metrics: ['summary'],
-      createdById: 'creator',
-    } as never);
+    prisma.reportSubscription.findFirst.mockResolvedValue(subRow());
     const spy = vi.spyOn(service, 'buildDigest');
-    await service.run('w1', 's1');
-    expect(spy).toHaveBeenCalledWith('w1', 'p1', ['summary'], 'creator');
+    await service.run('w1', 's1', 'u1');
+    expect(spy).toHaveBeenCalledWith('w1', undefined, [], PUBLIC_VIEWER, OPTS);
   });
 
-  it('preview: theo quyền người bấm; dự án không thấy → ném 404 từ ProjectAccessService', async () => {
+  it('run: digest gắn dự án CÔNG KHAI → vẫn PUBLIC_VIEWER (không dùng quyền người tạo)', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    prisma.reportSubscription.findFirst.mockResolvedValue(
+      subRow({ projectId: 'p1', metrics: ['summary'] }),
+    );
+    const spy = vi.spyOn(service, 'buildDigest');
+    await service.run('w1', 's1', 'u1');
+    expect(spy).toHaveBeenCalledWith('w1', 'p1', ['summary'], PUBLIC_VIEWER, OPTS);
+  });
+
+  it('I3: dự án RIÊNG TƯ + chưa bật allowPrivateToChannel → KHÔNG gửi kênh (channelSkipped), summary theo người bấm', async () => {
+    const { service, prisma, telegram } = setup({ kind: 'global' });
+    prisma.project.findFirst.mockResolvedValue({ isPrivate: true });
+    prisma.reportSubscription.findFirst.mockResolvedValue(subRow({ projectId: 'p1' }));
+    const spy = vi.spyOn(service, 'buildDigest');
+    const r = await service.run('w1', 's1', 'u1');
+    expect(telegram.send).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ sent: false, channelSkipped: true });
+    // Chỉ dựng bản cho người bấm; không bao giờ dựng bản kênh với quyền người tạo.
+    expect(spy.mock.calls.map((c) => c[3])).toEqual(['u1']);
+  });
+
+  it('I3: dự án riêng tư + ĐÃ bật allowPrivateToChannel → gửi kênh theo quyền người tạo', async () => {
+    const { service, prisma, telegram } = setup({ kind: 'global' });
+    prisma.project.findFirst.mockResolvedValue({ isPrivate: true });
+    prisma.reportSubscription.findFirst.mockResolvedValue(
+      subRow({ projectId: 'p1', allowPrivateToChannel: true, createdById: 'creator' }),
+    );
+    const spy = vi.spyOn(service, 'buildDigest');
+    const r = await service.run('w1', 's1', 'u1');
+    expect(spy).toHaveBeenCalledWith('w1', 'p1', [], 'creator', OPTS);
+    expect(telegram.send).toHaveBeenCalledTimes(1);
+    expect(r).toMatchObject({ sent: true, channelSkipped: false });
+  });
+
+  it('I3: bật cờ nhưng người tạo không còn thấy dự án (model "unavailable") → không gửi kênh', async () => {
+    const { service, prisma, telegram } = setup({ kind: 'global' });
+    prisma.project.findFirst.mockResolvedValue({ isPrivate: true });
+    prisma.reportSubscription.findFirst.mockResolvedValue(
+      subRow({ projectId: 'p1', allowPrivateToChannel: true, createdById: 'creator' }),
+    );
+    vi.spyOn(service, 'buildDigest').mockResolvedValue({
+      title: 't',
+      subtitle: '',
+      sections: [{ id: 'unavailable', title: 'x', lines: ['y'] }],
+    });
+    const r = await service.run('w1', 's1', 'u1');
+    expect(telegram.send).not.toHaveBeenCalled();
+    expect(r.channelSkipped).toBe(true);
+  });
+
+  it('I3: dự án đã xoá → không gửi kênh', async () => {
+    const { service, prisma, telegram } = setup({ kind: 'global' });
+    prisma.project.findFirst.mockResolvedValue(null);
+    prisma.reportSubscription.findFirst.mockResolvedValue(subRow({ projectId: 'p1' }));
+    const r = await service.run('w1', 's1', 'u1');
+    expect(telegram.send).not.toHaveBeenCalled();
+    expect(r.channelSkipped).toBe(true);
+  });
+
+  it('I3: allowPrivateToChannel chỉ hợp lệ khi digest gắn dự án (422); create/update lưu cờ', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    const create = vi.fn();
+    (prisma.reportSubscription as Record<string, unknown>).create = create;
+    await expect(
+      service.create('w1', 'u1', { name: 'n', allowPrivateToChannel: true }),
+    ).rejects.toMatchObject({ status: 422 });
+    await service.create('w1', 'u1', { name: 'n', projectId: 'p1', allowPrivateToChannel: true });
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ allowPrivateToChannel: true }) as unknown,
+    });
+    // update: digest hiện tại không gắn dự án → bật cờ bị chặn.
+    await expect(
+      service.update('w1', 's1', { allowPrivateToChannel: true }, 'u1'),
+    ).rejects.toMatchObject({ status: 422 });
+    prisma.reportSubscription.findFirst.mockResolvedValue(subRow({ projectId: 'p1' }));
+    await service.update('w1', 's1', { allowPrivateToChannel: true }, 'u1');
+    expect(prisma.reportSubscription.update).toHaveBeenCalledWith({
+      where: { id: 's1' },
+      data: { allowPrivateToChannel: true },
+    });
+  });
+
+  it('preview(as:me): theo quyền người bấm; dự án không thấy → 404 từ ProjectAccessService', async () => {
     const { service, access } = setup({ kind: 'global' });
     const spy = vi.spyOn(service, 'buildDigest');
     await expect(
       service.preview('w1', 'u7', { projectId: 'p1', metrics: ['risks'] }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       summaryText: expect.stringContaining('tổng kết') as unknown,
+      channelSkipped: false,
     });
     expect(access.assertCanSee).toHaveBeenCalledWith('u7', 'w1', 'p1', 'Dự án');
     expect(spy).toHaveBeenCalledWith('w1', 'p1', ['risks'], 'u7');
+    access.assertCanSee.mockRejectedValueOnce(Object.assign(new Error('x'), { status: 404 }));
+    await expect(service.preview('w1', 'u8', { projectId: 'p1' })).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
+  it('preview(as:channel): khớp tin thật — PUBLIC_VIEWER; dự án riêng tư chưa bật cờ → rỗng + channelSkipped', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    const spy = vi.spyOn(service, 'buildDigest');
+    await service.preview('w1', 'u7', { metrics: ['summary'], as: 'channel' });
+    expect(spy).toHaveBeenCalledWith('w1', undefined, ['summary'], PUBLIC_VIEWER);
+    prisma.project.findFirst.mockResolvedValue({ isPrivate: true });
+    await expect(service.preview('w1', 'u7', { projectId: 'p1', as: 'channel' })).resolves.toEqual({
+      summaryText: '',
+      channelSkipped: true,
+    });
+    await service.preview('w1', 'u7', {
+      projectId: 'p1',
+      as: 'channel',
+      allowPrivateToChannel: true,
+    });
+    expect(spy).toHaveBeenLastCalledWith('w1', 'p1', undefined, 'u7');
   });
 
   it('list lọc digest gắn dự án riêng tư người xem không thấy; admin (null) không lọc', async () => {
@@ -578,9 +684,9 @@ describe('DigestsService — người xem của nội dung gửi nơi chung', ()
     const findMany = vi.fn(() => Promise.resolve([]));
     (prisma.reportSubscription as Record<string, unknown>).findMany = findMany;
     access.visibleProjectIds.mockResolvedValueOnce(['p-pub'] as never);
-    await service.list('w1', 'u1');
+    await service.list('w1', undefined, 'u1');
     expect(json(findMany)).toContain('"OR":[{"projectId":null},{"projectId":{"in":["p-pub"]}}]');
-    await service.list('w1', 'admin');
+    await service.list('w1', undefined, 'admin');
     expect(json(findMany, 1)).not.toContain('"OR"');
   });
 
@@ -778,7 +884,7 @@ describe('digest schedule schemas (L20)', () => {
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({ weekday: 5, hour: 17, timezone: 'Asia/Tokyo' }) as unknown,
     });
-    await service.update('w1', 's1', { weekday: 2, hour: 9, timezone: 'Asia/Bangkok' });
+    await service.update('w1', 's1', { weekday: 2, hour: 9, timezone: 'Asia/Bangkok' }, 'u1');
     expect(prisma.reportSubscription.update).toHaveBeenCalledWith({
       where: { id: 's1' },
       data: { weekday: 2, hour: 9, timezone: 'Asia/Bangkok' },
@@ -812,7 +918,7 @@ function emailSetup(over: Record<string, unknown> = {}, users: unknown[] = USERS
 describe('DigestsService — gửi Email (L21)', () => {
   it('deliverEmail + 2 người nhận → mail.enqueue 2 lần, template digest, to = email từng người', async () => {
     const t = emailSetup();
-    await t.service.run('w1', 's1');
+    await t.service.run('w1', 's1', 'u1');
     expect(t.mail.enqueue).toHaveBeenCalledTimes(2);
     const calls = t.mail.enqueue.mock.calls as unknown as Array<
       [{ to: string; template: string; payload: Record<string, unknown> }]
@@ -828,7 +934,7 @@ describe('DigestsService — gửi Email (L21)', () => {
 
   it('chỉ lấy thành viên workspace chưa bị khoá (không gửi cho người ngoài/đã vô hiệu hoá)', async () => {
     const t = emailSetup();
-    await t.service.run('w1', 's1');
+    await t.service.run('w1', 's1', 'u1');
     expect(json(t.prisma.user.findMany)).toBe(
       JSON.stringify({
         where: {
@@ -844,17 +950,19 @@ describe('DigestsService — gửi Email (L21)', () => {
   it('mỗi người nhận một bản dựng theo quyền xem của CHÍNH họ', async () => {
     const t = emailSetup();
     const spy = vi.spyOn(t.service, 'buildDigest');
-    await t.service.run('w1', 's1');
+    await t.service.run('w1', 's1', 'u1');
     const viewers = spy.mock.calls.map((c) => c[3]);
     expect(viewers).toContain('u2');
     expect(viewers).toContain('u3');
-    expect(viewers).toContain(PUBLIC_VIEWER); // bản tóm tắt cho giao diện/nhóm chung
+    // Chỉ email (không kênh): bản tóm tắt trả cho người bấm = bản theo quyền của CHÍNH họ (không phải bản công khai).
+    expect(viewers).toContain('u1');
+    expect(viewers).not.toContain(PUBLIC_VIEWER);
   });
 
   it('digest gắn dự án: người nhận không thấy dự án thì KHÔNG được gửi thư', async () => {
     const t = emailSetup({ projectId: 'p1' });
     t.access.canSee.mockImplementation(((uid: string) => Promise.resolve(uid !== 'u3')) as never);
-    const r = await t.service.run('w1', 's1');
+    const r = await t.service.run('w1', 's1', 'u1');
     expect(t.mail.enqueue).toHaveBeenCalledTimes(1);
     expect(t.mail.enqueue).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'b@x.vn' }) as unknown,
@@ -864,7 +972,7 @@ describe('DigestsService — gửi Email (L21)', () => {
 
   it('chỉ email (không channelId) vẫn sent:true và ghi lastRunAt', async () => {
     const t = emailSetup();
-    const r = await t.service.run('w1', 's1');
+    const r = await t.service.run('w1', 's1', 'u1');
     expect(r.sent).toBe(true);
     expect(t.telegram.send).not.toHaveBeenCalled();
     expect(t.prisma.reportSubscription.update).toHaveBeenCalledTimes(1);
@@ -872,7 +980,7 @@ describe('DigestsService — gửi Email (L21)', () => {
 
   it('không người nhận nào gửi được (0 thư, không kênh) → sent:false, không ghi lastRunAt', async () => {
     const t = emailSetup({}, []);
-    const r = await t.service.run('w1', 's1');
+    const r = await t.service.run('w1', 's1', 'u1');
     expect(r.sent).toBe(false);
     expect(t.prisma.reportSubscription.update).not.toHaveBeenCalled();
   });
@@ -880,14 +988,14 @@ describe('DigestsService — gửi Email (L21)', () => {
   it('lỗi xếp thư của một người không chặn người còn lại', async () => {
     const t = emailSetup();
     t.mail.enqueue.mockRejectedValueOnce(new Error('db'));
-    const r = await t.service.run('w1', 's1');
+    const r = await t.service.run('w1', 's1', 'u1');
     expect(t.mail.enqueue).toHaveBeenCalledTimes(2);
     expect(r.sent).toBe(true);
   });
 
   it('Telegram + Email độc lập: cả hai đều đi', async () => {
     const t = emailSetup({ channelId: 'ch1' });
-    const r = await t.service.run('w1', 's1');
+    const r = await t.service.run('w1', 's1', 'u1');
     expect(t.telegram.send).toHaveBeenCalledTimes(1);
     expect(t.mail.enqueue).toHaveBeenCalledTimes(2);
     expect(r.sent).toBe(true);
@@ -895,7 +1003,7 @@ describe('DigestsService — gửi Email (L21)', () => {
 
   it('không bật deliverEmail → không gửi thư dù có recipients', async () => {
     const t = emailSetup({ deliverEmail: false });
-    await t.service.run('w1', 's1');
+    await t.service.run('w1', 's1', 'u1');
     expect(t.mail.enqueue).not.toHaveBeenCalled();
   });
 });
@@ -942,15 +1050,17 @@ describe('DigestsService — cấu hình kênh Email (L21)', () => {
 
   it('update: bật deliverEmail khi chưa có người nhận → 422; tắt thì không cần', async () => {
     const t = setup({ kind: 'global' });
-    await expect(t.service.update('w1', 's1', { deliverEmail: true })).rejects.toMatchObject({
+    await expect(t.service.update('w1', 's1', { deliverEmail: true }, 'u1')).rejects.toMatchObject({
       status: 422,
     });
-    await expect(t.service.update('w1', 's1', { deliverEmail: false })).resolves.toBeDefined();
+    await expect(
+      t.service.update('w1', 's1', { deliverEmail: false }, 'u1'),
+    ).resolves.toBeDefined();
   });
 
   it('update: gỡ hết người nhận khi đang bật email → 422', async () => {
     const t = emailSetup();
-    await expect(t.service.update('w1', 's1', { recipients: [] })).rejects.toMatchObject({
+    await expect(t.service.update('w1', 's1', { recipients: [] }, 'u1')).rejects.toMatchObject({
       status: 422,
     });
   });
@@ -1010,5 +1120,204 @@ describe('digest email schemas (L21)', () => {
     expect(updateDigestSchema.safeParse({ deliverEmail: false, recipients: ['u1'] }).success).toBe(
       true,
     );
+  });
+});
+
+describe('DigestsService — dự án riêng tư: người không thấy → 404 ở update/remove/run (hợp nhất P15)', () => {
+  function hidden() {
+    const t = setup({ kind: 'global' });
+    t.prisma.reportSubscription.findFirst.mockResolvedValue({
+      id: 's1',
+      workspaceId: 'w1',
+      projectId: 'pHidden',
+      channelId: 'ch1',
+      metrics: [],
+      createdById: 'c',
+      deliverEmail: false,
+      allowPrivateToChannel: false,
+      recipients: [],
+      lastRunAt: null,
+    } as never);
+    t.access.assertCanSee.mockImplementation(((
+      _u: string,
+      _w: string,
+      _p: string,
+      label?: string,
+    ) => Promise.reject(Object.assign(new Error(label), { status: 404 }))) as never);
+    (t.prisma.reportSubscription as Record<string, unknown>).delete = vi.fn();
+    return t;
+  }
+
+  it('update/remove/run → 404, không ghi, không gửi, không trả số liệu', async () => {
+    const t = hidden();
+    await expect(t.service.update('w1', 's1', { name: 'x' }, 'u9')).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(t.service.remove('w1', 's1', 'u9')).rejects.toMatchObject({ status: 404 });
+    await expect(t.service.run('w1', 's1', 'u9')).rejects.toMatchObject({ status: 404 });
+    expect(t.access.assertCanSee).toHaveBeenCalledWith('u9', 'w1', 'pHidden', 'Báo cáo định kỳ');
+    expect(t.prisma.reportSubscription.update).not.toHaveBeenCalled();
+    expect(t.telegram.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('DigestsService.run — email: xác nhận phía FE + giới hạn tần suất phía server (L21 review)', () => {
+  function emailRun(claimCount: number) {
+    const t = setup({ kind: 'global' });
+    t.prisma.reportSubscription.findFirst.mockResolvedValue({
+      id: 's1',
+      workspaceId: 'w1',
+      projectId: null,
+      channelId: null,
+      metrics: ['summary'],
+      createdById: 'u1',
+      deliverEmail: true,
+      allowPrivateToChannel: false,
+      recipients: ['u2'],
+      lastRunAt: new Date('2026-10-16T01:00:00Z'),
+      name: 'T',
+    } as never);
+    t.prisma.user.findMany.mockResolvedValue([{ id: 'u2', email: 'b@x.vn', displayName: 'B' }]);
+    t.prisma.reportSubscription.updateMany.mockResolvedValue({ count: claimCount });
+    return t;
+  }
+
+  it('giữ chỗ bằng CAS lastRunAt (< 1 phút trước thì thua) → 422, không gửi thư', async () => {
+    const t = emailRun(0);
+    await expect(t.service.run('w1', 's1', 'u1')).rejects.toMatchObject({ status: 422 });
+    expect(t.mail.enqueue).not.toHaveBeenCalled();
+    const where = JSON.stringify(t.prisma.reportSubscription.updateMany.mock.calls[0]);
+    expect(where).toContain('"lastRunAt":null');
+    expect(where).toContain('"lt"');
+  });
+
+  it('giữ chỗ được → gửi; gửi 0 thư (không ai nhận) → trả lastRunAt về giá trị cũ', async () => {
+    const ok = emailRun(1);
+    await ok.service.run('w1', 's1', 'u1');
+    expect(ok.mail.enqueue).toHaveBeenCalledTimes(1);
+    const none = emailRun(1);
+    none.prisma.user.findMany.mockResolvedValue([]);
+    await none.service.run('w1', 's1', 'u1');
+    const calls = none.prisma.reportSubscription.updateMany.mock.calls as unknown as Array<
+      [{ data: { lastRunAt: Date } }]
+    >;
+    expect(calls.at(-1)![0].data.lastRunAt).toEqual(new Date('2026-10-16T01:00:00Z'));
+  });
+
+  it('digest không email không bị giới hạn tần suất', async () => {
+    const t = setup({ kind: 'global' });
+    await t.service.run('w1', 's1', 'u1');
+    await t.service.run('w1', 's1', 'u1');
+    expect(t.prisma.reportSubscription.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('dựng email theo lô song song (không tuần tự từng người)', async () => {
+    const t = emailRun(1);
+    const users = Array.from({ length: 12 }, (_, i) => ({
+      id: `r${i}`,
+      email: `r${i}@x.vn`,
+      displayName: `R${i}`,
+    }));
+    t.prisma.user.findMany.mockResolvedValue(users);
+    let active = 0;
+    let peak = 0;
+    vi.spyOn(t.service, 'buildDigest').mockImplementation(async () => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active -= 1;
+      return MODEL;
+    });
+    await t.service.run('w1', 's1', 'u1');
+    expect(t.mail.enqueue).toHaveBeenCalledTimes(12);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(5);
+  });
+});
+
+describe('DigestsService.onSprintCompleted — nội dung & không mất digest (L20 review)', () => {
+  function sprintEnd(n: number) {
+    const t = setup({ kind: 'global' });
+    const p = prismaOf(t.service) as PrismaMock & Record<string, Record<string, Mock>>;
+    p.project = { findFirst: vi.fn(() => Promise.resolve({ workspaceId: 'w1' })) };
+    p.reportSubscription.findMany = vi.fn(() =>
+      Promise.resolve(
+        Array.from({ length: n }, (_, i) => ({
+          id: `s${i}`,
+          name: 'T',
+          workspaceId: 'w1',
+          projectId: null,
+          channelId: 'ch1',
+          metrics: ['summary'],
+          createdById: 'u1',
+          deliverEmail: false,
+          allowPrivateToChannel: false,
+          recipients: [],
+          schedule: 'SPRINT_END',
+          weekday: 1,
+          hour: 8,
+          timezone: 'Asia/Ho_Chi_Minh',
+          lastRunAt: null,
+        })),
+      ),
+    );
+    return { ...t, p };
+  }
+
+  it('truyền sprint vừa đóng vào buildDigest để nội dung nêu sprint đó', async () => {
+    const t = sprintEnd(1);
+    const spy = vi.spyOn(t.service, 'buildDigest');
+    await t.service.onSprintCompleted({ sprintId: 'sp9', projectId: 'p1' });
+    expect(spy).toHaveBeenCalledWith('w1', undefined, ['summary'], PUBLIC_VIEWER, {
+      closedSprintId: 'sp9',
+    });
+  });
+
+  it('hai sự kiện đồng thời đều gửi: không dùng CAS lastRunAt (sự kiện chỉ một node xử lý)', async () => {
+    const t = sprintEnd(1);
+    await Promise.all([
+      t.service.onSprintCompleted({ sprintId: 'a', projectId: 'p1' }),
+      t.service.onSprintCompleted({ sprintId: 'b', projectId: 'p1' }),
+    ]);
+    expect(t.telegram.send).toHaveBeenCalledTimes(2);
+    expect(t.prisma.reportSubscription.updateMany).not.toHaveBeenCalled();
+    expect(t.prisma.reportSubscription.update).toHaveBeenCalled(); // ghi lastRunAt sau khi gửi
+  });
+});
+
+describe('DigestsService.buildDigest — khối "Sprint vừa kết thúc"', () => {
+  it('có closedSprintId → khối đứng đầu, lọc theo dự án người xem thấy; sprint ẩn → không có khối', async () => {
+    const s = buildSetup({ visible: { isPrivate: false } });
+    s.sprintFindMany.mockResolvedValue([]);
+    const sprintFindFirst = vi.fn(() =>
+      Promise.resolve({ name: 'Sprint 7', project: { key: 'A' } }),
+    );
+    (s.prisma.sprint as Record<string, unknown>).findFirst = sprintFindFirst;
+    const m = await s.service.buildDigest('w1', undefined, ['summary'], 'u1', {
+      closedSprintId: 'sp7',
+    });
+    expect(m.sections[0]).toMatchObject({ id: 'sprint-closed', lines: ['[A] Sprint 7'] });
+    const arg = JSON.stringify(sprintFindFirst.mock.calls[0]);
+    expect(arg).toContain('"id":"sp7"');
+    expect(arg).toContain('"deletedAt":null');
+    expect(arg).toContain('"isPrivate":false');
+    sprintFindFirst.mockResolvedValue(null as never);
+    const hiddenModel = await s.service.buildDigest('w1', undefined, ['summary'], 'u1', {
+      closedSprintId: 'sp7',
+    });
+    expect(hiddenModel.sections.some((x) => x.id === 'sprint-closed')).toBe(false);
+  });
+});
+
+describe('digest schemas — allowPrivateToChannel / preview (review vòng 1)', () => {
+  it('allowPrivateToChannel là boolean tuỳ chọn ở create/update/preview', () => {
+    expect(createDigestSchema.safeParse({ name: 'x', allowPrivateToChannel: true }).success).toBe(
+      true,
+    );
+    expect(updateDigestSchema.safeParse({ allowPrivateToChannel: 'yes' }).success).toBe(false);
+    expect(
+      previewDigestSchema.safeParse({ as: 'channel', allowPrivateToChannel: true }).success,
+    ).toBe(true);
+    expect(previewDigestSchema.safeParse({ as: 'everyone' }).success).toBe(false);
   });
 });

@@ -3,12 +3,15 @@ import type { AutomationEventMeta, IssueDto, RuleTrigger } from '@tirapro/types'
 import type { PrismaService } from '../../../infra/prisma/prisma.service';
 import type { CommentsService } from '../../comments/comments.service';
 import type { IssuesService } from '../../issues/issues.service';
+import type { NotificationsService } from '../../notifications/notifications.service';
 
 /** Phụ thuộc mà các action dùng — engine truyền xuống để action là hàm thuần dễ test. */
 export interface ActionDeps {
   prisma: PrismaService;
   issues: IssuesService;
   comments: CommentsService;
+  /** Chốt tạo thông báo trung tâm (lọc người nhận xem được việc, cài đặt, gộp 60s, realtime, email). */
+  notifications: NotificationsService;
   events: EventEmitter2;
   /** Giải mã khoá bí mật webhook đã lưu; null = không giải mã được. */
   openSecret(stored: string): string | null;

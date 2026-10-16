@@ -3,6 +3,7 @@ import { CustomFieldType, Prisma } from '@prisma/client';
 import { ERROR_CODES } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { assertIssueWritable, assertProjectIdWritable } from '../../common/project-writable';
 
 /** Field định nghĩa kèm options (cho dropdown / hiển thị). */
@@ -56,17 +57,33 @@ const SELECT_TYPES = new Set<CustomFieldType>([
 
 @Injectable()
 export class CustomFieldsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: ProjectAccessService,
+  ) {}
 
   // ============================ DEFINITIONS ============================
 
-  /** Liệt kê field áp dụng cho workspace; nếu có projectId → field của project đó + field global (projectId null). */
-  async listDefinitions(workspaceId: string, projectId?: string): Promise<FieldDefinitionView[]> {
+  /**
+   * Liệt kê field áp dụng cho workspace; nếu có projectId → field của project đó + field global (projectId null).
+   * Không có projectId: chỉ field global + field của dự án người xem thấy (tên/lựa chọn field của dự án riêng tư
+   * người ngoài không lộ).
+   */
+  async listDefinitions(
+    workspaceId: string,
+    projectId: string | undefined,
+    viewerId: string,
+  ): Promise<FieldDefinitionView[]> {
     if (projectId) await this.requireProject(workspaceId, projectId);
+    const visible = projectId ? {} : await this.access.visibleWhere(viewerId, workspaceId);
     const where: Prisma.CustomFieldWhereInput = {
       workspaceId,
       deletedAt: null,
-      ...(projectId ? { OR: [{ projectId }, { projectId: null }] } : {}),
+      ...(projectId
+        ? { OR: [{ projectId }, { projectId: null }] }
+        : Object.keys(visible).length
+          ? { OR: [{ projectId: null }, { project: visible }] }
+          : {}),
     };
     const rows = await this.prisma.customField.findMany({
       where,

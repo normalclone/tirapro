@@ -38,24 +38,24 @@ export function dashboardVisibleWhere(
 }
 
 /**
- * Sửa/xoá: chủ; hoặc admin (chỉ mức GLOBAL/PROJECT/TEAM — không bao giờ PRIVATE của người khác); hoặc (PROJECT) người có
- * `project:admin` ở dự án đó; hoặc (TEAM) trưởng nhóm. Người khác muốn chỉnh thì nhân bản.
+ * SỬA nội dung và ĐỔI mức chia sẻ: CHỈ chủ. Admin workspace, `project:admin`, trưởng nhóm không sửa dashboard của người
+ * khác (họ muốn chỉnh thì nhân bản) — nên người khác không thể công bố bản của chủ ra cả workspace hay ẩn nó khỏi
+ * chính những người đang dùng.
  */
-export function canEditDashboard(
+export function canEditDashboard(viewer: DashboardViewer, dashboard: { ownerId: string }): boolean {
+  return dashboard.ownerId === viewer.userId;
+}
+
+/**
+ * XOÁ: chủ; hoặc admin workspace với dashboard đã chia sẻ (GLOBAL/PROJECT/TEAM) — để kiểm duyệt. Admin không bao giờ
+ * xoá được PRIVATE của người khác (cũng không thấy được).
+ */
+export function canDeleteDashboard(
   viewer: DashboardViewer,
-  dashboard: {
-    ownerId: string;
-    scope: 'PRIVATE' | 'GLOBAL' | 'PROJECT' | 'TEAM';
-    team?: { leadId: string | null } | null;
-  },
-  isProjectAdmin: boolean,
+  dashboard: { ownerId: string; scope: 'PRIVATE' | 'GLOBAL' | 'PROJECT' | 'TEAM' },
 ): boolean {
   if (dashboard.ownerId === viewer.userId) return true;
-  if (dashboard.scope === 'PRIVATE') return false;
-  if (viewer.isAdmin) return true;
-  if (dashboard.scope === 'PROJECT') return isProjectAdmin;
-  if (dashboard.scope === 'TEAM') return dashboard.team?.leadId === viewer.userId;
-  return false;
+  return viewer.isAdmin && dashboard.scope !== 'PRIVATE';
 }
 
 const SCOPE_RANK = { PRIVATE: 0, GLOBAL: 1, PROJECT: 2, TEAM: 3 } as const;

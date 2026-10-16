@@ -4,7 +4,7 @@ import { CommentsService } from './comments.service';
 function make(
   authorId: string,
   archivedAt: Date | null = null,
-  opts: { members?: string[]; existingMentions?: string[] } = {},
+  opts: { members?: string[]; existingMentions?: string[]; cannotSee?: string[] } = {},
 ) {
   const members = opts.members ?? ['u2'];
   const row = {
@@ -64,7 +64,11 @@ function make(
     $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(tx)),
   };
   const events = { emit: vi.fn() };
-  const service = new CommentsService(prisma as never, events as never);
+  // Dự án p1 riêng tư: những người trong `cannotSee` không xem được.
+  const access = {
+    canSee: vi.fn((userId: string) => Promise.resolve(!(opts.cannotSee ?? []).includes(userId))),
+  };
+  const service = new CommentsService(prisma as never, events as never, access as never);
   return {
     service,
     update,
@@ -181,6 +185,42 @@ describe('CommentsService — @mention', () => {
     expect(events.emit).toHaveBeenCalledWith(
       'comment.added',
       expect.objectContaining({ mentionIds: ['u2'] }),
+    );
+  });
+
+  it('create(): @người không xem được dự án riêng tư → KHÔNG ghi sổ Mention, event không mang họ; thành viên dự án vẫn được ghi', async () => {
+    const { service, mentionCreateMany, events } = make('u1', null, {
+      members: ['u2', 'u3'],
+      cannotSee: ['u3'],
+    });
+    await service.create('w1', 'u1', 'i1', {
+      body: 'cc @[A](user:u2) @[B](user:u3)',
+      bodyFormat: 'MARKDOWN',
+    });
+    expect(mentionCreateMany).toHaveBeenCalledWith({
+      data: [{ mentionedUserId: 'u2', commentId: 'c1', issueId: 'i1' }],
+      skipDuplicates: true,
+    });
+    expect(events.emit).toHaveBeenCalledWith(
+      'comment.added',
+      expect.objectContaining({ mentionIds: ['u2'] }),
+    );
+  });
+
+  it('update(): @người chưa xem được dự án KHÔNG vào sổ (để lần sửa sau khi họ vào dự án vẫn báo được)', async () => {
+    const { service, mentionCreateManyAndReturn, events } = make('u1', null, {
+      members: ['u2', 'u3'],
+      cannotSee: ['u3'],
+    });
+    await service.update('w1', 'u1', 'c1', 'cc @[A](user:u2) @[B](user:u3)', 1);
+    expect(mentionCreateManyAndReturn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [{ mentionedUserId: 'u2', commentId: 'c1', issueId: 'i1' }],
+      }),
+    );
+    expect(events.emit).toHaveBeenCalledWith(
+      'comment.updated',
+      expect.objectContaining({ newMentionIds: ['u2'] }),
     );
   });
 

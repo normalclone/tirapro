@@ -392,3 +392,21 @@ describe('BoardsService.listIssues — board có filterJql sắp theo rank (Mino
     expect(issues.list).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('BoardsService.listForProject — thiếu projectId (rò rỉ dự án riêng tư)', () => {
+  it('projectId trống ⇒ 422, KHÔNG truy vấn (nếu không Prisma liệt kê bảng của MỌI dự án, kể cả riêng tư)', async () => {
+    const findMany = vi.fn(() => Promise.resolve([]));
+    const service = new BoardsService({ board: { findMany } } as never, {} as never, {} as never);
+    await expect(
+      service.listForProject('w1', undefined as unknown as string),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('có projectId ⇒ lọc theo dự án đó', async () => {
+    const findMany = vi.fn((..._a: unknown[]) => Promise.resolve([]));
+    const service = new BoardsService({ board: { findMany } } as never, {} as never, {} as never);
+    await service.listForProject('w1', 'p1');
+    expect(findMany.mock.calls[0]![0]).toMatchObject({ where: { projectId: 'p1' } });
+  });
+});

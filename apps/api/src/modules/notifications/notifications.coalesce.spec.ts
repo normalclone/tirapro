@@ -101,6 +101,7 @@ function setup(opts: { watchers: string[]; assignee?: string }) {
     events as never,
     mail as never,
     config as never,
+    { canSee: vi.fn(() => Promise.resolve(true)) } as never,
   );
   const watchers = new WatchersService(prisma as never, notifications);
   return { rows, notifications, watchers, events };

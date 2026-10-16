@@ -94,7 +94,17 @@ const dashboardShape = {
   scope: z.enum(DASHBOARD_SCOPES),
   projectId: z.string().min(1).optional(),
   teamId: z.string().min(1).optional(),
-  widgets: z.array(widgetInputSchema).max(DASHBOARD_LIMITS.widgetsPerDashboard).default([]),
+  widgets: z
+    .array(widgetInputSchema)
+    .max(DASHBOARD_LIMITS.widgetsPerDashboard)
+    .refine(
+      (ws) => {
+        const ids = ws.map((w) => w.id).filter((v): v is string => !!v);
+        return new Set(ids).size === ids.length;
+      },
+      { message: 'Có ô bị lặp id' },
+    )
+    .default([]),
 };
 
 type ScopeFields = { scope: DashboardScopeValue; projectId?: string; teamId?: string };
@@ -149,8 +159,10 @@ export interface CustomDashboardSummaryDto {
   widgetCount: number;
   /** Của chính người xem. */
   isMine: boolean;
-  /** Người xem sửa/xoá được (chủ, quản trị, quản trị dự án, trưởng nhóm). Người khác dùng "Nhân bản". */
+  /** Sửa nội dung/đổi mức chia sẻ: CHỈ chủ. Người khác dùng "Nhân bản". */
   canEdit: boolean;
+  /** Xoá: chủ, hoặc admin workspace với dashboard đã chia sẻ (kiểm duyệt). */
+  canDelete: boolean;
   owner: { id: string; displayName: string; avatarUrl: string | null };
   project: { id: string; key: string; name: string } | null;
   team: { id: string; name: string } | null;

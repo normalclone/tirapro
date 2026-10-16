@@ -103,7 +103,7 @@ export function RolesPage() {
           </p>
         </div>
         {canManage && (
-          <Button size="sm" onClick={() => openCreate('WORKSPACE')}>
+          <Button size="sm" onClick={() => openCreate('WORKSPACE')} data-tour="roles-create">
             <Plus className="h-4 w-4" />
             Tạo vai trò
           </Button>
@@ -115,6 +115,7 @@ export function RolesPage() {
         className="mb-6 flex gap-1 border-b border-border"
         role="tablist"
         aria-label="Vai trò & quyền"
+        data-tour="roles-tabs"
       >
         {ROLES_TABS.map((t) => (
           <button
@@ -137,7 +138,12 @@ export function RolesPage() {
         ))}
       </div>
 
-      <div id="roles-tabpanel" role="tabpanel" aria-labelledby={`roles-tab-${tab}`}>
+      <div
+        id="roles-tabpanel"
+        role="tabpanel"
+        aria-labelledby={`roles-tab-${tab}`}
+        data-tour="roles-list"
+      >
         <QueryBoundary
           query={rolesQuery}
           skeleton={

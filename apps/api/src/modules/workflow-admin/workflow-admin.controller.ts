@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/types/request';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -111,20 +113,29 @@ export class WorkflowAdminController {
   @Get('workflows')
   async list(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
     @Query('isTemplate') isTemplate?: string,
   ) {
-    return this.workflows.listWorkflows(workspaceId, {
-      projectId: projectId || undefined,
-      isTemplate:
-        isTemplate === undefined ? undefined : isTemplate === 'true' || isTemplate === '1',
-    });
+    return this.workflows.listWorkflows(
+      workspaceId,
+      {
+        projectId: projectId || undefined,
+        isTemplate:
+          isTemplate === undefined ? undefined : isTemplate === 'true' || isTemplate === '1',
+      },
+      user.id,
+    );
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get('workflows/:id')
-  async getOne(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.workflows.getWorkflow(workspaceId, id);
+  async getOne(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.workflows.getWorkflow(workspaceId, id, user.id);
   }
 
   @Post('workflows')

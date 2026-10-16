@@ -164,6 +164,7 @@ function DigestRow({
 }) {
   const update = useUpdateDigest();
   const run = useRunDigest();
+  const confirm = useConfirm();
 
   const [summary, setSummary] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -179,16 +180,31 @@ function DigestRow({
     );
   }
 
-  function handleRun() {
+  async function handleRun() {
+    // Có email: "Chạy ngay" xếp thư THẬT cho từng người nhận → xác nhận trước (server còn giới hạn ≥ 1 phút/lần).
+    if (
+      digest.deliverEmail &&
+      !(await confirm({
+        title: `Gửi ngay "${digest.name}" tới ${digest.recipients.length} người nhận qua email?`,
+        description: 'Mỗi người nhận một thư thật, kể cả khi họ đã tắt email thông báo.',
+        confirmLabel: 'Gửi ngay',
+      }))
+    )
+      return;
     run.mutate(digest.id, {
       onSuccess: (res) => {
         // Backend trả văn bản thuần (escape HTML chỉ ở kênh Telegram) — không cần xử lý thẻ/entity ở đây.
         const text = (res.summaryText ?? '').trim();
         setSummary(text);
         setExpanded(true);
+        if (res.channelSkipped) {
+          toast.warning(
+            'Dự án riêng tư chưa được phép đăng vào nhóm Telegram nên không gửi vào nhóm — bật "Cho phép đăng vào nhóm Telegram" khi sửa báo cáo nếu muốn.',
+          );
+        }
         if (res.sent) {
           toast.success(text ? truncate(text) : 'Đã gửi báo cáo.');
-        } else {
+        } else if (!res.channelSkipped) {
           toast.info(text ? truncate(text) : 'Đã tạo bản tổng hợp nhưng chưa gửi (chưa có kênh).');
         }
       },

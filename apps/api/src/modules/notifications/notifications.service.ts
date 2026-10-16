@@ -20,6 +20,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { cursorPage, type PageResult } from '../../common/dto/page-result';
 import { MailService } from '../mail/mail.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { resolveMentionedMembers } from '../../common/mentions';
 import { COALESCE_TYPES, COALESCE_WINDOW_MS, mergeNotificationPayload } from './notification-merge';
 
@@ -130,6 +131,8 @@ interface IssueEventShape {
   key: string;
   summary: string;
   workspaceId: string;
+  /** Dự án của công việc (payload thật là `IssueDto` nên luôn có) — để kiểm người nhận có xem được dự án (riêng tư). */
+  projectId?: string;
   assigneeId: string | null;
   status?: { name?: string } | null;
   description?: string | null;
@@ -176,6 +179,11 @@ export interface NotificationInput {
   issueId?: string | null;
   commentId?: string | null;
   actorId?: string | null;
+  /**
+   * Dự án của công việc (nếu producer biết) — để kiểm người nhận thấy được dự án riêng tư. Bỏ trống mà có `issueId` thì
+   * `createDeferred` tự tra từ công việc (người theo dõi, v.v. vẫn bị lọc).
+   */
+  projectId?: string | null;
   payload: Record<string, unknown>;
 }
 
@@ -188,9 +196,37 @@ export class NotificationsService {
     private readonly events: EventEmitter2,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   // ---------- READ: luôn scope theo recipientId = user hiện tại ----------
+
+  /**
+   * Điều kiện "thông báo này còn được xem" (dự án riêng tư): thông báo không gắn công việc luôn hiện; thông báo gắn công
+   * việc chỉ hiện khi người nhận CÒN thấy dự án của công việc đó trong workspace của thông báo (mỗi workspace một điều
+   * kiện — `visibleWhere` tính theo workspace). Người đã bị gỡ khỏi dự án riêng tư (hoặc rời workspace) không còn đọc được
+   * tiêu đề việc cũ; dữ liệu không xoá nên hiện lại nếu được thêm lại. Admin hệ thống thấy mọi thứ.
+   */
+  private async readableWhere(userId: string): Promise<Prisma.NotificationWhereInput> {
+    const me = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
+    if (me?.isSystemAdmin) return {};
+    const memberships = await this.prisma.workspaceMembership.findMany({
+      where: { userId },
+      select: { workspaceId: true },
+    });
+    const perWorkspace = await Promise.all(
+      memberships.map(async (m): Promise<Prisma.NotificationWhereInput> => {
+        const visible = await this.access.visibleWhere(userId, m.workspaceId);
+        return Object.keys(visible).length
+          ? { workspaceId: m.workspaceId, issue: { project: visible } }
+          : { workspaceId: m.workspaceId };
+      }),
+    );
+    return { OR: [{ issueId: null }, ...perWorkspace] };
+  }
 
   /** Thông báo của tôi, mới nhất trước, phân trang cursor. */
   async listMine(
@@ -201,7 +237,7 @@ export class NotificationsService {
   ): Promise<PageResult<NotificationDto>> {
     const rows = await this.prisma.notification.findMany({
       // recipientId luôn có mặt: không thể xem thông báo người khác dù bộ lọc là gì.
-      where: { recipientId, ...FILTER_WHERE[filter] },
+      where: { recipientId, ...FILTER_WHERE[filter], ...(await this.readableWhere(recipientId)) },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -216,7 +252,7 @@ export class NotificationsService {
   /** Số thông báo chưa đọc của tôi. */
   async unreadCount(recipientId: string): Promise<{ count: number }> {
     const count = await this.prisma.notification.count({
-      where: { recipientId, readAt: null },
+      where: { recipientId, readAt: null, ...(await this.readableWhere(recipientId)) },
     });
     return { count };
   }
@@ -325,6 +361,7 @@ export class NotificationsService {
         workspaceId: issue.workspaceId,
         type: 'STATUS_CHANGED',
         issueId: issue.id,
+        projectId: issue.projectId,
         actorId,
         payload: {
           key: issue.key,
@@ -365,6 +402,7 @@ export class NotificationsService {
         workspaceId: issue.workspaceId,
         type: 'ISSUE_UPDATED',
         issueId: issue.id,
+        projectId: issue.projectId,
         actorId,
         payload: { key: issue.key, summary: issue.summary },
       });
@@ -381,7 +419,14 @@ export class NotificationsService {
       if (!issueId || !author) return;
       const issue = await this.prisma.issue.findFirst({
         where: { id: issueId, deletedAt: null },
-        select: { id: true, workspaceId: true, assigneeId: true, key: true, summary: true },
+        select: {
+          id: true,
+          workspaceId: true,
+          projectId: true,
+          assigneeId: true,
+          key: true,
+          summary: true,
+        },
       });
       if (!issue) return;
       const issuePayload = {
@@ -408,6 +453,7 @@ export class NotificationsService {
         workspaceId: issue.workspaceId,
         type: 'COMMENT_ADDED',
         issueId: issue.id,
+        projectId: issue.projectId,
         commentId: comment?.id ?? null,
         actorId: author,
         payload: issuePayload,
@@ -426,7 +472,7 @@ export class NotificationsService {
       if (!issueId || !author || !newMentionIds?.length) return;
       const issue = await this.prisma.issue.findFirst({
         where: { id: issueId, deletedAt: null },
-        select: { id: true, workspaceId: true, key: true, summary: true },
+        select: { id: true, workspaceId: true, projectId: true, key: true, summary: true },
       });
       if (!issue) return;
       await this.notifyMentioned({
@@ -455,7 +501,13 @@ export class NotificationsService {
       if (changedFields && !changedFields.includes('description')) return;
       const ids = extractMentionIds(issue.description);
       if (!ids.length) return;
-      const members = await resolveMentionedMembers(this.prisma, issue.workspaceId, ids, actorId);
+      // Người được nhắc phải xem được công việc: lọc TRƯỚC khi ghi sổ "đã báo" (nếu không, người được thêm vào dự án sau
+      // đó sẽ không bao giờ được báo vì đã có dòng sổ).
+      const members = await this.filterCanSee(
+        await resolveMentionedMembers(this.prisma, issue.workspaceId, ids, actorId),
+        issue.workspaceId,
+        issue.projectId,
+      );
       if (!members.length) return;
       // Sổ + thông báo trong CÙNG transaction. Chỉ mục duy nhất (issueId, người) WHERE commentId IS NULL làm
       // `ON CONFLICT DO NOTHING` quyết định ai thắng khi nhiều sự kiện chạy đồng thời → chỉ báo dòng thực sự chèn được.
@@ -475,6 +527,7 @@ export class NotificationsService {
                 workspaceId: issue.workspaceId,
                 type: 'MENTIONED',
                 issueId: issue.id,
+                projectId: issue.projectId,
                 actorId,
                 payload: this.mentionPayload(issue, issue.description, 'description'),
               },
@@ -501,7 +554,7 @@ export class NotificationsService {
 
   /** Tạo MENTIONED cho các id còn là thành viên workspace (≠ người nhắc); trả về tập người đã được báo. */
   private async notifyMentioned(input: {
-    issue: { id: string; workspaceId: string; key: string; summary: string };
+    issue: { id: string; workspaceId: string; projectId?: string; key: string; summary: string };
     author: string;
     ids: readonly string[];
     commentId: string | null;
@@ -510,11 +563,10 @@ export class NotificationsService {
   }): Promise<Set<string>> {
     const { issue, author } = input;
     const mentioned = new Set<string>();
-    const members = await resolveMentionedMembers(
-      this.prisma,
+    const members = await this.filterCanSee(
+      await resolveMentionedMembers(this.prisma, issue.workspaceId, input.ids, author),
       issue.workspaceId,
-      input.ids,
-      author,
+      issue.projectId,
     );
     for (const recipientId of members) {
       mentioned.add(recipientId);
@@ -523,6 +575,7 @@ export class NotificationsService {
         workspaceId: issue.workspaceId,
         type: 'MENTIONED',
         issueId: issue.id,
+        projectId: issue.projectId,
         commentId: input.commentId,
         actorId: author,
         payload: this.mentionPayload(issue, input.body, input.where),
@@ -531,12 +584,44 @@ export class NotificationsService {
     return mentioned;
   }
 
+  /** Giữ lại những người xem được dự án (không có `projectId` → không lọc). Giữ thứ tự. */
+  async filterCanSee(
+    userIds: string[],
+    workspaceId: string,
+    projectId: string | undefined,
+  ): Promise<string[]> {
+    if (!projectId) return userIds;
+    const ok = await Promise.all(
+      userIds.map((id) => this.access.canSee(id, workspaceId, projectId)),
+    );
+    return userIds.filter((_, i) => ok[i]);
+  }
+
+  /**
+   * Người nhận có xem được công việc (dự án riêng tư) không? Dự án lấy từ `input.projectId`, thiếu thì tra theo `issueId`
+   * (người theo dõi và các đường không biết dự án vẫn bị chặn). Không có công việc → true (thông báo hệ thống).
+   */
+  private async recipientCanSee(input: NotificationInput): Promise<boolean> {
+    let projectId = input.projectId ?? undefined;
+    if (!projectId && input.issueId) {
+      // allow-deleted: chỉ cần projectId của công việc để kiểm quyền xem (kể cả việc vừa xoá mềm)
+      const row = await this.prisma.issue.findFirst({
+        where: { id: input.issueId },
+        select: { projectId: true },
+      });
+      projectId = row?.projectId;
+    }
+    if (!projectId) return true;
+    return this.access.canSee(input.recipientId, input.workspaceId, projectId);
+  }
+
   private notifyAssigned(issue: IssueEventShape, actorId: string): Promise<void> {
     return this.publish({
       recipientId: issue.assigneeId as string,
       workspaceId: issue.workspaceId,
       type: 'ISSUE_ASSIGNED',
       issueId: issue.id,
+      projectId: issue.projectId,
       actorId,
       payload: { key: issue.key, summary: issue.summary },
     });
@@ -565,6 +650,9 @@ export class NotificationsService {
     // Quiet-by-default: tôn trọng tùy chọn của người nhận. In-app và email là hai tuỳ chọn độc lập.
     // Chốt chặn trung tâm: không bao giờ báo cho chính người thao tác (dù producer quên lọc).
     if (input.actorId && input.actorId === input.recipientId) return noop;
+    // Chốt chặn trung tâm (dự án riêng tư): người nhận không xem được công việc thì KHÔNG tạo thông báo, KHÔNG đẩy
+    // realtime, KHÔNG xếp email — làm TRƯỚC khi dựng payload (trích đoạn, tiêu đề) nên nội dung không bị đọc/gửi đi.
+    if (!(await this.recipientCanSee(input))) return noop;
     const recipient = await this.prisma.user.findUnique({
       where: { id: input.recipientId },
       select: { settings: true, email: true, status: true },

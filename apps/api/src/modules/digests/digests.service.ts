@@ -44,6 +44,8 @@ export interface CreateDigestInput {
   /** userId của thành viên workspace (nhận email khi `deliverEmail`). */
   recipients?: string[];
   deliverEmail?: boolean;
+  /** Cho phép digest gắn dự án RIÊNG TƯ đăng vào kênh chung (mặc định không). */
+  allowPrivateToChannel?: boolean;
   weekday?: number;
   hour?: number;
   timezone?: string;
@@ -58,6 +60,8 @@ export interface UpdateDigestInput {
   metrics?: string[];
   recipients?: string[];
   deliverEmail?: boolean;
+  /** Cho phép digest gắn dự án RIÊNG TƯ đăng vào kênh chung (mặc định không). */
+  allowPrivateToChannel?: boolean;
   weekday?: number;
   hour?: number;
   timezone?: string;
@@ -67,6 +71,10 @@ export interface UpdateDigestInput {
 const INTEGRATION_ERROR_MESSAGE = 'Tích hợp đang ở trạng thái Lỗi — bấm Gửi thử để kiểm tra lại';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** Giãn cách tối thiểu giữa hai lần "Chạy ngay" của digest có email. */
+const RUN_THROTTLE_MS = 60_000;
+/** Số người nhận dựng email song song mỗi lô. */
+const EMAIL_BATCH = 5;
 const SEVEN_DAYS_MS = 7 * DAY_MS;
 /** Số dòng tối đa mỗi khối "danh sách" (việc trễ, rủi ro, OKR, người quá tải, dự án). */
 const TOP_N = 3;
@@ -87,6 +95,7 @@ const DISPATCH_SELECT = {
   name: true,
   deliverEmail: true,
   recipients: true,
+  allowPrivateToChannel: true,
   workspaceId: true,
   projectId: true,
   channelId: true,
@@ -109,6 +118,7 @@ interface DeliverSub {
   createdById: string | null;
   deliverEmail: boolean;
   recipients: string[];
+  allowPrivateToChannel: boolean;
 }
 
 type DispatchSub = DeliverSub &
@@ -158,9 +168,11 @@ export class DigestsService implements OnApplicationShutdown {
 
   // ------------------------------- CRUD -------------------------------
 
-  /** Liệt kê subscription của workspace (lọc theo project nếu có). */
-  async list(workspaceId: string, viewerId: string, projectId?: string) {
-    // Digest gắn dự án riêng tư người xem không thấy → không liệt kê (tên digest có thể lộ tên dự án).
+  /**
+   * Liệt kê subscription của workspace (lọc theo project nếu có). `viewerId` bắt buộc: báo cáo gắn dự án riêng tư
+   * người xem không thấy bị loại (tên/lịch/số liệu chọn của dự án ẩn không lộ); báo cáo cấp workspace luôn hiện.
+   */
+  async list(workspaceId: string, projectId: string | undefined, viewerId: string) {
     const visibleIds = await this.access.visibleProjectIds(viewerId, workspaceId);
     return this.prisma.reportSubscription.findMany({
       where: {
@@ -174,12 +186,14 @@ export class DigestsService implements OnApplicationShutdown {
 
   /** Tạo subscription mới. */
   async create(workspaceId: string, userId: string, input: CreateDigestInput) {
+    // Báo cáo gắn dự án: người tạo phải THẤY dự án (dự án riêng tư người ngoài → 404, không tạo, không lộ sự tồn tại).
     if (input.projectId) {
       await this.access.assertCanSee(userId, workspaceId, input.projectId, 'Dự án');
     }
     // `!== undefined` (không phải truthy): chuỗi rỗng cũng phải bị từ chối, không được lưu như một channelId.
     if (input.channelId !== undefined)
       await this.assertChannelInWorkspace(workspaceId, input.channelId);
+    this.assertPrivateChannelFlag(input.projectId ?? null, input.allowPrivateToChannel ?? false);
     const recipients = uniq(input.recipients ?? []);
     await this.assertEmailSettings(workspaceId, input.deliverEmail ?? false, recipients);
     return this.prisma.reportSubscription.create({
@@ -192,6 +206,9 @@ export class DigestsService implements OnApplicationShutdown {
         metrics: input.metrics ?? [],
         recipients,
         ...(input.deliverEmail !== undefined ? { deliverEmail: input.deliverEmail } : {}),
+        ...(input.allowPrivateToChannel !== undefined
+          ? { allowPrivateToChannel: input.allowPrivateToChannel }
+          : {}),
         ...(input.weekday !== undefined ? { weekday: input.weekday } : {}),
         ...(input.hour !== undefined ? { hour: input.hour } : {}),
         ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
@@ -200,13 +217,17 @@ export class DigestsService implements OnApplicationShutdown {
     });
   }
 
-  /** Cập nhật subscription (name/schedule/isEnabled/channelId/metrics). */
-  async update(workspaceId: string, id: string, input: UpdateDigestInput) {
-    const current = await this.requireSubscription(workspaceId, id);
+  /** Cập nhật subscription. Báo cáo gắn dự án người sửa không thấy = không tồn tại (404). */
+  async update(workspaceId: string, id: string, input: UpdateDigestInput, viewerId: string) {
+    const current = await this.requireSubscription(workspaceId, id, viewerId);
     // null = gỡ kênh (không cần kiểm).
     if (input.channelId !== undefined && input.channelId !== null) {
       await this.assertChannelInWorkspace(workspaceId, input.channelId);
     }
+    this.assertPrivateChannelFlag(
+      current.projectId,
+      input.allowPrivateToChannel ?? current.allowPrivateToChannel,
+    );
     // Kiểm trên trạng thái SAU khi sửa: bật email mà không có người nhận (hoặc gỡ hết người nhận) đều bị chặn.
     const recipients = input.recipients !== undefined ? uniq(input.recipients) : current.recipients;
     const deliverEmail = input.deliverEmail ?? current.deliverEmail;
@@ -221,6 +242,9 @@ export class DigestsService implements OnApplicationShutdown {
     const data: Prisma.ReportSubscriptionUpdateInput = {};
     if (input.recipients !== undefined) data.recipients = recipients;
     if (input.deliverEmail !== undefined) data.deliverEmail = input.deliverEmail;
+    if (input.allowPrivateToChannel !== undefined) {
+      data.allowPrivateToChannel = input.allowPrivateToChannel;
+    }
     if (input.name !== undefined) data.name = input.name;
     if (input.schedule !== undefined) data.schedule = input.schedule;
     if (input.isEnabled !== undefined) data.isEnabled = input.isEnabled;
@@ -233,86 +257,169 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   /** Xóa subscription. */
-  async remove(workspaceId: string, id: string): Promise<{ success: true }> {
-    await this.requireSubscription(workspaceId, id);
+  async remove(workspaceId: string, id: string, viewerId: string): Promise<{ success: true }> {
+    await this.requireSubscription(workspaceId, id, viewerId);
     await this.prisma.reportSubscription.delete({ where: { id } });
     return { success: true };
   }
 
   /**
-   * Người xem dùng để dựng nội dung gửi vào KÊNH CHUNG (nhóm Telegram): digest gắn một dự án thì theo quyền người
-   * tạo (đã chọn rõ dự án đó); digest toàn workspace chỉ có dữ liệu dự án CÔNG KHAI — nhóm chung có thể có người
-   * không thấy dự án riêng tư, không được lộ qua digest dù người tạo là admin.
+   * Người xem dùng để dựng nội dung gửi vào KÊNH CHUNG (nhóm Telegram có thể có người không thuộc dự án riêng tư).
+   * - Mặc định `PUBLIC_VIEWER`: chỉ dự án CÔNG KHAI, kể cả khi người tạo là admin.
+   * - Digest gắn dự án RIÊNG TƯ: chỉ khi người tạo bật tường minh `allowPrivateToChannel` thì dùng quyền người tạo;
+   *   không bật → `null` = KHÔNG gửi vào kênh (chỉ email theo quyền từng người).
+   * - Dự án đã xoá/không thuộc workspace → `null`.
    */
-  private sharedViewer(sub: { projectId: string | null; createdById: string | null }): string {
-    return sub.projectId && sub.createdById ? sub.createdById : PUBLIC_VIEWER;
+  private async channelViewer(
+    workspaceId: string,
+    projectId: string | null,
+    allowPrivateToChannel: boolean,
+    createdById: string | null,
+  ): Promise<string | null> {
+    if (!projectId) return PUBLIC_VIEWER;
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, workspaceId, deletedAt: null },
+      select: { isPrivate: true },
+    });
+    if (!project) return null;
+    if (!project.isPrivate) return PUBLIC_VIEWER;
+    return allowPrivateToChannel && createdById ? createdById : null;
+  }
+
+  /** Cờ "cho đăng dự án riêng tư vào kênh" chỉ có nghĩa với digest gắn một dự án. */
+  private assertPrivateChannelFlag(projectId: string | null, allow: boolean): void {
+    if (allow && !projectId) {
+      throw new BusinessRuleException(
+        'Chỉ báo cáo gắn một dự án mới có thể cho đăng dự án riêng tư vào nhóm Telegram.',
+      );
+    }
   }
 
   /**
    * Chạy ngay một subscription: tính toán + gửi + cập nhật lastRunAt.
    * Chỉ ghi lastRunAt khi thật sự gửi được — `sent:false` không được làm cron bỏ qua sub trong cửa sổ dedupe.
-   * `summaryText` = văn bản thuần của bản gửi vào kênh chung (hiển thị ở giao diện).
+   * `summaryText`: bản gửi vào kênh (nếu có kênh và được phép gửi), ngược lại bản theo quyền của CHÍNH người bấm
+   * (đúng thứ họ sẽ nhận nếu là người nhận email). Có email thì mỗi lần "Chạy ngay" cách nhau ≥ 1 phút
+   * (chống bấm lặp gửi thư hàng loạt) — giữ chỗ bằng compare-and-set `lastRunAt` nên bấm đồng thời cũng chỉ một lần.
    */
-  async run(workspaceId: string, id: string): Promise<{ sent: boolean; summaryText: string }> {
-    const sub = await this.requireSubscription(workspaceId, id);
-    const d = await this.deliver(sub, 'run');
-    if (d.tokenUnusable) throw new BusinessRuleException(TELEGRAM_TOKEN_UNUSABLE_MESSAGE);
-    if (d.integrationError) throw new BusinessRuleException(INTEGRATION_ERROR_MESSAGE);
-    const sent = d.telegram === true || d.emails > 0;
-    if (sent) {
-      await this.prisma.reportSubscription.update({
-        where: { id },
+  async run(
+    workspaceId: string,
+    id: string,
+    viewerId: string,
+  ): Promise<{ sent: boolean; summaryText: string; channelSkipped: boolean }> {
+    const sub = await this.requireSubscription(workspaceId, id, viewerId);
+    const previous = sub.lastRunAt;
+    if (sub.deliverEmail) {
+      const cutoff = new Date(Date.now() - RUN_THROTTLE_MS);
+      const claimed = await this.prisma.reportSubscription.updateMany({
+        where: { id, OR: [{ lastRunAt: null }, { lastRunAt: { lt: cutoff } }] },
         data: { lastRunAt: new Date() },
       });
+      if (claimed.count === 0) {
+        throw new BusinessRuleException(
+          'Báo cáo vừa được gửi cách đây chưa tới 1 phút — đợi một chút rồi chạy lại',
+        );
+      }
     }
-    return { sent, summaryText: d.summaryText };
+    let sent = false;
+    try {
+      const d = await this.deliver(sub, 'run', { actorId: viewerId });
+      if (d.tokenUnusable) throw new BusinessRuleException(TELEGRAM_TOKEN_UNUSABLE_MESSAGE);
+      if (d.integrationError) throw new BusinessRuleException(INTEGRATION_ERROR_MESSAGE);
+      sent = d.telegram === true || d.emails > 0;
+      if (sent) {
+        await this.prisma.reportSubscription.update({
+          where: { id },
+          data: { lastRunAt: new Date() },
+        });
+      }
+      return { sent, summaryText: d.summaryText, channelSkipped: d.channelSkipped };
+    } finally {
+      // Không gửi được gì → trả `lastRunAt` về giá trị cũ (đã giữ chỗ ở trên) để cron không coi như vừa chạy.
+      if (sub.deliverEmail && !sent) {
+        await this.prisma.reportSubscription
+          .updateMany({ where: { id }, data: { lastRunAt: previous } })
+          .catch(() => undefined);
+      }
+    }
   }
 
   /**
    * Dựng + gửi MỘT subscription qua mọi kênh đã bật (Telegram và Email độc lập nhau).
    * `mode: 'run'` (nút "Chạy ngay"): Telegram hỏng token/tích hợp thì dừng NGAY, chưa gửi email, để báo lỗi rõ.
    * `mode: 'scheduled'` (cron/sự kiện): một kênh hỏng không chặn kênh còn lại.
-   * `telegram`: null = chưa cấu hình kênh; true/false = đã thử gửi.
+   * `telegram`: null = chưa cấu hình kênh hoặc KHÔNG được phép gửi (`channelSkipped`); true/false = đã thử gửi.
+   * `closedSprintId`: sự kiện kết thúc sprint — thêm khối "Sprint vừa kết thúc" (theo quyền xem của từng người nhận).
    */
   private async deliver(
     sub: DeliverSub,
     mode: 'run' | 'scheduled',
+    opts: { actorId?: string; closedSprintId?: string } = {},
   ): Promise<{
     telegram: boolean | null;
+    channelSkipped: boolean;
     emails: number;
     tokenUnusable: boolean;
     integrationError: boolean;
     summaryText: string;
   }> {
+    const projectId = sub.projectId ?? undefined;
+    let telegram: boolean | null = null;
+    let channelSkipped = false;
+    let tokenUnusable = false;
+    let integrationError = false;
+    let channelModel: DigestModel | null = null;
+    if (sub.channelId) {
+      const viewer = await this.channelViewer(
+        sub.workspaceId,
+        sub.projectId,
+        sub.allowPrivateToChannel,
+        sub.createdById,
+      );
+      const model = viewer
+        ? await this.buildDigest(sub.workspaceId, projectId, sub.metrics, viewer, {
+            closedSprintId: opts.closedSprintId,
+          })
+        : null;
+      if (!model || isUnavailable(model)) {
+        channelSkipped = true; // dự án riêng tư chưa được phép đăng vào kênh (hoặc người tạo không còn thấy dự án)
+      } else {
+        channelModel = model;
+        const r = await this.send(sub.workspaceId, sub.channelId, renderTelegramHtml(model));
+        telegram = r.sent;
+        tokenUnusable = r.tokenUnusable;
+        integrationError = r.integrationError;
+      }
+    }
+    const summaryText = channelModel
+      ? renderPlainText(channelModel)
+      : opts.actorId
+        ? await this.actorText(sub, opts.actorId)
+        : '';
+    if (mode === 'run' && (tokenUnusable || integrationError)) {
+      return { telegram, channelSkipped, emails: 0, tokenUnusable, integrationError, summaryText };
+    }
+    const emails = sub.deliverEmail ? await this.sendEmails(sub, opts.closedSprintId) : 0;
+    return { telegram, channelSkipped, emails, tokenUnusable, integrationError, summaryText };
+  }
+
+  private async actorText(sub: DeliverSub, actorId: string): Promise<string> {
     const model = await this.buildDigest(
       sub.workspaceId,
       sub.projectId ?? undefined,
       sub.metrics,
-      this.sharedViewer(sub),
+      actorId,
     );
-    const summaryText = renderPlainText(model);
-    let telegram: boolean | null = null;
-    let tokenUnusable = false;
-    let integrationError = false;
-    if (sub.channelId) {
-      const r = await this.send(sub.workspaceId, sub.channelId, renderTelegramHtml(model));
-      telegram = r.sent;
-      tokenUnusable = r.tokenUnusable;
-      integrationError = r.integrationError;
-      if (mode === 'run' && (tokenUnusable || integrationError)) {
-        return { telegram, emails: 0, tokenUnusable, integrationError, summaryText };
-      }
-    }
-    const emails = sub.deliverEmail ? await this.sendEmails(sub) : 0;
-    return { telegram, emails, tokenUnusable, integrationError, summaryText };
+    return renderPlainText(model);
   }
 
   /**
    * Email: một thư/người nhận (không lộ danh sách), qua outbox (cron MailOutboxService gửi). Người nhận chỉ là thành
    * viên workspace chưa bị khoá; nội dung dựng theo quyền xem của CHÍNH người nhận; digest gắn dự án thì người không
-   * thấy dự án đó không nhận thư. Lỗi xếp thư của một người không chặn người khác. Trả số thư đã xếp.
+   * thấy dự án đó không nhận thư. Dựng theo lô song song (`EMAIL_BATCH`) để không tuần tự ≤50 lần. Lỗi xếp thư của
+   * một người không chặn người khác. Trả số thư đã xếp.
    */
-  private async sendEmails(sub: DeliverSub): Promise<number> {
+  private async sendEmails(sub: DeliverSub, closedSprintId?: string): Promise<number> {
     const ids = sub.recipients;
     if (ids.length === 0) return 0;
     let users: Array<{ id: string; email: string; displayName: string }>;
@@ -335,17 +442,17 @@ export class DigestsService implements OnApplicationShutdown {
           .catch(() => null)
       : null;
     const url = this.config.get<string>('mail.appWebUrl') ?? '';
-    let queued = 0;
-    for (const user of users) {
+    const one = async (user: (typeof users)[number]): Promise<boolean> => {
       try {
         if (sub.projectId && !(await this.access.canSee(user.id, sub.workspaceId, sub.projectId))) {
-          continue;
+          return false;
         }
         const model = await this.buildDigest(
           sub.workspaceId,
           sub.projectId ?? undefined,
           sub.metrics,
           user.id,
+          { closedSprintId },
         );
         await this.mail.enqueue({
           to: user.email,
@@ -358,25 +465,51 @@ export class DigestsService implements OnApplicationShutdown {
             url,
           },
         });
-        queued += 1;
+        return true;
       } catch (err) {
         this.warn(`sendEmails:${user.id}`, err);
+        return false;
       }
+    };
+    let queued = 0;
+    for (let i = 0; i < users.length; i += EMAIL_BATCH) {
+      const results = await Promise.all(users.slice(i, i + EMAIL_BATCH).map(one));
+      queued += results.filter(Boolean).length;
     }
     return queued;
   }
 
-  /** Xem trước (chưa lưu): nội dung theo quyền xem của CHÍNH người bấm. */
+  /**
+   * Xem trước (chưa lưu) KHỚP nội dung thật: `as: 'channel'` = đúng bản sẽ đăng vào nhóm Telegram (công khai, hoặc
+   * dự án riêng tư nếu đã bật `allowPrivateToChannel`; rỗng + `channelSkipped` nếu sẽ không đăng); `as: 'me'` (mặc
+   * định) = bản theo quyền xem của CHÍNH người bấm, như một email gửi cho họ.
+   */
   async preview(
     workspaceId: string,
     viewerId: string,
-    input: { projectId?: string; metrics?: string[] },
-  ): Promise<{ summaryText: string }> {
+    input: {
+      projectId?: string;
+      metrics?: string[];
+      as?: 'channel' | 'me';
+      allowPrivateToChannel?: boolean;
+    },
+  ): Promise<{ summaryText: string; channelSkipped: boolean }> {
     if (input.projectId) {
       await this.access.assertCanSee(viewerId, workspaceId, input.projectId, 'Dự án');
     }
-    const model = await this.buildDigest(workspaceId, input.projectId, input.metrics, viewerId);
-    return { summaryText: renderPlainText(model) };
+    let viewer = viewerId;
+    if (input.as === 'channel') {
+      const v = await this.channelViewer(
+        workspaceId,
+        input.projectId ?? null,
+        input.allowPrivateToChannel ?? false,
+        viewerId,
+      );
+      if (!v) return { summaryText: '', channelSkipped: true };
+      viewer = v;
+    }
+    const model = await this.buildDigest(workspaceId, input.projectId, input.metrics, viewer);
+    return { summaryText: renderPlainText(model), channelSkipped: false };
   }
 
   // ----------------------------- Compute ------------------------------
@@ -392,6 +525,7 @@ export class DigestsService implements OnApplicationShutdown {
     projectId: string | undefined,
     blocks: readonly string[] | undefined,
     viewerId: string,
+    opts: { closedSprintId?: string } = {},
   ): Promise<DigestModel> {
     const now = new Date();
     const wanted = resolveDigestBlocks(blocks).filter(
@@ -433,12 +567,46 @@ export class DigestsService implements OnApplicationShutdown {
       cards: wanted.flatMap((b) => (LEADERSHIP_CARD_OF[b] ? [LEADERSHIP_CARD_OF[b]] : [])),
       leadership: undefined,
     };
-    const sections = await Promise.all(wanted.map((b) => this.buildBlock(b, ctx)));
+    const [closed, ...sections] = await Promise.all([
+      opts.closedSprintId ? this.closedSprintSection(ctx, opts.closedSprintId) : null,
+      ...wanted.map((b) => this.buildBlock(b, ctx)),
+    ]);
     return {
       title,
       subtitle: project ? `Dự án: ${project.name}` : '',
-      sections: sections.filter((s): s is DigestSection => s !== null),
+      sections: [closed, ...sections].filter((s): s is DigestSection => s !== null),
     };
+  }
+
+  /** "Sprint vừa kết thúc" (digest SPRINT_END): chỉ khi người xem thấy dự án của sprint đó. */
+  private async closedSprintSection(
+    ctx: BlockContext,
+    sprintId: string,
+  ): Promise<DigestSection | null> {
+    try {
+      const sprint = await this.prisma.sprint.findFirst({
+        where: {
+          id: sprintId,
+          deletedAt: null,
+          project: {
+            workspaceId: ctx.workspaceId,
+            deletedAt: null,
+            ...ctx.visible,
+            ...(ctx.projectId ? { id: ctx.projectId } : {}),
+          },
+        },
+        select: { name: true, project: { select: { key: true } } },
+      });
+      if (!sprint) return null;
+      return {
+        id: 'sprint-closed',
+        title: 'Sprint vừa kết thúc',
+        lines: [`${ctx.projectId ? '' : `[${sprint.project.key}] `}${sprint.name}`],
+      };
+    } catch (err) {
+      this.warn('closedSprintSection', err);
+      return null;
+    }
   }
 
   private async buildBlock(block: DigestBlockId, ctx: BlockContext): Promise<DigestSection | null> {
@@ -838,8 +1006,9 @@ export class DigestsService implements OnApplicationShutdown {
       });
       for (const sub of subs) {
         if (this.stopping) break;
-        // Không áp cửa sổ dedupe của cron: hai sprint đóng liền nhau là hai sự kiện thật; CAS vẫn chặn gửi đôi đồng thời.
-        await this.dispatch(sub, new Date());
+        // Mỗi sự kiện chỉ do MỘT node xử lý (EventEmitter trong tiến trình) nên không cần CAS; bỏ cả CAS lẫn cửa sổ
+        // dedupe để hai sprint đóng cùng lúc đều gửi (CAS trước đây làm bên thua mất digest).
+        await this.dispatch(sub, new Date(), { claim: false, closedSprintId: event.sprintId });
       }
     } catch (err) {
       this.warn('onSprintCompleted', err);
@@ -847,26 +1016,42 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   /**
-   * Gửi một subscription (đã xác định "đến lượt"). Compare-and-set `lastRunAt` TRƯỚC khi gửi: chỉ một node thắng.
+   * Gửi một subscription (đã xác định "đến lượt"). Cron (`claim: true`): compare-and-set `lastRunAt` TRƯỚC khi gửi —
+   * chỉ một node thắng. Sự kiện sprint (`claim: false`): gửi rồi ghi `lastRunAt`.
    * Chỉ là lưới an toàn cho lỗi BẤT NGỜ (vd buildDigest ném): send() tự nuốt lỗi gửi nên lỗi mạng không đi vào đây
    * => không retry trong giờ đó. Cơ chế là at-most-once: node chết sau khi claim thì digest giờ đó mất.
    */
-  private async dispatch(sub: DispatchSub, now: Date): Promise<void> {
+  private async dispatch(
+    sub: DispatchSub,
+    now: Date,
+    opts: { claim?: boolean; closedSprintId?: string } = {},
+  ): Promise<void> {
+    const claim = opts.claim ?? true;
     try {
-      const claimed = await this.prisma.reportSubscription.updateMany({
-        where: { id: sub.id, lastRunAt: sub.lastRunAt },
-        data: { lastRunAt: now },
-      });
-      if (claimed.count === 0) return;
+      if (claim) {
+        const claimed = await this.prisma.reportSubscription.updateMany({
+          where: { id: sub.id, lastRunAt: sub.lastRunAt },
+          data: { lastRunAt: now },
+        });
+        if (claimed.count === 0) return;
+      }
       try {
-        await this.deliver(sub, 'scheduled');
+        const d = await this.deliver(sub, 'scheduled', { closedSprintId: opts.closedSprintId });
+        if (!claim && (d.telegram === true || d.emails > 0)) {
+          await this.prisma.reportSubscription.update({
+            where: { id: sub.id },
+            data: { lastRunAt: now },
+          });
+        }
       } catch (err) {
-        await this.prisma.reportSubscription
-          .updateMany({
-            where: { id: sub.id, lastRunAt: now },
-            data: { lastRunAt: sub.lastRunAt },
-          })
-          .catch(() => undefined);
+        if (claim) {
+          await this.prisma.reportSubscription
+            .updateMany({
+              where: { id: sub.id, lastRunAt: now },
+              data: { lastRunAt: sub.lastRunAt },
+            })
+            .catch(() => undefined);
+        }
         throw err;
       }
     } catch (err) {
@@ -910,11 +1095,15 @@ export class DigestsService implements OnApplicationShutdown {
     }
   }
 
-  private async requireSubscription(workspaceId: string, id: string) {
+  /** Báo cáo gắn dự án riêng tư người gọi không thấy = không tồn tại (404 như id sai). */
+  private async requireSubscription(workspaceId: string, id: string, viewerId: string) {
     const row = await this.prisma.reportSubscription.findFirst({
       where: { id, workspaceId },
     });
     if (!row) throw new NotFoundAppException('Báo cáo định kỳ');
+    if (row.projectId) {
+      await this.access.assertCanSee(viewerId, workspaceId, row.projectId, 'Báo cáo định kỳ');
+    }
     return row;
   }
 
@@ -923,4 +1112,9 @@ export class DigestsService implements OnApplicationShutdown {
       `Digest (${context}) lỗi: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+/** Mô hình "dự án không còn thấy được" do buildDigest trả khi người xem không thấy dự án gắn kèm — không đem đi gửi. */
+function isUnavailable(model: DigestModel): boolean {
+  return model.sections.length === 1 && model.sections[0]!.id === 'unavailable';
 }

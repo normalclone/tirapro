@@ -78,16 +78,23 @@ export function sameLocalHour(a: Date, b: Date, tz: string): boolean {
   return x.day === y.day && x.hour === y.hour;
 }
 
+const HOUR_MS = 3_600_000;
+
 /**
  * Đến giờ gửi chưa (cron chạy mỗi giờ). DAILY: đúng `hour`; WEEKLY: đúng `weekday` và `hour`;
  * SPRINT_END (theo sự kiện) và MANUAL (nút "Gửi ngay") không bao giờ đến hạn ở cron.
- * Múi giờ hỏng → false (không để một dòng dữ liệu xấu làm hỏng cả vòng cron).
+ * Ngày đồng hồ nhảy tới (DST mùa xuân) làm `hour` không tồn tại (vd 02:00 → 03:00): gửi ở giờ kế tiếp, nhận ra bằng
+ * "giờ trước đó là hour-1 còn giờ này là hour+1" — nên vẫn đúng một lần/ngày. Múi giờ hỏng → false (không để một dòng
+ * dữ liệu xấu làm hỏng cả vòng cron).
  */
 export function isDue(sub: DigestScheduleFields, now: Date): boolean {
   if (sub.schedule !== 'DAILY' && sub.schedule !== 'WEEKLY') return false;
   try {
     const p = localParts(now, sub.timezone);
-    if (p.hour !== sub.hour) return false;
+    const skipped =
+      p.hour === (sub.hour + 1) % 24 &&
+      localParts(new Date(now.getTime() - HOUR_MS), sub.timezone).hour === (sub.hour + 23) % 24;
+    if (p.hour !== sub.hour && !skipped) return false;
     return sub.schedule === 'DAILY' || p.weekday === sub.weekday;
   } catch {
     return false;

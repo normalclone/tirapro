@@ -105,6 +105,12 @@ export const keys = {
     list: (filter: GoalFilter) => ['goals', filter] as const,
     periods: ['goal-periods'] as const,
     issueSearch: (q: string, projectId: string) => ['goal-issue-search', q, projectId] as const,
+    /** Tiền tố riêng (không nằm dưới ['goals']) để `patchGoalCaches` không đụng tới mảng lịch sử. */
+    checkIns: (goalId: string, krId: string, limit: number) =>
+      ['goal-check-ins', goalId, krId, limit] as const,
+    checkInsAll: ['goal-check-ins'] as const,
+    history: (goalId: string) => ['goal-progress-history', goalId] as const,
+    historyAll: ['goal-progress-history'] as const,
   },
 
   raid: {
@@ -225,7 +231,10 @@ export const keys = {
     versions: (projectId: string) => ['project-lookups', projectId, 'versions'] as const,
   },
 
-  guides: { screen: (screen: string) => ['guides', screen] as const },
+  guides: {
+    screen: (screen: string) => ['guides', screen] as const,
+    onboarding: ['guides', 'onboarding'] as const,
+  },
 
   ai: {
     projectMeta: (key: string) => ['project-meta', key] as const,

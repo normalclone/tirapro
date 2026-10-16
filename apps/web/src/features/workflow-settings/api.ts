@@ -34,6 +34,8 @@ export interface Workflow {
   transitions: WorkflowTransition[];
   /** Dự án đang dùng quy trình này làm quy trình mặc định (kể cả dự án đã xoá). GET /workflows luôn trả; để tuỳ chọn vì kiểu này còn được dùng làm dữ liệu giả ở nhiều nơi. */
   usedBy?: WorkflowUsedBy[];
+  /** Số dự án người xem không xem được cũng đang dùng quy trình này — chỉ để hiện "+N dự án bạn không xem được" và giải thích vì sao không xoá được. */
+  hiddenCount?: number;
 }
 
 export interface WorkflowUsedBy {

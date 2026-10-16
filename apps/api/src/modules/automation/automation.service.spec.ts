@@ -30,6 +30,7 @@ function setup(assignable: boolean) {
     issues as never,
     rbac as never,
     {} as never,
+    {} as never,
   );
   const warn = vi.spyOn((service as unknown as { logger: { warn: () => void } }).logger, 'warn');
   warn.mockImplementation(() => undefined);
@@ -41,13 +42,29 @@ describe('AutomationService — tạo việc lặp lại với assignee đã r�
     const { service, issues, warn } = setup(false);
     const res = await service.runNow('w1', 'r1', 'u1');
     expect(res.success).toBe(true);
-    expect(issues.isAssignableMember).toHaveBeenCalledWith('w1', 'gone');
+    expect(issues.isAssignableMember).toHaveBeenCalledWith('w1', 'gone', undefined, 'p1');
     expect(issues.create).toHaveBeenCalledWith(
       'w1',
       'u1',
       expect.objectContaining({ assigneeId: null }),
     );
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('assignee không xem được dự án riêng tư => tạo KHÔNG gán (không 422), warn nêu rõ dự án', async () => {
+    // isAssignableMember (có projectId) trả false vì người đó không thấy dự án riêng tư p1.
+    const { service, issues, warn } = setup(false);
+    const res = await service.runNow('w1', 'r1', 'u1');
+    expect(res.success).toBe(true);
+    expect(issues.isAssignableMember).toHaveBeenCalledWith('w1', 'gone', undefined, 'p1');
+    expect(issues.create).toHaveBeenCalledWith(
+      'w1',
+      'u1',
+      expect.objectContaining({ projectId: 'p1', assigneeId: null }),
+    );
+    expect(String((warn.mock.calls as unknown as string[][])[0]?.[0])).toContain(
+      'không xem được dự án p1',
+    );
   });
 
   it('assignee còn hợp lệ => giữ nguyên, không cảnh báo', async () => {
@@ -129,6 +146,7 @@ function setupArchived() {
     issues as never,
     rbac as never,
     {} as never,
+    {} as never,
   );
   return { service, prisma, issues };
 }
@@ -205,5 +223,63 @@ describe('AutomationService — dự án lưu trữ là chỉ đọc', () => {
         where: expect.objectContaining({ project: { archivedAt: null } }) as unknown,
       }),
     );
+  });
+});
+
+describe('AutomationService — danh sách mẫu/việc lặp không lộ dự án riêng tư', () => {
+  function listSetup(visible: Record<string, unknown>) {
+    const prisma = {
+      issueTemplate: { findMany: vi.fn((..._a: unknown[]) => Promise.resolve([])) },
+      recurringIssue: { findMany: vi.fn((..._a: unknown[]) => Promise.resolve([])) },
+    };
+    const access = { visibleWhere: vi.fn(() => Promise.resolve(visible)) };
+    const service = new AutomationService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      access as never,
+    );
+    return { service, prisma, access };
+  }
+  const visibleToU1 = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+
+  it('listTemplates không truyền projectId: mẫu dùng chung + mẫu của dự án người xem thấy (không phải MỌI dự án)', async () => {
+    const { service, prisma, access } = listSetup(visibleToU1);
+    await service.listTemplates('w1', undefined, 'u1');
+    expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+    expect(prisma.issueTemplate.findMany.mock.calls[0]![0]).toMatchObject({
+      where: {
+        workspaceId: 'w1',
+        AND: [{ OR: [{ projectId: null }, { project: visibleToU1 }] }],
+      },
+    });
+  });
+
+  it('listTemplates có projectId: giữ OR của templateScope, bộ lọc người xem nằm trong AND (không đè nhau)', async () => {
+    const { service, prisma } = listSetup(visibleToU1);
+    await service.listTemplates('w1', 'p1', 'u1');
+    expect(prisma.issueTemplate.findMany.mock.calls[0]![0]).toMatchObject({
+      where: {
+        OR: [{ projectId: 'p1' }, { projectId: null }],
+        AND: [{ OR: [{ projectId: null }, { project: visibleToU1 }] }],
+      },
+    });
+  });
+
+  it('listRecurring: lọc project theo người xem (dự án riêng tư không là thành viên bị loại)', async () => {
+    const { service, prisma } = listSetup(visibleToU1);
+    await service.listRecurring('w1', undefined, 'u1');
+    expect(prisma.recurringIssue.findMany.mock.calls[0]![0]).toMatchObject({
+      where: { project: { workspaceId: 'w1', deletedAt: null, ...visibleToU1 } },
+    });
+  });
+
+  it('quản trị (thấy hết, visibleWhere = {}): không thu hẹp thêm', async () => {
+    const { service, prisma } = listSetup({});
+    await service.listRecurring('w1', undefined, 'admin');
+    expect(prisma.recurringIssue.findMany.mock.calls[0]![0]).toMatchObject({
+      where: { project: { workspaceId: 'w1', deletedAt: null } },
+    });
   });
 });

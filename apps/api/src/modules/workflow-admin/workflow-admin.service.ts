@@ -4,6 +4,7 @@ import type { StatusCategory } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertProjectIdWritable } from '../../common/project-writable';
+import { ProjectAccessService } from '../rbac/project-access.service';
 
 // ---------------------------------------------------------------------------
 // DTOs trả về (config-driven: board & validate transition đọc các bản ghi này)
@@ -50,7 +51,13 @@ export interface WorkflowDto {
   updatedAt: string;
   statuses: StatusDto[];
   transitions: TransitionDto[];
+  /** Chỉ dự án người xem thấy được (dự án riêng tư người ngoài không lộ khoá/tên). */
   usedBy: WorkflowUsedByDto[];
+  /**
+   * Số dự án (riêng tư, người xem không thấy) cũng đang dùng quy trình này — để UI hiện "+N dự án riêng tư" và vẫn
+   * giải thích vì sao quy trình không xoá được mà không lộ khoá/tên.
+   */
+  hiddenCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +118,11 @@ const workflowInclude = {
 } satisfies Prisma.WorkflowInclude;
 
 type WorkflowRow = Prisma.WorkflowGetPayload<{ include: typeof workflowInclude }>;
+/** Dự án dùng một quy trình, tách theo người xem: thấy được (`usedBy`) và không thấy (`hiddenCount`). */
+interface UsedBy {
+  usedBy: WorkflowUsedByDto[];
+  hiddenCount: number;
+}
 type StatusRow = Prisma.StatusGetPayload<true>;
 type TransitionRow = Prisma.WorkflowTransitionGetPayload<true>;
 
@@ -123,12 +135,29 @@ const STATUS_IN_USE =
 
 @Injectable()
 export class WorkflowAdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: ProjectAccessService,
+  ) {}
 
   // ----- Workflows -----
 
-  async listWorkflows(workspaceId: string, filter: ListWorkflowsFilter): Promise<WorkflowDto[]> {
-    const where: Prisma.WorkflowWhereInput = { workspaceId };
+  /**
+   * Điều kiện Workflow người xem được đọc: quy trình chung (không gắn dự án) + quy trình của dự án người đó thấy.
+   * `visible` = `ProjectAccessService.visibleWhere` (`{}` = thấy hết → không thêm điều kiện).
+   */
+  private readableWhere(visible: Prisma.ProjectWhereInput): Prisma.WorkflowWhereInput {
+    return Object.keys(visible).length ? { OR: [{ projectId: null }, { project: visible }] } : {};
+  }
+
+  /** `viewerId` bắt buộc: quy trình của dự án riêng tư người xem không thấy bị loại; `usedBy` chỉ gồm dự án thấy được. */
+  async listWorkflows(
+    workspaceId: string,
+    filter: ListWorkflowsFilter,
+    viewerId: string,
+  ): Promise<WorkflowDto[]> {
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+    const where: Prisma.WorkflowWhereInput = { workspaceId, ...this.readableWhere(visible) };
     if (filter.projectId !== undefined) where.projectId = filter.projectId;
     if (filter.isTemplate !== undefined) where.isTemplate = filter.isTemplate;
     const rows = await this.prisma.workflow.findMany({
@@ -139,39 +168,65 @@ export class WorkflowAdminService {
     const usedBy = await this.usedByMap(
       workspaceId,
       rows.map((r) => r.id),
+      visible,
     );
     return rows.map((r) => this.toWorkflowDto(r, usedBy.get(r.id)));
   }
 
-  /** Gom dự án đang dùng từng quy trình bằng MỘT truy vấn (ProjectDto không có defaultWorkflowId nên FE không tự ghép được). */
+  /**
+   * Gom dự án đang dùng từng quy trình (ProjectDto không có defaultWorkflowId nên FE không tự ghép được): MỘT truy vấn
+   * lấy dự án người xem thấy + MỘT groupBy đếm dự án không thấy (`hidden`). `visible` = `{}` → thấy hết, `hidden` rỗng.
+   */
   private async usedByMap(
     workspaceId: string,
     workflowIds: string[],
-  ): Promise<Map<string, WorkflowUsedByDto[]>> {
-    const map = new Map<string, WorkflowUsedByDto[]>();
+    visible: Prisma.ProjectWhereInput,
+  ): Promise<Map<string, UsedBy>> {
+    const map = new Map<string, UsedBy>();
     if (workflowIds.length === 0) return map;
+    const entry = (id: string): UsedBy => {
+      let e = map.get(id);
+      if (!e) map.set(id, (e = { usedBy: [], hiddenCount: 0 }));
+      return e;
+    };
     // allow-deleted: liệt kê cả dự án đã xoá mềm vì chúng vẫn giữ tham chiếu
     const projects = await this.prisma.project.findMany({
-      where: { workspaceId, defaultWorkflowId: { in: workflowIds } },
+      where: { workspaceId, defaultWorkflowId: { in: workflowIds }, ...visible },
       select: { id: true, key: true, name: true, defaultWorkflowId: true, deletedAt: true },
       orderBy: { key: 'asc' },
     });
     for (const p of projects) {
       if (!p.defaultWorkflowId) continue;
-      const list = map.get(p.defaultWorkflowId) ?? [];
-      list.push({ id: p.id, key: p.key, name: p.name, deleted: p.deletedAt !== null });
-      map.set(p.defaultWorkflowId, list);
+      entry(p.defaultWorkflowId).usedBy.push({
+        id: p.id,
+        key: p.key,
+        name: p.name,
+        deleted: p.deletedAt !== null,
+      });
+    }
+    if (Object.keys(visible).length) {
+      // allow-deleted: dự án đã xoá mềm (riêng tư) vẫn giữ tham chiếu nên vẫn chặn xoá quy trình
+      const hidden = await this.prisma.project.groupBy({
+        by: ['defaultWorkflowId'],
+        where: { workspaceId, defaultWorkflowId: { in: workflowIds }, NOT: visible },
+        _count: { _all: true },
+      });
+      for (const h of hidden) {
+        if (h.defaultWorkflowId) entry(h.defaultWorkflowId).hiddenCount = h._count._all;
+      }
     }
     return map;
   }
 
-  async getWorkflow(workspaceId: string, id: string): Promise<WorkflowDto> {
+  /** Quy trình của dự án riêng tư người xem không thấy = không tồn tại (404 như id sai). */
+  async getWorkflow(workspaceId: string, id: string, viewerId: string): Promise<WorkflowDto> {
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const row = await this.prisma.workflow.findFirst({
-      where: { id, workspaceId },
+      where: { id, workspaceId, ...this.readableWhere(visible) },
       include: workflowInclude,
     });
     if (!row) throw new NotFoundAppException('Quy trình');
-    const usedBy = await this.usedByMap(workspaceId, [row.id]);
+    const usedBy = await this.usedByMap(workspaceId, [row.id], visible);
     return this.toWorkflowDto(row, usedBy.get(row.id));
   }
 
@@ -230,7 +285,8 @@ export class WorkflowAdminService {
           include: workflowInclude,
         });
       });
-      const usedBy = await this.usedByMap(workspaceId, [row.id]);
+      // Chỉ Quản trị workspace gọi được (thấy mọi dự án) → không lọc usedBy.
+      const usedBy = await this.usedByMap(workspaceId, [row.id], {});
       return this.toWorkflowDto(row, usedBy.get(row.id));
     } catch (e) {
       throw this.mapWorkflowError(e);
@@ -493,7 +549,10 @@ export class WorkflowAdminService {
     return e;
   }
 
-  private toWorkflowDto(row: WorkflowRow, usedBy: WorkflowUsedByDto[] = []): WorkflowDto {
+  private toWorkflowDto(
+    row: WorkflowRow,
+    used: UsedBy = { usedBy: [], hiddenCount: 0 },
+  ): WorkflowDto {
     return {
       id: row.id,
       workspaceId: row.workspaceId,
@@ -507,7 +566,8 @@ export class WorkflowAdminService {
       updatedAt: row.updatedAt.toISOString(),
       statuses: row.statuses.map((s) => this.toStatusDto(s)),
       transitions: row.transitions.map((t) => this.toTransitionDto(t)),
-      usedBy,
+      usedBy: used.usedBy,
+      hiddenCount: used.hiddenCount,
     };
   }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link2, Pencil, Plus, Target, Trash2, X } from 'lucide-react';
+import { LineChart, Link2, Pencil, Plus, Target, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
@@ -24,7 +24,11 @@ import {
   type ObjectiveStatus,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { LOCALE } from '@/lib/locale';
+import { fmtDateTime } from '@/lib/dateFormat';
+import { describeSource, isAutoSource } from './krSource';
+import { formatKrValue, krSummary } from './krFormat';
+import { CheckInButton, CheckInHistoryButton } from './CheckInPopover';
+import { ProgressChart } from './ProgressChart';
 
 const STATUS_META: Record<ObjectiveStatus, { label: string; className: string; hint: string }> = {
   DRAFT: {
@@ -55,13 +59,6 @@ const STATUS_FILTER_OPTIONS = [
 function periodHint(period: string): string {
   const m = /^(\d{4})-Q([1-4])$/.exec(period.trim());
   return m ? `Quý ${m[2]} năm ${m[1]}` : `Kỳ ${period}`;
-}
-
-/** Định dạng giá trị KR theo đơn vị (số / phần trăm / tiền). */
-function formatValue(value: number, unit: KeyResultDto['unit']): string {
-  if (unit === 'PERCENT') return `${Math.round(value * 10) / 10}%`;
-  if (unit === 'CURRENCY') return new Intl.NumberFormat(LOCALE).format(value);
-  return String(Math.round(value * 100) / 100);
 }
 
 function ProgressBar({
@@ -105,7 +102,16 @@ function KeyResultRow({
   canManage: boolean;
 }) {
   const updateKr = useUpdateKeyResult();
+  const { data: projects } = useProjects();
   const [draft, setDraft] = useState(String(kr.currentValue));
+  const auto = isAutoSource(kr.source);
+  const projectNames = useMemo(
+    () => Object.fromEntries((projects ?? []).map((p) => [p.id, p.name])),
+    [projects],
+  );
+  const sourceHint = auto
+    ? `${describeSource(kr, projectNames)}. Số tính theo dự án bạn có quyền xem.`
+    : undefined;
 
   useEffect(() => {
     setDraft(String(kr.currentValue));
@@ -118,7 +124,12 @@ function KeyResultRow({
       return;
     }
     try {
-      await updateKr.mutateAsync({ goalId: goal.id, keyResultId: kr.id, currentValue: next });
+      await updateKr.mutateAsync({
+        goalId: goal.id,
+        keyResultId: kr.id,
+        currentValue: next,
+        expectedCurrentValue: kr.currentValue,
+      });
     } catch (e) {
       setDraft(String(kr.currentValue));
       toast.error(apiErrorMessage(e));
@@ -128,11 +139,23 @@ function KeyResultRow({
   return (
     <li className="py-2.5 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <p className="min-w-0 flex-1 truncate text-sm text-ink" title={kr.name}>
+        <p
+          className="w-full min-w-0 text-sm text-ink sm:w-auto sm:flex-1 sm:truncate"
+          title={kr.name}
+        >
           {kr.name}
         </p>
         <div className="flex items-center gap-2">
-          {canManage ? (
+          {auto ? (
+            <>
+              <Badge className="bg-primary-subtle text-primary" title={sourceHint}>
+                Tự đo
+              </Badge>
+              <span className="tabular-nums text-sm text-ink" title={sourceHint}>
+                {formatKrValue(kr.currentValue, kr.unit, kr.unitLabel)}
+              </span>
+            </>
+          ) : canManage ? (
             <Input
               type="number"
               value={draft}
@@ -154,14 +177,14 @@ function KeyResultRow({
             />
           ) : (
             <span className="tabular-nums text-sm text-ink" title="Số đo hiện tại">
-              {formatValue(kr.currentValue, kr.unit)}
+              {formatKrValue(kr.currentValue, kr.unit, kr.unitLabel)}
             </span>
           )}
           <span
             className="whitespace-nowrap text-xs text-faint"
             title="Số cần đạt để coi là hoàn thành"
           >
-            / {formatValue(kr.targetValue, kr.unit)}
+            / {formatKrValue(kr.targetValue, kr.unit, kr.unitLabel)}
           </span>
           <span
             className="w-10 shrink-0 text-right text-xs font-medium tabular-nums text-muted"
@@ -174,6 +197,24 @@ function KeyResultRow({
       <div className="mt-1.5">
         <ProgressBar value={kr.progress} label={`Tiến độ ${kr.name}`} size="sm" />
       </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        <p
+          className="min-w-0 flex-1 text-xs tabular-nums text-faint"
+          title="Hành trình của kết quả này"
+        >
+          {krSummary(kr)}
+          {auto && !kr.measureError && kr.measuredAt && ` · đo lúc ${fmtDateTime(kr.measuredAt)}`}
+        </p>
+        <div className="flex items-center gap-0.5">
+          {canManage && !auto && <CheckInButton goal={goal} kr={kr} />}
+          {(!auto || kr.checkInCount > 0) && <CheckInHistoryButton goal={goal} kr={kr} />}
+        </div>
+      </div>
+      {auto && kr.measureError && (
+        <p className="mt-1 text-xs text-danger" role="alert">
+          {`Không đo được: ${kr.measureError} — đang hiện số cũ`}
+        </p>
+      )}
     </li>
   );
 }
@@ -193,6 +234,7 @@ function GoalCard({
   const remove = useDeleteGoal();
   const detach = useDetachGoalIssues();
   const status = STATUS_META[goal.status];
+  const [chartOpen, setChartOpen] = useState(false);
 
   async function handleRemove() {
     if (
@@ -310,6 +352,26 @@ function GoalCard({
             <KeyResultRow key={kr.id} goal={goal} kr={kr} canManage={canManage} />
           ))}
         </ul>
+      )}
+      {goal.keyResults.length > 0 && (
+        <div className="border-t border-border px-4 py-2 sm:px-5">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setChartOpen((o) => !o)}
+            aria-expanded={chartOpen}
+            aria-controls={`goal-chart-${goal.id}`}
+            title="Đường tiến độ theo ngày của từng kết quả và của cả mục tiêu"
+          >
+            <LineChart className="h-4 w-4" />
+            {chartOpen ? 'Ẩn biểu đồ' : 'Biểu đồ'}
+          </Button>
+          {chartOpen && (
+            <div id={`goal-chart-${goal.id}`} className="mt-2 pb-1">
+              <ProgressChart goal={goal} />
+            </div>
+          )}
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2.5 sm:px-5">
