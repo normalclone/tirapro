@@ -1,0 +1,113 @@
+import { describe, expect, it } from 'vitest';
+import {
+  buildAcceptPayload,
+  defaultTypeKeyForKind,
+  formatEnvironmentLine,
+  isDeclineReasonValid,
+  isLongDescription,
+  kindLabel,
+  triageSprintOptions,
+} from './triageLogic';
+
+describe('kind', () => {
+  it('nhãn và loại công việc mặc định theo loại yêu cầu', () => {
+    expect(kindLabel('BUG')).toBe('Bug');
+    expect(kindLabel('FEATURE')).toBe('Yêu cầu tính năng');
+    expect(kindLabel('QUESTION')).toBe('Câu hỏi');
+    expect(kindLabel(null)).toBe('Yêu cầu');
+    expect(defaultTypeKeyForKind('FEATURE')).toBe('STORY');
+    expect(defaultTypeKeyForKind('QUESTION')).toBe('TASK');
+    expect(defaultTypeKeyForKind('BUG')).toBe('BUG');
+    expect(defaultTypeKeyForKind(null)).toBeNull();
+  });
+});
+
+describe('buildAcceptPayload', () => {
+  it('chỉ gửi trường đã đổi so với hiện tại; sprint rỗng = null (Việc chờ) chỉ khi khác sprint hiện tại', () => {
+    const cur = {
+      typeId: 't1',
+      priorityId: 'p1',
+      sprintId: null as string | null,
+      assigneeId: null as string | null,
+      version: 4,
+    };
+    expect(
+      buildAcceptPayload(cur, { typeId: 't1', priorityId: 'p1', sprintId: '', assigneeId: '' }),
+    ).toEqual({ version: 4 });
+    expect(
+      buildAcceptPayload(cur, {
+        typeId: 't2',
+        priorityId: 'p2',
+        sprintId: 'sp1',
+        assigneeId: 'u3',
+      }),
+    ).toEqual({ version: 4, typeId: 't2', priorityId: 'p2', sprintId: 'sp1', assigneeId: 'u3' });
+  });
+
+  it('việc đang ở sprint mà chọn "Việc chờ" => gửi sprintId null', () => {
+    const cur = { typeId: 't1', priorityId: null, sprintId: 'sp9', assigneeId: null, version: 2 };
+    expect(
+      buildAcceptPayload(cur, { typeId: 't1', priorityId: '', sprintId: '', assigneeId: '' }),
+    ).toEqual({ version: 2, sprintId: null });
+  });
+});
+
+describe('isDeclineReasonValid', () => {
+  it('cần ≥ 3 ký tự sau trim', () => {
+    expect(isDeclineReasonValid('  ')).toBe(false);
+    expect(isDeclineReasonValid('ab')).toBe(false);
+    expect(isDeclineReasonValid('Trùng DEMO-BUG-2')).toBe(true);
+  });
+});
+
+describe('formatEnvironmentLine', () => {
+  it('nối các trường có giá trị thành một dòng, null/rỗng => null', () => {
+    expect(formatEnvironmentLine(null)).toBeNull();
+    expect(formatEnvironmentLine({})).toBeNull();
+    expect(
+      formatEnvironmentLine({
+        env: 'production',
+        browser: 'Chrome 130',
+        os: 'macOS',
+        viewport: '1440×900',
+      }),
+    ).toBe('Production · Chrome 130 · macOS · 1440×900');
+    expect(formatEnvironmentLine({ build: '1.4.2' })).toBe('Build 1.4.2');
+  });
+});
+
+describe('triageSprintOptions', () => {
+  it('đầu danh sách là Việc chờ; bỏ sprint đã đóng; đánh dấu sprint đang chạy', () => {
+    const base = {
+      projectId: 'p',
+      boardId: null,
+      goal: null,
+      startDate: null,
+      endDate: null,
+      completeDate: null,
+      sequence: 1,
+    };
+    const opts = triageSprintOptions([
+      { ...base, id: 'a', name: 'Sprint 1', state: 'CLOSED' },
+      { ...base, id: 'b', name: 'Sprint 2', state: 'ACTIVE' },
+      { ...base, id: 'c', name: 'Sprint 3', state: 'FUTURE' },
+    ]);
+    expect(opts).toEqual([
+      { value: '', label: 'Việc chờ — chưa vào sprint' },
+      { value: 'b', label: 'Sprint 2 · đang chạy' },
+      { value: 'c', label: 'Sprint 3' },
+    ]);
+    expect(triageSprintOptions(undefined)).toEqual([
+      { value: '', label: 'Việc chờ — chưa vào sprint' },
+    ]);
+  });
+});
+
+describe('isLongDescription', () => {
+  it('chỉ mô tả dài (nhiều dòng hoặc nhiều chữ) mới bị cắt xem trước', () => {
+    expect(isLongDescription(null)).toBe(false);
+    expect(isLongDescription('ngắn')).toBe(false);
+    expect(isLongDescription(Array.from({ length: 13 }, (_, i) => `d${i}`).join('\n'))).toBe(true);
+    expect(isLongDescription('x'.repeat(701))).toBe(true);
+  });
+});
