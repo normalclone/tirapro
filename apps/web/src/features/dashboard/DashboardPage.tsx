@@ -673,7 +673,7 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
 
 function PersonalOverview() {
   const { data: issues, isLoading, isError } = useMyIssues();
-  const { data: projects } = useProjects();
+  const { data: projects, isError: projectsError } = useProjects();
 
   const keyById = useMemo(() => {
     const m = new Map<string, string>();
@@ -797,6 +797,9 @@ function PersonalOverview() {
         {isLoading && <IssueListSkeleton />}
         {isError && <p className="text-sm text-danger">Không tải được danh sách việc của bạn.</p>}
         {issues && issues.length === 0 && projects && <PersonalEmptyState projects={projects} />}
+        {issues && issues.length === 0 && !projects && projectsError && (
+          <p className="text-sm text-danger">Không tải được danh sách dự án của bạn.</p>
+        )}
         {issues && issues.length > 0 && (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
             {issues.map((issue) => (

@@ -62,12 +62,15 @@ export class OnboardingService {
           isPublished: true,
           OR: [{ workspaceId }, { workspaceId: null }],
         },
-        // Bản của workspace trước (workspaceId có giá trị > null khi sắp giảm dần).
-        orderBy: { workspaceId: 'desc' },
+        // Bản của workspace trước: Postgres đặt NULL TRƯỚC khi DESC nên phải ép `nulls: 'last'` (bản toàn cục xuống cuối).
+        orderBy: { workspaceId: { sort: 'desc', nulls: 'last' } },
         select: { key: true, content: true },
       }),
       this.prisma.project.count({ where: { workspaceId, deletedAt: null } }),
-      this.prisma.workspaceMembership.count({ where: { workspaceId } }),
+      // Không tính tài khoản đã vô hiệu hoá (chỉ người còn dùng được mới là "đã thêm thành viên").
+      this.prisma.workspaceMembership.count({
+        where: { workspaceId, user: { status: { not: 'DEACTIVATED' } } },
+      }),
       this.prisma.sprint.count({
         where: {
           project: { workspaceId, deletedAt: null },

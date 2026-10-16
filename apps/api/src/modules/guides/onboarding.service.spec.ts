@@ -97,6 +97,11 @@ describe('OnboardingService.get', () => {
     const where = (m: { mock: { calls: unknown[][] } }) =>
       (m.mock.calls[0] as unknown as [{ where: unknown }])[0].where;
     expect(where(prisma.project.count)).toMatchObject({ workspaceId: 'w1', deletedAt: null });
+    // tài khoản đã vô hiệu hoá không tính là "đã thêm thành viên"
+    expect(where(prisma.workspaceMembership.count)).toEqual({
+      workspaceId: 'w1',
+      user: { status: { not: 'DEACTIVATED' } },
+    });
     expect(where(prisma.integration.count)).toMatchObject({
       type: 'TELEGRAM',
       status: 'ACTIVE',
@@ -131,7 +136,7 @@ describe('OnboardingService.get', () => {
         isPublished: true,
         OR: [{ workspaceId: 'w1' }, { workspaceId: null }],
       },
-      orderBy: { workspaceId: 'desc' },
+      orderBy: { workspaceId: { sort: 'desc', nulls: 'last' } },
     });
     expect(out.items.map((i) => i.key)).toEqual(['create_project']);
     expect(out.items[0]!.label).toBe('Dự án đầu tiên của bạn');
