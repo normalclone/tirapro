@@ -1,4 +1,4 @@
-import { keepPreviousData, skipToken, useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import type { IssueDto, ListResponse, SprintDto } from '@tirapro/types';
 import type {
   BurndownReport,
@@ -10,7 +10,7 @@ import type {
 } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
-import { qaRangeFrom } from './qaFormat';
+import { qaRange } from './qaFormat';
 
 /** Số liệu tổng hợp một dự án cho màn Reports — `GET /reports/project`. */
 export interface ProjectReportTotals {
@@ -140,12 +140,15 @@ export function useQaReport(projectId: string | undefined, days: number) {
   return useQuery({
     queryKey: keys.reports.qa(projectId ?? '', days),
     queryFn: projectId
-      ? async () =>
-          (await api.get<QaReport>(`/reports/qa?projectId=${projectId}&from=${qaRangeFrom(days)}`))
-            .data
+      ? async () => {
+          const { from, to } = qaRange(days);
+          const qs = new URLSearchParams({ projectId, from, to });
+          return (await api.get<QaReport>(`/reports/qa?${qs.toString()}`)).data;
+        }
       : skipToken,
-    // Đổi kỳ 7/30/90: giữ số cũ mờ đi trong lúc tải thay vì nháy về khung xương.
-    placeholderData: keepPreviousData,
+    // Đổi kỳ 7/30/90: giữ số cũ mờ đi trong lúc tải. CHỈ giữ khi cùng dự án — không hiện số của dự án khác.
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[2] === (projectId ?? '') ? prev : undefined,
   });
 }
 

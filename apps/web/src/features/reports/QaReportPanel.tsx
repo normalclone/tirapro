@@ -5,7 +5,7 @@ import { fmtDate } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 import { useQaReport, type QaReport } from './api';
 import { Card, StatStrip, type StatItem } from './charts';
-import { barWidthPct, formatHours, formatPercent } from './qaFormat';
+import { barWidthPct, formatHours, formatPercent, shouldWarnReopen } from './qaFormat';
 
 const PERIODS = [7, 30, 90] as const;
 const DEFAULT_DAYS = 30;
@@ -17,9 +17,9 @@ const VERSION_STATUS: Record<QaReport['byRelease']['rows'][number]['status'], st
 };
 
 const REOPEN_HINT =
-  'Tỷ lệ mở lại = bug vừa được đóng vừa bị mở lại trong kỳ ÷ bug được đóng trong kỳ.';
+  'Tỷ lệ mở lại = bug vừa được đóng vừa bị mở lại trong kỳ ÷ bug được đóng trong kỳ. Bug đóng, mở lại rồi đóng lại trong kỳ vẫn tính là mở lại.';
 const CLOSE_TIME_HINT =
-  'Thời gian đóng: từ lúc báo đến lúc đóng. Trung vị ít bị lệch bởi vài bug rất lâu nên là số chính; trung bình hiển thị kèm để so.';
+  'Thời gian đóng: từ lúc báo đến lúc đóng. Trung vị ít bị lệch bởi vài bug rất lâu nên là số chính; trung bình hiển thị kèm để so. Chỉ tính bug hiện đang đóng, nên có thể ít hơn số bug “đã đóng” trong kỳ (bug bị mở lại không tính).';
 
 function statItems(r: QaReport): StatItem[] {
   return [
@@ -34,7 +34,7 @@ function statItems(r: QaReport): StatItem[] {
       value: formatPercent(r.reopenRate),
       sub:
         r.reopenRate == null ? 'chưa có bug đóng trong kỳ' : `trên ${r.totals.closed} bug đã đóng`,
-      tone: r.reopenRate != null && r.reopenRate >= 0.2 ? 'warning' : 'default',
+      tone: shouldWarnReopen(r.reopenRate, r.totals.closed) ? 'warning' : 'default',
       title: REOPEN_HINT,
     },
     {
@@ -88,7 +88,9 @@ function SeverityBars({ rows }: { rows: QaReport['openBySeverity'] }) {
               className="h-full rounded-full"
               style={{
                 width: `${barWidthPct(s.open, max)}%`,
-                background: s.color ?? 'color-mix(in oklch, var(--faint) 45%, transparent)',
+                background:
+                  s.color ??
+                  'repeating-linear-gradient(135deg, var(--faint) 0 4px, transparent 4px 8px)',
               }}
             />
           </div>
@@ -108,6 +110,8 @@ function ReleaseTable({ byRelease }: { byRelease: QaReport['byRelease'] }) {
     );
   }
   const th = 'px-2 py-1.5 text-xs font-medium text-muted';
+  // "Rò rỉ" chỉ có nghĩa với phiên bản bị ảnh hưởng (bug phát hiện SAU phát hành); với phiên bản sửa thì ẩn cột.
+  const showLeaked = byRelease.basis === 'AFFECTS';
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[420px] text-sm">
@@ -125,13 +129,15 @@ function ReleaseTable({ byRelease }: { byRelease: QaReport['byRelease'] }) {
             <th scope="col" className={cn(th, 'text-right')}>
               Đóng
             </th>
-            <th
-              scope="col"
-              className={cn(th, 'text-right')}
-              title="Rò rỉ: bug báo sau ngày phát hành của phiên bản đã phát hành."
-            >
-              Rò rỉ
-            </th>
+            {showLeaked && (
+              <th
+                scope="col"
+                className={cn(th, 'text-right')}
+                title="Rò rỉ: bug báo sau ngày phát hành của phiên bản đã phát hành."
+              >
+                Rò rỉ
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -147,15 +153,17 @@ function ReleaseTable({ byRelease }: { byRelease: QaReport['byRelease'] }) {
               <td className="tabular px-2 py-2 text-right text-ink">{row.total}</td>
               <td className="tabular px-2 py-2 text-right text-ink">{row.open}</td>
               <td className="tabular px-2 py-2 text-right text-ink">{row.closed}</td>
-              <td
-                className={cn(
-                  'tabular px-2 py-2 text-right',
-                  row.leaked > 0 ? 'font-medium text-danger' : 'text-muted',
-                )}
-                title="Báo sau ngày phát hành"
-              >
-                {row.leaked}
-              </td>
+              {showLeaked && (
+                <td
+                  className={cn(
+                    'tabular px-2 py-2 text-right',
+                    row.leaked > 0 ? 'font-medium text-danger' : 'text-muted',
+                  )}
+                  title="Báo sau ngày phát hành"
+                >
+                  {row.leaked}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -172,7 +180,13 @@ export function QaReportPanel({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted">Chỉ tính công việc loại Bug của dự án này.</p>
+        <p className="text-sm text-muted">
+          Chỉ tính công việc loại Bug đã qua duyệt của dự án này
+          {report.data
+            ? ` · kỳ ${fmtDate(report.data.range.from)} – ${fmtDate(report.data.range.to)}`
+            : ''}
+          .
+        </p>
         <div
           role="group"
           aria-label="Kỳ báo cáo"
@@ -224,15 +238,46 @@ export function QaReportPanel({ projectId }: { projectId: string }) {
               }
               caption={
                 report.data.byRelease.basis === 'FIX'
-                  ? 'chưa có bug gắn phiên bản bị ảnh hưởng'
-                  : undefined
+                  ? 'mọi thời điểm · chưa có bug gắn phiên bản bị ảnh hưởng'
+                  : 'mọi thời điểm, không theo kỳ'
               }
             >
               <ReleaseTable byRelease={report.data.byRelease} />
             </Card>
           </div>
+          <Definitions />
         </div>
       )}
     </div>
+  );
+}
+
+/** Cách tính — dùng được bằng bàn phím và cảm ứng (tooltip `title` chỉ có khi rê chuột). */
+function Definitions() {
+  return (
+    <details className="rounded-lg border border-border bg-surface px-4 py-2 text-sm">
+      <summary className="cursor-pointer select-none font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
+        Cách tính các số liệu
+      </summary>
+      <ul className="mt-2 list-disc space-y-1.5 pl-5 text-muted">
+        <li>
+          Chỉ tính công việc loại Bug. Bug đang chờ duyệt, tạm hoãn hoặc bị từ chối ở “Việc mới vào”
+          không tính.
+        </li>
+        <li>
+          Bug đang mở: chưa ở nhóm trạng thái Hoàn thành, tại thời điểm xem (không phụ thuộc kỳ).
+        </li>
+        <li>
+          Đã đóng: bug được chuyển sang trạng thái Hoàn thành trong kỳ. Chuyển giữa hai trạng thái
+          đã hoàn thành không tính.
+        </li>
+        <li>{REOPEN_HINT}</li>
+        <li>{CLOSE_TIME_HINT}</li>
+        <li>
+          Theo phiên bản: tính mọi thời điểm. Rò rỉ = bug báo sau hết ngày phát hành của phiên bản
+          đã phát hành.
+        </li>
+      </ul>
+    </details>
   );
 }

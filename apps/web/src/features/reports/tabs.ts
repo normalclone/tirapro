@@ -18,8 +18,8 @@ export const REPORT_TABS: ReportTab[] = [
   { id: 'flow', label: 'Luồng công việc', hint: 'Cumulative Flow và tốc độ tạo / xử lý' },
   {
     id: 'qa',
-    label: 'Chất lượng (QA)',
-    hint: 'Bug đang mở theo mức nghiêm trọng, tỷ lệ mở lại, thời gian đóng, theo phiên bản',
+    label: 'QA',
+    hint: 'Chất lượng (QA): bug đang mở theo mức nghiêm trọng, tỷ lệ mở lại, thời gian đóng, theo phiên bản',
   },
 ];
 
