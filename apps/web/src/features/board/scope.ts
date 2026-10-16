@@ -41,10 +41,9 @@ export function swimlaneEmptyKind(a: {
  * Tên không bắt đầu bằng "Sprint" thì thêm nhãn "Sprint: " để chip vẫn tự giải thích. Tên đầy đủ để ở tooltip.
  */
 export function shortSprintName(name: string): string {
-  const head =
-    name
-      .trim()
-      .split(/\s+[—–-]\s+/)[0]!
-      .trim() || name.trim();
+  const head = name
+    .trim()
+    .split(/\s+[—–-]\s+/)[0]!
+    .trim();
   return /^sprint\b/i.test(head) ? head : `Sprint: ${head}`;
 }

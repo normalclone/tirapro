@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   browserTimeZone,
   describeSchedule,
+  canonicalTimeZone,
+  resetTimeZoneChoicesCache,
+  timeZoneChoices,
   timeZoneHint,
   timeZoneOptions,
   timeZoneLabel,
@@ -135,5 +138,85 @@ describe('timeZoneOptions', () => {
     } finally {
       intl.supportedValuesOf = orig;
     }
+  });
+});
+
+describe('canonicalTimeZone', () => {
+  it('đổi tên cũ sang tên chuẩn, tên khác giữ nguyên', () => {
+    expect(canonicalTimeZone('Asia/Saigon')).toBe('Asia/Ho_Chi_Minh');
+    expect(canonicalTimeZone('Asia/Calcutta')).toBe('Asia/Kolkata');
+    expect(canonicalTimeZone('Asia/Katmandu')).toBe('Asia/Kathmandu');
+    expect(canonicalTimeZone('Asia/Rangoon')).toBe('Asia/Yangon');
+    expect(canonicalTimeZone('Asia/Tokyo')).toBe('Asia/Tokyo');
+  });
+});
+
+describe('timeZoneChoices', () => {
+  const intl = Intl as unknown as { supportedValuesOf?: (k: string) => string[] };
+  const orig = intl.supportedValuesOf;
+  const LIST = ['Asia/Saigon', 'Asia/Calcutta', 'Asia/Tokyo', 'Europe/London'];
+  const labelsOf = (cs: { label: string }[]) => cs.map((c) => c.label);
+
+  beforeEach(() => {
+    intl.supportedValuesOf = () => LIST;
+    resetTimeZoneChoicesCache();
+  });
+  afterEach(() => {
+    intl.supportedValuesOf = orig;
+    resetTimeZoneChoicesCache();
+    vi.restoreAllMocks();
+  });
+
+  it('giá trị đang lưu là tên cũ (Asia/Saigon, Asia/Calcutta): không thêm dòng, không có hai nhãn trùng', () => {
+    for (const current of ['Asia/Saigon', 'Asia/Ho_Chi_Minh', 'Asia/Calcutta', 'Asia/Kolkata']) {
+      const cs = timeZoneChoices(current);
+      const labels = labelsOf(cs);
+      expect(new Set(labels).size, current).toBe(labels.length);
+      expect(cs.map((c) => c.value)).toEqual([
+        'Asia/Ho_Chi_Minh',
+        'Asia/Kolkata',
+        'Asia/Tokyo',
+        'Europe/London',
+        'UTC',
+      ]);
+    }
+  });
+
+  it('giá trị lưu không có trong danh sách (kể cả tên cũ) được đổi sang tên chuẩn rồi thêm lên đầu', () => {
+    const cs = timeZoneChoices('Asia/Katmandu');
+    expect(cs[0]).toMatchObject({ value: 'Asia/Kathmandu', label: 'Asia/Kathmandu (UTC+5:45)' });
+    expect(cs).toHaveLength(6);
+  });
+
+  it('danh sách chung dựng MỘT lần: lần gọi sau không tạo thêm Intl.DateTimeFormat', () => {
+    const spy = vi.spyOn(Intl, 'DateTimeFormat');
+    const first = timeZoneChoices('Asia/Tokyo');
+    const built = spy.mock.calls.length;
+    expect(built).toBeGreaterThanOrEqual(LIST.length);
+    const second = timeZoneChoices('Asia/Tokyo');
+    expect(spy.mock.calls.length).toBe(built);
+    expect(second).toBe(first);
+    // Giá trị lạ chỉ tốn đúng một nhãn thêm, không dựng lại cả danh sách.
+    timeZoneChoices('Khong/Co_That');
+    expect(spy.mock.calls.length - built).toBeLessThanOrEqual(2);
+  });
+
+  it('nhãn giờ Việt Nam kèm hint để tìm bằng tên thành phố', () => {
+    const vn = timeZoneChoices().find((c) => c.value === 'Asia/Ho_Chi_Minh');
+    expect(vn).toEqual({
+      value: 'Asia/Ho_Chi_Minh',
+      label: 'Giờ Việt Nam (UTC+7)',
+      hint: 'Hà Nội · Hồ Chí Minh',
+    });
+  });
+});
+
+describe('timeZoneLabel — dấu trừ Unicode', () => {
+  it('độ lệch ghi bằng U+2212 vẫn ra "UTC-5"', () => {
+    const spy = vi
+      .spyOn(Intl.DateTimeFormat.prototype, 'formatToParts')
+      .mockReturnValue([{ type: 'timeZoneName', value: 'GMT\u221205:00' }]);
+    expect(timeZoneLabel('America/Bogota')).toBe('America/Bogota (UTC-5)');
+    spy.mockRestore();
   });
 });

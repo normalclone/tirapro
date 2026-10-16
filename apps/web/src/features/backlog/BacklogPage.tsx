@@ -86,7 +86,7 @@ import {
   useProjectPermissions,
 } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
-import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT } from '@/lib/touchHit';
+import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT, STRIP_ROWS_GAP_COARSE } from '@/lib/touchHit';
 import { IssueRow, IssueRowBody, type RowEdit } from './IssueRow';
 import { useBulkEdit } from './useBulkEdit';
 import { commonNextStatuses } from './bulkEdit';
@@ -758,6 +758,19 @@ export function BacklogPage() {
     );
   }
 
+  const createSprintButton = (visibility: string) => (
+    <Button
+      size="sm"
+      variant="secondary"
+      title={`Tạo một sprint mới. ${SPRINT_TIP}`}
+      onClick={() => setCreating(true)}
+      className={cn(CHIP_TOUCH_HIT, visibility)}
+    >
+      <Plus className="h-4 w-4" />
+      Tạo sprint
+    </Button>
+  );
+
   return (
     <PeekShell>
       <div className="flex min-h-0 flex-1 flex-col">
@@ -766,8 +779,8 @@ export function BacklogPage() {
           className={cn(
             'flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-6',
             CHIP_ROW_GAP_COARSE,
-            // Mobile: hai dải cuộn ngang (chip nhanh + điều khiển phụ) tự chừa vùng bấm bằng đệm dọc → bỏ khoảng hở hàng.
-            'max-sm:!gap-y-0',
+            // Mobile: hai dải cuộn ngang (chip nhanh + điều khiển phụ) → bỏ khoảng hở hàng (xem STRIP_ROWS_GAP_COARSE).
+            STRIP_ROWS_GAP_COARSE,
           )}
         >
           {!epicPanelOpen && (
@@ -784,6 +797,9 @@ export function BacklogPage() {
           )}
           <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
           <ToolbarStrip ariaLabel="Điều khiển danh sách">
+            {/* Mobile: hành động chính "Tạo sprint" đứng ĐẦU dải (thấy ngay, không cần cuộn); từ sm nút nằm bên phải như cũ.
+                Hai bản, mỗi bản ẩn ở cỡ kia (display: none → không nhận Tab) nên thứ tự Tab = thứ tự hiển thị. */}
+            {canManageSprint && !creating && createSprintButton('sm:hidden')}
             {/* `sm:order-[-1]`: từ sm trở lên ô epic vẫn đứng TRƯỚC hàng chip như trước khi gom dải. */}
             <div className="w-44 shrink-0 sm:order-[-1] lg:hidden">
               <SearchSelect
@@ -819,18 +835,7 @@ export function BacklogPage() {
                   },
                 ]}
               />
-              {canManageSprint && !creating && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  title={`Tạo một sprint mới. ${SPRINT_TIP}`}
-                  onClick={() => setCreating(true)}
-                  className={CHIP_TOUCH_HIT}
-                >
-                  <Plus className="h-4 w-4" />
-                  Tạo sprint
-                </Button>
-              )}
+              {canManageSprint && !creating && createSprintButton('max-sm:hidden')}
             </div>
           </ToolbarStrip>
           {canManageSprint && creating && (

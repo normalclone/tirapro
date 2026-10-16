@@ -61,6 +61,11 @@ export function browserTimeZone(): string {
   }
 }
 
+/** Tên IANA chuẩn của một múi giờ (đổi tên cũ Asia/Saigon… sang tên hiện hành); tên khác giữ nguyên. */
+export function canonicalTimeZone(timeZone: string): string {
+  return TZ_ALIAS[timeZone] ?? timeZone;
+}
+
 export function timeZoneOptions(): string[] {
   try {
     const all = (
@@ -68,7 +73,7 @@ export function timeZoneOptions(): string[] {
     ).supportedValuesOf?.('timeZone');
     if (all && all.length > 0) {
       // Trình duyệt vẫn liệt kê tên cũ (Asia/Saigon…) → đổi sang tên chuẩn rồi bỏ trùng, nếu không ô chọn có hai dòng cùng nhãn.
-      const canon = [...new Set(all.map((z) => TZ_ALIAS[z] ?? z))];
+      const canon = [...new Set(all.map(canonicalTimeZone))];
       return canon.includes('UTC') ? canon : [...canon, 'UTC'];
     }
   } catch {
@@ -85,11 +90,12 @@ function utcOffsetText(timeZone: string, at: Date): string | null {
       .find((p) => p.type === 'timeZoneName')?.value;
     if (!part) return null;
     if (part === 'GMT') return 'UTC';
-    const m = /^GMT([+-])(\d{1,2})(?::(\d{2}))?$/.exec(part);
+    // ICU dùng "-" nhưng một số bản dùng dấu trừ Unicode (U+2212).
+    const m = /^GMT([+\-−])(\d{1,2})(?::(\d{2}))?$/.exec(part);
     if (!m) return null;
     const minutes = m[3] && m[3] !== '00' ? `:${m[3]}` : '';
     if (Number(m[2]) === 0 && !minutes) return 'UTC';
-    return `UTC${m[1]}${Number(m[2])}${minutes}`;
+    return `UTC${m[1] === '+' ? '+' : '-'}${Number(m[2])}${minutes}`;
   } catch {
     return null;
   }
@@ -97,11 +103,12 @@ function utcOffsetText(timeZone: string, at: Date): string | null {
 
 /**
  * Tên múi giờ để HIỂN THỊ (giá trị lưu/gửi API vẫn là tên IANA): "Giờ Việt Nam (UTC+7)" cho Asia/Ho_Chi_Minh,
- * còn lại bỏ gạch dưới + thêm độ lệch UTC hiện tại: "Asia/Tokyo (UTC+9)", "America/New York (UTC-5)".
+ * còn lại bỏ gạch dưới + thêm độ lệch UTC TẠI THỜI ĐIỂM `at` (mặc định bây giờ, nên múi giờ có giờ mùa hè đổi theo mùa):
+ * "Asia/Tokyo (UTC+9)", "America/New York (UTC-5)".
  * Tên lạ (trình duyệt không nhận) chỉ được làm đẹp, không ném lỗi.
  */
 export function timeZoneLabel(timeZone: string, at: Date = new Date()): string {
-  const tz = TZ_ALIAS[timeZone] ?? timeZone;
+  const tz = canonicalTimeZone(timeZone);
   const offset = utcOffsetText(tz, at);
   if (tz === 'Asia/Ho_Chi_Minh') return `Giờ Việt Nam (${offset ?? 'UTC+7'})`;
   const name = tz.replace(/_/g, ' ');
@@ -109,11 +116,39 @@ export function timeZoneLabel(timeZone: string, at: Date = new Date()): string {
   return offset === 'UTC' && name === 'UTC' ? name : `${name} (${offset})`;
 }
 
+export interface TimeZoneChoice {
+  value: string;
+  label: string;
+  hint?: string;
+}
+
+let baseChoices: TimeZoneChoice[] | null = null;
+
+/**
+ * Lựa chọn cho ô chọn múi giờ (value = IANA chuẩn, label/hint thân thiện). Phần danh sách chung (~420 múi giờ, mỗi nhãn
+ * tạo một `Intl.DateTimeFormat`, cỡ chục ms) chỉ dựng MỘT lần cho cả phiên; `current` (giá trị đang lưu, có thể là tên cũ hay
+ * tên lạ) được đổi sang tên chuẩn và chỉ thêm lên đầu khi danh sách thật sự không có → không bao giờ có hai dòng cùng nhãn.
+ */
+export function timeZoneChoices(current?: string): TimeZoneChoice[] {
+  baseChoices ??= timeZoneOptions().map((value) => ({
+    value,
+    label: timeZoneLabel(value),
+    hint: timeZoneHint(value),
+  }));
+  if (!current) return baseChoices;
+  const canon = canonicalTimeZone(current);
+  if (baseChoices.some((c) => c.value === canon)) return baseChoices;
+  return [{ value: canon, label: timeZoneLabel(canon), hint: timeZoneHint(canon) }, ...baseChoices];
+}
+
+/** Chỉ cho test: bỏ bộ nhớ đệm danh sách chung. */
+export function resetTimeZoneChoicesCache(): void {
+  baseChoices = null;
+}
+
 /** Từ khoá phụ để tìm trong ô chọn múi giờ: "Giờ Việt Nam" không chứa chữ "Ho Chi Minh" nên cần gợi ý tên thành phố. */
 export function timeZoneHint(timeZone: string): string | undefined {
-  return (TZ_ALIAS[timeZone] ?? timeZone) === 'Asia/Ho_Chi_Minh'
-    ? 'Hà Nội · Hồ Chí Minh'
-    : undefined;
+  return canonicalTimeZone(timeZone) === 'Asia/Ho_Chi_Minh' ? 'Hà Nội · Hồ Chí Minh' : undefined;
 }
 
 /** "Mỗi thứ Hai, 08:00 · Giờ Việt Nam (UTC+7)" · "Mỗi ngày, 08:00 · Asia/Tokyo (UTC+9)" · "Khi kết thúc sprint" · "Chỉ gửi thủ công". */

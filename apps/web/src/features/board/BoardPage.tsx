@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Bug, Layers, Settings, UserRound, Users } from 'lucide-react';
+import { Bug, Layers, UserRound, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { BoardColumnDto, BoardDto, IssueDto, SwimlaneBy } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
@@ -15,6 +15,7 @@ import {
   type TransitionVars,
 } from './api';
 import { BoardSettingsDialog, SWIMLANE_LABEL } from './BoardSettingsDialog';
+import { BoardSettingsButton } from './BoardSettingsButton';
 import { BoardDnd } from './BoardDnd';
 import { PeekShell } from '@/features/issues/peek/PeekShell';
 import { ASSIGN_DENIED_NOTICE } from '@/features/quick-assign/events';
@@ -43,7 +44,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
-import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT } from '@/lib/touchHit';
+import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT, STRIP_ROWS_GAP_COARSE } from '@/lib/touchHit';
 import { useAuth } from '@/stores/auth';
 import { openReportIssue } from '@/stores/reportIssue';
 import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
@@ -638,12 +639,15 @@ export function BoardPage() {
             className={cn(
               'flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3',
               CHIP_ROW_GAP_COARSE,
-              // Mobile: chỉ còn hai dải cuộn ngang (chip nhanh + điều khiển phụ), mỗi dải đã có đệm dọc chứa vùng bấm → bỏ khoảng hở hàng.
-              'max-sm:!gap-y-0',
+              // Mobile: chỉ còn hai dải cuộn ngang (chip nhanh + điều khiển phụ) → bỏ khoảng hở hàng (xem STRIP_ROWS_GAP_COARSE).
+              STRIP_ROWS_GAP_COARSE,
             )}
           >
             <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
             <ToolbarStrip ariaLabel="Điều khiển bảng">
+              {canManageBoard && (
+                <BoardSettingsButton compact onClick={() => setSettingsOpen(true)} />
+              )}
               <AssigneeFilter
                 options={assigneeOptions}
                 value={assignee}
@@ -706,26 +710,10 @@ export function BoardPage() {
                   Bộ lọc bảng: <span className="truncate font-mono">{board.filterJql}</span>
                 </span>
               )}
-              {/* Mobile: `contents` → nút ⚙ và avatar là mục của dải cuộn (⚙ đứng ĐẦU dải để luôn thấy). */}
+              {/* Mobile: `contents` → avatar là mục của dải; nút ⚙ dạng icon nằm ĐẦU dải (xem trên), nút có nhãn chỉ hiện từ sm. */}
               <div className="contents sm:ml-auto sm:flex sm:items-center sm:gap-2">
                 <PresenceAvatars room="project" projectId={project?.id} />
-                {canManageBoard && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setSettingsOpen(true)}
-                    aria-label="Cài đặt bảng"
-                    title="Cài đặt bảng: cột, giới hạn WIP, bộ lọc và cách chia hàng"
-                    className={cn(
-                      // Mobile: nút icon dạng chip rộng 44px (cao 28px + vùng bấm dọc mở rộng → 44×44).
-                      'max-sm:order-first max-sm:h-7 max-sm:w-11 max-sm:rounded-full max-sm:px-0',
-                      CHIP_TOUCH_HIT,
-                    )}
-                  >
-                    <Settings className="h-4 w-4" />
-                    <span className="max-sm:hidden">Cài đặt bảng</span>
-                  </Button>
-                )}
+                {canManageBoard && <BoardSettingsButton onClick={() => setSettingsOpen(true)} />}
               </div>
             </ToolbarStrip>
           </div>

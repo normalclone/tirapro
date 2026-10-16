@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-import { CHIP_STRIP_COARSE_PAD } from '@/lib/touchHit';
+import { MOBILE_SCROLL_STRIP } from '@/lib/touchHit';
 import { useScrollFade } from '@/lib/useScrollFade';
 
 /**
@@ -28,8 +28,8 @@ export function ToolbarStrip({
       aria-label={ariaLabel}
       className={cn(
         'flex items-center gap-2 sm:contents',
-        'max-sm:relative max-sm:-mx-4 max-sm:w-[calc(100%+2rem)] max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-4 max-sm:scrollbar-none max-sm:[mask-image:var(--scroll-fade)] max-sm:[&>*]:shrink-0 max-sm:[&>.contents>*]:shrink-0',
-        CHIP_STRIP_COARSE_PAD,
+        MOBILE_SCROLL_STRIP,
+        'max-sm:[&>*]:shrink-0 max-sm:[&>.contents>*]:shrink-0',
         className,
       )}
     >

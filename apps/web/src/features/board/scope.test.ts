@@ -73,7 +73,7 @@ describe('shortSprintName', () => {
     expect(shortSprintName('Sprint 5')).toBe('Sprint 5');
     expect(shortSprintName('Sprint Q4-2026')).toBe('Sprint Q4-2026');
   });
-  it('phần đầu rỗng (tên bắt đầu bằng gạch) → giữ tên gốc', () => {
+  it('dấu gạch đầu tên (không có khoảng trắng phía trước) không phải dấu phân tách → giữ nguyên', () => {
     expect(shortSprintName('— Khẩn')).toBe('Sprint: — Khẩn');
   });
 });

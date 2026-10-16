@@ -9,13 +9,7 @@ import { cn } from '@/lib/utils';
 import { useUserSelect } from '@/features/members/useUserSelect';
 import { useDigestChannels, type DigestSchedule } from './api';
 import type { DigestFormState } from './digestForm';
-import {
-  HOUR_OPTIONS,
-  timeZoneHint,
-  timeZoneLabel,
-  timeZoneOptions,
-  WEEKDAY_OPTIONS,
-} from './schedule';
+import { HOUR_OPTIONS, timeZoneChoices, WEEKDAY_OPTIONS } from './schedule';
 
 export type SetDigestForm = <K extends keyof DigestFormState>(
   key: K,
@@ -61,10 +55,8 @@ export function Field({
 /** Lịch gửi: kiểu + thứ (chỉ Hằng tuần) + giờ + múi giờ (trừ "khi kết thúc sprint"/thủ công). */
 export function ScheduleFields({ form, set }: { form: DigestFormState; set: SetDigestForm }) {
   const timed = form.schedule === 'WEEKLY' || form.schedule === 'DAILY';
-  const zones = useMemo(() => {
-    const all = timeZoneOptions();
-    return all.includes(form.timezone) ? all : [form.timezone, ...all];
-  }, [form.timezone]);
+  // Danh sách chung dựng một lần cho cả phiên (xem `timeZoneChoices`); chỉ tính lại khi múi giờ đang chọn đổi.
+  const zones = useMemo(() => timeZoneChoices(form.timezone), [form.timezone]);
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <Field id="digest-schedule" label="Lịch gửi">
@@ -118,11 +110,7 @@ export function ScheduleFields({ form, set }: { form: DigestFormState; set: SetD
               id="digest-timezone"
               value={form.timezone}
               onChange={(v) => set('timezone', v)}
-              options={zones.map((z) => ({
-                value: z,
-                label: timeZoneLabel(z),
-                hint: timeZoneHint(z),
-              }))}
+              options={zones}
               searchPlaceholder="Tìm múi giờ…"
               className="w-full"
             />

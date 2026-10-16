@@ -18,6 +18,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { cn } from '@/lib/utils';
+import { SWITCH_TOUCH_HIT } from '@/lib/touchHit';
 import { useDigests, useUpdateDigest, useDeleteDigest, useRunDigest, type Digest } from './api';
 import { DigestEditorDialog } from './DigestEditorDialog';
 import { describeSchedule } from './schedule';
@@ -68,7 +69,8 @@ export function DigestsSection() {
 
   return (
     <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+      {/* Mobile (<sm): biểu tượng + tiêu đề/mô tả một hàng, nút "Tạo" xuống hàng dưới full-width (không ép chữ thành cột hẹp). */}
+      <div className="flex flex-wrap items-start gap-3 border-b border-border px-5 py-4 sm:flex-nowrap">
         <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
           <CalendarClock className="h-4 w-4" />
         </span>
@@ -79,7 +81,7 @@ export function DigestsSection() {
           </p>
         </div>
         {canManage && digests.length > 0 && (
-          <Button size="sm" className="shrink-0" onClick={() => openEditor(null)}>
+          <Button size="sm" className="shrink-0 max-sm:w-full" onClick={() => openEditor(null)}>
             <Plus className="h-4 w-4" />
             Tạo báo cáo định kỳ
           </Button>
@@ -221,10 +223,13 @@ function DigestRow({
 
   return (
     <li className="rounded-md border border-border">
-      <div className="flex items-center gap-3 px-3 py-2.5">
-        <div className="min-w-0 flex-1">
+      {/* Mobile (<sm): tên + lịch chiếm trọn dòng trên (được xuống dòng), công tắc + hành động ở dòng dưới. */}
+      <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+        <div className="min-w-0 sm:flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="truncate text-sm font-medium text-ink">{digest.name}</span>
+            <span className="break-words text-sm font-medium text-ink sm:truncate">
+              {digest.name}
+            </span>
             {!digest.isEnabled && <Badge className="bg-surface-2 text-faint">Tạm dừng</Badge>}
             {digest.channelId && (
               <Badge className="bg-surface-2 text-muted">
@@ -239,14 +244,14 @@ function DigestRow({
               </Badge>
             )}
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted">
+          <p className="mt-0.5 text-xs text-muted sm:truncate">
             {describeSchedule(digest)}
             <span className="hidden text-faint sm:inline"> · {lastRunLabel}</span>
           </p>
         </div>
 
         {canManage && (
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 flex-wrap items-center gap-1">
             {/* Bật / tắt báo cáo */}
             <button
               type="button"
@@ -257,7 +262,8 @@ function DigestRow({
               disabled={update.isPending}
               title={digest.isEnabled ? 'Đang bật — bấm để tạm dừng' : 'Đang tạm dừng — bấm để bật'}
               className={cn(
-                'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
+                SWITCH_TOUCH_HIT,
+                'inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
                 digest.isEnabled ? 'bg-primary' : 'bg-surface-3',
               )}
             >

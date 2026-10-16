@@ -16,7 +16,7 @@ import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import { useAccept, useDecline, useSnooze, useTriageCount, useTriageInbox } from './api';
 import { DeclineDialog } from './DeclineDialog';
 import { TriageRow } from './TriageRow';
-import type { AcceptPayload } from './triageLogic';
+import { TRIAGE_TITLE, type AcceptPayload } from './triageLogic';
 
 const DAY_MS = 86_400_000;
 
@@ -88,7 +88,7 @@ export function TriagePage() {
     <PeekShell>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-2 border-b border-border px-6 py-3">
-          <span className="text-sm font-medium text-ink">Việc mới vào</span>
+          <span className="text-sm font-medium text-ink">{TRIAGE_TITLE}</span>
           {inboxCount > 0 && (
             <Badge className="bg-primary-subtle text-primary tabular">{inboxCount}</Badge>
           )}

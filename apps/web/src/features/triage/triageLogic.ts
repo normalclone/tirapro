@@ -1,6 +1,9 @@
 import type { IssueEnvironment, SprintDto, TriageKind } from '@tirapro/types';
 import { ENV_KIND_LABEL } from '@/features/issue-edit/environment';
 
+/** Tên chức năng hiển thị ở tab, lệnh ⌘K và tiêu đề trang (UX_CONVENTIONS §19) — một nguồn duy nhất. */
+export const TRIAGE_TITLE = 'Việc mới vào';
+
 export const kindLabel = (k: TriageKind | null): string =>
   k === 'BUG'
     ? 'Bug'

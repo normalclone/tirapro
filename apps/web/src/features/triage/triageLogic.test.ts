@@ -6,6 +6,7 @@ import {
   isDeclineReasonValid,
   isLongDescription,
   kindLabel,
+  TRIAGE_TITLE,
   triageSprintOptions,
 } from './triageLogic';
 
@@ -109,5 +110,11 @@ describe('isLongDescription', () => {
     expect(isLongDescription('ngắn')).toBe(false);
     expect(isLongDescription(Array.from({ length: 13 }, (_, i) => `d${i}`).join('\n'))).toBe(true);
     expect(isLongDescription('x'.repeat(701))).toBe(true);
+  });
+});
+
+describe('TRIAGE_TITLE', () => {
+  it('tên chức năng là "Việc mới vào" (UX_CONVENTIONS §19), không còn "Phân loại (Triage)"', () => {
+    expect(TRIAGE_TITLE).toBe('Việc mới vào');
   });
 });

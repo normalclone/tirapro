@@ -1,4 +1,5 @@
 import { sprintActionPath } from '@/features/backlog/sprintAction';
+import { TRIAGE_TITLE } from '@/features/triage/triageLogic';
 
 /**
  * Một lệnh của nhóm "Dự án hiện tại" trong Cmd+K: `to` = điều hướng. `keywords` không dấu để gõ không cần dấu
@@ -94,7 +95,7 @@ export function buildProjectCommands(input: ProjectCommandInput): ProjectCommand
   out.push(
     {
       id: 'nav.triage',
-      label: 'Mở Việc mới vào',
+      label: `Mở ${TRIAGE_TITLE}`,
       keywords: 'viec moi vao triage hop thu intake',
       to: `/p/${k}/triage`,
       icon: 'triage',
