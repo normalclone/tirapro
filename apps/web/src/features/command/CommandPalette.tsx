@@ -27,6 +27,7 @@ import { useCreateTarget } from '@/lib/useCreateTarget';
 import { QUICK_SEARCH_MIN_LENGTH, useQuickSearch } from './api';
 import { ActionItem } from './ActionItem';
 import { IssueContextGroup } from './IssueContextGroup';
+import { ProjectCommandGroup } from './ProjectCommandGroup';
 import { commandFilter, ISSUE_GO_VALUE_PREFIX, ISSUE_VALUE_PREFIX } from './commandFilter';
 
 /** Nhận dạng mã issue người dùng gõ (vd `DEMO-BUG-1`) để nhảy thẳng tới issue. */
@@ -224,6 +225,10 @@ export function CommandPalette() {
           />
         </Command.Group>
 
+        {currentProjectKey(projects) && (
+          <ProjectCommandGroup projectKey={currentProjectKey(projects)!} runAction={runAction} />
+        )}
+
         <Command.Group
           heading="Điều hướng"
           className="text-faint [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-faint"
@@ -239,15 +244,15 @@ export function CommandPalette() {
               <ActionItem
                 value="di board bang hien tai"
                 icon={<LayoutGrid className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
-                label="Board dự án hiện tại"
+                label="Bảng việc dự án hiện tại"
                 onSelect={() =>
                   runAction(() => navigate(`/p/${currentProjectKey(projects)}/board`))
                 }
               />
               <ActionItem
-                value="di backlog hien tai"
+                value="di backlog viec cho hien tai"
                 icon={<ListTodo className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
-                label="Backlog dự án hiện tại"
+                label="Việc chờ dự án hiện tại"
                 onSelect={() =>
                   runAction(() => navigate(`/p/${currentProjectKey(projects)}/backlog`))
                 }
@@ -255,9 +260,9 @@ export function CommandPalette() {
             </>
           )}
           <Command.Item
-            value="trang du an projects home"
+            value="trang du an projects danh sach du an"
             onSelect={() => {
-              navigate('/');
+              navigate('/projects');
               setOpen(false);
             }}
             className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink data-[selected=true]:bg-surface-2"
