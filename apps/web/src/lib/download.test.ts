@@ -5,7 +5,12 @@ vi.mock('./api', () => ({ refreshAccessToken: () => refreshAccessToken() }));
 const token = vi.hoisted(() => ({ value: 'old' }));
 vi.mock('./auth-token', () => ({ getAccessToken: () => token.value }));
 
-import { downloadErrorMessage, fetchDownload, filenameFromDisposition } from './download';
+import {
+  downloadErrorMessage,
+  downloadFile,
+  fetchDownload,
+  filenameFromDisposition,
+} from './download';
 
 describe('filenameFromDisposition', () => {
   it('đọc filename*=UTF-8 và filename thường, rơi về fallback', () => {
@@ -39,6 +44,7 @@ describe('fetchDownload — 401 refresh một lần rồi thử lại', () => {
       headers: {
         'Content-Disposition': 'attachment; filename="x.csv"',
         'X-Export-Truncated': 'true',
+        'X-Export-Rows': '12',
       },
     });
   const status = (n: number) => new Response('', { status: n });
@@ -58,9 +64,24 @@ describe('fetchDownload — 401 refresh một lần rồi thử lại', () => {
     const r = await fetchDownload('/export/x', { params: { a: 1, b: undefined } });
     expect(r.filename).toBe('x.csv');
     expect(r.truncated).toBe(true);
+    expect(r.rows).toBe(12);
     expect(refreshAccessToken).not.toHaveBeenCalled();
     expect(fetchMock.mock.calls[0]![0]).toMatch(/\/export\/x\?a=1$/);
     expect(auth(0)).toBe('Bearer old');
+  });
+
+  it('không có X-Export-Rows → rows null; có 0 + skipIfEmpty → không lưu file', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('a', { status: 200 }));
+    expect((await fetchDownload('/export/x')).rows).toBeNull();
+    fetchMock.mockResolvedValueOnce(
+      new Response('Mã\r\n', { status: 200, headers: { 'X-Export-Rows': '0' } }),
+    );
+    const createUrl = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL: createUrl, revokeObjectURL: vi.fn() });
+    const r = await downloadFile('/export/x', { skipIfEmpty: true });
+    expect(r).toMatchObject({ rows: 0, saved: false });
+    expect(createUrl).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it('401 → refresh → thử lại đúng một lần với token mới', async () => {

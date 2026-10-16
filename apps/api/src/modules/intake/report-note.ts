@@ -1,4 +1,4 @@
-import { formatEnvironment, type EnvironmentInput } from '@tirapro/shared';
+import { formatEnvironment, formatVnDateTime, type EnvironmentInput } from '@tirapro/shared';
 
 interface ReportNoteAttachment {
   id: string;
@@ -16,24 +16,9 @@ export interface ReportNoteInput {
   attachments: ReportNoteAttachment[];
 }
 
-/** dd/MM/yyyy HH:mm theo giờ Việt Nam (máy chủ có thể chạy múi giờ khác). */
-function formatVn(d: Date): string {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(d);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}`;
-}
-
 /** Nội dung bình luận (Markdown) khi người báo "báo lại" một bug đã có — không bao giờ vứt chữ/ảnh của họ. */
 export function buildReportNote(a: ReportNoteInput): string {
-  const lines: string[] = [`*${a.reporterName} báo lại ngày ${formatVn(a.at)}*`];
+  const lines: string[] = [`*${a.reporterName} báo lại ngày ${formatVnDateTime(a.at)}*`];
   const description = a.description?.trim();
   if (description) lines.push('', description);
   const env = formatEnvironment(a.environment);

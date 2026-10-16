@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Flame, Gauge, Info, Target, Users } from 'lucide-react';
+import * as Popover from '@radix-ui/react-popover';
+import { AlertTriangle, Flame, Gauge, Info, Target, Users } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 import { Avatar, Skeleton } from '@/components/ui/primitives';
 import { RAID_LEVEL_META } from '@/features/raid/constants';
 import { cn } from '@/lib/utils';
@@ -9,6 +11,7 @@ import {
   LEADERSHIP_EMPTY,
   LEADERSHIP_HINT,
   goalPaceText,
+  isUnavailable,
   overloadDetailText,
   ratioText,
   riskMetaText,
@@ -19,7 +22,7 @@ import {
  * Một request; mỗi thẻ rỗng/ lỗi độc lập (máy chủ trả mảng rỗng cho nguồn lỗi). Bấm "Xem tất cả" tới trang đầy đủ.
  */
 export function LeadershipCards() {
-  const { data, isLoading, isError } = useLeadership(true);
+  const { data, isLoading, isError, refetch, isFetching } = useLeadership(true);
 
   if (isLoading) {
     return (
@@ -36,9 +39,22 @@ export function LeadershipCards() {
   }
   if (isError || !data) {
     return (
-      <p className="text-sm text-muted">
-        Không tải được rủi ro, OKR và nhân lực. Tải lại trang để thử lại.
-      </p>
+      <div
+        role="alert"
+        className="print-avoid-break flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted"
+      >
+        <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden />
+        <span className="min-w-0 flex-1">Không tải được rủi ro, OKR và nhân lực.</span>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void refetch()}
+          loading={isFetching}
+          className="print:hidden"
+        >
+          Thử lại
+        </Button>
+      </div>
     );
   }
 
@@ -50,6 +66,9 @@ export function LeadershipCards() {
         hint={LEADERSHIP_HINT.risks}
         to="/manage/risks"
         empty={LEADERSHIP_EMPTY.risks}
+        unavailable={isUnavailable(data, 'topRisks')}
+        onRetry={() => void refetch()}
+        retrying={isFetching}
         count={data.topRisks.length}
       >
         {data.topRisks.map((r) => (
@@ -82,6 +101,9 @@ export function LeadershipCards() {
         hint={LEADERSHIP_HINT.goals}
         to="/manage/goals"
         empty={LEADERSHIP_EMPTY.goals}
+        unavailable={isUnavailable(data, 'slowGoals')}
+        onRetry={() => void refetch()}
+        retrying={isFetching}
         count={data.slowGoals.length}
       >
         {data.slowGoals.map((g) => (
@@ -106,6 +128,9 @@ export function LeadershipCards() {
         hint={LEADERSHIP_HINT.overloaded}
         to="/manage/resources"
         empty={LEADERSHIP_EMPTY.overloaded}
+        unavailable={isUnavailable(data, 'overloaded')}
+        onRetry={() => void refetch()}
+        retrying={isFetching}
         count={data.overloaded.length}
       >
         {data.overloaded.map((o) => (
@@ -138,6 +163,9 @@ function LeadershipCard({
   hint,
   to,
   empty,
+  unavailable,
+  onRetry,
+  retrying,
   count,
   children,
 }: {
@@ -146,6 +174,10 @@ function LeadershipCard({
   hint: string;
   to: string;
   empty: string;
+  /** Nguồn dữ liệu của thẻ lỗi: KHÔNG hiện câu "không có gì" (sẽ giả như mọi thứ ổn). */
+  unavailable: boolean;
+  onRetry: () => void;
+  retrying: boolean;
   count: number;
   children: ReactNode;
 }) {
@@ -155,15 +187,27 @@ function LeadershipCard({
         <h3 className="flex min-w-0 items-center gap-2 text-sm font-medium text-ink-strong">
           {icon}
           {title}
-          <span
-            tabIndex={0}
-            role="img"
-            aria-label={hint}
-            title={hint}
-            className="inline-flex rounded text-faint focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary print:hidden"
-          >
-            <Info className="h-3.5 w-3.5" aria-hidden />
-          </span>
+          <Popover.Root>
+            <Popover.Trigger asChild>
+              <button
+                type="button"
+                aria-label={`Cách tính: ${title}`}
+                className="inline-flex rounded p-1.5 text-faint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary print:hidden"
+              >
+                <Info className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content
+                align="start"
+                sideOffset={6}
+                collisionPadding={12}
+                className="z-dropdown w-64 rounded-lg border border-border bg-surface p-3 text-xs text-ink shadow-lg print:hidden"
+              >
+                {hint}
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
         </h3>
         <Link
           to={to}
@@ -173,7 +217,24 @@ function LeadershipCard({
           Xem tất cả →
         </Link>
       </div>
-      {count === 0 ? (
+      {unavailable ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 rounded-md bg-surface-2 px-3 py-2 text-sm text-muted"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden />
+          <span className="min-w-0 flex-1">Không tải được thẻ này</span>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onRetry}
+            loading={retrying}
+            className="print:hidden"
+          >
+            Thử lại
+          </Button>
+        </div>
+      ) : count === 0 ? (
         <p className="flex items-center gap-2 rounded-md bg-surface-2 px-3 py-2 text-sm text-muted">
           <Gauge className="h-4 w-4 shrink-0 text-faint" aria-hidden />
           {empty}

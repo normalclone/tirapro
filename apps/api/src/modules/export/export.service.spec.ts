@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { IssueDto } from '@tirapro/types';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ExportService } from './export.service';
@@ -48,8 +48,14 @@ function setup(opts: { query?: ReturnType<typeof vi.fn>; search?: ReturnType<typ
   };
   const query = opts.query ?? vi.fn().mockResolvedValue(page([issue()]));
   const search = opts.search ?? vi.fn().mockResolvedValue(page([issue()]));
-  const svc = new ExportService(prisma as never, { query } as never, { search } as never);
-  return { svc, prisma, query, search };
+  const access = { assertCanSee: vi.fn().mockResolvedValue(undefined) };
+  const svc = new ExportService(
+    prisma as never,
+    { query } as never,
+    { search } as never,
+    access as never,
+  );
+  return { svc, prisma, query, search, access };
 }
 
 describe('ExportService.exportIssuesCsv', () => {
@@ -193,6 +199,52 @@ describe('ExportService.exportIssuesCsv', () => {
     await expect(
       svc.exportIssuesCsv('w1', 'u1', { projectId: 'nope', jql: 'x = 1' }),
     ).rejects.toBeInstanceOf(NotFoundAppException);
+  });
+});
+
+describe('ExportService.exportIssuesCsv — quyền, ngày, số dòng', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('tự kiểm dự án riêng tư với người xuất; người ngoài → NotFound, không truy vấn việc', async () => {
+    const { svc, access, query } = setup();
+    await svc.exportIssuesCsv('w1', 'u1', { projectId: 'p1', preset: 'bugs' });
+    expect(access.assertCanSee).toHaveBeenCalledWith('u1', 'w1', 'p1', 'Dự án');
+    access.assertCanSee.mockRejectedValue(new NotFoundAppException('Dự án'));
+    query.mockClear();
+    await expect(
+      svc.exportIssuesCsv('w1', 'u2', { projectId: 'p1', preset: 'bugs' }),
+    ).rejects.toBeInstanceOf(NotFoundAppException);
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('tên file dùng NGÀY giờ Việt Nam (03:00 thứ Hai VN còn là Chủ nhật UTC)', async () => {
+    vi.useFakeTimers({ now: new Date('2026-10-18T20:00:00Z') });
+    const { svc } = setup();
+    const out = await svc.exportIssuesCsv('w1', 'u1', { projectId: 'p1', preset: 'bugs' });
+    expect(out.filename).toBe('tirapro-DEMO-bugs-20261019.csv');
+  });
+
+  it('trả số dòng dữ liệu (sprint rỗng → 0 để FE không tải file trống)', async () => {
+    const { svc } = setup({ query: vi.fn().mockResolvedValue(page([])) });
+    const out = await svc.exportIssuesCsv('w1', 'u1', { projectId: 'p1', sprintId: 'sp1' });
+    expect(out.rows).toBe(0);
+    const full = setup();
+    expect(
+      (await full.svc.exportIssuesCsv('w1', 'u1', { projectId: 'p1', preset: 'bugs' })).rows,
+    ).toBe(1);
+  });
+
+  it('chống công thức cả khi dùng dấu ; và ô có dấu ; bên trong', async () => {
+    const { svc } = setup({
+      query: vi.fn().mockResolvedValue(page([issue({ summary: '@SUM(A1;A2)' })])),
+    });
+    const out = await svc.exportIssuesCsv('w1', 'u1', {
+      projectId: 'p1',
+      preset: 'bugs',
+      columns: 'summary',
+      delimiter: 'semicolon',
+    });
+    expect(out.csv.split('\r\n')[1]).toBe('DEMO-1;"\'@SUM(A1;A2)"');
   });
 });
 

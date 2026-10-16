@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { goalPaceText, overloadDetailText, ratioText, riskMetaText } from './leadershipText';
+import {
+  goalPaceText,
+  isUnavailable,
+  overloadDetailText,
+  ratioText,
+  riskMetaText,
+} from './leadershipText';
 
 describe('ratioText', () => {
   it('tỉ số → phần trăm làm tròn', () => {
@@ -34,5 +40,15 @@ describe('overloadDetailText', () => {
     expect(overloadDetailText({ assignedHours: 42.5, capacityHours: 32, weekLabel: 'a' })).toBe(
       '42,5/32 giờ · a',
     );
+  });
+});
+
+describe('isUnavailable', () => {
+  it('chỉ thẻ có trong danh sách lỗi; thiếu cờ → không lỗi', () => {
+    const data = { unavailable: ['topRisks' as const] };
+    expect(isUnavailable(data, 'topRisks')).toBe(true);
+    expect(isUnavailable(data, 'slowGoals')).toBe(false);
+    expect(isUnavailable({} as never, 'topRisks')).toBe(false);
+    expect(isUnavailable(undefined, 'overloaded')).toBe(false);
   });
 });

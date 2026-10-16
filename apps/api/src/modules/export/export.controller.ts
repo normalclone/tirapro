@@ -46,7 +46,7 @@ export class ExportController {
     @Query(new ZodValidationPipe(issuesCsvQuerySchema)) query: IssuesCsvQuery,
     @Res({ passthrough: true }) res: Response,
   ): Promise<string> {
-    const { csv, truncated, filename } = await this.export_.exportIssuesCsv(
+    const { csv, truncated, filename, rows } = await this.export_.exportIssuesCsv(
       workspaceId,
       user.id,
       query,
@@ -56,6 +56,7 @@ export class ExportController {
       'Content-Disposition',
       `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
     );
+    res.setHeader('X-Export-Rows', String(rows));
     if (truncated) res.setHeader('X-Export-Truncated', 'true');
     return csv;
   }

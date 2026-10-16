@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exportResultToast, issuesCsvParams } from './api';
+import { exportEmptyMessage, exportResultToast, issuesCsvParams } from './api';
 
 describe('issuesCsvParams', () => {
   it('chỉ đưa tham số có giá trị; cột nối bằng dấu phẩy', () => {
@@ -31,5 +31,12 @@ describe('exportResultToast', () => {
   });
   it('đủ → xác nhận', () => {
     expect(exportResultToast(false).kind).toBe('success');
+  });
+});
+
+describe('exportEmptyMessage', () => {
+  it('sprint rỗng nói rõ là sprint', () => {
+    expect(exportEmptyMessage({ sprintId: 's1' })).toBe('Sprint chưa có việc nào để xuất.');
+    expect(exportEmptyMessage({})).toBe('Không có công việc nào để xuất.');
   });
 });

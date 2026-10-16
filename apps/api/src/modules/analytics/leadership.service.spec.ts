@@ -149,9 +149,29 @@ describe('LeadershipService.get', () => {
     });
     raid.list.mockRejectedValue(new Error('db down'));
     const out = await svc.get('w1', 'u1', NOW);
+    expect(out.unavailable).toEqual(['topRisks']); // KHÔNG được giả "không có rủi ro"
     expect(out.topRisks).toEqual([]);
     expect(out.slowGoals).toHaveLength(1);
     expect(out.overloaded).toHaveLength(1);
+  });
+
+  it('mọi nguồn lỗi → unavailable đủ ba thẻ', async () => {
+    const { svc, raid, goals, resources } = make();
+    raid.list.mockRejectedValue(new Error('x'));
+    goals.list.mockRejectedValue(new Error('x'));
+    resources.workload.mockRejectedValue(new Error('x'));
+    const out = await svc.get('w1', 'u1', NOW);
+    expect([...out.unavailable].sort()).toEqual(['overloaded', 'slowGoals', 'topRisks']);
+  });
+
+  it('cửa sổ tuần theo NGÀY giờ VN: 03:00 thứ Hai VN (còn Chủ nhật UTC) vẫn bắt đầu từ thứ Hai đó', async () => {
+    const { svc, resources } = make();
+    await svc.get('w1', 'u1', new Date('2026-11-15T20:00:00Z'));
+    expect(resources.workload).toHaveBeenCalledWith(
+      'w1',
+      { from: '2026-11-16', to: '2026-11-23' },
+      'u1',
+    );
   });
 
   it('workspace trống → ba mảng rỗng', async () => {
@@ -160,6 +180,7 @@ describe('LeadershipService.get', () => {
       topRisks: [],
       slowGoals: [],
       overloaded: [],
+      unavailable: [],
     });
   });
 });

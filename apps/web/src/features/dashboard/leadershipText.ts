@@ -1,5 +1,5 @@
 import { formatCalendarDmy } from '@/lib/calendarDate';
-import type { LeadershipOverview } from './api';
+import type { LeadershipCard, LeadershipOverview } from './api';
 
 type Risk = LeadershipOverview['topRisks'][number];
 type Goal = LeadershipOverview['slowGoals'][number];
@@ -47,4 +47,12 @@ export function overloadDetailText(
   o: Pick<Overloaded, 'assignedHours' | 'capacityHours' | 'weekLabel'>,
 ): string {
   return `${hours(o.assignedHours)}/${hours(o.capacityHours)} giờ · ${o.weekLabel}`;
+}
+
+/** Nguồn của thẻ lỗi (máy chủ báo qua `unavailable`)? Máy chủ cũ không có cờ → coi là không lỗi. */
+export function isUnavailable(
+  data: Pick<LeadershipOverview, 'unavailable'> | undefined,
+  card: LeadershipCard,
+): boolean {
+  return data?.unavailable?.includes(card) ?? false;
 }

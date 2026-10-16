@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { vnTodayUtc } from '@tirapro/shared';
 import { GoalsService } from '../goals/goals.service';
 import { expectedProgress, isBehind } from '../goals/goal-pace';
 import { RaidService, type RaidLevel } from '../raid/raid.service';
-import { addDays, isoDay, toUtcDay } from '../resources/date.util';
+import { addDays, isoDay } from '../resources/date.util';
 import { ResourcesService } from '../resources/resources.service';
 
 const LIMIT = 5;
@@ -36,7 +37,14 @@ export interface LeadershipOverview {
     assignedHours: number;
     capacityHours: number;
   }>;
+  /**
+   * Thẻ mà nguồn dữ liệu LỖI (mảng tương ứng là `[]` nhưng KHÔNG có nghĩa "không có vấn đề") — giao diện phải nói
+   * "Không tải được thẻ này", không hiện câu rỗng như thể mọi thứ ổn.
+   */
+  unavailable: LeadershipCard[];
 }
+
+export type LeadershipCard = 'topRisks' | 'slowGoals' | 'overloaded';
 
 const person = (o: { id: string; displayName: string } | null) =>
   o ? { id: o.id, displayName: o.displayName } : null;
@@ -56,23 +64,24 @@ export class LeadershipService {
   ) {}
 
   async get(workspaceId: string, viewerId: string, now = new Date()): Promise<LeadershipOverview> {
+    const unavailable: LeadershipCard[] = [];
+    const safe = async <T>(card: LeadershipCard, run: () => Promise<T[]>): Promise<T[]> => {
+      try {
+        return await run();
+      } catch (err) {
+        this.logger.warn(
+          `Thẻ lãnh đạo (${card}) lỗi: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        unavailable.push(card);
+        return [];
+      }
+    };
     const [topRisks, slowGoals, overloaded] = await Promise.all([
-      this.safe('topRisks', () => this.topRisks(workspaceId, viewerId)),
-      this.safe('slowGoals', () => this.slowGoals(workspaceId, viewerId, now)),
-      this.safe('overloaded', () => this.overloaded(workspaceId, viewerId, now)),
+      safe('topRisks', () => this.topRisks(workspaceId, viewerId)),
+      safe('slowGoals', () => this.slowGoals(workspaceId, viewerId, now)),
+      safe('overloaded', () => this.overloaded(workspaceId, viewerId, now)),
     ]);
-    return { topRisks, slowGoals, overloaded };
-  }
-
-  private async safe<T>(what: string, run: () => Promise<T[]>): Promise<T[]> {
-    try {
-      return await run();
-    } catch (err) {
-      this.logger.warn(
-        `Thẻ lãnh đạo (${what}) lỗi: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return [];
-    }
+    return { topRisks, slowGoals, overloaded, unavailable };
   }
 
   private async topRisks(
@@ -129,8 +138,9 @@ export class LeadershipService {
     viewerId: string,
     now: Date,
   ): Promise<LeadershipOverview['overloaded']> {
-    // [hôm nay, hôm nay + 7 ngày] phủ đúng tuần này và tuần sau (tuần bắt đầu Thứ Hai).
-    const today = toUtcDay(now);
+    // [hôm nay, hôm nay + 7 ngày] phủ đúng tuần này và tuần sau (tuần bắt đầu Thứ Hai). "Hôm nay" theo NGÀY Việt Nam:
+    // 00:00–07:00 sáng thứ Hai giờ VN máy chủ (UTC) còn là Chủ nhật → dùng ngày UTC sẽ lệch về tuần trước.
+    const today = vnTodayUtc(now);
     const report = await this.resources.workload(
       workspaceId,
       { from: isoDay(today), to: isoDay(addDays(today, 7)) },

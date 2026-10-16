@@ -20,6 +20,7 @@ describe('ExportController.exportIssuesCsv', () => {
         csv: 'Mã\r\n',
         truncated,
         filename: 'tirapro-DEMO-sprint-ra-mắt-20261016.csv',
+        rows: 7,
       }),
     };
     const headers: Record<string, string> = {};
@@ -45,6 +46,7 @@ describe('ExportController.exportIssuesCsv', () => {
     expect(headers['Content-Disposition']).toBe(
       "attachment; filename*=UTF-8''tirapro-DEMO-sprint-ra-m%E1%BA%AFt-20261016.csv",
     );
+    expect(headers['X-Export-Rows']).toBe('7');
     expect(headers['X-Export-Truncated']).toBeUndefined();
   });
 

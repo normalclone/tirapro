@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { CsvColumn } from '@tirapro/shared';
+import { formatCalendarDmy, formatVnDateTime, type CsvColumn } from '@tirapro/shared';
 import type { IssueDto } from '@tirapro/types';
 
 /** Một dòng CSV = công việc + hai tên mà `IssueDto` chỉ có dạng id (nạp một lần cho cả lô). */
@@ -34,32 +34,6 @@ export const DEFAULT_ISSUE_CSV_COLUMNS: readonly IssueCsvColumnId[] = ISSUE_CSV_
   (id) => id !== 'project',
 );
 
-const VN_DATE_TIME = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'Asia/Ho_Chi_Minh',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
-
-/** Ngày lịch (hạn, bắt đầu) lưu `YYYY-MM-DDT00:00:00Z` → `dd/MM/yyyy` không lệch múi giờ. */
-function calendarDmy(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const [y, m, d] = iso.slice(0, 10).split('-');
-  return `${d}/${m}/${y}`;
-}
-
-/** Mốc thời gian → `dd/MM/yyyy HH:mm` giờ Việt Nam (khớp tiếng Việt của giao diện). */
-function vnDateTime(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const p = Object.fromEntries(VN_DATE_TIME.formatToParts(d).map((x) => [x.type, x.value]));
-  return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
-}
-
 /** id → cột. Tiêu đề trùng chữ trên giao diện (Người phụ trách, Mức nghiêm trọng…). */
 export const ISSUE_CSV_COLUMN_DEFS: Record<IssueCsvColumnId, CsvColumn<ExportRow>> = {
   key: { header: 'Mã', value: (i) => i.key },
@@ -72,11 +46,11 @@ export const ISSUE_CSV_COLUMN_DEFS: Record<IssueCsvColumnId, CsvColumn<ExportRow
   reporter: { header: 'Người báo cáo', value: (i) => i.reporter?.displayName },
   sprint: { header: 'Sprint', value: (i) => i.sprintName },
   points: { header: 'Điểm', value: (i) => i.storyPoints },
-  start: { header: 'Bắt đầu', value: (i) => calendarDmy(i.startDate) },
-  due: { header: 'Hạn', value: (i) => calendarDmy(i.dueDate) },
+  start: { header: 'Bắt đầu', value: (i) => formatCalendarDmy(i.startDate) },
+  due: { header: 'Hạn', value: (i) => formatCalendarDmy(i.dueDate) },
   labels: { header: 'Nhãn', value: (i) => (i.labels ?? []).map((l) => l.name).join('; ') },
-  created: { header: 'Tạo', value: (i) => vnDateTime(i.createdAt) },
-  updated: { header: 'Cập nhật', value: (i) => vnDateTime(i.updatedAt) },
+  created: { header: 'Tạo', value: (i) => formatVnDateTime(i.createdAt) },
+  updated: { header: 'Cập nhật', value: (i) => formatVnDateTime(i.updatedAt) },
   project: { header: 'Dự án', value: (i) => i.projectKey },
 };
 

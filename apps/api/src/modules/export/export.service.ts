@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { toCsv } from '@tirapro/shared';
+import { toCsv, vnDayStamp } from '@tirapro/shared';
 import type { IssueDto } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import type { PageResult } from '../../common/dto/page-result';
 import { IssuesService } from '../issues/issues.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { SearchService } from '../search/search.service';
 import {
   ISSUE_CSV_COLUMN_DEFS,
@@ -93,6 +94,7 @@ export class ExportService {
     private readonly prisma: PrismaService,
     private readonly issues: IssuesService,
     private readonly search: SearchService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   /**
@@ -104,7 +106,7 @@ export class ExportService {
     workspaceId: string,
     userId: string,
     q: IssuesCsvQuery,
-  ): Promise<{ csv: string; truncated: boolean; filename: string }> {
+  ): Promise<{ csv: string; truncated: boolean; filename: string; rows: number }> {
     const { projectId, jql, preset, sprintId } = q;
     const hasJql = !!jql?.trim();
     if ((preset || sprintId) && !projectId) {
@@ -133,6 +135,8 @@ export class ExportService {
         })
       : null;
     if (projectId && !project) throw new NotFoundAppException('Dự án');
+    // Tự kiểm quyền thấy dự án riêng tư (không chỉ dựa vào guard ProjectRef): người ngoài nhận 404 như dự án không tồn tại.
+    if (projectId) await this.access.assertCanSee(userId, workspaceId, projectId, 'Dự án');
     const sprint =
       sprintId && projectId
         ? await this.prisma.sprint.findFirst({
@@ -202,7 +206,8 @@ export class ExportService {
     return {
       csv: toCsv(rows, columns, { delimiter }),
       truncated,
-      filename: `tirapro-${project?.key ?? 'workspace'}-${label}-${yyyymmdd(new Date())}.csv`,
+      rows: rows.length,
+      filename: `tirapro-${project?.key ?? 'workspace'}-${label}-${vnDayStamp()}.csv`,
     };
   }
 
@@ -327,8 +332,4 @@ function slugify(name: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, '-')
     .replace(/^-+|-+$/g, '');
   return slug || 'sprint';
-}
-
-function yyyymmdd(d: Date): string {
-  return d.toISOString().slice(0, 10).replace(/-/g, '');
 }

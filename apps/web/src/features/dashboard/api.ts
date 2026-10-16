@@ -143,7 +143,11 @@ export interface LeadershipOverview {
     assignedHours: number;
     capacityHours: number;
   }>;
+  /** Thẻ mà nguồn dữ liệu lỗi: mảng của nó rỗng nhưng KHÔNG có nghĩa "không có vấn đề". */
+  unavailable: LeadershipCard[];
 }
+
+export type LeadershipCard = 'topRisks' | 'slowGoals' | 'overloaded';
 
 /** Thẻ lãnh đạo của Tổng quan admin; `enabled` = chỉ người có quyền xem báo cáo (tránh 403). */
 export function useLeadership(enabled: boolean) {
