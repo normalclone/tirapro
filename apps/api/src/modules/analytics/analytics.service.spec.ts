@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { AnalyticsService } from './analytics.service';
+import {
+  flatSql,
+  hasTriageVisible,
+  sqlHasTriageVisible,
+} from '../../common/triage-visibility.testutil';
 
 /** Ghép chuỗi SQL từ lời gọi tagged template của $queryRaw (strings, ...values). */
 const sqlOf = (call: unknown[]) => (call[0] as string[]).join('?');
@@ -120,6 +125,16 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
     for (const c of prisma.issue.groupBy.mock.calls) {
       expect(c[0].where).toMatchObject({ projectId: 'p1', deletedAt: null });
     }
+  });
+
+  it('việc chưa duyệt không tính vào báo cáo dự án: mọi groupBy/count đều lọc triage', async () => {
+    const { service, prisma } = make();
+    await service.projectReport('w1', 'p1');
+    const wheres = [...prisma.issue.groupBy.mock.calls, ...prisma.issue.count.mock.calls].map(
+      (c) => (c[0] as { where: unknown }).where,
+    );
+    expect(wheres).toHaveLength(7);
+    for (const w of wheres) expect(hasTriageVisible(w)).toBe(true);
   });
 
   it('giữ nguyên hình dạng response cũ từ cùng một fixture', async () => {
@@ -328,6 +343,21 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
     expect(queryRaw.mock.calls).toHaveLength(2);
     for (const call of queryRaw.mock.calls)
       expect(sqlOf(call)).toMatch(/"Project"[\s\S]*"deletedAt" IS NULL/);
+  });
+
+  it('việc chưa duyệt/từ chối/hoãn (triageState khác null và khác ACCEPTED) KHÔNG lẫn vào số liệu: mọi where + raw SQL đều lọc', async () => {
+    const { service, prisma, queryRaw } = make();
+    await service.workspaceOverview('w1', 'u0');
+    const wheres = [
+      ...prisma.issue.groupBy.mock.calls,
+      ...prisma.issue.count.mock.calls,
+      ...prisma.issue.findMany.mock.calls,
+    ].map((c) => (c[0] as { where: unknown }).where);
+    // 4 groupBy + 4 count + 3 findMany (cần chú ý)
+    expect(wheres).toHaveLength(11);
+    for (const w of wheres) expect(hasTriageVisible(w)).toBe(true);
+    expect(queryRaw.mock.calls).toHaveLength(2);
+    for (const call of queryRaw.mock.calls) expect(sqlHasTriageVisible(flatSql(call))).toBe(true);
   });
 
   it('totals gồm cả project lưu trữ, byProject chỉ gồm project đang hiển thị', async () => {
@@ -545,6 +575,14 @@ describe('AnalyticsService.cfd — sự kiện STATUS cuối cùng thắng', () 
     );
   });
 
+  it('lịch sử của việc chưa duyệt/từ chối không vào CFD (lọc theo Issue.triageState)', async () => {
+    const { service, queryRaw } = make([]);
+    await service.cfd('w1', 'p1', '2026-10-01', '2026-10-03');
+    const sql = flatSql(queryRaw.mock.calls[0] as unknown[]);
+    expect(sql).toMatch(/FROM "Issue"/);
+    expect(sqlHasTriageVisible(sql)).toBe(true);
+  });
+
   it('ánh xạ (ngày, category, n) thành chuỗi, ngày không có dòng => 0, bigint => number', async () => {
     const { service } = make([
       { day: '2026-10-01', category: 'TODO', n: 4n },
@@ -617,6 +655,25 @@ describe('AnalyticsService.createdResolved — đếm theo ngày bằng SQL', ()
     expect(sqlOf(queryRaw.mock.calls[0]!)).toContain('"deletedAt" IS NULL');
     expect(sqlOf(queryRaw.mock.calls[1]!)).toContain(`"newCategory" = 'DONE'`);
     for (const call of queryRaw.mock.calls) expect(paramsOf(call)).toContain('p1');
+  });
+});
+
+describe('AnalyticsService.createdResolved — việc chưa duyệt không tính', () => {
+  it('cả hai câu SQL (tạo mới + đã xong) lọc triageState', async () => {
+    const queryRaw = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const prisma = {
+      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      $queryRaw: queryRaw,
+    };
+    const service = new AnalyticsService(
+      prisma as never,
+      healthStub() as never,
+      ACCESS_ALL as never,
+    );
+    await service.createdResolved('w1', 'p1', '2026-10-01', '2026-10-03');
+    expect(queryRaw.mock.calls).toHaveLength(2);
+    for (const call of queryRaw.mock.calls)
+      expect(sqlHasTriageVisible(flatSql(call as unknown[]))).toBe(true);
   });
 });
 
@@ -746,6 +803,19 @@ describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính t
     ]);
     const r = await service.burndown('w1', 'p1', 'sp1');
     expect(r.series.find((x) => x.date === '2026-10-03')!.remaining).toBe(3);
+  });
+});
+
+describe('AnalyticsService.burndown — việc chưa duyệt không tính vào phạm vi sprint', () => {
+  it('include issues của sprint lọc TRIAGE_VISIBLE', async () => {
+    const { service, prisma } = makeBurndown([]);
+    await service.burndown('w1', 'p1', 'sp1');
+    const arg = (
+      prisma.sprint.findFirst.mock.calls[0] as unknown as [
+        { include: { issues: { where: unknown } } },
+      ]
+    )[0];
+    expect(hasTriageVisible(arg.include.issues.where)).toBe(true);
   });
 });
 
@@ -1007,6 +1077,17 @@ describe('AnalyticsService.sprintSummary', () => {
       snapshots: { some: { kind: 'CLOSE' } },
     });
     expect(args.take).toBe(3);
+  });
+
+  it('ACTIVE tính trực tiếp: việc chưa duyệt không vào cam kết/còn lại (where issue lọc TRIAGE_VISIBLE)', async () => {
+    const { service, prisma } = make(
+      { ...baseSprint, state: 'ACTIVE', completeDate: null, snapshots: [] },
+      [],
+      [],
+    );
+    await service.sprintSummary('w1', 'p1', 'sp1');
+    const arg = prisma.issue.findMany.mock.calls[0]![0] as { where: unknown };
+    expect(hasTriageVisible(arg.where)).toBe(true);
   });
 
   it('CLOSED trước khi có payload => carriedOver rỗng, movedTo null', async () => {

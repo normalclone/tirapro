@@ -7,6 +7,7 @@ import type {
   SprintPlanInput,
 } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ClaudeService } from './claude.service';
 import { DATA_NOT_INSTRUCTIONS, wrap } from './ai.service';
@@ -128,6 +129,7 @@ export class SprintAssistantService {
         projectId: input.projectId,
         sprintId: null,
         deletedAt: null,
+        ...TRIAGE_VISIBLE, // việc chưa duyệt chưa "chính thức" vào backlog nên không gợi ý đưa vào sprint
         status: { category: { not: 'DONE' } },
         // Epic là vỏ gom nhóm, subtask đi theo issue cha → không đưa thẳng vào sprint.
         type: { isSubtask: false },

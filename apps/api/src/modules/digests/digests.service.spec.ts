@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type { DigestModel } from '@tirapro/shared';
 import { PUBLIC_VIEWER } from '../rbac/project-access.service';
 import { createDigestSchema, previewDigestSchema, updateDigestSchema } from './digests.controller';
+import { hasTriageVisible } from '../../common/triage-visibility.testutil';
 import { DigestsService } from './digests.service';
 
 const MODEL: DigestModel = {
@@ -499,6 +500,21 @@ describe('DigestsService.buildDigest — chọn khối', () => {
     const model = await service.buildDigest('w1', undefined, ['overdue'], 'u1');
     expect(model.sections[0]!.lines[0]).toBe('1 việc quá hạn');
     expect(model.sections[0]!.lines[1]).toMatch(/^A-1 — Việc trễ \(trễ \d+ ngày\)$/);
+  });
+});
+
+describe('DigestsService.buildDigest — việc chưa duyệt không tính', () => {
+  it('summary/overdue/sprint: mọi truy vấn issue + lịch sử đều lọc TRIAGE_VISIBLE', async () => {
+    const s = buildSetup();
+    await s.service.buildDigest('w1', undefined, ['summary', 'overdue', 'sprint'], 'u1');
+    expect(s.issueCount.mock.calls.length).toBeGreaterThan(0);
+    for (const m of [s.issueCount, s.issueFindMany, s.groupBy])
+      for (const c of m.mock.calls as unknown as [{ where: unknown }][])
+        expect(hasTriageVisible(c[0].where)).toBe(true);
+    // groupBy gồm "đang mở" (summary) và "điểm còn lại" (sprint) — cả hai
+    expect(s.groupBy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    for (const c of s.historyFind.mock.calls as unknown as [{ where: unknown }][])
+      expect(hasTriageVisible(c[0].where)).toBe(true);
   });
 });
 

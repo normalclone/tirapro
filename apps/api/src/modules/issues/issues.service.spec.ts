@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
+import { rankBetween } from '@tirapro/shared';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { IssuesService } from './issues.service';
 
@@ -1681,6 +1682,67 @@ function createTx(
 
 const WF_DEFAULT = [{ id: 's1', category: 'TODO', isInitial: true }];
 const createTxFor = (epics: Record<string, unknown>) => createTx(WF_DEFAULT, epics);
+
+describe('IssuesService.create — rank "cuối danh sách" đọc SAU khi giữ khoá dự án (smoke: 10 POST song song trùng rank)', () => {
+  const input = {
+    projectId: 'p1',
+    typeId: 't1',
+    summary: 's',
+    descriptionFormat: 'MARKDOWN' as const,
+  };
+
+  /** tx giả ghi thứ tự: `project.update` (tăng issueSequence = giữ khoá hàng dự án) và lần đọc rank cuối. */
+  function setup() {
+    const { tx, created } = createTx(WF_DEFAULT);
+    const order: string[] = [];
+    const rankReads: string[] = [];
+    const baseFindFirst = tx.issue.findFirst;
+    tx.issue.findFirst = vi.fn((args: { where: { id?: string; projectId?: string } }) => {
+      if (args.where.projectId && !args.where.id) {
+        order.push('rank-read');
+        rankReads.push('tx');
+        return Promise.resolve({ rank: 'n' });
+      }
+      return baseFindFirst(args);
+    });
+    const baseUpdate = tx.project.update;
+    tx.project.update = vi.fn(() => {
+      order.push('sequence-update');
+      return baseUpdate();
+    });
+    // đường NGOÀI transaction (this.prisma): nếu rank còn đọc ở đây thì nó chạy trước khi giữ khoá
+    const outside = vi.fn((_args: unknown) => {
+      rankReads.push('outside');
+      return Promise.resolve({ rank: 'n' });
+    });
+    return { tx, created, order, rankReads, outside };
+  }
+
+  it('rank cuối danh sách được đọc qua tx, SAU bước tăng issueSequence', async () => {
+    const { tx, order, rankReads, outside } = setup();
+    const { service } = makeService(tx, { issue: { ...tx.issue, findFirst: outside } });
+    await service.create('w1', 'u1', input);
+    expect(order).toEqual(['sequence-update', 'rank-read']);
+    expect(rankReads).toEqual(['tx']);
+    expect(outside).not.toHaveBeenCalled();
+  });
+
+  it('rank ghi vào việc mới = rankBetween(rank cuối đọc được, null) — vẫn xếp cuối danh sách', async () => {
+    const { tx, created } = setup();
+    const { service } = makeService(tx);
+    await service.create('w1', 'u1', input);
+    const data = (created.mock.calls[0] as unknown as [{ data: { rank: string } }])[0].data;
+    expect(data.rank).toBe(rankBetween('n', null));
+    expect(data.rank > 'n').toBe(true);
+  });
+
+  it('createWithin (import, tx của bên gọi): cũng đọc rank trong tx sau khi tăng issueSequence', async () => {
+    const { tx, order } = setup();
+    const { service } = makeService(tx);
+    await service.createWithin(tx as never, 'w1', 'u1', input, []);
+    expect(order).toEqual(['sequence-update', 'rank-read']);
+  });
+});
 
 describe('IssuesService.create — statusId phải thuộc workflow của dự án (I1)', () => {
   const baseInput = {

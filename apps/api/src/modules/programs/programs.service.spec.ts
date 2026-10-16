@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { ProgramsService } from './programs.service';
+import { hasTriageVisible } from '../../common/triage-visibility.testutil';
 
 /** ProjectAccessService giả: người xem thấy mọi dự án (admin) / không có viewer. */
 const ACCESS_ALL = { visibleWhere: vi.fn(() => Promise.resolve({})) };
@@ -264,5 +265,25 @@ describe('ProgramsService.rollup — ProjectAccessService THẬT trên dữ li�
     const outsider = await run('u-nobody');
     expect(outsider.groups.flatMap((g) => g.projects.map((p) => p.key))).toEqual(['PUB']);
     expect(outsider.totals.projectCount).toBe(1);
+  });
+});
+
+describe('ProgramsService.rollup — việc chưa duyệt không tính', () => {
+  it('cả ba groupBy issue lọc TRIAGE_VISIBLE (tổng/xong/quá hạn/khoảng ngày của Danh mục)', async () => {
+    const groupBy = vi.fn(() => Promise.resolve([]));
+    const prisma = {
+      program: { findMany: vi.fn(() => Promise.resolve([])) },
+      project: { findMany: vi.fn(() => Promise.resolve([])) },
+      status: { findMany: vi.fn(() => Promise.resolve([])) },
+      issue: { groupBy },
+    };
+    await new ProgramsService(
+      prisma as never,
+      { forProjects: vi.fn(() => Promise.resolve(new Map())) } as never,
+      ACCESS_ALL as never,
+    ).rollup('w1', 'u0');
+    expect(groupBy).toHaveBeenCalledTimes(3);
+    for (const c of groupBy.mock.calls as unknown as [{ where: unknown }][])
+      expect(hasTriageVisible(c[0].where)).toBe(true);
   });
 });

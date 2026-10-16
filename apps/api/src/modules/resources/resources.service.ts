@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma, TimeOffKind } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import {
@@ -372,6 +373,8 @@ export class ResourcesService {
           project: { deletedAt: null, ...visible },
           assigneeId: { in: userIds },
           ...projectFilter,
+          // việc chưa duyệt chưa tính vào tải; `AND` để không đè khoá `OR` theo khoảng ngày bên dưới
+          AND: [TRIAGE_VISIBLE],
           OR: [
             { startDate: { gte: rangeStart, lte: rangeEnd } },
             { dueDate: { gte: rangeStart, lte: rangeEnd } },

@@ -13,7 +13,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { iso } from '../../common/mappers/date';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
-import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
+import { TRIAGE_VISIBLE, isUnreviewed } from '../../common/triage-visibility';
 
 /** Ngày lịch (UTC) của một thời điểm, dạng số để so sánh. */
 const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -188,7 +188,7 @@ export class SprintsService {
       // bị đẩy ra) vì issue chưa di chuyển — velocity cần "cam kết" thật của sprint.
       const pushed = await tx.issue.findMany({
         where: { sprintId, deletedAt: null, status: { category: { not: 'DONE' } } },
-        select: { id: true, key: true, summary: true, storyPoints: true },
+        select: { id: true, key: true, summary: true, storyPoints: true, triageState: true },
       });
 
       let targetSprintId: string | null = null;
@@ -222,12 +222,16 @@ export class SprintsService {
       }
 
       const payload: SprintClosePayload = {
-        carriedOver: pushed.map((i) => ({
-          id: i.id,
-          key: i.key,
-          summary: i.summary,
-          storyPoints: i.storyPoints ?? null,
-        })),
+        // Việc chưa duyệt vẫn bị đưa ra khỏi sprint (không bỏ sót) nhưng không liệt vào "chuyển tiếp" — snapshot cũng không
+        // tính nó, nên committed = completed + remaining vẫn đúng.
+        carriedOver: pushed
+          .filter((i) => !isUnreviewed(i.triageState))
+          .map((i) => ({
+            id: i.id,
+            key: i.key,
+            summary: i.summary,
+            storyPoints: i.storyPoints ?? null,
+          })),
         movedTo,
       };
       await this.snapshot(
@@ -416,7 +420,7 @@ export class SprintsService {
     payload?: Prisma.InputJsonValue,
   ) {
     const issues = await tx.issue.findMany({
-      where: { sprintId, deletedAt: null },
+      where: { sprintId, deletedAt: null, ...TRIAGE_VISIBLE },
       select: { storyPoints: true, status: { select: { category: true } } },
     });
     const committedPoints = issues.reduce((a, i) => a + (i.storyPoints ?? 0), 0);

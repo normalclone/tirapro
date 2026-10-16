@@ -12,6 +12,7 @@ import { overdueCutoff } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { isBugType } from '../../common/bug-type';
+import { TRIAGE_VISIBLE, triageVisibleSql } from '../../common/triage-visibility';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { ProjectHealthService } from './project-health.service';
@@ -76,10 +77,13 @@ export class AnalyticsService {
 
     // Mọi số liệu tính bằng aggregate SQL (groupBy/count/$queryRaw) — không kéo từng issue về app.
     // Loại issue của dự án đã XOÁ; dự án chỉ lưu trữ vẫn tính vào tổng (xem comment ở `totals`).
+    // Việc chưa duyệt/từ chối/hoãn (Việc mới vào) KHÔNG lẫn vào số liệu — như Board/Việc chờ/QA/KR. Bỏ vào `AND` (không
+    // spread `OR` của TRIAGE_VISIBLE) vì các where dẫn xuất bên dưới có `OR` riêng ở gốc.
     const baseWhere: Prisma.IssueWhereInput = {
       workspaceId,
       deletedAt: null,
       project: { deletedAt: null, ...visible },
+      AND: [TRIAGE_VISIBLE],
     };
     const openStatus: Prisma.IssueWhereInput = { status: { category: { not: 'DONE' } } };
     const overdueWhere: Prisma.IssueWhereInput = {
@@ -302,7 +306,8 @@ export class AnalyticsService {
     const HIGH_RANK = 4; // High/Highest
 
     // Aggregate SQL: groupBy theo status/type/priority/assignee thay vì kéo mọi issue về app rồi reduce.
-    const baseWhere: Prisma.IssueWhereInput = { projectId, deletedAt: null };
+    // Việc chưa duyệt không tính vào báo cáo (cùng quy tắc Tổng quan/Board).
+    const baseWhere: Prisma.IssueWhereInput = { projectId, deletedAt: null, AND: [TRIAGE_VISIBLE] };
     const openStatus: Prisma.IssueWhereInput = { status: { category: { not: 'DONE' } } };
     const sumPoints = { storyPoints: true } as const;
 
@@ -537,7 +542,12 @@ export class AnalyticsService {
         deletedAt: null,
         project: { workspaceId, deletedAt: null },
       },
-      include: { issues: { where: { deletedAt: null }, select: { id: true, storyPoints: true } } },
+      include: {
+        issues: {
+          where: { deletedAt: null, ...TRIAGE_VISIBLE },
+          select: { id: true, storyPoints: true },
+        },
+      },
     });
     if (!sprint) throw new NotFoundAppException('Đợt làm việc (sprint)');
 
@@ -647,7 +657,7 @@ export class AnalyticsService {
     const live = { points: 0, count: 0, donePoints: 0, doneCount: 0 };
     if (!closeSnap) {
       const issues = await this.prisma.issue.findMany({
-        where: { sprintId, deletedAt: null },
+        where: { sprintId, deletedAt: null, ...TRIAGE_VISIBLE },
         select: { storyPoints: true, status: { select: { category: true } } },
       });
       for (const i of issues) {
@@ -790,6 +800,7 @@ export class AnalyticsService {
         FROM "IssueHistory"
         WHERE "projectId" = ${projectId} AND "field" = 'STATUS' AND "newCategory" IS NOT NULL
           AND "occurredAt" <= ${utc(hi)}
+          AND EXISTS (SELECT 1 FROM "Issue" WHERE "Issue"."id" = "IssueHistory"."issueId" AND ${triageVisibleSql()})
       ), live AS (
         SELECT "newCategory", "occurredAt", "nextAt" FROM ev WHERE "nextAt" IS NULL OR "nextAt" > ${utc(lo)}
       ), d AS (
@@ -833,12 +844,14 @@ export class AnalyticsService {
       this.prisma.$queryRaw<DayCountRow[]>`
         SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day, count(*) AS n
         FROM "Issue"
-        WHERE "projectId" = ${projectId} AND "deletedAt" IS NULL AND "createdAt" >= ${utc(lo)} AND "createdAt" <= ${utc(hi)}
+        WHERE "projectId" = ${projectId} AND "deletedAt" IS NULL AND ${triageVisibleSql()}
+          AND "createdAt" >= ${utc(lo)} AND "createdAt" <= ${utc(hi)}
         GROUP BY 1`,
       this.prisma.$queryRaw<DayCountRow[]>`
         SELECT to_char(date_trunc('day', "occurredAt"), 'YYYY-MM-DD') AS day, count(*) AS n
         FROM "IssueHistory"
         WHERE "projectId" = ${projectId} AND "field" = 'STATUS' AND "newCategory" = 'DONE'
+          AND EXISTS (SELECT 1 FROM "Issue" WHERE "Issue"."id" = "IssueHistory"."issueId" AND ${triageVisibleSql()})
           AND "occurredAt" >= ${utc(lo)} AND "occurredAt" <= ${utc(hi)}
         GROUP BY 1`,
     ]);
@@ -878,6 +891,7 @@ export class AnalyticsService {
             WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
               AND EXISTS (SELECT 1 FROM "Project" p WHERE p."id" = "Issue"."projectId" AND p."deletedAt" IS NULL)
               ${onlyVisible}
+              AND ${triageVisibleSql()}
               AND "createdAt" > ${utc(low)} AND "createdAt" <= ${utc(now)}
             GROUP BY 1`
         : await this.prisma.$queryRaw<WeekRow[]>`
@@ -887,6 +901,7 @@ export class AnalyticsService {
             WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
               AND EXISTS (SELECT 1 FROM "Project" p WHERE p."id" = "Issue"."projectId" AND p."deletedAt" IS NULL)
               ${onlyVisible}
+              AND ${triageVisibleSql()}
               AND "resolvedAt" > ${utc(low)} AND "resolvedAt" <= ${utc(now)}
             GROUP BY 1`;
     return rows

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import {
   BusinessRuleException,
   ForbiddenAppException,
@@ -220,7 +221,7 @@ export class ProgramsService {
    */
   async rollup(workspaceId: string, viewerId: string): Promise<RollupResult> {
     const visible = await this.visibleFor(workspaceId, viewerId);
-    const issueScope = { workspaceId, deletedAt: null, project: { deletedAt: null, ...visible } };
+    const issueScope = rollupIssueScope(workspaceId, visible);
     const [programs, projects, statuses] = await Promise.all([
       this.prisma.program.findMany({
         where: { workspaceId },
@@ -478,4 +479,17 @@ function latest(items: { targetDate: string | null }[]): string | null {
     .filter((v): v is string => !!v)
     .sort();
   return xs[xs.length - 1] ?? null;
+}
+
+/** Việc tính vào Danh mục: chưa xoá, dự án sống + người xem thấy, và KHÔNG phải việc chưa duyệt (như Board/Sức khoẻ/QA). */
+function rollupIssueScope(
+  workspaceId: string,
+  visible: Prisma.ProjectWhereInput,
+): Prisma.IssueWhereInput {
+  return {
+    workspaceId,
+    deletedAt: null,
+    project: { deletedAt: null, ...visible },
+    AND: [TRIAGE_VISIBLE],
+  };
 }
