@@ -105,6 +105,10 @@ export const keys = {
     list: (filter: GoalFilter) => ['goals', filter] as const,
     periods: ['goal-periods'] as const,
     issueSearch: (q: string, projectId: string) => ['goal-issue-search', q, projectId] as const,
+    /** Tiền tố riêng (không nằm dưới ['goals']) để `patchGoalCaches` không đụng tới mảng lịch sử. */
+    checkIns: (goalId: string, krId: string, limit: number) =>
+      ['goal-check-ins', goalId, krId, limit] as const,
+    checkInsAll: ['goal-check-ins'] as const,
   },
 
   raid: {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createCheckInSchema,
   createKeyResultSchema,
   keyResultUpsertSchema,
   parseSourceConfig,
@@ -72,5 +73,29 @@ describe('keyResultUpsertSchema — nguồn số liệu (L25)', () => {
     expect(parseSourceConfig('ISSUE_COUNT_JQL', { jql: '  type = Bug ' })).toEqual({
       jql: 'type = Bug',
     });
+  });
+});
+
+describe('createCheckInSchema (L26)', () => {
+  it('value phải là số hữu hạn', () => {
+    expect(createCheckInSchema.safeParse({ value: 4 }).success).toBe(true);
+    expect(createCheckInSchema.safeParse({ value: 0 }).success).toBe(true);
+    expect(createCheckInSchema.safeParse({ value: Infinity }).success).toBe(false);
+    expect(createCheckInSchema.safeParse({ value: NaN }).success).toBe(false);
+    expect(createCheckInSchema.safeParse({ value: '4' }).success).toBe(false);
+    expect(createCheckInSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('ghi chú tối đa 500 ký tự; ghi chú trắng → bỏ', () => {
+    expect(createCheckInSchema.safeParse({ value: 1, note: 'x'.repeat(501) }).success).toBe(false);
+    expect(createCheckInSchema.parse({ value: 1, note: '  ' }).note).toBeUndefined();
+    expect(createCheckInSchema.parse({ value: 1, note: ' ok ' }).note).toBe('ok');
+  });
+
+  it('unitLabel của KR tối đa 20 ký tự', () => {
+    expect(keyResultUpsertSchema.safeParse({ ...base, unitLabel: 'bug' }).success).toBe(true);
+    expect(keyResultUpsertSchema.safeParse({ ...base, unitLabel: 'x'.repeat(21) }).success).toBe(
+      false,
+    );
   });
 });

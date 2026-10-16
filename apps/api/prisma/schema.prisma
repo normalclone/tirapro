@@ -261,6 +261,7 @@ model User {
   timeOffs             TimeOff[]
   ownedPrograms        Program[]             @relation("ProgramOwner")
   ownedObjectives      Objective[]           @relation("ObjectiveOwner")
+  keyResultCheckIns    KeyResultCheckIn[]    @relation("KeyResultCheckInAuthor")
   ownedRaidItems       RaidItem[]            @relation("RaidOwner")
   passwordResetTokens  PasswordResetToken[]
 
@@ -1848,12 +1849,31 @@ model KeyResult {
   source       KeyResultSource @default(MANUAL)
   /// Cấu hình theo nguồn: { projectId? } | { projectId } | { jql } — kiểm ở goals.schemas.
   sourceConfig Json?
+  /// Nhãn đơn vị hiển thị sau số ("4 bug", "12 điểm"); bỏ qua với đơn vị PERCENT (L26).
+  unitLabel    String?       @db.VarChar(20)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
   objective Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  checkIns  KeyResultCheckIn[]
 
   @@index([objectiveId])
+}
+
+/// Lịch sử cập nhật giá trị của Key Result (check-in tay có ghi chú). Bất biến: không sửa/xoá — nhập sai thì check-in mới (L26).
+model KeyResultCheckIn {
+  id            String   @id @default(cuid())
+  keyResultId   String
+  value         Float
+  previousValue Float?
+  note          String?  @db.VarChar(500)
+  authorId      String?
+  createdAt     DateTime @default(now())
+
+  keyResult KeyResult @relation(fields: [keyResultId], references: [id], onDelete: Cascade)
+  author    User?     @relation("KeyResultCheckInAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([keyResultId, createdAt])
 }
 
 /// Gắn issue/epic vào mục tiêu để tính tiến độ theo công việc thực tế.

@@ -293,6 +293,9 @@ describe('GoalsService — KR tự đo (L25)', () => {
     currentValue: 3,
     source: 'OPEN_BUGS',
     sourceConfig: {},
+    unitLabel: null,
+    _count: { checkIns: 0 },
+    checkIns: [],
     ...over,
   });
 
@@ -366,8 +369,10 @@ describe('GoalsService — ghi KR tự đo (L25)', () => {
       keyResult: {
         create: vi.fn((_a?: unknown) => Promise.resolve({})),
         update: vi.fn((_a?: unknown) => Promise.resolve({})),
-        findFirst: vi.fn(() => Promise.resolve({ id: 'k1', ...existing })),
+        findFirst: vi.fn(() => Promise.resolve({ id: 'k1', currentValue: 1, ...existing })),
       },
+      keyResultCheckIn: { create: vi.fn((_a?: unknown) => Promise.resolve({})) },
+      $transaction: vi.fn(() => Promise.resolve([])),
     };
     const measure = {
       measure: vi.fn(() => Promise.resolve(new Map())),
@@ -443,6 +448,125 @@ describe('GoalsService — ghi KR tự đo (L25)', () => {
     await manual.service.updateKeyResult('w1', 'o1', 'k1', { currentValue: 5 }, 'u1');
     expect(manual.prisma.keyResult.update.mock.calls[0]![0]).toMatchObject({
       data: { currentValue: 5 },
+    });
+    expect(manual.prisma.keyResultCheckIn.create).toHaveBeenCalledTimes(1);
+    expect(auto.prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('GoalsService — check-in Key Result (L26)', () => {
+  function make(
+    kr: Record<string, unknown> | null = { id: 'k1', source: 'MANUAL', currentValue: 6 },
+  ) {
+    const checkInCreate = vi.fn((a?: unknown) => Promise.resolve(a));
+    const krUpdate = vi.fn((a?: unknown) => Promise.resolve(a));
+    const prisma = {
+      objective: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({ id: 'o1', projectId: null, project: { archivedAt: null } }),
+        ),
+      },
+      keyResult: {
+        findFirst: vi.fn(() => Promise.resolve(kr)),
+        update: krUpdate,
+      },
+      keyResultCheckIn: {
+        create: checkInCreate,
+        findMany: vi.fn((_a?: unknown) => Promise.resolve([])),
+      },
+      $transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
+    };
+    const service = new GoalsService(prisma as never, ACCESS_ALL as never, NO_MEASURE as never);
+    (service as unknown as { read: () => Promise<unknown> }).read = () =>
+      Promise.resolve({ ok: 1 });
+    return { service, prisma, checkInCreate, krUpdate };
+  }
+
+  it('addCheckIn: ghi dòng lịch sử với previousValue = giá trị cũ + cập nhật currentValue trong MỘT $transaction', async () => {
+    const { service, prisma, checkInCreate, krUpdate } = make();
+    await service.addCheckIn('w1', 'o1', 'k1', { value: 4, note: 'Đã vá 2 bug lớn' }, 'u1');
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(checkInCreate).toHaveBeenCalledWith({
+      data: {
+        keyResultId: 'k1',
+        value: 4,
+        previousValue: 6,
+        note: 'Đã vá 2 bug lớn',
+        authorId: 'u1',
+      },
+    });
+    expect(krUpdate).toHaveBeenCalledWith({ where: { id: 'k1' }, data: { currentValue: 4 } });
+  });
+
+  it('addCheckIn: KR tự đo (source != MANUAL) → 422, không ghi', async () => {
+    const { service, prisma, checkInCreate } = make({
+      id: 'k1',
+      source: 'OPEN_BUGS',
+      currentValue: 3,
+    });
+    await expect(service.addCheckIn('w1', 'o1', 'k1', { value: 4 }, 'u1')).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('tự đo') as unknown,
+    });
+    expect(checkInCreate).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('addCheckIn: KR không thuộc mục tiêu → 404; dự án lưu trữ → 422 (qua requireObjective)', async () => {
+    const missing = make(null);
+    await expect(
+      missing.service.addCheckIn('w1', 'o1', 'kx', { value: 1 }, 'u1'),
+    ).rejects.toMatchObject({
+      status: 404,
+    });
+    const arch = make();
+    arch.prisma.objective.findFirst.mockResolvedValueOnce({
+      id: 'o1',
+      projectId: 'p1',
+      project: { archivedAt: new Date() },
+    } as never);
+    await expect(
+      arch.service.addCheckIn('w1', 'o1', 'k1', { value: 1 }, 'u1'),
+    ).rejects.toMatchObject(ARCHIVED);
+    expect(arch.checkInCreate).not.toHaveBeenCalled();
+  });
+
+  it('updateKeyResult(currentValue) trên KR nhập tay đi qua cùng đường check-in (ghi lịch sử, ghi chú trống)', async () => {
+    const { service, checkInCreate, krUpdate, prisma } = make();
+    await service.updateKeyResult('w1', 'o1', 'k1', { currentValue: 5 }, 'u1');
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(checkInCreate).toHaveBeenCalledWith({
+      data: { keyResultId: 'k1', value: 5, previousValue: 6, note: null, authorId: 'u1' },
+    });
+    expect((krUpdate.mock.calls[0]![0] as { data: unknown }).data).toMatchObject({
+      currentValue: 5,
+    });
+  });
+
+  it('updateKeyResult chỉ đổi tên/đích (hoặc currentValue không đổi): không ghi check-in', async () => {
+    const { service, checkInCreate } = make();
+    await service.updateKeyResult('w1', 'o1', 'k1', { name: 'Mới', unitLabel: ' bug ' }, 'u1');
+    await service.updateKeyResult('w1', 'o1', 'k1', { currentValue: 6 }, 'u1');
+    expect(checkInCreate).not.toHaveBeenCalled();
+  });
+
+  it('listCheckIns: sắp createdAt giảm dần, mặc định 30, kẹp tối đa 50, trả tác giả gọn', async () => {
+    const { service, prisma } = make();
+    await service.listCheckIns('w1', 'o1', 'k1', undefined, 'u1');
+    await service.listCheckIns('w1', 'o1', 'k1', 999, 'u1');
+    await service.listCheckIns('w1', 'o1', 'k1', 0, 'u1');
+    const args = prisma.keyResultCheckIn.findMany.mock.calls.map(
+      (c) => c[0] as { where: unknown; orderBy: unknown; take: number },
+    );
+    expect(args.map((a) => a.take)).toEqual([30, 50, 1]);
+    expect(args[0]!.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    expect(args[0]!.where).toEqual({ keyResultId: 'k1' });
+  });
+
+  it('listCheckIns: KR của mục tiêu không thấy/không có → 404', async () => {
+    const { service } = make(null);
+    await expect(service.listCheckIns('w1', 'o1', 'k1', 10, 'u1')).rejects.toMatchObject({
+      status: 404,
     });
   });
 });

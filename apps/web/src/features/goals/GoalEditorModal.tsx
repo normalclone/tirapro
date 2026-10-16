@@ -207,6 +207,7 @@ export function GoalEditorModal({
         currentValue: kr.currentValue,
         source: kr.source,
         sourceConfig: kr.sourceConfig,
+        unitLabel: kr.unitLabel,
       })) ?? [newRow()],
     );
   }, [open, goal, defaultPeriod]);
@@ -269,6 +270,7 @@ export function GoalEditorModal({
           unit: kr.unit ?? 'NUMBER',
           startValue: Number(kr.startValue ?? 0),
           targetValue: Number(kr.targetValue ?? 0),
+          unitLabel: kr.unitLabel?.trim() || null,
           source,
           sourceConfig: isAutoSource(source) ? (kr.sourceConfig ?? defaultConfig(source)) : null,
           // KR tự đo: số hiện tại do hệ thống đo, không gửi.
@@ -430,7 +432,7 @@ export function GoalEditorModal({
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
                     <label
                       className="text-xs text-faint"
                       title="Cách hiển thị số đo: số thường, phần trăm hay tiền"
@@ -442,6 +444,21 @@ export function GoalEditorModal({
                         options={UNIT_OPTIONS}
                         ariaLabel="Đơn vị của số đo"
                         className="mt-1"
+                      />
+                    </label>
+                    <label
+                      className="text-xs text-faint"
+                      title="Nhãn nối sau số, vd “bug”, “điểm”, “khách” → “4 bug”. Không dùng cho phần trăm."
+                    >
+                      Nhãn đơn vị
+                      <Input
+                        className="mt-1"
+                        value={kr.unitLabel ?? ''}
+                        onChange={(e) => setKr(kr.rowKey, { unitLabel: e.target.value })}
+                        placeholder="bug, điểm, khách…"
+                        maxLength={20}
+                        disabled={kr.unit === 'PERCENT'}
+                        aria-label="Nhãn đơn vị của số đo"
                       />
                     </label>
                     <label

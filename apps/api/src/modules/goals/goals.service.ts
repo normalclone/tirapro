@@ -12,6 +12,7 @@ import { ProjectAccessService } from '../rbac/project-access.service';
 import { KrMeasureService, type MeasureResult } from './kr-measure.service';
 import {
   parseSourceConfig,
+  type CreateCheckInInput,
   type CreateGoalInput,
   type CreateKeyResultInput,
   type KeyResultUpsertInput,
@@ -47,6 +48,9 @@ const objectiveSelect = (visible: Prisma.ProjectWhereInput) =>
         currentValue: true,
         source: true,
         sourceConfig: true,
+        unitLabel: true,
+        _count: { select: { checkIns: true } },
+        checkIns: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { createdAt: true } },
       },
     },
     issues: {
@@ -241,7 +245,7 @@ export class GoalsService {
     if (dto.keyResults !== undefined) {
       const existing = await this.prisma.keyResult.findMany({
         where: { objectiveId: id },
-        select: { id: true, source: true, sourceConfig: true },
+        select: { id: true, source: true, sourceConfig: true, currentValue: true },
       });
       const keptIds = new Set(dto.keyResults.map((kr) => kr.id).filter((v): v is string => !!v));
       const removed = existing.filter((kr) => !keptIds.has(kr.id)).map((kr) => kr.id);
@@ -260,10 +264,24 @@ export class GoalsService {
             : kr,
         );
         if (kr.id && prev) {
-          const data = this.krCreateData(kr, src);
-          // KR tự đo: `currentValue` trong DB (giá trị tay lần cuối) giữ nguyên, không bị ghi đè.
-          if (src.source !== 'MANUAL') delete (data as { currentValue?: number }).currentValue;
-          ops.push(this.prisma.keyResult.update({ where: { id: kr.id }, data }));
+          const { currentValue: nextValue, ...data } = this.krCreateData(kr, src);
+          if (src.source === 'MANUAL') {
+            // Không gửi `currentValue` → giữ giá trị hiện có (không vô tình đưa về điểm xuất phát).
+            const value = kr.currentValue ?? prev.currentValue;
+            ops.push(
+              this.prisma.keyResult.update({
+                where: { id: kr.id },
+                data: { ...data, currentValue: value },
+              }),
+            );
+            // Sửa số hiện tại ngay trong form cũng để lại dấu vết: cùng đường lịch sử với check-in.
+            if (value !== prev.currentValue)
+              ops.push(this.checkInCreate(kr.id, value, prev.currentValue, null, viewerId));
+          } else {
+            // KR tự đo: `currentValue` trong DB (giá trị tay lần cuối) giữ nguyên, không bị ghi đè.
+            void nextValue;
+            ops.push(this.prisma.keyResult.update({ where: { id: kr.id }, data }));
+          }
         } else {
           ops.push(
             this.prisma.keyResult.create({
@@ -331,7 +349,7 @@ export class GoalsService {
     await this.requireObjective(workspaceId, objectiveId, visible);
     const kr = await this.prisma.keyResult.findFirst({
       where: { id: keyResultId, objectiveId },
-      select: { id: true, source: true, sourceConfig: true },
+      select: { id: true, source: true, sourceConfig: true, currentValue: true },
     });
     if (!kr) throw new NotFoundAppException('Kết quả then chốt');
 
@@ -345,6 +363,7 @@ export class GoalsService {
     if (dto.startValue !== undefined) data.startValue = dto.startValue;
     if (dto.targetValue !== undefined) data.targetValue = dto.targetValue;
     const source = dto.source ?? kr.source;
+    if (dto.unitLabel !== undefined) data.unitLabel = dto.unitLabel?.trim() || null;
     if (dto.source !== undefined || dto.sourceConfig !== undefined) {
       const src = await this.resolveSource(workspaceId, viewerId, {
         source,
@@ -357,11 +376,98 @@ export class GoalsService {
       data.source = src.source;
       data.sourceConfig = src.sourceConfig;
     }
-    // KR tự đo bỏ qua `currentValue` gửi lên (số đo tính lúc đọc).
-    if (dto.currentValue !== undefined && source === 'MANUAL') data.currentValue = dto.currentValue;
 
-    await this.prisma.keyResult.update({ where: { id: keyResultId }, data });
+    // KR tự đo bỏ qua `currentValue` gửi lên (số đo tính lúc đọc). KR nhập tay: đổi số đi qua cùng đường
+    // check-in (một dòng lịch sử + cập nhật trong một transaction) để lịch sử là nguồn sự thật duy nhất.
+    const changed =
+      dto.currentValue !== undefined && source === 'MANUAL' && dto.currentValue !== kr.currentValue;
+    if (changed) {
+      data.currentValue = dto.currentValue;
+      await this.prisma.$transaction([
+        this.prisma.keyResult.update({ where: { id: keyResultId }, data }),
+        this.checkInCreate(keyResultId, dto.currentValue!, kr.currentValue, null, viewerId),
+      ]);
+    } else {
+      await this.prisma.keyResult.update({ where: { id: keyResultId }, data });
+    }
     return this.read(workspaceId, objectiveId, visible, viewerId);
+  }
+
+  /**
+   * Check-in tay: ghi một dòng lịch sử (`previousValue` = giá trị trước đó) và cập nhật `currentValue` trong MỘT
+   * `$transaction`. Chỉ KR nhập tay — KR tự đo có số do hệ thống đo (lịch sử của chúng do cron chụp hằng ngày).
+   */
+  async addCheckIn(
+    workspaceId: string,
+    objectiveId: string,
+    keyResultId: string,
+    dto: CreateCheckInInput,
+    viewerId: string,
+  ) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    await this.requireObjective(workspaceId, objectiveId, visible);
+    const kr = await this.prisma.keyResult.findFirst({
+      where: { id: keyResultId, objectiveId },
+      select: { id: true, source: true, currentValue: true },
+    });
+    if (!kr) throw new NotFoundAppException('Kết quả then chốt');
+    if (kr.source !== 'MANUAL')
+      throw new BusinessRuleException('Kết quả này tự đo từ dữ liệu — không nhập tay');
+    await this.prisma.$transaction([
+      this.checkInCreate(keyResultId, dto.value, kr.currentValue, dto.note ?? null, viewerId),
+      this.prisma.keyResult.update({
+        where: { id: keyResultId },
+        data: { currentValue: dto.value },
+      }),
+    ]);
+    return this.read(workspaceId, objectiveId, visible, viewerId);
+  }
+
+  /** Lịch sử check-in của một KR, mới nhất trước. `limit` mặc định 30, kẹp [1, 50]. Đường đọc: không chặn dự án lưu trữ. */
+  async listCheckIns(
+    workspaceId: string,
+    objectiveId: string,
+    keyResultId: string,
+    limit: number | undefined,
+    viewerId: string,
+  ) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    const objective = await this.prisma.objective.findFirst({
+      where: { id: objectiveId, workspaceId, ...this.scopeOf(visible) },
+      select: { id: true },
+    });
+    if (!objective) throw new NotFoundAppException('Mục tiêu');
+    const kr = await this.prisma.keyResult.findFirst({
+      where: { id: keyResultId, objectiveId },
+      select: { id: true },
+    });
+    if (!kr) throw new NotFoundAppException('Kết quả then chốt');
+    const rows = await this.prisma.keyResultCheckIn.findMany({
+      where: { keyResultId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: Math.min(50, Math.max(1, Math.trunc(limit ?? 30))),
+      select: {
+        id: true,
+        value: true,
+        previousValue: true,
+        note: true,
+        createdAt: true,
+        author: { select: { id: true, displayName: true } },
+      },
+    });
+    return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+  }
+
+  private checkInCreate(
+    keyResultId: string,
+    value: number,
+    previousValue: number | null,
+    note: string | null,
+    authorId: string,
+  ) {
+    return this.prisma.keyResultCheckIn.create({
+      data: { keyResultId, value, previousValue, note, authorId },
+    });
   }
 
   async removeKeyResult(
@@ -451,6 +557,7 @@ export class GoalsService {
         src.source === 'MANUAL' ? (kr.currentValue ?? kr.startValue ?? 0) : (kr.startValue ?? 0),
       source: src.source,
       sourceConfig: src.sourceConfig,
+      unitLabel: kr.unitLabel?.trim() || null,
     };
   }
 
@@ -558,6 +665,9 @@ export class GoalsService {
         sourceConfig: kr.sourceConfig,
         measuredAt: m?.measuredAt ?? null,
         measureError: m?.error ?? null,
+        unitLabel: kr.unitLabel,
+        checkInCount: kr._count.checkIns,
+        lastCheckInAt: kr.checkIns[0]?.createdAt.toISOString() ?? null,
         progress: Math.round(ratio * 100),
       };
     });

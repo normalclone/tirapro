@@ -24,9 +24,10 @@ import {
   type ObjectiveStatus,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { LOCALE } from '@/lib/locale';
 import { fmtDateTime } from '@/lib/dateFormat';
 import { describeSource, isAutoSource } from './krSource';
+import { formatKrValue, krSummary } from './krFormat';
+import { CheckInButton, CheckInHistoryButton } from './CheckInPopover';
 
 const STATUS_META: Record<ObjectiveStatus, { label: string; className: string; hint: string }> = {
   DRAFT: {
@@ -57,13 +58,6 @@ const STATUS_FILTER_OPTIONS = [
 function periodHint(period: string): string {
   const m = /^(\d{4})-Q([1-4])$/.exec(period.trim());
   return m ? `Quý ${m[2]} năm ${m[1]}` : `Kỳ ${period}`;
-}
-
-/** Định dạng giá trị KR theo đơn vị (số / phần trăm / tiền). */
-function formatValue(value: number, unit: KeyResultDto['unit']): string {
-  if (unit === 'PERCENT') return `${Math.round(value * 10) / 10}%`;
-  if (unit === 'CURRENCY') return new Intl.NumberFormat(LOCALE).format(value);
-  return String(Math.round(value * 100) / 100);
 }
 
 function ProgressBar({
@@ -149,7 +143,7 @@ function KeyResultRow({
                 Tự đo
               </Badge>
               <span className="tabular-nums text-sm text-ink" title={sourceHint}>
-                {formatValue(kr.currentValue, kr.unit)}
+                {formatKrValue(kr.currentValue, kr.unit, kr.unitLabel)}
               </span>
             </>
           ) : canManage ? (
@@ -174,14 +168,14 @@ function KeyResultRow({
             />
           ) : (
             <span className="tabular-nums text-sm text-ink" title="Số đo hiện tại">
-              {formatValue(kr.currentValue, kr.unit)}
+              {formatKrValue(kr.currentValue, kr.unit, kr.unitLabel)}
             </span>
           )}
           <span
             className="whitespace-nowrap text-xs text-faint"
             title="Số cần đạt để coi là hoàn thành"
           >
-            / {formatValue(kr.targetValue, kr.unit)}
+            / {formatKrValue(kr.targetValue, kr.unit, kr.unitLabel)}
           </span>
           <span
             className="w-10 shrink-0 text-right text-xs font-medium tabular-nums text-muted"
@@ -193,6 +187,18 @@ function KeyResultRow({
       </div>
       <div className="mt-1.5">
         <ProgressBar value={kr.progress} label={`Tiến độ ${kr.name}`} size="sm" />
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        <p
+          className="min-w-0 flex-1 text-xs tabular-nums text-faint"
+          title="Hành trình của kết quả này"
+        >
+          {krSummary(kr)}
+        </p>
+        <div className="flex items-center gap-0.5">
+          {canManage && !auto && <CheckInButton goal={goal} kr={kr} />}
+          {(!auto || kr.checkInCount > 0) && <CheckInHistoryButton goal={goal} kr={kr} />}
+        </div>
       </div>
       {auto && (kr.measureError || kr.measuredAt) && (
         <p

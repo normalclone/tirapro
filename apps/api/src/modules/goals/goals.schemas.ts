@@ -56,6 +56,8 @@ const keyResultFields = z.object({
   currentValue: z.number().finite().optional(),
   source: keyResultSourceEnum.optional(),
   sourceConfig: z.record(z.unknown()).nullable().optional(),
+  /** Nhãn đơn vị nối sau số ("4 bug"); rỗng = bỏ nhãn. Bỏ qua khi hiển thị với đơn vị PERCENT. */
+  unitLabel: z.string().trim().max(20, 'Nhãn đơn vị tối đa 20 ký tự').nullable().optional(),
 });
 
 export const keyResultUpsertSchema = keyResultFields.superRefine((kr, ctx) =>
@@ -89,6 +91,17 @@ export const updateKeyResultSchema = keyResultFields
     if (kr.source !== undefined) checkSourceConfig(kr.source, kr.sourceConfig, ctx);
   });
 
+/** Check-in tay: POST /goals/:id/key-results/:krId/check-ins. Ghi chú trắng → bỏ. */
+export const createCheckInSchema = z.object({
+  value: z.number().finite(),
+  note: z
+    .string()
+    .trim()
+    .max(500, 'Ghi chú tối đa 500 ký tự')
+    .optional()
+    .transform((v) => v || undefined),
+});
+
 export const goalIssuesSchema = z.object({
   issueIds: z.array(z.string().min(1)).min(1, 'Hãy chọn ít nhất một công việc').max(200),
 });
@@ -98,4 +111,5 @@ export type CreateGoalInput = z.infer<typeof createGoalSchema>;
 export type UpdateGoalInput = z.infer<typeof updateGoalSchema>;
 export type CreateKeyResultInput = z.infer<typeof createKeyResultSchema>;
 export type UpdateKeyResultInput = z.infer<typeof updateKeyResultSchema>;
+export type CreateCheckInInput = z.infer<typeof createCheckInSchema>;
 export type GoalIssuesInput = z.infer<typeof goalIssuesSchema>;

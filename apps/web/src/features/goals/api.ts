@@ -34,6 +34,11 @@ export interface KeyResultDto {
   measuredAt: string | null;
   /** Lý do không đo được (JQL sai, dự án không còn…) — null nếu ổn. */
   measureError: string | null;
+  /** Nhãn đơn vị nối sau số ("4 bug"); bỏ qua với PERCENT. */
+  unitLabel: string | null;
+  /** Số check-in tay đã ghi và lần gần nhất (ISO) — null nếu chưa có. */
+  checkInCount: number;
+  lastCheckInAt: string | null;
   /** % hoàn thành đã kẹp trong [0,100] — BE tính (current-start)/(target-start). */
   progress: number;
 }
@@ -79,6 +84,7 @@ export interface KeyResultInput {
   currentValue?: number;
   source?: KeyResultSource;
   sourceConfig?: KrSourceConfig;
+  unitLabel?: string | null;
 }
 
 export interface GoalInput {
@@ -193,28 +199,91 @@ export function useUpdateKeyResult() {
       if (currentValue === undefined) return { previous: undefined };
       await qc.cancelQueries({ queryKey: keys.goals.all });
       const previous = qc.getQueriesData<GoalDto[]>({ queryKey: keys.goals.all });
-      patchGoalCaches(qc, goalId, (g) =>
-        recalcProgress({
-          ...g,
-          keyResults: g.keyResults.map((kr) => {
-            if (kr.id !== keyResultId) return kr;
-            const span = kr.targetValue - kr.startValue;
-            const ratio =
-              span === 0
-                ? currentValue >= kr.targetValue
-                  ? 1
-                  : 0
-                : Math.min(1, Math.max(0, (currentValue - kr.startValue) / span));
-            return { ...kr, currentValue, progress: Math.round(ratio * 100) };
-          }),
-        }),
-      );
+      patchGoalCaches(qc, goalId, (g) => withCurrentValue(g, keyResultId, currentValue));
       return { previous };
     },
     onError: (_e, _v, ctx) => {
       for (const [key, data] of ctx?.previous ?? []) qc.setQueryData(key, data);
     },
-    onSettled: () => void qc.invalidateQueries({ queryKey: keys.goals.all }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.goals.all });
+      // Sửa số hiện tại nay cũng ghi một dòng lịch sử check-in.
+      void qc.invalidateQueries({ queryKey: keys.goals.checkInsAll });
+    },
+  });
+}
+
+/** Đặt `currentValue` của một KR và tính lại % (khớp công thức BE) — dùng cho optimistic UI. */
+function withCurrentValue(goal: GoalDto, keyResultId: string, currentValue: number): GoalDto {
+  return recalcProgress({
+    ...goal,
+    keyResults: goal.keyResults.map((kr) => {
+      if (kr.id !== keyResultId) return kr;
+      const span = kr.targetValue - kr.startValue;
+      const ratio =
+        span === 0
+          ? currentValue >= kr.targetValue
+            ? 1
+            : 0
+          : Math.min(1, Math.max(0, (currentValue - kr.startValue) / span));
+      return { ...kr, currentValue, progress: Math.round(ratio * 100) };
+    }),
+  });
+}
+
+export interface CheckInDto {
+  id: string;
+  value: number;
+  previousValue: number | null;
+  note: string | null;
+  author: { id: string; displayName: string } | null;
+  createdAt: string;
+}
+
+/** Lịch sử check-in của một KR, mới nhất trước (`enabled`: chỉ tải khi mở danh sách). */
+export function useCheckIns(goalId: string, keyResultId: string, limit: number, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.goals.checkIns(goalId, keyResultId, limit),
+    queryFn: enabled
+      ? async () =>
+          (
+            await api.get<CheckInDto[]>(`/goals/${goalId}/key-results/${keyResultId}/check-ins`, {
+              params: { limit },
+            })
+          ).data
+      : skipToken,
+  });
+}
+
+/** Check-in tay: ghi lịch sử + cập nhật giá trị hiện tại; thanh tiến độ nhảy ngay, lỗi thì trả lại số cũ. */
+export function useAddCheckIn() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      goalId,
+      keyResultId,
+      ...input
+    }: {
+      goalId: string;
+      keyResultId: string;
+      value: number;
+      note?: string;
+    }) =>
+      (await api.post<GoalDto>(`/goals/${goalId}/key-results/${keyResultId}/check-ins`, input))
+        .data,
+    onMutate: async ({ goalId, keyResultId, value }) => {
+      await qc.cancelQueries({ queryKey: keys.goals.all });
+      const previous = qc.getQueriesData<GoalDto[]>({ queryKey: keys.goals.all });
+      patchGoalCaches(qc, goalId, (g) => withCurrentValue(g, keyResultId, value));
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      for (const [key, data] of ctx?.previous ?? []) qc.setQueryData(key, data);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.goals.all });
+      void qc.invalidateQueries({ queryKey: keys.goals.checkInsAll });
+    },
   });
 }
 
