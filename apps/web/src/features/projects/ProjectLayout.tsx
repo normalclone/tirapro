@@ -1,15 +1,8 @@
 import { Suspense, useEffect, useState } from 'react';
-import {
-  Link,
-  Navigate,
-  NavLink,
-  Outlet,
-  useLocation,
-  useNavigate,
-  useParams,
-} from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
+  type LucideIcon,
   Activity,
   Archive,
   BarChart3,
@@ -20,12 +13,14 @@ import {
   ListTodo,
   ListTree,
   Plus,
+  Repeat,
   Settings,
+  ShieldAlert,
   Sparkles,
   Trash2,
 } from 'lucide-react';
+import type { PermissionKey } from '@tirapro/types';
 import { useProject, useProjects } from './api';
-import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectRail } from './ProjectRail';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
 import { Button } from '@/components/ui/Button';
@@ -45,12 +40,39 @@ const VIEWS = [
   { seg: 'reports', label: 'Báo cáo', icon: BarChart3 },
 ] as const;
 
-const MORE = [
-  { seg: 'triage', label: 'Việc mới vào', icon: Inbox },
-  { seg: 'activity', label: 'Hoạt động', icon: Activity },
-  { seg: 'trash', label: 'Thùng rác', icon: Trash2 },
-  { seg: 'config', label: 'Cấu hình', icon: Settings },
-] as const;
+/** Mục menu "Thêm": `to` dựng đường dẫn; `needs` = quyền cấp dự án để hiện mục (không có thì ẩn). */
+const MORE: {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  to: (p: { key: string; id: string }) => string;
+  needs?: PermissionKey;
+}[] = [
+  { id: 'triage', label: 'Việc mới vào', icon: Inbox, to: (p) => `/p/${p.key}/triage` },
+  { id: 'activity', label: 'Hoạt động', icon: Activity, to: (p) => `/p/${p.key}/activity` },
+  // Rủi ro và Tự động hoá dùng trang sẵn có, lọc sẵn theo dự án này qua `?project=<id>`.
+  {
+    id: 'risks',
+    label: 'Rủi ro & vướng mắc',
+    icon: ShieldAlert,
+    to: (p) => `/manage/risks?project=${p.id}`,
+  },
+  {
+    id: 'automation',
+    label: 'Tự động hoá',
+    icon: Repeat,
+    to: (p) => `/connect/automation?project=${p.id}`,
+    needs: 'automation:manage',
+  },
+  {
+    id: 'trash',
+    label: 'Thùng rác',
+    icon: Trash2,
+    to: (p) => `/p/${p.key}/trash`,
+    needs: 'issue:delete',
+  },
+  { id: 'config', label: 'Cấu hình', icon: Settings, to: (p) => `/p/${p.key}/config` },
+];
 
 /**
  * Khung cho mọi màn trong 1 dự án: rail dự án bên trái (+ tạo dự án) + thanh nav view
@@ -74,6 +96,7 @@ export function ProjectLayout() {
   useProjectRealtime(project?.id);
 
   const [genOpen, setGenOpen] = useState(false);
+  const hasPicker = !!projects && projects.length > 1;
 
   const seg = loc.pathname.split('/')[3] || 'board';
   // Segment thực sự là "view" (bỏ qua create/issue…) để rail link đúng + không ghi đè lastView.
@@ -112,7 +135,7 @@ export function ProjectLayout() {
 
   const tabCls = (active: boolean) =>
     cn(
-      'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors',
+      'flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:px-2.5',
       active ? 'bg-primary-subtle text-primary' : 'text-muted hover:bg-surface-2 hover:text-ink',
     );
 
@@ -123,15 +146,18 @@ export function ProjectLayout() {
 
       {/* Nội dung: thanh nav view cố định + view hiện tại */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-3">
+        <div
+          data-audit="project-header"
+          className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-border px-4 py-3 sm:px-6"
+        >
           {/* Chuyển dự án trên mobile/tablet (rail dự án ẩn dưới lg) */}
-          {projects && projects.length > 1 && (
-            <div className="relative lg:hidden">
+          {hasPicker && (
+            <div className="relative min-w-0 max-w-xs flex-1 lg:hidden">
               <select
                 value={key}
                 onChange={(e) => navigate(`/p/${e.target.value}/${view}`)}
                 aria-label="Chuyển dự án"
-                className="h-8 max-w-[10rem] truncate rounded-md border border-border bg-surface pl-2.5 pr-7 text-sm font-medium text-ink transition-colors focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                className="h-9 w-full truncate rounded-md border border-border bg-surface pl-2.5 pr-7 text-sm font-medium text-ink transition-colors focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
                 {projects.map((p) => (
                   <option key={p.id} value={p.key}>
@@ -149,11 +175,24 @@ export function ProjectLayout() {
             <img
               src={project.avatarUrl}
               alt={project.name}
-              className="h-6 w-6 shrink-0 rounded-md object-cover"
+              className={cn(
+                'h-6 w-6 shrink-0 rounded-md object-cover',
+                hasPicker && 'hidden lg:block',
+              )}
             />
           )}
-          <h1 className="text-lg font-semibold tracking-tight">{project?.name ?? key}</h1>
-          <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-muted">
+          {/* Dưới lg đã có ô chọn dự án (hiện tên) → không lặp tên dự án lần hai. */}
+          <h1
+            className={cn('text-lg font-semibold tracking-tight', hasPicker && 'hidden lg:block')}
+          >
+            {project?.name ?? key}
+          </h1>
+          <span
+            className={cn(
+              'rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-muted',
+              hasPicker && 'hidden lg:inline',
+            )}
+          >
             {project?.key ?? key}
           </span>
 
@@ -161,19 +200,24 @@ export function ProjectLayout() {
             // Giữ chỗ cùng kích thước nút Tạo/AI trong lúc quyền đang tải → không nhảy bố cục khi nút hiện ra.
             <Skeleton
               aria-hidden
-              className={cn('ml-2 h-8 rounded-md', aiEnabled ? 'w-56' : 'w-32')}
+              className={cn(
+                'ml-auto h-8 rounded-md sm:ml-2',
+                aiEnabled ? 'w-20 sm:w-56' : 'w-9 sm:w-32',
+              )}
             />
           )}
           {canCreateIssue && (
             <>
               <Button
                 size="sm"
-                className="ml-2"
+                className="ml-auto sm:ml-2"
                 onClick={() => openCreate({ projectKey: key })}
                 disabled={!project?.id || !!project.archivedAt}
                 title={project?.archivedAt ? 'Dự án đã lưu trữ — chỉ đọc' : undefined}
+                aria-label="Tạo công việc"
               >
-                <Plus className="h-4 w-4" /> Tạo công việc
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Tạo công việc</span>
               </Button>
               {aiEnabled && (
                 <Button
@@ -182,30 +226,39 @@ export function ProjectLayout() {
                   onClick={() => setGenOpen(true)}
                   disabled={!project?.id || !!project.archivedAt}
                   data-tour="board-ai"
+                  aria-label="Tạo bằng AI"
                 >
-                  <Sparkles className="h-4 w-4 text-primary" /> Tạo bằng AI
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="hidden sm:inline">Tạo bằng AI</span>
                 </Button>
               )}
             </>
           )}
 
-          <div className="ml-auto flex items-center gap-1">
+          {/* Dải tab MỘT hàng: dưới lg xuống hàng riêng, tab không hoạt động chỉ còn biểu tượng (dưới sm) để "Thêm" luôn trong màn hình. */}
+          <div className="order-last flex w-full items-center gap-0.5 overflow-x-auto whitespace-nowrap lg:order-none lg:ml-auto lg:w-auto lg:gap-1">
             {VIEWS.map((v) => (
               <NavLink
                 key={v.seg}
                 to={`/p/${key}/${v.seg}`}
+                title={v.label}
+                aria-label={v.label}
                 className={({ isActive }) => tabCls(isActive)}
                 data-tour={v.seg === 'backlog' ? 'board-backlog' : undefined}
               >
-                <v.icon className="h-4 w-4" />
-                {v.label}
+                {({ isActive }) => (
+                  <>
+                    <v.icon className="h-4 w-4 shrink-0" />
+                    <span className={cn(!isActive && 'hidden sm:inline')}>{v.label}</span>
+                  </>
+                )}
               </NavLink>
             ))}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
-                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] data-[state=open]:bg-surface-2"
+                  className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-muted sm:px-2.5 transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] data-[state=open]:bg-surface-2"
                 >
                   Thêm
                   <ChevronDown className="h-3.5 w-3.5 text-faint" />
@@ -217,17 +270,19 @@ export function ProjectLayout() {
                   sideOffset={6}
                   className="z-dropdown w-48 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
                 >
-                  {MORE.filter((m) => m.seg !== 'trash' || canProject('issue:delete')).map((m) => (
-                    <DropdownMenu.Item key={m.seg} asChild>
-                      <Link
-                        to={`/p/${key}/${m.seg}`}
-                        className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
-                      >
-                        <m.icon className="h-4 w-4 text-muted" />
-                        {m.label}
-                      </Link>
-                    </DropdownMenu.Item>
-                  ))}
+                  {MORE.filter((m) => !m.needs || canProject(m.needs))
+                    .filter((m) => project?.id || (m.id !== 'risks' && m.id !== 'automation'))
+                    .map((m) => (
+                      <DropdownMenu.Item key={m.id} asChild>
+                        <Link
+                          to={m.to({ key, id: project?.id ?? '' })}
+                          className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
+                        >
+                          <m.icon className="h-4 w-4 text-muted" />
+                          {m.label}
+                        </Link>
+                      </DropdownMenu.Item>
+                    ))}
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
@@ -280,44 +335,4 @@ export function ProjectLayout() {
       )}
     </div>
   );
-}
-
-/** /projects → mở lại view gần nhất (hoặc board của dự án đầu tiên). */
-export function ProjectsIndexRedirect() {
-  const { data: projects } = useProjects();
-  const [createOpen, setCreateOpen] = useState(false);
-
-  if (!projects) {
-    return (
-      <div className="grid h-full place-items-center text-sm text-muted">
-        <span className="animate-pulse">Đang tải…</span>
-      </div>
-    );
-  }
-  if (projects.length === 0) {
-    return (
-      <div className="grid h-full place-items-center p-8 text-center">
-        <div>
-          <p className="text-sm text-muted">Chưa có dự án nào.</p>
-          <Button size="sm" className="mt-3" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" /> Tạo dự án
-          </Button>
-        </div>
-        <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} />
-      </div>
-    );
-  }
-  let saved: { key?: string; view?: string } = {};
-  try {
-    saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}') as {
-      key?: string;
-      view?: string;
-    };
-  } catch {
-    /* ignore */
-  }
-  const target =
-    saved.key && projects.some((p) => p.key === saved.key) ? saved.key : projects[0]!.key;
-  const view = saved.view || 'board';
-  return <Navigate to={`/p/${target}/${view}`} replace />;
 }

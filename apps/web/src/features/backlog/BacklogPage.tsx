@@ -794,7 +794,7 @@ export function BacklogPage() {
               ref={setScrollEl}
               // Có thanh hàng loạt: chừa đáy danh sách trên mobile để cuộn dòng cuối lên khỏi thanh.
               className={cn(
-                'min-w-0 flex-1 space-y-4 overflow-y-auto p-6',
+                'min-w-0 flex-1 space-y-4 overflow-y-auto p-6 pb-24',
                 selected.size > 0 && 'max-sm:pb-28',
               )}
             >

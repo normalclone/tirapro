@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Flag, Plus, Pencil, Trash2, Check, X, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -80,6 +81,7 @@ export function SeveritySection() {
       title="Mức độ nghiêm trọng"
       description="Đặt các mức nghiêm trọng để phân loại công việc theo tác động. Số thứ tự càng nhỏ thì mức càng nặng và càng được xử lý trước."
     >
+      {!canManage && <ReadOnlyNote />}
       <QueryBoundary
         query={severitiesQuery}
         skeleton={

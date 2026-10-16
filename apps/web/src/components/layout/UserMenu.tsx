@@ -68,7 +68,7 @@ export function UserMenu() {
               className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
             >
               <ShieldCheck className="h-4 w-4 text-muted" />
-              Admin hệ thống
+              Quản trị hệ thống
             </DropdownMenu.Item>
           )}
 

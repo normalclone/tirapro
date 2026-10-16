@@ -34,6 +34,7 @@ import {
   raidLevelOf,
 } from './constants';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { useScopeParam } from '@/lib/scopeParam';
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'Mọi trạng thái' },
@@ -308,14 +309,17 @@ export function RaidPage() {
 
   const [kind, setKind] = useState<RaidKind>('RISK');
   const [status, setStatus] = useState<RaidStatus | ''>('');
-  const [projectId, setProjectId] = useState('');
+  // null = chưa chọn → mặc định theo `?project=` (lối vào từ tab dự án); chọn/xoá bộ lọc thì lựa chọn đó thắng.
+  const [projectPick, setProjectId] = useState<string | null>(null);
   const [cell, setCell] = useState<Cell | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<RaidItemDto | null>(null);
 
+  const { data: projects } = useProjects();
+  const scopeParam = useScopeParam(projects);
+  const projectId = projectPick ?? scopeParam ?? '';
   const raidQuery = useRaidItems({ kind, status, projectId });
   const { data: items } = raidQuery;
-  const { data: projects } = useProjects();
 
   const projectOptions = useMemo(
     () => [

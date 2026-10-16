@@ -14,6 +14,7 @@ import {
   ScrollText,
 } from 'lucide-react';
 import type { PermissionKey } from '@tirapro/types';
+import { NAV_RULES, useVisibleItems, type NavRule } from '@/lib/navAccess';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 import { useAuth } from '@/stores/auth';
@@ -26,12 +27,18 @@ const SETTINGS_GROUPS: {
     label: string;
     icon: ReactNode;
     /** Chỉ hiện khi có quyền này. */ permission?: PermissionKey;
+    /** Luật hiện mục theo vai trò (U7) — kết hợp với `permission`. */ rule?: NavRule;
   }[];
 }[] = [
   {
     group: 'Chung',
     items: [
-      { to: '/settings/general', label: 'Thương hiệu', icon: <Building2 className="h-4 w-4" /> },
+      {
+        to: '/settings/general',
+        label: 'Thương hiệu',
+        icon: <Building2 className="h-4 w-4" />,
+        rule: NAV_RULES.settingsGeneral,
+      },
       { to: '/settings/notifications', label: 'Thông báo', icon: <Bell className="h-4 w-4" /> },
     ],
   },
@@ -72,11 +79,17 @@ const SETTINGS_GROUPS: {
         label: 'Cam kết thời gian',
         icon: <AlarmClock className="h-4 w-4" />,
       },
-      { to: '/settings/import', label: 'Nhập dữ liệu', icon: <FileUp className="h-4 w-4" /> },
+      {
+        to: '/settings/import',
+        label: 'Nhập dữ liệu',
+        icon: <FileUp className="h-4 w-4" />,
+        rule: NAV_RULES.settingsImport,
+      },
       {
         to: '/settings/api',
         label: 'API & kết nối lập trình',
         icon: <KeyRound className="h-4 w-4" />,
+        rule: NAV_RULES.settingsApi,
       },
     ],
   },
@@ -84,6 +97,11 @@ const SETTINGS_GROUPS: {
 
 export function SettingsLayout() {
   const can = useAuth((s) => s.can);
+  const permitted = useVisibleItems(SETTINGS_GROUPS.flatMap((g) => g.items));
+  const groups = SETTINGS_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => permitted.includes(i)),
+  })).filter((g) => g.items.length > 0);
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       {/* Submenu: rail dọc trên desktop, hàng pill cuộn ngang trên mobile */}
@@ -96,7 +114,7 @@ export function SettingsLayout() {
         )}
       >
         <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">Cài đặt</h1>
-        {SETTINGS_GROUPS.map((g) => (
+        {groups.map((g) => (
           <div key={g.group} className="contents lg:block lg:pb-1">
             <p className="hidden px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-faint lg:block">
               {g.group}

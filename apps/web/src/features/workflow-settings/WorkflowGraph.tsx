@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { cn } from '@/lib/utils';
 import { apiErrorMessage } from '@/lib/api';
+import { useAuth } from '@/stores/auth';
 import {
   useAddStatus,
   useAddTransition,
@@ -85,7 +86,11 @@ function autoLayout(wf: Workflow): PosMap {
   return pos;
 }
 
-function buildNodes(wf: Workflow, saved: PosMap, onDelete: (id: string) => void): Node<NodeData>[] {
+function buildNodes(
+  wf: Workflow,
+  saved: PosMap,
+  onDelete?: (id: string) => void,
+): Node<NodeData>[] {
   const auto = autoLayout(wf);
   const at = (id: string) => saved[id] ?? auto[id] ?? { x: 0, y: 0 };
   const nodes: Node<NodeData>[] = [
@@ -185,15 +190,17 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
       {data.category && (
         <span className="mt-0.5 block text-[11px] text-faint">{CATEGORY_LABEL[data.category]}</span>
       )}
-      <button
-        type="button"
-        onClick={() => data.onDelete?.(id)}
-        title="Xoá trạng thái"
-        aria-label="Xoá trạng thái"
-        className="absolute -right-2 -top-2 hidden h-5 w-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-danger group-hover:grid"
-      >
-        <Trash2 className="h-3 w-3" aria-hidden />
-      </button>
+      {data.onDelete && (
+        <button
+          type="button"
+          onClick={() => data.onDelete?.(id)}
+          title="Xoá trạng thái"
+          aria-label="Xoá trạng thái"
+          className="absolute -right-2 -top-2 hidden h-5 w-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-danger group-hover:grid"
+        >
+          <Trash2 className="h-3 w-3" aria-hidden />
+        </button>
+      )}
       <Handle
         type="source"
         position={Position.Right}
@@ -221,6 +228,8 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
   const addStatus = useAddStatus();
   const deleteStatus = useDeleteStatus();
   const confirm = useConfirm();
+  // Chỉ `workspace:admin` được sửa quy trình; người khác xem sơ đồ (kéo node để dễ nhìn vẫn được).
+  const canManage = useAuth((s) => s.can('workspace:admin'));
 
   const posRef = useRef<PosMap>(loadPos(workflow.id));
   const statusById = useMemo(
@@ -254,9 +263,9 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
   // Chỉ dựng lại node/edge khi DỮ LIỆU workflow đổi (thêm/xoá) — giữ vị trí đã lưu.
   useEffect(() => {
     posRef.current = loadPos(workflow.id);
-    setNodes(buildNodes(workflow, posRef.current, stableDelete));
+    setNodes(buildNodes(workflow, posRef.current, canManage ? stableDelete : undefined));
     setEdges(buildEdges(workflow));
-  }, [workflow, stableDelete, setNodes, setEdges]);
+  }, [workflow, canManage, stableDelete, setNodes, setEdges]);
 
   const onConnect = useCallback(
     (c: Connection) => {
@@ -311,30 +320,34 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onEdgesDelete={onEdgesDelete}
+        nodesConnectable={canManage}
         onNodeDragStop={onNodeDragStop}
         defaultEdgeOptions={{ type: 'smoothstep' }}
         fitView
         proOptions={{ hideAttribution: true }}
-        deleteKeyCode={['Backspace', 'Delete']}
+        deleteKeyCode={canManage ? ['Backspace', 'Delete'] : null}
       >
         <FitView dep={workflow.id} />
         <Background gap={16} color="var(--border)" />
         <Controls showInteractive={false} className="!border-border !bg-surface !shadow-md" />
-        <Panel position="top-left">
-          <AddStatusForm
-            adding={addStatus.isPending}
-            onAdd={(name, category) =>
-              addStatus.mutate(
-                { workflowId: workflow.id, input: { name, category } },
-                { onError: (e) => toast.error(apiErrorMessage(e)) },
-              )
-            }
-          />
-        </Panel>
+        {canManage && (
+          <Panel position="top-left">
+            <AddStatusForm
+              adding={addStatus.isPending}
+              onAdd={(name, category) =>
+                addStatus.mutate(
+                  { workflowId: workflow.id, input: { name, category } },
+                  { onError: (e) => toast.error(apiErrorMessage(e)) },
+                )
+              }
+            />
+          </Panel>
+        )}
         <Panel position="bottom-right">
           <p className="rounded-md border border-border bg-surface/90 px-2.5 py-1.5 text-xs text-muted shadow-sm">
-            Kéo từ chấm phải của một trạng thái sang trạng thái khác để tạo chuyển tiếp · chọn mũi
-            tên rồi Delete để xoá
+            {canManage
+              ? 'Kéo từ chấm phải của một trạng thái sang trạng thái khác để tạo chuyển tiếp · chọn mũi tên rồi Delete để xoá'
+              : 'Bạn chỉ có quyền xem sơ đồ quy trình.'}
           </p>
         </Panel>
       </ReactFlow>

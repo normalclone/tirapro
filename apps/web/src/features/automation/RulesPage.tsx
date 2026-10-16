@@ -36,6 +36,7 @@ import {
   type AutomationRule,
 } from './rules-api';
 import { fmtDateTime } from '@/lib/dateFormat';
+import { useScopeParam } from '@/lib/scopeParam';
 
 const dateTime = fmtDateTime;
 
@@ -49,7 +50,10 @@ export function RulesPage() {
   const { data: projects } = useProjects();
   // Quản trị cấp workspace thấy tất cả (không tra quyền từng dự án); người chỉ quản trị một dự án bắt đầu từ dự án đầu tiên
   // CÓ quyền — tra quyền theo từng đợt nhỏ thay vì bắn request cho mọi dự án.
-  const [scopeChoice, setScopeChoice] = useState<string | null>(null);
+  const [scopePick, setScopeChoice] = useState<string | null>(null);
+  // Chưa chọn → mặc định theo `?project=` (lối vào từ tab dự án).
+  const scopeParam = useScopeParam(projects);
+  const scopeChoice = scopePick ?? scopeParam;
   const [checkLimit, setCheckLimit] = useState(RULES_CHECK_BATCH);
   const projectCan = useProjectsCan(
     projectIdsToCheck({

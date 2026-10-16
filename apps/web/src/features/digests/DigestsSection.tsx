@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
+import { useAuth } from '@/stores/auth';
+import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import {
@@ -57,6 +59,8 @@ export function DigestsSection() {
   const { data: projectsData } = useProjects();
   const create = useCreateDigest();
   const remove = useDeleteDigest();
+  // Ghi digest (tạo/sửa/xoá/chạy) cần `integration:manage`; người không có quyền chỉ xem.
+  const canManage = useAuth((s) => s.can('integration:manage'));
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -125,6 +129,7 @@ export function DigestsSection() {
       </div>
 
       <div className="p-5">
+        {!canManage && <ReadOnlyNote />}
         <QueryBoundary
           query={digestsQuery}
           skeleton={
@@ -139,12 +144,18 @@ export function DigestsSection() {
             <EmptyState
               icon={<CalendarClock className="h-6 w-6" />}
               title="Chưa có digest nào"
-              description="Tạo báo cáo định kỳ để tự động tổng hợp tiến độ dự án theo lịch."
+              description={
+                canManage
+                  ? 'Tạo báo cáo định kỳ để tự động tổng hợp tiến độ dự án theo lịch.'
+                  : 'Chưa có báo cáo định kỳ nào. Nhờ quản trị chung tạo giúp.'
+              }
               action={
-                <Button size="sm" onClick={() => setAdding(true)}>
-                  <Plus className="h-4 w-4" />
-                  Tạo báo cáo
-                </Button>
+                canManage ? (
+                  <Button size="sm" onClick={() => setAdding(true)}>
+                    <Plus className="h-4 w-4" />
+                    Tạo báo cáo
+                  </Button>
+                ) : undefined
               }
             />
           }
@@ -155,6 +166,7 @@ export function DigestsSection() {
                 <DigestRow
                   key={digest.id}
                   digest={digest}
+                  canManage={canManage}
                   onDelete={() => handleDelete(digest)}
                   deleting={remove.isPending}
                 />
@@ -164,7 +176,7 @@ export function DigestsSection() {
         </QueryBoundary>
 
         {/* Form tạo báo cáo */}
-        {adding ? (
+        {!canManage ? null : adding ? (
           <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -253,10 +265,12 @@ export function DigestsSection() {
 
 function DigestRow({
   digest,
+  canManage,
   onDelete,
   deleting,
 }: {
   digest: Digest;
+  canManage: boolean;
   onDelete: () => void;
   deleting: boolean;
 }) {
@@ -305,51 +319,53 @@ function DigestRow({
           <span className="hidden truncate text-xs text-faint sm:inline">{lastRunLabel}</span>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
-          {/* Bật / tắt báo cáo */}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={digest.isEnabled}
-            aria-label={digest.isEnabled ? 'Tắt báo cáo' : 'Bật báo cáo'}
-            onClick={handleToggle}
-            disabled={update.isPending}
-            title={digest.isEnabled ? 'Đang bật — bấm để tạm dừng' : 'Đang tạm dừng — bấm để bật'}
-            className={cn(
-              'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
-              digest.isEnabled ? 'bg-primary' : 'bg-surface-3',
-            )}
-          >
-            <span
+        {canManage && (
+          <div className="flex shrink-0 items-center gap-1">
+            {/* Bật / tắt báo cáo */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={digest.isEnabled}
+              aria-label={digest.isEnabled ? 'Tắt báo cáo' : 'Bật báo cáo'}
+              onClick={handleToggle}
+              disabled={update.isPending}
+              title={digest.isEnabled ? 'Đang bật — bấm để tạm dừng' : 'Đang tạm dừng — bấm để bật'}
               className={cn(
-                'inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-150',
-                digest.isEnabled ? 'translate-x-[1.125rem]' : 'translate-x-0.5',
+                'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
+                digest.isEnabled ? 'bg-primary' : 'bg-surface-3',
               )}
-            />
-          </button>
+            >
+              <span
+                className={cn(
+                  'inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-150',
+                  digest.isEnabled ? 'translate-x-[1.125rem]' : 'translate-x-0.5',
+                )}
+              />
+            </button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRun}
-            loading={run.isPending}
-            title="Chạy báo cáo ngay và xem bản tổng hợp"
-          >
-            <Play className="h-4 w-4" />
-            Chạy ngay
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onDelete}
-            disabled={deleting}
-            className="text-muted hover:text-danger"
-            title="Xoá báo cáo"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span className="sr-only">Xoá {digest.name}</span>
-          </Button>
-        </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRun}
+              loading={run.isPending}
+              title="Chạy báo cáo ngay và xem bản tổng hợp"
+            >
+              <Play className="h-4 w-4" />
+              Chạy ngay
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onDelete}
+              disabled={deleting}
+              className="text-muted hover:text-danger"
+              title="Xoá báo cáo"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="sr-only">Xoá {digest.name}</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* lastRunAt cho màn hình hẹp */}

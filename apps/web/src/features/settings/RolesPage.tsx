@@ -8,6 +8,7 @@ import {
   type RoleScope,
 } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
+import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { Dialog } from '@/components/ui/Dialog';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
@@ -108,6 +109,7 @@ export function RolesPage() {
           </Button>
         )}
       </header>
+      {!canManage && <ReadOnlyNote />}
 
       <div
         className="mb-6 flex gap-1 border-b border-border"

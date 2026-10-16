@@ -3,6 +3,10 @@ import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router
 import { useAuth } from '@/stores/auth';
 import { AppShell } from '@/components/layout/AppShell';
 import { RouteError } from '@/components/layout/RouteError';
+import { RequireAccess } from '@/components/layout/RequireAccess';
+import { ConnectIndexRedirect } from '@/features/connect/ConnectIndexRedirect';
+import { SettingsIndexRedirect } from '@/features/settings/SettingsIndexRedirect';
+import { NAV_RULES } from '@/lib/navAccess';
 // Vào ngay từ đầu (unauth first paint + shell) → giữ eager, không tách chunk.
 import { LoginPage } from '@/features/auth/LoginPage';
 import { NoWorkspaceScreen } from '@/features/auth/NoWorkspaceScreen';
@@ -12,11 +16,14 @@ import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 // ProjectLayout dùng nhiều (board/backlog/reports…) → eager để đổi tab không nháy toàn trang;
 // nội dung con của nó lazy, có Suspense riêng bên trong ProjectLayout.
-import { ProjectLayout, ProjectsIndexRedirect } from '@/features/projects/ProjectLayout';
+import { ProjectLayout } from '@/features/projects/ProjectLayout';
 
 // ── Lazy-load các trang nặng/không-phải-màn-đầu để giảm bundle ban đầu (mobile nhanh hơn) ──
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
+);
+const ProjectsPage = lazy(() =>
+  import('@/features/projects/ProjectsPage').then((m) => ({ default: m.ProjectsPage })),
 );
 const MembersPage = lazy(() =>
   import('@/features/members/MembersPage').then((m) => ({ default: m.MembersPage })),
@@ -236,7 +243,7 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <DashboardPage /> },
-      { path: 'projects', element: <ProjectsIndexRedirect /> },
+      { path: 'projects', element: <ProjectsPage /> },
       { path: 'members', element: <MembersPage /> },
       { path: 'notifications', element: <NotificationsPage /> },
       { path: 'account', element: <AccountPage /> },
@@ -255,8 +262,11 @@ export const router = createBrowserRouter([
         path: 'settings',
         element: <SettingsLayout />,
         children: [
-          { index: true, element: <Navigate to="/settings/general" replace /> },
-          { path: 'general', element: <SettingsGeneralPage /> },
+          { index: true, element: <SettingsIndexRedirect /> },
+          {
+            element: <RequireAccess rule={NAV_RULES.settingsGeneral} who="quản trị viên" />,
+            children: [{ path: 'general', element: <SettingsGeneralPage /> }],
+          },
           // Tab thành viên trong Cài đặt đã gộp vào trang Thành viên — giữ link cũ hoạt động.
           { path: 'members', element: <Navigate to="/members" replace /> },
           { path: 'roles', element: <RolesPage /> },
@@ -266,8 +276,16 @@ export const router = createBrowserRouter([
           { path: 'priorities', element: <SettingsPrioritiesPage /> },
           { path: 'fields', element: <SettingsFieldsPage /> },
           { path: 'workflows', element: <WorkflowSettingsPage /> },
-          { path: 'import', element: <ImportPage /> },
-          { path: 'api', element: <ApiKeysPage /> },
+          {
+            element: (
+              <RequireAccess rule={NAV_RULES.settingsImport} who="người được phép nhập dữ liệu" />
+            ),
+            children: [{ path: 'import', element: <ImportPage /> }],
+          },
+          {
+            element: <RequireAccess rule={NAV_RULES.settingsApi} who="quản trị viên" />,
+            children: [{ path: 'api', element: <ApiKeysPage /> }],
+          },
           { path: 'response-time', element: <SlaPoliciesPage /> },
         ],
       },
@@ -286,12 +304,17 @@ export const router = createBrowserRouter([
         ],
       },
       // Kết nối & tự động hoá.
+      // Không bọc cả /connect bằng RequireAccess: người chỉ quản trị MỘT dự án vào Tự động hoá qua menu "Thêm" của dự án
+      // (quyền cấp dự án không có trong `/auth/me`; trang Quy tắc tự giải thích khi thiếu quyền). Chỉ tab Ứng dụng bên ngoài bị gác.
       {
         path: 'connect',
         element: <ConnectLayout />,
         children: [
-          { index: true, element: <Navigate to="/connect/integrations" replace /> },
-          { path: 'integrations', element: <IntegrationsPage /> },
+          { index: true, element: <ConnectIndexRedirect /> },
+          {
+            element: <RequireAccess rule={NAV_RULES.connectIntegrations} who="quản trị viên" />,
+            children: [{ path: 'integrations', element: <IntegrationsPage /> }],
+          },
           { path: 'automation', element: <AutomationPage /> },
         ],
       },

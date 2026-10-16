@@ -8,6 +8,8 @@ import { useOpenSession } from '@/lib/useOpenSession';
 import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
+import { useAuth } from '@/stores/auth';
+import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { PlatformLogo } from './PlatformLogo';
 import {
   useIntegrations,
@@ -58,6 +60,8 @@ export function TelegramSection() {
   const integrationsQuery = useIntegrations();
   const { data } = integrationsQuery;
   const remove = useDeleteIntegration();
+  // API ghi/đọc kênh cần `integration:manage` — người không có quyền chỉ xem danh sách, không thấy nút ghi.
+  const canManage = useAuth((s) => s.can('integration:manage'));
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [wizard, setWizard] = useState<WizardTarget | null>(null);
@@ -75,7 +79,8 @@ export function TelegramSection() {
   // Lối vào từ checklist onboarding: /connect/integrations?wizard=telegram
   const entryHandled = useRef(false);
   useEffect(() => {
-    if (entryHandled.current || searchParams.get('wizard') !== 'telegram' || !data) return;
+    if (entryHandled.current || searchParams.get('wizard') !== 'telegram' || !data || !canManage)
+      return;
     entryHandled.current = true;
     const target = wizardEntry(data);
     setLastTarget(target);
@@ -83,7 +88,7 @@ export function TelegramSection() {
     const next = new URLSearchParams(searchParams);
     next.delete('wizard');
     setSearchParams(next, { replace: true });
-  }, [data, searchParams, setSearchParams]);
+  }, [data, searchParams, setSearchParams, canManage]);
 
   async function handleDelete(it: Integration) {
     if (
@@ -107,6 +112,7 @@ export function TelegramSection() {
       title="Telegram"
       description="Gửi thông báo công việc tới nhóm Telegram. Kết nối từng bước: chọn bot, thêm bot vào nhóm, gõ mã liên kết, gửi thử."
     >
+      {!canManage && <ReadOnlyNote />}
       <QueryBoundary
         query={integrationsQuery}
         skeleton={
@@ -121,12 +127,18 @@ export function TelegramSection() {
           <EmptyState
             icon={<Send className="h-6 w-6" />}
             title="Chưa có kết nối Telegram"
-            description="Nối Tirapro với Telegram để cập nhật về công việc và sprint được đẩy thẳng vào nhóm chat. Mất khoảng 2 phút, không cần biết chat_id."
+            description={
+              canManage
+                ? 'Nối Tirapro với Telegram để cập nhật về công việc và sprint được đẩy thẳng vào nhóm chat. Mất khoảng 2 phút, không cần biết chat_id.'
+                : 'Chưa có kết nối nào. Nhờ quản trị chung kết nối Telegram cho nhóm.'
+            }
             action={
-              <Button size="sm" onClick={startNew}>
-                <Plus className="h-4 w-4" />
-                Kết nối Telegram
-              </Button>
+              canManage ? (
+                <Button size="sm" onClick={startNew}>
+                  <Plus className="h-4 w-4" />
+                  Kết nối Telegram
+                </Button>
+              ) : undefined
             }
           />
         }
@@ -137,6 +149,7 @@ export function TelegramSection() {
               <TelegramRow
                 key={it.id}
                 integration={it}
+                canManage={canManage}
                 onDelete={() => handleDelete(it)}
                 deleting={remove.isPending}
                 onContinue={() => openWizard({ integrationId: it.id, step: 'addToGroup' })}
@@ -146,7 +159,7 @@ export function TelegramSection() {
         )}
       </QueryBoundary>
 
-      {integrations.length > 0 && (
+      {canManage && integrations.length > 0 && (
         <Button variant="secondary" size="sm" className="mt-4" onClick={startNew}>
           <Plus className="h-4 w-4" />
           Kết nối Telegram
@@ -166,11 +179,13 @@ export function TelegramSection() {
 
 function TelegramRow({
   integration,
+  canManage,
   onDelete,
   deleting,
   onContinue,
 }: {
   integration: Integration;
+  canManage: boolean;
   onDelete: () => void;
   deleting: boolean;
   /** Mở wizard ở bước thêm bot vào nhóm cho kết nối này. */
@@ -194,15 +209,17 @@ function TelegramRow({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
         <button
           type="button"
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => canManage && setExpanded((v) => !v)}
+          disabled={!canManage}
           className="flex min-w-[14rem] flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] rounded-sm"
-          aria-expanded={expanded}
+          aria-expanded={canManage ? expanded : undefined}
         >
-          {expanded ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-faint" />
-          ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
-          )}
+          {canManage &&
+            (expanded ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-faint" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
+            ))}
           <span className="truncate text-sm font-medium text-ink">{integration.name}</span>
           <HealthBadge health={integration.health} />
           <span className="truncate font-mono text-xs text-faint">
@@ -210,34 +227,36 @@ function TelegramRow({
           </span>
         </button>
 
-        <div className="flex shrink-0 items-center gap-1">
-          {integration.health.state === 'NO_CHANNEL' && (
-            <Button size="sm" onClick={onContinue}>
-              Hoàn tất kết nối
+        {canManage && (
+          <div className="flex shrink-0 items-center gap-1">
+            {integration.health.state === 'NO_CHANNEL' && (
+              <Button size="sm" onClick={onContinue}>
+                Hoàn tất kết nối
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleTest}
+              loading={test.isPending}
+              title="Gửi tin nhắn kiểm tra tới tất cả kênh đang bật"
+            >
+              <Send className="h-4 w-4" />
+              Kiểm tra
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleTest}
-            loading={test.isPending}
-            title="Gửi tin nhắn kiểm tra tới tất cả kênh đang bật"
-          >
-            <Send className="h-4 w-4" />
-            Kiểm tra
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onDelete}
-            disabled={deleting}
-            className="text-muted hover:text-danger"
-            title="Xoá kết nối"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span className="sr-only">Xoá {integration.name}</span>
-          </Button>
-        </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onDelete}
+              disabled={deleting}
+              className="text-muted hover:text-danger"
+              title="Xoá kết nối"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="sr-only">Xoá {integration.name}</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       {integration.health.state !== 'READY' && (
@@ -251,7 +270,7 @@ function TelegramRow({
         </p>
       )}
 
-      {expanded && (
+      {canManage && expanded && (
         <div className="border-t border-border bg-surface-2 px-3 py-3">
           <ChannelList integrationId={integration.id} onLinkGroup={onContinue} />
         </div>

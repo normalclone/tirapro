@@ -107,7 +107,7 @@ export function BulkActionBar({
       role="region"
       aria-label="Thao tác hàng loạt"
       className={cn(
-        'sticky bottom-0 z-sticky mx-6 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border',
+        'sticky bottom-0 z-sticky mx-6 mb-24 flex lg:mb-4 lg:mr-24 flex-wrap items-center gap-2 rounded-xl border border-border',
         'bg-surface/95 px-4 py-2.5 shadow-lg backdrop-blur',
         'animate-in fade-in slide-in-from-bottom-2 duration-200',
       )}
