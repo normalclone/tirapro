@@ -17,4 +17,4 @@ ON CONFLICT DO NOTHING;
 
 UPDATE "Role"
 SET "description" = 'Bộ quyền cơ bản cho lập trình viên (bản cũ — thường dùng vai trò "Developer")'
-WHERE "name" = 'Project Developer' AND "isSystem" = true AND "workspaceId" IS NULL;
+WHERE "name" = 'Project Developer' AND "scope" = 'PROJECT' AND "isSystem" = true AND "workspaceId" IS NULL;
