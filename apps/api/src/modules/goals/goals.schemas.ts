@@ -49,6 +49,8 @@ const keyResultFields = z.object({
   startValue: z.number().finite().optional(),
   targetValue: z.number().finite(),
   currentValue: z.number().finite().optional(),
+  /** OCC: số hiện tại mà form đã tải — khác số trong DB (người khác vừa check-in) thì 409 thay vì ghi đè. */
+  expectedCurrentValue: z.number().finite().optional(),
   source: keyResultSourceEnum.optional(),
   sourceConfig: z.record(z.unknown()).nullable().optional(),
   /** Nhãn đơn vị nối sau số ("4 bug"); rỗng = bỏ nhãn. Bỏ qua khi hiển thị với đơn vị PERCENT. */
@@ -89,6 +91,8 @@ export const updateKeyResultSchema = keyResultFields
 /** Check-in tay: POST /goals/:id/key-results/:krId/check-ins. Ghi chú trắng → bỏ. */
 export const createCheckInSchema = z.object({
   value: z.number().finite(),
+  /** OCC: số hiện tại mà người dùng đã thấy khi mở ô check-in; khác số trong DB → 409. */
+  expectedValue: z.number().finite().optional(),
   note: z
     .string()
     .trim()

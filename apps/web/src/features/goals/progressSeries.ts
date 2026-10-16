@@ -2,38 +2,8 @@ import type { KeyResultSource, KeyResultUnit } from '@tirapro/types';
 import type { GoalProgressHistory } from './api';
 
 const DAY_MS = 86_400_000;
-const QUARTER = /^(\d{4})-Q([1-4])$/i;
-
 const toMs = (date: string): number => Date.parse(`${date}T00:00:00Z`);
 const toDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
-
-/** Khoảng ngày của quý `YYYY-Qn` (UTC); kỳ tự do → null. Khớp `periodRange` của BE. */
-function quarterRange(period: string): { start: number; end: number } | null {
-  const m = QUARTER.exec(period.trim());
-  if (!m) return null;
-  const year = Number(m[1]);
-  const q = Number(m[2]);
-  return {
-    start: Date.UTC(year, (q - 1) * 3, 1),
-    end: Date.UTC(year, q * 3, 1) - DAY_MS,
-  };
-}
-
-/**
- * Mốc kỳ vọng (0–100) theo thời gian của quý tại từng ngày: ngày đầu quý 0, ngày cuối 100, kẹp ngoài kỳ.
- * Kỳ tự do → null (không có mốc thời gian để so). Cùng công thức `expectedProgress` của BE.
- */
-export function expectedLine(
-  period: string,
-  dates: string[],
-): Array<{ date: string; progress: number }> | null {
-  const range = quarterRange(period);
-  if (!range) return null;
-  return dates.map((date) => {
-    const ratio = (toMs(date) - range.start) / (range.end - range.start);
-    return { date, progress: Math.round(Math.min(1, Math.max(0, ratio)) * 1000) / 10 };
-  });
-}
 
 export interface SeriesLine {
   id: string;
@@ -78,14 +48,15 @@ export function buildSeries(
     scopeNote: kr.scopeNote,
   }));
 
-  const quarter = quarterRange(history.period);
   const start = toMs(history.from);
   const dataEnd = toMs(history.to);
-  const end = extend && quarter ? Math.max(dataEnd, quarter.end) : dataEnd;
+  // `expected` (từ BE — một công thức duy nhất) đi tới hết quý; kéo trục theo nó để thấy mốc kỳ vọng đi tiếp.
+  const lastExpected = history.expected?.at(-1)?.date;
+  const end = extend && lastExpected ? Math.max(dataEnd, toMs(lastExpected)) : dataEnd;
 
   const dates: string[] = [];
   for (let t = start; t <= end; t += DAY_MS) dates.push(toDate(t));
-  const expected = new Map(expectedLine(history.period, dates)?.map((p) => [p.date, p.progress]));
+  const expected = new Map(history.expected?.map((p) => [p.date, p.progress]));
   const objective = new Map(history.objective.map((p) => [p.date, p.progress]));
   const perKr = history.keyResults.map((kr) => new Map(kr.points.map((p) => [p.date, p])));
 

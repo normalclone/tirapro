@@ -552,12 +552,28 @@ describe('SearchService.count (L25)', () => {
     expect(json).toContain('"workspaceId":"W1"');
   });
 
-  it('countPublic: currentUser() không có nghĩa khi đo cho cả workspace → 422', async () => {
-    const { service, count } = make();
-    await expect(service.countPublic('W1', 'assignee = currentUser()')).rejects.toMatchObject({
-      status: 422,
-    });
-    expect(count).not.toHaveBeenCalled();
+  it.each([
+    'assignee = currentUser()',
+    'assignee = currentUser',
+    'assignee = me',
+    'reporter IN (ME, x)',
+  ])(
+    'countPublic: JQL phụ thuộc người xem (%s) → 422, không đếm (không ghi số 0 giả)',
+    async (jql) => {
+      const { service, count } = make();
+      await expect(service.countPublic('W1', jql)).rejects.toMatchObject({
+        status: 422,
+        message: expect.stringContaining('currentUser') as unknown,
+      });
+      expect(count).not.toHaveBeenCalled();
+    },
+  );
+
+  it('dependsOnViewer: true với currentUser/me; JQL lỗi cú pháp → false (để validate báo lỗi)', () => {
+    const { service } = make();
+    expect(service.dependsOnViewer('assignee = me')).toBe(true);
+    expect(service.dependsOnViewer('type = Bug')).toBe(false);
+    expect(service.dependsOnViewer('type = = Bug')).toBe(false);
   });
 
   it('JQL lỗi cú pháp → BusinessRuleException như validate; không đếm', async () => {

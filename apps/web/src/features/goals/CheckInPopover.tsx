@@ -82,6 +82,7 @@ function CheckInForm({
         goalId: goal.id,
         keyResultId: kr.id,
         value,
+        expectedValue: kr.currentValue,
         note: note.trim() || undefined,
       });
       toast.success('Đã ghi check-in');

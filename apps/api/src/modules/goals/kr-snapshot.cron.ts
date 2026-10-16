@@ -121,7 +121,11 @@ export class KrSnapshotCron implements OnApplicationShutdown {
     const data: Prisma.KeyResultCheckInCreateManyInput[] = [];
     for (const k of todo) {
       const value = k.source === 'MANUAL' ? k.currentValue : (measured.get(k.id)?.value ?? null);
-      if (value === null) continue; // đo lỗi: không ghi số bịa; KR khác vẫn chụp bình thường
+      if (value === null) {
+        // Đo lỗi (vd JQL cũ dùng currentUser/me, dự án đã xoá): không ghi số bịa; KR khác vẫn chụp bình thường.
+        this.logger.warn(`Bỏ qua chụp KR ${k.id}: ${measured.get(k.id)?.error ?? 'không đo được'}`);
+        continue;
+      }
       data.push({ keyResultId: k.id, value, source: 'AUTO', snapshotDate });
     }
     if (data.length === 0) return 0;

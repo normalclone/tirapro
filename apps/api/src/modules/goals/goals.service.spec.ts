@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { GoalsService } from './goals.service';
 
@@ -5,6 +6,10 @@ import { GoalsService } from './goals.service';
 const ACCESS_ALL = { visibleWhere: vi.fn(() => Promise.resolve({})) };
 /** KrMeasureService giả: không KR tự đo nào được đo (mặc định cho test không liên quan tới L25). */
 const NO_MEASURE = { measure: vi.fn(() => Promise.resolve(new Map())) };
+/** RbacService giả: người xem có mọi quyền (GOAL_MANAGE…). */
+const RBAC = {
+  getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(['goal:manage', 'workspace:view']))),
+};
 /** KrSnapshotCron giả: không chụp gì. */
 const NO_SNAPSHOT = { snapshotKeyResult: vi.fn(() => Promise.resolve()) };
 
@@ -19,6 +24,7 @@ describe('GoalsService — không đếm/gắn issue của dự án xoá mềm',
       ACCESS_ALL as never,
       NO_MEASURE as never,
       NO_SNAPSHOT as never,
+      RBAC as never,
     );
     const validate = (
       service as unknown as {
@@ -41,6 +47,7 @@ describe('GoalsService — không đếm/gắn issue của dự án xoá mềm',
       ACCESS_ALL as never,
       NO_MEASURE as never,
       NO_SNAPSHOT as never,
+      RBAC as never,
     );
     await service.list('w1', {}, 'u0');
     const { select } = (
@@ -90,6 +97,7 @@ function setup(archived: boolean, objectiveProject = true) {
       ACCESS_ALL as never,
       NO_MEASURE as never,
       NO_SNAPSHOT as never,
+      RBAC as never,
     ),
     prisma,
   };
@@ -164,6 +172,7 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
         access as never,
         NO_MEASURE as never,
         NO_SNAPSHOT as never,
+        RBAC as never,
       ),
       prisma,
       access,
@@ -255,7 +264,7 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
     Object.assign(prisma, {
       objectiveIssue: { deleteMany, createMany },
       keyResult: { findMany: vi.fn(() => Promise.resolve([])) },
-      $transaction: vi.fn(() => Promise.resolve([])),
+      $transaction: vi.fn((cb: (tx: unknown) => unknown) => Promise.resolve(cb(prisma))),
     });
     (prisma.objective as Record<string, unknown>).update = vi.fn(() => Promise.resolve({}));
     await expect(service.update('w1', 'o1', { issueIds: ['i1'] }, 'u1')).rejects.toBeDefined(); // get() sau ghi: mock trả null → 404
@@ -324,6 +333,7 @@ describe('GoalsService — KR tự đo (L25)', () => {
         ACCESS_ALL as never,
         measure as never,
         NO_SNAPSHOT as never,
+        RBAC as never,
       ),
       measure,
     };
@@ -402,6 +412,7 @@ describe('GoalsService — ghi KR tự đo (L25)', () => {
       ACCESS_ALL as never,
       measure as never,
       NO_SNAPSHOT as never,
+      RBAC as never,
     );
     // đọc lại sau ghi: không phải đối tượng kiểm của test này
     (service as unknown as { read: () => Promise<unknown> }).read = () => Promise.resolve({});
@@ -470,52 +481,80 @@ describe('GoalsService — ghi KR tự đo (L25)', () => {
 
     const manual = make();
     await manual.service.updateKeyResult('w1', 'o1', 'k1', { currentValue: 5 }, 'u1');
-    expect(manual.prisma.keyResult.update.mock.calls[0]![0]).toMatchObject({
-      data: { currentValue: 5 },
-    });
-    expect(manual.prisma.keyResultCheckIn.create).toHaveBeenCalledTimes(1);
-    expect(auto.prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
+    // KR nhập tay: số đổi đi qua transaction check-in (không `update` trần); KR tự đo thì không.
+    expect(manual.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(auto.prisma.$transaction).not.toHaveBeenCalled();
   });
 });
 
-describe('GoalsService — check-in Key Result (L26)', () => {
+/**
+ * Prisma giả có trạng thái cho KR (currentValue) + transaction tương tác: `updateMany` có điều kiện `currentValue`
+ * như Postgres thật (khớp mới đổi, count 0 nếu người khác đã đổi).
+ */
+function makeKrPrisma(
+  kr: { id: string; source: string; currentValue: number; sourceConfig?: unknown } | null,
+  objective: Record<string, unknown> = {
+    id: 'o1',
+    projectId: null,
+    project: { archivedAt: null },
+  },
+) {
+  const state = kr ? { ...kr } : null;
+  const prisma = {
+    objective: { findFirst: vi.fn(() => Promise.resolve(objective)) },
+    keyResult: {
+      findFirst: vi.fn((_a?: unknown) => Promise.resolve(state && { ...state })),
+      update: vi.fn((_a?: unknown) => Promise.resolve({})),
+      updateMany: vi.fn(
+        (a: { where: { currentValue?: number }; data: Record<string, unknown> }) => {
+          if (
+            !state ||
+            (a.where.currentValue !== undefined && a.where.currentValue !== state.currentValue)
+          )
+            return Promise.resolve({ count: 0 });
+          Object.assign(state, a.data);
+          return Promise.resolve({ count: 1 });
+        },
+      ),
+    },
+    keyResultCheckIn: {
+      create: vi.fn((_a?: unknown) => Promise.resolve({})),
+      findMany: vi.fn((_a?: unknown) => Promise.resolve([])),
+    },
+    $transaction: vi.fn((cb: (tx: unknown) => unknown) => Promise.resolve(cb(prisma))),
+  };
+  return { prisma, state };
+}
+
+function makeKrService(prisma: unknown) {
+  const service = new GoalsService(
+    prisma as never,
+    ACCESS_ALL as never,
+    NO_MEASURE as never,
+    NO_SNAPSHOT as never,
+    RBAC as never,
+  );
+  (service as unknown as { read: () => Promise<unknown> }).read = () => Promise.resolve({ ok: 1 });
+  return service;
+}
+
+describe('GoalsService — check-in Key Result (L26) + OCC (I3)', () => {
   function make(
-    kr: Record<string, unknown> | null = { id: 'k1', source: 'MANUAL', currentValue: 6 },
+    kr: Parameters<typeof makeKrPrisma>[0] = { id: 'k1', source: 'MANUAL', currentValue: 6 },
   ) {
-    const checkInCreate = vi.fn((a?: unknown) => Promise.resolve(a));
-    const krUpdate = vi.fn((a?: unknown) => Promise.resolve(a));
-    const prisma = {
-      objective: {
-        findFirst: vi.fn(() =>
-          Promise.resolve({ id: 'o1', projectId: null, project: { archivedAt: null } }),
-        ),
-      },
-      keyResult: {
-        findFirst: vi.fn(() => Promise.resolve(kr)),
-        update: krUpdate,
-      },
-      keyResultCheckIn: {
-        create: checkInCreate,
-        findMany: vi.fn((_a?: unknown) => Promise.resolve([])),
-      },
-      $transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
-    };
-    const service = new GoalsService(
-      prisma as never,
-      ACCESS_ALL as never,
-      NO_MEASURE as never,
-      NO_SNAPSHOT as never,
-    );
-    (service as unknown as { read: () => Promise<unknown> }).read = () =>
-      Promise.resolve({ ok: 1 });
-    return { service, prisma, checkInCreate, krUpdate };
+    const { prisma, state } = makeKrPrisma(kr);
+    return { service: makeKrService(prisma), prisma, state };
   }
 
-  it('addCheckIn: ghi dòng lịch sử với previousValue = giá trị cũ + cập nhật currentValue trong MỘT $transaction', async () => {
-    const { service, prisma, checkInCreate, krUpdate } = make();
+  it('addCheckIn: đọc LẠI trong transaction; ghi lịch sử previousValue = số cũ + cập nhật có điều kiện currentValue', async () => {
+    const { service, prisma, state } = make();
     await service.addCheckIn('w1', 'o1', 'k1', { value: 4, note: 'Đã vá 2 bug lớn' }, 'u1');
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(checkInCreate).toHaveBeenCalledWith({
+    expect(prisma.keyResult.updateMany).toHaveBeenCalledWith({
+      where: { id: 'k1', currentValue: 6 },
+      data: { currentValue: 4 },
+    });
+    expect(prisma.keyResultCheckIn.create).toHaveBeenCalledWith({
       data: {
         keyResultId: 'k1',
         value: 4,
@@ -524,59 +563,86 @@ describe('GoalsService — check-in Key Result (L26)', () => {
         authorId: 'u1',
       },
     });
-    expect(krUpdate).toHaveBeenCalledWith({ where: { id: 'k1' }, data: { currentValue: 4 } });
+    expect(state!.currentValue).toBe(4);
+  });
+
+  it('addCheckIn: expectedValue lệch số trong DB (người khác vừa check-in) → 409 có thông báo rõ, không ghi', async () => {
+    const { service, prisma } = make({ id: 'k1', source: 'MANUAL', currentValue: 4 });
+    await expect(
+      service.addCheckIn('w1', 'o1', 'k1', { value: 3, expectedValue: 6 }, 'u1'),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining('người khác') as unknown,
+    });
+    expect(prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
+    // khớp expectedValue thì ghi bình thường
+    await service.addCheckIn('w1', 'o1', 'k1', { value: 3, expectedValue: 4 }, 'u1');
+    expect(prisma.keyResultCheckIn.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('addCheckIn: người khác chen vào giữa lúc đọc và ghi (updateMany count 0) → 409, previousValue không bao giờ sai', async () => {
+    const { service, prisma, state } = make();
+    prisma.keyResult.findFirst.mockImplementationOnce(() => {
+      const seen = { ...state! };
+      state!.currentValue = 5; // check-in đồng thời xen vào sau khi ta đọc 6
+      return Promise.resolve(seen);
+    });
+    await expect(service.addCheckIn('w1', 'o1', 'k1', { value: 4 }, 'u1')).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
+    expect(state!.currentValue).toBe(5);
   });
 
   it('addCheckIn: KR tự đo (source != MANUAL) → 422, không ghi', async () => {
-    const { service, prisma, checkInCreate } = make({
-      id: 'k1',
-      source: 'OPEN_BUGS',
-      currentValue: 3,
-    });
+    const { service, prisma } = make({ id: 'k1', source: 'OPEN_BUGS', currentValue: 3 });
     await expect(service.addCheckIn('w1', 'o1', 'k1', { value: 4 }, 'u1')).rejects.toMatchObject({
       status: 422,
       message: expect.stringContaining('tự đo') as unknown,
     });
-    expect(checkInCreate).not.toHaveBeenCalled();
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
+    expect(prisma.keyResult.updateMany).not.toHaveBeenCalled();
   });
 
   it('addCheckIn: KR không thuộc mục tiêu → 404; dự án lưu trữ → 422 (qua requireObjective)', async () => {
     const missing = make(null);
     await expect(
       missing.service.addCheckIn('w1', 'o1', 'kx', { value: 1 }, 'u1'),
-    ).rejects.toMatchObject({
-      status: 404,
-    });
+    ).rejects.toMatchObject({ status: 404 });
     const arch = make();
     arch.prisma.objective.findFirst.mockResolvedValueOnce({
       id: 'o1',
       projectId: 'p1',
       project: { archivedAt: new Date() },
-    } as never);
+    });
     await expect(
       arch.service.addCheckIn('w1', 'o1', 'k1', { value: 1 }, 'u1'),
     ).rejects.toMatchObject(ARCHIVED);
-    expect(arch.checkInCreate).not.toHaveBeenCalled();
+    expect(arch.prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
   });
 
   it('updateKeyResult(currentValue) trên KR nhập tay đi qua cùng đường check-in (ghi lịch sử, ghi chú trống)', async () => {
-    const { service, checkInCreate, krUpdate, prisma } = make();
+    const { service, prisma } = make();
     await service.updateKeyResult('w1', 'o1', 'k1', { currentValue: 5 }, 'u1');
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(checkInCreate).toHaveBeenCalledWith({
+    expect(prisma.keyResultCheckIn.create).toHaveBeenCalledWith({
       data: { keyResultId: 'k1', value: 5, previousValue: 6, note: null, authorId: 'u1' },
     });
-    expect((krUpdate.mock.calls[0]![0] as { data: unknown }).data).toMatchObject({
-      currentValue: 5,
+    expect(prisma.keyResult.updateMany).toHaveBeenCalledWith({
+      where: { id: 'k1', currentValue: 6 },
+      data: { currentValue: 5 },
     });
   });
 
-  it('updateKeyResult chỉ đổi tên/đích (hoặc currentValue không đổi): không ghi check-in', async () => {
-    const { service, checkInCreate } = make();
+  it('updateKeyResult: expectedCurrentValue lệch → 409; chỉ đổi tên/nhãn hoặc currentValue không đổi → không ghi check-in', async () => {
+    const { service, prisma } = make();
+    await expect(
+      service.updateKeyResult('w1', 'o1', 'k1', { currentValue: 5, expectedCurrentValue: 9 }, 'u1'),
+    ).rejects.toMatchObject({ status: 409 });
     await service.updateKeyResult('w1', 'o1', 'k1', { name: 'Mới', unitLabel: ' bug ' }, 'u1');
     await service.updateKeyResult('w1', 'o1', 'k1', { currentValue: 6 }, 'u1');
-    expect(checkInCreate).not.toHaveBeenCalled();
+    expect(prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
+    expect(prisma.keyResult.update).toHaveBeenCalledTimes(2);
   });
 
   it('listCheckIns: sắp createdAt giảm dần, mặc định 30, kẹp tối đa 50, trả tác giả gọn', async () => {
@@ -653,6 +719,7 @@ function make(opts: {
     access as never,
     NO_MEASURE as never,
     NO_SNAPSHOT as never,
+    RBAC as never,
   );
   return { service, prisma, access };
 }
@@ -746,7 +813,9 @@ describe('GoalsService.progressHistory — phạm vi xem, kỳ vọng, giới h�
       rows: [row('k1', '2026-10-15', 3)],
     }).service.progressHistory('w1', 'o1', 'u1', 2, TODAY);
     expect(q.period).toBe('2026-Q4');
-    expect(q.expected!.map((e) => e.date)).toEqual(['2026-10-15', '2026-10-16']);
+    // Từ đầu cửa sổ tới HẾT QUÝ (đường KR dừng ở hôm nay, mốc kỳ vọng đi tiếp tới 100%).
+    expect(q.expected![0]!.date).toBe('2026-10-15');
+    expect(q.expected!.at(-1)).toEqual({ date: '2026-12-31', progress: 100 });
     expect(q.expected![1]!.progress).toBeGreaterThan(q.expected![0]!.progress);
     const free = await make({
       period: 'Sprint 5',
@@ -796,6 +865,7 @@ describe('GoalsService — chụp ngay khi KR đổi sang tự đo (L29)', () =>
       ACCESS_ALL as never,
       measure as never,
       snapshots as never,
+      RBAC as never,
     );
     (service as unknown as { read: () => Promise<unknown> }).read = () => Promise.resolve({});
     await service.addKeyResult(
@@ -817,5 +887,327 @@ describe('GoalsService — chụp ngay khi KR đổi sang tự đo (L29)', () =>
         'u1',
       ),
     ).resolves.toBeDefined();
+  });
+});
+
+type Existing = {
+  id: string;
+  source: string;
+  sourceConfig: unknown;
+  currentValue: number;
+};
+
+function makeFormSvc(existing: Existing[]) {
+  const prisma = {
+    objective: {
+      findFirst: vi.fn(() => Promise.resolve({ id: 'o1', projectId: null, project: null })),
+      update: vi.fn((_a?: unknown) => Promise.resolve({})),
+    },
+    keyResult: {
+      findMany: vi.fn((_a?: unknown) => Promise.resolve(existing)),
+      update: vi.fn((_a?: unknown) => Promise.resolve({})),
+      create: vi.fn((_a?: unknown) => Promise.resolve({})),
+      deleteMany: vi.fn((_a?: unknown) => Promise.resolve({ count: 0 })),
+      updateMany: vi.fn((a: { where: { id: string; currentValue: number } }) =>
+        Promise.resolve({
+          count:
+            existing.find((e) => e.id === a.where.id)?.currentValue === a.where.currentValue
+              ? 1
+              : 0,
+        }),
+      ),
+    },
+    keyResultCheckIn: { create: vi.fn((_a?: unknown) => Promise.resolve({})) },
+    $transaction: vi.fn((cb: (tx: unknown) => unknown) => Promise.resolve(cb(prisma))),
+  };
+  const measure = {
+    measure: vi.fn(() => Promise.resolve(new Map())),
+    validateConfig: vi.fn((..._a: unknown[]) => Promise.resolve()),
+  };
+  const snapshots = { snapshotKeyResult: vi.fn((..._a: unknown[]) => Promise.resolve()) };
+  const service = new GoalsService(
+    prisma as never,
+    ACCESS_ALL as never,
+    measure as never,
+    snapshots as never,
+    RBAC as never,
+  );
+  (service as unknown as { read: () => Promise<unknown> }).read = () => Promise.resolve({ ok: 1 });
+  return { service, prisma, measure, snapshots };
+}
+
+const bugs: Existing = {
+  id: 'k1',
+  source: 'OPEN_BUGS',
+  sourceConfig: { projectId: 'p1' },
+  currentValue: 20,
+};
+const manual: Existing = { id: 'k2', source: 'MANUAL', sourceConfig: null, currentValue: 6 };
+const call = (dtoKr: Record<string, unknown>, svc: ReturnType<typeof makeFormSvc>) =>
+  svc.service.update('w1', 'o1', { keyResults: [dtoKr as never] }, 'u1');
+
+describe('GoalsService.update — đường form sửa mục tiêu (I2/I3/I4)', () => {
+  it('KR cũ không gửi source → giữ nguồn + cấu hình hiện tại, không kiểm lại, không đụng currentValue', async () => {
+    const svc = makeFormSvc([bugs]);
+    await call({ id: 'k1', name: 'Bug', targetValue: 0 }, svc);
+    expect(svc.measure.validateConfig).not.toHaveBeenCalled();
+    const data = (
+      svc.prisma.keyResult.update.mock.calls[0]![0] as { data: Record<string, unknown> }
+    ).data;
+    expect(data).toMatchObject({ source: 'OPEN_BUGS', sourceConfig: { projectId: 'p1' } });
+    expect(data).not.toHaveProperty('currentValue');
+  });
+
+  it('I2: form gửi lại source+cấu hình KHÔNG đổi (kể cả khác thứ tự khoá) → không validate; đổi cấu hình → validate đúng một lần', async () => {
+    const same = makeFormSvc([bugs]);
+    await call(
+      {
+        id: 'k1',
+        name: 'Bug',
+        targetValue: 0,
+        source: 'OPEN_BUGS',
+        sourceConfig: { projectId: 'p1' },
+      },
+      same,
+    );
+    expect(same.measure.validateConfig).not.toHaveBeenCalled();
+
+    const changed = makeFormSvc([bugs]);
+    await call(
+      {
+        id: 'k1',
+        name: 'Bug',
+        targetValue: 0,
+        source: 'OPEN_BUGS',
+        sourceConfig: { projectId: 'p2' },
+      },
+      changed,
+    );
+    expect(changed.measure.validateConfig).toHaveBeenCalledTimes(1);
+    expect(changed.measure.validateConfig).toHaveBeenCalledWith('w1', 'u1', 'OPEN_BUGS', {
+      projectId: 'p2',
+    });
+    // KR mới luôn được kiểm
+    const created = makeFormSvc([]);
+    await call(
+      {
+        name: 'Mới',
+        targetValue: 1,
+        source: 'ISSUE_COUNT_JQL',
+        sourceConfig: { jql: 'type = Bug' },
+      },
+      created,
+    );
+    expect(created.measure.validateConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('KR nhập tay đổi currentValue: cập nhật có điều kiện + một dòng check-in (previousValue = số cũ, ghi chú trống)', async () => {
+    const svc = makeFormSvc([manual]);
+    await call(
+      { id: 'k2', name: 'Khách', targetValue: 0, currentValue: 4, expectedCurrentValue: 6 },
+      svc,
+    );
+    expect(svc.prisma.keyResult.updateMany).toHaveBeenCalledWith({
+      where: { id: 'k2', currentValue: 6 },
+      data: expect.objectContaining({ name: 'Khách', currentValue: 4 }) as unknown,
+    });
+    expect(svc.prisma.keyResultCheckIn.create).toHaveBeenCalledWith({
+      data: { keyResultId: 'k2', value: 4, previousValue: 6, note: null, authorId: 'u1' },
+    });
+  });
+
+  it('KR nhập tay không gửi currentValue (form không sửa số) → giữ số hiện có, không check-in', async () => {
+    const svc = makeFormSvc([manual]);
+    await call({ id: 'k2', name: 'Đổi tên', targetValue: 0 }, svc);
+    expect(svc.prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
+    const data = (
+      svc.prisma.keyResult.update.mock.calls[0]![0] as { data: Record<string, unknown> }
+    ).data;
+    expect(data).not.toHaveProperty('currentValue');
+    expect(data).toMatchObject({ name: 'Đổi tên' });
+  });
+});
+
+describe('GoalsService.update — OCC và chuyển nguồn của KR (I3/I4)', () => {
+  it('I3: form mở từ lâu (expectedCurrentValue ≠ số trong DB) → 409, không ghi gì', async () => {
+    const svc = makeFormSvc([{ ...manual, currentValue: 4 }]);
+    await expect(
+      call(
+        { id: 'k2', name: 'Khách', targetValue: 0, currentValue: 3, expectedCurrentValue: 6 },
+        svc,
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining('người khác') as unknown,
+    });
+    expect(svc.prisma.$transaction).not.toHaveBeenCalled();
+    expect(svc.prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
+  });
+
+  it('I3: người khác chen vào giữa lúc đọc và ghi (updateMany count 0) → 409, transaction không ghi check-in', async () => {
+    const svc = makeFormSvc([manual]);
+    svc.prisma.keyResult.updateMany.mockResolvedValueOnce({ count: 0 });
+    (svc.prisma.keyResult as Record<string, unknown>).findFirst = vi.fn(() =>
+      Promise.resolve({ currentValue: 5 }),
+    );
+    await expect(
+      call({ id: 'k2', name: 'Khách', targetValue: 0, currentValue: 4 }, svc),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(svc.prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
+  });
+
+  it('chuyển TỰ ĐO → NHẬP TAY: lưu nguồn MANUAL + cấu hình null, số nhập là check-in so với điểm xuất phát đang lưu', async () => {
+    const svc = makeFormSvc([bugs]);
+    await call({ id: 'k1', name: 'Bug', targetValue: 0, source: 'MANUAL', currentValue: 7 }, svc);
+    expect(svc.measure.validateConfig).not.toHaveBeenCalled();
+    expect(svc.prisma.keyResult.updateMany).toHaveBeenCalledWith({
+      where: { id: 'k1', currentValue: 20 },
+      data: expect.objectContaining({
+        source: 'MANUAL',
+        sourceConfig: Prisma.DbNull,
+        currentValue: 7,
+      }) as unknown,
+    });
+    expect(svc.prisma.keyResultCheckIn.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ keyResultId: 'k1', value: 7, previousValue: 20 }) as unknown,
+    });
+    expect(svc.snapshots.snapshotKeyResult).not.toHaveBeenCalled();
+  });
+
+  it('chuyển NHẬP TAY → TỰ ĐO: kiểm cấu hình mới, bỏ qua currentValue gửi lên, chụp ngay một điểm', async () => {
+    const svc = makeFormSvc([manual]);
+    svc.prisma.keyResult.findMany
+      .mockResolvedValueOnce([manual] as never) // existing trong update()
+      .mockResolvedValueOnce([{ id: 'k2' }] as never); // snapshotAutoOf
+    await call(
+      {
+        id: 'k2',
+        name: 'Khách',
+        targetValue: 0,
+        currentValue: 99,
+        source: 'OPEN_BUGS',
+        sourceConfig: {},
+      },
+      svc,
+    );
+    expect(svc.measure.validateConfig).toHaveBeenCalledTimes(1);
+    const data = (
+      svc.prisma.keyResult.update.mock.calls[0]![0] as { data: Record<string, unknown> }
+    ).data;
+    expect(data).toMatchObject({ source: 'OPEN_BUGS' });
+    expect(data).not.toHaveProperty('currentValue');
+    expect(svc.prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
+    expect(svc.snapshots.snapshotKeyResult).toHaveBeenCalledWith('k2');
+  });
+});
+
+describe('GoalsService — che cấu hình nguồn của KR theo quyền người xem (I6) và trung bình tiến độ (M1)', () => {
+  const row = (krs: unknown[]) => ({
+    id: 'o1',
+    workspaceId: 'w1',
+    projectId: null,
+    name: 'O',
+    description: null,
+    period: '2026-Q4',
+    status: 'ACTIVE',
+    ownerId: null,
+    createdAt: new Date('2026-10-01T00:00:00Z'),
+    updatedAt: new Date('2026-10-01T00:00:00Z'),
+    owner: null,
+    project: null,
+    keyResults: krs,
+    issues: [],
+  });
+  const kr = (id: string, source: string, sourceConfig: unknown, currentValue = 0) => ({
+    id,
+    name: id,
+    unit: 'NUMBER',
+    startValue: 0,
+    targetValue: 10,
+    currentValue,
+    source,
+    sourceConfig,
+    unitLabel: null,
+    _count: { checkIns: 0 },
+    checkIns: [],
+  });
+  const krs = [
+    kr('hidden', 'OPEN_BUGS', { projectId: 'hr' }),
+    kr('open', 'SPRINT_COMPLETION', { projectId: 'p1' }),
+    kr('all', 'OPEN_BUGS', {}),
+    kr('jql', 'ISSUE_COUNT_JQL', { jql: 'project = HR AND text ~ "lương"' }),
+    kr('manual', 'MANUAL', null, 5),
+  ];
+
+  function make(opts: {
+    visibleIds: string[] | null;
+    perms: string[];
+    measured?: Map<string, unknown>;
+  }) {
+    const prisma = { objective: { findFirst: vi.fn(() => Promise.resolve(row(krs))) } };
+    const access = {
+      visibleWhere: vi.fn(() =>
+        Promise.resolve(opts.visibleIds === null ? {} : { isPrivate: false }),
+      ),
+      visibleProjectIds: vi.fn(() => Promise.resolve(opts.visibleIds)),
+    };
+    const measure = { measure: vi.fn(() => Promise.resolve(opts.measured ?? new Map())) };
+    const rbac = { getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(opts.perms))) };
+    const service = new GoalsService(
+      prisma as never,
+      access as never,
+      measure as never,
+      NO_SNAPSHOT as never,
+      rbac as never,
+    );
+    return { service, access };
+  }
+  const configs = (g: { keyResults: Array<{ id: string; sourceConfig: unknown }> }) =>
+    Object.fromEntries(g.keyResults.map((k) => [k.id, k.sourceConfig]));
+
+  it('không thấy dự án riêng tư và không có GOAL_MANAGE: projectId của dự án ẩn và JQL thô bị che (source vẫn trả)', async () => {
+    const { service } = make({ visibleIds: ['p1'], perms: ['workspace:view'] });
+    const g = await service.get('w1', 'o1', 'u1');
+    expect(configs(g)).toEqual({
+      hidden: null,
+      open: { projectId: 'p1' },
+      all: {},
+      jql: null,
+      manual: null,
+    });
+    expect(g.keyResults.map((k) => k.source)).toEqual([
+      'OPEN_BUGS',
+      'SPRINT_COMPLETION',
+      'OPEN_BUGS',
+      'ISSUE_COUNT_JQL',
+      'MANUAL',
+    ]);
+  });
+
+  it('có GOAL_MANAGE: JQL thô được trả; dự án riêng tư vẫn che nếu không thấy dự án đó', async () => {
+    const { service } = make({ visibleIds: ['p1'], perms: ['workspace:view', 'goal:manage'] });
+    const c = configs(await service.get('w1', 'o1', 'u1'));
+    expect(c.jql).toEqual({ jql: 'project = HR AND text ~ "lương"' });
+    expect(c.hidden).toBeNull();
+  });
+
+  it('thấy mọi dự án (visibleProjectIds = null) + GOAL_MANAGE → trả đủ', async () => {
+    const { service } = make({ visibleIds: null, perms: ['goal:manage'] });
+    const c = configs(await service.get('w1', 'o1', 'u1'));
+    expect(c.hidden).toEqual({ projectId: 'hr' });
+    expect(c.jql).toEqual({ jql: 'project = HR AND text ~ "lương"' });
+  });
+
+  it('M1: KR đo lỗi không kéo trung bình tiến độ mục tiêu xuống', async () => {
+    const measured = new Map([
+      ['hidden', { value: null, measuredAt: 'x', error: 'Dự án không tồn tại' }],
+      ['open', { value: 10, measuredAt: 'x', error: null }],
+      ['all', { value: 10, measuredAt: 'x', error: null }],
+      ['jql', { value: 10, measuredAt: 'x', error: null }],
+    ]);
+    const { service } = make({ visibleIds: null, perms: ['goal:manage'], measured });
+    const g = await service.get('w1', 'o1', 'u1');
+    // 3 KR đo được = 100%, KR nhập tay 5/10 = 50%, KR lỗi bị loại → (100*3+50)/4
+    expect(g.keyResultProgress).toBe(88);
   });
 });

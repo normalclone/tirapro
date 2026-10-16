@@ -124,7 +124,12 @@ function KeyResultRow({
       return;
     }
     try {
-      await updateKr.mutateAsync({ goalId: goal.id, keyResultId: kr.id, currentValue: next });
+      await updateKr.mutateAsync({
+        goalId: goal.id,
+        keyResultId: kr.id,
+        currentValue: next,
+        expectedCurrentValue: kr.currentValue,
+      });
     } catch (e) {
       setDraft(String(kr.currentValue));
       toast.error(apiErrorMessage(e));

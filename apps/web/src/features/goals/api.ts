@@ -82,6 +82,8 @@ export interface KeyResultInput {
   startValue?: number;
   targetValue: number;
   currentValue?: number;
+  /** OCC: số hiện tại lúc mở form — BE trả 409 nếu người khác vừa đổi. */
+  expectedCurrentValue?: number;
   source?: KeyResultSource;
   sourceConfig?: KrSourceConfig;
   unitLabel?: string | null;
@@ -301,6 +303,8 @@ export function useAddCheckIn() {
       goalId: string;
       keyResultId: string;
       value: number;
+      /** OCC: số hiện tại người dùng đã thấy — lệch số trong DB thì BE trả 409. */
+      expectedValue?: number;
       note?: string;
     }) =>
       (await api.post<GoalDto>(`/goals/${goalId}/key-results/${keyResultId}/check-ins`, input))

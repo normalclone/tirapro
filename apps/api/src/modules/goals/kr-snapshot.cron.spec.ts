@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { resetCronLockWarning } from '../../common/cron-lock';
+import { BusinessRuleException } from '../../common/exceptions/app.exception';
+import { KrMeasureService } from './kr-measure.service';
 import { KrSnapshotCron } from './kr-snapshot.cron';
 
 const NOW = new Date('2026-10-16T01:30:00Z');
@@ -185,6 +187,57 @@ describe('KrSnapshotCron.snapshotAll (L29)', () => {
     prisma.objective.findMany.mockImplementationOnce(() => Promise.reject(new Error('boom')));
     await cron.snapshotAll(NOW);
     expect(createdRows(prisma).map((r) => r.keyResultId)).toEqual(['k9']);
+  });
+});
+
+describe('KrSnapshotCron + KrMeasureService thật — KR JQL cũ dùng currentUser/me (I1)', () => {
+  it('không ghi số 0 giả: bỏ qua KR đó, KR khác vẫn chụp', async () => {
+    const search = {
+      countPublic: vi.fn(() =>
+        Promise.reject(
+          new BusinessRuleException('JQL của KR tự đo không được dùng currentUser/me'),
+        ),
+      ),
+    };
+    const prisma = {
+      workspace: { findMany: vi.fn(() => Promise.resolve([{ id: 'w1' }])) },
+      objective: {
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            {
+              id: 'o1',
+              period: '2026-Q4',
+              keyResults: [
+                {
+                  id: 'kj',
+                  source: 'ISSUE_COUNT_JQL',
+                  sourceConfig: { jql: 'assignee = me' },
+                  currentValue: 0,
+                },
+                { id: 'km', source: 'MANUAL', sourceConfig: null, currentValue: 4 },
+              ],
+            },
+          ]),
+        ),
+      },
+      keyResultCheckIn: {
+        findMany: vi.fn(() => Promise.resolve([])),
+        createMany: vi.fn((a: { data: unknown[] }) => Promise.resolve({ count: a.data.length })),
+      },
+    };
+    const measurer = new KrMeasureService({} as never, {} as never, search as never);
+    const cron = new KrSnapshotCron(
+      prisma as never,
+      { isAvailable: () => false, getClient: () => null } as never,
+      measurer,
+    );
+    await cron.snapshotAll(NOW);
+    const data = (
+      prisma.keyResultCheckIn.createMany.mock.calls[0] as unknown as [
+        { data: Array<{ keyResultId: string }> },
+      ]
+    )[0].data;
+    expect(data.map((r) => r.keyResultId)).toEqual(['km']);
   });
 });
 

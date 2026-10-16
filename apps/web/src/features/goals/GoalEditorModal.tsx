@@ -15,17 +15,16 @@ import {
   useCreateGoal,
   useUpdateGoal,
   type GoalDto,
-  type KeyResultInput,
   type KeyResultSource,
   type KeyResultUnit,
   type ObjectiveStatus,
 } from './api';
+import { isConfigHidden, isDraftComplete, toKeyResultInput, type DraftKr } from './krDraft';
 import {
   MAX_JQL_LENGTH,
   SOURCE_OPTIONS,
   defaultConfig,
   isAutoSource,
-  isSourceConfigComplete,
   type KrSourceConfig,
 } from './krSource';
 
@@ -40,11 +39,6 @@ const UNIT_OPTIONS: { value: KeyResultUnit; label: string }[] = [
   { value: 'PERCENT', label: 'Phần trăm' },
   { value: 'CURRENCY', label: 'Tiền' },
 ];
-
-interface DraftKr extends KeyResultInput {
-  /** Khoá React ổn định cho dòng chưa lưu. */
-  rowKey: string;
-}
 
 let rowSeq = 0;
 function newRow(): DraftKr {
@@ -208,6 +202,9 @@ export function GoalEditorModal({
         source: kr.source,
         sourceConfig: kr.sourceConfig,
         unitLabel: kr.unitLabel,
+        originalSource: kr.source,
+        originalCurrent: kr.currentValue,
+        configHidden: isConfigHidden(kr),
       })) ?? [newRow()],
     );
   }, [open, goal, defaultPeriod]);
@@ -244,9 +241,7 @@ export function GoalEditorModal({
 
   const busy = create.isPending || update.isPending;
   const validKrs = krs.filter((kr) => kr.name.trim().length > 0);
-  const krsComplete = validKrs.every((kr) =>
-    isSourceConfigComplete(kr.source ?? 'MANUAL', kr.sourceConfig ?? null),
-  );
+  const krsComplete = validKrs.every(isDraftComplete);
   const canSave = name.trim().length > 0 && period.trim().length > 0 && krsComplete && !busy;
 
   function setKr(rowKey: string, patch: Partial<DraftKr>) {
@@ -262,21 +257,7 @@ export function GoalEditorModal({
       status,
       projectId: projectId || null,
       ownerId: ownerId || null,
-      keyResults: validKrs.map((kr) => {
-        const source = kr.source ?? 'MANUAL';
-        return {
-          id: kr.id,
-          name: kr.name.trim(),
-          unit: kr.unit ?? 'NUMBER',
-          startValue: Number(kr.startValue ?? 0),
-          targetValue: Number(kr.targetValue ?? 0),
-          unitLabel: kr.unitLabel?.trim() || null,
-          source,
-          sourceConfig: isAutoSource(source) ? (kr.sourceConfig ?? defaultConfig(source)) : null,
-          // KR tự đo: số hiện tại do hệ thống đo, không gửi.
-          ...(isAutoSource(source) ? {} : { currentValue: Number(kr.currentValue ?? 0) }),
-        };
-      }),
+      keyResults: validKrs.map(toKeyResultInput),
     };
     try {
       if (editing && goal) {
@@ -518,6 +499,7 @@ export function GoalEditorModal({
                           setKr(kr.rowKey, {
                             source: v as KeyResultSource,
                             sourceConfig: defaultConfig(v as KeyResultSource),
+                            configHidden: false,
                           })
                         }
                         options={SOURCE_OPTIONS}
@@ -525,12 +507,19 @@ export function GoalEditorModal({
                         className="mt-1"
                       />
                     </label>
-                    <SourceConfigFields
-                      source={kr.source ?? 'MANUAL'}
-                      config={kr.sourceConfig ?? null}
-                      onChange={(sourceConfig) => setKr(kr.rowKey, { sourceConfig })}
-                      projectOptions={projectOptions}
-                    />
+                    {kr.configHidden && kr.source === kr.originalSource ? (
+                      <p className="self-end pb-2 text-xs text-faint">
+                        Cấu hình nguồn bị ẩn với bạn (dự án riêng tư hoặc cần quyền quản lý mục
+                        tiêu) — giữ nguyên khi lưu. Chọn nguồn khác nếu muốn thay.
+                      </p>
+                    ) : (
+                      <SourceConfigFields
+                        source={kr.source ?? 'MANUAL'}
+                        config={kr.sourceConfig ?? null}
+                        onChange={(sourceConfig) => setKr(kr.rowKey, { sourceConfig })}
+                        projectOptions={projectOptions}
+                      />
+                    )}
                   </div>
                 </li>
               ))}

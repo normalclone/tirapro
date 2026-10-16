@@ -99,3 +99,19 @@ describe('createCheckInSchema (L26)', () => {
     );
   });
 });
+
+describe('OCC của KR (I3)', () => {
+  it('expectedCurrentValue / expectedValue là số hữu hạn tuỳ chọn', () => {
+    expect(keyResultUpsertSchema.safeParse({ ...base, expectedCurrentValue: 6 }).success).toBe(
+      true,
+    );
+    expect(
+      keyResultUpsertSchema.safeParse({ ...base, expectedCurrentValue: Infinity }).success,
+    ).toBe(false);
+    expect(
+      updateKeyResultSchema.safeParse({ currentValue: 5, expectedCurrentValue: 6 }).success,
+    ).toBe(true);
+    expect(createCheckInSchema.safeParse({ value: 4, expectedValue: 6 }).success).toBe(true);
+    expect(createCheckInSchema.safeParse({ value: 4, expectedValue: NaN }).success).toBe(false);
+  });
+});

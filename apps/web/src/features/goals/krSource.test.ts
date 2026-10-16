@@ -33,6 +33,14 @@ describe('krSource', () => {
     ).toBe('Số công việc khớp JQL: statusCategory = DONE (trong dự án bạn có quyền xem)');
   });
 
+  it('describeSource: cấu hình bị che (null) → chỉ nêu loại nguồn, không lộ dự án/JQL', () => {
+    expect(describeSource({ source: 'ISSUE_COUNT_JQL', sourceConfig: null })).toBe(
+      'Số công việc khớp một câu JQL (chi tiết bị ẩn với bạn)',
+    );
+    expect(describeSource({ source: 'SPRINT_COMPLETION', sourceConfig: null })).toContain('bị ẩn');
+    expect(describeSource({ source: 'OPEN_BUGS', sourceConfig: null })).toContain('bị ẩn');
+  });
+
   it('isSourceConfigComplete: đủ cấu hình mới cho lưu', () => {
     expect(isSourceConfigComplete('MANUAL', null)).toBe(true);
     expect(isSourceConfigComplete('OPEN_BUGS', {})).toBe(true);

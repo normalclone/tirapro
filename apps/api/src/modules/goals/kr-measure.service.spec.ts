@@ -19,6 +19,7 @@ function make() {
   const search = {
     count: vi.fn((..._a: unknown[]) => Promise.resolve(7)),
     countPublic: vi.fn((..._a: unknown[]) => Promise.resolve(5)),
+    dependsOnViewer: vi.fn((..._a: unknown[]) => false),
   };
   const service = new KrMeasureService(prisma as never, access as never, search as never);
   return { service, prisma, access, search };
@@ -134,6 +135,18 @@ describe('KrMeasureService.measure (L25)', () => {
 });
 
 describe('KrMeasureService.validateConfig (L25)', () => {
+  it('JQL dùng currentUser/me → 422 ngay lúc lưu KR tự đo (lịch sử cần số không phụ thuộc người xem)', async () => {
+    const { service, search } = make();
+    Object.assign(search, { validate: vi.fn(() => Promise.resolve({ valid: true })) });
+    search.dependsOnViewer.mockReturnValueOnce(true);
+    await expect(
+      service.validateConfig('w1', 'u1', 'ISSUE_COUNT_JQL', { jql: 'assignee = me' }),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: 'JQL của KR tự đo không được dùng currentUser/me',
+    });
+  });
+
   it('JQL không hợp lệ → 422 với thông điệp của validate; hợp lệ → qua', async () => {
     const { service, search } = make();
     Object.assign(search, {

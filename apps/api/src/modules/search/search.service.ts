@@ -21,6 +21,7 @@ import {
   collectFulltextTerms,
   compileJql,
   containsWhere,
+  jqlDependsOnViewer,
   primaryFulltextTerm,
   topLevelProjectKeys,
 } from './jql-compiler';
@@ -65,6 +66,9 @@ const EXISTENCE_FIELDS: ReadonlySet<JqlFieldName> = new Set([
   'affectedVersion',
 ]);
 const MAX_LISTED_VALUES = 8;
+
+/** Thông điệp khi JQL của KR tự đo phụ thuộc người xem (không có nghĩa với lịch sử chung). */
+export const VIEWER_JQL_MESSAGE = 'JQL của KR tự đo không được dùng currentUser/me';
 
 export interface JqlValueSuggestion {
   field: string;
@@ -330,15 +334,23 @@ export class SearchService {
     });
   }
 
+  /** JQL có dùng `currentUser`/`me` không (JQL lỗi cú pháp → false: để `validate`/`count` báo lỗi riêng). */
+  dependsOnViewer(jql: string): boolean {
+    try {
+      return jqlDependsOnViewer(parseJql(jql).where);
+    } catch (e) {
+      if (e instanceof JqlParseError) return false;
+      throw e;
+    }
+  }
+
   /**
    * Đếm việc khớp JQL trên dự án CÔNG KHAI (ngữ cảnh hệ thống, không có người xem) — cron chụp lịch sử Key Result (L29)
    * dùng để số lịch sử không lộ dự án riêng tư. `currentUser()` không có nghĩa ở đây → 422.
    */
   async countPublic(workspaceId: string, jql: string): Promise<number> {
-    if (/\bcurrentUser\s*\(/i.test(jql))
-      throw new BusinessRuleException(
-        'JQL dùng currentUser() phụ thuộc người xem — không đo được cho lịch sử chung',
-      );
+    // Duyệt AST (không regex): currentUser có/không ngoặc và alias `me`; nếu không sẽ đếm 0 giả rồi ghi như số thật.
+    if (this.dependsOnViewer(jql)) throw new BusinessRuleException(VIEWER_JQL_MESSAGE);
     const { where } = await this.buildWhere(workspaceId, null, jql, undefined, false);
     return this.prisma.issue.count({
       where: {

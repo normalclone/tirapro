@@ -8,7 +8,7 @@ import {
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
-import { SearchService } from '../search/search.service';
+import { SearchService, VIEWER_JQL_MESSAGE } from '../search/search.service';
 import { parseSourceConfig, type KeyResultSourceConfig } from './goals.schemas';
 
 /** Phần của một Key Result mà bộ đo cần. */
@@ -98,6 +98,9 @@ export class KrMeasureService {
         (config as { jql: string }).jql,
       );
       if (!res.valid) throw new BusinessRuleException(res.error ?? 'JQL không hợp lệ');
+      // Lịch sử chụp theo phạm vi công khai (không có người xem): JQL phụ thuộc currentUser/me sẽ cho số sai.
+      if (this.search.dependsOnViewer((config as { jql: string }).jql))
+        throw new BusinessRuleException(VIEWER_JQL_MESSAGE);
       return;
     }
     const projectId = (config as { projectId?: string } | null)?.projectId;

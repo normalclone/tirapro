@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSeries, expectedLine } from './progressSeries';
+import { buildSeries } from './progressSeries';
 import type { GoalProgressHistory } from './api';
 
 const kr = (id: string, points: Array<[string, number, number]>) => ({
@@ -34,26 +34,16 @@ const history = (over: Partial<GoalProgressHistory> = {}): GoalProgressHistory =
     { date: '2026-10-15', progress: 35 },
     { date: '2026-10-16', progress: 45 },
   ],
-  expected: null,
+  // Mốc kỳ vọng do BE trả: từ đầu cửa sổ tới hết quý (đã làm tròn, tăng dần).
+  expected: [
+    { date: '2026-10-13', progress: 13 },
+    { date: '2026-10-14', progress: 14 },
+    { date: '2026-10-15', progress: 15 },
+    { date: '2026-10-16', progress: 16 },
+    { date: '2026-12-30', progress: 99 },
+    { date: '2026-12-31', progress: 100 },
+  ],
   ...over,
-});
-
-describe('expectedLine', () => {
-  it('quý: tăng đơn điệu từ 0 (đầu quý) tới 100 (cuối quý)', () => {
-    const dates = ['2026-10-01', '2026-11-01', '2026-12-01', '2026-12-31'];
-    const line = expectedLine('2026-Q4', dates)!;
-    expect(line.map((p) => p.date)).toEqual(dates);
-    expect(line[0]!.progress).toBe(0);
-    expect(line[3]!.progress).toBe(100);
-    for (let i = 1; i < line.length; i++)
-      expect(line[i]!.progress).toBeGreaterThan(line[i - 1]!.progress);
-  });
-
-  it('kỳ tự do → null; ngoài kỳ kẹp 0..100', () => {
-    expect(expectedLine('Sprint 5', ['2026-10-01'])).toBeNull();
-    const line = expectedLine('2026-Q4', ['2026-09-01', '2027-02-01'])!;
-    expect(line.map((p) => p.progress)).toEqual([0, 100]);
-  });
 });
 
 describe('buildSeries', () => {
@@ -80,7 +70,7 @@ describe('buildSeries', () => {
     ]);
   });
 
-  it('kéo trục tới hết quý để thấy mốc kỳ vọng; đường KR dừng ở hôm nay', () => {
+  it('kéo trục tới hết quý theo `expected` của BE; đường KR dừng ở hôm nay', () => {
     const { rows } = buildSeries(history());
     expect(rows[0]!.date).toBe('2026-10-13');
     expect(rows.at(-1)!.date).toBe('2026-12-31');
@@ -92,7 +82,7 @@ describe('buildSeries', () => {
   });
 
   it('kỳ tự do: expected null ở mọi dòng và không kéo trục', () => {
-    const { rows } = buildSeries(history({ period: 'H2' }));
+    const { rows } = buildSeries(history({ period: 'H2', expected: null }));
     expect(rows.at(-1)!.date).toBe('2026-10-16');
     expect(rows.every((r) => r.expected === null)).toBe(true);
   });

@@ -94,7 +94,8 @@ function ProgressChartBody({ goal, data }: { goal: GoalDto; data: GoalProgressHi
       <div className="rounded-md border border-dashed border-border px-3 py-6 text-center">
         <p className="text-sm text-ink">Chưa có lịch sử tiến độ.</p>
         <p className="mt-1 text-xs text-faint">
-          Hệ thống ghi lại giá trị mỗi ngày lúc 01:30 — đường tiến độ sẽ hiện từ ngày mai.
+          Hệ thống ghi lại giá trị mỗi ngày lúc 01:30 UTC (khoảng 8:30 sáng giờ Việt Nam) — đường
+          tiến độ sẽ hiện từ ngày mai.
         </p>
         {hiddenNotes.map((l) => (
           <p key={l.id} className="mt-1 text-xs text-faint">
@@ -215,8 +216,8 @@ function ProgressChartBody({ goal, data }: { goal: GoalDto; data: GoalProgressHi
       ))}
       {publicNote && (
         <p className="mt-1 text-xs text-faint">
-          Lịch sử tính trên dự án công khai — số “hiện tại” của KR tự đo có thể khác nếu bạn thấy cả
-          dự án riêng tư.
+          Ngày tính theo giờ UTC. Lịch sử tính trên dự án công khai — số “hiện tại” của KR tự đo có
+          thể khác nếu bạn thấy cả dự án riêng tư.
         </p>
       )}
     </div>
