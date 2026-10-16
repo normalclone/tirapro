@@ -184,6 +184,9 @@ enum HistoryField {
   SCOPE
   PRIORITY
   TIME_SPENT
+  DESCRIPTION
+  COMPONENT
+  FIX_VERSION
 }
 
 enum AiSuggestionKind {
@@ -831,6 +834,7 @@ model IssueComponent {
   issue       Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
   component   Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
   @@id([issueId, componentId])
+  @@index([componentId])
 }
 
 model IssueFixVersion {
@@ -840,6 +844,7 @@ model IssueFixVersion {
   issue     Issue   @relation(fields: [issueId], references: [id], onDelete: Cascade)
   version   Version @relation(fields: [versionId], references: [id], onDelete: Cascade)
   @@id([issueId, versionId, type])
+  @@index([versionId])
 }
 
 model IssueLink {

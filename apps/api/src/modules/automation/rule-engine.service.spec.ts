@@ -21,6 +21,8 @@ function issueDto(over: Record<string, unknown> = {}) {
     storyPoints: null,
     dueDate: null,
     labels: [],
+    components: [],
+    fixVersions: [],
     version: 3,
     ...over,
   };

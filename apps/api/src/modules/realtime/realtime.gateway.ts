@@ -17,6 +17,7 @@ import type { CommentDto, IssueDto, NotificationDto } from '@tirapro/types';
 import type {
   ClientToServerEvents,
   IssueMovedPayload,
+  IssueSetsChangedPayload,
   RoomTarget,
   ServerToClientEvents,
   SubscribeAck,
@@ -450,6 +451,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
   onIssueUpdated(p: { issue: IssueDto }) {
     this.toProject(p.issue?.projectId, WS_EVENTS.ISSUE_UPDATED, { issue: p.issue });
+  }
+
+  @OnEvent(DOMAIN_EVENTS.ISSUE_SETS_CHANGED)
+  onIssueSetsChanged(p: IssueSetsChangedPayload) {
+    this.toProject(p.projectId, WS_EVENTS.ISSUE_SETS_CHANGED, p);
   }
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_TRANSITIONED)

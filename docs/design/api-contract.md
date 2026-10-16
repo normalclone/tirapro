@@ -319,7 +319,8 @@ Issue type: `EPIC | STORY | TASK | BUG | SUBTASK`. Hỗ trợ custom fields (gia
 | GET | `/issues/{id}/links` | `issue:read` | Liên kết (blocks, relates, duplicates) |
 | POST | `/issues/{id}/links` | `issue:update` | Tạo link tới issue khác |
 | DELETE | `/issues/{id}/links/{linkId}` | `issue:update` | Xóa link |
-| GET | `/issues/{id}/activity` | `issue:read` | Activity log của issue (cursor) — giao tiếp Notifications/Activity |
+| GET | `/issues/{id}/activity` | `project:view` | Activity log của issue (cursor) — giao tiếp Notifications/Activity. `?fields=STATUS,DESCRIPTION` (CSV `HistoryField`, hoặc lặp `fields=A&fields=B`) lọc theo loại thay đổi, giá trị lạ → 422. Gắn/bỏ thành phần-phiên bản ghi `COMPONENT` / `FIX_VERSION` (phiên bản: `FIX:v1.0` | `AFFECTS:v1.0`). Dòng `DESCRIPTION` có `hasDiff: true` và `oldValue/newValue/oldLabel/newLabel` chỉ là bản xem trước ≤ 200 ký tự (kèm `…`) |
+| GET | `/issues/{id}/activity/{activityId}` | `project:view` | Một dòng lịch sử với `oldValue/newValue` ĐẦY ĐỦ (dùng cho hộp so sánh mô tả); không thuộc công việc → 404 |
 | GET | `/issues/{id}/watchers` | `issue:read` | Danh sách watcher |
 | POST | `/issues/{id}/watchers` | `issue:read` | Tự watch / thêm watcher |
 
@@ -757,6 +758,7 @@ Mọi server→client event payload theo cấu trúc:
 |---|---|---|---|
 | `issue.created` | `project:{id}`, `board:{id}` | `IssueDto` | POST /issues |
 | `issue.updated` | `issue:{id}`, `board:{id}` | `{ id, changes: Partial<IssueDto>, version }` | PATCH /issues/{id} |
+| `issue.sets_changed` (WS `issue:sets_changed`) | `project:{id}` | `{ issueId, issueKey, projectId, components, fixVersions }` (tập đầy đủ sau thay đổi) | POST/DELETE `/issues/{id}/components`, `/issues/{id}/versions` — KHÔNG đổi `version` của việc nên không đi qua `issue.updated`; client thay thẳng theo id |
 | `issue.moved` | `board:{id}` | `{ id, fromColumnId, toColumnId, fromSprintId, toSprintId, rank, version }` | POST /issues/{id}/move |
 | `issue.transitioned` | `issue:{id}`, `board:{id}` | `{ id, fromStatusId, toStatusId, resolution }` | POST /issues/{id}/transitions |
 | `issue.deleted` | `project:{id}`, `board:{id}` | `{ id }` | DELETE /issues/{id} |

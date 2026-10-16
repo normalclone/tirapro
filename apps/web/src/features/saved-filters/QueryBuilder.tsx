@@ -37,6 +37,9 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
   { field: 'reporter', label: 'Người báo cáo' },
   { field: 'sprint', label: 'Sprint' },
   { field: 'labels', label: 'Nhãn' },
+  { field: 'component', label: 'Thành phần' },
+  { field: 'fixVersion', label: 'Phiên bản sửa' },
+  { field: 'affectedVersion', label: 'Phiên bản bị ảnh hưởng' },
   { field: 'resolution', label: 'Cách giải quyết' },
   { field: 'text', label: 'Văn bản (toàn văn)' },
   { field: 'summary', label: 'Tiêu đề' },
@@ -333,6 +336,11 @@ function optionsForField(field: JqlFieldName, sources: Sources): FieldOption[] |
       return sources.fields?.sprints ?? [];
     case 'labels':
       return sources.fields?.labels ?? [];
+    case 'component':
+      return sources.fields?.components ?? [];
+    case 'fixVersion':
+    case 'affectedVersion':
+      return sources.fields?.versions ?? [];
     case 'resolution':
       return sources.fields?.resolutions ?? [];
     default:

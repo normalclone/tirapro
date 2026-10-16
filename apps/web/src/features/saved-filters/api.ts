@@ -38,6 +38,8 @@ export interface FilterFields {
   sprints: FieldOption[];
   labels: FieldOption[];
   resolutions: FieldOption[];
+  components: FieldOption[];
+  versions: FieldOption[];
 }
 
 /** Danh mục giá trị cho bộ dựng truy vấn trực quan (gom theo không gian làm việc). */

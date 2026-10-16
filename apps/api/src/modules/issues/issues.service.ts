@@ -37,6 +37,7 @@ import {
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 import { assertNotArchived, assertProjectWritable } from '../../common/project-writable';
 import { LIVE_PROJECT } from '../../common/live-project';
+import { mapIssueSets } from './issue-sets';
 import { RankService } from './rank.service';
 import { WipService } from './wip.service';
 
@@ -49,6 +50,8 @@ const issueInclude = {
   assignee: { select: USER_DTO_SELECT },
   reporter: { select: USER_DTO_SELECT },
   labels: { include: { label: true } },
+  components: { include: { component: { select: { id: true, name: true } } } },
+  fixVersions: { include: { version: { select: { id: true, name: true } } } },
 } satisfies Prisma.IssueInclude;
 
 type IssueRow = Prisma.IssueGetPayload<{ include: typeof issueInclude }>;
@@ -1698,6 +1701,15 @@ export class IssuesService {
       });
     if (before.sprintId !== after.sprintId)
       rows.push({ ...base, field: 'SPRINT', oldValue: before.sprintId, newValue: after.sprintId });
+    // Lưu nguyên văn cũ/mới (FE tự tính diff). null và '' coi như nhau để khỏi tạo dòng rác.
+    // Chỉ `update()` đổi được mô tả — bulkUpdate/move đi qua đây nhưng before/after luôn cùng mô tả.
+    if ((before.description ?? '') !== (after.description ?? ''))
+      rows.push({
+        ...base,
+        field: 'DESCRIPTION',
+        oldValue: before.description,
+        newValue: after.description,
+      });
     if (rows.length) await tx.issueHistory.createMany({ data: rows });
   }
 
@@ -1792,6 +1804,7 @@ export class IssuesService {
         name: l.label.name,
         color: l.label.color,
       })),
+      ...mapIssueSets(i),
       createdAt: i.createdAt.toISOString(),
       updatedAt: i.updatedAt.toISOString(),
     };

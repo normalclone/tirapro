@@ -140,6 +140,8 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — sprint C
       statusId: 's1',
       sprintId: 'sp-closed',
       labels: [],
+      components: [],
+      fixVersions: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -226,6 +228,8 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — epic c�
       },
       statusId: 's1',
       labels: [],
+      components: [],
+      fixVersions: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     };

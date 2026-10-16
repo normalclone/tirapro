@@ -4,8 +4,10 @@ import {
   ArrowRight,
   ArrowUpDown,
   CircleDot,
+  FileText,
   History,
   Layers,
+  Package,
   Tag,
   UserCog,
   type LucideIcon,
@@ -18,6 +20,7 @@ import { pageContainer } from '@/components/layout/page';
 import { useProjectActivity, type ProjectActivityItem } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { fmtDate, fmtDateTime, fmtRelative } from '@/lib/dateFormat';
+import { projectFeedSentence } from '@/features/activity/activityFilters';
 
 /** Màu chấm theo status category (dùng CSS var giống IssueProperties). */
 function categoryColor(cat: string | null): string {
@@ -48,6 +51,11 @@ function fieldIcon(field: string): LucideIcon {
       return Layers;
     case 'TYPE':
       return Tag;
+    case 'DESCRIPTION':
+      return FileText;
+    case 'COMPONENT':
+    case 'FIX_VERSION':
+      return Package;
     default:
       return CircleDot;
   }
@@ -82,6 +90,9 @@ function delta(oldLabel: ReactNode, newLabel: ReactNode): ReactNode {
  * Actor và issue đích được render riêng ở component cha để giữ câu gọn.
  */
 function actionPhrase(a: ProjectActivityItem): ReactNode {
+  // Mô tả / thành phần / phiên bản: một câu thuần (không chip cũ → mới, không lộ nội dung mô tả).
+  const plain = projectFeedSentence(a);
+  if (plain) return <>{plain}</>;
   const oldV = a.oldLabel ?? a.oldValue;
   const newV = a.newLabel ?? a.newValue;
   switch (a.field) {

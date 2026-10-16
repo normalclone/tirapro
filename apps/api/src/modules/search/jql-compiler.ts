@@ -72,11 +72,19 @@ export function topLevelProjectKeys(node: JqlNode | null): string[] | null {
   return node ? walk(node) : null;
 }
 
+/** Quan hệ qua bảng nối: `relation` là tên relation trên Issue, `ref` là relation trỏ tới đối tượng có `name`. */
+interface ArrayRel {
+  relation: 'labels' | 'components' | 'fixVersions';
+  ref: 'label' | 'component' | 'version';
+  type?: 'FIX' | 'AFFECTS';
+}
+
 interface FieldCfg {
   kind: 'relationName' | 'idUser' | 'enumRel' | 'text' | 'fulltext' | 'array' | 'date' | 'number';
   relation?: string; // tên relation Prisma
   field?: string; // cột bên trong relation (name/key/category)
   idColumn?: string; // cột FK để xử lý IS EMPTY trực tiếp
+  arrayRel?: ArrayRel; // quan hệ nhiều-nhiều của kind 'array'
   column?: string; // cột scalar (summary/createdAt/storyPoints...)
   relNullable?: boolean; // quan hệ cho phép không có (priority/sprint/resolution) — `!~` phải gồm cả issue không có quan hệ
   nullable?: boolean; // cột scalar cho phép NULL (ảnh hưởng cách dựng `contains`, xem containsWhere)
@@ -111,7 +119,16 @@ const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
     idColumn: 'sprintId',
     relNullable: true,
   },
-  labels: { kind: 'array' },
+  labels: { kind: 'array', arrayRel: { relation: 'labels', ref: 'label' } },
+  component: { kind: 'array', arrayRel: { relation: 'components', ref: 'component' } },
+  fixVersion: {
+    kind: 'array',
+    arrayRel: { relation: 'fixVersions', ref: 'version', type: 'FIX' },
+  },
+  affectedVersion: {
+    kind: 'array',
+    arrayRel: { relation: 'fixVersions', ref: 'version', type: 'AFFECTS' },
+  },
   summary: { kind: 'text', column: 'summary' },
   text: { kind: 'fulltext' },
   created: { kind: 'date', column: 'createdAt' },
@@ -246,13 +263,17 @@ function compileComparison(
       return op === '!~' ? { NOT: match } : match;
     }
     case 'array': {
-      // labels
-      if (op === 'IS') return { labels: { none: {} } };
-      if (op === 'IS NOT') return { labels: { some: {} } };
+      // nhãn / thành phần / phiên bản (qua bảng nối; phiên bản lọc thêm theo loại FIX|AFFECTS)
+      const a = cfg.arrayRel!;
+      const base: Record<string, unknown> = a.type ? { type: a.type } : {};
+      if (op === 'IS') return { [a.relation]: { none: base } };
+      if (op === 'IS NOT') return { [a.relation]: { some: base } };
       const names =
         op === 'IN' || op === 'NOT IN' ? listStrings(value, ctx) : [scalarString(value, ctx)];
-      const rel = { label: { name: { in: names } } };
-      return op === 'NOT IN' || op === '!=' ? { labels: { none: rel } } : { labels: { some: rel } };
+      const rel = { ...base, [a.ref]: { name: { in: names } } };
+      return op === 'NOT IN' || op === '!='
+        ? { [a.relation]: { none: rel } }
+        : { [a.relation]: { some: rel } };
     }
     case 'date': {
       const col = cfg.column!;

@@ -138,7 +138,7 @@ export class ComponentsController {
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
     await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.components.attachComponent(workspaceId, issueId, dto.componentId);
+    return this.components.attachComponent(workspaceId, user.id, issueId, dto.componentId);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
@@ -152,7 +152,7 @@ export class ComponentsController {
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
     await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.components.detachComponent(workspaceId, issueId, componentId);
+    return this.components.detachComponent(workspaceId, user.id, issueId, componentId);
   }
 
   // ============================ VERSIONS ====================================
@@ -204,7 +204,7 @@ export class ComponentsController {
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
     await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.components.attachVersion(workspaceId, issueId, dto.versionId, dto.type);
+    return this.components.attachVersion(workspaceId, user.id, issueId, dto.versionId, dto.type);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
@@ -219,6 +219,6 @@ export class ComponentsController {
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
     await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.components.detachVersion(workspaceId, issueId, versionId, type);
+    return this.components.detachVersion(workspaceId, user.id, issueId, versionId, type);
   }
 }

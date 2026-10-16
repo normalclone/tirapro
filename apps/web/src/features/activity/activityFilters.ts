@@ -1,0 +1,80 @@
+import type { ActivityItem } from './api';
+
+/** Chip lọc của tab Lịch sử. `fields` = giá trị `HistoryField` gửi lên `GET /issues/:id/activity?fields=`; rỗng = tất cả. */
+export const ACTIVITY_FILTERS: { id: string; label: string; fields: string[] }[] = [
+  { id: 'all', label: 'Tất cả', fields: [] },
+  { id: 'status', label: 'Trạng thái', fields: ['STATUS'] },
+  { id: 'points', label: 'Điểm', fields: ['STORY_POINTS'] },
+  { id: 'assignee', label: 'Người phụ trách', fields: ['ASSIGNEE'] },
+  { id: 'priority', label: 'Ưu tiên', fields: ['PRIORITY'] },
+  { id: 'sprint', label: 'Sprint', fields: ['SPRINT'] },
+  { id: 'description', label: 'Mô tả', fields: ['DESCRIPTION'] },
+  {
+    id: 'other',
+    label: 'Khác',
+    fields: ['TYPE', 'RESOLUTION', 'SCOPE', 'TIME_SPENT', 'COMPONENT', 'FIX_VERSION'],
+  },
+];
+
+/** CSV cho `?fields=`; `undefined` cho "Tất cả" hoặc id lạ. */
+export function fieldsParam(filterId: string): string | undefined {
+  const f = ACTIVITY_FILTERS.find((x) => x.id === filterId);
+  return f && f.fields.length ? f.fields.join(',') : undefined;
+}
+
+/** Giá trị hiển thị, rỗng → dấu gạch. */
+const val = (v: string | null): string => (v != null && v !== '' ? v : '—');
+
+/** Phiên bản lưu `FIX:v1.0` / `AFFECTS:v1.0` (máy chủ ghi kèm loại); giá trị lạ coi như tên thuần, loại FIX. */
+function parseVersionValue(v: string | null): { type: 'FIX' | 'AFFECTS'; name: string } | null {
+  if (!v) return null;
+  const m = /^(FIX|AFFECTS):(.*)$/s.exec(v);
+  return m ? { type: m[1] as 'FIX' | 'AFFECTS', name: m[2]! } : { type: 'FIX', name: v };
+}
+
+type ActivityLike = Pick<ActivityItem, 'field' | 'oldValue' | 'newValue' | 'oldLabel' | 'newLabel'>;
+
+/** Mô tả tiếng Việt cho một thay đổi (người/sprint dùng nhãn đã phân giải ở máy chủ). */
+export function describeActivity(a: ActivityLike): string {
+  switch (a.field) {
+    case 'STATUS':
+      return a.oldValue
+        ? `đổi trạng thái: ${a.oldValue} → ${val(a.newValue)}`
+        : `đổi trạng thái: → ${val(a.newValue)}`;
+    case 'ASSIGNEE':
+      return `đổi người phụ trách: ${a.oldLabel ?? 'Chưa gán'} → ${a.newLabel ?? 'Chưa gán'}`;
+    case 'PRIORITY':
+      return `đổi ưu tiên: ${val(a.oldValue)} → ${val(a.newValue)}`;
+    case 'STORY_POINTS':
+      return `đổi điểm: ${val(a.oldValue)} → ${val(a.newValue)}`;
+    case 'SPRINT':
+      return `chuyển sprint: ${a.oldLabel ?? 'Backlog'} → ${a.newLabel ?? 'Backlog'}`;
+    case 'DESCRIPTION':
+      return 'sửa mô tả';
+    case 'COMPONENT':
+      return a.newValue ? `gắn thành phần: ${a.newValue}` : `bỏ thành phần: ${val(a.oldValue)}`;
+    case 'FIX_VERSION': {
+      const v = parseVersionValue(a.newValue ?? a.oldValue);
+      const kind = v?.type === 'AFFECTS' ? 'phiên bản bị ảnh hưởng' : 'phiên bản sửa';
+      return `${a.newValue ? 'gắn' : 'bỏ'} ${kind}: ${v?.name ?? '—'}`;
+    }
+    case 'TYPE':
+      return 'đổi loại';
+    case 'RESOLUTION':
+      return 'đổi resolution';
+    case 'SCOPE':
+      return 'thay đổi phạm vi';
+    default:
+      return `${a.field}: ${val(a.oldValue)} → ${val(a.newValue)}`;
+  }
+}
+
+/**
+ * Loại thay đổi mà feed hoạt động dự án phải viết thành MỘT câu thuần, không dựng cặp chip cũ → mới: mô tả (bản xem trước
+ * dài, lộ nội dung) và gắn/bỏ thành phần-phiên bản. `null` = loại khác, feed tự dựng chip như trước.
+ */
+export function projectFeedSentence(a: ActivityLike): string | null {
+  return a.field === 'DESCRIPTION' || a.field === 'COMPONENT' || a.field === 'FIX_VERSION'
+    ? `đã ${describeActivity(a)}`
+    : null;
+}

@@ -1,48 +1,82 @@
-import { Avatar } from '@/components/ui/primitives';
+import { useState } from 'react';
+import { Avatar, DelayedSpinner } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
-import { useIssueActivity, type ActivityItem } from './api';
 import { fmtRelative } from '@/lib/dateFormat';
-
-/** Giá trị hiển thị, rỗng → dấu gạch. */
-function val(v: string | null): string {
-  return v != null && v !== '' ? v : '—';
-}
-
-/** Mô tả tiếng Việt cho một thay đổi, dựng từ field + giá trị cũ/mới. */
-function describe(a: ActivityItem): string {
-  switch (a.field) {
-    case 'STATUS':
-      return a.oldValue
-        ? `đổi trạng thái: ${a.oldValue} → ${val(a.newValue)}`
-        : `đổi trạng thái: → ${val(a.newValue)}`;
-    case 'ASSIGNEE':
-      return 'đổi người thực hiện';
-    case 'PRIORITY':
-      return `đổi ưu tiên: ${val(a.oldValue)} → ${val(a.newValue)}`;
-    case 'STORY_POINTS':
-      return `đổi điểm: ${val(a.oldValue)} → ${val(a.newValue)}`;
-    case 'SPRINT':
-      return 'chuyển sprint';
-    case 'TYPE':
-      return 'đổi loại';
-    case 'RESOLUTION':
-      return 'đổi resolution';
-    case 'SCOPE':
-      return 'thay đổi phạm vi';
-    default:
-      return `${a.field}: ${val(a.oldValue)} → ${val(a.newValue)}`;
-  }
-}
+import { useOpenSession } from '@/lib/useOpenSession';
+import { useRetained } from '@/lib/useRetained';
+import { useIssueActivity, type ActivityItem } from './api';
+import { ACTIVITY_FILTERS, describeActivity, fieldsParam } from './activityFilters';
+import { DescriptionDiffDialog } from './DescriptionDiffDialog';
 
 export function ActivityPanel({ issueId }: { issueId: string }) {
-  const { data } = useIssueActivity(issueId);
-  const items = data ?? [];
+  // Bản chụp chip nhớ trong state panel (không localStorage); lọc ở máy chủ vì danh sách bị cắt 100 dòng.
+  const [filter, setFilter] = useState('all');
+  const fields = fieldsParam(filter);
+  const filtered = useIssueActivity(issueId, fields);
+  // Tổng CHƯA lọc cho tiêu đề (khi filter = Tất cả thì cùng khoá với `filtered` nên không tốn thêm yêu cầu).
+  const all = useIssueActivity(issueId);
+  // Không giữ danh sách của chip trước khi đổi chip (sẽ thoáng hiện dòng sai loại): chờ bản lọc, spinner chỉ hiện sau 350ms.
+  const loading = filtered.data === undefined && !filtered.isError;
+  const items = filtered.data ?? [];
+  const total = all.data?.length;
+  const [viewing, setViewing] = useState<ActivityItem | null>(null);
+  const viewingShown = useRetained(viewing);
+  const viewingKey = useOpenSession(!!viewing);
 
   return (
     <div>
-      <p className="mb-2 text-sm font-medium text-muted">Lịch sử ({items.length})</p>
-      {items.length === 0 ? (
-        <p className="text-sm text-faint">Chưa có hoạt động.</p>
+      <p className="mb-2 text-sm font-medium text-muted">
+        Lịch sử (
+        {fields && !loading && total !== undefined
+          ? `${items.length}/${total}`
+          : (total ?? items.length)}
+        )
+      </p>
+      <div
+        role="group"
+        aria-label="Lọc lịch sử theo loại thay đổi"
+        className="mb-3 flex flex-wrap gap-1.5"
+      >
+        {ACTIVITY_FILTERS.map((f) => {
+          const on = f.id === filter;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setFilter(f.id)}
+              className={cn(
+                'inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-medium transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                on
+                  ? 'border-transparent bg-primary-subtle text-primary'
+                  : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
+              )}
+            >
+              {f.label}
+            </button>
+          );
+        })}
+      </div>
+      {loading ? (
+        <DelayedSpinner />
+      ) : items.length === 0 ? (
+        <p className="text-sm text-faint">
+          {filter === 'all' ? (
+            'Chưa có hoạt động.'
+          ) : (
+            <>
+              Không có thay đổi loại này.{' '}
+              <button
+                type="button"
+                onClick={() => setFilter('all')}
+                className="font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              >
+                Xem tất cả
+              </button>
+            </>
+          )}
+        </p>
       ) : (
         <ol className="space-y-3">
           {items.map((a) => (
@@ -58,12 +92,33 @@ export function ActivityPanel({ issueId }: { issueId: string }) {
               )}
               <p className={cn('min-w-0 flex-1 text-sm text-ink')}>
                 <b className="font-medium text-ink-strong">{a.actor?.displayName ?? 'Hệ thống'}</b>{' '}
-                {describe(a)}{' '}
+                {describeActivity(a)}{' '}
                 <span className="text-xs text-faint">{fmtRelative(a.occurredAt)}</span>
+                {a.hasDiff && (
+                  <>
+                    {' · '}
+                    <button
+                      type="button"
+                      onClick={() => setViewing(a)}
+                      className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                    >
+                      Xem thay đổi
+                    </button>
+                  </>
+                )}
               </p>
             </li>
           ))}
         </ol>
+      )}
+      {viewingShown && (
+        <DescriptionDiffDialog
+          key={viewingKey}
+          open={!!viewing}
+          issueId={issueId}
+          item={viewingShown}
+          onClose={() => setViewing(null)}
+        />
       )}
     </div>
   );

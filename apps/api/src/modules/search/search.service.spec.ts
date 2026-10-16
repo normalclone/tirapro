@@ -133,6 +133,8 @@ describe('SearchService.fields — severities', () => {
       sprint: { findMany: empty },
       label: { findMany: empty },
       resolution: { findMany: empty },
+      component: { findMany: empty },
+      version: { findMany: empty },
       severity,
     };
     const service = new SearchService({} as never, prisma as never);
@@ -144,6 +146,38 @@ describe('SearchService.fields — severities', () => {
       { value: 'Critical', label: 'Critical', color: '#f00' },
       { value: 'Minor', label: 'Minor', color: null },
     ]);
+  });
+});
+
+describe('SearchService.fields — components/versions (B17)', () => {
+  it('trả components/versions khử trùng theo tên', async () => {
+    const empty = vi.fn().mockResolvedValue([]);
+    const prisma = {
+      issueType: { findMany: empty },
+      status: { findMany: empty },
+      priority: { findMany: empty },
+      severity: { findMany: empty },
+      sprint: { findMany: empty },
+      label: { findMany: empty },
+      resolution: { findMany: empty },
+      component: {
+        findMany: vi.fn().mockResolvedValue([{ name: 'API' }, { name: 'API' }, { name: 'Web' }]),
+      },
+      version: { findMany: vi.fn().mockResolvedValue([{ name: 'v1.0' }, { name: 'v1.0' }]) },
+    };
+    const service = new SearchService({} as never, prisma as never);
+    const out = await service.fields('W1');
+    expect(prisma.component.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { project: { workspaceId: 'W1', deletedAt: null } },
+        orderBy: { name: 'asc' },
+      }),
+    );
+    expect(out.components).toEqual([
+      { value: 'API', label: 'API', color: null },
+      { value: 'Web', label: 'Web', color: null },
+    ]);
+    expect(out.versions).toEqual([{ value: 'v1.0', label: 'v1.0', color: null }]);
   });
 });
 

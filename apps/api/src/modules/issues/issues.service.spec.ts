@@ -66,6 +66,8 @@ function issueRow(over: Record<string, unknown> = {}) {
     rank: 'n',
     version: 3,
     labels: [],
+    components: [{ component: { id: 'c1', name: 'Backend' } }],
+    fixVersions: [{ type: 'FIX', version: { id: 'v1', name: 'v1.0' } }],
     createdAt: now,
     updatedAt: now,
     project: { archivedAt: null },
@@ -104,6 +106,31 @@ function makeService(
   );
   return { service, events, prisma, rbac };
 }
+
+describe('IssuesService.toDto — components/fixVersions (B17)', () => {
+  it('toDto trả components/fixVersions đã gắn (sắp theo tên)', async () => {
+    const row = issueRow({
+      components: [
+        { component: { id: 'c2', name: 'Web' } },
+        { component: { id: 'c1', name: 'API' } },
+      ],
+      fixVersions: [
+        { type: 'AFFECTS', version: { id: 'v2', name: 'v2.0' } },
+        { type: 'FIX', version: { id: 'v1', name: 'v1.0' } },
+      ],
+    });
+    const { service } = makeService({ issue: { findFirst: vi.fn(() => Promise.resolve(row)) } });
+    const dto = await service.getByKey('w1', 'P-TASK-1');
+    expect(dto.components).toEqual([
+      { id: 'c1', name: 'API' },
+      { id: 'c2', name: 'Web' },
+    ]);
+    expect(dto.fixVersions).toEqual([
+      { id: 'v1', name: 'v1.0', type: 'FIX' },
+      { id: 'v2', name: 'v2.0', type: 'AFFECTS' },
+    ]);
+  });
+});
 
 describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
   it('rank hai mốc sát nhau => đánh số lại project rồi tính lại 1 lần', async () => {
@@ -3020,5 +3047,38 @@ describe('IssuesService — Ngày bắt đầu (L14): start <= hạn và cùng l
         dueDate: D18,
       }),
     ).rejects.toMatchObject({ status: 422, message: has('Ngày bắt đầu') });
+  });
+});
+
+describe('IssuesService.update — lịch sử mô tả (B19)', () => {
+  const tx = (after: Record<string, unknown>) => ({
+    issue: {
+      findFirst: vi.fn(() => Promise.resolve(issueRow({ description: 'cũ' }))),
+      updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+      findFirstOrThrow: vi.fn(() => Promise.resolve(after)),
+    },
+    issueHistory: { createMany: vi.fn() },
+  });
+  it('đổi mô tả => ghi DESCRIPTION với bản cũ/mới đầy đủ', async () => {
+    const t = tx(issueRow({ description: 'mới', version: 4 }));
+    const { service } = makeService(t);
+    await service.update('w1', 'u1', 'i1', { version: 3, description: 'mới' });
+    expect(t.issueHistory.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          field: 'DESCRIPTION',
+          oldValue: 'cũ',
+          newValue: 'mới',
+          actorId: 'u1',
+        }),
+      ],
+    });
+  });
+  it('null và chuỗi rỗng coi như nhau => không ghi', async () => {
+    const t = tx(issueRow({ description: '', version: 4 }));
+    t.issue.findFirst.mockResolvedValue(issueRow({ description: null }));
+    const { service } = makeService(t);
+    await service.update('w1', 'u1', 'i1', { version: 3, description: '' });
+    expect(t.issueHistory.createMany).not.toHaveBeenCalled();
   });
 });

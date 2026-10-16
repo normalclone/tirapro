@@ -5,6 +5,7 @@ import { ActivityService } from './activity.service';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { PERMISSIONS } from '@tirapro/types';
+import { parseFields } from './activity.fields';
 
 @ApiTags('activity')
 @Controller()
@@ -14,8 +15,23 @@ export class ActivityController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/activity')
-  async forIssue(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
-    return this.activity.listForIssue(workspaceId, issueId);
+  async forIssue(
+    @WorkspaceId() workspaceId: string,
+    @Param('issueId') issueId: string,
+    @Query('fields') fields?: string | string[],
+  ) {
+    return this.activity.listForIssue(workspaceId, issueId, parseFields(fields));
+  }
+
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('issue', 'issueId')
+  @Get('issues/:issueId/activity/:activityId')
+  async oneForIssue(
+    @WorkspaceId() workspaceId: string,
+    @Param('issueId') issueId: string,
+    @Param('activityId') activityId: string,
+  ) {
+    return this.activity.getOne(workspaceId, issueId, activityId);
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)

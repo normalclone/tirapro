@@ -8,6 +8,7 @@ import type {
   DashboardScope,
   DefaultAssigneeMode,
   FilterVisibility,
+  FixVersionType,
   IssueTypeKey,
   MailStatus,
   NotificationType,
@@ -266,6 +267,19 @@ export interface IssueTransitionResultDto extends IssueDto {
   reasonSaved?: boolean;
 }
 
+/** Thành phần đang gắn vào công việc (rút gọn). */
+export interface IssueComponentRefDto {
+  id: ID;
+  name: string;
+}
+
+/** Phiên bản đang gắn vào công việc: FIX = sửa ở phiên bản, AFFECTS = bị ảnh hưởng ở phiên bản. */
+export interface IssueVersionRefDto {
+  id: ID;
+  name: string;
+  type: FixVersionType;
+}
+
 export interface IssueDto extends IssueSummaryDto {
   workspaceId: ID;
   projectId: ID;
@@ -300,6 +314,10 @@ export interface IssueDto extends IssueSummaryDto {
   rank: string;
   version: number;
   labels: LabelDto[];
+  /** Thành phần đã gắn (sắp theo tên). */
+  components: IssueComponentRefDto[];
+  /** Phiên bản đã gắn, cả FIX lẫn AFFECTS (sắp theo tên rồi loại). */
+  fixVersions: IssueVersionRefDto[];
   createdAt: ISODate;
   updatedAt: ISODate;
 }
