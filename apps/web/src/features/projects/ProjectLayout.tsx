@@ -65,6 +65,7 @@ export function ProjectLayout() {
   useProjectRealtime(project?.id);
 
   const [genOpen, setGenOpen] = useState(false);
+  const hasPicker = !!projects && projects.length > 1;
 
   const seg = loc.pathname.split('/')[3] || 'board';
   // Segment thực sự là "view" (bỏ qua create/issue…) để rail link đúng + không ghi đè lastView.
@@ -103,7 +104,7 @@ export function ProjectLayout() {
 
   const tabCls = (active: boolean) =>
     cn(
-      'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors',
+      'flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:px-2.5',
       active ? 'bg-primary-subtle text-primary' : 'text-muted hover:bg-surface-2 hover:text-ink',
     );
 
@@ -114,15 +115,18 @@ export function ProjectLayout() {
 
       {/* Nội dung: thanh nav view cố định + view hiện tại */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-3">
+        <div
+          data-audit="project-header"
+          className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-border px-4 py-3 sm:px-6"
+        >
           {/* Chuyển dự án trên mobile/tablet (rail dự án ẩn dưới lg) */}
-          {projects && projects.length > 1 && (
-            <div className="relative lg:hidden">
+          {hasPicker && (
+            <div className="relative min-w-0 max-w-xs flex-1 lg:hidden">
               <select
                 value={key}
                 onChange={(e) => navigate(`/p/${e.target.value}/${view}`)}
                 aria-label="Chuyển dự án"
-                className="h-8 max-w-[10rem] truncate rounded-md border border-border bg-surface pl-2.5 pr-7 text-sm font-medium text-ink transition-colors focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                className="h-9 w-full truncate rounded-md border border-border bg-surface pl-2.5 pr-7 text-sm font-medium text-ink transition-colors focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
                 {projects.map((p) => (
                   <option key={p.id} value={p.key}>
@@ -140,11 +144,24 @@ export function ProjectLayout() {
             <img
               src={project.avatarUrl}
               alt={project.name}
-              className="h-6 w-6 shrink-0 rounded-md object-cover"
+              className={cn(
+                'h-6 w-6 shrink-0 rounded-md object-cover',
+                hasPicker && 'hidden lg:block',
+              )}
             />
           )}
-          <h1 className="text-lg font-semibold tracking-tight">{project?.name ?? key}</h1>
-          <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-muted">
+          {/* Dưới lg đã có ô chọn dự án (hiện tên) → không lặp tên dự án lần hai. */}
+          <h1
+            className={cn('text-lg font-semibold tracking-tight', hasPicker && 'hidden lg:block')}
+          >
+            {project?.name ?? key}
+          </h1>
+          <span
+            className={cn(
+              'rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-muted',
+              hasPicker && 'hidden lg:inline',
+            )}
+          >
             {project?.key ?? key}
           </span>
 
@@ -152,19 +169,24 @@ export function ProjectLayout() {
             // Giữ chỗ cùng kích thước nút Tạo/AI trong lúc quyền đang tải → không nhảy bố cục khi nút hiện ra.
             <Skeleton
               aria-hidden
-              className={cn('ml-2 h-8 rounded-md', aiEnabled ? 'w-56' : 'w-32')}
+              className={cn(
+                'ml-auto h-8 rounded-md sm:ml-2',
+                aiEnabled ? 'w-20 sm:w-56' : 'w-9 sm:w-32',
+              )}
             />
           )}
           {canCreateIssue && (
             <>
               <Button
                 size="sm"
-                className="ml-2"
+                className="ml-auto sm:ml-2"
                 onClick={() => openCreate({ projectKey: key })}
                 disabled={!project?.id || !!project.archivedAt}
                 title={project?.archivedAt ? 'Dự án đã lưu trữ — chỉ đọc' : undefined}
+                aria-label="Tạo công việc"
               >
-                <Plus className="h-4 w-4" /> Tạo công việc
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Tạo công việc</span>
               </Button>
               {aiEnabled && (
                 <Button
@@ -173,30 +195,39 @@ export function ProjectLayout() {
                   onClick={() => setGenOpen(true)}
                   disabled={!project?.id || !!project.archivedAt}
                   data-tour="board-ai"
+                  aria-label="Tạo bằng AI"
                 >
-                  <Sparkles className="h-4 w-4 text-primary" /> Tạo bằng AI
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="hidden sm:inline">Tạo bằng AI</span>
                 </Button>
               )}
             </>
           )}
 
-          <div className="ml-auto flex items-center gap-1">
+          {/* Dải tab MỘT hàng: dưới lg xuống hàng riêng, tab không hoạt động chỉ còn biểu tượng (dưới sm) để "Thêm" luôn trong màn hình. */}
+          <div className="order-last flex w-full items-center gap-0.5 overflow-x-auto whitespace-nowrap lg:order-none lg:ml-auto lg:w-auto lg:gap-1">
             {VIEWS.map((v) => (
               <NavLink
                 key={v.seg}
                 to={`/p/${key}/${v.seg}`}
+                title={v.label}
+                aria-label={v.label}
                 className={({ isActive }) => tabCls(isActive)}
                 data-tour={v.seg === 'backlog' ? 'board-backlog' : undefined}
               >
-                <v.icon className="h-4 w-4" />
-                {v.label}
+                {({ isActive }) => (
+                  <>
+                    <v.icon className="h-4 w-4 shrink-0" />
+                    <span className={cn(!isActive && 'hidden sm:inline')}>{v.label}</span>
+                  </>
+                )}
               </NavLink>
             ))}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
                   type="button"
-                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] data-[state=open]:bg-surface-2"
+                  className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-muted sm:px-2.5 transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] data-[state=open]:bg-surface-2"
                 >
                   Thêm
                   <ChevronDown className="h-3.5 w-3.5 text-faint" />
