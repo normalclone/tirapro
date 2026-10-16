@@ -83,4 +83,26 @@ describe('stripText — @mention', () => {
   it('đổi token @[Tên](user:id) thành @Tên để AI không nhận chuỗi id', () => {
     expect(stripText('Chào @[Dũng](user:u1)')).toBe('Chào @Dũng');
   });
+
+  it('generateIssues (heuristic): dòng dẫn nhập bị bỏ, không cắt ";", "Sửa lỗi…" là Bug', async () => {
+    const extract = vi
+      .fn<(arg: ExtractArg) => Promise<{ data: null; reason?: string }>>()
+      .mockResolvedValue({ data: null, reason: 'unconfigured' });
+    const out = await make({ extract }).generateIssues('ws1', 'u1', {
+      projectId: 'p1',
+      text: [
+        'Hệ thống cửa hàng online cần các chức năng sau:',
+        '1. Tìm kiếm sản phẩm theo tên; sắp xếp theo giá',
+        '2. Giỏ hàng',
+        '3. Thanh toán',
+        '4. Sửa lỗi: giỏ hàng mất sản phẩm sau khi tải lại',
+      ].join('\n'),
+    });
+    expect(out.issues.map((i) => [i.summary, i.type])).toEqual([
+      ['Tìm kiếm sản phẩm theo tên; sắp xếp theo giá', 'Task'],
+      ['Giỏ hàng', 'Task'],
+      ['Thanh toán', 'Task'],
+      ['Sửa lỗi: giỏ hàng mất sản phẩm sau khi tải lại', 'Bug'],
+    ]);
+  });
 });

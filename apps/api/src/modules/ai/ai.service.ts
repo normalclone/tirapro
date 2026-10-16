@@ -11,6 +11,7 @@ import { mentionsToPlain } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ClaudeService } from './claude.service';
+import { guessIssueType, splitRequirements } from './heuristic-split';
 
 /** JSON Schema cho structured outputs: đề xuất issues. */
 const GENERATE_ISSUES_SCHEMA: Record<string, unknown> = {
@@ -111,23 +112,11 @@ export class AiService {
   }
 
   private heuristicIssues(text: string): AiGeneratedIssue[] {
-    const parts = text
-      .split(/\r?\n|(?<=[.!?])\s+|•|;/g)
-      .map((s) => s.replace(/^[-*•\d.)\s]+/, '').trim())
-      .filter((s) => s.length > 3);
-    const uniq = Array.from(new Set(parts)).slice(0, 15);
-    const list = uniq.length ? uniq : [text.trim().slice(0, 120)];
-    return list.map((s) => ({
+    return splitRequirements(text).map((s) => ({
       summary: s.slice(0, 120),
-      type: this.guessType(s),
+      type: guessIssueType(s),
       description: s,
     }));
-  }
-
-  private guessType(s: string): string {
-    if (/\b(lỗi|bug|sửa|fix|crash|error|hỏng)\b/i.test(s)) return 'Bug';
-    if (/(người dùng|user|là .* tôi muốn|as a |story)/i.test(s)) return 'Story';
-    return 'Task';
   }
 
   // ---------- Tóm tắt issue ----------

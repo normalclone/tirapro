@@ -47,6 +47,7 @@ function GenerateIssuesDialogInner({
   const [source, setSource] = useState<'claude' | 'heuristic' | null>(null);
   const [reason, setReason] = useState<AiFallbackReason | undefined>();
   const [creating, setCreating] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const defaultTypeId =
     meta?.issueTypes.find((t) => !t.isSubtask)?.id ?? meta?.issueTypes[0]?.id ?? '';
@@ -73,35 +74,52 @@ function GenerateIssuesDialogInner({
     setRows((r) => (r ? r.map((row, i) => (i === idx ? { ...row, ...p } : row)) : r));
   }
 
+  /**
+   * Tạo TUẦN TỰ (không song song) để số hiệu và thứ tự trong Việc chờ khớp thứ tự danh sách (mục đầu = số nhỏ nhất).
+   * Một việc lỗi không dừng cả lượt; việc đã tạo bị bỏ khỏi danh sách để bấm "Tạo" lại chỉ thử lại phần lỗi.
+   */
   async function createSelected() {
-    if (!rows) return;
-    const chosen = rows.filter((r) => r.selected && r.summary.trim());
+    if (!rows || creating) return;
+    const chosen = rows
+      .map((row, idx) => ({ row, idx }))
+      .filter((x) => x.row.selected && x.row.summary.trim());
     if (!chosen.length) {
       toast.error('Chưa chọn công việc nào');
       return;
     }
     setCreating(true);
-    const results = await Promise.allSettled(
-      chosen.map((r) =>
-        api.post('/issues', {
+    const created = new Set<number>();
+    setProgress({ done: 0, total: chosen.length });
+    for (const [n, { row: r, idx }] of chosen.entries()) {
+      try {
+        await api.post('/issues', {
           projectId,
           typeId: resolveTypeId(r.type),
           summary: r.summary.trim(),
           description: r.description ?? null,
           descriptionFormat: 'MARKDOWN',
           storyPoints: typeof r.storyPoints === 'number' ? r.storyPoints : undefined,
-        }),
-      ),
-    );
+        });
+        created.add(idx);
+      } catch {
+        // đếm ở dưới; không dừng cả lượt
+      }
+      setProgress({ done: n + 1, total: chosen.length });
+    }
     setCreating(false);
-    const ok = results.filter((x) => x.status === 'fulfilled').length;
-    const failed = results.length - ok;
-    if (ok) {
-      toast.success(`Đã tạo ${ok} công việc${failed ? `, ${failed} việc lỗi` : ''}`);
-      void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
-      onClose();
-    } else {
+    setProgress(null);
+    const failed = chosen.length - created.size;
+    if (created.size) void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
+    if (!created.size) {
       toast.error('Không tạo được công việc nào');
+    } else if (failed) {
+      toast.error(
+        `Đã tạo ${created.size} công việc, ${failed} việc lỗi — bấm Tạo để thử lại phần còn lại`,
+      );
+      setRows((cur) => (cur ? cur.filter((_, i) => !created.has(i)) : cur));
+    } else {
+      toast.success(`Đã tạo ${created.size} công việc`);
+      onClose();
     }
   }
 
@@ -125,7 +143,9 @@ function GenerateIssuesDialogInner({
               onClick={() => void createSelected()}
               disabled={!selectedCount || !meta}
             >
-              Tạo {selectedCount} công việc
+              {progress
+                ? `Đang tạo ${progress.done}/${progress.total}…`
+                : `Tạo ${selectedCount} công việc`}
             </Button>
           </>
         ) : undefined
