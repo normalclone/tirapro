@@ -82,7 +82,7 @@ export function ProjectsPage() {
       )}
 
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="relative min-w-[12rem] max-w-sm flex-1">
+        <div className="relative w-full min-w-[12rem] max-w-sm sm:flex-1">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
             aria-hidden
@@ -216,20 +216,23 @@ function ProjectList({
                 </div>
               </div>
             </div>
-            <span className="text-sm text-muted">{TYPE_LABEL[p.type] ?? p.type}</span>
-            <span className="flex min-w-0 items-center gap-2 text-sm text-muted">
-              {p.lead ? (
-                <>
-                  <Avatar name={p.lead.displayName} src={p.lead.avatarUrl} size={20} />
-                  <span className="truncate">{p.lead.displayName}</span>
-                </>
-              ) : (
-                <span className="text-faint">Chưa có</span>
-              )}
-            </span>
-            <span className="text-sm tabular-nums text-muted">
-              {p.issueCount ?? 0} {TERM.issue}
-            </span>
+            {/* Dưới sm: Loại · Phụ trách · Số việc nằm chung một hàng; từ sm: mỗi thứ là một cột của bảng. */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:contents">
+              <span className="text-sm text-muted">{TYPE_LABEL[p.type] ?? p.type}</span>
+              <span className="flex min-w-0 items-center gap-2 text-sm text-muted">
+                {p.lead ? (
+                  <>
+                    <Avatar name={p.lead.displayName} src={p.lead.avatarUrl} size={20} />
+                    <span className="truncate">{p.lead.displayName}</span>
+                  </>
+                ) : (
+                  <span className="text-faint">Chưa có</span>
+                )}
+              </span>
+              <span className="text-sm tabular-nums text-muted">
+                {p.issueCount ?? 0} {TERM.issue}
+              </span>
+            </div>
             <span className="relative z-10 flex items-center gap-3 text-sm">
               <Link to={`/p/${p.key}/board`} className="text-primary hover:underline">
                 {TERM.board}
