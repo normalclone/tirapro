@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   browserTimeZone,
   describeSchedule,
@@ -52,6 +52,17 @@ describe('tuỳ chọn', () => {
     expect(HOUR_OPTIONS).toHaveLength(24);
     expect(HOUR_OPTIONS[0]).toEqual({ value: 0, label: '00:00' });
     expect(HOUR_OPTIONS[23]).toEqual({ value: 23, label: '23:00' });
+  });
+
+  it('browserTimeZone đổi tên cũ Asia/Saigon thành Asia/Ho_Chi_Minh', () => {
+    const spy = vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+      timeZone: 'Asia/Saigon',
+    } as Intl.ResolvedDateTimeFormatOptions);
+    try {
+      expect(browserTimeZone()).toBe('Asia/Ho_Chi_Minh');
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('browserTimeZone trả múi giờ IANA hợp lệ (hoặc giá trị dự phòng)', () => {

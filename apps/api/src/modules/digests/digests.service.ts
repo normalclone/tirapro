@@ -474,7 +474,7 @@ export class DigestsService implements OnApplicationShutdown {
     const openTotal = openByCategory.todo + openByCategory.inProgress;
     return {
       id: 'summary',
-      title: 'Tổng kết tuần',
+      title: 'Công việc 7 ngày qua',
       lines: [
         `Tạo mới (7 ngày): ${created}`,
         `Đã xong (7 ngày): ${resolved}`,

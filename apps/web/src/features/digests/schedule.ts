@@ -43,10 +43,19 @@ export const TIMEZONE_FALLBACK = [
   'UTC',
 ];
 
+/** Tên cũ (alias) mà một số trình duyệt/hệ điều hành vẫn trả → tên IANA chuẩn (hiển thị đúng, khớp danh sách chọn). */
+const TZ_ALIAS: Record<string, string> = {
+  'Asia/Saigon': 'Asia/Ho_Chi_Minh',
+  'Asia/Calcutta': 'Asia/Kolkata',
+  'Asia/Katmandu': 'Asia/Kathmandu',
+  'Asia/Rangoon': 'Asia/Yangon',
+};
+
 /** Múi giờ của trình duyệt (đề xuất mặc định khi tạo báo cáo); lỗi → giờ Việt Nam. */
 export function browserTimeZone(): string {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Ho_Chi_Minh';
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Ho_Chi_Minh';
+    return TZ_ALIAS[tz] ?? tz;
   } catch {
     return 'Asia/Ho_Chi_Minh';
   }

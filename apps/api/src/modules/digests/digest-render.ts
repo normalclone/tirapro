@@ -19,8 +19,9 @@ function toUnits(
   model: DigestModel,
   esc: (s: string) => string,
   bold: (escaped: string) => string,
+  icon = '',
 ): Unit[] {
-  const units: Unit[] = [{ text: `📊 ${bold(esc(model.title))}`, content: false }];
+  const units: Unit[] = [{ text: `${icon}${bold(esc(model.title))}`, content: false }];
   if (model.subtitle) units.push({ text: esc(model.subtitle), content: false });
   for (const section of model.sections) {
     if (section.lines.length === 0) continue;
@@ -35,7 +36,7 @@ function toUnits(
  * và ghi "…(còn N dòng)" để người đọc biết bị cắt (cắt theo dòng nên không bao giờ cắt giữa thực thể `&amp;`).
  */
 export function renderTelegramHtml(model: DigestModel): string {
-  const units = toUnits(model, escapeHtml, (s) => `<b>${s}</b>`);
+  const units = toUnits(model, escapeHtml, (s) => `<b>${s}</b>`, '📊 ');
   const full = units.map((u) => u.text).join('\n');
   if (full.length <= TELEGRAM_MAX_LENGTH) return full;
 
