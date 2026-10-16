@@ -89,7 +89,12 @@ const RESOURCE_RESOLVERS: Record<
   // Trang wiki: projectId null = tài liệu chung (áp quyền workspace).
   wikiPage: {
     model: 'wikiPage',
-    where: inWorkspace,
+    // Trang của dự án đã xoá mềm = không tồn tại (guard 404), như các resolver theo dự án khác.
+    where: (value, workspaceId) => ({
+      id: value,
+      workspaceId,
+      OR: [{ projectId: null }, { project: { deletedAt: null } }],
+    }),
     select: projectIdOnly,
     project: ownProjectId,
   },

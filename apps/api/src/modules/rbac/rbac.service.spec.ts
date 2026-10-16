@@ -355,7 +355,12 @@ describe('RbacService.resolveProjectId — wikiPage (A8)', () => {
       projectId: 'P4',
     });
     expect(prisma.wikiPage.findFirst).toHaveBeenCalledWith({
-      where: { id: 'X1', workspaceId: 'W1' },
+      // Trang của dự án đã xoá mềm = không tồn tại (guard 404)
+      where: {
+        id: 'X1',
+        workspaceId: 'W1',
+        OR: [{ projectId: null }, { project: { deletedAt: null } }],
+      },
       select: { projectId: true },
     });
     prisma.wikiPage.findFirst.mockResolvedValueOnce({ projectId: null });
