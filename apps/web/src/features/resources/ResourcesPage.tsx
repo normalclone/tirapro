@@ -146,7 +146,6 @@ export function ResourcesPage() {
   const canManage = useAuth((s) => s.can('resource:manage'));
   const [tab, setTab] = useState<Tab>('load');
   const [startWeek, setStartWeek] = useState(() => isoDay(mondayOf(new Date())));
-  const [weekInputKey, setWeekInputKey] = useState(0);
   const [weeks, setWeeks] = useState('6');
   const [projectId, setProjectId] = useState('');
 
@@ -194,13 +193,12 @@ export function ResourcesPage() {
           </span>
           <div className="w-[10.5rem]">
             <DateInput
-              // Xoá trống ngày → khôi phục chữ tuần đang xem (remount theo `weekInputKey`).
-              key={weekInputKey}
               ariaLabel="Xem từ tuần chứa ngày"
               value={startWeek}
+              // Xoá trống ngày → rời ô thì điền lại tuần đang xem (không remount, không mất focus khi đang gõ).
+              restoreOnEmpty
               onChange={(iso) => {
                 if (iso) setStartWeek(isoDay(mondayOf(new Date(`${iso}T00:00:00`))));
-                else setWeekInputKey((k) => k + 1);
               }}
               className="h-9 text-sm"
             />

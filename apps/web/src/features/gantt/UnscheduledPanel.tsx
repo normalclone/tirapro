@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { IssueDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { DateInput } from '@/components/ui/DateInput';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 import { buildUnscheduledPatch, NO_SCHEDULE_PERM_HINT, type UnscheduledPatch } from './dragMath';
 
 function Row({
@@ -17,11 +18,13 @@ function Row({
   const [start, setStart] = useState('');
   const [due, setDue] = useState('');
   const [saving, setSaving] = useState(false);
+  const rowRef = useRef<HTMLLIElement>(null);
   const patch = buildUnscheduledPatch(start, due);
   const orderOk = !start || !due || start <= due;
 
   async function save() {
     if (!patch || !orderOk) return;
+    if (blockOnInvalidDate(rowRef.current)) return;
     setSaving(true);
     try {
       await onSave(issue, patch);
@@ -34,6 +37,7 @@ function Row({
 
   return (
     <li
+      ref={rowRef}
       className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2"
       title={canSchedule ? undefined : NO_SCHEDULE_PERM_HINT}
     >

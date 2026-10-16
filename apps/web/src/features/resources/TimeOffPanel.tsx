@@ -109,7 +109,7 @@ export function TimeOffPanel({
     if (!form.startDate || !form.endDate)
       return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
     if (form.endDate < form.startDate)
-      return toast.error('Ngày kết thúc phải bằng hoặc sau ngày bắt đầu');
+      return toast.error('Ngày kết thúc không được trước ngày bắt đầu');
 
     const payload = {
       userId: form.scope === 'workspace' ? null : form.userId,

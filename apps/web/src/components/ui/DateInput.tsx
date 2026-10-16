@@ -50,6 +50,15 @@ function useCustomValidity(ref: RefObject<HTMLInputElement | null>, msg: string)
   }, [ref, msg]);
 }
 
+/** Mở lịch hệ điều hành; trình duyệt từ chối (không có tương tác người dùng) thì thôi — vẫn gõ tay được. */
+function openNativePicker(el: HTMLInputElement | null) {
+  try {
+    el?.showPicker();
+  } catch {
+    /* bỏ qua */
+  }
+}
+
 /** `onCommit` không bắn trùng cùng một giá trị trong một lượt focus (Enter + blur, chọn lịch + blur). */
 function useCommitOnce(onCommit?: (iso: string) => void) {
   const last = useRef<string | null>(null);
@@ -100,6 +109,8 @@ export interface DateInputProps {
   max?: string;
   /** Câu báo khi ngày nằm ngoài [min, max] (mặc định chung chung; nên nói rõ, vd "Ngày kết thúc không được trước ngày bắt đầu"). */
   rangeError?: string;
+  /** Ô không cho trống: xoá hết chữ rồi rời ô → điền lại `value` hiện có (gõ lại từng ký tự vẫn được khi còn đang focus). */
+  restoreOnEmpty?: boolean;
   required?: boolean;
   disabled?: boolean;
   className?: string;
@@ -115,6 +126,7 @@ export function DateInput({
   min,
   max,
   rangeError,
+  restoreOnEmpty,
   required,
   disabled,
   className,
@@ -149,7 +161,10 @@ export function DateInput({
 
   /** Chữ đang gõ hợp lệ (vd `05/08/26`) → chuẩn hoá + báo lên; sai → giữ nguyên, hiện lỗi. */
   const settle = (): boolean => {
-    if (text === '') return true;
+    if (text === '') {
+      if (restoreOnEmpty && value) apply(value);
+      return true;
+    }
     const iso = parseViDate(text);
     if (iso !== null && inDateRange(iso, min, max)) {
       if (iso !== latest.current || text !== formatViDate(iso)) apply(iso);
@@ -180,14 +195,6 @@ export function DateInput({
     if (iso !== null && inDateRange(iso, min, max)) {
       e.preventDefault();
       apply(iso);
-    }
-  };
-
-  const openPicker = () => {
-    try {
-      pickerRef.current?.showPicker();
-    } catch {
-      /* trình duyệt từ chối (không có tương tác người dùng) — vẫn gõ tay được */
     }
   };
 
@@ -238,7 +245,7 @@ export function DateInput({
               const touchLike = isTouchLike(pointerType.current);
               if (!touchLike) inputRef.current?.focus();
             }}
-            onClick={openPicker}
+            onClick={() => openNativePicker(pickerRef.current)}
             className="absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
           >
             <CalendarDays className="h-4 w-4" aria-hidden />
