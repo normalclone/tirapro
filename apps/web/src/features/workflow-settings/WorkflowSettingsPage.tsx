@@ -374,7 +374,7 @@ function WorkflowRow({
         {inUse ? (
           <span
             className="shrink-0 text-xs text-faint"
-            title="Quy trình của dự án chỉ mất khi dự án bị xoá — chưa có cách gỡ khỏi dự án đang dùng."
+            title="Dự án đang dùng quy trình này (kể cả dự án đã xoá) vẫn giữ nó nên không xoá được — chưa có cách đổi quy trình của dự án."
           >
             Đang dùng — không xoá được
           </span>

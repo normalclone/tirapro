@@ -117,7 +117,7 @@ type TransitionRow = Prisma.WorkflowTransitionGetPayload<true>;
 const WORKFLOW_DUPLICATE = 'Đã có quy trình trùng tên — hãy đặt tên khác';
 const STATUS_DUPLICATE = 'Tên trạng thái đã tồn tại trong workflow';
 const workflowInUse = (keys: string[]) =>
-  `Quy trình đang được dự án {${keys.join(', ')}} dùng — quy trình của dự án chỉ mất khi dự án bị xoá`;
+  `Quy trình đang được dự án {${keys.join(', ')}} dùng — dự án (kể cả dự án đã xoá) vẫn giữ quy trình này nên không xoá được`;
 const STATUS_IN_USE =
   'Vẫn còn công việc đang ở trạng thái này — hãy chuyển chúng sang trạng thái khác trước khi xoá';
 

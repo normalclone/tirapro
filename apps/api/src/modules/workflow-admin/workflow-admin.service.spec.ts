@@ -203,7 +203,7 @@ describe('WorkflowAdminService.listWorkflows — usedBy', () => {
   it('removeWorkflow: đang dùng → báo mã dự án đang dùng, không xoá', async () => {
     const { service, prisma } = make({ projectId: null });
     prisma.project.findMany.mockResolvedValueOnce([{ key: 'WM' }, { key: 'HR' }] as never);
-    await expect(service.removeWorkflow('w1', 'wf1')).rejects.toThrow(/WM, HR/);
+    await expect(service.removeWorkflow('w1', 'wf1')).rejects.toThrow(/WM, HR.*kể cả dự án đã xoá/);
     expect(prisma.workflow.delete).not.toHaveBeenCalled();
   });
 });
