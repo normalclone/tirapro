@@ -112,6 +112,9 @@ export interface IssueListFilter {
   search?: string;
 }
 
+/** Số cấp tối đa khi đi ngược tổ tiên để kiểm vòng của cây việc. */
+const MAX_TREE_DEPTH = 100;
+
 @Injectable()
 export class IssuesService {
   private readonly logger = new Logger(IssuesService.name);
@@ -364,6 +367,71 @@ export class IssuesService {
       );
   }
 
+  /**
+   * Việc cha trong cây (`parentId`) hợp lệ: Epic là cấp cao nhất nên không có cha; cha phải cùng dự án và không phải
+   * sub-task. Chỉ gọi khi `parentId` đổi/được đặt (dữ liệu cũ không bị chặn oan khi sửa trường khác) — 404/422.
+   */
+  private async assertParentPlacement(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    self: { projectId: string; type: { key: string | null; hierarchyLevel: number } },
+    parentId: string,
+  ): Promise<void> {
+    if (self.type.key === 'EPIC' || self.type.hierarchyLevel >= 1)
+      throw new BusinessRuleException(
+        'Epic là cấp cao nhất — không thể đặt Epic vào bên trong một việc khác, chỉ có thể gắn việc vào Epic',
+      );
+    const parent = await db.issue.findFirst({
+      where: { id: parentId, workspaceId, deletedAt: null },
+      select: { projectId: true, type: { select: { isSubtask: true } } },
+    });
+    if (!parent)
+      throw new NotFoundAppException(
+        'Việc cha bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+      );
+    if (parent.projectId !== self.projectId)
+      throw new BusinessRuleException(
+        'Việc cha phải thuộc cùng dự án với công việc — hãy chọn công việc khác làm việc cha',
+      );
+    if (parent.type.isSubtask)
+      throw new BusinessRuleException(
+        'Việc con (sub-task) không thể làm việc cha của việc khác — hãy chọn việc cha là một việc thường',
+      );
+  }
+
+  /**
+   * Chặn vòng của CÂY VIỆC, tính theo đúng cha-trong-cây `parentId ?? epicId` (FE `treeParentId`): đi ngược tổ tiên
+   * từ `startId` (cha/epic mới), không được gặp lại chính `selfId`. Giới hạn độ sâu; vòng sẵn có không liên quan
+   * `selfId` (dữ liệu cũ) thì dừng, không chặn oan — 422.
+   */
+  private async assertNoTreeCycle(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    selfId: string,
+    startId: string,
+  ): Promise<void> {
+    const seen = new Set<string>();
+    let cur: string | null = startId;
+    for (let depth = 0; cur && depth < MAX_TREE_DEPTH; depth++) {
+      if (cur === selfId)
+        throw new BusinessRuleException(
+          'Không thể đặt công việc vào bên trong chính nhánh của nó (việc con/cháu hoặc việc thuộc epic này) vì sẽ tạo vòng lặp — hãy chọn một công việc ngoài nhánh này',
+        );
+      if (seen.has(cur)) return;
+      seen.add(cur);
+      const row: { parentId: string | null; epicId: string | null } | null =
+        await db.issue.findFirst({
+          where: { id: cur, workspaceId, deletedAt: null },
+          select: { parentId: true, epicId: true },
+        });
+      cur = row ? (row.parentId ?? row.epicId ?? null) : null;
+    }
+    if (cur)
+      throw new BusinessRuleException(
+        `Cây công việc quá sâu (tối đa ${MAX_TREE_DEPTH} cấp) — hãy chọn vị trí khác`,
+      );
+  }
+
   /** Epic khi TẠO việc: epic đích hợp lệ (+ chính việc không phải Epic, chỉ đường API — import giữ nguyên dữ liệu gốc). */
   private async assertEpicForCreate(
     db: Prisma.TransactionClient,
@@ -448,23 +516,22 @@ export class IssuesService {
         'Một công việc không thể là epic của chính nó — hãy chọn một epic khác',
       );
     await this.assertEpicValid(this.prisma, workspaceId, epicId, projectId, null);
-    let cur: string | null =
-      (
+    // Đi ngược tổ tiên theo cha-trong-cây `parentId ?? epicId` (cùng định nghĩa với FE `treeParentId`).
+    const parentOf = async (id: string): Promise<string | null> => {
+      const r: { parentId: string | null; epicId: string | null } | null =
         await this.prisma.issue.findFirst({
-          where: { id: epicId, workspaceId, deletedAt: null },
-          select: { epicId: true },
-        })
-      )?.epicId ?? null;
-    for (let depth = 0; cur && depth < 50; depth++) {
+          where: { id, workspaceId, deletedAt: null },
+          select: { parentId: true, epicId: true },
+        });
+      return r ? (r.parentId ?? r.epicId ?? null) : null;
+    };
+    let cur = await parentOf(epicId);
+    for (let depth = 0; cur && depth < MAX_TREE_DEPTH; depth++) {
       if (ids.includes(cur))
         throw new BusinessRuleException(
           'Không thể chọn epic này vì sẽ tạo vòng lặp (epic đó đang thuộc về một công việc đã chọn)',
         );
-      const next: { epicId: string | null } | null = await this.prisma.issue.findFirst({
-        where: { id: cur, workspaceId, deletedAt: null },
-        select: { epicId: true },
-      });
-      cur = next?.epicId ?? null;
+      cur = await parentOf(cur);
     }
   }
 
@@ -587,6 +654,19 @@ export class IssuesService {
     );
     if (input.epicId)
       await this.assertEpicForCreate(db, workspaceId, input, project.id, origin === 'api');
+    if (input.parentId && origin === 'api') {
+      const t = await db.issueType.findFirst({
+        where: { id: input.typeId, workspaceId },
+        select: { key: true, hierarchyLevel: true },
+      });
+      if (t)
+        await this.assertParentPlacement(
+          db,
+          workspaceId,
+          { projectId: project.id, type: t },
+          input.parentId,
+        );
+    }
     await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId, db);
 
     // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project
@@ -940,6 +1020,13 @@ export class IssuesService {
       await this.assertEpicValid(this.prisma, workspaceId, input.epicId, current.projectId, id);
       this.assertNotEpicWithEpic(current.type);
     }
+    // Cây việc: cha hợp lệ (không Epic có cha, cùng dự án, không sub-task) và không vòng theo `parentId ?? epicId`.
+    const newParent = input.parentId && input.parentId !== current.parentId ? input.parentId : null;
+    const newEpic = input.epicId && input.epicId !== current.epicId ? input.epicId : null;
+    if (newParent && newParent !== id)
+      await this.assertParentPlacement(this.prisma, workspaceId, current, newParent);
+    for (const start of [newParent, newEpic])
+      if (start && start !== id) await this.assertNoTreeCycle(this.prisma, workspaceId, id, start);
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
       await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
 
@@ -1040,6 +1127,7 @@ export class IssuesService {
     if (patch.assigneeId !== undefined && rows.some((r) => r.assigneeId !== patch.assigneeId))
       await this.assertAssigneeInWorkspace(workspaceId, patch.assigneeId);
     // storyPoints không cần kiểm quyền riêng: `ownOnly` ở trên đã 403 cả lô khi có việc của người khác.
+    if (patch.epicId) for (const r of rows) this.assertNotEpicWithEpic(r.type);
     if (patch.epicId)
       await this.assertEpicForBulk(
         workspaceId,
