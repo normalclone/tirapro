@@ -31,6 +31,11 @@ export interface ActionContext {
   dryRun: boolean;
   /** Metadata truyền vào IssuesService/CommentsService để sự kiện phát ra mang độ sâu + chuỗi quy tắc. */
   meta: AutomationEventMeta;
+  /**
+   * Việc thuộc một lần sửa hàng loạt của người dùng (`PATCH /issues/bulk`): hành động "gửi thông báo" gộp thành MỘT thông
+   * báo cho mỗi (quy tắc, người nhận) thay vì N thông báo.
+   */
+  batch?: { id: string; size: number };
   /** Issue ở trạng thái mới nhất mà quy tắc biết (cập nhật sau mỗi action ghi). */
   issue: IssueDto;
   /** Đọc lại issue từ DB (lấy version mới nhất trước khi ghi theo OCC). */

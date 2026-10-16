@@ -8,6 +8,9 @@
 export const DOMAIN_EVENTS = {
   ISSUE_CREATED: 'issue.created',
   ISSUE_UPDATED: 'issue.updated',
+  // payload { workspaceId, projectId, actorId, count, issueIds } — MỘT sự kiện cho cả lô `PATCH /issues/bulk` (SAU commit): Telegram gửi
+  // một tin gộp "N việc được cập nhật bởi X"; từng việc vẫn có ISSUE_UPDATED riêng kèm `batch: { id, size }`
+  ISSUES_BULK_UPDATED: 'issue.bulk_updated',
   ISSUE_SETS_CHANGED: 'issue.sets_changed', // payload IssueSetsChangedPayload — gắn/bỏ thành phần/phiên bản (KHÔNG đổi version của việc)
   ISSUE_MOVED: 'issue.moved',
   PROJECT_RANKS_REBALANCED: 'project.ranks_rebalanced', // payload { projectId } — rank cả project vừa được đánh số lại
@@ -33,6 +36,9 @@ export const DOMAIN_EVENTS = {
   PROJECT_VISIBILITY_CHANGED: 'project.visibility_changed',
   // payload { userId } — phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị): gateway ngắt mọi socket của user
   ACCOUNT_SESSIONS_REVOKED: 'account.sessions_revoked',
+  // payload { workspaceId, userIds?: string[] } (userIds vắng = cả workspace) — quyền xem của người dùng có thể đã đổi (vai trò
+  // workspace/dự án, bộ quyền vai trò, quản trị hệ thống…, SAU commit): gateway kiểm lại `canSee` cho socket đang ở room project/issue
+  ACCESS_CHANGED: 'access.changed',
   NOTIFICATION_CREATED: 'notification.created',
   MENTION_CREATED: 'mention.created',
   WORKLOG_CREATED: 'worklog.created',

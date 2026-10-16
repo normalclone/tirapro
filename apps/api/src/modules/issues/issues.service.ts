@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -64,6 +65,14 @@ const issueWriteInclude = {
   project: { select: { archivedAt: true } },
 } satisfies Prisma.IssueInclude;
 type IssueWriteRow = Prisma.IssueGetPayload<{ include: typeof issueWriteInclude }>;
+
+/** Trạng thái duyệt đặt lúc tạo việc từ form Báo lỗi/Đề xuất (IntakeService). */
+export interface IntakeCreateState {
+  triageState: 'PENDING';
+  triageSource: string;
+  occurrenceCount: number;
+  lastOccurredAt: Date;
+}
 
 /** Người báo tự thu hồi (xoá) công việc của mình trong khoảng này kể từ lúc tạo. */
 export const RETRACT_WINDOW_MS = 10 * 60_000;
@@ -635,9 +644,39 @@ export class IssuesService {
     userId: string,
     input: CreateIssueInput,
     opts?: AutomationEventMeta,
+    /**
+     * Tham số NỘI BỘ cho IntakeService (không đi qua DTO/zod): trạng thái duyệt đặt NGAY lúc tạo (cùng transaction, trước
+     * `emitCreated`) để `ISSUE_CREATED` mang `triageState: 'PENDING'` — việc chưa duyệt không lọt vào Board của người khác.
+     */
+    intake?: IntakeCreateState,
   ): Promise<IssueDto> {
-    const dto = await this.createCore(null, workspaceId, userId, input, null, 'api');
+    const dto = await this.createCore(
+      null,
+      workspaceId,
+      userId,
+      input,
+      null,
+      'api',
+      undefined,
+      intake,
+    );
     this.emitCreated(dto, userId, input.clientId, opts);
+    return dto;
+  }
+
+  /**
+   * Nạp lại việc rồi phát `ISSUE_UPDATED` với `IssueDto` đầy đủ + `changedFields` — cho nơi ghi cột trực tiếp ngoài
+   * `update()` (triage, intake). Ngữ cảnh HỆ THỐNG có chủ đích như `getDtosByIdsForSystem`: nghiệp vụ đã tự kiểm quyền.
+   */
+  async emitUpdatedFor(
+    workspaceId: string,
+    issueId: string,
+    actorId: string,
+    changedFields: string[],
+  ): Promise<IssueDto | null> {
+    const [dto] = await this.getDtosByIdsForSystem(workspaceId, [issueId]);
+    if (!dto) return null;
+    this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId, changedFields });
     return dto;
   }
 
@@ -685,6 +724,7 @@ export class IssuesService {
      */
     origin: 'api' | 'import' = 'api',
     fixedKey?: string,
+    intake?: IntakeCreateState,
   ): Promise<IssueDto> {
     const db: Prisma.TransactionClient = outerTx ?? this.prisma;
     // Chỉ đường import mới được mang mã ngoài vào, và phải đúng dạng mã Jira.
@@ -803,6 +843,7 @@ export class IssuesService {
           startDate: input.startDate ? new Date(input.startDate) : null,
           rank,
           createdById: userId,
+          ...(intake ?? {}),
         },
         include: issueInclude,
       });
@@ -1323,7 +1364,7 @@ export class IssuesService {
       if (labelOps && labelIds.length) await this.applyBulkLabels(tx, labelIds, labelOps);
     }, BULK_TX_OPTIONS);
 
-    const fresh = await this.emitBulkEvents(workspaceId, userId, changed, labelIds);
+    const fresh = await this.emitBulkEvents(workspaceId, userId, projectId, changed, labelIds);
     return { updated: result.map((r) => this.toDto(fresh.get(r.id) ?? r)), conflicts };
   }
 
@@ -1351,6 +1392,7 @@ export class IssuesService {
   private async emitBulkEvents(
     workspaceId: string,
     userId: string,
+    projectId: string,
     changed: Array<{ before: IssueRow; after: IssueRow }>,
     labelIds: string[],
   ): Promise<Map<string, IssueRow>> {
@@ -1372,6 +1414,15 @@ export class IssuesService {
     }
     const labelSet = new Set(labelIds);
     const changedIds = new Set(changed.map((c) => c.after.id));
+    // Cả lô là MỘT "lần sửa hàng loạt": mỗi ISSUE_UPDATED mang `batch` để Telegram bỏ qua từng việc (gửi một tin gộp qua
+    // ISSUES_BULK_UPDATED) và automation gộp thông báo. KHÔNG dùng `bulk: true` — cờ đó là "hệ thống phát hàng loạt" (thông
+    // báo "được giao"/theo dõi/automation bỏ qua hẳn), còn người dùng sửa hàng loạt vẫn phải báo người được giao.
+    const touched = new Set<string>(); // việc có ISSUE_UPDATED (đổi trạng thái thuần túy đã có ISSUE_TRANSITIONED riêng)
+    for (const { before, after } of changed)
+      if (changedFieldsOf(before, after).length > 0 || labelSet.has(after.id))
+        touched.add(after.id);
+    for (const id of labelSet) touched.add(id);
+    const batch = { id: randomUUID(), size: touched.size };
     for (const { before, after } of changed) {
       const dto = this.toDto(fresh.get(after.id) ?? after);
       const changedFields = changedFieldsOf(before, after);
@@ -1390,6 +1441,7 @@ export class IssuesService {
           issue: dto,
           actorId: userId,
           changedFields,
+          batch,
         });
       }
     }
@@ -1401,8 +1453,17 @@ export class IssuesService {
         issue: this.toDto(row),
         actorId: userId,
         changedFields: ['labels'],
+        batch,
       });
     }
+    if (touched.size > 0)
+      this.events.emit(DOMAIN_EVENTS.ISSUES_BULK_UPDATED, {
+        workspaceId,
+        projectId,
+        actorId: userId,
+        count: touched.size,
+        issueIds: [...touched],
+      });
     return fresh;
   }
 

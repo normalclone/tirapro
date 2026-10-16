@@ -425,6 +425,14 @@ export class IntakeService {
       return row;
     });
 
+    // Việc bị Từ chối quay lại hàng chờ: báo realtime (cùng IssueDto đầy đủ) để Board/Việc mới vào của người khác cập nhật.
+    if (target.triageState === 'DECLINED')
+      await this.issues
+        .emitUpdatedFor(workspaceId, target.id, userId, ['triageState'])
+        .catch((err: unknown) =>
+          this.logger.warn(`Không phát được cập nhật triage cho ${target.key}: ${errMsg(err)}`),
+        );
+
     const [user, severity] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } }),
       input.severityId && input.severityId !== target.severityId
@@ -471,17 +479,14 @@ export class IntakeService {
       ...(input.severityId ? { severityId: input.severityId } : {}),
       ...(input.environment ? { environment: input.environment } : {}),
     };
-    const created = await this.issues.create(workspaceId, userId, createInput);
-
-    // Không tăng `version` (giữ như cũ) để client chưa kịp đồng bộ không bị 409.
-    await this.prisma.issue.update({
-      where: { id: created.id },
-      data: {
-        triageState: 'PENDING',
-        triageSource: input.kind,
-        occurrenceCount: 1,
-        lastOccurredAt: new Date(),
-      },
+    // Trạng thái duyệt đặt NGAY lúc tạo (cùng transaction, trước khi phát ISSUE_CREATED): sự kiện realtime mang
+    // `triageState: 'PENDING'` nên Board của người khác không chèn việc chưa duyệt, automation "khi tạo việc" và thông báo
+    // "được giao" bỏ qua việc này cho tới khi được Nhận. Không tăng `version` (version bắt đầu như việc mới tạo).
+    const created = await this.issues.create(workspaceId, userId, createInput, undefined, {
+      triageState: 'PENDING',
+      triageSource: input.kind,
+      occurrenceCount: 1,
+      lastOccurredAt: new Date(),
     });
     // Người báo nhận cập nhật triage (nền tảng cho thông báo "từ chối có lý do" ở Q10).
     await this.prisma.issueWatcher.createMany({

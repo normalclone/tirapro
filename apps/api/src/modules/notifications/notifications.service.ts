@@ -22,6 +22,7 @@ import { cursorPage, type PageResult } from '../../common/dto/page-result';
 import { MailService } from '../mail/mail.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { resolveMentionedMembers } from '../../common/mentions';
+import { isUnreviewed } from '../../common/triage-visibility';
 import { COALESCE_TYPES, COALESCE_WINDOW_MS, mergeNotificationPayload } from './notification-merge';
 
 /** DTO trả về cho client — Date đã chuyển sang ISO string. */
@@ -136,6 +137,8 @@ interface IssueEventShape {
   assigneeId: string | null;
   status?: { name?: string } | null;
   description?: string | null;
+  /** Trạng thái duyệt (Triage) — việc chưa duyệt chưa báo "được giao". */
+  triageState?: string | null;
 }
 
 interface IssueTransitionedPayload {
@@ -386,6 +389,8 @@ export class NotificationsService {
     try {
       const { issue, actorId } = payload as IssueCreatedPayload;
       if (!issue?.assigneeId || issue.assigneeId === actorId) return;
+      // Việc chưa duyệt (báo lỗi chờ Triage): chưa báo "được giao" — báo khi được Nhận (TriageService phát assigneeId).
+      if (isUnreviewed(issue.triageState)) return;
       await this.notifyAssigned(issue, actorId);
     } catch (err) {
       this.logger.warn(`onIssueCreated thất bại: ${this.errMsg(err)}`);
@@ -398,6 +403,7 @@ export class NotificationsService {
       const { issue, actorId, changedFields, bulk } = payload as IssueUpdatedPayload;
       if (bulk) return;
       if (!issue?.assigneeId || issue.assigneeId === actorId) return;
+      if (isUnreviewed(issue.triageState)) return;
       // Người phụ trách vừa được đổi sang người này → "được giao việc" (thay cho "việc được cập nhật" để khỏi báo trùng).
       if (changedFields?.includes('assigneeId')) {
         await this.notifyAssigned(issue, actorId);

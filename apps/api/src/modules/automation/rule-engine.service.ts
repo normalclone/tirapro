@@ -25,6 +25,7 @@ import { RedisService } from '../../infra/redis/redis.service';
 import { withCronLock } from '../../common/cron-lock';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { WRITABLE_PROJECT_FILTER } from '../../common/project-writable';
+import { isUnreviewed } from '../../common/triage-visibility';
 import { CommentsService } from '../comments/comments.service';
 import { IssuesService } from '../issues/issues.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -51,6 +52,10 @@ interface EventPayload {
   fromStatusId?: string;
   changedFields?: string[];
   meta?: AutomationEventMeta;
+  /** Phát từ HỆ THỐNG hàng loạt (tự gán việc Jira, import): quy tắc không chạy theo từng việc. */
+  bulk?: boolean;
+  /** Người dùng sửa hàng loạt (`PATCH /issues/bulk`): quy tắc vẫn chạy nhưng thông báo được gộp. */
+  batch?: { id: string; size: number };
 }
 
 interface RunInput {
@@ -61,6 +66,8 @@ interface RunInput {
   triggerActorId: string | null;
   dryRun: boolean;
   trigger: RuleTrigger;
+  /** Lô sửa hàng loạt của người dùng — xem `EventPayload.batch`. */
+  batch?: { id: string; size: number };
   /** Quy tắc theo lịch đã lọc JQL ở truy vấn chọn issue nên không cần kiểm lại từng issue. */
   skipJql?: boolean;
 }
@@ -139,8 +146,13 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
   }
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
-  onIssueUpdated(p: EventPayload): Promise<void> {
-    return this.handle('ISSUE_UPDATED', p);
+  async onIssueUpdated(p: EventPayload): Promise<void> {
+    // Hệ thống phát hàng loạt (pending-assignee, import): không chạy quy tắc cho từng việc (như thông báo/theo dõi/Telegram).
+    if (p.bulk) return;
+    await this.handle('ISSUE_UPDATED', p);
+    // Việc chưa duyệt vừa được NHẬN: chạy các quy tắc "khi tạo việc" mà lúc tạo đã bị hoãn.
+    if (p.changedFields?.includes('triageState') && p.issue?.triageState === 'ACCEPTED')
+      await this.handle('ISSUE_CREATED', p);
   }
 
   @OnEvent(DOMAIN_EVENTS.COMMENT_ADDED)
@@ -153,6 +165,8 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     try {
       const issue = await this.issueOfEvent(p);
       if (!issue) return;
+      // Việc chưa duyệt (báo lỗi chờ Triage) chưa "được tạo" về mặt quy tắc: chạy khi được Nhận (xem onIssueUpdated).
+      if (trigger === 'ISSUE_CREATED' && isUnreviewed(issue.triageState)) return;
       const depth = p.meta?.automationDepth ?? 0;
       const chain = p.meta?.automationChain ?? [];
       const candidates = await this.rules.activeFor(issue.workspaceId, trigger, issue.projectId);
@@ -199,6 +213,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
           triggerActorId: p.actorId ?? null,
           dryRun: false,
           trigger,
+          batch: p.batch,
         });
       }
     } catch (err) {
@@ -347,6 +362,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
       trigger: input.trigger,
       triggerActorId: input.triggerActorId,
       dryRun: input.dryRun,
+      ...(input.batch ? { batch: input.batch } : {}),
       meta: { automationDepth: input.depth + 1, automationChain: [...input.chain, rule.id] },
       issue,
       reload: async () => {

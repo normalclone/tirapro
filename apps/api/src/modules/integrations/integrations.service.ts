@@ -80,6 +80,18 @@ interface IssueEventPayload {
     projectId: string;
   };
   actorId?: string;
+  /** Hệ thống phát hàng loạt (tự gán việc Jira…) — không gửi tin nào. */
+  bulk?: boolean;
+  /** Người dùng sửa hàng loạt — đã có một tin gộp (`ISSUES_BULK_UPDATED`). */
+  batch?: { id: string; size: number };
+}
+
+/** Payload của `DOMAIN_EVENTS.ISSUES_BULK_UPDATED`. */
+interface BulkUpdatedPayload {
+  workspaceId: string;
+  projectId: string;
+  actorId: string;
+  count: number;
 }
 
 /** Comment payload đi kèm comment.added. */
@@ -353,7 +365,34 @@ export class IntegrationsService {
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
   async onIssueUpdated(payload: IssueEventPayload): Promise<void> {
+    // Hàng loạt: hệ thống (`bulk`: tự gán việc Jira…) không gửi tin nào; người dùng sửa hàng loạt (`batch`) đã có MỘT tin
+    // gộp ở `onIssuesBulkUpdated` — không gửi từng việc (tránh N tin liên tiếp, 429 của Telegram).
+    if (payload?.bulk || payload?.batch) return;
     await this.dispatchIssue(payload, 'ISSUE_UPDATED');
+  }
+
+  /** Một lần sửa hàng loạt (`PATCH /issues/bulk`) → MỘT tin "N việc được cập nhật bởi X" cho mỗi dự án/kênh. */
+  @OnEvent(DOMAIN_EVENTS.ISSUES_BULK_UPDATED)
+  async onIssuesBulkUpdated(payload: BulkUpdatedPayload): Promise<void> {
+    try {
+      if (!payload?.workspaceId || !payload.count) return;
+      const [actor, project] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: payload.actorId },
+          select: { displayName: true },
+        }),
+        this.prisma.project.findFirst({
+          where: { id: payload.projectId, workspaceId: payload.workspaceId, deletedAt: null },
+          select: { key: true },
+        }),
+      ]);
+      const msg = `✏️ <b>${payload.count}</b> việc${project ? ` của <b>${esc(project.key)}</b>` : ''} được cập nhật bởi <i>${esc(actor?.displayName ?? 'một thành viên')}</i>`;
+      await this.fanout(payload.workspaceId, payload.projectId, 'ISSUE_UPDATED', msg);
+    } catch (err) {
+      this.logger.warn(
+        `Telegram producer (issue.bulk_updated) lỗi: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   @OnEvent(DOMAIN_EVENTS.COMMENT_ADDED)

@@ -42,7 +42,10 @@ function make(
     user: { findUnique: vi.fn(() => Promise.resolve({ displayName: 'Trang' })) },
     $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
   };
-  const issues = { create: vi.fn(() => Promise.resolve({ id: 'new1', key: 'DEMO-BUG-7' })) };
+  const issues = {
+    create: vi.fn((..._a: unknown[]) => Promise.resolve({ id: 'new1', key: 'DEMO-BUG-7' })),
+    emitUpdatedFor: vi.fn((..._a: unknown[]) => Promise.resolve({ id: 'old1' })),
+  };
   const comments = { create: vi.fn((..._a: unknown[]) => Promise.resolve({ id: 'c1' })) };
   const search = {
     similarIssueIds: vi.fn((..._a: unknown[]) => Promise.resolve(over.similar ?? [])),
@@ -211,6 +214,8 @@ describe('IntakeService.report — chịu lỗi và chống gửi đôi', () => 
       'w1',
       'u9',
       expect.objectContaining({ description: 'Mô tả vẫn được giữ' }),
+      undefined,
+      expect.objectContaining({ triageState: 'PENDING' }),
     );
     expect(comments.create).not.toHaveBeenCalled();
   });
@@ -281,16 +286,22 @@ describe('IntakeService.report — loại yêu cầu', () => {
         severityId: 'sv1',
         environment: { browser: 'Chrome 126' },
       }),
+      undefined,
+      expect.objectContaining({ triageState: 'PENDING' }),
     );
-    expect(issueUpdate).toHaveBeenCalledWith(
+    // Trạng thái duyệt đi cùng lúc TẠO (trước ISSUE_CREATED), không còn UPDATE riêng sau đó.
+    expect(issues.create).toHaveBeenCalledWith(
+      'w1',
+      'u9',
+      expect.anything(),
+      undefined,
       expect.objectContaining({
-        data: expect.objectContaining({
-          triageState: 'PENDING',
-          triageSource: 'FEATURE',
-          occurrenceCount: 1,
-        }) as unknown,
+        triageState: 'PENDING',
+        triageSource: 'FEATURE',
+        occurrenceCount: 1,
       }),
     );
+    expect(issueUpdate).not.toHaveBeenCalled();
     expect(prisma.issueWatcher.createMany).toHaveBeenCalledWith({
       data: [{ issueId: 'new1', userId: 'u9' }],
       skipDuplicates: true,
@@ -310,6 +321,8 @@ describe('IntakeService.report — loại yêu cầu', () => {
       'w1',
       'u9',
       expect.objectContaining({ typeId: 'tCustom' }),
+      undefined,
+      expect.objectContaining({ triageState: 'PENDING' }),
     );
   });
 
@@ -543,9 +556,17 @@ describe('IntakeService.report — báo trùng không đổi trạng thái duy�
   );
 
   it('việc đã bị Từ chối (DECLINED) mà có người báo lại => quay về hàng chờ PENDING', async () => {
-    const { service, issueUpdate } = make({ targetState: 'DECLINED' });
+    const { service, issueUpdate, issues } = make({ targetState: 'DECLINED' });
     await service.report('w1', 'u9', merge);
     expect(dataOf(issueUpdate)).toMatchObject({ triageState: 'PENDING' });
+    // Phát ISSUE_UPDATED (IssueDto đầy đủ) với changedFields gồm triageState để Board của người khác cập nhật.
+    expect(issues.emitUpdatedFor).toHaveBeenCalledWith('w1', 'old1', 'u9', ['triageState']);
+  });
+
+  it('báo lại việc ĐANG PENDING/ACCEPTED không phát ISSUE_UPDATED triage (trạng thái không đổi)', async () => {
+    const { service, issues } = make({ targetState: 'PENDING' });
+    await service.report('w1', 'u9', merge);
+    expect(issues.emitUpdatedFor).not.toHaveBeenCalled();
   });
 
   it('gộp tự động vào bug đang làm (ACCEPTED, status chưa Done) cũng giữ nguyên ACCEPTED', async () => {

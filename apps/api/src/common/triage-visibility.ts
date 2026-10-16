@@ -9,3 +9,11 @@ import type { Prisma } from '@prisma/client';
 export const TRIAGE_VISIBLE: Prisma.IssueWhereInput = {
   OR: [{ triageState: null }, { triageState: 'ACCEPTED' }],
 };
+
+/**
+ * Việc còn ở hàng đợi duyệt / bị tạm hoãn / bị từ chối (`triageState` khác null và khác ACCEPTED): chưa "chính thức" vào
+ * backlog nên chưa kích hoạt thông báo "được giao" và automation "khi tạo việc" — chúng chạy khi việc được Nhận.
+ */
+export function isUnreviewed(triageState: string | null | undefined): boolean {
+  return !!triageState && triageState !== 'ACCEPTED';
+}

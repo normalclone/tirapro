@@ -408,3 +408,37 @@ describe('IntegrationsService.addChannel — gắn kênh vào dự án riêng t�
     expect(access.assertCanSee).not.toHaveBeenCalled();
   });
 });
+
+describe('IntegrationsService — sửa hàng loạt không spam kênh (D-I2)', () => {
+  const ch = { externalId: 'c1', events: [], projectId: null, isEnabled: true };
+
+  it('ISSUE_UPDATED có bulk: true (hệ thống) hoặc batch (người dùng) => không gửi tin nào', async () => {
+    const { service, telegram } = setup({ kind: 'global' }, integ({ channels: [ch] }));
+    await service.onIssueUpdated({ ...payload, bulk: true });
+    await service.onIssueUpdated({ ...payload, batch: { id: 'b1', size: 30 } });
+    expect(telegram.send).not.toHaveBeenCalled();
+    await service.onIssueUpdated(payload);
+    expect(telegram.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('ISSUES_BULK_UPDATED => MỘT tin gộp "N việc … cập nhật bởi X" tới mỗi kênh của dự án', async () => {
+    const { service, prisma, telegram } = setup({ kind: 'global' }, integ({ channels: [ch] }));
+    (prisma as Record<string, unknown>).user = {
+      findUnique: vi.fn(() => Promise.resolve({ displayName: 'Phúc' })),
+    };
+    prisma.project.findFirst.mockImplementation((a: unknown) =>
+      Promise.resolve((a as { select?: { key?: boolean } }).select?.key ? { key: 'DEMO' } : null),
+    );
+    await service.onIssuesBulkUpdated({
+      workspaceId: 'w1',
+      projectId: 'p1',
+      actorId: 'u1',
+      count: 30,
+    });
+    expect(telegram.send).toHaveBeenCalledTimes(1);
+    const text = (telegram.send.mock.calls[0] as unknown as [unknown, string, string])[2];
+    expect(text).toContain('30');
+    expect(text).toContain('DEMO');
+    expect(text).toContain('Phúc');
+  });
+});
