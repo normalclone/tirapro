@@ -335,6 +335,7 @@ function ResultRow({
     <tr
       tabIndex={0}
       data-nav-item
+      data-issue-key={issue.key}
       aria-roledescription="dòng việc"
       onClick={(e: MouseEvent<HTMLTableRowElement>) => void openOnClick(e, issue.key, onOpen)}
       onKeyDown={(e: KeyboardEvent<HTMLTableRowElement>) =>
@@ -358,6 +359,7 @@ function ResultCard({ issue, onOpen }: { issue: IssueDto; onOpen: (key: string) 
       <button
         type="button"
         data-nav-item
+        data-issue-key={issue.key}
         onClick={() => onOpen(issue.key)}
         className="flex w-full flex-col gap-1.5 px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
       >

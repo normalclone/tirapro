@@ -248,6 +248,7 @@ export function TriageRow({
     <li data-issue-key={issue.key} className={cn(peeking && 'bg-primary-subtle/60')}>
       <div
         tabIndex={0}
+        data-nav-item
         aria-label={`Xem nhanh ${issue.key}: ${issue.summary}`}
         {...rowPeekProps(issue.key, onPeek)}
         className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]"

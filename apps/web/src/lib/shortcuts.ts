@@ -27,8 +27,8 @@ export const SHORTCUT_GROUPS: { scope: ShortcutScope; title: string }[] = [
 export const SHORTCUTS: readonly ShortcutDef[] = [
   // Trong công việc (trang chi tiết)
   { id: 'issue.assignMe', keys: ['i'], label: 'Gán cho tôi', scope: 'issue' },
-  { id: 'issue.assign', keys: ['a'], label: 'Gán cho người khác', scope: 'issue', pending: true },
-  { id: 'issue.edit', keys: ['e'], label: 'Sửa tiêu đề', scope: 'issue', pending: true },
+  { id: 'issue.assign', keys: ['a'], label: 'Gán cho người khác', scope: 'issue' },
+  { id: 'issue.edit', keys: ['e'], label: 'Sửa tiêu đề', scope: 'issue' },
   { id: 'issue.comment', keys: ['m'], label: 'Viết bình luận', scope: 'issue' },
   { id: 'issue.worklog', keys: ['w'], label: 'Ghi thời gian làm việc', scope: 'issue' },
   { id: 'issue.copyLink', keys: ['y'], label: 'Sao chép liên kết', scope: 'issue' },
@@ -40,8 +40,8 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     scope: 'issue',
   },
   // Trên board, Việc chờ, Việc mới vào, kết quả lọc
-  { id: 'board.next', keys: ['j'], label: 'Xuống thẻ / dòng kế', scope: 'board', pending: true },
-  { id: 'board.prev', keys: ['k'], label: 'Lên thẻ / dòng trước', scope: 'board', pending: true },
+  { id: 'board.next', keys: ['j'], label: 'Xuống thẻ / dòng kế', scope: 'board' },
+  { id: 'board.prev', keys: ['k'], label: 'Lên thẻ / dòng trước', scope: 'board' },
   {
     id: 'board.arrows',
     keys: ['←', '↑', '↓', '→'],
@@ -65,14 +65,12 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     keys: ['a'],
     label: 'Gán người cho thẻ đang chọn',
     scope: 'board',
-    pending: true,
   },
   {
     id: 'board.edit',
     keys: ['e'],
     label: 'Mở trang công việc để sửa tiêu đề',
     scope: 'board',
-    pending: true,
   },
   { id: 'board.esc', keys: ['Esc'], label: 'Huỷ kéo, đóng xem nhanh, bỏ chọn', scope: 'board' },
   {

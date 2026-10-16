@@ -44,6 +44,12 @@ describe('kho phím tắt', () => {
       expect(keyLabel(p.id)).toBeUndefined();
     }
   });
+  it('j k a e đã hiện ở bảng: j/k/a/e trên board, a/e trong công việc', () => {
+    const board = shortcutsOf('board').flatMap((s) => s.keys);
+    for (const k of ['j', 'k', 'a', 'e']) expect(board).toContain(k);
+    const issue = shortcutsOf('issue').flatMap((s) => s.keys);
+    for (const k of ['a', 'e']) expect(issue).toContain(k);
+  });
   it('mọi id có tiền tố đúng nhóm', () => {
     for (const s of SHORTCUTS) expect(s.id.startsWith(`${s.scope}.`)).toBe(true);
   });

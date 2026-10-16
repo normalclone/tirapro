@@ -7,7 +7,7 @@ import {
   type ComponentProps,
   type ComponentType,
 } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   Archive,
@@ -153,6 +153,22 @@ export function IssueDetailPage() {
 
   const [editingSummary, setEditingSummary] = useState(false);
   const [summary, setSummary] = useState('');
+  // Phím `e` ở danh sách điều hướng tới đây kèm `state.editSummary`: mở sẵn ô sửa tiêu đề khi đã biết được sửa (quyền tải xong).
+  const location = useLocation();
+  const editRequested = useRef(
+    (location.state as { editSummary?: boolean } | null)?.editSummary === true,
+  );
+  useEffect(() => {
+    if (!editRequested.current || !issue || !canEditThis) return;
+    editRequested.current = false;
+    setSummary(issue.summary);
+    setEditingSummary(true);
+    // Xoá cờ khỏi history để tải lại/Back không tự mở ô sửa lần nữa.
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: null },
+    );
+  }, [issue, canEditThis, navigate, location.pathname, location.search]);
   const [activityTab, setActivityTab] = useState<'comments' | 'history'>('comments');
   const [wfOpen, setWfOpen] = useState(false);
   const [wfSeen, setWfSeen] = useState(false); // đã từng mở → giữ dialog trong cây để hiệu ứng đóng chạy được
@@ -270,6 +286,13 @@ export function IssueDetailPage() {
       if (e.key === 'y' || e.key === 'Y') {
         e.preventDefault();
         copyLink();
+        return;
+      }
+      // e = sửa tiêu đề tại chỗ (cùng đường với bấm vào tiêu đề); preventDefault để chữ "e" không lọt vào ô vừa mở.
+      if ((e.key === 'e' || e.key === 'E') && canEditThis) {
+        e.preventDefault();
+        setSummary(issue.summary);
+        setEditingSummary(true);
         return;
       }
       const n = Number(e.key);

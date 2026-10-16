@@ -175,6 +175,11 @@ const AutomationPage = lazy(() =>
 const CommandPalette = lazy(() =>
   import('@/features/command/CommandPalette').then((m) => ({ default: m.CommandPalette })),
 );
+const QuickAssignDialog = lazy(() =>
+  import('@/features/quick-assign/QuickAssignDialog').then((m) => ({
+    default: m.QuickAssignDialog,
+  })),
+);
 const CreateIssueModal = lazy(() =>
   import('@/features/issues/CreateIssueModal').then((m) => ({ default: m.CreateIssueModal })),
 );
@@ -215,6 +220,7 @@ function RequireAuth() {
       </Suspense>
       <Suspense fallback={null}>
         <CommandPalette />
+        <QuickAssignDialog />
         <CreateIssueModal />
         <ReportIssueModal />
       </Suspense>
