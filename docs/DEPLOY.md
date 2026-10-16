@@ -95,7 +95,7 @@ Render/Docker (`render.yaml` `startCommand`, `Dockerfile` `CMD`) tự chạy bư
 
 ### Ghi chú phát hành — tài khoản & phiên đăng nhập
 
-- **Khoá tài khoản có hiệu lực ngay** (access token, refresh token, socket đang mở, API key của người đó). **Đặt lại mật khẩu, "Quên mật khẩu" hoàn tất, tự đổi mật khẩu và "Đăng xuất mọi thiết bị"** thu hồi mọi phiên web (access token cấp trước mốc thu hồi bị 401 ngay) và ngắt socket đang mở; tự đổi mật khẩu thì thiết bị đang đổi được cấp phiên mới.
+- **Khoá tài khoản có hiệu lực ngay** (access token, refresh token, socket đang mở, API key của người đó). **Đặt lại mật khẩu (admin), "Quên mật khẩu" hoàn tất, tự đổi mật khẩu và "Đăng xuất mọi thiết bị"** thu hồi mọi phiên web (access token cấp trước mốc thu hồi bị 401 ngay) và ngắt socket đang mở. Riêng **tự đổi mật khẩu**: thiết bị đang đổi được cấp phiên mới (token + cookie) và giữ/nối lại socket bằng token mới; socket và phiên của các thiết bị khác bị ngắt.
 - **API key KHÔNG bị thu hồi** khi đổi mật khẩu / đăng xuất mọi thiết bị: key là thông tin xác thực riêng của tích hợp (MCP, script). Key chỉ bị chặn khi tài khoản chủ key bị **khoá** (cache xác thực bị xoá ngay) hoặc khi chủ key bị **gỡ khỏi không gian làm việc**. Nghi lộ key thì thu hồi trong Cài đặt → API.
 - Phiên đang chạy trên bản cũ không có claim `iatMs` — vẫn hợp lệ, chỉ bị so theo giây.
 

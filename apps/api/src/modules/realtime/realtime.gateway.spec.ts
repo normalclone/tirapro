@@ -148,6 +148,12 @@ describe('RealtimeGateway.onSubscribe — kiểm quyền', () => {
   });
 });
 
+/** Bị từ chối thì không vào room dữ liệu nào (chỉ room user của chính mình được vào sớm để bắt sự kiện thu hồi). */
+function expectNoDataRooms(client: { join: ReturnType<typeof vi.fn> }) {
+  const joined = client.join.mock.calls.map((c) => c[0] as string);
+  expect(joined.filter((r) => r !== 'user:U1')).toEqual([]);
+}
+
 describe('RealtimeGateway.handleConnection — membership', () => {
   function connect(userRow: unknown, membership: unknown) {
     const ctx = makeGateway();
@@ -177,7 +183,7 @@ describe('RealtimeGateway.handleConnection — membership', () => {
     const { gateway, client } = connect({ status: 'ACTIVE', isSystemAdmin: false }, null);
     await gateway.handleConnection(client as never);
     expect(client.disconnect).toHaveBeenCalledWith(true);
-    expect(client.join).not.toHaveBeenCalled();
+    expectNoDataRooms(client);
   });
 
   it('từ chối user DEACTIVATED dù còn membership', async () => {
@@ -187,7 +193,7 @@ describe('RealtimeGateway.handleConnection — membership', () => {
     );
     await gateway.handleConnection(client as never);
     expect(client.disconnect).toHaveBeenCalledWith(true);
-    expect(client.join).not.toHaveBeenCalled();
+    expectNoDataRooms(client);
   });
 
   it('system admin được miễn kiểm membership', async () => {
@@ -270,7 +276,7 @@ describe('RealtimeGateway — phiên bị thu hồi (sessionsRevokedAt)', () => 
     const { gateway, client } = connect({ iat: 2000, iatMs: 2_000_400 });
     await gateway.handleConnection(client as never);
     expect(client.disconnect).toHaveBeenCalledWith(true);
-    expect(client.join).not.toHaveBeenCalled();
+    expectNoDataRooms(client);
   });
 
   it('token cũ chỉ có iat (trước mốc theo giây) cũng bị từ chối', async () => {
@@ -301,18 +307,50 @@ describe('RealtimeGateway — phiên bị thu hồi (sessionsRevokedAt)', () => 
     expect(client.join).not.toHaveBeenCalled();
   });
 
-  it('onSessionsRevoked ngắt mọi socket trong room user:<id> (qua adapter, kể cả node khác)', () => {
+  it('onSessionsRevoked ngắt mọi socket trong room user:<id> (qua adapter, kể cả node khác)', async () => {
     const { gateway, disconnectSockets } = makeGateway();
-    gateway.onSessionsRevoked({ userId: 'U1' });
+    await gateway.onSessionsRevoked({ userId: 'U1' });
     const server = (gateway as unknown as { server: { in: ReturnType<typeof vi.fn> } }).server;
     expect(server.in).toHaveBeenCalledWith('user:U1');
     expect(disconnectSockets).toHaveBeenCalledWith(true);
   });
 
-  it('onSessionsRevoked bỏ qua payload thiếu userId', () => {
+  it('onSessionsRevoked bỏ qua payload thiếu userId', async () => {
     const { gateway, disconnectSockets } = makeGateway();
-    gateway.onSessionsRevoked({});
+    await gateway.onSessionsRevoked({});
     expect(disconnectSockets).not.toHaveBeenCalled();
+  });
+
+  it('có revokedAtMs (tự đổi mật khẩu): chỉ ngắt socket mang token cấp TRƯỚC mốc, giữ socket token mới', async () => {
+    const { gateway, fetchSockets, disconnectSockets } = makeGateway();
+    const oldTab = { data: { iat: 2000, iatMs: 2_000_100 }, disconnect: vi.fn() };
+    const oldNoMs = { data: { iat: 1000 }, disconnect: vi.fn() };
+    const newTab = { data: { iat: 2000, iatMs: 2_000_900 }, disconnect: vi.fn() };
+    fetchSockets.mockResolvedValue([oldTab, oldNoMs, newTab]);
+    await gateway.onSessionsRevoked({ userId: 'U1', revokedAtMs: 2_000_500 });
+    const server = (gateway as unknown as { server: { in: ReturnType<typeof vi.fn> } }).server;
+    expect(server.in).toHaveBeenCalledWith('user:U1');
+    expect(oldTab.disconnect).toHaveBeenCalledWith(true);
+    expect(oldNoMs.disconnect).toHaveBeenCalledWith(true);
+    expect(newTab.disconnect).not.toHaveBeenCalled();
+    expect(disconnectSockets).not.toHaveBeenCalled();
+  });
+
+  it('handleConnection vào room user TRƯỚC khi kiểm quyền (sự kiện thu hồi tới giữa chừng không lọt)', async () => {
+    const ctx = makeGateway();
+    ctx.jwt.verify.mockReturnValue({ sub: 'U1', workspaceId: 'W1' });
+    const order: string[] = [];
+    const client = { ...makeClient({}), handshake: { auth: { token: 't' }, headers: {} } };
+    client.join = vi.fn((room: string) => {
+      order.push(`join:${room}`);
+    });
+    ctx.prisma.user.findUnique.mockImplementation(() => {
+      order.push('hasAccess');
+      return Promise.resolve({ status: 'ACTIVE', isSystemAdmin: false, sessionsRevokedAt: null });
+    });
+    await ctx.gateway.handleConnection(client as never);
+    expect(order.slice(0, 2)).toEqual(['join:user:U1', 'hasAccess']);
+    expect(order).toContain('join:ws:W1');
   });
 });
 

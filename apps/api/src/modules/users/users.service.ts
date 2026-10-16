@@ -143,8 +143,8 @@ export class UsersService {
     const passwordHash = await argon2.hash(input.newPassword);
     // Đổi mật khẩu = đăng xuất mọi phiên khác: `sessionsRevokedAt` giết access token còn hạn, thu hồi mọi refresh token,
     // xoá link "quên mật khẩu" đang chờ. Phiên HIỆN TẠI cũng bị cắt → controller cấp phiên mới cho thiết bị này.
+    const now = new Date();
     await this.prisma.$transaction(async (tx) => {
-      const now = new Date();
       await tx.user.update({ where: { id }, data: { passwordHash, sessionsRevokedAt: now } });
       await tx.refreshToken.updateMany({
         where: { userId: id, revokedAt: null },
@@ -152,7 +152,8 @@ export class UsersService {
       });
       await tx.passwordResetToken.deleteMany({ where: { userId: id, usedAt: null } });
     });
-    return { success: true };
+    // `revokedAtMs`: controller phát sự kiện ngắt socket CHỈ của token cấp trước mốc này (không ngắt thiết bị đang đổi).
+    return { success: true, revokedAtMs: now.getTime() };
   }
 
   /** Đặt ảnh đại diện mới (xoá ảnh cũ best-effort). */

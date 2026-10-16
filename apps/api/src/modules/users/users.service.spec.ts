@@ -93,7 +93,7 @@ describe('UsersService.changePassword — thu hồi phiên', () => {
         currentPassword: 'Old-Passw0rd',
         newPassword: 'New-Passw0rd1',
       }),
-    ).resolves.toEqual({ success: true });
+    ).resolves.toEqual({ success: true, revokedAtMs: expect.any(Number) as unknown });
     const upd = tx.user.update.mock.calls[0] as unknown as [
       { where: { id: string }; data: { passwordHash: string; sessionsRevokedAt: Date } },
     ];

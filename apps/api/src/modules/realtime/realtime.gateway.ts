@@ -80,11 +80,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       // Giữ mốc cấp token: mỗi lần subscribe kiểm lại với `sessionsRevokedAt` như guard HTTP.
       data.iat = payload.iat;
       data.iatMs = payload.iatMs;
+      // Vào room user TRƯỚC khi kiểm: sự kiện thu hồi phiên tới giữa hai bước vẫn ngắt được socket này
+      // (nếu chưa join, event lọt qua; còn kiểm sau thì `hasAccess` thấy mốc thu hồi). Chưa được cấp quyền gì khác ở bước này.
+      await client.join(rooms.user(payload.sub));
       if (!(await this.hasAccess(payload.sub, payload.workspaceId, payload))) {
         client.disconnect(true);
         return;
       }
-      void client.join(rooms.user(payload.sub));
       if (payload.workspaceId) void client.join(rooms.workspace(payload.workspaceId));
     } catch {
       client.disconnect(true);
@@ -414,14 +416,25 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   /**
-   * Phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị) → ngắt MỌI socket của họ.
+   * Phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị / đổi mật khẩu) → ngắt socket của họ.
    * `in(room).disconnectSockets` đi qua Redis adapter nên ngắt cả socket đang ở node khác.
+   * Có `revokedAtMs` (vd tự đổi mật khẩu): chỉ ngắt socket mang token cấp TRƯỚC mốc đó — socket mới của thiết bị đang đổi
+   * (token mới) được giữ, kể cả khi nó nối lại trước lúc sự kiện tới node này.
    */
   @OnEvent(DOMAIN_EVENTS.ACCOUNT_SESSIONS_REVOKED)
-  onSessionsRevoked(p: { userId?: string }): void {
+  async onSessionsRevoked(p: { userId?: string; revokedAtMs?: number }): Promise<void> {
     if (!p?.userId || !this.server) return;
     try {
-      this.server.in(rooms.user(p.userId)).disconnectSockets(true);
+      const room = this.server.in(rooms.user(p.userId));
+      if (p.revokedAtMs == null) {
+        room.disconnectSockets(true);
+        return;
+      }
+      const revokedAt = new Date(p.revokedAtMs);
+      for (const s of await room.fetchSockets()) {
+        const d = s.data as { iat?: number; iatMs?: number };
+        if (isSessionRevoked(d, revokedAt)) s.disconnect(true);
+      }
     } catch (err) {
       this.logger.warn(
         `Ngắt socket của phiên bị thu hồi thất bại: ${err instanceof Error ? err.message : String(err)}`,
