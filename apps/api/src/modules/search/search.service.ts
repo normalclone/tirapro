@@ -265,10 +265,12 @@ export class SearchService {
   /**
    * Dịch JQL → `where` Prisma (+ orderBy, rankHint) — dùng chung cho `search()` và `count()`. Chưa ghép phạm vi
    * workspace/dự án người xem (nơi gọi ghép: `IssuesService.query` hoặc `count`). JQL rỗng → `where` rỗng.
+   * `currentUserId = null`: ngữ cảnh hệ thống (đếm công khai cho lịch sử KR) — không kiểm giá trị theo quyền ai,
+   * full-text chỉ trong dự án công khai, và `currentUser()`/`me` không có nghĩa.
    */
   private async buildWhere(
     workspaceId: string,
-    currentUserId: string,
+    currentUserId: string | null,
     jql: string | undefined,
     projectId: string | undefined,
     checkValues?: boolean,
@@ -284,7 +286,7 @@ export class SearchService {
 
     if (jql && jql.trim()) {
       const ast = this.parse(jql);
-      if (checkValues) {
+      if (checkValues && currentUserId) {
         const [first] = await this.findInvalidValues(workspaceId, currentUserId, ast.where);
         if (first) throw new BusinessRuleException(first.message);
       }
@@ -301,7 +303,7 @@ export class SearchService {
         );
         if (res) fulltext.set(term, res.ids); // null = chưa có searchVector → compiler dùng contains
       }
-      const compiled = compileJql(ast, { currentUserId, fulltext });
+      const compiled = compileJql(ast, { currentUserId: currentUserId ?? '', fulltext });
       where = compiled.where;
       orderBy = compiled.orderBy;
       const primary = primaryFulltextTerm(ast.where);
@@ -329,6 +331,26 @@ export class SearchService {
   }
 
   /**
+   * Đếm việc khớp JQL trên dự án CÔNG KHAI (ngữ cảnh hệ thống, không có người xem) — cron chụp lịch sử Key Result (L29)
+   * dùng để số lịch sử không lộ dự án riêng tư. `currentUser()` không có nghĩa ở đây → 422.
+   */
+  async countPublic(workspaceId: string, jql: string): Promise<number> {
+    if (/\bcurrentUser\s*\(/i.test(jql))
+      throw new BusinessRuleException(
+        'JQL dùng currentUser() phụ thuộc người xem — không đo được cho lịch sử chung',
+      );
+    const { where } = await this.buildWhere(workspaceId, null, jql, undefined, false);
+    return this.prisma.issue.count({
+      where: {
+        AND: [
+          { workspaceId, deletedAt: null, project: { deletedAt: null, isPrivate: false } },
+          where,
+        ],
+      },
+    });
+  }
+
+  /**
    * Phạm vi project cho truy vấn full-text của JQL: `opts.projectId` ∩ project của điều kiện
    * `project = X` / `IN (…)` trên chuỗi AND thuần, giao với tập dự án người xem thấy. undefined = cả workspace.
    * Chỉ để xếp hạng tốt hơn (không phí top-200 vào dự án ẩn): lọc an toàn thật nằm ở scope của `issues.query`.
@@ -337,7 +359,7 @@ export class SearchService {
     workspaceId: string,
     where: JqlNode | null,
     projectId: string | undefined,
-    viewerId: string,
+    viewerId: string | null,
   ): Promise<string[] | undefined> {
     let scopeIds: string[] | undefined = projectId ? [projectId] : undefined;
     const keys = topLevelProjectKeys(where);
@@ -357,9 +379,17 @@ export class SearchService {
   private async intersectVisible(
     workspaceId: string,
     scopeIds: string[] | undefined,
-    viewerId: string,
+    viewerId: string | null,
   ): Promise<string[] | undefined> {
-    const visible = await this.access.visibleProjectIds(viewerId, workspaceId);
+    // Ngữ cảnh hệ thống: chỉ dự án công khai.
+    const visible = viewerId
+      ? await this.access.visibleProjectIds(viewerId, workspaceId)
+      : (
+          await this.prisma.project.findMany({
+            where: { workspaceId, deletedAt: null, isPrivate: false },
+            select: { id: true },
+          })
+        ).map((p) => p.id);
     if (visible === null) return scopeIds;
     return scopeIds ? scopeIds.filter((id) => visible.includes(id)) : visible;
   }

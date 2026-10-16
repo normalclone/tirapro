@@ -5,6 +5,8 @@ import { GoalsService } from './goals.service';
 const ACCESS_ALL = { visibleWhere: vi.fn(() => Promise.resolve({})) };
 /** KrMeasureService giả: không KR tự đo nào được đo (mặc định cho test không liên quan tới L25). */
 const NO_MEASURE = { measure: vi.fn(() => Promise.resolve(new Map())) };
+/** KrSnapshotCron giả: không chụp gì. */
+const NO_SNAPSHOT = { snapshotKeyResult: vi.fn(() => Promise.resolve()) };
 
 type IssueWhere = { where: Record<string, unknown> };
 const LIVE = { deletedAt: null };
@@ -16,6 +18,7 @@ describe('GoalsService — không đếm/gắn issue của dự án xoá mềm',
       { issue: { findMany } } as never,
       ACCESS_ALL as never,
       NO_MEASURE as never,
+      NO_SNAPSHOT as never,
     );
     const validate = (
       service as unknown as {
@@ -37,6 +40,7 @@ describe('GoalsService — không đếm/gắn issue của dự án xoá mềm',
       { objective: { findMany } } as never,
       ACCESS_ALL as never,
       NO_MEASURE as never,
+      NO_SNAPSHOT as never,
     );
     await service.list('w1', {}, 'u0');
     const { select } = (
@@ -81,7 +85,12 @@ function setup(archived: boolean, objectiveProject = true) {
     $transaction: vi.fn(() => Promise.resolve([])),
   };
   return {
-    service: new GoalsService(prisma as never, ACCESS_ALL as never, NO_MEASURE as never),
+    service: new GoalsService(
+      prisma as never,
+      ACCESS_ALL as never,
+      NO_MEASURE as never,
+      NO_SNAPSHOT as never,
+    ),
     prisma,
   };
 }
@@ -150,7 +159,12 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
     };
     const access = { visibleWhere: vi.fn(() => Promise.resolve(visible)) };
     return {
-      service: new GoalsService(prisma as never, access as never, NO_MEASURE as never),
+      service: new GoalsService(
+        prisma as never,
+        access as never,
+        NO_MEASURE as never,
+        NO_SNAPSHOT as never,
+      ),
       prisma,
       access,
     };
@@ -305,7 +319,12 @@ describe('GoalsService — KR tự đo (L25)', () => {
     };
     const measure = { measure: vi.fn((..._a: unknown[]) => Promise.resolve(measured)) };
     return {
-      service: new GoalsService(prisma as never, ACCESS_ALL as never, measure as never),
+      service: new GoalsService(
+        prisma as never,
+        ACCESS_ALL as never,
+        measure as never,
+        NO_SNAPSHOT as never,
+      ),
       measure,
     };
   }
@@ -316,7 +335,7 @@ describe('GoalsService — KR tự đo (L25)', () => {
     ]);
     const { service, measure } = make([krRow({})], measured);
     const goal = await service.get('w1', 'o1', 'u1');
-    expect(measure.measure).toHaveBeenCalledWith('w1', 'u1', [
+    expect(measure.measure).toHaveBeenCalledWith('w1', { viewerId: 'u1' }, [
       expect.objectContaining({ id: 'k1', source: 'OPEN_BUGS' }),
     ]);
     expect(goal.keyResults[0]).toMatchObject({
@@ -378,7 +397,12 @@ describe('GoalsService — ghi KR tự đo (L25)', () => {
       measure: vi.fn(() => Promise.resolve(new Map())),
       validateConfig: vi.fn((..._a: unknown[]) => Promise.resolve()),
     };
-    const service = new GoalsService(prisma as never, ACCESS_ALL as never, measure as never);
+    const service = new GoalsService(
+      prisma as never,
+      ACCESS_ALL as never,
+      measure as never,
+      NO_SNAPSHOT as never,
+    );
     // đọc lại sau ghi: không phải đối tượng kiểm của test này
     (service as unknown as { read: () => Promise<unknown> }).read = () => Promise.resolve({});
     return { service, prisma, measure };
@@ -476,7 +500,12 @@ describe('GoalsService — check-in Key Result (L26)', () => {
       },
       $transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
     };
-    const service = new GoalsService(prisma as never, ACCESS_ALL as never, NO_MEASURE as never);
+    const service = new GoalsService(
+      prisma as never,
+      ACCESS_ALL as never,
+      NO_MEASURE as never,
+      NO_SNAPSHOT as never,
+    );
     (service as unknown as { read: () => Promise<unknown> }).read = () =>
       Promise.resolve({ ok: 1 });
     return { service, prisma, checkInCreate, krUpdate };
@@ -560,7 +589,7 @@ describe('GoalsService — check-in Key Result (L26)', () => {
     );
     expect(args.map((a) => a.take)).toEqual([30, 50, 1]);
     expect(args[0]!.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
-    expect(args[0]!.where).toEqual({ keyResultId: 'k1' });
+    expect(args[0]!.where).toEqual({ keyResultId: 'k1', source: 'MANUAL' });
   });
 
   it('listCheckIns: KR của mục tiêu không thấy/không có → 404', async () => {
@@ -568,5 +597,225 @@ describe('GoalsService — check-in Key Result (L26)', () => {
     await expect(service.listCheckIns('w1', 'o1', 'k1', 10, 'u1')).rejects.toMatchObject({
       status: 404,
     });
+  });
+});
+
+const TODAY = new Date('2026-10-16T05:00:00Z');
+type Row = {
+  keyResultId: string;
+  value: number;
+  createdAt: Date;
+  snapshotDate: Date | null;
+  source: 'AUTO' | 'MANUAL';
+};
+
+const row = (
+  keyResultId: string,
+  day: string,
+  value: number,
+  source: Row['source'] = 'AUTO',
+): Row => ({
+  keyResultId,
+  value,
+  source,
+  snapshotDate: source === 'AUTO' ? new Date(`${day}T00:00:00Z`) : null,
+  createdAt: new Date(`${day}T0${source === 'AUTO' ? 1 : 9}:30:00Z`),
+});
+
+function make(opts: {
+  period?: string;
+  projectId?: string | null;
+  krs: Array<Record<string, unknown>>;
+  rows: Row[];
+  canSee?: (projectId: string) => boolean;
+}) {
+  const prisma = {
+    objective: {
+      findFirst: vi.fn((_a?: unknown) =>
+        Promise.resolve({
+          id: 'o1',
+          period: opts.period ?? '2026-Q4',
+          projectId: opts.projectId ?? null,
+          keyResults: opts.krs,
+        }),
+      ),
+    },
+    keyResultCheckIn: {
+      findMany: vi.fn((_a?: unknown) => Promise.resolve(opts.rows)),
+    },
+  };
+  const access = {
+    visibleWhere: vi.fn(() => Promise.resolve({})),
+    canSee: vi.fn((_u: string, _w: string, p: string) => Promise.resolve(opts.canSee?.(p) ?? true)),
+  };
+  const service = new GoalsService(
+    prisma as never,
+    access as never,
+    NO_MEASURE as never,
+    NO_SNAPSHOT as never,
+  );
+  return { service, prisma, access };
+}
+
+const kr = (id: string, over: Record<string, unknown> = {}) => ({
+  id,
+  name: `KR ${id}`,
+  unit: 'NUMBER',
+  unitLabel: 'bug',
+  startValue: 6,
+  targetValue: 0,
+  source: 'MANUAL',
+  sourceConfig: null,
+  createdAt: new Date('2026-10-01T00:00:00Z'),
+  ...over,
+});
+
+describe('GoalsService.progressHistory (L29)', () => {
+  it('điền bù ngày thiếu bằng giá trị trước đó (bước thang) tới hôm nay; KR đo ngược 6→0, value 3 = 50%', async () => {
+    const { service } = make({
+      krs: [kr('k1')],
+      rows: [row('k1', '2026-10-13', 6), row('k1', '2026-10-15', 3)],
+    });
+    const h = await service.progressHistory('w1', 'o1', 'u1', 4, TODAY);
+    expect(h.from).toBe('2026-10-13');
+    expect(h.to).toBe('2026-10-16');
+    expect(h.keyResults[0]!.points.map((p) => [p.date, p.value, p.progress])).toEqual([
+      ['2026-10-13', 6, 0],
+      ['2026-10-14', 6, 0],
+      ['2026-10-15', 3, 50],
+      ['2026-10-16', 3, 50],
+    ]);
+  });
+
+  it('không tạo điểm trước dòng dữ liệu đầu của KR; objective = trung bình các KR đã có điểm tại ngày đó', async () => {
+    const { service } = make({
+      krs: [kr('k1'), kr('k2', { startValue: 0, targetValue: 10 })],
+      rows: [
+        row('k1', '2026-10-14', 3), // 50
+        row('k2', '2026-10-15', 10), // 100
+      ],
+    });
+    const h = await service.progressHistory('w1', 'o1', 'u1', 3, TODAY);
+    expect(h.keyResults[1]!.points[0]!.date).toBe('2026-10-15');
+    expect(h.objective).toEqual([
+      { date: '2026-10-14', progress: 50 },
+      { date: '2026-10-15', progress: 75 },
+      { date: '2026-10-16', progress: 75 },
+    ]);
+  });
+
+  it('check-in tay cùng ngày với bản chụp thắng (muộn hơn); auto = true cho điểm từ bản chụp', async () => {
+    const { service } = make({
+      krs: [kr('k1')],
+      rows: [row('k1', '2026-10-15', 5, 'AUTO'), row('k1', '2026-10-15', 4, 'MANUAL')],
+    });
+    const h = await service.progressHistory('w1', 'o1', 'u1', 2, TODAY);
+    const p = h.keyResults[0]!.points.find((x) => x.date === '2026-10-15')!;
+    expect(p.value).toBe(4);
+    expect(p.auto).toBe(false);
+  });
+});
+
+describe('GoalsService.progressHistory — phạm vi xem, kỳ vọng, giới hạn (L29)', () => {
+  it('KR có projectId mà người xem không thấy → points [] + scopeNote; không truy vấn lịch sử của nó', async () => {
+    const { service, prisma } = make({
+      krs: [kr('k1', { source: 'OPEN_BUGS', sourceConfig: { projectId: 'hr' } }), kr('k2')],
+      rows: [row('k2', '2026-10-16', 3)],
+      canSee: (p) => p !== 'hr',
+    });
+    const h = await service.progressHistory('w1', 'o1', 'u1', 2, TODAY);
+    expect(h.keyResults[0]).toMatchObject({
+      id: 'k1',
+      points: [],
+      scopeNote: 'Dự án riêng tư — bạn không có quyền xem lịch sử',
+    });
+    expect(h.keyResults[1]!.scopeNote).toBeNull();
+    const where = (
+      prisma.keyResultCheckIn.findMany.mock.calls[0]![0] as {
+        where: { keyResultId: { in: string[] } };
+      }
+    ).where;
+    expect(where.keyResultId.in).toEqual(['k2']);
+    // objective chỉ tính KR người xem thấy
+    expect(h.objective.every((o) => o.progress === 50)).toBe(true);
+  });
+
+  it('expected: kỳ quý có mốc theo thời gian, kỳ tự do → null', async () => {
+    const q = await make({
+      krs: [kr('k1')],
+      rows: [row('k1', '2026-10-15', 3)],
+    }).service.progressHistory('w1', 'o1', 'u1', 2, TODAY);
+    expect(q.period).toBe('2026-Q4');
+    expect(q.expected!.map((e) => e.date)).toEqual(['2026-10-15', '2026-10-16']);
+    expect(q.expected![1]!.progress).toBeGreaterThan(q.expected![0]!.progress);
+    const free = await make({
+      period: 'Sprint 5',
+      krs: [kr('k1')],
+      rows: [],
+    }).service.progressHistory('w1', 'o1', 'u1', 2, TODAY);
+    expect(free.expected).toBeNull();
+  });
+
+  it('days > 365 bị kẹp 365; truy vấn một findMany có orderBy + take ≤ 365 × số KR', async () => {
+    const { service, prisma } = make({ krs: [kr('k1'), kr('k2')], rows: [] });
+    const h = await service.progressHistory('w1', 'o1', 'u1', 9999, TODAY);
+    expect(h.from).toBe('2025-10-17'); // 365 ngày gồm hôm nay
+    expect(prisma.keyResultCheckIn.findMany).toHaveBeenCalledTimes(1);
+    const arg = prisma.keyResultCheckIn.findMany.mock.calls[0]![0] as {
+      orderBy: unknown;
+      take: number;
+    };
+    expect(arg.take).toBe(365 * 2);
+    expect(arg.orderBy).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
+  });
+
+  it('mục tiêu người xem không thấy → 404 (cùng điều kiện phạm vi)', async () => {
+    const { service, prisma } = make({ krs: [], rows: [] });
+    prisma.objective.findFirst.mockResolvedValueOnce(null as never);
+    await expect(service.progressHistory('w1', 'o1', 'u1', 30, TODAY)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+});
+
+describe('GoalsService — chụp ngay khi KR đổi sang tự đo (L29)', () => {
+  it('addKeyResult tự đo → snapshotKeyResult sau khi ghi; KR nhập tay → không chụp; lỗi chụp không làm hỏng yêu cầu', async () => {
+    const snapshots = { snapshotKeyResult: vi.fn((..._a: unknown[]) => Promise.resolve()) };
+    const prisma = {
+      objective: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'o1', projectId: null, project: null })),
+      },
+      keyResult: { create: vi.fn(() => Promise.resolve({ id: 'knew' })) },
+    };
+    const measure = {
+      measure: vi.fn(() => Promise.resolve(new Map())),
+      validateConfig: vi.fn(() => Promise.resolve()),
+    };
+    const service = new GoalsService(
+      prisma as never,
+      ACCESS_ALL as never,
+      measure as never,
+      snapshots as never,
+    );
+    (service as unknown as { read: () => Promise<unknown> }).read = () => Promise.resolve({});
+    await service.addKeyResult(
+      'w1',
+      'o1',
+      { name: 'Bug', targetValue: 0, source: 'OPEN_BUGS', sourceConfig: {} },
+      'u1',
+    );
+    expect(snapshots.snapshotKeyResult).toHaveBeenCalledWith('knew');
+    snapshots.snapshotKeyResult.mockClear();
+    await service.addKeyResult('w1', 'o1', { name: 'Tay', targetValue: 5 }, 'u1');
+    expect(snapshots.snapshotKeyResult).not.toHaveBeenCalled();
+    snapshots.snapshotKeyResult.mockRejectedValueOnce(new Error('boom'));
+    await expect(
+      service.addKeyResult(
+        'w1',
+        'o1',
+        { name: 'Bug2', targetValue: 0, source: 'OPEN_BUGS', sourceConfig: {} },
+        'u1',
+      ),
+    ).resolves.toBeDefined();
   });
 });

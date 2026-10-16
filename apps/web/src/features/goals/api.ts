@@ -87,6 +87,28 @@ export interface KeyResultInput {
   unitLabel?: string | null;
 }
 
+/** GET /goals/:id/progress-history — lịch sử tiến độ theo ngày (L29). */
+export interface GoalProgressHistory {
+  period: string;
+  /** YYYY-MM-DD */
+  from: string;
+  to: string;
+  keyResults: Array<{
+    id: string;
+    name: string;
+    unit: KeyResultUnit;
+    unitLabel: string | null;
+    source: KeyResultSource;
+    points: Array<{ date: string; value: number; progress: number; auto: boolean }>;
+    /** Có giá trị khi người xem không được xem lịch sử của KR này (dự án riêng tư). */
+    scopeNote: string | null;
+  }>;
+  /** Trung bình tiến độ các KR tại từng ngày. */
+  objective: Array<{ date: string; progress: number }>;
+  /** Mốc kỳ vọng theo thời gian của quý; null với kỳ tự do. */
+  expected: Array<{ date: string; progress: number }> | null;
+}
+
 export interface GoalInput {
   name?: string;
   description?: string | null;
@@ -132,6 +154,7 @@ function useInvalidateGoals() {
   return () => {
     void qc.invalidateQueries({ queryKey: keys.goals.all });
     void qc.invalidateQueries({ queryKey: keys.goals.periods });
+    void qc.invalidateQueries({ queryKey: keys.goals.historyAll });
   };
 }
 
@@ -209,6 +232,7 @@ export function useUpdateKeyResult() {
       void qc.invalidateQueries({ queryKey: keys.goals.all });
       // Sửa số hiện tại nay cũng ghi một dòng lịch sử check-in.
       void qc.invalidateQueries({ queryKey: keys.goals.checkInsAll });
+      void qc.invalidateQueries({ queryKey: keys.goals.historyAll });
     },
   });
 }
@@ -255,6 +279,16 @@ export function useCheckIns(goalId: string, keyResultId: string, limit: number, 
   });
 }
 
+/** Lịch sử tiến độ theo ngày của một mục tiêu (`enabled`: chỉ tải khi mở biểu đồ). */
+export function useProgressHistory(goalId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.goals.history(goalId),
+    queryFn: enabled
+      ? async () => (await api.get<GoalProgressHistory>(`/goals/${goalId}/progress-history`)).data
+      : skipToken,
+  });
+}
+
 /** Check-in tay: ghi lịch sử + cập nhật giá trị hiện tại; thanh tiến độ nhảy ngay, lỗi thì trả lại số cũ. */
 export function useAddCheckIn() {
   const qc = useQueryClient();
@@ -283,6 +317,7 @@ export function useAddCheckIn() {
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: keys.goals.all });
       void qc.invalidateQueries({ queryKey: keys.goals.checkInsAll });
+      void qc.invalidateQueries({ queryKey: keys.goals.historyAll });
     },
   });
 }

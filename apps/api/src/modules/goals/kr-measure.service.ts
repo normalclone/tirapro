@@ -18,6 +18,12 @@ export interface MeasurableKr {
   sourceConfig: Prisma.JsonValue | null;
 }
 
+/**
+ * Phạm vi đo: `{ viewerId }` = theo dự án người xem thấy (đường đọc); `'public'` = ngữ cảnh hệ thống (cron chụp lịch
+ * sử) — nguồn không chỉ định dự án chỉ tính trên dự án CÔNG KHAI để lịch sử không lộ số của dự án riêng tư.
+ */
+export type MeasureScope = { viewerId: string } | 'public';
+
 export interface MeasureResult {
   /** Số đo được; `null` khi đo lỗi (nơi gọi giữ giá trị cũ để không nhảy về 0 gây hiểu nhầm). */
   value: number | null;
@@ -43,7 +49,7 @@ export class KrMeasureService {
 
   async measure(
     workspaceId: string,
-    viewerId: string,
+    scope: MeasureScope,
     krs: MeasurableKr[],
   ): Promise<Map<string, MeasureResult>> {
     const auto = krs.filter((kr) => kr.source !== 'MANUAL');
@@ -58,13 +64,13 @@ export class KrMeasureService {
       else groups.set(key, { kr, ids: [kr.id] });
     }
 
-    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+    const visible = await this.projectFilter(workspaceId, scope);
     const measuredAt = new Date().toISOString();
     await Promise.all(
       [...groups.values()].map(async ({ kr, ids }) => {
         let result: MeasureResult;
         try {
-          const value = await this.measureOne(workspaceId, viewerId, visible, kr);
+          const value = await this.measureOne(workspaceId, scope, visible, kr);
           result = { value, measuredAt, error: null };
         } catch (err) {
           result = { value: null, measuredAt, error: this.messageOf(err) };
@@ -104,6 +110,28 @@ export class KrMeasureService {
     if (!found) throw new NotFoundAppException('Dự án');
   }
 
+  /**
+   * Điều kiện `project` thực sự áp cho một phép đo: phạm vi người xem → luôn `visible`; phạm vi công khai → chỉ
+   * thu hẹp khi KHÔNG chỉ định dự án (KR chỉ định dự án đo đúng dự án đó; quyền XEM lịch sử xét lúc đọc).
+   */
+  private filterFor(
+    scope: MeasureScope,
+    visible: Prisma.ProjectWhereInput,
+    hasProject: boolean,
+  ): Prisma.ProjectWhereInput {
+    return scope === 'public' && hasProject ? {} : visible;
+  }
+
+  /** Điều kiện `project` áp lên việc/dự án được đếm: theo người xem, hoặc `{ isPrivate: false }` cho phạm vi công khai. */
+  private async projectFilter(
+    workspaceId: string,
+    scope: MeasureScope,
+  ): Promise<Prisma.ProjectWhereInput> {
+    return scope === 'public'
+      ? { isPrivate: false }
+      : this.access.visibleWhere(scope.viewerId, workspaceId);
+  }
+
   private messageOf(err: unknown): string {
     if (err instanceof AppException) return err.message;
     this.logger.warn(`Đo Key Result lỗi: ${(err as Error)?.message ?? String(err)}`);
@@ -112,7 +140,7 @@ export class KrMeasureService {
 
   private async measureOne(
     workspaceId: string,
-    viewerId: string,
+    scope: MeasureScope,
     visible: Prisma.ProjectWhereInput,
     kr: MeasurableKr,
   ): Promise<number> {
@@ -126,7 +154,7 @@ export class KrMeasureService {
             deletedAt: null,
             type: { key: 'BUG' },
             status: { category: { not: 'DONE' } },
-            project: { deletedAt: null, ...visible },
+            project: { deletedAt: null, ...this.filterFor(scope, visible, !!projectId) },
             ...(projectId ? { projectId } : {}),
             ...TRIAGE_VISIBLE,
           },
@@ -135,11 +163,15 @@ export class KrMeasureService {
       case 'SPRINT_COMPLETION':
         return this.sprintCompletion(
           workspaceId,
-          visible,
+          this.filterFor(scope, visible, true),
           (cfg as { projectId: string }).projectId,
         );
-      case 'ISSUE_COUNT_JQL':
-        return this.search.count(workspaceId, viewerId, (cfg as { jql: string }).jql);
+      case 'ISSUE_COUNT_JQL': {
+        const jql = (cfg as { jql: string }).jql;
+        return scope === 'public'
+          ? this.search.countPublic(workspaceId, jql)
+          : this.search.count(workspaceId, scope.viewerId, jql);
+      }
       default:
         throw new Error(`Nguồn số liệu không hỗ trợ: ${String(kr.source)}`);
     }

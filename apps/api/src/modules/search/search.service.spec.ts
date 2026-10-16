@@ -543,6 +543,23 @@ describe('SearchService.count (L25)', () => {
     expect(JSON.stringify((count.mock.calls[0] as unknown[])[0])).toContain('"isPrivate":false');
   });
 
+  it('countPublic: chỉ dự án công khai (isPrivate:false), không dùng quyền người xem', async () => {
+    const { service, count, access } = make();
+    await expect(service.countPublic('W1', 'type = Bug')).resolves.toBe(9);
+    expect(access.visibleWhere).not.toHaveBeenCalled();
+    const json = JSON.stringify((count.mock.calls[0] as unknown[])[0]);
+    expect(json).toContain('"isPrivate":false');
+    expect(json).toContain('"workspaceId":"W1"');
+  });
+
+  it('countPublic: currentUser() không có nghĩa khi đo cho cả workspace → 422', async () => {
+    const { service, count } = make();
+    await expect(service.countPublic('W1', 'assignee = currentUser()')).rejects.toMatchObject({
+      status: 422,
+    });
+    expect(count).not.toHaveBeenCalled();
+  });
+
   it('JQL lỗi cú pháp → BusinessRuleException như validate; không đếm', async () => {
     const { service, count } = make();
     await expect(service.count('W1', 'U1', 'type = = Bug')).rejects.toMatchObject({

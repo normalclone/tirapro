@@ -1860,7 +1860,14 @@ model KeyResult {
   @@index([objectiveId])
 }
 
+/// Nguồn một dòng lịch sử KR: nhập tay (check-in) hoặc cron chụp hằng ngày (L29).
+enum CheckInSource {
+  MANUAL
+  AUTO
+}
+
 /// Lịch sử cập nhật giá trị của Key Result (check-in tay có ghi chú). Bất biến: không sửa/xoá — nhập sai thì check-in mới (L26).
+/// Bản chụp AUTO (L29): mỗi KR tối đa MỘT dòng/ngày UTC — unique (keyResultId, snapshotDate); NULL (check-in tay) không bị ràng.
 model KeyResultCheckIn {
   id            String   @id @default(cuid())
   keyResultId   String
@@ -1868,11 +1875,14 @@ model KeyResultCheckIn {
   previousValue Float?
   note          String?  @db.VarChar(500)
   authorId      String?
+  source        CheckInSource @default(MANUAL)
+  snapshotDate  DateTime? @db.Date
   createdAt     DateTime @default(now())
 
   keyResult KeyResult @relation(fields: [keyResultId], references: [id], onDelete: Cascade)
   author    User?     @relation("KeyResultCheckInAuthor", fields: [authorId], references: [id], onDelete: SetNull)
 
+  @@unique([keyResultId, snapshotDate])
   @@index([keyResultId, createdAt])
 }
 

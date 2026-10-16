@@ -109,6 +109,8 @@ export const keys = {
     checkIns: (goalId: string, krId: string, limit: number) =>
       ['goal-check-ins', goalId, krId, limit] as const,
     checkInsAll: ['goal-check-ins'] as const,
+    history: (goalId: string) => ['goal-progress-history', goalId] as const,
+    historyAll: ['goal-progress-history'] as const,
   },
 
   raid: {

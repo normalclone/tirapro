@@ -3,12 +3,7 @@ import { z } from 'zod';
 export const objectiveStatusEnum = z.enum(['DRAFT', 'ACTIVE', 'CLOSED']);
 export const keyResultUnitEnum = z.enum(['NUMBER', 'PERCENT', 'CURRENCY']);
 
-export const keyResultSourceEnum = z.enum([
-  'MANUAL',
-  'OPEN_BUGS',
-  'SPRINT_COMPLETION',
-  'ISSUE_COUNT_JQL',
-]);
+const keyResultSourceEnum = z.enum(['MANUAL', 'OPEN_BUGS', 'SPRINT_COMPLETION', 'ISSUE_COUNT_JQL']);
 
 /** Cấu hình theo nguồn số liệu (L25). `MANUAL` không có cấu hình. */
 const sourceConfigSchemas = {

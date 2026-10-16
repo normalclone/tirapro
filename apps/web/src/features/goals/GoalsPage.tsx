@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link2, Pencil, Plus, Target, Trash2, X } from 'lucide-react';
+import { LineChart, Link2, Pencil, Plus, Target, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
@@ -28,6 +28,7 @@ import { fmtDateTime } from '@/lib/dateFormat';
 import { describeSource, isAutoSource } from './krSource';
 import { formatKrValue, krSummary } from './krFormat';
 import { CheckInButton, CheckInHistoryButton } from './CheckInPopover';
+import { ProgressChart } from './ProgressChart';
 
 const STATUS_META: Record<ObjectiveStatus, { label: string; className: string; hint: string }> = {
   DRAFT: {
@@ -229,6 +230,7 @@ function GoalCard({
   const remove = useDeleteGoal();
   const detach = useDetachGoalIssues();
   const status = STATUS_META[goal.status];
+  const [chartOpen, setChartOpen] = useState(false);
 
   async function handleRemove() {
     if (
@@ -346,6 +348,26 @@ function GoalCard({
             <KeyResultRow key={kr.id} goal={goal} kr={kr} canManage={canManage} />
           ))}
         </ul>
+      )}
+      {goal.keyResults.length > 0 && (
+        <div className="border-t border-border px-4 py-2 sm:px-5">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setChartOpen((o) => !o)}
+            aria-expanded={chartOpen}
+            aria-controls={`goal-chart-${goal.id}`}
+            title="Đường tiến độ theo ngày của từng kết quả và của cả mục tiêu"
+          >
+            <LineChart className="h-4 w-4" />
+            {chartOpen ? 'Ẩn biểu đồ' : 'Biểu đồ'}
+          </Button>
+          {chartOpen && (
+            <div id={`goal-chart-${goal.id}`} className="mt-2 pb-1">
+              <ProgressChart goal={goal} />
+            </div>
+          )}
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2.5 sm:px-5">

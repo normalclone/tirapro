@@ -60,6 +60,24 @@ export class GoalsController {
     return this.goals.get(workspaceId, id, user.id);
   }
 
+  /** Lịch sử tiến độ theo ngày (đường KR + trung bình mục tiêu + mốc kỳ vọng). `days` tối đa 365. */
+  @Get(':id/progress-history')
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  async progressHistory(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('days') days?: string,
+  ) {
+    const n = days === undefined ? undefined : Number.parseInt(days, 10);
+    return this.goals.progressHistory(
+      workspaceId,
+      id,
+      user.id,
+      n !== undefined && Number.isFinite(n) ? n : undefined,
+    );
+  }
+
   @Post()
   @Permissions(PERMISSIONS.GOAL_MANAGE)
   async create(

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, type KeyResultSource, type ObjectiveStatus } from '@prisma/client';
 import { ZodError } from 'zod';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -9,6 +9,9 @@ import {
 } from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
 import { ProjectAccessService } from '../rbac/project-access.service';
+import { expectedProgress, periodRange } from './goal-pace';
+import { krProgress } from './kr-progress';
+import { KrSnapshotCron, utcDay } from './kr-snapshot.cron';
 import { KrMeasureService, type MeasureResult } from './kr-measure.service';
 import {
   parseSourceConfig,
@@ -49,8 +52,14 @@ const objectiveSelect = (visible: Prisma.ProjectWhereInput) =>
         source: true,
         sourceConfig: true,
         unitLabel: true,
-        _count: { select: { checkIns: true } },
-        checkIns: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { createdAt: true } },
+        // Chỉ check-in TAY (bản chụp AUTO hằng ngày của L29 không tính vào "Lịch sử (n)").
+        _count: { select: { checkIns: { where: { source: 'MANUAL' as const } } } },
+        checkIns: {
+          where: { source: 'MANUAL' as const },
+          orderBy: { createdAt: 'desc' as const },
+          take: 1,
+          select: { createdAt: true },
+        },
       },
     },
     issues: {
@@ -78,10 +87,24 @@ interface GoalListFilter {
   ownerId?: string;
 }
 
-/** Kẹp về [0,1]. */
-function clamp01(n: number): number {
-  if (!Number.isFinite(n)) return 0;
-  return n < 0 ? 0 : n > 1 ? 1 : n;
+const DAY_MS = 86_400_000;
+const DEFAULT_HISTORY_DAYS = 90;
+const MAX_HISTORY_DAYS = 365;
+
+/** Số ngày của cửa sổ lịch sử: `days` tường minh (kẹp [1,365]); không nêu → từ đầu quý (nếu có) hoặc 90 ngày. */
+function clampHistoryDays(
+  days: number | undefined,
+  periodStart: string | undefined,
+  today: Date,
+): number {
+  if (days !== undefined && Number.isFinite(days))
+    return Math.min(MAX_HISTORY_DAYS, Math.max(1, Math.trunc(days)));
+  if (periodStart) {
+    const since =
+      Math.floor((today.getTime() - Date.parse(`${periodStart}T00:00:00Z`)) / DAY_MS) + 1;
+    if (since >= 1 && since <= MAX_HISTORY_DAYS) return since;
+  }
+  return DEFAULT_HISTORY_DAYS;
 }
 
 /**
@@ -98,7 +121,10 @@ export class GoalsService {
     private readonly prisma: PrismaService,
     private readonly access: ProjectAccessService,
     private readonly measurer: KrMeasureService,
+    private readonly snapshots: KrSnapshotCron,
   ) {}
+
+  private readonly logger = new Logger(GoalsService.name);
 
   /**
    * Điều kiện hiển thị dự án của người xem (`{}` = thấy hết), tính MỘT lần mỗi lời gọi rồi truyền xuống các hàm con
@@ -177,7 +203,7 @@ export class GoalsService {
       .filter((kr) => kr.source !== 'MANUAL')
       .map((kr) => ({ id: kr.id, source: kr.source, sourceConfig: kr.sourceConfig }));
     if (auto.length === 0) return new Map();
-    return this.measurer.measure(workspaceId, viewerId, auto);
+    return this.measurer.measure(workspaceId, { viewerId }, auto);
   }
 
   async create(workspaceId: string, dto: CreateGoalInput, viewerId: string) {
@@ -208,6 +234,7 @@ export class GoalsService {
       },
       select: { id: true },
     });
+    if (krData.some((k) => k.source !== 'MANUAL')) await this.snapshotAutoOf(created.id);
     return this.read(workspaceId, created.id, visible, viewerId);
   }
 
@@ -237,6 +264,7 @@ export class GoalsService {
       data.owner = ownerId ? { connect: { id: ownerId } } : { disconnect: true };
     }
 
+    let anyAutoKr = false;
     const ops: Prisma.PrismaPromise<unknown>[] = [
       this.prisma.objective.update({ where: { id }, data }),
     ];
@@ -263,6 +291,7 @@ export class GoalsService {
             ? { source: prev.source, sourceConfig: prev.sourceConfig as Record<string, unknown> }
             : kr,
         );
+        if (src.source !== 'MANUAL') anyAutoKr = true;
         if (kr.id && prev) {
           const { currentValue: nextValue, ...data } = this.krCreateData(kr, src);
           if (src.source === 'MANUAL') {
@@ -313,6 +342,7 @@ export class GoalsService {
     }
 
     await this.prisma.$transaction(ops);
+    if (anyAutoKr) await this.snapshotAutoOf(id);
     return this.read(workspaceId, id, visible, viewerId);
   }
 
@@ -334,7 +364,12 @@ export class GoalsService {
     const visible = await this.visibleFor(workspaceId, viewerId);
     await this.requireObjective(workspaceId, objectiveId, visible);
     const src = await this.resolveSource(workspaceId, viewerId, dto);
-    await this.prisma.keyResult.create({ data: { objectiveId, ...this.krCreateData(dto, src) } });
+    const created = await this.prisma.keyResult.create({
+      data: { objectiveId, ...this.krCreateData(dto, src) },
+      select: { id: true },
+    });
+    // KR tự đo: chụp ngay một điểm để đường tiến độ có điểm xuất phát (không chờ cron 01:30).
+    if (src.source !== 'MANUAL') await this.snapshotSafely(created.id);
     return this.read(workspaceId, objectiveId, visible, viewerId);
   }
 
@@ -390,6 +425,9 @@ export class GoalsService {
     } else {
       await this.prisma.keyResult.update({ where: { id: keyResultId }, data });
     }
+    // Đổi nguồn/cấu hình sang tự đo: chụp lại điểm hôm nay theo cấu hình mới.
+    if ((dto.source !== undefined || dto.sourceConfig !== undefined) && source !== 'MANUAL')
+      await this.snapshotSafely(keyResultId);
     return this.read(workspaceId, objectiveId, visible, viewerId);
   }
 
@@ -443,7 +481,7 @@ export class GoalsService {
     });
     if (!kr) throw new NotFoundAppException('Kết quả then chốt');
     const rows = await this.prisma.keyResultCheckIn.findMany({
-      where: { keyResultId },
+      where: { keyResultId, source: 'MANUAL' },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: Math.min(50, Math.max(1, Math.trunc(limit ?? 30))),
       select: {
@@ -456,6 +494,166 @@ export class GoalsService {
       },
     });
     return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+  }
+
+  /** Chụp điểm hôm nay của một KR; lỗi chỉ ghi log — không bao giờ làm hỏng thao tác của người dùng. */
+  private async snapshotSafely(keyResultId: string): Promise<void> {
+    try {
+      await this.snapshots.snapshotKeyResult(keyResultId);
+    } catch (err) {
+      this.logger.warn(`Chụp KR ${keyResultId} lỗi: ${(err as Error).message}`);
+    }
+  }
+
+  private async snapshotAutoOf(objectiveId: string): Promise<void> {
+    const ids = await this.prisma.keyResult.findMany({
+      where: { objectiveId, source: { not: 'MANUAL' } },
+      select: { id: true },
+    });
+    for (const { id } of ids) await this.snapshotSafely(id);
+  }
+
+  /**
+   * Lịch sử tiến độ theo ngày của một mục tiêu (L29): mỗi KR một đường (check-in tay + bản chụp AUTO, điền bù ngày
+   * thiếu bằng giá trị trước đó), đường trung bình mục tiêu và mốc kỳ vọng theo thời gian của quý.
+   * Mặc định từ đầu kỳ (quý) hoặc 90 ngày; tối đa 365 ngày. Phạm vi xem: KR chỉ định một dự án mà người xem không
+   * thấy → `points: []` + `scopeNote` (lịch sử của nguồn không chỉ định dự án đo trên dự án công khai).
+   */
+  async progressHistory(
+    workspaceId: string,
+    objectiveId: string,
+    viewerId: string,
+    days: number | undefined,
+    now: Date = new Date(),
+  ) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    const objective = await this.prisma.objective.findFirst({
+      where: { id: objectiveId, workspaceId, ...this.scopeOf(visible) },
+      select: {
+        id: true,
+        period: true,
+        projectId: true,
+        keyResults: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            unit: true,
+            unitLabel: true,
+            startValue: true,
+            targetValue: true,
+            source: true,
+            sourceConfig: true,
+          },
+        },
+      },
+    });
+    if (!objective) throw new NotFoundAppException('Mục tiêu');
+
+    const today = utcDay(now);
+    const range = periodRange(objective.period);
+    const span = clampHistoryDays(days, range?.start, today);
+    const fromDate = new Date(today.getTime() - (span - 1) * DAY_MS);
+
+    // KR chỉ định dự án (nguồn tự đo) mà người xem không thấy → ẩn lịch sử.
+    const hidden = new Set<string>();
+    for (const kr of objective.keyResults) {
+      const projectId =
+        kr.source === 'MANUAL'
+          ? undefined
+          : (kr.sourceConfig as { projectId?: string } | null)?.projectId;
+      if (projectId && !(await this.access.canSee(viewerId, workspaceId, projectId)))
+        hidden.add(kr.id);
+    }
+    const shown = objective.keyResults.filter((kr) => !hidden.has(kr.id));
+
+    const rows = shown.length
+      ? await this.prisma.keyResultCheckIn.findMany({
+          where: {
+            keyResultId: { in: shown.map((k) => k.id) },
+            OR: [
+              { snapshotDate: { gte: fromDate } },
+              { snapshotDate: null, createdAt: { gte: fromDate } },
+            ],
+          },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          take: 365 * shown.length,
+          select: {
+            keyResultId: true,
+            value: true,
+            source: true,
+            snapshotDate: true,
+            createdAt: true,
+          },
+        })
+      : [];
+
+    // Mỗi KR: ngày → {giá trị, tự động?}; dòng muộn hơn trong cùng ngày thắng (check-in tay sau bản chụp 01:30).
+    type DayValue = { value: number; auto: boolean };
+    const byKr = new Map<string, Map<string, DayValue>>();
+    for (const r of rows) {
+      const day = (r.snapshotDate ?? r.createdAt).toISOString().slice(0, 10);
+      const m = byKr.get(r.keyResultId) ?? new Map<string, DayValue>();
+      m.set(day, { value: r.value, auto: r.source === 'AUTO' });
+      byKr.set(r.keyResultId, m);
+    }
+
+    const toStr = today.toISOString().slice(0, 10);
+    const sums = new Map<string, { total: number; n: number }>();
+    const keyResults = objective.keyResults.map((kr) => {
+      const base = {
+        id: kr.id,
+        name: kr.name,
+        unit: kr.unit,
+        unitLabel: kr.unitLabel,
+        source: kr.source,
+      };
+      if (hidden.has(kr.id))
+        return {
+          ...base,
+          points: [],
+          scopeNote: 'Dự án riêng tư — bạn không có quyền xem lịch sử',
+        };
+      const own = byKr.get(kr.id);
+      const points: Array<{ date: string; value: number; progress: number; auto: boolean }> = [];
+      if (own && own.size) {
+        const first = [...own.keys()].sort()[0]!;
+        let last: { value: number; auto: boolean } | undefined;
+        for (let t = Date.parse(`${first}T00:00:00Z`); t <= today.getTime(); t += DAY_MS) {
+          const date = new Date(t).toISOString().slice(0, 10);
+          last = own.get(date) ?? last;
+          if (!last) continue;
+          const progress = krProgress(kr.startValue, kr.targetValue, last.value);
+          points.push({ date, value: last.value, progress, auto: last.auto });
+          const acc = sums.get(date) ?? { total: 0, n: 0 };
+          sums.set(date, { total: acc.total + progress, n: acc.n + 1 });
+        }
+      }
+      return { ...base, points, scopeNote: null };
+    });
+
+    const objectiveLine = [...sums.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([date, { total, n }]) => ({ date, progress: Math.round(total / n) }));
+
+    const expected = range
+      ? Array.from({ length: span }, (_, i) => {
+          const d = new Date(fromDate.getTime() + i * DAY_MS);
+          return {
+            date: d.toISOString().slice(0, 10),
+            progress: expectedProgress(objective.period, d)!,
+          };
+        })
+      : null;
+
+    return {
+      period: objective.period,
+      from: fromDate.toISOString().slice(0, 10),
+      to: toStr,
+      keyResults,
+      objective: objectiveLine,
+      expected,
+    };
   }
 
   private checkInCreate(
@@ -647,13 +845,6 @@ export class GoalsService {
       const m = measured.get(kr.id);
       // KR tự đo: số hiện tại = số đo trực tiếp; đo lỗi → giữ giá trị cũ trong DB (kèm `measureError`).
       const currentValue = m?.value ?? kr.currentValue;
-      const span = kr.targetValue - kr.startValue;
-      const ratio =
-        span === 0
-          ? currentValue >= kr.targetValue
-            ? 1
-            : 0
-          : clamp01((currentValue - kr.startValue) / span);
       return {
         id: kr.id,
         name: kr.name,
@@ -668,7 +859,7 @@ export class GoalsService {
         unitLabel: kr.unitLabel,
         checkInCount: kr._count.checkIns,
         lastCheckInAt: kr.checkIns[0]?.createdAt.toISOString() ?? null,
-        progress: Math.round(ratio * 100),
+        progress: krProgress(kr.startValue, kr.targetValue, currentValue),
       };
     });
 

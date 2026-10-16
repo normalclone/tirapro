@@ -380,6 +380,12 @@ export const TimeOffKind = {
 } as const;
 export type TimeOffKind = (typeof TimeOffKind)[keyof typeof TimeOffKind];
 
+export const CheckInSource = {
+  MANUAL: 'MANUAL',
+  AUTO: 'AUTO',
+} as const;
+export type CheckInSource = (typeof CheckInSource)[keyof typeof CheckInSource];
+
 export const MailStatus = {
   PENDING: 'PENDING',
   SENDING: 'SENDING',
