@@ -8,9 +8,15 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 import { useBulkUpdateIssues } from '@/features/backlog/api';
-import { useSprintPlan } from './api';
+import { useAiCapabilities, useSprintPlan } from './api';
 import { AiFallbackNote } from './AiFallbackNote';
 import { aiSourceLabel } from './fallbackNote';
+
+/** Nhãn ô mục tiêu: chế độ cơ bản không nhận mình là AI. */
+const goalLabel = (basic: boolean) =>
+  basic
+    ? 'Mục tiêu sprint (tuỳ chọn, để ưu tiên việc có từ khoá khớp mục tiêu)'
+    : 'Mục tiêu sprint (tuỳ chọn, để AI chọn việc khớp mục tiêu)';
 
 /**
  * Trợ lý lập sprint: nhập năng lực (bỏ trống = theo velocity) và mục tiêu (tuỳ chọn) → nhận danh sách
@@ -28,10 +34,10 @@ export function SprintAssistantDialog({
   sprint: { id: string; name: string; goal?: string | null };
 }) {
   const plan = useSprintPlan();
+  const basic = useAiCapabilities().data?.available === false;
   const bulkUpdate = useBulkUpdateIssues(projectId);
   const [capacity, setCapacity] = useState('');
   const [goal, setGoal] = useState(sprint.goal ?? '');
-  // `hasGoal`: lần đề xuất này có gửi mục tiêu hay không (quyết định câu mô tả cách chọn).
   const [result, setResult] = useState<(AiSprintPlanResult & { hasGoal: boolean }) | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
 
@@ -136,9 +142,7 @@ export function SprintAssistantDialog({
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-muted">
-              Mục tiêu sprint (tuỳ chọn, để AI chọn việc khớp mục tiêu)
-            </span>
+            <span className="mb-1 block text-muted">{goalLabel(basic)}</span>
             <Input
               value={goal}
               maxLength={500}

@@ -36,17 +36,22 @@ interface Candidate extends BacklogRow {
   matched: string[];
 }
 
-/** Hạng ưu tiên từ đây trở lên mới được ghi "Ưu tiên …" (Highest=5, High=4). */
+/**
+ * Hạng ưu tiên từ đây trở lên mới được ghi "Ưu tiên …". Theo thang mặc định của hệ thống (Highest=5, High=4,
+ * Medium=3…); tên ghi ra luôn là tên thật trong DB nên thang tuỳ biến chỉ lệch ở ngưỡng này.
+ */
 const HIGH_PRIORITY_RANK = 4;
+
+const DAY_MONTH_VN = new Intl.DateTimeFormat('vi-VN', {
+  timeZone: 'Asia/Ho_Chi_Minh',
+  day: '2-digit',
+  month: '2-digit',
+});
 
 /** dd/MM theo giờ Việt Nam (máy chủ có thể chạy múi giờ khác). */
 function fmtDayMonth(d: Date): string {
   // Ghép từ formatToParts: dấu phân cách mặc định của locale (vd '-') không phải '/'.
-  const parts = new Intl.DateTimeFormat('vi-VN', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    day: '2-digit',
-    month: '2-digit',
-  }).formatToParts(d);
+  const parts = DAY_MONTH_VN.formatToParts(d);
   const pick = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
   return `${pick('day')}/${pick('month')}`;
 }
@@ -70,8 +75,9 @@ const PLAN_SCHEMA: Record<string, unknown> = {
 };
 
 /**
- * Trợ lý lập sprint. Heuristic (velocity + thứ tự ưu tiên backlog) luôn chạy và là kết quả mặc định;
- * Claude chỉ được gọi khi người dùng nhập mục tiêu sprint, để chọn lại tập issue khớp mục tiêu trong năng lực.
+ * Trợ lý lập sprint. Heuristic (velocity + khớp từ khoá mục tiêu + hạn chót/độ ưu tiên/thứ tự Việc chờ) luôn chạy
+ * và là kết quả mặc định; Claude chỉ được gọi khi người dùng nhập mục tiêu sprint và AI sẵn sàng, để chọn lại
+ * tập issue khớp mục tiêu trong năng lực.
  * Kết quả của Claude luôn bị ép lại theo capacity ở phía server — không tin tổng điểm model tự tính.
  */
 @Injectable()

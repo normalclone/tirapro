@@ -21,4 +21,19 @@ describe('matchedGoalWords', () => {
   it('khớp đầu từ, không khớp giữa từ ("hàng" không khớp "tháng")', () => {
     expect(matchedGoalWords(goalWords('hàng'), 'Báo cáo tháng')).toEqual([]);
   });
+  it('chuỗi NFD (dán từ macOS) vẫn tách đúng từ và giữ dấu khi hiển thị', () => {
+    const nfd = 'giữ giỏ hàng'.normalize('NFD');
+    expect(goalWords(nfd).map((w) => w.raw)).toEqual(
+      ['giữ', 'giỏ', 'hàng'].map((x) => x.normalize('NFC')),
+    );
+    expect(matchedGoalWords(goalWords(nfd), 'Giỏ hàng'.normalize('NFD'))).toEqual(['giỏ', 'hàng']);
+  });
+  it('khớp có dấu ưu tiên: "bán" không khớp "bản" (cả hai có dấu khác nhau)', () => {
+    expect(matchedGoalWords(goalWords('bán hàng'), 'Bản nháp hợp đồng')).toEqual([]);
+    expect(matchedGoalWords(goalWords('bán hàng'), 'Bán hàng online')).toEqual(['bán', 'hàng']);
+  });
+  it('gõ không dấu một bên vẫn khớp', () => {
+    expect(matchedGoalWords(goalWords('ban hang'), 'Bán hàng online')).toEqual(['ban', 'hang']);
+    expect(matchedGoalWords(goalWords('bán hàng'), 'ban hang online')).toEqual(['bán', 'hàng']);
+  });
 });

@@ -38,7 +38,10 @@ export interface GoalWord {
 export function goalWords(goal: string): GoalWord[] {
   const out: GoalWord[] = [];
   const seen = new Set<string>();
-  for (const m of goal.toLowerCase().matchAll(/[\p{L}\p{N}]+/gu)) {
+  for (const m of goal
+    .normalize('NFC')
+    .toLowerCase()
+    .matchAll(/[\p{L}\p{N}]+/gu)) {
     const raw = m[0];
     const norm = normalizeVi(raw);
     if (norm.length < MIN_LEN || STOP_WORDS.has(norm) || seen.has(norm)) continue;
@@ -50,19 +53,39 @@ export function goalWords(goal: string): GoalWord[] {
 }
 
 /**
- * Các từ của mục tiêu xuất hiện trong tiêu đề việc (so khớp không dấu, tại ĐẦU một từ để "hàng" không
- * khớp nhầm "tháng"). Trả dạng gốc có dấu, theo thứ tự trong mục tiêu.
+ * Hai ký tự (đã hạ chữ thường) tương thích khi giống nhau hoặc MỘT bên gõ không dấu (`base` = dạng bỏ dấu).
+ * Cả hai cùng có dấu mà khác nhau ("á" vs "ả") thì KHÔNG tương thích — "bán" không được khớp "bản".
+ */
+function charCompatible(goalChar: string, summaryChar: string, base: string): boolean {
+  return goalChar === summaryChar || goalChar === base || summaryChar === base;
+}
+
+/**
+ * Các từ của mục tiêu xuất hiện trong tiêu đề việc: so khớp không dấu tại ĐẦU một từ ("hàng" không khớp nhầm
+ * "tháng"), nhưng nếu cả hai bên đều có dấu thì dấu phải trùng. Trả dạng gốc có dấu, theo thứ tự trong mục tiêu.
  */
 export function matchedGoalWords(words: GoalWord[], summary: string): string[] {
-  const hay = normalizeVi(summary);
+  const lower = summary.normalize('NFC').toLowerCase();
+  const hay = normalizeVi(lower);
+  // Ánh xạ vị trí 1-1 giữa chuỗi có dấu và không dấu; nếu lệch độ dài thì chỉ so không dấu.
+  const aligned = [...lower].length === [...hay].length && lower.length === hay.length;
   return words
     .filter((w) => {
       let from = hay.indexOf(w.norm);
       while (from !== -1) {
-        if (from === 0 || !/[\p{L}\p{N}]/u.test(hay[from - 1]!)) return true;
+        const atWordStart = from === 0 || !/[\p{L}\p{N}]/u.test(hay[from - 1]!);
+        if (atWordStart && (!aligned || accentsAgree(w, lower, hay, from))) return true;
         from = hay.indexOf(w.norm, from + 1);
       }
       return false;
     })
     .map((w) => w.raw);
+}
+
+function accentsAgree(w: GoalWord, lower: string, hay: string, from: number): boolean {
+  if (w.raw.length !== w.norm.length) return true; // không ánh xạ 1-1 được → chỉ dựa vào so khớp không dấu
+  for (let i = 0; i < w.norm.length; i++) {
+    if (!charCompatible(w.raw[i]!, lower[from + i]!, hay[from + i]!)) return false;
+  }
+  return true;
 }
