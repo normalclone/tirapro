@@ -15,6 +15,7 @@ import {
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { BoardColumnDto, IssueDto } from '@tirapro/types';
+import { activeDrag } from '@/lib/activeDrag';
 import { dropContainer } from '@/lib/dropContainer';
 import { dropHint } from '@/lib/dropHint';
 import { placementFromDnd, type Placement } from '@/lib/rankDrop';
@@ -22,9 +23,11 @@ import { sortableCollision } from '@/lib/sortableDnd';
 import { CardBody } from './Card';
 import { dropFeedback, dropMessage, type DropPlan } from './dropPlan';
 
+// `activeDrag` cho phím tắt toàn cục (j/k/a/e) và Esc của panel xem nhanh biết đang nhấc thẻ; dọn cùng lúc với phản hồi kéo.
 const clearFeedback = () => {
   dropHint.set(null);
   dropContainer.set(null);
+  activeDrag.set(null);
 };
 
 const SCREEN_READER_INSTRUCTIONS: ScreenReaderInstructions = {
@@ -95,7 +98,10 @@ export function BoardDnd({
     };
   }, [issueById, columns, planOf]);
 
-  const onDragStart = useCallback((e: DragStartEvent) => setDraggingId(String(e.active.id)), []);
+  const onDragStart = useCallback((e: DragStartEvent) => {
+    activeDrag.set(String(e.active.id));
+    setDraggingId(String(e.active.id));
+  }, []);
   // "Nửa trên/nửa dưới" của thẻ mốc đổi mà `over` không đổi → cập nhật hint ở onDragMove, không ở onDragOver.
   // Vạch chèn + viền cột đích theo KẾT QUẢ thả thật (`planOf`): không đổi gì ⇒ không vạch, không viền.
   const onDragMove = useCallback(

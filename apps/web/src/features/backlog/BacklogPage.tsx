@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Plus,
   Play,
@@ -42,6 +50,7 @@ import {
 import { CompleteSprintDialog } from './CompleteSprintDialog';
 import { SprintEditDialog } from './SprintEditDialog';
 import { StartSprintDialog, type StartSprintValues } from './StartSprintDialog';
+import { parseSprintAction, stripSprintAction, type SprintAction } from './sprintAction';
 import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjectLabels, type ProjectLabel } from '@/features/issue-meta/api';
@@ -71,7 +80,11 @@ import { applyPendingOrder, sortByRank } from '@/lib/rankOrder';
 import { epicAwareCollision, epicAwareKeyboardCoordinates } from '@/lib/sortableDnd';
 import { useMoveIssue, usePendingMoves, type MoveVars } from '@/features/issues/moveIssue';
 import { useAuth } from '@/stores/auth';
-import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
+import {
+  useCanEditIssue,
+  useProjectCan,
+  useProjectPermissions,
+} from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
 import { IssueRow, IssueRowBody, type RowEdit } from './IssueRow';
 import { useBulkEdit } from './useBulkEdit';
@@ -586,6 +599,35 @@ export function BacklogPage() {
     [issues, selected],
   );
 
+  // Lệnh sprint từ Cmd+K (`?action=create-sprint|start|complete[&sprint=ID]`, xem `sprintAction.ts`): chờ dữ liệu tải xong
+  // rồi chạy ĐÚNG luồng của nút tương ứng, xoá tham số khỏi URL. `handledAction` chặn chạy lại (StrictMode, render lại).
+  const { search } = useLocation();
+  const runSprintActionRef = useRef<((a: SprintAction) => void) | null>(null);
+  const handledAction = useRef<string | null>(null);
+  // Quyền đã tải (không thì `canManageSprint` = false → báo "không có quyền" giả) và không rơi vào nhánh lỗi tải.
+  const permsLoaded = !useProjectPermissions(projectId).isPending;
+  const actionReady =
+    !!projectId &&
+    permsLoaded &&
+    !pe &&
+    !ls &&
+    !li &&
+    !sprintsQ.isFetching &&
+    !issuesQ.isFetching &&
+    !sprintsQ.isError &&
+    !issuesQ.isError;
+  useEffect(() => {
+    const a = parseSprintAction(search);
+    if (!a) {
+      handledAction.current = null;
+      return;
+    }
+    if (!actionReady || handledAction.current === search) return;
+    handledAction.current = search;
+    runSprintActionRef.current?.(a);
+    navigate({ search: stripSprintAction(search) }, { replace: true });
+  }, [search, actionReady, navigate]);
+
   if (pe) {
     return (
       <div className="p-6">
@@ -630,6 +672,54 @@ export function BacklogPage() {
     const unestimated = (bySprint.get(sprintId) ?? []).filter((i) => i.storyPoints == null).length;
     setStarting({ sprint, unestimated });
   }
+
+  // Kết thúc sprint — MỘT lối vào cho nút và lệnh Cmd+K: còn việc chưa xong → hỏi chuyển đi đâu; xong hết → kết thúc luôn.
+  // Đếm trên danh sách CHƯA lọc: bộ lọc nhanh đang bật không được làm lọt việc chưa xong khỏi hộp xác nhận.
+  function requestComplete(sprint: { id: string; name: string }) {
+    const notDone = (fullBySprint.get(sprint.id) ?? []).filter(
+      (i) => i.status.category !== 'DONE',
+    ).length;
+    if (notDone > 0) {
+      setCompleting({ id: sprint.id, name: sprint.name, notDone });
+      return;
+    }
+    completeSprint.mutate(
+      { sprintId: sprint.id },
+      {
+        onSuccess: () => {
+          toast.success(`Đã kết thúc sprint “${sprint.name}”`);
+          showSprintSummary(sprint.id);
+        },
+        onError: (err) => toast.error(apiErrorMessage(err)),
+      },
+    );
+  }
+
+  // Lệnh sprint từ URL: cùng quyền và cùng điều kiện với các nút (không bày lệnh mà API sẽ từ chối).
+  runSprintActionRef.current = (a) => {
+    if (!canManageSprint) {
+      toast.info('Bạn không có quyền quản lý sprint của dự án này.');
+      return;
+    }
+    if (a.action === 'create-sprint') {
+      setCreating(true);
+      return;
+    }
+    const sprint = sprints?.find((sp) => sp.id === a.sprintId);
+    if (a.action === 'start') {
+      if (!sprint || sprint.state !== 'FUTURE')
+        toast.info('Sprint này không còn ở trạng thái chờ bắt đầu.');
+      else if (hasActive)
+        toast.info('Đang có sprint chạy — hãy kết thúc sprint đó trước khi bắt đầu sprint mới.');
+      else openStartDialog(sprint.id);
+      return;
+    }
+    if (!sprint || sprint.state !== 'ACTIVE') {
+      toast.info('Sprint này không còn đang chạy.');
+      return;
+    }
+    requestComplete(sprint);
+  };
 
   function confirmStart(values: StartSprintValues) {
     if (!starting) return;
@@ -800,7 +890,10 @@ export function BacklogPage() {
             >
               {visibleSprints.map((sprint) => {
                 const sprintIssues = bySprint.get(sprint.id) ?? [];
-                const notDone = sprintIssues.filter((i) => i.status.category !== 'DONE').length;
+                // Chưa lọc: cùng số với hộp xác nhận Kết thúc sprint và lệnh Cmd+K.
+                const notDone = (fullBySprint.get(sprint.id) ?? []).filter(
+                  (i) => i.status.category !== 'DONE',
+                ).length;
                 return (
                   <Section
                     key={sprint.id}
@@ -885,21 +978,7 @@ export function BacklogPage() {
                                 completeSprint.isPending &&
                                 completeSprint.variables?.sprintId === sprint.id
                               }
-                              onClick={() =>
-                                // Còn việc chưa xong → hỏi chuyển đi đâu; xong hết → kết thúc luôn.
-                                notDone > 0
-                                  ? setCompleting({ id: sprint.id, name: sprint.name, notDone })
-                                  : completeSprint.mutate(
-                                      { sprintId: sprint.id },
-                                      {
-                                        onSuccess: () => {
-                                          toast.success(`Đã kết thúc sprint “${sprint.name}”`);
-                                          showSprintSummary(sprint.id);
-                                        },
-                                        onError: (err) => toast.error(apiErrorMessage(err)),
-                                      },
-                                    )
-                              }
+                              onClick={() => requestComplete(sprint)}
                             >
                               <CheckCircle2 className="h-4 w-4" />
                               Kết thúc sprint

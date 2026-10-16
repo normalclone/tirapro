@@ -7,7 +7,7 @@ import {
   type ComponentProps,
   type ComponentType,
 } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   Archive,
@@ -32,7 +32,7 @@ import { useDevLinks, useIssue } from './api';
 import { useCreateIssue } from './create-api';
 import { useProjects } from '@/features/projects/api';
 import { ProjectRail } from '@/features/projects/ProjectRail';
-import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
+import { useCanEditIssue, useCanIn, useProjectPermissions } from '@/features/projects/permissions';
 import { useMyWorkspaces } from '@/features/workspace/api';
 import { useDeleteIssue, useRetractIssue } from '@/features/issue-edit/api';
 import { RetractMenuItem } from './RetractMenuItem';
@@ -84,6 +84,7 @@ import { useCreateIssueModal } from '@/stores/createIssue';
 import { useRecents } from '@/stores/recentIssues';
 import { useProjectRealtime } from '@/lib/realtime';
 import { useCachedProjectIssue, useUpdateIssue } from './api';
+import { withKey } from '@/lib/shortcuts';
 import { isCommentHotkey, isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -100,6 +101,9 @@ const WorkflowViewDialog = lazy<ComponentType<ComponentProps<typeof WorkflowView
       return { default: () => null };
     }),
 );
+
+/** Câu báo khi bấm `e` mà không sửa được công việc (cùng tinh thần với phím `a`). */
+const EDIT_DENIED_NOTICE = 'Bạn không có quyền sửa công việc này.';
 
 /** Nút trên thanh thao tác dưới tiêu đề (secondary, viền). */
 const TOOLBAR_BTN =
@@ -152,6 +156,26 @@ export function IssueDetailPage() {
 
   const [editingSummary, setEditingSummary] = useState(false);
   const [summary, setSummary] = useState('');
+  // Phím `e` ở danh sách điều hướng tới đây kèm `state.editSummary`: mở sẵn ô sửa tiêu đề khi đã biết được sửa (quyền tải xong).
+  const location = useLocation();
+  const editRequested = useRef(
+    (location.state as { editSummary?: boolean } | null)?.editSummary === true,
+  );
+  const permsQ = useProjectPermissions(issue?.projectId);
+  const permsSettled = permsQ.isSuccess || permsQ.isError;
+  useEffect(() => {
+    if (!editRequested.current || !issue || !permsSettled) return;
+    editRequested.current = false;
+    if (canEditThis) {
+      setSummary(issue.summary);
+      setEditingSummary(true);
+    } else toast.info(EDIT_DENIED_NOTICE);
+    // Xoá cờ khỏi history để tải lại/Back không tự mở ô sửa lần nữa.
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: null },
+    );
+  }, [issue, canEditThis, permsSettled, navigate, location.pathname, location.search]);
   const [activityTab, setActivityTab] = useState<'comments' | 'history'>('comments');
   const [wfOpen, setWfOpen] = useState(false);
   const [wfSeen, setWfSeen] = useState(false); // đã từng mở → giữ dialog trong cây để hiệu ứng đóng chạy được
@@ -269,6 +293,17 @@ export function IssueDetailPage() {
       if (e.key === 'y' || e.key === 'Y') {
         e.preventDefault();
         copyLink();
+        return;
+      }
+      // e = sửa tiêu đề tại chỗ (cùng đường với bấm vào tiêu đề); preventDefault để chữ "e" không lọt vào ô vừa mở.
+      if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault();
+        if (!canEditThis) {
+          toast.info(EDIT_DENIED_NOTICE);
+          return;
+        }
+        setSummary(issue.summary);
+        setEditingSummary(true);
         return;
       }
       const n = Number(e.key);
@@ -521,7 +556,7 @@ export function IssueDetailPage() {
                         canEditThis && 'cursor-text hover:bg-surface-2',
                       )}
                       onClick={canEditThis ? () => setEditingSummary(true) : undefined}
-                      title={canEditThis ? 'Bấm để sửa tiêu đề' : undefined}
+                      title={canEditThis ? withKey('Bấm để sửa tiêu đề', 'issue.edit') : undefined}
                     >
                       {issue.summary}
                     </h1>
@@ -550,7 +585,7 @@ export function IssueDetailPage() {
                 <button
                   type="button"
                   className={TOOLBAR_BTN}
-                  title="Xuống khu bình luận và viết ngay · phím m"
+                  title={withKey('Xuống khu bình luận và viết ngay', 'issue.comment')}
                   onClick={jumpToComments}
                 >
                   <MessageSquare className="h-4 w-4" /> Bình luận
@@ -583,7 +618,7 @@ export function IssueDetailPage() {
                     className={TOOLBAR_BTN}
                     onClick={assignToMe}
                     disabled={updateIssue.isPending}
-                    title="Đặt bạn làm người phụ trách · phím i"
+                    title={withKey('Đặt bạn làm người phụ trách', 'issue.assignMe')}
                   >
                     <UserPlus className="h-4 w-4" /> Gán cho tôi
                   </button>
@@ -607,6 +642,7 @@ export function IssueDetailPage() {
                     >
                       <DropdownMenu.Item
                         onSelect={() => copyLink()}
+                        title={withKey('Sao chép liên kết công việc', 'issue.copyLink')}
                         className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
                       >
                         <Link2 className="h-4 w-4 text-muted" /> Sao chép liên kết

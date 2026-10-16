@@ -261,6 +261,7 @@ export const Card = memo(
           ...attributes,
           ...({
             'data-board-card': true,
+            'data-nav-item': true,
             'data-lane': laneIdx,
             'data-col': colIdx,
             'data-row': rowIdx,

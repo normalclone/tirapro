@@ -289,6 +289,7 @@ export const IssueRow = memo(
             ...(draggable ? { ...listeners, ...attributes } : {}),
             ...rowRootProps({ draggable, hasOpen: !!onOpen }),
             'data-issue-key': key,
+            'data-nav-item': true,
             onClick: openProps?.onClick,
             onAuxClick: openProps?.onAuxClick,
             onKeyDown: rowKeyDown,

@@ -9,6 +9,7 @@ import {
   hasDraftText,
   shouldClosePeekOnEscape,
   shouldIgnoreGlobalHotkey,
+  shouldSkipListHotkey,
 } from './hotkeys';
 
 const ev = (
@@ -205,5 +206,21 @@ describe('Esc: kéo bằng phím và nháp chưa gửi', () => {
     );
     expect(hasDraftText({ tagName: 'BUTTON' })).toBe(false);
     expect(hasDraftText(null)).toBe(false);
+  });
+});
+
+describe('shouldSkipListHotkey (j/k/a/e)', () => {
+  it('đang nhấc thẻ bằng Space → bỏ qua mọi phím danh sách', () => {
+    for (const k of ['j', 'k', 'a', 'e'])
+      expect(shouldSkipListHotkey(k, { dragging: true, onIssuePage: false })).toBe(true);
+  });
+  it('không kéo → chạy', () => {
+    for (const k of ['j', 'k', 'a', 'e'])
+      expect(shouldSkipListHotkey(k, { dragging: false, onIssuePage: false })).toBe(false);
+  });
+  it('e ở trang công việc để trang tự xử lý (cả E); phím khác vẫn chạy', () => {
+    expect(shouldSkipListHotkey('e', { dragging: false, onIssuePage: true })).toBe(true);
+    expect(shouldSkipListHotkey('E', { dragging: false, onIssuePage: true })).toBe(true);
+    expect(shouldSkipListHotkey('a', { dragging: false, onIssuePage: true })).toBe(false);
   });
 });

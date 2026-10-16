@@ -40,6 +40,18 @@ export function isOverlayOpen(root: QueryRoot = document): boolean {
   );
 }
 
+/**
+ * Phím danh sách `j/k/a/e` có phải bỏ qua không (ngoài điều kiện chung của `shouldIgnoreGlobalHotkey`): đang nhấc thẻ bằng
+ * Space (phím thuộc về dnd-kit), hoặc `e` ở trang công việc (trang tự xử lý sửa tiêu đề).
+ */
+export function shouldSkipListHotkey(
+  key: string,
+  ctx: { dragging: boolean; onIssuePage: boolean },
+): boolean {
+  if (ctx.dragging) return true;
+  return key.toLowerCase() === 'e' && ctx.onIssuePage;
+}
+
 /** Phím `w` (không modifier) mở form ghi thời gian — chỉ khi có quyền, không đang gõ, không có dialog mở. */
 export function isWorklogHotkey(
   e: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean },
