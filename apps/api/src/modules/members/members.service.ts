@@ -450,6 +450,8 @@ export class MembersService {
     });
     await this.rbac.invalidate(userId, workspaceId);
     if (count === 0) return { success: true }; // không có vai trò riêng để gỡ → không ghi nhật ký
+    // Gỡ khỏi dự án (riêng tư): realtime rút socket của họ khỏi room project nếu không còn thấy dự án (kiểm lại ở gateway).
+    this.events.emit(DOMAIN_EVENTS.PROJECT_MEMBER_REMOVED, { workspaceId, projectId, userId });
     await this.audit.record({
       workspaceId,
       actorId,

@@ -12,6 +12,7 @@ import {
 } from '../../common/exceptions/app.exception';
 import { assertIssueWritable } from '../../common/project-writable';
 import { resolveMentionedMembers } from '../../common/mentions';
+import { ProjectAccessService } from '../rbac/project-access.service';
 
 const commentInclude = { author: true } satisfies Prisma.CommentInclude;
 type CommentRow = Prisma.CommentGetPayload<{ include: typeof commentInclude }>;
@@ -21,7 +22,23 @@ export class CommentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
+    private readonly access: ProjectAccessService,
   ) {}
+
+  /**
+   * Người được @nhắc phải XEM ĐƯỢC dự án của việc (dự án riêng tư). Lọc TRƯỚC khi ghi sổ `Mention`: người chưa thấy dự án
+   * mà vẫn bị ghi sổ thì khi được thêm vào dự án sau đó, lần sửa bình luận kế tiếp sẽ không coi họ là "mới" nên không báo.
+   */
+  private async mentionableIn(
+    workspaceId: string,
+    projectId: string,
+    userIds: string[],
+  ): Promise<string[]> {
+    const ok = await Promise.all(
+      userIds.map((id) => this.access.canSee(id, workspaceId, projectId)),
+    );
+    return userIds.filter((_, i) => ok[i]);
+  }
 
   async list(workspaceId: string, issueId: string): Promise<CommentDto[]> {
     await this.requireIssue(workspaceId, issueId);
@@ -55,11 +72,15 @@ export class CommentsService {
       });
       // Người được nhắc = token trong body ∪ mentionUserIds (client cũ / API key), lọc theo thành viên workspace.
       const mentionIds = (
-        await resolveMentionedMembers(
-          tx,
+        await this.mentionableIn(
           workspaceId,
-          [...extractMentionIds(input.body), ...(input.mentionUserIds ?? [])],
-          userId,
+          issue.projectId,
+          await resolveMentionedMembers(
+            tx,
+            workspaceId,
+            [...extractMentionIds(input.body), ...(input.mentionUserIds ?? [])],
+            userId,
+          ),
         )
       ).slice(0, MENTION_LIMIT); // hợp hai nguồn có thể tới 40 → cắt về 20
       if (mentionIds.length) {
@@ -119,7 +140,11 @@ export class CommentsService {
       // Sổ "đã báo ai": chèn tất cả ứng viên với ON CONFLICT DO NOTHING (chỉ mục duy nhất commentId+người);
       // chỉ những dòng THỰC SỰ được chèn mới là người mới → không báo đôi kể cả khi hai lần sửa chạy song song.
       const candidates = (
-        await resolveMentionedMembers(tx, workspaceId, extractMentionIds(body), userId)
+        await this.mentionableIn(
+          workspaceId,
+          current.issue.projectId,
+          await resolveMentionedMembers(tx, workspaceId, extractMentionIds(body), userId),
+        )
       ).slice(0, MENTION_LIMIT);
       const inserted = candidates.length
         ? await tx.mention.createManyAndReturn({

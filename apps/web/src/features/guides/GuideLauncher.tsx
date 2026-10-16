@@ -3,26 +3,9 @@ import { useLocation } from 'react-router-dom';
 import { HelpCircle } from 'lucide-react';
 import type { DriveStep, Driver, Config } from 'driver.js';
 import type { TourContent, TourStepDef } from '@tirapro/shared';
-import { GuideType } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { useScreenGuides, useMarkGuide, type ScreenGuide } from './api';
-
-/**
- * Chuẩn hoá pathname cụ thể → screen pattern khớp với BE.
- * Vd `/p/PROJ-1/board` → `/p/:key/board`. Project key là segment sau `/p/`.
- */
-function routeToScreen(pathname: string): string {
-  const m = /^\/p\/[^/]+(\/.*)?$/.exec(pathname);
-  if (m) return `/p/:key${m[1] ?? ''}`.replace(/\/$/, '') || '/p/:key';
-  // Bỏ trailing slash (trừ root) để khớp screen đã seed.
-  if (pathname.length > 1 && pathname.endsWith('/')) return pathname.slice(0, -1);
-  return pathname;
-}
-
-/** Type-guard: content có phải tour (có mảng steps) không. */
-function isTour(content: ScreenGuide['content']): content is TourContent {
-  return !!content && Array.isArray((content as Partial<TourContent>).steps);
-}
+import { isTour, primaryTourOf, routeToScreen } from './routeToScreen';
 
 /** Đổi step shape (shared) → DriveStep (driver.js), lọc bỏ step có selector không tồn tại. */
 function toDriveSteps(steps: TourStepDef[]): DriveStep[] {
@@ -43,7 +26,7 @@ function toDriveSteps(steps: TourStepDef[]): DriveStep[] {
 export function GuideLauncher() {
   const location = useLocation();
   const screen = routeToScreen(location.pathname);
-  const { data: guides } = useScreenGuides(screen);
+  const { data: guides, isPending } = useScreenGuides(screen);
   const markGuide = useMarkGuide();
   // Đảm bảo intro chỉ auto-start một lần / màn / phiên.
   const autoStarted = useRef<Set<string>>(new Set());
@@ -87,20 +70,29 @@ export function GuideLauncher() {
   );
 
   // Tìm tour của màn (đầu tiên theo order) để gắn nút "Hướng dẫn".
-  const tours = (guides ?? []).filter((g) => g.type === GuideType.TOUR && isTour(g.content));
-  const primaryTour = tours[0];
+  const primaryTour = primaryTourOf(guides);
+  const autoStart =
+    primaryTour !== undefined && (primaryTour.content as TourContent).autoStart === true;
 
-  // Auto-start tour intro chưa xem, một lần duy nhất / màn / phiên.
+  // `runTour` đổi danh tính mỗi lần render (phụ thuộc kết quả useMutation) → giữ bản mới nhất trong ref để hẹn giờ auto-start
+  // KHÔNG bị huỷ/chạy lại mỗi lần render (trước đây hẹn giờ bị huỷ ngay mà `autoStarted` đã đánh dấu ⇒ tour không bao giờ tự chạy).
+  const runTourRef = useRef(runTour);
   useEffect(() => {
-    if (!primaryTour || primaryTour.seen) return;
+    runTourRef.current = runTour;
+  }, [runTour]);
+
+  // Auto-start CHỈ tour có `autoStart` (Tổng quan), chưa xem, một lần duy nhất / màn / phiên — các màn khác chạy khi bấm "?".
+  useEffect(() => {
+    if (!primaryTour || !autoStart || primaryTour.seen) return;
     if (autoStarted.current.has(screen)) return;
-    autoStarted.current.add(screen);
-    // Đợi 1 frame cho DOM (data-tour targets) render xong.
+    // Đợi một nhịp cho DOM (data-tour targets) render xong; đánh dấu "đã chạy" lúc thật sự chạy.
     const t = window.setTimeout(() => {
-      void runTour(primaryTour, { markSeen: true });
+      if (autoStarted.current.has(screen)) return;
+      autoStarted.current.add(screen);
+      void runTourRef.current(primaryTour, { markSeen: true });
     }, 350);
     return () => window.clearTimeout(t);
-  }, [primaryTour, screen, runTour]);
+  }, [primaryTour, autoStart, screen]);
 
   // Bảng lệnh có thể yêu cầu chạy tour màn hiện tại (sự kiện dùng chung).
   useEffect(() => {
@@ -111,6 +103,10 @@ export function GuideLauncher() {
     return () => window.removeEventListener('tirapro:tour', onTour);
   }, [primaryTour, runTour]);
 
+  // Màn không có tour → KHÔNG hiện nút (không để nút xám vô nghĩa). Đang tải: giữ chỗ 36×36 trong suốt để thanh trên
+  // không nhảy bố cục khi nút hiện ra.
+  if (!primaryTour) return isPending ? <span className="inline-block h-9 w-9" aria-hidden /> : null;
+
   return (
     <>
       <style>{GUIDE_THEME_CSS}</style>
@@ -119,9 +115,8 @@ export function GuideLauncher() {
         size="icon"
         aria-label="Hướng dẫn màn này"
         title="Hướng dẫn màn này"
-        disabled={!primaryTour}
         onClick={() => {
-          if (primaryTour) void runTour(primaryTour, { markSeen: !primaryTour.seen });
+          void runTour(primaryTour, { markSeen: !primaryTour.seen });
         }}
       >
         <HelpCircle className="h-4 w-4" />

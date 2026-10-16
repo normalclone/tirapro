@@ -654,3 +654,17 @@ describe('SprintsService — dự án đã xoá mềm = sprint không tồn tạ
     expect(tx.sprint.updateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('SprintsService.listForProject — thiếu projectId (rò rỉ dự án riêng tư)', () => {
+  it('projectId trống ⇒ 422, KHÔNG truy vấn (Prisma bỏ qua điều kiện undefined và trả sprint của MỌI dự án)', async () => {
+    const findMany = vi.fn(() => Promise.resolve([]));
+    const { service } = make({ sprint: { findMany }, issue: { groupBy: vi.fn() } });
+    await expect(
+      service.listForProject('w1', undefined as unknown as string),
+    ).rejects.toMatchObject({
+      status: 422,
+    });
+    await expect(service.listForProject('w1', '')).rejects.toMatchObject({ status: 422 });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+});

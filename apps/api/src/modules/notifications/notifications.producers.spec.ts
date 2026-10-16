@@ -7,12 +7,17 @@ const issue = {
   key: 'TP-1',
   summary: 'Sửa lỗi',
   workspaceId: 'w1',
+  projectId: 'p1',
   assigneeId: 'u2' as string | null,
 };
 
 function setup(
   members: string[] = [],
-  opts: { settings?: unknown; existingMentions?: string[] } = {},
+  opts: {
+    settings?: unknown;
+    existingMentions?: string[];
+    canSee?: (userId: string) => boolean;
+  } = {},
 ) {
   const prisma = {
     user: {
@@ -78,18 +83,24 @@ function setup(
   const events = { emit: vi.fn() };
   const mail = { enqueue: vi.fn(() => Promise.resolve()) };
   const config = { get: vi.fn(() => 'http://localhost:5173') };
+  const access = {
+    canSee: vi.fn((userId: string, _w: string, _p: string) =>
+      Promise.resolve(opts.canSee ? opts.canSee(userId) : true),
+    ),
+  };
   const service = new NotificationsService(
     prisma as never,
     events as never,
     mail as never,
     config as never,
+    access as never,
   );
   const created = () =>
     prisma.notification.create.mock.calls.map((c) => ({
       type: c[0].data.type,
       to: c[0].data.recipientId,
     }));
-  return { service, prisma, mail, created };
+  return { service, prisma, mail, created, events, access };
 }
 
 describe('NotificationsService — ISSUE_ASSIGNED', () => {
@@ -603,5 +614,118 @@ describe('NotificationsService — vòng sửa 1 (A14)', () => {
       actorId: 'a1',
     });
     expect(prisma.notification.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('NotificationsService — dự án riêng tư: người nhận phải xem được công việc (P16)', () => {
+  it('onIssueUpdated: không tạo thông báo cho assignee không thấy dự án riêng tư', async () => {
+    const { service, prisma, access, mail, events } = setup([], { canSee: () => false });
+    await service.onIssueUpdated({
+      issue,
+      actorId: 'a1',
+      changedFields: ['assigneeId'],
+    });
+    expect(access.canSee).toHaveBeenCalledWith('u2', 'w1', 'p1');
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+    expect(mail.enqueue).not.toHaveBeenCalled(); // không xếp email (không trích đoạn ra ngoài)
+    expect(events.emit).not.toHaveBeenCalled(); // không đẩy realtime
+  });
+
+  it('assignee là thành viên dự án thì vẫn được báo như cũ', async () => {
+    const { service, created, access } = setup([], { canSee: () => true });
+    await service.onIssueCreated({ issue, actorId: 'a1' });
+    expect(created()).toEqual([{ type: 'ISSUE_ASSIGNED', to: 'u2' }]);
+    expect(access.canSee).toHaveBeenCalledWith('u2', 'w1', 'p1');
+  });
+
+  it('onIssueTransitioned: assignee không thấy dự án → không có STATUS_CHANGED', async () => {
+    const { service, created } = setup([], { canSee: () => false });
+    await service.onIssueTransitioned({ issue, actorId: 'a1', fromStatusId: 's0' });
+    expect(created()).toEqual([]);
+  });
+
+  it('onCommentAdded: @nhắc người không thấy dự án bị bỏ qua; người thấy vẫn nhận MENTIONED', async () => {
+    const { service, created } = setup(['u3', 'u4'], { canSee: (id) => id !== 'u3' });
+    await service.onCommentAdded({
+      comment: { id: 'c1', authorId: 'a1', body: 'xin chào' },
+      issueId: 'i1',
+      actorId: 'a1',
+      mentionIds: ['u3', 'u4'],
+    });
+    expect(created().filter((n) => n.type === 'MENTIONED')).toEqual([
+      { type: 'MENTIONED', to: 'u4' },
+    ]);
+  });
+
+  it('onCommentAdded: truy vấn công việc có projectId để kiểm quyền người nhận', async () => {
+    const { service, prisma } = setup([]);
+    await service.onCommentAdded({
+      comment: { id: 'c1', authorId: 'a1', body: 'x' },
+      issueId: 'i1',
+      actorId: 'a1',
+    });
+    const sel = (prisma.issue.findFirst.mock.calls[0] as unknown as [{ select: object }])[0].select;
+    expect(sel).toMatchObject({ projectId: true });
+  });
+
+  it('@trong mô tả: người không thấy dự án KHÔNG vào sổ Mention (thêm vào dự án sau vẫn được báo)', async () => {
+    const { service, prisma, created } = setup(['u3', 'u4'], { canSee: (id) => id !== 'u3' });
+    await service.onIssueDescriptionMentions({
+      issue: { ...issue, assigneeId: null, description: '@[A](user:u3) @[B](user:u4)' },
+      actorId: 'a1',
+    });
+    const data = (
+      prisma.mention.createManyAndReturn.mock.calls[0] as unknown as [
+        { data: { mentionedUserId: string }[] },
+      ]
+    )[0].data;
+    expect(data.map((d) => d.mentionedUserId)).toEqual(['u4']);
+    expect(created()).toEqual([{ type: 'MENTIONED', to: 'u4' }]);
+  });
+
+  it('người theo dõi (publish không có projectId, chỉ có issueId): tra dự án từ công việc rồi lọc', async () => {
+    const { service, prisma, access, created } = setup([], { canSee: () => false });
+    await service.publish(
+      {
+        recipientId: 'w9',
+        workspaceId: 'w1',
+        type: 'WATCHING_UPDATE',
+        issueId: 'i1',
+        actorId: 'a1',
+        payload: { key: 'TP-1', summary: 's' },
+      },
+      { force: true },
+    );
+    expect(access.canSee).toHaveBeenCalledWith('w9', 'w1', 'p1');
+    expect(prisma.notification.create).not.toHaveBeenCalled();
+    expect(created()).toEqual([]);
+  });
+
+  it('thông báo không gắn công việc (issueId trống) không bị kiểm quyền xem dự án', async () => {
+    const { service, access } = setup([], { canSee: () => false });
+    await service.publish({
+      recipientId: 'u2',
+      workspaceId: 'w1',
+      type: 'SPRINT_STARTED',
+      actorId: 'a1',
+      payload: {},
+    });
+    expect(access.canSee).not.toHaveBeenCalled();
+  });
+
+  it('thông báo không gắn công việc, người nhận bật loại đó → vẫn được tạo (không bị lọc theo dự án)', async () => {
+    const { service, access, created } = setup([], {
+      canSee: () => false,
+      settings: { notifications: { SPRINT_STARTED: true } },
+    });
+    await service.publish({
+      recipientId: 'u2',
+      workspaceId: 'w1',
+      type: 'SPRINT_STARTED',
+      actorId: 'a1',
+      payload: {},
+    });
+    expect(access.canSee).not.toHaveBeenCalled();
+    expect(created()).toEqual([{ type: 'SPRINT_STARTED', to: 'u2' }]);
   });
 });

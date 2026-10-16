@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { describe, expect, it, vi } from 'vitest';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { IntegrationsService } from './integrations.service';
 import { LINK_CODE_ALPHABET, LinkCodesService } from './link-codes.service';
@@ -18,6 +19,7 @@ describe('LinkCodesService — Nest DI', () => {
         { provide: PrismaService, useValue: {} },
         { provide: TelegramService, useValue: {} },
         { provide: IntegrationsService, useValue: {} },
+        { provide: ProjectAccessService, useValue: {} },
       ],
     }).compile();
     expect(mod.get(LinkCodesService)).toBeInstanceOf(LinkCodesService);
@@ -59,7 +61,9 @@ const groupUpdate = (text: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function setup(opts: { integration?: unknown; token?: unknown; updates?: unknown[] } = {}) {
+function setup(
+  opts: { integration?: unknown; token?: unknown; updates?: unknown[]; canSee?: boolean } = {},
+) {
   const prisma = {
     integration: {
       findFirst: vi.fn(() =>
@@ -92,9 +96,21 @@ function setup(opts: { integration?: unknown; token?: unknown; updates?: unknown
     ),
     reportUnusableToken: vi.fn(() => Promise.resolve()),
   };
-  const service = new LinkCodesService(prisma as never, telegram as never, integrations as never);
+  const access = {
+    assertCanSee: vi.fn(() =>
+      opts.canSee === false
+        ? Promise.reject(Object.assign(new Error('Dự án'), { status: 404 }))
+        : Promise.resolve(),
+    ),
+  };
+  const service = new LinkCodesService(
+    prisma as never,
+    telegram as never,
+    integrations as never,
+    access as never,
+  );
   service.clock = () => NOW;
-  return { service, prisma, telegram, integrations };
+  return { service, prisma, telegram, integrations, access };
 }
 
 describe('createCode', () => {
@@ -172,6 +188,26 @@ describe('createCode', () => {
       status: 404,
     });
     expect(prisma.channelLinkToken.create).not.toHaveBeenCalled();
+  });
+
+  it('dự án riêng tư người tạo mã không thấy → 404, KHÔNG tạo mã (không cho tự gắn nhóm chat để nhận tin dự án ẩn)', async () => {
+    const { service, prisma, access } = setup({ canSee: false });
+    await expect(service.createCode('w1', 'g1', 'u1', 'pHidden')).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(access.assertCanSee).toHaveBeenCalledWith('u1', 'w1', 'pHidden', 'Dự án');
+    expect(prisma.channelLinkToken.create).not.toHaveBeenCalled();
+  });
+
+  it('người thấy dự án (thành viên/quản trị) → tạo mã gắn dự án; không gắn dự án thì không cần kiểm', async () => {
+    const { service, prisma, access } = setup();
+    await service.createCode('w1', 'g1', 'u1', 'p1');
+    expect(prisma.channelLinkToken.create.mock.calls[0]![0].data).toMatchObject({
+      projectId: 'p1',
+    });
+    access.assertCanSee.mockClear();
+    await service.createCode('w1', 'g1', 'u1');
+    expect(access.assertCanSee).not.toHaveBeenCalled();
   });
 });
 

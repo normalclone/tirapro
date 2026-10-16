@@ -25,6 +25,7 @@ import type {
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { PresenceService, type PresenceProfile } from './presence.service';
 import { isSessionRevoked } from '../auth/session-revocation';
+import { ProjectAccessService } from '../rbac/project-access.service';
 
 /** Thời điểm cấp access token (để so với `sessionsRevokedAt`). */
 type TokenIssued = { iat?: number; iatMs?: number };
@@ -50,6 +51,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly presence: PresenceService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   /**
@@ -362,7 +364,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
             where: { id: target.id, workspaceId, deletedAt: null },
             select: { id: true },
           });
-          return project ? room : null;
+          if (!project) return null;
+          // Dự án riêng tư: chỉ thành viên/quản trị vào room (kiểm MỘT lần lúc subscribe + rút khi bị gỡ — `onProjectMemberRemoved`).
+          return (await this.access.canSee(userId, workspaceId, project.id)) ? room : null;
         } catch (err) {
           this.logger.warn(
             `Kiểm quyền subscribe project thất bại: ${err instanceof Error ? err.message : String(err)}`,
@@ -375,9 +379,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         try {
           const issue = await this.prisma.issue.findFirst({
             where: { id: target.id, workspaceId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, projectId: true },
           });
-          return issue ? room : null;
+          if (!issue) return null;
+          // Room issue (presence/typing) cũng theo quyền xem dự án của công việc.
+          return (await this.access.canSee(userId, workspaceId, issue.projectId)) ? room : null;
         } catch (err) {
           this.logger.warn(
             `Kiểm quyền subscribe issue thất bại: ${err instanceof Error ? err.message : String(err)}`,
@@ -412,6 +418,104 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     } catch (err) {
       this.logger.warn(
         `Ngắt socket của member bị gỡ thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Rút các socket khỏi MỌI room của dự án: `project:<id>` và các room `issue:<id>` thuộc dự án đó (presence/typing),
+   * rồi báo rời presence. `sockets` là RemoteSocket (có thể ở node khác qua adapter).
+   */
+  private async evictFromProjectRooms(
+    sockets: Array<{ data: unknown; rooms: Set<string>; leave: (room: string) => unknown }>,
+    projectId: string,
+  ): Promise<void> {
+    const projectRoom = rooms.project(projectId);
+    const issuePrefix = rooms.issue('');
+    const issueRooms = new Set<string>();
+    for (const s of sockets)
+      for (const r of s.rooms ?? []) if (r.startsWith(issuePrefix)) issueRooms.add(r);
+    const ofProject = new Set<string>();
+    if (issueRooms.size) {
+      // allow-deleted: chỉ cần biết room issue nào thuộc dự án này để rút socket (kể cả việc đã xoá mềm)
+      const rows = await this.prisma.issue.findMany({
+        where: { projectId, id: { in: [...issueRooms].map((r) => r.slice(issuePrefix.length)) } },
+        select: { id: true },
+      });
+      for (const r of rows) ofProject.add(rooms.issue(r.id));
+    }
+    const left = new Map<string, Set<string>>(); // room -> userIds đã rời
+    const mark = (room: string, userId: string): void => {
+      let set = left.get(room);
+      if (!set) left.set(room, (set = new Set()));
+      set.add(userId);
+    };
+    for (const s of sockets) {
+      const userId = (s.data as { userId?: string }).userId;
+      if (!userId) continue;
+      s.leave(projectRoom);
+      mark(projectRoom, userId);
+      for (const r of [...(s.rooms ?? [])]) {
+        if (!ofProject.has(r)) continue;
+        s.leave(r);
+        mark(r, userId);
+      }
+    }
+    for (const [room, userIds] of left)
+      for (const userId of userIds) {
+        await this.presence.leave(room, userId);
+        this.server.to(room).emit(WS_EVENTS.PRESENCE_LEAVE, { room, userId });
+      }
+  }
+
+  /**
+   * Người dùng bị gỡ khỏi dự án (riêng tư): nếu họ KHÔNG còn thấy dự án (dự án công khai thì vẫn thấy) → rút mọi socket của
+   * họ (mọi tab/node) khỏi room `project:<id>` và các room `issue:<id>` của dự án, rồi rời presence — không chờ hết phiên.
+   */
+  @OnEvent(DOMAIN_EVENTS.PROJECT_MEMBER_REMOVED)
+  async onProjectMemberRemoved(p: {
+    workspaceId?: string;
+    projectId?: string;
+    userId?: string;
+  }): Promise<void> {
+    if (!p?.workspaceId || !p?.projectId || !p?.userId || !this.server) return;
+    try {
+      if (await this.access.canSee(p.userId, p.workspaceId, p.projectId)) return;
+      // Room cá nhân chứa MỌI socket của người đó (kể cả tab chỉ mở một việc mà không vào room project).
+      const sockets = await this.server.in(rooms.user(p.userId)).fetchSockets();
+      await this.evictFromProjectRooms(
+        sockets.filter((s) => (s.data as { userId?: string }).userId === p.userId),
+        p.projectId,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Rút socket của người bị gỡ khỏi dự án thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Cờ riêng tư của dự án đổi: rà lại MỌI socket trong room `project:<id>` — ai không còn thấy dự án (vừa chuyển sang riêng
+   * tư mà không là thành viên) bị rút khỏi room project và các room issue của dự án. Mỗi người kiểm một lần dù nhiều tab.
+   */
+  @OnEvent(DOMAIN_EVENTS.PROJECT_VISIBILITY_CHANGED)
+  async onProjectVisibilityChanged(p: { workspaceId?: string; projectId?: string }): Promise<void> {
+    if (!p?.workspaceId || !p?.projectId || !this.server) return;
+    try {
+      const sockets = await this.server.in(rooms.project(p.projectId)).fetchSockets();
+      const verdict = new Map<string, boolean>();
+      const evict: typeof sockets = [];
+      for (const s of sockets) {
+        const userId = (s.data as { userId?: string }).userId;
+        if (!userId) continue;
+        if (!verdict.has(userId))
+          verdict.set(userId, await this.access.canSee(userId, p.workspaceId, p.projectId));
+        if (!verdict.get(userId)) evict.push(s);
+      }
+      await this.evictFromProjectRooms(evict, p.projectId);
+    } catch (err) {
+      this.logger.warn(
+        `Rà socket sau khi đổi riêng tư thất bại: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }

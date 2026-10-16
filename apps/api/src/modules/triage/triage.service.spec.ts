@@ -71,13 +71,15 @@ function make(current: Record<string, unknown> = {}) {
   const events = { emit: vi.fn() };
   const issues = { update: vi.fn((..._a: unknown[]) => Promise.resolve({ version: 5 })) };
   const comments = { create: vi.fn((..._a: unknown[]) => Promise.resolve({ id: 'c1' })) };
+  const access = { visibleWhere: vi.fn((..._a: unknown[]) => Promise.resolve({})) };
   const service = new TriageService(
     prisma as never,
     events as never,
     issues as never,
     comments as never,
+    access as never,
   );
-  return { service, prisma, update, events, issues, comments };
+  return { service, prisma, update, events, issues, comments, access };
 }
 
 describe('TriageService.accept', () => {
@@ -242,7 +244,7 @@ describe('TriageService.decline/snooze — chỉ việc còn trong hàng đợi'
 describe('TriageService.toDto', () => {
   it('trả mô tả, người gửi, loại yêu cầu từ triageSource', async () => {
     const { service } = make();
-    const items = await service.inbox('w1', 'p1', undefined, 50);
+    const items = await service.inbox('w1', 'p1', undefined, 50, 'u1');
     expect(items.data[0]).toMatchObject({
       description: 'Mô tả',
       kind: 'FEATURE',
@@ -253,7 +255,37 @@ describe('TriageService.toDto', () => {
 
   it('triageSource lạ (không phải BUG/FEATURE/QUESTION) => kind null', async () => {
     const { service } = make({ triageSource: 'API' });
-    const items = await service.inbox('w1', 'p1', undefined, 50);
+    const items = await service.inbox('w1', 'p1', undefined, 50, 'u1');
     expect(items.data[0]!.kind).toBeNull();
+  });
+});
+
+describe('TriageService — dự án riêng tư: hộp triage không lộ việc của dự án ẩn (P15)', () => {
+  const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+
+  it('inbox không có projectId (cấp workspace) ⇒ where.project = visible', async () => {
+    const { service, prisma, access } = make();
+    access.visibleWhere.mockResolvedValue(visible);
+    await service.inbox('w1', undefined, undefined, 50, 'u1');
+    expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+    const where = (prisma.issue.findMany.mock.calls[0] as unknown as [{ where: object }])[0].where;
+    expect(where).toMatchObject({ workspaceId: 'w1', deletedAt: null, project: visible });
+    expect(where).not.toHaveProperty('projectId');
+  });
+
+  it('count (huy hiệu) cùng bộ lọc với inbox', async () => {
+    const { service, prisma, access } = make();
+    access.visibleWhere.mockResolvedValue(visible);
+    (prisma.issue as Record<string, unknown>).count = vi.fn(() => Promise.resolve(3));
+    await service.count('w1', undefined, 'u1');
+    const count = prisma.issue as unknown as { count: { mock: { calls: [[{ where: object }]] } } };
+    expect(count.count.mock.calls[0][0].where).toMatchObject({ project: visible });
+  });
+
+  it('người thấy hết dự án (visible = {}) → không thêm điều kiện project', async () => {
+    const { service, prisma } = make();
+    await service.inbox('w1', undefined, undefined, 50, 'u1');
+    const where = (prisma.issue.findMany.mock.calls[0] as unknown as [{ where: object }])[0].where;
+    expect(where).not.toHaveProperty('project');
   });
 });

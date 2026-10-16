@@ -907,115 +907,116 @@ export function BacklogPage() {
                 selected.size > 0 && 'max-sm:pb-28',
               )}
             >
-              {visibleSprints.map((sprint) => {
+              {visibleSprints.map((sprint, sprintIdx) => {
                 const sprintIssues = bySprint.get(sprint.id) ?? [];
                 // Chưa lọc: cùng số với hộp xác nhận Kết thúc sprint và lệnh Cmd+K.
                 const notDone = (fullBySprint.get(sprint.id) ?? []).filter(
                   (i) => i.status.category !== 'DONE',
                 ).length;
                 return (
-                  <Section
-                    key={sprint.id}
-                    id={sprint.id}
-                    title={sprint.name}
-                    badge={STATE_BADGE[sprint.state]}
-                    meta={
-                      sprint.state === 'ACTIVE' ? (
-                        <SprintTimeText sprint={sprint} className="text-xs" />
-                      ) : undefined
-                    }
-                    points={pointsSum(sprintIssues)}
-                    count={sprintIssues.length}
-                    issues={sprintIssues}
-                    progressMap={progressMap}
-                    scrollEl={scrollEl}
-                    projectKey={key}
-                    projectId={projectId}
-                    canCreate={canCreate}
-                    quickAddSprintId={sprint.state !== 'CLOSED' ? sprint.id : undefined}
-                    quickAddEpicId={quickAddEpicId}
-                    selectable={canAssign || canManageBacklog}
-                    canDrag={canDragIssue}
-                    rowEdit={rowEdit}
-                    canEditRow={canEditIssue}
-                    selected={selected}
-                    onToggleSelect={toggleSelect}
-                    onToggleSection={toggleSelectSection}
-                    onOpen={peek.open}
-                    peekedKey={peek.peekKey}
-                    action={
-                      canManageSprint ? (
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8"
-                            aria-label={`Sửa sprint ${sprint.name}`}
-                            title={
-                              sprint.state === 'FUTURE'
-                                ? 'Sửa tên, mục tiêu, ngày — hoặc xoá sprint'
-                                : 'Sửa mục tiêu và ngày kết thúc'
-                            }
-                            onClick={() => setEditing(sprint)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          {sprint.state === 'FUTURE' ? (
-                            <>
-                              {canUseAi && (
+                  <div key={sprint.id} data-tour={sprintIdx === 0 ? 'backlog-sprint' : undefined}>
+                    <Section
+                      id={sprint.id}
+                      title={sprint.name}
+                      badge={STATE_BADGE[sprint.state]}
+                      meta={
+                        sprint.state === 'ACTIVE' ? (
+                          <SprintTimeText sprint={sprint} className="text-xs" />
+                        ) : undefined
+                      }
+                      points={pointsSum(sprintIssues)}
+                      count={sprintIssues.length}
+                      issues={sprintIssues}
+                      progressMap={progressMap}
+                      scrollEl={scrollEl}
+                      projectKey={key}
+                      projectId={projectId}
+                      canCreate={canCreate}
+                      quickAddSprintId={sprint.state !== 'CLOSED' ? sprint.id : undefined}
+                      quickAddEpicId={quickAddEpicId}
+                      selectable={canAssign || canManageBacklog}
+                      canDrag={canDragIssue}
+                      rowEdit={rowEdit}
+                      canEditRow={canEditIssue}
+                      selected={selected}
+                      onToggleSelect={toggleSelect}
+                      onToggleSection={toggleSelectSection}
+                      onOpen={peek.open}
+                      peekedKey={peek.peekKey}
+                      action={
+                        canManageSprint ? (
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              aria-label={`Sửa sprint ${sprint.name}`}
+                              title={
+                                sprint.state === 'FUTURE'
+                                  ? 'Sửa tên, mục tiêu, ngày — hoặc xoá sprint'
+                                  : 'Sửa mục tiêu và ngày kết thúc'
+                              }
+                              onClick={() => setEditing(sprint)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            {sprint.state === 'FUTURE' ? (
+                              <>
+                                {canUseAi && (
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    title="Gợi ý việc trong Backlog vừa với năng lực của đội"
+                                    onClick={() =>
+                                      setAssistantFor({
+                                        id: sprint.id,
+                                        name: sprint.name,
+                                        goal: sprint.goal ?? null,
+                                      })
+                                    }
+                                  >
+                                    <Sparkles className="h-4 w-4" />
+                                    Trợ lý lập sprint
+                                  </Button>
+                                )}
                                 <Button
                                   size="sm"
-                                  variant="secondary"
-                                  title="Gợi ý việc trong Backlog vừa với năng lực của đội"
-                                  onClick={() =>
-                                    setAssistantFor({
-                                      id: sprint.id,
-                                      name: sprint.name,
-                                      goal: sprint.goal ?? null,
-                                    })
-                                  }
+                                  title={`Bắt đầu đợt làm việc này. ${SPRINT_TIP}`}
+                                  onClick={() => openStartDialog(sprint.id)}
                                 >
-                                  <Sparkles className="h-4 w-4" />
-                                  Trợ lý lập sprint
+                                  <Play className="h-4 w-4" />
+                                  Bắt đầu sprint
                                 </Button>
-                              )}
+                              </>
+                            ) : (
                               <Button
                                 size="sm"
-                                title={`Bắt đầu đợt làm việc này. ${SPRINT_TIP}`}
-                                onClick={() => openStartDialog(sprint.id)}
+                                variant="secondary"
+                                title="Kết thúc đợt làm việc này. Bạn chọn việc chưa xong đi đâu: Backlog, sprint mới hoặc sprint có sẵn."
+                                loading={
+                                  completeSprint.isPending &&
+                                  completeSprint.variables?.sprintId === sprint.id
+                                }
+                                onClick={() => requestComplete(sprint)}
                               >
-                                <Play className="h-4 w-4" />
-                                Bắt đầu sprint
+                                <CheckCircle2 className="h-4 w-4" />
+                                Kết thúc sprint
                               </Button>
-                            </>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              title="Kết thúc đợt làm việc này. Bạn chọn việc chưa xong đi đâu: Backlog, sprint mới hoặc sprint có sẵn."
-                              loading={
-                                completeSprint.isPending &&
-                                completeSprint.variables?.sprintId === sprint.id
-                              }
-                              onClick={() => requestComplete(sprint)}
-                            >
-                              <CheckCircle2 className="h-4 w-4" />
-                              Kết thúc sprint
-                            </Button>
-                          )}
-                        </div>
-                      ) : undefined
-                    }
-                    hint={
-                      sprint.state === 'FUTURE'
-                        ? hasActive
-                          ? 'Đang có một sprint chạy dở — kết thúc sprint đó trước rồi mới bắt đầu sprint này.'
-                          : sprint.goal
-                        : notDone > 0
-                          ? `Còn ${notDone} việc chưa xong. Khi kết thúc sprint, bạn chọn đưa chúng về Backlog hoặc sang sprint khác.`
-                          : sprint.goal
-                    }
-                  />
+                            )}
+                          </div>
+                        ) : undefined
+                      }
+                      hint={
+                        sprint.state === 'FUTURE'
+                          ? hasActive
+                            ? 'Đang có một sprint chạy dở — kết thúc sprint đó trước rồi mới bắt đầu sprint này.'
+                            : sprint.goal
+                          : notDone > 0
+                            ? `Còn ${notDone} việc chưa xong. Khi kết thúc sprint, bạn chọn đưa chúng về Backlog hoặc sang sprint khác.`
+                            : sprint.goal
+                      }
+                    />
+                  </div>
                 );
               })}
 
@@ -1437,18 +1438,22 @@ function Section({
             </p>
           ))}
         {showQuickAdd && (
-          <QuickAddRow
-            projectKey={projectKey}
-            projectId={projectId}
-            extra={{
-              sprintId: quickAddSprintId,
-              ...(quickAddEpicId ? { epicId: quickAddEpicId } : {}),
-            }}
-            placeholder={
-              quickAddSprintId === null ? '+ Thêm việc vào Backlog…' : '+ Thêm việc vào sprint này…'
-            }
-            compact
-          />
+          <div data-tour={quickAddSprintId === null ? 'backlog-quickadd' : undefined}>
+            <QuickAddRow
+              projectKey={projectKey}
+              projectId={projectId}
+              extra={{
+                sprintId: quickAddSprintId,
+                ...(quickAddEpicId ? { epicId: quickAddEpicId } : {}),
+              }}
+              placeholder={
+                quickAddSprintId === null
+                  ? '+ Thêm việc vào Backlog…'
+                  : '+ Thêm việc vào sprint này…'
+              }
+              compact
+            />
+          </div>
         )}
       </div>
     </section>

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma, DevLinkType, DevLinkState, IntegrationType } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { LIVE_PROJECT } from '../../common/live-project';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { verifyGithubSignature, verifyGitlabToken } from './webhook-signature';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { WRITABLE_PROJECT_FILTER } from '../../common/project-writable';
@@ -140,7 +141,10 @@ type DevLinkRow = Prisma.IssueDevLinkGetPayload<{ select: typeof devLinkSelect }
 export class DevLinksService {
   private readonly logger = new Logger(DevLinksService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: ProjectAccessService,
+  ) {}
 
   // ---------------------------- Repositories ----------------------------
 
@@ -187,9 +191,22 @@ export class DevLinksService {
     }
   }
 
-  async listRepositories(workspaceId: string, projectId?: string): Promise<RepositoryDto[]> {
+  /**
+   * Liệt kê repository (lọc theo project nếu truyền). Không có `projectId` thì repo gắn dự án riêng tư người xem không
+   * thấy bị loại (tên repo/liên kết không lộ); repo cấp workspace (không gắn dự án) luôn hiện.
+   */
+  async listRepositories(
+    workspaceId: string,
+    projectId: string | undefined,
+    viewerId: string,
+  ): Promise<RepositoryDto[]> {
+    const ids = await this.access.visibleProjectIds(viewerId, workspaceId);
     const repos = await this.prisma.codeRepository.findMany({
-      where: { workspaceId, ...(projectId ? { projectId } : {}) },
+      where: {
+        workspaceId,
+        ...(projectId ? { projectId } : {}),
+        ...(ids === null ? {} : { OR: [{ projectId: null }, { projectId: { in: ids } }] }),
+      },
       orderBy: { createdAt: 'desc' },
     });
     return repos.map((r) => this.toRepoDto(r));

@@ -12,6 +12,7 @@ import {
   NotFoundAppException,
 } from '../../common/exceptions/app.exception';
 import { IssuesService } from '../issues/issues.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { RbacService } from '../rbac/rbac.service';
 import {
   issuePayloadSchema,
@@ -108,6 +109,7 @@ export class AutomationService implements OnApplicationShutdown {
     private readonly issues: IssuesService,
     private readonly rbac: RbacService,
     private readonly redis: RedisService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   onApplicationShutdown(): void {
@@ -117,9 +119,23 @@ export class AutomationService implements OnApplicationShutdown {
   /* ============================== Mẫu issue ============================== */
 
   /** `projectId` bỏ trống = mọi mẫu; `none` = mẫu dùng chung; id dự án = mẫu của dự án + mẫu dùng chung. */
-  async listTemplates(workspaceId: string, projectId?: string): Promise<IssueTemplateDto[]> {
+  /**
+   * Mẫu của dự án riêng tư người xem không thấy bị loại (kể cả khi không truyền `projectId`: trước đây liệt kê mẫu của MỌI
+   * dự án trong workspace, lộ khoá/tên dự án + nội dung mẫu). Mẫu dùng chung (không dự án) luôn hiện. `AND` để không đè `OR`
+   * của `templateScope`.
+   */
+  async listTemplates(
+    workspaceId: string,
+    projectId: string | undefined,
+    viewerId: string,
+  ): Promise<IssueTemplateDto[]> {
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const rows = await this.prisma.issueTemplate.findMany({
-      where: { workspaceId, ...this.templateScope(projectId) },
+      where: {
+        workspaceId,
+        ...this.templateScope(projectId),
+        AND: [{ OR: [{ projectId: null }, { project: visible }] }],
+      },
       orderBy: [{ name: 'asc' }],
       include: { project: PROJECT_BRIEF },
     });
@@ -209,10 +225,16 @@ export class AutomationService implements OnApplicationShutdown {
 
   /* ============================ Việc lặp lại ============================ */
 
-  async listRecurring(workspaceId: string, projectId?: string): Promise<RecurringIssueDto[]> {
+  /** Việc lặp lại của dự án riêng tư người xem không thấy bị loại (kể cả khi không truyền `projectId`). */
+  async listRecurring(
+    workspaceId: string,
+    projectId: string | undefined,
+    viewerId: string,
+  ): Promise<RecurringIssueDto[]> {
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const rows = await this.prisma.recurringIssue.findMany({
       where: {
-        project: { workspaceId, deletedAt: null },
+        project: { workspaceId, deletedAt: null, ...visible },
         ...(projectId && projectId !== SCOPE_SHARED ? { projectId } : {}),
       },
       orderBy: [{ active: 'desc' }, { nextRunAt: 'asc' }],
@@ -575,11 +597,15 @@ export class AutomationService implements OnApplicationShutdown {
     payload: IssuePayload,
   ) {
     const summary = this.applyTokens(payload.summary || fallbackSummary, new Date()).slice(0, 255);
-    // Việc do hệ thống tạo: assignee đã rời workspace/bị vô hiệu hoá → tạo KHÔNG gán, không để 422 làm hỏng việc tạo.
+    // Việc do hệ thống tạo: assignee đã rời workspace/bị vô hiệu hoá HOẶC không còn xem được dự án (riêng tư) → tạo
+    // KHÔNG gán, không để 422 làm hỏng việc tạo (cron việc lặp sẽ thử lại mỗi ngày). `projectId` để kiểm cả quyền xem.
     let assigneeId = payload.assigneeId ?? null;
-    if (assigneeId && !(await this.issues.isAssignableMember(workspaceId, assigneeId))) {
+    if (
+      assigneeId &&
+      !(await this.issues.isAssignableMember(workspaceId, assigneeId, undefined, projectId))
+    ) {
       this.logger.warn(
-        `[automation] tạo việc "${summary}": người được giao ${assigneeId} không còn là thành viên hoạt động của workspace ${workspaceId} — tạo không gán`,
+        `[automation] tạo việc "${summary}": người được giao ${assigneeId} không còn là thành viên hoạt động của workspace ${workspaceId} hoặc không xem được dự án ${projectId} — tạo không gán`,
       );
       assigneeId = null;
     }

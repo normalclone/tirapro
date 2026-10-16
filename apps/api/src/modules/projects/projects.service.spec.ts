@@ -497,15 +497,29 @@ describe('ProjectsService.update — đổi riêng tư', () => {
     AUDIT.record.mockClear();
     ACCESS.onVisibilityChanged.mockClear();
     ACCESS.onMembersChanged.mockClear();
+    const events = { emit: vi.fn() };
     const svc = new ProjectsService(
       prisma as never,
       {} as never,
       {} as never,
       ACCESS as never,
       AUDIT as never,
+      events as never,
     );
-    return { svc, prisma, tx };
+    return { svc, prisma, tx, events };
   }
+
+  it('đổi cờ riêng tư -> phát project.visibility_changed (gateway rà lại socket); không đổi thì không', async () => {
+    const changed = setup();
+    await changed.svc.update('w1', 'p1', 'actor1', { isPrivate: true });
+    expect(changed.events.emit).toHaveBeenCalledWith('project.visibility_changed', {
+      workspaceId: 'w1',
+      projectId: 'p1',
+    });
+    const same = setup({ cur: { isPrivate: true } });
+    await same.svc.update('w1', 'p1', 'actor1', { isPrivate: true });
+    expect(same.events.emit).not.toHaveBeenCalled();
+  });
 
   it('false → true: trong transaction bảo đảm người thao tác và người phụ trách là thành viên (Project Admin), ghi nhật ký, xoá cache quyền', async () => {
     const { svc, prisma, tx } = setup();

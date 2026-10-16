@@ -52,8 +52,12 @@ export class CustomFieldsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('query', 'projectId')
   @Get('custom-fields')
-  async list(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
-    return this.customFields.listDefinitions(workspaceId, projectId || undefined);
+  async list(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.customFields.listDefinitions(workspaceId, projectId || undefined, user.id);
   }
 
   @Post('custom-fields')

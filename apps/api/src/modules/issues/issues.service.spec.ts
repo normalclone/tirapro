@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { IssuesService } from './issues.service';
 
 /** expect.stringContaining có kiểu any — bọc lại để không phát sinh cảnh báo lint. */
@@ -96,6 +97,9 @@ function makeService(
   const rbac = {
     getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(perms))),
   };
+  // Người được giao thấy dự án (mặc định); ca dự án riêng tư đặt lại `access.canSee`.
+  const access = new ProjectAccessService(prisma as never, rbac as never);
+  const canSee = vi.spyOn(access, 'canSee').mockResolvedValue(true);
   const service = new IssuesService(
     prisma as never,
     events as never,
@@ -103,8 +107,9 @@ function makeService(
     undefined,
     undefined,
     comments as never,
+    access,
   );
-  return { service, events, prisma, rbac };
+  return { service, events, prisma, rbac, canSee };
 }
 
 describe('IssuesService.toDto — components/fixVersions (B17)', () => {
@@ -3358,5 +3363,70 @@ describe('IssuesService — dự án riêng tư (P13)', () => {
     prisma.issue.findFirst.mockResolvedValue(issueRow() as never);
     const dto = await service.getByKey('w1', 'P-TASK-1', 'u1');
     expect(dto.key).toBe('P-TASK-1');
+  });
+});
+
+describe('IssuesService — người phụ trách phải xem được dự án (P16)', () => {
+  const projectTx = () => ({
+    project: {
+      findFirst: vi.fn(() =>
+        Promise.resolve({
+          id: 'p1',
+          key: 'P',
+          defaultWorkflowId: 'wf',
+          leadId: null,
+          defaultAssigneeMode: 'NONE',
+          archivedAt: null,
+        }),
+      ),
+    },
+    issueType: { findFirst: vi.fn(() => Promise.resolve({ id: 't1' })) },
+    issue: { create: vi.fn() },
+  });
+
+  it('create(assigneeId) là thành viên workspace nhưng không thấy dự án riêng tư => 422, chưa ghi', async () => {
+    const tx = projectTx();
+    const { service, canSee } = makeService(tx);
+    canSee.mockResolvedValue(false);
+    await expect(
+      service.create('w1', 'u1', {
+        projectId: 'p1',
+        typeId: 't1',
+        summary: 's',
+        descriptionFormat: 'MARKDOWN',
+        assigneeId: 'u2',
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(canSee).toHaveBeenCalledWith('u2', 'w1', 'p1');
+    expect(tx.issue.create).not.toHaveBeenCalled();
+  });
+
+  it('update(assigneeId) người không thấy dự án => 422, không ghi; thành viên dự án => được', async () => {
+    const tx = {
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(issueRow())),
+        updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 4, assigneeId: 'u2' }))),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+    const hidden = makeService(tx);
+    hidden.canSee.mockResolvedValue(false);
+    await expect(
+      hidden.service.update('w1', 'u1', 'i1', { version: 3, assigneeId: 'u2' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(hidden.canSee).toHaveBeenCalledWith('u2', 'w1', 'p1');
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+
+    const member = makeService(tx);
+    await expect(
+      member.service.update('w1', 'u1', 'i1', { version: 3, assigneeId: 'u2' }),
+    ).resolves.toBeDefined();
+  });
+
+  it('isAssignableMember không có projectId (rule-engine/hệ thống) không kiểm quyền xem', async () => {
+    const { service, canSee } = makeService({});
+    await expect(service.isAssignableMember('w1', 'u2')).resolves.toBe(true);
+    expect(canSee).not.toHaveBeenCalled();
   });
 });

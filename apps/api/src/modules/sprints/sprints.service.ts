@@ -29,6 +29,9 @@ export class SprintsService {
   ) {}
 
   async listForProject(workspaceId: string, projectId: string): Promise<SprintDto[]> {
+    // `projectId` thiếu (query bỏ trống) ⇒ Prisma bỏ qua điều kiện và liệt kê sprint của MỌI dự án (kể cả riêng tư) mà guard
+    // không kiểm dự án nào: bắt buộc phải có.
+    if (!projectId) throw new BusinessRuleException('Thiếu projectId');
     const sprints = await this.prisma.sprint.findMany({
       where: { projectId, deletedAt: null, project: { workspaceId, deletedAt: null } },
       orderBy: [{ state: 'asc' }, { sequence: 'desc' }],

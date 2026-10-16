@@ -225,7 +225,10 @@ export const keys = {
     versions: (projectId: string) => ['project-lookups', projectId, 'versions'] as const,
   },
 
-  guides: { screen: (screen: string) => ['guides', screen] as const },
+  guides: {
+    screen: (screen: string) => ['guides', screen] as const,
+    onboarding: ['guides', 'onboarding'] as const,
+  },
 
   ai: {
     projectMeta: (key: string) => ['project-meta', key] as const,

@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/types/request';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
@@ -21,40 +23,46 @@ export class SlaController {
   /** Chính sách SLA của workspace. */
   @Get('policies')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async list(@WorkspaceId() workspaceId: string) {
-    return this.sla.list(workspaceId);
+  async list(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
+    return this.sla.list(workspaceId, user.id);
   }
 
   @Post('policies')
   @Permissions(PERMISSIONS.SLA_MANAGE)
   async create(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createSlaPolicySchema)) dto: CreateSlaPolicyInput,
   ) {
-    return this.sla.create(workspaceId, dto);
+    return this.sla.create(workspaceId, dto, user.id);
   }
 
   @Put('policies/:id')
   @Permissions(PERMISSIONS.SLA_MANAGE)
   async update(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateSlaPolicySchema)) dto: UpdateSlaPolicyInput,
   ) {
-    return this.sla.update(workspaceId, id, dto);
+    return this.sla.update(workspaceId, id, dto, user.id);
   }
 
   @Delete('policies/:id')
   @Permissions(PERMISSIONS.SLA_MANAGE)
-  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.sla.remove(workspaceId, id);
+  async remove(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.sla.remove(workspaceId, id, user.id);
   }
 
   /** Bảng theo dõi ticket đang chạy SLA (sắp trễ / đã vi phạm). */
   @Get('board')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async board(@WorkspaceId() workspaceId: string) {
-    return this.sla.board(workspaceId);
+  async board(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
+    return this.sla.board(workspaceId, user.id);
   }
 
   /** Trạng thái SLA của 1 issue (hiển thị badge trên trang chi tiết). */

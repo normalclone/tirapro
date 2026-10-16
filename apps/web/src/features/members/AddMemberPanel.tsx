@@ -32,7 +32,7 @@ export function AddMemberPanel() {
   const [prefillEmail, setPrefillEmail] = useState('');
   if (!can('member:manage')) return null;
   return (
-    <section className="rounded-lg border border-border bg-surface">
+    <section className="rounded-lg border border-border bg-surface" data-tour="members-add">
       <div className="flex items-start gap-3 border-b border-border px-5 py-4">
         <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
           <UserPlus className="h-4 w-4" />

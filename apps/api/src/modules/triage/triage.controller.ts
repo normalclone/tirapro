@@ -46,6 +46,7 @@ export class TriageController {
   @Get()
   async inbox(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
@@ -55,14 +56,19 @@ export class TriageController {
       projectId,
       cursor,
       Math.min(Math.max(Number(limit) || 50, 1), 100),
+      user.id,
     );
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('query', 'projectId')
   @Get('count')
-  async count(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
-    return this.triage.count(workspaceId, projectId);
+  async count(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.triage.count(workspaceId, projectId, user.id);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)

@@ -29,8 +29,12 @@ export class AutomationController {
   @ProjectRef('query', 'projectId')
   @Get('templates')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async listTemplates(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
-    return this.automation.listTemplates(workspaceId, projectId);
+  async listTemplates(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.automation.listTemplates(workspaceId, projectId, user.id);
   }
 
   @ProjectRef('automationTemplate', 'id')
@@ -78,8 +82,12 @@ export class AutomationController {
   @ProjectRef('query', 'projectId')
   @Get('recurring')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async listRecurring(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
-    return this.automation.listRecurring(workspaceId, projectId);
+  async listRecurring(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.automation.listRecurring(workspaceId, projectId, user.id);
   }
 
   @ProjectRef('recurringIssue', 'id')

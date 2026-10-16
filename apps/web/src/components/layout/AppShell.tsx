@@ -204,7 +204,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2" data-tour="nav-main">
           {admin && (
             <>
               <NavItem
@@ -226,7 +226,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             />
           ))}
         </nav>
-        <div className="border-t border-border p-2 text-xs text-faint">
+        <div className="border-t border-border p-2 text-xs text-faint" data-tour="cmdk-hint">
           <kbd className="rounded bg-surface-2 px-1.5 py-0.5 font-mono">⌘K</kbd> lệnh nhanh
         </div>
       </aside>
@@ -265,7 +265,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
             {/* Hướng dẫn màn + thông báo dùng chung mọi ngữ cảnh (kể cả admin). */}
             <GuideLauncher />
-            <NotificationBell />
+            <span className="inline-flex" data-tour="topbar-notifications">
+              <NotificationBell />
+            </span>
             <UserMenu />
           </div>
         </header>
