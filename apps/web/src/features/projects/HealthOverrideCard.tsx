@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { toast } from 'sonner';
 import type { ProjectHealth } from '@tirapro/types';
 import type { ProjectHealthDto } from '@tirapro/shared';
@@ -31,6 +31,7 @@ export function HealthOverrideCard({
   const canOverride = can('project:admin');
   const setHealth = useSetProjectHealth(project.id);
   const noteId = useId();
+  const radioRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const current = health?.override ?? null;
   const [level, setLevel] = useState<ProjectHealth | null>(current?.level ?? null);
@@ -46,6 +47,20 @@ export function HealthOverrideCard({
 
   const dirty = level !== (current?.level ?? null) || note.trim() !== (current?.note ?? '');
   const ready = level !== null && canSubmit(level, note) && dirty;
+
+  /** Mũi tên chuyển mức (radiogroup chuẩn WAI-ARIA: chỉ một điểm dừng Tab, mũi tên chọn + chuyển focus). */
+  function onRadioKey(e: KeyboardEvent<HTMLDivElement>) {
+    const focused = radioRefs.current.findIndex((el) => el === document.activeElement);
+    const i = focused >= 0 ? focused : level ? LEVELS.indexOf(level) : -1;
+    let next = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % LEVELS.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')
+      next = (i - 1 + LEVELS.length) % LEVELS.length;
+    if (next < 0) return;
+    e.preventDefault();
+    setLevel(LEVELS[next]!);
+    radioRefs.current[next]?.focus();
+  }
 
   async function save() {
     if (!level || !canSubmit(level, note)) return;
@@ -87,13 +102,22 @@ export function HealthOverrideCard({
               void save();
             }}
           >
-            <div role="radiogroup" aria-label="Mức ghi đè" className="flex flex-wrap gap-1.5">
-              {LEVELS.map((l) => (
+            <div
+              role="radiogroup"
+              aria-label="Mức ghi đè"
+              className="flex flex-wrap gap-1.5"
+              onKeyDown={onRadioKey}
+            >
+              {LEVELS.map((l, idx) => (
                 <button
                   key={l}
+                  ref={(el) => {
+                    radioRefs.current[idx] = el;
+                  }}
                   type="button"
                   role="radio"
                   aria-checked={level === l}
+                  tabIndex={level === l || (level === null && idx === 0) ? 0 : -1}
                   onClick={() => setLevel(l)}
                   className={cn(
                     'h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',

@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, CircleDashed, PenLine, XOctagon } from 'lu
 import type { ProjectHealthDto, ProjectHealthLevel } from '@tirapro/shared';
 import { fmtRelative } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
-import { healthAutoText, healthLabel } from './healthLabel';
+import { healthAutoText, healthLabel, healthSummaryText } from './healthLabel';
 
 /** Mỗi mức một HÌNH icon khác nhau + chữ → không phụ thuộc màu (a11y). Màu chỉ là lớp phụ. */
 const TONE: Record<
@@ -92,7 +92,7 @@ export function HealthBadge({
         <button
           type="button"
           aria-label={`Sức khoẻ dự án: ${label}. Bấm xem lý do`}
-          title="Bấm để xem lý do"
+          title={`${healthSummaryText(health)}\nBấm để xem chi tiết`}
           data-health={level}
           className={cn(
             'inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full border px-2 text-xs font-medium text-ink transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
