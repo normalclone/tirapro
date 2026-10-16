@@ -228,3 +228,24 @@ describe('alias me', () => {
     expect(JSON.stringify(w)).not.toContain('U1');
   });
 });
+
+describe('so khớp tên không phân biệt hoa/thường', () => {
+  const w = (jql: string) => compileJql(ast(jql), { currentUserId: 'U1' }).where;
+  const ins = { mode: 'insensitive' };
+  it('status = done / != / IN / NOT IN', () => {
+    expect(w('status = done')).toEqual({ status: { name: { equals: 'done', ...ins } } });
+    expect(w('status != done')).toEqual({ status: { name: { not: 'done', ...ins } } });
+    expect(w('status IN (done, "to do")')).toEqual({
+      status: { name: { in: ['done', 'to do'], ...ins } },
+    });
+    expect(w('type NOT IN (bug)')).toEqual({ type: { name: { notIn: ['bug'], ...ins } } });
+  });
+  it('project, sprint, priority và nhãn cũng không phân biệt hoa/thường', () => {
+    expect(w('project = demo')).toEqual({ project: { key: { equals: 'demo', ...ins } } });
+    expect(JSON.stringify(w('sprint = "sprint 1"'))).toContain('"mode":"insensitive"');
+    expect(JSON.stringify(w('priority = high'))).toContain('"mode":"insensitive"');
+    expect(w('labels = Frontend')).toEqual({
+      labels: { some: { label: { name: { in: ['Frontend'], ...ins } } } },
+    });
+  });
+});

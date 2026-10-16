@@ -330,19 +330,32 @@ export class SearchService {
     if (where) walk(where);
     if (!wanted.length) return [];
 
+    // Khớp đúng như compiler: so tên KHÔNG phân biệt hoa/thường (không bỏ dấu), nên chỉ khác hoa/thường là hợp lệ.
+    const byField = new Map<JqlFieldName, string[]>();
+    for (const w of wanted) byField.set(w.field, [...(byField.get(w.field) ?? []), w.value]);
     const catalogs = new Map<JqlFieldName, string[]>();
-    for (const field of new Set(wanted.map((w) => w.field)))
-      catalogs.set(field, await this.catalogNames(workspaceId, field));
+    const known = new Map<JqlFieldName, Set<string>>();
+    for (const [field, values] of byField) {
+      if (field === 'sprint') {
+        // Danh mục sprint bị cắt (take) nên kiểm tồn tại theo tên, không so với danh sách cắt.
+        known.set(field, await this.existingSprintNames(workspaceId, values));
+      } else {
+        const names = await this.catalogNames(workspaceId, field);
+        catalogs.set(field, names);
+        known.set(field, new Set(names.map((n) => n.toLowerCase())));
+      }
+    }
 
     const out: InvalidValue[] = [];
     const seen = new Set<string>();
     for (const { field, value } of wanted) {
-      const options = catalogs.get(field)!;
-      const folded = foldForMatch(value);
-      if (options.some((o) => foldForMatch(o) === folded)) continue;
-      const dedupeKey = `${field}\u0000${folded}`;
+      if (known.get(field)!.has(value.toLowerCase())) continue;
+      const dedupeKey = `${field}\u0000${foldForMatch(value)}`;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
+      // Chỉ lúc có giá trị sai mới cần danh mục (có thể bị cắt) để gợi ý "ý bạn là" / liệt kê.
+      if (!catalogs.has(field)) catalogs.set(field, await this.catalogNames(workspaceId, field));
+      const options = catalogs.get(field)!;
       const didYouMean = closestMatch(value, options);
       const label = CHECKED_FIELD_LABEL[field]!;
       const message = didYouMean
@@ -355,7 +368,21 @@ export class SearchService {
     return out;
   }
 
-  /** Tên các giá trị có thật của một trường JQL trong workspace (cùng nguồn với `fields()`; dự án: khoá dự án còn sống). */
+  /** Tên sprint (không phân biệt hoa/thường, viết thường) trong số `values` có thật ở workspace — truy vấn tồn tại, không cắt. */
+  private async existingSprintNames(workspaceId: string, values: string[]): Promise<Set<string>> {
+    const rows = await this.prisma.sprint.findMany({
+      where: {
+        project: { workspaceId, deletedAt: null },
+        OR: [...new Set(values)].map((v) => ({
+          name: { equals: v, mode: 'insensitive' as const },
+        })),
+      },
+      select: { name: true },
+    });
+    return new Set(rows.map((r) => r.name.toLowerCase()));
+  }
+
+  /** Tên các giá trị có thật của một trường JQL trong workspace (cùng nguồn với `fields()` nên sprint bị cắt 100 — chỉ dùng để gợi ý/liệt kê, KHÔNG để kiểm tồn tại; dự án: khoá dự án còn sống). */
   private async catalogNames(workspaceId: string, field: JqlFieldName): Promise<string[]> {
     const names = (rows: { name: string }[]) => [...new Set(rows.map((r) => r.name))];
     switch (field) {

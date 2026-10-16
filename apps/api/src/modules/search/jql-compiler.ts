@@ -251,7 +251,7 @@ function compileComparison(
       if (op === 'IS NOT') return { labels: { some: {} } };
       const names =
         op === 'IN' || op === 'NOT IN' ? listStrings(value, ctx) : [scalarString(value, ctx)];
-      const rel = { label: { name: { in: names } } };
+      const rel = { label: { name: { in: names, mode: 'insensitive' as const } } };
       return op === 'NOT IN' || op === '!=' ? { labels: { none: rel } } : { labels: { some: rel } };
     }
     case 'date': {
@@ -401,18 +401,23 @@ function categoryFilter(
   return op === '!=' ? { not: v } : v;
 }
 
+/**
+ * Bộ lọc tên (status/type/priority/sprint/project…) KHÔNG phân biệt hoa/thường — khớp bước kiểm giá trị của
+ * `SearchService` (`status = done` ra đúng công việc "Done", không rỗng im lặng).
+ */
 function stringFilter(
   op: JqlOperator,
   value: JqlValue,
   ctx: JqlCompileContext,
-): Prisma.StringFilter | string {
-  if (op === 'IN') return { in: listStrings(value, ctx) };
-  if (op === 'NOT IN') return { notIn: listStrings(value, ctx) };
+): Prisma.StringFilter {
+  const mode = 'insensitive' as const;
+  if (op === 'IN') return { in: listStrings(value, ctx), mode };
+  if (op === 'NOT IN') return { notIn: listStrings(value, ctx), mode };
   const v = scalarString(value, ctx);
   if (op === '~') return likeFilter(v);
-  if (op === '!~') return { not: { contains: escapeLike(v) }, mode: 'insensitive' };
-  if (op === '!=') return { not: v };
-  return v;
+  if (op === '!~') return { not: { contains: escapeLike(v) }, mode };
+  if (op === '!=') return { not: v, mode };
+  return { equals: v, mode };
 }
 
 function dateCmp(op: JqlOperator, d: Date): Prisma.DateTimeNullableFilter {

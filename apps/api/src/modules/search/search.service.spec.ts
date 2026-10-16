@@ -169,6 +169,14 @@ describe('SearchService — kiểm giá trị JQL (U15)', () => {
       status: { findMany: vi.fn().mockResolvedValue([{ name: 'In Progress' }, { name: 'Done' }]) },
       priority: { findMany: vi.fn().mockResolvedValue([{ name: 'High' }, { name: 'Low' }]) },
       project: { findMany: vi.fn().mockResolvedValue([{ key: 'DEMO' }]) },
+      issueType: { findMany: vi.fn().mockResolvedValue([{ name: 'Bug' }, { name: 'Story' }]) },
+      severity: { findMany: vi.fn().mockResolvedValue([{ name: 'Critical' }]) },
+      // truy vấn tồn tại (có OR) chỉ thấy "Sprint 1"; danh mục (có take) trả danh sách cắt
+      sprint: {
+        findMany: vi.fn((args: { where: { OR?: unknown[] }; take?: number }) =>
+          Promise.resolve(args.where.OR ? [{ name: 'Sprint 1' }] : [{ name: 'Sprint 100' }]),
+        ),
+      },
     };
     return { service: new SearchService(issues as never, prisma as never), issues, prisma };
   }
@@ -188,7 +196,7 @@ describe('SearchService — kiểm giá trị JQL (U15)', () => {
     expect(issues.query).toHaveBeenCalledTimes(1);
     expect(prisma.status.findMany).not.toHaveBeenCalled();
   });
-  it('khác hoa thường / dấu vẫn coi là hợp lệ', async () => {
+  it('khác hoa/thường vẫn hợp lệ (compiler cũng so không phân biệt hoa/thường)', async () => {
     const { service, issues } = make();
     await run(service, 'status = done', true);
     expect(issues.query).toHaveBeenCalledTimes(1);
@@ -205,6 +213,23 @@ describe('SearchService — kiểm giá trị JQL (U15)', () => {
     await run(service, 'labels = lol AND summary ~ "x" AND assignee = me', true);
     expect(issues.query).toHaveBeenCalledTimes(1);
     expect(prisma.status.findMany).toHaveBeenCalledTimes(1); // chỉ lần của truy vấn đầu
+  });
+  it('sprint: kiểm tồn tại theo tên (không bị cắt 100), không phân biệt hoa/thường', async () => {
+    const { service, issues, prisma } = make();
+    await run(service, 'sprint = "sprint 1"', true);
+    expect(issues.query).toHaveBeenCalledTimes(1);
+    const call = prisma.sprint.findMany.mock.calls[0]![0];
+    expect(call.take).toBeUndefined();
+    expect(JSON.stringify(call.where)).toContain('"mode":"insensitive"');
+    // sprint không tồn tại → mới tra danh mục để gợi ý
+    await expect(run(service, 'sprint = "Sprint 2"', true)).rejects.toThrow(
+      'Không có sprint "Sprint 2"',
+    );
+  });
+  it('type / severity cũng được kiểm', async () => {
+    const { service } = make();
+    await expect(run(service, 'type = Bugg', true)).rejects.toThrow('ý bạn là "Bug"');
+    await expect(run(service, 'severity = Critcal', true)).rejects.toThrow('ý bạn là "Critical"');
   });
   it('toán tử ~ / IS không bị kiểm', async () => {
     const { service, issues } = make();
