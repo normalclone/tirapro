@@ -133,7 +133,7 @@ function DetailsToggle({
       onClick={onToggle}
       aria-expanded={open}
       aria-controls="ri-details"
-      className="inline-flex items-center gap-1 rounded-md text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+      className="inline-flex items-center gap-1 rounded-md py-1 text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
     >
       <ChevronRight
         className={cn(
@@ -142,8 +142,8 @@ function DetailsToggle({
         )}
         aria-hidden
       />
-      Thêm chi tiết
-      <span className="font-normal text-faint">
+      <span className="whitespace-nowrap">Thêm chi tiết</span>
+      <span className="hidden font-normal text-faint sm:inline">
         {isBug ? '(mức nghiêm trọng, môi trường, tệp đính kèm)' : '(tệp đính kèm)'}
       </span>
     </button>
