@@ -12,11 +12,12 @@ import {
 } from '@/lib/optimistic';
 
 /** Thành viên của không gian làm việc — dùng cho dropdown người làm (assignee). */
-export function useWorkspaceUsers() {
+export function useWorkspaceUsers(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: keys.users.workspace,
     queryFn: async () => (await api.get<UserDto[]>('/users')).data,
     staleTime: 5 * 60_000,
+    enabled: opts?.enabled ?? true,
   });
 }
 

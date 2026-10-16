@@ -23,9 +23,10 @@ export function TaskProgress({
   label?: string;
 }) {
   if (progress.total === 0) return null;
+  const unit = progress.unit === 'điểm' ? ' điểm' : '';
   const title =
     titleOverride ??
-    `Hoàn thành ${progress.done}/${progress.total} (${progress.pct}%) · Đang làm ${progress.inProgress} · Cần làm ${progress.todo}`;
+    `Hoàn thành ${progress.done}/${progress.total}${unit} (${progress.pct}%) · Đang làm ${progress.inProgress} · Cần làm ${progress.todo}`;
 
   const bar = (
     <div
@@ -56,6 +57,7 @@ export function TaskProgress({
       <div className="min-w-[72px] flex-1">{bar}</div>
       <span className="tabular shrink-0 text-xs text-muted">
         {progress.done}/{progress.total}
+        {unit}
       </span>
     </div>
   );

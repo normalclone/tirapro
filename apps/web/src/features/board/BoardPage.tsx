@@ -4,7 +4,7 @@ import { Bug, Layers, Settings, UserRound, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { BoardColumnDto, BoardDto, IssueDto, SwimlaneBy } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
-import { buildProgressMap } from '@/lib/issueTree';
+import { buildListProgressMap } from '@/lib/epic';
 import { applyPendingOrder, sortByRank, type PendingMove } from '@/lib/rankOrder';
 import type { Placement } from '@/lib/rankDrop';
 import {
@@ -323,7 +323,7 @@ export function BoardPage() {
   }, [board, projectIssues, activeSprintId]);
 
   // Tiến độ epic/việc cha tính trên tập đầy đủ: con nằm ở sprint khác vẫn được tính.
-  const progressMap = useMemo(() => buildProgressMap(allIssues), [allIssues]);
+  const progressMap = useMemo(() => buildListProgressMap(allIssues), [allIssues]);
 
   // Thêm nhanh ở bảng Scrum: việc mới vào luôn sprint đang chạy (nếu không, nó biến mất khỏi bảng).
   const quickAddExtra = useMemo(

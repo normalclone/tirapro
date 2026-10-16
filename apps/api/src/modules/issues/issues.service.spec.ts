@@ -1863,6 +1863,60 @@ describe('IssuesService — epicId được lưu và hợp lệ (FW11 + review)'
   });
 });
 
+describe('IssuesService — Epic không có epicId (không epic lồng epic)', () => {
+  const epicRow = () => ({
+    projectId: 'p1',
+    epicId: null,
+    type: { key: 'EPIC', hierarchyLevel: 1 },
+  });
+
+  function epicTx(current: Record<string, unknown>) {
+    return {
+      issue: {
+        findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(where.id === 'e1' ? epicRow() : where.id === 'i1' ? current : null),
+        ),
+        updateMany: vi.fn((_args: { data: Record<string, unknown> }) =>
+          Promise.resolve({ count: 1 }),
+        ),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(current)),
+      },
+      issueHistory: { createMany: vi.fn() },
+    };
+  }
+
+  it('create: chính việc là Epic mà có epicId => 422, không tạo (không epic lồng epic)', async () => {
+    const { tx, created } = createTxFor({ e1: epicRow() });
+    tx.issueType.findFirst = vi.fn(() =>
+      Promise.resolve({ id: 't-epic', key: 'EPIC', hierarchyLevel: 1 }),
+    );
+    const { service } = makeService(tx);
+    await expect(
+      service.create('w1', 'u1', {
+        projectId: 'p1',
+        typeId: 't-epic',
+        summary: 's',
+        descriptionFormat: 'MARKDOWN',
+        epicId: 'e1',
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(created).not.toHaveBeenCalled();
+  });
+
+  it('update: việc là Epic mà gắn epicId => 422, không ghi; gỡ epicId (null) vẫn được', async () => {
+    const epicIssue = issueRow({ type: { ...issueRow().type, key: 'EPIC', hierarchyLevel: 1 } });
+    const tx = epicTx(epicIssue);
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, epicId: 'e1' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, epicId: null }),
+    ).resolves.toBeDefined();
+  });
+});
+
 describe('IssuesService — :own (issue:edit:own)', () => {
   function ownTx(row: Record<string, unknown>) {
     return {

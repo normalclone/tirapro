@@ -353,6 +353,31 @@ export class IssuesService {
     );
   }
 
+  /** Epic là cấp cao nhất: chính việc là Epic thì không được có `epicId` (không epic lồng epic) — 422. */
+  private assertNotEpicWithEpic(type: { key: string | null; hierarchyLevel: number }): void {
+    if (type.key === 'EPIC' || type.hierarchyLevel >= 1)
+      throw new BusinessRuleException(
+        'Epic là cấp cao nhất — không thể đặt một Epic vào epic khác',
+      );
+  }
+
+  /** Epic khi TẠO việc: epic đích hợp lệ (+ chính việc không phải Epic, chỉ đường API — import giữ nguyên dữ liệu gốc). */
+  private async assertEpicForCreate(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    input: { epicId?: string | null; typeId: string },
+    projectId: string,
+    strict: boolean,
+  ): Promise<void> {
+    await this.assertEpicValid(db, workspaceId, input.epicId!, projectId, null, strict);
+    if (!strict) return;
+    const t = await db.issueType.findFirst({
+      where: { id: input.typeId, workspaceId },
+      select: { key: true, hierarchyLevel: true },
+    });
+    if (t) this.assertNotEpicWithEpic(t);
+  }
+
   /**
    * Epic của issue: phải tồn tại trong workspace, CÙNG dự án, đúng loại Epic (`key = EPIC` hoặc `hierarchyLevel >= 1`;
    * bỏ qua kiểm LOẠI khi `checkType = false` — đường import),
@@ -558,7 +583,7 @@ export class IssuesService {
       db,
     );
     if (input.epicId)
-      await this.assertEpicValid(db, workspaceId, input.epicId, project.id, null, origin === 'api');
+      await this.assertEpicForCreate(db, workspaceId, input, project.id, origin === 'api');
     await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId, db);
 
     // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project
@@ -908,8 +933,10 @@ export class IssuesService {
       parentId: input.parentId,
       projectId: current.projectId,
     });
-    if (input.epicId && input.epicId !== current.epicId)
+    if (input.epicId && input.epicId !== current.epicId) {
       await this.assertEpicValid(this.prisma, workspaceId, input.epicId, current.projectId, id);
+      this.assertNotEpicWithEpic(current.type);
+    }
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
       await this.assertAssigneeInWorkspace(workspaceId, input.assigneeId);
 

@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Play, CheckCircle2, ChevronRight, Inbox, Sparkles, Pencil } from 'lucide-react';
+import {
+  Plus,
+  Play,
+  CheckCircle2,
+  ChevronRight,
+  Inbox,
+  Sparkles,
+  Pencil,
+  PanelLeftOpen,
+} from 'lucide-react';
 import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
-import { buildProgressMap, type SubtreeProgress } from '@/lib/issueTree';
+import type { SubtreeProgress } from '@/lib/issueTree';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useRetained } from '@/lib/useRetained';
 import {
@@ -19,11 +28,7 @@ import {
   type DragStartEvent,
   type ScreenReaderInstructions,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { toast } from 'sonner';
 import type { IssueDto, PriorityDto, SprintDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
@@ -41,7 +46,14 @@ import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjectLabels, type ProjectLabel } from '@/features/issue-meta/api';
 import { useWorkflows } from '@/features/workflow-settings/api';
-import { epicChoices } from '@/lib/epic';
+import {
+  applyEpicFilter,
+  buildListProgressMap,
+  epicChoices,
+  epicCounts,
+  parseEpicDropId,
+  planEpicAssign,
+} from '@/lib/epic';
 import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
@@ -56,7 +68,7 @@ import { dropContainer, useIsDropContainer } from '@/lib/dropContainer';
 import { dropHint } from '@/lib/dropHint';
 import { hintOf, placementFromDnd, type Placement } from '@/lib/rankDrop';
 import { applyPendingOrder, sortByRank } from '@/lib/rankOrder';
-import { sortableCollision } from '@/lib/sortableDnd';
+import { epicAwareCollision, epicAwareKeyboardCoordinates } from '@/lib/sortableDnd';
 import { useMoveIssue, usePendingMoves, type MoveVars } from '@/features/issues/moveIssue';
 import { useAuth } from '@/stores/auth';
 import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
@@ -72,6 +84,8 @@ import {
   widenNeighbors,
 } from './dropPlan';
 import { BulkActionBar } from './BulkActionBar';
+import { EpicPanel } from './EpicPanel';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeekShell } from '@/features/issues/peek/PeekShell';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import { SprintAssistantDialog } from '@/features/ai/SprintAssistantDialog';
@@ -99,6 +113,23 @@ const SPRINT_TIP = 'Sprint: đợt làm việc ngắn, thường 1–2 tuần.';
 
 function pointsSum(issues: IssueDto[]): number {
   return issues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
+}
+
+/** Panel Epic mở/thu gọn — nhớ theo máy (mặc định mở). */
+const EPIC_PANEL_KEY = 'tirapro:backlog:epicPanel';
+function readEpicPanelOpen(): boolean {
+  try {
+    return localStorage.getItem(EPIC_PANEL_KEY) !== 'closed';
+  } catch {
+    return true;
+  }
+}
+function writeEpicPanelOpen(open: boolean) {
+  try {
+    localStorage.setItem(EPIC_PANEL_KEY, open ? 'open' : 'closed');
+  } catch {
+    /* bỏ qua: chế độ riêng tư / bị chặn lưu trữ */
+  }
 }
 
 const NO_PRIORITIES: RowEdit['priorities'] = [];
@@ -183,6 +214,15 @@ export function BacklogPage() {
   // Bộ lọc nhanh (dùng chung với board) — áp client-side trong mỗi section.
   const { active: quickFilters, toggle: toggleQuickFilter } = useQuickFilters();
   const [assignee, setAssignee] = useState('');
+  // Lọc theo epic ở panel trái: null = tất cả, 'none' = không thuộc epic, còn lại = id epic. State cục bộ (peek đã dùng URL).
+  const [epicFilter, setEpicFilter] = useState<string | null>(null);
+  const [epicPanelOpen, setEpicPanelOpen] = useState(readEpicPanelOpen);
+  const toggleEpicPanel = useCallback(() => {
+    setEpicPanelOpen((open) => {
+      writeEpicPanelOpen(!open);
+      return !open;
+    });
+  }, []);
 
   // Bulk select: id các việc đang chọn + cờ đang chạy batch (khóa thao tác).
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -220,7 +260,7 @@ export function BacklogPage() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, { coordinateGetter: epicAwareKeyboardCoordinates }),
   );
 
   // Sprint hiển thị: chỉ FUTURE/ACTIVE, ACTIVE trước rồi theo sequence.
@@ -258,18 +298,33 @@ export function BacklogPage() {
     return map;
   }, [visibleSprints, closedSprints, issues, pending]);
 
-  // Công việc sau khi áp bộ lọc nhanh + người phụ trách — chia vào từng khu (số đếm phản ánh tập đã lọc).
+  const byIdAll = useMemo(() => new Map((issues ?? []).map((i) => [i.id, i])), [issues]);
+  const epics = useMemo(() => epicChoices(issues ?? [], ''), [issues]);
+  const counts = useMemo(() => epicCounts(issues ?? []), [issues]);
+  // Epic đang chọn không còn (xoá/đổi loại) → về "Tất cả".
+  useEffect(() => {
+    if (epicFilter && epicFilter !== 'none' && !epics.some((e) => e.id === epicFilter))
+      setEpicFilter(null);
+  }, [epicFilter, epics]);
+
+  // Công việc sau khi áp bộ lọc nhanh + người phụ trách + epic — chia vào từng khu (số đếm phản ánh tập đã lọc).
   const bySprint = useMemo(() => {
     const map = new Map<string, IssueDto[]>();
     for (const [k, list] of fullBySprint)
       map.set(
         k,
-        applyAssigneeFilter(applyQuickFilters(list, quickFilters, currentUserId), assignee),
+        applyEpicFilter(
+          applyAssigneeFilter(applyQuickFilters(list, quickFilters, currentUserId), assignee),
+          epicFilter,
+          byIdAll,
+        ),
       );
     return map;
-  }, [fullBySprint, quickFilters, currentUserId, assignee]);
+  }, [fullBySprint, quickFilters, currentUserId, assignee, epicFilter, byIdAll]);
+  // Thêm nhanh khi đang lọc một epic → việc mới gắn luôn epic đó.
+  const quickAddEpicId = epicFilter && epicFilter !== 'none' ? epicFilter : undefined;
 
-  const progressMap = useMemo(() => buildProgressMap(issues ?? []), [issues]);
+  const progressMap = useMemo(() => buildListProgressMap(issues ?? []), [issues]);
 
   function onDragStart(e: DragStartEvent) {
     activeDrag.set(String(e.active.id));
@@ -281,10 +336,58 @@ export function BacklogPage() {
     return (sprints ?? []).find((s) => s.id === id)?.name ?? 'sprint khác';
   }
 
+  // Thả dòng lên mục panel Epic: gắn/gỡ epic bằng PATCH (không đi rank/move → không đổi vị trí hay sprint của dòng) + Hoàn tác.
+  function assignToEpic(issue: IssueDto, target: string) {
+    if (!canEditIssue(issue)) {
+      toast.info('Bạn không có quyền sửa công việc này.');
+      return;
+    }
+    const plan = planEpicAssign(issue, target, byIdAll);
+    if (plan.kind === 'ignore') return;
+    if (plan.kind === 'reject') {
+      toast.info(plan.reason);
+      return;
+    }
+    const epicKey = byIdAll.get(target)?.key;
+    mutateIssue(
+      { id: issue.id, key: issue.key, patch: plan.patch, version: issue.version },
+      {
+        onSuccess: (res) =>
+          toast.success(
+            target === 'none'
+              ? `Đã gỡ ${issue.key} khỏi epic`
+              : `Đã gắn ${issue.key} vào ${epicKey}`,
+            {
+              duration: 5000,
+              action: {
+                label: 'Hoàn tác',
+                onClick: () =>
+                  mutateIssue(
+                    {
+                      id: issue.id,
+                      key: issue.key,
+                      patch: plan.restore,
+                      version: res.data.version,
+                    },
+                    { onError: (err) => toast.error(apiErrorMessage(err)) },
+                  ),
+              },
+            },
+          ),
+        onError: (err) => toast.error(apiErrorMessage(err)),
+      },
+    );
+  }
+
   async function onDragEnd(e: DragEndEvent) {
     setDragging(null);
     clearDragFeedback();
     const issue = (issues ?? []).find((i) => i.id === e.active.id);
+    const epicTarget = e.over ? parseEpicDropId(String(e.over.id)) : null;
+    if (epicTarget) {
+      if (issue) assignToEpic(issue, epicTarget);
+      return;
+    }
     const p = placementFromDnd(e);
     if (!issue || !p || !dragRoute) return;
     const plan = planBacklogDrop(issue, p, BACKLOG_ID);
@@ -346,6 +449,12 @@ export function BacklogPage() {
   useEffect(() => clearDragFeedback, []);
   // Vạch chèn + viền khu đích đi qua store nhỏ (không qua `useDndContext`, vốn đổi mỗi nhịp con trỏ và vẽ lại mọi khu).
   const onDragMove = (e: DragMoveEvent) => {
+    // Đang rê trên panel Epic: không phải sắp xếp/đổi sprint → bỏ vạch chèn và viền khu.
+    if (e.over && parseEpicDropId(String(e.over.id))) {
+      dropHint.set(null);
+      dropContainer.set(null);
+      return;
+    }
     const p = placementFromDnd(e);
     dropHint.set(hintOf(p));
     dropContainer.set(p?.crossContainer ? p.containerId : null);
@@ -362,7 +471,18 @@ export function BacklogPage() {
         ? 'Backlog'
         : `sprint “${(sprints ?? []).find((s) => s.id === containerId)?.name ?? 'khác'}”`;
     const at = (p: Placement) => `vị trí ${p.index + 1}/${p.total}`;
+    // Mục panel Epic đang rê/thả: 'none' = bỏ khỏi epic, còn lại = tên epic, null = không phải panel Epic.
+    const epicTargetOf = (over: { id: string | number } | null) => {
+      const t = over ? parseEpicDropId(String(over.id)) : null;
+      if (t === null) return null;
+      return t === 'none' ? 'none' : `epic ${keyOf(t)}`;
+    };
     const overText = (e: Parameters<NonNullable<Announcements['onDragOver']>>[0]) => {
+      const et = epicTargetOf(e.over);
+      if (et)
+        return et === 'none'
+          ? `${keyOf(e.active.id)} trên mục Không thuộc epic — thả để gỡ khỏi epic.`
+          : `${keyOf(e.active.id)} trên ${et} — thả để gắn vào epic.`;
       const p = placementFromDnd(e);
       if (!p) return `${keyOf(e.active.id)} đang ở ngoài các danh sách.`;
       return p.crossContainer
@@ -376,12 +496,17 @@ export function BacklogPage() {
           | undefined;
         return `Đã nhấc ${keyOf(active.id)}${
           s ? ` ở ${whereOf(String(s.containerId))}, vị trí ${s.index + 1}/${s.items.length}` : ''
-        }. Mũi tên lên xuống đổi thứ tự, tới sprint khác để chuyển sprint, Space để thả, Esc để huỷ.`;
+        }. Mũi tên lên xuống đổi thứ tự, tới sprint khác để chuyển sprint, tới panel Epic để gắn epic, Space để thả, Esc để huỷ.`;
       },
       onDragOver: overText,
       // Cùng câu với onDragOver: vị trí đổi (nửa trên/dưới của dòng đích) mà `over` không đổi vẫn được đọc đúng.
       onDragMove: overText,
       onDragEnd: (e) => {
+        const et = epicTargetOf(e.over);
+        if (et)
+          return et === 'none'
+            ? `Đã thả ${keyOf(e.active.id)} vào Không thuộc epic — gỡ khỏi epic.`
+            : `Đã thả ${keyOf(e.active.id)} vào ${et} — gắn vào epic.`;
         const p = placementFromDnd(e);
         if (!p) return `Đã thả ${keyOf(e.active.id)} ra ngoài các danh sách, giữ nguyên.`;
         if (p.unchanged)
@@ -557,7 +682,33 @@ export function BacklogPage() {
     <PeekShell>
       <div className="flex min-h-0 flex-1 flex-col">
         <TruncatedBanner projectId={projectId} />
-        <div className="flex items-center gap-2 border-b border-border px-6 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-3">
+          {!epicPanelOpen && (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="hidden lg:inline-flex"
+              title="Mở panel Epic"
+              onClick={toggleEpicPanel}
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+              Epic
+            </Button>
+          )}
+          <div className="w-44 shrink-0 lg:hidden">
+            <SearchSelect
+              ariaLabel="Lọc theo epic"
+              value={epicFilter ?? ''}
+              onChange={(v) => setEpicFilter(v || null)}
+              options={[
+                { value: '', label: 'Epic: Tất cả việc' },
+                { value: 'none', label: 'Không thuộc epic' },
+                ...epics.map((e) => ({ value: e.id, label: e.summary, hint: e.key })),
+              ]}
+              searchPlaceholder="Tìm epic theo mã hoặc tiêu đề…"
+              className="h-8"
+            />
+          </div>
           <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
           <AssigneeFilter options={assigneeOptions} value={assignee} onChange={setAssignee} />
           {canManageSprint &&
@@ -620,238 +771,253 @@ export function BacklogPage() {
 
         <DndContext
           sensors={sensors}
-          collisionDetection={sortableCollision}
+          collisionDetection={epicAwareCollision}
           onDragStart={onDragStart}
           onDragMove={onDragMove}
           onDragEnd={(e) => void onDragEnd(e)}
           onDragCancel={onDragCancel}
           accessibility={{ announcements, screenReaderInstructions: SCREEN_READER_INSTRUCTIONS }}
         >
-          <div
-            ref={setScrollEl}
-            // Có thanh hàng loạt: chừa đáy danh sách trên mobile để cuộn dòng cuối lên khỏi thanh.
-            className={cn(
-              'flex-1 space-y-4 overflow-y-auto p-6',
-              selected.size > 0 && 'max-sm:pb-28',
-            )}
-          >
-            {visibleSprints.map((sprint) => {
-              const sprintIssues = bySprint.get(sprint.id) ?? [];
-              const notDone = sprintIssues.filter((i) => i.status.category !== 'DONE').length;
-              return (
-                <Section
-                  key={sprint.id}
-                  id={sprint.id}
-                  title={sprint.name}
-                  badge={STATE_BADGE[sprint.state]}
-                  meta={
-                    sprint.state === 'ACTIVE' ? (
-                      <SprintTimeText sprint={sprint} className="text-xs" />
-                    ) : undefined
-                  }
-                  points={pointsSum(sprintIssues)}
-                  count={sprintIssues.length}
-                  issues={sprintIssues}
-                  progressMap={progressMap}
-                  scrollEl={scrollEl}
-                  projectKey={key}
-                  projectId={projectId}
-                  canCreate={canCreate}
-                  quickAddSprintId={sprint.state !== 'CLOSED' ? sprint.id : undefined}
-                  selectable={canAssign || canManageBacklog}
-                  canDrag={canDragIssue}
-                  rowEdit={rowEdit}
-                  canEditRow={canEditIssue}
-                  selected={selected}
-                  onToggleSelect={toggleSelect}
-                  onToggleSection={toggleSelectSection}
-                  onOpen={peek.open}
-                  peekedKey={peek.peekKey}
-                  action={
-                    canManageSprint ? (
-                      <div className="flex items-center gap-1.5">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8"
-                          aria-label={`Sửa sprint ${sprint.name}`}
-                          title={
-                            sprint.state === 'FUTURE'
-                              ? 'Sửa tên, mục tiêu, ngày — hoặc xoá sprint'
-                              : 'Sửa mục tiêu và ngày kết thúc'
-                          }
-                          onClick={() => setEditing(sprint)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        {sprint.state === 'FUTURE' ? (
-                          <>
-                            {canUseAi && (
+          <div className="flex min-h-0 flex-1">
+            <EpicPanel
+              epics={epics}
+              issues={issues ?? []}
+              counts={counts}
+              selected={epicFilter}
+              onSelect={setEpicFilter}
+              // Không có quyền sửa việc đang kéo → mục epic không nhận thả (không sáng viền gợi ý rồi mới từ chối).
+              dropEnabled={dragRoute !== null && (!dragging || canEditIssue(dragging))}
+              collapsed={!epicPanelOpen}
+              onToggle={toggleEpicPanel}
+            />
+            <div
+              ref={setScrollEl}
+              // Có thanh hàng loạt: chừa đáy danh sách trên mobile để cuộn dòng cuối lên khỏi thanh.
+              className={cn(
+                'min-w-0 flex-1 space-y-4 overflow-y-auto p-6',
+                selected.size > 0 && 'max-sm:pb-28',
+              )}
+            >
+              {visibleSprints.map((sprint) => {
+                const sprintIssues = bySprint.get(sprint.id) ?? [];
+                const notDone = sprintIssues.filter((i) => i.status.category !== 'DONE').length;
+                return (
+                  <Section
+                    key={sprint.id}
+                    id={sprint.id}
+                    title={sprint.name}
+                    badge={STATE_BADGE[sprint.state]}
+                    meta={
+                      sprint.state === 'ACTIVE' ? (
+                        <SprintTimeText sprint={sprint} className="text-xs" />
+                      ) : undefined
+                    }
+                    points={pointsSum(sprintIssues)}
+                    count={sprintIssues.length}
+                    issues={sprintIssues}
+                    progressMap={progressMap}
+                    scrollEl={scrollEl}
+                    projectKey={key}
+                    projectId={projectId}
+                    canCreate={canCreate}
+                    quickAddSprintId={sprint.state !== 'CLOSED' ? sprint.id : undefined}
+                    quickAddEpicId={quickAddEpicId}
+                    selectable={canAssign || canManageBacklog}
+                    canDrag={canDragIssue}
+                    rowEdit={rowEdit}
+                    canEditRow={canEditIssue}
+                    selected={selected}
+                    onToggleSelect={toggleSelect}
+                    onToggleSection={toggleSelectSection}
+                    onOpen={peek.open}
+                    peekedKey={peek.peekKey}
+                    action={
+                      canManageSprint ? (
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            aria-label={`Sửa sprint ${sprint.name}`}
+                            title={
+                              sprint.state === 'FUTURE'
+                                ? 'Sửa tên, mục tiêu, ngày — hoặc xoá sprint'
+                                : 'Sửa mục tiêu và ngày kết thúc'
+                            }
+                            onClick={() => setEditing(sprint)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          {sprint.state === 'FUTURE' ? (
+                            <>
+                              {canUseAi && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  title="Gợi ý việc trong Backlog vừa với năng lực của đội"
+                                  onClick={() =>
+                                    setAssistantFor({
+                                      id: sprint.id,
+                                      name: sprint.name,
+                                      goal: sprint.goal ?? null,
+                                    })
+                                  }
+                                >
+                                  <Sparkles className="h-4 w-4" />
+                                  Trợ lý lập sprint
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
-                                variant="secondary"
-                                title="Gợi ý việc trong Backlog vừa với năng lực của đội"
-                                onClick={() =>
-                                  setAssistantFor({
-                                    id: sprint.id,
-                                    name: sprint.name,
-                                    goal: sprint.goal ?? null,
-                                  })
-                                }
+                                title={`Bắt đầu đợt làm việc này. ${SPRINT_TIP}`}
+                                onClick={() => openStartDialog(sprint.id)}
                               >
-                                <Sparkles className="h-4 w-4" />
-                                Trợ lý lập sprint
+                                <Play className="h-4 w-4" />
+                                Bắt đầu sprint
                               </Button>
-                            )}
+                            </>
+                          ) : (
                             <Button
                               size="sm"
-                              title={`Bắt đầu đợt làm việc này. ${SPRINT_TIP}`}
-                              onClick={() => openStartDialog(sprint.id)}
-                            >
-                              <Play className="h-4 w-4" />
-                              Bắt đầu sprint
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            title="Kết thúc đợt làm việc này. Bạn chọn việc chưa xong đi đâu: Backlog, sprint mới hoặc sprint có sẵn."
-                            loading={
-                              completeSprint.isPending &&
-                              completeSprint.variables?.sprintId === sprint.id
-                            }
-                            onClick={() =>
-                              // Còn việc chưa xong → hỏi chuyển đi đâu; xong hết → kết thúc luôn.
-                              notDone > 0
-                                ? setCompleting({ id: sprint.id, name: sprint.name, notDone })
-                                : completeSprint.mutate(
-                                    { sprintId: sprint.id },
-                                    {
-                                      onSuccess: () => {
-                                        toast.success(`Đã kết thúc sprint “${sprint.name}”`);
-                                        showSprintSummary(sprint.id);
+                              variant="secondary"
+                              title="Kết thúc đợt làm việc này. Bạn chọn việc chưa xong đi đâu: Backlog, sprint mới hoặc sprint có sẵn."
+                              loading={
+                                completeSprint.isPending &&
+                                completeSprint.variables?.sprintId === sprint.id
+                              }
+                              onClick={() =>
+                                // Còn việc chưa xong → hỏi chuyển đi đâu; xong hết → kết thúc luôn.
+                                notDone > 0
+                                  ? setCompleting({ id: sprint.id, name: sprint.name, notDone })
+                                  : completeSprint.mutate(
+                                      { sprintId: sprint.id },
+                                      {
+                                        onSuccess: () => {
+                                          toast.success(`Đã kết thúc sprint “${sprint.name}”`);
+                                          showSprintSummary(sprint.id);
+                                        },
+                                        onError: (err) => toast.error(apiErrorMessage(err)),
                                       },
-                                      onError: (err) => toast.error(apiErrorMessage(err)),
-                                    },
-                                  )
-                            }
-                          >
-                            <CheckCircle2 className="h-4 w-4" />
-                            Kết thúc sprint
-                          </Button>
-                        )}
-                      </div>
-                    ) : undefined
-                  }
-                  hint={
-                    sprint.state === 'FUTURE'
-                      ? hasActive
-                        ? 'Đang có một sprint chạy dở — kết thúc sprint đó trước rồi mới bắt đầu sprint này.'
-                        : sprint.goal
-                      : notDone > 0
-                        ? `Còn ${notDone} việc chưa xong. Khi kết thúc sprint, bạn chọn đưa chúng về Backlog hoặc sang sprint khác.`
-                        : sprint.goal
-                  }
-                />
-              );
-            })}
-
-            <Section
-              id={BACKLOG_ID}
-              title="Backlog"
-              badge={null}
-              points={pointsSum(backlogIssues)}
-              count={backlogIssues.length}
-              issues={backlogIssues}
-              progressMap={progressMap}
-              scrollEl={scrollEl}
-              projectKey={key}
-              projectId={projectId}
-              canCreate={canCreate}
-              quickAddSprintId={null}
-              selectable={canAssign || canManageBacklog}
-              canDrag={canDragIssue}
-              rowEdit={rowEdit}
-              canEditRow={canEditIssue}
-              selected={selected}
-              onToggleSelect={toggleSelect}
-              onToggleSection={toggleSelectSection}
-              onOpen={peek.open}
-              peekedKey={peek.peekKey}
-              emptyTitle="Backlog đang trống"
-              emptyDescription="Đây là nơi chứa việc chưa xếp vào sprint nào. Thêm việc ở ô bên dưới, hoặc kéo việc từ sprint về đây."
-            />
-
-            {/* Sprint đã kết thúc — xem lại (chỉ đọc) */}
-            {closedSprints.length > 0 && (
-              <div className="pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowClosed((v) => !v)}
-                  aria-expanded={showClosed}
-                  title="Các đợt làm việc đã kết thúc — chỉ xem lại, không sửa được."
-                  className="flex items-center gap-1.5 rounded-md px-1 py-1 text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                >
-                  <ChevronRight
-                    className={cn('h-4 w-4 transition-transform', showClosed && 'rotate-90')}
+                                    )
+                              }
+                            >
+                              <CheckCircle2 className="h-4 w-4" />
+                              Kết thúc sprint
+                            </Button>
+                          )}
+                        </div>
+                      ) : undefined
+                    }
+                    hint={
+                      sprint.state === 'FUTURE'
+                        ? hasActive
+                          ? 'Đang có một sprint chạy dở — kết thúc sprint đó trước rồi mới bắt đầu sprint này.'
+                          : sprint.goal
+                        : notDone > 0
+                          ? `Còn ${notDone} việc chưa xong. Khi kết thúc sprint, bạn chọn đưa chúng về Backlog hoặc sang sprint khác.`
+                          : sprint.goal
+                    }
                   />
-                  Sprint đã kết thúc ({closedSprints.length})
-                </button>
-                {showClosed && (
-                  <div className="mt-3 space-y-4">
-                    {closedSprints.map((sprint) => {
-                      const sprintIssues = bySprint.get(sprint.id) ?? [];
-                      return (
-                        <Section
-                          key={sprint.id}
-                          id={sprint.id}
-                          title={sprint.name}
-                          badge={STATE_BADGE.CLOSED}
-                          points={pointsSum(sprintIssues)}
-                          count={sprintIssues.length}
-                          issues={sprintIssues}
-                          progressMap={progressMap}
-                          scrollEl={scrollEl}
-                          readOnly
-                          hint={sprint.goal}
-                          onOpen={peek.open}
-                          peekedKey={peek.peekKey}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+                );
+              })}
 
-            {selected.size > 0 && (
-              <BulkActionBar
-                count={selected.size}
-                assigneeOptions={assigneeOptions}
-                sprints={visibleSprints}
-                busy={bulk.busy}
-                canAssign={canAssign}
-                canManageBacklog={canManageBacklog}
-                onAssignToMe={() => {
-                  if (currentUserId) void bulk.assign(currentUserId);
-                }}
-                onAssignTo={(userId) => void bulk.assign(userId)}
-                onMoveToSprint={(sprintId) => void bulk.moveToSprint(sprintId)}
-                onClear={clearSelection}
-                canEdit={canEditAll}
-                canTransition={can('issue:transition')}
-                priorities={meta?.priorities ?? NO_PRIORITIES}
-                epics={epicOptions}
-                labels={projectLabels ?? NO_LABELS}
-                statusOptions={statusOptions}
-                onSetPoints={(points) => void bulk.setPoints(points)}
-                onSetPriority={(id) => void bulk.setPriority(id)}
-                onAddLabel={(id) => void bulk.addLabel(id)}
-                onSetEpic={(id) => void bulk.setEpic(id)}
-                onSetStatus={(id) => void bulk.setStatus(id)}
+              <Section
+                id={BACKLOG_ID}
+                title="Backlog"
+                badge={null}
+                points={pointsSum(backlogIssues)}
+                count={backlogIssues.length}
+                issues={backlogIssues}
+                progressMap={progressMap}
+                scrollEl={scrollEl}
+                projectKey={key}
+                projectId={projectId}
+                canCreate={canCreate}
+                quickAddSprintId={null}
+                quickAddEpicId={quickAddEpicId}
+                selectable={canAssign || canManageBacklog}
+                canDrag={canDragIssue}
+                rowEdit={rowEdit}
+                canEditRow={canEditIssue}
+                selected={selected}
+                onToggleSelect={toggleSelect}
+                onToggleSection={toggleSelectSection}
+                onOpen={peek.open}
+                peekedKey={peek.peekKey}
+                emptyTitle="Backlog đang trống"
+                emptyDescription="Đây là nơi chứa việc chưa xếp vào sprint nào. Thêm việc ở ô bên dưới, hoặc kéo việc từ sprint về đây."
               />
-            )}
+
+              {/* Sprint đã kết thúc — xem lại (chỉ đọc) */}
+              {closedSprints.length > 0 && (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowClosed((v) => !v)}
+                    aria-expanded={showClosed}
+                    title="Các đợt làm việc đã kết thúc — chỉ xem lại, không sửa được."
+                    className="flex items-center gap-1.5 rounded-md px-1 py-1 text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                  >
+                    <ChevronRight
+                      className={cn('h-4 w-4 transition-transform', showClosed && 'rotate-90')}
+                    />
+                    Sprint đã kết thúc ({closedSprints.length})
+                  </button>
+                  {showClosed && (
+                    <div className="mt-3 space-y-4">
+                      {closedSprints.map((sprint) => {
+                        const sprintIssues = bySprint.get(sprint.id) ?? [];
+                        return (
+                          <Section
+                            key={sprint.id}
+                            id={sprint.id}
+                            title={sprint.name}
+                            badge={STATE_BADGE.CLOSED}
+                            points={pointsSum(sprintIssues)}
+                            count={sprintIssues.length}
+                            issues={sprintIssues}
+                            progressMap={progressMap}
+                            scrollEl={scrollEl}
+                            readOnly
+                            hint={sprint.goal}
+                            onOpen={peek.open}
+                            peekedKey={peek.peekKey}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selected.size > 0 && (
+                <BulkActionBar
+                  count={selected.size}
+                  assigneeOptions={assigneeOptions}
+                  sprints={visibleSprints}
+                  busy={bulk.busy}
+                  canAssign={canAssign}
+                  canManageBacklog={canManageBacklog}
+                  onAssignToMe={() => {
+                    if (currentUserId) void bulk.assign(currentUserId);
+                  }}
+                  onAssignTo={(userId) => void bulk.assign(userId)}
+                  onMoveToSprint={(sprintId) => void bulk.moveToSprint(sprintId)}
+                  onClear={clearSelection}
+                  canEdit={canEditAll}
+                  canTransition={can('issue:transition')}
+                  priorities={meta?.priorities ?? NO_PRIORITIES}
+                  epics={epicOptions}
+                  labels={projectLabels ?? NO_LABELS}
+                  statusOptions={statusOptions}
+                  onSetPoints={(points) => void bulk.setPoints(points)}
+                  onSetPriority={(id) => void bulk.setPriority(id)}
+                  onAddLabel={(id) => void bulk.addLabel(id)}
+                  onSetEpic={(id) => void bulk.setEpic(id)}
+                  onSetStatus={(id) => void bulk.setStatus(id)}
+                />
+              )}
+            </div>
           </div>
 
           <DragOverlay>{dragging ? <IssueRowBody issue={dragging} overlay /> : null}</DragOverlay>
@@ -1035,6 +1201,7 @@ function Section({
   projectId,
   canCreate,
   quickAddSprintId,
+  quickAddEpicId,
   selectable,
   selected,
   onToggleSelect,
@@ -1069,6 +1236,8 @@ function Section({
   canCreate?: boolean;
   /** sprintId cho quick-add (null = backlog). undefined = không hiển thị quick-add. */
   quickAddSprintId?: string | null;
+  /** Đang lọc một epic → quick-add gắn luôn epic đó. */
+  quickAddEpicId?: string;
   /** Bật checkbox chọn hàng loạt (không áp cho section chỉ đọc). */
   selectable?: boolean;
   selected?: Set<string>;
@@ -1173,7 +1342,10 @@ function Section({
           <QuickAddRow
             projectKey={projectKey}
             projectId={projectId}
-            extra={{ sprintId: quickAddSprintId }}
+            extra={{
+              sprintId: quickAddSprintId,
+              ...(quickAddEpicId ? { epicId: quickAddEpicId } : {}),
+            }}
             placeholder={
               quickAddSprintId === null ? '+ Thêm việc vào Backlog…' : '+ Thêm việc vào sprint này…'
             }

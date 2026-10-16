@@ -30,6 +30,7 @@ export function TokenTitleInput({
   bare,
   onEnter,
   inputRef,
+  ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -43,7 +44,9 @@ export function TokenTitleInput({
   /** Enter trơn (không có popup gợi ý) — dùng cho quick-add; hộp tạo việc không truyền. */
   onEnter?: () => void;
   inputRef?: Ref<HTMLInputElement>;
+  ariaLabel?: string;
 }) {
+  const Field = bare ? 'input' : Input;
   const ref = useRef<HTMLInputElement | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -120,8 +123,8 @@ export function TokenTitleInput({
           ref={backdropRef}
           aria-hidden
           className={cn(
-            'pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre rounded-md border border-transparent px-3 text-sm leading-[34px] text-ink',
-            bare && 'px-0',
+            'pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre text-sm text-ink',
+            bare ? 'px-0 leading-7' : 'rounded-md border border-transparent px-3 leading-[34px]',
           )}
         >
           {segments.map((s, i) =>
@@ -141,16 +144,18 @@ export function TokenTitleInput({
             ),
           )}
         </div>
-        <Input
+        <Field
           ref={setRefs}
           id={id}
+          aria-label={ariaLabel}
           autoFocus={autoFocus}
           value={value}
           placeholder={placeholder}
-          className={cn(
-            'relative z-10 !bg-transparent text-sm !text-transparent [caret-color:var(--ink)]',
-            bare && '!border-transparent !px-0 !shadow-none !ring-0',
-          )}
+          className={
+            bare
+              ? 'relative z-10 h-7 w-full bg-transparent px-0 text-sm text-transparent [caret-color:var(--ink)] placeholder:text-faint focus-visible:outline-none'
+              : 'relative z-10 !bg-transparent text-sm !text-transparent [caret-color:var(--ink)]'
+          }
           onScroll={syncScroll}
           onCompositionStart={() => {
             composingRef.current = true;
@@ -223,7 +228,7 @@ export function TokenTitleInput({
         />
 
         {open && items.length > 0 && (
-          <SuggestionList items={items} idx={idx} onHover={setIdx} onPick={accept} />
+          <SuggestionList items={items} idx={idx} onHover={setIdx} onPick={accept} up={bare} />
         )}
       </div>
 
@@ -255,15 +260,21 @@ function SuggestionList({
   idx,
   onHover,
   onPick,
+  up,
 }: {
   items: Suggestion[];
   idx: number;
   onHover: (i: number) => void;
   onPick: (s: Suggestion) => void;
+  /** Mở LÊN trên (ô nằm ở đáy khu cuộn — popup xuống sẽ bị cắt). */
+  up?: boolean;
 }) {
   return (
     <ul
-      className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100"
+      className={cn(
+        'absolute left-0 right-0 z-20 max-h-56 overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100',
+        up ? 'bottom-full mb-1' : 'top-full mt-1',
+      )}
       role="listbox"
     >
       {items.map((s, i) => (

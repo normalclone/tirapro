@@ -19,6 +19,8 @@ export interface ProjectMeta {
     color: string | null;
     iconUrl: string | null;
     isSubtask: boolean;
+    /** Cấp phân cấp (Epic = 1). Có thể thiếu ở máy chủ cũ → suy từ `key`. */
+    hierarchyLevel?: number;
   }[];
   priorities: {
     id: string;
