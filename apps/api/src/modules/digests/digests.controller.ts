@@ -8,10 +8,15 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
+import { isValidTimeZone } from './digest-schedule';
 import { DigestsService } from './digests.service';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 
 const blocksSchema = z.array(z.enum(DIGEST_BLOCK_IDS)).max(DIGEST_BLOCK_IDS.length);
+
+const weekdaySchema = z.number().int().min(0).max(6);
+const hourSchema = z.number().int().min(0).max(23);
+const timezoneSchema = z.string().refine(isValidTimeZone, 'Múi giờ không hợp lệ');
 
 const scheduleEnum = z.enum(['DAILY', 'WEEKLY', 'SPRINT_END', 'MANUAL']);
 
@@ -22,6 +27,9 @@ export const createDigestSchema = z.object({
   channelId: z.string().min(1).optional(),
   metrics: blocksSchema.optional(),
   recipients: z.array(z.string()).optional(),
+  weekday: weekdaySchema.optional(),
+  hour: hourSchema.optional(),
+  timezone: timezoneSchema.optional(),
 });
 type CreateDigestBody = z.infer<typeof createDigestSchema>;
 
@@ -31,6 +39,9 @@ export const updateDigestSchema = z.object({
   isEnabled: z.boolean().optional(),
   channelId: z.string().min(1).nullable().optional(),
   metrics: blocksSchema.optional(),
+  weekday: weekdaySchema.optional(),
+  hour: hourSchema.optional(),
+  timezone: timezoneSchema.optional(),
 });
 type UpdateDigestBody = z.infer<typeof updateDigestSchema>;
 

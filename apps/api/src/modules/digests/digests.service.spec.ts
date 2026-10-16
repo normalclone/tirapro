@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { DigestModel } from '@tirapro/shared';
 import { PUBLIC_VIEWER } from '../rbac/project-access.service';
 import { createDigestSchema, previewDigestSchema, updateDigestSchema } from './digests.controller';
@@ -199,7 +199,11 @@ type SubRow = { id: string; lastRunAt: Date | null };
 /** Prisma giả có CAS thật trên một "bảng" dùng chung — mô phỏng hai node cùng một DB. */
 function makeNode(
   table: SubRow[],
-  opts: { sendFails?: boolean; snapshotLastRunAt?: Date | null } = {},
+  opts: {
+    sendFails?: boolean;
+    snapshotLastRunAt?: Date | null;
+    rowOverrides?: Record<string, unknown>;
+  } = {},
 ) {
   const updateMany = vi.fn(
     (args: { where: { id: string; lastRunAt: Date | null }; data: { lastRunAt: Date | null } }) => {
@@ -223,6 +227,12 @@ function makeNode(
             projectId: null,
             channelId: 'c1',
             schedule: 'DAILY',
+            weekday: 1,
+            hour: 8,
+            timezone: 'Asia/Ho_Chi_Minh',
+            metrics: [],
+            createdById: 'u1',
+            ...(opts.rowOverrides ?? {}),
           })),
         ),
       ),
@@ -246,7 +256,22 @@ function makeNode(
   return { service, updateMany, send };
 }
 
+type PrismaMock = {
+  reportSubscription: { findMany: Mock };
+  project: { findFirst: Mock };
+};
+const prismaOf = (service: DigestsService) => (service as unknown as { prisma: PrismaMock }).prisma;
+
+/** 08:10 giờ VN thứ Hai 2026-10-19 — đúng giờ của mọi sub mặc định (thứ Hai 08:00 VN). */
+const MONDAY_0810_VN = new Date('2026-10-19T01:10:00Z');
+
 describe('DigestsService.runScheduled — chống gửi đôi (CAS lastRunAt)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(MONDAY_0810_VN);
+  });
+  afterEach(() => vi.useRealTimers());
+
   it('sub vừa chạy < 30 phút trước (node khác nhanh hơn) => không gửi lại', async () => {
     const { service, send, updateMany } = makeNode([
       { id: 's1', lastRunAt: new Date(Date.now() - 60_000) },
@@ -557,5 +582,184 @@ describe('digest schemas', () => {
   it('previewDigestSchema: khối lạ bị từ chối, trống hợp lệ', () => {
     expect(previewDigestSchema.safeParse({ metrics: ['abc'] }).success).toBe(false);
     expect(previewDigestSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe('DigestsService.runScheduled — lịch thứ/giờ/múi giờ (L20)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(MONDAY_0810_VN);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('chỉ nạp DAILY/WEEKLY đang bật (SPRINT_END/MANUAL không do cron)', async () => {
+    const node = makeNode([{ id: 's1', lastRunAt: null }]);
+    await node.service.runScheduled();
+    const prisma = prismaOf(node.service);
+    expect(json(prisma.reportSubscription.findMany)).toContain(
+      '"schedule":{"in":["DAILY","WEEKLY"]}',
+    );
+    expect(json(prisma.reportSubscription.findMany)).toContain('"isEnabled":true');
+  });
+
+  it('sai giờ → không gửi; đúng giờ → gửi một lần', async () => {
+    const off = makeNode([{ id: 's1', lastRunAt: null }], { rowOverrides: { hour: 9 } });
+    await off.service.runScheduled();
+    expect(off.send).not.toHaveBeenCalled();
+    const on = makeNode([{ id: 's1', lastRunAt: null }], { rowOverrides: { hour: 8 } });
+    await on.service.runScheduled();
+    expect(on.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('WEEKLY: chỉ đúng thứ đã chọn (không còn cứng thứ Hai theo giờ máy chủ)', async () => {
+    const tue = makeNode([{ id: 's1', lastRunAt: null }], {
+      rowOverrides: { schedule: 'WEEKLY', weekday: 2 },
+    });
+    await tue.service.runScheduled();
+    expect(tue.send).not.toHaveBeenCalled();
+    const mon = makeNode([{ id: 's1', lastRunAt: null }], {
+      rowOverrides: { schedule: 'WEEKLY', weekday: 1 },
+    });
+    await mon.service.runScheduled();
+    expect(mon.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('múi giờ khác: 08:10 VN = 21:10 giờ New_York hôm trước → sub 21h New_York đến hạn', async () => {
+    const n = makeNode([{ id: 's1', lastRunAt: null }], {
+      rowOverrides: { hour: 21, timezone: 'America/New_York' },
+    });
+    await n.service.runScheduled();
+    expect(n.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('lastRunAt nằm trong CÙNG giờ địa phương (dù > 30 phút trước) → không gửi lại', async () => {
+    // Lần gửi trước 07:35 VN (khác giờ địa phương) → gửi bình thường.
+    const earlier = makeNode([
+      { id: 's1', lastRunAt: new Date(MONDAY_0810_VN.getTime() - 35 * 60_000) },
+    ]);
+    await earlier.service.runScheduled();
+    expect(earlier.send).toHaveBeenCalledTimes(1);
+    // Lần gửi trước 08:00:30 VN, nay 08:50 VN: 49 phút (ngoài cửa sổ dedupe 30 phút) nhưng vẫn CÙNG giờ 08 → không gửi lại.
+    const sameHour = makeNode([{ id: 's1', lastRunAt: new Date('2026-10-19T01:00:30Z') }]);
+    vi.setSystemTime(new Date('2026-10-19T01:50:00Z'));
+    await sameHour.service.runScheduled();
+    expect(sameHour.send).not.toHaveBeenCalled();
+  });
+
+  it('múi giờ hỏng trong DB không làm hỏng vòng cron: bỏ qua sub đó, vẫn gửi sub khác', async () => {
+    const n = makeNode(
+      [
+        { id: 'bad', lastRunAt: null },
+        { id: 'ok', lastRunAt: null },
+      ],
+      {},
+    );
+    const prisma = prismaOf(n.service);
+    const rows = (await prisma.reportSubscription.findMany()) as Array<Record<string, unknown>>;
+    rows[0]!.timezone = 'Mars/Base';
+    prisma.reportSubscription.findMany.mockResolvedValue(rows);
+    await n.service.runScheduled();
+    expect(n.send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('DigestsService.onSprintCompleted — SPRINT_END theo sự kiện (L20)', () => {
+  function sprintEnd(subs: Array<Record<string, unknown>>) {
+    const table: SubRow[] = subs.map((s) => ({
+      id: s.id as string,
+      lastRunAt: (s.lastRunAt as Date | undefined) ?? null,
+    }));
+    const node = makeNode(table);
+    const prisma = prismaOf(node.service);
+    prisma.project = { findFirst: vi.fn(() => Promise.resolve({ workspaceId: 'w1' })) };
+    prisma.reportSubscription.findMany = vi.fn(() =>
+      Promise.resolve(
+        subs.map((s) => ({
+          workspaceId: 'w1',
+          channelId: 'c1',
+          schedule: 'SPRINT_END',
+          metrics: [],
+          createdById: 'u1',
+          lastRunAt: null,
+          projectId: null,
+          ...s,
+        })),
+      ),
+    );
+    return { ...node, prisma };
+  }
+
+  it('gửi các digest SPRINT_END đang bật của workspace chứa sprint', async () => {
+    const t = sprintEnd([{ id: 'a' }, { id: 'b', projectId: 'p1' }]);
+    await t.service.onSprintCompleted({ sprintId: 'sp1', projectId: 'p1' });
+    expect(t.send).toHaveBeenCalledTimes(2);
+    const where = json(t.prisma.reportSubscription.findMany);
+    expect(where).toContain('"workspaceId":"w1"');
+    expect(where).toContain('"schedule":"SPRINT_END"');
+    expect(where).toContain('"isEnabled":true');
+    expect(where).toContain('"OR":[{"projectId":null},{"projectId":"p1"}]');
+  });
+
+  it('không có digest nào → không gửi, không lỗi', async () => {
+    const t = sprintEnd([]);
+    await t.service.onSprintCompleted({ sprintId: 'sp1', projectId: 'p1' });
+    expect(t.send).not.toHaveBeenCalled();
+  });
+
+  it('dự án không tồn tại → bỏ qua, không ném', async () => {
+    const t = sprintEnd([{ id: 'a' }]);
+    t.prisma.project.findFirst.mockResolvedValue(null);
+    await expect(
+      t.service.onSprintCompleted({ sprintId: 'sp1', projectId: 'p1' }),
+    ).resolves.toBeUndefined();
+    expect(t.send).not.toHaveBeenCalled();
+  });
+
+  it('lỗi gửi/tra cứu không được ném ra (không làm hỏng việc đóng sprint)', async () => {
+    const t = sprintEnd([{ id: 'a' }]);
+    t.prisma.reportSubscription.findMany.mockRejectedValue(new Error('db'));
+    await expect(
+      t.service.onSprintCompleted({ sprintId: 'sp1', projectId: 'p1' }),
+    ).resolves.toBeUndefined();
+    const t2 = sprintEnd([{ id: 'a' }]);
+    t2.send.mockRejectedValue(new Error('telegram'));
+    await expect(
+      t2.service.onSprintCompleted({ sprintId: 'sp1', projectId: 'p1' }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('hai sprint đóng liên tiếp đều gửi (không dính cửa sổ dedupe 30 phút của cron)', async () => {
+    const t = sprintEnd([{ id: 'a', lastRunAt: new Date(Date.now() - 60_000) }]);
+    await t.service.onSprintCompleted({ sprintId: 'sp1', projectId: 'p1' });
+    expect(t.send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('digest schedule schemas (L20)', () => {
+  it('weekday 0–6, hour 0–23, timezone IANA hợp lệ', () => {
+    const ok = { name: 'x', weekday: 1, hour: 8, timezone: 'Asia/Ho_Chi_Minh' };
+    expect(createDigestSchema.safeParse(ok).success).toBe(true);
+    expect(createDigestSchema.safeParse({ ...ok, weekday: 7 }).success).toBe(false);
+    expect(createDigestSchema.safeParse({ ...ok, weekday: -1 }).success).toBe(false);
+    expect(createDigestSchema.safeParse({ ...ok, hour: 24 }).success).toBe(false);
+    expect(createDigestSchema.safeParse({ ...ok, hour: 8.5 }).success).toBe(false);
+    expect(createDigestSchema.safeParse({ ...ok, timezone: 'Mars/Base' }).success).toBe(false);
+    expect(updateDigestSchema.safeParse({ hour: 25 }).success).toBe(false);
+    expect(updateDigestSchema.safeParse({ timezone: 'Asia/Tokyo', weekday: 6 }).success).toBe(true);
+  });
+
+  it('create/update lưu weekday/hour/timezone', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    const create = vi.fn();
+    (prisma.reportSubscription as Record<string, unknown>).create = create;
+    await service.create('w1', 'u1', { name: 'n', weekday: 5, hour: 17, timezone: 'Asia/Tokyo' });
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ weekday: 5, hour: 17, timezone: 'Asia/Tokyo' }) as unknown,
+    });
+    await service.update('w1', 's1', { weekday: 2, hour: 9, timezone: 'Asia/Bangkok' });
+    expect(prisma.reportSubscription.update).toHaveBeenCalledWith({
+      where: { id: 's1' },
+      data: { weekday: 2, hour: 9, timezone: 'Asia/Bangkok' },
+    });
   });
 });

@@ -1,5 +1,7 @@
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { OnEvent } from '@nestjs/event-emitter';
+import { Cron } from '@nestjs/schedule';
+import { DOMAIN_EVENTS } from '@tirapro/types';
 import {
   DigestSchedule,
   HistoryField,
@@ -27,6 +29,7 @@ import { LeadershipService } from '../analytics/leadership.service';
 import { ProjectHealthService } from '../analytics/project-health.service';
 import { ProjectAccessService, PUBLIC_VIEWER } from '../rbac/project-access.service';
 import { renderPlainText, renderTelegramHtml } from './digest-render';
+import { isDue, sameLocalHour, type DigestScheduleFields } from './digest-schedule';
 
 /** Input tạo mới subscription (đã validate qua zod ở controller). */
 export interface CreateDigestInput {
@@ -36,6 +39,9 @@ export interface CreateDigestInput {
   channelId?: string;
   metrics?: string[];
   recipients?: string[];
+  weekday?: number;
+  hour?: number;
+  timezone?: string;
 }
 
 /** Input cập nhật subscription (partial). */
@@ -45,6 +51,9 @@ export interface UpdateDigestInput {
   isEnabled?: boolean;
   channelId?: string | null;
   metrics?: string[];
+  weekday?: number;
+  hour?: number;
+  timezone?: string;
 }
 
 /** Tích hợp đang ERROR (token vẫn dùng được): digest không gửi cho tới khi "Gửi thử" phục hồi. */
@@ -64,6 +73,31 @@ const LEADERSHIP_CARD_OF: Partial<Record<DigestBlockId, 'topRisks' | 'slowGoals'
   };
 /** Cửa sổ chống gửi đôi cho cron: bằng TTL khoá cron (1800s). */
 const DIGEST_DEDUPE_MS = 30 * 60 * 1000;
+
+/** Trường cần để gửi một subscription (cron + sự kiện). */
+const DISPATCH_SELECT = {
+  id: true,
+  workspaceId: true,
+  projectId: true,
+  channelId: true,
+  schedule: true,
+  weekday: true,
+  hour: true,
+  timezone: true,
+  metrics: true,
+  createdById: true,
+  lastRunAt: true,
+} as const;
+
+type DispatchSub = DigestScheduleFields & {
+  id: string;
+  workspaceId: string;
+  projectId: string | null;
+  channelId: string | null;
+  metrics: string[];
+  createdById: string | null;
+  lastRunAt: Date | null;
+};
 
 /** Ngữ cảnh dùng chung của các khối trong MỘT lượt dựng digest. */
 interface BlockContext {
@@ -133,6 +167,9 @@ export class DigestsService implements OnApplicationShutdown {
         channelId: input.channelId ?? null,
         metrics: input.metrics ?? [],
         recipients: input.recipients ?? [],
+        ...(input.weekday !== undefined ? { weekday: input.weekday } : {}),
+        ...(input.hour !== undefined ? { hour: input.hour } : {}),
+        ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
         createdById: userId,
       },
     });
@@ -151,6 +188,9 @@ export class DigestsService implements OnApplicationShutdown {
     if (input.isEnabled !== undefined) data.isEnabled = input.isEnabled;
     if (input.channelId !== undefined) data.channelId = input.channelId;
     if (input.metrics !== undefined) data.metrics = input.metrics;
+    if (input.weekday !== undefined) data.weekday = input.weekday;
+    if (input.hour !== undefined) data.hour = input.hour;
+    if (input.timezone !== undefined) data.timezone = input.timezone;
     return this.prisma.reportSubscription.update({ where: { id }, data });
   }
 
@@ -601,14 +641,12 @@ export class DigestsService implements OnApplicationShutdown {
   // ------------------------------- Cron -------------------------------
 
   /**
-   * Chạy định kỳ mỗi ngày 8h sáng. Gửi các subscription đang bật & đến hạn hôm nay:
-   * - DAILY: luôn chạy.
-   * - WEEKLY: chỉ thứ Hai (getDay()===1).
-   * - SPRINT_END / MANUAL: bỏ qua ở cron (chạy thủ công hoặc theo sự kiện khác).
-   * Mỗi subscription bọc try/catch riêng — không bao giờ ném ra ngoài cron.
+   * Chạy MỖI GIỜ (phút 0): gửi các subscription đang bật mà giờ hiện tại (theo múi giờ của chính nó) đúng
+   * `hour` — và đúng `weekday` với WEEKLY (xem `isDue`). SPRINT_END gửi theo sự kiện (`onSprintCompleted`),
+   * MANUAL chỉ bằng nút "Gửi ngay". Mỗi subscription bọc try/catch riêng — không bao giờ ném ra ngoài cron.
    * An toàn khi không có subscription nào (no-op).
    */
-  @Cron(CronExpression.EVERY_DAY_AT_8AM)
+  @Cron('0 * * * *')
   async runScheduled(): Promise<void> {
     // Khoá Redis để nhiều node API không gửi trùng digest.
     await withCronLock(this.redis, 'digests:scheduled', 1800, () => this.sendScheduled()).catch(
@@ -618,35 +656,15 @@ export class DigestsService implements OnApplicationShutdown {
 
   private async sendScheduled(): Promise<void> {
     if (this.stopping) return;
-    const isMonday = new Date().getDay() === 1;
-    let subs: Array<{
-      id: string;
-      workspaceId: string;
-      projectId: string | null;
-      channelId: string | null;
-      schedule: DigestSchedule;
-      metrics: string[];
-      createdById: string | null;
-      lastRunAt: Date | null;
-    }>;
+    const now = new Date();
+    let subs: DispatchSub[];
     try {
       subs = await this.prisma.reportSubscription.findMany({
         where: {
           isEnabled: true,
-          schedule: isMonday
-            ? { in: [DigestSchedule.DAILY, DigestSchedule.WEEKLY] }
-            : DigestSchedule.DAILY,
+          schedule: { in: [DigestSchedule.DAILY, DigestSchedule.WEEKLY] },
         },
-        select: {
-          id: true,
-          workspaceId: true,
-          projectId: true,
-          channelId: true,
-          schedule: true,
-          metrics: true,
-          createdById: true,
-          lastRunAt: true,
-        },
+        select: DISPATCH_SELECT,
       });
     } catch (err) {
       this.warn('runScheduled.load', err);
@@ -655,39 +673,83 @@ export class DigestsService implements OnApplicationShutdown {
 
     for (const sub of subs) {
       if (this.stopping) break; // app đang tắt
-      const now = new Date();
-      // Node khác vừa gửi (đồng hồ lệch nên khoá cron đã nhả trước khi cron node này chạy).
-      if (sub.lastRunAt && now.getTime() - sub.lastRunAt.getTime() < DIGEST_DEDUPE_MS) continue;
-      try {
-        // Compare-and-set: chỉ một node thắng; node thua thấy count 0.
-        const claimed = await this.prisma.reportSubscription.updateMany({
-          where: { id: sub.id, lastRunAt: sub.lastRunAt },
-          data: { lastRunAt: now },
-        });
-        if (claimed.count === 0) continue;
-        try {
-          const model = await this.buildDigest(
-            sub.workspaceId,
-            sub.projectId ?? undefined,
-            sub.metrics,
-            this.sharedViewer(sub),
-          );
-          await this.send(sub.workspaceId, sub.channelId, renderTelegramHtml(model));
-        } catch (err) {
-          // Chỉ là lưới an toàn cho lỗi BẤT NGỜ (vd buildDigest ném). send()/telegram.send tự nuốt lỗi
-          // gửi nên lỗi mạng KHÔNG đi vào đây => không retry trong ngày (hành vi cũ). Cơ chế là at-most-once:
-          // node chết sau khi claim thì digest ngày đó mất.
-          await this.prisma.reportSubscription
-            .updateMany({
-              where: { id: sub.id, lastRunAt: now },
-              data: { lastRunAt: sub.lastRunAt },
-            })
-            .catch(() => undefined);
-          throw err;
-        }
-      } catch (err) {
-        this.warn(`runScheduled.sub:${sub.id}`, err);
+      if (!isDue(sub, now)) continue;
+      // Node khác vừa gửi (đồng hồ lệch nên khoá cron đã nhả trước khi cron node này chạy), hoặc đã gửi trong
+      // CÙNG giờ địa phương (vd bấm "Gửi ngay" lúc 08:20 thì cron 08:00 hôm sau không bị chặn nhưng cron giờ này thì có).
+      if (sub.lastRunAt && this.recentlyRan(sub, now)) continue;
+      await this.dispatch(sub, now);
+    }
+  }
+
+  private recentlyRan(sub: DispatchSub, now: Date): boolean {
+    const last = sub.lastRunAt!;
+    return (
+      now.getTime() - last.getTime() < DIGEST_DEDUPE_MS || sameLocalHour(last, now, sub.timezone)
+    );
+  }
+
+  /**
+   * Sprint vừa đóng (sự kiện phát SAU commit): gửi các digest "Khi kết thúc sprint" đang bật của workspace
+   * (không gắn dự án, hoặc gắn đúng dự án của sprint). Lỗi ở đây không bao giờ lan ra việc đóng sprint.
+   */
+  @OnEvent(DOMAIN_EVENTS.SPRINT_COMPLETED)
+  async onSprintCompleted(event: { sprintId: string; projectId: string }): Promise<void> {
+    try {
+      const project = await this.prisma.project.findFirst({
+        where: { id: event.projectId, deletedAt: null },
+        select: { workspaceId: true },
+      });
+      if (!project) return;
+      const subs = await this.prisma.reportSubscription.findMany({
+        where: {
+          workspaceId: project.workspaceId,
+          isEnabled: true,
+          schedule: DigestSchedule.SPRINT_END,
+          OR: [{ projectId: null }, { projectId: event.projectId }],
+        },
+        select: DISPATCH_SELECT,
+      });
+      for (const sub of subs) {
+        if (this.stopping) break;
+        // Không áp cửa sổ dedupe của cron: hai sprint đóng liền nhau là hai sự kiện thật; CAS vẫn chặn gửi đôi đồng thời.
+        await this.dispatch(sub, new Date());
       }
+    } catch (err) {
+      this.warn('onSprintCompleted', err);
+    }
+  }
+
+  /**
+   * Gửi một subscription (đã xác định "đến lượt"). Compare-and-set `lastRunAt` TRƯỚC khi gửi: chỉ một node thắng.
+   * Chỉ là lưới an toàn cho lỗi BẤT NGỜ (vd buildDigest ném): send() tự nuốt lỗi gửi nên lỗi mạng không đi vào đây
+   * => không retry trong giờ đó. Cơ chế là at-most-once: node chết sau khi claim thì digest giờ đó mất.
+   */
+  private async dispatch(sub: DispatchSub, now: Date): Promise<void> {
+    try {
+      const claimed = await this.prisma.reportSubscription.updateMany({
+        where: { id: sub.id, lastRunAt: sub.lastRunAt },
+        data: { lastRunAt: now },
+      });
+      if (claimed.count === 0) return;
+      try {
+        const model = await this.buildDigest(
+          sub.workspaceId,
+          sub.projectId ?? undefined,
+          sub.metrics,
+          this.sharedViewer(sub),
+        );
+        await this.send(sub.workspaceId, sub.channelId, renderTelegramHtml(model));
+      } catch (err) {
+        await this.prisma.reportSubscription
+          .updateMany({
+            where: { id: sub.id, lastRunAt: now },
+            data: { lastRunAt: sub.lastRunAt },
+          })
+          .catch(() => undefined);
+        throw err;
+      }
+    } catch (err) {
+      this.warn(`dispatch:${sub.id}`, err);
     }
   }
 

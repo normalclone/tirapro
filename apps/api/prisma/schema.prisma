@@ -1499,6 +1499,14 @@ model ReportSubscription {
   projectId   String?
   name        String
   schedule    DigestSchedule @default(WEEKLY)
+  /// 0 = Chủ nhật … 6 = Thứ Bảy; chỉ dùng cho WEEKLY (giờ địa phương theo `timezone`).
+  weekday     Int      @default(1)
+  /// 0–23 theo `timezone` (độ phân giải theo giờ).
+  hour        Int      @default(8)
+  /// Múi giờ IANA của `weekday`/`hour`.
+  timezone    String   @default("Asia/Ho_Chi_Minh")
+  /// Gửi email cho `recipients` (userId thành viên workspace) bên cạnh kênh Telegram.
+  deliverEmail Boolean @default(false)
   cron        String?
   metrics     String[] // các khối metric chọn tổng hợp (xem REPORT_METRIC_BLOCKS)
   channelId   String?  // gửi tới IntegrationChannel (Telegram)
