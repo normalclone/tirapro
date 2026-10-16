@@ -53,12 +53,8 @@ export function epicProgressLabel(p: PointsProgress): string {
   return `${p.doneCount}/${p.totalCount} việc`;
 }
 
-export function epicProgress(
-  issues: IssueDto[],
-  epicId: string,
-  byId?: Map<string, IssueDto>,
-): PointsProgress {
-  const m = epicMembers(issues, epicId, byId);
+/** MỘT quy tắc tính tiến độ cho tập thành viên: theo điểm; epic chưa có điểm nào thì theo số việc. */
+function progressOfMembers(m: IssueDto[]): PointsProgress {
   const done = (i: IssueDto) => i.status.category === 'DONE';
   const totalPoints = m.reduce((s, i) => s + (i.storyPoints ?? 0), 0);
   const donePoints = m.filter(done).reduce((s, i) => s + (i.storyPoints ?? 0), 0);
@@ -72,16 +68,37 @@ export function epicProgress(
   return { donePoints, totalPoints, doneCount, totalCount: m.length, pct };
 }
 
-/** Tiến độ epic dưới dạng `SubtreeProgress` (đếm theo thành viên, % theo điểm) — cho thanh `TaskProgress` ở panel epic, khớp danh sách. */
-export function epicTaskProgress(issues: IssueDto[], epicId: string): SubtreeProgress {
-  const m = epicMembers(issues, epicId);
-  const cat = (c: string) => m.filter((i) => i.status.category === c).length;
+export function epicProgress(
+  issues: IssueDto[],
+  epicId: string,
+  byId?: Map<string, IssueDto>,
+): PointsProgress {
+  return progressOfMembers(epicMembers(issues, epicId, byId));
+}
+
+/**
+ * Tiến độ epic dạng `SubtreeProgress` cho thanh `TaskProgress` (dòng epic ở Việc chờ/Board, panel epic ở trang việc):
+ * CÙNG đơn vị với `epicProgress`/panel Epic — theo điểm, fallback theo số việc khi không có điểm nào (`unit` nói rõ).
+ */
+export function epicTaskProgress(
+  issues: IssueDto[],
+  epicId: string,
+  byId?: Map<string, IssueDto>,
+): SubtreeProgress {
+  const m = epicMembers(issues, epicId, byId);
+  const p = progressOfMembers(m);
+  const byPoints = p.totalPoints > 0;
+  const sum = (cat: string) =>
+    m
+      .filter((i) => i.status.category === cat)
+      .reduce((s, i) => s + (byPoints ? (i.storyPoints ?? 0) : 1), 0);
   return {
-    total: m.length,
-    done: cat('DONE'),
-    inProgress: cat('IN_PROGRESS'),
-    todo: cat('TODO'),
-    pct: epicProgress(issues, epicId).pct,
+    total: byPoints ? p.totalPoints : p.totalCount,
+    done: sum('DONE'),
+    inProgress: sum('IN_PROGRESS'),
+    todo: sum('TODO'),
+    pct: p.pct,
+    unit: byPoints ? 'điểm' : 'việc',
   };
 }
 
@@ -94,9 +111,8 @@ export function buildListProgressMap(issues: IssueDto[]): Map<string, SubtreePro
   const byId = byIdOf(issues);
   for (const e of issues) {
     if (!isEpicIssue(e)) continue;
-    const members = epicMembers(issues, e.id, byId);
-    if (members.length === 0) m.delete(e.id);
-    else m.set(e.id, epicTaskProgress(issues, e.id));
+    if (epicMembers(issues, e.id, byId).length === 0) m.delete(e.id);
+    else m.set(e.id, epicTaskProgress(issues, e.id, byId));
   }
   return m;
 }

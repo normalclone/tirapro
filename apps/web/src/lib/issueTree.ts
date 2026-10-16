@@ -57,6 +57,8 @@ export interface SubtreeProgress {
   todo: number;
   /** % task con (toàn cây) đã ở trạng thái Hoàn thành. */
   pct: number;
+  /** Đơn vị của total/done/... khi KHÔNG phải số việc (epic tính theo điểm). Mặc định: số việc. */
+  unit?: 'điểm' | 'việc';
 }
 
 function childrenMap(issues: IssueDto[]): Map<string, IssueDto[]> {

@@ -52,7 +52,13 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
       </div>
 
       <div className="space-y-2 p-4">
-        {progress.total > 0 && <TaskProgress progress={progress} className="pb-0.5" />}
+        {progress.total > 0 && (
+          <TaskProgress
+            progress={progress}
+            className="pb-0.5"
+            label={isEpic ? 'Tiến độ epic' : undefined}
+          />
+        )}
         <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
           {children.map((c) => (
             <li key={c.id}>

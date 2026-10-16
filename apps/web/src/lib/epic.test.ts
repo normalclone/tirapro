@@ -182,13 +182,31 @@ describe('một định nghĩa thành viên epic (danh sách = tiến độ = pa
   it('epic không là thành viên của chính nó hay của epic khác', () => {
     expect(ids(epicMembers([e1, mk('e3', { t: 'epic', epicId: 'e1' })], 'e1'))).toEqual([]);
   });
-  it('epicTaskProgress: đếm theo thành viên, % theo điểm — khớp số việc ở panel', () => {
+  it('epicTaskProgress: cùng đơn vị với epicProgress/panel — theo điểm khi có điểm', () => {
+    const p = epicProgress(all, 'e1');
     expect(epicTaskProgress(all, 'e1')).toEqual({
-      total: 3,
+      total: 10,
+      done: 3,
+      inProgress: 0,
+      todo: 7,
+      pct: 30,
+      unit: 'điểm',
+    });
+    expect(epicTaskProgress(all, 'e1')).toMatchObject({
+      total: p.totalPoints,
+      done: p.donePoints,
+      pct: p.pct,
+    });
+  });
+  it('epicTaskProgress: epic chưa có điểm nào => theo số việc (như epicProgress)', () => {
+    const l = [e1, mk('a', { epicId: 'e1', done: true }), mk('b', { epicId: 'e1' })];
+    expect(epicTaskProgress(l, 'e1')).toEqual({
+      total: 2,
       done: 1,
       inProgress: 0,
-      todo: 2,
-      pct: 30,
+      todo: 1,
+      pct: epicProgress(l, 'e1').pct,
+      unit: 'việc',
     });
   });
 });
@@ -204,7 +222,7 @@ describe('buildListProgressMap (dòng/thẻ epic dùng tập thành viên)', () 
   ];
   it('epic: số việc bằng thành viên (kể cả việc có cha thường); việc thường giữ tiến độ cây', () => {
     const m = buildListProgressMap(list);
-    expect(m.get('e')).toMatchObject({ total: 2, done: 1, pct: 50 });
+    expect(m.get('e')).toMatchObject({ total: 4, done: 2, pct: 50, unit: 'điểm' });
     expect(m.get('p')).toMatchObject({ total: 1 });
   });
   it('epic không có thành viên => không có thanh', () =>
@@ -284,6 +302,24 @@ describe('planEpicAssign', () => {
       patch: { epicId: 'e2' },
       restore: { epicId: 'e1' },
     });
+  });
+  describe('ca hiếm: cha là epic X nhưng epicId = Y (thuộc Y theo định nghĩa đã chọn)', () => {
+    const dual = mk('d', { parentId: 'e1', epicId: 'e2' });
+    const m = new Map([e1, e2, dual].map((i) => [i.id, i]));
+    it('thả vào Y (đã thuộc) => bỏ qua', () =>
+      expect(planEpicAssign(dual, 'e2', m)).toEqual({ kind: 'ignore' }));
+    it('thả vào X => gắn X, gỡ parentId; Hoàn tác giữ cả hai', () =>
+      expect(planEpicAssign(dual, 'e1', m)).toEqual({
+        kind: 'set',
+        patch: { epicId: 'e1', parentId: null },
+        restore: { epicId: 'e2', parentId: 'e1' },
+      }));
+    it('thả vào "Không thuộc epic" => gỡ cả epicId lẫn parentId; Hoàn tác giữ cả hai', () =>
+      expect(planEpicAssign(dual, 'none', m)).toEqual({
+        kind: 'set',
+        patch: { epicId: null, parentId: null },
+        restore: { epicId: 'e2', parentId: 'e1' },
+      }));
   });
   it('epic và sub-task không vào epic', () => {
     expect(planEpicAssign(e1, 'e2', byId)).toMatchObject({ kind: 'reject' });

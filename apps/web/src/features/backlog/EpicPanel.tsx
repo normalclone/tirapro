@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { memo, useMemo, useState, type ReactNode } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { PanelLeftClose } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
@@ -37,6 +37,14 @@ export function PointsBar({
     </div>
   );
 }
+
+const EMPTY_PROGRESS: PointsProgress = {
+  donePoints: 0,
+  totalPoints: 0,
+  doneCount: 0,
+  totalCount: 0,
+  pct: 0,
+};
 
 const ITEM =
   'flex w-full flex-col gap-1 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
@@ -79,7 +87,7 @@ function PanelItem({
  * `selected`: null = tất cả, 'none' = không thuộc epic, còn lại = id epic. Dựng hoàn toàn từ `issues` đã nạp.
  * Mục epic và "Không thuộc epic" là vùng thả (`dropEnabled`) để kéo việc vào/ra epic.
  */
-export function EpicPanel({
+export const EpicPanel = memo(function EpicPanel({
   epics,
   issues,
   counts,
@@ -99,10 +107,16 @@ export function EpicPanel({
   onToggle: () => void;
 }) {
   const [showDone, setShowDone] = useState(false);
+  // Dựng Map + tiến độ mọi epic MỘT lần theo `issues` (panel memo → không tính lại khi trang vẽ lại vì lý do khác).
+  const progressByEpic = useMemo(() => {
+    const byId = new Map(issues.map((i) => [i.id, i]));
+    return new Map(epics.map((e) => [e.id, epicProgress(issues, e.id, byId)]));
+  }, [issues, epics]);
+  // Cùng định nghĩa với các mục dưới: việc thuộc các epic + "Không thuộc epic" (không đếm chính các epic).
+  const total = useMemo(() => [...counts.values()].reduce((a, b) => a + b, 0), [counts]);
   if (collapsed) return null;
   const doneEpics = epics.filter((e) => e.status.category === 'DONE');
   const shown = epics.filter((e) => showDone || e.status.category !== 'DONE' || e.id === selected);
-  const byId = new Map(issues.map((i) => [i.id, i]));
   const noEpic = counts.get('none') ?? 0;
 
   return (
@@ -127,7 +141,12 @@ export function EpicPanel({
         <PanelItem dropEnabled={false} active={selected === null} onClick={() => onSelect(null)}>
           <span className="flex items-center justify-between text-sm text-ink">
             Tất cả việc
-            <span className="tabular text-xs text-muted">{issues.length}</span>
+            <span
+              className="tabular text-xs text-muted"
+              title="Tổng việc thuộc các epic và “Không thuộc epic” (không đếm chính các epic)"
+            >
+              {total}
+            </span>
           </span>
         </PanelItem>
         {shown.map((e) => (
@@ -143,7 +162,7 @@ export function EpicPanel({
               <span className="shrink-0 font-mono text-xs text-muted">{e.key}</span>
               <span className="min-w-0 flex-1 truncate">{e.summary}</span>
             </span>
-            <PointsBar progress={epicProgress(issues, e.id, byId)} />
+            <PointsBar progress={progressByEpic.get(e.id) ?? EMPTY_PROGRESS} />
           </PanelItem>
         ))}
         <PanelItem
@@ -176,4 +195,4 @@ export function EpicPanel({
       )}
     </nav>
   );
-}
+});
