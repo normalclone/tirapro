@@ -36,9 +36,10 @@ export class RulesController {
   @Get()
   async list(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query(new ZodValidationPipe(listRulesQuerySchema)) query: { projectId?: string },
   ) {
-    return this.rules.list(workspaceId, query.projectId);
+    return this.rules.list(workspaceId, query.projectId, user.id);
   }
 
   @ProjectRef('automationRule', 'id')

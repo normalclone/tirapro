@@ -19,6 +19,7 @@ import { RedisService } from '../../infra/redis/redis.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertNotArchived, assertProjectIdWritable } from '../../common/project-writable';
 import { TelegramService } from '../integrations/telegram.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { maskWebhookActions, openSecret, sealWebhookActions } from './webhook-secret';
 
 const CACHE_TTL_SEC = 60;
@@ -45,6 +46,7 @@ export class RulesService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly cipher: TelegramService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   /* ------------------------------ cache ------------------------------ */
@@ -96,12 +98,24 @@ export class RulesService {
 
   /* ------------------------------- CRUD ------------------------------ */
 
-  async list(workspaceId: string, projectId?: string): Promise<AutomationRuleDto[]> {
+  /**
+   * Quy tắc của dự án riêng tư người xem không thấy bị loại (không có `projectId`: trước đây trả TẤT CẢ quy tắc workspace —
+   * lộ tên quy tắc/điều kiện/hành động của dự án riêng tư). Quy tắc cả workspace luôn hiện.
+   */
+  async list(
+    workspaceId: string,
+    projectId: string | undefined,
+    viewerId: string,
+  ): Promise<AutomationRuleDto[]> {
+    const ids = await this.access.visibleProjectIds(viewerId, workspaceId);
     const rows = await this.prisma.automationRule.findMany({
       where: {
         workspaceId,
-        // Có projectId: quy tắc của dự án đó + quy tắc cả workspace; không có: tất cả.
+        // Có projectId: quy tắc của dự án đó + quy tắc cả workspace; không có: tất cả dự án người xem thấy.
         ...(projectId ? { OR: [{ projectId }, { projectId: null }] } : {}),
+        ...(ids === null
+          ? {}
+          : { AND: [{ OR: [{ projectId: null }, { projectId: { in: ids } }] }] }),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 200,

@@ -585,7 +585,7 @@ export class NotificationsService {
   }
 
   /** Giữ lại những người xem được dự án (không có `projectId` → không lọc). Giữ thứ tự. */
-  private async filterCanSee(
+  async filterCanSee(
     userIds: string[],
     workspaceId: string,
     projectId: string | undefined,

@@ -36,6 +36,9 @@ function setup(
     integrationChannel: { findMany: vi.fn(() => Promise.resolve(row.channels)) },
   };
   const audit = { record: vi.fn() };
+  const access = {
+    assertCanSee: vi.fn((..._a: unknown[]): Promise<void> => Promise.resolve()),
+  };
   const telegram = {
     resolveBotToken: vi.fn(() => resolution),
     send: vi.fn(() => Promise.resolve(true)),
@@ -46,10 +49,16 @@ function setup(
     encrypt: vi.fn((t: string) => `ENC(${t})`),
   };
   return {
-    service: new IntegrationsService(prisma as never, telegram as never, audit as never),
+    service: new IntegrationsService(
+      prisma as never,
+      telegram as never,
+      audit as never,
+      access as never,
+    ),
     prisma,
     telegram,
     audit,
+    access,
   };
 }
 const payload = {
@@ -368,5 +377,34 @@ describe('IntegrationsService.fanout — dự án riêng tư (P16)', () => {
     prisma.project.findFirst.mockResolvedValue({ id: 'p1' });
     await service.onCommentAdded({ issueId: 'i1' });
     expect(telegram.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('IntegrationsService.addChannel — gắn kênh vào dự án riêng tư', () => {
+  it('người gắn không thấy dự án → 404, KHÔNG tạo kênh', async () => {
+    const { service, prisma, access } = setup({ kind: 'global' });
+    (prisma.integrationChannel as unknown as { create: unknown }).create = vi.fn();
+    access.assertCanSee.mockRejectedValue(Object.assign(new Error('Dự án'), { status: 404 }));
+    await expect(
+      service.addChannel('w1', 'g1', { externalId: '-100', projectId: 'pHidden' }, 'u1'),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(access.assertCanSee).toHaveBeenCalledWith('u1', 'w1', 'pHidden');
+    expect(
+      (prisma.integrationChannel as unknown as { create: { mock: { calls: unknown[] } } }).create
+        .mock.calls,
+    ).toHaveLength(0);
+  });
+
+  it('người thấy dự án → tạo kênh gắn dự án; kênh cấp workspace (không dự án) không cần kiểm', async () => {
+    const { service, prisma, access } = setup({ kind: 'global' });
+    const create = vi.fn((a: { data: Record<string, unknown> }) =>
+      Promise.resolve({ id: 'c1', ...a.data }),
+    );
+    (prisma.integrationChannel as unknown as { create: unknown }).create = create;
+    await service.addChannel('w1', 'g1', { externalId: '-100', projectId: 'p1' }, 'u1');
+    expect(create.mock.calls[0]![0].data).toMatchObject({ projectId: 'p1' });
+    access.assertCanSee.mockClear();
+    await service.addChannel('w1', 'g1', { externalId: '-101' }, 'u1');
+    expect(access.assertCanSee).not.toHaveBeenCalled();
   });
 });

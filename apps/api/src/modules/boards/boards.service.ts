@@ -38,6 +38,8 @@ export class BoardsService {
   ) {}
 
   async listForProject(workspaceId: string, projectId: string): Promise<BoardDto[]> {
+    // Thiếu projectId ⇒ Prisma bỏ qua điều kiện, liệt kê bảng của MỌI dự án (kể cả riêng tư): bắt buộc phải có.
+    if (!projectId) throw new BusinessRuleException('Thiếu projectId');
     const boards = await this.prisma.board.findMany({
       where: { projectId, deletedAt: null, project: { workspaceId, deletedAt: null } },
       include: boardInclude,

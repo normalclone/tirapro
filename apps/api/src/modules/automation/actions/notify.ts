@@ -1,11 +1,14 @@
-import { DOMAIN_EVENTS } from '@tirapro/types';
-import type { Prisma } from '@prisma/client';
 import type { RuleAction } from '@tirapro/shared';
 import { BusinessRuleException } from '../../../common/exceptions/app.exception';
 import type { ActionContext, ActionResult } from './types';
 import { renderTemplate } from './util';
 
-/** Gửi thông báo trong ứng dụng cho người/vai trò chỉ định (luôn gửi — đây là yêu cầu tường minh của quy tắc). */
+/**
+ * Gửi thông báo trong ứng dụng cho người/vai trò chỉ định. Đi qua `NotificationsService.publish` (chốt trung tâm):
+ * người nhận KHÔNG xem được dự án của việc (dự án riêng tư) thì không được báo/đẩy realtime/gửi email; tôn trọng
+ * cài đặt (ISSUE_UPDATED mặc định tắt nhưng quy tắc là yêu cầu tường minh nên `force`; người đã TẮT tường minh thì thắng)
+ * và gộp thông báo cùng loại trong 60 giây. Nhánh `roles`: vai ở cấp workspace chỉ tính người xem được dự án của việc.
+ */
 export async function runNotify(
   ctx: ActionContext,
   a: Extract<RuleAction, { type: 'notify' }>,
@@ -35,43 +38,33 @@ export async function runNotify(
     });
     for (const m of [...byWs, ...byProject]) recipients.add(m.userId);
   }
-  if (!recipients.size)
+  // Chỉ người xem được dự án của việc (cả `userIds` lẫn `roles`) — dự án riêng tư không lộ khoá/tiêu đề ra ngoài.
+  const visible = await ctx.deps.notifications.filterCanSee(
+    [...recipients],
+    ctx.workspaceId,
+    ctx.issue.projectId,
+  );
+  if (!visible.length)
     throw new BusinessRuleException(
-      'Không tìm thấy người nhận thông báo trong không gian làm việc này',
+      'Không tìm thấy người nhận thông báo xem được công việc này trong không gian làm việc',
     );
 
   const message = await renderTemplate(ctx, a.message);
-  if (ctx.dryRun) return `Sẽ gửi thông báo cho ${recipients.size} người: ${message.slice(0, 200)}`;
+  if (ctx.dryRun) return `Sẽ gửi thông báo cho ${visible.length} người: ${message.slice(0, 200)}`;
 
-  const payload: Prisma.InputJsonValue = {
-    key: ctx.issue.key,
-    summary: message,
-    automation: ctx.rule.name,
-  };
-  for (const recipientId of recipients) {
-    const created = await prisma.notification.create({
-      data: {
+  for (const recipientId of visible) {
+    await ctx.deps.notifications.publish(
+      {
         recipientId,
         workspaceId: ctx.workspaceId,
         type: 'ISSUE_UPDATED',
         issueId: ctx.issue.id,
+        projectId: ctx.issue.projectId,
         actorId: ctx.actorId,
-        payload,
+        payload: { key: ctx.issue.key, summary: message, automation: ctx.rule.name },
       },
-    });
-    ctx.deps.events.emit(DOMAIN_EVENTS.NOTIFICATION_CREATED, {
-      recipientId,
-      notification: {
-        id: created.id,
-        type: created.type,
-        issueId: created.issueId,
-        commentId: created.commentId,
-        actorId: created.actorId,
-        payload: created.payload,
-        readAt: null,
-        createdAt: created.createdAt.toISOString(),
-      },
-    });
+      { force: true },
+    );
   }
-  return `Đã gửi thông báo cho ${recipients.size} người`;
+  return `Đã gửi thông báo cho ${visible.length} người`;
 }

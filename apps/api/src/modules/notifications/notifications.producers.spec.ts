@@ -702,7 +702,7 @@ describe('NotificationsService — dự án riêng tư: người nhận phải x
   });
 
   it('thông báo không gắn công việc (issueId trống) không bị kiểm quyền xem dự án', async () => {
-    const { service, access, prisma } = setup([], { canSee: () => false });
+    const { service, access } = setup([], { canSee: () => false });
     await service.publish({
       recipientId: 'u2',
       workspaceId: 'w1',
@@ -711,6 +711,21 @@ describe('NotificationsService — dự án riêng tư: người nhận phải x
       payload: {},
     });
     expect(access.canSee).not.toHaveBeenCalled();
-    void prisma;
+  });
+
+  it('thông báo không gắn công việc, người nhận bật loại đó → vẫn được tạo (không bị lọc theo dự án)', async () => {
+    const { service, access, created } = setup([], {
+      canSee: () => false,
+      settings: { notifications: { SPRINT_STARTED: true } },
+    });
+    await service.publish({
+      recipientId: 'u2',
+      workspaceId: 'w1',
+      type: 'SPRINT_STARTED',
+      actorId: 'a1',
+      payload: {},
+    });
+    expect(access.canSee).not.toHaveBeenCalled();
+    expect(created()).toEqual([{ type: 'SPRINT_STARTED', to: 'u2' }]);
   });
 });

@@ -5,6 +5,7 @@ import { Prisma, IntegrationType, IntegrationStatus } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { AuditService } from '../audit/audit.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import {
   TELEGRAM_TOKEN_UNUSABLE_MESSAGE,
   TelegramService,
@@ -107,6 +108,7 @@ export class IntegrationsService {
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramService,
     private readonly audit: AuditService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   // ----------------------------- CRUD -----------------------------
@@ -226,6 +228,10 @@ export class IntegrationsService {
     actorId?: string,
   ) {
     const integration = await this.requireIntegration(workspaceId, integrationId);
+    // Gắn kênh vào dự án = kênh sẽ nhận thông báo của dự án đó (kể cả riêng tư): người gắn phải THẤY dự án (404 nếu không),
+    // nếu không người có `integration:manage` mà không thuộc dự án riêng tư có thể tự gắn nhóm chat của mình để nhận tin.
+    if (input.projectId && actorId)
+      await this.access.assertCanSee(actorId, workspaceId, input.projectId);
     try {
       const channel = await this.prisma.integrationChannel.create({
         data: {

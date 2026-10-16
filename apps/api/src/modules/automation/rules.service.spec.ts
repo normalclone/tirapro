@@ -28,7 +28,7 @@ const cipher = {
 function setup() {
   const prisma = {
     automationRule: {
-      findMany: vi.fn(() =>
+      findMany: vi.fn((..._a: unknown[]) =>
         Promise.resolve([
           row(),
           row({ id: 'r2', projectId: 'p2' }),
@@ -46,7 +46,14 @@ function setup() {
     },
   };
   const redis = { isAvailable: () => false, getClient: () => null };
-  return { service: new RulesService(prisma as never, redis as never, cipher as never), prisma };
+  const access = {
+    visibleProjectIds: vi.fn((..._a: unknown[]): Promise<string[] | null> => Promise.resolve(null)),
+  };
+  return {
+    service: new RulesService(prisma as never, redis as never, cipher as never, access as never),
+    prisma,
+    access,
+  };
 }
 
 describe('RulesService', () => {
@@ -211,5 +218,41 @@ describe('RulesService — dự án lưu trữ là chỉ đọc', () => {
     await service.remove('w1', 'r1');
     expect(prisma.automationRule.updateMany).toHaveBeenCalled();
     expect(prisma.automationRule.deleteMany).toHaveBeenCalled();
+  });
+});
+
+describe('RulesService.list — dự án riêng tư', () => {
+  it('người ngoài: chỉ quy tắc cả workspace + dự án thấy được (kể cả khi KHÔNG truyền projectId)', async () => {
+    const { service, prisma, access } = setup();
+    access.visibleProjectIds.mockResolvedValue(['pVisible']);
+    await service.list('w1', undefined, 'u1');
+    expect(access.visibleProjectIds).toHaveBeenCalledWith('u1', 'w1');
+    expect(prisma.automationRule.findMany.mock.calls[0]![0]).toMatchObject({
+      where: {
+        workspaceId: 'w1',
+        AND: [{ OR: [{ projectId: null }, { projectId: { in: ['pVisible'] } }] }],
+      },
+    });
+  });
+
+  it('có projectId: giữ OR (dự án đó + cả workspace) và vẫn thêm lọc người xem trong AND', async () => {
+    const { service, prisma, access } = setup();
+    access.visibleProjectIds.mockResolvedValue(['pVisible']);
+    await service.list('w1', 'pVisible', 'u1');
+    expect(prisma.automationRule.findMany.mock.calls[0]![0]).toMatchObject({
+      where: {
+        OR: [{ projectId: 'pVisible' }, { projectId: null }],
+        AND: [{ OR: [{ projectId: null }, { projectId: { in: ['pVisible'] } }] }],
+      },
+    });
+  });
+
+  it('người thấy hết (quản trị): không thêm điều kiện', async () => {
+    const { service, prisma } = setup();
+    await service.list('w1', undefined, 'admin');
+    expect(prisma.automationRule.findMany.mock.calls[0]![0]).toMatchObject({
+      where: { workspaceId: 'w1' },
+    });
+    expect(JSON.stringify(prisma.automationRule.findMany.mock.calls[0]![0])).not.toContain('AND');
   });
 });

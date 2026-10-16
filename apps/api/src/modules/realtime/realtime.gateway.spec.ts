@@ -9,7 +9,13 @@ function makeGateway(
 ) {
   const prisma = {
     project: { findFirst: vi.fn().mockResolvedValue(projectRow) },
-    issue: { findFirst: vi.fn().mockResolvedValue(issueRow) },
+    issue: {
+      findFirst: vi.fn().mockResolvedValue(issueRow),
+      // room issue:<id> nào thuộc dự án bị rút (mặc định: các id có tên bắt đầu 'IP-' thuộc dự án đó)
+      findMany: vi.fn((a: { where: { projectId?: string; id: { in: string[] } } }) =>
+        Promise.resolve(a.where.id.in.filter((id) => id.startsWith('IP-')).map((id) => ({ id }))),
+      ),
+    },
     user: {
       findUnique: vi.fn().mockResolvedValue({
         displayName: 'An',
@@ -703,17 +709,35 @@ describe('RealtimeGateway — dự án riêng tư (P16)', () => {
     expect(client.join).not.toHaveBeenCalled();
   });
 
-  it('onProjectMemberRemoved: rút socket của đúng user khỏi room project khi không còn thấy dự án', async () => {
-    const { gateway, fetchSockets, presence } = makeGateway(null, null, false);
-    const mine = { data: { userId: 'U1' }, leave: vi.fn() };
-    const other = { data: { userId: 'U2' }, leave: vi.fn() };
-    fetchSockets.mockResolvedValue([mine, other]);
+  it('onProjectMemberRemoved: rút socket của đúng user (mọi tab) khỏi room project VÀ room issue của dự án khi không còn thấy dự án', async () => {
+    const { gateway, fetchSockets, presence, prisma } = makeGateway(null, null, false);
+    const tab1 = {
+      data: { userId: 'U1' },
+      rooms: new Set(['user:U1', 'project:P1', 'issue:IP-1', 'issue:OTHER-9']),
+      leave: vi.fn(),
+    };
+    // tab chỉ mở một việc, KHÔNG vào room project — vẫn phải bị rút khỏi room issue của dự án
+    const tab2 = {
+      data: { userId: 'U1' },
+      rooms: new Set(['user:U1', 'issue:IP-2']),
+      leave: vi.fn(),
+    };
+    const other = { data: { userId: 'U2' }, rooms: new Set(['project:P1']), leave: vi.fn() };
+    fetchSockets.mockResolvedValue([tab1, tab2, other]);
     await gateway.onProjectMemberRemoved({ workspaceId: 'W1', projectId: 'P1', userId: 'U1' });
     const server = (gateway as unknown as { server: { in: ReturnType<typeof vi.fn> } }).server;
-    expect(server.in).toHaveBeenCalledWith('project:P1');
-    expect(mine.leave).toHaveBeenCalledWith('project:P1');
+    expect(server.in).toHaveBeenCalledWith('user:U1');
+    expect(tab1.leave).toHaveBeenCalledWith('project:P1');
+    expect(tab1.leave).toHaveBeenCalledWith('issue:IP-1');
+    expect(tab1.leave).not.toHaveBeenCalledWith('issue:OTHER-9'); // việc của dự án khác giữ nguyên
+    expect(tab2.leave).toHaveBeenCalledWith('issue:IP-2');
     expect(other.leave).not.toHaveBeenCalled();
+    const q = prisma.issue.findMany.mock.calls[0]![0].where;
+    expect(q.projectId).toBe('P1');
+    expect([...q.id.in].sort()).toEqual(['IP-1', 'IP-2', 'OTHER-9']);
     expect(presence.leave).toHaveBeenCalledWith('project:P1', 'U1');
+    expect(presence.leave).toHaveBeenCalledWith('issue:IP-1', 'U1');
+    expect(presence.leave).toHaveBeenCalledWith('issue:IP-2', 'U1');
   });
 
   it('onProjectMemberRemoved: dự án công khai (người đó vẫn thấy) -> không rút socket', async () => {
@@ -740,12 +764,21 @@ describe('RealtimeGateway.onProjectVisibilityChanged (P16)', () => {
       null,
       (userId) => userId === 'U2',
     );
-    const a1 = { data: { userId: 'U1' }, leave: vi.fn() };
-    const a2 = { data: { userId: 'U1' }, leave: vi.fn() };
-    const b = { data: { userId: 'U2' }, leave: vi.fn() };
+    const a1 = {
+      data: { userId: 'U1' },
+      rooms: new Set(['project:P1', 'issue:IP-1']),
+      leave: vi.fn(),
+    };
+    const a2 = { data: { userId: 'U1' }, rooms: new Set(['project:P1']), leave: vi.fn() };
+    const b = {
+      data: { userId: 'U2' },
+      rooms: new Set(['project:P1', 'issue:IP-1']),
+      leave: vi.fn(),
+    };
     fetchSockets.mockResolvedValue([a1, b, a2]);
     await gateway.onProjectVisibilityChanged({ workspaceId: 'W1', projectId: 'P1' });
     expect(a1.leave).toHaveBeenCalledWith('project:P1');
+    expect(a1.leave).toHaveBeenCalledWith('issue:IP-1');
     expect(a2.leave).toHaveBeenCalledWith('project:P1');
     expect(b.leave).not.toHaveBeenCalled();
     expect(access.canSee).toHaveBeenCalledTimes(2);
