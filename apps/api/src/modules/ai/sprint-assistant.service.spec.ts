@@ -212,14 +212,13 @@ describe('SprintAssistantService — heuristic (U20)', () => {
       { closes: [20] },
     );
     const r = await svc.plan('w', 'u', { ...input, goal: 'giỏ hàng' });
-    const dd = (d: Date) =>
-      new Intl.DateTimeFormat('vi-VN', {
-        timeZone: 'Asia/Ho_Chi_Minh',
-        day: '2-digit',
-        month: '2-digit',
-      }).format(d);
+    const dd = (d: Date) => {
+      const vn = new Date(d.getTime() + 7 * 3_600_000); // giờ Việt Nam (UTC+7, không DST)
+      return `${String(vn.getUTCDate()).padStart(2, '0')}/${String(vn.getUTCMonth() + 1).padStart(2, '0')}`;
+    };
     expect(r.picks[0]!.reason).toBe(`Khớp mục tiêu: “giỏ” “hàng” · Đến hạn ${dd(soonDue)}`);
     expect(r.picks[1]!.reason).toBe(`Quá hạn ${dd(late)}`);
+    expect(r.picks[1]!.reason).toMatch(/^Quá hạn \d{2}\/\d{2}$/);
     expect(r.picks[2]!.reason).toMatch(/^Vị trí 3 trong Việc chờ$/);
   });
 

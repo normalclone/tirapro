@@ -41,11 +41,14 @@ const HIGH_PRIORITY_RANK = 4;
 
 /** dd/MM theo giờ Việt Nam (máy chủ có thể chạy múi giờ khác). */
 function fmtDayMonth(d: Date): string {
-  return new Intl.DateTimeFormat('vi-VN', {
+  // Ghép từ formatToParts: dấu phân cách mặc định của locale (vd '-') không phải '/'.
+  const parts = new Intl.DateTimeFormat('vi-VN', {
     timeZone: 'Asia/Ho_Chi_Minh',
     day: '2-digit',
     month: '2-digit',
-  }).format(d);
+  }).formatToParts(d);
+  const pick = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${pick('day')}/${pick('month')}`;
 }
 
 const PLAN_SCHEMA: Record<string, unknown> = {
