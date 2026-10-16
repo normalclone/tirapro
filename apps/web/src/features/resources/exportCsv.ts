@@ -1,4 +1,4 @@
-import { toCsv, type CsvColumn } from '@tirapro/shared';
+import { formatCalendarDmy, toCsv, type CsvColumn } from '@tirapro/shared';
 import type { WorkloadCell, WorkloadReport } from './api';
 
 interface Row {
@@ -8,7 +8,7 @@ interface Row {
 
 const COLUMNS: CsvColumn<Row>[] = [
   { header: 'Người', value: (r) => r.person },
-  { header: 'Tuần bắt đầu', value: (r) => r.cell.weekStart },
+  { header: 'Tuần bắt đầu', value: (r) => formatCalendarDmy(r.cell.weekStart) },
   { header: 'Năng lực (giờ)', value: (r) => r.cell.capacityHours },
   { header: 'Được giao (giờ)', value: (r) => r.cell.assignedHours },
   { header: 'Số việc', value: (r) => r.cell.issueCount },

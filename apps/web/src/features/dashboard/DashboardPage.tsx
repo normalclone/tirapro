@@ -45,7 +45,7 @@ import { MyBugsSection } from './MyBugsSection';
 import { OnboardingChecklist } from '@/features/guides/OnboardingChecklist';
 import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
 import { Button } from '@/components/ui/Button';
-import { LAST_VIEW_KEY, resolveCurrentProjectKey } from '@/lib/currentProject';
+import { lastViewKey, resolveCurrentProjectKey } from '@/lib/currentProject';
 import { emptyHomeActions, personaOf, type HomeAction } from '@/lib/persona';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { openReportIssue } from '@/stores/reportIssue';
@@ -870,7 +870,7 @@ function PersonalEmptyState({ projects }: { projects: { key: string }[] }) {
   );
   let lastViewRaw: string | null = null;
   try {
-    lastViewRaw = localStorage.getItem(LAST_VIEW_KEY);
+    lastViewRaw = localStorage.getItem(lastViewKey());
   } catch {
     /* storage bị chặn → rơi về dự án đầu */
   }

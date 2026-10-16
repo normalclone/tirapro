@@ -1,16 +1,20 @@
 import type { CreatedResolvedPoint } from '@tirapro/shared';
 import type { ProjectReport } from '@/features/reports/api';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 export type StatMetric = 'open' | 'overdue' | 'bugs' | 'done14' | 'projects';
 
 /** Nhãn + giải nghĩa số liệu của ô STAT_NUMBER (dùng cả ở khung ô lẫn hộp cấu hình). */
 export const STAT_METRIC_META: Record<StatMetric, { label: string; hint: string }> = {
-  open: { label: 'Việc đang mở', hint: 'Công việc chưa hoàn thành (To Do + In Progress).' },
+  open: {
+    label: 'Việc đang mở',
+    hint: `Công việc chưa hoàn thành (${STATUS_CATEGORY_LABEL.TODO} + ${STATUS_CATEGORY_LABEL.IN_PROGRESS}).`,
+  },
   overdue: { label: 'Quá hạn', hint: 'Việc chưa xong đã qua hạn.' },
   bugs: { label: 'Bug', hint: 'Công việc loại Bug.' },
   done14: {
-    label: 'Done 14 ngày qua',
-    hint: 'Số việc chuyển sang nhóm Done trong 14 ngày gần nhất.',
+    label: `${STATUS_CATEGORY_LABEL.DONE} 14 ngày qua`,
+    hint: `Số việc chuyển sang nhóm ${STATUS_CATEGORY_LABEL.DONE} trong 14 ngày gần nhất.`,
   },
   projects: { label: 'Dự án', hint: 'Số dự án đang hoạt động bạn xem được.' },
 };

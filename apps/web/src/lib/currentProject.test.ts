@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CREATE_LAST_KEY,
   LAST_ACTIVE_KEY,
-  LAST_VIEW_KEY,
+  lastViewKey,
   createPresetFromTarget,
   readRecentProjectKeys,
   resolveCreateTarget,
@@ -125,7 +125,7 @@ describe('readRecentProjectKeys', () => {
   afterEach(() => vi.unstubAllGlobals());
   it('thứ tự: dự án hoạt động xem gần nhất → view gần nhất → tạo việc gần nhất, bỏ trùng', () => {
     store.set(LAST_ACTIVE_KEY, 'AAA');
-    store.set(LAST_VIEW_KEY, JSON.stringify({ key: 'OLD', view: 'board' }));
+    store.set(lastViewKey(), JSON.stringify({ key: 'OLD', view: 'board' }));
     store.set(CREATE_LAST_KEY, JSON.stringify({ projectKey: 'AAA' }));
     expect(readRecentProjectKeys()).toEqual(['AAA', 'OLD']);
   });
@@ -139,9 +139,17 @@ describe('readRecentProjectKeys', () => {
     expect(readRecentProjectKeys()).toEqual([]);
   });
   it('JSON hỏng không ném lỗi', () => {
-    store.set(LAST_VIEW_KEY, '{hỏng');
+    store.set(lastViewKey(), '{hỏng');
     store.set(CREATE_LAST_KEY, JSON.stringify({ projectKey: 'BBB' }));
     expect(readRecentProjectKeys()).toEqual(['BBB']);
+  });
+});
+
+describe('lastViewKey theo người dùng (WO-M8)', () => {
+  it('hai tài khoản có hai khoá khác nhau; chưa đăng nhập dùng anon', () => {
+    expect(lastViewKey('u1')).not.toBe(lastViewKey('u2'));
+    expect(lastViewKey('u1')).toContain('u1');
+    expect(lastViewKey(undefined)).toBe('tirapro:lastProjectView:anon');
   });
 });
 

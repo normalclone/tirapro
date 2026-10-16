@@ -1,5 +1,4 @@
 import { useDeferredValue, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Navigate } from 'react-router-dom';
 import { Check, Copy, Plus, Search, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/stores/auth';
@@ -46,8 +45,6 @@ export function AdminUsersPage() {
     () => filterAccounts(users ?? [], { search, status }),
     [users, search, status],
   );
-
-  if (me && !me.isSystemAdmin) return <Navigate to="/" replace />;
 
   function toggle(u: AdminUser, field: 'canCreateWorkspace' | 'isSystemAdmin') {
     update.mutate(

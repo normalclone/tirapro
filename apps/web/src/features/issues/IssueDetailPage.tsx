@@ -155,6 +155,11 @@ export function IssueDetailPage() {
   } = useIssueTransitions(issue);
 
   const [editingSummary, setEditingSummary] = useState(false);
+  // Esc huỷ sửa tiêu đề: blur xảy ra ngay sau đó không được lưu.
+  const summaryCancelled = useRef(false);
+  useEffect(() => {
+    if (editingSummary) summaryCancelled.current = false; // lần sửa mới: bỏ cờ huỷ cũ (unmount không bắn blur)
+  }, [editingSummary]);
   const [summary, setSummary] = useState('');
   // Phím `e` ở danh sách điều hướng tới đây kèm `state.editSummary`: mở sẵn ô sửa tiêu đề khi đã biết được sửa (quyền tải xong).
   const location = useLocation();
@@ -411,6 +416,10 @@ export function IssueDetailPage() {
   const canEditRestricted = useCanEditRestricted(issue);
 
   async function saveSummary() {
+    if (summaryCancelled.current) {
+      summaryCancelled.current = false;
+      return;
+    }
     if (!issue || summary.trim() === issue.summary) {
       setEditingSummary(false);
       return;
@@ -547,6 +556,13 @@ export function IssueDetailPage() {
                       onBlur={saveSummary}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') void saveSummary();
+                        else if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
+                          // Esc huỷ sửa (đúng UX_CONVENTIONS) — trả lại tiêu đề cũ, không lưu.
+                          e.preventDefault();
+                          summaryCancelled.current = true;
+                          setSummary(issue.summary);
+                          setEditingSummary(false);
+                        }
                       }}
                       className="order-3 h-10 basis-full text-xl font-semibold tracking-tight sm:order-2 sm:basis-0 sm:flex-1 sm:text-2xl"
                     />

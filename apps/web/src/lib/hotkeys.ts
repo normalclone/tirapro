@@ -1,13 +1,33 @@
 type QueryRoot = Pick<Document, 'querySelector'>;
 
+/** Kiểu <input> nhận chữ — phần còn lại (checkbox, radio, range, button, file, color…) không phải đang gõ. */
+const TYPING_INPUT_TYPES = new Set([
+  'text',
+  'search',
+  'email',
+  'url',
+  'tel',
+  'password',
+  'number',
+  'date',
+  'datetime-local',
+  'month',
+  'time',
+  'week',
+]);
+
 /** Có đang gõ trong ô nhập / vùng soạn thảo không → bỏ qua hotkey. */
 export function isTypingTarget(el: EventTarget | null): boolean {
   // Kiểm cấu trúc (không `instanceof HTMLElement`) để test thuần được với phần tử giả.
   const node = el as Partial<HTMLElement> | null;
   if (!node || typeof node.tagName !== 'string') return false;
   const tag = node.tagName;
+  // Chỉ ô nhập CHỮ/SỐ/NGÀY mới là "đang gõ": checkbox/radio/range/button (focus sau khi bấm) không được chặn phím tắt.
+  if (tag === 'INPUT') {
+    const type = ((node as Partial<HTMLInputElement>).type ?? 'text').toLowerCase();
+    return TYPING_INPUT_TYPES.has(type);
+  }
   return (
-    tag === 'INPUT' ||
     tag === 'TEXTAREA' ||
     tag === 'SELECT' ||
     !!node.isContentEditable ||
@@ -29,6 +49,9 @@ export function isDialogOpen(root: QueryRoot = document): boolean {
  * Dialog đã đóng (`data-state="closed"`, đang chạy hiệu ứng) không chặn.
  */
 export function isOverlayOpen(root: QueryRoot = document): boolean {
+  // Tour hướng dẫn (driver.js) không có role=dialog: coi là lớp phủ để c/e/a/j không chạy đè lên tour.
+  if (typeof document !== 'undefined' && document.body?.classList.contains('driver-active'))
+    return true;
   return !!root.querySelector(
     [
       '[role="dialog"][data-state="open"]',

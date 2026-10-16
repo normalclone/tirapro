@@ -43,7 +43,19 @@ export function useIssueTransitions(issue: IssueDto | undefined) {
   useEffect(() => {
     setDialogOpen(false);
     setPending(null);
+    setWaitingMeta(null);
   }, [issue?.id]);
+
+  // Vào Done khi meta dự án chưa tải (chưa biết có Cách giải quyết nào): chờ meta rồi mới quyết hỏi hay chạy thẳng,
+  // không để chạy thẳng vì `resolutions` còn rỗng (vd phím 1..9 ngay sau khi mở trang trực tiếp).
+  const [waitingMeta, setWaitingMeta] = useState<string | null>(null);
+  useEffect(() => {
+    if (waitingMeta && meta) {
+      setWaitingMeta(null);
+      requestTransition(waitingMeta);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chạy lại khi meta về; `requestTransition` đọc state mới nhất của render này
+  }, [meta, waitingMeta]);
 
   // Chỉ các trạng thái ở BƯỚC KẾ TIẾP — chuyển tiếp hợp lệ từ trạng thái hiện tại theo workflow.
   const currentStatusId = issue?.status.id;
@@ -103,6 +115,11 @@ export function useIssueTransitions(issue: IssueDto | undefined) {
     const wf = (workflows ?? []).find((w) => w.statuses.some((s) => s.id === issue.status.id));
     const from = wf?.statuses.find((s) => s.id === issue.status.id);
     const kind = to && from ? transitionKind(from, to) : 'forward';
+    if (kind === 'close' && !meta) {
+      toast.info('Đang tải thông tin dự án… sẽ chuyển ngay khi xong.');
+      setWaitingMeta(toStatusId);
+      return;
+    }
     if (kind === 'forward' || !to || (kind === 'close' && resolutions.length === 0)) {
       changeStatus(toStatusId);
       return;

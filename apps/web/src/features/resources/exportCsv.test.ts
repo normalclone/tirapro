@@ -54,7 +54,7 @@ describe('workloadCsv', () => {
       'Người,Tuần bắt đầu,Năng lực (giờ),Được giao (giờ),Số việc,Tỷ lệ %,Quá tải',
     );
     expect(lines).toHaveLength(3);
-    expect(lines[1]).toBe('Lê Cường,2026-10-12,40,50,4,125,Có');
-    expect(lines[2]).toBe('Lê Cường,2026-10-19,0,0,0,,Không');
+    expect(lines[1]).toBe('Lê Cường,12/10/2026,40,50,4,125,Có');
+    expect(lines[2]).toBe('Lê Cường,19/10/2026,0,0,0,,Không');
   });
 });

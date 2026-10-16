@@ -161,27 +161,28 @@ export function BacklogPage() {
   // Sửa tại chỗ trên dòng (điểm/ưu tiên): callback + đối tượng ổn định để `IssueRow` (memo) không vẽ lại thừa.
   const { data: meta } = useProjectMeta(key);
   const patchIssue = useUpdateIssue(projectId);
-  const mutateIssue = patchIssue.mutate;
+  // `mutateAsync` (không phải `mutate`): callback của `mutate` chỉ chạy cho lần gọi MỚI NHẤT của cùng observer — sửa nhanh
+  // hai dòng liền nhau sẽ làm dòng trước mất toast/Hoàn tác. Promise của từng lần gọi thì luôn chạy xong.
+  const mutateIssue = patchIssue.mutateAsync;
   const onEditPoints = useCallback(
     (issue: IssueDto, value: number | null) =>
-      mutateIssue(
-        { id: issue.id, key: issue.key, patch: { storyPoints: value }, version: issue.version },
-        { onError: (e) => toast.error(apiErrorMessage(e)) },
-      ),
+      void mutateIssue({
+        id: issue.id,
+        key: issue.key,
+        patch: { storyPoints: value },
+        version: issue.version,
+      }).catch((e) => toast.error(apiErrorMessage(e))),
     [mutateIssue],
   );
   const onEditPriority = useCallback(
     (issue: IssueDto, priority: PriorityDto | null) =>
-      mutateIssue(
-        {
-          id: issue.id,
-          key: issue.key,
-          patch: { priorityId: priority?.id ?? null },
-          version: issue.version,
-          optimistic: { priority },
-        },
-        { onError: (e) => toast.error(apiErrorMessage(e)) },
-      ),
+      void mutateIssue({
+        id: issue.id,
+        key: issue.key,
+        patch: { priorityId: priority?.id ?? null },
+        version: issue.version,
+        optimistic: { priority },
+      }).catch((e) => toast.error(apiErrorMessage(e))),
     [mutateIssue],
   );
   const rowEdit = useMemo<RowEdit>(
@@ -350,33 +351,30 @@ export function BacklogPage() {
       return;
     }
     const epicKey = byIdAll.get(target)?.key;
-    mutateIssue(
-      { id: issue.id, key: issue.key, patch: plan.patch, version: issue.version },
-      {
-        onSuccess: (res) =>
-          toast.success(
-            target === 'none'
-              ? `Đã gỡ ${issue.key} khỏi epic`
-              : `Đã gắn ${issue.key} vào ${epicKey}`,
-            {
-              duration: 5000,
-              action: {
-                label: 'Hoàn tác',
-                onClick: () =>
-                  mutateIssue(
-                    {
-                      id: issue.id,
-                      key: issue.key,
-                      patch: plan.restore,
-                      version: res.data.version,
-                    },
-                    { onError: (err) => toast.error(apiErrorMessage(err)) },
-                  ),
-              },
+    void mutateIssue({
+      id: issue.id,
+      key: issue.key,
+      patch: plan.patch,
+      version: issue.version,
+    }).then(
+      (res) =>
+        toast.success(
+          target === 'none' ? `Đã gỡ ${issue.key} khỏi epic` : `Đã gắn ${issue.key} vào ${epicKey}`,
+          {
+            duration: 5000,
+            action: {
+              label: 'Hoàn tác',
+              onClick: () =>
+                void mutateIssue({
+                  id: issue.id,
+                  key: issue.key,
+                  patch: plan.restore,
+                  version: res.data.version,
+                }).catch((err) => toast.error(apiErrorMessage(err))),
             },
-          ),
-        onError: (err) => toast.error(apiErrorMessage(err)),
-      },
+          },
+        ),
+      (err) => toast.error(apiErrorMessage(err)),
     );
   }
 
@@ -657,7 +655,10 @@ export function BacklogPage() {
   function openStartDialog(sprintId: string) {
     const sprint = sprints?.find((s) => s.id === sprintId);
     if (!sprint || sprint.state !== 'FUTURE') return;
-    const unestimated = (bySprint.get(sprintId) ?? []).filter((i) => i.storyPoints == null).length;
+    // Đếm trên danh sách CHƯA lọc (như requestComplete): bộ lọc nhanh đang bật không được làm sai cảnh báo.
+    const unestimated = (fullBySprint.get(sprintId) ?? []).filter(
+      (i) => i.storyPoints == null,
+    ).length;
     setStarting({ sprint, unestimated });
   }
 

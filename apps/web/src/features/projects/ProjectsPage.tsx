@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
-import { LAST_VIEW_KEY } from '@/lib/currentProject';
+import { lastViewKey } from '@/lib/currentProject';
 import { TERM } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
@@ -30,7 +30,7 @@ const ROW_GRID =
 /** Dự án + view người dùng mở gần nhất (do ProjectLayout ghi); hỏng/không có → null. */
 function readLastView(): { key: string; view: string } | null {
   try {
-    const saved = JSON.parse(localStorage.getItem(LAST_VIEW_KEY) || '{}') as {
+    const saved = JSON.parse(localStorage.getItem(lastViewKey()) || '{}') as {
       key?: string;
       view?: string;
     };

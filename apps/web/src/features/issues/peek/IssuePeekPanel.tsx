@@ -49,6 +49,8 @@ export function IssuePeekPanel({ issueKey, onClose }: { issueKey: string; onClos
   // → chỉ rời ô (nháp còn nguyên vì panel không bị gỡ), Esc kế tiếp mới đóng.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Đang gõ bằng bộ gõ (IME Telex/VNI): Esc thuộc về bộ gõ, không blur ô/đóng panel.
+      if (e.isComposing) return;
       const t = e.target as HTMLElement | null;
       const draftFocused = !!t?.closest?.('[data-peek-panel]') && hasDraftText(t);
       const dragging = activeDrag.get() !== null;
