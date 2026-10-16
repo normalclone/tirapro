@@ -39,6 +39,17 @@ export class WikiController {
     return this.wiki.tree(ws, projectId);
   }
 
+  /**
+   * Người có thể cấp quyền viết / xoá trang ở phạm vi `projectId` (bỏ trống/`none` = cấp workspace).
+   * Đặt TRƯỚC `:id` để không bị nuốt thành id trang.
+   */
+  @ProjectRef('query', 'projectId')
+  @Get('admins')
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  async admins(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
+    return this.wiki.admins(workspaceId, projectId);
+  }
+
   @Get(':id')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async get(@WorkspaceId() workspaceId: string, @Param('id') id: string) {

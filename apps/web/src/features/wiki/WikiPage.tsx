@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
+  Lock,
   PanelLeft,
   Pencil,
   Plus,
@@ -22,8 +23,10 @@ import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { MarkdownView } from '@/features/issue-edit/MarkdownView';
 import { useProjects } from '@/features/projects/api';
+import { useProjectsCan } from '@/features/projects/permissions';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
+import { currentProjectKey } from '@/lib/currentProject';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import {
@@ -32,6 +35,7 @@ import {
   useDeleteWikiPage,
   useMoveWikiPage,
   useUpdateWikiPage,
+  useWikiAdmins,
   useWikiPage,
   useWikiSearch,
   useWikiTree,
@@ -39,6 +43,7 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { fmtDateTime } from '@/lib/dateFormat';
+import { canWriteAt, noWriteMessage } from './wikiScope';
 
 /** Vị trí của một trang trong cây: danh sách anh em + chỉ số, để đổi thứ tự bằng nút lên/xuống. */
 interface Slot {
@@ -67,17 +72,39 @@ const dateTime = fmtDateTime;
  */
 export function WikiPage() {
   const confirm = useConfirm();
-  const canManage = useAuth((s) => s.can('wiki:manage'));
+  const wsCanWrite = useAuth((s) => s.can('wiki:manage'));
+  const wsCanDelete = useAuth((s) => s.can('project:admin'));
   const { data: projects } = useProjects();
+  const projectIds = useMemo(() => (projects ?? []).map((p) => p.id), [projects]);
+  // Quyền theo TỪNG dự án (dùng chung cache với các màn khác): sửa/tạo/đổi chỗ = wiki:manage, xoá = project:admin.
+  const projectCanWrite = useProjectsCan(projectIds, 'wiki:manage');
+  const projectCanDelete = useProjectsCan(projectIds, 'project:admin');
+  const canWrite = (pid: string | null) =>
+    canWriteAt(pid, { wsCan: wsCanWrite, projectCan: projectCanWrite });
+  const canDelete = (pid: string | null) =>
+    canWriteAt(pid, { wsCan: wsCanDelete, projectCan: projectCanDelete });
 
-  const [scope, setScope] = useState('');
+  // Phạm vi mặc định = dự án đang làm (để người viết vào là có nút ngay); người dùng chọn lại thì theo lựa chọn.
+  const [scopeChoice, setScopeChoice] = useState<string | null>(null);
+  const defaultScope = useMemo(() => {
+    const key = currentProjectKey(projects);
+    return (key && projects?.find((p) => p.key === key)?.id) || '';
+  }, [projects]);
+  const scopeReady = scopeChoice !== null || projects !== undefined;
+  const scope = scopeChoice ?? defaultScope;
+  const setScope = setScopeChoice;
+  const scopeProjectId = scope && scope !== WIKI_SCOPE_SHARED ? scope : null;
+  const scopeWritable = canWrite(scopeProjectId);
+  const pageWriteLoading = (pid: string | null) =>
+    pid !== null && projectCanWrite(pid) === undefined;
+  const scopeLoading = !scopeReady || pageWriteLoading(scopeProjectId);
   const [q, setQ] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [treeOpen, setTreeOpen] = useState(false);
 
   const searching = q.trim().length >= 2;
-  const tree = useWikiTree(scope);
+  const tree = useWikiTree(scope, scopeReady);
   const search = useWikiSearch(scope, q);
   const page = useWikiPage(selectedId);
 
@@ -141,13 +168,15 @@ export function WikiPage() {
     setTreeOpen(false);
   }
 
-  async function addPage(parentId: string | null) {
+  /** Tạo trang mới (gốc ở phạm vi đang chọn) hoặc trang con (luôn cùng phạm vi với trang cha). */
+  async function addPage(parent: { id: string; projectId: string | null } | null) {
+    const parentId = parent?.id ?? null;
     try {
       const created = await create.mutateAsync({
         title: parentId ? 'Trang con mới' : 'Trang mới',
         body: '',
         parentId,
-        projectId: parentId ? undefined : scope && scope !== WIKI_SCOPE_SHARED ? scope : null,
+        projectId: parent ? parent.projectId : scopeProjectId,
       });
       if (parentId) setExpanded((prev) => new Set(prev).add(parentId));
       setSelectedId(created.id);
@@ -286,9 +315,9 @@ export function WikiPage() {
             emptyState={
               <p className="px-2 py-6 text-center text-sm text-muted">
                 Chưa có trang nào ở phạm vi này.{' '}
-                {canManage
+                {scopeWritable
                   ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.'
-                  : 'Hãy đổi phạm vi hoặc chờ người phụ trách thêm tài liệu.'}
+                  : 'Hãy chọn phạm vi khác — hướng dẫn xin quyền viết ở ngay bên dưới.'}
               </p>
             }
           >
@@ -301,10 +330,10 @@ export function WikiPage() {
                     depth={0}
                     selectedId={selectedId}
                     expanded={expanded}
-                    canManage={canManage}
+                    canWrite={canWrite}
                     onOpen={open}
                     onToggle={toggle}
-                    onAddChild={(id) => void addPage(id)}
+                    onAddChild={(n) => void addPage(n)}
                     onShift={(id, d) => void shift(id, d)}
                     slots={slots}
                   />
@@ -315,7 +344,7 @@ export function WikiPage() {
         )}
       </div>
 
-      {canManage && (
+      {scopeWritable ? (
         <div className="border-t border-border p-2">
           <Button
             size="sm"
@@ -327,6 +356,12 @@ export function WikiPage() {
             <Plus className="h-4 w-4" /> Tạo trang mới
           </Button>
         </div>
+      ) : (
+        !scopeLoading && (
+          <div className="border-t border-border p-3">
+            <NoWriteNote scope={scope} />
+          </div>
+        )
       )}
     </div>
   );
@@ -372,12 +407,12 @@ export function WikiPage() {
                 icon={<BookOpen className="h-6 w-6" />}
                 title="Chưa chọn trang nào"
                 description={
-                  canManage
+                  scopeWritable
                     ? 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái, hoặc tạo trang mới để bắt đầu.'
                     : 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái để đọc.'
                 }
                 action={
-                  canManage ? (
+                  scopeWritable ? (
                     <Button size="sm" onClick={() => void addPage(null)}>
                       <Plus className="h-4 w-4" /> Tạo trang mới
                     </Button>
@@ -464,8 +499,11 @@ export function WikiPage() {
                             Sửa lần cuối {dateTime(pg.updatedAt)}
                             {pg.updatedBy ? ` · ${pg.updatedBy.displayName}` : ''}
                           </p>
+                          {!canWrite(pg.projectId) && !pageWriteLoading(pg.projectId) && (
+                            <ReadOnlyNote scope={pg.projectId ?? WIKI_SCOPE_SHARED} />
+                          )}
                         </div>
-                        {canManage && (
+                        {canWrite(pg.projectId) && (
                           <div className="flex shrink-0 flex-wrap items-center gap-2">
                             <Button
                               size="sm"
@@ -482,20 +520,22 @@ export function WikiPage() {
                               size="sm"
                               variant="secondary"
                               title="Tạo một trang nằm bên dưới trang này trong cây tài liệu."
-                              onClick={() => void addPage(pg.id)}
+                              onClick={() => void addPage(pg)}
                             >
                               <Plus className="h-4 w-4" /> Thêm trang con
                             </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-muted hover:text-danger"
-                              title="Xoá trang"
-                              aria-label={`Xoá trang ${pg.title}`}
-                              onClick={() => void destroy(pg.id, pg.title)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {canDelete(pg.projectId) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-muted hover:text-danger"
+                                title="Xoá trang"
+                                aria-label={`Xoá trang ${pg.title}`}
+                                onClick={() => void destroy(pg.id, pg.title)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -505,7 +545,7 @@ export function WikiPage() {
                       ) : (
                         <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-faint">
                           Trang này chưa có nội dung.
-                          {canManage ? ' Bấm “Sửa trang” để bắt đầu viết.' : ''}
+                          {canWrite(pg.projectId) ? ' Bấm “Sửa trang” để bắt đầu viết.' : ''}
                         </p>
                       )}
                     </>
@@ -535,7 +575,7 @@ function TreeRow({
   depth,
   selectedId,
   expanded,
-  canManage,
+  canWrite,
   onOpen,
   onToggle,
   onAddChild,
@@ -546,10 +586,10 @@ function TreeRow({
   depth: number;
   selectedId: string | null;
   expanded: Set<string>;
-  canManage: boolean;
+  canWrite: (projectId: string | null) => boolean;
   onOpen: (id: string) => void;
   onToggle: (id: string) => void;
-  onAddChild: (id: string) => void;
+  onAddChild: (node: WikiNode) => void;
   onShift: (id: string, delta: -1 | 1) => void;
   slots: Map<string, Slot>;
 }) {
@@ -600,7 +640,7 @@ function TreeRow({
           {node.title}
         </button>
 
-        {canManage && (
+        {canWrite(node.projectId) && (
           <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             <button
               type="button"
@@ -624,7 +664,7 @@ function TreeRow({
             </button>
             <button
               type="button"
-              onClick={() => onAddChild(node.id)}
+              onClick={() => onAddChild(node)}
               aria-label={`Thêm trang con cho ${node.title}`}
               title="Thêm một trang nằm bên dưới trang này"
               className="grid h-6 w-6 place-items-center rounded text-faint transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
@@ -644,7 +684,7 @@ function TreeRow({
               depth={depth + 1}
               selectedId={selectedId}
               expanded={expanded}
-              canManage={canManage}
+              canWrite={canWrite}
               onOpen={onOpen}
               onToggle={onToggle}
               onAddChild={onAddChild}
@@ -655,5 +695,34 @@ function TreeRow({
         </ul>
       )}
     </li>
+  );
+}
+
+/** Câu hướng dẫn xin quyền (khối chân cây khi không có quyền viết ở phạm vi đang chọn). */
+function NoWriteNote({ scope }: { scope: string }) {
+  const admins = useWikiAdmins(scope, scope !== '');
+  const names = (admins.data ?? []).map((a) => a.displayName);
+  const noProject = !scope || scope === WIKI_SCOPE_SHARED;
+  return (
+    <div className="space-y-1 text-xs text-muted">
+      <p className="flex items-center gap-1.5 font-medium text-ink">
+        <Lock className="h-3.5 w-3.5 text-faint" aria-hidden /> Bạn chỉ đọc được ở phạm vi này
+      </p>
+      {noProject && <p>Chọn một dự án ở bộ lọc để viết tài liệu cho dự án đó.</p>}
+      {scope !== '' && !admins.isPending && <p>{noWriteMessage(names)}</p>}
+    </div>
+  );
+}
+
+/** Dòng "Chỉ đọc" ở đầu trang wiki khi người xem không sửa được trang đó. */
+function ReadOnlyNote({ scope }: { scope: string }) {
+  const admins = useWikiAdmins(scope, true);
+  const names = (admins.data ?? []).map((a) => a.displayName);
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
+      <Lock className="h-3 w-3 text-faint" aria-hidden />
+      <span className="font-medium text-ink">Chỉ đọc</span>
+      {!admins.isPending && <span>· {noWriteMessage(names)}</span>}
+    </p>
   );
 }

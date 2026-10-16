@@ -41,8 +41,9 @@ export interface WikiSearchHit {
 export const WIKI_SCOPE_SHARED = 'none';
 
 /** Cây trang theo phạm vi (`scope` rỗng = tất cả). */
-export function useWikiTree(scope: string) {
+export function useWikiTree(scope: string, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: keys.wiki.tree(scope),
     queryFn: async () =>
       (await api.get<WikiNode[]>('/wiki', { params: scope ? { projectId: scope } : {} })).data,
@@ -73,6 +74,22 @@ export function useWikiPage(id: string | null) {
   });
 }
 
+/** Người quản trị có thể cấp quyền viết / xoá trang ở phạm vi `scope` (rỗng = cấp workspace). Chỉ gọi khi `enabled`. */
+export function useWikiAdmins(scope: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.wiki.admins(scope),
+    queryFn: enabled
+      ? async () =>
+          (
+            await api.get<{ id: string; displayName: string }[]>('/wiki/admins', {
+              params: scope ? { projectId: scope } : {},
+            })
+          ).data
+      : skipToken,
+    staleTime: 60_000,
+  });
+}
+
 function useInvalidateWiki() {
   const qc = useQueryClient();
   return (pageId?: string) => {
@@ -85,6 +102,7 @@ function useInvalidateWiki() {
 export interface CreateWikiInput {
   title: string;
   body?: string;
+  /** Phạm vi của trang mới. Trang con PHẢI gửi `projectId` của trang cha (API từ chối nếu lệch). */
   projectId?: string | null;
   parentId?: string | null;
 }

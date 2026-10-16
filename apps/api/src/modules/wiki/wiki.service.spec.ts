@@ -18,6 +18,8 @@ describe('WikiService.search — escape ký tự đại diện LIKE', () => {
 
 const ARCHIVED = { status: 422, message: expect.stringContaining('lưu trữ') as unknown };
 
+type Member = { user: { id: string; displayName: string } };
+
 function setup(archived: boolean, pageProjectId: string | null = 'p1') {
   const archivedAt = archived ? new Date() : null;
   const page = {
@@ -48,6 +50,8 @@ function setup(archived: boolean, pageProjectId: string | null = 'p1') {
       aggregate: vi.fn(() => Promise.resolve({ _max: { order: null } })),
     },
     user: { findMany: vi.fn(() => Promise.resolve([])) },
+    workspaceMembership: { findMany: vi.fn((): Promise<Member[]> => Promise.resolve([])) },
+    projectMembership: { findMany: vi.fn((): Promise<Member[]> => Promise.resolve([])) },
     $transaction: vi.fn((arg: unknown) =>
       typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(prisma) : Promise.resolve([]),
     ),
@@ -117,5 +121,62 @@ describe('WikiService.create — phạm vi trang con khớp trang cha (A8)', () 
         data: expect.objectContaining({ projectId: null, parentId: 'g1' }) as unknown,
       }),
     );
+  });
+});
+
+describe('WikiService.admins — "xin ai" cấp quyền / xoá trang (A9)', () => {
+  const user = (id: string, displayName: string) => ({ user: { id, displayName } });
+
+  it('gộp quản trị workspace + dự án, khử trùng, sắp theo tên', async () => {
+    const { service, prisma } = setup(false);
+    prisma.workspaceMembership.findMany.mockResolvedValueOnce([user('a', 'An')]);
+    prisma.projectMembership.findMany.mockResolvedValueOnce([user('b', 'Bình'), user('a', 'An')]);
+    await expect(service.admins('w1', 'p1')).resolves.toEqual([
+      { id: 'a', displayName: 'An' },
+      { id: 'b', displayName: 'Bình' },
+    ]);
+    const has = {
+      permissions: { some: { permission: { key: 'project:admin' } } },
+    };
+    const active = { status: { not: 'DEACTIVATED' } };
+    expect(prisma.workspaceMembership.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          workspaceId: 'w1',
+          user: active,
+          OR: [{ role: has }, { roles: { some: { role: has } } }],
+        },
+        take: 8,
+      }),
+    );
+    expect(prisma.projectMembership.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          projectId: 'p1',
+          user: active,
+          OR: [{ role: has }, { roles: { some: { role: has } } }],
+        },
+      }),
+    );
+  });
+
+  it.each([undefined, 'none'])('projectId=%s → chỉ hỏi quản trị workspace', async (projectId) => {
+    const { service, prisma } = setup(false);
+    prisma.workspaceMembership.findMany.mockResolvedValueOnce([user('a', 'An')]);
+    await expect(service.admins('w1', projectId)).resolves.toEqual([
+      { id: 'a', displayName: 'An' },
+    ]);
+    expect(prisma.projectMembership.findMany).not.toHaveBeenCalled();
+  });
+
+  it('tối đa 8 người sau khi gộp', async () => {
+    const { service, prisma } = setup(false);
+    prisma.workspaceMembership.findMany.mockResolvedValueOnce(
+      Array.from({ length: 8 }, (_, i) => user(`w${i}`, `Ws ${i}`)),
+    );
+    prisma.projectMembership.findMany.mockResolvedValueOnce(
+      Array.from({ length: 8 }, (_, i) => user(`p${i}`, `Pr ${i}`)),
+    );
+    expect(await service.admins('w1', 'p1')).toHaveLength(8);
   });
 });

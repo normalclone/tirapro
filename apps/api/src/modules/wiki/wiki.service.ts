@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { PERMISSIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { insensitiveContains } from '../../common/like';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
@@ -112,6 +113,38 @@ export class WikiService {
       snippet: this.snippet(r.body, term),
       updatedAt: r.updatedAt.toISOString(),
     }));
+  }
+
+  /**
+   * Những người có thể cấp quyền viết wiki / xoá trang ở phạm vi này: ai đang có `project:admin`
+   * (qua vai workspace, hoặc vai dự án nếu có `projectId`). Dùng cho câu "Nhờ … cấp quyền" của FE.
+   * Tối đa 8 người, bỏ tài khoản đã vô hiệu hoá. `projectId` bỏ trống/`none` → chỉ quản trị workspace.
+   */
+  async admins(
+    workspaceId: string,
+    projectId?: string,
+  ): Promise<{ id: string; displayName: string }[]> {
+    const has = { permissions: { some: { permission: { key: PERMISSIONS.PROJECT_ADMIN } } } };
+    const active = { status: { not: 'DEACTIVATED' as const } };
+    const holder = { OR: [{ role: has }, { roles: { some: { role: has } } }] };
+    const select = { user: { select: { id: true, displayName: true } } } as const;
+    const ws = await this.prisma.workspaceMembership.findMany({
+      where: { workspaceId, user: active, ...holder },
+      select,
+      take: 8,
+    });
+    const proj =
+      projectId && projectId !== SCOPE_WORKSPACE
+        ? await this.prisma.projectMembership.findMany({
+            where: { projectId, user: active, ...holder },
+            select,
+            take: 8,
+          })
+        : [];
+    const byId = new Map([...ws, ...proj].map((m) => [m.user.id, m.user]));
+    return [...byId.values()]
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, 'vi'))
+      .slice(0, 8);
   }
 
   async get(workspaceId: string, id: string): Promise<WikiPageDto> {

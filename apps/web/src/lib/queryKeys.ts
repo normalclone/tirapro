@@ -156,6 +156,7 @@ export const keys = {
     tree: (scope: string) => ['wiki', 'tree', scope] as const,
     search: (scope: string, q: string) => ['wiki', 'search', scope, q] as const,
     page: (id: string) => ['wiki', 'page', id] as const,
+    admins: (scope: string) => ['wiki', 'admins', scope] as const,
   },
 
   planning: {
