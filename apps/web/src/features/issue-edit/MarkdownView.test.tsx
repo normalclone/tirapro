@@ -53,7 +53,9 @@ describe('MarkdownView — an toàn đầu ra (không dangerouslySetInnerHTML)',
 
   it('chip mention hiển thị tên THẬT theo id, không tin tên giả trong token', () => {
     const client = new QueryClient();
-    client.setQueryData(keys.users.workspace, [{ id: 'u1', displayName: 'Trang (Tester)' }]);
+    client.setQueryData(keys.users.search('', '', 200, true), [
+      { id: 'u1', displayName: 'Trang (Tester)' },
+    ]);
     const out = html('cc @[Admin](user:u1) và @[Lạ](user:u9)', undefined, client);
     expect(out).toContain('@Trang (Tester)');
     expect(out).not.toContain('@Admin');

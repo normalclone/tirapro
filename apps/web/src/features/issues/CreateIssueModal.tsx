@@ -26,6 +26,7 @@ import { useCreateIssue } from './create-api';
 import { useProjectIssues } from './api';
 import { epicChoices, parentChoices } from '@/lib/epic';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { dueDaysFromToday } from '@/lib/dueDate';
 import { TokenTitleInput } from './TokenTitleInput';
 import {
   parseTitleTokens,
@@ -357,7 +358,8 @@ export function CreateIssueModal() {
   const canSubmit =
     !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
   // Cảnh báo mềm: không chặn gửi (đường Tạo / Tạo & nhập tiếp / Cmd+Enter đều như nhau).
-  const dueInPast = due !== '' && new Date(due).getTime() < Date.now();
+  // Cùng định nghĩa "quá hạn" với mọi nơi khác: hạn HÔM NAY (theo ngày VN) chưa phải quá khứ.
+  const dueInPast = due !== '' && dueDaysFromToday(due) < 0;
   const title = preset.subtask ? 'Tạo việc con' : 'Tạo công việc';
 
   async function doCreate() {

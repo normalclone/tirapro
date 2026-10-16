@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ComponentProps } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { Bookmark, ChevronDown, Filter as FilterIcon, Play, Plus, Trash2 } from 'lucide-react';
@@ -105,8 +105,12 @@ export function FiltersPage() {
 
   // Kết quả ad-hoc lấy trực tiếp từ query; kết quả bộ lọc đã lưu giữ trong state.
   const baseResults = active.kind === 'adhoc' ? (adhoc.data ?? null) : results;
+  // Đổi bộ lọc/chạy lại trong lúc đang "Tải thêm": trang về trễ của nguồn cũ bị bỏ (so `loadSeq`).
+  const loadSeq = useRef(0);
   useEffect(() => {
+    loadSeq.current += 1;
     setMore(null);
+    setLoadingMore(false);
   }, [baseResults]);
   const shownSet = baseResults ? (more ? appendResults(baseResults, more) : baseResults) : null;
   const shownResults: IssueDto[] | null = shownSet?.items ?? null;
@@ -128,6 +132,7 @@ export function FiltersPage() {
   async function loadMore() {
     if (!shownSet?.nextCursor || loadingMore) return;
     setLoadingMore(true);
+    const seq = loadSeq.current;
     try {
       const next =
         active.kind === 'adhoc'
@@ -135,11 +140,12 @@ export function FiltersPage() {
           : active.kind === 'filter'
             ? await fetchFilterPage(active.filter.id, shownSet.nextCursor)
             : null;
+      if (seq !== loadSeq.current) return; // nguồn đã đổi
       if (next && baseResults) setMore((m) => (m ? appendResults(m, next) : next));
     } catch (e) {
-      toast.error(apiErrorMessage(e));
+      if (seq === loadSeq.current) toast.error(apiErrorMessage(e));
     } finally {
-      setLoadingMore(false);
+      if (seq === loadSeq.current) setLoadingMore(false);
     }
   }
 

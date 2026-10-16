@@ -265,7 +265,8 @@ export function MarkdownEditor({
               e.preventDefault();
               if (!busy) onSubmit(); // còn ảnh đang tải: chưa lưu/gửi để chữ giữ chỗ không bị lưu
             }
-            if (onCancel && e.key === 'Escape') {
+            // Esc trong lúc bộ gõ (Telex/VNI) đang soạn thuộc về bộ gõ, không huỷ sửa.
+            if (onCancel && e.key === 'Escape' && !e.nativeEvent.isComposing) {
               e.preventDefault();
               onCancel();
             }

@@ -7,7 +7,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
-import { useWorkspaceUsers } from '@/features/members/api';
+import { useUserSelect } from '@/features/members/useUserSelect';
 import { cn } from '@/lib/utils';
 import { useCreateTeam, useUpdateTeam } from './api';
 
@@ -68,7 +68,7 @@ export function TeamEditorModal({
   team?: TeamDto | null;
   onClose: () => void;
 }) {
-  const { data: users } = useWorkspaceUsers();
+  const picker = useUserSelect({ enabled: open });
   const create = useCreateTeam();
   const update = useUpdateTeam();
   const editing = !!team;
@@ -88,19 +88,17 @@ export function TeamEditorModal({
     setLeadId(team?.lead?.id ?? '');
   }, [open, team]);
 
-  const userOptions = useMemo(
-    () => (users ?? []).map((u) => ({ id: u.id, name: u.displayName })),
-    [users],
-  );
-  // Trưởng nhóm chọn trong số thành viên đã chọn (BE tự thêm lead vào nhóm nếu thiếu).
+  // Trưởng nhóm chọn trong số thành viên đã chọn (BE tự thêm lead vào nhóm nếu thiếu); tên tra theo id nên người
+  // đã khoá / ngoài trang kết quả tìm vẫn hiện.
   const leadOptions = useMemo(
     () => [
       { value: '', label: 'Chưa có trưởng nhóm' },
-      ...(users ?? [])
-        .filter((u) => memberIds.includes(u.id))
-        .map((u) => ({ value: u.id, label: u.displayName })),
+      ...memberIds.flatMap((id) => {
+        const o = picker.resolveOption(id);
+        return o ? [{ value: id, label: o.label }] : [];
+      }),
     ],
-    [users, memberIds],
+    [picker, memberIds],
   );
 
   useEffect(() => {
@@ -208,7 +206,11 @@ export function TeamEditorModal({
           title="Chọn những người thuộc nhóm này. Thêm hay bớt lúc nào cũng được."
         >
           <RoleMultiSelect
-            options={userOptions}
+            options={picker.roleOptions}
+            onSearchChange={picker.onSearchChange}
+            moreHint={picker.moreHint}
+            resolveOption={picker.resolveRole}
+            searchPlaceholder="Tìm thành viên…"
             value={memberIds}
             onChange={setMemberIds}
             requireOne={false}

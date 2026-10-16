@@ -278,3 +278,19 @@ describe('ô đổi tay thắng token khi Tạo (WC-I1)', () => {
     expect(resolveCreateValues(cur, { clean: '' }, tk, none).points).toBe('3');
   });
 });
+
+describe('chi tiết nhỏ của #<số> (re-review M-T2)', () => {
+  const sp: TokenCtx = {
+    ...ctx,
+    sprints: [
+      { id: 's7', name: '7', state: 'FUTURE' },
+      { id: 's3', name: 'Sprint 3', state: 'FUTURE' },
+    ],
+  };
+  it('#12. / #12, cuối câu không bị báo "không nhận ra"', () => {
+    expect(unmatchedTokens('Xem #12. và #34, nhé', sp)).toEqual([]);
+  });
+  it('sprint tên toàn số không được gợi ý (chọn xong cũng không gán được)', () => {
+    expect(suggestFor('#', '', sp).map((s) => s.label)).toEqual(['Sprint 3']);
+  });
+});

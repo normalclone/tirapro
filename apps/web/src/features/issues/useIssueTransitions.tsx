@@ -33,7 +33,7 @@ export function useIssueTransitions(issue: IssueDto | undefined) {
   const transition = useTransitionDetail(issue?.projectId ?? '');
   const { data: projects } = useProjects(true);
   const projectKey = projects?.find((p) => p.id === issue?.projectId)?.key;
-  const { data: meta } = useProjectMeta(projectKey);
+  const { data: meta, isError: metaError } = useProjectMeta(projectKey);
   const resolutions = meta?.resolutions ?? [];
 
   // Hộp Cách giải quyết / Lý do: `pending` giữ nội dung kể cả khi đang đóng (để hiệu ứng đóng chạy), `dialogOpen` điều khiển mở.
@@ -56,6 +56,15 @@ export function useIssueTransitions(issue: IssueDto | undefined) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chạy lại khi meta về; `requestTransition` đọc state mới nhất của render này
   }, [meta, waitingMeta]);
+  // Meta không tải được, hoặc việc đã đổi trạng thái trong lúc chờ → bỏ lượt chờ (không chạy một chuyển trạng thái cũ).
+  useEffect(() => {
+    if (waitingMeta && metaError) {
+      setWaitingMeta(null);
+      toast.error('Không tải được thông tin dự án — hãy thử đổi trạng thái lại.');
+    }
+  }, [waitingMeta, metaError]);
+  const statusIdNow = issue?.status.id;
+  useEffect(() => setWaitingMeta(null), [statusIdNow]);
 
   // Chỉ các trạng thái ở BƯỚC KẾ TIẾP — chuyển tiếp hợp lệ từ trạng thái hiện tại theo workflow.
   const currentStatusId = issue?.status.id;

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Avatar } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
-import { useWorkspaceUsers } from '@/features/members/api';
+import { useUserSelect } from '@/features/members/useUserSelect';
 import { useDigestChannels, type DigestSchedule } from './api';
 import type { DigestFormState } from './digestForm';
 import { HOUR_OPTIONS, timeZoneOptions, WEEKDAY_OPTIONS } from './schedule';
@@ -256,12 +256,20 @@ function RecipientsPicker({
   value: string[];
   onChange: (ids: string[]) => void;
 }) {
-  const users = useWorkspaceUsers();
+  // Người nhận: tìm phía máy chủ (loại tài khoản khoá, không giới hạn 50 người); người đã chọn không nằm trong kết quả
+  // hiện thành dòng riêng ở đầu danh sách để vẫn bỏ chọn được.
+  const picker = useUserSelect();
   const [q, setQ] = useState('');
-  const query = q.trim().toLowerCase();
-  const list = (users.data ?? [])
-    .filter((u) => u.status !== 'DEACTIVATED')
-    .filter((u) => !query || `${u.displayName} ${u.email}`.toLowerCase().includes(query));
+  const found = picker.users;
+  const pinned = value.flatMap((id) =>
+    found.some((u) => u.id === id) ? [] : [picker.resolveRole(id)],
+  );
+  const list = [
+    ...pinned.flatMap((p) =>
+      p ? [{ id: p.id, displayName: p.name, avatarUrl: null, email: '' }] : [],
+    ),
+    ...found,
+  ];
   const toggle = (id: string) =>
     onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
   return (
@@ -273,7 +281,10 @@ function RecipientsPicker({
         />
         <Input
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            picker.onSearchChange(e.target.value);
+          }}
           placeholder="Tìm người nhận…"
           aria-label="Tìm người nhận"
           className="h-9 border-0 pl-8 focus-visible:ring-0"
@@ -297,8 +308,11 @@ function RecipientsPicker({
         ))}
         {list.length === 0 && (
           <li className="px-2 py-3 text-center text-sm text-muted">
-            {users.isLoading ? 'Đang tải…' : 'Không có thành viên phù hợp'}
+            {picker.loading ? 'Đang tải…' : 'Không có thành viên phù hợp'}
           </li>
+        )}
+        {picker.moreHint && q.trim() === '' && (
+          <li className="px-2 py-2 text-center text-xs text-faint">Gõ để tìm thêm</li>
         )}
       </ul>
       <p className="border-t border-border px-3 py-1.5 text-xs text-faint">

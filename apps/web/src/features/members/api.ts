@@ -28,14 +28,6 @@ export interface ChangePasswordInput {
   newPassword: string;
 }
 
-/** Danh sách thành viên (user) trong không gian làm việc hiện tại. */
-export function useWorkspaceUsers() {
-  return useQuery({
-    queryKey: keys.users.workspace,
-    queryFn: async () => (await api.get<UserDto[]>('/users')).data,
-  });
-}
-
 /**
  * Tìm người PHÍA MÁY CHỦ (GET /users?projectId&search&limit): dự án riêng tư chỉ trả người xem được dự án, loại tài khoản
  * đã khoá (trừ khi `includeInactive`). Giữ kết quả cũ trong lúc gõ tiếp để danh sách không nháy trống.
@@ -47,7 +39,8 @@ export function useSearchUsers(opts: UserSearchOpts & { enabled?: boolean } = {}
   return useQuery({
     queryKey: keys.users.search(q.projectId ?? '', search, limit, q.includeInactive ?? false),
     queryFn: enabled
-      ? async () => (await api.get<UserDto[]>(`/users?${userSearchQuery({ ...q, search })}`)).data
+      ? async ({ signal }) =>
+          (await api.get<UserDto[]>(`/users?${userSearchQuery({ ...q, search })}`, { signal })).data
       : skipToken,
     staleTime: 30_000,
     placeholderData: keepPreviousData,

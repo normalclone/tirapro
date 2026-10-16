@@ -4,6 +4,7 @@ import { Check, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
+import { registerSessionCleaner } from '@/lib/sessionCache';
 
 /** Lựa chọn người (assignee) kèm ngữ cảnh: vị trí (vai trò) + nhóm. */
 export interface PersonOption {
@@ -22,6 +23,8 @@ export interface PersonOption {
 
 /** Người đã từng thấy trong phiên (từ kết quả tìm) — để ô chọn vẫn hiện tên khi người đang chọn không nằm trong 50 dòng đầu. */
 const knownPeople = new Map<string, PersonOption>();
+// Đổi tài khoản/đăng xuất: bỏ tên đã nhớ (không rò sang phiên sau).
+registerSessionCleaner(() => knownPeople.clear());
 export function rememberPeople(options: readonly PersonOption[]): void {
   for (const o of options) knownPeople.set(o.id, o);
 }

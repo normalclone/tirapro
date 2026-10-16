@@ -1,18 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CommentDto, IssueDto, UserDto } from '@tirapro/types';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { CommentDto, IssueDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import { useRecents } from '@/stores/recentIssues';
-
-/** Thành viên của không gian làm việc — dùng cho dropdown người làm (assignee). */
-export function useWorkspaceUsers(opts?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: keys.users.workspace,
-    queryFn: async () => (await api.get<UserDto[]>('/users')).data,
-    staleTime: 5 * 60_000,
-    enabled: opts?.enabled ?? true,
-  });
-}
 
 /**
  * Xoá mềm một issue. Thành công thì tự gỡ khỏi cache (danh sách dự án + chi tiết theo mã) —

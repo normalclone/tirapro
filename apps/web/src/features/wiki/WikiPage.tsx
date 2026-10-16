@@ -164,10 +164,13 @@ export function WikiPage() {
   const [draftBody, setDraftBody] = useState('');
   // `version` của trang lúc BẮT ĐẦU sửa (không lấy lại từ cache vì nền có thể tự làm mới giữa chừng).
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
+  // Nội dung lúc bắt đầu sửa: mốc để tính "có thay đổi chưa lưu".
+  const [baseline, setBaseline] = useState<{ title: string; body: string } | null>(null);
   const loadedPage = page.data && page.data.id === selectedId ? page.data : undefined;
   const wikiDraft = useWikiDraft({
     editing,
     page: loadedPage,
+    baseline,
     draftTitle,
     draftBody,
     baseVersion,
@@ -238,6 +241,7 @@ export function WikiPage() {
       setDraftTitle(pg.title);
       setDraftBody(pg.body);
       setBaseVersion(pg.version);
+      setBaseline({ title: pg.title, body: pg.body });
       setEditIssue(null);
       setEditing(true);
       checkOffer(pg);
@@ -264,6 +268,10 @@ export function WikiPage() {
 
   // Đang soạn dở thì hỏi "Bỏ thay đổi chưa lưu?" trước khi chuyển trang (cây, breadcrumb, kết quả tìm).
   async function openAfterConfirm(id: string) {
+    if (id === selectedId) {
+      setTreeOpen(false); // bấm lại đúng trang đang xem/đang sửa: không hỏi, không thoát chế độ sửa
+      return;
+    }
     if (!(await wikiDraft.confirmDiscard())) return;
     wikiDraft.runInternalNav(() => setSelectedId(id));
     stopEditing();

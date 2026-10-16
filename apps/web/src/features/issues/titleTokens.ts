@@ -340,7 +340,7 @@ function scanTokens(
       const w = /^\S+/.exec(text.slice(i + 1));
       if (
         w &&
-        !(ch === '#' && /^\d+$/.test(w[0])) &&
+        !(ch === '#' && /^\d+[.,;:!?)]*$/.test(w[0])) &&
         !isPartialPhrase(ch, text.slice(i + 1), ctx)
       ) {
         unmatched.push({
@@ -563,16 +563,20 @@ export function suggestFor(sym: string, partial: string, ctx: TokenCtx): Suggest
       .map((u) => ({ id: u.id, label: u.displayName, insert: `@${u.displayName}` }));
   }
   if (sym === '#') {
-    return ctx.sprints
-      .filter((s) => s.state !== 'CLOSED')
-      .filter((s) => match(s.name, true))
-      .slice(0, 6)
-      .map((s) => ({
-        id: s.id,
-        label: s.name,
-        hint: s.state === 'ACTIVE' ? 'đang chạy' : undefined,
-        insert: `#${s.name}`,
-      }));
+    return (
+      ctx.sprints
+        .filter((s) => s.state !== 'CLOSED')
+        // Sprint tên toàn số không bao giờ khớp qua `#` (là tham chiếu) → đừng gợi ý để chọn xong lại không gán được.
+        .filter((s) => !/^\d+$/.test(s.name.trim()))
+        .filter((s) => match(s.name, true))
+        .slice(0, 6)
+        .map((s) => ({
+          id: s.id,
+          label: s.name,
+          hint: s.state === 'ACTIVE' ? 'đang chạy' : undefined,
+          insert: `#${s.name}`,
+        }))
+    );
   }
   return [];
 }

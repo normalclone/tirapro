@@ -16,13 +16,19 @@ const LOOKBEHIND = ['(?<' + '=', '(?<' + '!'];
 
 describe('regex tương thích Safari/iOS < 16.4', () => {
   it('không dùng lookbehind (literal lẫn chuỗi trong new RegExp) — Safari < 16.4 ném SyntaxError lúc nạp module', () => {
-    const root = join(__dirname, '..');
-    const bad = walk(root)
-      .filter((f) => !f.endsWith('noRegexLookbehind.test.ts'))
+    // `apps/web/src` + các gói dùng chung nạp vào bundle web (shared/types): lookbehind ở đó cũng làm trắng trang.
+    const roots = [
+      join(__dirname, '..'),
+      join(__dirname, '..', '..', '..', '..', 'packages', 'shared', 'src'),
+      join(__dirname, '..', '..', '..', '..', 'packages', 'types', 'src'),
+    ];
+    const bad = roots
+      .flatMap((r) => walk(r))
+      .filter((f) => !/no-?[Rr]egex-?[Ll]ookbehind/.test(f))
       .filter((f) => {
         const src = readFileSync(f, 'utf8');
         return LOOKBEHIND.some((p) => src.includes(p));
       });
-    expect(bad.map((f) => f.split('/src/')[1])).toEqual([]);
+    expect(bad.map((f) => f.split('/tirapro-wt/')[1] ?? f)).toEqual([]);
   });
 });

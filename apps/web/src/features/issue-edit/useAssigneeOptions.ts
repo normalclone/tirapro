@@ -80,6 +80,8 @@ export function useAssigneePicker(projectId?: string) {
   const [q, setQ] = useState('');
   const search = useDebouncedValue(q, SEARCH_DEBOUNCE_MS);
   const options = useAssigneeOptions(projectId, { search });
+  // Chỉ để TRA TÊN: người đang chọn/chủ cũ đã khoá hoặc ngoài 50 dòng đầu vẫn hiện tên (tự ghi nhớ vào PeoplePicker).
+  useAssigneeOptions(projectId, { includeInactive: true, limit: 200 });
   return {
     options,
     onSearchChange: setQ,

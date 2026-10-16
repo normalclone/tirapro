@@ -125,8 +125,8 @@ function PreviewPanel({
   form: DigestFormState;
   projectIsPrivate: boolean;
 }) {
-  // API xem trước đòi `digest:manage` (khác quyền mở hộp: integration:manage) → không bày nút rồi bị 403.
-  const canPreview = useAuth((s) => s.can('digest:manage'));
+  // API xem trước (`POST /digests/preview`) cùng quyền với việc mở hộp soạn: integration:manage → không bày nút rồi bị 403.
+  const canPreview = useAuth((s) => s.can('integration:manage'));
   const hasChannel = form.channelId !== '';
   const [as, setAs] = useState<'channel' | 'me'>(hasChannel ? 'channel' : 'me');
   const mode = hasChannel ? as : 'me';
@@ -158,8 +158,7 @@ function PreviewPanel({
   if (!canPreview)
     return (
       <p className="text-xs text-faint">
-        Xem trước cần quyền quản lý báo cáo định kỳ — bạn vẫn lưu được cấu hình, báo cáo sẽ gửi đúng
-        lịch.
+        Xem trước cần quyền quản lý kết nối — bạn vẫn lưu được cấu hình, báo cáo sẽ gửi đúng lịch.
       </p>
     );
   return (

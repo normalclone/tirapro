@@ -1,3 +1,5 @@
+import { useAuth } from '@/stores/auth';
+
 /** Bản nháp wiki tự lưu vào localStorage theo trang — hàm thuần/IO bọc try/catch (test được không cần DOM). */
 
 export interface WikiDraft {
@@ -8,7 +10,11 @@ export interface WikiDraft {
   savedAt: number;
 }
 
-export const wikiDraftKey = (pageId: string) => `tirapro:wiki:draft:${pageId}`;
+/** Khoá theo TRANG và NGƯỜI DÙNG (hai tài khoản chung trình duyệt không thấy nháp của nhau). */
+export const wikiDraftKey = (
+  pageId: string,
+  userId: string | undefined = useAuth.getState().user?.id,
+) => `tirapro:wiki:draft:${userId ?? 'anon'}:${pageId}`;
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 const defaultStore = (): Store | null => {

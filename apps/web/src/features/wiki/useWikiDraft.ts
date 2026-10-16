@@ -20,14 +20,16 @@ export function useWikiDraft(opts: {
   editing: boolean;
   /** Trang đang sửa (nội dung đang lưu trên máy chủ). */
   page: { id: string; title: string; body: string } | undefined;
+  /** Nội dung LÚC BẮT ĐẦU sửa — mốc so "có thay đổi" (nền tự refetch bản mới của người khác không làm `dirty` bật lên). */
+  baseline: { title: string; body: string } | null;
   draftTitle: string;
   draftBody: string;
   baseVersion: number | null;
 }) {
-  const { editing, page, draftTitle, draftBody, baseVersion } = opts;
+  const { editing, page, baseline, draftTitle, draftBody, baseVersion } = opts;
   const confirm = useConfirm();
   const [offer, setOffer] = useState<WikiDraft | null>(null);
-  const dirty = editing && isWikiDirty({ title: draftTitle, body: draftBody }, page);
+  const dirty = editing && isWikiDirty({ title: draftTitle, body: draftBody }, baseline ?? page);
   const pageId = page?.id;
 
   // Điều hướng nội bộ do chính màn Wiki thực hiện (sau khi đã hỏi) không bị chặn lần nữa.
