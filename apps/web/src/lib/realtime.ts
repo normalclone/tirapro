@@ -84,7 +84,7 @@ export function applyIssueUpdated(qc: QueryClient, issue: IssueDto) {
 }
 
 /** issue:deleted — lọc khỏi danh sách; chi tiết đang mở sẽ tự nạp lại và báo "không tìm thấy". */
-export function applyIssueDeleted(qc: QueryClient, projectId: string, issueId: string) {
+function applyIssueDeleted(qc: QueryClient, projectId: string, issueId: string) {
   const issueKey = getList(qc, projectId)?.find((i) => i.id === issueId)?.key;
   patchList(qc, projectId, (list) => list.filter((i) => i.id !== issueId));
   if (issueKey) void qc.invalidateQueries({ queryKey: keys.issues.byKey(issueKey) });
@@ -97,7 +97,7 @@ export function applyIssueDeleted(qc: QueryClient, projectId: string, issueId: s
  *   áp `{status, rank, sprintId, version}`.
  * - còn lại (bỏ lỡ event, status lạ, đổi category → resolution/resolvedAt có thể đổi): nạp lại danh sách.
  */
-export function applyIssueMoved(qc: QueryClient, p: IssueMovedPayload) {
+function applyIssueMoved(qc: QueryClient, p: IssueMovedPayload) {
   const list = getList(qc, p.projectId);
   const cur = list?.find((i) => i.id === p.issueId);
   if (!list || !cur) {

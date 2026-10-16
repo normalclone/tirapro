@@ -3,7 +3,7 @@
 /** Số người hiện khi chưa gõ — cũng là mặc định của API. */
 export const USER_PICKER_LIMIT = 50;
 /** Giới hạn tối đa API cho phép. */
-export const USER_PICKER_MAX = 200;
+const USER_PICKER_MAX = 200;
 
 export interface UserSearchOpts {
   projectId?: string;
