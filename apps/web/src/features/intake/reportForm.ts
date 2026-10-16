@@ -84,3 +84,53 @@ export interface ReportDraft {
 export function hasDraftContent(d: ReportDraft): boolean {
   return !!d.summary?.trim() || (!!d.description?.trim() && !isReportTemplate(d.description));
 }
+
+/** Chế độ form: Cơ bản (log bug nhanh nhất) hoặc Nâng cao (mẫu bước tái hiện, mức nghiêm trọng, môi trường, tệp). */
+export type ReportMode = 'basic' | 'advanced';
+
+/** Đọc chế độ đã nhớ: mặc định (chưa lưu / giá trị lạ) là Cơ bản. */
+export const parseReportMode = (raw: string | null | undefined): ReportMode =>
+  raw === 'advanced' ? 'advanced' : 'basic';
+
+/**
+ * Mô tả hợp với chế độ: Nâng cao chèn mẫu khi mô tả trống; Cơ bản bỏ mẫu chưa sửa (ô nhỏ, không mẫu).
+ * Chữ người dùng đã gõ (kể cả mẫu sửa dở) luôn giữ nguyên → chuyển chế độ qua lại không mất dữ liệu.
+ */
+export function descriptionForMode(desc: string, kind: RequestKind, mode: ReportMode): string {
+  if (mode === 'advanced') return desc.trim() === '' ? reportTemplate(kind) : desc;
+  return isReportTemplate(desc) ? '' : desc;
+}
+
+/** Mô tả sau khi đổi loại: chỉ thay khi trống hoặc đúng một mẫu (không đè chữ người dùng); Cơ bản không dùng mẫu. */
+export function descriptionOnKindChange(desc: string, next: RequestKind, mode: ReportMode): string {
+  if (desc.trim() !== '' && !isReportTemplate(desc)) return desc;
+  return mode === 'advanced' ? reportTemplate(next) : '';
+}
+
+/** Dòng tóm tắt môi trường tự ghi ("Chrome 151 · macOS · 1440×900"); bỏ phần trống. */
+export function environmentSummary(e: {
+  browser?: string;
+  os?: string;
+  viewport?: string;
+}): string {
+  return [e.browser, e.os, e.viewport]
+    .map((v) => v?.trim())
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * Mức nghiêm trọng thật sự gửi đi. Bug mà người dùng chưa chạm tới ô này (`touched` false) và chưa có mức nào thì dùng
+ * mặc định của dự án — để ⌘Enter ngay sau khi mở form (ô mặc định chưa kịp được chọn sẵn) vẫn gửi đúng. Đã tự bỏ chọn
+ * ("Chưa đánh giá") thì tôn trọng; loại khác Bug không có mức.
+ */
+export function severityForSubmit(a: {
+  isBug: boolean;
+  selected: string;
+  touched: boolean;
+  defaultId: string | null;
+}): string {
+  if (!a.isBug) return '';
+  if (a.selected || a.touched) return a.selected;
+  return a.defaultId ?? '';
+}

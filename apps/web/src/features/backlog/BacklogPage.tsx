@@ -100,6 +100,7 @@ import {
 } from './dropPlan';
 import { BulkActionBar } from './BulkActionBar';
 import { EpicPanel } from './EpicPanel';
+import { useEpicPanel } from '@/stores/epicPanel';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeekShell } from '@/features/issues/peek/PeekShell';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
@@ -128,23 +129,6 @@ const SPRINT_TIP = 'Sprint: đợt làm việc ngắn, thường 1–2 tuần.';
 
 function pointsSum(issues: IssueDto[]): number {
   return issues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
-}
-
-/** Panel Epic mở/thu gọn — nhớ theo máy (mặc định mở). */
-const EPIC_PANEL_KEY = 'tirapro:backlog:epicPanel';
-function readEpicPanelOpen(): boolean {
-  try {
-    return localStorage.getItem(EPIC_PANEL_KEY) !== 'closed';
-  } catch {
-    return true;
-  }
-}
-function writeEpicPanelOpen(open: boolean) {
-  try {
-    localStorage.setItem(EPIC_PANEL_KEY, open ? 'open' : 'closed');
-  } catch {
-    /* bỏ qua: chế độ riêng tư / bị chặn lưu trữ */
-  }
 }
 
 const NO_PRIORITIES: RowEdit['priorities'] = [];
@@ -231,13 +215,9 @@ export function BacklogPage() {
   const [assignee, setAssignee] = useState('');
   // Lọc theo epic ở panel trái: null = tất cả, 'none' = không thuộc epic, còn lại = id epic. State cục bộ (peek đã dùng URL).
   const [epicFilter, setEpicFilter] = useState<string | null>(null);
-  const [epicPanelOpen, setEpicPanelOpen] = useState(readEpicPanelOpen);
-  const toggleEpicPanel = useCallback(() => {
-    setEpicPanelOpen((open) => {
-      writeEpicPanelOpen(!open);
-      return !open;
-    });
-  }, []);
+  // Trạng thái panel Epic dùng chung với rail dự án (mở panel → rail thu tạm, mở rail → panel thu).
+  const epicPanelOpen = useEpicPanel((s) => s.open);
+  const toggleEpicPanel = useEpicPanel((s) => s.toggle);
 
   // Bulk select: id các việc đang chọn + cờ đang chạy batch (khóa thao tác).
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -774,7 +754,7 @@ export function BacklogPage() {
     <PeekShell>
       <div className="flex min-h-0 flex-1 flex-col">
         <TruncatedBanner projectId={projectId} />
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-6">
           {!epicPanelOpen && (
             <Button
               size="sm"
