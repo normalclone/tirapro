@@ -26,6 +26,7 @@ import { ComponentsSection } from './ComponentsSection';
 import { VersionsSection } from './VersionsSection';
 import { LabelsSection } from './LabelsSection';
 import { DataSection } from './DataSection';
+import { useScrollFade } from '@/lib/useScrollFade';
 
 /** Khóa nhận diện từng mục cấu hình trong submenu. */
 type ConfigSectionId = 'general' | 'members' | 'components' | 'versions' | 'labels' | 'data';
@@ -55,15 +56,18 @@ export function ProjectConfigPage() {
   const canImport = useAuth((s) => s.can('import:run'));
 
   const [active, setActive] = useState<ConfigSectionId>('general');
+  const navFade = useScrollFade<HTMLElement>(active, '[aria-current="page"]');
 
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       {/* Submenu: rail dọc trên desktop, hàng pill cuộn ngang trên mobile */}
       <nav
         aria-label="Mục cấu hình dự án"
+        ref={navFade.ref}
+        style={navFade.style}
         className={cn(
           'shrink-0 border-border bg-surface',
-          'flex gap-1 overflow-x-auto border-b px-3 py-2',
+          'scroll-fade-x relative flex gap-1 overflow-x-auto border-b px-3 py-2 max-lg:scrollbar-none',
           'lg:w-60 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
         )}
       >

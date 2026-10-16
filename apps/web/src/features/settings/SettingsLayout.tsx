@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   Building2,
   Shield,
@@ -18,6 +18,7 @@ import { NAV_RULES, useVisibleItems, type NavRule } from '@/lib/navAccess';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 import { useAuth } from '@/stores/auth';
+import { useScrollFade } from '@/lib/useScrollFade';
 
 /** Cài đặt được chia nhóm để dễ tìm: chung → con người → cách làm việc → nâng cao. */
 const SETTINGS_GROUPS: {
@@ -96,6 +97,8 @@ const SETTINGS_GROUPS: {
 ];
 
 export function SettingsLayout() {
+  const { pathname } = useLocation();
+  const navFade = useScrollFade<HTMLElement>(pathname, '[aria-current="page"]');
   const can = useAuth((s) => s.can);
   const permitted = useVisibleItems(SETTINGS_GROUPS.flatMap((g) => g.items));
   const groups = SETTINGS_GROUPS.map((g) => ({
@@ -107,9 +110,11 @@ export function SettingsLayout() {
       {/* Submenu: rail dọc trên desktop, hàng pill cuộn ngang trên mobile */}
       <nav
         aria-label="Mục cài đặt"
+        ref={navFade.ref}
+        style={navFade.style}
         className={cn(
           'shrink-0 border-border bg-surface',
-          'flex gap-1 overflow-x-auto border-b px-3 py-2',
+          'scroll-fade-x relative flex gap-1 overflow-x-auto border-b px-3 py-2 max-lg:scrollbar-none',
           'lg:w-60 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
         )}
       >

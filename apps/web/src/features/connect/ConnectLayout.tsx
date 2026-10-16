@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { ArrowLeft, Plug, Repeat } from 'lucide-react';
 import { useProjects } from '@/features/projects/api';
 import { useScopeParam } from '@/lib/scopeParam';
 import { cn } from '@/lib/utils';
 import { NAV_RULES, useVisibleItems, type NavRule } from '@/lib/navAccess';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
+import { useScrollFade } from '@/lib/useScrollFade';
 
 /**
  * Khung "Kết nối & tự động hoá" — gom hai việc cùng bản chất "để hệ thống tự chạy":
@@ -22,6 +23,8 @@ const CONNECT_NAV: { to: string; label: string; icon: ReactNode; rule?: NavRule 
 ];
 
 export function ConnectLayout() {
+  const { pathname } = useLocation();
+  const navFade = useScrollFade<HTMLElement>(pathname, '[aria-current="page"]');
   const items = useVisibleItems(CONNECT_NAV);
   // Vào từ menu "Thêm" của dự án (?project=<id>) → có lối quay về dự án đó.
   const { data: projects } = useProjects(true);
@@ -31,9 +34,11 @@ export function ConnectLayout() {
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       <nav
         aria-label="Mục kết nối và tự động hoá"
+        ref={navFade.ref}
+        style={navFade.style}
         className={cn(
           'shrink-0 border-border bg-surface',
-          'flex gap-1 overflow-x-auto border-b px-3 py-2',
+          'scroll-fade-x relative flex gap-1 overflow-x-auto border-b px-3 py-2 max-lg:scrollbar-none',
           'lg:w-64 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
         )}
       >

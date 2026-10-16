@@ -118,6 +118,27 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+  /* Dải/bảng cuộn ngang trên mobile: mặt nạ mờ mép phải báo còn nội dung. `useScrollFade` ghi `--scroll-fade`
+     (mờ đúng mép còn nội dung, 'none' khi đã hết); chưa có hook thì dùng mặc định mờ mép phải cố định. */
+  .scroll-fade-x {
+    -webkit-mask-image: var(
+      --scroll-fade,
+      linear-gradient(to right, #000 calc(100% - 24px), transparent)
+    );
+    mask-image: var(--scroll-fade, linear-gradient(to right, #000 calc(100% - 24px), transparent));
+    scroll-snap-type: x proximity;
+  }
+  .scroll-fade-x > * {
+    scroll-snap-align: start;
+  }
+  /* iOS Safari tự phóng to trang khi chạm ô nhập có chữ < 16px: chỉ dưới `sm` (DESIGN.md giữ 14px ở desktop). */
+  @media (max-width: 639px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
 }
 
 /* Reduced motion: tắt mọi animation (DESIGN.md) */

@@ -64,6 +64,7 @@
 
 ## 10. Responsive & accessible = dễ cho tất cả
 - Mobile: sidebar→drawer, board vuốt ngang, touch target ≥44px, thao tác chính 1 tay.
+- Mobile 390px: không cuộn ngang trang; ô nhập ≥16px dưới `sm` (iOS không phóng to); dải/bảng cuộn ngang phải có mờ mép báo còn nội dung (`.scroll-fade-x` + `useScrollFade`); nút nổi tránh vùng an toàn iOS (`env(safe-area-inset-bottom)`); vùng chạm của điều khiển nhỏ trên dòng ≥ 36px chiều cao (cảm ứng: mở rộng vùng bấm lên ≥ 44px bằng `TOUCH_HIT`/`pointer:coarse`, không đổi cỡ hiển thị desktop). Kiểm bằng `pnpm --filter @tirapro/web mobile:audit` (và `-- --dialogs` cho hộp thoại).
 - WCAG AA: keyboard đầy đủ, focus rõ, screen-reader label, `prefers-reduced-motion`.
 
 ## 11. Notification — im lặng theo mặc định (từ nghiên cứu)

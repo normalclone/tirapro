@@ -187,7 +187,7 @@ export function FloatingActions() {
 
       <div
         className="fixed z-sticky flex flex-col items-end gap-3"
-        style={{ bottom: FAB_EDGE_PX, right: FAB_EDGE_PX }}
+        style={{ bottom: `max(${FAB_EDGE_PX}px, env(safe-area-inset-bottom))`, right: FAB_EDGE_PX }}
       >
         {open && customizing && (
           <div
