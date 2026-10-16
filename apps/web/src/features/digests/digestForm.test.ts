@@ -59,28 +59,36 @@ describe('validateForm', () => {
   });
 });
 
-describe('cờ allowPrivateToChannel (I3)', () => {
+describe('cờ allowPrivateToChannel (I3, N1)', () => {
   const f = { ...initialForm(null), name: 'A', allowPrivateToChannel: true };
-  it('chỉ gửi đi khi có dự án VÀ kênh Telegram; đổi bỏ dự án/kênh thì tự tắt', () => {
-    expect(effectiveAllowPrivate({ ...f, projectId: 'p1', channelId: 'c1' })).toBe(true);
-    expect(effectiveAllowPrivate({ ...f, projectId: '', channelId: 'c1' })).toBe(false);
-    expect(effectiveAllowPrivate({ ...f, projectId: 'p1', channelId: '' })).toBe(false);
-    expect(toCreatePayload({ ...f, projectId: 'p1', channelId: '' }).allowPrivateToChannel).toBe(
-      false,
-    );
+  it('chỉ gửi đi khi có dự án RIÊNG TƯ và kênh Telegram; dự án công khai/bỏ dự án/bỏ kênh thì tự tắt', () => {
+    expect(effectiveAllowPrivate({ ...f, projectId: 'p1', channelId: 'c1' }, true)).toBe(true);
+    expect(effectiveAllowPrivate({ ...f, projectId: 'p1', channelId: 'c1' }, false)).toBe(false);
+    expect(effectiveAllowPrivate({ ...f, projectId: '', channelId: 'c1' }, true)).toBe(false);
+    expect(effectiveAllowPrivate({ ...f, projectId: 'p1', channelId: '' }, true)).toBe(false);
+    expect(
+      toCreatePayload({ ...f, projectId: 'p1', channelId: 'c1' }, false).allowPrivateToChannel,
+    ).toBe(false);
+    expect(
+      toUpdatePayload('d1', { ...f, projectId: 'p1', channelId: 'c1' }, true).allowPrivateToChannel,
+    ).toBe(true);
   });
 });
 
 describe('payload', () => {
   const f = { ...initialForm(null), name: '  Tuần  ', projectId: 'p1', channelId: 'c1' };
   it('create: trim tên, chuỗi rỗng → undefined', () => {
-    expect(toCreatePayload(f)).toMatchObject({ name: 'Tuần', projectId: 'p1', channelId: 'c1' });
-    const bare = toCreatePayload({ ...f, projectId: '', channelId: '' });
+    expect(toCreatePayload(f, false)).toMatchObject({
+      name: 'Tuần',
+      projectId: 'p1',
+      channelId: 'c1',
+    });
+    const bare = toCreatePayload({ ...f, projectId: '', channelId: '' }, false);
     expect(bare.projectId).toBeUndefined();
     expect(bare.channelId).toBeUndefined();
   });
   it('update: gỡ kênh = null, không gửi projectId (không đổi phạm vi)', () => {
-    const u = toUpdatePayload('d1', { ...f, channelId: '' });
+    const u = toUpdatePayload('d1', { ...f, channelId: '' }, false);
     expect(u.channelId).toBeNull();
     expect(u).not.toHaveProperty('projectId');
     expect(u.id).toBe('d1');

@@ -193,7 +193,11 @@ export class DigestsService implements OnApplicationShutdown {
     // `!== undefined` (không phải truthy): chuỗi rỗng cũng phải bị từ chối, không được lưu như một channelId.
     if (input.channelId !== undefined)
       await this.assertChannelInWorkspace(workspaceId, input.channelId);
-    this.assertPrivateChannelFlag(input.projectId ?? null, input.allowPrivateToChannel ?? false);
+    const allowPrivate = await this.normalizePrivateFlag(
+      workspaceId,
+      input.projectId ?? null,
+      input.allowPrivateToChannel ?? false,
+    );
     const recipients = uniq(input.recipients ?? []);
     await this.assertEmailSettings(workspaceId, input.deliverEmail ?? false, recipients);
     return this.prisma.reportSubscription.create({
@@ -207,7 +211,7 @@ export class DigestsService implements OnApplicationShutdown {
         recipients,
         ...(input.deliverEmail !== undefined ? { deliverEmail: input.deliverEmail } : {}),
         ...(input.allowPrivateToChannel !== undefined
-          ? { allowPrivateToChannel: input.allowPrivateToChannel }
+          ? { allowPrivateToChannel: allowPrivate }
           : {}),
         ...(input.weekday !== undefined ? { weekday: input.weekday } : {}),
         ...(input.hour !== undefined ? { hour: input.hour } : {}),
@@ -224,7 +228,8 @@ export class DigestsService implements OnApplicationShutdown {
     if (input.channelId !== undefined && input.channelId !== null) {
       await this.assertChannelInWorkspace(workspaceId, input.channelId);
     }
-    this.assertPrivateChannelFlag(
+    const allowPrivate = await this.normalizePrivateFlag(
+      workspaceId,
       current.projectId,
       input.allowPrivateToChannel ?? current.allowPrivateToChannel,
     );
@@ -242,8 +247,12 @@ export class DigestsService implements OnApplicationShutdown {
     const data: Prisma.ReportSubscriptionUpdateInput = {};
     if (input.recipients !== undefined) data.recipients = recipients;
     if (input.deliverEmail !== undefined) data.deliverEmail = input.deliverEmail;
-    if (input.allowPrivateToChannel !== undefined) {
-      data.allowPrivateToChannel = input.allowPrivateToChannel;
+    // Ghi khi người dùng đổi cờ, hoặc khi cờ đã lưu không còn đúng (vd dự án đã chuyển công khai) → chuẩn hoá về false.
+    if (
+      input.allowPrivateToChannel !== undefined ||
+      allowPrivate !== current.allowPrivateToChannel
+    ) {
+      data.allowPrivateToChannel = allowPrivate;
     }
     if (input.name !== undefined) data.name = input.name;
     if (input.schedule !== undefined) data.schedule = input.schedule;
@@ -286,12 +295,42 @@ export class DigestsService implements OnApplicationShutdown {
     return allowPrivateToChannel && createdById ? createdById : null;
   }
 
-  /** Cờ "cho đăng dự án riêng tư vào kênh" chỉ có nghĩa với digest gắn một dự án. */
-  private assertPrivateChannelFlag(projectId: string | null, allow: boolean): void {
-    if (allow && !projectId) {
+  /**
+   * Cờ "cho đăng dự án riêng tư vào kênh" chỉ có nghĩa với digest gắn một dự án RIÊNG TƯ: không gắn dự án → 422;
+   * dự án công khai/đã xoá → chuẩn hoá về `false` (không để cờ "dính" rồi tự có hiệu lực khi dự án sau này thành riêng tư).
+   */
+  private async normalizePrivateFlag(
+    workspaceId: string,
+    projectId: string | null,
+    allow: boolean,
+  ): Promise<boolean> {
+    if (!allow) return false;
+    if (!projectId) {
       throw new BusinessRuleException(
         'Chỉ báo cáo gắn một dự án mới có thể cho đăng dự án riêng tư vào nhóm Telegram.',
       );
+    }
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, workspaceId, deletedAt: null },
+      select: { isPrivate: true },
+    });
+    return project?.isPrivate === true;
+  }
+
+  /**
+   * Dự án đổi công khai ⇄ riêng tư (sự kiện phát sau commit): xoá cờ "đăng vào kênh" của mọi digest gắn dự án đó — chuyển
+   * công khai → riêng tư thì digest KHÔNG tự lên kênh bằng cờ cũ; muốn đăng phải bật lại (kèm cảnh báo trong form).
+   */
+  @OnEvent(DOMAIN_EVENTS.PROJECT_VISIBILITY_CHANGED)
+  async onProjectVisibilityChanged(p: { workspaceId?: string; projectId?: string }): Promise<void> {
+    if (!p?.workspaceId || !p?.projectId) return;
+    try {
+      await this.prisma.reportSubscription.updateMany({
+        where: { workspaceId: p.workspaceId, projectId: p.projectId, allowPrivateToChannel: true },
+        data: { allowPrivateToChannel: false },
+      });
+    } catch (err) {
+      this.warn('onProjectVisibilityChanged', err);
     }
   }
 
@@ -306,14 +345,21 @@ export class DigestsService implements OnApplicationShutdown {
     workspaceId: string,
     id: string,
     viewerId: string,
-  ): Promise<{ sent: boolean; summaryText: string; channelSkipped: boolean }> {
+  ): Promise<{
+    sent: boolean;
+    summaryText: string;
+    channelSkipped: boolean;
+    /** Tên người nhận bị bỏ qua vì không thấy dự án gắn kèm (không nhận thư). */
+    skippedRecipients: string[];
+  }> {
     const sub = await this.requireSubscription(workspaceId, id, viewerId);
     const previous = sub.lastRunAt;
+    const claimedAt = new Date();
     if (sub.deliverEmail) {
       const cutoff = new Date(Date.now() - RUN_THROTTLE_MS);
       const claimed = await this.prisma.reportSubscription.updateMany({
         where: { id, OR: [{ lastRunAt: null }, { lastRunAt: { lt: cutoff } }] },
-        data: { lastRunAt: new Date() },
+        data: { lastRunAt: claimedAt },
       });
       if (claimed.count === 0) {
         throw new BusinessRuleException(
@@ -333,12 +379,18 @@ export class DigestsService implements OnApplicationShutdown {
           data: { lastRunAt: new Date() },
         });
       }
-      return { sent, summaryText: d.summaryText, channelSkipped: d.channelSkipped };
+      return {
+        sent,
+        summaryText: d.summaryText,
+        channelSkipped: d.channelSkipped,
+        skippedRecipients: d.skippedRecipients,
+      };
     } finally {
-      // Không gửi được gì → trả `lastRunAt` về giá trị cũ (đã giữ chỗ ở trên) để cron không coi như vừa chạy.
+      // Không gửi được gì → trả `lastRunAt` về giá trị cũ bằng CAS: chỉ khi nó vẫn là giá trị MÌNH đặt (cron/lần chạy khác
+      // vừa ghi thì giữ nguyên, không ghi đè).
       if (sub.deliverEmail && !sent) {
         await this.prisma.reportSubscription
-          .updateMany({ where: { id }, data: { lastRunAt: previous } })
+          .updateMany({ where: { id, lastRunAt: claimedAt }, data: { lastRunAt: previous } })
           .catch(() => undefined);
       }
     }
@@ -359,6 +411,7 @@ export class DigestsService implements OnApplicationShutdown {
     telegram: boolean | null;
     channelSkipped: boolean;
     emails: number;
+    skippedRecipients: string[];
     tokenUnusable: boolean;
     integrationError: boolean;
     summaryText: string;
@@ -397,10 +450,28 @@ export class DigestsService implements OnApplicationShutdown {
         ? await this.actorText(sub, opts.actorId)
         : '';
     if (mode === 'run' && (tokenUnusable || integrationError)) {
-      return { telegram, channelSkipped, emails: 0, tokenUnusable, integrationError, summaryText };
+      return {
+        telegram,
+        channelSkipped,
+        emails: 0,
+        skippedRecipients: [],
+        tokenUnusable,
+        integrationError,
+        summaryText,
+      };
     }
-    const emails = sub.deliverEmail ? await this.sendEmails(sub, opts.closedSprintId) : 0;
-    return { telegram, channelSkipped, emails, tokenUnusable, integrationError, summaryText };
+    const mail = sub.deliverEmail
+      ? await this.sendEmails(sub, opts.closedSprintId)
+      : { queued: 0, skipped: [] };
+    return {
+      telegram,
+      channelSkipped,
+      emails: mail.queued,
+      skippedRecipients: mail.skipped,
+      tokenUnusable,
+      integrationError,
+      summaryText,
+    };
   }
 
   private async actorText(sub: DeliverSub, actorId: string): Promise<string> {
@@ -419,9 +490,12 @@ export class DigestsService implements OnApplicationShutdown {
    * thấy dự án đó không nhận thư. Dựng theo lô song song (`EMAIL_BATCH`) để không tuần tự ≤50 lần. Lỗi xếp thư của
    * một người không chặn người khác. Trả số thư đã xếp.
    */
-  private async sendEmails(sub: DeliverSub, closedSprintId?: string): Promise<number> {
+  private async sendEmails(
+    sub: DeliverSub,
+    closedSprintId?: string,
+  ): Promise<{ queued: number; skipped: string[] }> {
     const ids = sub.recipients;
-    if (ids.length === 0) return 0;
+    if (ids.length === 0) return { queued: 0, skipped: [] };
     let users: Array<{ id: string; email: string; displayName: string }>;
     try {
       users = await this.prisma.user.findMany({
@@ -434,7 +508,7 @@ export class DigestsService implements OnApplicationShutdown {
       });
     } catch (err) {
       this.warn('sendEmails.recipients', err);
-      return 0;
+      return { queued: 0, skipped: [] };
     }
     const creator = sub.createdById
       ? await this.prisma.user
@@ -442,9 +516,11 @@ export class DigestsService implements OnApplicationShutdown {
           .catch(() => null)
       : null;
     const url = this.config.get<string>('mail.appWebUrl') ?? '';
+    const skipped: string[] = [];
     const one = async (user: (typeof users)[number]): Promise<boolean> => {
       try {
         if (sub.projectId && !(await this.access.canSee(user.id, sub.workspaceId, sub.projectId))) {
+          skipped.push(user.displayName); // không thấy dự án gắn kèm → không nhận thư (báo lại cho người chạy)
           return false;
         }
         const model = await this.buildDigest(
@@ -476,7 +552,7 @@ export class DigestsService implements OnApplicationShutdown {
       const results = await Promise.all(users.slice(i, i + EMAIL_BATCH).map(one));
       queued += results.filter(Boolean).length;
     }
-    return queued;
+    return { queued, skipped };
   }
 
   /**

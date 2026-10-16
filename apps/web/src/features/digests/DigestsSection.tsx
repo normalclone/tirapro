@@ -197,6 +197,11 @@ function DigestRow({
         const text = (res.summaryText ?? '').trim();
         setSummary(text);
         setExpanded(true);
+        if (res.skippedRecipients?.length) {
+          toast.warning(
+            `Không gửi email cho ${res.skippedRecipients.join(', ')} vì họ không thấy dự án của báo cáo này.`,
+          );
+        }
         if (res.channelSkipped) {
           toast.warning(
             'Dự án riêng tư chưa được phép đăng vào nhóm Telegram nên không gửi vào nhóm — bật "Cho phép đăng vào nhóm Telegram" khi sửa báo cáo nếu muốn.',

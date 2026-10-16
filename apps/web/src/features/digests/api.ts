@@ -74,6 +74,8 @@ export interface RunDigestResult {
   summaryText: string;
   /** Có kênh Telegram nhưng KHÔNG đăng (dự án riêng tư chưa được phép đăng vào nhóm). */
   channelSkipped: boolean;
+  /** Tên người nhận email bị bỏ qua vì không thấy dự án gắn kèm. */
+  skippedRecipients: string[];
 }
 
 /* ------------------------------------------------------------------ */

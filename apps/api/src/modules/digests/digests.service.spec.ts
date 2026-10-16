@@ -536,23 +536,23 @@ describe('DigestsService.buildDigest — quyền xem (dự án riêng tư)', () 
   });
 });
 
+const subRow = (over: Record<string, unknown> = {}) =>
+  ({
+    id: 's1',
+    workspaceId: 'w1',
+    projectId: null,
+    channelId: 'ch1',
+    metrics: [],
+    createdById: 'admin',
+    deliverEmail: false,
+    allowPrivateToChannel: false,
+    recipients: [],
+    lastRunAt: null,
+    ...over,
+  }) as never;
+
 describe('DigestsService — người xem của nội dung gửi nơi chung', () => {
   const OPTS = { closedSprintId: undefined };
-  const subRow = (over: Record<string, unknown> = {}) =>
-    ({
-      id: 's1',
-      workspaceId: 'w1',
-      projectId: null,
-      channelId: 'ch1',
-      metrics: [],
-      createdById: 'admin',
-      deliverEmail: false,
-      allowPrivateToChannel: false,
-      recipients: [],
-      lastRunAt: null,
-      ...over,
-    }) as never;
-
   it('run: digest toàn workspace dùng PUBLIC_VIEWER (kể cả khi người tạo là admin)', async () => {
     const { service, prisma } = setup({ kind: 'global' });
     prisma.reportSubscription.findFirst.mockResolvedValue(subRow());
@@ -621,10 +621,11 @@ describe('DigestsService — người xem của nội dung gửi nơi chung', ()
     expect(r.channelSkipped).toBe(true);
   });
 
-  it('I3: allowPrivateToChannel chỉ hợp lệ khi digest gắn dự án (422); create/update lưu cờ', async () => {
+  it('I3: allowPrivateToChannel chỉ hợp lệ khi digest gắn dự án (422); create/update lưu cờ cho dự án riêng tư', async () => {
     const { service, prisma } = setup({ kind: 'global' });
     const create = vi.fn();
     (prisma.reportSubscription as Record<string, unknown>).create = create;
+    prisma.project.findFirst.mockResolvedValue({ isPrivate: true });
     await expect(
       service.create('w1', 'u1', { name: 'n', allowPrivateToChannel: true }),
     ).rejects.toMatchObject({ status: 422 });
@@ -1319,5 +1320,106 @@ describe('digest schemas — allowPrivateToChannel / preview (review vòng 1)', 
       previewDigestSchema.safeParse({ as: 'channel', allowPrivateToChannel: true }).success,
     ).toBe(true);
     expect(previewDigestSchema.safeParse({ as: 'everyone' }).success).toBe(false);
+  });
+});
+
+describe('DigestsService.run — N3 hoàn lastRunAt bằng CAS; M4 báo người nhận bị bỏ qua', () => {
+  function emailRun(users: Array<{ id: string; email: string; displayName: string }>) {
+    const t = setup({ kind: 'global' });
+    t.prisma.reportSubscription.findFirst.mockResolvedValue({
+      id: 's1',
+      workspaceId: 'w1',
+      projectId: 'p1',
+      channelId: null,
+      metrics: ['summary'],
+      createdById: 'u1',
+      deliverEmail: true,
+      allowPrivateToChannel: false,
+      recipients: users.map((u) => u.id),
+      lastRunAt: new Date('2026-10-16T01:00:00Z'),
+      name: 'T',
+    } as never);
+    t.prisma.user.findMany.mockResolvedValue(users);
+    return t;
+  }
+  const U = [
+    { id: 'u2', email: 'b@x.vn', displayName: 'Bình' },
+    { id: 'u3', email: 'c@x.vn', displayName: 'Cúc' },
+  ];
+
+  it('N3: không gửi được gì → hoàn lastRunAt CHỈ khi vẫn là giá trị mình đặt (where có lastRunAt = claimedAt)', async () => {
+    const t = emailRun(U);
+    t.access.canSee.mockResolvedValue(false); // không ai thấy dự án → 0 thư
+    await t.service.run('w1', 's1', 'u1');
+    const calls = t.prisma.reportSubscription.updateMany.mock.calls as unknown as Array<
+      [{ where: { id: string; lastRunAt: unknown }; data: { lastRunAt: Date | null } }]
+    >;
+    const claim = calls[0]![0];
+    const restore = calls.at(-1)![0];
+    expect(restore.data.lastRunAt).toEqual(new Date('2026-10-16T01:00:00Z'));
+    // CAS: where.lastRunAt chính là mốc đã đặt lúc giữ chỗ (không phải điều kiện tuỳ ý).
+    expect(restore.where.lastRunAt).toBe(claim.data.lastRunAt);
+  });
+
+  it('M4: người nhận không thấy dự án gắn kèm bị bỏ qua và được trả lại trong skippedRecipients', async () => {
+    const t = emailRun(U);
+    t.access.canSee.mockImplementation(((uid: string) => Promise.resolve(uid !== 'u3')) as never);
+    const r = await t.service.run('w1', 's1', 'u1');
+    expect(r.sent).toBe(true);
+    expect(r.skippedRecipients).toEqual(['Cúc']);
+    expect(t.mail.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('M4: mọi người đều thấy → skippedRecipients rỗng', async () => {
+    const t = emailRun(U);
+    const r = await t.service.run('w1', 's1', 'u1');
+    expect(r.skippedRecipients).toEqual([]);
+  });
+});
+
+describe('DigestsService — cờ allowPrivateToChannel không "dính" (N1)', () => {
+  it('N1: dự án CÔNG KHAI → server chuẩn hoá cờ về false (create và update), cờ không "dính"', async () => {
+    const { service, prisma } = setup({ kind: 'global' }); // project.findFirst mặc định isPrivate:false
+    const create = vi.fn();
+    (prisma.reportSubscription as Record<string, unknown>).create = create;
+    await service.create('w1', 'u1', { name: 'n', projectId: 'pPub', allowPrivateToChannel: true });
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ allowPrivateToChannel: false }) as unknown,
+    });
+    prisma.reportSubscription.findFirst.mockResolvedValue(subRow({ projectId: 'pPub' }));
+    await service.update('w1', 's1', { allowPrivateToChannel: true }, 'u1');
+    expect(prisma.reportSubscription.update).toHaveBeenLastCalledWith({
+      where: { id: 's1' },
+      data: { allowPrivateToChannel: false },
+    });
+  });
+
+  it('N1: cờ cũ đã lưu true nhưng dự án nay công khai → lần sửa kế tiếp tự chuẩn hoá về false', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    prisma.reportSubscription.findFirst.mockResolvedValue(
+      subRow({ projectId: 'pPub', allowPrivateToChannel: true }),
+    );
+    await service.update('w1', 's1', { name: 'đổi tên' }, 'u1');
+    expect(prisma.reportSubscription.update).toHaveBeenCalledWith({
+      where: { id: 's1' },
+      data: { name: 'đổi tên', allowPrivateToChannel: false },
+    });
+  });
+
+  it('N1: dự án đổi công khai ⇄ riêng tư (sự kiện) → xoá cờ của mọi digest gắn dự án đó, digest không tự lên kênh', async () => {
+    const { service, prisma } = setup({ kind: 'global' });
+    await service.onProjectVisibilityChanged({ workspaceId: 'w1', projectId: 'p1' });
+    expect(prisma.reportSubscription.updateMany).toHaveBeenCalledWith({
+      where: { workspaceId: 'w1', projectId: 'p1', allowPrivateToChannel: true },
+      data: { allowPrivateToChannel: false },
+    });
+    // Thiếu dữ liệu sự kiện / lỗi DB → không ném.
+    prisma.reportSubscription.updateMany.mockClear();
+    await service.onProjectVisibilityChanged({});
+    expect(prisma.reportSubscription.updateMany).not.toHaveBeenCalled();
+    prisma.reportSubscription.updateMany.mockRejectedValueOnce(new Error('db'));
+    await expect(
+      service.onProjectVisibilityChanged({ workspaceId: 'w1', projectId: 'p1' }),
+    ).resolves.toBeUndefined();
   });
 });

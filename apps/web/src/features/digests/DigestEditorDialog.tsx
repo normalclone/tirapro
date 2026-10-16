@@ -44,7 +44,16 @@ export function DigestEditorDialog({
   const update = useUpdateDigest();
   const saving = create.isPending || update.isPending;
   const projectIsPrivate = !!projects.data?.find((p) => p.id === form.projectId)?.isPrivate;
-  const set: SetDigestForm = (key, value) => setForm((f) => ({ ...f, [key]: value }));
+  // Danh sách dự án chưa tải xong thì chưa biết dự án có riêng tư không → giữ cờ như đang có (đừng xoá nhầm lúc sửa).
+  const privacyKnown = projects.data !== undefined;
+  const flagPrivate = privacyKnown ? projectIsPrivate : form.projectId !== '';
+  const set: SetDigestForm = (key, value) =>
+    setForm((f) => ({
+      ...f,
+      [key]: value,
+      // Đổi dự án → cờ "đăng dự án riêng tư vào nhóm" về tắt (phải bật lại, có cảnh báo, cho dự án mới).
+      ...(key === 'projectId' ? { allowPrivateToChannel: false } : {}),
+    }));
 
   function submit() {
     const error = validateForm(form);
@@ -59,8 +68,8 @@ export function DigestEditorDialog({
       },
       onError: (e: unknown) => toast.error(apiErrorMessage(e)),
     };
-    if (digest) update.mutate(toUpdatePayload(digest.id, form), done);
-    else create.mutate(toCreatePayload(form), done);
+    if (digest) update.mutate(toUpdatePayload(digest.id, form, flagPrivate), done);
+    else create.mutate(toCreatePayload(form, flagPrivate), done);
   }
 
   return (
@@ -97,7 +106,7 @@ export function DigestEditorDialog({
         <ScheduleFields form={form} set={set} />
         <ChannelFields form={form} set={set} projectIsPrivate={projectIsPrivate} />
         <BlocksField value={form.blocks} onChange={(v) => set('blocks', v)} />
-        <PreviewPanel form={form} />
+        <PreviewPanel form={form} projectIsPrivate={flagPrivate} />
       </div>
     </Dialog>
   );
@@ -107,7 +116,13 @@ export function DigestEditorDialog({
  * Xem trước KHỚP nội dung thật: "Nhóm Telegram" = đúng bản sẽ đăng (công khai; dự án riêng tư chỉ khi đã bật cho phép),
  * "Email của tôi" = bản theo quyền của bạn như một người nhận. Đổi cấu hình thì bản đã xem bị xoá (không còn khớp).
  */
-function PreviewPanel({ form }: { form: DigestFormState }) {
+function PreviewPanel({
+  form,
+  projectIsPrivate,
+}: {
+  form: DigestFormState;
+  projectIsPrivate: boolean;
+}) {
   const hasChannel = form.channelId !== '';
   const [as, setAs] = useState<'channel' | 'me'>(hasChannel ? 'channel' : 'me');
   const mode = hasChannel ? as : 'me';
@@ -118,6 +133,7 @@ function PreviewPanel({ form }: { form: DigestFormState }) {
     form.blocks,
     form.channelId,
     form.allowPrivateToChannel,
+    projectIsPrivate,
     mode,
   ]);
   useEffect(() => reset(), [signature, reset]);
@@ -128,7 +144,7 @@ function PreviewPanel({ form }: { form: DigestFormState }) {
         projectId: form.projectId || undefined,
         metrics: form.blocks,
         as: mode,
-        allowPrivateToChannel: effectiveAllowPrivate(form),
+        allowPrivateToChannel: effectiveAllowPrivate(form, projectIsPrivate),
       },
       { onError: (e) => toast.error(apiErrorMessage(e)) },
     );

@@ -60,12 +60,15 @@ export function validateForm(f: DigestFormState): string | null {
   return null;
 }
 
-/** Cờ "đăng dự án riêng tư vào nhóm" chỉ gửi đi khi có dự án VÀ kênh Telegram (nếu không thì luôn tắt). */
-export function effectiveAllowPrivate(f: DigestFormState): boolean {
-  return f.allowPrivateToChannel && f.projectId !== '' && f.channelId !== '';
+/**
+ * Cờ "đăng dự án riêng tư vào nhóm" chỉ gửi đi khi có dự án RIÊNG TƯ VÀ kênh Telegram (nếu không thì luôn tắt — cờ không
+ * được "dính" sau khi đổi sang dự án công khai/bỏ dự án/bỏ kênh).
+ */
+export function effectiveAllowPrivate(f: DigestFormState, projectIsPrivate: boolean): boolean {
+  return f.allowPrivateToChannel && projectIsPrivate && f.projectId !== '' && f.channelId !== '';
 }
 
-const common = (f: DigestFormState) => ({
+const common = (f: DigestFormState, projectIsPrivate: boolean) => ({
   name: f.name.trim(),
   schedule: f.schedule,
   weekday: f.weekday,
@@ -74,17 +77,21 @@ const common = (f: DigestFormState) => ({
   metrics: f.blocks,
   deliverEmail: f.deliverEmail,
   recipients: f.recipients,
-  allowPrivateToChannel: effectiveAllowPrivate(f),
+  allowPrivateToChannel: effectiveAllowPrivate(f, projectIsPrivate),
 });
 
-export function toCreatePayload(f: DigestFormState): CreateDigestInput {
+export function toCreatePayload(f: DigestFormState, projectIsPrivate: boolean): CreateDigestInput {
   return {
-    ...common(f),
+    ...common(f, projectIsPrivate),
     projectId: f.projectId || undefined,
     channelId: f.channelId || undefined,
   };
 }
 
-export function toUpdatePayload(id: string, f: DigestFormState): UpdateDigestInput {
-  return { id, ...common(f), channelId: f.channelId || null };
+export function toUpdatePayload(
+  id: string,
+  f: DigestFormState,
+  projectIsPrivate: boolean,
+): UpdateDigestInput {
+  return { id, ...common(f, projectIsPrivate), channelId: f.channelId || null };
 }

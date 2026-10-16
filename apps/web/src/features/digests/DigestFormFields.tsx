@@ -195,6 +195,11 @@ export function ChannelFields({
             </span>
           </span>
         </label>
+        {form.deliverEmail && projectIsPrivate && (
+          <p className="mt-2 text-xs text-warning">
+            Dự án này riêng tư: người nhận không thấy dự án sẽ KHÔNG nhận thư (bị bỏ qua khi gửi).
+          </p>
+        )}
         {form.deliverEmail && (
           <RecipientsPicker value={form.recipients} onChange={(v) => set('recipients', v)} />
         )}
