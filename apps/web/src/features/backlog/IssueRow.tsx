@@ -1,6 +1,16 @@
 import { memo, type CSSProperties, type HTMLAttributes, type Ref } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
-import type { IssueDto } from '@tirapro/types';
+import type { IssueDto, PriorityDto, SprintDto } from '@tirapro/types';
+import { IssueTypeIcon } from '@/components/ui/IssueTypeIcon';
+import { StatusPill } from '@/components/ui/StatusPill';
+import {
+  InlinePoints,
+  InlinePriority,
+  NO_EDIT_TIP,
+  PointsChip,
+  PriorityDot,
+  type PriorityChoice,
+} from './InlineEdits';
 import { DueBadge, dueBorderClass } from '@/components/ui/DueBadge';
 import { AcceptanceBadge } from '@/components/ui/AcceptanceBadge';
 import { TaskProgress } from '@/components/ui/TaskProgress';
@@ -14,6 +24,29 @@ import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
 import { openOnRowKey, rowRootProps } from '@/lib/rowOpen';
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
+
+/** Tối đa 2 nhãn đầu của dòng (chỉ từ `lg`), phần còn lại gộp "+N". */
+function RowLabels({ labels }: { labels: IssueDto['labels'] }) {
+  if (!labels || labels.length === 0) return null;
+  return (
+    <span className="hidden shrink-0 items-center gap-1 lg:flex">
+      {labels.slice(0, 2).map((l) => (
+        <span
+          key={l.id}
+          className="max-w-[7rem] truncate rounded px-1.5 py-px text-[10px] font-medium"
+          style={{
+            backgroundColor: `color-mix(in oklch, ${l.color || 'var(--faint)'} 16%, transparent)`,
+            color: l.color || 'var(--faint)',
+          }}
+          title={`Nhãn: ${l.name}`}
+        >
+          {l.name}
+        </span>
+      ))}
+      {labels.length > 2 && <span className="text-[10px] text-faint">+{labels.length - 2}</span>}
+    </span>
+  );
+}
 
 /**
  * Phần giao diện thuần của một dòng backlog — dùng cho dòng kéo được (`IssueRow`) lẫn bản trôi theo chuột (`DragOverlay`).
@@ -34,6 +67,8 @@ export function IssueRowBody({
   rootProps,
   onOpen,
   peeked,
+  edit,
+  canEdit,
 }: {
   issue: IssueDto;
   overlay?: boolean;
@@ -52,6 +87,10 @@ export function IssueRowBody({
   onOpen?: (key: string) => void;
   /** Dòng đang được xem nhanh ở panel bên phải. */
   peeked?: boolean;
+  /** Sửa tại chỗ (điểm/ưu tiên). Không truyền (sprint đã đóng, bản overlay) → dòng hiển thị tĩnh. */
+  edit?: RowEdit;
+  /** Người dùng sửa được công việc này (`canEditIssue`) — một cờ cho cả điểm lẫn ưu tiên. */
+  canEdit?: boolean;
 }) {
   const warn = dueBorderClass(issue);
   return (
@@ -82,11 +121,12 @@ export function IssueRowBody({
           aria-label={`Chọn việc ${issue.key} để thao tác hàng loạt`}
         />
       )}
-      <span
-        className="h-1.5 w-1.5 shrink-0 rounded-full"
-        style={{ background: issue.priority?.color ?? 'var(--faint)' }}
-        title={issue.priority ? `Mức ưu tiên: ${issue.priority.name}` : 'Chưa đặt mức ưu tiên'}
-      />
+      {edit && canEdit ? (
+        <InlinePriority issue={issue} priorities={edit.priorities} onPick={edit.onEditPriority} />
+      ) : (
+        <PriorityDot priority={issue.priority} />
+      )}
+      <IssueTypeIcon type={issue.type} className="hidden sm:block" />
       {onOpen && !overlay ? (
         <IssueKeyLink issueKey={issue.key} onPeek={onOpen} />
       ) : (
@@ -98,26 +138,7 @@ export function IssueRowBody({
         <SeverityBadge severity={issue.severity} compact />
       )}
       <span className="min-w-0 flex-1 truncate text-sm text-ink">{issue.summary}</span>
-      {issue.labels && issue.labels.length > 0 && (
-        <span className="hidden shrink-0 items-center gap-1 lg:flex">
-          {issue.labels.slice(0, 2).map((l) => (
-            <span
-              key={l.id}
-              className="max-w-[7rem] truncate rounded px-1.5 py-px text-[10px] font-medium"
-              style={{
-                backgroundColor: `color-mix(in oklch, ${l.color || 'var(--faint)'} 16%, transparent)`,
-                color: l.color || 'var(--faint)',
-              }}
-              title={`Nhãn: ${l.name}`}
-            >
-              {l.name}
-            </span>
-          ))}
-          {issue.labels.length > 2 && (
-            <span className="text-[10px] text-faint">+{issue.labels.length - 2}</span>
-          )}
-        </span>
-      )}
+      <RowLabels labels={issue.labels} />
       {progress && progress.total > 0 && (
         <span
           className="hidden shrink-0 items-center gap-1.5 sm:flex"
@@ -134,14 +155,19 @@ export function IssueRowBody({
           <AcceptanceBadge progress={issue.acceptanceProgress} />
         </span>
       )}
-      <DueBadge issue={issue} warnOnly className="shrink-0" />
-      {issue.storyPoints != null && (
-        <span
-          className="tabular grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-surface-2 px-1 text-[10px] font-medium text-muted"
-          title={`${issue.storyPoints} điểm ước lượng — mức độ lớn của việc này`}
-        >
-          {issue.storyPoints}
-        </span>
+      {/* Dưới sm ẩn: viền đỏ/cam của dòng đã báo quá hạn/sắp hạn, nhường chỗ cho tiêu đề. */}
+      <DueBadge issue={issue} warnOnly className="hidden shrink-0 sm:inline-flex" />
+      <StatusPill status={issue.status} className="hidden sm:inline-flex" />
+      {edit ? (
+        <InlinePoints
+          issue={issue}
+          canEdit={!!canEdit}
+          sprints={edit.sprints}
+          onSave={edit.onEditPoints}
+          lockedTip={NO_EDIT_TIP}
+        />
+      ) : (
+        issue.storyPoints != null && <PointsChip points={issue.storyPoints} />
       )}
       {issue.assignee ? (
         <span
@@ -174,6 +200,17 @@ export function IssueRowBody({
   );
 }
 
+/**
+ * Ngữ cảnh sửa tại chỗ do trang truyền xuống: MỘT đối tượng ổn định (`useMemo`) + hai callback `useCallback`, để dòng `memo`
+ * không vẽ lại khi trang vẽ lại. Quyền theo dòng đi riêng qua `canEdit` (boolean).
+ */
+export interface RowEdit {
+  priorities: PriorityChoice[];
+  sprints: SprintDto[] | undefined;
+  onEditPoints: (issue: IssueDto, value: number | null) => void;
+  onEditPriority: (issue: IssueDto, priority: PriorityDto | null) => void;
+}
+
 interface IssueRowProps {
   issue: IssueDto;
   progress?: SubtreeProgress;
@@ -186,6 +223,8 @@ interface IssueRowProps {
   onToggleSelect?: (id: string) => void;
   onOpen?: (key: string) => void;
   peeked?: boolean;
+  edit?: RowEdit;
+  canEdit?: boolean;
 }
 
 /**
@@ -203,6 +242,8 @@ export const IssueRow = memo(
     onToggleSelect,
     onOpen,
     peeked,
+    edit,
+    canEdit,
   }: IssueRowProps) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
       id: issue.id,
@@ -240,6 +281,8 @@ export const IssueRow = memo(
         style={style}
         onOpen={onOpen}
         peeked={peeked}
+        edit={edit}
+        canEdit={canEdit}
         // `onKeyDown` đứng SAU spread listeners: ghi đè có chủ đích, `rowKeyDown` tự chuyển tiếp cho dnd-kit.
         rootProps={
           {
@@ -263,5 +306,7 @@ export const IssueRow = memo(
     p.onToggleSelect === n.onToggleSelect &&
     p.onOpen === n.onOpen &&
     p.peeked === n.peeked &&
+    p.edit === n.edit &&
+    p.canEdit === n.canEdit &&
     sameProgress(p.progress, n.progress),
 );

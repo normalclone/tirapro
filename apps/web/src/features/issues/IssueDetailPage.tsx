@@ -536,7 +536,7 @@ export function IssueDetailPage() {
                   <span className="text-faint" aria-hidden>
                     ·
                   </span>
-                  <IssueStoryPointsInline issue={issue} canEditRestricted={canEditRestricted} />
+                  <IssueStoryPointsInline issue={issue} canEdit={canEditThis} />
                   <span className="text-faint" aria-hidden>
                     ·
                   </span>

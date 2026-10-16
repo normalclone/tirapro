@@ -25,23 +25,23 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { toast } from 'sonner';
-import type { IssueDto, SprintDto } from '@tirapro/types';
+import type { IssueDto, PriorityDto, SprintDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
 import {
   useProjectSprints,
   useCreateSprint,
   useStartSprint,
   useCompleteSprint,
-  useBulkUpdateIssues,
-  bulkShortfallHint,
-  rejectionReason,
-  type BulkIssuePatch,
   type MoveIncompleteTo,
 } from './api';
 import { CompleteSprintDialog } from './CompleteSprintDialog';
 import { SprintEditDialog } from './SprintEditDialog';
 import { StartSprintDialog, type StartSprintValues } from './StartSprintDialog';
-import { useProjectIssues } from '@/features/issues/api';
+import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
+import { useProjectMeta } from '@/features/ai/api';
+import { useProjectLabels, type ProjectLabel } from '@/features/issue-meta/api';
+import { useWorkflows } from '@/features/workflow-settings/api';
+import { epicChoices } from '@/lib/epic';
 import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
@@ -61,7 +61,9 @@ import { useMoveIssue, usePendingMoves, type MoveVars } from '@/features/issues/
 import { useAuth } from '@/stores/auth';
 import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
-import { IssueRow, IssueRowBody } from './IssueRow';
+import { IssueRow, IssueRowBody, type RowEdit } from './IssueRow';
+import { useBulkEdit } from './useBulkEdit';
+import { commonNextStatuses } from './bulkEdit';
 import {
   backlogDragRoute,
   canMoveSprintVia,
@@ -99,6 +101,9 @@ function pointsSum(issues: IssueDto[]): number {
   return issues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
 }
 
+const NO_PRIORITIES: RowEdit['priorities'] = [];
+const NO_LABELS: ProjectLabel[] = [];
+
 export function BacklogPage() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
@@ -123,6 +128,41 @@ export function BacklogPage() {
   const canCreate = can('issue:create');
   const canAssign = can('issue:assign');
   const canEditIssue = useCanEditIssue(projectId);
+  // Sửa tại chỗ trên dòng (điểm/ưu tiên): callback + đối tượng ổn định để `IssueRow` (memo) không vẽ lại thừa.
+  const { data: meta } = useProjectMeta(key);
+  const patchIssue = useUpdateIssue(projectId);
+  const mutateIssue = patchIssue.mutate;
+  const onEditPoints = useCallback(
+    (issue: IssueDto, value: number | null) =>
+      mutateIssue(
+        { id: issue.id, key: issue.key, patch: { storyPoints: value }, version: issue.version },
+        { onError: (e) => toast.error(apiErrorMessage(e)) },
+      ),
+    [mutateIssue],
+  );
+  const onEditPriority = useCallback(
+    (issue: IssueDto, priority: PriorityDto | null) =>
+      mutateIssue(
+        {
+          id: issue.id,
+          key: issue.key,
+          patch: { priorityId: priority?.id ?? null },
+          version: issue.version,
+          optimistic: { priority },
+        },
+        { onError: (e) => toast.error(apiErrorMessage(e)) },
+      ),
+    [mutateIssue],
+  );
+  const rowEdit = useMemo<RowEdit>(
+    () => ({
+      priorities: meta?.priorities ?? NO_PRIORITIES,
+      sprints,
+      onEditPoints,
+      onEditPriority,
+    }),
+    [meta?.priorities, sprints, onEditPoints, onEditPriority],
+  );
   // Route kéo-thả theo guard của API (xem `backlogDragRoute`): rank = backlog:manage + issue:edit; move = issue:transition + (issue:edit | backlog:manage).
   const dragRoute = backlogDragRoute({
     backlogManage: canManageBacklog,
@@ -138,7 +178,6 @@ export function BacklogPage() {
   const completeSprint = useCompleteSprint(projectId ?? '');
   const move = useMoveIssue(projectId ?? '');
   const pending = usePendingMoves(projectId);
-  const bulkUpdate = useBulkUpdateIssues(projectId ?? '');
   const assigneeOptions = useAssigneeOptions(projectId);
 
   // Bộ lọc nhanh (dùng chung với board) — áp client-side trong mỗi section.
@@ -147,7 +186,6 @@ export function BacklogPage() {
 
   // Bulk select: id các việc đang chọn + cờ đang chạy batch (khóa thao tác).
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [dragging, setDragging] = useState<IssueDto | null>(null);
   // Phần tử cuộn của trang (dùng cho danh sách ảo hoá). Giữ bằng state để Section dài nhận được nó sau khi gắn DOM.
@@ -397,86 +435,31 @@ export function BacklogPage() {
 
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 
-  /**
-   * Áp `patch` cho các issue đã chọn tuần tự theo lô ≤ 100 (một request mỗi lô). `field` là trường bị đổi — giá trị cũ của nó được giữ
-   * để "Hoàn tác". Việc bị người khác sửa trước (conflicts) không làm hỏng cả lô, chỉ được đếm là chưa xong.
-   * Hoàn tác dùng version máy chủ trả về trong `updated`, gom theo giá trị cũ (mỗi giá trị cũ một request).
-   */
-  async function runBulk(field: 'assigneeId' | 'sprintId', patch: BulkIssuePatch, verb: string) {
-    const targets = (issues ?? []).filter((i) => selected.has(i.id));
-    if (targets.length === 0) return;
-    const prevValue = new Map(targets.map((i) => [i.id, i[field] ?? null]));
-    setBulkBusy(true);
-    try {
-      const result = await bulkUpdate.mutateAsync({
-        items: targets.map((i) => ({ id: i.id, version: i.version })),
-        patch,
-      });
-      const { updated, conflicts } = result;
-      clearSelection();
-
-      if (conflicts.length === 0) {
-        toast.success(`Đã ${verb} ${updated.length} việc.`, {
-          duration: 6000,
-          action: {
-            label: 'Hoàn tác',
-            onClick: () => {
-              void (async () => {
-                const groups = new Map<string | null, Array<{ id: string; version: number }>>();
-                for (const u of updated) {
-                  const value = prevValue.get(u.id) ?? null;
-                  groups.set(value, [
-                    ...(groups.get(value) ?? []),
-                    { id: u.id, version: u.version },
-                  ]);
-                }
-                try {
-                  let stuck = 0;
-                  let unsent = 0;
-                  let firstError: unknown;
-                  for (const [value, items] of groups) {
-                    const r = await bulkUpdate.mutateAsync({ items, patch: { [field]: value } });
-                    stuck += r.conflicts.length;
-                    unsent += r.unsent;
-                    firstError ??= r.error;
-                  }
-                  if (stuck > 0) {
-                    toast.warning(`Chưa hoàn tác được ${stuck} việc`, {
-                      description: bulkShortfallHint(stuck, unsent, rejectionReason(firstError)),
-                    });
-                  }
-                } catch (err) {
-                  toast.error(apiErrorMessage(err));
-                }
-              })();
-            },
-          },
-        });
-      } else {
-        toast.warning(`Đã ${verb} ${updated.length} việc, còn ${conflicts.length} việc chưa xong`, {
-          description: bulkShortfallHint(
-            conflicts.length,
-            result.unsent,
-            rejectionReason(result.error),
-          ),
-        });
-      }
-    } catch (err) {
-      toast.error(apiErrorMessage(err));
-    } finally {
-      setBulkBusy(false);
-    }
-  }
-
-  // Gán người phụ trách (dùng cho "Gán cho tôi" và "Đổi người phụ trách").
-  function bulkAssign(assigneeId: string | null) {
-    void runBulk('assigneeId', { assigneeId }, 'cập nhật');
-  }
-
-  // Chuyển sprint (sprintId = null → Backlog).
-  function bulkMoveToSprint(sprintId: string | null) {
-    void runBulk('sprintId', { sprintId }, 'chuyển');
-  }
+  // Thao tác hàng loạt (Gán/Chuyển sprint/Điểm/Ưu tiên/Nhãn/Epic/Trạng thái) + Hoàn tác — xem `useBulkEdit`.
+  const { data: workflows } = useWorkflows();
+  const { data: projectLabels } = useProjectLabels(projectId);
+  const bulk = useBulkEdit({
+    projectId: projectId ?? '',
+    issues,
+    selected,
+    clearSelection,
+    workflows,
+    sprints,
+  });
+  const selectedIssues = useMemo(
+    () => (issues ?? []).filter((i) => selected.has(i.id)),
+    [issues, selected],
+  );
+  const canEditAll = selectedIssues.every(canEditIssue); // điểm cùng điều kiện với ưu tiên/nhãn/epic (B7)
+  const statusOptions = useMemo(
+    () => commonNextStatuses(workflows, selectedIssues),
+    [workflows, selectedIssues],
+  );
+  // Epic chọn được: loại chính các việc đang chọn (máy chủ 422 nếu epic nằm trong lô).
+  const epicOptions = useMemo(
+    () => epicChoices(issues ?? [], '').filter((e) => !selected.has(e.id)),
+    [issues, selected],
+  );
 
   if (pe) {
     return (
@@ -644,7 +627,14 @@ export function BacklogPage() {
           onDragCancel={onDragCancel}
           accessibility={{ announcements, screenReaderInstructions: SCREEN_READER_INSTRUCTIONS }}
         >
-          <div ref={setScrollEl} className="flex-1 space-y-4 overflow-y-auto p-6">
+          <div
+            ref={setScrollEl}
+            // Có thanh hàng loạt: chừa đáy danh sách trên mobile để cuộn dòng cuối lên khỏi thanh.
+            className={cn(
+              'flex-1 space-y-4 overflow-y-auto p-6',
+              selected.size > 0 && 'max-sm:pb-28',
+            )}
+          >
             {visibleSprints.map((sprint) => {
               const sprintIssues = bySprint.get(sprint.id) ?? [];
               const notDone = sprintIssues.filter((i) => i.status.category !== 'DONE').length;
@@ -670,6 +660,8 @@ export function BacklogPage() {
                   quickAddSprintId={sprint.state !== 'CLOSED' ? sprint.id : undefined}
                   selectable={canAssign || canManageBacklog}
                   canDrag={canDragIssue}
+                  rowEdit={rowEdit}
+                  canEditRow={canEditIssue}
                   selected={selected}
                   onToggleSelect={toggleSelect}
                   onToggleSection={toggleSelectSection}
@@ -780,6 +772,8 @@ export function BacklogPage() {
               quickAddSprintId={null}
               selectable={canAssign || canManageBacklog}
               canDrag={canDragIssue}
+              rowEdit={rowEdit}
+              canEditRow={canEditIssue}
               selected={selected}
               onToggleSelect={toggleSelect}
               onToggleSection={toggleSelectSection}
@@ -836,15 +830,26 @@ export function BacklogPage() {
                 count={selected.size}
                 assigneeOptions={assigneeOptions}
                 sprints={visibleSprints}
-                busy={bulkBusy}
+                busy={bulk.busy}
                 canAssign={canAssign}
                 canManageBacklog={canManageBacklog}
                 onAssignToMe={() => {
-                  if (currentUserId) bulkAssign(currentUserId);
+                  if (currentUserId) void bulk.assign(currentUserId);
                 }}
-                onAssignTo={(userId) => bulkAssign(userId)}
-                onMoveToSprint={(sprintId) => bulkMoveToSprint(sprintId)}
+                onAssignTo={(userId) => void bulk.assign(userId)}
+                onMoveToSprint={(sprintId) => void bulk.moveToSprint(sprintId)}
                 onClear={clearSelection}
+                canEdit={canEditAll}
+                canTransition={can('issue:transition')}
+                priorities={meta?.priorities ?? NO_PRIORITIES}
+                epics={epicOptions}
+                labels={projectLabels ?? NO_LABELS}
+                statusOptions={statusOptions}
+                onSetPoints={(points) => void bulk.setPoints(points)}
+                onSetPriority={(id) => void bulk.setPriority(id)}
+                onAddLabel={(id) => void bulk.addLabel(id)}
+                onSetEpic={(id) => void bulk.setEpic(id)}
+                onSetStatus={(id) => void bulk.setStatus(id)}
               />
             )}
           </div>
@@ -1024,6 +1029,8 @@ function Section({
   emptyDescription,
   readOnly,
   canDrag,
+  rowEdit,
+  canEditRow,
   projectKey,
   projectId,
   canCreate,
@@ -1054,6 +1061,9 @@ function Section({
   readOnly?: boolean;
   /** Có được kéo dòng này không (có route kéo-thả theo quyền — `backlogDragRoute`; không có thì dòng bị vô hiệu kéo). */
   canDrag?: (issue: IssueDto) => boolean;
+  /** Sửa tại chỗ điểm/ưu tiên trên dòng (không truyền cho sprint đã đóng). */
+  rowEdit?: RowEdit;
+  canEditRow?: (issue: IssueDto) => boolean;
   projectKey?: string;
   projectId?: string;
   canCreate?: boolean;
@@ -1093,6 +1103,8 @@ function Section({
       onToggleSelect={onToggleSelect}
       onOpen={onOpen}
       peeked={peekedKey === issue.key}
+      edit={readOnly ? undefined : rowEdit}
+      canEdit={!!canEditRow?.(issue)}
     />
   );
   return (

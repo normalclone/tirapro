@@ -23,7 +23,6 @@ import { hasDraftText, isOverlayOpen, shouldClosePeekOnEscape } from '@/lib/hotk
 import { useIssue } from '../api';
 import { ActivityTabs } from '../ActivityTabs';
 import { LazyPanel } from '../LazyPanel';
-import { useCanEditRestricted } from '../useCanEditRestricted';
 import { useIssueTransitions } from '../useIssueTransitions';
 import { InlineSummary } from './InlineSummary';
 
@@ -151,7 +150,6 @@ function PeekBody({ issueKey, onClose }: { issueKey: string; onClose: () => void
 function PeekContent({ issue }: { issue: IssueDto }) {
   const can = useCanIn(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
-  const canEditRestricted = useCanEditRestricted(issue);
   const { nextStatuses, requestTransition, dialog, isPending } = useIssueTransitions(issue);
   const [tab, setTab] = useState<'comments' | 'history'>('comments');
   const canTransition = can('issue:transition');
@@ -208,7 +206,7 @@ function PeekContent({ issue }: { issue: IssueDto }) {
         <span className="text-faint" aria-hidden>
           ·
         </span>
-        <IssueStoryPointsInline issue={issue} canEditRestricted={canEditRestricted} />
+        <IssueStoryPointsInline issue={issue} canEdit={canEditThis} />
       </div>
 
       <EpicParentField issue={issue} />

@@ -153,6 +153,15 @@ export function useAddComment(issueId: string) {
   });
 }
 
+interface UpdateIssueVars {
+  id: string;
+  key: string;
+  patch: Record<string, unknown>;
+  version: number;
+  /** Phần vá lạc quan cho field quan hệ cần cả đối tượng (vd `severity` tra từ meta, `priority`) — KHÔNG gửi lên máy chủ; bản thật thay khi trả về. */
+  optimistic?: Partial<IssueDto>;
+}
+
 /**
  * `opts.silent`: tắt toast lỗi chung của MutationCache — dùng khi gọi hàng loạt (Promise.allSettled)
  * và tự gom lỗi thành MỘT thông báo tổng kết.
@@ -161,20 +170,15 @@ export function useUpdateIssue(projectId: string | undefined, opts?: { silent?: 
   const qc = useQueryClient();
   return useMutation({
     meta: { silent: opts?.silent },
-    mutationFn: (v: {
-      id: string;
-      key: string;
-      patch: Record<string, unknown>;
-      version: number;
-      /** Phần vá lạc quan cho field quan hệ (vd `severity` tra từ meta) — KHÔNG gửi lên máy chủ; bản thật thay khi trả về. */
-      optimistic?: Partial<IssueDto>;
-    }) => api.patch<IssueDto>(`/issues/${v.id}`, { ...v.patch, version: v.version }),
+    mutationFn: (v: UpdateIssueVars) =>
+      api.patch<IssueDto>(`/issues/${v.id}`, { ...v.patch, version: v.version }),
+    // `optimistic`: phần vá lạc quan cho trường quan hệ cần cả đối tượng (vd `priority`) — KHÔNG gửi lên máy chủ.
     onMutate: (v) =>
       optimisticPatchIssue(
         qc,
         projectId,
         v.id,
-        { ...scalarIssuePatch(v.patch), ...v.optimistic },
+        { ...scalarIssuePatch(v.patch), ...(v.optimistic ?? {}) },
         v.key,
       ),
     onSuccess: (res) => {

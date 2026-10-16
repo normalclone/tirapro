@@ -36,3 +36,17 @@ export function canEditIssue(
   if (!userId || !hasPermission(ctx, 'issue:edit:own')) return false;
   return issue.reporterId === userId || issue.assigneeId === userId || issue.createdById === userId;
 }
+
+/**
+ * Đọc ô nhập điểm ước lượng: rỗng = xoá điểm (`null`); chấp nhận dấu phẩy thập phân (`2,5`); 0..1000 (khớp schema máy chủ).
+ * Quyền SỬA điểm = `canEditIssue` — không có luật riêng (B7).
+ */
+export function parsePointsInput(
+  raw: string,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  const s = raw.trim().replace(',', '.');
+  if (s === '') return { ok: true, value: null };
+  if (!/^\d+(\.\d+)?$/.test(s)) return { ok: false, error: 'Điểm phải là một con số, ví dụ 3' };
+  const n = Number(s);
+  return n > 1000 ? { ok: false, error: 'Điểm tối đa là 1000' } : { ok: true, value: n };
+}

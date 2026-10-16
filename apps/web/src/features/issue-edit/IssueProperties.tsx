@@ -8,6 +8,8 @@ import { useCanEditIssue } from '@/features/projects/permissions';
 import { useProjectSprints, useMoveToSprint } from '@/features/backlog/api';
 import { BACKLOG_LABEL, buildSprintOptions } from './sprintOptions';
 import { useUpdateIssue } from '@/features/issues/api';
+import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { ParticipantsRow } from '@/features/issue-extras/ParticipantsRow';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -21,6 +23,7 @@ import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { isBugType } from './severity';
 import { dueState } from '@/components/ui/DueBadge';
 import { apiErrorMessage } from '@/lib/api';
+import { parsePointsInput } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { fmtDateTime, fmtRelative, toDateTimeInput } from '@/lib/dateFormat';
 
@@ -364,22 +367,20 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
 }
 
 /** Điểm ước lượng dạng label mờ ("N điểm"), bấm mới sửa; khoá nếu không có quyền. */
-export function IssueStoryPointsInline({
-  issue,
-  canEditRestricted,
-}: {
-  issue: IssueDto;
-  canEditRestricted: boolean;
-}) {
+export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
   const patch = useUpdateIssue(issue.projectId);
+  const { data: sprints } = useProjectSprints(issue.projectId);
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
 
-  function save(raw: string) {
+  async function save(raw: string) {
     setEditing(false);
-    const next = raw.trim() === '' ? null : Number(raw);
-    if (next !== null && Number.isNaN(next))
-      return toast.error('Điểm ước lượng phải là một con số, ví dụ 3');
+    const r = parsePointsInput(raw); // MỘT luật cho mọi nơi nhập điểm (dòng Việc chờ, hàng loạt, trang công việc)
+    if (!r.ok) return toast.error(r.error);
+    const next = r.value;
     if (next !== issue.storyPoints) {
+      const w = pointsEditWarning(issue, sprints);
+      if (w && !(await confirm(pointsConfirmOptions(w)))) return;
       patch.mutate(
         { id: issue.id, key: issue.key, patch: { storyPoints: next }, version: issue.version },
         { onError: (e) => toast.error(apiErrorMessage(e)) },
@@ -387,18 +388,20 @@ export function IssueStoryPointsInline({
     }
   }
 
-  if (editing && canEditRestricted) {
+  if (editing && canEdit) {
     return (
       <Input
         type="number"
         min={0}
-        inputMode="numeric"
+        max={1000}
+        step="any"
+        inputMode="decimal"
         autoFocus
         className="h-6 w-16 text-sm"
         aria-label="Điểm ước lượng"
         defaultValue={issue.storyPoints ?? ''}
         disabled={patch.isPending}
-        onBlur={(e) => save(e.target.value)}
+        onBlur={(e) => void save(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
           if (e.key === 'Escape') {
@@ -412,12 +415,9 @@ export function IssueStoryPointsInline({
 
   const text = issue.storyPoints != null ? `${issue.storyPoints} điểm` : null;
   const tip = 'Điểm ước lượng — con số ước chừng độ lớn của việc, càng lớn càng tốn công.';
-  if (!canEditRestricted) {
+  if (!canEdit) {
     return (
-      <span
-        className="text-sm text-muted"
-        title={`${tip} Chỉ người tạo việc hoặc quản trị mới sửa được.`}
-      >
+      <span className="text-sm text-muted" title={`${tip} Bạn không có quyền sửa công việc này.`}>
         {text ?? '—'}
       </span>
     );
