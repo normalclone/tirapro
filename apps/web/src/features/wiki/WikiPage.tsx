@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown,
   ArrowUp,
@@ -15,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { setTaskChecked } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
@@ -28,6 +31,7 @@ import { pageContainer } from '@/components/layout/page';
 import { apiErrorCode, apiErrorMessage } from '@/lib/api';
 import { currentProjectKey } from '@/lib/currentProject';
 import { cn } from '@/lib/utils';
+import { keys } from '@/lib/queryKeys';
 import { useAuth } from '@/stores/auth';
 import {
   WIKI_SCOPE_SHARED,
@@ -40,6 +44,7 @@ import {
   useWikiSearch,
   useWikiTree,
   type WikiNode,
+  type WikiPageDetail,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { fmtDateTime } from '@/lib/dateFormat';
@@ -100,7 +105,25 @@ export function WikiPage() {
     pid !== null && projectCanWrite(pid) === undefined;
   const scopeLoading = !scopeReady || pageWriteLoading(scopeProjectId);
   const [q, setQ] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Trang đang xem nằm trên URL (`?page=<id>`) để chia sẻ/quay lại được; `edit=1` = mở thẳng chế độ sửa.
+  const [sp, setSp] = useSearchParams();
+  const selectedId = sp.get('page');
+  const wantEdit = sp.get('edit') === '1';
+  const setSelectedId = useCallback(
+    (id: string | null) =>
+      setSp(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id) next.set('page', id);
+          else next.delete('page');
+          next.delete('edit');
+          return next;
+        },
+        { replace: true },
+      ),
+    [setSp],
+  );
+  const qc = useQueryClient();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [treeOpen, setTreeOpen] = useState(false);
 
@@ -131,7 +154,15 @@ export function WikiPage() {
   useEffect(() => {
     if (selectedId || !tree.data?.length) return;
     setSelectedId(tree.data[0]!.id);
-  }, [tree.data, selectedId]);
+  }, [tree.data, selectedId, setSelectedId]);
+
+  // Vào thẳng một trang ở phạm vi khác phạm vi mặc định (vd từ khối "Tài liệu liên quan") → chuyển cây sang phạm vi đó.
+  useEffect(() => {
+    const pg = page.data;
+    if (!pg || pg.id !== selectedId || scopeChoice !== null || !scopeReady) return;
+    const pageScope = pg.projectId ?? WIKI_SCOPE_SHARED;
+    if (scope !== '' && scope !== pageScope) setScopeChoice(pageScope);
+  }, [page.data, selectedId, scopeChoice, scopeReady, scope]);
 
   // Trang đang chọn nằm sâu trong cây → mở sẵn các nhánh cha.
   useEffect(() => {
@@ -179,6 +210,23 @@ export function WikiPage() {
     setEditIssue(null);
     setEditing(true);
   }
+
+  // `?edit=1`: khi trang về và người xem có quyền viết thì vào chế độ sửa MỘT lần rồi xoá `edit` khỏi URL.
+  const loaded = page.data && page.data.id === selectedId ? page.data : undefined;
+  const loadedCanWrite = loaded ? canWrite(loaded.projectId) : false;
+  const loadedWriteLoading = loaded ? pageWriteLoading(loaded.projectId) : true;
+  useEffect(() => {
+    if (!wantEdit || !loaded || editing || loadedWriteLoading) return;
+    if (loadedCanWrite) startEditing(loaded);
+    setSp(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('edit');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [wantEdit, loaded, editing, loadedCanWrite, loadedWriteLoading, setSp]);
 
   function open(id: string) {
     setSelectedId(id);
@@ -234,6 +282,34 @@ export function WikiPage() {
       if (code === 'VERSION_CONFLICT') setEditIssue('conflict');
       else if (code === 'NOT_FOUND') setEditIssue('deleted');
       else toast.error(generic);
+    }
+  }
+
+  /** Tick một ô `- [ ]` ngay trên trang đọc: lưu có OCC (`version`); xung đột → tải lại bản mới để người dùng tick lại. */
+  async function toggleTask(
+    pg: Pick<WikiPageDetail, 'id' | 'body' | 'version'>,
+    index: number,
+    checked: boolean,
+    itemText: string,
+  ) {
+    const next = setTaskChecked(pg.body, index, checked, itemText);
+    if (next === null) {
+      toast.error('Nội dung vừa thay đổi — hãy kiểm tra lại rồi tick lại.');
+      return;
+    }
+    qc.setQueryData<WikiPageDetail>(keys.wiki.page(pg.id), (old) =>
+      old ? { ...old, body: next } : old,
+    );
+    try {
+      await update.mutateAsync({ id: pg.id, body: next, expectedVersion: pg.version });
+    } catch (e) {
+      void qc.invalidateQueries({ queryKey: keys.wiki.page(pg.id) });
+      const generic = apiErrorMessage(e);
+      toast.error(
+        apiErrorCode(e) === 'VERSION_CONFLICT'
+          ? 'Trang vừa được người khác sửa — đã tải bản mới, hãy tick lại.'
+          : generic,
+      );
     }
   }
 
@@ -524,14 +600,15 @@ export function WikiPage() {
                         onSubmit={() => void save()}
                         onCancel={stopEditing}
                         rows={18}
-                        placeholder="Viết nội dung ở đây. Hỗ trợ Markdown cơ bản: # tiêu đề, **đậm**, - gạch đầu dòng…"
+                        placeholder="Viết nội dung ở đây. Markdown cơ bản: # tiêu đề, **đậm**, - gạch đầu dòng… Gõ mã công việc (vd DEMO-STORY-3) để liên kết."
                       />
                       <div className="flex items-center gap-2">
                         <span
                           className="mr-auto text-xs text-faint"
                           title="Markdown là cách viết chữ đậm, tiêu đề, danh sách bằng ký hiệu — ví dụ **đậm** hoặc # Tiêu đề."
                         >
-                          Hỗ trợ Markdown cơ bản · Ctrl/⌘+Enter để lưu · Esc để huỷ
+                          Markdown cơ bản · Gõ mã công việc (vd DEMO-STORY-3) để liên kết ·
+                          Ctrl/⌘+Enter để lưu · Esc để huỷ
                         </span>
                         <Button size="sm" variant="ghost" onClick={stopEditing}>
                           Huỷ
@@ -591,7 +668,15 @@ export function WikiPage() {
                       </div>
 
                       {pg.body.trim() ? (
-                        <MarkdownView text={pg.body} />
+                        <MarkdownView
+                          text={pg.body}
+                          issueRefs={Object.fromEntries(pg.issues.map((i) => [i.key, i]))}
+                          onToggleTask={
+                            canWrite(pg.projectId) && !update.isPending
+                              ? (i, c, t) => void toggleTask(pg, i, c, t)
+                              : undefined
+                          }
+                        />
                       ) : (
                         <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-faint">
                           Trang này chưa có nội dung.

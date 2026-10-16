@@ -40,6 +40,7 @@ import { IssueRelations } from '@/features/tree/IssueRelations';
 import { CustomFieldsPanel } from '@/features/issue-fields/CustomFieldsPanel';
 import { AttachmentsPanel } from '@/features/attachments/AttachmentsPanel';
 import { LinksPanel } from '@/features/issue-widgets/LinksPanel';
+import { RelatedDocsPanel } from '@/features/issue-widgets/RelatedDocsPanel';
 import { ChecklistPanel } from '@/features/issue-extras/ChecklistPanel';
 import { IssueSlaBadge } from '@/features/sla/IssueSlaBadge';
 import { WatchButton } from '@/features/issue-widgets/WatchButton';
@@ -765,6 +766,9 @@ export function IssueDetailPage() {
 
                   <LazyPanel minHeight={64}>
                     <LinksPanel issueId={issue.id} canEdit={canEditThis} />
+                  </LazyPanel>
+                  <LazyPanel minHeight={64}>
+                    <RelatedDocsPanel issue={issue} />
                   </LazyPanel>
                   <LazyPanel minHeight={64}>
                     <AttachmentsPanel issueId={issue.id} canEdit={canEditThis} />

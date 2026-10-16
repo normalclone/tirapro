@@ -13,6 +13,25 @@ export interface WikiNode {
   children: WikiNode[];
 }
 
+/** Công việc được nhắc trong trang wiki — máy chủ đã lọc theo quyền xem của người đọc. */
+export interface WikiIssueRef {
+  id: string;
+  key: string;
+  summary: string;
+  typeName: string;
+  statusName: string;
+  statusCategory: 'TODO' | 'IN_PROGRESS' | 'DONE';
+}
+
+/** Trang wiki nhắc tới một công việc (khối "Tài liệu liên quan"). */
+export interface WikiByIssue {
+  id: string;
+  title: string;
+  projectId: string | null;
+  projectKey: string | null;
+  updatedAt: string;
+}
+
 export interface WikiPageDetail {
   id: string;
   workspaceId: string;
@@ -26,6 +45,8 @@ export interface WikiPageDetail {
   createdBy: { id: string; displayName: string } | null;
   updatedBy: { id: string; displayName: string } | null;
   breadcrumb: { id: string; title: string }[];
+  /** Công việc còn sống, người đọc xem được, có mã nằm trong nội dung trang. */
+  issues: WikiIssueRef[];
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +97,14 @@ export function useWikiPage(id: string | null) {
   });
 }
 
+/** Các trang wiki nhắc tới công việc `issueId`. */
+export function useIssueDocs(issueId: string) {
+  return useQuery({
+    queryKey: keys.wiki.byIssue(issueId),
+    queryFn: async () => (await api.get<WikiByIssue[]>(`/wiki/by-issue/${issueId}`)).data,
+  });
+}
+
 /** Người quản trị có thể cấp quyền viết / xoá trang ở phạm vi `scope` (rỗng = cấp workspace). Chỉ gọi khi `enabled`. */
 export function useWikiAdmins(scope: string, enabled: boolean) {
   return useQuery({
@@ -97,6 +126,7 @@ function useInvalidateWiki() {
   return (pageId?: string) => {
     void qc.invalidateQueries({ queryKey: keys.wiki.treeRoot });
     void qc.invalidateQueries({ queryKey: keys.wiki.searchRoot });
+    void qc.invalidateQueries({ queryKey: keys.wiki.byIssueRoot });
     if (pageId) void qc.invalidateQueries({ queryKey: keys.wiki.page(pageId) });
   };
 }

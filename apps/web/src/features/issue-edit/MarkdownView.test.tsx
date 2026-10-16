@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { keys } from '@/lib/queryKeys';
 import { MarkdownView } from './MarkdownView';
@@ -57,5 +58,37 @@ describe('MarkdownView — an toàn đầu ra (không dangerouslySetInnerHTML)',
     expect(out).toContain('@Trang (Tester)');
     expect(out).not.toContain('@Admin');
     expect(out).toContain('@Lạ'); // không tìm thấy → tên trong token
+  });
+});
+
+describe('MarkdownView — chip công việc (issueRefs)', () => {
+  const ref = {
+    id: 'i1',
+    key: 'DEMO-STORY-3',
+    summary: 'Đăng nhập bằng email',
+    typeName: 'Story',
+    statusName: 'Đang làm',
+    statusCategory: 'IN_PROGRESS' as const,
+  };
+  const withRefs = (text: string, refs?: Record<string, typeof ref>) =>
+    renderToStaticMarkup(
+      <MemoryRouter>
+        <QueryClientProvider client={new QueryClient()}>
+          <MarkdownView text={text} issueRefs={refs} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+  it('mã đã xác nhận → liên kết /issue/:key; mã lạ (UTF-8) giữ là chữ', () => {
+    const out = withRefs('Xem DEMO-STORY-3 và UTF-8', { 'DEMO-STORY-3': ref });
+    expect(out).toContain('href="/issue/DEMO-STORY-3"');
+    expect(out).toContain('Đăng nhập bằng email');
+    expect(out).not.toContain('href="/issue/UTF-8"');
+    expect(out).toContain('UTF-8');
+  });
+
+  it('không truyền issueRefs → mã là chữ thường; mã trong `code` không thành chip', () => {
+    expect(withRefs('Xem DEMO-STORY-3')).not.toContain('href=');
+    expect(withRefs('`DEMO-STORY-3`', { 'DEMO-STORY-3': ref })).not.toContain('href=');
   });
 });
