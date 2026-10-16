@@ -285,7 +285,9 @@ export class SprintsService {
     const start = 'startDate' in data ? (data.startDate as Date | null) : sprint.startDate;
     const end = 'endDate' in data ? (data.endDate as Date | null) : sprint.endDate;
     if (start && end && end < start)
-      throw new BusinessRuleException('Ngày kết thúc phải sau ngày bắt đầu — hãy chọn lại ngày');
+      throw new BusinessRuleException(
+        'Ngày kết thúc không được trước ngày bắt đầu — hãy chọn lại ngày',
+      );
     // Có điều kiện theo state đã đọc: sprint vừa được start/complete/xoá giữa chừng thì không ghi đè.
     const { count } = await this.prisma.sprint.updateMany({
       where: { id: sprintId, state: sprint.state, deletedAt: null },

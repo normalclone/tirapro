@@ -272,10 +272,7 @@ export function DateInput({
  * Xoá trống ô giờ rồi rời ô → hiển thị khôi phục giờ đang có trong `value` (không bao giờ hiện trống mà vẫn gửi giờ cũ).
  * Giờ sai/dở dang: viền đỏ + dòng "Giờ chưa đúng (HH:mm)" + `customValidity`, giữ chữ để sửa.
  */
-export interface DateTimeInputProps extends Omit<
-  DateInputProps,
-  'min' | 'max' | 'onCommit' | 'onErrorChange'
-> {
+export interface DateTimeInputProps extends Omit<DateInputProps, 'onCommit' | 'onErrorChange'> {
   onCommit?: (isoLocal: string) => void;
   /** Giờ mặc định khi vừa chọn ngày mà chưa có giờ (mặc định 17:00 = cuối giờ làm việc). */
   defaultTime?: string;
@@ -288,6 +285,8 @@ export function DateTimeInput({
   defaultTime = '17:00',
   id,
   ariaLabel,
+  min,
+  max,
   required,
   disabled,
   className,
@@ -373,6 +372,8 @@ export function DateTimeInput({
             value={split.date}
             onChange={handleDate}
             onErrorChange={setDateErr}
+            min={min}
+            max={max}
             required={required}
             disabled={disabled}
           />

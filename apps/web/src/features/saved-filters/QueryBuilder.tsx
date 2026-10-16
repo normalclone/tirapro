@@ -15,6 +15,7 @@ import {
 } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
@@ -546,13 +547,14 @@ function DateValueControl({ value, onChange }: { value: string; onChange: (v: st
         <option value={ABS_SENTINEL}>Ngày cụ thể…</option>
       </SelectField>
       {absolute && (
-        <Input
-          type="date"
-          aria-label="Ngày cụ thể"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-40 text-sm"
-        />
+        <div className="w-44">
+          <DateInput
+            ariaLabel="Ngày cụ thể"
+            value={value}
+            onChange={onChange}
+            className="text-sm"
+          />
+        </div>
       )}
     </div>
   );

@@ -13,6 +13,7 @@ import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateTimeInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
@@ -24,6 +25,7 @@ import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
 import { useProjectIssues } from './api';
 import { epicChoices, parentChoices } from '@/lib/epic';
+import { toDateInput } from '@/lib/dateFormat';
 import { TokenTitleInput } from './TokenTitleInput';
 import {
   changedTokenFields,
@@ -672,12 +674,12 @@ export function CreateIssueModal() {
               hint="(tùy chọn)"
               title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
             >
-              <Input
-                type="datetime-local"
+              <DateTimeInput
                 value={due}
-                onChange={(e) => setDue(e.target.value)}
-                className="text-sm"
-                aria-label="Hạn hoàn thành"
+                onChange={setDue}
+                min={toDateInput(new Date())}
+                defaultTime="17:00"
+                ariaLabel="Hạn hoàn thành"
               />
             </Field>
           </div>

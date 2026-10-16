@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { Users } from 'lucide-react';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
-import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
 import { pageContainer } from '@/components/layout/page';
@@ -191,18 +191,16 @@ export function ResourcesPage() {
           >
             Xem từ tuần chứa ngày
           </span>
-          <Input
-            type="date"
-            value={startWeek}
-            onChange={(e) =>
-              setStartWeek(
-                e.target.value
-                  ? isoDay(mondayOf(new Date(`${e.target.value}T00:00:00`)))
-                  : startWeek,
-              )
-            }
-            className="h-9 w-[10.5rem] text-sm"
-          />
+          <div className="w-[10.5rem]">
+            <DateInput
+              ariaLabel="Xem từ tuần chứa ngày"
+              value={startWeek}
+              onChange={(iso) =>
+                setStartWeek(iso ? isoDay(mondayOf(new Date(`${iso}T00:00:00`))) : startWeek)
+              }
+              className="h-9 text-sm"
+            />
+          </div>
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted">Số tuần hiển thị</span>

@@ -5,6 +5,7 @@ import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
@@ -337,12 +338,7 @@ function VersionEditRow({
       </div>
       <div className="w-40">
         <label className="mb-1 block text-xs font-medium text-muted">Ngày phát hành</label>
-        <Input
-          type="date"
-          aria-label="Ngày phát hành"
-          value={releaseDate}
-          onChange={(e) => setReleaseDate(e.target.value)}
-        />
+        <DateInput ariaLabel="Ngày phát hành" value={releaseDate} onChange={setReleaseDate} />
       </div>
       <div className="flex items-center gap-1">
         <Button size="icon" onClick={save} loading={saving} title="Lưu">

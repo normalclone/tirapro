@@ -7,6 +7,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Skeleton } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
@@ -419,13 +420,7 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
               <label className="mb-1 block text-xs font-medium text-muted" htmlFor="ms-date">
                 Ngày phải đạt
               </label>
-              <Input
-                id="ms-date"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="text-sm"
-              />
+              <DateInput id="ms-date" value={dueDate} onChange={setDueDate} className="text-sm" />
             </div>
             <div className="flex shrink-0 gap-1.5 pb-1.5">
               {MILESTONE_COLORS.map((c, i) => (

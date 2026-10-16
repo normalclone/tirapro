@@ -4,6 +4,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { useRetained } from '@/lib/useRetained';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useProjects } from '@/features/projects/api';
@@ -224,20 +225,10 @@ export function ContractEditorModal({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Ngày bắt đầu" hint="(tùy chọn)" htmlFor="contract-start">
-            <Input
-              id="contract-start"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
+            <DateInput id="contract-start" value={startDate} onChange={setStartDate} />
           </Field>
           <Field label="Ngày kết thúc" hint="(tùy chọn)" htmlFor="contract-end">
-            <Input
-              id="contract-end"
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
+            <DateInput id="contract-end" value={endDate} onChange={setEndDate} />
           </Field>
         </div>
         {dateOrderInvalid && (

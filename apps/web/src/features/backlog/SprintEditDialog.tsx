@@ -5,6 +5,7 @@ import type { SprintDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { apiErrorMessage } from '@/lib/api';
 import { useDeleteSprint, useUpdateSprint } from './api';
@@ -39,7 +40,8 @@ export function SprintEditDialog({
   const [end, setEnd] = useState(toDateInput(sprint.endDate));
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const dateError = start && end && end < start ? 'Ngày kết thúc phải sau ngày bắt đầu.' : null;
+  const dateError =
+    start && end && end < start ? 'Ngày kết thúc không được trước ngày bắt đầu.' : null;
   const dirty =
     (future && name.trim() !== sprint.name) ||
     goal.trim() !== (sprint.goal ?? '') ||
@@ -151,12 +153,11 @@ export function SprintEditDialog({
               <label htmlFor="sprint-start" className="mb-1.5 block text-sm font-medium text-muted">
                 Ngày bắt đầu
               </label>
-              <Input
+              <DateInput
                 id="sprint-start"
-                type="date"
                 value={start}
                 disabled={!future}
-                onChange={(e) => setStart(e.target.value)}
+                onChange={setStart}
                 className="text-sm"
               />
             </div>
@@ -164,12 +165,11 @@ export function SprintEditDialog({
               <label htmlFor="sprint-end" className="mb-1.5 block text-sm font-medium text-muted">
                 Ngày kết thúc
               </label>
-              <Input
+              <DateInput
                 id="sprint-end"
-                type="date"
                 value={end}
                 min={start || undefined}
-                onChange={(e) => setEnd(e.target.value)}
+                onChange={setEnd}
                 className="text-sm"
               />
             </div>

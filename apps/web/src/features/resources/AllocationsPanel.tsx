@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
@@ -196,20 +197,18 @@ export function AllocationsPanel({
               />
             </Field>
             <Field label="Từ ngày" htmlFor="alloc-start">
-              <Input
+              <DateInput
                 id="alloc-start"
-                type="date"
                 value={form.startDate}
-                onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                onChange={(iso) => setForm({ ...form, startDate: iso })}
                 className="text-sm"
               />
             </Field>
             <Field label="Đến ngày" htmlFor="alloc-end">
-              <Input
+              <DateInput
                 id="alloc-end"
-                type="date"
                 value={form.endDate}
-                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                onChange={(iso) => setForm({ ...form, endDate: iso })}
                 className="text-sm"
               />
             </Field>

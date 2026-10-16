@@ -4,7 +4,7 @@ import { AUDIT_ACTION_LABEL, type AuditAction } from '@tirapro/types';
 import { pageContainer } from '@/components/layout/page';
 import { Avatar, Badge, EmptyState } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { LOCALE } from '@/lib/locale';
@@ -87,23 +87,23 @@ function AuditFilterBar({
       </div>
       <label className="flex flex-col gap-1 text-xs text-muted">
         Từ ngày
-        <Input
-          type="date"
-          value={filters.from}
-          max={filters.to || undefined}
-          onChange={(e) => onChange({ from: e.target.value })}
-          className="w-40"
-        />
+        <div className="w-44">
+          <DateInput
+            value={filters.from}
+            max={filters.to || undefined}
+            onChange={(iso) => onChange({ from: iso })}
+          />
+        </div>
       </label>
       <label className="flex flex-col gap-1 text-xs text-muted">
         Đến ngày
-        <Input
-          type="date"
-          value={filters.to}
-          min={filters.from || undefined}
-          onChange={(e) => onChange({ to: e.target.value })}
-          className="w-40"
-        />
+        <div className="w-44">
+          <DateInput
+            value={filters.to}
+            min={filters.from || undefined}
+            onChange={(iso) => onChange({ to: iso })}
+          />
+        </div>
       </label>
       {hasFilter && (
         <Button variant="ghost" size="sm" onClick={onClear}>

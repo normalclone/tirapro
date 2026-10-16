@@ -7,6 +7,7 @@ import type { IssueDto, WorklogDto } from '@tirapro/types';
 import { Avatar, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateTimeInput } from '@/components/ui/DateInput';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
@@ -373,11 +374,12 @@ function WorklogForm({
         <label htmlFor="wl-start" className="mb-1 block text-xs font-medium text-muted">
           Bắt đầu lúc
         </label>
-        <Input
+        <DateTimeInput
           id="wl-start"
-          type="datetime-local"
+          ariaLabel="Bắt đầu lúc"
           value={startedAt}
-          onChange={(e) => setStartedAt(e.target.value)}
+          onChange={setStartedAt}
+          defaultTime={toDateTimeInput(new Date()).slice(11)}
         />
       </div>
 

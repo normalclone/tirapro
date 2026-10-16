@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/Input';
+import { DateInput, DateTimeInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -129,17 +130,10 @@ function FieldEditor({
       return <TextAreaField id={id} value={asString(value)} onSave={onSave} />;
 
     case 'DATE':
-      return <DateField id={id} value={asString(value).slice(0, 10)} type="date" onSave={onSave} />;
+      return <DateField id={id} value={asString(value).slice(0, 10)} onSave={onSave} />;
 
     case 'DATETIME':
-      return (
-        <DateField
-          id={id}
-          value={toDateTimeInput(asString(value))}
-          type="datetime-local"
-          onSave={onSave}
-        />
-      );
+      return <DateTimeField id={id} value={toDateTimeInput(asString(value))} onSave={onSave} />;
 
     case 'CHECKBOX':
       return (
@@ -297,30 +291,59 @@ function TextAreaField({
   );
 }
 
+/** Lưu khi ô chốt giá trị (Enter / rời ô / chọn từ lịch) — không lưu mỗi phím gõ dở. */
+function saveDate(raw: string, onSave: (value: unknown) => void) {
+  if (raw === '') return onSave(null);
+  const d = new Date(raw);
+  if (!Number.isNaN(d.getTime())) onSave(d.toISOString());
+}
+
 function DateField({
   id,
   value,
-  type,
   onSave,
 }: {
   id: string;
   value: string;
-  type: 'date' | 'datetime-local';
   onSave: (value: unknown) => void;
 }) {
-  // Lưu ngay khi đổi; input date-native không cần debounce.
-  const handle = (raw: string) => {
-    if (raw === '') return onSave(null);
-    const d = new Date(raw);
-    if (!Number.isNaN(d.getTime())) onSave(d.toISOString());
-  };
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
   return (
-    <Input
+    <DateInput
       id={id}
-      type={type}
-      value={value}
-      onChange={(e) => handle(e.target.value)}
+      value={draft}
+      onChange={(iso) => {
+        setDraft(iso);
+        if (iso === '') saveDate('', onSave);
+      }}
+      onCommit={(iso) => saveDate(iso, onSave)}
       className="h-9 text-sm tabular"
+    />
+  );
+}
+
+function DateTimeField({
+  id,
+  value,
+  onSave,
+}: {
+  id: string;
+  value: string;
+  onSave: (value: unknown) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <DateTimeInput
+      id={id}
+      value={draft}
+      onChange={(v) => {
+        setDraft(v);
+        if (v === '') saveDate('', onSave);
+      }}
+      onCommit={(v) => saveDate(v, onSave)}
+      className="text-sm tabular"
     />
   );
 }
