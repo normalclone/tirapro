@@ -15,7 +15,9 @@ import {
   type IssueTreeNode,
   type SubtreeProgress,
 } from '@/lib/issueTree';
+import { rollupPoints } from '@/lib/epic';
 import { cn } from '@/lib/utils';
+import { pointsCell, type PointsRollup } from './pointsCell';
 
 /**
  * Bố cục cột dùng chung cho hàng tiêu đề (header) và mọi hàng dữ liệu, để các cột
@@ -70,6 +72,12 @@ export function TreePage() {
   const progressById = useMemo(() => buildProgressMap(issues ?? []), [issues]);
   const rows = useMemo(() => flatten(tree, collapsed), [tree, collapsed]);
   const parentIds = useMemo(() => collectParentIds(tree), [tree]);
+  // Điểm cộng dồn chỉ tính cho dòng có con (không quét toàn bộ mỗi lần vẽ).
+  const rollups = useMemo(() => {
+    const m = new Map<string, PointsRollup>();
+    for (const id of parentIds) m.set(id, rollupPoints(issues ?? [], id));
+    return m;
+  }, [issues, parentIds]);
 
   const allCollapsed = parentIds.size > 0 && collapsed.size >= parentIds.size;
 
@@ -145,7 +153,12 @@ export function TreePage() {
                 <span>Trạng thái</span>
                 <span>Người phụ trách</span>
                 <span>Ưu tiên</span>
-                <span className="text-right tabular">Điểm</span>
+                <span
+                  className="text-right tabular"
+                  title="Dòng có việc bên trong hiện điểm cộng dồn: đã xong / tổng"
+                >
+                  Điểm
+                </span>
               </div>
 
               <ul className="divide-y divide-border">
@@ -154,6 +167,7 @@ export function TreePage() {
                     key={node.issue.id}
                     node={node}
                     progress={progressById.get(node.issue.id)}
+                    rollup={rollups.get(node.issue.id) ?? null}
                     collapsed={collapsed.has(node.issue.id)}
                     onToggle={() => toggle(node.issue.id)}
                     onOpen={() => navigate(`/issue/${node.issue.key}`)}
@@ -171,12 +185,14 @@ export function TreePage() {
 function TreeRow({
   node,
   progress,
+  rollup,
   collapsed,
   onToggle,
   onOpen,
 }: {
   node: IssueTreeNode;
   progress?: SubtreeProgress;
+  rollup: PointsRollup | null;
   collapsed: boolean;
   onToggle: () => void;
   onOpen: () => void;
@@ -184,6 +200,7 @@ function TreeRow({
   const { issue, children, depth } = node;
   const hasChildren = children.length > 0;
   const showProgress = hasChildren && progress && progress.total > 0;
+  const cell = pointsCell(issue.storyPoints ?? null, rollup);
 
   return (
     <li
@@ -282,12 +299,10 @@ function TreeRow({
 
       {/* Cột 5 — Story points (số căn phải, chữ số tabular) */}
       <span
-        className={cn(
-          'text-right text-sm tabular',
-          issue.storyPoints != null ? 'text-ink-strong' : 'text-faint',
-        )}
+        className={cn('text-right text-sm tabular', cell.strong ? 'text-ink-strong' : 'text-faint')}
+        title={cell.title}
       >
-        {issue.storyPoints ?? '—'}
+        {cell.text}
       </span>
     </li>
   );
