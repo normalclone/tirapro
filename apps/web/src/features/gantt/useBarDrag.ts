@@ -23,6 +23,7 @@ interface Options<T extends { id: string }> {
 }
 
 interface Active<T> {
+  el: HTMLElement;
   item: T;
   mode: BarDragMode;
   pointerId: number;
@@ -50,6 +51,8 @@ export function useBarDrag<T extends { id: string }>({
   const suppressClick = useRef(false);
 
   const finish = useCallback(() => {
+    // Trả lại tooltip (đã tắt suốt cú kéo — xem onPointerDown).
+    active.current?.el.removeAttribute('data-no-tip');
     active.current = null;
     setPreview(null);
   }, []);
@@ -60,7 +63,10 @@ export function useBarDrag<T extends { id: string }>({
         if (e.button !== 0 || e.pointerType === 'touch' || !canDrag(item)) return;
         if (mode !== 'move') e.stopPropagation(); // tay nắm mép không kích hoạt kéo thân
         suppressClick.current = false;
+        // Nhấn xuống làm nút nhận focus → InstantTooltip sẽ bật tooltip che thanh đang kéo: tắt cho tới khi nhả.
+        e.currentTarget.setAttribute('data-no-tip', '');
         active.current = {
+          el: e.currentTarget,
           item,
           mode,
           pointerId: e.pointerId,

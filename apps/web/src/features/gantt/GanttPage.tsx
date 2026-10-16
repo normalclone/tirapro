@@ -782,7 +782,8 @@ export function GanttPage() {
                             if (drag.consumeClick()) return;
                             navigate(`/issue/${issue.key}`);
                           }}
-                          title={barTitle(s)}
+                          // Đang kéo: bỏ tooltip (che thanh + chữ đã cũ); chip ngày xem trước thay thế.
+                          title={drag.preview ? undefined : barTitle(s)}
                           aria-label={barTitle(s)}
                           aria-keyshortcuts={
                             draggable
@@ -828,7 +829,7 @@ export function GanttPage() {
                                   'hover:bg-[color-mix(in_oklab,var(--ink)_14%,transparent)]',
                                   edge === 'start' ? 'left-0' : 'right-0',
                                 )}
-                                style={{ width: HANDLE_W }}
+                                style={{ width: Math.min(HANDLE_W, Math.floor(width / 3)) }}
                               />
                             ))}
                           {width >= 70 && (
