@@ -26,7 +26,7 @@ function statItems(r: QaReport): StatItem[] {
     {
       label: 'Bug đang mở',
       value: r.totals.open,
-      sub: 'chưa ở trạng thái hoàn thành',
+      sub: 'chưa hoàn thành',
       title: 'Bug chưa ở nhóm trạng thái Hoàn thành, tính tại thời điểm xem (không phụ thuộc kỳ).',
     },
     {
@@ -43,7 +43,7 @@ function statItems(r: QaReport): StatItem[] {
       sub:
         r.closeTime.sample === 0
           ? 'chưa có bug đóng trong kỳ'
-          : `trung bình ${formatHours(r.closeTime.avgHours)} · ${r.closeTime.sample} bug`,
+          : `TB ${formatHours(r.closeTime.avgHours)} · ${r.closeTime.sample} bug`,
       title: CLOSE_TIME_HINT,
     },
     {
@@ -88,7 +88,7 @@ function SeverityBars({ rows }: { rows: QaReport['openBySeverity'] }) {
               className="h-full rounded-full"
               style={{
                 width: `${barWidthPct(s.open, max)}%`,
-                background: s.color ?? 'var(--faint)',
+                background: s.color ?? 'color-mix(in oklch, var(--faint) 45%, transparent)',
               }}
             />
           </div>
