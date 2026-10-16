@@ -300,12 +300,15 @@ export class RbacService {
   /**
    * Dự án riêng tư: người không phải thành viên dự án và không có `workspace:admin` nhận 404.
    * Dự án công khai / không tồn tại / đã xoá → qua (các kiểm tra khác lo phần 404 của chúng).
+   * `notFoundLabel`: nhãn của thông điệp 404 — người gọi truyền đúng nhãn của đường "không tồn tại" cùng loại để
+   * 404 của dự án riêng tư giống hệt 404 của tài nguyên không có thật (không lộ sự tồn tại).
    * Một truy vấn theo khoá chính; admin hệ thống đã được guard cho qua sớm.
    */
   async assertProjectVisible(
     userId: string,
     workspaceId: string,
     projectId: string,
+    notFoundLabel = 'Dự án',
   ): Promise<void> {
     const row = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null, isPrivate: true },
@@ -315,7 +318,7 @@ export class RbacService {
     if (row.memberships.length > 0) return;
     const perms = await this.getEffectivePermissions(userId, workspaceId);
     if (perms.has('workspace:admin')) return;
-    throw new NotFoundAppException('Dự án');
+    throw new NotFoundAppException(notFoundLabel);
   }
 
   /** Invalidate cache khi đổi vai trò của 1 user (gọi từ MembersModule). */

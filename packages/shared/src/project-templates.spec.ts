@@ -23,6 +23,14 @@ describe('PROJECT_TEMPLATES', () => {
       'Kanban mặc định',
     );
   });
+  it('mọi PROJECT_TEMPLATES[].key đều qua createProjectSchema (hai danh sách khoá không lệch)', () => {
+    for (const t of PROJECT_TEMPLATES) {
+      expect(
+        createProjectSchema.safeParse({ name: 'A', key: 'AB', templateKey: t.key }).success,
+        t.key,
+      ).toBe(true);
+    }
+  });
   it('createProjectSchema nhận templateKey hợp lệ và từ chối khoá lạ', () => {
     expect(
       createProjectSchema.safeParse({ name: 'A', key: 'AB', templateKey: 'requirements' }).success,

@@ -324,7 +324,7 @@ export function DocumentationPage() {
 
             <section className="mb-14">
               <H2 id="vai-tro">Hiểu về vai trò</H2>
-              <P><strong>Thành viên tính trên cả không gian làm việc</strong>: ai đã có tên ở đây là tự động tham gia <em>mọi dự án</em> bên trong — không cần thêm người vào từng dự án. Vai trò trong dự án <strong>mặc định</strong> suy từ vai trò chung (Quản trị chung → Quản trị dự án · Thành viên → Lập trình viên · Người xem → chỉ đọc), và có thể <strong>đặt riêng</strong> cho từng người ở từng dự án khi cần.</P>
+              <P><strong>Thành viên tính trên cả không gian làm việc</strong>: ai đã có tên ở đây là tự động tham gia <em>mọi dự án công khai</em> bên trong — không cần thêm người vào từng dự án. <strong>Dự án riêng tư</strong> (bật ở dự án → Cấu hình → Chung) là ngoại lệ: chỉ những người được thêm riêng ở Cấu hình → Thành viên (cùng quản trị không gian làm việc) mới thấy dự án đó. Vai trò trong dự án <strong>mặc định</strong> suy từ vai trò chung (Quản trị chung → Quản trị dự án · Thành viên → Lập trình viên · Người xem → chỉ đọc), và có thể <strong>đặt riêng</strong> cho từng người ở từng dự án khi cần.</P>
               <Cards>
                 <Card name="Vai trò cấp không gian làm việc" val="Quản trị chung · Thành viên · Người xem" desc="Quyền áp dụng cho toàn tổ chức" />
                 <Card name="Vai trò cấp Dự án" val="Quản trị · Developer · Reporter" desc="Mặc định suy từ vai trò chung; đặt riêng khi cần" />
@@ -493,7 +493,7 @@ export function DocumentationPage() {
               <H3>Thêm người mới &amp; phân quyền</H3>
               <Steps items={[
                 <>Vào trang <strong>Thành viên</strong> của không gian làm việc, chọn người có sẵn hoặc tạo tài khoản mới, rồi chọn vai trò chung cho họ.</>,
-                <>Xong! Họ đã tham gia mọi dự án. Chỉ khi cần vai trò khác mặc định ở một dự án, vào <strong>dự án → Cấu hình → Thành viên</strong> để <em>đặt vai trò riêng</em>.</>,
+                <>Xong! Họ đã tham gia mọi dự án công khai (dự án riêng tư cần thêm họ riêng). Chỉ khi cần vai trò khác mặc định ở một dự án, vào <strong>dự án → Cấu hình → Thành viên</strong> để <em>đặt vai trò riêng</em>.</>,
                 'Cần bộ quyền riêng? Tạo vai trò tuỳ biến trong Cài đặt → Vai trò rồi gán cho người dùng.',
               ]} />
             </section>

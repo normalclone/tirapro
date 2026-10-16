@@ -79,6 +79,7 @@ describe('MembersService.removeWorkspace', () => {
       user: {
         findUnique: vi.fn(() => Promise.resolve({ displayName: 'Bình', email: 'ba@x.vn' })),
       },
+      project: { findMany: vi.fn((_a?: unknown) => Promise.resolve([] as unknown[])) },
     };
     const rbac = { invalidate: vi.fn(() => Promise.resolve()) };
     const apiKeys = {
@@ -126,6 +127,37 @@ describe('MembersService.removeWorkspace', () => {
     await expect(service.removeWorkspace('w1', 'u1', 'admin')).rejects.toThrow('boom');
     expect(rbac.invalidate).not.toHaveBeenCalled();
     expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('là thành viên DUY NHẤT của dự án riêng tư => chặn, nêu mã dự án + lối thoát, không xoá gì', async () => {
+    const { service, prisma, tx } = setup();
+    prisma.project.findMany.mockResolvedValue([
+      { key: 'HR', memberships: [{ userId: 'u1' }] },
+      { key: 'FIN', memberships: [{ userId: 'u1' }, { userId: 'u9' }] },
+    ]);
+    await expect(service.removeWorkspace('w1', 'u1', 'admin')).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringMatching(/HR.*(thêm người khác|công khai)/s) as unknown,
+    });
+    expect(tx.workspaceMembership.delete).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    // chỉ HR bị nêu (FIN còn người khác)
+    await service.removeWorkspace('w1', 'u1', 'admin').catch((e: Error) => {
+      expect(e.message).toContain('HR');
+      expect(e.message).not.toContain('FIN');
+    });
+  });
+
+  it('truy vấn dự án riêng tư lọc workspace + chưa xoá + người đó là thành viên; không có dự án => gỡ bình thường', async () => {
+    const { service, prisma } = setup();
+    await service.removeWorkspace('w1', 'u1', 'admin');
+    const where = (prisma.project.findMany.mock.calls[0]![0] as { where: object }).where;
+    expect(where).toMatchObject({
+      workspaceId: 'w1',
+      deletedAt: null,
+      isPrivate: true,
+      memberships: { some: { userId: 'u1' } },
+    });
   });
 
   it('không cho tự gỡ mình hoặc gỡ chủ sở hữu', async () => {

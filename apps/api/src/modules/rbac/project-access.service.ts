@@ -36,6 +36,11 @@ export class ProjectAccessService {
    */
   async visibleWhere(userId: string, workspaceId: string): Promise<Prisma.ProjectWhereInput> {
     if (await this.seesAll(userId, workspaceId)) return {};
+    return this.memberOrPublic(userId);
+  }
+
+  /** Điều kiện cho người KHÔNG phải quản trị: công khai hoặc là thành viên dự án (không truy vấn). */
+  private memberOrPublic(userId: string): Prisma.ProjectWhereInput {
     return { OR: [{ isPrivate: false }, { memberships: { some: { userId } } }] };
   }
 
@@ -43,15 +48,23 @@ export class ProjectAccessService {
   async visibleProjectIds(userId: string, workspaceId: string): Promise<string[] | null> {
     if (await this.seesAll(userId, workspaceId)) return null;
     const rows = await this.prisma.project.findMany({
-      where: { workspaceId, deletedAt: null, ...(await this.visibleWhere(userId, workspaceId)) },
+      where: { workspaceId, deletedAt: null, ...this.memberOrPublic(userId) },
       select: { id: true },
     });
     return rows.map((r) => r.id);
   }
 
-  /** Ném `NotFoundAppException('Dự án')` nếu không thấy được. */
-  async assertCanSee(userId: string, workspaceId: string, projectId: string): Promise<void> {
-    await this.rbac.assertProjectVisible(userId, workspaceId, projectId);
+  /**
+   * Ném `NotFoundAppException(notFoundLabel)` nếu không thấy được. Truyền `notFoundLabel` đúng nhãn của đường
+   * "không tồn tại" cùng loại ở nơi gọi để 404 của dự án riêng tư giống hệt 404 của tài nguyên không có thật.
+   */
+  async assertCanSee(
+    userId: string,
+    workspaceId: string,
+    projectId: string,
+    notFoundLabel?: string,
+  ): Promise<void> {
+    await this.rbac.assertProjectVisible(userId, workspaceId, projectId, notFoundLabel);
   }
 
   async canSee(userId: string, workspaceId: string, projectId: string): Promise<boolean> {
@@ -61,6 +74,16 @@ export class ProjectAccessService {
     } catch (e) {
       if (e instanceof NotFoundAppException) return false;
       throw e;
+    }
+  }
+
+  /** Gọi sau khi thêm/đổi thành viên dự án: bỏ cache quyền của từng người (cache khoá theo workspace+user+dự án). */
+  async onMembersChanged(
+    workspaceId: string,
+    userIds: (string | null | undefined)[],
+  ): Promise<void> {
+    for (const id of new Set(userIds.filter((u): u is string => !!u))) {
+      await this.rbac.invalidate(id, workspaceId);
     }
   }
 

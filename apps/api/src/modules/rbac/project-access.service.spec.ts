@@ -1,27 +1,44 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ProjectAccessService } from './project-access.service';
+import { RbacService } from './rbac.service';
 
+/**
+ * ProjectAccessService chạy trên RbacService THẬT với Prisma giả (không mock lại logic ẩn/hiện):
+ * - `priv`: undefined/null = dự án công khai (không có dòng isPrivate:true); số = dự án riêng tư có chừng đó thành viên khớp người gọi.
+ * - `perms`: quyền hợp nhất của người gọi ở cấp workspace (qua vai trò workspace → rolePermission).
+ */
 function make(
   opts: { sysAdmin?: boolean; perms?: string[]; priv?: { memberCount: number } | null } = {},
 ) {
   const prisma = {
     user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: !!opts.sysAdmin })) },
     project: {
+      findFirst: vi.fn((_a?: unknown) =>
+        Promise.resolve(
+          opts.priv
+            ? { memberships: Array.from({ length: opts.priv.memberCount }, () => ({ id: 'pm' })) }
+            : null,
+        ),
+      ),
       findMany: vi.fn((_a?: unknown) => Promise.resolve([{ id: 'p-pub' }, { id: 'p-mine' }])),
     },
+    workspaceMembership: {
+      findUnique: vi.fn(() =>
+        Promise.resolve({ roleId: 'r', roles: [{ role: { id: 'r', name: 'Workspace Member' } }] }),
+      ),
+    },
+    rolePermission: {
+      findMany: vi.fn(() =>
+        Promise.resolve((opts.perms ?? ['project:view']).map((key) => ({ permission: { key } }))),
+      ),
+    },
+    role: { findMany: vi.fn(() => Promise.resolve([])) },
+    projectMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
   };
-  const rbac = {
-    getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(opts.perms ?? ['project:view']))),
-    // Mô phỏng RbacService.assertProjectVisible theo cấu hình: dự án riêng tư không thành viên + không admin → 404.
-    assertProjectVisible: vi.fn(async () => {
-      if (opts.priv === undefined || opts.priv === null) return;
-      if (opts.priv.memberCount > 0) return;
-      if ((opts.perms ?? []).includes('workspace:admin')) return;
-      const { NotFoundAppException } = await import('../../common/exceptions/app.exception');
-      throw new NotFoundAppException('Dự án');
-    }),
-  };
-  return { svc: new ProjectAccessService(prisma as never, rbac as never), prisma, rbac };
+  const redis = { getClient: () => null, isAvailable: () => false };
+  const rbac = new RbacService(prisma as never, redis as never);
+  return { svc: new ProjectAccessService(prisma as never, rbac), prisma, rbac };
 }
 
 describe('ProjectAccessService', () => {
@@ -37,7 +54,7 @@ describe('ProjectAccessService', () => {
     expect(await make({ perms: ['workspace:admin'] }).svc.visibleWhere('u1', 'w1')).toEqual({});
   });
 
-  it('visibleProjectIds: admin → null; người thường → id từ truy vấn có visibleWhere + deletedAt', async () => {
+  it('visibleProjectIds: admin → null; người thường → id từ truy vấn có visibleWhere + deletedAt, chỉ hỏi quyền MỘT lần', async () => {
     const admin = make({ sysAdmin: true });
     expect(await admin.svc.visibleProjectIds('u1', 'w1')).toBeNull();
     const { svc, prisma } = make();
@@ -48,14 +65,23 @@ describe('ProjectAccessService', () => {
       deletedAt: null,
       OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }],
     });
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
   });
 
-  it('assertCanSee: dự án riêng tư không thành viên, không admin → 404', async () => {
+  it('assertCanSee: dự án riêng tư, không thành viên, không admin → 404 "Dự án"', async () => {
     const { svc } = make({ priv: { memberCount: 0 } });
-    await expect(svc.assertCanSee('u1', 'w1', 'p1')).rejects.toThrow(/Dự án/);
+    await expect(svc.assertCanSee('u1', 'w1', 'p1')).rejects.toBeInstanceOf(NotFoundAppException);
+    await expect(svc.assertCanSee('u1', 'w1', 'p1')).rejects.toThrow('Dự án không tồn tại');
   });
 
-  it('assertCanSee: công khai / thành viên / admin → qua', async () => {
+  it('assertCanSee: truyền nhãn → thông điệp 404 dùng đúng nhãn đó', async () => {
+    const { svc } = make({ priv: { memberCount: 0 } });
+    await expect(svc.assertCanSee('u1', 'w1', 'p1', 'Tài nguyên')).rejects.toThrow(
+      'Tài nguyên không tồn tại',
+    );
+  });
+
+  it('assertCanSee: công khai / thành viên / workspace:admin → qua', async () => {
     await expect(make({ priv: null }).svc.assertCanSee('u1', 'w1', 'p1')).resolves.toBeUndefined();
     await expect(
       make({ priv: { memberCount: 1 } }).svc.assertCanSee('u1', 'w1', 'p1'),
@@ -69,11 +95,11 @@ describe('ProjectAccessService', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('canSee: true/false theo assertCanSee; lỗi khác 404 vẫn ném', async () => {
+  it('canSee: true/false theo dữ liệu; lỗi khác 404 vẫn ném', async () => {
     expect(await make({ priv: { memberCount: 0 } }).svc.canSee('u1', 'w1', 'p1')).toBe(false);
     expect(await make({ priv: null }).svc.canSee('u1', 'w1', 'p1')).toBe(true);
     const boom = make();
-    boom.rbac.assertProjectVisible.mockRejectedValueOnce(new Error('db down'));
+    boom.prisma.project.findFirst.mockRejectedValueOnce(new Error('db down'));
     await expect(boom.svc.canSee('u1', 'w1', 'p1')).rejects.toThrow('db down');
   });
 });

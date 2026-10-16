@@ -296,6 +296,12 @@ export class MembersService {
         'Không thể gỡ chủ sở hữu của không gian làm việc — hãy chuyển quyền sở hữu cho người khác trước',
       );
     const who = await this.userLabel(userId);
+    // Không để dự án riêng tư mất người cuối cùng (chỉ còn quản trị workspace thấy) — chặn kèm lối thoát.
+    const sole = await this.privateProjectsWithOnlyMember(workspaceId, userId);
+    if (sole.length > 0)
+      throw new BusinessRuleException(
+        `${who} là thành viên duy nhất của dự án riêng tư ${sole.join(', ')} — hãy thêm người khác vào dự án (Cấu hình dự án → Thành viên) hoặc chuyển dự án sang công khai trước khi gỡ`,
+      );
     // Một transaction: gỡ membership + xoá ghi đè vai trò dự án của workspace này + thu hồi API key.
     // Thiếu bước nào thì người bị gỡ vẫn giữ được quyền qua key/ghi đè dự án còn sót.
     const revokedPrefixes = await this.prisma.$transaction(async (tx) => {
@@ -318,6 +324,26 @@ export class MembersService {
       summary: `Gỡ ${who} khỏi không gian làm việc`,
     });
     return { success: true };
+  }
+
+  /** Mã các dự án riêng tư (chưa xoá) mà `userId` là thành viên DUY NHẤT còn thuộc workspace. */
+  private async privateProjectsWithOnlyMember(
+    workspaceId: string,
+    userId: string,
+  ): Promise<string[]> {
+    const rows = await this.prisma.project.findMany({
+      where: { workspaceId, deletedAt: null, isPrivate: true, memberships: { some: { userId } } },
+      select: {
+        key: true,
+        // Chỉ tính thành viên còn thuộc workspace (dòng của người đã rời workspace không còn ý nghĩa).
+        memberships: {
+          where: { user: { workspaceMemberships: { some: { workspaceId } } } },
+          select: { userId: true },
+        },
+      },
+      orderBy: { key: 'asc' },
+    });
+    return rows.filter((p) => p.memberships.every((m) => m.userId === userId)).map((p) => p.key);
   }
 
   // ───────────────────────── Project ─────────────────────────
@@ -409,7 +435,9 @@ export class MembersService {
     const project = await this.requireProject(workspaceId, projectId);
     if (project.isPrivate) {
       // Dự án riêng tư: gỡ ghi đè = GỠ KHỎI DỰ ÁN. Không để dự án không còn thành viên nào (mồ côi).
-      const members = await this.prisma.projectMembership.count({ where: { projectId } });
+      const members = await this.prisma.projectMembership.count({
+        where: { projectId, user: { workspaceMemberships: { some: { workspaceId } } } },
+      });
       const isMember = await this.prisma.projectMembership.findUnique({
         where: { projectId_userId: { projectId, userId } },
         select: { id: true },

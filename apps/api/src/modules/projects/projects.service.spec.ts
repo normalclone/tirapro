@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ProjectsService } from './projects.service';
 
+const ACTIVE_USER = { status: 'ACTIVE', email: 'u@x.vn' };
 const ACCESS = {
   visibleWhere: vi.fn(() => Promise.resolve({})),
   onVisibilityChanged: vi.fn(() => Promise.resolve()),
+  onMembersChanged: vi.fn((_w: string, _u: unknown[]) => Promise.resolve()),
 };
-const AUDIT = { record: vi.fn((_e?: unknown) => Promise.resolve()) };
+const AUDIT = { record: vi.fn((_e?: unknown, _tx?: unknown) => Promise.resolve()) };
 
 const row = (over: Record<string, unknown> = {}) => ({
   id: 'p1',
@@ -49,7 +51,9 @@ function make(
       ),
     },
     workspaceMembership: {
-      findUnique: vi.fn(() => Promise.resolve(over.member === false ? null : { id: 'm1' })),
+      findUnique: vi.fn(() =>
+        Promise.resolve(over.member === false ? null : { id: 'm1', user: ACTIVE_USER }),
+      ),
     },
   };
   const health = {
@@ -444,6 +448,9 @@ describe('ProjectsService — dự án riêng tư', () => {
     const prisma = {
       project: { findFirst: vi.fn(() => Promise.resolve(null)) },
       role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-padmin' })) },
+      workspaceMembership: {
+        findUnique: vi.fn(() => Promise.resolve({ id: 'm', user: ACTIVE_USER })),
+      },
       $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
     };
     const svc = new ProjectsService(
@@ -497,6 +504,7 @@ describe('ProjectsService.update — đổi riêng tư', () => {
     };
     AUDIT.record.mockClear();
     ACCESS.onVisibilityChanged.mockClear();
+    ACCESS.onMembersChanged.mockClear();
     const svc = new ProjectsService(
       prisma as never,
       {} as never,
@@ -528,6 +536,7 @@ describe('ProjectsService.update — đổi riêng tư', () => {
         roles: { create: [{ roleId: 'r-padmin' }] },
       },
     });
+    // nhật ký ghi CÙNG transaction (truyền tx)
     expect(AUDIT.record).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'project.visibility_changed',
@@ -535,6 +544,7 @@ describe('ProjectsService.update — đổi riêng tư', () => {
         entityId: 'p1',
         meta: { isPrivate: true },
       }),
+      tx,
     );
     expect(ACCESS.onVisibilityChanged).toHaveBeenCalledWith('w1');
   });
@@ -548,7 +558,7 @@ describe('ProjectsService.update — đổi riêng tư', () => {
   it('đổi người phụ trách cùng lúc bật riêng tư => người phụ trách MỚI được bảo đảm', async () => {
     const { svc, tx, prisma } = setup();
     (prisma as unknown as { workspaceMembership: unknown }).workspaceMembership = {
-      findUnique: vi.fn(() => Promise.resolve({ id: 'm' })),
+      findUnique: vi.fn(() => Promise.resolve({ id: 'm', user: ACTIVE_USER })),
     };
     await svc.update('w1', 'p1', 'actor1', { isPrivate: true, leadId: 'lead2' });
     const users = tx.projectMembership.upsert.mock.calls.map(
@@ -561,7 +571,7 @@ describe('ProjectsService.update — đổi riêng tư', () => {
   it('đang riêng tư, đổi người phụ trách => người phụ trách mới được thêm làm thành viên', async () => {
     const { svc, tx, prisma } = setup({ cur: { isPrivate: true } });
     (prisma as unknown as { workspaceMembership: unknown }).workspaceMembership = {
-      findUnique: vi.fn(() => Promise.resolve({ id: 'm' })),
+      findUnique: vi.fn(() => Promise.resolve({ id: 'm', user: ACTIVE_USER })),
     };
     await svc.update('w1', 'p1', 'actor1', { leadId: 'lead2' });
     const users = tx.projectMembership.upsert.mock.calls.map(
@@ -570,17 +580,35 @@ describe('ProjectsService.update — đổi riêng tư', () => {
     );
     expect(users).toEqual(['lead2']);
     expect(AUDIT.record).not.toHaveBeenCalled();
+    // lead mới được xoá cache quyền để không giữ tập quyền rỗng đã cache
+    expect(ACCESS.onMembersChanged).toHaveBeenCalledWith('w1', ['lead2']);
+    expect(ACCESS.onVisibilityChanged).not.toHaveBeenCalled();
+  });
+
+  it('đổi lead sang tài khoản vô hiệu hoá => từ chối, không ghi', async () => {
+    const { svc, tx, prisma } = setup({ cur: { isPrivate: true } });
+    (prisma as unknown as { workspaceMembership: unknown }).workspaceMembership = {
+      findUnique: vi.fn(() =>
+        Promise.resolve({ id: 'm', user: { status: 'DEACTIVATED', email: 'a@x.vn' } }),
+      ),
+    };
+    await expect(svc.update('w1', 'p1', 'actor1', { leadId: 'lead2' })).rejects.toMatchObject({
+      status: 422,
+    });
+    expect(tx.projectMembership.upsert).not.toHaveBeenCalled();
   });
 
   it('true → false: không xoá thành viên, ghi nhật ký "mở cho mọi thành viên"', async () => {
     const { svc, prisma, tx } = setup({ cur: { isPrivate: true } });
     await svc.update('w1', 'p1', 'actor1', { isPrivate: false });
-    expect(prisma.project.update.mock.calls[0]![0]).toMatchObject({ data: { isPrivate: false } });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.project.update.mock.calls[0]![0]).toMatchObject({ data: { isPrivate: false } });
     expect(tx.projectMembership.upsert).not.toHaveBeenCalled();
     expect(AUDIT.record.mock.calls[0]![0]).toMatchObject({
       action: 'project.visibility_changed',
       meta: { isPrivate: false },
     });
+    expect(AUDIT.record.mock.calls[0]![1]).toBe(tx);
   });
 
   it('không đổi giá trị (đã riêng tư, gửi true) => không ghi nhật ký, không đụng thành viên', async () => {
@@ -588,5 +616,73 @@ describe('ProjectsService.update — đổi riêng tư', () => {
     await svc.update('w1', 'p1', 'actor1', { isPrivate: true });
     expect(tx.projectMembership.upsert).not.toHaveBeenCalled();
     expect(AUDIT.record).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectsService.create — điều kiện cho dự án riêng tư / người phụ trách', () => {
+  function setup(opts: { adminRole?: boolean; member?: unknown } = {}) {
+    // tx giả: mọi model.method đều trả một dòng dự án (đủ cho luồng tạo thành công)
+    const tx = new Proxy(
+      {},
+      { get: () => new Proxy({}, { get: () => vi.fn(() => Promise.resolve(row())) }) },
+    );
+    const prisma = {
+      project: { findFirst: vi.fn(() => Promise.resolve(null)) },
+      role: {
+        findFirst: vi.fn(() =>
+          Promise.resolve(opts.adminRole === false ? null : { id: 'r-padmin' }),
+        ),
+      },
+      workspaceMembership: {
+        findUnique: vi.fn(() =>
+          Promise.resolve(opts.member === undefined ? { id: 'm', user: ACTIVE_USER } : opts.member),
+        ),
+      },
+      $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+    };
+    const svc = new ProjectsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      ACCESS as never,
+      AUDIT as never,
+    );
+    return { svc, prisma };
+  }
+
+  it('riêng tư mà thiếu vai trò hệ thống Project Admin => lỗi rõ, KHÔNG tạo dự án', async () => {
+    const { svc, prisma } = setup({ adminRole: false });
+    await expect(
+      svc.create('w1', 'u1', { key: 'HR', name: 'HR', type: 'SCRUM', isPrivate: true }),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('Quản trị dự án') as unknown,
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('leadId không phải thành viên workspace => lỗi, không tạo', async () => {
+    const { svc, prisma } = setup({ member: null });
+    await expect(
+      svc.create('w1', 'u1', { key: 'HR', name: 'HR', type: 'SCRUM', leadId: 'ngoai' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['vô hiệu hoá', { status: 'DEACTIVATED', email: 'a@x.vn' }],
+    ['tài khoản hệ thống', { status: 'ACTIVE', email: 'automation@tirapro.local' }],
+  ])('leadId là tài khoản %s => từ chối', async (_n, user) => {
+    const { svc, prisma } = setup({ member: { id: 'm', user } });
+    await expect(
+      svc.create('w1', 'u1', { key: 'HR', name: 'HR', type: 'SCRUM', leadId: 'x' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('công khai không gán lead: không kiểm thành viên (hành vi cũ)', async () => {
+    const { svc, prisma } = setup();
+    await svc.create('w1', 'u1', { key: 'HR', name: 'HR', type: 'SCRUM' });
+    expect(prisma.workspaceMembership.findUnique).not.toHaveBeenCalled();
   });
 });
