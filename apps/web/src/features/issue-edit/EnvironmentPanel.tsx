@@ -4,11 +4,10 @@ import { toast } from 'sonner';
 import { environmentSchema, normalizeEnvironment, type EnvironmentInput } from '@tirapro/shared';
 import type { IssueDto, IssueEnvironment } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useUpdateIssue } from '@/features/issues/api';
 import { useCanEditIssue } from '@/features/projects/permissions';
 import { apiErrorMessage } from '@/lib/api';
+import { EnvironmentFields } from './EnvironmentFields';
 import {
   detectEnvironment,
   ENV_KIND_LABEL,
@@ -17,11 +16,6 @@ import {
   type EnvironmentDraft,
 } from './environment';
 import { isBugType } from './severity';
-
-const KIND_OPTIONS = [
-  { value: '', label: '—' },
-  ...Object.entries(ENV_KIND_LABEL).map(([value, label]) => ({ value, label })),
-];
 
 /**
  * Khối "Môi trường" của Bug: loại môi trường, trình duyệt, hệ điều hành, build, màn hình, URL.
@@ -136,7 +130,6 @@ function EnvironmentForm({ issue, onDone }: { issue: IssueDto; onDone: () => voi
     );
   }
 
-  const id = (k: string) => `env-${issue.id}-${k}`;
   return (
     <div className="space-y-3 rounded-md border border-border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -148,65 +141,12 @@ function EnvironmentForm({ issue, onDone }: { issue: IssueDto; onDone: () => voi
           Điền từ phiên hiện tại
         </Button>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field id={id('kind')} label="Loại môi trường">
-          <SearchSelect
-            id={id('kind')}
-            ariaLabel="Loại môi trường"
-            value={draft.env}
-            options={KIND_OPTIONS}
-            onChange={set('env')}
-            placeholder="—"
-          />
-        </Field>
-        <Field id={id('build')} label="Build / phiên bản">
-          <Input
-            id={id('build')}
-            value={draft.build}
-            maxLength={120}
-            placeholder="vd 2.3.1"
-            onChange={(e) => set('build')(e.target.value)}
-          />
-        </Field>
-        <Field id={id('browser')} label="Trình duyệt">
-          <Input
-            id={id('browser')}
-            value={draft.browser}
-            maxLength={120}
-            placeholder="vd Chrome 126"
-            onChange={(e) => set('browser')(e.target.value)}
-          />
-        </Field>
-        <Field id={id('os')} label="Hệ điều hành">
-          <Input
-            id={id('os')}
-            value={draft.os}
-            maxLength={120}
-            placeholder="vd macOS 14"
-            onChange={(e) => set('os')(e.target.value)}
-          />
-        </Field>
-        <Field id={id('viewport')} label="Kích thước màn hình">
-          <Input
-            id={id('viewport')}
-            value={draft.viewport}
-            maxLength={20}
-            placeholder="vd 1440×900"
-            onChange={(e) => set('viewport')(e.target.value)}
-          />
-        </Field>
-        <Field id={id('url')} label="URL" className="sm:col-span-2">
-          <Input
-            id={id('url')}
-            type="url"
-            value={draft.url}
-            maxLength={500}
-            placeholder="https://…"
-            aria-invalid={error ? true : undefined}
-            onChange={(e) => set('url')(e.target.value)}
-          />
-        </Field>
-      </div>
+      <EnvironmentFields
+        idPrefix={`env-${issue.id}`}
+        draft={draft}
+        onChange={set}
+        invalid={!!error}
+      />
       {error && (
         <p role="alert" className="text-sm text-danger">
           {error}
@@ -220,27 +160,6 @@ function EnvironmentForm({ issue, onDone }: { issue: IssueDto; onDone: () => voi
           Lưu
         </Button>
       </div>
-    </div>
-  );
-}
-
-function Field({
-  id,
-  label,
-  className,
-  children,
-}: {
-  id: string;
-  label: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={className}>
-      <label htmlFor={id} className="mb-1 block text-xs font-medium text-muted">
-        {label}
-      </label>
-      {children}
     </div>
   );
 }

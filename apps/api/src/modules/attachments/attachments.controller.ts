@@ -46,6 +46,24 @@ export class AttachmentsController {
     return this.attachments.upload(workspaceId, user.id, issueId, file);
   }
 
+  /**
+   * Ảnh/tệp minh hoạ cho một BÌNH LUẬN (vd người báo lại bug cũ): quyền bình luận là đủ, không cần `issue:edit`.
+   * Tệp vẫn gắn vào công việc; đính vào bình luận bằng `![](attachment:ID)` trong nội dung.
+   */
+  @ProjectRef('issue', 'issueId')
+  @Post('issues/:issueId/comment-attachments')
+  @Permissions(PERMISSIONS.COMMENT_CREATE)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadForComment(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('issueId') issueId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.attachments.upload(workspaceId, user.id, issueId, file);
+  }
+
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/attachments')

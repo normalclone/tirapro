@@ -169,6 +169,9 @@ const CommandPalette = lazy(() =>
 const CreateIssueModal = lazy(() =>
   import('@/features/issues/CreateIssueModal').then((m) => ({ default: m.CreateIssueModal })),
 );
+const ReportIssueModal = lazy(() =>
+  import('@/features/intake/ReportIssueModal').then((m) => ({ default: m.ReportIssueModal })),
+);
 
 /** Loader gọn cho vùng nội dung khi chunk đang tải. */
 function PageLoading() {
@@ -197,6 +200,7 @@ function RequireAuth() {
       <Suspense fallback={null}>
         <CommandPalette />
         <CreateIssueModal />
+        <ReportIssueModal />
       </Suspense>
     </AppShell>
   );

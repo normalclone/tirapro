@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Paperclip, Plus, X } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { useProjectMeta } from '@/features/ai/api';
@@ -8,6 +8,7 @@ import { useProjects } from '@/features/projects/api';
 import { useProjectSprints } from '@/features/backlog/api';
 import { useWorkspaceUsers } from '@/features/issue-edit/api';
 import { uploadAttachmentFile } from '@/features/attachments/api';
+import { FileDrop } from '@/features/attachments/FileDrop';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
@@ -16,6 +17,8 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { useCreateIssueModal } from '@/stores/createIssue';
+import { openReportIssue } from '@/stores/reportIssue';
+import { isBugType } from '@/features/issue-edit/severity';
 import { cn } from '@/lib/utils';
 import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
@@ -391,6 +394,24 @@ export function CreateIssueModal() {
     }
   }
 
+  // Mang tiêu đề (giữ nguyên cả token đã gõ), mô tả và tệp đính sang form Báo lỗi (có kiểm tra trùng + mức nghiêm trọng)
+  // rồi đóng hộp tạo việc. Mẫu mô tả của hộp này bỏ đi (form Báo lỗi có mẫu riêng). Bản nháp tạo việc GIỮ NGUYÊN tới khi
+  // báo lỗi gửi thành công (`onSent`) — lỡ đóng form Báo lỗi vẫn còn chữ để quay lại.
+  function switchToReport() {
+    const text = description.trim() && !isTemplate(description) ? description : undefined;
+    const key = selKey;
+    saveDraft(key, { summary, description, acceptance }); // chốt nháp ngay (không chờ debounce)
+    openReportIssue({
+      projectKey: key || undefined,
+      kind: 'BUG',
+      summary: summary.trim(),
+      description: text,
+      files,
+      onSent: () => clearDraft(key),
+    });
+    close();
+  }
+
   // Tạo xong → đóng popup + mở issue mới.
   async function submitCreate() {
     const created = await doCreate();
@@ -533,6 +554,19 @@ export function CreateIssueModal() {
               }))}
             />
           </Field>
+
+          {isBugType(selType) && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-surface-2 px-3 py-2 text-xs text-muted sm:col-span-2">
+              <span>Báo lỗi có kiểm tra trùng và mức nghiêm trọng —</span>
+              <button
+                type="button"
+                onClick={switchToReport}
+                className="rounded font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              >
+                Chuyển sang form Báo lỗi
+              </button>
+            </p>
+          )}
 
           <Field label="Tiêu đề" className="relative z-20 sm:col-span-2">
             <TokenTitleInput
@@ -731,83 +765,5 @@ export function CreateIssueModal() {
         </div>
       </form>
     </Dialog>
-  );
-}
-
-function fmtSize(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
-
-/** Vùng chọn/kéo-thả tệp (giữ cục bộ tới khi công việc được tạo rồi mới tải lên). */
-function FileDrop({
-  files,
-  onAdd,
-  onRemove,
-}: {
-  files: File[];
-  onAdd: (f: File[]) => void;
-  onRemove: (i: number) => void;
-}) {
-  const [over, setOver] = useState(false);
-  return (
-    <div>
-      <label
-        onDragOver={(e) => {
-          e.preventDefault();
-          setOver(true);
-        }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setOver(false);
-          onAdd(Array.from(e.dataTransfer.files));
-        }}
-        className={cn(
-          'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed px-3 py-5 text-center text-sm transition-colors',
-          over
-            ? 'border-primary bg-primary-subtle/40 text-ink'
-            : 'border-border text-muted hover:border-primary hover:text-ink',
-        )}
-      >
-        <Paperclip className="h-4 w-4" aria-hidden />
-        <span>
-          Kéo thả tệp vào đây hoặc <span className="font-medium text-primary">bấm để chọn tệp</span>
-        </span>
-        <input
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files?.length) onAdd(Array.from(e.target.files));
-            e.currentTarget.value = '';
-          }}
-        />
-      </label>
-      {files.length > 0 && (
-        <ul className="mt-2 space-y-1">
-          {files.map((f, i) => (
-            <li
-              key={i}
-              className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm"
-            >
-              <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
-              <span className="min-w-0 flex-1 truncate text-ink">{f.name}</span>
-              <span className="shrink-0 text-xs text-faint tabular">{fmtSize(f.size)}</span>
-              <button
-                type="button"
-                onClick={() => onRemove(i)}
-                aria-label={`Bỏ tệp ${f.name} khỏi danh sách đính kèm`}
-                title="Bỏ tệp này"
-                className="grid h-5 w-5 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-3 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }

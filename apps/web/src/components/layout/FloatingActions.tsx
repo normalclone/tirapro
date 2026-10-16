@@ -19,9 +19,9 @@ import { useToggleWatch, useWatchState } from '@/features/issue-widgets/api';
 import { useAi } from '@/stores/ai';
 import { useQuickActions, type QuickActionKey } from '@/stores/quickActions';
 import { useCreateIssueModal } from '@/stores/createIssue';
+import { useReportIssueModal } from '@/stores/reportIssue';
 import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
-import { ReportIssueModal } from '@/features/intake/ReportIssueModal';
 import { apiErrorMessage } from '@/lib/api';
 import { createPresetFromTarget } from '@/lib/currentProject';
 import { useCreateTarget } from '@/lib/useCreateTarget';
@@ -59,6 +59,7 @@ const ACTION_META: { key: QuickActionKey; label: string; hint?: string }[] = [
 export function FloatingActions() {
   const loc = useLocation();
   const openCreate = useCreateIssueModal((s) => s.openCreate);
+  const openReport = useReportIssueModal((s) => s.openReport);
   const aiEnabled = useAi((s) => s.enabled);
   const { enabled, toggle } = useQuickActions();
   const projectKey = projectKeyFromPath(loc.pathname);
@@ -78,7 +79,6 @@ export function FloatingActions() {
   const [customizing, setCustomizing] = useState(false);
   const [createProject, setCreateProject] = useState(false);
   const [genAi, setGenAi] = useState(false);
-  const [report, setReport] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const hasProject = !!project?.id;
@@ -138,11 +138,14 @@ export function FloatingActions() {
         onClick: run(() => setGenAi(true)),
       },
     hasProject &&
+      !project?.archivedAt &&
+      createAccess !== 'deny' &&
+      canCreate !== false &&
       enabled.report && {
         key: 'report',
         icon: <Bug className="h-5 w-5" />,
         label: 'Báo lỗi',
-        onClick: run(() => setReport(true)),
+        onClick: run(() => openReport({ projectKey: project.key, kind: 'BUG' })),
       },
     onIssue &&
       enabled.watch && {
@@ -288,12 +291,6 @@ export function FloatingActions() {
       <CreateProjectModal open={createProject} onClose={() => setCreateProject(false)} />
       {hasProject && (
         <>
-          <ReportIssueModal
-            projectKey={project.key}
-            projectId={project.id}
-            open={report}
-            onClose={() => setReport(false)}
-          />
           {aiEnabled && (
             <GenerateIssuesDialog
               projectKey={project.key}

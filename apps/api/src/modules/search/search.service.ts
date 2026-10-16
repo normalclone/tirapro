@@ -56,6 +56,20 @@ export class SearchService {
   }
 
   /**
+   * Id các issue gần giống `text` trong một dự án, xếp theo độ liên quan (bỏ dấu + tiền tố + trigram) — cho gợi ý
+   * trùng của form Báo lỗi. Hàm bọc duy nhất quanh `FulltextSearcher`: nếu chữ ký tìm kiếm đổi thì chỉ sửa ở đây.
+   */
+  async similarIssueIds(
+    workspaceId: string,
+    projectId: string,
+    text: string,
+    limit = 8,
+  ): Promise<string[]> {
+    const res = await this.fulltext.search(workspaceId, text, { projectId, limit });
+    return res?.ids ?? [];
+  }
+
+  /**
    * Danh mục giá trị cho bộ dựng truy vấn trực quan: issue type, status, priority,
    * sprint, label, resolution — phạm vi workspace. Status gom từ mọi workflow; sprint/label
    * gom từ mọi project (khử trùng theo tên vì JQL khớp theo tên). Degrade: rỗng nếu chưa có.

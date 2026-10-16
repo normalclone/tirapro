@@ -146,3 +146,18 @@ describe('SearchService.fields — severities', () => {
     ]);
   });
 });
+
+describe('SearchService.similarIssueIds', () => {
+  it('bọc FulltextSearcher theo dự án, trả id theo thứ tự xếp hạng; null/lỗi thiếu hạ tầng => []', async () => {
+    const { service, queryRaw } = makeService([
+      { id: 'I2', rank: 1 },
+      { id: 'I1', rank: 0.5 },
+    ]);
+    expect(await service.similarIssueIds('W1', 'P1', 'giỏ hàng', 5)).toEqual(['I2', 'I1']);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    (service as unknown as { fulltext: { search: () => Promise<null> } }).fulltext = {
+      search: () => Promise.resolve(null),
+    };
+    expect(await service.similarIssueIds('W1', 'P1', 'giỏ hàng')).toEqual([]);
+  });
+});

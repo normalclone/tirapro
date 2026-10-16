@@ -38,6 +38,8 @@ export interface DialogProps {
   placement?: 'center' | 'right';
   /** Tuỳ biến focus khi mở (gọi `e.preventDefault()` rồi tự focus phần tử mong muốn). */
   onOpenAutoFocus?: (e: Event) => void;
+  /** Chặn Esc đóng hộp (gọi `e.preventDefault()`) — vd Esc đang dành để đóng một panel con. */
+  onEscapeKeyDown?: (e: globalThis.KeyboardEvent) => void;
 }
 
 const CENTER_CLASS = [
@@ -76,6 +78,7 @@ export function Dialog({
   headerExtra,
   placement = 'center',
   onOpenAutoFocus,
+  onEscapeKeyDown,
 }: DialogProps) {
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!onSubmit) return;
@@ -95,6 +98,7 @@ export function Dialog({
           {...(description ? {} : { 'aria-describedby': undefined })}
           onKeyDown={onKeyDown}
           onOpenAutoFocus={onOpenAutoFocus}
+          onEscapeKeyDown={onEscapeKeyDown}
           className={cn(
             placement === 'right' ? RIGHT_CLASS : [CENTER_CLASS, SIZE[size]],
             className,
