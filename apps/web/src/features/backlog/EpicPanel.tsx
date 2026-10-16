@@ -46,14 +46,12 @@ function PanelItem({
   dropEnabled,
   active,
   onClick,
-  dropLabel,
   children,
 }: {
   dropId?: string;
   dropEnabled: boolean;
   active: boolean;
   onClick: () => void;
-  dropLabel?: string;
   children: ReactNode;
 }) {
   // Mục không nhận thả (vd "Tất cả việc") vẫn gọi hook với id riêng + `disabled` để giữ đúng quy tắc hook.
@@ -67,7 +65,6 @@ function PanelItem({
         ref={setNodeRef}
         type="button"
         aria-pressed={active}
-        title={dropEnabled && dropId ? dropLabel : undefined}
         onClick={onClick}
         className={cn(ITEM, active && 'bg-surface-2', isOver && 'ring-2 ring-[var(--ring)]')}
       >
@@ -107,7 +104,6 @@ export function EpicPanel({
   const shown = epics.filter((e) => showDone || e.status.category !== 'DONE' || e.id === selected);
   const byId = new Map(issues.map((i) => [i.id, i]));
   const noEpic = counts.get('none') ?? 0;
-  const dropLabel = 'Thả công việc vào đây để gắn vào epic';
 
   return (
     <nav
@@ -139,7 +135,6 @@ export function EpicPanel({
             key={e.id}
             dropId={epicDropId(e.id)}
             dropEnabled={dropEnabled}
-            dropLabel={dropLabel}
             active={selected === e.id}
             onClick={() => onSelect(selected === e.id ? null : e.id)}
           >
@@ -154,7 +149,6 @@ export function EpicPanel({
         <PanelItem
           dropId={epicDropId('none')}
           dropEnabled={dropEnabled}
-          dropLabel="Thả công việc vào đây để gỡ khỏi epic"
           active={selected === 'none'}
           onClick={() => onSelect(selected === 'none' ? null : 'none')}
         >
