@@ -130,7 +130,7 @@ export class BoardsService {
     }
     if (unknown.size) {
       throw new BusinessRuleException(
-        'Có trạng thái không thuộc workflow của dự án này — hãy tải lại trang rồi chọn lại',
+        'Có trạng thái không thuộc quy trình của dự án này — hãy tải lại trang rồi chọn lại',
       );
     }
     const missing = statuses.filter((s) => !seen.has(s.id)).map((s) => s.name);

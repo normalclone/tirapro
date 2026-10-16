@@ -213,7 +213,7 @@ export class JiraImportService implements OnApplicationBootstrap {
       throw new BusinessRuleException('Thiếu tệp CSV — hãy chọn tệp export từ Jira rồi thử lại');
     if (file.size > JIRA_MAX_UPLOAD_BYTES)
       throw new BusinessRuleException(
-        'Tệp vượt quá 25MB — hãy xuất Jira theo từng project hoặc khoảng thời gian nhỏ hơn',
+        'Tệp vượt quá 25MB — hãy xuất Jira theo từng dự án hoặc khoảng thời gian nhỏ hơn',
       );
     const looksCsv =
       /\.csv$/i.test(file.originalname ?? '') || /csv|excel|text\/plain/i.test(file.mimetype ?? '');
@@ -230,7 +230,7 @@ export class JiraImportService implements OnApplicationBootstrap {
     }
     if (parsed.issues.length === 0)
       throw new BusinessRuleException(
-        'Tệp không có issue nào — hãy kiểm tra lại bộ lọc khi xuất từ Jira',
+        'Tệp không có công việc nào — hãy kiểm tra lại bộ lọc khi xuất từ Jira',
       );
 
     await this.purgeExpired();
@@ -898,7 +898,7 @@ export class JiraImportService implements OnApplicationBootstrap {
   ): Promise<{ statusIds: Map<string, string>; categories: Map<string, Category> }> {
     if (!workflowId)
       throw new BusinessRuleException(
-        'Project chưa cấu hình workflow — hãy tạo workflow cho project trước khi nhập',
+        'Dự án chưa cấu hình quy trình — hãy tạo quy trình cho dự án trước khi nhập',
       );
     const existing = await this.prisma.status.findMany({
       where: { workflowId },
@@ -1066,14 +1066,14 @@ export class JiraImportService implements OnApplicationBootstrap {
       if (id === JIRA_CREATE) continue;
       if (!hasProject)
         bad.push(
-          `trạng thái "${name}": project mới chưa có trạng thái nào để chọn — hãy chọn "Tạo mới"`,
+          `trạng thái "${name}": dự án mới chưa có trạng thái nào để chọn — hãy chọn "Tạo mới"`,
         );
       else if (!statusIds.has(id))
-        bad.push(`trạng thái "${name}" → ${id} không thuộc workflow của dự án`);
+        bad.push(`trạng thái "${name}" → ${id} không thuộc quy trình của dự án`);
     }
     for (const [name, id] of Object.entries(input.mapping.users)) {
       if (id !== null && id !== '' && !catalog.memberIds.has(id))
-        bad.push(`người dùng "${name}" → ${id} không phải thành viên workspace`);
+        bad.push(`người dùng "${name}" → ${id} không phải thành viên không gian làm việc`);
     }
     if (bad.length)
       throw new BusinessRuleException(

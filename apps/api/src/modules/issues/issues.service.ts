@@ -311,7 +311,7 @@ export class IssuesService {
     // Sprint đã hoàn thành không nhận thêm việc (bỏ gán/giữ nguyên thì không đi qua đây — xem `sprintIfChanged`).
     if (!m.allowClosedSprint && found.some((r) => r?.state === 'CLOSED')) {
       throw new BusinessRuleException(
-        'Sprint đã hoàn thành — không thêm việc vào được nữa. Hãy chọn sprint khác hoặc để việc ở Backlog',
+        'Sprint đã hoàn thành — không thêm việc vào được nữa. Hãy chọn sprint khác hoặc để việc ở Việc chờ',
       );
     }
   }
@@ -368,7 +368,7 @@ export class IssuesService {
     if (canEdit || perms.has(PERMISSIONS.BACKLOG_MANAGE) || (await isAdmin())) return true;
     if (want.statusChanged) return false;
     throw new ForbiddenAppException(
-      'Bạn không có quyền sắp xếp lại thứ tự công việc — cần quyền sửa công việc hoặc quản lý backlog',
+      'Bạn không có quyền sắp xếp lại thứ tự công việc — cần quyền sửa công việc hoặc quản lý việc chờ',
     );
   }
 
@@ -744,7 +744,7 @@ export class IssuesService {
       isDone = chosen.category === 'DONE';
     } else {
       if (!initial)
-        throw new BusinessRuleException('Project chưa cấu hình workflow/trạng thái khởi đầu');
+        throw new BusinessRuleException('Dự án chưa cấu hình quy trình/trạng thái khởi đầu');
       statusId = initial.id;
     }
 

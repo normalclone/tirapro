@@ -287,7 +287,7 @@ export class WorklogsService {
     });
     if (u?.isSystemAdmin) return;
     throw new ForbiddenAppException(
-      'Chỉ người ghi worklog hoặc quản trị dự án mới sửa/xoá được — hãy nhờ họ chỉnh giúp',
+      'Chỉ người ghi nhật ký thời gian hoặc quản trị dự án mới sửa/xoá được — hãy nhờ họ chỉnh giúp',
     );
   }
 

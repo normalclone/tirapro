@@ -127,7 +127,7 @@ type StatusRow = Prisma.StatusGetPayload<true>;
 type TransitionRow = Prisma.WorkflowTransitionGetPayload<true>;
 
 const WORKFLOW_DUPLICATE = 'Đã có quy trình trùng tên — hãy đặt tên khác';
-const STATUS_DUPLICATE = 'Tên trạng thái đã tồn tại trong workflow';
+const STATUS_DUPLICATE = 'Tên trạng thái đã tồn tại trong quy trình';
 const workflowInUse = (keys: string[]) =>
   `Quy trình đang được dự án {${keys.join(', ')}} dùng — dự án (kể cả dự án đã xoá) vẫn giữ quy trình này nên không xoá được`;
 const STATUS_IN_USE =
@@ -536,8 +536,8 @@ export class WorkflowAdminService {
       select: { id: true },
     });
     if (!status) {
-      throw new BusinessRuleException('Trạng thái không thuộc workflow này', [
-        { field, code: 'STATUS_NOT_IN_WORKFLOW', message: 'Trạng thái không thuộc workflow này' },
+      throw new BusinessRuleException('Trạng thái không thuộc quy trình này', [
+        { field, code: 'STATUS_NOT_IN_WORKFLOW', message: 'Trạng thái không thuộc quy trình này' },
       ]);
     }
   }

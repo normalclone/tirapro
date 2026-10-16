@@ -216,24 +216,26 @@ export class AssigneeSuggestService {
         );
         const loadReason =
           openLoad === 0
-            ? 'Không có issue nào đang dở'
-            : `Đang dở ${openLoad} issue (trung bình nhóm ${avgOpen})`;
+            ? 'Không có công việc nào đang dở'
+            : `Đang dở ${openLoad} công việc (trung bình nhóm ${avgOpen})`;
         const reasons: string[] = [];
         // Không có tín hiệu dương nào: nói thật thay vì bịa lý do; dòng tải chỉ là dữ kiện kèm theo.
         if (specific + typeCnt + recentActivity === 0 && !recentTouch)
-          reasons.push('Chưa có dữ liệu xử lý issue tương tự — xếp theo khối lượng đang dở');
+          reasons.push('Chưa có dữ liệu xử lý công việc tương tự — xếp theo khối lượng đang dở');
         if (specific > 0)
           reasons.push(
-            `Đã xử lý ${specific} issue cùng nhãn/thành phần trong ${WINDOW_DAYS} ngày qua`,
+            `Đã xử lý ${specific} công việc cùng nhãn/thành phần trong ${WINDOW_DAYS} ngày qua`,
           );
         if (typeCnt > 0)
           reasons.push(
-            `Đã xử lý ${typeCnt} issue cùng loại “${issue.type.name}” trong ${WINDOW_DAYS} ngày qua`,
+            `Đã xử lý ${typeCnt} công việc cùng loại “${issue.type.name}” trong ${WINDOW_DAYS} ngày qua`,
           );
         reasons.push(loadReason);
         if (recentActivity > 0)
-          reasons.push(`Có hoạt động trên ${recentActivity} issue trong ${RECENT_DAYS} ngày qua`);
-        if (recentTouch) reasons.push('Đã tham gia issue cha hoặc issue liên kết');
+          reasons.push(
+            `Có hoạt động trên ${recentActivity} công việc trong ${RECENT_DAYS} ngày qua`,
+          );
+        if (recentTouch) reasons.push('Đã tham gia công việc cha hoặc công việc liên kết');
         return {
           userId: user.id,
           displayName: user.displayName,
@@ -313,9 +315,9 @@ export class AssigneeSuggestService {
         ctx: { workspaceId, userId, feature: 'suggest-assignee' },
         model: this.claude.modelFast,
         system:
-          'Bạn giúp trưởng nhóm chọn người nhận một issue. Cho bảng số liệu của các ứng viên đã ẩn danh (u1, u2…), ' +
+          'Bạn giúp trưởng nhóm chọn người nhận một công việc. Cho bảng số liệu của các ứng viên đã ẩn danh (u1, u2…), ' +
           `hãy chọn tối đa ${MAX_SUGGESTIONS} ứng viên phù hợp nhất theo thứ tự giảm dần, mỗi người kèm lý do đúng một câu tiếng Việt ` +
-          'chỉ dựa trên số liệu (kinh nghiệm xử lý issue cùng nhãn/thành phần hoặc cùng loại, khối lượng đang dở, hoạt động gần đây, mức độ liên quan). ' +
+          'chỉ dựa trên số liệu (kinh nghiệm xử lý công việc cùng nhãn/thành phần hoặc cùng loại, khối lượng đang dở, hoạt động gần đây, mức độ liên quan). ' +
           'Chỉ dùng mã u1…uN có trong bảng; không bịa thông tin.' +
           DATA_NOT_INSTRUCTIONS,
         prompt: `${wrap('issue', `Loại: ${issue.type.name}\nTiêu đề: ${issue.summary}`)}\n\nỨng viên:\n${table}`,

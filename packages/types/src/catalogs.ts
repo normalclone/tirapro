@@ -111,6 +111,16 @@ export const DEFAULT_ISSUE_TYPES: IssueTypeSeed[] = [
   },
 ];
 
+/**
+ * Nhãn hiển thị của nhóm trạng thái (category) — MỘT nguồn cho web và API (digest, tin nhắn).
+ * Thuật ngữ Agile tiếng Anh, khớp tên trạng thái mặc định. Xem docs/UX_CONVENTIONS.md §19.
+ */
+export const STATUS_CATEGORY_LABEL: Record<StatusCategory, string> = {
+  TODO: 'To Do',
+  IN_PROGRESS: 'In Progress',
+  DONE: 'Done',
+};
+
 export interface WorkflowStatusSeed {
   name: string;
   category: StatusCategory;

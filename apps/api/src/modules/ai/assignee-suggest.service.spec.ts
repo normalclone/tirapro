@@ -94,9 +94,9 @@ describe('AssigneeSuggestService', () => {
     expect(out.suggestions.map((s) => s.userId)).toEqual(['uB', 'uA', 'uC']);
     expect(out.suggestions.map((s) => s.score)).toEqual([0.95, 0.45, 0.25]);
     const b = out.suggestions[0]!.reasons.join(' | ');
-    expect(b).toMatch(/2 issue cùng nhãn\/thành phần/);
-    expect(b).toMatch(/4 issue cùng loại “Bug”/);
-    expect(b).toMatch(/3 issue trong 14 ngày/);
+    expect(b).toMatch(/2 công việc cùng nhãn\/thành phần/);
+    expect(b).toMatch(/4 công việc cùng loại “Bug”/);
+    expect(b).toMatch(/3 công việc trong 14 ngày/);
     expect(out.suggestions[0]!.displayName).toBe('Bình');
     expect(out.suggestions[2]!.reasons.join(' ')).toMatch(/Chưa có dữ liệu/);
     expect(claude.extract).not.toHaveBeenCalled(); // Claude không khả dụng → không gọi
@@ -118,7 +118,7 @@ describe('AssigneeSuggestService', () => {
     expect(out.suggestions.map((s) => s.userId)).toEqual(['uA', 'uB', 'uC']);
     const reasons = out.suggestions.map((s) => s.reasons.join('|'));
     expect(new Set(reasons).size).toBe(3);
-    expect(reasons[0]).toMatch(/5 issue trong 14 ngày/);
+    expect(reasons[0]).toMatch(/5 công việc trong 14 ngày/);
   });
 
   it('hoà hoàn toàn: ưu tiên ít việc dở hơn rồi tới tên (xác định, không phụ thuộc thứ tự DB)', async () => {
