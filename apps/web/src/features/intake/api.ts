@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   skipToken,
   useInfiniteQuery,
   useMutation,
@@ -7,6 +8,7 @@ import {
 } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import type { StatusCategory } from '@tirapro/types';
 import type { ReportPayload } from './reportForm';
 
@@ -72,7 +74,7 @@ export type ReportIssueInput = ReportPayload & { attachmentIds?: string[] };
  * Query keyed theo summary → tự cache theo từng chuỗi; staleTime nhỏ giữ kết quả tươi.
  */
 export function useDuplicateCheck(projectId: string | undefined, summary: string) {
-  const q = summary.trim();
+  const q = useDebouncedValue(summary.trim());
   return useQuery({
     queryKey: keys.triage.duplicates(projectId ?? '', q),
     queryFn:
@@ -85,6 +87,7 @@ export function useDuplicateCheck(projectId: string | undefined, summary: string
             ).data
         : skipToken,
     staleTime: 10_000,
+    placeholderData: keepPreviousData, // gõ tiếp không làm panel nhấp nháy giữa hai truy vấn
   });
 }
 

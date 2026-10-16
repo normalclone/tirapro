@@ -97,7 +97,7 @@ export function TriagePage() {
             disabled={!projectId}
           >
             <Bug className="h-4 w-4" />
-            Báo lỗi
+            Gửi yêu cầu
           </Button>
         </div>
 

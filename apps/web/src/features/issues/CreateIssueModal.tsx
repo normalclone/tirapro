@@ -17,6 +17,8 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { useCreateIssueModal } from '@/stores/createIssue';
+import { openReportIssue } from '@/stores/reportIssue';
+import { isBugType } from '@/features/issue-edit/severity';
 import { cn } from '@/lib/utils';
 import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
@@ -392,6 +394,20 @@ export function CreateIssueModal() {
     }
   }
 
+  // Mang tiêu đề/mô tả sang form Báo lỗi (có kiểm tra trùng + mức nghiêm trọng) rồi đóng hộp tạo việc; mẫu mô tả
+  // của hộp này bỏ đi (form Báo lỗi có mẫu riêng) và bản nháp được xoá vì chữ đã chuyển sang bên kia.
+  function switchToReport() {
+    const text = description.trim() && !isTemplate(description) ? description : undefined;
+    openReportIssue({
+      projectKey: selKey || undefined,
+      kind: 'BUG',
+      summary: parseTitleTokens(summary, tokenCtx).clean.trim(),
+      description: text,
+    });
+    clearDraft(selKey);
+    close();
+  }
+
   // Tạo xong → đóng popup + mở issue mới.
   async function submitCreate() {
     const created = await doCreate();
@@ -534,6 +550,19 @@ export function CreateIssueModal() {
               }))}
             />
           </Field>
+
+          {isBugType(selType) && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-surface-2 px-3 py-2 text-xs text-muted sm:col-span-2">
+              <span>Báo lỗi có kiểm tra trùng và mức nghiêm trọng —</span>
+              <button
+                type="button"
+                onClick={switchToReport}
+                className="rounded font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              >
+                Chuyển sang form Báo lỗi
+              </button>
+            </p>
+          )}
 
           <Field label="Tiêu đề" className="relative z-20 sm:col-span-2">
             <TokenTitleInput

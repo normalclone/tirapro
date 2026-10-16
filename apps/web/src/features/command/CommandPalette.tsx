@@ -10,6 +10,8 @@ import {
   LayoutGrid,
   ListTodo,
   Moon,
+  Bug,
+  MessageSquarePlus,
   Plus,
   Search,
   Sparkles,
@@ -17,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
+import { openReportIssue } from '@/stores/reportIssue';
 import { useTheme } from '@/stores/theme';
 import { useRecents } from '@/stores/recentIssues';
 import { createPresetFromTarget, currentProjectKey, safeDecode } from '@/lib/currentProject';
@@ -54,6 +57,12 @@ export function CommandPalette() {
   const runAction = (fn: () => void) => {
     fn();
     setOpen(false);
+  };
+
+  // Cùng đích + cùng luật quyền với "Tạo công việc"; form Báo lỗi tự nhận dự án đích khi không truyền key.
+  const reportFromPalette = (kind: 'BUG' | 'FEATURE') => {
+    if (create.target.notice) toast.info(create.target.notice);
+    if (create.access === 'open') openReportIssue({ projectKey: create.target.projectKey, kind });
   };
 
   // Người dùng gõ đúng dạng mã issue → gợi ý nhảy thẳng.
@@ -170,6 +179,24 @@ export function CommandPalette() {
                 })
               }
             />
+          )}
+          {create.access !== 'deny' && (
+            <>
+              <ActionItem
+                value="bao loi bug report"
+                icon={<Bug className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
+                label="Báo lỗi"
+                onSelect={() => runAction(() => reportFromPalette('BUG'))}
+              />
+              <ActionItem
+                value="gui yeu cau feature request"
+                icon={
+                  <MessageSquarePlus className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
+                }
+                label="Gửi yêu cầu"
+                onSelect={() => runAction(() => reportFromPalette('FEATURE'))}
+              />
+            </>
           )}
           <ActionItem
             value="doi giao dien theme sang toi"

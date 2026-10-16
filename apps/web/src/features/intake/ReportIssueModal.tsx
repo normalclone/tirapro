@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bug, ChevronRight } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Bug, ChevronRight } from 'lucide-react';
 import type { EnvironmentInput } from '@tirapro/shared';
 import type { ProjectDto } from '@tirapro/types';
 import { cn } from '@/lib/utils';
@@ -12,17 +12,14 @@ import { useCreateTarget } from '@/lib/useCreateTarget';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
-import { toDraft } from '@/features/issue-edit/environment';
 import { useReportIssueModal, type ReportIssuePreset } from '@/stores/reportIssue';
 import { useDuplicateCheck, type DuplicateSuggestion } from './api';
+import { DuplicatePanel } from './DuplicatePanel';
+import { useDupChoice } from './useDupChoice';
+import type { DupSelection } from './dupDecision';
 import { FIELD_LABEL, ReportDetails } from './ReportDetails';
-import {
-  clearDraft,
-  loadDetailsOpen,
-  saveDetailsOpen,
-  useDraftAutosave,
-  useReportInitial,
-} from './useReportDraft';
+import { clearDraft, useDraftAutosave, useReportInitial } from './useReportDraft';
+import { useReportDetails } from './useReportDetails';
 import { useReportSubmit } from './useReportSubmit';
 import {
   isReportTemplate,
@@ -120,29 +117,6 @@ function ProjectField({
   );
 }
 
-/** Gợi ý trùng (tạm: chỉ liệt kê; hành động "Thêm ghi chú / Vẫn tạo mới" ở DuplicatePanel — Q9). */
-function DuplicateHint({ matches }: { matches: DuplicateSuggestion[] }) {
-  return (
-    <div id="ri-dup" className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-2.5">
-      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
-        <AlertTriangle className="h-3.5 w-3.5 text-warning" />
-        Có thể trùng:
-      </p>
-      <ul className="space-y-1">
-        {matches.map((m) => (
-          <li key={m.id} className="flex items-baseline gap-2 px-1.5 py-1 text-sm">
-            <span className="font-mono text-xs font-medium text-primary">{m.key}</span>
-            <span className="min-w-0 flex-1 truncate text-ink">{m.summary}</span>
-            {m.occurrenceCount > 1 && (
-              <span className="shrink-0 text-xs text-faint">×{m.occurrenceCount}</span>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 /** Nút gập/mở khối "Thêm chi tiết". */
 function DetailsToggle({
   open,
@@ -180,10 +154,12 @@ function DetailsToggle({
 function ReportFooter({
   busy,
   canSubmit,
+  label,
   onClose,
 }: {
   busy: boolean;
   canSubmit: boolean;
+  label: string;
   onClose: () => void;
 }) {
   return (
@@ -195,9 +171,65 @@ function ReportFooter({
         Hủy
       </Button>
       <Button type="submit" form="report-issue-form" loading={busy} disabled={!canSubmit}>
-        Gửi
+        {label}
       </Button>
     </>
+  );
+}
+
+/** Ô tiêu đề + panel gợi ý trùng ngay dưới. ↓ trong ô tiêu đề vào danh sách gợi ý. */
+function TitleField({
+  kind,
+  summary,
+  onChange,
+  matches,
+  checking,
+  dup,
+  onSelect,
+}: {
+  kind: RequestKind;
+  summary: string;
+  onChange: (v: string) => void;
+  matches: DuplicateSuggestion[];
+  checking: boolean;
+  dup: ReturnType<typeof useDupChoice>;
+  onSelect: (s: DupSelection) => void;
+}) {
+  const long = summary.trim().length >= 4;
+  const showPanel = dup.sel.mode === 'merge' || (long && matches.length > 0 && !dup.dismissed);
+  return (
+    <div>
+      <label htmlFor="ri-summary" className={FIELD_LABEL}>
+        Tiêu đề
+      </label>
+      <Input
+        id="ri-summary"
+        autoFocus
+        value={summary}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowDown') return;
+          const first = document.querySelector<HTMLElement>('#ri-dup [data-dup-merge="0"]');
+          if (!first) return;
+          e.preventDefault();
+          first.focus();
+        }}
+        placeholder={TITLE_PLACEHOLDER[kind]}
+        className="text-sm"
+        aria-describedby={showPanel ? 'ri-dup' : undefined}
+      />
+      {showPanel && (
+        <DuplicatePanel
+          matches={matches}
+          selection={dup.sel}
+          exact={matches.find((m) => m.id === dup.decision.exact?.id)}
+          onSelect={onSelect}
+        />
+      )}
+      {checking && !showPanel && long && (
+        <p className="mt-1.5 text-xs text-faint">Đang kiểm tra trùng lặp…</p>
+      )}
+    </div>
   );
 }
 
@@ -222,15 +254,10 @@ function ReportIssueForm({
   const initial = useReportInitial(open, preset, target.projectKey);
   const [selKey, setSelKey] = useState(initial.key);
   const [changingProject, setChangingProject] = useState(false);
+  const details = useReportDetails();
   const [kind, setKind] = useState<RequestKind>(initial.kind);
   const [summary, setSummary] = useState(initial.summary);
   const [description, setDescription] = useState(initial.description);
-  const [detailsOpen, setDetailsOpen] = useState(loadDetailsOpen);
-  const [severityId, setSeverityId] = useState('');
-  const [envDraft, setEnvDraft] = useState(() => toDraft(null));
-  const [envError, setEnvError] = useState<string | null>(null);
-  const [files, setFiles] = useState<File[]>([]);
-  const severityTouched = useRef(false);
 
   const selProject = useMemo(
     () => (projects ?? []).find((p) => p.key.toLowerCase() === selKey.toLowerCase()),
@@ -243,37 +270,30 @@ function ReportIssueForm({
     open ? projectId : undefined,
     summary,
   );
-  const long = summary.trim().length >= 4;
-  const showDup = long && (duplicates?.length ?? 0) > 0;
+  const matches = duplicates ?? [];
+  const dup = useDupChoice(matches, summary);
 
   const form = {
     projectId,
     kind,
     summary,
     description,
-    severityId,
-    environment: envDraft as EnvironmentInput,
-    mergeIntoIssueId: null as string | null,
-    forceNew: false,
+    severityId: details.props.severityId,
+    environment: details.envDraft as EnvironmentInput,
+    mergeIntoIssueId: dup.decision.mergeInto?.id ?? null,
+    forceNew: dup.decision.forceNew,
   };
   const { busy, canSubmit, submit } = useReportSubmit({
     form,
-    files,
-    onEnvInvalid: (m) => {
-      setDetailsOpen(true);
-      setEnvError(m);
-    },
+    files: details.files,
+    onEnvInvalid: details.showEnvError,
     onDone: () => {
       clearDraft(selKey);
       onClose();
     },
   });
-  const updateEnv = useCallback((u: (d: typeof envDraft) => typeof envDraft) => {
-    setEnvError(null);
-    setEnvDraft(u);
-  }, []);
-
   useDraftAutosave(open, selKey, { kind, summary, description });
+  const merging = !!dup.decision.mergeInto;
 
   function changeKind(next: RequestKind) {
     if (next === kind) return;
@@ -282,9 +302,12 @@ function ReportIssueForm({
     setDescription((d) => (d.trim() === '' || isReportTemplate(d) ? reportTemplate(next) : d));
   }
 
-  function toggleDetails() {
-    saveDetailsOpen(!detailsOpen);
-    setDetailsOpen(!detailsOpen);
+  /** Chọn gộp: mô tả mẫu bỏ đi (nội dung thành bình luận); bỏ chọn gộp mà mô tả trống thì trả lại mẫu. */
+  function chooseDup(next: DupSelection) {
+    if (next.mode === 'merge' && isReportTemplate(description)) setDescription('');
+    if (dup.sel.mode === 'merge' && next.mode !== 'merge' && description.trim() === '')
+      setDescription(reportTemplate(kind));
+    dup.setSel(next);
   }
 
   return (
@@ -297,7 +320,21 @@ function ReportIssueForm({
       title={reportDialogTitle(kind)}
       size="lg"
       onSubmit={() => void submit()}
-      footer={<ReportFooter busy={busy} canSubmit={canSubmit} onClose={onClose} />}
+      // Esc đang ở trong panel gợi ý trùng thì chỉ đóng panel, không đóng cả hộp.
+      onEscapeKeyDown={(e) => {
+        if (!document.activeElement?.closest('#ri-dup')) return;
+        e.preventDefault();
+        dup.setDismissed(true);
+        document.getElementById('ri-summary')?.focus();
+      }}
+      footer={
+        <ReportFooter
+          busy={busy}
+          canSubmit={canSubmit}
+          label={dup.decision.label}
+          onClose={onClose}
+        />
+      }
     >
       <form id="report-issue-form" onSubmit={(e) => void submit(e)} className="space-y-4">
         <KindPicker kind={kind} onChange={changeKind} />
@@ -311,27 +348,27 @@ function ReportIssueForm({
             setChangingProject(false);
           }}
         />
-        <div>
-          <label htmlFor="ri-summary" className={FIELD_LABEL}>
-            Tiêu đề
-          </label>
-          <Input
-            id="ri-summary"
-            autoFocus
-            value={summary}
-            onChange={(e) => setSummary(e.target.value)}
-            placeholder={TITLE_PLACEHOLDER[kind]}
-            className="text-sm"
-            aria-describedby={showDup ? 'ri-dup' : undefined}
-          />
-          {showDup && <DuplicateHint matches={duplicates ?? []} />}
-          {checkingDup && !showDup && long && (
-            <p className="mt-1.5 text-xs text-faint">Đang kiểm tra trùng lặp…</p>
-          )}
-        </div>
+        <TitleField
+          kind={kind}
+          summary={summary}
+          onChange={(v) => {
+            setSummary(v);
+            dup.onSummaryChange();
+          }}
+          matches={matches}
+          checking={checkingDup}
+          dup={dup}
+          onSelect={chooseDup}
+        />
         <div>
           <label htmlFor="ri-desc" className={FIELD_LABEL}>
-            Mô tả <span className="font-normal text-faint">(tùy chọn)</span>
+            {merging ? (
+              'Ghi chú thêm — sẽ thành bình luận'
+            ) : (
+              <>
+                Mô tả <span className="font-normal text-faint">(tùy chọn)</span>
+              </>
+            )}
           </label>
           <MarkdownEditor
             textareaId="ri-desc"
@@ -343,22 +380,8 @@ function ReportIssueForm({
           />
         </div>
         <div>
-          <DetailsToggle open={detailsOpen} isBug={isBug} onToggle={toggleDetails} />
-          {detailsOpen && (
-            <ReportDetails
-              isBug={isBug}
-              meta={meta}
-              severityId={severityId}
-              onSeverity={setSeverityId}
-              severityTouched={severityTouched}
-              envDraft={envDraft}
-              onEnvDraft={updateEnv}
-              envError={envError}
-              onEnvChange={(k) => (v) => updateEnv((d) => ({ ...d, [k]: v }))}
-              files={files}
-              onFiles={setFiles}
-            />
-          )}
+          <DetailsToggle open={details.open} isBug={isBug} onToggle={details.toggle} />
+          {details.open && <ReportDetails isBug={isBug} meta={meta} {...details.props} />}
         </div>
       </form>
     </Dialog>
