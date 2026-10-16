@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertIssueWritable } from '../../common/project-writable';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /** User tối thiểu trả về cho client trong danh sách watcher. */
 export interface WatcherUser {
@@ -37,13 +38,16 @@ interface CommentAddedPayload {
  * Đồng thời là PRODUCER: lắng nghe các domain event của issue và tạo
  * Notification loại WATCHING_UPDATE cho mọi watcher (trừ chính người thực hiện).
  *
- * Chỉ inject PrismaService — module này lắng nghe sự kiện, không phát.
+ * Tạo thông báo qua `NotificationsService.publish` (gộp 60 s, realtime); module này lắng nghe sự kiện, không phát.
  */
 @Injectable()
 export class WatchersService {
   private readonly logger = new Logger(WatchersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   // ---------- COMMANDS / QUERIES (luôn scope theo workspace của user) ----------
 
@@ -164,17 +168,26 @@ export class WatchersService {
     const recipients = watchers.map((w) => w.userId).filter((userId) => userId !== actorId);
     if (recipients.length === 0) return;
 
-    const payload: Prisma.InputJsonValue = { key: issue.key, summary: issue.summary };
-    await this.prisma.notification.createMany({
-      data: recipients.map((recipientId) => ({
-        recipientId,
-        workspaceId: issue.workspaceId,
-        type: 'WATCHING_UPDATE' as const,
-        issueId: issue.id,
-        actorId: actorId ?? null,
-        payload,
-      })),
-    });
+    // Qua cùng đường với thông báo trực tiếp: gộp theo công việc trong 60 giây, không trùng khi vừa được báo
+    // trực tiếp, và có đẩy realtime. `force`: theo dõi là hành động chủ động nên bỏ qua cài đặt in-app.
+    // Lỗi của một người không chặn người sau.
+    for (const recipientId of recipients) {
+      try {
+        await this.notifications.publish(
+          {
+            recipientId,
+            workspaceId: issue.workspaceId,
+            type: 'WATCHING_UPDATE',
+            issueId: issue.id,
+            actorId: actorId ?? null,
+            payload: { key: issue.key, summary: issue.summary },
+          },
+          { force: true },
+        );
+      } catch (err) {
+        this.logger.warn(`Báo người theo dõi ${recipientId} thất bại: ${this.errMsg(err)}`);
+      }
+    }
   }
 
   /** Issue phải thuộc workspace của user và chưa xóa mềm. */

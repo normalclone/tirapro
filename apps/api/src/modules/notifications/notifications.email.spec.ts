@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { NotificationType } from '@prisma/client';
 import { effectiveEmailPrefs, NotificationsService } from './notifications.service';
 
 describe('effectiveEmailPrefs', () => {
@@ -60,10 +61,10 @@ function setup(settings: unknown) {
     config as never,
   );
   const create = (type: string) =>
-    (service as unknown as { create: (i: unknown) => Promise<void> }).create({
+    service.publish({
       recipientId: 'r1',
       workspaceId: 'w1',
-      type,
+      type: type as NotificationType,
       actorId: 'a1',
       payload: { key: 'TP-1', summary: 'Sửa lỗi', statusName: 'Done' },
     });

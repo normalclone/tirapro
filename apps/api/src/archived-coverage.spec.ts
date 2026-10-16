@@ -103,12 +103,6 @@ const EXEMPT_METHODS: Record<string, string> = {
     'phản ứng sự kiện issue (chuyển trạng thái đã bị chặn ở nguồn)',
   'sprints/sprints.service.ts#snapshot':
     'số liệu báo cáo dẫn xuất; START/CLOSE đã chặn ở caller, cron DAILY chỉ chụp thêm điểm phẳng',
-  'watchers/watchers.service.ts#onIssueUpdated':
-    'phản ứng sự kiện issue (ghi issue đã bị chặn ở nguồn)',
-  'watchers/watchers.service.ts#onIssueTransitioned':
-    'phản ứng sự kiện issue (ghi issue đã bị chặn ở nguồn)',
-  'watchers/watchers.service.ts#onCommentAdded':
-    'phản ứng sự kiện issue (ghi comment đã bị chặn ở nguồn)',
 };
 
 interface Method {

@@ -2,7 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { z } from 'zod';
-import { extractMentionIds, plainExcerpt } from '@tirapro/shared';
+import {
+  buildNotificationTitle,
+  extractMentionIds,
+  notificationBody,
+  plainExcerpt,
+  type NotificationFilter,
+  type NotificationPayload,
+} from '@tirapro/shared';
 import {
   DOMAIN_EVENTS,
   NotificationType as NotificationTypeEnum,
@@ -14,6 +21,7 @@ import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { cursorPage, type PageResult } from '../../common/dto/page-result';
 import { MailService } from '../mail/mail.service';
 import { resolveMentionedMembers } from '../../common/mentions';
+import { COALESCE_TYPES, COALESCE_WINDOW_MS, mergeNotificationPayload } from './notification-merge';
 
 /** DTO trả về cho client — Date đã chuyển sang ISO string. */
 export interface NotificationDto {
@@ -108,6 +116,14 @@ function readNotificationsSettings(
   return notifications as Record<string, unknown>;
 }
 
+/** Bộ lọc danh sách → điều kiện Prisma (đi theo chỉ mục [recipientId, createdAt] rồi lọc trên tập của MỘT người). */
+const FILTER_WHERE = {
+  all: {},
+  unread: { readAt: null },
+  mentioned: { type: 'MENTIONED' },
+  assigned: { type: 'ISSUE_ASSIGNED' },
+} as const satisfies Record<NotificationFilter, Prisma.NotificationWhereInput>;
+
 /** Issue tối thiểu kèm trong payload của các domain event. */
 interface IssueEventShape {
   id: string;
@@ -147,7 +163,13 @@ interface CommentAddedPayload {
   newMentionIds?: string[];
 }
 
-interface NotificationInput {
+/** Tuỳ chọn khi tạo thông báo. */
+export interface PublishOptions {
+  /** Bỏ qua cài đặt in-app của người nhận (dùng cho người theo dõi). */
+  force?: boolean;
+}
+
+export interface NotificationInput {
   recipientId: string;
   workspaceId: string;
   type: NotificationType;
@@ -175,9 +197,11 @@ export class NotificationsService {
     recipientId: string,
     cursor: string | undefined,
     limit: number,
+    filter: NotificationFilter = 'all',
   ): Promise<PageResult<NotificationDto>> {
     const rows = await this.prisma.notification.findMany({
-      where: { recipientId },
+      // recipientId luôn có mặt: không thể xem thông báo người khác dù bộ lọc là gì.
+      where: { recipientId, ...FILTER_WHERE[filter] },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -288,15 +312,26 @@ export class NotificationsService {
   @OnEvent(DOMAIN_EVENTS.ISSUE_TRANSITIONED)
   async onIssueTransitioned(payload: unknown): Promise<void> {
     try {
-      const { issue, actorId } = payload as IssueTransitionedPayload;
+      const { issue, actorId, fromStatusId } = payload as IssueTransitionedPayload;
       if (!issue?.assigneeId || issue.assigneeId === actorId) return;
-      await this.create({
+      const fromStatus = fromStatusId
+        ? await this.prisma.status.findUnique({
+            where: { id: fromStatusId },
+            select: { name: true },
+          })
+        : null;
+      await this.publish({
         recipientId: issue.assigneeId,
         workspaceId: issue.workspaceId,
         type: 'STATUS_CHANGED',
         issueId: issue.id,
         actorId,
-        payload: { key: issue.key, summary: issue.summary, statusName: issue.status?.name ?? null },
+        payload: {
+          key: issue.key,
+          summary: issue.summary,
+          statusName: issue.status?.name ?? null,
+          ...(fromStatus ? { fromStatusName: fromStatus.name } : {}),
+        },
       });
     } catch (err) {
       this.logger.warn(`onIssueTransitioned thất bại: ${this.errMsg(err)}`);
@@ -325,7 +360,7 @@ export class NotificationsService {
         await this.notifyAssigned(issue, actorId);
         return;
       }
-      await this.create({
+      await this.publish({
         recipientId: issue.assigneeId,
         workspaceId: issue.workspaceId,
         type: 'ISSUE_UPDATED',
@@ -349,7 +384,11 @@ export class NotificationsService {
         select: { id: true, workspaceId: true, assigneeId: true, key: true, summary: true },
       });
       if (!issue) return;
-      const issuePayload = { key: issue.key, summary: issue.summary };
+      const issuePayload = {
+        key: issue.key,
+        summary: issue.summary,
+        excerpt: plainExcerpt(comment?.body, 80),
+      };
 
       // @nhắc tên: chỉ thành viên không gian làm việc, không tự nhắc chính mình.
       const mentioned = await this.notifyMentioned({
@@ -364,7 +403,7 @@ export class NotificationsService {
       // Người được nhắc tên đã nhận thông báo trực tiếp, không báo thêm "có bình luận mới".
       if (!issue.assigneeId || issue.assigneeId === author || mentioned.has(issue.assigneeId))
         return;
-      await this.create({
+      await this.publish({
         recipientId: issue.assigneeId,
         workspaceId: issue.workspaceId,
         type: 'COMMENT_ADDED',
@@ -479,7 +518,7 @@ export class NotificationsService {
     );
     for (const recipientId of members) {
       mentioned.add(recipientId);
-      await this.create({
+      await this.publish({
         recipientId,
         workspaceId: issue.workspaceId,
         type: 'MENTIONED',
@@ -493,7 +532,7 @@ export class NotificationsService {
   }
 
   private notifyAssigned(issue: IssueEventShape, actorId: string): Promise<void> {
-    return this.create({
+    return this.publish({
       recipientId: issue.assigneeId as string,
       workspaceId: issue.workspaceId,
       type: 'ISSUE_ASSIGNED',
@@ -503,8 +542,13 @@ export class NotificationsService {
     });
   }
 
-  private async create(input: NotificationInput): Promise<void> {
-    const after = await this.createDeferred(input);
+  /**
+   * Điểm vào duy nhất để tạo thông báo in-app (+ email). Tôn trọng cài đặt người nhận, trừ khi `force`
+   * (người theo dõi là hành động chủ động nên bỏ qua cài đặt in-app). Loại "ồn" được gộp theo công việc trong
+   * 60 giây (xem `notification-merge.ts`).
+   */
+  async publish(input: NotificationInput, opts?: PublishOptions): Promise<void> {
+    const after = await this.createDeferred(input, this.prisma, opts);
     await after();
   }
 
@@ -515,9 +559,12 @@ export class NotificationsService {
   private async createDeferred(
     input: NotificationInput,
     db: Pick<Prisma.TransactionClient, 'notification'> = this.prisma,
+    opts?: PublishOptions,
   ): Promise<() => Promise<void>> {
     const noop = (): Promise<void> => Promise.resolve();
     // Quiet-by-default: tôn trọng tùy chọn của người nhận. In-app và email là hai tuỳ chọn độc lập.
+    // Chốt chặn trung tâm: không bao giờ báo cho chính người thao tác (dù producer quên lọc).
+    if (input.actorId && input.actorId === input.recipientId) return noop;
     const recipient = await this.prisma.user.findUnique({
       where: { id: input.recipientId },
       select: { settings: true, email: true, status: true },
@@ -529,10 +576,46 @@ export class NotificationsService {
       !!emailKey &&
       recipient.status !== 'DEACTIVATED' &&
       effectiveEmailPrefs(recipient.settings)[emailKey];
-    if (!prefs[input.type] && !emailOn) return noop;
+    // `force` chỉ thay MẶC ĐỊNH (loại tắt-mặc-định như WATCHING_UPDATE); người dùng đã TẮT tường minh thì luôn thắng.
+    const explicitlyOff = readNotificationsSettings(recipient.settings)[input.type] === false;
+    const inApp = prefs[input.type] || (!!opts?.force && !explicitlyOff);
+    if (!inApp && !emailOn) return noop;
+    const payload = await this.withActor(input);
 
-    const created = prefs[input.type]
-      ? await db.notification.create({
+    let saved: Notification | null = null;
+    if (inApp) {
+      const since = new Date(Date.now() - COALESCE_WINDOW_MS);
+      // Theo dõi: đã được báo trực tiếp (loại khác) về cùng công việc trong cửa sổ → không báo thêm dòng "theo dõi".
+      if (input.type === 'WATCHING_UPDATE' && input.issueId) {
+        const direct = await db.notification.findFirst({
+          where: {
+            recipientId: input.recipientId,
+            issueId: input.issueId,
+            type: { not: 'WATCHING_UPDATE' },
+            readAt: null,
+            createdAt: { gte: since },
+          },
+          select: { id: true },
+        });
+        if (direct) return noop;
+      }
+      const prev =
+        COALESCE_TYPES.has(input.type) && input.issueId
+          ? await db.notification.findFirst({
+              where: {
+                recipientId: input.recipientId,
+                issueId: input.issueId,
+                type: input.type,
+                readAt: null,
+                createdAt: { gte: since },
+              },
+              orderBy: { createdAt: 'desc' },
+            })
+          : null;
+      const merged = prev ? await this.mergeInto(db, prev, input, payload) : null;
+      saved =
+        merged ??
+        (await db.notification.create({
           data: {
             recipientId: input.recipientId,
             workspaceId: input.workspaceId,
@@ -540,54 +623,125 @@ export class NotificationsService {
             issueId: input.issueId ?? null,
             commentId: input.commentId ?? null,
             actorId: input.actorId ?? null,
-            payload: input.payload as Prisma.InputJsonValue,
+            payload: payload as Prisma.InputJsonValue,
           },
-        })
-      : null;
+        }));
+      // Kiểm lại SAU khi ghi (đối xứng với bước hấp thụ ở dưới): dòng trực tiếp có thể vừa commit giữa lúc kiểm
+      // ở trên và lúc ghi này (vd MENTIONED trong transaction chưa commit lúc kiểm đầu) → rút dòng theo dõi vừa ghi.
+      if (input.type === 'WATCHING_UPDATE' && input.issueId) {
+        const direct = await db.notification.findFirst({
+          where: {
+            recipientId: input.recipientId,
+            issueId: input.issueId,
+            type: { not: 'WATCHING_UPDATE' },
+            readAt: null,
+            createdAt: { gte: since },
+          },
+          select: { id: true },
+        });
+        if (direct) {
+          await db.notification.deleteMany({ where: { id: saved.id } });
+          return noop;
+        }
+      }
+    }
 
     return async () => {
-      if (created) {
-        // Báo cho gateway đẩy `notification:new` tới đúng người nhận (room user:<id>).
+      if (saved) {
+        // Thông báo trực tiếp (loại khác WATCHING_UPDATE) hấp thụ dòng "theo dõi" chưa đọc cùng việc trong cửa sổ:
+        // người nhận chỉ thấy một dòng. Chạy SAU commit (kể cả khi dòng trực tiếp ghi trong transaction).
+        // Không cộng `count` vì dòng theo dõi thường đếm chính sự kiện này (sẽ thành "bình luận 2 lần" sai).
+        if (input.type !== 'WATCHING_UPDATE' && input.issueId) {
+          try {
+            await this.prisma.notification.deleteMany({
+              where: {
+                recipientId: input.recipientId,
+                issueId: input.issueId,
+                type: 'WATCHING_UPDATE',
+                readAt: null,
+                createdAt: { gte: new Date(Date.now() - COALESCE_WINDOW_MS) },
+              },
+            });
+          } catch (err) {
+            this.logger.warn(`Hấp thụ dòng theo dõi thất bại: ${this.errMsg(err)}`);
+          }
+        }
+        // Báo cho gateway đẩy `notification:new` tới đúng người nhận (room user:<id>). Dòng đã gộp cũng được đẩy lại
+        // với DTO mới — FE chỉ cần làm mới danh sách.
         this.events.emit(DOMAIN_EVENTS.NOTIFICATION_CREATED, {
           recipientId: input.recipientId,
-          notification: this.toDto(created),
+          notification: this.toDto(saved),
         });
       }
-      if (emailOn) await this.enqueueEmail(recipient.email, input);
+      if (emailOn) await this.enqueueEmail(recipient.email, input.type, payload);
+    };
+  }
+
+  /**
+   * Gộp sự kiện mới vào dòng `prev`. Điều kiện `readAt: null` ngay trong UPDATE: nếu người nhận vừa bấm đọc
+   * giữa lúc tìm và lúc ghi thì KHÔNG nhập vào dòng đã đọc (P2025 → trả null để tạo dòng mới).
+   */
+  private async mergeInto(
+    db: Pick<Prisma.TransactionClient, 'notification'>,
+    prev: Notification,
+    input: NotificationInput,
+    payload: NotificationPayload,
+  ): Promise<Notification | null> {
+    try {
+      return await db.notification.update({
+        where: { id: prev.id, readAt: null },
+        data: {
+          payload: mergeNotificationPayload(
+            prev.payload as NotificationPayload,
+            payload,
+          ) as Prisma.InputJsonValue,
+          commentId: input.commentId ?? prev.commentId,
+          actorId: input.actorId ?? prev.actorId,
+          createdAt: new Date(),
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return null;
+      throw err;
+    }
+  }
+
+  /** Bổ sung người thực hiện (ảnh chụp tên lúc xảy ra) + `count`/`actors` — nền cho việc gộp ở `publish`. */
+  private async withActor(input: NotificationInput): Promise<NotificationPayload> {
+    const base = { ...input.payload } as NotificationPayload;
+    const actor = input.actorId
+      ? await this.prisma.user.findUnique({
+          where: { id: input.actorId },
+          select: { displayName: true },
+        })
+      : null;
+    return {
+      ...base,
+      count: 1,
+      ...(actor?.displayName && input.actorId
+        ? {
+            actorName: actor.displayName,
+            actors: [{ id: input.actorId, name: actor.displayName }],
+          }
+        : {}),
     };
   }
 
   /** Xếp thư thông báo vào outbox (gộp digest 5 phút). Lỗi chỉ log — không được làm hỏng thông báo in-app. */
   private async enqueueEmail(
     to: string,
-    input: { type: NotificationType; actorId?: string | null; payload: Record<string, unknown> },
+    type: NotificationType,
+    payload: NotificationPayload,
   ): Promise<void> {
     try {
-      const actor = input.actorId
-        ? await this.prisma.user.findUnique({
-            where: { id: input.actorId },
-            select: { displayName: true },
-          })
-        : null;
-      const key = typeof input.payload.key === 'string' ? input.payload.key : '';
-      const summary = typeof input.payload.summary === 'string' ? input.payload.summary : '';
-      const statusName =
-        typeof input.payload.statusName === 'string' ? input.payload.statusName : '';
-      const who = actor?.displayName ?? 'Ai đó';
-      const title: Record<string, string> = {
-        MENTIONED: `${who} đã nhắc đến bạn${key ? ` trong ${key}` : ''}`,
-        ISSUE_ASSIGNED: `${who} đã giao cho bạn${key ? ` ${key}` : ' một công việc'}`,
-        COMMENT_ADDED: `${who} đã bình luận${key ? ` trong ${key}` : ''}`,
-        STATUS_CHANGED: `${key ? `${key} ` : 'Công việc '}đã chuyển sang ${statusName || 'trạng thái mới'}`,
-      };
       const base = this.config.get<string>('mail.appWebUrl') ?? '';
       await this.mail.enqueue({
         to,
         template: 'notification',
         payload: {
-          title: title[input.type] ?? 'Thông báo mới',
-          body: summary,
-          url: key ? `${base}/issue/${key}` : base,
+          title: buildNotificationTitle(type, payload),
+          body: notificationBody(type, payload),
+          url: payload.key ? `${base}/issue/${payload.key}` : base,
         },
       });
     } catch (err) {

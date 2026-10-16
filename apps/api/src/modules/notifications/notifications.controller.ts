@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { NotificationType } from '@tirapro/types';
+import { notificationFilterSchema } from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -38,15 +39,22 @@ type UpdatePreferencesBody = z.infer<typeof updatePreferencesSchema>;
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 
-  /** Thông báo của tôi, mới nhất trước. */
+  /** Thông báo của tôi, mới nhất trước. `filter`: all | unread | mentioned | assigned. */
   @Get()
   async list(
     @CurrentUser() user: AuthUser,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('filter') filter?: string,
   ) {
     const lim = Math.min(Math.max(Number(limit) || 30, 1), 100);
-    return this.notifications.listMine(user.id, cursor, lim);
+    // Giá trị lạ/thiếu → 'all' (tương thích ngược).
+    return this.notifications.listMine(
+      user.id,
+      cursor,
+      lim,
+      notificationFilterSchema.parse(filter),
+    );
   }
 
   /** Số thông báo chưa đọc. */

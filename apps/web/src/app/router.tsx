@@ -19,6 +19,11 @@ const DashboardPage = lazy(() =>
 const MembersPage = lazy(() =>
   import('@/features/members/MembersPage').then((m) => ({ default: m.MembersPage })),
 );
+const NotificationsPage = lazy(() =>
+  import('@/features/notifications/NotificationsPage').then((m) => ({
+    default: m.NotificationsPage,
+  })),
+);
 const AccountPage = lazy(() =>
   import('@/features/members/AccountPage').then((m) => ({ default: m.AccountPage })),
 );
@@ -220,6 +225,7 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'projects', element: <ProjectsIndexRedirect /> },
       { path: 'members', element: <MembersPage /> },
+      { path: 'notifications', element: <NotificationsPage /> },
       { path: 'account', element: <AccountPage /> },
       {
         path: 'admin',
