@@ -161,6 +161,7 @@ Gộp vào PR #1 (`fix/review-findings`), đè lên đợt follow-up ở trên. 
 10. **Tác vụ nền mới:** digest chạy `0 * * * *` (mỗi giờ, so khớp thứ/giờ/múi giờ từng báo cáo; trước đây một lần/ngày) và tự gửi khi kết thúc sprint (**digest hiện có trên máy chủ UTC đến sớm 7 giờ**: trước chạy 08:00 giờ tiến trình = UTC, nay 08:00 `Asia/Ho_Chi_Minh`); cron chụp giá trị Key Result `01:30 UTC` hằng ngày (khoá Redis, idempotent theo ngày UTC). Cron dùng khoá Redis; không có Redis thì chạy ở chế độ một node (không khoá) — đừng chạy nhiều instance API mà thiếu Redis, digest/chụp KR sẽ chạy trùng.
 11. **Email digest/đặt lại mật khẩu đi qua `MAIL_DRIVER`**: `console` chỉ ghi log; `smtp` mới là khung (chưa cài thư viện gửi) và ném lỗi khi gửi — nên báo cáo định kỳ qua Email chưa gửi thật được trong bản này; kênh Telegram thì chạy.
 12. **Rollback:** sau khi người dùng đã dùng bản mới không nên quay lại image cũ — `InviteToken` đã bị xoá, enum `HistoryField` có giá trị mới (`DESCRIPTION`/`COMPONENT`/`FIX_VERSION`), `wiki:manage` đã đổi scope và quyền đã cấp (suy ra từ cấu trúc migration, chưa thử rollback thật). Sao lưu DB trước bước 1 là đường lùi duy nhất.
+13. **Đợt sửa cuối (review toàn nhánh) không thêm migration và không đổi `db:raw`.** Có thêm sự kiện domain `access.changed` và `issue.bulk_updated` (nội bộ, không cần cấu hình). Image runtime Docker nay copy thêm `scripts/check-system-roles.mjs` (để chạy `db:check-roles` trong container); `.env.example`/`render.yaml` không còn nhắc "liên kết mời".
 
 ## 2. Thay đổi hành vi người dùng thấy
 
@@ -206,7 +207,7 @@ Gộp vào PR #1 (`fix/review-findings`), đè lên đợt follow-up ở trên. 
 - **Xuất CSV** (mở được bằng Excel; tối đa 5.000 dòng): Việc chờ, danh sách bug, kết quả JQL/bộ lọc (theo cột đang chọn), sprint, Danh mục, RAID, Nhân lực; **In / Lưu PDF** Tổng quan, Báo cáo sprint, dashboard (L1–L4).
 - **Tổng quan lãnh đạo:** cột/huy hiệu **Sức khoẻ dự án** (tự tính + quản trị dự án ghi đè kèm ghi chú), thẻ Top rủi ro / OKR chậm / Người quá tải (báo lỗi nguồn thay vì giả "không có vấn đề") (L16–L18).
 - **Dashboard tuỳ biến:** bộ chọn ở Tổng quan, 9 loại widget, soạn kéo-thả (chuột/bàn phím/cảm ứng, Hoàn tác), chia sẻ riêng tư / cả workspace / theo dự án / theo nhóm; chỉ chủ sửa (L5–L7).
-- **OKR:** Key Result **tự đo** (bug mở, % sprint, JQL — tính lúc đọc theo quyền người xem), giá trị bắt đầu + đơn vị, check-in có ghi chú, lịch sử + đường tiến độ (cron chụp hằng ngày, ngày tính theo UTC) (L25, L26, L29).
+- **OKR:** Key Result **tự đo** (bug mở, % sprint, JQL — tính lúc đọc theo quyền người xem), giá trị bắt đầu + đơn vị, check-in có ghi chú, lịch sử + đường tiến độ (cron chụp hằng ngày, ngày tính theo giờ Việt Nam từ đợt sửa cuối) (L25, L26, L29).
 
 **Wiki**
 
@@ -247,6 +248,26 @@ Gộp vào PR #1 (`fix/review-findings`), đè lên đợt follow-up ở trên. 
 - **Tài liệu khớp tính năng thật (L8):** trang **Hướng dẫn** (`/documentation`) và `docs/FEATURES_BY_ACTOR.md` mô tả đúng đợt 2: thêm thành viên trực tiếp (không lời mời), dự án riêng tư, wiki quyền theo dự án + lịch sử phiên bản, Mức nghiêm trọng / Resolution, form Báo lỗi, xem nhanh, @mention, JQL gợi ý, thông báo, Sức khoẻ dự án + thẻ lãnh đạo, Digest (thứ/giờ/múi giờ, Email + Telegram), dashboard 4 mức chia sẻ, OKR tự đo, nhập Jira giữ mã gốc, phím tắt.
 - **Bỏ lời hứa không có thật:** xuất "PDF/Excel" -> "Xuất CSV (mở được bằng Excel) + In / Lưu PDF"; bỏ lệnh Telegram `/newtask`, `/bug`, `/report` (bot chỉ gửi tin; `/link@bot MÃ` liên kết **nhóm**, không phải từng người).
 
+
+### Đợt sửa cuối (sau review toàn nhánh)
+
+- **Việc báo lỗi chờ duyệt không còn lộ qua realtime:** việc ở trạng thái chưa duyệt/tạm hoãn/đã từ chối không hiện trên Board/Việc chờ của người khác (cả khi mới tạo lẫn khi cập nhật); chuyển sang đã nhận thì hiện. Automation "khi tạo việc" và thông báo "được giao" chạy **khi việc được Nhận**; Telegram không đẩy cập nhật của việc chưa duyệt.
+- **Triage đòi `issue:triage`:** Nhận/Từ chối/Tạm hoãn chỉ cần `issue:triage` (không còn `issue:edit` + sở hữu), nên người báo không tự duyệt việc của mình và vai Developer (mới) không duyệt được; nhận kèm người phụ trách được kiểm thành viên còn hoạt động + thấy dự án. Nhận/đổi trường qua triage phát sự kiện cập nhật đúng dạng nên người theo dõi/người được giao nhận thông báo.
+- **Bộ chọn người tìm phía máy chủ theo dự án** (người được giao, @mention, Tạo việc/token `@`, Người tham gia, Mục tiêu, Nhân lực, RAID, Chương trình, Nhóm, quy tắc Automation, người nhận digest): chỉ hiện người **xem được dự án**, bỏ tài khoản đã khoá và tài khoản automation, mặc định 50 người + dòng "Gõ để tìm thêm" (tìm tên/email không phân biệt hoa thường và dấu). Bộ lọc theo người (Board/Việc chờ/bộ dựng truy vấn) và việc hiển thị tên vẫn thấy tài khoản đã khoá (`includeInactive`, tối đa 200).
+- **Màn Thành viên:** thêm người đã là thành viên → báo rõ (`ALREADY_MEMBER`; trước đây âm thầm đổi vai trò); hạ/gỡ quản trị workspace cuối cùng → báo rõ (`LAST_WORKSPACE_ADMIN`).
+- **Chuyển dự án sang riêng tư tự TẮT mọi kênh Telegram gắn dự án đó** (ghi nhật ký kiểm toán `integration.channels_disabled`); lời xác nhận ở Cài đặt dự án nói rõ. **Không có nút bật lại:** muốn gửi tiếp thì gỡ kênh và gắn lại (cố ý, an toàn theo hướng chặn). Kênh/digest của dự án ẩn không liệt kê/gỡ được với người không thấy dự án.
+- **Sửa hàng loạt gộp thông báo:** `PATCH /issues/bulk` (kể cả chỉ đổi trạng thái) gửi **một** tin Telegram "N việc … cập nhật bởi X" mỗi dự án/kênh thay vì N tin; hành động "gửi thông báo" của automation gộp một thông báo cho mỗi (quy tắc, người nhận) kèm "(sửa hàng loạt N việc)". Việc tự gán từ nhập Jira/claim hàng loạt (`bulk:true`) không kích hoạt Telegram/automation từng việc.
+- **"Quá hạn" một định nghĩa theo ngày Việt Nam** (`dueDate` < hôm nay giờ VN): việc hạn **hôm nay chưa tính quá hạn**, nên số Quá hạn ở Tổng quan, Sức khoẻ dự án, Danh mục, digest, trợ lý sprint, chip lọc, DueBadge, Gantt giảm so với trước (đã thêm nhãn "Đến hạn hôm nay"). "Hôm nay" của OKR (tiến độ kỳ vọng, bản chụp KR, lịch sử, check-in tay) cũng theo ngày VN — số liệu trong khung 00:00–07:00 VN đổi so với bản trước ((ngày của lịch sử KR tính theo VN, không còn UTC)). Sức khoẻ dự án bỏ việc chưa duyệt.
+- **Xuất CSV** `Việc chờ`/`Bug`/sprint không còn chứa việc chưa duyệt/đã từ chối (kết quả JQL/bộ lọc giữ nguyên). **Một định nghĩa "bug"** (loại có key `BUG` hoặc tên "Bug") dùng ở báo cáo QA, KR `OPEN_BUGS`, CSV bug và số Bug ở Tổng quan — dự án có loại tuỳ biến tên "Bug" sẽ thấy số khớp nhau.
+- **KR tự đo:** đo song song tối đa 4 và cache 30 giây theo người xem (số có thể lệch ≤ 30 giây giữa các node); đường tiến độ lấy các dòng **mới nhất** khi một KR có rất nhiều check-in.
+- **Mã công việc:** tiền tố loại tuỳ biến luôn bắt đầu bằng chữ ("3D Model" → `DMOD`; mã mới, mã đã cấp giữ nguyên) nên mã mới luôn thành chip/Cmd+K. Nhận diện mã công việc không còn dùng regex lookbehind nên chạy được trên Safari < 16.4.
+- **Gõ nhanh tiêu đề (Tạo việc/Thêm nhanh):** token không ghi đè ô bạn đã chỉnh tay (giá trị lưu = giá trị trên ô); `#12` là tham chiếu việc chứ không còn bị nuốt thành sprint (sprint khớp tên chuẩn hoá hoặc tiền tố duy nhất ≥ 3 ký tự có chữ); `~2.5`/`~2,5` nhận điểm thập phân; cảnh báo "hạn đã qua" không báo cho hạn hôm nay.
+- **Xem nhanh + Epic:** mở xem nhanh ở màn 1024–1535px thì panel Epic tự thu (không ghi lại lựa chọn), đóng xem nhanh thì Epic trở lại; xem nhanh `min(30rem, 40vw)`; dòng Việc chờ ẩn nhãn + tên người khi xem nhanh mở.
+- **Cảm ứng:** vuốt dọc trên dòng/thẻ để cuộn; **nhấn giữ khoảng 250 ms** rồi kéo để kéo thả (Board, Việc chờ, Cây việc); chuột/bàn phím không đổi. Ô tiêu đề lớn trên điện thoại giữ cỡ chữ lớn (Wiki ~17px, Dashboard/Chi tiết việc 20px), ô thường vẫn 16px.
+- **Wiki:** hỏi "Bỏ thay đổi chưa lưu?" khi chuyển trang/Huỷ/Esc/tạo trang/rời trang lúc đang sửa; **tự lưu nháp** theo người + trang trong trình duyệt và đề nghị khôi phục (bản nháp nằm ở trình duyệt, không lên máy chủ); mở Wiki nhanh hơn (chỉ tra quyền dự án đang xem, dự án khác tra lười khi rê chuột/focus).
+- **Bộ lọc/JQL:** khi còn kết quả ghi "100 công việc đầu tiên" + nút **Tải thêm** (+ gợi ý Xuất CSV), hết thì "N công việc" (trước đây hiện 100 như tổng).
+- **Khác:** hotkey không chặn khi đã bấm ô tick chọn hàng, nhường tour hướng dẫn, Esc trong bộ gõ (IME) không phá bộ gõ; menu Tạm hoãn là Radix menu; nút "Xem trước" digest hiện theo `integration:manage`.
+
 ## 3. Thay đổi API
 
 Cập nhật `docs/design/api-contract.md` theo từng route khi sửa.
@@ -279,6 +300,20 @@ Cập nhật `docs/design/api-contract.md` theo từng route khi sửa.
 - Mã lỗi mới: `422 EMAIL_ALREADY_REGISTERED` (tạo tài khoản với email đã có). Còn lại dùng mã sẵn có (`VERSION_CONFLICT`, `BUSINESS_RULE_VIOLATION`, `NOT_FOUND`…); dự án riêng tư luôn `404 NOT_FOUND` cùng thông điệp với dự án không tồn tại.
 - WS: `issue:sets_changed` (gắn/bỏ thành phần/phiên bản, không đổi `version`); payload thông báo mới `{key, summary, excerpt, where, actors, count}`. Sự kiện domain nội bộ mới: `member.added`, `project.access_changed`, `project.member_removed`, `project.visibility_changed`, `account.sessions_revoked`, `issue.sets_changed`.
 
+
+**Đợt sửa cuối**
+
+- `GET /users` lọc phía server: `projectId` (chỉ người xem được dự án; người gọi không xem được → 404), `search` (tên/email, không phân biệt hoa thường/dấu), `limit` (mặc định 50, kẹp 1–200, áp sau lọc quyền), `includeInactive=true`. **Mặc định loại tài khoản đã khoá và tài khoản automation hệ thống** (trước đây trả hết) — client bên thứ ba cần danh sách đầy đủ phải thêm `includeInactive=true&limit=200`; vẫn trả mảng.
+- **DTO người nhúng đổi:** assignee/reporter/author/triage/watchers/participants dùng `UserRefDto` (**bỏ `lastSeenAt`, `isSystemAdmin`**). `lastSeenAt`/`isSystemAdmin` chỉ có ở `GET /members`, `GET /projects/:id/members`, `GET /users`, `GET /users/:id` **và chỉ khi người gọi có `member:manage`** (hoặc admin hệ thống). `TeamDto.lead/members` chưa đổi.
+- `POST /triage/:id/accept|decline|snooze` đòi `issue:triage` (trước `issue:edit` + sở hữu); `accept` kèm `assigneeId` không hợp lệ → 422. Sự kiện `ISSUE_UPDATED` của triage nay là `IssueDto` đầy đủ + `changedFields`.
+- `POST /digests/preview` đổi `digest:manage` → **`integration:manage`** (cùng create/update/run digest). `digest:manage` còn trong danh mục quyền nhưng không còn route nào dùng.
+- `GET /export/issues.csv`: preset `backlog`/`bugs`/`sprint` thêm điều kiện chỉ việc đã duyệt; `bugs` dùng định nghĩa bug chung.
+- **Mã lỗi mới:** `409 ALREADY_MEMBER` (`POST /members` với người đã là thành viên; đổi vai trò dùng `PUT /members/:userId/roles` — trước đây gọi này âm thầm ghi đè vai trò), `409 LAST_WORKSPACE_ADMIN` (hạ/gỡ quản trị workspace cuối cùng). `POST /members/accounts` trả `Cache-Control: no-store`.
+- **Nhãn "quá hạn" trong Tổng quan** (`GET /reports/overview`/theo người): "sắp đến hạn" và nhóm ưu tiên cao tính từ `dueDate >= hôm nay (VN)`, thêm "Đến hạn hôm nay"; "Quá hạn N ngày" tính theo ngày lịch.
+- **Sự kiện domain/WS nội bộ:** `access.changed` `{workspaceId?, userIds?}` (phát khi đổi vai trò workspace/dự án, sửa `permissionKeys` của vai trò, bật/tắt admin hệ thống); `issue.bulk_updated`; `project.visibility_changed` mang thêm `isPrivate` + `actorId`; `ISSUE_UPDATED`/`ISSUE_TRANSITIONED` của sửa hàng loạt mang `batch {id,size}` (`bulk:true` giữ nghĩa "hệ thống phát hàng loạt": nhập Jira, claim).
+- `GET /search/fields` và danh mục trạng thái của JQL/"ý bạn là" không còn liệt kê/xác nhận tên trạng thái của quy trình riêng của dự án riêng tư.
+- Cập nhật `docs/design/api-contract.md` §21 (`GET /users`, triage, digests/preview, mã lỗi 409).
+
 ## 4. Bảo mật & quyền
 
 - **Dự án riêng tư = 404 như không tồn tại** (cùng thông điệp để không dò được mã dự án) trên mọi đường: danh sách/`GET /issues/:key`/JQL/Cmd+K/bộ lọc đã lưu/liên kết/gợi ý trùng, Wiki + lịch sử, digest, Triage, SLA, quy trình (`usedBy` chỉ đếm "N dự án riêng tư"), trường tuỳ biến, kho mã, OKR/RAID/Chương trình/Khách hàng/Nhân lực, thông báo, @mention, gán người phụ trách, socket realtime. Một hàm quyết định duy nhất (`ProjectAccessService`) + test quét AST (`private-project-coverage.spec`). Vai cấp workspace **không có `project:view`** chỉ thấy dự án mình có vai trò.
@@ -291,6 +326,12 @@ Cập nhật `docs/design/api-contract.md` theo từng route khi sửa.
 - Thông báo đi qua một cổng (`createDeferred`): người nhận không thấy dự án thì không có thông báo/realtime/email; @mention lọc theo quyền xem **trước** khi ghi sổ; **cài đặt tắt thông báo của người dùng luôn thắng** cả với người theo dõi/automation.
 - Dashboard tuỳ biến: chỉ chủ sửa nội dung/mức chia sẻ, admin chỉ xoá bản đã chia sẻ và không thấy dashboard riêng tư của người khác; nhân bản che JQL/dự án ẩn; KR tự đo tính theo quyền người xem, lịch sử cron chụp theo phạm vi công khai. Xuất CSV chỉ gồm việc người xuất xem được, chống chèn công thức.
 - Quyền mặc định đổi (xem mục 2): Scrum Master `issue:create`+`issue:triage`, Product Owner `issue:transition`, `wiki:manage` theo dự án cho 6 vai + vai tuỳ biến có `project:admin`/`workspace:admin`.
+- **Đợt sửa cuối — bảo mật:**
+  - Việc báo lỗi chưa duyệt không lộ qua realtime/thông báo (`ISSUE_CREATED` mang `triageState` ngay lúc tạo); Triage chỉ đòi `issue:triage`; `accept` kiểm người phụ trách (thành viên hoạt động, thấy dự án).
+  - **`access.changed`:** đổi vai trò/quyền hoặc quyền admin hệ thống thì gateway kiểm lại `canSee` cho mọi room `project:*`/`issue:*` của socket đang mở và rút socket mất quyền xem ngay (trước đây hạ quyền không rút socket khỏi room dự án riêng tư). Room `issue:<id>` (presence) hiện cũng được kiểm lại theo cơ chế này khi có sự kiện.
+  - **Chuyển dự án sang riêng tư tắt mọi kênh Telegram gắn dự án** (xem mục 2); digest cũng tự reset `allowPrivateToChannel`. Danh sách/gỡ kênh theo quyền xem dự án.
+  - `lastSeenAt`/`isSystemAdmin` không còn lộ trong DTO người nhúng; chỉ `member:manage`/admin hệ thống thấy ở danh sách thành viên và `GET /users`. Bộ chọn người chỉ trả người xem được dự án (không dò được danh sách thành viên dự án riêng tư), bỏ tài khoản khoá/automation.
+  - Danh mục trạng thái JQL không lộ tên trạng thái của quy trình dự án riêng tư; xuất CSV preset ẩn việc chưa duyệt; chốt "quản trị workspace cuối cùng" (`LAST_WORKSPACE_ADMIN`); `POST /digests/preview` cần `integration:manage`; `POST /members/accounts` không cache.
 
 ## 5. Còn mở / cố ý không làm
 
@@ -307,16 +348,39 @@ Cập nhật `docs/design/api-contract.md` theo từng route khi sửa.
 - Wiki: `remove()` bump `updatedAt` của trang con; `move/renumber` trả lại `updatedAt` cũ (A4).
 - Epic/Cây việc: việc có cha thường X nhưng `epicId` = Y chỉ do API/import tạo, cây hiện dưới X còn panel Epic tính cho Y; tiến độ panel Epic tính trên việc đã tải (cắt khi danh sách dài); server chưa chặn đổi `typeId` sang Epic khi việc đang có cha; `assertEpicForBulk` chưa loại việc loại Epic trong lô; kiểm chu trình `PATCH` nằm ngoài giao dịch; Cây việc kéo-thả chỉ chuột/bút (lối bàn phím là ô "Epic / Việc cha"); người có `issue:edit:own` không xoá được liên kết `inward` có nguồn ở việc người khác (B4, B6).
 - Báo lỗi/triage: khoá chống trùng dùng trong bộ nhớ (cần Redis `SET NX` khi nhiều instance), dấu vân tay không gồm severity/môi trường/loại, token giữ nguyên trong tiêu đề; thumbnail tải nguyên ảnh; `accept()`/`decline()`/`snooze()` không kiểm `triageState` hiện tại (có thể ẩn việc đang làm); severity "null cuối" chỉ khi là khoá sắp xếp đầu; trường Resolution và nhãn transition theo tên chưa có ở panel xem nhanh (Q1, Q3, Q4, Q2/U5).
-- Thông báo/@mention: thông báo @ở bình luận đi qua listener sau commit (lỗi chỉ ghi log); `canSee` chạy trong giao dịch tương tác của bình luận (rủi ro cạn pool khi rất nhiều @mention đồng thời); `issue:<id>` presence room không rút khi đổi quyền xem (A1, P5).
+- Thông báo/@mention: thông báo @ở bình luận đi qua listener sau commit (lỗi chỉ ghi log)(A1, P5). (Đã sửa ở đợt cuối: `canSee` tính trước giao dịch bình luận; room `issue:<id>` được rà lại qua `access.changed`.)
 - OKR/dashboard: KR cũ có JQL chứa `me` không kiểm lại khi lưu không đổi; trình soạn chưa cảnh báo inline; chưa cache phép đo KR (L6a).
 - Telegram wizard: `jsonb_set` trên config không phải object; hai quản trị cùng mở wizard vô hiệu mã của nhau (L3). Nhập Jira: tóm tắt epic/sprint khi nhập lại tính theo kế hoạch tệp; hàng chờ email của người đã là thành viên không bao giờ được gán (L7).
 - Tài khoản: race hẹp ở `ApiKeyService.validate` có thể để cache 60s ngay lúc khoá; `RequireAuth` chặn mọi đường dẫn khi chưa có workspace kể cả đổi mật khẩu tạm; chỉ mục `AuditLog(createdAt)` và lọc theo nhóm hành động chưa có (P1, P2).
 - Bộ lọc đã lưu chia sẻ của dự án công khai đã xoá mềm hiện lại; chưa test FE cho cờ `scoped` (P4). `unreadCount` thêm một truy vấn kiểm quyền (chưa cache) (P5).
 - Mobile: ô nhập 16px đang `!important` nên thu nhỏ ô tiêu đề lớn (Wiki `text-lg`, Dashboard/Issue `text-xl`) trên mobile; vùng chạm chồng chưa kiểm trên cảm ứng thật; còn 8 mục Gantt trong allowlist `small-targets` (U7).
 
-**Đợt sửa cuối đang xử lý** (kết quả review toàn nhánh, sẽ cập nhật mục này khi xong)
+**Cố ý không làm trong đợt sửa cuối (ruling)**
 
-- Bảo mật: việc báo lỗi chưa duyệt vẫn hiện realtime trên Board/Việc chờ (`ISSUE_CREATED` phát trước khi đặt `triageState`); sự kiện `ISSUE_UPDATED` của triage sai dạng payload (người theo dõi không được báo); `accept` một chạm gán người phụ trách không kiểm; API triage chỉ đòi `issue:edit` chứ chưa `issue:triage`; đổi dự án sang riêng tư chưa ngắt kênh Telegram sự kiện gắn dự án; đổi vai trò/quyền chưa rà lại socket đang mở; bộ chọn người chưa theo dự án/giới hạn 50; xuất CSV "Việc chờ"/"Bug" chưa lọc việc chưa duyệt.
-- Dữ liệu: hạ vai trò chưa rút socket khỏi room dự án riêng tư; cờ `bulk` bị Telegram/automation bỏ qua (nhập/gán hàng loạt gửi hàng trăm tin); danh mục trạng thái JQL còn lộ tên trạng thái của quy trình dự án riêng tư.
-- Web: soạn Wiki mất bản nháp khi chuyển trang/Esc/rời trang (chưa có chặn rời trang hay autosave); Wiki gọi `GET /projects/:id/permissions/me` cho mọi dự án mỗi lần mở (nguy cơ 429 ở workspace nhiều dự án); kết quả bộ lọc/JQL cắt ở 100 dòng nhưng hiện như tổng và nút Xuất CSV hứa "đủ"; 16px `!important` thu nhỏ ô tiêu đề lớn trên mobile (đã nêu ở trên).
-- Review web-core và chất lượng mã chưa hoàn tất; mục này sẽ được cập nhật khi đợt sửa cuối xong.
+- Triage: `issue:triage` một mình đủ để Nhận **kèm đổi trường** (loại/ưu tiên/sprint/người phụ trách) — vai tuỳ biến có `issue:triage` mà không có `issue:edit` sẽ đổi được các trường đó khi Nhận (chi phí chấp nhận).
+- Kênh Telegram bị tắt khi dự án thành riêng tư **không có endpoint/nút bật lại** — gỡ và gắn lại có chủ đích (web chưa hiện trạng thái tắt của kênh).
+- Việc chờ duyệt (PENDING) **vẫn khởi động SLA và vẫn báo @mention trong mô tả** (người báo nhờ giúp là hợp lệ; người được nhắc có quyền xem dự án nên không lộ thêm).
+- `#<số>` không bao giờ là sprint (muốn gán sprint tên toàn số thì chọn ở ô Sprint); `~3.` để lại dấu chấm rời (cosmetic).
+- Vận hành: sổ `claimBatchNotice` (gộp thông báo automation theo lô) nằm trong bộ nhớ — khởi động lại giữa lô (cực hiếm) có thể gửi lại một thông báo; cache KR 30 giây theo từng tiến trình API.
+
+**Parked (chưa sửa, biết trước)**
+
+- **Mật khẩu tạm không bắt đổi** ở lần đăng nhập đầu (`members/accounts`, admin tạo/đặt lại): quản trị biết mật khẩu của người dùng cho tới khi họ tự đổi — quyết định sản phẩm ("thêm trực tiếp"), chưa có `mustChangePassword`.
+- `issue:assign` / `issue:link` **chỉ chặn ở UI**, API chưa kiểm (có từ trước round 2).
+- **Nhập Jira vào dự án riêng tư** có thể gán việc cho người ngoài dự án; email người phụ trách do người nhập (`pendingEmails`) tự gán cho bất kỳ ai sau này được thêm với đúng email đó (chỉ `import:run`/admin đặt được).
+- **Mail outbox gộp 5 phút:** người bị gỡ khỏi dự án riêng tư trong khoảng đó vẫn nhận thư đã xếp trước khi bị gỡ.
+- **Dashboard mồ côi khi chủ rời workspace** (chỉ admin xoá được; chưa có chuyển quyền chủ/tự xoá khi `removeWorkspace`).
+- **`assignee-suggest`** chỉ xét `ProjectMembership`: dự án công khai không có ghi đè vai trò sẽ cho gợi ý rỗng.
+- **Bộ lọc đã lưu chia sẻ cả workspace không che JQL** có khoá dự án riêng tư (dashboard thì che bằng `jqlMasker`) — người ngoài có thể đọc chuỗi JQL; kết quả vẫn lọc theo quyền xem.
+- **Bộ chọn người tra tên tối đa 200 người** (workspace > 200 thành viên): chủ mục tiêu/RAID/chương trình/thành viên nhóm/người nhận digest/người trong quy tắc là người vào **sau** thứ 200 có thể hiện "Chưa chọn"/id thô — **dữ liệu không mất**, chỉ hiển thị; cần API tra theo id.
+- `RuleEditor` dùng chung một từ khoá tìm giữa các ô chọn người (mở ô khác thấy danh sách đã lọc theo từ khoá cũ tới khi đóng/gõ lại); `DigestFormFields` ghim người đã chọn lên đầu kể cả khi không khớp từ khoá.
+- **Chưa có test DOM/DB thật** (nợ test, Q-I4): phần lớn test web là hàm thuần/chuỗi, test API mức mock; thay bằng smoke E2E thủ công/Playwright mỗi vòng — chưa nằm trong CI.
+- **Ratchet lint đứng ở trần 91, hết dư địa** và chỉ đếm cảnh báo, không đếm kích thước (BacklogPage ~1450 dòng, WikiPage ~1050…); thêm cảnh báo mới thì phải sửa chỗ khác. Logic `foldVi` còn trùng giữa các bundle (Q-M4).
+- **`IssueHistory` lưu nguyên văn mô tả mỗi lần sửa** (tới ~50k ký tự × 2): bảng sẽ phình theo số lần sửa, chưa có chính sách gộp/giữ như wiki (`MERGE_WINDOW_MS`).
+- **WC-M10:** chọn hàng loạt không tỉa lựa chọn khi đổi bộ lọc (có thể sửa hàng loạt việc đã khuất khỏi danh sách đang lọc — kiểm số "đã chọn" trước khi áp). `nested-interactive` (a11y) ở dòng/thẻ kéo thả `IssueRow`/`Card` chưa sửa.
+- **Migration backfill wiki** (`…302000_wiki_page_issue`) dùng mẫu mã không có `_`: trang cũ nhắc `MY_APP-12` có thể bị backfill khớp một phần `APP-12` nếu có việc mang mã đó — migration đã áp nên **không sửa**; tự đúng ở lần lưu trang kế tiếp (`syncIssueLinks` dùng regex mới).
+- **`/admin/system`:** dòng nhật ký kiểm toán rất dài chồng chữ ở 390px (`mobile:audit` báo `text-overlap`, có từ trước); `mobile:audit` còn 2–3 cảnh báo `covered-by-fixed` chập chờn (phần tử cố định thoáng qua khi nạp trang), chạy lại riêng đều đạt.
+- Chưa kiểm trên **iOS thật**: nhấn giữ 250 ms (đã thêm `select-none` + `-webkit-touch-callout:none` trên thiết bị cảm ứng) và Safari < 16.4 (đã bỏ lookbehind nhưng chưa chạy giả lập).
+- Triage: `accept` có đổi trường là hai bước không cùng giao dịch (lỗi bước hai → việc đã đổi loại/sprint nhưng vẫn PENDING, thử lại được).
+- Hiệu năng chưa đo ở quy mô lớn: `GET /users?projectId` với workspace rất lớn mà ít người xem được dự án (tối đa 10 lô × `min(2·limit, 400)` hàng + `canSee` mỗi người); `IssueHistory`/`Notification`/`WikiPageVersion` hàng triệu dòng; migration `…303000_wiki_page_history` nhân đôi dung lượng `WikiPage.body` một lần và hai `CREATE INDEX` thường (`…299000_mention_unique`, `…120000_*_index`) khoá ghi bảng đó lúc dựng (bảng nhỏ nên rủi ro thấp; `DEPLOY.md` chưa nhắc cạnh cảnh báo `perf_indexes`).
+- Mô tả (`DEFAULT_RESOLUTIONS`) và quyền ở DB cũ chỉ cập nhật khi chạy lại `db:seed` (đã nêu ở mục 2).

@@ -988,7 +988,7 @@ Chỉ liệt kê route **mới** và route **đổi hành vi/quyền** so với 
 | PUT | `/dashboards/{id}` | `dashboard:manage` | Thay widget/mức chia sẻ (chỉ chủ; OCC `updatedAt` → `409`) |
 | POST | `/dashboards/{id}/duplicate` | `dashboard:manage` | Nhân bản (che JQL/dự án ẩn) |
 | DELETE | `/dashboards/{id}` | `dashboard:manage` | Xoá (chủ; admin chỉ xoá bản đã chia sẻ) |
-| POST | `/digests/preview` | `digest:manage` | Xem trước digest (khối + định dạng) theo quyền người bấm |
+| POST | `/digests/preview` | `integration:manage` | Xem trước digest (khối + định dạng) theo quyền người bấm; cùng quyền với tạo/sửa/chạy digest (phạm vi workspace) |
 | GET | `/goals/{id}/progress-history` | `workspace:view` | Đường tiến độ mục tiêu (check-in tay + bản chụp hằng ngày) |
 | POST | `/goals/{id}/key-results/{krId}/check-ins` | `goal:manage` | Check-in KR nhập tay (giá trị + ghi chú); KR tự đo → `422` |
 | GET | `/goals/{id}/key-results/{krId}/check-ins` | `workspace:view` | Lịch sử check-in của KR |
@@ -1011,15 +1011,16 @@ Chỉ liệt kê route **mới** và route **đổi hành vi/quyền** so với 
 |---|---|---|---|
 | POST | `/auth/invites`, `/auth/invites/accept` | — | **Đã gỡ** (không còn lời mời; thêm người trực tiếp bằng `POST /members`, `POST /members/accounts`) |
 | POST | `/users/me/change-password` | đăng nhập (không dùng API key) | Thu hồi mọi phiên, trả phiên mới + cookie refresh cho thiết bị đang đổi |
-| GET | `/users` | `workspace:view` | Picker người trong workspace (`?search`). *Đợt sửa cuối đang mở rộng theo `projectId`/`limit`/`includeInactive` — chưa có trong cây này; cập nhật khi merge* |
+| GET | `/users` | `workspace:view` | Picker người, lọc phía server: `?projectId` (chỉ người xem được dự án; người gọi không xem được dự án → `404`), `?search` (tên/email, không phân biệt hoa thường và dấu; tối đa 100 ký tự), `?limit` (mặc định 50, kẹp 1–200, áp sau lọc quyền), `?includeInactive=true` (giữ tài khoản đã khoá + tài khoản hệ thống automation; mặc định loại cả hai). Trả mảng. `isSystemAdmin`/`lastSeenAt` của từng người chỉ có khi người gọi có `member:manage` hoặc là admin hệ thống (cũng áp cho `GET /users/:id`, `GET /members`, `GET /projects/{id}/members`). Người nhúng trong Issue/Comment/Triage/Watchers (`UserRefDto`) không còn hai trường này |
 | GET | `/users/all` | `member:manage` | Pool người dùng chung, trả `PoolUserDto` (ít trường, bỏ tài khoản vô hiệu hoá) |
 | GET | `/admin/users` | admin hệ thống | Thêm `?search&status`; sắp theo hoạt động gần nhất |
 | POST | `/issues/{id}/transition` | `issue:transition` | Nhận `comment` (cần `comment:create`); sang Done tự gán Resolution mặc định |
 | PATCH | `/issues/bulk` | `issue:edit` | `patch` nhận `storyPoints`, `epicId`, `labels{add,remove}` |
 | GET | `/issues`, `/issues/{key}` | `project:view` | Lọc dự án riêng tư (404); `GET /issues` ẩn việc triage `PENDING\|SNOOZED\|DECLINED` |
 | GET | `/triage`, `/triage/count` | `project:view` | Lọc theo quyền xem dự án |
-| POST | `/triage/{issueId}/accept` | `issue:edit` | Nhận kèm `typeId`/`priorityId`/`sprintId`/`assigneeId` |
-| POST | `/triage/{issueId}/decline` | `issue:edit` | `reason` bắt buộc (≤ 2000), báo lại người gửi |
+| POST | `/triage/{issueId}/accept` | `issue:triage` | Nhận kèm `typeId`/`priorityId`/`sprintId`/`assigneeId`; `assigneeId` phải là thành viên còn hoạt động thấy được dự án (`422`, kiểm trước khi ghi). Không còn đòi `issue:edit` hay sở hữu việc — người báo không tự duyệt được việc của mình |
+| POST | `/triage/{issueId}/decline` | `issue:triage` | `reason` bắt buộc (≤ 2000), báo lại người gửi |
+| POST | `/triage/{issueId}/snooze` | `issue:triage` | Tạm hoãn (cùng quyền như accept/decline) |
 | POST | `/sprints/{id}/start` | `sprint:manage` | Body tuỳ chọn `{startDate,endDate,goal}` (kết thúc ≥ bắt đầu) |
 | GET | `/reports/burndown` | `report:view` | Sprint đang chạy: ngày sau hôm nay `remaining: null`, thêm `today` |
 | GET | `/notifications` | đăng nhập | `?filter=all\|unread\|mentioned\|assigned` |
@@ -1029,5 +1030,5 @@ Chỉ liệt kê route **mới** và route **đổi hành vi/quyền** so với 
 | GET | `/admin/system/audit` | admin hệ thống | Thêm `?kind=admin\|activity` (nhật ký quản trị / hoạt động công việc) |
 | GET | `/sprints`, `/boards` | `project:view` | Thiếu `projectId` → `422` (trước trả mọi dự án) |
 
-Mã lỗi mới: `422 EMAIL_ALREADY_REGISTERED`. WebSocket: `issue:sets_changed` (gắn/bỏ thành phần/phiên bản, không đổi `version`); payload thông báo `{key,summary,excerpt,where,actors,count}`.
+Mã lỗi mới: `422 EMAIL_ALREADY_REGISTERED`; `409 ALREADY_MEMBER` (`POST /members` với người đã là thành viên — đổi vai trò dùng `PUT /members/{userId}/roles`; cả khi đua `P2002`); `409 LAST_WORKSPACE_ADMIN` (hạ/gỡ quản trị workspace cuối cùng, ở `setWorkspaceRoles`/gỡ khỏi workspace). WebSocket: `issue:sets_changed` (gắn/bỏ thành phần/phiên bản, không đổi `version`); payload thông báo `{key,summary,excerpt,where,actors,count}`.
 
