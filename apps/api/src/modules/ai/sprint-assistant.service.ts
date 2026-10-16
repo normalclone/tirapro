@@ -9,6 +9,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ClaudeService } from './claude.service';
 import { DATA_NOT_INSTRUCTIONS, wrap } from './ai.service';
+import { goalWords, matchedGoalWords } from './sprint-goal-match';
 
 const VELOCITY_SPRINTS = 3;
 const DUE_SOON_DAYS = 14;
@@ -23,12 +24,36 @@ interface BacklogRow {
   version: number;
   dueDate: Date | null;
   rank: string;
-  priority: { rank: number } | null;
+  priority: { rank: number; name: string } | null;
 }
 
 interface Candidate extends BacklogRow {
   storyPoints: number;
   dueSoon: boolean;
+  /** Vị trí (1-based) trong Việc chờ theo thứ tự rank — đúng thứ tự người dùng thấy ở màn Việc chờ. */
+  pos: number;
+  /** Từ của mục tiêu sprint khớp tiêu đề (dạng gốc có dấu); rỗng khi không có mục tiêu. */
+  matched: string[];
+}
+
+/**
+ * Hạng ưu tiên từ đây trở lên mới được ghi "Ưu tiên …". Theo thang mặc định của hệ thống (Highest=5, High=4,
+ * Medium=3…); tên ghi ra luôn là tên thật trong DB nên thang tuỳ biến chỉ lệch ở ngưỡng này.
+ */
+const HIGH_PRIORITY_RANK = 4;
+
+const DAY_MONTH_VN = new Intl.DateTimeFormat('vi-VN', {
+  timeZone: 'Asia/Ho_Chi_Minh',
+  day: '2-digit',
+  month: '2-digit',
+});
+
+/** dd/MM theo giờ Việt Nam (máy chủ có thể chạy múi giờ khác). */
+function fmtDayMonth(d: Date): string {
+  // Ghép từ formatToParts: dấu phân cách mặc định của locale (vd '-') không phải '/'.
+  const parts = DAY_MONTH_VN.formatToParts(d);
+  const pick = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${pick('day')}/${pick('month')}`;
 }
 
 const PLAN_SCHEMA: Record<string, unknown> = {
@@ -50,8 +75,9 @@ const PLAN_SCHEMA: Record<string, unknown> = {
 };
 
 /**
- * Trợ lý lập sprint. Heuristic (velocity + thứ tự ưu tiên backlog) luôn chạy và là kết quả mặc định;
- * Claude chỉ được gọi khi người dùng nhập mục tiêu sprint, để chọn lại tập issue khớp mục tiêu trong năng lực.
+ * Trợ lý lập sprint. Heuristic (velocity + khớp từ khoá mục tiêu + hạn chót/độ ưu tiên/thứ tự Việc chờ) luôn chạy
+ * và là kết quả mặc định; Claude chỉ được gọi khi người dùng nhập mục tiêu sprint và AI sẵn sàng, để chọn lại
+ * tập issue khớp mục tiêu trong năng lực.
  * Kết quả của Claude luôn bị ép lại theo capacity ở phía server — không tin tổng điểm model tự tính.
  */
 @Injectable()
@@ -116,17 +142,25 @@ export class SprintAssistantService {
         version: true,
         dueDate: true,
         rank: true,
-        priority: { select: { rank: true } },
+        priority: { select: { rank: true, name: true } },
       },
     })) as BacklogRow[];
 
+    const goal = input.goal?.trim();
+    const words = goal ? goalWords(goal) : [];
+    const posById = new Map(backlog.map((i, idx) => [i.id, idx + 1]));
     const dueLimit = Date.now() + DUE_SOON_DAYS * 86_400_000;
     const unestimated = backlog.filter((i) => !(i.storyPoints && i.storyPoints > 0)).length;
     const ordered: Candidate[] = backlog
       .filter(
         (i): i is BacklogRow & { storyPoints: number } => !!i.storyPoints && i.storyPoints > 0,
       )
-      .map((i) => ({ ...i, dueSoon: !!i.dueDate && i.dueDate.getTime() <= dueLimit }))
+      .map((i) => ({
+        ...i,
+        dueSoon: !!i.dueDate && i.dueDate.getTime() <= dueLimit,
+        pos: posById.get(i.id) ?? 0,
+        matched: matchedGoalWords(words, i.summary),
+      }))
       .sort(
         (a, b) =>
           Number(b.dueSoon) - Number(a.dueSoon) ||
@@ -134,7 +168,11 @@ export class SprintAssistantService {
           (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0),
       );
 
-    const heuristicPicks = this.greedy(ordered, capacity, (c) => this.heuristicReason(c));
+    // Có mục tiêu: việc khớp nhiều từ nhất lên trước; sort ổn định nên cùng số từ khớp giữ thứ tự cũ.
+    const heuristicOrder = words.length
+      ? [...ordered].sort((a, b) => b.matched.length - a.matched.length)
+      : ordered;
+    const heuristicPicks = this.greedy(heuristicOrder, capacity, (c) => this.heuristicReason(c));
     const base = { capacityPoints: capacity, velocityAvg, unestimated };
     const result = (
       picks: AiSprintPick[],
@@ -146,8 +184,10 @@ export class SprintAssistantService {
       leftovers: ordered.length - picks.length,
     });
 
-    const goal = input.goal?.trim();
-    if (!goal || capacity <= 0 || ordered.length === 0 || !this.claude.available()) {
+    if (!this.claude.available()) {
+      return result(heuristicPicks, { source: 'heuristic', reason: 'unconfigured' });
+    }
+    if (!goal || capacity <= 0 || ordered.length === 0) {
       return result(heuristicPicks, { source: 'heuristic' });
     }
 
@@ -179,10 +219,18 @@ export class SprintAssistantService {
     return picks;
   }
 
+  /** Chỉ nêu điều ĐÚNG với việc này: khớp mục tiêu > hạn chót > ưu tiên High/Highest > vị trí trong Việc chờ. */
   private heuristicReason(c: Candidate): string {
-    if (c.dueSoon) return `Đến hạn trong ${DUE_SOON_DAYS} ngày tới`;
-    if ((c.priority?.rank ?? 0) > 0) return 'Độ ưu tiên cao, đứng đầu backlog';
-    return 'Theo thứ tự backlog';
+    const parts: string[] = [];
+    if (c.matched.length) parts.push(`Khớp mục tiêu: ${c.matched.map((w) => `“${w}”`).join(' ')}`);
+    if (c.dueSoon && c.dueDate) {
+      const late = c.dueDate.getTime() < Date.now();
+      parts.push(`${late ? 'Quá hạn' : 'Đến hạn'} ${fmtDayMonth(c.dueDate)}`);
+    }
+    if (c.priority && c.priority.rank >= HIGH_PRIORITY_RANK) {
+      parts.push(`Ưu tiên ${c.priority.name}`);
+    }
+    return parts.length ? parts.join(' · ') : `Vị trí ${c.pos} trong Việc chờ`;
   }
 
   private async pickWithClaude(

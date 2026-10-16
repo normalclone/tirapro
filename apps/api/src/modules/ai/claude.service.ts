@@ -29,7 +29,7 @@ export interface AiCallContext {
 
 /**
  * Kết quả một lời gọi. `data = null` nghĩa là caller phải rơi về heuristic;
- * `reason` cho biết vì sao (chỉ có khi AI đã bật mà lời gọi hỏng).
+ * `reason` cho biết vì sao: 'unconfigured' (thiếu khoá / kill-switch) hoặc 'timeout'/'error' (AI đã bật mà lời gọi hỏng).
  */
 export interface ClaudeOutcome<T> {
   data: T | null;
@@ -52,7 +52,7 @@ export function withStrictObjects(schema: unknown): Record<string, unknown> {
 
 /**
  * Bọc Anthropic SDK với degrade gracefully: thiếu ANTHROPIC_API_KEY (hoặc AI tắt)
- * → client = null, mọi lời gọi trả `data: null` để caller rơi về heuristic.
+ * → client = null, mọi lời gọi trả `data: null` + `reason: 'unconfigured'` để caller rơi về heuristic.
  *
  * Lỗi SDK:
  *  - AuthenticationError → 500 `AI_MISCONFIGURED` (khóa sai là lỗi cấu hình, không phải lỗi người dùng)
@@ -146,7 +146,7 @@ export class ClaudeService {
     params: Anthropic.MessageCreateParamsNonStreaming,
   ): Promise<ClaudeOutcome<string>> {
     // Cả thiếu khóa lẫn kill-switch của admin đều degrade về heuristic, không gọi API.
-    if (!this.client || !this.available()) return { data: null };
+    if (!this.client || !this.available()) return { data: null, reason: 'unconfigured' };
     await this.quota.assertWithinQuota(ctx.workspaceId);
 
     const started = Date.now();

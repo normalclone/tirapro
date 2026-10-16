@@ -8,11 +8,14 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 import { useBulkUpdateIssues } from '@/features/backlog/api';
-import { useSprintPlan } from './api';
+import { useAiCapabilities, useSprintPlan } from './api';
+import { aiMode, goalLabel } from './aiCopy';
+import { AiFallbackNote } from './AiFallbackNote';
+import { aiSourceLabel } from './fallbackNote';
 
 /**
  * Trợ lý lập sprint: nhập năng lực (bỏ trống = theo velocity) và mục tiêu (tuỳ chọn) → nhận danh sách
- * việc từ backlog tick sẵn, chỉnh được, rồi "Đưa vào sprint" qua bulk update (khoá lạc quan theo version).
+ * việc từ Việc chờ tick sẵn, chỉnh được, rồi "Đưa vào sprint" qua bulk update (khoá lạc quan theo version).
  */
 export function SprintAssistantDialog({
   open,
@@ -26,10 +29,11 @@ export function SprintAssistantDialog({
   sprint: { id: string; name: string; goal?: string | null };
 }) {
   const plan = useSprintPlan();
+  const mode = aiMode(useAiCapabilities().data?.available);
   const bulkUpdate = useBulkUpdateIssues(projectId);
   const [capacity, setCapacity] = useState('');
   const [goal, setGoal] = useState(sprint.goal ?? '');
-  const [result, setResult] = useState<AiSprintPlanResult | null>(null);
+  const [result, setResult] = useState<(AiSprintPlanResult & { hasGoal: boolean }) | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
 
   // Cha gắn `key` theo lần mở nên mỗi lần mở là mount mới (kết quả/năng lực cũ không còn); chỉ đồng bộ lại
@@ -52,7 +56,7 @@ export function SprintAssistantDialog({
       },
       {
         onSuccess: (r) => {
-          setResult(r);
+          setResult({ ...r, hasGoal: goal.trim() !== '' });
           setTicked(new Set(r.picks.map((p) => p.issueId)));
         },
       },
@@ -95,7 +99,7 @@ export function SprintAssistantDialog({
       }}
       title={`Trợ lý lập sprint — ${sprint.name}`}
       icon={<Sparkles className="h-4 w-4" />}
-      description="Đề xuất việc trong Backlog vừa với năng lực của đội. Bạn xem lại và bỏ tick việc nào không muốn đưa vào."
+      description="Đề xuất việc trong Việc chờ vừa với năng lực của đội. Bạn xem lại và bỏ tick việc nào không muốn đưa vào."
       size="lg"
       footer={
         <>
@@ -133,9 +137,7 @@ export function SprintAssistantDialog({
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-muted">
-              Mục tiêu sprint (tuỳ chọn, để AI chọn việc khớp mục tiêu)
-            </span>
+            <span className="mb-1 block text-muted">{goalLabel(mode)}</span>
             <Input
               value={goal}
               maxLength={500}
@@ -157,6 +159,7 @@ export function SprintAssistantDialog({
         {result && (
           <PlanResult
             result={result}
+            hasGoal={result.hasGoal}
             ticked={ticked}
             onToggle={(id, on) =>
               setTicked((prev) => {
@@ -176,10 +179,13 @@ export function SprintAssistantDialog({
 /** Kết quả đề xuất: tóm tắt năng lực, danh sách tick được và phần việc chưa vừa. */
 function PlanResult({
   result,
+  hasGoal,
   ticked,
   onToggle,
 }: {
   result: AiSprintPlanResult;
+  /** Lần đề xuất này có gửi mục tiêu sprint hay không (quyết định câu mô tả cách chọn). */
+  hasGoal: boolean;
   ticked: Set<string>;
   onToggle: (issueId: string, on: boolean) => void;
 }) {
@@ -196,14 +202,9 @@ function PlanResult({
         {' · '}
         {result.source === 'claude'
           ? 'Chọn bởi AI theo mục tiêu'
-          : 'Chọn theo độ ưu tiên và hạn chót'}
+          : `${hasGoal ? 'Chọn theo từ khoá của mục tiêu, hạn chót và độ ưu tiên' : 'Chọn theo độ ưu tiên và hạn chót'} · Nguồn: ${aiSourceLabel(result.source, result.reason)}`}
       </p>
-      {result.reason && (
-        <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-muted">
-          AI đang bận nên kết quả dưới đây chỉ theo độ ưu tiên và hạn chót. Bạn có thể bấm “Đề xuất
-          lại”.
-        </p>
-      )}
+      <AiFallbackNote reason={result.reason} />
       {result.capacityPoints <= 0 && (
         <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-muted">
           Chưa có sprint nào kết thúc để tính velocity. Hãy nhập năng lực của đội rồi đề xuất lại.
@@ -211,7 +212,7 @@ function PlanResult({
       )}
       {result.picks.length === 0 && result.capacityPoints > 0 && (
         <p className="text-sm text-muted">
-          Backlog chưa có việc đã ước lượng điểm nào vừa với năng lực này.
+          Việc chờ chưa có việc đã ước lượng điểm nào vừa với năng lực này.
         </p>
       )}
       {result.picks.length > 0 && (

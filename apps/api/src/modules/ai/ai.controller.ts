@@ -40,6 +40,8 @@ export class AiController {
     return this.ai.capabilities();
   }
 
+  /** projectId trong body: guard kiểm dự án thuộc workspace + người gọi xem được (dự án riêng tư → 404). */
+  @ProjectRef('body', 'projectId')
   @Post('generate-issues')
   @Permissions(PERMISSIONS.AI_USE)
   async generateIssues(
