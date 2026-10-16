@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { Injectable, Logger } from '@nestjs/common';
 import type { CreateIssueInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import {
@@ -78,8 +79,31 @@ interface MergeTarget {
   severityId?: string | null;
 }
 
+/** Cửa sổ chống gửi đôi cho cùng một báo cáo. */
+const RECENT_REPORT_TTL_MS = 8_000;
+
+/** Dấu vân tay của một báo cáo: người + dự án + đích gộp + tiêu đề chuẩn hoá + loại + mô tả + tệp. */
+function reportFingerprint(userId: string, input: ReportIssueInput): string {
+  const body = createHash('sha1')
+    .update(input.description ?? '')
+    .digest('hex');
+  return [
+    userId,
+    input.projectId,
+    input.mergeIntoIssueId ?? '',
+    input.forceNew ? 'new' : '',
+    input.kind,
+    normalizeSummary(input.summary),
+    body,
+    [...(input.attachmentIds ?? [])].sort().join(','),
+  ].join('|');
+}
+
 @Injectable()
 export class IntakeService {
+  private readonly logger = new Logger(IntakeService.name);
+  private readonly recent = new Map<string, { at: number; promise: Promise<ReportResult> }>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly issues: IssuesService,
@@ -98,6 +122,25 @@ export class IntakeService {
     userId: string,
     input: ReportIssueInput,
     opts: ReportOptions = {},
+  ): Promise<ReportResult> {
+    // Chống gửi đôi (bấm đúp, thử lại sau lỗi mạng): cùng người + cùng nội dung trong vài giây dùng chung MỘT kết quả
+    // (kể cả khi lần đầu còn đang chạy) — không tạo bug / bình luận thứ hai. Lỗi thì bỏ khỏi bộ nhớ để thử lại được.
+    const dedupeKey = reportFingerprint(userId, input);
+    const now = Date.now();
+    for (const [k, v] of this.recent) if (now - v.at > RECENT_REPORT_TTL_MS) this.recent.delete(k);
+    const hit = this.recent.get(dedupeKey);
+    if (hit) return hit.promise;
+    const promise = this.doReport(workspaceId, userId, input, opts);
+    this.recent.set(dedupeKey, { at: now, promise });
+    promise.catch(() => this.recent.delete(dedupeKey));
+    return promise;
+  }
+
+  private async doReport(
+    workspaceId: string,
+    userId: string,
+    input: ReportIssueInput,
+    opts: ReportOptions,
   ): Promise<ReportResult> {
     const canComment = opts.canComment ?? true;
     // 1. Xác minh project thuộc workspace hiện tại, chưa lưu trữ (cả nhánh gộp lẫn tạo mới).
@@ -118,7 +161,8 @@ export class IntakeService {
       return this.appendReport(workspaceId, userId, target, input, 'chosen');
     }
 
-    if (!input.forceNew && canComment) {
+    // Gộp tự động chỉ cho Bug (client cũ mặc định BUG): yêu cầu tính năng/câu hỏi trùng tiêu đề một Bug vẫn là việc riêng.
+    if (!input.forceNew && canComment && input.kind === 'BUG') {
       const hit = await this.findLiveExactTitle(workspaceId, input.projectId, input.summary);
       if (hit) return this.appendReport(workspaceId, userId, hit, input, 'auto');
     }
@@ -183,34 +227,44 @@ export class IntakeService {
       }));
   }
 
-  /** Bug "sống" có tiêu đề giống hệt (chuẩn hoá bỏ dấu); ứng viên lấy từ tìm kiếm, không đọc cả dự án. */
+  /**
+   * Bug "sống" có tiêu đề giống hệt (chuẩn hoá bỏ dấu); ứng viên lấy từ tìm kiếm, không đọc cả dự án.
+   * Dò trùng ngầm chỉ là phụ: lỗi (timeout, DB tạm…) thì ghi log và coi như không trùng để báo lỗi vẫn được ghi.
+   */
   private async findLiveExactTitle(
     workspaceId: string,
     projectId: string,
     summary: string,
   ): Promise<MergeTarget | null> {
-    const ids = await this.search.similarIssueIds(workspaceId, projectId, summary, 10);
-    if (ids.length === 0) return null;
-    const candidates = await this.prisma.issue.findMany({
-      where: { id: { in: ids }, projectId, deletedAt: null },
-      select: {
-        id: true,
-        key: true,
-        summary: true,
-        severityId: true,
-        triageState: true,
-        status: { select: { category: true } },
-      },
-    });
-    const target = normalizeSummary(summary);
-    return (
-      candidates.find((c) => {
-        if (normalizeSummary(c.summary) !== target) return false;
-        // "Sống" = đang chờ/snooze triage HOẶC trạng thái chưa Done.
-        const liveTriage = c.triageState === 'PENDING' || c.triageState === 'SNOOZED';
-        return liveTriage || c.status.category !== 'DONE';
-      }) ?? null
-    );
+    try {
+      const ids = await this.search.similarIssueIds(workspaceId, projectId, summary, 10);
+      if (ids.length === 0) return null;
+      const candidates = await this.prisma.issue.findMany({
+        where: { id: { in: ids }, projectId, deletedAt: null },
+        select: {
+          id: true,
+          key: true,
+          summary: true,
+          severityId: true,
+          triageState: true,
+          status: { select: { category: true } },
+        },
+      });
+      const target = normalizeSummary(summary);
+      return (
+        candidates.find((c) => {
+          if (normalizeSummary(c.summary) !== target) return false;
+          // "Sống" = đang chờ/snooze triage HOẶC trạng thái chưa Done.
+          const liveTriage = c.triageState === 'PENDING' || c.triageState === 'SNOOZED';
+          return liveTriage || c.status.category !== 'DONE';
+        }) ?? null
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Dò trùng tiêu đề thất bại — bỏ qua và tạo mới: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
   }
 
   /** Gộp vào bug có sẵn: tăng số lần + watcher trong một giao dịch, rồi (sau commit) lưu nội dung thành bình luận. */

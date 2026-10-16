@@ -183,6 +183,73 @@ describe('IntakeService.report', () => {
   });
 });
 
+describe('IntakeService.report — chịu lỗi và chống gửi đôi', () => {
+  it('tìm kiếm trùng ném lỗi => không 500: ghi log rồi tạo bug mới (báo lỗi không bao giờ mất)', async () => {
+    const { service, search, issues, comments } = make();
+    search.similarIssueIds.mockRejectedValueOnce(new Error('canceling statement due to timeout'));
+    const r = await service.report('w1', 'u9', {
+      projectId: 'p1',
+      kind: 'BUG',
+      summary: 'Giỏ hàng bị mất sản phẩm',
+      description: 'Mô tả vẫn được giữ',
+    });
+    expect(r).toEqual({ deduped: false, issueId: 'new1', key: 'DEMO-BUG-7' });
+    expect(issues.create).toHaveBeenCalledWith(
+      'w1',
+      'u9',
+      expect.objectContaining({ description: 'Mô tả vẫn được giữ' }),
+    );
+    expect(comments.create).not.toHaveBeenCalled();
+  });
+
+  it('đọc ứng viên (issue.findMany) lỗi cũng chỉ bỏ qua dò trùng', async () => {
+    const { service, prisma, issues } = make({ similar: ['old1'] });
+    prisma.issue.findMany.mockRejectedValueOnce(new Error('db tạm'));
+    const r = await service.report('w1', 'u9', {
+      projectId: 'p1',
+      kind: 'BUG',
+      summary: 'Giỏ hàng bị mất sản phẩm',
+    });
+    expect(r).toMatchObject({ deduped: false });
+    expect(issues.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('gửi đôi cùng nội dung (kể cả khi lần đầu còn chạy) chỉ tạo MỘT bug; lỗi thì thử lại được', async () => {
+    const { service, issues } = make();
+    const input = { projectId: 'p1', kind: 'BUG' as const, summary: 'Nút Lưu không phản hồi' };
+    const [a, b] = await Promise.all([
+      service.report('w1', 'u9', input),
+      service.report('w1', 'u9', { ...input }),
+    ]);
+    expect(a).toEqual(b);
+    expect(issues.create).toHaveBeenCalledTimes(1);
+    // người khác / nội dung khác thì vẫn tạo riêng
+    await service.report('w1', 'u8', input);
+    await service.report('w1', 'u9', { ...input, description: 'khác' });
+    expect(issues.create).toHaveBeenCalledTimes(3);
+  });
+
+  it('báo lỗi thất bại thì lần gửi lại không bị chặn bởi khoá chống gửi đôi', async () => {
+    const { service, issues } = make();
+    issues.create.mockRejectedValueOnce(new Error('boom'));
+    const input = { projectId: 'p1', kind: 'BUG' as const, summary: 'Nút Lưu không phản hồi' };
+    await expect(service.report('w1', 'u9', input)).rejects.toThrow('boom');
+    await expect(service.report('w1', 'u9', input)).resolves.toMatchObject({ deduped: false });
+  });
+
+  it('yêu cầu tính năng trùng tiêu đề một Bug sống KHÔNG bị gộp tự động', async () => {
+    const { service, issues, comments } = make({ existing: [live], similar: ['old1'] });
+    const r = await service.report('w1', 'u9', {
+      projectId: 'p1',
+      kind: 'FEATURE',
+      summary: 'Giỏ hàng bị mất sản phẩm',
+    });
+    expect(r).toMatchObject({ deduped: false });
+    expect(issues.create).toHaveBeenCalledTimes(1);
+    expect(comments.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('IntakeService.report — loại yêu cầu', () => {
   it('kind FEATURE => loại Story, severity/môi trường chuyển cho IssuesService.create, triageSource lưu kind, người báo thành watcher', async () => {
     const { service, issues, issueUpdate, prisma } = make({ types: { STORY: 'tStory' } });
