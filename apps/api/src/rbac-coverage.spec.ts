@@ -1,11 +1,15 @@
 import 'reflect-metadata';
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AUTH_ONLY_KEY } from './common/decorators/auth-only.decorator';
 import { OPTIONAL_AUTH_KEY } from './common/decorators/optional-auth.decorator';
 import { PERMISSIONS_KEY } from './common/decorators/permissions.decorator';
 import { IS_PUBLIC_KEY } from './common/decorators/public.decorator';
+
+// Spec này nạp toàn bộ module để dò decorator: một mình chạy < 1 giây nhưng khi máy bận (CI, chạy song song
+// với build) có thể quá 5 giây mặc định — nới timeout để tránh đỏ giả.
+vi.setConfig({ testTimeout: 30_000 });
 
 /** Mọi route HTTP phải khai báo rõ chính sách truy cập — không có "quên" = "ai đăng nhập cũng vào được". */
 

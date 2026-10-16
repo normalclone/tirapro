@@ -3,9 +3,13 @@ import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { PERMISSIONS } from '@tirapro/types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ownOnlyFactory } from './common/decorators/own-only.decorator';
 import { PERMISSIONS_KEY } from './common/decorators/permissions.decorator';
+
+// Spec này nạp toàn bộ module để dò decorator: một mình chạy < 1 giây nhưng khi máy bận (CI, chạy song song
+// với build) có thể quá 5 giây mặc định — nới timeout để tránh đỏ giả.
+vi.setConfig({ testTimeout: 30_000 });
 
 /** Route cần `:own` cho quyền sửa/chuyển trạng thái issue mà KHÔNG nhận @OwnOnly = lỗ hổng (người chỉ có :own sửa được việc người khác). */
 const OWN_AWARE = [PERMISSIONS.ISSUE_EDIT, PERMISSIONS.ISSUE_TRANSITION] as const;
