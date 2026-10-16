@@ -90,7 +90,7 @@ Thứ tự **duy nhất** cho mọi lần nâng cấp (bản đầu tiên của 
 | 2 | SQL thô (extension, `searchVector`, chỉ mục) | `pnpm --filter @tirapro/api run db:raw` | Luôn. **DB lớn: chạy TAY trong giờ thấp điểm TRƯỚC khi rollout image mới** (xem cảnh báo bên dưới) |
 | 3 | Mã hoá lại token/khoá bí mật khi ĐỔI `INTEGRATION_ENCRYPTION_KEY` | `integrations:rekey` | Chỉ khi đổi khoá (xem mục "đổi khoá mã hoá" bên dưới) |
 | 4 | Mã hoá khoá bí mật webhook automation cũ | `automation:seal-secrets` | Một lần, **sau khi bản mới đã ổn định** (xem cảnh báo rollback) |
-| 5 | Kiểm bộ quyền vai trò hệ thống khớp code | `pnpm --filter @tirapro/api run db:check-roles` | Sau `migrate deploy` (tuỳ chọn): in `+thiếu`/`-thừa` theo `SYSTEM_ROLE_PERMISSIONS`, thoát mã 1 nếu lệch. Migration chỉ THÊM quyền, không gỡ |
+| 5 | Kiểm bộ quyền vai trò hệ thống khớp code | `pnpm --filter @tirapro/api run db:check-roles` | Sau `migrate deploy` (tuỳ chọn): in `+thiếu`/`-thừa` theo `SYSTEM_ROLE_PERMISSIONS`, thoát mã 1 nếu lệch. Migration chỉ THÊM quyền, không gỡ. Trong container: `docker run --rm --env-file .env <image> node scripts/check-system-roles.mjs` (giống hai script ở bước 3-4; cần image đã copy script này) |
 
 Render/Docker (`render.yaml` `startCommand`, `Dockerfile` `CMD`) tự chạy bước 1 + 2 mỗi lần khởi động; bước 3-4 luôn là thao tác tay.
 
@@ -123,11 +123,13 @@ Danh sách đầy đủ (tên, khoá, backfill) và hành vi người dùng th�
 
 ### Ghi chú phát hành — UX vòng 2
 
+- **Nền trình duyệt tối thiểu:** Safari/iOS ≥ 15.4, Chrome/Edge/Firefox trong 2 năm gần nhất (màu `oklch()` của DESIGN.md cần Safari 15.4; đợt sửa cuối đang gỡ regex lookbehind khỏi chunk đầu để iOS 15.4–16.3 không trắng trang). Thiết bị cũ hơn không được hỗ trợ.
+
 - **Không chạy `db:seed` để "seed lại quyền" trên dữ liệu thật** — `db:seed` làm mới (xoá) workspace demo. Quyền vai trò hệ thống đã đi qua migration; kiểm bằng bước 5 (`db:check-roles`). Mô tả quyền tiếng Việt trong bảng `Permission` chỉ đổi khi chạy `db:seed`, nhưng web đọc mô tả từ `@tirapro/types` nên không ảnh hưởng. Tour mặc định + checklist "Bắt đầu" tự được API gieo lúc khởi động (khoá advisory, không hạ cấp).
 - **Biến môi trường:** API không có biến mới; web có `VITE_FEATURE_REPOS` (tuỳ chọn) và `VITE_SHOW_DEMO_ACCOUNTS` (xem bảng trên).
 - **Telegram:** dùng **một bot riêng cho Tirapro**. Wizard liên kết nhóm đọc tin bằng `getUpdates` (offset âm, `allowed_updates=['message']`): công cụ khác đọc `getUpdates` trên cùng bot có thể mất tin cũ hơn 100 bản mới nhất hoặc gặp 409; Tirapro báo 409 khi bot đang gắn webhook hoặc có tiến trình khác đang đọc. Tạo kết nối không token khi hệ thống không có bot chung (`TELEGRAM_BOT_TOKEN`) bị từ chối.
 - **Pool người dùng chung = giả định một tổ chức:** quản trị workspace thấy và thêm được mọi tài khoản hệ thống. Không triển khai nhiều tổ chức độc lập kèm tự đăng ký mở (nguy cơ chiếm tài khoản/nhìn thấy người dùng giữa workspace) trừ khi tắt đăng ký.
-- **Tác vụ nền:** digest chạy mỗi giờ (`0 * * * *`, khớp thứ/giờ/múi giờ từng báo cáo) + tự gửi khi kết thúc sprint; cron chụp giá trị Key Result `01:30 UTC` hằng ngày. Cron khoá bằng Redis; không có Redis thì chạy chế độ một node (không khoá) — đừng chạy nhiều instance API mà thiếu Redis.
+- **Tác vụ nền:** digest chạy mỗi giờ (`0 * * * *`, khớp thứ/giờ/múi giờ từng báo cáo) + tự gửi khi kết thúc sprint — **báo cáo định kỳ hiện có đổi giờ gửi**: trước chạy 08:00 theo múi giờ tiến trình (UTC trên Docker/Render → 15:00 giờ VN), nay mặc định 08:00 `Asia/Ho_Chi_Minh` nên trên máy chủ UTC thư đến **sớm 7 giờ**; báo trước hoặc chỉnh giờ từng báo cáo; cron chụp giá trị Key Result `01:30 UTC` hằng ngày. Cron khoá bằng Redis; không có Redis thì chạy chế độ một node (không khoá) — đừng chạy nhiều instance API mà thiếu Redis.
 - **Email:** báo cáo định kỳ qua Email và thư đặt lại mật khẩu đi qua `MAIL_DRIVER`; `console` chỉ ghi log, `smtp` hiện mới là khung chưa gửi thật (ném lỗi khi gửi) — Telegram là kênh digest dùng được ngay.
 - **Báo trước cho người dùng:** liên kết lời mời cũ không còn (404), dự án riêng tư ẩn với người ngoài dự án, việc chưa duyệt không còn trên Board/Việc chờ, API key không bị thu hồi khi đổi mật khẩu (xem mục trên), custom role có `report:view` nhưng không `project:view` mất số liệu dự án công khai.
 
