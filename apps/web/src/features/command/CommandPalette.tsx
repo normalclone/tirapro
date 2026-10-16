@@ -259,6 +259,12 @@ export function CommandPalette() {
               />
             </>
           )}
+          <ActionItem
+            value="wiki tai lieu trang kien thuc"
+            icon={<BookOpen className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
+            label="Wiki"
+            onSelect={() => runAction(() => navigate('/wiki'))}
+          />
           <Command.Item
             value="trang du an projects danh sach du an"
             onSelect={() => {

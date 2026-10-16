@@ -11,7 +11,6 @@ const base = {
   projectId: 'p1',
   sprints: [...sprints],
   canSprint: true,
-  canTriage: true,
   canAutomation: true,
 };
 
@@ -60,23 +59,26 @@ describe('buildProjectCommands', () => {
     expect(cmds.some((c) => /sprint/i.test(c.label))).toBe(false);
     expect(cmds.map((c) => c.to)).toContain('/p/DEMO/reports');
   });
-  it('điều hướng đủ Báo cáo / Lịch trình / Việc mới vào / Wiki / Rủi ro; Tự động hoá theo quyền', () => {
+  it('điều hướng đủ Báo cáo / Lịch trình / Việc mới vào / Rủi ro; Tự động hoá theo quyền', () => {
     const to = buildProjectCommands({ ...base, canAutomation: false }).map((c) => c.to);
     expect(to).toEqual(
       expect.arrayContaining([
         '/p/DEMO/reports',
         '/p/DEMO/gantt',
         '/p/DEMO/triage',
-        '/wiki',
         '/manage/risks?project=p1',
       ]),
     );
     expect(to).not.toContain('/connect/automation?project=p1');
     expect(buildProjectCommands(base).map((c) => c.to)).toContain('/connect/automation?project=p1');
   });
-  it('Việc mới vào ẩn khi không có quyền duyệt', () => {
-    const to = buildProjectCommands({ ...base, canTriage: false }).map((c) => c.to);
-    expect(to).not.toContain('/p/DEMO/triage');
+  it('Wiki không nằm trong nhóm dự án (wiki chưa lọc theo dự án) — có ở nhóm Điều hướng chung', () => {
+    expect(buildProjectCommands(base).some((c) => c.to === '/wiki')).toBe(false);
+  });
+  it('Việc mới vào luôn có (cùng quy tắc với tab "Việc mới vào" của dự án)', () => {
+    expect(buildProjectCommands({ ...base, canSprint: false }).map((c) => c.to)).toContain(
+      '/p/DEMO/triage',
+    );
   });
   it('không lặp lệnh Báo lỗi (đã có ở nhóm Hành động của bảng lệnh)', () => {
     expect(buildProjectCommands(base).some((c) => /báo lỗi/i.test(c.label))).toBe(false);

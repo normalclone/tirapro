@@ -80,7 +80,11 @@ import { applyPendingOrder, sortByRank } from '@/lib/rankOrder';
 import { epicAwareCollision, epicAwareKeyboardCoordinates } from '@/lib/sortableDnd';
 import { useMoveIssue, usePendingMoves, type MoveVars } from '@/features/issues/moveIssue';
 import { useAuth } from '@/stores/auth';
-import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
+import {
+  useCanEditIssue,
+  useProjectCan,
+  useProjectPermissions,
+} from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
 import { IssueRow, IssueRowBody, type RowEdit } from './IssueRow';
 import { useBulkEdit } from './useBulkEdit';
@@ -600,8 +604,18 @@ export function BacklogPage() {
   const { search } = useLocation();
   const runSprintActionRef = useRef<((a: SprintAction) => void) | null>(null);
   const handledAction = useRef<string | null>(null);
+  // Quyền đã tải (không thì `canManageSprint` = false → báo "không có quyền" giả) và không rơi vào nhánh lỗi tải.
+  const permsLoaded = !useProjectPermissions(projectId).isPending;
   const actionReady =
-    !!projectId && !pe && !ls && !li && !sprintsQ.isFetching && !issuesQ.isFetching;
+    !!projectId &&
+    permsLoaded &&
+    !pe &&
+    !ls &&
+    !li &&
+    !sprintsQ.isFetching &&
+    !issuesQ.isFetching &&
+    !sprintsQ.isError &&
+    !issuesQ.isError;
   useEffect(() => {
     const a = parseSprintAction(search);
     if (!a) {
@@ -660,7 +674,11 @@ export function BacklogPage() {
   }
 
   // Kết thúc sprint — MỘT lối vào cho nút và lệnh Cmd+K: còn việc chưa xong → hỏi chuyển đi đâu; xong hết → kết thúc luôn.
-  function requestComplete(sprint: { id: string; name: string }, notDone: number) {
+  // Đếm trên danh sách CHƯA lọc: bộ lọc nhanh đang bật không được làm lọt việc chưa xong khỏi hộp xác nhận.
+  function requestComplete(sprint: { id: string; name: string }) {
+    const notDone = (fullBySprint.get(sprint.id) ?? []).filter(
+      (i) => i.status.category !== 'DONE',
+    ).length;
     if (notDone > 0) {
       setCompleting({ id: sprint.id, name: sprint.name, notDone });
       return;
@@ -700,11 +718,7 @@ export function BacklogPage() {
       toast.info('Sprint này không còn đang chạy.');
       return;
     }
-    // Đếm trên danh sách CHƯA lọc: bộ lọc nhanh đang bật không được làm lọt việc chưa xong khỏi hộp xác nhận.
-    const notDone = (fullBySprint.get(sprint.id) ?? []).filter(
-      (i) => i.status.category !== 'DONE',
-    ).length;
-    requestComplete(sprint, notDone);
+    requestComplete(sprint);
   };
 
   function confirmStart(values: StartSprintValues) {
@@ -876,7 +890,10 @@ export function BacklogPage() {
             >
               {visibleSprints.map((sprint) => {
                 const sprintIssues = bySprint.get(sprint.id) ?? [];
-                const notDone = sprintIssues.filter((i) => i.status.category !== 'DONE').length;
+                // Chưa lọc: cùng số với hộp xác nhận Kết thúc sprint và lệnh Cmd+K.
+                const notDone = (fullBySprint.get(sprint.id) ?? []).filter(
+                  (i) => i.status.category !== 'DONE',
+                ).length;
                 return (
                   <Section
                     key={sprint.id}
@@ -961,7 +978,7 @@ export function BacklogPage() {
                                 completeSprint.isPending &&
                                 completeSprint.variables?.sprintId === sprint.id
                               }
-                              onClick={() => requestComplete(sprint, notDone)}
+                              onClick={() => requestComplete(sprint)}
                             >
                               <CheckCircle2 className="h-4 w-4" />
                               Kết thúc sprint

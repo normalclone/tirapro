@@ -9,7 +9,7 @@ export interface ProjectCommand {
   label: string;
   keywords: string;
   to: string;
-  icon: 'sprint' | 'report' | 'gantt' | 'triage' | 'wiki' | 'risks' | 'automation';
+  icon: 'sprint' | 'report' | 'gantt' | 'triage' | 'risks' | 'automation';
 }
 
 interface SprintLike {
@@ -25,8 +25,6 @@ export interface ProjectCommandInput {
   sprints: readonly SprintLike[];
   /** `sprint:manage` (dự án lưu trữ → false). */
   canSprint: boolean;
-  /** `issue:triage`. */
-  canTriage: boolean;
   /** `automation:manage`. */
   canAutomation: boolean;
 }
@@ -93,21 +91,13 @@ export function buildProjectCommands(input: ProjectCommandInput): ProjectCommand
       icon: 'gantt',
     },
   );
-  if (input.canTriage)
-    out.push({
+  out.push(
+    {
       id: 'nav.triage',
       label: 'Mở Việc mới vào',
       keywords: 'viec moi vao triage hop thu intake',
       to: `/p/${k}/triage`,
       icon: 'triage',
-    });
-  out.push(
-    {
-      id: 'nav.wiki',
-      label: 'Mở Wiki',
-      keywords: 'wiki tai lieu trang kien thuc',
-      to: '/wiki',
-      icon: 'wiki',
     },
     {
       id: 'nav.risks',

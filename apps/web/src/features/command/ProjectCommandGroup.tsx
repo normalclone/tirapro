@@ -1,15 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
-import {
-  BarChart3,
-  BookOpen,
-  GanttChartSquare,
-  Inbox,
-  Play,
-  Repeat,
-  ShieldAlert,
-} from 'lucide-react';
+import { BarChart3, GanttChartSquare, Inbox, Play, Repeat, ShieldAlert } from 'lucide-react';
 import { useProjectSprints } from '@/features/backlog/api';
 import { useProject } from '@/features/projects/api';
 import { useProjectCan } from '@/features/projects/permissions';
@@ -21,7 +13,6 @@ const ICONS: Record<ProjectCommand['icon'], ReactNode> = {
   report: <BarChart3 className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
   gantt: <GanttChartSquare className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
   triage: <Inbox className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
-  wiki: <BookOpen className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
   risks: <ShieldAlert className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
   automation: <Repeat className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
 };
@@ -44,7 +35,6 @@ export function ProjectCommandGroup({
   // Dự án lưu trữ: chỉ còn quyền đọc → không có lệnh sprint/tự động hoá.
   const can = useProjectCan(project);
   const canSprint = can('sprint:manage');
-  const canTriage = can('issue:triage');
   const canAutomation = can('automation:manage');
 
   const commands = useMemo(
@@ -55,11 +45,10 @@ export function ProjectCommandGroup({
             projectId: project.id,
             sprints: sprints ?? [],
             canSprint,
-            canTriage,
             canAutomation,
           })
         : [],
-    [project, sprints, canSprint, canTriage, canAutomation],
+    [project, sprints, canSprint, canAutomation],
   );
   if (commands.length === 0) return null;
 
@@ -71,7 +60,7 @@ export function ProjectCommandGroup({
       {commands.map((c) => (
         <ActionItem
           key={c.id}
-          value={`${c.id} ${c.keywords}`}
+          value={c.keywords}
           icon={ICONS[c.icon]}
           label={c.label}
           onSelect={() => runAction(() => navigate(c.to))}
