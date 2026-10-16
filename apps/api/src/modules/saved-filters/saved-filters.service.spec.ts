@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { SavedFiltersService } from './saved-filters.service';
 
+const VISIBLE = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+
 function make(visibleIds: string[] | null = ['p1']) {
   const row = {
     id: 'f1',
@@ -22,7 +24,7 @@ function make(visibleIds: string[] | null = ['p1']) {
   };
   const search = { search: vi.fn(() => Promise.resolve({ data: [], meta: {} })) };
   const access = {
-    visibleProjectIds: vi.fn(() => Promise.resolve(visibleIds)),
+    visibleWhere: vi.fn(() => Promise.resolve(visibleIds === null ? {} : VISIBLE)),
     assertCanSee: vi.fn(() => Promise.resolve()),
   };
   const service = new SavedFiltersService(prisma as never, search as never, access as never);
@@ -47,7 +49,7 @@ describe('SavedFiltersService — dự án riêng tư (P13)', () => {
       (prisma.savedFilter.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
     );
     expect(where).toContain('"ownerId":"u1"');
-    expect(where).toContain('"sharedProjectId":{"in":["p1"]}');
+    expect(where).toContain('"sharedProject":' + JSON.stringify(VISIBLE));
     expect(where).toContain('"sharedProjectId":null');
   });
 
@@ -69,7 +71,7 @@ describe('SavedFiltersService — dự án riêng tư (P13)', () => {
     const where = JSON.stringify(
       (prisma.savedFilter.findFirst.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
     );
-    expect(where).toContain('"sharedProjectId":{"in":["p1"]}');
+    expect(where).toContain('"sharedProject":' + JSON.stringify(VISIBLE));
     expect(search.search).not.toHaveBeenCalled();
   });
 

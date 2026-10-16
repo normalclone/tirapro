@@ -66,14 +66,14 @@ export class SearchService {
    * Id các issue gần giống `text` trong một dự án, xếp theo độ liên quan (bỏ dấu + tiền tố + trigram) — cho gợi ý
    * trùng của form Báo lỗi. Hàm bọc duy nhất quanh `FulltextSearcher`: nếu chữ ký tìm kiếm đổi thì chỉ sửa ở đây.
    * `viewerId` (đường do người dùng điều khiển): dự án riêng tư người đó không thấy → 404 'Dự án' như dự án không tồn tại,
-   * không bao giờ trả id việc của dự án ẩn. Trống = ngữ cảnh hệ thống.
+   * không bao giờ trả id việc của dự án ẩn. `viewerId = null` = ngữ cảnh hệ thống (phải nêu rõ).
    */
   async similarIssueIds(
     workspaceId: string,
     projectId: string,
     text: string,
+    viewerId: string | null,
     limit = 8,
-    viewerId?: string,
   ): Promise<string[]> {
     if (viewerId) await this.assertProjectVisibleTo(viewerId, workspaceId, projectId);
     const res = await this.fulltext.search(workspaceId, text, { projectId, limit });
@@ -95,8 +95,8 @@ export class SearchService {
    * gom từ mọi project (khử trùng theo tên vì JQL khớp theo tên). Degrade: rỗng nếu chưa có.
    * `viewerId`: chỉ gom từ dự án người đó thấy được (không lộ tên sprint/nhãn/thành phần/phiên bản của dự án riêng tư).
    */
-  async fields(workspaceId: string, viewerId?: string): Promise<FilterFieldsDto> {
-    const visible = viewerId ? await this.access.visibleWhere(viewerId, workspaceId) : {};
+  async fields(workspaceId: string, viewerId: string): Promise<FilterFieldsDto> {
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const [
       types,
       statuses,
@@ -220,16 +220,9 @@ export class SearchService {
     if (opts.excludeUntriaged) {
       where = Object.keys(where).length ? { AND: [where, TRIAGE_VISIBLE] } : TRIAGE_VISIBLE;
     }
-    return this.issues.query(
-      workspaceId,
-      where,
-      orderBy,
-      opts.cursor,
-      opts.limit,
-      undefined,
+    return this.issues.query(workspaceId, where, orderBy, opts.cursor, opts.limit, currentUserId, {
       rankHint,
-      currentUserId,
-    );
+    });
   }
 
   /**
@@ -241,7 +234,7 @@ export class SearchService {
     workspaceId: string,
     where: JqlNode | null,
     projectId: string | undefined,
-    viewerId?: string,
+    viewerId: string,
   ): Promise<string[] | undefined> {
     let scopeIds: string[] | undefined = projectId ? [projectId] : undefined;
     const keys = topLevelProjectKeys(where);
@@ -261,9 +254,8 @@ export class SearchService {
   private async intersectVisible(
     workspaceId: string,
     scopeIds: string[] | undefined,
-    viewerId?: string,
+    viewerId: string,
   ): Promise<string[] | undefined> {
-    if (!viewerId) return scopeIds;
     const visible = await this.access.visibleProjectIds(viewerId, workspaceId);
     if (visible === null) return scopeIds;
     return scopeIds ? scopeIds.filter((id) => visible.includes(id)) : visible;
@@ -272,20 +264,13 @@ export class SearchService {
   private async searchText(
     workspaceId: string,
     opts: SearchOptions,
-    viewerId?: string,
+    viewerId: string,
   ): Promise<PageResult<IssueDto>> {
     const q = (opts.q ?? '').trim();
     if (!q)
-      return this.issues.query(
-        workspaceId,
-        {},
-        [],
-        opts.cursor,
-        opts.limit,
-        [],
-        undefined,
-        viewerId,
-      );
+      return this.issues.query(workspaceId, {}, [], opts.cursor, opts.limit, viewerId, {
+        rawIds: [],
+      });
     const projectIds = await this.intersectVisible(
       workspaceId,
       opts.projectId ? [opts.projectId] : undefined,
@@ -293,19 +278,12 @@ export class SearchService {
     );
     const res = await this.fulltext.search(workspaceId, q, {
       projectId: opts.projectId,
-      ...(viewerId && projectIds ? { projectIds } : {}),
+      ...(projectIds ? { projectIds } : {}),
     });
     if (res)
-      return this.issues.query(
-        workspaceId,
-        {},
-        [],
-        opts.cursor,
-        opts.limit,
-        res.ids,
-        undefined,
-        viewerId,
-      );
+      return this.issues.query(workspaceId, {}, [], opts.cursor, opts.limit, viewerId, {
+        rawIds: res.ids,
+      });
 
     // Nhánh phòng thủ (FulltextSearcher đã có fallback translate(), không còn trả null): contains ĐÃ ESCAPE
     // (`q="_"` không được khớp mọi dòng) — dùng chung containsWhere với JQL.
@@ -319,16 +297,7 @@ export class SearchService {
     const where: Prisma.IssueWhereInput = opts.projectId
       ? { AND: [match, { projectId: opts.projectId }] }
       : match;
-    return this.issues.query(
-      workspaceId,
-      where,
-      [],
-      opts.cursor,
-      opts.limit,
-      undefined,
-      undefined,
-      viewerId,
-    );
+    return this.issues.query(workspaceId, where, [], opts.cursor, opts.limit, viewerId);
   }
 
   /** Kiểm tra cú pháp JQL (cho FE highlight lỗi inline). */

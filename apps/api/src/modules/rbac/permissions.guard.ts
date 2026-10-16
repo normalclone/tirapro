@@ -44,7 +44,13 @@ export class PermissionsGuard implements CanActivate {
     // Dự án riêng tư: người ngoài nhận 404 TRƯỚC khi tính quyền, với CÙNG nhãn như khi tài nguyên không tồn tại
     // (cùng code/message/shape) — không lộ sự tồn tại của dự án/khoá dự án riêng tư.
     if (projectId)
-      await this.rbac.assertProjectVisible(user.id, user.workspaceId, projectId, notFoundLabel);
+      await this.rbac.assertProjectVisible(
+        user.id,
+        user.workspaceId,
+        projectId,
+        notFoundLabel,
+        false,
+      );
 
     const effective = await this.rbac.getEffectivePermissions(user.id, user.workspaceId, projectId);
     user.permissions = [...effective] as PermissionKey[];

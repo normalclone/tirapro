@@ -219,7 +219,7 @@ export class BoardsService {
     });
     if (!board) throw new NotFoundAppException('Bảng việc');
     if (!board.filterJql?.trim()) {
-      return this.issues.list(workspaceId, { projectId: board.projectId }, cursor, limit);
+      return this.issues.list(workspaceId, { projectId: board.projectId }, cursor, limit, userId);
     }
     return this.search.search(workspaceId, userId, {
       mode: 'jql',

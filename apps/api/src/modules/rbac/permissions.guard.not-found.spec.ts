@@ -20,15 +20,18 @@ async function run(ref: ProjectRefMeta | undefined, params: Record<string, strin
   const hidden = sc === 'hidden';
   const prisma = {
     project: {
-      findFirst: vi.fn((args: { where: Record<string, unknown> }) => {
-        const w = args.where;
-        // projectKey resolver
-        if ('key' in w) return Promise.resolve(hidden ? { id: 'P1' } : null);
-        // assertProjectVisible: dự án riêng tư người gọi không phải thành viên
-        if (w.isPrivate === true) return Promise.resolve({ memberships: [] });
-        // assertProjectInWorkspace
-        return Promise.resolve(hidden ? { id: 'P1' } : null);
-      }),
+      findFirst: vi.fn(
+        (args: { where: Record<string, unknown>; select?: Record<string, unknown> }) => {
+          const w = args.where;
+          // projectKey resolver
+          if ('key' in w) return Promise.resolve(hidden ? { id: 'P1' } : null);
+          // assertProjectVisible: dự án riêng tư người gọi không phải thành viên
+          if (args.select && 'memberships' in args.select)
+            return Promise.resolve({ isPrivate: true, memberships: [] });
+          // assertProjectInWorkspace
+          return Promise.resolve(hidden ? { id: 'P1' } : null);
+        },
+      ),
     },
     issue: {
       findFirst: vi.fn(() => Promise.resolve(hidden ? { projectId: 'P1' } : null)),

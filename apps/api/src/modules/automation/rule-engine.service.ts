@@ -245,7 +245,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     rule: CachedRule,
     issueKey: string,
   ): Promise<AutomationRuleTestResultDto> {
-    const issue = await this.issues.getByKey(workspaceId, issueKey);
+    const issue = await this.issues.getByKey(workspaceId, issueKey, null); // ngữ cảnh hệ thống (người dùng đã qua guard dự án)
     if (rule.projectId && rule.projectId !== issue.projectId) {
       return {
         status: 'SKIPPED',
@@ -389,7 +389,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
   }
 
   private async loadIssue(workspaceId: string, issueId: string): Promise<IssueDto | null> {
-    const page = await this.issues.query(workspaceId, { id: issueId }, [], undefined, 1);
+    const page = await this.issues.query(workspaceId, { id: issueId }, [], undefined, 1, null);
     return page.data[0] ?? null;
   }
 
@@ -494,6 +494,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
       [],
       undefined,
       SCHEDULED_ISSUE_LIMIT,
+      null,
     );
     for (const issue of page.data) {
       if (this.stopping) return;

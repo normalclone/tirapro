@@ -301,7 +301,7 @@ export class WorklogsService {
     worklogId: string,
   ): Promise<void> {
     try {
-      const dto = await this.issues.getByKey(workspaceId, state.key);
+      const dto = await this.issues.getByKey(workspaceId, state.key, null);
       this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
         issue: dto,
         actorId,

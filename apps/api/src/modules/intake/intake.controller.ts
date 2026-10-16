@@ -43,8 +43,8 @@ export class IntakeController {
       workspaceId,
       projectId ?? '',
       summary ?? '',
-      Number.isFinite(n) && n > 0 ? n : undefined,
       user.id,
+      Number.isFinite(n) && n > 0 ? n : undefined,
     );
   }
 }

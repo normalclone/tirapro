@@ -354,8 +354,8 @@ describe('IntakeService.findDuplicates', () => {
         createdAt: new Date(),
       },
     ] as never);
-    const out = await service.findDuplicates('w1', 'p1', 'gio hang', undefined, 'u1');
-    expect(search.similarIssueIds).toHaveBeenCalledWith('w1', 'p1', 'gio hang', 8, 'u1');
+    const out = await service.findDuplicates('w1', 'p1', 'gio hang', 'u1');
+    expect(search.similarIssueIds).toHaveBeenCalledWith('w1', 'p1', 'gio hang', 'u1', 8);
     expect(out.map((o) => o.id)).toEqual(['b', 'a']);
     expect(out[1]).toMatchObject({ closed: true, resolution: "Won't Do", reporterName: 'X' });
     expect(out[0]).toMatchObject({
@@ -377,25 +377,25 @@ describe('IntakeService.findDuplicates', () => {
   it('dự án riêng tư người báo không thấy => 404 như dự án không tồn tại, kể cả tiêu đề quá ngắn; không gọi tìm kiếm (P13)', async () => {
     const { service, search } = make();
     search.assertProjectVisibleTo.mockRejectedValue(new NotFoundAppException('Dự án'));
-    await expect(service.findDuplicates('w1', 'p1', 'ab', undefined, 'u1')).rejects.toMatchObject({
+    await expect(service.findDuplicates('w1', 'p1', 'ab', 'u1')).rejects.toMatchObject({
       status: 404,
     });
-    await expect(
-      service.findDuplicates('w1', 'p1', 'gio hang', undefined, 'u1'),
-    ).rejects.toMatchObject({ status: 404 });
+    await expect(service.findDuplicates('w1', 'p1', 'gio hang', 'u1')).rejects.toMatchObject({
+      status: 404,
+    });
     expect(search.assertProjectVisibleTo).toHaveBeenCalledWith('u1', 'w1', 'p1');
     expect(search.similarIssueIds).not.toHaveBeenCalled();
   });
 
   it('truy vấn dưới 3 ký tự => [] và không gọi tìm kiếm', async () => {
     const { service, search } = make();
-    expect(await service.findDuplicates('w1', 'p1', '  ab ')).toEqual([]);
+    expect(await service.findDuplicates('w1', 'p1', '  ab ', 'u0')).toEqual([]);
     expect(search.similarIssueIds).not.toHaveBeenCalled();
   });
 
   it('không có kết quả tìm kiếm => [] và không đọc issue', async () => {
     const { service, prisma } = make({ similar: [] });
-    expect(await service.findDuplicates('w1', 'p1', 'khong co gi')).toEqual([]);
+    expect(await service.findDuplicates('w1', 'p1', 'khong co gi', 'u0')).toEqual([]);
     expect(prisma.issue.findMany).not.toHaveBeenCalled();
   });
 });

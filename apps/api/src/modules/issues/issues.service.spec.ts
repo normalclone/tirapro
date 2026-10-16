@@ -120,7 +120,7 @@ describe('IssuesService.toDto — components/fixVersions (B17)', () => {
       ],
     });
     const { service } = makeService({ issue: { findFirst: vi.fn(() => Promise.resolve(row)) } });
-    const dto = await service.getByKey('w1', 'P-TASK-1');
+    const dto = await service.getByKey('w1', 'P-TASK-1', null);
     expect(dto.components).toEqual([
       { id: 'c1', name: 'API' },
       { id: 'c2', name: 'Web' },
@@ -817,10 +817,12 @@ describe('IssuesService.query — rawIds (full-text)', () => {
   it('giữ thứ tự rank của rawIds và phân trang theo con trỏ', async () => {
     const rows = ['c', 'a', 'b'].map((id) => issueRow({ id }));
     const { service } = setup(rows);
-    const first = await service.query('w1', {}, [], undefined, 2, ['a', 'b', 'c']);
+    const first = await service.query('w1', {}, [], undefined, 2, null, {
+      rawIds: ['a', 'b', 'c'],
+    });
     expect(first.data.map((i) => i.id)).toEqual(['a', 'b']);
     expect(first.pageInfo).toMatchObject({ hasNextPage: true });
-    const second = await service.query('w1', {}, [], 'b', 2, ['a', 'b', 'c']);
+    const second = await service.query('w1', {}, [], 'b', 2, null, { rawIds: ['a', 'b', 'c'] });
     expect(second.data.map((i) => i.id)).toEqual(['c']);
     expect(second.pageInfo).toMatchObject({ hasNextPage: false });
   });
@@ -828,23 +830,25 @@ describe('IssuesService.query — rawIds (full-text)', () => {
   it('con trỏ không còn trong rawIds => trang rỗng (không quay lại trang đầu); con trỏ còn trong rawIds dù issue đã mất vẫn tiếp tục đúng chỗ', async () => {
     const rows = ['a', 'c'].map((id) => issueRow({ id })); // b đã bị xoá/ẩn khỏi kết quả
     const { service } = setup(rows);
-    const gone = await service.query('w1', {}, [], 'zzz', 2, ['a', 'b', 'c']);
+    const gone = await service.query('w1', {}, [], 'zzz', 2, null, { rawIds: ['a', 'b', 'c'] });
     expect(gone.data).toEqual([]);
     expect(gone.pageInfo).toMatchObject({ hasNextPage: false, endCursor: null });
-    const afterB = await service.query('w1', {}, [], 'b', 2, ['a', 'b', 'c']);
+    const afterB = await service.query('w1', {}, [], 'b', 2, null, { rawIds: ['a', 'b', 'c'] });
     expect(afterB.data.map((i) => i.id)).toEqual(['c']);
   });
 
   it('rawIds rỗng -> trang rỗng, không truy vấn DB', async () => {
     const { service, findMany } = setup([]);
-    const res = await service.query('w1', {}, [], undefined, 10, []);
+    const res = await service.query('w1', {}, [], undefined, 10, null, { rawIds: [] });
     expect(res.data).toEqual([]);
     expect(findMany).not.toHaveBeenCalled();
   });
 
   it('có orderBy tường minh -> lọc theo id nhưng để DB sắp xếp', async () => {
     const { service, findMany } = setup([issueRow({ id: 'a' })]);
-    await service.query('w1', {}, [{ createdAt: 'asc' }], undefined, 10, ['a', 'b']);
+    await service.query('w1', {}, [{ createdAt: 'asc' }], undefined, 10, null, {
+      rawIds: ['a', 'b'],
+    });
     const args = (findMany.mock.calls[0] as unknown as [{ where: unknown; orderBy: unknown }])[0];
     expect(JSON.stringify(args.where)).toContain('"in":["a","b"]');
     expect(args.orderBy).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
@@ -2224,7 +2228,7 @@ describe('IssuesService — dự án đã xoá mềm', () => {
   it('getByKey: lọc project.deletedAt:null; không thấy => 404', async () => {
     const findFirst = vi.fn(() => Promise.resolve(null));
     const { service } = makeService({ issue: { findFirst } });
-    await expect(service.getByKey('w1', 'P-TASK-1')).rejects.toMatchObject({ status: 404 });
+    await expect(service.getByKey('w1', 'P-TASK-1', null)).rejects.toMatchObject({ status: 404 });
     expect((findFirst.mock.calls[0] as unknown as [{ where: unknown }])[0].where).toMatchObject({
       workspaceId: 'w1',
       key: 'P-TASK-1',
@@ -2236,7 +2240,7 @@ describe('IssuesService — dự án đã xoá mềm', () => {
   it('list (không projectId): lọc project.deletedAt:null', async () => {
     const findMany = vi.fn(() => Promise.resolve([]));
     const { service } = makeService({ issue: { findMany } });
-    await service.list('w1', {}, undefined, 50);
+    await service.list('w1', {}, undefined, 50, null);
     expect((findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where).toMatchObject({
       workspaceId: 'w1',
       deletedAt: null,
@@ -2247,7 +2251,7 @@ describe('IssuesService — dự án đã xoá mềm', () => {
   it('list: ẩn việc chưa duyệt (PENDING/SNOOZED/DECLINED) khỏi Board/Việc chờ — chỉ lấy triageState null hoặc ACCEPTED', async () => {
     const findMany = vi.fn(() => Promise.resolve([]));
     const { service } = makeService({ issue: { findMany } });
-    await service.list('w1', { projectId: 'p1' }, undefined, 50);
+    await service.list('w1', { projectId: 'p1' }, undefined, 50, null);
     expect((findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where).toMatchObject({
       OR: [{ triageState: null }, { triageState: 'ACCEPTED' }],
     });
@@ -2261,18 +2265,18 @@ describe('IssuesService — dự án đã xoá mềm', () => {
         findFirst: vi.fn(() => Promise.resolve(row)),
       },
     });
-    const page = await service.list('w1', {}, undefined, 50);
+    const page = await service.list('w1', {}, undefined, 50, null);
     expect(page.data[0]).not.toHaveProperty('acceptanceCriteria');
     expect(page.data[0]!.acceptanceProgress).toEqual({ done: 1, total: 2 });
-    const detail = await service.getByKey('w1', 'P-TASK-1');
+    const detail = await service.getByKey('w1', 'P-TASK-1', null);
     expect(detail.acceptanceCriteria).toBe('- [x] a\n- [ ] b');
   });
 
   it('list với search: escape % _ \\ (không để "_" khớp mọi dòng)', async () => {
     const findMany = vi.fn(() => Promise.resolve([]));
     const { service } = makeService({ issue: { findMany } });
-    await service.list('w1', { search: '_' }, undefined, 50);
-    await service.list('w1', { search: '50%\\' }, undefined, 50);
+    await service.list('w1', { search: '_' }, undefined, 50, null);
+    await service.list('w1', { search: '50%\\' }, undefined, 50, null);
     const wheres = (
       findMany.mock.calls as unknown as Array<[{ where: Record<string, unknown> }]>
     ).map((c) => c[0].where.summary);
@@ -2283,9 +2287,9 @@ describe('IssuesService — dự án đã xoá mềm', () => {
   it('query (JQL/search) và query theo rawIds (full-text) đều ghép project.deletedAt:null vào scope', async () => {
     const findMany = vi.fn(() => Promise.resolve([]));
     const { service } = makeService({ issue: { findMany } });
-    await service.query('w1', {}, [], undefined, 10);
-    await service.query('w1', {}, [], undefined, 10, ['a']);
-    await service.query('w1', {}, [{ updatedAt: 'desc' }], undefined, 10, ['a']);
+    await service.query('w1', {}, [], undefined, 10, null);
+    await service.query('w1', {}, [], undefined, 10, null, { rawIds: ['a'] });
+    await service.query('w1', {}, [{ updatedAt: 'desc' }], undefined, 10, null, { rawIds: ['a'] });
     expect(findMany).toHaveBeenCalledTimes(3);
     for (const call of findMany.mock.calls as unknown as Array<[{ where: unknown }]>) {
       expect(JSON.stringify(call[0].where)).toContain('"project":{"deletedAt":null}');
@@ -2435,19 +2439,19 @@ describe('IssuesService.query — ORDER BY severity DESC đẩy việc chưa đ�
   }
   it('trang 1: việc có mức trước, bù bằng việc chưa đặt mức; hai truy vấn lọc đúng severityId', async () => {
     const { service, findMany } = svc(['a', 'b'], ['x', 'y']);
-    const page = await service.query('w1', {}, desc, undefined, 3);
+    const page = await service.query('w1', {}, desc, undefined, 3, null);
     expect(page.data.map((i) => i.id)).toEqual(['a', 'b', 'x']);
     expect(JSON.stringify(findMany.mock.calls[0]![0].where)).toContain('"severityId":{"not":null}');
     expect(findMany.mock.calls[1]![0].take).toBe(2); // limit + 1 - số đã có
   });
   it('đủ trang từ pha có mức => không truy vấn pha chưa đặt mức', async () => {
     const { service, findMany } = svc(['a', 'b', 'c'], ['x']);
-    await service.query('w1', {}, desc, undefined, 2);
+    await service.query('w1', {}, desc, undefined, 2, null);
     expect(findMany).toHaveBeenCalledTimes(1);
   });
   it('con trỏ nằm ở pha chưa đặt mức => bỏ pha có mức, cursor+skip ở pha chưa đặt', async () => {
     const { service, findMany } = svc(['a'], ['y', 'z'], null);
-    const page = await service.query('w1', {}, desc, 'x', 2);
+    const page = await service.query('w1', {}, desc, 'x', 2, null);
     expect(page.data.map((i) => i.id)).toEqual(['y', 'z']);
     expect(findMany).toHaveBeenCalledTimes(1);
     expect(findMany.mock.calls[0]![0]).toMatchObject({ cursor: { id: 'x' }, skip: 1 });
@@ -2455,12 +2459,12 @@ describe('IssuesService.query — ORDER BY severity DESC đẩy việc chưa đ�
   it('con trỏ không còn => trang rỗng (không quay lại trang đầu)', async () => {
     const { service, findFirst } = svc(['a'], ['x']);
     findFirst.mockResolvedValueOnce(null as never);
-    const page = await service.query('w1', {}, desc, 'gone', 2);
+    const page = await service.query('w1', {}, desc, 'gone', 2, null);
     expect(page.data).toEqual([]);
   });
   it('ASC giữ nguyên một truy vấn (Postgres đã đặt NULL cuối)', async () => {
     const { service, findMany } = svc(['a'], []);
-    await service.query('w1', {}, [{ severity: { rank: 'asc' } }], undefined, 2);
+    await service.query('w1', {}, [{ severity: { rank: 'asc' } }], undefined, 2, null);
     expect(findMany).toHaveBeenCalledTimes(1);
   });
 });
@@ -2478,19 +2482,19 @@ describe('IssuesService.query — rankHint (id khớp FTS lên trước, phần 
 
   it('trang 1: id xếp hạng theo thứ tự rank rồi bù bằng phần còn lại', async () => {
     const { service } = svc(['b', 'a'], ['x', 'y']); // DB trả ranked không theo thứ tự rank
-    const page = await service.query('w1', {}, [], undefined, 3, undefined, ['a', 'b']);
+    const page = await service.query('w1', {}, [], undefined, 3, null, { rankHint: ['a', 'b'] });
     expect(page.data.map((i) => i.id)).toEqual(['a', 'b', 'x']);
   });
 
   it('cursor nằm trong phần xếp hạng => tiếp tục sau nó rồi chuyển sang phần còn lại', async () => {
     const { service } = svc(['b', 'a'], ['x', 'y']);
-    const page = await service.query('w1', {}, [], 'a', 2, undefined, ['a', 'b']);
+    const page = await service.query('w1', {}, [], 'a', 2, null, { rankHint: ['a', 'b'] });
     expect(page.data.map((i) => i.id)).toEqual(['b', 'x']);
   });
 
   it('cursor nằm ở phần còn lại => Prisma cursor+skip cho phần còn lại, không lặp phần xếp hạng', async () => {
     const { service, findMany } = svc(['b', 'a'], ['y', 'z']);
-    const page = await service.query('w1', {}, [], 'x', 2, undefined, ['a', 'b']);
+    const page = await service.query('w1', {}, [], 'x', 2, null, { rankHint: ['a', 'b'] });
     expect(page.data.map((i) => i.id)).toEqual(['y', 'z']);
     expect(findMany).toHaveBeenCalledTimes(1);
     expect(findMany.mock.calls[0]![0]).toMatchObject({ cursor: { id: 'x' }, skip: 1 });
@@ -2498,7 +2502,7 @@ describe('IssuesService.query — rankHint (id khớp FTS lên trước, phần 
 
   it('phần xếp hạng lọc theo scope (workspace, chưa xoá, dự án còn sống)', async () => {
     const { service, findMany } = svc(['a'], []);
-    await service.query('w1', {}, [], undefined, 5, undefined, ['a']);
+    await service.query('w1', {}, [], undefined, 5, null, { rankHint: ['a'] });
     const json = JSON.stringify(findMany.mock.calls[0]![0]);
     expect(json).toContain('"workspaceId":"w1"');
     expect(json).toContain('"deletedAt":null');
@@ -2507,7 +2511,7 @@ describe('IssuesService.query — rankHint (id khớp FTS lên trước, phần 
 
   it('có orderBy tường minh => bỏ qua rankHint (đường queryOrdered)', async () => {
     const { service, findMany } = svc(['a'], ['x']);
-    await service.query('w1', {}, [{ createdAt: 'desc' }], undefined, 5, undefined, ['a']);
+    await service.query('w1', {}, [{ createdAt: 'desc' }], undefined, 5, null, { rankHint: ['a'] });
     expect(findMany).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(findMany.mock.calls[0]![0])).not.toContain('notIn');
   });
@@ -3129,7 +3133,7 @@ describe('IssuesService — dự án riêng tư (P13)', () => {
 
   it('list(): viewerId trống (đường hệ thống như board) → không lọc riêng tư', async () => {
     const { service, prisma, access } = makeWithAccess();
-    await service.list('w1', {}, undefined, 20);
+    await service.list('w1', {}, undefined, 20, null);
     expect(access.visibleWhere).not.toHaveBeenCalled();
     expect(JSON.stringify(whereOf(prisma.issue.findMany))).not.toContain('isPrivate');
     expect(whereOf(prisma.issue.findMany)).toMatchObject({ project: { deletedAt: null } });
@@ -3137,22 +3141,22 @@ describe('IssuesService — dự án riêng tư (P13)', () => {
 
   it('query(): scope có điều kiện hiển thị; viewerId trống → không lọc (đường hệ thống)', async () => {
     const a = makeWithAccess();
-    await a.service.query('w1', { id: 'x' }, [], undefined, 1, undefined, undefined, 'u1');
+    await a.service.query('w1', { id: 'x' }, [], undefined, 1, 'u1');
     expect(JSON.stringify(whereOf(a.prisma.issue.findMany))).toContain('"isPrivate":false');
     const b = makeWithAccess();
-    await b.service.query('w1', { id: 'x' }, [], undefined, 1);
+    await b.service.query('w1', { id: 'x' }, [], undefined, 1, null);
     expect(JSON.stringify(whereOf(b.prisma.issue.findMany))).not.toContain('isPrivate');
   });
 
   it('query() với rawIds (full-text): scope cuối vẫn lọc dự án riêng tư', async () => {
     const a = makeWithAccess();
-    await a.service.query('w1', {}, [], undefined, 5, ['i1', 'i2'], undefined, 'u1');
+    await a.service.query('w1', {}, [], undefined, 5, 'u1', { rawIds: ['i1', 'i2'] });
     expect(JSON.stringify(whereOf(a.prisma.issue.findMany))).toContain('"isPrivate":false');
   });
 
   it('query() rankHint: cả hai pha đều lọc dự án riêng tư', async () => {
     const a = makeWithAccess();
-    await a.service.query('w1', {}, [], undefined, 5, undefined, ['i1'], 'u1');
+    await a.service.query('w1', {}, [], undefined, 5, 'u1', { rankHint: ['i1'] });
     for (const c of a.prisma.issue.findMany.mock.calls as unknown as [{ where: unknown }][]) {
       expect(JSON.stringify(c[0].where)).toContain('"isPrivate":false');
     }
@@ -3168,7 +3172,7 @@ describe('IssuesService — dự án riêng tư (P13)', () => {
     });
     // Cùng đường "không tồn tại": gọi lại không viewer (mã không có thật) cho đúng cùng lỗi.
     const missing = await makeWithAccess()
-      .service.getByKey('w1', 'NOPE-1')
+      .service.getByKey('w1', 'NOPE-1', null)
       .catch((e: unknown) => e);
     expect((hidden as Error).message).toBe((missing as Error).message);
     expect((hidden as { getStatus?: () => number }).getStatus?.()).toBe(404);

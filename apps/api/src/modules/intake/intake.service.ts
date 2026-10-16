@@ -288,8 +288,8 @@ export class IntakeService {
     workspaceId: string,
     projectId: string,
     summary: string,
+    viewerId: string,
     limit = SUGGESTION_LIMIT,
-    viewerId?: string,
   ): Promise<DuplicateSuggestion[]> {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
@@ -297,7 +297,7 @@ export class IntakeService {
     });
     if (!project) throw new NotFoundAppException('Dự án');
     // Dự án riêng tư người báo không thấy → 404 như dự án không tồn tại (kể cả khi tiêu đề quá ngắn để tìm).
-    if (viewerId) await this.search.assertProjectVisibleTo(viewerId, workspaceId, projectId);
+    await this.search.assertProjectVisibleTo(viewerId, workspaceId, projectId);
 
     const query = summary.trim();
     if ([...query].length < MIN_QUERY_LENGTH) return [];
@@ -307,8 +307,8 @@ export class IntakeService {
       workspaceId,
       projectId,
       query,
-      CANDIDATE_LIMIT,
       viewerId,
+      CANDIDATE_LIMIT,
     );
     if (ids.length === 0) return [];
 
@@ -357,7 +357,8 @@ export class IntakeService {
     summary: string,
   ): Promise<MergeTarget | null> {
     try {
-      const ids = await this.search.similarIssueIds(workspaceId, projectId, summary, 10);
+      // Đã qua guard dự án của POST /intake/report → ngữ cảnh hệ thống (null), không kiểm lại quyền xem.
+      const ids = await this.search.similarIssueIds(workspaceId, projectId, summary, null, 10);
       if (ids.length === 0) return null;
       const candidates = await this.prisma.issue.findMany({
         where: { id: { in: ids }, projectId, deletedAt: null },

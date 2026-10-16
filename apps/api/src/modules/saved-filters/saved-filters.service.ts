@@ -153,12 +153,12 @@ export class SavedFiltersService {
     workspaceId: string,
     userId: string,
   ): Promise<Prisma.SavedFilterWhereInput[]> {
-    const visible = await this.access.visibleProjectIds(userId, workspaceId);
+    const visible = await this.access.visibleWhere(userId, workspaceId);
     const shared: Prisma.SavedFilterWhereInput = {
       visibility: { in: [FilterVisibility.WORKSPACE, FilterVisibility.PROJECT] },
-      ...(visible === null
+      ...(Object.keys(visible).length === 0
         ? {}
-        : { OR: [{ sharedProjectId: null }, { sharedProjectId: { in: visible } }] }),
+        : { OR: [{ sharedProjectId: null }, { sharedProject: visible }] }),
     };
     return [{ ownerId: userId }, shared];
   }

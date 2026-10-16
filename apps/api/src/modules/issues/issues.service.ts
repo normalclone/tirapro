@@ -99,11 +99,6 @@ const BULK_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
 /** `meta` chỉ gắn vào payload khi do automation gây ra — sự kiện của người dùng thật giữ nguyên hình dạng cũ. */
 const withMeta = (meta: AutomationEventMeta | undefined) => (meta ? { meta } : {});
 
-/**
- * Issue của dự án đã xoá mềm là "không tồn tại" với mọi truy vấn đọc cấp workspace (getByKey/list/search).
- * Lọc lúc đọc (join `project.deletedAt`) thay vì xoá mềm dây chuyền issue khi xoá dự án.
- */
-
 export interface IssueListFilter {
   projectId?: string;
   statusId?: string;
@@ -132,12 +127,13 @@ export class IssuesService {
 
   /**
    * Điều kiện `project` của mọi truy vấn đọc cấp workspace: dự án chưa xoá mềm + (có `viewerId`) dự án người đó được thấy.
-   * `viewerId` trống = ngữ cảnh hệ thống (rule-engine, worklogs, cron, board đã qua guard) — không lọc riêng tư.
+   * `viewerId` BẮT BUỘC: `null` = ngữ cảnh hệ thống (rule-engine, worklogs, cron, board đã qua guard) — không lọc riêng tư
+   * (phải nêu rõ, quên truyền là lỗi biên dịch chứ không lặng lẽ không lọc).
    * Gộp vào scope gốc (không lọc sau) để cursor/phân trang đúng và không lộ qua đếm.
    */
   private async projectScope(
     workspaceId: string,
-    viewerId?: string,
+    viewerId: string | null,
   ): Promise<Prisma.ProjectWhereInput> {
     const visible = viewerId ? await this.access.visibleWhere(viewerId, workspaceId) : {};
     return { deletedAt: null, ...visible };
@@ -736,7 +732,7 @@ export class IssuesService {
     filter: IssueListFilter,
     cursor: string | undefined,
     limit: number,
-    viewerId?: string,
+    viewerId: string | null,
   ): Promise<PageResult<IssueDto>> {
     const where: Prisma.IssueWhereInput = {
       workspaceId,
@@ -778,9 +774,8 @@ export class IssuesService {
     orderBy: Prisma.IssueOrderByWithRelationInput[],
     cursor: string | undefined,
     limit: number,
-    rawIds?: string[],
-    rankHint?: string[],
-    viewerId?: string,
+    viewerId: string | null,
+    { rawIds, rankHint }: { rawIds?: string[]; rankHint?: string[] } = {},
   ): Promise<PageResult<IssueDto>> {
     const scope: Prisma.IssueWhereInput = {
       AND: [
@@ -925,7 +920,7 @@ export class IssuesService {
     );
   }
 
-  async getByKey(workspaceId: string, key: string, viewerId?: string): Promise<IssueDto> {
+  async getByKey(workspaceId: string, key: string, viewerId: string | null): Promise<IssueDto> {
     const issue = await this.prisma.issue.findFirst({
       where: {
         workspaceId,
