@@ -26,6 +26,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { createPresetFromTarget } from '@/lib/currentProject';
 import { useCreateTarget } from '@/lib/useCreateTarget';
 import { cn } from '@/lib/utils';
+import { FAB_EDGE_PX } from '@/lib/layoutTokens';
 
 function projectKeyFromPath(pathname: string): string {
   const parts = pathname.split('/').filter(Boolean);
@@ -179,7 +180,10 @@ export function FloatingActions() {
         />
       )}
 
-      <div className="fixed bottom-6 right-6 z-sticky flex flex-col items-end gap-3">
+      <div
+        className="fixed z-sticky flex flex-col items-end gap-3"
+        style={{ bottom: FAB_EDGE_PX, right: FAB_EDGE_PX }}
+      >
         {open && customizing && (
           <div
             className={cn(

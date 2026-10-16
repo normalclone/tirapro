@@ -88,7 +88,7 @@ export function TreePage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto pb-24">
         {pe || issuesQ.isError ? (
           <div className={pageContainer('lg')}>
             <QueryError

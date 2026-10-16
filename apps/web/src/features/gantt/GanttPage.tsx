@@ -428,7 +428,7 @@ export function GanttPage() {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto p-4 pb-24">
         {pe || issuesQ.isError ? (
           <QueryError
             error={pErr ?? issuesQ.error}

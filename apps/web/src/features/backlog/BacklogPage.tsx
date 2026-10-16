@@ -611,7 +611,7 @@ export function BacklogPage() {
         onDragCancel={onDragCancel}
         accessibility={{ announcements, screenReaderInstructions: SCREEN_READER_INSTRUCTIONS }}
       >
-        <div ref={setScrollEl} className="flex-1 space-y-4 overflow-y-auto p-6">
+        <div ref={setScrollEl} className="flex-1 space-y-4 overflow-y-auto p-6 pb-24">
           {visibleSprints.map((sprint) => {
             const sprintIssues = bySprint.get(sprint.id) ?? [];
             const notDone = sprintIssues.filter((i) => i.status.category !== 'DONE').length;

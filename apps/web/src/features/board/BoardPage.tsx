@@ -692,7 +692,7 @@ export function BoardPage() {
             />
           </div>
         ) : lanes ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4 pb-24">
             {lanes.length === 0 ? (
               swimlaneEmpty === 'filtered' ? (
                 <p className="py-10 text-center text-sm text-faint">
@@ -767,7 +767,7 @@ export function BoardPage() {
             )}
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
+          <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4 pb-24">
             {board.columns.map((col, colIdx) => (
               <Column
                 key={col.id}
