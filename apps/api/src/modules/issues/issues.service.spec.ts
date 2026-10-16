@@ -2391,6 +2391,21 @@ describe('IssuesService — Ngày bắt đầu (L14): start <= hạn và cùng l
     expect(tx2.issue.updateMany).toHaveBeenCalledTimes(2);
   });
 
+  it('update: dữ liệu CŨ sai thứ tự (start > due) — sửa trường khác vẫn được; chỉ khi đụng ngày mới bị kiểm', async () => {
+    const tx = schedTx({ startDate: new Date(D20), dueDate: new Date(D18) });
+    const { service } = makeService(tx);
+    await service.update('w1', 'u1', 'i1', { version: 3, summary: 'sửa tiêu đề' });
+    await service.update('w1', 'u1', 'i1', { version: 3, storyPoints: 5 }, { automationDepth: 1 });
+    expect(tx.issue.updateMany).toHaveBeenCalledTimes(2);
+    // đụng vào ngày mà kết quả vẫn sai thứ tự => vẫn bị chặn
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, dueDate: '2026-10-17T00:00:00.000Z' }),
+    ).rejects.toMatchObject({ status: 422 });
+    // sửa cho đúng thứ tự => qua
+    await service.update('w1', 'u1', 'i1', { version: 3, dueDate: '2026-10-25T00:00:00.000Z' });
+    expect(tx.issue.updateMany).toHaveBeenCalledTimes(3);
+  });
+
   it('update: người KHÔNG phải người tạo/quản trị gửi startDate => 403 (cùng luật với Hạn)', async () => {
     const tx = schedTx();
     const { service } = makeService(tx, {

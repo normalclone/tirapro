@@ -835,11 +835,14 @@ export class IssuesService {
     ) {
       await this.assertCanEditRestrictedFields(userId, workspaceId, current);
     }
-    // Thứ tự ngày tính trên giá trị HIỆU LỰC sau khi sửa (trường không gửi giữ giá trị hiện có).
-    this.assertScheduleOrder(
-      input.startDate !== undefined ? input.startDate : current.startDate,
-      input.dueDate !== undefined ? input.dueDate : current.dueDate,
-    );
+    // Thứ tự ngày tính trên giá trị HIỆU LỰC sau khi sửa (trường không gửi giữ giá trị hiện có) — và CHỈ khi request
+    // đổi startDate/dueDate: dữ liệu cũ sai thứ tự (API trước đây không kiểm) không được làm mọi chỉnh sửa khác 422.
+    if (input.startDate !== undefined || input.dueDate !== undefined) {
+      this.assertScheduleOrder(
+        input.startDate !== undefined ? input.startDate : current.startDate,
+        input.dueDate !== undefined ? input.dueDate : current.dueDate,
+      );
+    }
 
     const data: Prisma.IssueUncheckedUpdateManyInput = { updatedById: userId };
     if (input.summary !== undefined) data.summary = input.summary;

@@ -21,7 +21,7 @@ import { dueState } from '@/components/ui/DueBadge';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { fmtDate, fmtDateTime, fmtRelative, toDateInput, toDateTimeInput } from '@/lib/dateFormat';
-import { DateInput } from '@/components/ui/DateInput';
+import { DateInput, DateTimeInput } from '@/components/ui/DateInput';
 
 /** Trigger SearchSelect ở dạng badge/label (không viền, hover nền) — bấm để đổi. */
 export const INLINE_TRIGGER =
@@ -504,18 +504,37 @@ function DateRowShell({
   );
 }
 
+/**
+ * Khung ô sửa-tại-chỗ cho DateInput/DateTimeInput (không có autoFocus): đưa con trỏ vào ô chữ đầu tiên để rời ô mới
+ * "chốt" được giá trị, và Esc chỉ huỷ ô này (panel xem nhanh không đóng theo).
+ */
+function InlineEditor({ onCancel, children }: { onCancel: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLInputElement>('input[type="text"]')?.focus();
+  }, []);
+  return (
+    <div
+      ref={ref}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 /** Hàng "Ngày bắt đầu": chỉ ngày (Gantt chỉ xét ngày), gõ/chọn dd/MM/yyyy; server từ chối bắt đầu sau hạn. */
 function StartRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
   const patch = useUpdateIssue(issue.projectId);
   const [editing, setEditing] = useState(false);
-  const wrap = useRef<HTMLDivElement>(null);
   const current = issue.startDate ? toDateInput(issue.startDate) : '';
   const [draft, setDraft] = useState(current);
-
-  // DateInput không có autoFocus: đưa con trỏ vào ô chữ để rời ô mới "chốt" được giá trị.
-  useEffect(() => {
-    if (editing) wrap.current?.querySelector<HTMLInputElement>('input[type="text"]')?.focus();
-  }, [editing]);
 
   function save(iso: string) {
     setEditing(false);
@@ -547,16 +566,7 @@ function StartRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
         setEditing(true);
       }}
       editor={
-        <div
-          ref={wrap}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault(); // huỷ sửa ô này thôi — panel xem nhanh không đóng theo
-              e.stopPropagation();
-              setEditing(false);
-            }
-          }}
-        >
+        <InlineEditor onCancel={() => setEditing(false)}>
           <DateInput
             value={draft}
             onChange={setDraft}
@@ -565,7 +575,7 @@ function StartRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
             disabled={patch.isPending}
             className="h-8 w-40 text-sm"
           />
-        </div>
+        </InlineEditor>
       }
     />
   );
@@ -576,6 +586,8 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
   const patch = useUpdateIssue(issue.projectId);
   const [editing, setEditing] = useState(false);
   const display = issue.dueDate ? fmtDateTime(issue.dueDate) : null;
+  const currentDue = issue.dueDate ? toDateTimeInput(issue.dueDate) : '';
+  const [draft, setDraft] = useState(currentDue);
 
   // Màu theo hạn: quá hạn = đỏ đậm nổi bật, sắp đến hạn = vàng, còn lại = bình thường.
   const st = dueState(issue);
@@ -619,24 +631,21 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
       emptyAction="Đặt hạn"
       valueClass={toneCls}
       valueTip={toneTip}
-      onEdit={() => setEditing(true)}
+      onEdit={() => {
+        setDraft(currentDue);
+        setEditing(true);
+      }}
       editor={
-        <Input
-          type="datetime-local"
-          autoFocus
-          aria-label="Hạn hoàn thành"
-          defaultValue={issue.dueDate ? toDateTimeInput(issue.dueDate) : ''}
-          className="h-8 w-52 text-sm"
-          disabled={patch.isPending}
-          onBlur={(e) => save(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-            if (e.key === 'Escape') {
-              e.preventDefault(); // huỷ sửa ô này thôi — panel xem nhanh không đóng theo
-              setEditing(false);
-            }
-          }}
-        />
+        <InlineEditor onCancel={() => setEditing(false)}>
+          <DateTimeInput
+            value={draft}
+            onChange={setDraft}
+            onCommit={save}
+            ariaLabel="Hạn hoàn thành"
+            disabled={patch.isPending}
+            className="w-56"
+          />
+        </InlineEditor>
       }
     />
   );
