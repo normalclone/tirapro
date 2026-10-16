@@ -422,6 +422,18 @@ describe('IntegrationsService — sửa hàng loạt không spam kênh (D-I2)', 
     expect(telegram.send).toHaveBeenCalledTimes(1);
   });
 
+  it('việc chưa duyệt (PENDING/SNOOZED/DECLINED) không đẩy ISSUE_UPDATED lên kênh; ACCEPTED/không qua duyệt thì có', async () => {
+    const { service, telegram } = setup({ kind: 'global' }, integ({ channels: [ch] }));
+    for (const triageState of ['PENDING', 'SNOOZED', 'DECLINED'])
+      await service.onIssueUpdated({
+        issue: { ...payload.issue, triageState },
+      });
+    expect(telegram.send).not.toHaveBeenCalled();
+    await service.onIssueUpdated({ issue: { ...payload.issue, triageState: 'ACCEPTED' } });
+    await service.onIssueUpdated({ issue: { ...payload.issue, triageState: null } });
+    expect(telegram.send).toHaveBeenCalledTimes(2);
+  });
+
   it('ISSUES_BULK_UPDATED => MỘT tin gộp "N việc … cập nhật bởi X" tới mỗi kênh của dự án', async () => {
     const { service, prisma, telegram } = setup({ kind: 'global' }, integ({ channels: [ch] }));
     (prisma as Record<string, unknown>).user = {

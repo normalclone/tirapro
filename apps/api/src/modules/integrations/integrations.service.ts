@@ -4,6 +4,7 @@ import { AUDIT_ACTIONS, DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma, IntegrationType, IntegrationStatus } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { isUnreviewed } from '../../common/triage-visibility';
 import { AuditService } from '../audit/audit.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import {
@@ -78,6 +79,8 @@ interface IssueEventPayload {
     summary: string;
     status?: { name?: string } | null;
     projectId: string;
+    /** Trạng thái duyệt (Triage) — việc chưa duyệt chưa báo lên kênh chung. */
+    triageState?: string | null;
   };
   actorId?: string;
   /** Hệ thống phát hàng loạt (tự gán việc Jira…) — không gửi tin nào. */
@@ -425,6 +428,8 @@ export class IntegrationsService {
     // Hàng loạt: hệ thống (`bulk`: tự gán việc Jira…) không gửi tin nào; người dùng sửa hàng loạt (`batch`) đã có MỘT tin
     // gộp ở `onIssuesBulkUpdated` — không gửi từng việc (tránh N tin liên tiếp, 429 của Telegram).
     if (payload?.bulk || payload?.batch) return;
+    // Việc đang chờ duyệt / tạm hoãn / bị từ chối chưa vào backlog: không đẩy lên kênh chung (khi được Nhận thì có tin).
+    if (isUnreviewed(payload?.issue?.triageState)) return;
     await this.dispatchIssue(payload, 'ISSUE_UPDATED');
   }
 

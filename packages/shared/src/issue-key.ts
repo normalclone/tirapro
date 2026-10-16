@@ -13,8 +13,12 @@ const PREFIX_BY_KEY: Record<string, string> = {
 
 export function issueTypePrefix(typeKey: string | null | undefined, typeName: string): string {
   if (typeKey && PREFIX_BY_KEY[typeKey]) return PREFIX_BY_KEY[typeKey];
+  // Đoạn tiền tố phải BẮT ĐẦU BẰNG CHỮ (khớp ISSUE_KEY_BODY / isIssueKey: mỗi đoạn sau dấu `-` là [A-Z][A-Z0-9]*) — "3D Model"
+  // không còn cho `PROJ-3DMO-1` (không thành chip, Cmd+K không nhảy tới) mà là `PROJ-DMOD-1`; tên toàn số/ký tự lạ → `ISSUE`.
+  // Mã đã cấp không đổi.
   const fromName = (typeName || '')
     .replace(/[^A-Za-z0-9]/g, '')
+    .replace(/^[0-9]+/, '')
     .slice(0, 4)
     .toUpperCase();
   return fromName || 'ISSUE';
