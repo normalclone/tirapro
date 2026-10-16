@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { withKey } from '@/lib/shortcuts';
 import { Clock, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDuration, parseDuration } from '@tirapro/shared';
@@ -115,7 +116,7 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
               setEditing(null);
               setFormOpen(true);
             }}
-            title="Ghi thời gian đã làm (phím w)"
+            title={withKey('Ghi thời gian đã làm', 'issue.worklog')}
           >
             <Plus className="h-4 w-4" /> Ghi thời gian
           </Button>

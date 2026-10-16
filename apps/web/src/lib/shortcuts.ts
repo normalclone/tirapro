@@ -40,8 +40,18 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     scope: 'issue',
   },
   // Trên board, Việc chờ, Việc mới vào, kết quả lọc
-  { id: 'board.next', keys: ['j'], label: 'Xuống thẻ / dòng kế', scope: 'board' },
-  { id: 'board.prev', keys: ['k'], label: 'Lên thẻ / dòng trước', scope: 'board' },
+  {
+    id: 'board.next',
+    keys: ['j'],
+    label: 'Xuống thẻ / dòng kế (đang xem nhanh: xem luôn dòng kế)',
+    scope: 'board',
+  },
+  {
+    id: 'board.prev',
+    keys: ['k'],
+    label: 'Lên thẻ / dòng trước (đang xem nhanh: xem luôn dòng trước)',
+    scope: 'board',
+  },
   {
     id: 'board.arrows',
     keys: ['←', '↑', '↓', '→'],
@@ -143,10 +153,10 @@ export function withKey(label: string, id: string): string {
   return k ? `${label} · phím ${k}` : label;
 }
 
-/** Nhóm ứng với màn hiện tại (để xếp lên đầu bảng `?`): trang công việc → issue; board/việc chờ/việc mới vào/lịch trình → board. */
+/** Nhóm ứng với màn hiện tại (để xếp lên đầu bảng `?`): trang công việc → issue; board/việc chờ/việc mới vào → board (Gantt không có j/k/a/e nên không tính). */
 export function scopeForPath(pathname: string): ShortcutScope | null {
   if (/^\/issue\//.test(pathname)) return 'issue';
-  if (/^\/p\/[^/]+\/(board|backlog|triage|gantt)(\/|$)/.test(pathname)) return 'board';
+  if (/^\/p\/[^/]+\/(board|backlog|triage)(\/|$)/.test(pathname)) return 'board';
   return null;
 }
 
