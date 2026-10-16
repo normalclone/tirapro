@@ -124,6 +124,8 @@ export class ActivityService {
   /**
    * Gắn oldValue/newValue cho các dòng của danh sách, ĐỌC TỪ DB đã cắt xem trước: dòng DESCRIPTION chỉ lấy `PREVIEW + 1`
    * ký tự đầu (`left` đếm theo ký tự, đủ để biết có bị cắt không) — không kéo toàn văn mô tả qua mạng/bộ nhớ.
+   * PK của bảng là ("occurredAt","id") và không có index mở đầu bằng "id" (bảng dự kiến hàng triệu dòng, phân vùng theo
+   * tháng) nên PHẢI kèm `"issueId" IN (…)` để dùng index ("issueId","occurredAt") — chỉ lọc theo "id" sẽ quét cả bảng.
    */
   private async withValues<T extends HistoryMeta>(
     rows: T[],
@@ -137,7 +139,8 @@ export class ActivityService {
              CASE WHEN "field" = 'DESCRIPTION' THEN left("oldValue", ${n}) ELSE "oldValue" END AS "oldValue",
              CASE WHEN "field" = 'DESCRIPTION' THEN left("newValue", ${n}) ELSE "newValue" END AS "newValue"
       FROM "IssueHistory"
-      WHERE "id" IN (${Prisma.join(rows.map((r) => r.id))})`);
+      WHERE "issueId" IN (${Prisma.join([...new Set(rows.map((r) => r.issueId))])})
+        AND "id" IN (${Prisma.join(rows.map((r) => r.id))})`);
     const byId = new Map(vals.map((v) => [v.id, v]));
     return rows.map((r) => ({
       ...r,

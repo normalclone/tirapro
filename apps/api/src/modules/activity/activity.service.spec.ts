@@ -79,6 +79,13 @@ describe('ActivityService (B19)', () => {
     expect(prisma.$queryRaw.mock.calls[0]![0].sql).toMatch(/left\("oldValue", 201\)/);
     expect([...d!.oldValue!]).toHaveLength(201); // 200 ký tự + …
   });
+  it('truy vấn giá trị kèm "issueId" IN (…) để dùng index (issueId, occurredAt), không chỉ theo "id"', async () => {
+    const { service, prisma } = setup([row(), row({ id: 'h2' }), row({ id: 'h3', issueId: 'i2' })]);
+    await service.listForIssue('w1', 'i1');
+    const q = prisma.$queryRaw.mock.calls[0]![0] as unknown as { sql: string; values: unknown[] };
+    expect(q.sql).toMatch(/WHERE "issueId" IN \(\?,\?\)\s+AND "id" IN/);
+    expect(q.values).toEqual(['i1', 'i2', 'h1', 'h2', 'h3']); // issueId khử trùng, rồi các id
+  });
   it('không có dòng nào => không truy vấn giá trị', async () => {
     const { service, prisma } = setup([]);
     await service.listForIssue('w1', 'i1');
