@@ -314,12 +314,19 @@ export function groupWorkflows(workflows: Workflow[]) {
 
 const MAX_USED_BY_SHOWN = 3;
 
-function UsedByLine({ usedBy }: { usedBy: NonNullable<Workflow['usedBy']> }) {
+export function UsedByLine({
+  usedBy,
+  hiddenCount = 0,
+}: {
+  usedBy: NonNullable<Workflow['usedBy']>;
+  /** Số dự án riêng tư người xem không thấy — chỉ hiện số, không lộ khoá/tên. */
+  hiddenCount?: number;
+}) {
   const shown = usedBy.slice(0, MAX_USED_BY_SHOWN);
   const rest = usedBy.length - shown.length;
   return (
     <p className="mt-1 pl-6 text-xs text-muted">
-      Dùng bởi:{' '}
+      {usedBy.length === 0 ? 'Đang dùng bởi' : 'Dùng bởi:'}{' '}
       {shown.map((p, i) => (
         <span key={p.id}>
           {i > 0 && ', '}
@@ -338,6 +345,13 @@ function UsedByLine({ usedBy }: { usedBy: NonNullable<Workflow['usedBy']> }) {
         </span>
       ))}
       {rest > 0 && <span className="text-faint"> +{rest}</span>}
+      {hiddenCount > 0 && (
+        <span className={usedBy.length > 0 ? 'text-faint' : undefined}>
+          {usedBy.length > 0 ? ' · ' : ''}
+          {usedBy.length > 0 ? '+' : ''}
+          {hiddenCount} dự án riêng tư
+        </span>
+      )}
     </p>
   );
 }
@@ -358,7 +372,8 @@ function WorkflowRow({
   deleting: boolean;
 }) {
   const usedBy = workflow.usedBy ?? [];
-  const inUse = usedBy.length > 0;
+  const hiddenCount = workflow.hiddenCount ?? 0;
+  const inUse = usedBy.length > 0 || hiddenCount > 0;
   return (
     <li
       className={cn(
@@ -406,7 +421,7 @@ function WorkflowRow({
           </Button>
         )}
       </div>
-      {inUse && <UsedByLine usedBy={usedBy} />}
+      {inUse && <UsedByLine usedBy={usedBy} hiddenCount={hiddenCount} />}
     </li>
   );
 }

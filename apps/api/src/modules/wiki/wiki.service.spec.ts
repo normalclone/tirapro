@@ -5,9 +5,13 @@ import { restoreWikiVersionSchema, updateWikiPageSchema } from './wiki.schemas';
 describe('WikiService.search — escape ký tự đại diện LIKE', () => {
   it('q="_" / "50%" được escape (không khớp mọi trang), tìm cả title và body', async () => {
     const findMany = vi.fn(() => Promise.resolve([]));
-    const service = new WikiService({ wikiPage: { findMany } } as never, {} as never, {} as never);
-    await service.search('w1', '_');
-    await service.search('w1', '50%');
+    const service = new WikiService(
+      { wikiPage: { findMany } } as never,
+      { visibleWhere: vi.fn(() => Promise.resolve({})) } as never,
+      {} as never,
+    );
+    await service.search('w1', '_', undefined, U);
+    await service.search('w1', '50%', undefined, U);
     const calls = findMany.mock.calls as unknown as Array<[{ where: { OR: unknown[] } }]>;
     expect(calls[0]![0].where.OR).toEqual([
       { title: { contains: '\\_', mode: 'insensitive' } },
@@ -74,13 +78,17 @@ function setup(archived: boolean, pageProjectId: string | null = 'p1') {
       typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(prisma) : Promise.resolve([]),
     ),
   };
-  // Mặc định: người đọc có project:view cấp workspace (thấy mọi dự án).
-  const rbac = { getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(['project:view']))) };
+  // Mặc định: người đọc thấy mọi dự án (`{}`); ca dự án riêng tư đặt lại `visibleWhere`.
+  const access = {
+    visibleWhere: vi.fn(
+      (..._a: unknown[]): Promise<Record<string, unknown>> => Promise.resolve({}),
+    ),
+  };
   const audit = { record: vi.fn(() => Promise.resolve()) };
   return {
-    service: new WikiService(prisma as never, rbac as never, audit as never),
+    service: new WikiService(prisma as never, access as never, audit as never),
     prisma,
-    rbac,
+    access,
     audit,
   };
 }
@@ -95,7 +103,7 @@ describe('WikiService — dự án lưu trữ là chỉ đọc', () => {
       service.create('w1', { title: 'Con', parentId: 'g1' } as never, U),
     ).rejects.toMatchObject(ARCHIVED);
     await expect(service.update('w1', 'g1', { title: 'Mới' }, U)).rejects.toMatchObject(ARCHIVED);
-    await expect(service.move('w1', 'g1', { order: 0 })).rejects.toMatchObject(ARCHIVED);
+    await expect(service.move('w1', 'g1', { order: 0 }, U)).rejects.toMatchObject(ARCHIVED);
     await expect(service.remove('w1', 'g1', U)).rejects.toMatchObject(ARCHIVED);
     expect(prisma.wikiPage.create).not.toHaveBeenCalled();
     expect(prisma.wikiPage.update).not.toHaveBeenCalled();
@@ -301,7 +309,7 @@ describe('WikiService.move/remove — không làm đổi version/updatedAt của
       updatedAt: T0,
     } as never);
     prisma.wikiPage.findMany.mockResolvedValueOnce([row('a', 1), row('b', 2), row('c', 3)]);
-    await service.move('w1', 'g1', { order: 3 });
+    await service.move('w1', 'g1', { order: 3 }, U);
     const updates = prisma.wikiPage.update.mock.calls.map(
       (c) => (c as unknown as [{ where: { id: string }; data: Record<string, unknown> }])[0],
     );
@@ -326,7 +334,7 @@ describe('WikiService.move/remove — không làm đổi version/updatedAt của
     } as never);
     // [a0, b1] đứng yên; g1 chuyển từ order 2 sang cuối (order 2) → không có gì đổi
     prisma.wikiPage.findMany.mockResolvedValueOnce([row('a', 0), row('b', 1)]);
-    await service.move('w1', 'g1', { order: 2 });
+    await service.move('w1', 'g1', { order: 2 }, U);
     expect(prisma.wikiPage.update).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -478,46 +486,107 @@ describe('WikiService — liên kết trang ↔ công việc (A11)', () => {
   });
 });
 
-describe('WikiService.visibleIssueFilter — lọc lúc đọc theo quyền xem (A11)', () => {
-  it('có project:view cấp workspace → thấy mọi dự án còn sống (không tra từng dự án)', async () => {
-    const { service, prisma } = setup(false);
+const HIDDEN_FROM_U = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+
+describe('WikiService.visibleIssueFilter — lọc lúc đọc theo quyền xem (A11, P15)', () => {
+  it('thấy mọi dự án (admin) → chỉ còn deletedAt', async () => {
+    const { service } = setup(false);
     await expect(service.visibleIssueFilter({ id: 'u1' }, 'w1')).resolves.toEqual({
       deletedAt: null,
       project: { deletedAt: null },
     });
-    expect(prisma.project.findMany).not.toHaveBeenCalled();
   });
 
-  it('system admin → không hỏi quyền', async () => {
-    const { service, rbac } = setup(false);
-    await service.visibleIssueFilter({ id: 'u1', isSystemAdmin: true }, 'w1');
-    expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
-  });
-
-  it('không có project:view ở workspace → dự án người đọc không xem được bị loại (notIn)', async () => {
-    const { service, prisma, rbac } = setup(false);
-    prisma.project.findMany.mockResolvedValueOnce([{ id: 'pA' }, { id: 'pB' }]);
-    rbac.getEffectivePermissions.mockImplementation(((_u: string, _w: string, p?: string | null) =>
-      Promise.resolve(new Set(p === 'pA' ? ['project:view'] : []))) as never);
+  it('dùng quyết định chung ProjectAccessService.visibleWhere (không tự tính project:view)', async () => {
+    const { service, access } = setup(false);
+    access.visibleWhere.mockResolvedValueOnce(HIDDEN_FROM_U);
     await expect(service.visibleIssueFilter({ id: 'u1' }, 'w1')).resolves.toEqual({
       deletedAt: null,
-      project: { deletedAt: null, id: { notIn: ['pB'] } },
+      project: { deletedAt: null, ...HIDDEN_FROM_U },
     });
+    expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
   });
 
   it('get(): where của issues dùng bộ lọc quyền xem (công việc dự án ẩn không lộ)', async () => {
-    const { service, prisma, rbac } = setup(false);
-    prisma.project.findMany.mockResolvedValueOnce([{ id: 'pA' }]);
-    rbac.getEffectivePermissions.mockImplementation(() => Promise.resolve(new Set([])));
+    const { service, prisma, access } = setup(false);
+    access.visibleWhere.mockResolvedValue(HIDDEN_FROM_U);
     await service.get('w1', 'g1', U);
     expect(prisma.wikiPageIssue.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           wikiPageId: 'g1',
-          issue: { deletedAt: null, project: { deletedAt: null, id: { notIn: ['pA'] } } },
+          issue: { deletedAt: null, project: { deletedAt: null, ...HIDDEN_FROM_U } },
         },
       }),
     );
+  });
+});
+
+describe('WikiService — dự án riêng tư: người ngoài không thấy trang (P15)', () => {
+  const readable = {
+    AND: [{ OR: [{ projectId: null }, { project: { deletedAt: null, ...HIDDEN_FROM_U } }] }],
+  };
+
+  it('tree/search (cả khi không có projectId): cộng điều kiện đọc được, không đè OR tìm kiếm', async () => {
+    const { service, prisma, access } = setup(false);
+    access.visibleWhere.mockResolvedValue(HIDDEN_FROM_U);
+    await service.tree('w1', undefined, U);
+    await service.search('w1', 'ab', undefined, U);
+    const [tree, search] = prisma.wikiPage.findMany.mock.calls.map(
+      (c) => (c[0] as { where: Record<string, unknown> }).where,
+    );
+    expect(tree).toMatchObject(readable);
+    expect(search).toMatchObject(readable);
+    expect(search!.OR).toHaveLength(2); // OR của từ khoá còn nguyên
+  });
+
+  it('thành viên/quản trị (visible = {}) → không thêm điều kiện nào', async () => {
+    const { service, prisma } = setup(false);
+    await service.tree('w1', undefined, U);
+    expect((prisma.wikiPage.findMany.mock.calls[0]![0] as { where: object }).where).toEqual({
+      workspaceId: 'w1',
+      deletedAt: null,
+    });
+  });
+
+  it('get(): trang của dự án ẩn → 404 (findFirst có điều kiện đọc được); thành viên thấy trang', async () => {
+    const { service, prisma, access } = setup(false);
+    access.visibleWhere.mockResolvedValue(HIDDEN_FROM_U);
+    prisma.wikiPage.findFirst.mockResolvedValueOnce(null as never);
+    await expect(service.get('w1', 'g1', U)).rejects.toMatchObject({ status: 404 });
+    expect(prisma.wikiPage.findFirst.mock.calls[0]![0]).toMatchObject({
+      where: { id: 'g1', workspaceId: 'w1', deletedAt: null, ...readable },
+    });
+    // thành viên: findFirst trả trang → get() thành công
+    await expect(service.get('w1', 'g1', U)).resolves.toMatchObject({ id: 'g1' });
+  });
+
+  it('trash: điều kiện đọc được cạnh scopeWhere (projectId) — không đè khoá projectId', async () => {
+    const { service, prisma, access } = setup(false);
+    access.visibleWhere.mockResolvedValue(HIDDEN_FROM_U);
+    await service.trash('w1', 'p1', U);
+    const where = (prisma.wikiPage.findMany.mock.calls[0]![0] as { where: Record<string, unknown> })
+      .where;
+    expect(where).toMatchObject({ projectId: 'p1', ...readable });
+  });
+
+  it('listVersions/getVersion: trang của dự án ẩn → 404, không đọc lịch sử', async () => {
+    const { service, prisma, access } = setup(false);
+    access.visibleWhere.mockResolvedValue(HIDDEN_FROM_U);
+    prisma.wikiPage.findFirst.mockResolvedValue(null as never);
+    await expect(service.listVersions('w1', 'g1', U)).rejects.toMatchObject({ status: 404 });
+    await expect(service.getVersion('w1', 'g1', 1, U)).rejects.toMatchObject({ status: 404 });
+    expect(prisma.wikiPageVersion.findMany).not.toHaveBeenCalled();
+    expect(prisma.wikiPageVersion.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('create con trang cha của dự án ẩn → 404 (không lộ bằng thông báo "khác phạm vi")', async () => {
+    const { service, prisma, access } = setup(false);
+    access.visibleWhere.mockResolvedValue(HIDDEN_FROM_U);
+    prisma.wikiPage.findFirst.mockResolvedValueOnce(null as never);
+    await expect(
+      service.create('w1', { title: 'Con', parentId: 'gx' } as never, U),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });
 
@@ -602,7 +671,7 @@ describe('WikiService — chụp phiên bản khi lưu (A18)', () => {
   it('move(): đổi chỗ KHÔNG tạo phiên bản', async () => {
     const { service, prisma } = setup(false);
     prisma.wikiPage.findMany.mockResolvedValueOnce([{ id: 'a', order: 0, updatedAt: new Date() }]);
-    await service.move('w1', 'g1', { order: 0 });
+    await service.move('w1', 'g1', { order: 0 }, U);
     expect(prisma.wikiPageVersion.create).not.toHaveBeenCalled();
   });
 });
@@ -834,11 +903,11 @@ describe('WikiService — đọc/khôi phục xoá mềm (A20)', () => {
 
   it('mọi truy vấn đọc wikiPage (tree/search/get/byIssue/move/update) đều có deletedAt: null', async () => {
     const { service, prisma } = setup(false);
-    await service.tree('w1');
-    await service.search('w1', 'ab');
+    await service.tree('w1', undefined, U);
+    await service.search('w1', 'ab', undefined, U);
     await service.get('w1', 'g1', { id: 'u1' });
     await service.byIssue('w1', 'i1', { id: 'u1' });
-    await service.move('w1', 'g1', { order: 0 });
+    await service.move('w1', 'g1', { order: 0 }, U);
     await service.update('w1', 'g1', { body: 'x' }, U);
     const calls = [...prisma.wikiPage.findMany.mock.calls, ...prisma.wikiPage.findFirst.mock.calls];
     expect(calls.length).toBeGreaterThan(5);

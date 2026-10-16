@@ -6,7 +6,7 @@ const LIVE_ISSUE = { workspaceId: 'w1', deletedAt: null, project: { deletedAt: n
 describe('DevLinksService — bỏ issue của dự án xoá mềm', () => {
   it('listIssueDevLinks: tra issue với project.deletedAt:null; dự án đã xoá => 404', async () => {
     const findFirst = vi.fn(() => Promise.resolve(null));
-    const service = new DevLinksService({ issue: { findFirst } } as never);
+    const service = new DevLinksService({ issue: { findFirst } } as never, {} as never);
     await expect(service.listIssueDevLinks('w1', 'i1')).rejects.toMatchObject({ status: 404 });
     const { where } = (findFirst.mock.calls[0] as unknown as [{ where: unknown }])[0];
     expect(where).toMatchObject({ id: 'i1', ...LIVE_ISSUE });
@@ -14,7 +14,7 @@ describe('DevLinksService — bỏ issue của dự án xoá mềm', () => {
 
   it('findIssue (smart commit qua webhook): tra theo key với project.deletedAt:null', async () => {
     const findFirst = vi.fn(() => Promise.resolve(null));
-    const service = new DevLinksService({ issue: { findFirst } } as never);
+    const service = new DevLinksService({ issue: { findFirst } } as never, {} as never);
     const find = (
       service as unknown as { findIssue(w: string, k: string): Promise<{ id: string } | null> }
     ).findIssue.bind(service);
@@ -53,7 +53,7 @@ function setup(project: { archivedAt: Date | null; deletedAt: Date | null }) {
       create: vi.fn(() => Promise.resolve({ id: 'd1' })),
     },
   };
-  return { service: new DevLinksService(prisma as never), prisma };
+  return { service: new DevLinksService(prisma as never, {} as never), prisma };
 }
 
 const payload = { commits: [{ id: 'abc123', message: 'DEMO-1 sửa lỗi' }] };
@@ -74,5 +74,32 @@ describe('DevLinksService.handleWebhook — dự án lưu trữ là chỉ đọc
     const res = await service.handleWebhook('r1', auth, payload);
     expect(res.linked).toBe(1);
     expect(prisma.issueDevLink.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('DevLinksService.listRepositories — dự án riêng tư (P15)', () => {
+  function build(visible: string[] | null) {
+    const findMany = vi.fn((..._a: unknown[]) => Promise.resolve([]));
+    const access = { visibleProjectIds: vi.fn(() => Promise.resolve(visible)) };
+    const service = new DevLinksService({ codeRepository: { findMany } } as never, access as never);
+    return { service, findMany, access };
+  }
+  const where = (m: { mock: { calls: unknown[][] } }) =>
+    (m.mock.calls[0] as unknown as [{ where: object }])[0].where;
+
+  it('không có projectId: repo chung + repo của dự án thấy được; người ngoài không thấy repo dự án ẩn', async () => {
+    const { service, findMany, access } = build(['p1']);
+    await service.listRepositories('w1', undefined, 'u1');
+    expect(access.visibleProjectIds).toHaveBeenCalledWith('u1', 'w1');
+    expect(where(findMany)).toEqual({
+      workspaceId: 'w1',
+      OR: [{ projectId: null }, { projectId: { in: ['p1'] } }],
+    });
+  });
+
+  it('thấy hết (admin) → không thêm điều kiện', async () => {
+    const { service, findMany } = build(null);
+    await service.listRepositories('w1', undefined, 'u1');
+    expect(where(findMany)).toEqual({ workspaceId: 'w1' });
   });
 });

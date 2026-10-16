@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { AUDIT_ACTIONS, PERMISSIONS } from '@tirapro/types';
 import { extractIssueKeys } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { RbacService } from '../rbac/rbac.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { AuditService } from '../audit/audit.service';
 import { insensitiveContains } from '../../common/like';
 import {
@@ -160,14 +160,26 @@ export class WikiService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly rbac: RbacService,
+    private readonly access: ProjectAccessService,
     private readonly audit: AuditService,
   ) {}
 
-  /** Cây trang theo phạm vi. `projectId` bỏ trống = mọi trang trong workspace. */
-  async tree(workspaceId: string, projectId?: string): Promise<WikiNodeDto[]> {
+  /**
+   * Cây trang theo phạm vi. `projectId` bỏ trống = mọi trang trong workspace mà `viewer` được đọc (trang chung +
+   * trang của dự án người đó thấy; dự án riêng tư người ngoài không có trong cây).
+   */
+  async tree(
+    workspaceId: string,
+    projectId: string | undefined,
+    viewer: WikiActor,
+  ): Promise<WikiNodeDto[]> {
     const rows = await this.prisma.wikiPage.findMany({
-      where: { workspaceId, deletedAt: null, ...this.scopeWhere(projectId) },
+      where: {
+        workspaceId,
+        deletedAt: null,
+        ...this.scopeWhere(projectId),
+        ...(await this.readableWhere(viewer, workspaceId)),
+      },
       orderBy: [{ order: 'asc' }, { title: 'asc' }],
       select: NODE_SELECT,
     });
@@ -175,7 +187,12 @@ export class WikiService {
   }
 
   /** Tìm theo tiêu đề hoặc nội dung (không phân biệt hoa/thường). Trả danh sách phẳng. */
-  async search(workspaceId: string, q: string, projectId?: string): Promise<WikiSearchHit[]> {
+  async search(
+    workspaceId: string,
+    q: string,
+    projectId: string | undefined,
+    viewer: WikiActor,
+  ): Promise<WikiSearchHit[]> {
     const term = q.trim();
     if (!term) return [];
     const rows = await this.prisma.wikiPage.findMany({
@@ -183,6 +200,7 @@ export class WikiService {
         workspaceId,
         deletedAt: null,
         ...this.scopeWhere(projectId),
+        ...(await this.readableWhere(viewer, workspaceId)),
         OR: [{ title: insensitiveContains(term) }, { body: insensitiveContains(term) }],
       },
       orderBy: { updatedAt: 'desc' },
@@ -234,8 +252,14 @@ export class WikiService {
   }
 
   async get(workspaceId: string, id: string, viewer: WikiActor): Promise<WikiPageDto> {
+    // Trang của dự án riêng tư người đọc không thấy = không tồn tại (404 như id sai).
     const page = await this.prisma.wikiPage.findFirst({
-      where: { id, workspaceId, deletedAt: null },
+      where: {
+        id,
+        workspaceId,
+        deletedAt: null,
+        ...(await this.readableWhere(viewer, workspaceId)),
+      },
     });
     if (!page) throw new NotFoundAppException('Trang tài liệu');
 
@@ -333,7 +357,7 @@ export class WikiService {
     const projectId = dto.projectId ?? null;
     const parentId = dto.parentId ?? null;
     if (parentId) {
-      const parent = await this.requireWritablePage(workspaceId, parentId);
+      const parent = await this.requireWritablePage(workspaceId, parentId, actor);
       // Trang con luôn cùng phạm vi với trang cha; client gửi phạm vi khác → từ chối
       // (guard tính quyền theo body.projectId, không để nó lái ghi sang dự án khác).
       if (projectId !== parent.projectId) {
@@ -488,13 +512,18 @@ export class WikiService {
    * Chặn chu trình (không cho chuyển vào chính nó hoặc con cháu của nó);
    * đánh lại `order` liên tục 0..n cho nhóm anh em cũ và mới.
    */
-  async move(workspaceId: string, id: string, dto: MoveWikiPageInput): Promise<WikiNodeDto[]> {
+  async move(
+    workspaceId: string,
+    id: string,
+    dto: MoveWikiPageInput,
+    viewer: WikiActor,
+  ): Promise<WikiNodeDto[]> {
     const page = await this.requireWritablePage(workspaceId, id);
     const nextParentId = dto.parentId === undefined ? page.parentId : dto.parentId;
 
     if (nextParentId === id) throw new BusinessRuleException('Không thể chuyển trang vào chính nó');
     if (nextParentId) {
-      const parent = await this.requirePage(workspaceId, nextParentId);
+      const parent = await this.requireReadablePage(workspaceId, nextParentId, viewer);
       if (parent.projectId !== page.projectId) {
         throw new BusinessRuleException(
           'Chỉ chuyển được trong cùng phạm vi — trang chung của không gian làm việc, hoặc trong cùng một dự án',
@@ -548,7 +577,7 @@ export class WikiService {
     if (page.parentId !== nextParentId)
       await this.renumber(workspaceId, page.projectId, page.parentId);
 
-    return this.tree(workspaceId, page.projectId ?? SCOPE_WORKSPACE);
+    return this.tree(workspaceId, page.projectId ?? SCOPE_WORKSPACE, viewer);
   }
 
   /**
@@ -772,16 +801,18 @@ export class WikiService {
   }
 
   /**
-   * Điều kiện Prisma thêm vào mọi đường ĐỌC trang qua lịch sử/thùng rác theo quyền của `viewer`. Hiện chỉ có quyền
-   * đọc cấp workspace (như `get`) nên rỗng — điểm cắm duy nhất cho dự án riêng tư (P15: trả
-   * `OR [{ projectId: null }, { project: <dự án người đọc xem được> }]`, cùng nguồn với `visibleIssueFilter`).
+   * Điều kiện Prisma thêm vào mọi đường ĐỌC trang (cây, tìm kiếm, `get`, lịch sử, thùng rác) theo quyền của `viewer`:
+   * trang chung (`projectId = null`) luôn đọc được, trang của dự án chỉ khi người đọc thấy dự án đó — cùng nguồn
+   * (`ProjectAccessService.visibleWhere`) với `visibleIssueFilter`. Người thấy mọi dự án → `{}`.
+   * Trả về dưới khoá `AND` (không phải `OR`/`projectId`) để trải được cạnh `scopeWhere` và `OR` tìm kiếm mà không đè.
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- P15 sẽ truy vấn quyền ở đây
   private async readableWhere(
-    _viewer: WikiActor,
-    _workspaceId: string,
+    viewer: WikiActor,
+    workspaceId: string,
   ): Promise<Prisma.WikiPageWhereInput> {
-    return {};
+    const visible = await this.access.visibleWhere(viewer.id, workspaceId);
+    if (Object.keys(visible).length === 0) return {};
+    return { AND: [{ OR: [{ projectId: null }, { project: { deletedAt: null, ...visible } }] }] };
   }
 
   /** Như `requirePage` cho đường đọc: trang phải còn sống và qua `readableWhere` (không → 404). */
@@ -801,37 +832,15 @@ export class WikiService {
 
   /**
    * Điều kiện Prisma cho công việc mà `viewer` được thấy: còn sống, dự án còn sống và dự án người gọi xem được
-   * (`project:view`; theo luật hiện có: quyền cấp workspace có `project:view` = thấy mọi dự án). MỌI đường đọc công việc/trang
-   * liên quan trong wiki (get, byIssue) đi qua đây — điểm cắm duy nhất cho dự án riêng tư (P15: thay phần tính
-   * `hidden` bằng ProjectAccessService).
+   * (`ProjectAccessService.visibleWhere` — dự án riêng tư chỉ cho thành viên/quản trị). MỌI đường đọc công việc/trang
+   * liên quan trong wiki (get, byIssue) đi qua đây.
    */
   async visibleIssueFilter(
     viewer: WikiActor,
     workspaceId: string,
-  ): Promise<{ deletedAt: null; project: { deletedAt: null; id?: { notIn: string[] } } }> {
-    const hidden: string[] = [];
-    if (!viewer.isSystemAdmin) {
-      const wsPerms = await this.rbac.getEffectivePermissions(viewer.id, workspaceId, null);
-      if (!wsPerms.has(PERMISSIONS.PROJECT_VIEW)) {
-        const projects = await this.prisma.project.findMany({
-          where: { workspaceId, deletedAt: null },
-          select: { id: true },
-        });
-        for (let i = 0; i < projects.length; i += 10) {
-          const chunk = projects.slice(i, i + 10);
-          const perms = await Promise.all(
-            chunk.map((p) => this.rbac.getEffectivePermissions(viewer.id, workspaceId, p.id)),
-          );
-          chunk.forEach((p, k) => {
-            if (!perms[k]!.has(PERMISSIONS.PROJECT_VIEW)) hidden.push(p.id);
-          });
-        }
-      }
-    }
-    return {
-      deletedAt: null,
-      project: { deletedAt: null, ...(hidden.length ? { id: { notIn: hidden } } : {}) },
-    };
+  ): Promise<{ deletedAt: null; project: Prisma.ProjectWhereInput }> {
+    const visible = await this.access.visibleWhere(viewer.id, workspaceId);
+    return { deletedAt: null, project: { deletedAt: null, ...visible } };
   }
 
   /**
@@ -895,9 +904,14 @@ export class WikiService {
     return page;
   }
 
-  /** Như `requirePage` nhưng cho thao tác ghi: trang của dự án đã lưu trữ là chỉ đọc. */
-  private async requireWritablePage(workspaceId: string, id: string) {
-    const page = await this.requirePage(workspaceId, id);
+  /**
+   * Như `requirePage` nhưng cho thao tác ghi: trang của dự án đã lưu trữ là chỉ đọc. Có `viewer` thì trang phải
+   * đọc được với người đó (trang cha của dự án ẩn → 404, không lộ qua thông báo "khác phạm vi").
+   */
+  private async requireWritablePage(workspaceId: string, id: string, viewer?: WikiActor) {
+    const page = viewer
+      ? await this.requireReadablePage(workspaceId, id, viewer)
+      : await this.requirePage(workspaceId, id);
     await assertProjectIdWritable(this.prisma, page.projectId);
     return page;
   }

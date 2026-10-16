@@ -15,6 +15,7 @@ import { withCronLock } from '../../common/cron-lock';
 import { LIVE_PROJECT } from '../../common/live-project';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { IntegrationsService } from '../integrations/integrations.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { TELEGRAM_TOKEN_UNUSABLE_MESSAGE, TelegramService } from '../integrations/telegram.service';
 
 /** Input tạo mới subscription (đã validate qua zod ở controller). */
@@ -54,6 +55,7 @@ export class DigestsService implements OnApplicationShutdown {
     private readonly telegram: TelegramService,
     private readonly redis: RedisService,
     private readonly integrations: IntegrationsService,
+    private readonly access: ProjectAccessService,
   ) {}
 
   onApplicationShutdown(): void {
@@ -62,10 +64,18 @@ export class DigestsService implements OnApplicationShutdown {
 
   // ------------------------------- CRUD -------------------------------
 
-  /** Liệt kê subscription của workspace (lọc theo project nếu có). */
-  async list(workspaceId: string, projectId?: string) {
+  /**
+   * Liệt kê subscription của workspace (lọc theo project nếu có). `viewerId` bắt buộc: báo cáo gắn dự án riêng tư
+   * người xem không thấy bị loại (tên/lịch/số liệu chọn của dự án ẩn không lộ); báo cáo cấp workspace luôn hiện.
+   */
+  async list(workspaceId: string, projectId: string | undefined, viewerId: string) {
+    const ids = await this.access.visibleProjectIds(viewerId, workspaceId);
     return this.prisma.reportSubscription.findMany({
-      where: { workspaceId, ...(projectId ? { projectId } : {}) },
+      where: {
+        workspaceId,
+        ...(projectId ? { projectId } : {}),
+        ...(ids === null ? {} : { OR: [{ projectId: null }, { projectId: { in: ids } }] }),
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -90,8 +100,8 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   /** Cập nhật subscription (name/schedule/isEnabled/channelId/metrics). */
-  async update(workspaceId: string, id: string, input: UpdateDigestInput) {
-    await this.requireSubscription(workspaceId, id);
+  async update(workspaceId: string, id: string, input: UpdateDigestInput, viewerId: string) {
+    await this.requireSubscription(workspaceId, id, viewerId);
     // null = gỡ kênh (không cần kiểm).
     if (input.channelId !== undefined && input.channelId !== null) {
       await this.assertChannelInWorkspace(workspaceId, input.channelId);
@@ -106,8 +116,8 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   /** Xóa subscription. */
-  async remove(workspaceId: string, id: string): Promise<{ success: true }> {
-    await this.requireSubscription(workspaceId, id);
+  async remove(workspaceId: string, id: string, viewerId: string): Promise<{ success: true }> {
+    await this.requireSubscription(workspaceId, id, viewerId);
     await this.prisma.reportSubscription.delete({ where: { id } });
     return { success: true };
   }
@@ -115,10 +125,19 @@ export class DigestsService implements OnApplicationShutdown {
   /**
    * Chạy ngay một subscription: tính toán + gửi + cập nhật lastRunAt.
    * Chỉ ghi lastRunAt khi thật sự gửi được — `sent:false` không được làm cron bỏ qua sub trong cửa sổ dedupe.
+   * Chạy tay là ngữ cảnh NGƯỜI DÙNG: báo cáo cấp workspace chỉ tính dự án người bấm thấy (văn bản trả về/gửi đi không
+   * lộ số liệu dự án riêng tư); cron nền (`sendScheduled`) là ngữ cảnh hệ thống nên không lọc.
    */
-  async run(workspaceId: string, id: string): Promise<{ sent: boolean; summaryText: string }> {
-    const sub = await this.requireSubscription(workspaceId, id);
-    const summaryText = await this.buildDigest(workspaceId, sub.projectId ?? undefined);
+  async run(
+    workspaceId: string,
+    id: string,
+    viewerId: string,
+  ): Promise<{ sent: boolean; summaryText: string }> {
+    const sub = await this.requireSubscription(workspaceId, id, viewerId);
+    const scope = sub.projectId
+      ? undefined
+      : ((await this.access.visibleProjectIds(viewerId, workspaceId)) ?? undefined);
+    const summaryText = await this.buildDigest(workspaceId, sub.projectId ?? undefined, scope);
     const { sent, tokenUnusable, integrationError } = await this.send(
       workspaceId,
       sub.channelId,
@@ -140,21 +159,27 @@ export class DigestsService implements OnApplicationShutdown {
   /**
    * Tổng hợp digest dạng text/HTML tiếng Việt (Telegram parse_mode HTML) cho 7 ngày gần nhất.
    * Mỗi truy vấn độc lập, lỗi cục bộ không làm hỏng toàn bộ (degrade-graceful).
+   * `scopeProjectIds`: chỉ tính các dự án này khi không có `projectId` (undefined = mọi dự án — ngữ cảnh hệ thống).
    */
-  async buildDigest(workspaceId: string, projectId?: string): Promise<string> {
+  async buildDigest(
+    workspaceId: string,
+    projectId?: string,
+    scopeProjectIds?: string[],
+  ): Promise<string> {
     const since = new Date(Date.now() - SEVEN_DAYS_MS);
+    const only = projectFilter(projectId, scopeProjectIds);
     const issueScope: Prisma.IssueWhereInput = {
       workspaceId,
       deletedAt: null,
       ...LIVE_PROJECT, // dự án đã xoá mềm không được lọt vào số liệu gửi ra ngoài
-      ...(projectId ? { projectId } : {}),
+      ...only,
     };
 
     const [created, resolved, openByCategory, sprintLine] = await Promise.all([
       this.countCreated(issueScope, since),
-      this.countResolved(workspaceId, projectId, since),
+      this.countResolved(workspaceId, only, since),
       this.openCountByCategory(issueScope),
-      this.activeSprintLine(workspaceId, projectId),
+      this.activeSprintLine(workspaceId, only),
     ]);
 
     const openTotal = openByCategory.todo + openByCategory.inProgress;
@@ -186,7 +211,7 @@ export class DigestsService implements OnApplicationShutdown {
    */
   private async countResolved(
     workspaceId: string,
-    projectId: string | undefined,
+    only: { projectId?: string | { in: string[] } },
     since: Date,
   ): Promise<number> {
     try {
@@ -199,7 +224,7 @@ export class DigestsService implements OnApplicationShutdown {
             workspaceId,
             deletedAt: null,
             ...LIVE_PROJECT,
-            ...(projectId ? { projectId } : {}),
+            ...only,
           },
         },
         select: { issueId: true },
@@ -246,7 +271,7 @@ export class DigestsService implements OnApplicationShutdown {
   /** Dòng tóm tắt sprint đang ACTIVE + tổng điểm còn lại (nếu có). */
   private async activeSprintLine(
     workspaceId: string,
-    projectId: string | undefined,
+    only: { projectId?: string | { in: string[] } },
   ): Promise<string | null> {
     try {
       const sprint = await this.prisma.sprint.findFirst({
@@ -254,7 +279,7 @@ export class DigestsService implements OnApplicationShutdown {
           state: SprintState.ACTIVE,
           deletedAt: null,
           project: { workspaceId, deletedAt: null },
-          ...(projectId ? { projectId } : {}),
+          ...only,
         },
         orderBy: { startDate: 'desc' },
         select: { id: true, name: true },
@@ -423,11 +448,14 @@ export class DigestsService implements OnApplicationShutdown {
     if (!channel) throw new NotFoundAppException('Kênh thông báo');
   }
 
-  private async requireSubscription(workspaceId: string, id: string) {
+  /** Báo cáo gắn dự án riêng tư người gọi không thấy = không tồn tại (404 như id sai). */
+  private async requireSubscription(workspaceId: string, id: string, viewerId: string) {
     const row = await this.prisma.reportSubscription.findFirst({
       where: { id, workspaceId },
     });
     if (!row) throw new NotFoundAppException('Báo cáo định kỳ');
+    if (row.projectId)
+      await this.access.assertCanSee(viewerId, workspaceId, row.projectId, 'Báo cáo định kỳ');
     return row;
   }
 
@@ -436,6 +464,16 @@ export class DigestsService implements OnApplicationShutdown {
       `Digest (${context}) lỗi: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+/** Điều kiện `projectId` của Issue/Sprint: một dự án, hoặc tập dự án được phép, hoặc không giới hạn. */
+function projectFilter(
+  projectId: string | undefined,
+  scopeProjectIds: string[] | undefined,
+): { projectId?: string | { in: string[] } } {
+  if (projectId) return { projectId };
+  if (scopeProjectIds) return { projectId: { in: scopeProjectIds } };
+  return {};
 }
 
 /** Escape ký tự HTML để gửi an toàn với parse_mode HTML của Telegram. */

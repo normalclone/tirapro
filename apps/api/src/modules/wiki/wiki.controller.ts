@@ -34,12 +34,13 @@ export class WikiController {
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   async list(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
     @Query('q') q?: string,
   ) {
     const ws = workspaceId;
-    if (q && q.trim()) return this.wiki.search(ws, q, projectId);
-    return this.wiki.tree(ws, projectId);
+    if (q && q.trim()) return this.wiki.search(ws, q, projectId, user);
+    return this.wiki.tree(ws, projectId, user);
   }
 
   /**
@@ -157,10 +158,11 @@ export class WikiController {
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async move(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(moveWikiPageSchema)) dto: MoveWikiPageInput,
   ) {
-    return this.wiki.move(workspaceId, id, dto);
+    return this.wiki.move(workspaceId, id, dto, user);
   }
 
   /** Xoá mềm trang: chỉ Quản trị dự án (hoặc Workspace Admin với trang chung / mọi dự án). */

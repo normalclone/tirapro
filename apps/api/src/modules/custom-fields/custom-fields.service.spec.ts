@@ -26,7 +26,12 @@ function setup(archived: boolean, fieldProjectId: string | null = 'p1') {
       update: vi.fn(() => Promise.resolve(field)),
     },
   };
-  return { service: new CustomFieldsService(prisma as never), prisma };
+  const access = {
+    visibleWhere: vi.fn(
+      (..._a: unknown[]): Promise<Record<string, unknown>> => Promise.resolve({}),
+    ),
+  };
+  return { service: new CustomFieldsService(prisma as never, access as never), prisma, access };
 }
 
 describe('CustomFieldsService — định nghĩa trường của dự án lưu trữ là chỉ đọc', () => {
@@ -50,5 +55,42 @@ describe('CustomFieldsService — định nghĩa trường của dự án lưu t
     await service.softDeleteDefinition('w1', 'f1');
     expect(prisma.customField.create).toHaveBeenCalledOnce();
     expect(prisma.customField.update).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('CustomFieldsService.listDefinitions — dự án riêng tư (P15)', () => {
+  const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+  const list = (p: { customField: object }) =>
+    p as unknown as {
+      customField: { findMany: { mock: { calls: { where: object }[][] } } };
+    };
+
+  it('không có projectId: chỉ field chung + field của dự án thấy được (người ngoài không thấy field dự án ẩn)', async () => {
+    const { service, prisma, access } = setup(false);
+    (prisma.customField as Record<string, unknown>).findMany = vi.fn(() => Promise.resolve([]));
+    access.visibleWhere.mockResolvedValue(visible);
+    await service.listDefinitions('w1', undefined, 'u1');
+    expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+    expect(list(prisma).customField.findMany.mock.calls[0]![0]!.where).toEqual({
+      workspaceId: 'w1',
+      deletedAt: null,
+      OR: [{ projectId: null }, { project: visible }],
+    });
+  });
+
+  it('thấy hết (admin) → không thêm điều kiện; có projectId → như cũ (guard đã 404 dự án ẩn)', async () => {
+    const { service, prisma } = setup(false);
+    (prisma.customField as Record<string, unknown>).findMany = vi.fn(() => Promise.resolve([]));
+    await service.listDefinitions('w1', undefined, 'u1');
+    expect(list(prisma).customField.findMany.mock.calls[0]![0]!.where).toEqual({
+      workspaceId: 'w1',
+      deletedAt: null,
+    });
+    await service.listDefinitions('w1', 'p1', 'u1');
+    expect(list(prisma).customField.findMany.mock.calls[1]![0]!.where).toEqual({
+      workspaceId: 'w1',
+      deletedAt: null,
+      OR: [{ projectId: 'p1' }, { projectId: null }],
+    });
   });
 });

@@ -14,6 +14,8 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/types/request';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
@@ -55,9 +57,10 @@ export class DevLinksController {
   @Get('dev/repositories')
   async listRepositories(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
   ) {
-    return this.devLinks.listRepositories(workspaceId, projectId);
+    return this.devLinks.listRepositories(workspaceId, projectId, user.id);
   }
 
   /** Gỡ kết nối một repository. */

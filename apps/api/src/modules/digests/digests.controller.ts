@@ -39,8 +39,12 @@ export class DigestsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('query', 'projectId')
   @Get()
-  async list(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
-    return this.digests.list(workspaceId, projectId);
+  async list(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.digests.list(workspaceId, projectId, user.id);
   }
 
   @Post()
@@ -57,21 +61,30 @@ export class DigestsController {
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async update(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateDigestSchema)) dto: UpdateDigestBody,
   ) {
-    return this.digests.update(workspaceId, id, dto);
+    return this.digests.update(workspaceId, id, dto, user.id);
   }
 
   @Delete(':id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.digests.remove(workspaceId, id);
+  async remove(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.digests.remove(workspaceId, id, user.id);
   }
 
   @Post(':id/run')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async run(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.digests.run(workspaceId, id);
+  async run(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.digests.run(workspaceId, id, user.id);
   }
 }
