@@ -42,6 +42,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
+import { CHIP_TOUCH_HIT } from '@/lib/touchHit';
 import { useAuth } from '@/stores/auth';
 import { openReportIssue } from '@/stores/reportIssue';
 import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
@@ -641,6 +642,7 @@ export function BoardPage() {
               title={`Chia bảng thành hàng theo người phụ trách — chỉ áp cho bạn${swimlaneOverride === null ? '' : ' (đang khác cấu hình bảng)'}. Kéo việc sang hàng khác để giao cho người đó.`}
               className={cn(
                 'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                CHIP_TOUCH_HIT,
                 swimlaneBy === 'assignee'
                   ? 'border-transparent bg-primary-subtle text-primary'
                   : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
@@ -653,7 +655,10 @@ export function BoardPage() {
                 type="button"
                 onClick={() => openReportIssue({ projectKey: key, kind: 'BUG' })}
                 title="Báo lỗi hoặc gửi yêu cầu cho dự án này"
-                className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                className={cn(
+                  'inline-flex h-7 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                  CHIP_TOUCH_HIT,
+                )}
               >
                 <Bug className="h-3.5 w-3.5" aria-hidden /> Báo lỗi
               </button>

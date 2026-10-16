@@ -206,20 +206,17 @@ function TimelineEvent({ a }: { a: ProjectActivityItem }) {
       <div className="min-w-0 flex-1 pt-0.5">
         <p className="text-sm leading-relaxed text-ink">
           <span className="font-medium text-ink-strong">{a.actor?.displayName ?? 'Hệ thống'}</span>{' '}
-          {actionPhrase(a)} <span className="text-muted">·</span>{' '}
+          {actionPhrase(a)} <span className="hidden text-muted sm:inline">·</span>{' '}
+          {/* MỘT liên kết (mã + tiêu đề): mobile xuống dòng riêng, hai phần là ô flex nên không đè nhau khi tiêu đề dài. */}
           <Link
             to={`/issue/${a.issueKey}`}
-            className="font-mono text-[0.8125rem] font-medium text-primary underline-offset-2 hover:underline"
+            className="mt-0.5 flex min-w-0 items-baseline gap-1.5 py-1.5 sm:mt-0 sm:inline-flex sm:py-0"
             title={a.issueSummary}
           >
-            {a.issueKey}
-          </Link>{' '}
-          <Link
-            to={`/issue/${a.issueKey}`}
-            className="text-muted hover:text-ink"
-            title={a.issueSummary}
-          >
-            {a.issueSummary}
+            <span className="shrink-0 font-mono text-[0.8125rem] font-medium text-primary underline-offset-2 hover:underline">
+              {a.issueKey}
+            </span>
+            <span className="min-w-0 break-words text-muted hover:text-ink">{a.issueSummary}</span>
           </Link>
         </p>
         <time className="mt-0.5 block text-xs text-faint" dateTime={a.occurredAt} title={abs}>

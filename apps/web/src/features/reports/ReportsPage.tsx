@@ -9,6 +9,7 @@ import { OverviewTab } from './OverviewTab';
 import { QaReportPanel } from './QaReportPanel';
 import { SprintTab } from './SprintTab';
 import { REPORT_TABS, useReportTab } from './tabs';
+import { useScrollFade } from '@/lib/useScrollFade';
 
 /** Vỏ trang Báo cáo: thanh tab + nội dung theo tab (`?tab=`), mỗi tab chỉ tải dữ liệu của chính nó. */
 export function ReportsPage() {
@@ -16,6 +17,7 @@ export function ReportsPage() {
   const { data: project, isError, error, refetch } = useProject(key);
   const [tab, setTab] = useReportTab();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const tabsFade = useScrollFade<HTMLDivElement>(tab, '[aria-selected="true"]');
 
   if (isError) {
     return (
@@ -49,7 +51,9 @@ export function ReportsPage() {
   return (
     <div className="flex h-full flex-col overflow-y-auto print:block print:h-auto print:overflow-visible">
       <div
-        className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4 pt-2 print:hidden"
+        ref={tabsFade.ref}
+        style={tabsFade.style}
+        className="scroll-fade-x relative flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4 pt-2 scrollbar-none print:hidden"
         role="tablist"
         aria-label="Loại báo cáo"
         onKeyDown={onTabKeyDown}

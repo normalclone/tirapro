@@ -127,17 +127,30 @@ export function IssueRowBody({
         <PriorityDot priority={issue.priority} />
       )}
       <IssueTypeIcon type={issue.type} className="hidden sm:block" />
-      {onOpen && !overlay ? (
-        <IssueKeyLink issueKey={issue.key} onPeek={onOpen} />
-      ) : (
-        <span className="shrink-0 font-mono text-xs text-muted" title={`Mã công việc ${issue.key}`}>
-          {issue.key}
+      {/* Mobile: hai dòng — [mã · mức nghiêm trọng · dấu quá hạn] rồi tiêu đề (tối đa 2 dòng) để tiêu đề không bị ép
+          còn vài chữ; từ `sm` trải phẳng một hàng như cũ (`sm:contents`). */}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:contents">
+          {onOpen && !overlay ? (
+            <IssueKeyLink issueKey={issue.key} onPeek={onOpen} />
+          ) : (
+            <span
+              className="shrink-0 font-mono text-xs text-muted"
+              title={`Mã công việc ${issue.key}`}
+            >
+              {issue.key}
+            </span>
+          )}
+          {issue.severity && isBugType(issue.type) && (
+            <SeverityBadge severity={issue.severity} compact />
+          )}
+          {/* Dưới sm: dấu hiệu quá hạn/sắp hạn KHÔNG chỉ là màu viền (viền mất khi dòng được chọn) — biểu tượng + chữ "Quá hạn Nn" / ngày hạn. */}
+          <DueBadge issue={issue} warnOnly className="sm:hidden" />
+        </div>
+        <span className="min-w-0 text-sm text-ink max-sm:line-clamp-2 max-sm:break-words sm:flex-1 sm:truncate">
+          {issue.summary}
         </span>
-      )}
-      {issue.severity && isBugType(issue.type) && (
-        <SeverityBadge severity={issue.severity} compact />
-      )}
-      <span className="min-w-0 flex-1 truncate text-sm text-ink">{issue.summary}</span>
+      </div>
       <RowLabels labels={issue.labels} />
       {progress && progress.total > 0 && (
         <span
@@ -155,7 +168,7 @@ export function IssueRowBody({
           <AcceptanceBadge progress={issue.acceptanceProgress} />
         </span>
       )}
-      {/* Dưới sm ẩn: viền đỏ/cam của dòng đã báo quá hạn/sắp hạn, nhường chỗ cho tiêu đề. */}
+      {/* Từ sm: nhãn đầy đủ "Quá hạn Nn"; dưới sm dùng bản biểu tượng cạnh mã (ở trên). */}
       <DueBadge issue={issue} warnOnly className="hidden shrink-0 sm:inline-flex" />
       <StatusPill status={issue.status} className="hidden sm:inline-flex" />
       {edit ? (

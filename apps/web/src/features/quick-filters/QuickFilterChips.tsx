@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { CHIP_STRIP_COARSE_PAD, CHIP_TOUCH_HIT } from '@/lib/touchHit';
 import { useScrollFade } from '@/lib/useScrollFade';
 import { QUICK_FILTERS, type QuickFilterId } from './useQuickFilters';
 
@@ -29,10 +30,11 @@ export function QuickFilterChips({
       role="group"
       aria-label="Bộ lọc nhanh"
       className={cn(
-        'flex flex-wrap items-center gap-1.5',
+        'flex flex-wrap items-center gap-x-1.5 gap-y-2',
         // Mobile: một dòng riêng, cuộn ngang. `relative` để tính vị trí chip khi tự cuộn.
         'max-sm:relative max-sm:order-first max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:[mask-image:var(--scroll-fade)]',
         'max-sm:-mx-4 max-sm:w-[calc(100%+2rem)] max-sm:px-4',
+        CHIP_STRIP_COARSE_PAD,
         className,
       )}
     >
@@ -47,6 +49,7 @@ export function QuickFilterChips({
             onClick={() => onToggle(f.id)}
             className={cn(
               'inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 text-xs font-medium transition-colors',
+              CHIP_TOUCH_HIT,
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
               isOn
                 ? 'border-transparent bg-primary-subtle text-primary'

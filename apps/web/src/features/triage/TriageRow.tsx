@@ -253,38 +253,42 @@ export function TriageRow({
         {...rowPeekProps(issue.key, onPeek)}
         className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]"
       >
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-          aria-controls={regionId}
-          aria-label={`${expanded ? 'Thu gọn' : 'Mở rộng'} ${issue.key}`}
-          title={expanded ? 'Thu gọn' : 'Đọc mô tả và duyệt tại chỗ'}
-          className="grid h-6 w-6 shrink-0 place-items-center rounded text-muted transition-colors hover:bg-surface-3 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-        >
-          <ChevronRight
-            className={cn('h-4 w-4 transition-transform duration-150', expanded && 'rotate-90')}
-            aria-hidden
-          />
-        </button>
-
-        {issue.occurrenceCount > 1 && (
-          <span
-            className="tabular inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface-3 px-1.5 py-0.5 text-xs font-medium text-ink"
-            title={`Lặp lại ${issue.occurrenceCount} lần`}
+        {/* Dưới sm: dòng 1 = mở rộng + mã + tiêu đề (tối đa 2 dòng), dòng 2 = chip/ưu tiên/người + nút hành động (`ml-auto`).
+            Từ sm trải phẳng một hàng như cũ (`sm:contents`). */}
+        <div className="flex min-w-0 basis-full items-center gap-x-3 sm:contents">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            aria-controls={regionId}
+            aria-label={`${expanded ? 'Thu gọn' : 'Mở rộng'} ${issue.key}`}
+            title={expanded ? 'Thu gọn' : 'Đọc mô tả và duyệt tại chỗ'}
+            className="grid h-6 w-6 shrink-0 place-items-center rounded text-muted transition-colors hover:bg-surface-3 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
           >
-            <Repeat2 className="h-3 w-3" />×{issue.occurrenceCount}
+            <ChevronRight
+              className={cn('h-4 w-4 transition-transform duration-150', expanded && 'rotate-90')}
+              aria-hidden
+            />
+          </button>
+
+          {issue.occurrenceCount > 1 && (
+            <span
+              className="tabular inline-flex shrink-0 items-center gap-0.5 rounded-full bg-surface-3 px-1.5 py-0.5 text-xs font-medium text-ink"
+              title={`Lặp lại ${issue.occurrenceCount} lần`}
+            >
+              <Repeat2 className="h-3 w-3" />×{issue.occurrenceCount}
+            </span>
+          )}
+
+          <IssueKeyLink issueKey={issue.key} onPeek={onPeek} />
+
+          <span
+            className="min-w-0 flex-1 text-left text-sm text-ink-strong max-sm:line-clamp-2 max-sm:break-words sm:min-w-[8rem] sm:truncate"
+            title={issue.summary}
+          >
+            {issue.summary}
           </span>
-        )}
-
-        <IssueKeyLink issueKey={issue.key} onPeek={onPeek} />
-
-        <span
-          className="min-w-[8rem] flex-1 truncate text-left text-sm text-ink-strong"
-          title={issue.summary}
-        >
-          {issue.summary}
-        </span>
+        </div>
 
         {issue.kind && !compact && (
           <span className="hidden shrink-0 rounded-full bg-primary-subtle px-2 py-0.5 text-xs font-medium text-primary sm:inline">

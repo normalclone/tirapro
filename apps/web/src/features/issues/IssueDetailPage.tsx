@@ -531,8 +531,9 @@ export function IssueDetailPage() {
             <>
               {/* Tiêu đề: [Loại][Ưu tiên] tên — dòng phụ: Sprint · Điểm ước lượng · Nhãn */}
               <div className="mb-4">
-                <div className="flex items-start gap-2">
-                  <div className="mt-1.5 flex shrink-0 items-center gap-1.5">
+                {/* Mobile: [Loại/Ưu tiên…] + hành động cùng một hàng, tiêu đề xuống hàng riêng đủ rộng (order). */}
+                <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:items-start">
+                  <div className="order-1 flex shrink-0 flex-wrap items-center gap-1.5 sm:mt-1.5">
                     <IssueTypeSelect issue={issue} />
                     <IssuePrioritySelect issue={issue} />
                     <IssueSeveritySelect issue={issue} />
@@ -547,12 +548,12 @@ export function IssueDetailPage() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') void saveSummary();
                       }}
-                      className="h-10 text-2xl font-semibold tracking-tight"
+                      className="order-3 h-10 basis-full text-xl font-semibold tracking-tight sm:order-2 sm:basis-0 sm:flex-1 sm:text-2xl"
                     />
                   ) : (
                     <h1
                       className={cn(
-                        '-mx-1 min-w-0 flex-1 rounded px-1 text-2xl font-semibold tracking-tight',
+                        '-mx-1 order-3 min-w-0 basis-full break-words rounded px-1 text-xl font-semibold tracking-tight sm:order-2 sm:basis-0 sm:flex-1 sm:text-2xl',
                         canEditThis && 'cursor-text hover:bg-surface-2',
                       )}
                       onClick={canEditThis ? () => setEditingSummary(true) : undefined}
@@ -561,7 +562,7 @@ export function IssueDetailPage() {
                       {issue.summary}
                     </h1>
                   )}
-                  <div className="mt-1 flex shrink-0 items-center gap-2">
+                  <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-3 sm:ml-0 sm:mt-1">
                     <PresenceAvatars room="issue" projectId={issue.projectId} issueId={issue.id} />
                     <IssueSlaBadge issueId={issue.id} />
                     <WatchButton issueId={issue.id} />

@@ -25,7 +25,9 @@
  *   covered-by-fixed   nút/link/ô nhập trong màn hình đầu bị phần tử position:fixed (rộng < 120px) che ≥ 30%
  *   text-overlap       hai phần tử lá có chữ giao nhau > 4×4px (không lồng nhau)
  *   header-offscreen   nút/link trong header dự án có right > 390 (trên màn hình)
- *   small-targets      > 6 nút/link cao < 28px (CẢNH BÁO — không làm exit code = 1)
+ *   touch-overlap      vùng bấm mở rộng (pseudo-element ::after tuyệt đối trên nút/link, vd TOUCH_HIT) đè lên một
+ *                      điều khiển kề > 1×1px — vùng chạm chồng lên nhau gây bấm nhầm
+ *   small-targets      > 6 nút/link cao hiệu dụng < 28px (tính cả vùng bấm mở rộng ::after) (CẢNH BÁO — không làm exit code = 1)
  *
  * Giới hạn heuristic: `text-overlap` chỉ so mỗi phần tử lá với 40 phần tử kế tiếp theo thứ tự DOM nên sót chữ
  * đè nhau ở xa nhau trong DOM (vd hai cột bố trí lệch); phát hiện 404 dựa vào 400 ký tự đầu của trang.
@@ -235,12 +237,68 @@ function measure({ W, H, isProjectRoute }) {
     }
   }
 
+  // Bị cắt khuất bởi khung cuộn/overflow của tổ tiên (vd thẻ cuộn dưới đáy cột Board) → người dùng không thấy/không bấm được.
+  const clippedAway = (el) => {
+    const r = el.getBoundingClientRect();
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+      const q = p.getBoundingClientRect();
+      const ix = Math.min(r.right, q.right) - Math.max(r.left, q.left);
+      const iy = Math.min(r.bottom, q.bottom) - Math.max(r.top, q.top);
+      if (ix < r.width / 2 || iy < r.height / 2) return true;
+    }
+    return false;
+  };
+
+  // Hình học vùng bấm mở rộng (::after tuyệt đối) của một điều khiển, hoặc null.
+  const hitBox = (el) => {
+    const ps = getComputedStyle(el, '::after');
+    if (ps.position !== 'absolute' || ps.content === 'none' || ps.content === 'normal') return null;
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const l = r.left + parseFloat(cs.borderLeftWidth) + parseFloat(ps.left);
+    const t = r.top + parseFloat(cs.borderTopWidth) + parseFloat(ps.top);
+    const w = parseFloat(ps.width);
+    const h = parseFloat(ps.height);
+    return [l, t, w, h].some((n) => Number.isNaN(n)) ? null : { l, t, w, h };
+  };
+
+  // (8) vùng bấm mở rộng bằng ::after (TOUCH_HIT/CHIP_TOUCH_HIT, chỉ khi pointer:coarse — ngữ cảnh đo là cảm ứng)
+  // không được phủ lên điều khiển kề. Đo hình học của pseudo-element qua getComputedStyle(el, '::after').
+  const controls = [
+    ...document.querySelectorAll(
+      'main a[href], main button, main input, main select, main textarea, main [role=button], header a[href], header button',
+    ),
+  ].filter((e) => vis(e) && !clippedAway(e));
+  const hitOver = [];
+  for (const el of controls) {
+    const hb = hitBox(el);
+    if (!hb) continue;
+    const { l, t, w, h } = hb;
+    for (const o of controls) {
+      if (o === el || o.contains(el) || el.contains(o)) continue;
+      const q = o.getBoundingClientRect();
+      const ix = Math.min(l + w, q.right) - Math.max(l, q.left);
+      const iy = Math.min(t + h, q.bottom) - Math.max(t, q.top);
+      if (ix > 1 && iy > 1) {
+        hitOver.push(desc(el) + ' × ' + desc(o));
+        break;
+      }
+    }
+  }
+  if (hitOver.length)
+    issues.push({ t: 'touch-overlap', n: hitOver.length, sample: hitOver.slice(0, 4) });
+
   // (6) vùng chạm nhỏ (cảnh báo)
   const small = [
     ...document.querySelectorAll('main button, main a[href], main [role=button]'),
   ].filter(
+    // Chiều cao hiệu dụng = lớn hơn giữa phần tử và vùng bấm mở rộng (TOUCH_HIT…) — cảm ứng bấm theo vùng đó.
     (e) =>
-      vis(e) && e.getBoundingClientRect().height < 28 && e.getBoundingClientRect().bottom < 4000,
+      vis(e) &&
+      Math.max(e.getBoundingClientRect().height, hitBox(e)?.h ?? 0) < 28 &&
+      e.getBoundingClientRect().bottom < 4000,
   ).length;
   if (small > 6) issues.push({ t: 'small-targets', n: small });
 
@@ -260,6 +318,19 @@ async function loadAllow() {
 /** Chuẩn hoá route để khớp allowlist: thay khoá dự án / mã công việc bằng token. */
 function tokenize(route) {
   return route.replace(`/p/${PROJECT}`, '/p/:project').replace(`/issue/${ISSUE}`, '/issue/:issue');
+}
+
+/** Hướng dẫn lần đầu (driver.js) phủ lên trang làm lệch phép đo/ảnh — đóng nếu đang mở (server ghi nhớ "đã xem"). */
+async function dismissTour(page) {
+  for (let i = 0; i < 3; i++) {
+    const btn = page.locator('.driver-popover-close-btn');
+    if (!(await btn.count())) return;
+    await btn
+      .first()
+      .click({ timeout: 2000 })
+      .catch(() => {});
+    await page.waitForTimeout(300);
+  }
 }
 
 const allow = await loadAllow();
@@ -295,6 +366,7 @@ try {
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForTimeout(1200);
 
+    await dismissTour(page);
     const finalPath = new URL(page.url()).pathname;
     const slug = route.replace(/[^\w]+/g, '_').replace(/^_|_$/g, '') || 'home';
     await page.screenshot({ path: join(outDir, `${slug}.png`), fullPage: false });
