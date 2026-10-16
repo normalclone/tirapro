@@ -582,7 +582,8 @@ async function main() {
       projectId: project.id,
       isTemplate: false,
       isDefault: true,
-      name: scrumTpl.name,
+      // Cùng quy ước với ProjectsService.create: hậu tố mã dự án để không trùng tên mẫu.
+      name: `${scrumTpl.name} (${project.key})`,
       description: scrumTpl.description,
     },
   });

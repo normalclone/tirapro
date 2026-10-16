@@ -28,6 +28,15 @@ export interface TransitionDto {
   order: number;
 }
 
+/** Dự án đang dùng một quy trình làm quy trình mặc định (`Project.defaultWorkflowId`). */
+export interface WorkflowUsedByDto {
+  id: string;
+  key: string;
+  name: string;
+  /** Dự án đã xoá mềm — vẫn giữ tham chiếu nên vẫn chặn xoá quy trình. */
+  deleted: boolean;
+}
+
 export interface WorkflowDto {
   id: string;
   workspaceId: string;
@@ -41,6 +50,7 @@ export interface WorkflowDto {
   updatedAt: string;
   statuses: StatusDto[];
   transitions: TransitionDto[];
+  usedBy: WorkflowUsedByDto[];
 }
 
 // ---------------------------------------------------------------------------
@@ -106,8 +116,8 @@ type TransitionRow = Prisma.WorkflowTransitionGetPayload<true>;
 
 const WORKFLOW_DUPLICATE = 'Đã có quy trình trùng tên — hãy đặt tên khác';
 const STATUS_DUPLICATE = 'Tên trạng thái đã tồn tại trong workflow';
-const WORKFLOW_IN_USE =
-  'Quy trình này đang được dự án sử dụng — hãy gỡ khỏi các dự án đó trước khi xoá';
+const workflowInUse = (keys: string[]) =>
+  `Quy trình đang được dự án {${keys.join(', ')}} dùng — dự án (kể cả dự án đã xoá) vẫn giữ quy trình này nên không xoá được`;
 const STATUS_IN_USE =
   'Vẫn còn công việc đang ở trạng thái này — hãy chuyển chúng sang trạng thái khác trước khi xoá';
 
@@ -126,7 +136,33 @@ export class WorkflowAdminService {
       include: workflowInclude,
       orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
     });
-    return rows.map((r) => this.toWorkflowDto(r));
+    const usedBy = await this.usedByMap(
+      workspaceId,
+      rows.map((r) => r.id),
+    );
+    return rows.map((r) => this.toWorkflowDto(r, usedBy.get(r.id)));
+  }
+
+  /** Gom dự án đang dùng từng quy trình bằng MỘT truy vấn (ProjectDto không có defaultWorkflowId nên FE không tự ghép được). */
+  private async usedByMap(
+    workspaceId: string,
+    workflowIds: string[],
+  ): Promise<Map<string, WorkflowUsedByDto[]>> {
+    const map = new Map<string, WorkflowUsedByDto[]>();
+    if (workflowIds.length === 0) return map;
+    // allow-deleted: liệt kê cả dự án đã xoá mềm vì chúng vẫn giữ tham chiếu
+    const projects = await this.prisma.project.findMany({
+      where: { workspaceId, defaultWorkflowId: { in: workflowIds } },
+      select: { id: true, key: true, name: true, defaultWorkflowId: true, deletedAt: true },
+      orderBy: { key: 'asc' },
+    });
+    for (const p of projects) {
+      if (!p.defaultWorkflowId) continue;
+      const list = map.get(p.defaultWorkflowId) ?? [];
+      list.push({ id: p.id, key: p.key, name: p.name, deleted: p.deletedAt !== null });
+      map.set(p.defaultWorkflowId, list);
+    }
+    return map;
   }
 
   async getWorkflow(workspaceId: string, id: string): Promise<WorkflowDto> {
@@ -135,7 +171,8 @@ export class WorkflowAdminService {
       include: workflowInclude,
     });
     if (!row) throw new NotFoundAppException('Quy trình');
-    return this.toWorkflowDto(row);
+    const usedBy = await this.usedByMap(workspaceId, [row.id]);
+    return this.toWorkflowDto(row, usedBy.get(row.id));
   }
 
   async createWorkflow(workspaceId: string, input: CreateWorkflowInput): Promise<WorkflowDto> {
@@ -193,7 +230,8 @@ export class WorkflowAdminService {
           include: workflowInclude,
         });
       });
-      return this.toWorkflowDto(row);
+      const usedBy = await this.usedByMap(workspaceId, [row.id]);
+      return this.toWorkflowDto(row, usedBy.get(row.id));
     } catch (e) {
       throw this.mapWorkflowError(e);
     }
@@ -205,15 +243,18 @@ export class WorkflowAdminService {
     // Project.defaultWorkflowId là String? (không phải FK) nên xóa sẽ không tự
     // báo P2003 — phải tự kiểm tra tham chiếu.
     // allow-deleted: dự án đã xoá mềm vẫn giữ tham chiếu defaultWorkflowId
-    const usedByProject = await this.prisma.project.count({
+    const usedByProjects = await this.prisma.project.findMany({
       where: { workspaceId, defaultWorkflowId: id },
+      select: { key: true },
+      orderBy: { key: 'asc' },
     });
-    if (usedByProject > 0) throw new BusinessRuleException(WORKFLOW_IN_USE);
+    if (usedByProjects.length > 0)
+      throw new BusinessRuleException(workflowInUse(usedByProjects.map((p) => p.key)));
     try {
       await this.prisma.workflow.delete({ where: { id } });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003') {
-        throw new BusinessRuleException(WORKFLOW_IN_USE);
+        throw new BusinessRuleException('Quy trình đang được dùng ở nơi khác — không xoá được');
       }
       throw e;
     }
@@ -452,7 +493,7 @@ export class WorkflowAdminService {
     return e;
   }
 
-  private toWorkflowDto(row: WorkflowRow): WorkflowDto {
+  private toWorkflowDto(row: WorkflowRow, usedBy: WorkflowUsedByDto[] = []): WorkflowDto {
     return {
       id: row.id,
       workspaceId: row.workspaceId,
@@ -466,6 +507,7 @@ export class WorkflowAdminService {
       updatedAt: row.updatedAt.toISOString(),
       statuses: row.statuses.map((s) => this.toStatusDto(s)),
       transitions: row.transitions.map((t) => this.toTransitionDto(t)),
+      usedBy,
     };
   }
 

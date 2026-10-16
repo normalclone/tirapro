@@ -10,6 +10,12 @@ import { ForbiddenAppException, NotFoundAppException } from '../../common/except
 import type { AuthedRequest } from '../../common/types/request';
 import { RbacService } from './rbac.service';
 
+/** Dự án để tính quyền + nhãn dùng cho 404 (khớp với nhãn của đường "không tồn tại" cùng loại). */
+interface ResolvedProject {
+  projectId: string | null;
+  notFoundLabel: string;
+}
+
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(
@@ -34,7 +40,11 @@ export class PermissionsGuard implements CanActivate {
         'Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại',
       );
 
-    const projectId = await this.resolveProject(context, req, user.workspaceId);
+    const { projectId, notFoundLabel } = await this.resolveProject(context, req, user.workspaceId);
+    // Dự án riêng tư: người ngoài nhận 404 TRƯỚC khi tính quyền, với CÙNG nhãn như khi tài nguyên không tồn tại
+    // (cùng code/message/shape) — không lộ sự tồn tại của dự án/khoá dự án riêng tư.
+    if (projectId)
+      await this.rbac.assertProjectVisible(user.id, user.workspaceId, projectId, notFoundLabel);
 
     const effective = await this.rbac.getEffectivePermissions(user.id, user.workspaceId, projectId);
     user.permissions = [...effective] as PermissionKey[];
@@ -55,7 +65,7 @@ export class PermissionsGuard implements CanActivate {
     context: ExecutionContext,
     req: AuthedRequest,
     workspaceId: string,
-  ): Promise<string | null> {
+  ): Promise<ResolvedProject> {
     const ref = this.reflector.getAllAndOverride<ProjectRefMeta | undefined>(PROJECT_REF_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -68,24 +78,32 @@ export class PermissionsGuard implements CanActivate {
         const raw: unknown = source?.[param];
         // `?projectId=none` là sentinel "mục dùng chung" (vd /automation/templates) → không có dự án,
         // chỉ tính quyền cấp workspace. Chuỗi rỗng đã được checkedProjectId coi là null.
-        if (kind === 'query' && raw === 'none') return null;
-        return this.checkedProjectId(raw, workspaceId);
+        if (kind === 'query' && raw === 'none') return { projectId: null, notFoundLabel: 'Dự án' };
+        return { projectId: await this.checkedProjectId(raw, workspaceId), notFoundLabel: 'Dự án' };
       }
+      // Nhãn 404 của đường này: khoá dự án → "Dự án"; còn lại là tài nguyên theo id → "Tài nguyên".
+      const notFoundLabel = kind === 'projectKey' ? 'Dự án' : 'Tài nguyên';
       const value = req.params?.[param];
-      if (typeof value !== 'string' || !value) throw new NotFoundAppException('Tài nguyên');
+      if (typeof value !== 'string' || !value) throw new NotFoundAppException(notFoundLabel);
       const resolved = await this.rbac.resolveProjectId(workspaceId, kind, value);
-      if (!resolved) throw new NotFoundAppException('Tài nguyên');
-      return resolved.projectId; // null = tài nguyên cấp workspace
+      if (!resolved) throw new NotFoundAppException(notFoundLabel);
+      return { projectId: resolved.projectId, notFoundLabel }; // projectId null = tài nguyên cấp workspace
     }
 
     // Không khai báo @ProjectRef: dùng params.projectId. body.projectId CHỈ được tin khi route
     // không có tham số định danh nào khác (vd POST tạo mới) — nếu có `:id`, client không được
     // lái dự án bằng body (PUT /x/:id với body.projectId của dự án mình có quyền).
     if (req.params?.projectId !== undefined)
-      return this.checkedProjectId(req.params.projectId, workspaceId);
+      return {
+        projectId: await this.checkedProjectId(req.params.projectId, workspaceId),
+        notFoundLabel: 'Dự án',
+      };
     const hasOtherParams = Object.keys(req.params ?? {}).length > 0;
-    if (hasOtherParams) return null;
-    return this.checkedProjectId(req.body?.projectId, workspaceId);
+    if (hasOtherParams) return { projectId: null, notFoundLabel: 'Dự án' };
+    return {
+      projectId: await this.checkedProjectId(req.body?.projectId, workspaceId),
+      notFoundLabel: 'Dự án',
+    };
   }
 
   private async checkedProjectId(raw: unknown, workspaceId: string): Promise<string | null> {

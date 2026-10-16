@@ -2,7 +2,7 @@ import { useState, type FormEvent, type ComponentProps } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FolderKanban } from 'lucide-react';
 import { toast } from 'sonner';
-import type { ProjectType } from '@tirapro/types';
+import type { ProjectTemplateKey } from '@tirapro/types';
 import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { useOpenSession } from '@/lib/useOpenSession';
@@ -10,12 +10,9 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 import { useCreateProject } from './create-project.api';
+import { templateOptions } from './templateOptions';
 
-const selectClass = cn(
-  'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
-  'transition-colors duration-150 focus-visible:outline-none focus-visible:border-primary',
-  'focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
-);
+const TEMPLATES = templateOptions();
 
 const KEY_RE = /^[A-Z][A-Z0-9]*$/;
 
@@ -51,8 +48,9 @@ function CreateProjectModalInner({ open, onClose }: { open: boolean; onClose: ()
   const [name, setName] = useState('');
   const [key, setKey] = useState('');
   const [keyTouched, setKeyTouched] = useState(false);
-  const [type, setType] = useState<ProjectType>('SCRUM');
+  const [templateKey, setTemplateKey] = useState<ProjectTemplateKey>('scrum');
   const [description, setDescription] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
 
   function onNameChange(value: string) {
     setName(value);
@@ -76,8 +74,10 @@ function CreateProjectModalInner({ open, onClose }: { open: boolean; onClose: ()
       const created = await create.mutateAsync({
         name: trimmedName,
         key,
-        type,
+        templateKey,
+        type: TEMPLATES.find((t) => t.key === templateKey)?.projectType ?? 'SCRUM',
         description: description.trim() || null,
+        ...(isPrivate ? { isPrivate: true } : {}),
       });
       toast.success(`Đã tạo dự án ${created.key}`);
       onClose();
@@ -146,20 +146,7 @@ function CreateProjectModalInner({ open, onClose }: { open: boolean; onClose: ()
           </p>
         </div>
 
-        <div>
-          <label htmlFor="cp-type" className="mb-1.5 block text-sm font-medium text-muted">
-            Loại
-          </label>
-          <select
-            id="cp-type"
-            value={type}
-            onChange={(e) => setType(e.target.value as ProjectType)}
-            className={selectClass}
-          >
-            <option value="SCRUM">Scrum</option>
-            <option value="KANBAN">Kanban</option>
-          </select>
-        </div>
+        <TemplatePicker value={templateKey} onChange={setTemplateKey} />
 
         <div>
           <label htmlFor="cp-desc" className="mb-1.5 block text-sm font-medium text-muted">
@@ -174,7 +161,71 @@ function CreateProjectModalInner({ open, onClose }: { open: boolean; onClose: ()
             className="w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus-visible:border-primary"
           />
         </div>
+
+        <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+          <input
+            type="checkbox"
+            checked={isPrivate}
+            onChange={(e) => setIsPrivate(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          />
+          <span>
+            <span className="font-medium text-ink">Dự án riêng tư</span>
+            <span className="block text-xs text-muted">
+              Chỉ thành viên dự án mới thấy. Bạn thêm người sau ở Cấu hình → Thành viên.
+            </span>
+          </span>
+        </label>
       </form>
     </Dialog>
+  );
+}
+
+function TemplatePicker({
+  value,
+  onChange,
+}: {
+  value: ProjectTemplateKey;
+  onChange: (k: ProjectTemplateKey) => void;
+}) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="mb-1.5 text-sm font-medium text-muted">Mẫu dự án</legend>
+      {TEMPLATES.map((t) => (
+        <label
+          key={t.key}
+          className={cn(
+            'flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors',
+            'focus-within:ring-2 focus-within:ring-[var(--ring)]',
+            value === t.key
+              ? 'border-primary bg-primary-subtle'
+              : 'border-border hover:bg-surface-2',
+          )}
+        >
+          <input
+            type="radio"
+            name="cp-template"
+            value={t.key}
+            checked={value === t.key}
+            onChange={() => onChange(t.key)}
+            className="mt-0.5 accent-[var(--primary)]"
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-ink">{t.name}</span>
+            <span className="block text-xs text-muted">{t.description}</span>
+            <span className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-faint">
+              {t.steps.map((step, i) => (
+                <span key={step} className="inline-flex items-center gap-1">
+                  {i > 0 && <span aria-hidden>→</span>}
+                  <span className="rounded border border-border bg-bg px-1.5 py-0.5 text-muted">
+                    {step}
+                  </span>
+                </span>
+              ))}
+            </span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
   );
 }

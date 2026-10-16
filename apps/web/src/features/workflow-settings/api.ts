@@ -32,6 +32,15 @@ export interface Workflow {
   projectId: string | null;
   statuses: WorkflowStatus[];
   transitions: WorkflowTransition[];
+  /** Dự án đang dùng quy trình này làm quy trình mặc định (kể cả dự án đã xoá). GET /workflows luôn trả; để tuỳ chọn vì kiểu này còn được dùng làm dữ liệu giả ở nhiều nơi. */
+  usedBy?: WorkflowUsedBy[];
+}
+
+export interface WorkflowUsedBy {
+  id: string;
+  key: string;
+  name: string;
+  deleted: boolean;
 }
 
 export interface WorkflowCreateInput {

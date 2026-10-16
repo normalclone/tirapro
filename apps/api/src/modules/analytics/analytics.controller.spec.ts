@@ -50,6 +50,7 @@ describe('AnalyticsController.burndown — guard thật + controller', () => {
       ),
       resolveProjectId: vi.fn(),
       assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+      assertProjectVisible: vi.fn(() => Promise.resolve()),
     };
     const guard = new PermissionsGuard(new Reflector(), rbac as unknown as RbacService);
     const analytics = { burndown: vi.fn(() => Promise.resolve({ sprintId: 'sp1' })) };

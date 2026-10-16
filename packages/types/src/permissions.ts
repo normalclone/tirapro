@@ -458,7 +458,8 @@ export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; col
     color: 'oklch(0.55 0.20 25)',
   },
   [SYSTEM_ROLES.PROJECT_DEVELOPER]: {
-    description: 'Bộ quyền cơ bản cho lập trình viên (bản cũ — thường dùng vai trò "Developer")',
+    description:
+      'Bộ quyền cơ bản cho lập trình viên (bản cũ — thường dùng vai trò "Lập trình viên")',
     color: 'oklch(0.55 0.13 245)',
   },
   [SYSTEM_ROLES.PROJECT_REPORTER]: {

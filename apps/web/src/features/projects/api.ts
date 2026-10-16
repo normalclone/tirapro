@@ -56,6 +56,8 @@ export interface ProjectPatch {
   description?: string | null;
   leadId?: string | null;
   defaultAssigneeMode?: 'UNASSIGNED' | 'PROJECT_LEAD';
+  /** Bật/tắt dự án riêng tư (chỉ quản trị dự án). */
+  isPrivate?: boolean;
 }
 
 export function useUpdateProject(key: string, projectId: string | undefined) {

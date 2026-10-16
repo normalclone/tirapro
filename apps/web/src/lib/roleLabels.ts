@@ -6,7 +6,8 @@ const ROLE_HINTS: Record<string, string> = {
   [SYSTEM_ROLES.WORKSPACE_MEMBER]: 'Làm việc bình thường: lập dự án, tạo và xử lý công việc.',
   [SYSTEM_ROLES.WORKSPACE_VIEWER]: 'Chỉ xem, không sửa được gì.',
   [SYSTEM_ROLES.PROJECT_ADMIN]: 'Quản lý một dự án: cấu hình, quy trình, thành viên của dự án đó.',
-  [SYSTEM_ROLES.PROJECT_DEVELOPER]: 'Nhận việc, cập nhật tiến độ, bình luận.',
+  [SYSTEM_ROLES.PROJECT_DEVELOPER]:
+    'Bộ quyền cơ bản: nhận việc, cập nhật tiến độ, bình luận (bản cũ — thường dùng vai trò "Lập trình viên").',
   [SYSTEM_ROLES.PROJECT_REPORTER]: 'Tạo và theo dõi công việc, không sửa việc của người khác.',
   [SYSTEM_ROLES.BUSINESS_ANALYST]: 'Làm rõ yêu cầu, viết mô tả và tiêu chí nghiệm thu.',
   [SYSTEM_ROLES.PRODUCT_OWNER]: 'Quyết định làm gì trước, chốt phạm vi và nghiệm thu.',

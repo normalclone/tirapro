@@ -24,8 +24,12 @@ export const createProjectSchema = z.object({
     .max(10)
     .regex(/^[A-Z][A-Z0-9]*$/, 'Key phải viết HOA, bắt đầu bằng chữ cái, 2-10 ký tự'),
   type: z.enum(['SCRUM', 'KANBAN']).default('SCRUM'),
+  /** Mẫu dự án (quy trình + cột sinh sẵn). Có thì thắng `type`; bỏ trống = hành vi cũ theo `type`. */
+  templateKey: z.enum(['scrum', 'kanban', 'requirements']).optional(),
   description: z.string().max(2000).optional().nullable(),
   leadId: z.string().optional().nullable(),
+  /** Dự án riêng tư — chỉ thành viên dự án + quản trị thấy. Mặc định false. */
+  isPrivate: z.boolean().optional(),
 });
 
 export const createCommentSchema = z.object({

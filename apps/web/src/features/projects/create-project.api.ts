@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ProjectDto, ProjectType } from '@tirapro/types';
+import type { ProjectDto, ProjectTemplateKey, ProjectType } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -7,7 +7,11 @@ export interface CreateProjectInput {
   name: string;
   key: string;
   type: ProjectType;
+  /** Mẫu dự án; có thì API dùng thay cho `type`. */
+  templateKey?: ProjectTemplateKey;
   description?: string | null;
+  /** Dự án riêng tư: chỉ thành viên dự án + quản trị thấy. */
+  isPrivate?: boolean;
 }
 
 /** Tạo dự án mới; invalidate danh sách dự án khi thành công. */

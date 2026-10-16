@@ -40,6 +40,7 @@ describe('RulesController.list — guard thật (người chỉ quản trị M�
       ),
       resolveProjectId: vi.fn(),
       assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+      assertProjectVisible: vi.fn(() => Promise.resolve()),
     };
     const guard = new PermissionsGuard(new Reflector(), rbac as unknown as RbacService);
     const req = { user: { id: 'U1', workspaceId: 'w1', isSystemAdmin: false }, params: {}, query };

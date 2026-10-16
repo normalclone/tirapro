@@ -20,6 +20,7 @@ function run(opts: {
     ),
     resolveProjectId: vi.fn(() => Promise.resolve({ projectId: opts.pageProject ?? null })),
     assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+    assertProjectVisible: vi.fn(() => Promise.resolve()),
   };
   const guard = new PermissionsGuard(
     new Reflector(),

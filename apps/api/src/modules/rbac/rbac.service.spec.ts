@@ -371,3 +371,89 @@ describe('RbacService.resolveProjectId — wikiPage (A8)', () => {
     await expect(svc.resolveProjectId('W1', 'wikiPage', 'X3')).resolves.toBeNull();
   });
 });
+
+describe('RbacService — dự án riêng tư', () => {
+  function privateSetup(opts: { isPrivate: boolean; member?: boolean; perm: string }) {
+    const { svc, prisma } = setup('down');
+    prisma.workspaceMembership.findUnique.mockResolvedValue({
+      roleId: 'r',
+      roles: [{ role: { id: 'r', name: 'Workspace Member' } }],
+    } as never);
+    prisma.projectMembership.findUnique.mockResolvedValue(
+      opts.member ? ({ roleId: 'rp', roles: [{ roleId: 'rp' }] } as never) : null,
+    );
+    prisma.project.findFirst.mockResolvedValue({ isPrivate: opts.isPrivate });
+    prisma.role.findMany.mockResolvedValue([{ id: 'rd' }] as never);
+    prisma.rolePermission.findMany.mockResolvedValue([{ permission: { key: opts.perm } }] as never);
+    return { svc, prisma };
+  }
+
+  it('compute: dự án riêng tư + không thành viên + không workspace:admin => tập quyền RỖNG', async () => {
+    const { svc } = privateSetup({ isPrivate: true, perm: 'issue:edit' });
+    expect((await svc.getEffectivePermissions('U1', 'W1', 'P1')).size).toBe(0);
+  });
+
+  it('compute: có workspace:admin => giữ nguyên quyền', async () => {
+    const { svc } = privateSetup({ isPrivate: true, perm: 'workspace:admin' });
+    expect((await svc.getEffectivePermissions('U1', 'W1', 'P1')).has('workspace:admin')).toBe(true);
+  });
+
+  it('compute: là thành viên dự án riêng tư => quyền bình thường; dự án công khai => bình thường', async () => {
+    const m = privateSetup({ isPrivate: true, member: true, perm: 'issue:edit' });
+    expect((await m.svc.getEffectivePermissions('U1', 'W1', 'P1')).has('issue:edit')).toBe(true);
+    const pub = privateSetup({ isPrivate: false, perm: 'issue:edit' });
+    expect((await pub.svc.getEffectivePermissions('U1', 'W1', 'P1')).has('issue:edit')).toBe(true);
+  });
+
+  it('compute: tra isPrivate chỉ khi không có membership dự án; luôn lọc deletedAt + workspace', async () => {
+    const m = privateSetup({ isPrivate: true, member: true, perm: 'issue:edit' });
+    await m.svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(m.prisma.project.findFirst).not.toHaveBeenCalled();
+    const n = privateSetup({ isPrivate: true, perm: 'issue:edit' });
+    await n.svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(n.prisma.project.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'P1', workspaceId: 'W1', deletedAt: null } }),
+    );
+  });
+
+  describe('assertProjectVisible', () => {
+    it('không có dự án riêng tư khớp => qua (công khai)', async () => {
+      const { svc, prisma } = setup('down');
+      prisma.project.findFirst.mockResolvedValue(null);
+      await expect(svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
+      expect(prisma.project.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'P1', workspaceId: 'W1', deletedAt: null, isPrivate: true },
+        }),
+      );
+    });
+
+    it('riêng tư + là thành viên => qua, không cần tính quyền', async () => {
+      const { svc, prisma } = setup('down');
+      prisma.project.findFirst.mockResolvedValue({ memberships: [{ id: 'pm' }] });
+      await expect(svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
+      expect(prisma.workspaceMembership.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('riêng tư + không thành viên + không admin => 404 "Dự án"', async () => {
+      const { svc, prisma } = setup('down');
+      prisma.project.findFirst.mockResolvedValue({ memberships: [] });
+      await expect(svc.assertProjectVisible('U1', 'W1', 'P1')).rejects.toBeInstanceOf(
+        NotFoundAppException,
+      );
+    });
+
+    it('riêng tư + không thành viên + workspace:admin => qua', async () => {
+      const { svc, prisma } = setup('down');
+      prisma.project.findFirst.mockResolvedValue({ memberships: [] });
+      prisma.workspaceMembership.findUnique.mockResolvedValue({
+        roleId: 'r',
+        roles: [{ role: { id: 'r', name: 'Workspace Admin' } }],
+      } as never);
+      prisma.rolePermission.findMany.mockResolvedValue([
+        { permission: { key: 'workspace:admin' } },
+      ] as never);
+      await expect(svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
+    });
+  });
+});

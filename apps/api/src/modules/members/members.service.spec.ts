@@ -79,6 +79,7 @@ describe('MembersService.removeWorkspace', () => {
       user: {
         findUnique: vi.fn(() => Promise.resolve({ displayName: 'Bình', email: 'ba@x.vn' })),
       },
+      project: { findMany: vi.fn((_a?: unknown) => Promise.resolve([] as unknown[])) },
     };
     const rbac = { invalidate: vi.fn(() => Promise.resolve()) };
     const apiKeys = {
@@ -126,6 +127,37 @@ describe('MembersService.removeWorkspace', () => {
     await expect(service.removeWorkspace('w1', 'u1', 'admin')).rejects.toThrow('boom');
     expect(rbac.invalidate).not.toHaveBeenCalled();
     expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('là thành viên DUY NHẤT của dự án riêng tư => chặn, nêu mã dự án + lối thoát, không xoá gì', async () => {
+    const { service, prisma, tx } = setup();
+    prisma.project.findMany.mockResolvedValue([
+      { key: 'HR', memberships: [{ userId: 'u1' }] },
+      { key: 'FIN', memberships: [{ userId: 'u1' }, { userId: 'u9' }] },
+    ]);
+    await expect(service.removeWorkspace('w1', 'u1', 'admin')).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringMatching(/HR.*(thêm người khác|công khai)/s) as unknown,
+    });
+    expect(tx.workspaceMembership.delete).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    // chỉ HR bị nêu (FIN còn người khác)
+    await service.removeWorkspace('w1', 'u1', 'admin').catch((e: Error) => {
+      expect(e.message).toContain('HR');
+      expect(e.message).not.toContain('FIN');
+    });
+  });
+
+  it('truy vấn dự án riêng tư lọc workspace + chưa xoá + người đó là thành viên; không có dự án => gỡ bình thường', async () => {
+    const { service, prisma } = setup();
+    await service.removeWorkspace('w1', 'u1', 'admin');
+    const where = (prisma.project.findMany.mock.calls[0]![0] as { where: object }).where;
+    expect(where).toMatchObject({
+      workspaceId: 'w1',
+      deletedAt: null,
+      isPrivate: true,
+      memberships: { some: { userId: 'u1' } },
+    });
   });
 
   it('không cho tự gỡ mình hoặc gỡ chủ sở hữu', async () => {
@@ -571,5 +603,101 @@ describe('MembersService — nhật ký dự án (M11)', () => {
     const { svc, audit } = setup({ hasOverride: true, deleteCount: 1 });
     await svc.clearProjectOverride('w1', 'p1', 'u2', 'a');
     expect(first(audit)).toMatchObject({ action: 'project_member.removed' });
+  });
+});
+
+describe('MembersService — dự án riêng tư', () => {
+  const userRow = (id: string) => ({
+    id,
+    email: `${id}@x.vn`,
+    displayName: id,
+    avatarUrl: null,
+    timezone: 'UTC',
+    locale: 'vi',
+    status: 'ACTIVE',
+    isSystemAdmin: false,
+    lastSeenAt: null,
+    createdAt: new Date(),
+  });
+  const role = { id: 'pr1', name: 'Project Admin', color: null };
+
+  function setup(opts: { isPrivate: boolean; memberCount?: number }) {
+    const wsRows = ['u1', 'u2', 'u3'].map((id) => ({
+      id: `wm-${id}`,
+      joinedAt: null,
+      roleId: 'wr',
+      role: { id: 'wr', name: 'Workspace Member', color: null },
+      user: userRow(id),
+      roles: [{ role: { id: 'wr', name: 'Workspace Member', color: null } }],
+    }));
+    const overrides = [
+      { id: 'pm1', userId: 'u1', roleId: 'pr1', role, roles: [{ role }] },
+      ...(opts.memberCount === 2
+        ? [{ id: 'pm2', userId: 'u2', roleId: 'pr1', role, roles: [{ role }] }]
+        : []),
+    ];
+    const prisma = {
+      project: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({ id: 'p1', name: 'Demo', isPrivate: opts.isPrivate }),
+        ),
+      },
+      workspaceMembership: { findMany: vi.fn(() => Promise.resolve(wsRows)) },
+      projectMembership: {
+        findMany: vi.fn(() => Promise.resolve(overrides)),
+        count: vi.fn(() => Promise.resolve(overrides.length)),
+        findUnique: vi.fn(() => Promise.resolve({ id: 'pm1' })),
+        deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
+      },
+      role: { findMany: vi.fn(() => Promise.resolve([role])) },
+      user: { findUnique: vi.fn(() => Promise.resolve({ displayName: 'x', email: 'x@x.vn' })) },
+    };
+    const audit = { record: vi.fn() };
+    const rbac = { invalidate: vi.fn() };
+    const svc = new MembersService(
+      prisma as never,
+      rbac as never,
+      {} as never,
+      { emit: vi.fn() } as never,
+      audit as never,
+    );
+    return { svc, prisma, audit };
+  }
+
+  it('listProject: dự án riêng tư chỉ trả người có ProjectMembership (isOverride)', async () => {
+    const { svc } = setup({ isPrivate: true });
+    const out = await svc.listProject('w1', 'p1');
+    expect(out.map((m) => m.user.id)).toEqual(['u1']);
+    expect(out.every((m) => m.isOverride)).toBe(true);
+  });
+
+  it('listProject: dự án công khai vẫn trả toàn bộ thành viên workspace', async () => {
+    const { svc } = setup({ isPrivate: false });
+    const out = await svc.listProject('w1', 'p1');
+    expect(out.map((m) => m.user.id)).toEqual(['u1', 'u2', 'u3']);
+  });
+
+  it('clearProjectOverride: dự án riêng tư, thành viên duy nhất => BusinessRuleException, không xoá', async () => {
+    const { svc, prisma } = setup({ isPrivate: true });
+    await expect(svc.clearProjectOverride('w1', 'p1', 'u1', 'a')).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('ít nhất một thành viên') as unknown,
+    });
+    expect(prisma.projectMembership.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('clearProjectOverride: dự án riêng tư còn người khác => gỡ khỏi dự án + nhật ký', async () => {
+    const { svc, prisma, audit } = setup({ isPrivate: true, memberCount: 2 });
+    await svc.clearProjectOverride('w1', 'p1', 'u1', 'a');
+    expect(prisma.projectMembership.deleteMany).toHaveBeenCalledTimes(1);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'project_member.removed' }),
+    );
+  });
+
+  it('clearProjectOverride: dự án công khai => như cũ (không kiểm thành viên cuối)', async () => {
+    const { svc, prisma } = setup({ isPrivate: false });
+    await svc.clearProjectOverride('w1', 'p1', 'u1', 'a');
+    expect(prisma.projectMembership.deleteMany).toHaveBeenCalledTimes(1);
   });
 });

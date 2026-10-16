@@ -10,6 +10,7 @@ import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { useArchiveProject, useUpdateProject } from '@/features/projects/api';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { PrivacySection } from './PrivacySection';
 
 function Card({
   icon,
@@ -192,6 +193,8 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
           )}
         </form>
       </Card>
+
+      <PrivacySection project={project} canAdmin={canAdmin} />
 
       {canAdmin && (
         <Card

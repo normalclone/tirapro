@@ -12,7 +12,8 @@ const ROLE_LABELS: Record<string, string> = {
   [SYSTEM_ROLES.WORKSPACE_MEMBER]: 'Thành viên',
   [SYSTEM_ROLES.WORKSPACE_VIEWER]: 'Người xem',
   [SYSTEM_ROLES.PROJECT_ADMIN]: 'Quản trị dự án',
-  [SYSTEM_ROLES.PROJECT_DEVELOPER]: 'Lập trình viên',
+  // Khác nhãn với DEVELOPER (bộ quyền đầy đủ hơn) để danh sách vai trò không có hai dòng trùng tên.
+  [SYSTEM_ROLES.PROJECT_DEVELOPER]: 'Lập trình viên (cơ bản)',
   [SYSTEM_ROLES.PROJECT_REPORTER]: 'Người báo lỗi',
   [SYSTEM_ROLES.BUSINESS_ANALYST]: 'Phân tích nghiệp vụ',
   [SYSTEM_ROLES.PRODUCT_OWNER]: 'Chủ sản phẩm',

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Archive, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
+import { Archive, Lock, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { useProjects } from './api';
 import { CreateProjectModal } from './CreateProjectModal';
 import { useShowArchived } from './showArchived';
@@ -164,6 +164,9 @@ function RailInner({
                 )}
               </span>
               {!collapsed && <span className="min-w-0 flex-1 truncate">{p.name}</span>}
+              {!collapsed && p.isPrivate && (
+                <Lock className="h-3.5 w-3.5 shrink-0 text-faint" aria-label="Dự án riêng tư" />
+              )}
               {!collapsed && p.archivedAt && (
                 <Archive className="h-3.5 w-3.5 shrink-0 text-faint" aria-label="Đã lưu trữ" />
               )}

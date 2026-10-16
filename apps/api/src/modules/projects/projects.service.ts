@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { Request } from 'express';
-import { DEFAULT_WORKFLOW_TEMPLATES, SYSTEM_ROLES, type ProjectDto } from '@tirapro/types';
+import {
+  AUDIT_ACTIONS,
+  DEFAULT_WORKFLOW_TEMPLATES,
+  PROJECT_TEMPLATES,
+  SYSTEM_ROLES,
+  type ProjectDto,
+} from '@tirapro/types';
 import type {
   CreateProjectInput,
   ProjectHealthDto,
@@ -14,6 +20,9 @@ import { iso } from '../../common/mappers/date';
 import { assertNotArchived } from '../../common/project-writable';
 import { MediaService } from '../media/media.service';
 import { ProjectHealthService } from '../analytics/project-health.service';
+import { AuditService, type AuditEntry } from '../audit/audit.service';
+import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 
 @Injectable()
 export class ProjectsService {
@@ -21,6 +30,8 @@ export class ProjectsService {
     private readonly prisma: PrismaService,
     private readonly media: MediaService,
     private readonly health: ProjectHealthService,
+    private readonly access: ProjectAccessService,
+    private readonly audit: AuditService,
   ) {}
 
   async create(
@@ -37,7 +48,13 @@ export class ProjectsService {
         `Mã dự án "${input.key}" đã tồn tại trong không gian làm việc này — hãy chọn mã khác`,
       );
 
+    // `templateKey` thắng `type`; không có thì giữ hành vi cũ (chọn theo `type`).
+    const def = input.templateKey
+      ? PROJECT_TEMPLATES.find((t) => t.key === input.templateKey)
+      : undefined;
+    const projectType = def?.projectType ?? input.type;
     const tpl =
+      (def && DEFAULT_WORKFLOW_TEMPLATES.find((t) => t.name === def.workflowName)) ??
       DEFAULT_WORKFLOW_TEMPLATES.find((t) => t.boardType === input.type) ??
       DEFAULT_WORKFLOW_TEMPLATES.find((t) => t.isDefault) ??
       DEFAULT_WORKFLOW_TEMPLATES[0]!;
@@ -52,6 +69,13 @@ export class ProjectsService {
       select: { id: true },
     });
 
+    // Dự án riêng tư mà không gán được quản trị nào sẽ mồ côi (không ai ngoài admin workspace thấy/quản lý được).
+    if (input.isPrivate && !adminRole)
+      throw new BusinessRuleException(
+        'Thiếu vai trò hệ thống "Quản trị dự án" — chưa thể tạo dự án riêng tư',
+      );
+    if (input.leadId) await this.assertLeadEligible(workspaceId, input.leadId);
+
     let project: Prisma.ProjectGetPayload<object>;
     try {
       project = await this.prisma.$transaction(async (tx) => {
@@ -60,7 +84,8 @@ export class ProjectsService {
             workspaceId,
             key: input.key,
             name: input.name,
-            type: input.type,
+            type: projectType,
+            isPrivate: input.isPrivate ?? false,
             description: input.description ?? null,
             leadId: input.leadId ?? userId,
             createdById: userId,
@@ -74,7 +99,8 @@ export class ProjectsService {
             projectId: project.id,
             isTemplate: false,
             isDefault: true,
-            name: tpl.name,
+            // Hậu tố mã dự án: mỗi dự án có quy trình riêng, tên không còn trùng hệt nhau trong danh sách.
+            name: `${tpl.name} (${input.key})`,
             description: tpl.description,
           },
         });
@@ -114,7 +140,7 @@ export class ProjectsService {
           data: {
             projectId: project.id,
             name: `${project.name} Board`,
-            type: input.type === 'KANBAN' ? 'KANBAN' : 'SCRUM',
+            type: projectType === 'KANBAN' ? 'KANBAN' : 'SCRUM',
           },
         });
         let cOrder = 0;
@@ -137,6 +163,17 @@ export class ProjectsService {
               roles: { create: [{ roleId: adminRole.id }] },
             },
           });
+          // Dự án riêng tư: người phụ trách được chọn khác người tạo cũng phải là thành viên, nếu không không thấy dự án.
+          if (input.isPrivate && input.leadId && input.leadId !== userId) {
+            await tx.projectMembership.create({
+              data: {
+                projectId: project.id,
+                userId: input.leadId,
+                roleId: adminRole.id,
+                roles: { create: [{ roleId: adminRole.id }] },
+              },
+            });
+          }
         }
         return project;
       });
@@ -153,10 +190,23 @@ export class ProjectsService {
     return this.toDto(project, 0);
   }
 
-  /** Danh sách dự án; dự án đã lưu trữ bị ẩn trừ khi `includeArchived`. */
-  async list(workspaceId: string, includeArchived = false): Promise<ProjectDto[]> {
+  /**
+   * Danh sách dự án; dự án đã lưu trữ bị ẩn trừ khi `includeArchived`. Có `viewerId` thì chỉ trả dự án người đó
+   * được thấy (riêng tư → thành viên + quản trị); không có = đường nội bộ không lọc.
+   */
+  async list(
+    workspaceId: string,
+    includeArchived = false,
+    viewerId?: string,
+  ): Promise<ProjectDto[]> {
+    const visible = viewerId ? await this.access.visibleWhere(viewerId, workspaceId) : {};
     const projects = await this.prisma.project.findMany({
-      where: { workspaceId, deletedAt: null, ...(includeArchived ? {} : { archivedAt: null }) },
+      where: {
+        workspaceId,
+        deletedAt: null,
+        ...(includeArchived ? {} : { archivedAt: null }),
+        ...visible,
+      },
       orderBy: { createdAt: 'desc' },
       include: { _count: { select: { issues: true } }, lead: true },
     });
@@ -175,7 +225,7 @@ export class ProjectsService {
   private async requireProject(workspaceId: string, projectId: string) {
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true, key: true, name: true, archivedAt: true },
+      select: { id: true, key: true, name: true, archivedAt: true, isPrivate: true, leadId: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return p;
@@ -207,20 +257,40 @@ export class ProjectsService {
     if (input.defaultAssigneeMode !== undefined)
       data.defaultAssigneeMode = input.defaultAssigneeMode;
     if (input.leadId !== undefined) {
-      if (input.leadId) {
-        const member = await this.prisma.workspaceMembership.findUnique({
-          where: { workspaceId_userId: { workspaceId, userId: input.leadId } },
-          select: { id: true },
-        });
-        if (!member)
-          throw new BusinessRuleException(
-            'Người phụ trách phải là thành viên của không gian làm việc — hãy thêm họ vào không gian làm việc trước',
-          );
-      }
+      if (input.leadId) await this.assertLeadEligible(workspaceId, input.leadId);
       data.leadId = input.leadId;
     }
+    const privacyChanged = input.isPrivate !== undefined && input.isPrivate !== cur.isPrivate;
+    if (privacyChanged) data.isPrivate = input.isPrivate;
+    // Người cần có ProjectMembership để còn thấy dự án riêng tư:
+    // - vừa bật riêng tư: người thao tác + người phụ trách (sau khi áp thay đổi) — tránh dự án mồ côi;
+    // - đang riêng tư mà đổi người phụ trách: người phụ trách mới.
+    const mustBeMembers: (string | null | undefined)[] = [];
+    if (privacyChanged && input.isPrivate) {
+      mustBeMembers.push(userId, input.leadId !== undefined ? input.leadId : cur.leadId);
+    } else if (cur.isPrivate && input.isPrivate !== false && input.leadId) {
+      mustBeMembers.push(input.leadId);
+    }
+    const auditEntry: AuditEntry | null = privacyChanged
+      ? {
+          workspaceId,
+          actorId: userId,
+          action: AUDIT_ACTIONS.PROJECT_VISIBILITY_CHANGED,
+          entityType: 'project',
+          entityId: projectId,
+          summary: input.isPrivate
+            ? `Chuyển dự án ${cur.key} sang riêng tư`
+            : `Mở dự án ${cur.key} cho mọi thành viên`,
+          meta: { isPrivate: input.isPrivate },
+        }
+      : null;
     try {
-      await this.prisma.project.update({ where: { id: projectId }, data, select: { id: true } });
+      if (privacyChanged || mustBeMembers.some(Boolean)) {
+        // Đổi cờ/thành viên + nhật ký cùng một transaction: không để lại thay đổi quyền không có vết.
+        await this.updateWithMembers(workspaceId, projectId, data, mustBeMembers, auditEntry);
+      } else {
+        await this.prisma.project.update({ where: { id: projectId }, data, select: { id: true } });
+      }
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new BusinessRuleException(
@@ -229,7 +299,72 @@ export class ProjectsService {
       }
       throw e;
     }
+    // Cache quyền (60s) giữ tập quyền cũ của người vừa được/bị đổi quyền thấy dự án → xoá ngay.
+    if (privacyChanged) await this.access.onVisibilityChanged(workspaceId);
+    else await this.access.onMembersChanged(workspaceId, mustBeMembers);
     return this.getById(workspaceId, projectId);
+  }
+
+  /**
+   * Cập nhật dự án (+ bảo đảm các người cần thấy dự án riêng tư có ProjectMembership — Project Admin, đã có thì giữ)
+   * và ghi nhật ký, tất cả một transaction.
+   */
+  private async updateWithMembers(
+    workspaceId: string,
+    projectId: string,
+    data: Prisma.ProjectUncheckedUpdateInput,
+    userIds: (string | null | undefined)[],
+    auditEntry: AuditEntry | null,
+  ): Promise<void> {
+    const ids = [...new Set(userIds.filter((u): u is string => !!u))];
+    const adminRole =
+      ids.length > 0
+        ? await this.prisma.role.findFirst({
+            where: {
+              name: SYSTEM_ROLES.PROJECT_ADMIN,
+              scope: 'PROJECT',
+              workspaceId: null,
+              isSystem: true,
+            },
+            select: { id: true },
+          })
+        : null;
+    if (ids.length > 0 && !adminRole)
+      throw new BusinessRuleException(
+        'Thiếu vai trò hệ thống "Quản trị dự án" — chưa thể bật riêng tư',
+      );
+    await this.prisma.$transaction(async (tx) => {
+      await tx.project.update({ where: { id: projectId }, data, select: { id: true } });
+      for (const uid of ids) {
+        await tx.projectMembership.upsert({
+          where: { projectId_userId: { projectId, userId: uid } },
+          update: {},
+          create: {
+            projectId,
+            userId: uid,
+            roleId: adminRole!.id,
+            roles: { create: [{ roleId: adminRole!.id }] },
+          },
+        });
+      }
+      if (auditEntry) await this.audit.record(auditEntry, tx);
+    });
+  }
+
+  /** Người phụ trách phải là thành viên workspace và còn hoạt động (không phải tài khoản vô hiệu hoá/hệ thống). */
+  private async assertLeadEligible(workspaceId: string, leadId: string): Promise<void> {
+    const member = await this.prisma.workspaceMembership.findUnique({
+      where: { workspaceId_userId: { workspaceId, userId: leadId } },
+      select: { id: true, user: { select: { status: true, email: true } } },
+    });
+    if (!member)
+      throw new BusinessRuleException(
+        'Người phụ trách phải là thành viên của không gian làm việc — hãy thêm họ vào không gian làm việc trước',
+      );
+    if (member.user.status === 'DEACTIVATED' || member.user.email === SYSTEM_USER_EMAIL)
+      throw new BusinessRuleException(
+        'Người phụ trách không thể là tài khoản đã bị vô hiệu hoá hoặc tài khoản hệ thống',
+      );
   }
 
   /**
@@ -418,6 +553,7 @@ export class ProjectsService {
       defaultAssigneeMode: p.defaultAssigneeMode,
       isArchived: p.archivedAt !== null,
       archivedAt: iso(p.archivedAt),
+      isPrivate: p.isPrivate,
       issueCount,
       createdAt: p.createdAt.toISOString(),
     };

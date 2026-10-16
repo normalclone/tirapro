@@ -3,7 +3,7 @@
  * hằng số cứng — sau khi seed, admin sửa trong DB (Priority/Resolution/LinkType/
  * IssueType/Workflow). Workflow template được CLONE sang mỗi project khi tạo.
  */
-import type { IssueTypeKey, StatusCategory, BoardType } from './enums';
+import type { IssueTypeKey, StatusCategory, BoardType, ProjectType } from './enums';
 
 export interface PrioritySeed {
   name: string;
@@ -177,6 +177,78 @@ export const DEFAULT_WORKFLOW_TEMPLATES: WorkflowTemplateSeed[] = [
       { name: 'To In Progress', from: null, to: 'In Progress' },
       { name: 'To Done', from: null, to: 'Done' },
     ],
+  },
+  // Mẫu thứ 3 đặt CUỐI mảng: `find(boardType === 'KANBAN')` phải vẫn trả 'Kanban mặc định'.
+  {
+    name: 'Quản lý yêu cầu',
+    description:
+      'Theo dõi yêu cầu từ lúc đề xuất đến khi bàn giao: Đề xuất → Phân tích → Duyệt → Bàn giao',
+    boardType: 'KANBAN',
+    statuses: [
+      {
+        name: 'Đề xuất',
+        category: 'TODO',
+        color: 'oklch(0.60 0.018 256)',
+        order: 0,
+        isInitial: true,
+      },
+      { name: 'Đang phân tích', category: 'IN_PROGRESS', color: 'oklch(0.55 0.13 245)', order: 1 },
+      { name: 'Chờ duyệt', category: 'IN_PROGRESS', color: 'oklch(0.62 0.13 285)', order: 2 },
+      { name: 'Đã duyệt', category: 'IN_PROGRESS', color: 'oklch(0.58 0.13 200)', order: 3 },
+      { name: 'Đã bàn giao', category: 'DONE', color: 'oklch(0.58 0.13 150)', order: 4 },
+      { name: 'Từ chối', category: 'DONE', color: 'oklch(0.55 0.20 25)', order: 5 },
+    ],
+    transitions: [
+      { name: 'Bắt đầu phân tích', from: 'Đề xuất', to: 'Đang phân tích' },
+      { name: 'Gửi duyệt', from: 'Đang phân tích', to: 'Chờ duyệt' },
+      { name: 'Duyệt', from: 'Chờ duyệt', to: 'Đã duyệt' },
+      { name: 'Trả lại', from: 'Chờ duyệt', to: 'Đang phân tích' },
+      { name: 'Từ chối', from: 'Chờ duyệt', to: 'Từ chối' },
+      { name: 'Từ chối', from: 'Đề xuất', to: 'Từ chối' },
+      { name: 'Bàn giao', from: 'Đã duyệt', to: 'Đã bàn giao' },
+      { name: 'Mở lại', from: 'Từ chối', to: 'Đề xuất' },
+      { name: 'Mở lại', from: 'Đã bàn giao', to: 'Đề xuất' },
+    ],
+  },
+];
+
+/** Khoá mẫu dự án chọn ở hộp "Tạo dự án". */
+export type ProjectTemplateKey = 'scrum' | 'kanban' | 'requirements';
+
+export interface ProjectTemplateDef {
+  key: ProjectTemplateKey;
+  name: string;
+  description: string;
+  /** Loại bảng của dự án (SCRUM | KANBAN). */
+  projectType: ProjectType;
+  /** Tên mẫu trong DEFAULT_WORKFLOW_TEMPLATES. */
+  workflowName: string;
+}
+
+export const PROJECT_TEMPLATES: ProjectTemplateDef[] = [
+  {
+    key: 'scrum',
+    name: 'Scrum',
+    description:
+      'Làm theo sprint: To Do → In Progress → In Review → Done, có Việc chờ và báo cáo burndown',
+    projectType: 'SCRUM',
+    workflowName: 'Scrum mặc định',
+  },
+  {
+    key: 'kanban',
+    name: 'Kanban',
+    description:
+      'Dòng việc liên tục, không sprint: To Do → In Progress → Done, kéo thẻ tự do giữa các cột',
+    projectType: 'KANBAN',
+    workflowName: 'Kanban mặc định',
+  },
+  {
+    key: 'requirements',
+    name: 'Quản lý yêu cầu',
+    description:
+      'Theo dõi yêu cầu từ đề xuất đến bàn giao: Đề xuất → Đang phân tích → Chờ duyệt → Đã duyệt → Đã bàn giao (hoặc Từ chối)',
+    projectType: 'KANBAN',
+    workflowName: 'Quản lý yêu cầu',
   },
 ];
 
