@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Avatar } from '@/components/ui/primitives';
+import { Avatar, DelayedSpinner } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import { fmtRelative } from '@/lib/dateFormat';
 import { useOpenSession } from '@/lib/useOpenSession';
@@ -11,15 +11,27 @@ import { DescriptionDiffDialog } from './DescriptionDiffDialog';
 export function ActivityPanel({ issueId }: { issueId: string }) {
   // Bản chụp chip nhớ trong state panel (không localStorage); lọc ở máy chủ vì danh sách bị cắt 100 dòng.
   const [filter, setFilter] = useState('all');
-  const { data } = useIssueActivity(issueId, fieldsParam(filter));
-  const items = data ?? [];
+  const fields = fieldsParam(filter);
+  const filtered = useIssueActivity(issueId, fields);
+  // Tổng CHƯA lọc cho tiêu đề (khi filter = Tất cả thì cùng khoá với `filtered` nên không tốn thêm yêu cầu).
+  const all = useIssueActivity(issueId);
+  // Không giữ danh sách của chip trước khi đổi chip (sẽ thoáng hiện dòng sai loại): chờ bản lọc, spinner chỉ hiện sau 350ms.
+  const loading = filtered.data === undefined && !filtered.isError;
+  const items = filtered.data ?? [];
+  const total = all.data?.length;
   const [viewing, setViewing] = useState<ActivityItem | null>(null);
   const viewingShown = useRetained(viewing);
   const viewingKey = useOpenSession(!!viewing);
 
   return (
     <div>
-      <p className="mb-2 text-sm font-medium text-muted">Lịch sử ({items.length})</p>
+      <p className="mb-2 text-sm font-medium text-muted">
+        Lịch sử (
+        {fields && !loading && total !== undefined
+          ? `${items.length}/${total}`
+          : (total ?? items.length)}
+        )
+      </p>
       <div
         role="group"
         aria-label="Lọc lịch sử theo loại thay đổi"
@@ -46,7 +58,9 @@ export function ActivityPanel({ issueId }: { issueId: string }) {
           );
         })}
       </div>
-      {items.length === 0 ? (
+      {loading ? (
+        <DelayedSpinner />
+      ) : items.length === 0 ? (
         <p className="text-sm text-faint">
           {filter === 'all' ? (
             'Chưa có hoạt động.'

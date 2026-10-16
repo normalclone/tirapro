@@ -22,6 +22,10 @@ describe('fmtRelative', () => {
     expect(fmtRelative(new Date(2026, 9, 15, 9, 0, 0), now)).toBe('khoảng 5 giờ trước');
     expect(fmtRelative(new Date(2026, 9, 15, 13, 58, 0), now)).toBe('2 phút trước');
   });
+  it('dưới một phút => "vừa xong" (không phải "dưới 1 phút trước")', () => {
+    expect(fmtRelative(new Date(2026, 9, 15, 13, 59, 50), now)).toBe('vừa xong');
+    expect(fmtRelative(new Date(2026, 9, 15, 13, 59, 0), now)).toBe('1 phút trước');
+  });
   it('không bao giờ ra tiếng Anh', () => {
     expect(fmtRelative(new Date(2026, 9, 15, 13, 59, 50), now)).not.toMatch(/ago|minute|hour/);
   });

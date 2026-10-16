@@ -47,8 +47,6 @@ export function useIssueActivity(issueId?: string, fields?: string) {
             })
           ).data
       : skipToken,
-    // Đổi chip lọc: giữ danh sách cũ (cùng công việc) cho tới khi bản lọc về — khỏi nháy "Chưa có hoạt động".
-    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[2] === issueId ? prev : undefined),
   });
 }
 

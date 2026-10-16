@@ -45,7 +45,10 @@ export function fmtDateTimeSec(v: DateLike): string {
 /** `khoảng 5 giờ trước`; không hợp lệ → chuỗi rỗng. `now` để test được. */
 export function fmtRelative(v: DateLike, now: Date = new Date()): string {
   const d = toDate(v);
-  return d ? formatDistance(d, now, { addSuffix: true, locale: vi }) : '';
+  if (!d) return '';
+  // date-fns ra "dưới 1 phút trước" — gượng; dưới một phút đọc là "vừa xong".
+  if (Math.abs(now.getTime() - d.getTime()) < 60_000) return 'vừa xong';
+  return formatDistance(d, now, { addSuffix: true, locale: vi });
 }
 
 /** Giá trị cho `<input type="date">`: `yyyy-MM-dd` theo giờ địa phương ('' nếu không hợp lệ). */
