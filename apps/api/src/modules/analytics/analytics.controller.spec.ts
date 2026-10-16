@@ -13,6 +13,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import type { RbacService } from '../rbac/rbac.service';
 import { AnalyticsController } from './analytics.controller';
 import type { AnalyticsService } from './analytics.service';
+import type { QaReportService } from './qa-report.service';
 
 describe('AnalyticsController.burndown — metadata', () => {
   const h = AnalyticsController.prototype.burndown;
@@ -30,7 +31,10 @@ describe('AnalyticsController.sprintSummary — metadata', () => {
   });
   it('thiếu projectId hoặc sprintId => lỗi nghiệp vụ', async () => {
     const analytics = { sprintSummary: vi.fn() };
-    const controller = new AnalyticsController(analytics as unknown as AnalyticsService);
+    const controller = new AnalyticsController(
+      analytics as unknown as AnalyticsService,
+      {} as unknown as QaReportService,
+    );
     await expect(controller.sprintSummary('w1', 'sp1', undefined)).rejects.toBeInstanceOf(
       BusinessRuleException,
     );
@@ -54,7 +58,10 @@ describe('AnalyticsController.burndown — guard thật + controller', () => {
     };
     const guard = new PermissionsGuard(new Reflector(), rbac as unknown as RbacService);
     const analytics = { burndown: vi.fn(() => Promise.resolve({ sprintId: 'sp1' })) };
-    const controller = new AnalyticsController(analytics as unknown as AnalyticsService);
+    const controller = new AnalyticsController(
+      analytics as unknown as AnalyticsService,
+      {} as unknown as QaReportService,
+    );
     const req = { user: { id: 'U1', workspaceId: 'w1', isSystemAdmin: false }, params: {}, query };
     const ctx = {
       getHandler: () => AnalyticsController.prototype.burndown,
@@ -92,5 +99,23 @@ describe('AnalyticsController.burndown — guard thật + controller', () => {
       BusinessRuleException,
     );
     expect(analytics.burndown).not.toHaveBeenCalled();
+  });
+});
+
+describe('AnalyticsController.qa — metadata', () => {
+  const h = AnalyticsController.prototype.qa;
+  it('kiểm report:view theo dự án (query projectId)', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, h)).toEqual([PERMISSIONS.REPORT_VIEW]);
+    expect(Reflect.getMetadata(PROJECT_REF_KEY, h)).toEqual({ kind: 'query', param: 'projectId' });
+  });
+  it('thiếu projectId => lỗi nghiệp vụ; đủ thì chuyển cho service', async () => {
+    const qaReport = { report: vi.fn(() => Promise.resolve({})) };
+    const controller = new AnalyticsController(
+      {} as unknown as AnalyticsService,
+      qaReport as unknown as QaReportService,
+    );
+    await expect(controller.qa('w1', undefined)).rejects.toBeInstanceOf(BusinessRuleException);
+    await controller.qa('w1', 'p1', '2026-10-01', '2026-10-15');
+    expect(qaReport.report).toHaveBeenCalledWith('w1', 'p1', '2026-10-01', '2026-10-15');
   });
 });

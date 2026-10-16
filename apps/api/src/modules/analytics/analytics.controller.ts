@@ -6,11 +6,15 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { AnalyticsService } from './analytics.service';
+import { QaReportService } from './qa-report.service';
 
 @ApiTags('reports')
 @Controller('reports')
 export class AnalyticsController {
-  constructor(private readonly analytics: AnalyticsService) {}
+  constructor(
+    private readonly analytics: AnalyticsService,
+    private readonly qaReport: QaReportService,
+  ) {}
 
   /** Tổng hợp toàn workspace cho Tổng quan của admin (mọi dự án). */
   @Get('overview')
@@ -92,5 +96,19 @@ export class AnalyticsController {
   ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
     return this.analytics.createdResolved(workspaceId, projectId, from, to);
+  }
+
+  /** Báo cáo QA (chỉ bug): mở theo mức nghiêm trọng, tỷ lệ mở lại, thời gian đóng, theo phiên bản. Mặc định 30 ngày. */
+  @ProjectRef('query', 'projectId')
+  @Get('qa')
+  @Permissions(PERMISSIONS.REPORT_VIEW)
+  async qa(
+    @WorkspaceId() workspaceId: string,
+    @Query('projectId') projectId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    if (!projectId) throw new BusinessRuleException('Thiếu projectId');
+    return this.qaReport.report(workspaceId, projectId, from, to);
   }
 }
