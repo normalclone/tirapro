@@ -123,7 +123,8 @@ function AssignBody({ issueKey, onClose }: { issueKey: string; onClose: () => vo
   const options = useAssigneeOptions(issue?.projectId);
   const updateIssue = useUpdateIssue(issue?.projectId);
   const [q, setQ] = useState('');
-  const [active, setActive] = useState(0);
+  // -1 = chưa chạm: mũi tên bắt đầu từ người đang phụ trách (nếu có), để Enter ngay không đổi gì.
+  const [active, setActive] = useState(-1);
 
   const query = q.trim().toLowerCase();
   const filtered = query ? options.filter((o) => o.search.includes(query)) : options;
@@ -133,7 +134,13 @@ function AssignBody({ issueKey, onClose }: { issueKey: string; onClose: () => vo
     ...filtered,
   ];
   const current = issue?.assigneeId ?? '';
-  const activeIdx = Math.min(active, Math.max(0, rows.length - 1));
+  const activeIdx =
+    active >= 0
+      ? Math.min(active, Math.max(0, rows.length - 1))
+      : Math.max(
+          0,
+          rows.findIndex((r) => r.id === current),
+        );
 
   // Hộp đóng ngay khi chọn nên component này bị gỡ (observer của mutation mất) → callback của `mutate` không chạy.
   // Dùng mutateAsync + try/catch như `IssueContextGroup`: promise vẫn chạy tiếp nên toast vẫn hiện.

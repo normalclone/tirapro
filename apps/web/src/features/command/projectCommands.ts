@@ -32,7 +32,7 @@ export interface ProjectCommandInput {
 }
 
 /** Số sprint chưa bắt đầu tối đa được liệt kê thành lệnh "Bắt đầu sprint". */
-export const MAX_START_COMMANDS = 5;
+const MAX_START_COMMANDS = 5;
 
 /**
  * Lệnh theo dự án hiện tại. Lệnh sprint chỉ khi có quyền: "Kết thúc sprint" cho sprint ACTIVE; "Bắt đầu sprint" cho
