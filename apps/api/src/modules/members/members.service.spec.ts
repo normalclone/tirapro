@@ -1093,9 +1093,9 @@ describe('MembersService.listWorkspace/listProject — lastSeenAt/isSystemAdmin 
       isSystemAdmin: true,
       lastSeenAt: '2026-10-16T01:00:00.000Z',
     });
-    expect(
-      (await svc.listWorkspace('w1', { id: 'v', isSystemAdmin: true }))[0]!.user,
-    ).toHaveProperty('lastSeenAt');
+    expect((await svc.listWorkspace('w1', { isSystemAdmin: true }))[0]!.user).toHaveProperty(
+      'lastSeenAt',
+    );
     expect((await svc.listWorkspace('w1'))[0]!.user).toHaveProperty('lastSeenAt');
   });
 
