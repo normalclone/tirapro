@@ -39,6 +39,7 @@ import {
   type OverviewTrendPoint,
   type OverviewWarning,
 } from './api';
+import { DashboardSwitcher } from '@/features/dashboards/DashboardSwitcher';
 import { LeadershipCards } from './LeadershipCards';
 import { MyBugsSection } from './MyBugsSection';
 import { OnboardingChecklist } from '@/features/guides/OnboardingChecklist';
@@ -115,12 +116,23 @@ export function DashboardPage() {
     <div className={pageContainer('xl', 'py-6')}>
       {/* Greeting — chung cho cả hai chế độ */}
       {/* Admin: bản in có khối PrintHeader riêng (tiêu đề + người in) nên bỏ lời chào. */}
-      <header className={cn('mb-5', isAdmin && 'print:hidden')}>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {greetingPrefix(now)}
-          {user?.displayName ? `, ${user.displayName}` : ''}
-        </h1>
-        <p className="mt-1 text-sm text-muted">{formatToday(now)}</p>
+      <header
+        className={cn(
+          'mb-5 flex flex-wrap items-start justify-between gap-x-4 gap-y-3',
+          isAdmin && 'print:hidden',
+        )}
+      >
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+            {greetingPrefix(now)}
+            {user?.displayName ? `, ${user.displayName}` : ''}
+          </h1>
+          <p className="mt-1 text-sm text-muted">{formatToday(now)}</p>
+        </div>
+        {/* Chuyển sang dashboard tuỳ biến (của tôi / được chia sẻ); tự ẩn khi chưa có dashboard nào. */}
+        <div className="print:hidden">
+          <DashboardSwitcher />
+        </div>
       </header>
 
       <RecentsStrip />

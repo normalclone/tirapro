@@ -8,6 +8,7 @@ import {
   shouldClearSelectionOnEscape,
   hasDraftText,
   shouldClosePeekOnEscape,
+  shouldLeaveEditorOnEscape,
   shouldIgnoreGlobalHotkey,
   shouldSkipListHotkey,
 } from './hotkeys';
@@ -222,5 +223,25 @@ describe('shouldSkipListHotkey (j/k/a/e)', () => {
     expect(shouldSkipListHotkey('e', { dragging: false, onIssuePage: true })).toBe(true);
     expect(shouldSkipListHotkey('E', { dragging: false, onIssuePage: true })).toBe(true);
     expect(shouldSkipListHotkey('a', { dragging: false, onIssuePage: true })).toBe(false);
+  });
+});
+
+describe('shouldLeaveEditorOnEscape (soạn dashboard)', () => {
+  const idle = { typing: false, overlayOpen: false, dragging: false };
+  const esc = { key: 'Escape', defaultPrevented: false };
+
+  it('Esc "trần" thoát soạn', () => {
+    expect(shouldLeaveEditorOnEscape(esc, idle)).toBe(true);
+  });
+
+  it('Esc đã bị xử lý (đóng hộp/huỷ kéo → defaultPrevented) KHÔNG thoát, dù overlay/dragging đã false', () => {
+    expect(shouldLeaveEditorOnEscape({ ...esc, defaultPrevented: true }, idle)).toBe(false);
+  });
+
+  it('đang gõ / đang kéo / có lớp phủ mở / phím khác → không thoát', () => {
+    expect(shouldLeaveEditorOnEscape(esc, { ...idle, typing: true })).toBe(false);
+    expect(shouldLeaveEditorOnEscape(esc, { ...idle, dragging: true })).toBe(false);
+    expect(shouldLeaveEditorOnEscape(esc, { ...idle, overlayOpen: true })).toBe(false);
+    expect(shouldLeaveEditorOnEscape({ ...esc, key: 'Enter' }, idle)).toBe(false);
   });
 });
