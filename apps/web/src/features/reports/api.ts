@@ -1,14 +1,16 @@
-import { skipToken, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, skipToken, useQuery } from '@tanstack/react-query';
 import type { IssueDto, ListResponse, SprintDto } from '@tirapro/types';
 import type {
   BurndownReport,
   VelocityReport,
   CfdReport,
   CreatedResolvedReport,
+  QaReportDto,
   SprintSummaryReport,
 } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { qaRangeFrom } from './qaFormat';
 
 /** Số liệu tổng hợp một dự án cho màn Reports — `GET /reports/project`. */
 export interface ProjectReportTotals {
@@ -128,6 +130,22 @@ export function useCreatedResolved(projectId?: string) {
           (await api.get<CreatedResolvedReport>(`/reports/created-resolved?projectId=${projectId}`))
             .data
       : skipToken,
+  });
+}
+
+/** Báo cáo chất lượng (QA) — mirror `QaReportDto` của máy chủ (`GET /reports/qa`). */
+export type QaReport = QaReportDto;
+
+export function useQaReport(projectId: string | undefined, days: number) {
+  return useQuery({
+    queryKey: keys.reports.qa(projectId ?? '', days),
+    queryFn: projectId
+      ? async () =>
+          (await api.get<QaReport>(`/reports/qa?projectId=${projectId}&from=${qaRangeFrom(days)}`))
+            .data
+      : skipToken,
+    // Đổi kỳ 7/30/90: giữ số cũ mờ đi trong lúc tải thay vì nháy về khung xương.
+    placeholderData: keepPreviousData,
   });
 }
 

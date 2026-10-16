@@ -11,12 +11,16 @@ export interface ReportTab {
 
 /**
  * Các tab của trang Báo cáo, theo thứ tự hiển thị. Tab "Sprint" đứng đầu (mặc định).
- * Tab QA (`qa`) do nhóm Q đăng ký thêm vào đây cùng một dòng render ở `ReportsPage`.
  */
 export const REPORT_TABS: ReportTab[] = [
   { id: 'sprint', label: 'Sprint', hint: 'Burndown, Velocity và tóm tắt từng sprint' },
   { id: 'overview', label: 'Tổng quan', hint: 'Phân bố công việc và khối lượng theo người' },
   { id: 'flow', label: 'Luồng công việc', hint: 'Cumulative Flow và tốc độ tạo / xử lý' },
+  {
+    id: 'qa',
+    label: 'Chất lượng (QA)',
+    hint: 'Bug đang mở theo mức nghiêm trọng, tỷ lệ mở lại, thời gian đóng, theo phiên bản',
+  },
 ];
 
 const DEFAULT_TAB: ReportTabId = 'sprint';

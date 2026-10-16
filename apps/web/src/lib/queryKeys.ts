@@ -264,6 +264,7 @@ export const keys = {
     velocity: (projectId: string) => ['report', 'velocity', projectId] as const,
     cfd: (projectId: string) => ['report', 'cfd', projectId] as const,
     createdResolved: (projectId: string) => ['report', 'created-resolved', projectId] as const,
+    qa: (projectId: string, days: number) => ['report', 'qa', projectId, days] as const,
   },
 
   attachments: {
