@@ -387,7 +387,8 @@ function ReportIssueForm({
             onChange={setDescription}
             onSubmit={() => void submit()}
             rows={6}
-            placeholder="Viết được Markdown; chèn ảnh bằng ![](đường-dẫn)"
+            onPasteImages={details.pasteFiles}
+            placeholder="Viết được Markdown; chèn ảnh bằng ![](đường-dẫn) hoặc dán ảnh chụp màn hình (Ctrl+V)"
           />
         </div>
         <div>

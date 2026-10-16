@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { apiErrorMessage } from '@/lib/api';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownView } from './MarkdownView';
+import { usePastedImageUploader } from '@/features/attachments/api';
 import { useAssigneeOptions } from './useAssigneeOptions';
 import { useTaskToggle } from './useTaskToggle';
 
@@ -19,6 +20,7 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
   const canEdit = useCanEditIssue(issue.projectId)(issue);
   const people = useAssigneeOptions(issue.projectId);
   const toggleTask = useTaskToggle(issue.projectId, 'description');
+  const pasteImages = usePastedImageUploader(issue.id, 'description');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(issue.description ?? '');
 
@@ -65,6 +67,7 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
           autoFocus
           rows={8}
           mentionPeople={people}
+          onPasteImages={pasteImages}
         />
         <div className="flex items-center gap-2">
           <span className="mr-auto text-xs text-faint">

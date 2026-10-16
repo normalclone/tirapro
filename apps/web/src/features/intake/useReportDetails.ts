@@ -25,6 +25,11 @@ export function useReportDetails(initialFiles: File[] = []) {
     toggle,
     envDraft,
     files,
+    /** Ảnh dán (Ctrl+V) vào ô mô tả: gom vào tệp đính kèm và mở khối để người dùng thấy thumbnail. */
+    pasteFiles: (fs: File[]) => {
+      setFiles((prev) => [...prev, ...fs]);
+      setOpen(true);
+    },
     /** Môi trường sai định dạng: mở khối ra và báo lỗi tại ô. */
     showEnvError: (m: string) => {
       setOpen(true);

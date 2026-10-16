@@ -15,6 +15,7 @@ import { insertTableTemplate, toggleLinePrefix } from './markdownEdit';
 import type { MentionPerson } from './mentionQuery';
 import { MentionPopup } from './MentionPopup';
 import { useMentionPopup } from './useMentionPopup';
+import { usePasteImages, type PasteImagesHandler } from './usePasteImages';
 
 function ToolBtn({
   onClick,
@@ -111,9 +112,10 @@ export function MarkdownEditor({
   onCancel,
   autoFocus,
   rows = 6,
-  placeholder = 'Nhập nội dung… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))',
+  placeholder,
   mentionPeople,
   textareaId,
+  onPasteImages,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -126,9 +128,12 @@ export function MarkdownEditor({
   mentionPeople?: MentionPerson[];
   /** `id` của <textarea> — để nơi khác (vd phím tắt) tìm và focus ô này. */
   textareaId?: string;
+  /** Có → Ctrl/Cmd+V ảnh vào ô được xử lý (tải lên và chèn `![tên](attachment:ID)`, hoặc gom tệp — xem `PasteImagesHandler`). */
+  onPasteImages?: PasteImagesHandler;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const mention = useMentionPopup(ref, mentionPeople, onChange);
+  const onPaste = usePasteImages(ref, value, onChange, onPasteImages);
 
   function insertAt() {
     const ta = ref.current;
@@ -230,7 +235,11 @@ export function MarkdownEditor({
           rows={rows}
           {...mention.aria}
           autoFocus={autoFocus}
-          placeholder={placeholder}
+          placeholder={
+            placeholder ??
+            `Nhập nội dung… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn)${onPasteImages ? ' hoặc dán ảnh' : ''})`
+          }
+          onPaste={onPaste}
           onKeyDown={(e) => {
             if (mention.handleKey(e)) return;
             if (onSubmit && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {

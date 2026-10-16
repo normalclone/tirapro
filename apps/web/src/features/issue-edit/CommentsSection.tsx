@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { CommentDto, IssueDto } from '@tirapro/types';
+import { usePastedImageUploader } from '@/features/attachments/api';
 import { useAddComment, useComments } from '@/features/issues/api';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { COMMENT_INPUT_ID } from '@/features/command/events';
@@ -27,6 +28,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   const currentUser = useAuth((s) => s.user);
   const { data: comments } = useComments(issue.id);
   const addComment = useAddComment(issue.id);
+  const pasteImages = usePastedImageUploader(issue.id, 'comment');
   const people = useAssigneeOptions(issue.projectId);
   const can = useCanIn(issue.projectId); // dự án lưu trữ / không có quyền → chỉ đọc
   const canComment = can('comment:create');
@@ -88,7 +90,8 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             rows={3}
             mentionPeople={people}
             textareaId={COMMENT_INPUT_ID}
-            placeholder="Viết bình luận… (viết được Markdown · ⌘/Ctrl+Enter để gửi)"
+            onPasteImages={pasteImages}
+            placeholder="Viết bình luận… (viết được Markdown · dán ảnh bằng Ctrl+V · ⌘/Ctrl+Enter để gửi)"
           />
           <TypingIndicator issueId={issue.id} />
           <div className="flex items-center gap-2">
@@ -120,6 +123,7 @@ function CommentRow({
   canEdit: boolean;
 }) {
   const update = useUpdateComment(issueId);
+  const pasteImages = usePastedImageUploader(issueId, 'comment');
   const toggleTask = useCommentTaskToggle(issueId);
   const remove = useDeleteComment(issueId);
   const [editing, setEditing] = useState(false);
@@ -176,6 +180,7 @@ function CommentRow({
               autoFocus
               rows={3}
               mentionPeople={people}
+              onPasteImages={pasteImages}
             />
             <div className="flex items-center gap-2">
               <span className="mr-auto text-xs text-faint">⌘/Ctrl+Enter để lưu · Esc huỷ</span>

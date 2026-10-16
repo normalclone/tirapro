@@ -58,6 +58,9 @@ export function FileDrop({
         <span>
           Kéo thả tệp vào đây hoặc <span className="font-medium text-primary">bấm để chọn tệp</span>
         </span>
+        <span className="text-xs text-faint">
+          Dán ảnh chụp màn hình (Ctrl+V) vào ô mô tả cũng được
+        </span>
         <input
           type="file"
           multiple

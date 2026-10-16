@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth-token';
@@ -144,4 +145,26 @@ export function useAttachmentUrl(id: string) {
     gcTime: 10 * 60_000,
     retry: false,
   });
+}
+
+/**
+ * Tải ảnh dán (Ctrl+V) lên một công việc có sẵn, trả `attachment:ID` để chèn vào Markdown.
+ * `comment` = ảnh trong bình luận: route `comment-attachments` (chỉ cần quyền bình luận); ảnh vẫn là tệp của CÔNG VIỆC
+ * nên hiện ở khối Tệp đính kèm. Không `comment` = mô tả (cần quyền sửa).
+ */
+export function usePastedImageUploader(issueId: string, kind: 'description' | 'comment') {
+  const qc = useQueryClient();
+  return useCallback(
+    async (files: File[]) => {
+      const upload = kind === 'comment' ? uploadCommentAttachmentFile : uploadAttachmentFile;
+      const refs: Array<{ name: string; ref: string }> = [];
+      for (const f of files) {
+        const a = await upload(issueId, f);
+        refs.push({ name: a.fileName, ref: `attachment:${a.id}` });
+      }
+      void qc.invalidateQueries({ queryKey: keys.issues.attachments(issueId) });
+      return refs;
+    },
+    [issueId, kind, qc],
+  );
 }
