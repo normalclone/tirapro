@@ -16,14 +16,14 @@ export function AiFallbackNote({
   variant?: 'box' | 'footnote' | 'plain';
 }) {
   const isSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);
-  const note = aiFallbackNote(reason);
+  const note = aiFallbackNote(reason, isSystemAdmin ? 'admin' : 'user');
   if (!note) return null;
   return (
     <p
       className={cn(
         variant === 'box' && 'rounded-md bg-surface-2 px-3 py-2 text-sm text-muted',
-        variant === 'footnote' && 'mt-1 border-t border-border px-2 pt-1.5 text-[11px] text-faint',
-        variant === 'plain' && 'mt-1 text-xs text-faint',
+        variant === 'footnote' && 'mt-1 border-t border-border px-2 pt-1.5 text-xs text-muted',
+        variant === 'plain' && 'mt-1 text-xs text-muted',
       )}
     >
       {note}

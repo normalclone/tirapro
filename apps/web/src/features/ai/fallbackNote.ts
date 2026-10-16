@@ -12,10 +12,18 @@ export function aiSourceLabel(source: 'claude' | 'heuristic', reason?: AiFallbac
   return reason === 'unconfigured' ? HEURISTIC_LABEL : 'Gợi ý cơ bản';
 }
 
-/** Lời nhắc dưới kết quả heuristic: chưa cấu hình → nhờ quản trị; AI bận → thử lại; không lý do → null. */
-export function aiFallbackNote(reason?: AiFallbackReason): string | null {
+/**
+ * Lời nhắc dưới kết quả heuristic: chưa cấu hình → nhờ quản trị (admin hệ thống thấy tên biến môi trường cần đặt,
+ * người khác chỉ thấy "liên hệ quản trị"); AI bận → thử lại; không lý do → null.
+ */
+export function aiFallbackNote(
+  reason?: AiFallbackReason,
+  audience: 'admin' | 'user' = 'admin',
+): string | null {
   if (!reason) return null;
   if (reason === 'unconfigured')
-    return 'AI chưa được bật hoặc chưa cấu hình, nên đây là gợi ý cơ bản. Nhờ quản trị hệ thống thêm khoá AI (ANTHROPIC_API_KEY) để AI tách và chọn chính xác hơn.';
-  return 'AI đang bận nên đây là gợi ý cơ bản. Bạn có thể bấm thử lại.';
+    return audience === 'admin'
+      ? 'AI chưa được bật hoặc chưa cấu hình, nên đây là gợi ý cơ bản. Hãy thêm khoá AI (ANTHROPIC_API_KEY) cho máy chủ để AI tách và chọn chính xác hơn.'
+      : 'AI chưa được bật hoặc chưa cấu hình, nên đây là gợi ý cơ bản. Liên hệ quản trị hệ thống để bật AI.';
+  return 'AI đang bận nên đây là gợi ý cơ bản. Bạn có thể thử lại sau ít phút.';
 }

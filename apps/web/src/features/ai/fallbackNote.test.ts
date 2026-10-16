@@ -16,5 +16,12 @@ describe('aiFallbackNote', () => {
   it('có lời nhắc cấu hình khi chưa cấu hình', () =>
     expect(aiFallbackNote('unconfigured')).toMatch(/ANTHROPIC_API_KEY/));
   it('AI bận → nhắc thử lại', () => expect(aiFallbackNote('error')).toMatch(/thử lại/));
+  it('người dùng thường không thấy tên biến môi trường, được nhắc liên hệ quản trị', () => {
+    const note = aiFallbackNote('unconfigured', 'user')!;
+    expect(note).not.toMatch(/ANTHROPIC_API_KEY/);
+    expect(note).toMatch(/Liên hệ quản trị/);
+  });
+  it('lời nhắc AI bận không gọi tên nút cụ thể', () =>
+    expect(aiFallbackNote('timeout')).not.toMatch(/bấm/i));
   it('không reason → null', () => expect(aiFallbackNote(undefined)).toBeNull());
 });
