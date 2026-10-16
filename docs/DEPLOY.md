@@ -75,6 +75,7 @@ Build/Start/env giống cột trong `render.yaml`. Đặt `DATABASE_URL/DIRECT_U
 | `VITE_API_URL` | Web | `https://<api>/api/v1` (nhúng lúc build). |
 | `VITE_WS_URL` | Web | `https://<api>` (WebSocket). |
 | `VITE_SHOW_DEMO_ACCOUNTS` | Web | (tùy chọn) `true` = hiện khối "Tài khoản demo" + mật khẩu chung ở trang đăng nhập và trang tài liệu. Chỉ bật cho staging/demo; production để trống (bản build không chứa mật khẩu demo). |
+| `VITE_FEATURE_REPOS` | Web | (tùy chọn) `1` = bật lại mục Kho mã (GitHub/GitLab) + khối "Liên kết code" trên công việc. Mặc định **ẩn** (hoãn tới đợt sau). Nhúng lúc build. |
 
 Chi tiết đầy đủ: [`.env.example`](../.env.example).
 
@@ -85,11 +86,11 @@ Thứ tự **duy nhất** cho mọi lần nâng cấp (bản đầu tiên của 
 | # | Bước | Lệnh | Khi nào |
 |---|---|---|---|
 | 0 | Sao lưu DB | `pg_dump` / snapshot của nhà cung cấp | Luôn, trước khi đụng DB prod |
-| 1 | Áp migration Prisma | `prisma migrate deploy` | Luôn. Đợt UX round 2 thêm migration (vd `user_sessions_revoked_at`, `system_roles_refresh`) và **nếu prod chưa chạy 6 migration của base `22c116c` thì bước này áp cả 6** — xem "Bước 1" bên dưới |
+| 1 | Áp migration Prisma | `prisma migrate deploy` | Luôn. Đợt UX round 2 thêm **28 migration** (xem "Bước 1b") và **nếu prod chưa chạy 6 migration của base `22c116c` thì bước này áp cả 6** (tổng 34) — xem "Bước 1" bên dưới |
 | 2 | SQL thô (extension, `searchVector`, chỉ mục) | `pnpm --filter @tirapro/api run db:raw` | Luôn. **DB lớn: chạy TAY trong giờ thấp điểm TRƯỚC khi rollout image mới** (xem cảnh báo bên dưới) |
 | 3 | Mã hoá lại token/khoá bí mật khi ĐỔI `INTEGRATION_ENCRYPTION_KEY` | `integrations:rekey` | Chỉ khi đổi khoá (xem mục "đổi khoá mã hoá" bên dưới) |
 | 4 | Mã hoá khoá bí mật webhook automation cũ | `automation:seal-secrets` | Một lần, **sau khi bản mới đã ổn định** (xem cảnh báo rollback) |
-| 5 | Kiểm bộ quyền vai trò hệ thống khớp code | `pnpm --filter @tirapro/api run db:check-roles` | Sau `migrate deploy` (tuỳ chọn): in `+thiếu`/`-thừa` theo `SYSTEM_ROLE_PERMISSIONS`, thoát mã 1 nếu lệch. Migration chỉ THÊM quyền, không gỡ |
+| 5 | Kiểm bộ quyền vai trò hệ thống khớp code | `pnpm --filter @tirapro/api run db:check-roles` | Sau `migrate deploy` (tuỳ chọn): in `+thiếu`/`-thừa` theo `SYSTEM_ROLE_PERMISSIONS`, thoát mã 1 nếu lệch. Migration chỉ THÊM quyền, không gỡ. Trong container: `docker run --rm --env-file .env <image> node scripts/check-system-roles.mjs` (giống hai script ở bước 3-4; cần image đã copy script này) |
 
 Render/Docker (`render.yaml` `startCommand`, `Dockerfile` `CMD`) tự chạy bước 1 + 2 mỗi lần khởi động; bước 3-4 luôn là thao tác tay.
 
@@ -108,6 +109,29 @@ Ngoài các migration của đợt UX round 2, base `22c116c` có 6 migration m�
 - **`sprint_sequence_unique`**: nếu có sprint trùng `(projectId, sequence)` thì **đánh lại số** các bản trùng (giữ bản cũ nhất) rồi tạo unique index.
 - `mail_invite_reset`, `worklog_rules`, `ai_log_index`: thêm bảng/cột/chỉ mục nhỏ.
 - **`remove_invites`** (UX vòng 2): xoá bảng `InviteToken` và mọi thư mời (mọi trạng thái) trong `EmailOutbox` (liên kết nhận lời mời trong hộp thư người dùng sẽ 404). Không thể hoàn tác dữ liệu lời mời đã xoá.
+
+### Bước 1b — `migrate deploy`: 28 migration của UX vòng 2
+
+Danh sách đầy đủ (tên, khoá, backfill) và hành vi người dùng thấy: `docs/RELEASE_NOTES_2026-10-follow-ups.md` mục "UX vòng 2". Tóm tắt những gì ảnh hưởng vận hành:
+
+- **Không migration nào ghi lại bảng `Issue`** và vòng 2 **không đổi** `db:raw`. `Issue` chỉ nhận 2 `ADD COLUMN` nullable (`acceptanceCriteria`, `environment`) — đổi metadata, khoá `ACCESS EXCLUSIVE` rất ngắn (nhưng phải chờ giao dịch dài đang mở). Cột có `DEFAULT` hằng (`Project.isPrivate`, `WikiPage.version`, `KeyResult.source`, `ReportSubscription.weekday/hour/timezone/deliverEmail/allowPrivateToChannel`) cũng chỉ đổi metadata trên PG ≥ 11.
+- **Khoá ghi trong lúc build index** (`CREATE INDEX` thường, chạy trong giao dịch migration): bảng nối `IssueComponent`, `IssueFixVersion` (`issue_component_version_index`) và bảng `Mention` (`mention_unique`: xoá dòng trùng, giữ dòng cũ nhất, rồi 2 unique index). Hai bảng đầu nhỏ hơn `Issue` nhiều; bảng `Mention` lớn thì chạy giờ thấp điểm.
+- **Backfill dữ liệu:** `membership_roles_backfill` (thêm dòng nối vai trò cho membership chưa có), `link_types_causes_tests` (thêm 2 loại liên kết mỗi workspace), `wiki_page_issue` (quét `regexp_matches` mọi nội dung wiki — CPU theo tổng dung lượng wiki), `wiki_page_history` (sao chép nội dung **mọi** trang wiki thành bản v1 → dung lượng wiki tăng gấp đôi một lần), `project_workflow_names` (đổi tên quy trình mặc định thành `"tên (MÃ)"`). Tất cả idempotent.
+- **Cấp quyền (INSERT `RolePermission`, chỉ thêm, không thu hồi):** `system_roles_refresh` (Scrum Master `issue:create`+`issue:triage`, Product Owner `issue:transition`), `wiki_project_permissions` (`wiki:manage` thành quyền cấp dự án cho Project Admin/BA/PO/Scrum Master/Developer/Tester **và** mọi vai tuỳ biến có `project:admin`/`workspace:admin`; vì mọi thành viên workspace là Developer mặc định nên họ sửa được wiki mọi dự án công khai). Cache quyền Redis hết hạn tối đa ~1 phút sau khi áp.
+- **Không hoàn tác:** `remove_invites` xoá bảng `InviteToken` và mọi thư mời trong `EmailOutbox`; `wiki_page_history` backfill; enum `HistoryField` thêm `DESCRIPTION`/`COMPONENT`/`FIX_VERSION`, `DashboardScope.TEAM`, `WidgetType` ×3 (`ADD VALUE` chạy trong giao dịch cần PG ≥ 12). Không nên quay về image cũ sau khi người dùng đã dùng bản mới; sao lưu (bước 0) là đường lùi.
+- Mốc thời gian migration không đơn điệu (vd `…299000` sau `…207000`): `migrate deploy` vẫn áp mọi migration chưa áp, không cần `migrate dev`. DB dev nào đã áp migration L5/L20/OKR bằng tên tạm cũ (`…200000_dashboard_team_scope`, `…202000_digest_schedule_fields`, `…203000/204000/208000_key_result_*`) bị lệch lịch sử — dựng lại DB đó.
+
+### Ghi chú phát hành — UX vòng 2
+
+- **Nền trình duyệt tối thiểu:** Safari/iOS ≥ 15.4, Chrome/Edge/Firefox trong 2 năm gần nhất (màu `oklch()` của DESIGN.md cần Safari 15.4; đợt sửa cuối đang gỡ regex lookbehind khỏi chunk đầu để iOS 15.4–16.3 không trắng trang). Thiết bị cũ hơn không được hỗ trợ.
+
+- **Không chạy `db:seed` để "seed lại quyền" trên dữ liệu thật** — `db:seed` làm mới (xoá) workspace demo. Quyền vai trò hệ thống đã đi qua migration; kiểm bằng bước 5 (`db:check-roles`). Mô tả quyền tiếng Việt trong bảng `Permission` chỉ đổi khi chạy `db:seed`, nhưng web đọc mô tả từ `@tirapro/types` nên không ảnh hưởng. Tour mặc định + checklist "Bắt đầu" tự được API gieo lúc khởi động (khoá advisory, không hạ cấp).
+- **Biến môi trường:** API không có biến mới; web có `VITE_FEATURE_REPOS` (tuỳ chọn) và `VITE_SHOW_DEMO_ACCOUNTS` (xem bảng trên).
+- **Telegram:** dùng **một bot riêng cho Tirapro**. Wizard liên kết nhóm đọc tin bằng `getUpdates` (offset âm, `allowed_updates=['message']`): công cụ khác đọc `getUpdates` trên cùng bot có thể mất tin cũ hơn 100 bản mới nhất hoặc gặp 409; Tirapro báo 409 khi bot đang gắn webhook hoặc có tiến trình khác đang đọc. Tạo kết nối không token khi hệ thống không có bot chung (`TELEGRAM_BOT_TOKEN`) bị từ chối.
+- **Pool người dùng chung = giả định một tổ chức:** quản trị workspace thấy và thêm được mọi tài khoản hệ thống. Không triển khai nhiều tổ chức độc lập kèm tự đăng ký mở (nguy cơ chiếm tài khoản/nhìn thấy người dùng giữa workspace) trừ khi tắt đăng ký.
+- **Tác vụ nền:** digest chạy mỗi giờ (`0 * * * *`, khớp thứ/giờ/múi giờ từng báo cáo) + tự gửi khi kết thúc sprint — **báo cáo định kỳ hiện có đổi giờ gửi**: trước chạy 08:00 theo múi giờ tiến trình (UTC trên Docker/Render → 15:00 giờ VN), nay mặc định 08:00 `Asia/Ho_Chi_Minh` nên trên máy chủ UTC thư đến **sớm 7 giờ**; báo trước hoặc chỉnh giờ từng báo cáo; cron chụp giá trị Key Result `01:30 UTC` hằng ngày. Cron khoá bằng Redis; không có Redis thì chạy chế độ một node (không khoá) — đừng chạy nhiều instance API mà thiếu Redis.
+- **Email:** báo cáo định kỳ qua Email và thư đặt lại mật khẩu đi qua `MAIL_DRIVER`; `console` chỉ ghi log, `smtp` hiện mới là khung chưa gửi thật (ném lỗi khi gửi) — Telegram là kênh digest dùng được ngay.
+- **Báo trước cho người dùng:** liên kết lời mời cũ không còn (404), dự án riêng tư ẩn với người ngoài dự án, việc chưa duyệt không còn trên Board/Việc chờ, API key không bị thu hồi khi đổi mật khẩu (xem mục trên), custom role có `report:view` nhưng không `project:view` mất số liệu dự án công khai.
 
 ### Bước 2 — `db:raw`: khoá bảng `Issue` (cửa sổ bảo trì)
 
