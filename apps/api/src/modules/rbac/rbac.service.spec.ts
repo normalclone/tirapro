@@ -42,6 +42,7 @@ function setup(redis: 'ok' | 'down' = 'ok') {
     workLog: { findFirst: vi.fn() },
     issueLink: { findFirst: vi.fn() },
     version: { findFirst: vi.fn() },
+    wikiPage: { findFirst: vi.fn() },
     workspaceMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
     projectMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
     rolePermission: { findMany: vi.fn(() => Promise.resolve([])) },
@@ -343,5 +344,25 @@ describe('RbacService.resolveProjectId — tài nguyên của dự án đã xoá
       source: { project: { deletedAt: null } },
       target: { project: { deletedAt: null } },
     });
+  });
+});
+
+describe('RbacService.resolveProjectId — wikiPage (A8)', () => {
+  it('lọc theo workspace; projectId null = tài liệu chung; không thấy → null', async () => {
+    const { svc, prisma } = setup();
+    prisma.wikiPage.findFirst.mockResolvedValueOnce({ projectId: 'P4' });
+    await expect(svc.resolveProjectId('W1', 'wikiPage', 'X1')).resolves.toEqual({
+      projectId: 'P4',
+    });
+    expect(prisma.wikiPage.findFirst).toHaveBeenCalledWith({
+      where: { id: 'X1', workspaceId: 'W1' },
+      select: { projectId: true },
+    });
+    prisma.wikiPage.findFirst.mockResolvedValueOnce({ projectId: null });
+    await expect(svc.resolveProjectId('W1', 'wikiPage', 'X2')).resolves.toEqual({
+      projectId: null,
+    });
+    prisma.wikiPage.findFirst.mockResolvedValueOnce(null);
+    await expect(svc.resolveProjectId('W1', 'wikiPage', 'X3')).resolves.toBeNull();
   });
 });

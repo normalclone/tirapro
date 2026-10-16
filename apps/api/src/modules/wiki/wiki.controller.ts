@@ -45,6 +45,7 @@ export class WikiController {
     return this.wiki.get(workspaceId, id);
   }
 
+  @ProjectRef('body', 'projectId')
   @Post()
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async create(
@@ -55,6 +56,7 @@ export class WikiController {
     return this.wiki.create(workspaceId, dto, user.id);
   }
 
+  @ProjectRef('wikiPage', 'id')
   @Put(':id')
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async update(
@@ -67,6 +69,7 @@ export class WikiController {
   }
 
   /** Đổi trang cha và/hoặc thứ tự. Trả về cây đã cập nhật của phạm vi tương ứng. */
+  @ProjectRef('wikiPage', 'id')
   @Put(':id/move')
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async move(
@@ -78,8 +81,10 @@ export class WikiController {
     return this.wiki.move(workspaceId, id, dto, user.id);
   }
 
+  /** Xoá trang: chỉ Quản trị dự án (hoặc Workspace Admin với trang chung / mọi dự án). */
+  @ProjectRef('wikiPage', 'id')
   @Delete(':id')
-  @Permissions(PERMISSIONS.WIKI_MANAGE)
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
     return this.wiki.remove(workspaceId, id);
   }

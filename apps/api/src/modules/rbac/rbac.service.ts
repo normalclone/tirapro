@@ -86,6 +86,13 @@ const RESOURCE_RESOLVERS: Record<
     select: projectIdOnly,
     project: ownProjectId,
   },
+  // Trang wiki: projectId null = tài liệu chung (áp quyền workspace).
+  wikiPage: {
+    model: 'wikiPage',
+    where: inWorkspace,
+    select: projectIdOnly,
+    project: ownProjectId,
+  },
   repository: {
     model: 'codeRepository',
     where: inWorkspace,

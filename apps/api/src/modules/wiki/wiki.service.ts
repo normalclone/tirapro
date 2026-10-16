@@ -73,7 +73,8 @@ export interface WikiSearchHit {
 /**
  * Wiki / tài liệu nội bộ — trang markdown phân cấp (cây tự tham chiếu).
  * Phạm vi: `projectId = null` là tài liệu chung workspace, ngược lại thuộc một dự án.
- * Đọc = workspace:view, ghi = wiki:manage (guard ở controller).
+ * Đọc = workspace:view, ghi = wiki:manage theo dự án của trang (trang chung: quyền workspace),
+ * xoá = project:admin (guard ở controller).
  */
 @Injectable()
 export class WikiService {
@@ -151,11 +152,15 @@ export class WikiService {
     const title = dto.title.trim();
     if (!title) throw new BusinessRuleException('Tiêu đề bắt buộc');
 
-    let projectId = dto.projectId ?? null;
+    const projectId = dto.projectId ?? null;
     const parentId = dto.parentId ?? null;
     if (parentId) {
       const parent = await this.requireWritablePage(workspaceId, parentId);
-      projectId = parent.projectId; // trang con luôn cùng phạm vi với trang cha
+      // Trang con luôn cùng phạm vi với trang cha; client gửi phạm vi khác → từ chối
+      // (guard tính quyền theo body.projectId, không để nó lái ghi sang dự án khác).
+      if (projectId !== parent.projectId) {
+        throw new BusinessRuleException('Trang con phải cùng phạm vi (dự án) với trang cha');
+      }
     } else if (projectId) {
       await this.requireProject(workspaceId, projectId);
     }

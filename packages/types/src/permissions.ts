@@ -138,8 +138,8 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: PERMISSIONS.SLA_MANAGE, description: 'Cấu hình SLA', scope: 'WORKSPACE' },
   {
     key: PERMISSIONS.WIKI_MANAGE,
-    description: 'Tạo/sửa tài liệu nội bộ (wiki)',
-    scope: 'WORKSPACE',
+    description: 'Tạo/sửa tài liệu nội bộ (wiki) của dự án',
+    scope: 'PROJECT',
   },
   {
     key: PERMISSIONS.CLIENT_MANAGE,
@@ -230,6 +230,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.PLAN_MANAGE,
     PERMISSIONS.RISK_MANAGE,
     PERMISSIONS.AUTOMATION_MANAGE,
+    PERMISSIONS.WIKI_MANAGE,
   ],
   [SYSTEM_ROLES.PROJECT_DEVELOPER]: [
     PERMISSIONS.PROJECT_VIEW,
@@ -276,6 +277,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.DIGEST_MANAGE,
     PERMISSIONS.PLAN_MANAGE,
     PERMISSIONS.RISK_MANAGE,
+    PERMISSIONS.WIKI_MANAGE,
   ],
   // Product Owner: làm chủ backlog/ưu tiên, lập sprint, báo cáo.
   [SYSTEM_ROLES.PRODUCT_OWNER]: [
@@ -294,6 +296,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.SPRINT_MANAGE,
     PERMISSIONS.REPORT_VIEW,
     PERMISSIONS.DIGEST_MANAGE,
+    PERMISSIONS.WIKI_MANAGE,
   ],
   // Scrum Master: quy trình, board, sprint, backlog, báo cáo.
   [SYSTEM_ROLES.SCRUM_MASTER]: [
@@ -314,6 +317,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.REPORT_VIEW,
     PERMISSIONS.PLAN_MANAGE,
     PERMISSIONS.RISK_MANAGE,
+    PERMISSIONS.WIKI_MANAGE,
   ],
   // Developer: làm & chuyển trạng thái issue, liên kết, comment, backlog, báo cáo.
   [SYSTEM_ROLES.DEVELOPER]: [
@@ -330,6 +334,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.COMMENT_EDIT_OWN,
     PERMISSIONS.BACKLOG_MANAGE,
     PERMISSIONS.REPORT_VIEW,
+    PERMISSIONS.WIKI_MANAGE,
   ],
   // Tester/QA: tạo bug, triage, chuyển trạng thái (retest/done), liên kết, comment, báo cáo.
   [SYSTEM_ROLES.TESTER]: [
@@ -345,6 +350,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.COMMENT_CREATE,
     PERMISSIONS.COMMENT_EDIT_OWN,
     PERMISSIONS.REPORT_VIEW,
+    PERMISSIONS.WIKI_MANAGE,
   ],
   // Designer (UI/UX): đóng góp issue, liên kết, comment, xem.
   [SYSTEM_ROLES.DESIGNER]: [

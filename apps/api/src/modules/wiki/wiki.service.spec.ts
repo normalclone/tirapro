@@ -20,7 +20,19 @@ const ARCHIVED = { status: 422, message: expect.stringContaining('lưu trữ') a
 
 function setup(archived: boolean, pageProjectId: string | null = 'p1') {
   const archivedAt = archived ? new Date() : null;
-  const page = { id: 'g1', projectId: pageProjectId, parentId: null, title: 'T' };
+  const page = {
+    id: 'g1',
+    workspaceId: 'w1',
+    projectId: pageProjectId,
+    parentId: null,
+    title: 'T',
+    body: '',
+    order: 0,
+    createdById: null,
+    updatedById: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
   const prisma = {
     project: {
       findFirst: vi.fn(() => Promise.resolve({ id: 'p1', archivedAt })),
@@ -35,7 +47,10 @@ function setup(archived: boolean, pageProjectId: string | null = 'p1') {
       delete: vi.fn(() => Promise.resolve({})),
       aggregate: vi.fn(() => Promise.resolve({ _max: { order: null } })),
     },
-    $transaction: vi.fn(() => Promise.resolve([])),
+    user: { findMany: vi.fn(() => Promise.resolve([])) },
+    $transaction: vi.fn((arg: unknown) =>
+      typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(prisma) : Promise.resolve([]),
+    ),
   };
   return { service: new WikiService(prisma as never), prisma };
 }
@@ -64,5 +79,43 @@ describe('WikiService — dự án lưu trữ là chỉ đọc', () => {
     const { service, prisma } = setup(true, null);
     await service.remove('w1', 'g1');
     expect(prisma.$transaction).toHaveBeenCalled();
+  });
+});
+
+describe('WikiService.create — phạm vi trang con khớp trang cha (A8)', () => {
+  it('parentId thuộc dự án khác body.projectId → 422, không ghi (chặn leo thang đặc quyền)', async () => {
+    const { service, prisma } = setup(false, 'pQ'); // trang cha thuộc dự án pQ
+    await expect(
+      service.create('w1', { title: 'x', body: '', projectId: 'pP', parentId: 'g1' }, 'u1'),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(prisma.wikiPage.create).not.toHaveBeenCalled();
+  });
+
+  it('trang cha chung (null) nhưng body.projectId có giá trị → 422', async () => {
+    const { service, prisma } = setup(false, null);
+    await expect(
+      service.create('w1', { title: 'x', body: '', projectId: 'pP', parentId: 'g1' }, 'u1'),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(prisma.wikiPage.create).not.toHaveBeenCalled();
+  });
+
+  it('parentId + cùng projectId → tạo được', async () => {
+    const { service, prisma } = setup(false, 'pQ');
+    await service.create('w1', { title: 'x', body: '', projectId: 'pQ', parentId: 'g1' }, 'u1');
+    expect(prisma.wikiPage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ projectId: 'pQ', parentId: 'g1' }) as unknown,
+      }),
+    );
+  });
+
+  it('parentId + cùng null (trang chung) → tạo được', async () => {
+    const { service, prisma } = setup(false, null);
+    await service.create('w1', { title: 'x', body: '', parentId: 'g1' }, 'u1');
+    expect(prisma.wikiPage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ projectId: null, parentId: 'g1' }) as unknown,
+      }),
+    );
   });
 });
