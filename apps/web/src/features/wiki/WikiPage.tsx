@@ -209,11 +209,13 @@ export function WikiPage() {
       setEditing(false);
       toast.success('Đã lưu trang');
     } catch (e) {
-      // Người khác lưu trước: giữ chế độ sửa để bản đang soạn không mất.
+      // Người khác lưu trước: giữ chế độ sửa để bản đang soạn không mất. `apiErrorMessage` luôn được gọi
+      // (đánh dấu đã báo) để toast chung của MutationCache không chen thêm câu chung chung.
+      const generic = apiErrorMessage(e);
       toast.error(
         apiErrorCode(e) === 'VERSION_CONFLICT'
           ? 'Trang vừa được người khác sửa. Bản bạn đang soạn vẫn còn trong ô — hãy sao chép lại, bấm Huỷ, mở lại trang để xem bản mới.'
-          : apiErrorMessage(e),
+          : generic,
       );
     }
   }
