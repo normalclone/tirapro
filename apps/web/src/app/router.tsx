@@ -282,23 +282,18 @@ export const router = createBrowserRouter([
         ],
       },
       // Kết nối & tự động hoá.
+      // Không bọc cả /connect bằng RequireAccess: người chỉ quản trị MỘT dự án vào Tự động hoá qua menu "Thêm" của dự án
+      // (quyền cấp dự án không có trong `/auth/me`; trang Quy tắc tự giải thích khi thiếu quyền). Chỉ tab Ứng dụng bên ngoài bị gác.
       {
-        element: (
-          <RequireAccess rule={NAV_RULES.connect} who="người quản lý kết nối và tự động hoá" />
-        ),
+        path: 'connect',
+        element: <ConnectLayout />,
         children: [
+          { index: true, element: <ConnectIndexRedirect /> },
           {
-            path: 'connect',
-            element: <ConnectLayout />,
-            children: [
-              { index: true, element: <ConnectIndexRedirect /> },
-              {
-                element: <RequireAccess rule={NAV_RULES.connectIntegrations} who="quản trị viên" />,
-                children: [{ path: 'integrations', element: <IntegrationsPage /> }],
-              },
-              { path: 'automation', element: <AutomationPage /> },
-            ],
+            element: <RequireAccess rule={NAV_RULES.connectIntegrations} who="quản trị viên" />,
+            children: [{ path: 'integrations', element: <IntegrationsPage /> }],
           },
+          { path: 'automation', element: <AutomationPage /> },
         ],
       },
       { path: 'wiki', element: <WikiPage /> },
