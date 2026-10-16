@@ -53,10 +53,7 @@ function readRaw(key: string | null, storage: SwimlaneStorage | null): string | 
 }
 
 /** Sai/thiếu → null; trùng cấu hình bảng hiện tại → null (để admin đổi cấu hình bảng về sau vẫn có hiệu lực). */
-export function normalizeSwimlaneOverride(
-  raw: string | null,
-  boardBy: SwimlaneBy,
-): SwimlaneOverride {
+function normalizeSwimlaneOverride(raw: string | null, boardBy: SwimlaneBy): SwimlaneOverride {
   const v = parseSwimlaneOverride(raw);
   return v === boardBy ? null : v;
 }

@@ -3,7 +3,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { ChevronLeft, ChevronRight, Columns3, Filter as FilterIcon, SearchX } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
-import { dueState } from '@/components/ui/DueBadge';
+import { dueState } from '@/lib/dueDate';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -28,7 +28,7 @@ const RESULTS_PAGE_SIZE = 25;
  * Cột đang chọn của người dùng (nhớ trong localStorage theo `userId`). `columns` luôn có `key` + `summary`.
  * L2 (Xuất CSV) dùng chính hook này + `cellText`/`RESULT_COLUMNS` để xuất đúng cột đang xem.
  */
-export function useResultColumns(): {
+function useResultColumns(): {
   columns: ResultColumnId[];
   toggle: (id: ResultColumnId) => void;
 } {

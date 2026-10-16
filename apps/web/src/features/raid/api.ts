@@ -7,7 +7,7 @@ import { keys } from '@/lib/queryKeys';
 export type { RaidKind, RaidStatus };
 export type RaidLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
-export interface RaidOwner {
+interface RaidOwner {
   id: string;
   displayName: string;
   email: string;

@@ -29,7 +29,7 @@ export const DEPENDENCY_TYPES: DependencyType[] = [
   DependencyType.SF,
 ];
 
-export interface IssueRef {
+interface IssueRef {
   id: string;
   key: string;
   summary: string;

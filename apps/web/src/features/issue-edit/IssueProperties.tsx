@@ -21,7 +21,7 @@ import { Avatar } from '@/components/ui/primitives';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { isBugType } from './severity';
-import { dueState } from '@/components/ui/DueBadge';
+import { dueState } from '@/lib/dueDate';
 import { apiErrorMessage } from '@/lib/api';
 import { parsePointsInput } from '@/lib/permissions';
 import { cn } from '@/lib/utils';

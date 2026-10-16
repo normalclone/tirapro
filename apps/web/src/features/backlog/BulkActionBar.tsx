@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { TERM } from '@/lib/terms';
 
 /** id ảo cho lựa chọn "Backlog" trong picker chuyển sprint (sprintId thực = null). */
-export const BACKLOG_OPTION = '__backlog__';
+const BACKLOG_OPTION = '__backlog__';
 /** id ảo cho lựa chọn "Gỡ khỏi epic" / "Bỏ ưu tiên" (giá trị thật = null). */
 const NONE_OPTION = '__none__';
 

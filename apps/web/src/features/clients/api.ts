@@ -3,7 +3,7 @@ import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import { LOCALE } from '@/lib/locale';
 
-export interface ClientProjectRef {
+interface ClientProjectRef {
   id: string;
   key: string;
   name: string;

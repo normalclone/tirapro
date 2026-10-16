@@ -3,7 +3,7 @@ import type { ProjectHealthDto } from '@tirapro/shared';
 import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
-export interface ProgramProjectRef {
+interface ProgramProjectRef {
   id: string;
   key: string;
   name: string;

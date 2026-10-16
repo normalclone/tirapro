@@ -13,7 +13,7 @@ import { keys } from '@/lib/queryKeys';
 // Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Mục tiêu import một chỗ.
 export type { KeyResultSource, KeyResultUnit, ObjectiveStatus };
 
-export interface GoalOwner {
+interface GoalOwner {
   id: string;
   displayName: string;
   email: string;
@@ -43,7 +43,7 @@ export interface KeyResultDto {
   progress: number;
 }
 
-export interface GoalIssueDto {
+interface GoalIssueDto {
   id: string;
   key: string;
   summary: string;
@@ -323,24 +323,6 @@ export function useAddCheckIn() {
       void qc.invalidateQueries({ queryKey: keys.goals.checkInsAll });
       void qc.invalidateQueries({ queryKey: keys.goals.historyAll });
     },
-  });
-}
-
-export function useAddKeyResult() {
-  const invalidate = useInvalidateGoals();
-  return useMutation({
-    mutationFn: async ({ goalId, ...input }: { goalId: string } & KeyResultInput) =>
-      (await api.post<GoalDto>(`/goals/${goalId}/key-results`, input)).data,
-    onSuccess: invalidate,
-  });
-}
-
-export function useDeleteKeyResult() {
-  const invalidate = useInvalidateGoals();
-  return useMutation({
-    mutationFn: async ({ goalId, keyResultId }: { goalId: string; keyResultId: string }) =>
-      (await api.delete<GoalDto>(`/goals/${goalId}/key-results/${keyResultId}`)).data,
-    onSuccess: invalidate,
   });
 }
 

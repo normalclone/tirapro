@@ -69,7 +69,7 @@ export interface LabelUpdateInput {
 
 /** ---- Import ---- */
 
-export type ImportSource = 'CSV' | 'JSON';
+type ImportSource = 'CSV' | 'JSON';
 export type ImportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
 export interface ImportResult {

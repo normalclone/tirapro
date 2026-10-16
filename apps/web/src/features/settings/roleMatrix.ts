@@ -1,7 +1,7 @@
 import type { PermissionDef, PermissionKey, PermissionScope, RoleDto } from '@tirapro/types';
 
 /** Tiền tố khoá quyền (`issue:create` → `issue`) → nhóm chức năng hiển thị. Tiền tố không có ở đây → "Khác". */
-export const PERMISSION_GROUP_LABEL: Record<string, string> = {
+const PERMISSION_GROUP_LABEL: Record<string, string> = {
   issue: 'Công việc',
   comment: 'Công việc',
   worklog: 'Công việc',
@@ -25,7 +25,7 @@ const OTHER_GROUP = 'Khác';
 /** Thứ tự các nhóm trên bảng. */
 const GROUP_ORDER = ['Công việc', 'Sprint & bảng', 'Thành viên', 'Báo cáo', OTHER_GROUP];
 
-export interface MatrixRow {
+interface MatrixRow {
   key: PermissionKey;
   label: string;
   group: string;

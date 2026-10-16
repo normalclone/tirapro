@@ -117,7 +117,7 @@ export function useDeleteFilter() {
 }
 
 /** Chạy 1 bộ lọc đã lưu theo id (GET /filters/:id/run) — helper fetch thủ công. */
-export async function runFilter(id: string): Promise<IssueDto[]> {
+async function runFilter(id: string): Promise<IssueDto[]> {
   return (await api.get<ListResponse<IssueDto>>(`/filters/${id}/run?limit=100`)).data.data;
 }
 

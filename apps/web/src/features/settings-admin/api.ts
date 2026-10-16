@@ -81,7 +81,7 @@ export type CustomFieldType =
   | 'USER'
   | 'URL';
 
-export interface CustomFieldOption {
+interface CustomFieldOption {
   id: string;
   value: string;
 }

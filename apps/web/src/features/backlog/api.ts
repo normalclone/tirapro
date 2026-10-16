@@ -129,7 +129,7 @@ export interface BulkIssuePatch {
 }
 
 /** Máy chủ nhận tối đa 100 việc/lần (`bulkUpdateIssuesSchema`). */
-export const BULK_CHUNK = 100;
+const BULK_CHUNK = 100;
 
 /**
  * Kết quả gộp các lô. `unsent` = số việc CHƯA được gửi/xử lý vì một lô sau bị lỗi (đã nằm trong `conflicts`);

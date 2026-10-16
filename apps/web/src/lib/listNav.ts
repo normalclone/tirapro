@@ -1,5 +1,5 @@
 /** Phần tử điều hướng được bằng `j`/`k`: gắn `data-nav-item` (+ `data-issue-key` nếu là công việc) lên dòng/thẻ focus được. */
-export const NAV_ITEM_SELECTOR = '[data-nav-item]';
+const NAV_ITEM_SELECTOR = '[data-nav-item]';
 
 /**
  * Chỉ số phần tử kế tiếp khi bấm `j` (dir = 1) / `k` (dir = -1), KẸP trong [0, count-1] (không vòng).

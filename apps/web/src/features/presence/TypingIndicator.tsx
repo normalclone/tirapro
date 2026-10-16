@@ -1,7 +1,7 @@
 import { useTypers } from './usePresence';
 
 /** Câu hiển thị: "A đang nhập…", "A và B đang nhập…", "A, B và 2 người khác đang nhập…". */
-export function typingText(names: string[]): string {
+function typingText(names: string[]): string {
   if (names.length === 0) return '';
   if (names.length === 1) return `${names[0]} đang nhập…`;
   if (names.length === 2) return `${names[0]} và ${names[1]} đang nhập…`;

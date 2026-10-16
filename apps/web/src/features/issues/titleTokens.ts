@@ -1,6 +1,6 @@
 /* Gõ nhanh trong tiêu đề: !ưu-tiên @người #sprint ~điểm ^hạn — parse + gợi ý + chip xác nhận. */
 
-export function normalize(s: string): string {
+function normalize(s: string): string {
   // Hạ chữ thường TRƯỚC khi bỏ dấu: 'Đ' hoa chỉ thành 'đ' sau toLowerCase, rồi mới đổi sang 'd'.
   return s
     .toLowerCase()
@@ -101,7 +101,7 @@ interface Named {
 }
 
 /** Khớp 1 từ: bằng đúng > bắt đầu bằng > chứa (để "!high" ra High chứ không phải Highest). */
-export function bestMatch<T>(
+function bestMatch<T>(
   items: T[],
   val: string,
   key: (t: T) => string,

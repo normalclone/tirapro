@@ -229,21 +229,6 @@ export function useProjectMembers(projectId?: string) {
   });
 }
 
-/** Thêm thành viên (user có sẵn trong không gian làm việc) vào dự án với ≥1 vai trò. */
-export function useAddProjectMember(projectId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ userId, roleIds }: { userId: string; roleIds: string[] }) =>
-      api
-        .post<MemberDto>(`/projects/${projectId}/members`, { userId, roleIds })
-        .then((r) => r.data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
-      void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });
-    },
-  });
-}
-
 /** Thêm NHIỀU người vào dự án một lúc (chỉ người đã thuộc không gian làm việc). */
 export function useAddProjectMembersBulk(projectId: string) {
   const qc = useQueryClient();

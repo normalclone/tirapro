@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
  * Loại việc ô thêm nhanh đang nhớ (mã `typeRef`: khoá loại hoặc `name:<tên>` cho loại tuỳ chỉnh, không phải id → dùng được giữa dự án). Một nguồn dùng chung cho mọi ô
  * đang mount (mỗi cột Board / khu Việc chờ) để đổi ở một nơi thì nơi khác đổi theo; lưu `localStorage` để nhớ giữa các lần mở.
  */
-export const QUICK_ADD_TYPE_KEY = 'tirapro:quickAddTypeKey';
+const QUICK_ADD_TYPE_KEY = 'tirapro:quickAddTypeKey';
 
 const listeners = new Set<() => void>();
 let current: string | null | undefined; // undefined = chưa đọc từ localStorage

@@ -23,10 +23,10 @@ const byIdOf = (issues: IssueDto[]) => new Map(issues.map((i) => [i.id, i]));
  * không phải epic/sub-task và `epicIdOf(i) === E` (epicId, hoặc cha trực tiếp là epic; epicId thắng như ô Epic hiển thị).
  * Nhờ vậy một việc chỉ thuộc đúng MỘT epic, và việc có cha thường P nhưng epicId = E vẫn thuộc E.
  */
-export function memberEpicId(i: IssueDto, byId: Map<string, IssueDto>): string | null {
+function memberEpicId(i: IssueDto, byId: Map<string, IssueDto>): string | null {
   return isEpicIssue(i) || i.type.isSubtask ? null : epicIdOf(i, byId);
 }
-export function isEpicMember(i: IssueDto, epicId: string, byId: Map<string, IssueDto>): boolean {
+function isEpicMember(i: IssueDto, epicId: string, byId: Map<string, IssueDto>): boolean {
   return memberEpicId(i, byId) === epicId;
 }
 
