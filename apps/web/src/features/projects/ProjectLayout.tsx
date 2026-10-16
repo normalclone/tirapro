@@ -140,15 +140,15 @@ export function ProjectLayout() {
     );
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 print:block print:h-auto">
       {/* Rail dự án (submenu bên trái) — dùng chung với trang chi tiết issue */}
       <ProjectRail activeKey={key} view={view} />
 
       {/* Nội dung: thanh nav view cố định + view hiện tại */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col print:block">
         <div
           data-audit="project-header"
-          className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-border px-4 py-3 sm:px-6"
+          className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-border px-4 py-3 sm:px-6 print:hidden"
         >
           {/* Chuyển dự án trên mobile/tablet (rail dự án ẩn dưới lg) */}
           {hasPicker && (
@@ -312,7 +312,7 @@ export function ProjectLayout() {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="min-h-0 flex-1 overflow-auto print:overflow-visible">
           <Suspense
             fallback={
               <div className="grid h-full min-h-[40vh] place-items-center py-20 text-sm text-muted">

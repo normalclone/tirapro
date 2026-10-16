@@ -54,7 +54,7 @@ export function Card({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
+    <div className="print-avoid-break rounded-lg border border-border bg-surface p-4">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-2">
         <h2 className="text-sm font-medium text-muted">{title}</h2>
         {caption && <span className="text-xs text-faint">{caption}</span>}
@@ -97,7 +97,7 @@ export function StatStrip({ items, className }: { items: StatItem[]; className?:
   return (
     <div
       className={cn(
-        'grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border',
+        'print-avoid-break grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border',
         className,
       )}
     >

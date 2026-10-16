@@ -37,7 +37,7 @@ export function SprintSummaryPanel({
   return (
     <section
       aria-label={`Tổng kết ${sprint.name}`}
-      className="rounded-lg border border-border bg-surface p-4"
+      className="print-avoid-break rounded-lg border border-border bg-surface p-4"
     >
       <div className="flex flex-wrap items-center gap-2">
         <button

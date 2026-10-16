@@ -46,9 +46,9 @@ export function ReportsPage() {
   const projectId = project?.id;
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
+    <div className="flex h-full flex-col overflow-y-auto print:block print:h-auto print:overflow-visible">
       <div
-        className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4 pt-2"
+        className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4 pt-2 print:hidden"
         role="tablist"
         aria-label="Loại báo cáo"
         onKeyDown={onTabKeyDown}

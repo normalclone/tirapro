@@ -177,15 +177,26 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [navOpen]);
 
+  // Trình duyệt đổi khổ giấy khi in → nhắc biểu đồ (ResizeObserver) đo lại; không bắn sự kiện thì biểu đồ giữ cỡ màn hình.
+  useEffect(() => {
+    const relayout = () => window.dispatchEvent(new Event('resize'));
+    window.addEventListener('beforeprint', relayout);
+    window.addEventListener('afterprint', relayout);
+    return () => {
+      window.removeEventListener('beforeprint', relayout);
+      window.removeEventListener('afterprint', relayout);
+    };
+  }, []);
+
   return (
-    <div className="flex h-full">
+    <div className="flex h-full print:block print:h-auto">
       {/* Backdrop (chỉ mobile, khi drawer mở) */}
       {navOpen && (
         <button
           type="button"
           aria-label="Đóng menu"
           onClick={() => setNavOpen(false)}
-          className="fixed inset-0 z-nav-backdrop bg-ink/40 backdrop-blur-[1px] lg:hidden"
+          className="fixed inset-0 z-nav-backdrop bg-ink/40 backdrop-blur-[1px] print:hidden lg:hidden"
         />
       )}
 
@@ -197,6 +208,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           'fixed inset-y-0 left-0 z-nav-drawer flex w-64 flex-col border-r border-border bg-surface',
           'transition-transform duration-200 ease-out-quart motion-reduce:transition-none',
           'lg:static lg:z-auto lg:w-48 lg:shrink-0 lg:translate-x-0 lg:shadow-none',
+          'print:hidden',
           navOpen ? 'translate-x-0 shadow-lg' : '-translate-x-full',
         )}
       >
@@ -251,8 +263,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-4">
+      <div className="flex min-w-0 flex-1 flex-col print:block">
+        <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-4 print:hidden">
           <Button
             variant="ghost"
             size="icon"
@@ -288,12 +300,21 @@ export function AppShell({ children }: { children: ReactNode }) {
             <UserMenu />
           </div>
         </header>
-        <MaintenanceBanner />
+        <div className="print:hidden">
+          <MaintenanceBanner />
+        </div>
         {/* scrollbar-gutter:stable — nội dung căn giữa không lệch ngang giữa trang dài (có scrollbar) và trang ngắn */}
-        <main className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]">{children}</main>
+        <main className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable] print:overflow-visible">
+          {children}
+        </main>
       </div>
 
-      {!admin && <FloatingActions />}
+      {/* `contents`: không thêm hộp vào flex của khung; `print:hidden` ẩn cả nút nổi lẫn hộp thoại khi in. */}
+      {!admin && (
+        <div className="contents print:hidden">
+          <FloatingActions />
+        </div>
+      )}
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       {/* Hộp xác nhận dùng chung cho useConfirm() — chỉ mount một lần. */}
       <ConfirmHost />
