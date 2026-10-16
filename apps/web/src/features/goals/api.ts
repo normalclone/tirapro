@@ -1,10 +1,17 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { KeyResultUnit, ListResponse, ObjectiveStatus, StatusCategory } from '@tirapro/types';
+import type {
+  KeyResultSource,
+  KeyResultUnit,
+  ListResponse,
+  ObjectiveStatus,
+  StatusCategory,
+} from '@tirapro/types';
+import type { KrSourceConfig } from './krSource';
 import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 // Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Mục tiêu import một chỗ.
-export type { KeyResultUnit, ObjectiveStatus };
+export type { KeyResultSource, KeyResultUnit, ObjectiveStatus };
 
 export interface GoalOwner {
   id: string;
@@ -19,7 +26,19 @@ export interface KeyResultDto {
   unit: KeyResultUnit;
   startValue: number;
   targetValue: number;
+  /** KR tự đo (`source` != MANUAL): số đo trực tiếp lúc đọc; đo lỗi thì giữ số cũ + `measureError`. */
   currentValue: number;
+  source: KeyResultSource;
+  sourceConfig: KrSourceConfig;
+  /** Thời điểm đo (ISO) — null với KR nhập tay. */
+  measuredAt: string | null;
+  /** Lý do không đo được (JQL sai, dự án không còn…) — null nếu ổn. */
+  measureError: string | null;
+  /** Nhãn đơn vị nối sau số ("4 bug"); bỏ qua với PERCENT. */
+  unitLabel: string | null;
+  /** Số check-in tay đã ghi và lần gần nhất (ISO) — null nếu chưa có. */
+  checkInCount: number;
+  lastCheckInAt: string | null;
   /** % hoàn thành đã kẹp trong [0,100] — BE tính (current-start)/(target-start). */
   progress: number;
 }
@@ -63,6 +82,33 @@ export interface KeyResultInput {
   startValue?: number;
   targetValue: number;
   currentValue?: number;
+  /** OCC: số hiện tại lúc mở form — BE trả 409 nếu người khác vừa đổi. */
+  expectedCurrentValue?: number;
+  source?: KeyResultSource;
+  sourceConfig?: KrSourceConfig;
+  unitLabel?: string | null;
+}
+
+/** GET /goals/:id/progress-history — lịch sử tiến độ theo ngày (L29). */
+export interface GoalProgressHistory {
+  period: string;
+  /** YYYY-MM-DD */
+  from: string;
+  to: string;
+  keyResults: Array<{
+    id: string;
+    name: string;
+    unit: KeyResultUnit;
+    unitLabel: string | null;
+    source: KeyResultSource;
+    points: Array<{ date: string; value: number; progress: number; auto: boolean }>;
+    /** Có giá trị khi người xem không được xem lịch sử của KR này (dự án riêng tư). */
+    scopeNote: string | null;
+  }>;
+  /** Trung bình tiến độ các KR tại từng ngày. */
+  objective: Array<{ date: string; progress: number }>;
+  /** Mốc kỳ vọng theo thời gian của quý; null với kỳ tự do. */
+  expected: Array<{ date: string; progress: number }> | null;
 }
 
 export interface GoalInput {
@@ -110,6 +156,7 @@ function useInvalidateGoals() {
   return () => {
     void qc.invalidateQueries({ queryKey: keys.goals.all });
     void qc.invalidateQueries({ queryKey: keys.goals.periods });
+    void qc.invalidateQueries({ queryKey: keys.goals.historyAll });
   };
 }
 
@@ -177,28 +224,105 @@ export function useUpdateKeyResult() {
       if (currentValue === undefined) return { previous: undefined };
       await qc.cancelQueries({ queryKey: keys.goals.all });
       const previous = qc.getQueriesData<GoalDto[]>({ queryKey: keys.goals.all });
-      patchGoalCaches(qc, goalId, (g) =>
-        recalcProgress({
-          ...g,
-          keyResults: g.keyResults.map((kr) => {
-            if (kr.id !== keyResultId) return kr;
-            const span = kr.targetValue - kr.startValue;
-            const ratio =
-              span === 0
-                ? currentValue >= kr.targetValue
-                  ? 1
-                  : 0
-                : Math.min(1, Math.max(0, (currentValue - kr.startValue) / span));
-            return { ...kr, currentValue, progress: Math.round(ratio * 100) };
-          }),
-        }),
-      );
+      patchGoalCaches(qc, goalId, (g) => withCurrentValue(g, keyResultId, currentValue));
       return { previous };
     },
     onError: (_e, _v, ctx) => {
       for (const [key, data] of ctx?.previous ?? []) qc.setQueryData(key, data);
     },
-    onSettled: () => void qc.invalidateQueries({ queryKey: keys.goals.all }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.goals.all });
+      // Sửa số hiện tại nay cũng ghi một dòng lịch sử check-in.
+      void qc.invalidateQueries({ queryKey: keys.goals.checkInsAll });
+      void qc.invalidateQueries({ queryKey: keys.goals.historyAll });
+    },
+  });
+}
+
+/** Đặt `currentValue` của một KR và tính lại % (khớp công thức BE) — dùng cho optimistic UI. */
+function withCurrentValue(goal: GoalDto, keyResultId: string, currentValue: number): GoalDto {
+  return recalcProgress({
+    ...goal,
+    keyResults: goal.keyResults.map((kr) => {
+      if (kr.id !== keyResultId) return kr;
+      const span = kr.targetValue - kr.startValue;
+      const ratio =
+        span === 0
+          ? currentValue >= kr.targetValue
+            ? 1
+            : 0
+          : Math.min(1, Math.max(0, (currentValue - kr.startValue) / span));
+      return { ...kr, currentValue, progress: Math.round(ratio * 100) };
+    }),
+  });
+}
+
+export interface CheckInDto {
+  id: string;
+  value: number;
+  previousValue: number | null;
+  note: string | null;
+  author: { id: string; displayName: string } | null;
+  createdAt: string;
+}
+
+/** Lịch sử check-in của một KR, mới nhất trước (`enabled`: chỉ tải khi mở danh sách). */
+export function useCheckIns(goalId: string, keyResultId: string, limit: number, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.goals.checkIns(goalId, keyResultId, limit),
+    queryFn: enabled
+      ? async () =>
+          (
+            await api.get<CheckInDto[]>(`/goals/${goalId}/key-results/${keyResultId}/check-ins`, {
+              params: { limit },
+            })
+          ).data
+      : skipToken,
+  });
+}
+
+/** Lịch sử tiến độ theo ngày của một mục tiêu (`enabled`: chỉ tải khi mở biểu đồ). */
+export function useProgressHistory(goalId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.goals.history(goalId),
+    queryFn: enabled
+      ? async () => (await api.get<GoalProgressHistory>(`/goals/${goalId}/progress-history`)).data
+      : skipToken,
+  });
+}
+
+/** Check-in tay: ghi lịch sử + cập nhật giá trị hiện tại; thanh tiến độ nhảy ngay, lỗi thì trả lại số cũ. */
+export function useAddCheckIn() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      goalId,
+      keyResultId,
+      ...input
+    }: {
+      goalId: string;
+      keyResultId: string;
+      value: number;
+      /** OCC: số hiện tại người dùng đã thấy — lệch số trong DB thì BE trả 409. */
+      expectedValue?: number;
+      note?: string;
+    }) =>
+      (await api.post<GoalDto>(`/goals/${goalId}/key-results/${keyResultId}/check-ins`, input))
+        .data,
+    onMutate: async ({ goalId, keyResultId, value }) => {
+      await qc.cancelQueries({ queryKey: keys.goals.all });
+      const previous = qc.getQueriesData<GoalDto[]>({ queryKey: keys.goals.all });
+      patchGoalCaches(qc, goalId, (g) => withCurrentValue(g, keyResultId, value));
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      for (const [key, data] of ctx?.previous ?? []) qc.setQueryData(key, data);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.goals.all });
+      void qc.invalidateQueries({ queryKey: keys.goals.checkInsAll });
+      void qc.invalidateQueries({ queryKey: keys.goals.historyAll });
+    },
   });
 }
 

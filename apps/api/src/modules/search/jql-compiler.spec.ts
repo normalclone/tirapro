@@ -4,6 +4,7 @@ import {
   collectFulltextTerms,
   compileJql,
   containsWhere,
+  jqlDependsOnViewer,
   primaryFulltextTerm,
   topLevelProjectKeys,
 } from './jql-compiler';
@@ -275,5 +276,31 @@ describe('so khớp tên không phân biệt hoa/thường', () => {
     expect(w('labels = Frontend')).toEqual({
       labels: { some: { label: { name: { in: ['Frontend'], ...ins } } } },
     });
+  });
+});
+
+describe('jqlDependsOnViewer (I1 — JQL phụ thuộc người xem không dùng được cho đo hệ thống)', () => {
+  const dep = (jql: string) => jqlDependsOnViewer(ast(jql).where);
+
+  it('currentUser có hoặc không ngoặc, mọi hoa/thường, ở bất kỳ trường nào', () => {
+    expect(dep('assignee = currentUser()')).toBe(true);
+    expect(dep('assignee = currentUser')).toBe(true);
+    expect(dep('reporter != CURRENTUSER')).toBe(true);
+    expect(dep('assignee IN (currentUser, x)')).toBe(true);
+  });
+
+  it('alias me ở trường người (assignee/reporter), cả trong IN / OR / NOT', () => {
+    expect(dep('assignee = me')).toBe(true);
+    expect(dep('assignee = ME')).toBe(true);
+    expect(dep('reporter IN (me, "ai-do")')).toBe(true);
+    expect(dep('type = Bug AND (priority = High OR NOT (assignee = me))')).toBe(true);
+  });
+
+  it('JQL không phụ thuộc người xem → false (kể cả chuỗi "me" ở trường khác)', () => {
+    expect(dep('type = Bug AND statusCategory = DONE')).toBe(false);
+    expect(dep('summary ~ "me"')).toBe(false);
+    expect(dep('labels = me')).toBe(false);
+    expect(dep('assignee = "minh"')).toBe(false);
+    expect(jqlDependsOnViewer(null)).toBe(false);
   });
 });

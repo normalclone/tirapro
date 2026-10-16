@@ -10,14 +10,23 @@ import { apiErrorMessage } from '@/lib/api';
 import { useRetained } from '@/lib/useRetained';
 import { useProjects } from '@/features/projects/api';
 import { useWorkspaceUsers } from '@/features/members/api';
+import { useJqlValidation } from '@/features/saved-filters/api';
 import {
   useCreateGoal,
   useUpdateGoal,
   type GoalDto,
-  type KeyResultInput,
+  type KeyResultSource,
   type KeyResultUnit,
   type ObjectiveStatus,
 } from './api';
+import { isConfigHidden, isDraftComplete, toKeyResultInput, type DraftKr } from './krDraft';
+import {
+  MAX_JQL_LENGTH,
+  SOURCE_OPTIONS,
+  defaultConfig,
+  isAutoSource,
+  type KrSourceConfig,
+} from './krSource';
 
 const STATUS_OPTIONS: { value: ObjectiveStatus; label: string }[] = [
   { value: 'DRAFT', label: 'Nháp' },
@@ -31,11 +40,6 @@ const UNIT_OPTIONS: { value: KeyResultUnit; label: string }[] = [
   { value: 'CURRENCY', label: 'Tiền' },
 ];
 
-interface DraftKr extends KeyResultInput {
-  /** Khoá React ổn định cho dòng chưa lưu. */
-  rowKey: string;
-}
-
 let rowSeq = 0;
 function newRow(): DraftKr {
   rowSeq += 1;
@@ -46,7 +50,69 @@ function newRow(): DraftKr {
     startValue: 0,
     targetValue: 100,
     currentValue: 0,
+    source: 'MANUAL',
+    sourceConfig: null,
   };
+}
+
+/** Ô cấu hình theo nguồn số liệu của một KR tự đo (dự án cho bug/sprint, JQL cho đếm công việc). */
+function SourceConfigFields({
+  source,
+  config,
+  onChange,
+  projectOptions,
+}: {
+  source: KeyResultSource;
+  config: KrSourceConfig;
+  onChange: (config: KrSourceConfig) => void;
+  projectOptions: { value: string; label: string; hint?: string }[];
+}) {
+  const jql = config?.jql ?? '';
+  // Hook luôn gọi (quy tắc hook); chỉ dùng kết quả khi nguồn là JQL.
+  const { validation } = useJqlValidation(source === 'ISSUE_COUNT_JQL' ? jql : '');
+  if (source === 'OPEN_BUGS' || source === 'SPRINT_COMPLETION') {
+    const required = source === 'SPRINT_COMPLETION';
+    const options = projectOptions.filter((o) => o.value !== '');
+    return (
+      <label className="block text-xs text-faint">
+        {required ? 'Dự án có sprint cần đo' : 'Dự án'}
+        {!required && <span> (để trống = mọi dự án bạn có quyền xem)</span>}
+        <SearchSelect
+          value={config?.projectId ?? ''}
+          onChange={(v) => onChange(v ? { projectId: v } : {})}
+          options={required ? options : [{ value: '', label: 'Mọi dự án' }, ...options]}
+          ariaLabel="Dự án để đo số liệu"
+          placeholder={required ? 'Chọn dự án' : 'Mọi dự án'}
+          searchPlaceholder="Tìm dự án…"
+          className="mt-1"
+        />
+      </label>
+    );
+  }
+  if (source === 'ISSUE_COUNT_JQL') {
+    return (
+      <div className="text-xs text-faint">
+        <label>
+          Câu JQL cần đếm
+          <Input
+            className="mt-1 font-mono text-sm"
+            value={jql}
+            onChange={(e) => onChange({ jql: e.target.value })}
+            placeholder="VD: statusCategory = DONE AND type = Bug"
+            maxLength={MAX_JQL_LENGTH}
+            aria-label="Câu JQL cần đếm"
+            aria-invalid={validation?.valid === false}
+          />
+        </label>
+        {validation?.valid === false && (
+          <p className="mt-1 text-danger" role="alert">
+            {validation.error ?? 'JQL chưa hợp lệ'}
+          </p>
+        )}
+      </div>
+    );
+  }
+  return null;
 }
 
 function Field({
@@ -133,6 +199,12 @@ export function GoalEditorModal({
         startValue: kr.startValue,
         targetValue: kr.targetValue,
         currentValue: kr.currentValue,
+        source: kr.source,
+        sourceConfig: kr.sourceConfig,
+        unitLabel: kr.unitLabel,
+        originalSource: kr.source,
+        originalCurrent: kr.currentValue,
+        configHidden: isConfigHidden(kr),
       })) ?? [newRow()],
     );
   }, [open, goal, defaultPeriod]);
@@ -169,7 +241,8 @@ export function GoalEditorModal({
 
   const busy = create.isPending || update.isPending;
   const validKrs = krs.filter((kr) => kr.name.trim().length > 0);
-  const canSave = name.trim().length > 0 && period.trim().length > 0 && !busy;
+  const krsComplete = validKrs.every(isDraftComplete);
+  const canSave = name.trim().length > 0 && period.trim().length > 0 && krsComplete && !busy;
 
   function setKr(rowKey: string, patch: Partial<DraftKr>) {
     setKrs((prev) => prev.map((kr) => (kr.rowKey === rowKey ? { ...kr, ...patch } : kr)));
@@ -184,14 +257,7 @@ export function GoalEditorModal({
       status,
       projectId: projectId || null,
       ownerId: ownerId || null,
-      keyResults: validKrs.map((kr) => ({
-        id: kr.id,
-        name: kr.name.trim(),
-        unit: kr.unit ?? 'NUMBER',
-        startValue: Number(kr.startValue ?? 0),
-        targetValue: Number(kr.targetValue ?? 0),
-        currentValue: Number(kr.currentValue ?? 0),
-      })),
+      keyResults: validKrs.map(toKeyResultInput),
     };
     try {
       if (editing && goal) {
@@ -347,7 +413,7 @@ export function GoalEditorModal({
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
                     <label
                       className="text-xs text-faint"
                       title="Cách hiển thị số đo: số thường, phần trăm hay tiền"
@@ -363,6 +429,21 @@ export function GoalEditorModal({
                     </label>
                     <label
                       className="text-xs text-faint"
+                      title="Nhãn nối sau số, vd “bug”, “điểm”, “khách” → “4 bug”. Không dùng cho phần trăm."
+                    >
+                      Nhãn đơn vị
+                      <Input
+                        className="mt-1"
+                        value={kr.unitLabel ?? ''}
+                        onChange={(e) => setKr(kr.rowKey, { unitLabel: e.target.value })}
+                        placeholder="bug, điểm, khách…"
+                        maxLength={20}
+                        disabled={kr.unit === 'PERCENT'}
+                        aria-label="Nhãn đơn vị của số đo"
+                      />
+                    </label>
+                    <label
+                      className="text-xs text-faint"
                       title="Số đo lúc bắt đầu kỳ — mốc để tính tiến độ"
                     >
                       Bắt đầu
@@ -373,12 +454,23 @@ export function GoalEditorModal({
                         onChange={(e) => setKr(kr.rowKey, { startValue: Number(e.target.value) })}
                       />
                     </label>
-                    <label className="text-xs text-faint" title="Số đo mới nhất tính đến hôm nay">
+                    <label
+                      className="text-xs text-faint"
+                      title={
+                        isAutoSource(kr.source ?? 'MANUAL')
+                          ? 'Số này do hệ thống đo từ dữ liệu — không nhập tay'
+                          : 'Số đo mới nhất tính đến hôm nay'
+                      }
+                    >
                       Hiện tại
                       <Input
                         type="number"
                         className="mt-1 tabular-nums"
-                        value={String(kr.currentValue ?? 0)}
+                        value={
+                          isAutoSource(kr.source ?? 'MANUAL') ? '' : String(kr.currentValue ?? 0)
+                        }
+                        placeholder={isAutoSource(kr.source ?? 'MANUAL') ? 'Tự đo' : undefined}
+                        disabled={isAutoSource(kr.source ?? 'MANUAL')}
                         onChange={(e) => setKr(kr.rowKey, { currentValue: Number(e.target.value) })}
                       />
                     </label>
@@ -394,6 +486,40 @@ export function GoalEditorModal({
                         onChange={(e) => setKr(kr.rowKey, { targetValue: Number(e.target.value) })}
                       />
                     </label>
+                  </div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <label
+                      className="text-xs text-faint"
+                      title="Nhập tay, hoặc để hệ thống tự lấy số từ bug, sprint hay một câu JQL"
+                    >
+                      Nguồn số liệu
+                      <SearchSelect
+                        value={kr.source ?? 'MANUAL'}
+                        onChange={(v) =>
+                          setKr(kr.rowKey, {
+                            source: v as KeyResultSource,
+                            sourceConfig: defaultConfig(v as KeyResultSource),
+                            configHidden: false,
+                          })
+                        }
+                        options={SOURCE_OPTIONS}
+                        ariaLabel="Nguồn số liệu"
+                        className="mt-1"
+                      />
+                    </label>
+                    {kr.configHidden && kr.source === kr.originalSource ? (
+                      <p className="self-end pb-2 text-xs text-faint">
+                        Cấu hình nguồn bị ẩn với bạn (dự án riêng tư hoặc cần quyền quản lý mục
+                        tiêu) — giữ nguyên khi lưu. Chọn nguồn khác nếu muốn thay.
+                      </p>
+                    ) : (
+                      <SourceConfigFields
+                        source={kr.source ?? 'MANUAL'}
+                        config={kr.sourceConfig ?? null}
+                        onChange={(sourceConfig) => setKr(kr.rowKey, { sourceConfig })}
+                        projectOptions={projectOptions}
+                      />
+                    )}
                   </div>
                 </li>
               ))}

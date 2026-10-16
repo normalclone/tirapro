@@ -12,11 +12,13 @@ import {
   createGoalSchema,
   updateGoalSchema,
   createKeyResultSchema,
+  createCheckInSchema,
   updateKeyResultSchema,
   goalIssuesSchema,
   type CreateGoalInput,
   type UpdateGoalInput,
   type CreateKeyResultInput,
+  type CreateCheckInInput,
   type UpdateKeyResultInput,
   type GoalIssuesInput,
 } from './goals.schemas';
@@ -56,6 +58,24 @@ export class GoalsController {
     @Param('id') id: string,
   ) {
     return this.goals.get(workspaceId, id, user.id);
+  }
+
+  /** Lịch sử tiến độ theo ngày (đường KR + trung bình mục tiêu + mốc kỳ vọng). `days` tối đa 365. */
+  @Get(':id/progress-history')
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  async progressHistory(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('days') days?: string,
+  ) {
+    const n = days === undefined ? undefined : Number.parseInt(days, 10);
+    return this.goals.progressHistory(
+      workspaceId,
+      id,
+      user.id,
+      n !== undefined && Number.isFinite(n) ? n : undefined,
+    );
   }
 
   @Post()
@@ -123,6 +143,39 @@ export class GoalsController {
     @Param('krId') krId: string,
   ) {
     return this.goals.removeKeyResult(workspaceId, id, krId, user.id);
+  }
+
+  /** Check-in tay (có ghi chú) cho KR nhập tay — ghi lịch sử + cập nhật giá trị hiện tại. */
+  @Post(':id/key-results/:krId/check-ins')
+  @Permissions(PERMISSIONS.GOAL_MANAGE)
+  async addCheckIn(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('krId') krId: string,
+    @Body(new ZodValidationPipe(createCheckInSchema)) dto: CreateCheckInInput,
+  ) {
+    return this.goals.addCheckIn(workspaceId, id, krId, dto, user.id);
+  }
+
+  /** Lịch sử check-in của một KR, mới nhất trước (mặc định 30, tối đa 50). */
+  @Get(':id/key-results/:krId/check-ins')
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  async listCheckIns(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('krId') krId: string,
+    @Query('limit') limit?: string,
+  ) {
+    const n = limit === undefined ? undefined : Number.parseInt(limit, 10);
+    return this.goals.listCheckIns(
+      workspaceId,
+      id,
+      krId,
+      Number.isFinite(n) ? n : undefined,
+      user.id,
+    );
   }
 
   // ── Gắn / gỡ issue (epic) vào mục tiêu ──

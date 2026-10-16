@@ -21,6 +21,7 @@ import {
   collectFulltextTerms,
   compileJql,
   containsWhere,
+  jqlDependsOnViewer,
   primaryFulltextTerm,
   topLevelProjectKeys,
 } from './jql-compiler';
@@ -65,6 +66,9 @@ const EXISTENCE_FIELDS: ReadonlySet<JqlFieldName> = new Set([
   'affectedVersion',
 ]);
 const MAX_LISTED_VALUES = 8;
+
+/** Thông điệp khi JQL của KR tự đo phụ thuộc người xem (không có nghĩa với lịch sử chung). */
+export const VIEWER_JQL_MESSAGE = 'JQL của KR tự đo không được dùng currentUser/me';
 
 export interface JqlValueSuggestion {
   field: string;
@@ -238,38 +242,16 @@ export class SearchService {
   ): Promise<PageResult<IssueDto>> {
     if (opts.mode === 'text') return this.searchText(workspaceId, opts, currentUserId);
 
-    let where: Prisma.IssueWhereInput = {};
-    let orderBy: Prisma.IssueOrderByWithRelationInput[] = [];
-    let rankHint: string[] | undefined;
-
-    if (opts.jql && opts.jql.trim()) {
-      const ast = this.parse(opts.jql);
-      if (opts.checkValues) {
-        const [first] = await this.findInvalidValues(workspaceId, currentUserId, ast.where);
-        if (first) throw new BusinessRuleException(first.message);
-      }
-      const fulltext = new Map<string, readonly string[]>();
-      const terms = collectFulltextTerms(ast.where);
-      const scopeIds = terms.length
-        ? await this.fulltextProjectScope(workspaceId, ast.where, opts.projectId, currentUserId)
-        : undefined;
-      for (const term of terms) {
-        const res = await this.fulltext.search(
-          workspaceId,
-          term,
-          scopeIds ? { projectIds: scopeIds } : {},
-        );
-        if (res) fulltext.set(term, res.ids); // null = chưa có searchVector → compiler dùng contains
-      }
-      const compiled = compileJql(ast, { currentUserId, fulltext });
-      where = compiled.where;
-      orderBy = compiled.orderBy;
-      const primary = primaryFulltextTerm(ast.where);
-      const ids = primary ? fulltext.get(primary) : undefined;
-      // Không ORDER BY tường minh → id khớp full-text xếp theo rank lên trước. Chỉ là gợi ý xếp hạng:
-      // tập kết quả do `where` (đã gồm ILIKE summary/description/key) quyết định, không bị cắt top-200.
-      if (ids && !orderBy.length && !opts.orderByRank) rankHint = [...ids];
-    }
+    const built = await this.buildWhere(
+      workspaceId,
+      currentUserId,
+      opts.jql,
+      opts.projectId,
+      opts.checkValues,
+      opts.orderByRank,
+    );
+    let { where, orderBy } = built;
+    const { rankHint } = built;
     if (opts.orderByRank && !orderBy.length) orderBy = [{ rank: 'asc' }];
     if (opts.projectId) {
       where = Object.keys(where).length
@@ -285,6 +267,102 @@ export class SearchService {
   }
 
   /**
+   * Dịch JQL → `where` Prisma (+ orderBy, rankHint) — dùng chung cho `search()` và `count()`. Chưa ghép phạm vi
+   * workspace/dự án người xem (nơi gọi ghép: `IssuesService.query` hoặc `count`). JQL rỗng → `where` rỗng.
+   * `currentUserId = null`: ngữ cảnh hệ thống (đếm công khai cho lịch sử KR) — không kiểm giá trị theo quyền ai,
+   * full-text chỉ trong dự án công khai, và `currentUser()`/`me` không có nghĩa.
+   */
+  private async buildWhere(
+    workspaceId: string,
+    currentUserId: string | null,
+    jql: string | undefined,
+    projectId: string | undefined,
+    checkValues?: boolean,
+    orderByRank?: boolean,
+  ): Promise<{
+    where: Prisma.IssueWhereInput;
+    orderBy: Prisma.IssueOrderByWithRelationInput[];
+    rankHint: string[] | undefined;
+  }> {
+    let where: Prisma.IssueWhereInput = {};
+    let orderBy: Prisma.IssueOrderByWithRelationInput[] = [];
+    let rankHint: string[] | undefined;
+
+    if (jql && jql.trim()) {
+      const ast = this.parse(jql);
+      if (checkValues && currentUserId) {
+        const [first] = await this.findInvalidValues(workspaceId, currentUserId, ast.where);
+        if (first) throw new BusinessRuleException(first.message);
+      }
+      const fulltext = new Map<string, readonly string[]>();
+      const terms = collectFulltextTerms(ast.where);
+      const scopeIds = terms.length
+        ? await this.fulltextProjectScope(workspaceId, ast.where, projectId, currentUserId)
+        : undefined;
+      for (const term of terms) {
+        const res = await this.fulltext.search(
+          workspaceId,
+          term,
+          scopeIds ? { projectIds: scopeIds } : {},
+        );
+        if (res) fulltext.set(term, res.ids); // null = chưa có searchVector → compiler dùng contains
+      }
+      const compiled = compileJql(ast, { currentUserId: currentUserId ?? '', fulltext });
+      where = compiled.where;
+      orderBy = compiled.orderBy;
+      const primary = primaryFulltextTerm(ast.where);
+      const ids = primary ? fulltext.get(primary) : undefined;
+      // Không ORDER BY tường minh → id khớp full-text xếp theo rank lên trước. Chỉ là gợi ý xếp hạng:
+      // tập kết quả do `where` (đã gồm ILIKE summary/description/key) quyết định, không bị cắt top-200.
+      if (ids && !orderBy.length && !orderByRank) rankHint = [...ids];
+    }
+    return { where, orderBy, rankHint };
+  }
+
+  /**
+   * Đếm việc khớp JQL trong phạm vi người xem thấy (cùng `where` và cùng điều kiện dự án như `search()`): dự án riêng
+   * tư người đó không thấy không bao giờ nằm trong số đếm. JQL lỗi cú pháp/giá trị sai → `BusinessRuleException`.
+   * Dùng cho Key Result tự đo (L25).
+   */
+  async count(workspaceId: string, userId: string, jql: string): Promise<number> {
+    const { where } = await this.buildWhere(workspaceId, userId, jql, undefined, true);
+    const visible = await this.access.visibleWhere(userId, workspaceId);
+    return this.prisma.issue.count({
+      where: {
+        AND: [{ workspaceId, deletedAt: null, project: { deletedAt: null, ...visible } }, where],
+      },
+    });
+  }
+
+  /** JQL có dùng `currentUser`/`me` không (JQL lỗi cú pháp → false: để `validate`/`count` báo lỗi riêng). */
+  dependsOnViewer(jql: string): boolean {
+    try {
+      return jqlDependsOnViewer(parseJql(jql).where);
+    } catch (e) {
+      if (e instanceof JqlParseError) return false;
+      throw e;
+    }
+  }
+
+  /**
+   * Đếm việc khớp JQL trên dự án CÔNG KHAI (ngữ cảnh hệ thống, không có người xem) — cron chụp lịch sử Key Result (L29)
+   * dùng để số lịch sử không lộ dự án riêng tư. `currentUser()` không có nghĩa ở đây → 422.
+   */
+  async countPublic(workspaceId: string, jql: string): Promise<number> {
+    // Duyệt AST (không regex): currentUser có/không ngoặc và alias `me`; nếu không sẽ đếm 0 giả rồi ghi như số thật.
+    if (this.dependsOnViewer(jql)) throw new BusinessRuleException(VIEWER_JQL_MESSAGE);
+    const { where } = await this.buildWhere(workspaceId, null, jql, undefined, false);
+    return this.prisma.issue.count({
+      where: {
+        AND: [
+          { workspaceId, deletedAt: null, project: { deletedAt: null, isPrivate: false } },
+          where,
+        ],
+      },
+    });
+  }
+
+  /**
    * Phạm vi project cho truy vấn full-text của JQL: `opts.projectId` ∩ project của điều kiện
    * `project = X` / `IN (…)` trên chuỗi AND thuần, giao với tập dự án người xem thấy. undefined = cả workspace.
    * Chỉ để xếp hạng tốt hơn (không phí top-200 vào dự án ẩn): lọc an toàn thật nằm ở scope của `issues.query`.
@@ -293,7 +371,7 @@ export class SearchService {
     workspaceId: string,
     where: JqlNode | null,
     projectId: string | undefined,
-    viewerId: string,
+    viewerId: string | null,
   ): Promise<string[] | undefined> {
     let scopeIds: string[] | undefined = projectId ? [projectId] : undefined;
     const keys = topLevelProjectKeys(where);
@@ -313,9 +391,17 @@ export class SearchService {
   private async intersectVisible(
     workspaceId: string,
     scopeIds: string[] | undefined,
-    viewerId: string,
+    viewerId: string | null,
   ): Promise<string[] | undefined> {
-    const visible = await this.access.visibleProjectIds(viewerId, workspaceId);
+    // Ngữ cảnh hệ thống: chỉ dự án công khai.
+    const visible = viewerId
+      ? await this.access.visibleProjectIds(viewerId, workspaceId)
+      : (
+          await this.prisma.project.findMany({
+            where: { workspaceId, deletedAt: null, isPrivate: false },
+            select: { id: true },
+          })
+        ).map((p) => p.id);
     if (visible === null) return scopeIds;
     return scopeIds ? scopeIds.filter((id) => visible.includes(id)) : visible;
   }
