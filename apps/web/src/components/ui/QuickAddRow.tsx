@@ -1,18 +1,43 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProjectMeta } from '@/features/ai/api';
+import { useProjectSprints } from '@/features/backlog/api';
+import { useWorkspaceUsers } from '@/features/issue-edit/api';
 import { useCreateIssue, type CreateIssueInput } from '@/features/issues/create-api';
+import { buildQuickAddInput, pickDefaultType } from '@/features/issues/quickAdd';
+import { TokenTitleInput } from '@/features/issues/TokenTitleInput';
+import type { TokenCtx } from '@/features/issues/titleTokens';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { IssueTypeIcon } from './IssueTypeIcon';
+import { SearchSelect } from './SearchSelect';
+
+const TYPE_KEY_STORAGE = 'tirapro:quickAddTypeKey';
+function readStoredTypeKey(): string | null {
+  try {
+    return localStorage.getItem(TYPE_KEY_STORAGE);
+  } catch {
+    return null;
+  }
+}
+function storeTypeKey(key: string | null) {
+  try {
+    if (key) localStorage.setItem(TYPE_KEY_STORAGE, key);
+  } catch {
+    /* bỏ qua: chế độ riêng tư / bị chặn lưu trữ */
+  }
+}
 
 /**
  * Hàng "thêm nhanh" issue — gõ tiêu đề + Enter là tạo ngay (keyboard-first, UX §3).
+ * Hiểu token `!ưu-tiên ~điểm @người ^hạn #sprint` (cùng parser với hộp tạo việc), chọn được loại việc
+ * (nhớ lần chọn), giữ focus để gõ việc kế tiếp.
  * Dùng ở đáy mỗi cột Board và mỗi khu Backlog/Sprint.
  *
- *  projectKey — để lấy issue type mặc định (meta).
+ *  projectKey — để lấy issue type + ưu tiên (meta).
  *  projectId  — dự án đích của issue mới.
- *  extra      — trường phụ áp cho issue mới (statusId cho cột board, sprintId cho sprint).
+ *  extra      — trường phụ áp cho issue mới (statusId cho cột board, sprintId cho sprint, epicId khi đang lọc epic).
  *  placeholder / compact — tinh chỉnh hiển thị theo ngữ cảnh (board vs backlog).
  */
 export function QuickAddRow({
@@ -31,52 +56,91 @@ export function QuickAddRow({
   className?: string;
 }) {
   const [summary, setSummary] = useState('');
+  // Người dùng/sprint chỉ để gợi ý token → tải khi ô được focus lần đầu (Board nhiều cột không bắn nhiều request).
+  const [touched, setTouched] = useState(false);
+  const [pickedKey, setPickedKey] = useState<string | null>(readStoredTypeKey);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const { data: meta } = useProjectMeta(projectKey || undefined);
+  const { data: users } = useWorkspaceUsers({ enabled: touched });
+  const { data: sprints } = useProjectSprints(touched ? projectId : undefined);
   const create = useCreateIssue(projectId);
 
-  // Loại mặc định = loại đầu tiên không phải sub-task (fallback loại đầu tiên).
-  const defaultTypeId =
-    meta?.issueTypes.find((t) => !t.isSubtask)?.id ?? meta?.issueTypes[0]?.id ?? '';
+  const types = useMemo(() => meta?.issueTypes ?? [], [meta]);
+  const typeId = pickDefaultType(types, pickedKey);
+  const selectable = types.filter((t) => !t.isSubtask); // sub-task cần việc cha → không liệt kê
+  const ctx = useMemo<TokenCtx>(
+    () => ({ priorities: meta?.priorities ?? [], users: users ?? [], sprints: sprints ?? [] }),
+    [meta, users, sprints],
+  );
 
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    const s = summary.trim();
-    if (!s || !defaultTypeId || create.isPending) return;
-    create.mutate(
-      { projectId, typeId: defaultTypeId, summary: s, descriptionFormat: 'MARKDOWN', ...extra },
-      {
-        onSuccess: () => setSummary(''),
-        onError: (err) => toast.error(apiErrorMessage(err)),
+  function submit() {
+    if (!typeId || create.isPending) return;
+    const built = buildQuickAddInput(summary, ctx, { projectId, typeId, extra });
+    if (!built) return;
+    create.mutate(built.input, {
+      onSuccess: () => {
+        setSummary('');
+        inputRef.current?.focus();
+        if (built.unmatched.length > 0)
+          toast.info(`${built.unmatched.join(', ')} chưa nhận ra nên được giữ trong tiêu đề`);
       },
-    );
+      onError: (err) => toast.error(apiErrorMessage(err)),
+    });
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className={cn('flex items-center gap-1.5', compact ? 'px-2 pb-2' : 'px-2 py-1.5', className)}
+    <div
+      className={cn('flex items-start gap-1.5', compact ? 'px-2 pb-2' : 'px-2 py-1.5', className)}
+      onFocusCapture={() => setTouched(true)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && summary && !e.defaultPrevented) {
+          e.stopPropagation();
+          setSummary('');
+        }
+      }}
     >
-      <span className="grid h-5 w-5 shrink-0 place-items-center text-faint">
+      <span className="grid h-7 w-5 shrink-0 place-items-center text-faint">
         {create.isPending ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
         ) : (
           <Plus className="h-3.5 w-3.5" aria-hidden />
         )}
       </span>
-      <input
-        value={summary}
-        onChange={(e) => setSummary(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') setSummary('');
-        }}
-        placeholder={placeholder}
-        aria-label="Thêm nhanh việc mới"
-        disabled={!defaultTypeId || create.isPending}
-        className={cn(
-          'min-w-0 flex-1 bg-transparent text-sm text-ink placeholder:text-faint',
-          'focus-visible:outline-none disabled:opacity-60',
-        )}
-      />
-    </form>
+      {selectable.length > 0 && (
+        <SearchSelect
+          value={typeId}
+          onChange={(id) => {
+            const t = types.find((x) => x.id === id);
+            setPickedKey(t?.key ?? null);
+            storeTypeKey(t?.key ?? null);
+            inputRef.current?.focus();
+          }}
+          options={selectable.map((t) => ({ value: t.id, label: t.name, color: t.color }))}
+          ariaLabel="Loại việc khi thêm nhanh"
+          searchPlaceholder="Tìm loại việc…"
+          hideChevron
+          className="h-7 w-7 shrink-0 justify-center border-transparent bg-transparent px-0 hover:bg-surface-2"
+          renderTrigger={(sel) => {
+            const t = types.find((x) => x.id === sel?.value);
+            return t ? (
+              <span className="flex justify-center">
+                <IssueTypeIcon type={t} />
+              </span>
+            ) : null;
+          }}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <TokenTitleInput
+          bare
+          value={summary}
+          onChange={setSummary}
+          ctx={ctx}
+          placeholder={placeholder}
+          inputRef={inputRef}
+          onEnter={submit}
+        />
+      </div>
+    </div>
   );
 }

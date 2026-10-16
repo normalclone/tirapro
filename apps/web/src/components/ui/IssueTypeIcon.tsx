@@ -1,5 +1,4 @@
 import { BookOpen, Bug, CheckSquare, Circle, ListTree, Zap, type LucideIcon } from 'lucide-react';
-import type { IssueDto } from '@tirapro/types';
 import { cn } from '@/lib/utils';
 
 const ICON_BY_KEY: Record<string, LucideIcon> = {
@@ -15,7 +14,7 @@ export function IssueTypeIcon({
   type,
   className,
 }: {
-  type: Pick<IssueDto['type'], 'key' | 'name' | 'color'>;
+  type: { key: string | null; name: string; color?: string | null };
   className?: string;
 }) {
   const Icon = (type.key && ICON_BY_KEY[type.key]) || Circle;
