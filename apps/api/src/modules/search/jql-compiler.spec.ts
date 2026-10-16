@@ -210,15 +210,19 @@ describe('JQL component / fixVersion / affectedVersion (B17)', () => {
   const c = (jql: string) => compileJql(ast(jql), { currentUserId: 'U' }).where;
   it('component = "Backend"', () =>
     expect(c('component = "Backend"')).toEqual({
-      components: { some: { component: { name: { in: ['Backend'] } } } },
+      components: { some: { component: { name: { in: ['Backend'], mode: 'insensitive' } } } },
     }));
   it('fixVersion IN (...) chỉ xét loại FIX', () =>
     expect(c('fixVersion IN ("v1.0","v1.1")')).toEqual({
-      fixVersions: { some: { type: 'FIX', version: { name: { in: ['v1.0', 'v1.1'] } } } },
+      fixVersions: {
+        some: { type: 'FIX', version: { name: { in: ['v1.0', 'v1.1'], mode: 'insensitive' } } },
+      },
     }));
   it('affectedVersion != … => none, loại AFFECTS', () =>
     expect(c('affectedVersion != "v1.0"')).toEqual({
-      fixVersions: { none: { type: 'AFFECTS', version: { name: { in: ['v1.0'] } } } },
+      fixVersions: {
+        none: { type: 'AFFECTS', version: { name: { in: ['v1.0'], mode: 'insensitive' } } },
+      },
     }));
   it('IS EMPTY / IS NOT EMPTY', () => {
     expect(c('component IS EMPTY')).toEqual({ components: { none: {} } });
@@ -226,6 +230,50 @@ describe('JQL component / fixVersion / affectedVersion (B17)', () => {
   });
   it('labels vẫn như cũ', () =>
     expect(c('labels = "bug"')).toEqual({
-      labels: { some: { label: { name: { in: ['bug'] } } } },
+      labels: { some: { label: { name: { in: ['bug'], mode: 'insensitive' } } } },
     }));
+});
+
+describe('alias me', () => {
+  it('assignee = me ≡ currentUser()', () => {
+    const a = compileJql(ast('assignee = me'), { currentUserId: 'U1' }).where;
+    expect(a).toEqual(compileJql(ast('assignee = currentUser()'), { currentUserId: 'U1' }).where);
+    expect(a).toEqual({ assigneeId: 'U1' });
+  });
+  it('IN (me, "ME", U2) và !=', () => {
+    expect(compileJql(ast('reporter IN (me, "ME")'), { currentUserId: 'U1' }).where).toEqual({
+      reporterId: { in: ['U1', 'U1'] },
+    });
+    expect(compileJql(ast('assignee != me'), { currentUserId: 'U1' }).where).toEqual({
+      assigneeId: { not: 'U1' },
+    });
+    expect(compileJql(ast('assignee IN (me, U2)'), { currentUserId: 'U1' }).where).toEqual({
+      assigneeId: { in: ['U1', 'U2'] },
+    });
+  });
+  it('labels = me KHÔNG bị đổi', () => {
+    const w = compileJql(ast('labels = me'), { currentUserId: 'U1' }).where;
+    expect(JSON.stringify(w)).not.toContain('U1');
+  });
+});
+
+describe('so khớp tên không phân biệt hoa/thường', () => {
+  const w = (jql: string) => compileJql(ast(jql), { currentUserId: 'U1' }).where;
+  const ins = { mode: 'insensitive' };
+  it('status = done / != / IN / NOT IN', () => {
+    expect(w('status = done')).toEqual({ status: { name: { equals: 'done', ...ins } } });
+    expect(w('status != done')).toEqual({ status: { name: { not: 'done', ...ins } } });
+    expect(w('status IN (done, "to do")')).toEqual({
+      status: { name: { in: ['done', 'to do'], ...ins } },
+    });
+    expect(w('type NOT IN (bug)')).toEqual({ type: { name: { notIn: ['bug'], ...ins } } });
+  });
+  it('project, sprint, priority và nhãn cũng không phân biệt hoa/thường', () => {
+    expect(w('project = demo')).toEqual({ project: { key: { equals: 'demo', ...ins } } });
+    expect(JSON.stringify(w('sprint = "sprint 1"'))).toContain('"mode":"insensitive"');
+    expect(JSON.stringify(w('priority = high'))).toContain('"mode":"insensitive"');
+    expect(w('labels = Frontend')).toEqual({
+      labels: { some: { label: { name: { in: ['Frontend'], ...ins } } } },
+    });
+  });
 });

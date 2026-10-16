@@ -242,9 +242,9 @@ function compileComparison(
       const col = cfg.idColumn!;
       if (op === 'IS') return { [col]: null };
       if (op === 'IS NOT') return { NOT: { [col]: null } };
-      if (op === 'IN') return { [col]: { in: listStrings(value, ctx) } };
-      if (op === 'NOT IN') return { [col]: { notIn: listStrings(value, ctx) } };
-      const v = scalarString(value, ctx);
+      if (op === 'IN') return { [col]: { in: listStrings(value, ctx, userScalar) } };
+      if (op === 'NOT IN') return { [col]: { notIn: listStrings(value, ctx, userScalar) } };
+      const v = userScalar(value, ctx);
       if (op === '!=') return { [col]: { not: v } };
       return { [col]: v };
     }
@@ -270,7 +270,7 @@ function compileComparison(
       if (op === 'IS NOT') return { [a.relation]: { some: base } };
       const names =
         op === 'IN' || op === 'NOT IN' ? listStrings(value, ctx) : [scalarString(value, ctx)];
-      const rel = { ...base, [a.ref]: { name: { in: names } } };
+      const rel = { ...base, [a.ref]: { name: { in: names, mode: 'insensitive' as const } } };
       return op === 'NOT IN' || op === '!='
         ? { [a.relation]: { none: rel } }
         : { [a.relation]: { some: rel } };
@@ -306,6 +306,13 @@ function scalarString(v: JqlValue, ctx: JqlCompileContext): string {
   // Ngày tương đối dùng ở field không phải date → suy biến về token gốc (hiếm).
   if (v.kind === 'relativeDate') return `${v.amount}${v.unit}`;
   return '';
+}
+
+/** Alias `me` (không phân biệt hoa thường) — chỉ dùng cho trường người (assignee/reporter), ≡ `currentUser()`. */
+const isMe = (v: JqlValue): boolean => v.kind === 'string' && v.value.trim().toLowerCase() === 'me';
+
+function userScalar(v: JqlValue, ctx: JqlCompileContext): string {
+  return isMe(v) ? ctx.currentUserId : scalarString(v, ctx);
 }
 
 /** Giải giá trị ngày: tương đối (-7d), mốc (startOfWeek()), hoặc ngày tuyệt đối. */
@@ -365,9 +372,13 @@ function scalarNumber(v: JqlValue): number {
   return NaN;
 }
 
-function listStrings(v: JqlValue, ctx: JqlCompileContext): string[] {
-  if (v.kind === 'list') return v.value.map((x) => scalarString(x, ctx));
-  return [scalarString(v, ctx)];
+function listStrings(
+  v: JqlValue,
+  ctx: JqlCompileContext,
+  map: (v: JqlValue, ctx: JqlCompileContext) => string = scalarString,
+): string[] {
+  if (v.kind === 'list') return v.value.map((x) => map(x, ctx));
+  return [map(v, ctx)];
 }
 
 function listNumbers(v: JqlValue): number[] {
@@ -411,18 +422,23 @@ function categoryFilter(
   return op === '!=' ? { not: v } : v;
 }
 
+/**
+ * Bộ lọc tên (status/type/priority/sprint/project…) KHÔNG phân biệt hoa/thường — khớp bước kiểm giá trị của
+ * `SearchService` (`status = done` ra đúng công việc "Done", không rỗng im lặng).
+ */
 function stringFilter(
   op: JqlOperator,
   value: JqlValue,
   ctx: JqlCompileContext,
-): Prisma.StringFilter | string {
-  if (op === 'IN') return { in: listStrings(value, ctx) };
-  if (op === 'NOT IN') return { notIn: listStrings(value, ctx) };
+): Prisma.StringFilter {
+  const mode = 'insensitive' as const;
+  if (op === 'IN') return { in: listStrings(value, ctx), mode };
+  if (op === 'NOT IN') return { notIn: listStrings(value, ctx), mode };
   const v = scalarString(value, ctx);
   if (op === '~') return likeFilter(v);
-  if (op === '!~') return { not: { contains: escapeLike(v) }, mode: 'insensitive' };
-  if (op === '!=') return { not: v };
-  return v;
+  if (op === '!~') return { not: { contains: escapeLike(v) }, mode };
+  if (op === '!=') return { not: v, mode };
+  return { equals: v, mode };
 }
 
 function dateCmp(op: JqlOperator, d: Date): Prisma.DateTimeNullableFilter {

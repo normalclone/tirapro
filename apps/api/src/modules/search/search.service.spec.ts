@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SearchService } from './search.service';
 
+/** Người thấy mọi dự án (admin) — `visibleWhere` = `{}`. */
+const ADMIN_ACCESS = { visibleWhere: vi.fn().mockResolvedValue({}) };
+
 function makeService(rows: Array<{ id: string; rank: number }> | Error) {
   const queryRaw = vi.fn(() =>
     rows instanceof Error ? Promise.reject(rows) : Promise.resolve(rows),
@@ -10,7 +13,12 @@ function makeService(rows: Array<{ id: string; rank: number }> | Error) {
     $queryRaw: queryRaw,
     project: { findMany: vi.fn().mockResolvedValue([{ id: 'P1' }]) },
   };
-  return { service: new SearchService(issues as never, prisma as never), issues, queryRaw, prisma };
+  return {
+    service: new SearchService(issues as never, prisma as never, ADMIN_ACCESS as never),
+    issues,
+    queryRaw,
+    prisma,
+  };
 }
 
 describe('SearchService.search', () => {
@@ -152,8 +160,8 @@ describe('SearchService.fields — severities', () => {
       version: { findMany: empty },
       severity,
     };
-    const service = new SearchService({} as never, prisma as never);
-    const out = await service.fields('W1');
+    const service = new SearchService({} as never, prisma as never, ADMIN_ACCESS as never);
+    const out = await service.fields('W1', 'U1');
     expect(severity.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { workspaceId: 'W1' }, orderBy: { rank: 'desc' } }),
     );
@@ -180,8 +188,8 @@ describe('SearchService.fields — components/versions (B17)', () => {
       },
       version: { findMany: vi.fn().mockResolvedValue([{ name: 'v1.0' }, { name: 'v1.0' }]) },
     };
-    const service = new SearchService({} as never, prisma as never);
-    const out = await service.fields('W1');
+    const service = new SearchService({} as never, prisma as never, ADMIN_ACCESS as never);
+    const out = await service.fields('W1', 'U1');
     expect(prisma.component.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { project: { workspaceId: 'W1', deletedAt: null } },
@@ -208,5 +216,187 @@ describe('SearchService.similarIssueIds', () => {
       search: () => Promise.resolve(null),
     };
     expect(await service.similarIssueIds('W1', 'P1', 'giỏ hàng')).toEqual([]);
+  });
+});
+
+describe('SearchService — kiểm giá trị JQL (U15)', () => {
+  function make() {
+    const issues = { query: vi.fn().mockResolvedValue({ data: [], meta: {} }) };
+    const prisma = {
+      status: { findMany: vi.fn().mockResolvedValue([{ name: 'In Progress' }, { name: 'Done' }]) },
+      priority: { findMany: vi.fn().mockResolvedValue([{ name: 'High' }, { name: 'Low' }]) },
+      project: { findMany: vi.fn().mockResolvedValue([{ key: 'DEMO' }]) },
+      issueType: { findMany: vi.fn().mockResolvedValue([{ name: 'Bug' }, { name: 'Story' }]) },
+      severity: { findMany: vi.fn().mockResolvedValue([{ name: 'Critical' }]) },
+      // truy vấn tồn tại (có OR) chỉ thấy "Sprint 1"; danh mục (có take) trả danh sách cắt
+      sprint: {
+        findMany: vi.fn((args: { where: { OR?: unknown[] }; take?: number }) =>
+          Promise.resolve(args.where.OR ? [{ name: 'Sprint 1' }] : [{ name: 'Sprint 100' }]),
+        ),
+      },
+    };
+    return {
+      service: new SearchService(issues as never, prisma as never, ADMIN_ACCESS as never),
+      issues,
+      prisma,
+    };
+  }
+  const run = (svc: SearchService, jql: string, checkValues?: boolean) =>
+    svc.search('w1', 'u1', { mode: 'jql', jql, limit: 10, checkValues });
+
+  it('checkValues: giá trị gần đúng → 422 kèm "ý bạn là"', async () => {
+    const { service, issues } = make();
+    await expect(run(service, 'status = "In Progresss"', true)).rejects.toThrow(
+      'ý bạn là "In Progress"',
+    );
+    expect(issues.query).not.toHaveBeenCalled();
+  });
+  it('không bật checkValues (board / bộ lọc đã lưu) → KHÔNG ném, vẫn truy vấn như cũ', async () => {
+    const { service, issues, prisma } = make();
+    await run(service, 'status = "In Progresss"');
+    expect(issues.query).toHaveBeenCalledTimes(1);
+    expect(prisma.status.findMany).not.toHaveBeenCalled();
+  });
+  it('khác hoa/thường vẫn hợp lệ (compiler cũng so không phân biệt hoa/thường)', async () => {
+    const { service, issues } = make();
+    await run(service, 'status = done', true);
+    expect(issues.query).toHaveBeenCalledTimes(1);
+  });
+  it('quá xa → liệt kê giá trị hiện có', async () => {
+    const { service } = make();
+    await expect(run(service, 'priority = zzzzzz', true)).rejects.toThrow(
+      'Không có mức ưu tiên "zzzzzz". Các giá trị hiện có: High, Low',
+    );
+  });
+  it('IN / NOT IN kiểm từng giá trị; trường khác (labels/summary/assignee) không bị kiểm', async () => {
+    const { service, issues, prisma } = make();
+    await expect(run(service, 'status IN (Done, Dne)', true)).rejects.toThrow('ý bạn là "Done"');
+    await run(service, 'labels = lol AND summary ~ "x" AND assignee = me', true);
+    expect(issues.query).toHaveBeenCalledTimes(1);
+    expect(prisma.status.findMany).toHaveBeenCalledTimes(1); // chỉ lần của truy vấn đầu
+  });
+  it('sprint: kiểm tồn tại theo tên (không bị cắt 100), không phân biệt hoa/thường', async () => {
+    const { service, issues, prisma } = make();
+    await run(service, 'sprint = "sprint 1"', true);
+    expect(issues.query).toHaveBeenCalledTimes(1);
+    const call = prisma.sprint.findMany.mock.calls[0]![0];
+    expect(call.take).toBeUndefined();
+    expect(JSON.stringify(call.where)).toContain('"mode":"insensitive"');
+    // sprint không tồn tại → mới tra danh mục để gợi ý
+    await expect(run(service, 'sprint = "Sprint 2"', true)).rejects.toThrow(
+      'Không có sprint "Sprint 2"',
+    );
+  });
+  it('type / severity cũng được kiểm', async () => {
+    const { service } = make();
+    await expect(run(service, 'type = Bugg', true)).rejects.toThrow('ý bạn là "Bug"');
+    await expect(run(service, 'severity = Critcal', true)).rejects.toThrow('ý bạn là "Critical"');
+  });
+  it('toán tử ~ / IS không bị kiểm', async () => {
+    const { service, issues } = make();
+    await run(service, 'status ~ "xyz" AND priority IS EMPTY', true);
+    expect(issues.query).toHaveBeenCalledTimes(1);
+  });
+  it('validate: cú pháp sai giữ nguyên (kèm vị trí); giá trị sai → valid:false + suggestions', async () => {
+    const { service } = make();
+    expect(await service.validate('w1', 'u1', 'status =')).toMatchObject({ valid: false });
+    expect((await service.validate('w1', 'u1', 'status =')).position).toBeTypeOf('number');
+    const r = await service.validate('w1', 'u1', 'status = "In Progresss" AND project = DEMX');
+    expect(r.valid).toBe(false);
+    expect(r.error).toContain('ý bạn là "In Progress"');
+    expect(r.suggestions).toEqual([
+      { field: 'status', value: 'In Progresss', didYouMean: 'In Progress' },
+      { field: 'project', value: 'DEMX', didYouMean: 'DEMO' },
+    ]);
+    expect(await service.validate('w1', 'u1', 'status = Done')).toEqual({ valid: true });
+  });
+});
+
+describe('SearchService — chỉ liệt kê/gợi ý dự án người hỏi được xem (dự án riêng tư)', () => {
+  const VISIBLE = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
+  const rows = (...names: string[]) => names.map((name) => ({ name }));
+
+  /** Mô phỏng DB: truy vấn KHÔNG có điều kiện visible thấy cả dự án riêng tư (SECRET), có thì chỉ thấy PUB. */
+  function make() {
+    const hasVisible = (where: { OR?: unknown; project?: { OR?: unknown } }) =>
+      !!where.project?.OR || !!where.OR;
+    const prisma = {
+      project: {
+        findMany: vi.fn((a: { where: { OR?: unknown } }) =>
+          Promise.resolve(a.where.OR ? [{ key: 'PUB' }] : [{ key: 'PUB' }, { key: 'SECRET' }]),
+        ),
+      },
+      sprint: {
+        findMany: vi.fn((a: { where: { project?: { OR?: unknown }; OR?: unknown } }) =>
+          Promise.resolve(
+            a.where.project?.OR ? rows('Sprint Pub') : rows('Sprint Pub', 'Sprint Secret'),
+          ),
+        ),
+      },
+      component: {
+        findMany: vi.fn((a: { where: { project?: { OR?: unknown } } }) =>
+          Promise.resolve(a.where.project?.OR ? [] : rows('Secret Comp')),
+        ),
+      },
+      version: {
+        findMany: vi.fn((a: { where: { project?: { OR?: unknown } } }) =>
+          Promise.resolve(a.where.project?.OR ? [] : rows('v9-secret')),
+        ),
+      },
+      label: { findMany: vi.fn().mockResolvedValue([]) },
+      issueType: { findMany: vi.fn().mockResolvedValue([]) },
+      status: { findMany: vi.fn().mockResolvedValue([]) },
+      priority: { findMany: vi.fn().mockResolvedValue([]) },
+      severity: { findMany: vi.fn().mockResolvedValue([]) },
+      resolution: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    void hasVisible;
+    const access = { visibleWhere: vi.fn().mockResolvedValue(VISIBLE) };
+    return {
+      service: new SearchService({} as never, prisma as never, access as never),
+      prisma,
+      access,
+    };
+  }
+
+  it('validate: khoá dự án riêng tư không lọt vào "ý bạn là" / danh sách giá trị', async () => {
+    const { service, access } = make();
+    const r = await service.validate('w1', 'u1', 'project = SECRE');
+    expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
+    expect(r.valid).toBe(false);
+    expect(JSON.stringify(r)).not.toContain('SECRET');
+    expect(r.error).toContain('PUB');
+  });
+  it('sprint / thành phần / phiên bản của dự án riêng tư coi như không tồn tại, không được gợi ý lại', async () => {
+    const { service } = make();
+    // Gõ gần đúng tên riêng tư: nếu danh mục lộ, "ý bạn là" sẽ đưa đúng tên đó ra.
+    for (const jql of [
+      'sprint = "Sprint Secre"',
+      'component = "Secret Com"',
+      'fixVersion = "v9-secre"',
+      'affectedVersion = "v9-secre"',
+    ]) {
+      const r = await service.validate('w1', 'u1', jql);
+      expect(r.valid, jql).toBe(false);
+      expect(JSON.stringify(r.suggestions), jql).not.toMatch(/Sprint Secret|Secret Comp|v9-secret/);
+      expect(r.error ?? '', jql).not.toMatch(/ý bạn là "(Sprint Secret|Secret Comp|v9-secret)"/);
+      expect(r.error ?? '', jql).not.toMatch(/hiện có:.*(Secret|secret)/);
+    }
+  });
+  it('giá trị công khai vẫn hợp lệ (không phân biệt hoa/thường)', async () => {
+    const { service } = make();
+    expect(await service.validate('w1', 'u1', 'sprint = "sprint pub"')).toEqual({ valid: true });
+  });
+  it('fields(): sprint/nhãn/thành phần/phiên bản lọc theo dự án xem được', async () => {
+    const { service, prisma } = make();
+    const out = await service.fields('w1', 'u1');
+    for (const m of [prisma.sprint, prisma.label, prisma.component, prisma.version]) {
+      expect(m.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { project: { workspaceId: 'w1', deletedAt: null, ...VISIBLE } },
+        }),
+      );
+    }
+    expect(JSON.stringify(out)).not.toMatch(/Sprint Secret|Secret Comp|v9-secret/);
   });
 });

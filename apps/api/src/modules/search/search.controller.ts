@@ -7,7 +7,6 @@ import type { AuthUser } from '../../common/types/request';
 import { SearchService } from './search.service';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
-import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 import { validateJqlSchema, type ValidateJqlInput } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -50,20 +49,25 @@ export class SearchController {
       projectId,
       cursor,
       limit: lim,
+      checkValues: true,
     });
   }
 
   /** Danh mục giá trị cho bộ dựng truy vấn trực quan (type/status/priority/sprint/label/resolution). */
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get('fields')
-  async fields(@WorkspaceId() workspaceId: string) {
-    return this.search.fields(workspaceId);
+  async fields(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
+    return this.search.fields(workspaceId, user.id);
   }
 
-  // Chỉ phân tích cú pháp JQL, không đọc dữ liệu workspace.
-  @AuthOnly()
+  /** Kiểm cú pháp + giá trị JQL (có "ý bạn là …") cho ô JQL báo lỗi ngay khi gõ. Đọc danh mục workspace nên cần `workspace:view`. */
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Post('validate')
-  validate(@Body(new ZodValidationPipe(validateJqlSchema)) body: ValidateJqlInput) {
-    return this.search.validate(body.jql ?? '');
+  validate(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(validateJqlSchema)) body: ValidateJqlInput,
+  ) {
+    return this.search.validate(workspaceId, user.id, body.jql ?? '');
   }
 }
