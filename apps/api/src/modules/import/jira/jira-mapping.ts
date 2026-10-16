@@ -177,21 +177,89 @@ export const MAX_UNMATCHED_NAME_LENGTH = 80;
 export interface AssigneeTally {
   unmatched: Map<string, number>;
   blank: number;
+  /**
+   * Người chưa ghép NHƯNG đã nhớ email (L28): việc của họ sẽ tự gán khi họ được thêm vào workspace — nên không vào
+   * `unmatched` (không phải cảnh báo "mất người phụ trách"), vẫn thuộc "việc chưa có người" của báo cáo.
+   */
+  remembered: Map<string, { email: string; count: number }>;
 }
 
-export const newAssigneeTally = (): AssigneeTally => ({ unmatched: new Map(), blank: 0 });
+export const newAssigneeTally = (): AssigneeTally => ({
+  unmatched: new Map(),
+  blank: 0,
+  remembered: new Map(),
+});
+
+/**
+ * Email đã nhớ cho một người phụ trách Jira CHƯA ghép (không có khoá trong `users`): chữ thường, hoặc undefined.
+ * Người đã ghép / chủ động "Để trống" bỏ qua email dù client có gửi thừa.
+ */
+export function pendingEmailFor(
+  assignee: string,
+  users: Record<string, string | null>,
+  pendingEmails: Record<string, string> | undefined,
+): string | undefined {
+  if (!assignee || ownValue(users, assignee) !== undefined || !pendingEmails) return undefined;
+  const email = ownValue(pendingEmails, assignee)?.trim().toLowerCase();
+  return email || undefined;
+}
 
 /** Ghi nhận một việc: dùng chung cho dry-run (mọi dòng) và chạy thật (chỉ việc đã tạo được). */
 export function tallyAssignee(
   tally: AssigneeTally,
   assignee: string,
   users: Record<string, string | null>,
+  pendingEmails?: Record<string, string>,
 ): void {
   if (!assignee) return;
   const target = ownValue(users, assignee);
   if (target) return; // đã ghép → được gán
-  if (target === undefined) tally.unmatched.set(assignee, (tally.unmatched.get(assignee) ?? 0) + 1);
-  else tally.blank++;
+  if (target !== undefined) {
+    tally.blank++;
+    return;
+  }
+  const email = pendingEmailFor(assignee, users, pendingEmails);
+  if (email) {
+    const prev = tally.remembered.get(assignee);
+    tally.remembered.set(assignee, { email, count: (prev?.count ?? 0) + 1 });
+  } else tally.unmatched.set(assignee, (tally.unmatched.get(assignee) ?? 0) + 1);
+}
+
+export interface RememberedAssignees {
+  /** Số việc sẽ tự gán khi người phụ trách được thêm vào workspace. */
+  total: number;
+  /** Email đã nhớ (khác nhau, nhiều việc nhất trước, ≤ `MAX_UNMATCHED_LISTED`). */
+  emails: string[];
+  /** Số email khác không được liệt kê. */
+  more: number;
+}
+
+/** Gom người đã nhớ email thành tổng việc + danh sách email; rỗng → null. */
+export function summarizeRemembered(
+  remembered: ReadonlyMap<string, { email: string; count: number }>,
+  max = MAX_UNMATCHED_LISTED,
+): RememberedAssignees | null {
+  if (remembered.size === 0) return null;
+  const byEmail = new Map<string, number>();
+  let total = 0;
+  for (const { email, count } of remembered.values()) {
+    byEmail.set(email, (byEmail.get(email) ?? 0) + count);
+    total += count;
+  }
+  const sorted = [...byEmail.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return {
+    total,
+    emails: sorted.slice(0, max).map(([e]) => e),
+    more: Math.max(0, sorted.length - max),
+  };
+}
+
+/** Câu ghi chú (không phải cảnh báo) cho báo cáo/chạy thử: việc nào sẽ tự gán khi ai vào workspace. */
+export function formatRemembered(r: RememberedAssignees, dryRun = false): string {
+  const who = `${r.emails.join(', ')}${r.more > 0 ? ` và ${r.more} email khác` : ''}`;
+  return dryRun
+    ? `${r.total} việc sẽ tự gán khi ${who} được thêm vào không gian làm việc.`
+    : `${r.total} việc chưa có người phụ trách — sẽ tự gán khi ${who} được thêm vào không gian làm việc.`;
 }
 
 export interface UnmatchedAssignees {

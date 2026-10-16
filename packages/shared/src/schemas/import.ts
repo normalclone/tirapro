@@ -17,6 +17,11 @@ export const jiraMappingSchema = z.object({
   priorities: z.record(z.string().min(1)),
   /** Tên người dùng Jira → id user thành viên workspace; null = để trống. Thiếu khoá = để trống. */
   users: z.record(z.string().nullable()).default({}),
+  /**
+   * Tên người dùng Jira CHƯA ghép → email (L28): nhớ để tự gán việc khi họ được thêm vào workspace.
+   * Chỉ có tác dụng với người không có khoá trong `users`; khớp theo email, không đoán theo tên.
+   */
+  pendingEmails: z.record(z.string().email()).default({}),
 });
 
 export const jiraImportOptionsSchema = z.object({

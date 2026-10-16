@@ -91,7 +91,17 @@ export class MembersService {
       summary: `Thêm ${this.label(member.user)} với vai trò ${this.roleNames(member.roles)}`,
       meta: { roleIds: ids },
     });
+    this.emitMemberAdded(workspaceId, [userId], actorId);
     return member;
+  }
+
+  /**
+   * Báo "người mới vào workspace" SAU khi đã commit (L28: Jira import tự gán các việc đã nhớ email của họ).
+   * Chỉ cho người thật sự được thêm — đổi vai trò của người đã là thành viên không phát.
+   */
+  private emitMemberAdded(workspaceId: string, userIds: string[], actorId?: string): void {
+    if (userIds.length === 0) return;
+    this.events.emit(DOMAIN_EVENTS.MEMBER_ADDED, { workspaceId, userIds, actorId });
   }
 
   /**
@@ -117,7 +127,9 @@ export class MembersService {
       passwordHash,
     );
     await this.rbac.invalidate(userId, workspaceId);
-    return { member: await this.getWorkspaceMember(workspaceId, userId), tempPassword };
+    const member = await this.getWorkspaceMember(workspaceId, userId);
+    this.emitMemberAdded(workspaceId, [userId], actorId);
+    return { member, tempPassword };
   }
 
   /** Transaction tạo user + membership + nhật ký; hai request trùng email đồng thời → P2002 → cùng lỗi "đã có tài khoản". */
@@ -281,6 +293,7 @@ export class MembersService {
         summary: `Thêm ${toAdd.length} thành viên vào không gian làm việc`,
         meta: { userIds: toAdd, roleIds: ids },
       });
+      this.emitMemberAdded(workspaceId, toAdd, actorId);
     }
     return { added: toAdd.length, skipped: unique.length - toAdd.length };
   }

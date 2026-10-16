@@ -61,7 +61,13 @@ describe('mapping helpers', () => {
   it('findMissingMapping / formatMissing', () => {
     const m = findMissingMapping(
       { issueTypes: ['Bug'], statuses: ['Done', 'QA'], priorities: ['High'] },
-      { issueTypes: { Bug: 'x' }, statuses: { Done: 'y' }, priorities: {}, users: {} },
+      {
+        issueTypes: { Bug: 'x' },
+        statuses: { Done: 'y' },
+        priorities: {},
+        users: {},
+        pendingEmails: {},
+      },
     );
     expect(m).toEqual({ issueTypes: [], statuses: ['QA'], priorities: ['High'] });
     expect(formatMissing(m)).toContain('trạng thái: QA');
@@ -89,6 +95,7 @@ describe('findMissingMapping — khoá prototype', () => {
       statuses: {},
       priorities: {},
       users: {},
+      pendingEmails: {},
     });
     expect(miss).toEqual({
       issueTypes: ['constructor'],

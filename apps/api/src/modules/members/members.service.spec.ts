@@ -701,3 +701,136 @@ describe('MembersService — dự án riêng tư', () => {
     expect(prisma.projectMembership.deleteMany).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('MembersService — phát member.added SAU commit (L28)', () => {
+  const memberRow = {
+    id: 'm2',
+    joinedAt: new Date(),
+    roleId: 'r1',
+    role: { id: 'r1', name: 'Workspace Member', color: null },
+    user: {
+      id: 'u2',
+      email: 'ba@x.vn',
+      displayName: 'Bình',
+      avatarUrl: null,
+      timezone: 'UTC',
+      locale: 'vi',
+      status: 'ACTIVE',
+      isSystemAdmin: false,
+      lastSeenAt: null,
+      createdAt: new Date(),
+    },
+    roles: [{ role: { id: 'r1', name: 'Workspace Member', color: null } }],
+  };
+
+  function setup(opts: { existing?: boolean } = {}) {
+    const order: string[] = [];
+    const tx = {
+      user: { create: vi.fn(() => Promise.resolve({ id: 'u9' })) },
+      workspaceMembership: {
+        create: vi.fn(() => Promise.resolve({ id: 'm9' })),
+        createMany: vi.fn(() => Promise.resolve({ count: 2 })),
+        findMany: vi.fn(() => Promise.resolve([])),
+      },
+      workspaceMembershipRole: { createMany: vi.fn(() => Promise.resolve({})) },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (fn: unknown) => {
+        order.push('commit');
+        return typeof fn === 'function' ? await (fn as (t: unknown) => unknown)(tx) : [];
+      }),
+      user: {
+        findUnique: vi.fn((a: { where: { email?: string } }) =>
+          Promise.resolve(a.where.email ? null : { id: 'u2', email: 'ba@x.vn', status: 'ACTIVE' }),
+        ),
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            { id: 'u1', status: 'ACTIVE', email: 'a@x.vn' },
+            { id: 'u2', status: 'ACTIVE', email: 'b@x.vn' },
+          ]),
+        ),
+      },
+      role: { findMany: vi.fn(() => Promise.resolve([{ id: 'r1' }])) },
+      workspaceMembership: {
+        findUnique: vi.fn(() => Promise.resolve(opts.existing ? { id: 'm2' } : null)),
+        findMany: vi.fn(() => Promise.resolve([])),
+        create: vi.fn(() => {
+          order.push('commit');
+          return Promise.resolve({});
+        }),
+        update: vi.fn(() => Promise.resolve({})),
+        findUniqueOrThrow: vi.fn(() => Promise.resolve(memberRow)),
+      },
+      workspaceMembershipRole: {
+        deleteMany: vi.fn(() => Promise.resolve({})),
+        createMany: vi.fn(() => Promise.resolve({})),
+      },
+    };
+    const events = {
+      emit: vi.fn((name: string) => {
+        order.push(`emit:${name}`);
+      }),
+    };
+    const svc = new MembersService(
+      prisma as never,
+      { invalidate: vi.fn(), invalidateWorkspace: vi.fn() } as never,
+      {} as never,
+      events as never,
+      { record: vi.fn() } as never,
+    );
+    return { svc, events, order };
+  }
+  const added = (events: { emit: { mock: { calls: unknown[][] } } }) =>
+    events.emit.mock.calls.filter((c) => c[0] === 'member.added');
+
+  it('addWorkspace (nhánh tạo mới): phát member.added với đúng userIds + actorId, sau khi tạo membership', async () => {
+    const { svc, events, order } = setup();
+    await svc.addWorkspace('w1', 'u2', ['r1'], 'actor');
+    expect(added(events)).toEqual([
+      ['member.added', { workspaceId: 'w1', userIds: ['u2'], actorId: 'actor' }],
+    ]);
+    expect(order.indexOf('emit:member.added')).toBeGreaterThan(order.indexOf('commit'));
+  });
+
+  it('addWorkspace (đã là thành viên → chỉ đổi vai trò): KHÔNG phát member.added', async () => {
+    const { svc, events } = setup({ existing: true });
+    await svc.addWorkspace('w1', 'u2', ['r1'], 'actor');
+    expect(added(events)).toHaveLength(0);
+  });
+
+  it('addWorkspaceMany: phát một lần với những người THỰC SỰ được thêm, sau transaction', async () => {
+    const { svc, events, order } = setup();
+    const res = await svc.addWorkspaceMany('w1', ['u1', 'u2'], ['r1'], 'actor');
+    expect(res.added).toBe(2);
+    expect(added(events)).toEqual([
+      ['member.added', { workspaceId: 'w1', userIds: ['u1', 'u2'], actorId: 'actor' }],
+    ]);
+    expect(order.indexOf('emit:member.added')).toBeGreaterThan(order.indexOf('commit'));
+  });
+
+  it('addWorkspaceMany: không ai cần thêm → không phát', async () => {
+    const { svc, events } = setup();
+    // mọi người đã là thành viên
+    (
+      svc as unknown as { prisma: { workspaceMembership: { findMany: unknown } } }
+    ).prisma.workspaceMembership.findMany = vi.fn(() =>
+      Promise.resolve([{ userId: 'u1' }, { userId: 'u2' }]),
+    );
+    const res = await svc.addWorkspaceMany('w1', ['u1', 'u2'], ['r1'], 'actor');
+    expect(res.added).toBe(0);
+    expect(added(events)).toHaveLength(0);
+  });
+
+  it('createAccount: phát member.added cho tài khoản vừa tạo, sau transaction', async () => {
+    const { svc, events, order } = setup();
+    await svc.createAccount('w1', 'actor', {
+      email: 'new@x.vn',
+      displayName: 'Mới',
+      roleIds: ['r1'],
+    });
+    expect(added(events)).toEqual([
+      ['member.added', { workspaceId: 'w1', userIds: ['u9'], actorId: 'actor' }],
+    ]);
+    expect(order.indexOf('emit:member.added')).toBeGreaterThan(order.indexOf('commit'));
+  });
+});

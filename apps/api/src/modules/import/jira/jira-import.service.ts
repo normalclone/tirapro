@@ -31,6 +31,7 @@ import {
 import {
   findMissingMapping,
   formatMissing,
+  formatRemembered,
   formatUnmatchedAssignees,
   hasMissing,
   inferPriorityRank,
@@ -40,7 +41,9 @@ import {
   layerIssues,
   ownValue,
   newAssigneeTally,
+  pendingEmailFor,
   resolveLinks,
+  summarizeRemembered,
   summarizeUnmatchedAssignees,
   tallyAssignee,
   type IssueLinks,
@@ -343,6 +346,7 @@ export class JiraImportService implements OnApplicationBootstrap {
         ? await this.planKeys(workspaceId, parsed.issues)
         : NO_KEY_PLAN();
       const keyWarnings = this.keyWarnings(keyPlan);
+      const assigneeNotes = this.dryRunAssignees(parsed.issues, input.mapping);
       return {
         dryRun: true,
         total: parsed.issues.length,
@@ -353,6 +357,7 @@ export class JiraImportService implements OnApplicationBootstrap {
         comments: input.options.importComments ? plan.comments : 0,
         duplicateKeys: keyPlan.skip.size,
         invalidKeys: keyPlan.invalid.size,
+        rememberedAssignees: assigneeNotes.remembered,
         warnings: [
           ...keyWarnings.slice(0, DRY_RUN_KEY_WARNINGS),
           ...(keyWarnings.length > DRY_RUN_KEY_WARNINGS
@@ -361,7 +366,7 @@ export class JiraImportService implements OnApplicationBootstrap {
           ...[...plan.links.entries()].flatMap(([r, l]) =>
             l.warnings.map((w) => this.line(r, w, true)),
           ),
-          ...this.dryRunAssigneeWarning(parsed.issues, input.mapping.users),
+          ...assigneeNotes.lines,
         ],
       };
     }
@@ -576,6 +581,10 @@ export class JiraImportService implements OnApplicationBootstrap {
                 ? sprintIds.get(row.sprints[row.sprints.length - 1] ?? '')
                 : undefined,
               fixedKey: keyPlan.fixed.get(row),
+              workspaceId,
+              pendingEmail: row.assignee
+                ? pendingEmailFor(row.assignee, input.mapping.users, input.mapping.pendingEmails)
+                : undefined,
               assigneeId: row.assignee ? userFor(row.assignee) : undefined,
               reporterId: row.reporter ? userFor(row.reporter) : undefined,
               resolutionByName,
@@ -584,7 +593,12 @@ export class JiraImportService implements OnApplicationBootstrap {
               userFor,
               onCreated: (dto) => {
                 idByRow.set(row, dto.id);
-                tallyAssignee(assigneeTally, row.assignee, input.mapping.users);
+                tallyAssignee(
+                  assigneeTally,
+                  row.assignee,
+                  input.mapping.users,
+                  input.mapping.pendingEmails,
+                );
               },
             }),
           );
@@ -617,6 +631,9 @@ export class JiraImportService implements OnApplicationBootstrap {
 
       // 5b. Báo người phụ trách bị bỏ gán (một dòng gộp, không mỗi việc một dòng).
       const unmatched = summarizeUnmatchedAssignees(assigneeTally.unmatched);
+      // L28: người đã nhớ email → ghi chú (KHÔNG phải cảnh báo): việc của họ sẽ tự gán khi họ được thêm vào workspace.
+      const remembered = summarizeRemembered(assigneeTally.remembered);
+      if (remembered) errorLines.unshift(`[Ghi chú]: ${formatRemembered(remembered)}`);
       if (unmatched) {
         // Đặt ĐẦU nhật ký: dòng gộp này không bị `joinLog` cắt khi có hàng nghìn dòng lỗi.
         errorLines.unshift(`[Cảnh báo]: ${formatUnmatchedAssignees(unmatched)}`);
@@ -639,7 +656,10 @@ export class JiraImportService implements OnApplicationBootstrap {
             created: counters.created,
             failed: counters.failed,
             warnings: counters.warnings,
-            skippedAssignees: unmatched?.skipped ?? 0,
+            skippedAssignees: (unmatched?.skipped ?? 0) + (remembered?.total ?? 0),
+            rememberedAssignees: remembered?.total ?? 0,
+            rememberedEmails: remembered?.emails ?? [],
+            rememberedEmailsMore: remembered?.more ?? 0,
             unmatchedAssignees: unmatched?.listed ?? [],
             unmatchedAssigneesMore: unmatched?.more ?? 0,
             blankedAssignees: assigneeTally.blank,
@@ -686,6 +706,9 @@ export class JiraImportService implements OnApplicationBootstrap {
     sprintId?: string;
     /** Mã Jira gốc làm `Issue.key` (đã kiểm định dạng + trùng). */
     fixedKey?: string;
+    workspaceId: string;
+    /** Email đã nhớ cho người phụ trách chưa ghép (L28) → ghi hàng chờ trong cùng transaction. */
+    pendingEmail?: string;
     assigneeId?: string;
     reporterId?: string;
     resolutionByName: Map<string, string>;
@@ -742,6 +765,19 @@ export class JiraImportService implements OnApplicationBootstrap {
         if (row.updated) data.updatedAt = row.updated;
         if (a.reporterId) data.reporterId = a.reporterId;
         await tx.issue.update({ where: { id: issue.id }, data });
+
+        // 1b. Người phụ trách chưa là thành viên nhưng đã nhớ email: ghi hàng chờ để tự gán khi họ được thêm vào.
+        if (a.pendingEmail) {
+          await tx.importPendingAssignee.create({
+            data: {
+              workspaceId: a.workspaceId,
+              projectId: a.projectId,
+              issueId: issue.id,
+              email: a.pendingEmail,
+              sourceName: row.assignee,
+            },
+          });
+        }
 
         // 2. Label (resolve-or-create theo project, dùng cache của lô).
         const labelIds = new Set<string>();
@@ -1251,15 +1287,25 @@ export class JiraImportService implements OnApplicationBootstrap {
     return lines.sort((a, b) => a[0].row - b[0].row).map(([r, m]) => this.line(r, m, true));
   }
 
-  /** Dòng cảnh báo gộp của dry-run: người phụ trách sẽ bị bỏ gán vì không khớp (rỗng nếu không có). */
-  private dryRunAssigneeWarning(
+  /**
+   * Dry-run về người phụ trách: dòng cảnh báo gộp cho người sẽ bị bỏ gán (không khớp, không có email) và dòng ghi chú
+   * cho người đã nhớ email (sẽ tự gán khi họ được thêm vào workspace); kèm số việc của nhóm sau.
+   */
+  private dryRunAssignees(
     rows: JiraIssueRow[],
-    users: Record<string, string | null>,
-  ): string[] {
+    mapping: JiraImportRunInput['mapping'],
+  ): { lines: string[]; remembered: number } {
     const tally = newAssigneeTally();
-    for (const r of rows) tallyAssignee(tally, r.assignee, users);
+    for (const r of rows) tallyAssignee(tally, r.assignee, mapping.users, mapping.pendingEmails);
     const u = summarizeUnmatchedAssignees(tally.unmatched);
-    return u ? [formatUnmatchedAssignees(u)] : [];
+    const rem = summarizeRemembered(tally.remembered);
+    return {
+      lines: [
+        ...(u ? [formatUnmatchedAssignees(u)] : []),
+        ...(rem ? [formatRemembered(rem, true)] : []),
+      ],
+      remembered: rem?.total ?? 0,
+    };
   }
 
   /** "Dòng 5 (ABC-12): lý do" / "Dòng 5 (ABC-12) [Cảnh báo]: lý do". */

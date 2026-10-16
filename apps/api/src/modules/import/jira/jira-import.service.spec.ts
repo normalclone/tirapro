@@ -193,6 +193,7 @@ const fullMapping = (): JiraImportRunInput['mapping'] => ({
     Lowest: '__create__',
   },
   users: { 'Nguyễn Văn An': 'u-an', 'Trần Thị Bình': 'u-binh', 'Lê Minh Cường': null },
+  pendingEmails: {},
 });
 
 const runInput = (
@@ -1186,5 +1187,140 @@ describe('JiraImportService — mã Jira thật làm Issue.key (L27) — cha/con
     expect(done.errorLog as string).toContain(
       'Dòng 8 (PROJ-8) [Cảnh báo]: Mã vừa được một lượt nhập khác tạo',
     );
+  });
+});
+
+describe('JiraImportService — nhớ email người phụ trách chưa có (L28)', () => {
+  // Lê Minh Cường có 4 việc trong tệp mẫu; bỏ khoá = "chưa ghép".
+  const unmatched = (pendingEmails: Record<string, string>): JiraImportRunInput['mapping'] => {
+    const users: Record<string, string | null> = { ...fullMapping().users };
+    delete users['Lê Minh Cường'];
+    return { ...fullMapping(), users, pendingEmails };
+  };
+  const withEmail = () => unmatched({ 'Lê Minh Cường': 'Cuong@X.com' });
+
+  async function runAndWait(
+    c: ReturnType<typeof setup>,
+    mapping: JiraImportRunInput['mapping'],
+    options?: Partial<JiraImportRunInput['options']>,
+  ) {
+    const { analyzeId } = await c.service.analyze('w1', 'u1', file());
+    const res = await c.service.run(
+      'w1',
+      'u1',
+      runInput(analyzeId, { mapping, options: { ...runInput(analyzeId).options, ...options } }),
+    );
+    if ('jobId' in res) await c.service.waitForJob(res.jobId);
+    return res;
+  }
+  const lastUpdate = (c: ReturnType<typeof setup>) =>
+    (
+      c.prisma.importJob.update.mock.calls as unknown as Array<[{ data: Record<string, unknown> }]>
+    ).at(-1)![0].data;
+  const txMock = () => ({
+    issue: { update: vi.fn(() => Promise.resolve({})) },
+    issueLabel: { createMany: vi.fn(() => Promise.resolve({})) },
+    comment: { createMany: vi.fn(() => Promise.resolve({})) },
+    importPendingAssignee: { create: vi.fn(() => Promise.resolve({})) },
+  });
+  const afterFor = async (c: ReturnType<typeof setup>, summary: string) => {
+    const tx = txMock();
+    const item = c.created.find((p) => p.input.summary === summary)!;
+    await item.after!(tx as never, { id: 'i1' } as never, new Map());
+    return tx;
+  };
+
+  it('người chưa ghép có email → ghi hàng chờ trong cùng transaction (email chữ thường, gắn việc/dự án/workspace)', async () => {
+    const c = setup();
+    await runAndWait(c, withEmail());
+    const tx = await afterFor(c, 'Cấu hình CI/CD'); // việc của Lê Minh Cường
+    expect(tx.importPendingAssignee.create).toHaveBeenCalledWith({
+      data: {
+        workspaceId: 'w1',
+        projectId: 'p1',
+        issueId: 'i1',
+        email: 'cuong@x.com',
+        sourceName: 'Lê Minh Cường',
+      },
+    });
+  });
+
+  it('không có trong pendingEmails → không tạo hàng chờ (hành vi cũ: bỏ gán + cảnh báo)', async () => {
+    const c = setup();
+    await runAndWait(c, unmatched({}));
+    const tx = await afterFor(c, 'Cấu hình CI/CD');
+    expect(tx.importPendingAssignee.create).not.toHaveBeenCalled();
+    expect(lastUpdate(c).result).toMatchObject({
+      skippedAssignees: 4,
+      rememberedAssignees: 0,
+      rememberedEmails: [],
+    });
+  });
+
+  it('người đã ghép hoặc chủ động "Để trống" thì bỏ qua pendingEmails', async () => {
+    const c = setup();
+    // fullMapping: Cường = null (Để trống cố ý), Bình = u-binh (đã ghép) — cả hai kèm email thừa
+    await runAndWait(c, {
+      ...fullMapping(),
+      pendingEmails: { 'Lê Minh Cường': 'cuong@x.com', 'Trần Thị Bình': 'binh@x.com' },
+    });
+    expect(
+      (await afterFor(c, 'Cấu hình CI/CD')).importPendingAssignee.create,
+    ).not.toHaveBeenCalled();
+    expect(
+      (await afterFor(c, 'Lỗi làm tròn số tiền')).importPendingAssignee.create,
+    ).not.toHaveBeenCalled();
+    expect(lastUpdate(c).result).toMatchObject({ rememberedAssignees: 0 });
+  });
+
+  it('kết quả: skippedAssignees vẫn đếm (chưa có người), rememberedAssignees đếm riêng; cảnh báo "KHÔNG có người" không còn cho họ', async () => {
+    const c = setup();
+    await runAndWait(c, withEmail());
+    const done = lastUpdate(c);
+    expect(done.result).toMatchObject({
+      skippedAssignees: 4,
+      rememberedAssignees: 4,
+      rememberedEmails: ['cuong@x.com'],
+      rememberedEmailsMore: 0,
+      unmatchedAssignees: [],
+      warnings: 0,
+    });
+    expect(done.errorLog as string).toContain('[Ghi chú]');
+    expect(done.errorLog as string).toContain('cuong@x.com');
+    expect(done.errorLog as string).not.toContain('KHÔNG có người phụ trách');
+  });
+
+  it('một người có email, một người không: cảnh báo chỉ nêu người không có email', async () => {
+    const c = setup();
+    const users: Record<string, string | null> = { ...fullMapping().users };
+    delete users['Lê Minh Cường'];
+    delete users['Trần Thị Bình'];
+    await runAndWait(c, {
+      ...fullMapping(),
+      users,
+      pendingEmails: { 'Lê Minh Cường': 'cuong@x.com' },
+    });
+    const done = lastUpdate(c);
+    const r = done.result as {
+      unmatchedAssignees: Array<{ name: string }>;
+      skippedAssignees: number;
+    };
+    expect(r.unmatchedAssignees.map((u) => u.name)).toEqual(['Trần Thị Bình']);
+    expect(r.skippedAssignees).toBeGreaterThan(4);
+    expect(done.errorLog as string).toContain('Trần Thị Bình');
+  });
+
+  it('dry-run: báo "N việc sẽ tự gán khi họ được thêm", đếm rememberedAssignees, không ghi gì', async () => {
+    const c = setup();
+    const res = (await runAndWait(c, withEmail(), { dryRun: true })) as {
+      warnings: string[];
+      rememberedAssignees: number;
+    };
+    expect(res.rememberedAssignees).toBe(4);
+    const text = res.warnings.join('\n');
+    expect(text).toContain('4 việc sẽ tự gán');
+    expect(text).toContain('cuong@x.com');
+    expect(text).not.toContain('Lê Minh Cường (4 việc)'); // không còn vào cảnh báo "không khớp"
+    expect(c.prisma.importJob.create).not.toHaveBeenCalled();
   });
 });

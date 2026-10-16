@@ -21,6 +21,8 @@ export const DOMAIN_EVENTS = {
   SPRINT_COMPLETED: 'sprint.completed',
   SPRINT_UPDATED: 'sprint.updated',
   MEMBER_ROLE_CHANGED: 'member.role_changed',
+  // payload { workspaceId, userIds: string[], actorId?: string } — người mới được thêm vào workspace (SAU commit); Jira import tự gán việc theo email đã nhớ
+  MEMBER_ADDED: 'member.added',
   MEMBER_REMOVED: 'member.removed', // payload { workspaceId, userId } — gateway ngắt socket của user khỏi workspace
   // payload { userId } — phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị): gateway ngắt mọi socket của user
   ACCOUNT_SESSIONS_REVOKED: 'account.sessions_revoked',
