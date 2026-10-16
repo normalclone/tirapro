@@ -88,7 +88,7 @@ export function TriagePage() {
     <PeekShell>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-2 border-b border-border px-6 py-3">
-          <span className="text-sm font-medium text-ink">Phân loại (Triage)</span>
+          <span className="text-sm font-medium text-ink">Việc mới vào</span>
           {inboxCount > 0 && (
             <Badge className="bg-primary-subtle text-primary tabular">{inboxCount}</Badge>
           )}

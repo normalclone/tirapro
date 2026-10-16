@@ -35,3 +35,16 @@ export function swimlaneEmptyKind(a: {
   if (a.filtered || a.scopedCount > 0) return 'filtered';
   return a.isScrum ? 'sprint' : 'board';
 }
+
+/**
+ * Tên sprint rút gọn cho chip hẹp (mobile): bỏ phần mô tả sau dấu gạch cách hai bên ("Sprint 2 — Thanh toán" → "Sprint 2").
+ * Tên không bắt đầu bằng "Sprint" thì thêm nhãn "Sprint: " để chip vẫn tự giải thích. Tên đầy đủ để ở tooltip.
+ */
+export function shortSprintName(name: string): string {
+  const head =
+    name
+      .trim()
+      .split(/\s+[—–-]\s+/)[0]!
+      .trim() || name.trim();
+  return /^sprint\b/i.test(head) ? head : `Sprint: ${head}`;
+}

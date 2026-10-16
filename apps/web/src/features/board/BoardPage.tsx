@@ -21,7 +21,7 @@ import { ASSIGN_DENIED_NOTICE } from '@/features/quick-assign/events';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import { Column } from './Column';
 import { freshenBoardIssues } from './boardIssues';
-import { noActiveSprintHint, scopeBoardIssues, swimlaneEmptyKind } from './scope';
+import { noActiveSprintHint, scopeBoardIssues, shortSprintName, swimlaneEmptyKind } from './scope';
 import { NO_LANE, decideDrop, type DropContext, type DropPlan } from './dropPlan';
 import { StatusPickDialog } from './StatusPickDialog';
 import { useSwimlaneOverride } from './swimlane';
@@ -38,6 +38,7 @@ import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/pr
 import { Button } from '@/components/ui/Button';
 import { SprintTimeText } from '@/components/ui/SprintTimeText';
 import { QueryError } from '@/components/ui/QueryError';
+import { ToolbarStrip } from '@/components/ui/ToolbarStrip';
 import { apiErrorMessage } from '@/lib/api';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useRetained } from '@/lib/useRetained';
@@ -637,76 +638,96 @@ export function BoardPage() {
             className={cn(
               'flex shrink-0 flex-wrap items-center gap-2 px-4 pt-3',
               CHIP_ROW_GAP_COARSE,
+              // Mobile: chỉ còn hai dải cuộn ngang (chip nhanh + điều khiển phụ), mỗi dải đã có đệm dọc chứa vùng bấm → bỏ khoảng hở hàng.
+              'max-sm:!gap-y-0',
             )}
           >
             <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
-            <AssigneeFilter options={assigneeOptions} value={assignee} onChange={changeAssignee} />
-            <button
-              type="button"
-              onClick={toggleAssignee}
-              aria-pressed={swimlaneBy === 'assignee'}
-              title={`Chia bảng thành hàng theo người phụ trách — chỉ áp cho bạn${swimlaneOverride === null ? '' : ' (đang khác cấu hình bảng)'}. Kéo việc sang hàng khác để giao cho người đó.`}
-              className={cn(
-                'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                CHIP_TOUCH_HIT,
-                swimlaneBy === 'assignee'
-                  ? 'border-transparent bg-primary-subtle text-primary'
-                  : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
-              )}
-            >
-              <Users className="h-3.5 w-3.5" aria-hidden /> Nhóm theo người
-            </button>
-            {canCreate && !project?.archivedAt && (
+            <ToolbarStrip ariaLabel="Điều khiển bảng">
+              <AssigneeFilter
+                options={assigneeOptions}
+                value={assignee}
+                onChange={changeAssignee}
+              />
               <button
                 type="button"
-                onClick={() => openReportIssue({ projectKey: key, kind: 'BUG' })}
-                title="Báo lỗi hoặc gửi yêu cầu cho dự án này"
+                onClick={toggleAssignee}
+                aria-pressed={swimlaneBy === 'assignee'}
+                title={`Chia bảng thành hàng theo người phụ trách — chỉ áp cho bạn${swimlaneOverride === null ? '' : ' (đang khác cấu hình bảng)'}. Kéo việc sang hàng khác để giao cho người đó.`}
                 className={cn(
-                  'inline-flex h-7 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                  'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
                   CHIP_TOUCH_HIT,
+                  swimlaneBy === 'assignee'
+                    ? 'border-transparent bg-primary-subtle text-primary'
+                    : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
                 )}
               >
-                <Bug className="h-3.5 w-3.5" aria-hidden /> Báo lỗi
+                <Users className="h-3.5 w-3.5" aria-hidden /> Nhóm theo người
               </button>
-            )}
-            {swimlaneBy !== 'none' && swimlaneBy !== 'assignee' && (
-              <span
-                className="inline-flex h-7 items-center gap-1.5 rounded-full border border-transparent bg-primary-subtle px-2.5 text-xs font-medium text-primary"
-                title={`Bảng đang chia hàng: ${SWIMLANE_LABEL[swimlaneBy].toLowerCase()}.`}
-              >
-                <Layers className="h-3.5 w-3.5" /> {SWIMLANE_LABEL[swimlaneBy]}
-              </span>
-            )}
-            {isScrum && activeSprint && (
-              <span
-                className="inline-flex h-7 min-w-0 max-w-full items-center gap-1 rounded-full border border-border px-2.5 text-xs text-muted"
-                title={`Bảng Scrum chỉ hiện việc của sprint đang chạy${activeSprint.goal ? ` · Mục tiêu: ${activeSprint.goal}` : ''}`}
-              >
-                <span className="truncate">Sprint: {activeSprint.name}</span>
-                <SprintTimeText sprint={activeSprint} />
-              </span>
-            )}
-            {hasFilter && (
-              <span
-                className="inline-flex h-7 max-w-[18rem] items-center gap-1.5 truncate rounded-full border border-border px-2.5 text-xs text-muted"
-                title={`Bảng chỉ hiện việc khớp bộ lọc: ${board.filterJql ?? ''}`}
-              >
-                Bộ lọc bảng: <span className="truncate font-mono">{board.filterJql}</span>
-              </span>
-            )}
-            <div className="ml-auto flex items-center gap-2">
-              <PresenceAvatars room="project" projectId={project?.id} />
-              {canManageBoard && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setSettingsOpen(true)}
-                  title="Cột, giới hạn WIP, bộ lọc và cách chia hàng của bảng"
+              {canCreate && !project?.archivedAt && (
+                <button
+                  type="button"
+                  onClick={() => openReportIssue({ projectKey: key, kind: 'BUG' })}
+                  title="Báo lỗi hoặc gửi yêu cầu cho dự án này"
+                  className={cn(
+                    'inline-flex h-7 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                    CHIP_TOUCH_HIT,
+                  )}
                 >
-                  <Settings className="h-4 w-4" /> Cài đặt bảng
-                </Button>
+                  <Bug className="h-3.5 w-3.5" aria-hidden /> Báo lỗi
+                </button>
               )}
-            </div>
+              {swimlaneBy !== 'none' && swimlaneBy !== 'assignee' && (
+                <span
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full border border-transparent bg-primary-subtle px-2.5 text-xs font-medium text-primary"
+                  title={`Bảng đang chia hàng: ${SWIMLANE_LABEL[swimlaneBy].toLowerCase()}.`}
+                >
+                  <Layers className="h-3.5 w-3.5" /> {SWIMLANE_LABEL[swimlaneBy]}
+                </span>
+              )}
+              {isScrum && activeSprint && (
+                <span
+                  className="inline-flex h-7 min-w-0 max-w-full items-center gap-1 rounded-full border border-border px-2.5 text-xs text-muted"
+                  title={`${activeSprint.name} — bảng Scrum chỉ hiện việc của sprint đang chạy${activeSprint.goal ? ` · Mục tiêu: ${activeSprint.goal}` : ''}`}
+                >
+                  <span className="truncate max-sm:hidden">Sprint: {activeSprint.name}</span>
+                  {/* Mobile: tên rút gọn ("Sprint 2 · còn 4 ngày"); tên đầy đủ nằm trong tooltip (title) của chip. */}
+                  <span className="truncate sm:hidden max-sm:max-w-[10rem]">
+                    {shortSprintName(activeSprint.name)}
+                  </span>
+                  <SprintTimeText sprint={activeSprint} />
+                </span>
+              )}
+              {hasFilter && (
+                <span
+                  className="inline-flex h-7 max-w-[18rem] items-center gap-1.5 truncate rounded-full border border-border px-2.5 text-xs text-muted"
+                  title={`Bảng chỉ hiện việc khớp bộ lọc: ${board.filterJql ?? ''}`}
+                >
+                  Bộ lọc bảng: <span className="truncate font-mono">{board.filterJql}</span>
+                </span>
+              )}
+              {/* Mobile: `contents` → nút ⚙ và avatar là mục của dải cuộn (⚙ đứng ĐẦU dải để luôn thấy). */}
+              <div className="contents sm:ml-auto sm:flex sm:items-center sm:gap-2">
+                <PresenceAvatars room="project" projectId={project?.id} />
+                {canManageBoard && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setSettingsOpen(true)}
+                    aria-label="Cài đặt bảng"
+                    title="Cài đặt bảng: cột, giới hạn WIP, bộ lọc và cách chia hàng"
+                    className={cn(
+                      // Mobile: nút icon dạng chip rộng 44px (cao 28px + vùng bấm dọc mở rộng → 44×44).
+                      'max-sm:order-first max-sm:h-7 max-sm:w-11 max-sm:rounded-full max-sm:px-0',
+                      CHIP_TOUCH_HIT,
+                    )}
+                  >
+                    <Settings className="h-4 w-4" />
+                    <span className="max-sm:hidden">Cài đặt bảng</span>
+                  </Button>
+                )}
+              </div>
+            </ToolbarStrip>
           </div>
 
           {isScrum && !activeSprintId ? (

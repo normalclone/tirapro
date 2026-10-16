@@ -63,6 +63,7 @@ import {
 import { TruncatedBanner } from '@/features/issues/TruncatedBanner';
 import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
 import { Button } from '@/components/ui/Button';
+import { ToolbarStrip } from '@/components/ui/ToolbarStrip';
 import { ExportMenu } from '@/components/ui/ExportMenu';
 import { exportIssuesCsvWithToast } from '@/features/export/api';
 import { SprintTimeText } from '@/components/ui/SprintTimeText';
@@ -85,7 +86,7 @@ import {
   useProjectPermissions,
 } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
-import { CHIP_ROW_GAP_COARSE } from '@/lib/touchHit';
+import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT } from '@/lib/touchHit';
 import { IssueRow, IssueRowBody, type RowEdit } from './IssueRow';
 import { useBulkEdit } from './useBulkEdit';
 import { commonNextStatuses } from './bulkEdit';
@@ -765,6 +766,8 @@ export function BacklogPage() {
           className={cn(
             'flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-6',
             CHIP_ROW_GAP_COARSE,
+            // Mobile: hai dải cuộn ngang (chip nhanh + điều khiển phụ) tự chừa vùng bấm bằng đệm dọc → bỏ khoảng hở hàng.
+            'max-sm:!gap-y-0',
           )}
         >
           {!epicPanelOpen && (
@@ -779,95 +782,101 @@ export function BacklogPage() {
               Epic
             </Button>
           )}
-          <div className="w-44 shrink-0 lg:hidden">
-            <SearchSelect
-              ariaLabel="Lọc theo epic"
-              value={epicFilter ?? ''}
-              onChange={(v) => setEpicFilter(v || null)}
-              options={[
-                { value: '', label: 'Epic: Tất cả việc' },
-                { value: 'none', label: 'Không thuộc epic' },
-                ...epics.map((e) => ({ value: e.id, label: e.summary, hint: e.key })),
-              ]}
-              searchPlaceholder="Tìm epic theo mã hoặc tiêu đề…"
-              className="h-8"
-            />
-          </div>
           <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
-          <AssigneeFilter options={assigneeOptions} value={assignee} onChange={setAssignee} />
-          <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap">
-            <ExportMenu
-              items={[
-                {
-                  id: 'backlog',
-                  label: 'Việc chờ (CSV)',
-                  hint: 'Việc chưa xong và chưa vào sprint',
-                  run: () => exportIssuesCsvWithToast({ projectId, preset: 'backlog' }),
-                },
-                {
-                  id: 'bugs',
-                  label: 'Danh sách bug (CSV)',
-                  hint: 'Mọi công việc loại Bug của dự án',
-                  run: () => exportIssuesCsvWithToast({ projectId, preset: 'bugs' }),
-                },
-              ]}
-            />
-            {canManageSprint &&
-              (creating ? (
-                <form
-                  className="flex w-full items-center gap-2 sm:w-auto"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleCreate();
-                  }}
-                >
-                  <Input
-                    autoFocus
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        setCreating(false);
-                        setNewName('');
-                      }
-                    }}
-                    placeholder="VD: Sprint 1 — tuần 1 và 2"
-                    className="h-8 min-w-0 flex-1 sm:w-56 sm:flex-none"
-                    aria-label="Tên sprint mới"
-                    title={SPRINT_TIP}
-                  />
-                  <Button
-                    type="submit"
-                    size="sm"
-                    loading={createSprint.isPending}
-                    disabled={!newName.trim()}
-                  >
-                    Tạo
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setCreating(false);
-                      setNewName('');
-                    }}
-                  >
-                    Hủy
-                  </Button>
-                </form>
-              ) : (
+          <ToolbarStrip ariaLabel="Điều khiển danh sách">
+            {/* `sm:order-[-1]`: từ sm trở lên ô epic vẫn đứng TRƯỚC hàng chip như trước khi gom dải. */}
+            <div className="w-44 shrink-0 sm:order-[-1] lg:hidden">
+              <SearchSelect
+                ariaLabel="Lọc theo epic"
+                value={epicFilter ?? ''}
+                onChange={(v) => setEpicFilter(v || null)}
+                options={[
+                  { value: '', label: 'Epic: Tất cả việc' },
+                  { value: 'none', label: 'Không thuộc epic' },
+                  ...epics.map((e) => ({ value: e.id, label: e.summary, hint: e.key })),
+                ]}
+                searchPlaceholder="Tìm epic theo mã hoặc tiêu đề…"
+                className={cn('h-8', CHIP_TOUCH_HIT)}
+              />
+            </div>
+            <AssigneeFilter options={assigneeOptions} value={assignee} onChange={setAssignee} />
+            {/* Mobile: `contents` → Xuất và Tạo sprint là mục của dải cuộn. */}
+            <div className="contents sm:ml-auto sm:flex sm:flex-nowrap sm:items-center sm:gap-2">
+              <ExportMenu
+                className={CHIP_TOUCH_HIT}
+                items={[
+                  {
+                    id: 'backlog',
+                    label: 'Việc chờ (CSV)',
+                    hint: 'Việc chưa xong và chưa vào sprint',
+                    run: () => exportIssuesCsvWithToast({ projectId, preset: 'backlog' }),
+                  },
+                  {
+                    id: 'bugs',
+                    label: 'Danh sách bug (CSV)',
+                    hint: 'Mọi công việc loại Bug của dự án',
+                    run: () => exportIssuesCsvWithToast({ projectId, preset: 'bugs' }),
+                  },
+                ]}
+              />
+              {canManageSprint && !creating && (
                 <Button
                   size="sm"
                   variant="secondary"
                   title={`Tạo một sprint mới. ${SPRINT_TIP}`}
                   onClick={() => setCreating(true)}
+                  className={CHIP_TOUCH_HIT}
                 >
                   <Plus className="h-4 w-4" />
                   Tạo sprint
                 </Button>
-              ))}
-          </div>
+              )}
+            </div>
+          </ToolbarStrip>
+          {canManageSprint && creating && (
+            <form
+              className="flex w-full items-center gap-2 sm:w-auto"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreate();
+              }}
+            >
+              <Input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setCreating(false);
+                    setNewName('');
+                  }
+                }}
+                placeholder="VD: Sprint 1 — tuần 1 và 2"
+                className="h-8 min-w-0 flex-1 sm:w-56 sm:flex-none"
+                aria-label="Tên sprint mới"
+                title={SPRINT_TIP}
+              />
+              <Button
+                type="submit"
+                size="sm"
+                loading={createSprint.isPending}
+                disabled={!newName.trim()}
+              >
+                Tạo
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setCreating(false);
+                  setNewName('');
+                }}
+              >
+                Hủy
+              </Button>
+            </form>
+          )}
         </div>
 
         <DndContext
