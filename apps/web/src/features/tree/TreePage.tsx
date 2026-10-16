@@ -16,9 +16,9 @@ import {
   type IssueTreeNode,
   type SubtreeProgress,
 } from '@/lib/issueTree';
-import { rollupPoints } from '@/lib/epic';
+import { buildRowRollups, type PointsRollup } from '@/lib/epic';
 import { cn } from '@/lib/utils';
-import { pointsCell, type PointsRollup } from './pointsCell';
+import { pointsCell } from './pointsCell';
 import { ROOT_DROP_ID, rowDropId, useTreeDrag, type DropState } from './useTreeDrag';
 
 /**
@@ -82,12 +82,8 @@ export function TreePage() {
   const progressById = useMemo(() => buildProgressMap(issues ?? []), [issues]);
   const rows = useMemo(() => flatten(tree, collapsed), [tree, collapsed]);
   const parentIds = useMemo(() => collectParentIds(tree), [tree]);
-  // Điểm cộng dồn chỉ tính cho dòng có con (không quét toàn bộ mỗi lần vẽ).
-  const rollups = useMemo(() => {
-    const m = new Map<string, PointsRollup>();
-    for (const id of parentIds) m.set(id, rollupPoints(issues ?? [], id));
-    return m;
-  }, [issues, parentIds]);
+  // Điểm cộng dồn dựng một lần theo `issues` (Epic dùng định nghĩa thành viên epic dùng chung với panel Epic/Việc chờ).
+  const rollups = useMemo(() => buildRowRollups(issues ?? [], parentIds), [issues, parentIds]);
 
   const allCollapsed = parentIds.size > 0 && collapsed.size >= parentIds.size;
 

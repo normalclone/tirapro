@@ -1,8 +1,4 @@
-export interface PointsRollup {
-  donePoints: number;
-  totalPoints: number;
-  count: number;
-}
+import type { PointsRollup } from '@/lib/epic';
 
 export interface PointsCell {
   text: string;

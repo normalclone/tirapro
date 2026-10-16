@@ -125,12 +125,14 @@ function childrenByTreeParent(issues: IssueDto[]): Map<string, IssueDto[]> {
   }
   return m;
 }
-/** Điểm cộng dồn của TOÀN BỘ con cháu (đệ quy, bỏ sub-task, không tính root) — cho Cây việc. */
-export function rollupPoints(
-  issues: IssueDto[],
-  rootId: string,
-): { donePoints: number; totalPoints: number; count: number } {
-  const kids = childrenByTreeParent(issues);
+
+export interface PointsRollup {
+  donePoints: number;
+  totalPoints: number;
+  count: number;
+}
+
+function rollupFrom(kids: Map<string, IssueDto[]>, rootId: string): PointsRollup {
   const seen = new Set([rootId]);
   const stack = [...(kids.get(rootId) ?? [])];
   let donePoints = 0,
@@ -148,6 +150,33 @@ export function rollupPoints(
     for (const c of kids.get(i.id) ?? []) stack.push(c);
   }
   return { donePoints, totalPoints, count };
+}
+
+/** Điểm cộng dồn của TOÀN BỘ con cháu theo cha-trong-cây (đệ quy, bỏ sub-task, không tính root) — cho dòng việc thường ở Cây việc. */
+export function rollupPoints(issues: IssueDto[], rootId: string): PointsRollup {
+  return rollupFrom(childrenByTreeParent(issues), rootId);
+}
+
+/**
+ * Điểm cộng dồn cho ô "Điểm" của Cây việc, dựng MỘT lần cho cả danh sách. Dòng Epic dùng đúng định nghĩa thành viên
+ * epic của panel Epic/Việc chờ (`epicProgress`/`epicMembers`: trực tiếp, `epicId` thắng `parentId`, bỏ sub-task) — nên
+ * cùng con số với các màn đó; mọi epic đều có mục (kể cả khi không có con trong cây, vd việc thuộc epic nhưng cây đặt
+ * dưới việc cha). Dòng việc thường chỉ có mục khi nằm trong `parentIds` (dòng có con) và cộng dồn con cháu như `rollupPoints`.
+ */
+export function buildRowRollups(
+  issues: IssueDto[],
+  parentIds: ReadonlySet<string>,
+): Map<string, PointsRollup> {
+  const out = new Map<string, PointsRollup>();
+  const byId = byIdOf(issues);
+  const kids = childrenByTreeParent(issues);
+  for (const i of issues) {
+    if (isEpicIssue(i)) {
+      const p = epicProgress(issues, i.id, byId);
+      out.set(i.id, { donePoints: p.donePoints, totalPoints: p.totalPoints, count: p.totalCount });
+    } else if (parentIds.has(i.id)) out.set(i.id, rollupFrom(kids, i.id));
+  }
+  return out;
 }
 
 export function epicChoices(issues: IssueDto[], selfId: string): IssueDto[] {
