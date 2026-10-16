@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { ReportIssuePreset } from '@/stores/reportIssue';
-import { hasDraftContent, reportTemplate, type ReportDraft, type RequestKind } from './reportForm';
+import {
+  descriptionForMode,
+  hasDraftContent,
+  parseReportMode,
+  type ReportDraft,
+  type ReportMode,
+  type RequestKind,
+} from './reportForm';
 
 const DRAFT_KEY = (projectKey: string) => `tirapro:report-draft:${projectKey || '_'}`;
-const DETAILS_KEY = 'tirapro:report:details';
+const MODE_KEY = 'tirapro:report:mode';
 
 function loadDraft(projectKey: string): ReportDraft {
   try {
@@ -28,16 +35,17 @@ export function clearDraft(projectKey: string) {
     /* storage bị chặn */
   }
 }
-export function loadDetailsOpen(): boolean {
+/** Chế độ form đã nhớ theo người (mặc định Cơ bản; storage bị chặn cũng về Cơ bản). */
+export function loadReportMode(): ReportMode {
   try {
-    return localStorage.getItem(DETAILS_KEY) === '1';
+    return parseReportMode(localStorage.getItem(MODE_KEY));
   } catch {
-    return false;
+    return 'basic';
   }
 }
-export function saveDetailsOpen(v: boolean) {
+export function saveReportMode(m: ReportMode) {
   try {
-    localStorage.setItem(DETAILS_KEY, v ? '1' : '0');
+    localStorage.setItem(MODE_KEY, m);
   } catch {
     /* storage bị chặn */
   }
@@ -51,17 +59,22 @@ export function useReportInitial(
   open: boolean,
   preset: ReportIssuePreset,
   targetKey: string | undefined,
+  mode: ReportMode,
 ) {
   const [initial] = useState(() => {
     const key = preset.projectKey ?? targetKey ?? '';
     const draft: ReportDraft =
       preset.summary != null || preset.description != null ? {} : loadDraft(key);
     const kind: RequestKind = preset.kind ?? draft.kind ?? 'BUG';
+    // Không có chữ nào (preset/nháp) → mô tả theo chế độ (Nâng cao: mẫu, Cơ bản: trống); có chữ → Nâng cao giữ nguyên,
+    // Cơ bản chỉ bỏ mẫu chưa sửa.
+    const raw = preset.description ?? draft.description;
     return {
       key,
       kind,
       summary: preset.summary ?? draft.summary ?? '',
-      description: preset.description ?? draft.description ?? reportTemplate(kind),
+      description:
+        raw == null || mode === 'basic' ? descriptionForMode(raw ?? '', kind, mode) : raw,
       restored: hasDraftContent(draft),
     };
   });

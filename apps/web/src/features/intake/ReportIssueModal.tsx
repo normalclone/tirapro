@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Bug, ChevronRight } from 'lucide-react';
+import { Bug, Monitor } from 'lucide-react';
 import type { EnvironmentInput } from '@tirapro/shared';
 import type { ProjectDto } from '@tirapro/types';
 import { cn } from '@/lib/utils';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useCreateTarget } from '@/lib/useCreateTarget';
-import { useProjectMeta } from '@/features/ai/api';
+import { useProjectMeta, type ProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { useReportIssueModal, type ReportIssuePreset } from '@/stores/reportIssue';
@@ -18,16 +18,26 @@ import { DuplicatePanel } from './DuplicatePanel';
 import { useDupChoice } from './useDupChoice';
 import { dupDescribedBy, type DupSelection } from './dupDecision';
 import { FIELD_LABEL, ReportDetails } from './ReportDetails';
-import { clearDraft, useDraftAutosave, useReportInitial } from './useReportDraft';
+import { FileDrop } from '@/features/attachments/FileDrop';
+import {
+  clearDraft,
+  loadReportMode,
+  saveReportMode,
+  useDraftAutosave,
+  useReportInitial,
+} from './useReportDraft';
 import { useCanComment } from './useCanComment';
 import { useReportDetails } from './useReportDetails';
 import { useReportSubmit } from './useReportSubmit';
 import {
+  descriptionForMode,
+  environmentSummary,
   isReportTemplate,
   REPORT_KINDS,
   reportDialogTitle,
   reportKindLabel,
   reportTemplate,
+  type ReportMode,
   type RequestKind,
 } from './reportForm';
 
@@ -118,36 +128,60 @@ function ProjectField({
   );
 }
 
-/** Nút gập/mở khối "Thêm chi tiết". */
-function DetailsToggle({
-  open,
-  isBug,
-  onToggle,
-}: {
-  open: boolean;
-  isBug: boolean;
-  onToggle: () => void;
-}) {
+/** Công tắc phân đoạn "Cơ bản | Nâng cao" ở đầu form — nhớ theo người. */
+function ModeSwitch({ mode, onChange }: { mode: ReportMode; onChange: (m: ReportMode) => void }) {
+  const opts: { id: ReportMode; label: string; hint: string }[] = [
+    { id: 'basic', label: 'Cơ bản', hint: 'Chỉ cần tiêu đề — gửi nhanh nhất' },
+    {
+      id: 'advanced',
+      label: 'Nâng cao',
+      hint: 'Mẫu bước tái hiện, mức nghiêm trọng, môi trường, tệp',
+    },
+  ];
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      aria-controls="ri-details"
-      className="inline-flex items-center gap-1 rounded-md py-1 text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+    <div
+      role="radiogroup"
+      aria-label="Chế độ form"
+      className="inline-flex rounded-md border border-border bg-surface-2 p-0.5"
     >
-      <ChevronRight
-        className={cn(
-          'h-4 w-4 transition-transform duration-fast motion-reduce:transition-none',
-          open && 'rotate-90',
-        )}
-        aria-hidden
-      />
-      <span className="whitespace-nowrap">Thêm chi tiết</span>
-      <span className="hidden font-normal text-faint sm:inline">
-        {isBug ? '(mức nghiêm trọng, môi trường, tệp đính kèm)' : '(tệp đính kèm)'}
+      {opts.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          role="radio"
+          aria-checked={mode === o.id}
+          title={o.hint}
+          onClick={() => onChange(o.id)}
+          className={cn(
+            'h-7 rounded px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+            mode === o.id
+              ? 'bg-surface font-medium text-ink shadow-sm'
+              : 'text-muted hover:text-ink',
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Chế độ Cơ bản, Bug: môi trường đã tự ghi ngầm — hiện một dòng nhỏ + "Sửa" mở Nâng cao. */
+function AutoEnvLine({ summary, onEdit }: { summary: string; onEdit: () => void }) {
+  return (
+    <p className="flex items-center gap-1.5 text-xs text-muted" data-testid="ri-auto-env">
+      <Monitor className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0 truncate">
+        Đã tự ghi: <span className="text-ink">{summary}</span>
       </span>
-    </button>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="shrink-0 rounded px-1 text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+      >
+        Sửa
+      </button>
+    </p>
   );
 }
 
@@ -240,11 +274,96 @@ function TitleField({
   );
 }
 
+/** Ô mô tả (Markdown, dán ảnh Ctrl+V). Cơ bản: ô nhỏ 3 dòng, không mẫu; Nâng cao: 6 dòng + mẫu theo loại. */
+function DescriptionField({
+  merging,
+  description,
+  onChange,
+  onSubmit,
+  rows,
+  onPasteImages,
+}: {
+  merging: boolean;
+  description: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  rows: number;
+  onPasteImages: (files: File[]) => void;
+}) {
+  return (
+    <div>
+      <label htmlFor="ri-desc" className={FIELD_LABEL}>
+        {merging ? (
+          'Ghi chú thêm — sẽ thành bình luận'
+        ) : (
+          <>
+            Mô tả <span className="font-normal text-faint">(tùy chọn)</span>
+          </>
+        )}
+      </label>
+      <MarkdownEditor
+        textareaId="ri-desc"
+        value={description}
+        onChange={onChange}
+        onSubmit={onSubmit}
+        rows={rows}
+        onPasteImages={onPasteImages}
+        placeholder="Viết được Markdown; chèn ảnh bằng ![](đường-dẫn) hoặc dán ảnh chụp màn hình (Ctrl+V)"
+      />
+    </div>
+  );
+}
+
+/**
+ * Phần dưới ô mô tả theo chế độ. Nâng cao: đủ mức nghiêm trọng, môi trường sửa được, tệp. Cơ bản: một dòng "Đã tự ghi"
+ * (Bug) + "Sửa"; không có ô tệp, nhưng ảnh dán (Ctrl+V) / tệp mang sang từ form khác vẫn hiện và gỡ được.
+ */
+function ModeSection({
+  mode,
+  isBug,
+  meta,
+  details,
+  envText,
+  onEditEnv,
+}: {
+  mode: ReportMode;
+  isBug: boolean;
+  meta: ProjectMeta | undefined;
+  details: ReturnType<typeof useReportDetails>;
+  envText: string;
+  onEditEnv: () => void;
+}) {
+  if (mode === 'advanced') return <ReportDetails isBug={isBug} meta={meta} {...details.props} />;
+  return (
+    <>
+      {isBug && envText && <AutoEnvLine summary={envText} onEdit={onEditEnv} />}
+      {details.files.length > 0 && (
+        <div>
+          <label className={FIELD_LABEL}>Tệp đính kèm</label>
+          <FileDrop
+            files={details.files}
+            onAdd={(fs) => details.props.onFiles((prev) => [...prev, ...fs])}
+            onRemove={(i) => details.props.onFiles((prev) => prev.filter((_, j) => j !== i))}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 const TITLE_PLACEHOLDER: Record<RequestKind, string> = {
   BUG: 'Mô tả ngắn gọn lỗi/sự cố gặp phải…',
   FEATURE: 'Bạn muốn có tính năng gì?',
   QUESTION: 'Bạn muốn hỏi điều gì?',
 };
+
+/** Esc đang ở trong panel gợi ý trùng thì chỉ đóng panel, không đóng cả hộp. */
+function escapeInDupPanel(e: KeyboardEvent, dismiss: () => void) {
+  if (!document.activeElement?.closest('#ri-dup')) return;
+  e.preventDefault();
+  dismiss();
+  document.getElementById('ri-summary')?.focus();
+}
 
 function ReportIssueForm({
   open,
@@ -258,10 +377,10 @@ function ReportIssueForm({
   const { data: projects } = useProjects();
   const { target } = useCreateTarget();
 
-  const initial = useReportInitial(open, preset, target.projectKey);
+  const [mode, setMode] = useState<ReportMode>(loadReportMode);
+  const initial = useReportInitial(open, preset, target.projectKey, mode);
   const [selKey, setSelKey] = useState(initial.key);
   const [changingProject, setChangingProject] = useState(false);
-  const details = useReportDetails(preset.files);
   const [kind, setKind] = useState<RequestKind>(initial.kind);
   const [summary, setSummary] = useState(initial.summary);
   const [description, setDescription] = useState(initial.description);
@@ -273,6 +392,12 @@ function ReportIssueForm({
   const projectId = selProject?.id ?? '';
   const isBug = kind === 'BUG';
   const { data: meta } = useProjectMeta(open && selProject ? selProject.key : undefined);
+  const details = useReportDetails({
+    initialFiles: preset.files,
+    isBug,
+    meta,
+    onNeedAdvanced: () => changeMode('advanced'),
+  });
   const { data: duplicates, isFetching: checkingDup } = useDuplicateCheck(
     open ? projectId : undefined,
     summary,
@@ -303,19 +428,34 @@ function ReportIssueForm({
   });
   const draft = useDraftAutosave(open, selKey, { kind, summary, description });
   const merging = !!dup.decision.mergeInto;
+  const envText = environmentSummary(details.envDraft);
+
+  /** Đổi chế độ (nhớ theo người). Dữ liệu đã nhập giữ nguyên; chỉ mẫu chưa sửa được chèn/bỏ theo chế độ. */
+  function changeMode(next: ReportMode) {
+    if (next === mode) return;
+    setMode(next);
+    saveReportMode(next);
+    setDescription((d) => (dup.sel.mode === 'merge' ? d : descriptionForMode(d, kind, next)));
+  }
 
   function changeKind(next: RequestKind) {
     if (next === kind) return;
     setKind(next);
-    // Chỉ thay mô tả khi đang trống hoặc đang đúng một mẫu (không đè chữ người dùng).
-    setDescription((d) => (d.trim() === '' || isReportTemplate(d) ? reportTemplate(next) : d));
+    // Chỉ thay mô tả khi đang trống hoặc đang đúng một mẫu (không đè chữ người dùng); Cơ bản không dùng mẫu.
+    setDescription((d) =>
+      d.trim() === '' || isReportTemplate(d)
+        ? mode === 'advanced'
+          ? reportTemplate(next)
+          : ''
+        : d,
+    );
   }
 
   /** Chọn gộp: mô tả mẫu bỏ đi (nội dung thành bình luận); bỏ chọn gộp mà mô tả trống thì trả lại mẫu. */
   function chooseDup(next: DupSelection) {
     if (next.mode === 'merge' && isReportTemplate(description)) setDescription('');
     if (dup.sel.mode === 'merge' && next.mode !== 'merge' && description.trim() === '')
-      setDescription(reportTemplate(kind));
+      setDescription(descriptionForMode('', kind, mode));
     dup.setSel(next);
   }
 
@@ -323,19 +463,11 @@ function ReportIssueForm({
     <Dialog
       open={open}
       icon={<Bug className="h-4 w-4" />}
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
+      onOpenChange={(o) => !o && onClose()}
       title={reportDialogTitle(kind)}
       size="lg"
       onSubmit={() => void submit()}
-      // Esc đang ở trong panel gợi ý trùng thì chỉ đóng panel, không đóng cả hộp.
-      onEscapeKeyDown={(e) => {
-        if (!document.activeElement?.closest('#ri-dup')) return;
-        e.preventDefault();
-        dup.setDismissed(true);
-        document.getElementById('ri-summary')?.focus();
-      }}
+      onEscapeKeyDown={(e) => escapeInDupPanel(e, () => dup.setDismissed(true))}
       footer={
         <ReportFooter
           busy={busy}
@@ -346,6 +478,7 @@ function ReportIssueForm({
       }
     >
       <form id="report-issue-form" onSubmit={(e) => void submit(e)} className="space-y-4">
+        <ModeSwitch mode={mode} onChange={changeMode} />
         <KindPicker kind={kind} onChange={changeKind} />
         <ProjectField
           projects={projects ?? []}
@@ -371,30 +504,22 @@ function ReportIssueForm({
           canMerge={canComment}
           onSelect={chooseDup}
         />
-        <div>
-          <label htmlFor="ri-desc" className={FIELD_LABEL}>
-            {merging ? (
-              'Ghi chú thêm — sẽ thành bình luận'
-            ) : (
-              <>
-                Mô tả <span className="font-normal text-faint">(tùy chọn)</span>
-              </>
-            )}
-          </label>
-          <MarkdownEditor
-            textareaId="ri-desc"
-            value={description}
-            onChange={setDescription}
-            onSubmit={() => void submit()}
-            rows={6}
-            onPasteImages={details.pasteFiles}
-            placeholder="Viết được Markdown; chèn ảnh bằng ![](đường-dẫn) hoặc dán ảnh chụp màn hình (Ctrl+V)"
-          />
-        </div>
-        <div>
-          <DetailsToggle open={details.open} isBug={isBug} onToggle={details.toggle} />
-          {details.open && <ReportDetails isBug={isBug} meta={meta} {...details.props} />}
-        </div>
+        <DescriptionField
+          merging={merging}
+          description={description}
+          onChange={setDescription}
+          onSubmit={() => void submit()}
+          rows={mode === 'basic' ? 3 : 6}
+          onPasteImages={details.pasteFiles}
+        />
+        <ModeSection
+          mode={mode}
+          isBug={isBug}
+          meta={meta}
+          details={details}
+          envText={envText}
+          onEditEnv={() => changeMode('advanced')}
+        />
       </form>
     </Dialog>
   );

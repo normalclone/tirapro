@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MutableRefObject } from 'react';
+import type { MutableRefObject } from 'react';
 import { Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -11,14 +11,12 @@ import {
   mergeDetected,
   type EnvironmentDraft,
 } from '@/features/issue-edit/environment';
-import { defaultSeverityId } from '@/features/issue-edit/severity';
 
 export const FIELD_LABEL = 'mb-1.5 block text-sm font-medium text-muted';
 
 /**
- * Khối "Thêm chi tiết" của form Báo lỗi: Mức nghiêm trọng + Môi trường (chỉ Bug) và tệp đính kèm.
- * Mount mỗi lần khối mở → lần đầu mở chọn sẵn mức mặc định (trừ khi người dùng đã tự bỏ chọn) và điền
- * môi trường từ phiên hiện tại (chỉ khi các ô còn trống).
+ * Khối chi tiết của chế độ Nâng cao: Mức nghiêm trọng + Môi trường (chỉ Bug) và tệp đính kèm.
+ * Mức mặc định + môi trường tự ghi do `useReportDetails` điền sẵn (cả ở chế độ Cơ bản).
  */
 export function ReportDetails({
   isBug,
@@ -48,22 +46,6 @@ export function ReportDetails({
 }) {
   const severities = meta?.severities ?? [];
   const selSeverity = severities.find((s) => s.id === severityId);
-
-  useEffect(() => {
-    if (isBug && meta && !severityTouched.current && !severityId)
-      onSeverity(defaultSeverityId(meta.severities) ?? '');
-  }, [isBug, meta, severityId, severityTouched, onSeverity]);
-
-  const envFilled = useRef(false);
-  useEffect(() => {
-    if (!isBug || envFilled.current) return;
-    envFilled.current = true;
-    onEnvDraft((d) =>
-      Object.values(d).some(Boolean)
-        ? d
-        : mergeDetected(d, detectEnvironment(navigator, window.screen, window.location)),
-    );
-  }, [isBug, onEnvDraft]);
 
   return (
     <div id="ri-details" className="mt-3 space-y-4">

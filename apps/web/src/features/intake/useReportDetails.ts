@@ -1,11 +1,29 @@
-import { useCallback, useRef, useState } from 'react';
-import { toDraft, type EnvironmentDraft } from '@/features/issue-edit/environment';
-import { loadDetailsOpen, saveDetailsOpen } from './useReportDraft';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ProjectMeta } from '@/features/ai/api';
+import {
+  detectEnvironment,
+  mergeDetected,
+  toDraft,
+  type EnvironmentDraft,
+} from '@/features/issue-edit/environment';
+import { defaultSeverityId } from '@/features/issue-edit/severity';
 
-/** Trạng thái khối "Thêm chi tiết": đóng/mở (nhớ theo người), mức nghiêm trọng, môi trường, tệp đính kèm. */
-export function useReportDetails(initialFiles: File[] = []) {
-  // Có tệp mang sang từ form khác → mở sẵn khối để người dùng thấy tệp của mình.
-  const [open, setOpen] = useState(() => initialFiles.length > 0 || loadDetailsOpen());
+/**
+ * Chi tiết của báo cáo: mức nghiêm trọng, môi trường, tệp đính kèm. Chạy ở CẢ hai chế độ: Bug luôn được chọn sẵn mức
+ * mặc định (trừ khi người dùng tự bỏ chọn) và tự ghi môi trường từ phiên hiện tại (chỉ khi các ô còn trống) — nên chế độ Cơ bản
+ * gửi đủ thông tin dù người dùng không mở Nâng cao. `onNeedAdvanced`: có lỗi cần người dùng sửa ở khối Nâng cao.
+ */
+export function useReportDetails({
+  initialFiles = [],
+  isBug,
+  meta,
+  onNeedAdvanced,
+}: {
+  initialFiles?: File[];
+  isBug: boolean;
+  meta: ProjectMeta | undefined;
+  onNeedAdvanced: () => void;
+}) {
   const [severityId, setSeverityId] = useState('');
   const [envDraft, setEnvDraft] = useState(() => toDraft(null));
   const [envError, setEnvError] = useState<string | null>(null);
@@ -16,23 +34,31 @@ export function useReportDetails(initialFiles: File[] = []) {
     setEnvError(null);
     setEnvDraft(u);
   }, []);
-  const toggle = () => {
-    saveDetailsOpen(!open);
-    setOpen(!open);
-  };
+
+  useEffect(() => {
+    if (isBug && meta && !severityTouched.current && !severityId)
+      setSeverityId(defaultSeverityId(meta.severities) ?? '');
+  }, [isBug, meta, severityId]);
+
+  const envFilled = useRef(false);
+  useEffect(() => {
+    if (!isBug || envFilled.current) return;
+    envFilled.current = true;
+    setEnvDraft((d) =>
+      Object.values(d).some(Boolean)
+        ? d
+        : mergeDetected(d, detectEnvironment(navigator, window.screen, window.location)),
+    );
+  }, [isBug]);
+
   return {
-    open,
-    toggle,
     envDraft,
     files,
-    /** Ảnh dán (Ctrl+V) vào ô mô tả: gom vào tệp đính kèm và mở khối để người dùng thấy thumbnail. */
-    pasteFiles: (fs: File[]) => {
-      setFiles((prev) => [...prev, ...fs]);
-      setOpen(true);
-    },
-    /** Môi trường sai định dạng: mở khối ra và báo lỗi tại ô. */
+    /** Ảnh dán (Ctrl+V) vào ô mô tả: gom vào tệp đính kèm (cả hai chế độ đều hiện thumbnail). */
+    pasteFiles: (fs: File[]) => setFiles((prev) => [...prev, ...fs]),
+    /** Môi trường sai định dạng: chuyển sang Nâng cao và báo lỗi tại ô. */
     showEnvError: (m: string) => {
-      setOpen(true);
+      onNeedAdvanced();
       setEnvError(m);
     },
     /** Props cho `<ReportDetails />`. */
