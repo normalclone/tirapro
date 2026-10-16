@@ -198,7 +198,7 @@ function NameFields({
   onChange: (p: { name?: string; description?: string }) => void;
 }) {
   return (
-    <header className="mb-4 space-y-2">
+    <div className="mb-4 flex flex-col gap-2">
       <Input
         aria-label="Tên dashboard"
         value={name}
@@ -215,7 +215,7 @@ function NameFields({
         onChange={(e) => onChange({ description: e.target.value })}
         className="max-w-xl text-sm"
       />
-    </header>
+    </div>
   );
 }
 

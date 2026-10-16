@@ -25,7 +25,7 @@ export function DashboardSwitcher({ currentId }: { currentId?: string }) {
     const opts: SearchSelectOption[] = [{ value: HOME_VALUE, label: 'Tổng quan chung' }];
     for (const g of groupDashboards(data ?? [])) {
       for (const d of g.items) {
-        opts.push({ value: d.id, label: d.name, hint: scopeBadge(d), group: g.title });
+        opts.push({ value: d.id, label: d.name, badge: scopeBadge(d), group: g.title });
       }
     }
     if (canManage) opts.push({ value: NEW_VALUE, label: 'Tạo dashboard mới…', group: 'Tạo mới' });

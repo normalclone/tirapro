@@ -11,6 +11,8 @@ export interface SearchSelectOption {
   color?: string | null;
   /** Nội dung phụ bên phải (vd: key issue, mã). */
   hint?: string;
+  /** Huy hiệu chữ thường (không mono) bên phải — vd mức chia sẻ của dashboard. */
+  badge?: string;
   /** Không chọn được (hiện mờ, kèm `hint` giải thích nếu có). */
   disabled?: boolean;
   /** Tiêu đề nhóm: hiện một hàng tiêu đề (không chọn được) trước lựa chọn đầu tiên của mỗi nhóm liên tiếp. */
@@ -133,40 +135,7 @@ export function SearchSelect({
                       {heading}
                     </li>
                   )}
-                  <li>
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={active}
-                      aria-disabled={o.disabled || undefined}
-                      disabled={o.disabled}
-                      onClick={() => pick(o.value)}
-                      className={cn(
-                        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2',
-                        active && 'bg-surface-2',
-                        o.disabled && 'cursor-not-allowed text-muted hover:bg-transparent',
-                      )}
-                    >
-                      <Check
-                        className={cn(
-                          'h-4 w-4 shrink-0 text-primary',
-                          active ? 'opacity-100' : 'opacity-0',
-                        )}
-                        aria-hidden
-                      />
-                      {o.color && (
-                        <span
-                          className="h-2 w-2 shrink-0 rounded-full"
-                          style={{ background: o.color }}
-                          aria-hidden
-                        />
-                      )}
-                      <span className="min-w-0 flex-1 truncate">{o.label}</span>
-                      {o.hint && (
-                        <span className="shrink-0 font-mono text-xs text-faint">{o.hint}</span>
-                      )}
-                    </button>
-                  </li>
+                  <OptionRow option={o} active={active} onPick={pick} />
                 </Fragment>
               );
             })}
@@ -177,5 +146,53 @@ export function SearchSelect({
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+/** Một dòng lựa chọn của SearchSelect (nhãn, chấm màu, mã `hint`, huy hiệu `badge`). */
+function OptionRow({
+  option: o,
+  active,
+  onPick,
+}: {
+  option: SearchSelectOption;
+  active: boolean;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        role="option"
+        aria-selected={active}
+        aria-disabled={o.disabled || undefined}
+        disabled={o.disabled}
+        onClick={() => onPick(o.value)}
+        className={cn(
+          'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink transition-colors hover:bg-surface-2',
+          active && 'bg-surface-2',
+          o.disabled && 'cursor-not-allowed text-muted hover:bg-transparent',
+        )}
+      >
+        <Check
+          className={cn('h-4 w-4 shrink-0 text-primary', active ? 'opacity-100' : 'opacity-0')}
+          aria-hidden
+        />
+        {o.color && (
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ background: o.color }}
+            aria-hidden
+          />
+        )}
+        <span className="min-w-0 flex-1 truncate">{o.label}</span>
+        {o.hint && <span className="shrink-0 font-mono text-xs text-faint">{o.hint}</span>}
+        {o.badge && (
+          <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
+            {o.badge}
+          </span>
+        )}
+      </button>
+    </li>
   );
 }

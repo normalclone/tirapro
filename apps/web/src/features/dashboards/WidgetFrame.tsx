@@ -55,7 +55,7 @@ export function WidgetFrame({
           </Link>
         )}
       </div>
-      <div className="min-h-[7rem] flex-1">
+      <div className="min-h-[6rem] flex-1">
         {state === 'loading' && <WidgetSkeleton />}
         {state === 'error' && (
           <div
