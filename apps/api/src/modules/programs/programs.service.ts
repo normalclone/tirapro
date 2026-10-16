@@ -71,7 +71,7 @@ export interface RollupGroup extends RollupStats {
 
 interface RollupResult {
   groups: RollupGroup[];
-  totals: RollupStats & { projectCount: number; programCount: number };
+  totals: RollupStats & { projectCount: number; programCount: number; scoped: boolean };
 }
 
 const EMPTY_STATS: RollupStats = {
@@ -97,12 +97,12 @@ export class ProgramsService {
     private readonly access: ProjectAccessService,
   ) {}
 
-  /** Điều kiện hiển thị dự án của người xem; `viewerId` trống = ngữ cảnh hệ thống → `{}` (không lọc). */
-  private visibleFor(workspaceId: string, viewerId?: string): Promise<Prisma.ProjectWhereInput> {
-    return viewerId ? this.access.visibleWhere(viewerId, workspaceId) : Promise.resolve({});
+  /** Điều kiện hiển thị dự án của người xem (`{}` = thấy hết). `viewerId` bắt buộc ở mọi đường đọc. */
+  private visibleFor(workspaceId: string, viewerId: string): Promise<Prisma.ProjectWhereInput> {
+    return this.access.visibleWhere(viewerId, workspaceId);
   }
 
-  async list(workspaceId: string, viewerId?: string) {
+  async list(workspaceId: string, viewerId: string) {
     const rows = await this.prisma.program.findMany({
       where: { workspaceId },
       orderBy: [{ startDate: 'asc' }, { name: 'asc' }],
@@ -111,7 +111,7 @@ export class ProgramsService {
     return rows.map((p) => this.toDto(p));
   }
 
-  async get(workspaceId: string, id: string, viewerId?: string) {
+  async get(workspaceId: string, id: string, viewerId: string) {
     const p = await this.prisma.program.findFirst({
       where: { id, workspaceId },
       select: programSelect(await this.visibleFor(workspaceId, viewerId)),
@@ -120,7 +120,7 @@ export class ProgramsService {
     return this.toDto(p);
   }
 
-  async create(workspaceId: string, dto: CreateProgramInput, viewerId?: string) {
+  async create(workspaceId: string, dto: CreateProgramInput, viewerId: string) {
     const name = dto.name.trim();
     await this.assertNameFree(workspaceId, name);
     const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
@@ -141,7 +141,7 @@ export class ProgramsService {
     return this.get(workspaceId, created.id, viewerId);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateProgramInput, viewerId?: string) {
+  async update(workspaceId: string, id: string, dto: UpdateProgramInput, viewerId: string) {
     await this.require(workspaceId, id);
     const data: Prisma.ProgramUpdateInput = {};
 
@@ -177,7 +177,7 @@ export class ProgramsService {
    * Dự án riêng tư người gọi không thấy không gắn được (cùng lỗi với dự án ngoài workspace — không lộ sự tồn tại) và
    * cũng không bị gỡ nhầm khi người gọi gửi lại danh sách chỉ gồm phần họ thấy.
    */
-  async setProjects(workspaceId: string, id: string, projectIds: string[], viewerId?: string) {
+  async setProjects(workspaceId: string, id: string, projectIds: string[], viewerId: string) {
     await this.require(workspaceId, id);
     const visible = await this.visibleFor(workspaceId, viewerId);
     const ids = [...new Set(projectIds)];
@@ -218,7 +218,7 @@ export class ProgramsService {
    * kèm số liệu issue của từng dự án con (tổng / xong / quá hạn / % tiến độ).
    * Chỉ gồm dự án `viewerId` được thấy (chương trình vẫn hiện; số liệu hai người xem có thể khác nhau).
    */
-  async rollup(workspaceId: string, viewerId?: string): Promise<RollupResult> {
+  async rollup(workspaceId: string, viewerId: string): Promise<RollupResult> {
     const visible = await this.visibleFor(workspaceId, viewerId);
     const issueScope = { workspaceId, deletedAt: null, project: { deletedAt: null, ...visible } };
     const [programs, projects, statuses] = await Promise.all([
@@ -370,6 +370,8 @@ export class ProgramsService {
       groups,
       totals: {
         ...sum(rollupProjects),
+        // true = số liệu đã bị thu hẹp theo quyền xem của người gọi
+        scoped: Object.keys(visible).length > 0,
         projectCount: projects.length,
         programCount: programs.length,
       },

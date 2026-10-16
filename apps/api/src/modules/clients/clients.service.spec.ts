@@ -56,7 +56,7 @@ describe('ClientsService — dự án riêng tư (P14)', () => {
     return { service: new ClientsService(prisma as never, access as never), prisma, access };
   }
 
-  it('list/get(…, viewer): dự án của khách hàng chỉ gồm dự án thấy được; hợp đồng gắn dự án ẩn không lộ tên/khoá dự án', async () => {
+  it('list/get(…, viewer): dự án của khách hàng chỉ gồm dự án thấy được; hợp đồng gắn dự án ẩn bị loại khỏi danh sách/số đếm/tổng giá trị', async () => {
     const { service, prisma } = make();
     const [c] = await service.list('w1', 'u1');
     const sel = (
@@ -65,15 +65,13 @@ describe('ClientsService — dự án riêng tư (P14)', () => {
       ]
     )[0].select;
     expect(sel.projects.where).toMatchObject({ deletedAt: null, ...visible });
-    expect(c!.contracts.map((k) => k.project?.key ?? null)).toEqual(['PUB', null]);
+    // Hợp đồng gắn dự án ẩn bị LOẠI hẳn (không chỉ bỏ field project): không còn tên/mã/giá trị trong danh sách, số đếm, tổng.
+    expect(c!.contracts.map((k) => k.name)).toEqual(['HĐ k1']);
+    expect(c!.contractCount).toBe(1);
+    expect(c!.contractTotals).toEqual([{ currency: 'VND', value: 100 }]);
     const got = await service.get('w1', 'c1', 'u1');
-    expect(got.contracts.map((k) => k.project?.key ?? null)).toEqual(['PUB', null]);
-  });
-
-  it('không có viewer (hệ thống) → giữ nguyên mọi dự án của hợp đồng', async () => {
-    const { service } = make();
-    const [c] = await service.list('w1');
-    expect(c!.contracts.map((k) => k.project?.key ?? null)).toEqual(['PUB', 'HR']);
+    expect(got.contracts.map((k) => k.name)).toEqual(['HĐ k1']);
+    expect(got.contractTotals).toEqual([{ currency: 'VND', value: 100 }]);
   });
 
   it('setProjects: dự án người gọi không thấy → 422, không ghi; gỡ chỉ trong phạm vi thấy được', async () => {
@@ -103,5 +101,34 @@ describe('ClientsService — dự án riêng tư (P14)', () => {
     ).rejects.toMatchObject({ status: 422 });
     expect(prisma.contract.create).not.toHaveBeenCalled();
     expect(whereOf(prisma.project.findMany)).toMatchObject({ id: { in: ['hr'] }, ...visible });
+  });
+
+  it('listContracts(…, viewer) loại hợp đồng của dự án ẩn; sửa/xoá hợp đồng đó → 404 "Hợp đồng"', async () => {
+    const { service, prisma } = make();
+    (prisma as Record<string, unknown>).contract = {
+      findMany: vi.fn(() =>
+        Promise.resolve([
+          contract('k1', { id: 'pub', key: 'PUB', name: 'Công khai' }),
+          contract('k2', { id: 'hr', key: 'HR', name: 'Nhân sự' }),
+        ]),
+      ),
+      findFirst: vi.fn((_a?: unknown) => Promise.resolve(null)),
+      update: vi.fn(),
+      delete: vi.fn(),
+    };
+    const list = await service.listContracts('w1', 'c1', 'u1');
+    expect(list.map((k) => k.name)).toEqual(['HĐ k1']);
+    await expect(
+      service.updateContract('w1', 'c1', 'k2', { name: 'x' }, 'u1'),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(service.removeContract('w1', 'c1', 'k2', 'u1')).rejects.toMatchObject({
+      status: 404,
+    });
+    const c = (prisma as unknown as { contract: { findFirst: ReturnType<typeof vi.fn> } }).contract;
+    expect(whereOf(c.findFirst)).toMatchObject({
+      id: 'k2',
+      clientId: 'c1',
+      OR: [{ projectId: null }, { project: visible }],
+    });
   });
 });

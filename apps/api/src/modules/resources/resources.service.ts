@@ -118,14 +118,14 @@ export class ResourcesService {
     private readonly access: ProjectAccessService,
   ) {}
 
-  /** Điều kiện hiển thị dự án của người xem; `viewerId` trống = ngữ cảnh hệ thống → `{}` (không lọc). */
-  private visibleFor(workspaceId: string, viewerId?: string): Promise<Prisma.ProjectWhereInput> {
-    return viewerId ? this.access.visibleWhere(viewerId, workspaceId) : Promise.resolve({});
+  /** Điều kiện hiển thị dự án của người xem (`{}` = thấy hết). `viewerId` bắt buộc ở mọi đường đọc. */
+  private visibleFor(workspaceId: string, viewerId: string): Promise<Prisma.ProjectWhereInput> {
+    return this.access.visibleWhere(viewerId, workspaceId);
   }
 
   /* ─────────────────────────── Phân bổ ─────────────────────────── */
 
-  async listAllocations(workspaceId: string, q: ListAllocationsQuery, viewerId?: string) {
+  async listAllocations(workspaceId: string, q: ListAllocationsQuery, viewerId: string) {
     const visible = await this.visibleFor(workspaceId, viewerId);
     const where: Prisma.AllocationWhereInput = {
       project: { workspaceId, deletedAt: null, ...visible },
@@ -144,7 +144,7 @@ export class ResourcesService {
     return rows.map((r) => this.toAllocationDto(r));
   }
 
-  async createAllocation(workspaceId: string, dto: CreateAllocationInput, viewerId?: string) {
+  async createAllocation(workspaceId: string, dto: CreateAllocationInput, viewerId: string) {
     const { startDate, endDate } = this.requireRange(dto.startDate, dto.endDate);
     await this.requireProject(workspaceId, dto.projectId, viewerId);
     await this.requireMember(workspaceId, dto.userId);
@@ -167,7 +167,7 @@ export class ResourcesService {
     workspaceId: string,
     id: string,
     dto: UpdateAllocationInput,
-    viewerId?: string,
+    viewerId: string,
   ) {
     const visible = await this.visibleFor(workspaceId, viewerId);
     const current = await this.prisma.allocation.findFirst({
@@ -204,7 +204,7 @@ export class ResourcesService {
     return this.toAllocationDto(updated);
   }
 
-  async deleteAllocation(workspaceId: string, id: string, viewerId?: string) {
+  async deleteAllocation(workspaceId: string, id: string, viewerId: string) {
     const visible = await this.visibleFor(workspaceId, viewerId);
     const found = await this.prisma.allocation.findFirst({
       where: { id, project: { workspaceId, deletedAt: null, ...visible } },
@@ -301,11 +301,7 @@ export class ResourcesService {
 
   /* ─────────────────────────── Tải theo tuần ─────────────────────────── */
 
-  async workload(
-    workspaceId: string,
-    q: WorkloadQuery,
-    viewerId?: string,
-  ): Promise<WorkloadReport> {
+  async workload(workspaceId: string, q: WorkloadQuery, viewerId: string): Promise<WorkloadReport> {
     // Dự án riêng tư người xem không thấy: phân bổ/việc/giờ log vào đó bị bỏ khỏi tổng (không lộ qua con số); admin thấy đủ.
     const visible = await this.visibleFor(workspaceId, viewerId);
     const today = new Date();
@@ -568,7 +564,7 @@ export class ResourcesService {
     return { startDate, endDate };
   }
 
-  private async requireProject(workspaceId: string, projectId: string, viewerId?: string) {
+  private async requireProject(workspaceId: string, projectId: string, viewerId: string) {
     const visible = await this.visibleFor(workspaceId, viewerId);
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null, ...visible },

@@ -42,11 +42,11 @@ export class AnalyticsService {
   // ---------- Tổng quan workspace (mọi dự án người xem được thấy) ----------
   /**
    * `viewerId`: chỉ tính/hiện dự án người đó được thấy (dự án riêng tư chỉ cho thành viên + admin).
-   * Số liệu hai người xem có thể khác nhau. Trống = ngữ cảnh hệ thống (không lọc).
+   * Số liệu hai người xem có thể khác nhau. `viewerId` bắt buộc.
    */
-  async workspaceOverview(workspaceId: string, viewerId?: string) {
-    const visible = viewerId ? await this.access.visibleWhere(viewerId, workspaceId) : {};
-    const visibleIds = viewerId ? await this.access.visibleProjectIds(viewerId, workspaceId) : null;
+  async workspaceOverview(workspaceId: string, viewerId: string) {
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+    const visibleIds = await this.access.visibleProjectIds(viewerId, workspaceId, visible);
     const now = new Date();
     const DAY = 24 * 3600 * 1000;
     const WEEK = 7 * DAY;
@@ -264,6 +264,8 @@ export class AnalyticsService {
     );
 
     return {
+      // true = số liệu đã bị thu hẹp theo quyền xem của người gọi (FE gắn ghi chú "Chỉ gồm dự án bạn có quyền xem")
+      scoped: Object.keys(visible).length > 0,
       projectCount: projects.length,
       totals,
       projects: projects.map((p) => ({
@@ -496,7 +498,8 @@ export class AnalyticsService {
       return a.name.localeCompare(b.name);
     });
 
-    const health = (await this.health.forProjects(workspaceId, [projectId])).get(projectId) ?? null;
+    const health =
+      (await this.health.forProjects(workspaceId, [projectId], null)).get(projectId) ?? null; // đã qua guard dự án
 
     return {
       totals,

@@ -9,7 +9,7 @@ import { computeProjectHealth } from './project-health';
  * Sức khoẻ dự án = ghi đè của quản trị dự án (nếu có) hoặc giá trị tự tính từ dữ liệu thật (xem `computeProjectHealth`).
  *
  * `forProjects`: danh sách `projectIds` do NGƯỜI GỌI đã lọc theo quyền xem (Tổng quan/Danh mục); hàm ràng mọi truy vấn
- * vào `projectId IN (ids)` và vào đúng workspace. Có `viewerId` thì lọc thêm một lớp phòng thủ theo ProjectAccessService:
+ * vào `projectId IN (ids)` và vào đúng workspace. `viewerId` (null = ngữ cảnh hệ thống/đã qua guard dự án) khác null thì lọc thêm một lớp phòng thủ theo ProjectAccessService:
  * dự án người đó không thấy KHÔNG có trong kết quả (không lộ tiêu đề RAID ở `reasons`, ghi chú ghi đè của PM, v.v.).
  * Số truy vấn cố định theo kích thước lô (không N+1): dự án, 3 groupBy việc theo dự án, sprint đang chạy,
  * 2 groupBy điểm theo sprint, rủi ro RAID mở.
@@ -24,7 +24,7 @@ export class ProjectHealthService {
   async forProjects(
     workspaceId: string,
     projectIds: string[],
-    viewerId?: string,
+    viewerId: string | null,
   ): Promise<Map<string, ProjectHealthDto>> {
     const out = new Map<string, ProjectHealthDto>();
     if (projectIds.length === 0) return out;

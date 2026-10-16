@@ -86,7 +86,7 @@ describe('ProjectHealthService.forProjects', () => {
     vi.setSystemTime(new Date('2026-10-15T10:00:00Z'));
     try {
       const { service } = make();
-      const map = await service.forProjects('w1', ['p1', 'p2', 'p3']);
+      const map = await service.forProjects('w1', ['p1', 'p2', 'p3'], null);
 
       // p1: 2/6 quá hạn (33%) => RED
       expect(map.get('p1')).toMatchObject({
@@ -127,7 +127,7 @@ describe('ProjectHealthService.forProjects', () => {
         healthUpdatedBy: null,
       },
     ] as never);
-    const dto = (await service.forProjects('w1', ['p1'])).get('p1')!;
+    const dto = (await service.forProjects('w1', ['p1'], null)).get('p1')!;
     expect(dto.level).toBe('GREEN');
     expect(dto.auto.level).not.toBe('GREEN');
     expect(dto.override).toMatchObject({ level: 'GREEN', updatedBy: null });
@@ -135,7 +135,7 @@ describe('ProjectHealthService.forProjects', () => {
 
   it('chỉ một lô truy vấn gom nhóm cho cả danh sách (không N+1) và mọi truy vấn ràng projectId IN', async () => {
     const { service, prisma } = make();
-    await service.forProjects('w1', ['p1', 'p2', 'p3']);
+    await service.forProjects('w1', ['p1', 'p2', 'p3'], null);
     expect(prisma.project.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.sprint.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.raidItem.findMany).toHaveBeenCalledTimes(1);
@@ -176,11 +176,11 @@ describe('ProjectHealthService.forProjects', () => {
 
   it('danh sách rỗng => Map rỗng, không chạm DB; id không thuộc workspace/đã xoá bị bỏ qua', async () => {
     const { service, prisma } = make();
-    expect((await service.forProjects('w1', [])).size).toBe(0);
+    expect((await service.forProjects('w1', [], null)).size).toBe(0);
     expect(prisma.project.findMany).not.toHaveBeenCalled();
 
     prisma.project.findMany.mockResolvedValueOnce([] as never);
-    expect((await service.forProjects('w1', ['x'])).size).toBe(0);
+    expect((await service.forProjects('w1', ['x'], null)).size).toBe(0);
     expect(prisma.issue.groupBy).not.toHaveBeenCalled();
   });
 
@@ -189,7 +189,7 @@ describe('ProjectHealthService.forProjects', () => {
     vi.setSystemTime(new Date('2026-10-20T10:00:00Z'));
     try {
       const { service } = make();
-      const dto = (await service.forProjects('w1', ['p1'])).get('p1')!;
+      const dto = (await service.forProjects('w1', ['p1'], null)).get('p1')!;
       expect(dto.auto.reasons.join(' | ')).toContain('Sprint 2 trễ 3 ngày, còn 8 điểm');
     } finally {
       vi.useRealTimers();
@@ -236,7 +236,7 @@ describe('ProjectHealthService.forProjects — người xem (dự án riêng tư
 
   it('không có viewerId (hệ thống) → không hỏi quyền xem', async () => {
     const { service, access } = make();
-    await service.forProjects('w1', ['p1']);
+    await service.forProjects('w1', ['p1'], null);
     expect(access.visibleWhere).not.toHaveBeenCalled();
   });
 });

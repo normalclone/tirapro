@@ -22,7 +22,7 @@ describe('ResourcesService.workload — bỏ issue/worklog của dự án xoá m
     for (const projectId of [undefined, 'p1']) {
       prisma.issue.findMany.mockClear();
       prisma.workLog.findMany.mockClear();
-      await service.workload('w1', { projectId });
+      await service.workload('w1', { projectId }, 'u0');
       const issueWhere = (prisma.issue.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0]
         .where;
       const logWhere = (
@@ -81,13 +81,6 @@ describe('ResourcesService — dự án riêng tư (P14)', () => {
     expect(whereOf(prisma.allocation.findMany)).toMatchObject({
       project: { workspaceId: 'w1', deletedAt: null, ...visible },
     });
-  });
-
-  it('listAllocations không viewer (hệ thống) → không lọc', async () => {
-    const { service, prisma, access } = make();
-    await service.listAllocations('w1', {});
-    expect(access.visibleWhere).not.toHaveBeenCalled();
-    expect(JSON.stringify(whereOf(prisma.allocation.findMany))).not.toContain('isPrivate');
   });
 
   it('workload(w, q, viewer): phân bổ, issue và worklog của dự án ẩn bị bỏ khỏi tổng', async () => {

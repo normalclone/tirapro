@@ -86,9 +86,12 @@ export class GoalsService {
     private readonly access: ProjectAccessService,
   ) {}
 
-  /** Điều kiện hiển thị dự án của người xem; `viewerId` trống = ngữ cảnh hệ thống → `{}` (không lọc). */
-  private visibleFor(workspaceId: string, viewerId?: string): Promise<Prisma.ProjectWhereInput> {
-    return viewerId ? this.access.visibleWhere(viewerId, workspaceId) : Promise.resolve({});
+  /**
+   * Điều kiện hiển thị dự án của người xem (`{}` = thấy hết), tính MỘT lần mỗi lời gọi rồi truyền xuống các hàm con
+   * (tránh tính lại chế độ quyền nhiều lần). `viewerId` bắt buộc ở mọi đường đọc.
+   */
+  private visibleFor(workspaceId: string, viewerId: string): Promise<Prisma.ProjectWhereInput> {
+    return this.access.visibleWhere(viewerId, workspaceId);
   }
 
   /**
@@ -101,7 +104,7 @@ export class GoalsService {
       : { OR: [{ projectId: null }, { project: visible }] };
   }
 
-  async list(workspaceId: string, filter: GoalListFilter, viewerId?: string) {
+  async list(workspaceId: string, filter: GoalListFilter, viewerId: string) {
     const visible = await this.visibleFor(workspaceId, viewerId);
     const where: Prisma.ObjectiveWhereInput = { workspaceId, ...this.scopeOf(visible) };
     if (filter.period) where.period = filter.period;
@@ -118,7 +121,7 @@ export class GoalsService {
   }
 
   /** Các kỳ đã dùng (mới nhất trước) — để FE dựng bộ chọn kỳ mà không cần tải hết mục tiêu. */
-  async periods(workspaceId: string, viewerId?: string): Promise<string[]> {
+  async periods(workspaceId: string, viewerId: string): Promise<string[]> {
     const visible = await this.visibleFor(workspaceId, viewerId);
     const rows = await this.prisma.objective.findMany({
       where: { workspaceId, ...this.scopeOf(visible) },
@@ -129,8 +132,11 @@ export class GoalsService {
     return rows.map((r) => r.period);
   }
 
-  async get(workspaceId: string, id: string, viewerId?: string) {
-    const visible = await this.visibleFor(workspaceId, viewerId);
+  async get(workspaceId: string, id: string, viewerId: string) {
+    return this.read(workspaceId, id, await this.visibleFor(workspaceId, viewerId));
+  }
+
+  private async read(workspaceId: string, id: string, visible: Prisma.ProjectWhereInput) {
     const row = await this.prisma.objective.findFirst({
       where: { id, workspaceId, ...this.scopeOf(visible) },
       select: objectiveSelect(visible),
@@ -139,11 +145,12 @@ export class GoalsService {
     return this.toDto(row);
   }
 
-  async create(workspaceId: string, dto: CreateGoalInput, viewerId?: string) {
-    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, viewerId);
+  async create(workspaceId: string, dto: CreateGoalInput, viewerId: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, visible);
     const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
     const issueIds = dto.issueIds?.length
-      ? await this.validateIssues(workspaceId, dto.issueIds, projectId, viewerId)
+      ? await this.validateIssues(workspaceId, dto.issueIds, projectId, visible)
       : [];
 
     const created = await this.prisma.objective.create({
@@ -160,11 +167,12 @@ export class GoalsService {
       },
       select: { id: true },
     });
-    return this.get(workspaceId, created.id, viewerId);
+    return this.read(workspaceId, created.id, visible);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateGoalInput, viewerId?: string) {
-    const current = await this.requireObjective(workspaceId, id, viewerId);
+  async update(workspaceId: string, id: string, dto: UpdateGoalInput, viewerId: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    const current = await this.requireObjective(workspaceId, id, visible);
     const data: Prisma.ObjectiveUpdateInput = {};
 
     if (dto.name !== undefined && dto.name !== null) {
@@ -180,7 +188,7 @@ export class GoalsService {
     }
     if (dto.status !== undefined && dto.status !== null) data.status = dto.status;
     if (dto.projectId !== undefined) {
-      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, viewerId);
+      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, visible);
       data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
     }
     if (dto.ownerId !== undefined) {
@@ -220,9 +228,14 @@ export class GoalsService {
     if (dto.issueIds !== undefined) {
       const projectId = dto.projectId !== undefined ? (dto.projectId ?? null) : current.projectId;
       const issueIds = dto.issueIds.length
-        ? await this.validateIssues(workspaceId, dto.issueIds, projectId, viewerId)
+        ? await this.validateIssues(workspaceId, dto.issueIds, projectId, visible)
         : [];
-      ops.push(this.prisma.objectiveIssue.deleteMany({ where: { objectiveId: id } }));
+      // Chỉ thay phần việc thuộc dự án người sửa thấy; liên kết tới việc của dự án ẩn giữ nguyên (không xoá nhầm).
+      ops.push(
+        this.prisma.objectiveIssue.deleteMany({
+          where: { objectiveId: id, issue: { project: visible } },
+        }),
+      );
       if (issueIds.length) {
         ops.push(
           this.prisma.objectiveIssue.createMany({
@@ -233,11 +246,12 @@ export class GoalsService {
     }
 
     await this.prisma.$transaction(ops);
-    return this.get(workspaceId, id, viewerId);
+    return this.read(workspaceId, id, visible);
   }
 
-  async remove(workspaceId: string, id: string, viewerId?: string) {
-    await this.requireObjective(workspaceId, id, viewerId);
+  async remove(workspaceId: string, id: string, viewerId: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    await this.requireObjective(workspaceId, id, visible);
     await this.prisma.objective.delete({ where: { id } }); // KR + ObjectiveIssue cascade
     return { success: true };
   }
@@ -248,11 +262,12 @@ export class GoalsService {
     workspaceId: string,
     objectiveId: string,
     dto: CreateKeyResultInput,
-    viewerId?: string,
+    viewerId: string,
   ) {
-    await this.requireObjective(workspaceId, objectiveId, viewerId);
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    await this.requireObjective(workspaceId, objectiveId, visible);
     await this.prisma.keyResult.create({ data: { objectiveId, ...this.krCreateData(dto) } });
-    return this.get(workspaceId, objectiveId, viewerId);
+    return this.read(workspaceId, objectiveId, visible);
   }
 
   async updateKeyResult(
@@ -260,9 +275,10 @@ export class GoalsService {
     objectiveId: string,
     keyResultId: string,
     dto: UpdateKeyResultInput,
-    viewerId?: string,
+    viewerId: string,
   ) {
-    await this.requireObjective(workspaceId, objectiveId, viewerId);
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    await this.requireObjective(workspaceId, objectiveId, visible);
     const kr = await this.prisma.keyResult.findFirst({
       where: { id: keyResultId, objectiveId },
       select: { id: true },
@@ -281,46 +297,49 @@ export class GoalsService {
     if (dto.currentValue !== undefined) data.currentValue = dto.currentValue;
 
     await this.prisma.keyResult.update({ where: { id: keyResultId }, data });
-    return this.get(workspaceId, objectiveId, viewerId);
+    return this.read(workspaceId, objectiveId, visible);
   }
 
   async removeKeyResult(
     workspaceId: string,
     objectiveId: string,
     keyResultId: string,
-    viewerId?: string,
+    viewerId: string,
   ) {
-    await this.requireObjective(workspaceId, objectiveId, viewerId);
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    await this.requireObjective(workspaceId, objectiveId, visible);
     const { count } = await this.prisma.keyResult.deleteMany({
       where: { id: keyResultId, objectiveId },
     });
     if (count === 0) throw new NotFoundAppException('Kết quả then chốt');
-    return this.get(workspaceId, objectiveId, viewerId);
+    return this.read(workspaceId, objectiveId, visible);
   }
 
   // ───────────────────────── issues gắn kèm ─────────────────────────
 
-  async addIssues(workspaceId: string, objectiveId: string, issueIds: string[], viewerId?: string) {
-    const objective = await this.requireObjective(workspaceId, objectiveId, viewerId);
-    const ids = await this.validateIssues(workspaceId, issueIds, objective.projectId, viewerId);
+  async addIssues(workspaceId: string, objectiveId: string, issueIds: string[], viewerId: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    const objective = await this.requireObjective(workspaceId, objectiveId, visible);
+    const ids = await this.validateIssues(workspaceId, issueIds, objective.projectId, visible);
     await this.prisma.objectiveIssue.createMany({
       data: ids.map((issueId) => ({ objectiveId, issueId })),
       skipDuplicates: true,
     });
-    return this.get(workspaceId, objectiveId, viewerId);
+    return this.read(workspaceId, objectiveId, visible);
   }
 
   async removeIssues(
     workspaceId: string,
     objectiveId: string,
     issueIds: string[],
-    viewerId?: string,
+    viewerId: string,
   ) {
-    await this.requireObjective(workspaceId, objectiveId, viewerId);
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    await this.requireObjective(workspaceId, objectiveId, visible);
     await this.prisma.objectiveIssue.deleteMany({
       where: { objectiveId, issueId: { in: issueIds } },
     });
-    return this.get(workspaceId, objectiveId, viewerId);
+    return this.read(workspaceId, objectiveId, visible);
   }
 
   // ───────────────────────── helpers ─────────────────────────
@@ -335,12 +354,16 @@ export class GoalsService {
     };
   }
 
-  private async requireObjective(workspaceId: string, id: string, viewerId?: string) {
+  private async requireObjective(
+    workspaceId: string,
+    id: string,
+    visible: Prisma.ProjectWhereInput,
+  ) {
     const row = await this.prisma.objective.findFirst({
       where: {
         id,
         workspaceId,
-        ...this.scopeOf(await this.visibleFor(workspaceId, viewerId)),
+        ...this.scopeOf(visible),
       },
       select: { id: true, projectId: true, project: { select: { archivedAt: true } } },
     });
@@ -353,7 +376,7 @@ export class GoalsService {
   private async resolveProject(
     workspaceId: string,
     projectId: string | null,
-    viewerId?: string,
+    visible: Prisma.ProjectWhereInput,
   ): Promise<string | null> {
     if (!projectId) return null;
     const p = await this.prisma.project.findFirst({
@@ -361,7 +384,7 @@ export class GoalsService {
         id: projectId,
         workspaceId,
         deletedAt: null,
-        ...(await this.visibleFor(workspaceId, viewerId)),
+        ...visible,
       },
       select: { id: true, archivedAt: true },
     });
@@ -388,7 +411,7 @@ export class GoalsService {
     workspaceId: string,
     issueIds: string[],
     projectId: string | null,
-    viewerId?: string,
+    visible: Prisma.ProjectWhereInput,
   ): Promise<string[]> {
     const unique = [...new Set(issueIds)];
     if (unique.length === 0) return [];
@@ -397,7 +420,7 @@ export class GoalsService {
         id: { in: unique },
         workspaceId,
         deletedAt: null,
-        project: { deletedAt: null, ...(await this.visibleFor(workspaceId, viewerId)) },
+        project: { deletedAt: null, ...visible },
         ...(projectId ? { projectId } : {}),
       },
       select: { id: true },

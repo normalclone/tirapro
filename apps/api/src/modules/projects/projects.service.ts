@@ -402,7 +402,7 @@ export class ProjectsService {
       };
     }
     await this.prisma.project.update({ where: { id: projectId }, data, select: { id: true } });
-    const dto = (await this.health.forProjects(workspaceId, [projectId])).get(projectId);
+    const dto = (await this.health.forProjects(workspaceId, [projectId], null)).get(projectId); // đã qua guard dự án
     if (!dto) throw new NotFoundAppException('Dự án');
     return dto;
   }

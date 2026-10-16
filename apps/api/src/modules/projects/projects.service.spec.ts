@@ -244,7 +244,7 @@ describe('ProjectsService.setHealth — ghi đè sức khoẻ dự án', () => {
       healthUpdatedById: 'u1',
     });
     expect(call.data.healthUpdatedAt).toBeInstanceOf(Date);
-    expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1']);
+    expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1'], null);
     expect(dto).toMatchObject({ level: 'RED' });
   });
 

@@ -35,7 +35,7 @@ describe('TeamsService.assignToProject — dự án riêng tư (P14)', () => {
 
   it('không có người gọi (hệ thống) → không kiểm quyền xem', async () => {
     const { service, access } = make();
-    await service.assignToProject('w1', 't1', 'p1', ['r1']);
+    await service.assignToProject('w1', 't1', 'p1', ['r1'], null);
     expect(access.assertCanSee).not.toHaveBeenCalled();
   });
 });

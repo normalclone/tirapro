@@ -163,7 +163,7 @@ export class TeamsService {
     teamId: string,
     projectId: string,
     roleIds: string[],
-    actorId?: string,
+    actorId: string | null,
   ) {
     await this.requireTeam(workspaceId, teamId);
     // Route không có `@ProjectRef` (projectId nằm ở body, route có :id) nên guard không kiểm dự án: người gọi không thấy
@@ -176,7 +176,13 @@ export class TeamsService {
     });
     let added = 0;
     for (const m of teamMembers) {
-      await this.members.addProject(workspaceId, projectId, m.userId, roleIds, actorId); // validate project∈ws, existing→setRoles, rbac invalidate
+      await this.members.addProject(
+        workspaceId,
+        projectId,
+        m.userId,
+        roleIds,
+        actorId ?? undefined,
+      ); // validate project∈ws, existing→setRoles, rbac invalidate
       added++;
     }
     return { success: true, added };

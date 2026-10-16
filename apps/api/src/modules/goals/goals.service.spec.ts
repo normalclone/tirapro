@@ -28,7 +28,7 @@ describe('GoalsService — không đếm/gắn issue của dự án xoá mềm',
   it('list: issue gắn kèm lọc cả issue xoá mềm lẫn dự án xoá mềm', async () => {
     const findMany = vi.fn(() => Promise.resolve([]));
     const service = new GoalsService({ objective: { findMany } } as never, ACCESS_ALL as never);
-    await service.list('w1', {});
+    await service.list('w1', {}, 'u0');
     const { select } = (
       findMany.mock.calls[0] as unknown as [{ select: { issues: { where: unknown } } }]
     )[0];
@@ -77,30 +77,32 @@ describe('GoalsService — dự án lưu trữ là chỉ đọc', () => {
   it('create gắn vào dự án đã lưu trữ => 422, không ghi', async () => {
     const { service, prisma } = setup(true);
     await expect(
-      service.create('w1', { name: 'O', period: '2026-Q4', projectId: 'p1' }),
+      service.create('w1', { name: 'O', period: '2026-Q4', projectId: 'p1' }, 'u0'),
     ).rejects.toMatchObject(ARCHIVED);
     expect(prisma.objective.create).not.toHaveBeenCalled();
   });
 
   it('update chuyển mục tiêu sang dự án đã lưu trữ => 422', async () => {
     const { service, prisma } = setup(true, false);
-    await expect(service.update('w1', 'o1', { projectId: 'p1' })).rejects.toMatchObject(ARCHIVED);
+    await expect(service.update('w1', 'o1', { projectId: 'p1' }, 'u0')).rejects.toMatchObject(
+      ARCHIVED,
+    );
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('update/remove/KR/issue của mục tiêu thuộc dự án đã lưu trữ => 422, không ghi', async () => {
     const { service, prisma } = setup(true);
-    await expect(service.update('w1', 'o1', { name: 'Mới' })).rejects.toMatchObject(ARCHIVED);
-    await expect(service.remove('w1', 'o1')).rejects.toMatchObject(ARCHIVED);
+    await expect(service.update('w1', 'o1', { name: 'Mới' }, 'u0')).rejects.toMatchObject(ARCHIVED);
+    await expect(service.remove('w1', 'o1', 'u0')).rejects.toMatchObject(ARCHIVED);
     await expect(
-      service.addKeyResult('w1', 'o1', { name: 'KR', targetValue: 10 }),
+      service.addKeyResult('w1', 'o1', { name: 'KR', targetValue: 10 }, 'u0'),
     ).rejects.toMatchObject(ARCHIVED);
     await expect(
-      service.updateKeyResult('w1', 'o1', 'k1', { currentValue: 5 }),
+      service.updateKeyResult('w1', 'o1', 'k1', { currentValue: 5 }, 'u0'),
     ).rejects.toMatchObject(ARCHIVED);
-    await expect(service.removeKeyResult('w1', 'o1', 'k1')).rejects.toMatchObject(ARCHIVED);
-    await expect(service.addIssues('w1', 'o1', ['i1'])).rejects.toMatchObject(ARCHIVED);
-    await expect(service.removeIssues('w1', 'o1', ['i1'])).rejects.toMatchObject(ARCHIVED);
+    await expect(service.removeKeyResult('w1', 'o1', 'k1', 'u0')).rejects.toMatchObject(ARCHIVED);
+    await expect(service.addIssues('w1', 'o1', ['i1'], 'u0')).rejects.toMatchObject(ARCHIVED);
+    await expect(service.removeIssues('w1', 'o1', ['i1'], 'u0')).rejects.toMatchObject(ARCHIVED);
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.objective.delete).not.toHaveBeenCalled();
     expect(prisma.keyResult.create).not.toHaveBeenCalled();
@@ -112,7 +114,7 @@ describe('GoalsService — dự án lưu trữ là chỉ đọc', () => {
 
   it('mục tiêu cả workspace (không gắn dự án) vẫn xoá được', async () => {
     const { service, prisma } = setup(true, false);
-    await service.remove('w1', 'o1');
+    await service.remove('w1', 'o1', 'u0');
     expect(prisma.objective.delete).toHaveBeenCalled();
   });
 });
@@ -207,5 +209,26 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
       id: { in: ['i-hidden'] },
       project: { deletedAt: null, ...visible },
     });
+  });
+
+  it('update(issueIds): chỉ thay phần việc thuộc dự án người sửa thấy, KHÔNG xoá liên kết tới việc của dự án ẩn (I1)', async () => {
+    const { service, prisma } = make();
+    prisma.objective.findFirst.mockResolvedValue({
+      id: 'o1',
+      projectId: null,
+      project: null,
+    } as never);
+    prisma.issue.findMany.mockResolvedValue([{ id: 'i1' }] as never);
+    const deleteMany = vi.fn((_a?: unknown) => Promise.resolve({ count: 0 }));
+    const createMany = vi.fn((_a?: unknown) => Promise.resolve({ count: 1 }));
+    Object.assign(prisma, {
+      objectiveIssue: { deleteMany, createMany },
+      keyResult: { findMany: vi.fn(() => Promise.resolve([])) },
+      $transaction: vi.fn(() => Promise.resolve([])),
+    });
+    (prisma.objective as Record<string, unknown>).update = vi.fn(() => Promise.resolve({}));
+    await expect(service.update('w1', 'o1', { issueIds: ['i1'] }, 'u1')).rejects.toBeDefined(); // get() sau ghi: mock trả null → 404
+    expect(whereOf(deleteMany)).toEqual({ objectiveId: 'o1', issue: { project: visible } });
+    expect(createMany).toHaveBeenCalledWith({ data: [{ objectiveId: 'o1', issueId: 'i1' }] });
   });
 });

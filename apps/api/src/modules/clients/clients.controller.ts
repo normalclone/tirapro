@@ -120,9 +120,10 @@ export class ClientsController {
   @Permissions(PERMISSIONS.CLIENT_MANAGE)
   async removeContract(
     @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
     @Param('clientId') clientId: string,
     @Param('contractId') contractId: string,
   ) {
-    return this.clients.removeContract(workspaceId, clientId, contractId);
+    return this.clients.removeContract(workspaceId, clientId, contractId, user.id);
   }
 }

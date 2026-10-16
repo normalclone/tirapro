@@ -145,13 +145,6 @@ describe('RaidService — dự án riêng tư (P14)', () => {
     });
   });
 
-  it('list không viewer → không thêm điều kiện dự án', async () => {
-    const { service, prisma, access } = make();
-    await service.list('w1', {});
-    expect(access.visibleWhere).not.toHaveBeenCalled();
-    expect(JSON.stringify(whereOf(prisma.raidItem.findMany))).not.toContain('isPrivate');
-  });
-
   it('get(w, id, viewer): mục của dự án riêng tư không thấy → 404 "Mục rủi ro" như không tồn tại', async () => {
     const { service, prisma } = make();
     await expect(service.get('w1', 'r1', 'u1')).rejects.toMatchObject({ status: 404 });

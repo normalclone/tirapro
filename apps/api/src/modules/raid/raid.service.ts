@@ -70,15 +70,14 @@ export class RaidService {
    */
   private async scopeFor(
     workspaceId: string,
-    viewerId?: string,
+    viewerId: string,
   ): Promise<Prisma.RaidItemWhereInput> {
-    if (!viewerId) return {};
     const visible = await this.access.visibleWhere(viewerId, workspaceId);
     if (Object.keys(visible).length === 0) return {};
     return { OR: [{ projectId: null }, { project: visible }] };
   }
 
-  async list(workspaceId: string, filter: RaidListFilter, viewerId?: string) {
+  async list(workspaceId: string, filter: RaidListFilter, viewerId: string) {
     const where: Prisma.RaidItemWhereInput = {
       workspaceId,
       ...(await this.scopeFor(workspaceId, viewerId)),
@@ -97,7 +96,7 @@ export class RaidService {
     return rows.map((r) => this.toDto(r)).sort((a, b) => b.score - a.score);
   }
 
-  async get(workspaceId: string, id: string, viewerId?: string) {
+  async get(workspaceId: string, id: string, viewerId: string) {
     const row = await this.prisma.raidItem.findFirst({
       where: { id, workspaceId, ...(await this.scopeFor(workspaceId, viewerId)) },
       select: RAID_SELECT,
@@ -167,7 +166,7 @@ export class RaidService {
     return this.get(workspaceId, id, actor.id);
   }
 
-  async remove(workspaceId: string, id: string, viewerId?: string) {
+  async remove(workspaceId: string, id: string, viewerId: string) {
     const item = await this.requireItem(workspaceId, id, viewerId);
     if (item.projectId) await assertProjectWritable(this.prisma, item.projectId);
     await this.prisma.raidItem.delete({ where: { id } });
@@ -176,7 +175,7 @@ export class RaidService {
 
   // ───────────────────────── helpers ─────────────────────────
 
-  private async requireItem(workspaceId: string, id: string, viewerId?: string) {
+  private async requireItem(workspaceId: string, id: string, viewerId: string) {
     const row = await this.prisma.raidItem.findFirst({
       where: { id, workspaceId, ...(await this.scopeFor(workspaceId, viewerId)) },
       select: { id: true, projectId: true },
@@ -211,10 +210,10 @@ export class RaidService {
   private async resolveProject(
     workspaceId: string,
     projectId: string | null,
-    viewerId?: string,
+    viewerId: string,
   ): Promise<string | null> {
     if (!projectId) return null;
-    const visible = viewerId ? await this.access.visibleWhere(viewerId, workspaceId) : {};
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null, ...visible },
       select: { id: true },
