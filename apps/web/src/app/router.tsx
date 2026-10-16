@@ -5,6 +5,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { RouteError } from '@/components/layout/RouteError';
 import { RequireAccess } from '@/components/layout/RequireAccess';
 import { ConnectIndexRedirect } from '@/features/connect/ConnectIndexRedirect';
+import { SettingsIndexRedirect } from '@/features/settings/SettingsIndexRedirect';
 import { NAV_RULES } from '@/lib/navAccess';
 // Vào ngay từ đầu (unauth first paint + shell) → giữ eager, không tách chunk.
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -241,7 +242,7 @@ export const router = createBrowserRouter([
         path: 'settings',
         element: <SettingsLayout />,
         children: [
-          { index: true, element: <Navigate to="/settings/general" replace /> },
+          { index: true, element: <SettingsIndexRedirect /> },
           {
             element: <RequireAccess rule={NAV_RULES.settingsGeneral} who="quản trị viên" />,
             children: [{ path: 'general', element: <SettingsGeneralPage /> }],

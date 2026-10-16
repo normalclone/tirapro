@@ -38,10 +38,37 @@ export function useNavVisible(rule: NavRule): boolean {
   return canSeeNav(rule, { isSystemAdmin: user?.isSystemAdmin === true, permissions });
 }
 
-/** Giữ các mục thoả luật `rule` (mục không có `rule` luôn hiện). */
-export function useVisibleItems<T extends { rule?: NavRule }>(items: readonly T[]): T[] {
+/** Người đăng nhập là admin hệ thống không. */
+export function useIsSystemAdmin(): boolean {
+  return useAuth((s) => s.user?.isSystemAdmin === true);
+}
+
+type Gated = { rule?: NavRule; match?: (p: string) => boolean };
+
+/**
+ * Giữ các mục thoả luật `rule` (mục không có `rule` luôn hiện). Có `pathname`: mục đang đứng trên đó vẫn hiện
+ * (để sáng lên) dù thiếu quyền — vd người chỉ quản trị một dự án vào Tự động hoá từ tab dự án; trừ mục chỉ dành admin hệ thống.
+ */
+export function filterNavItems<T extends Gated>(
+  items: readonly T[],
+  ctx: NavContext,
+  pathname?: string,
+): T[] {
+  return items.filter(
+    (i) =>
+      !i.rule ||
+      canSeeNav(i.rule, ctx) ||
+      (pathname !== undefined && i.rule !== 'systemAdmin' && !!i.match?.(pathname)),
+  );
+}
+
+/** `filterNavItems` với quyền của người đang đăng nhập. */
+export function useVisibleItems<T extends Gated>(items: readonly T[], pathname?: string): T[] {
   const user = useAuth((s) => s.user);
   const permissions = useAuth((s) => s.permissions);
-  const ctx = { isSystemAdmin: user?.isSystemAdmin === true, permissions };
-  return items.filter((i) => !i.rule || canSeeNav(i.rule, ctx));
+  return filterNavItems(
+    items,
+    { isSystemAdmin: user?.isSystemAdmin === true, permissions },
+    pathname,
+  );
 }

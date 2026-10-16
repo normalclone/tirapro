@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
-import { Plug, Repeat } from 'lucide-react';
+import { Link, NavLink, Outlet } from 'react-router-dom';
+import { ArrowLeft, Plug, Repeat } from 'lucide-react';
+import { useProjects } from '@/features/projects/api';
+import { useScopeParam } from '@/lib/scopeParam';
 import { cn } from '@/lib/utils';
 import { NAV_RULES, useVisibleItems, type NavRule } from '@/lib/navAccess';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
@@ -21,6 +23,10 @@ const CONNECT_NAV: { to: string; label: string; icon: ReactNode; rule?: NavRule 
 
 export function ConnectLayout() {
   const items = useVisibleItems(CONNECT_NAV);
+  // Vào từ menu "Thêm" của dự án (?project=<id>) → có lối quay về dự án đó.
+  const { data: projects } = useProjects(true);
+  const fromId = useScopeParam(projects);
+  const fromProject = projects?.find((p) => p.id === fromId);
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       <nav
@@ -34,6 +40,15 @@ export function ConnectLayout() {
         <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">
           Kết nối &amp; tự động hoá
         </h1>
+        {fromProject && (
+          <Link
+            to={`/p/${fromProject.key}/board`}
+            className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
+            Về dự án {fromProject.name}
+          </Link>
+        )}
         {items.map((item) => (
           <NavLink
             key={item.to}

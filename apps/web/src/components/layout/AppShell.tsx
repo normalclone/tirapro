@@ -29,7 +29,7 @@ import { ShortcutsDialog, SHORTCUTS_EVENT } from '@/components/layout/ShortcutsD
 import { Button } from '@/components/ui/Button';
 import { ConfirmHost } from '@/components/ui/useConfirm';
 import { useAi } from '@/stores/ai';
-import { NAV_RULES, useVisibleItems, type NavRule } from '@/lib/navAccess';
+import { NAV_RULES, useIsSystemAdmin, useVisibleItems, type NavRule } from '@/lib/navAccess';
 import { useGlobalHotkeys } from '@/lib/useGlobalHotkeys';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
@@ -139,8 +139,10 @@ const ADMIN_NAV: NavEntry[] = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const loc = useLocation();
-  const admin = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/');
-  const visibleNav = useVisibleItems(NAV_ITEMS);
+  // Chế độ menu admin chỉ cho admin hệ thống — người khác mở /admin thấy trang "không có quyền" trong khung thường.
+  const isSysAdmin = useIsSystemAdmin();
+  const admin = isSysAdmin && (loc.pathname === '/admin' || loc.pathname.startsWith('/admin/'));
+  const visibleNav = useVisibleItems(NAV_ITEMS, loc.pathname);
   const navItems = admin ? ADMIN_NAV : visibleNav;
   useNotificationRealtime();
   const [navOpen, setNavOpen] = useState(false);

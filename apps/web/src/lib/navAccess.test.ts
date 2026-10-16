@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canSeeNav, NAV_RULES } from './navAccess';
+import { canSeeNav, filterNavItems, NAV_RULES } from './navAccess';
 
 const member = { isSystemAdmin: false, permissions: ['workspace:view', 'project:create'] };
 const admin = { isSystemAdmin: false, permissions: ['workspace:admin', 'integration:manage'] };
@@ -31,4 +31,21 @@ describe('canSeeNav', () => {
       canSeeNav(NAV_RULES.connect, { isSystemAdmin: false, permissions: ['automation:manage'] }),
     ).toBe(true);
   });
+});
+
+describe('filterNavItems', () => {
+  const items = [
+    { to: '/', match: (p: string) => p === '/' },
+    { to: '/connect', rule: NAV_RULES.connect, match: (p: string) => p.startsWith('/connect') },
+    { to: '/admin', rule: NAV_RULES.admin, match: (p: string) => p.startsWith('/admin') },
+  ];
+  it('ẩn mục thiếu quyền', () =>
+    expect(filterNavItems(items, member).map((i) => i.to)).toEqual(['/']));
+  it('đang đứng trên mục thiếu quyền thì mục vẫn hiện để sáng lên (Tự động hoá từ tab dự án)', () =>
+    expect(filterNavItems(items, member, '/connect/automation').map((i) => i.to)).toEqual([
+      '/',
+      '/connect',
+    ]));
+  it('mục chỉ dành admin hệ thống không bao giờ hiện cho người khác, kể cả khi đứng trên /admin', () =>
+    expect(filterNavItems(items, member, '/admin').map((i) => i.to)).toEqual(['/']));
 });
