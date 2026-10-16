@@ -124,6 +124,16 @@ describe('ClaudeService', () => {
     });
   });
 
+  it('không có khoá (client null) → không gọi API, data null kèm reason unconfigured', async () => {
+    const { svc, quota } = make({});
+    (svc as unknown as { client: unknown }).client = null;
+    expect(await svc.complete({ ctx: CTX, system: 's', prompt: 'p' })).toEqual({
+      data: null,
+      reason: 'unconfigured',
+    });
+    expect(quota.assertWithinQuota).not.toHaveBeenCalled();
+  });
+
   it('hết hạn mức → ném BusinessRuleException trước khi gọi API', async () => {
     const { svc, create } = make({ quotaError: new BusinessRuleException('hết hạn mức') });
     await expect(svc.complete({ ctx: CTX, system: 's', prompt: 'p' })).rejects.toBeInstanceOf(
@@ -134,7 +144,10 @@ describe('ClaudeService', () => {
 
   it('kill-switch bật → không gọi API, không kiểm quota, data null (heuristic)', async () => {
     const { svc, create, quota } = make({ killSwitch: true });
-    expect(await svc.complete({ ctx: CTX, system: 's', prompt: 'p' })).toEqual({ data: null });
+    expect(await svc.complete({ ctx: CTX, system: 's', prompt: 'p' })).toEqual({
+      data: null,
+      reason: 'unconfigured',
+    });
     expect(create).not.toHaveBeenCalled();
     expect(quota.assertWithinQuota).not.toHaveBeenCalled();
   });

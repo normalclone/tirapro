@@ -62,10 +62,10 @@ describe('AiService', () => {
     expect(out.rationale).toBeTruthy();
   });
 
-  it('generateIssues: dùng model primary, bọc <user_request>; không key → heuristic không có reason', async () => {
+  it('generateIssues: dùng model primary, bọc <user_request>; không key → heuristic mang reason unconfigured', async () => {
     const extract = vi
       .fn<(arg: ExtractArg) => Promise<{ data: null; reason?: string }>>()
-      .mockResolvedValue({ data: null });
+      .mockResolvedValue({ data: null, reason: 'unconfigured' });
     const out = await make({ extract }).generateIssues('ws1', 'u1', {
       projectId: 'p1',
       text: 'Sửa lỗi đăng nhập. Thêm trang hồ sơ',
@@ -74,7 +74,7 @@ describe('AiService', () => {
     expect(arg.model).toBe('primary-m');
     expect(arg.prompt).toContain('<user_request>');
     expect(out.source).toBe('heuristic');
-    expect('reason' in out).toBe(false);
+    expect(out.reason).toBe('unconfigured');
     expect(out.issues.length).toBeGreaterThan(0);
   });
 });

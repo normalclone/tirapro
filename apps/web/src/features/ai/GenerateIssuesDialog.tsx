@@ -2,7 +2,7 @@ import { useState, type ComponentProps } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Sparkles, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AiGeneratedIssue } from '@tirapro/shared';
+import type { AiFallbackReason, AiGeneratedIssue } from '@tirapro/shared';
 import { api, apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { useOpenSession } from '@/lib/useOpenSession';
@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { DelayedSpinner } from '@/components/ui/primitives';
 import { useGenerateIssues, useProjectMeta } from './api';
+import { AiFallbackNote } from './AiFallbackNote';
+import { aiSourceLabel } from './fallbackNote';
 import { keys } from '@/lib/queryKeys';
 
 interface Row extends AiGeneratedIssue {
@@ -43,6 +45,7 @@ function GenerateIssuesDialogInner({
   const [text, setText] = useState('');
   const [rows, setRows] = useState<Row[] | null>(null);
   const [source, setSource] = useState<'claude' | 'heuristic' | null>(null);
+  const [reason, setReason] = useState<AiFallbackReason | undefined>();
   const [creating, setCreating] = useState(false);
 
   const defaultTypeId =
@@ -59,6 +62,7 @@ function GenerateIssuesDialogInner({
     try {
       const res = await generate.mutateAsync({ projectId, text: text.trim() });
       setSource(res.source);
+      setReason(res.reason);
       setRows(res.issues.map((i) => ({ ...i, selected: true })));
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -151,11 +155,14 @@ function GenerateIssuesDialogInner({
               Phân tích
             </Button>
             {source && (
-              <span className="text-xs text-faint">
-                Nguồn: {source === 'claude' ? 'Claude' : 'gợi ý cơ bản'}
-              </span>
+              <span className="text-xs text-faint">Nguồn: {aiSourceLabel(source, reason)}</span>
             )}
           </div>
+          {source === 'heuristic' && (
+            <div className="mt-2">
+              <AiFallbackNote reason={reason} />
+            </div>
+          )}
         </div>
 
         {generate.isPending && <DelayedSpinner />}

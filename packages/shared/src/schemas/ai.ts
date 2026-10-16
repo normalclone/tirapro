@@ -18,8 +18,11 @@ export interface AiGeneratedIssue {
   priority?: string;
 }
 
-/** Lý do AI không trả được kết quả nên rơi về heuristic (chỉ có khi AI đã bật nhưng lời gọi hỏng). */
-export type AiFallbackReason = 'timeout' | 'error';
+/**
+ * Lý do AI không trả được kết quả nên rơi về heuristic: `timeout`/`error` = AI đã bật nhưng lời gọi hỏng;
+ * `unconfigured` = AI chưa có khoá hoặc admin bật kill-switch (người dùng cuối không phân biệt được hai trường hợp).
+ */
+export type AiFallbackReason = 'timeout' | 'error' | 'unconfigured';
 
 export interface AiGenerateIssuesResult {
   source: 'claude' | 'heuristic';

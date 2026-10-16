@@ -2,11 +2,9 @@ import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { apiErrorMessage } from '@/lib/api';
+import { AiFallbackNote } from './AiFallbackNote';
+import { aiSourceLabel } from './fallbackNote';
 import { useAiCapabilities, useSuggestIssue, useSummarizeIssue } from './api';
-
-function sourceLabel(source: 'claude' | 'heuristic'): string {
-  return source === 'claude' ? 'Claude' : 'gợi ý cơ bản';
-}
 
 export function AiIssuePanel({ issueId }: { issueId: string }) {
   const { data: capabilities } = useAiCapabilities();
@@ -58,7 +56,10 @@ export function AiIssuePanel({ issueId }: { issueId: string }) {
           <div className="mt-3 whitespace-pre-wrap rounded-md bg-surface-2 p-2.5 text-sm text-ink">
             {summary.summary}
           </div>
-          <p className="mt-1 text-xs text-faint">Nguồn: {sourceLabel(summary.source)}</p>
+          <p className="mt-1 text-xs text-faint">
+            Nguồn: {aiSourceLabel(summary.source, summary.reason)}
+          </p>
+          <AiFallbackNote reason={summary.reason} variant="plain" />
         </div>
       )}
 
@@ -84,7 +85,10 @@ export function AiIssuePanel({ issueId }: { issueId: string }) {
           {suggestion.rationale && (
             <p className="mt-2 text-sm text-muted">{suggestion.rationale}</p>
           )}
-          <p className="mt-1 text-xs text-faint">Nguồn: {sourceLabel(suggestion.source)}</p>
+          <p className="mt-1 text-xs text-faint">
+            Nguồn: {aiSourceLabel(suggestion.source, suggestion.reason)}
+          </p>
+          <AiFallbackNote reason={suggestion.reason} variant="plain" />
         </div>
       )}
     </div>

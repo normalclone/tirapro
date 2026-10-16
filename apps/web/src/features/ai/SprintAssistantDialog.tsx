@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 import { useBulkUpdateIssues } from '@/features/backlog/api';
 import { useSprintPlan } from './api';
+import { AiFallbackNote } from './AiFallbackNote';
+import { aiSourceLabel } from './fallbackNote';
 
 /**
  * Trợ lý lập sprint: nhập năng lực (bỏ trống = theo velocity) và mục tiêu (tuỳ chọn) → nhận danh sách
@@ -196,14 +198,9 @@ function PlanResult({
         {' · '}
         {result.source === 'claude'
           ? 'Chọn bởi AI theo mục tiêu'
-          : 'Chọn theo độ ưu tiên và hạn chót'}
+          : `Chọn theo độ ưu tiên và hạn chót · Nguồn: ${aiSourceLabel(result.source, result.reason)}`}
       </p>
-      {result.reason && (
-        <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-muted">
-          AI đang bận nên kết quả dưới đây chỉ theo độ ưu tiên và hạn chót. Bạn có thể bấm “Đề xuất
-          lại”.
-        </p>
-      )}
+      <AiFallbackNote reason={result.reason} />
       {result.capacityPoints <= 0 && (
         <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-muted">
           Chưa có sprint nào kết thúc để tính velocity. Hãy nhập năng lực của đội rồi đề xuất lại.

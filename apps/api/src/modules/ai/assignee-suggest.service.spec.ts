@@ -90,7 +90,7 @@ describe('AssigneeSuggestService', () => {
       expect(w.id).toEqual({ not: 'i1' }); // issue đang xét không tự tính vào tải/hoạt động/đã xử lý
     }
     expect(out.source).toBe('heuristic');
-    expect('reason' in out).toBe(false);
+    expect(out.reason).toBe('unconfigured'); // AI chưa bật → nói rõ nguồn, không phải "AI bận"
     expect(out.suggestions.map((s) => s.userId)).toEqual(['uB', 'uA', 'uC']);
     expect(out.suggestions.map((s) => s.score)).toEqual([0.95, 0.45, 0.25]);
     const b = out.suggestions[0]!.reasons.join(' | ');

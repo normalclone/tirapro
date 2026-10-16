@@ -97,8 +97,9 @@ export class AssigneeSuggestService {
     const top = candidates.slice(0, MAX_SUGGESTIONS).map(toSuggestion);
     if (candidates.length === 0) return { source: 'heuristic', suggestions: [] };
 
-    if (!this.claude.available() || candidates.length < 2)
-      return { source: 'heuristic', suggestions: top };
+    if (!this.claude.available())
+      return { source: 'heuristic', reason: 'unconfigured', suggestions: top };
+    if (candidates.length < 2) return { source: 'heuristic', suggestions: top };
 
     const ranked = await this.rankWithClaude(
       workspaceId,

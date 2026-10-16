@@ -4,8 +4,8 @@ import { Sparkles } from 'lucide-react';
 import { apiErrorMessage } from '@/lib/api';
 import { Avatar } from '@/components/ui/primitives';
 import { DelayedSpinner } from '@/components/ui/primitives';
-import { cn } from '@/lib/utils';
 import { useSuggestAssignee } from './api';
+import { AiFallbackNote } from './AiFallbackNote';
 
 /**
  * Nút "Gợi ý" cạnh ô chọn người phụ trách: hỏi máy chủ top 3 người phù hợp (kèm lý do),
@@ -104,13 +104,15 @@ export function AssigneeSuggestButton({
                   </li>
                 ))}
               </ul>
-              <p className={cn('mt-1 border-t border-border px-2 pt-1.5 text-[11px] text-faint')}>
-                {data.source === 'claude'
-                  ? 'Xếp hạng bởi AI dựa trên số liệu của dự án.'
-                  : data.reason
-                    ? 'AI đang bận nên đây là gợi ý theo số liệu dự án. Thử lại sau để có lý do chi tiết hơn.'
+              {data.source === 'heuristic' && data.reason ? (
+                <AiFallbackNote reason={data.reason} variant="footnote" />
+              ) : (
+                <p className="mt-1 border-t border-border px-2 pt-1.5 text-[11px] text-faint">
+                  {data.source === 'claude'
+                    ? 'Xếp hạng bởi AI dựa trên số liệu của dự án.'
                     : 'Gợi ý theo số liệu dự án.'}
-              </p>
+                </p>
+              )}
             </>
           )}
         </Popover.Content>
