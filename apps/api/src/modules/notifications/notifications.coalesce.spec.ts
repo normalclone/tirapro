@@ -270,4 +270,28 @@ describe('ISSUE_UPDATED giao việc hàng loạt (L28 fix)', () => {
     });
     expect(rows.map((r) => r.type)).toEqual(['ISSUE_ASSIGNED']);
   });
+
+  it('publish giữ `count` do producer gộp sẵn (thông báo "Bạn được giao N việc từ nhập Jira")', async () => {
+    const { rows, notifications } = setup({ watchers: [] });
+    await notifications.publish({
+      recipientId: 'u2',
+      workspaceId: 'w1',
+      type: 'ISSUE_ASSIGNED',
+      issueId: 'i1',
+      actorId: 'a1',
+      payload: { key: 'TP-1', count: 5, bulk: 'jira-import' },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.payload).toMatchObject({ count: 5, bulk: 'jira-import' });
+    // phát thường (không count) vẫn là 1
+    await notifications.publish({
+      recipientId: 'u3',
+      workspaceId: 'w1',
+      type: 'ISSUE_ASSIGNED',
+      issueId: 'i2',
+      actorId: 'a1',
+      payload: { key: 'TP-2' },
+    });
+    expect(rows[1]!.payload).toMatchObject({ count: 1 });
+  });
 });

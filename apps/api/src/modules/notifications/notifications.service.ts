@@ -723,7 +723,8 @@ export class NotificationsService {
       : null;
     return {
       ...base,
-      count: 1,
+      // producer gộp sẵn (vd giao hàng loạt từ nhập Jira) tự đặt `count`; còn lại mỗi lần phát là 1 lần
+      count: base.count ?? 1,
       ...(actor?.displayName && input.actorId
         ? {
             actorName: actor.displayName,
