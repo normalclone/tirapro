@@ -44,7 +44,7 @@ export interface LeadershipOverview {
   unavailable: LeadershipCard[];
 }
 
-export type LeadershipCard = 'topRisks' | 'slowGoals' | 'overloaded';
+type LeadershipCard = 'topRisks' | 'slowGoals' | 'overloaded';
 
 const person = (o: { id: string; displayName: string } | null) =>
   o ? { id: o.id, displayName: o.displayName } : null;
