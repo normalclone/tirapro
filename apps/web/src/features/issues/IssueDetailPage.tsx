@@ -77,6 +77,7 @@ import { EnvironmentPanel } from '@/features/issue-edit/EnvironmentPanel';
 import { DelayedSpinner } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { IssueNotFound } from './IssueNotFound';
+import { issueViewState } from './issueViewState';
 import { apiErrorCode } from '@/lib/api';
 import { pageContainer } from '@/components/layout/page';
 import { Button } from '@/components/ui/Button';
@@ -132,6 +133,12 @@ export function IssueDetailPage() {
     error: issueError,
     refetch: refetchIssue,
   } = useIssue(key);
+  const viewState = issueViewState({
+    isError,
+    isLoading,
+    hasData: !!issue,
+    notFound: apiErrorCode(issueError) === 'NOT_FOUND',
+  });
   const can = useCanIn(issue?.projectId);
   const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
   const canTransition = can('issue:transition');
@@ -536,13 +543,11 @@ export function IssueDetailPage() {
             </div>
           )}
 
-          {isError ? (
-            apiErrorCode(issueError) === 'NOT_FOUND' ? (
-              <IssueNotFound issueKey={key} />
-            ) : (
-              <QueryError error={issueError} onRetry={() => void refetchIssue()} />
-            )
-          ) : isLoading || !issue ? (
+          {viewState === 'not-found' ? (
+            <IssueNotFound issueKey={key} />
+          ) : viewState === 'error' ? (
+            <QueryError error={issueError} onRetry={() => void refetchIssue()} />
+          ) : viewState === 'loading' || !issue ? (
             <DelayedSpinner />
           ) : (
             <>

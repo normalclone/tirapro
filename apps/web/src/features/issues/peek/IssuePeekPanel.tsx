@@ -27,6 +27,7 @@ import { IssueRelations } from '@/features/tree/IssueRelations';
 import { activeDrag } from '@/lib/activeDrag';
 import { hasDraftText, isOverlayOpen, shouldClosePeekOnEscape } from '@/lib/hotkeys';
 import { useIssue } from '../api';
+import { issueViewState } from '../issueViewState';
 import { ActivityTabs } from '../ActivityTabs';
 import { LazyPanel } from '../LazyPanel';
 import { useIssueTransitions } from '../useIssueTransitions';
@@ -137,8 +138,14 @@ function PeekHeader({ issueKey, onClose }: { issueKey: string; onClose: () => vo
 
 function PeekBody({ issueKey, onClose }: { issueKey: string; onClose: () => void }) {
   const { data: issue, isLoading, isError, error, refetch } = useIssue(issueKey);
-  if (isError)
-    return apiErrorCode(error) === 'NOT_FOUND' ? (
+  const view = issueViewState({
+    isError,
+    isLoading,
+    hasData: !!issue,
+    notFound: apiErrorCode(error) === 'NOT_FOUND',
+  });
+  if (view === 'not-found')
+    return (
       <StatusPanel
         variant="not-found"
         title={`Không tìm thấy công việc ${issueKey}`}
@@ -150,12 +157,14 @@ function PeekBody({ issueKey, onClose }: { issueKey: string; onClose: () => void
           </Button>
         }
       />
-    ) : (
+    );
+  if (view === 'error')
+    return (
       <div className="p-4">
         <QueryError error={error} onRetry={() => void refetch()} />
       </div>
     );
-  if (isLoading || !issue) return <DelayedSpinner />;
+  if (view === 'loading' || !issue) return <DelayedSpinner />;
   return <PeekContent issue={issue} />;
 }
 
