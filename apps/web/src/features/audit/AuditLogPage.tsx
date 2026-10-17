@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ScrollText, ShieldOff } from 'lucide-react';
-import { AUDIT_ACTION_LABEL, type AuditAction } from '@tirapro/types';
+import { AUDIT_ACTION_LABEL } from '@tirapro/types';
 import { pageContainer } from '@/components/layout/page';
 import { Avatar, Badge, EmptyState } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
@@ -12,23 +12,11 @@ import { useAuth } from '@/stores/auth';
 import { useWorkspaceMembers } from '@/features/members/api';
 import { relTime } from '@/features/admin/_ui';
 import { useAuditLog } from './api';
-import { toAuditQuery, type AuditFilterInput } from './auditFilters';
+import { groupedAuditActionOptions, toAuditQuery, type AuditFilterInput } from './auditFilters';
 
 const EMPTY_FILTERS: AuditFilterInput = { action: '', actorId: '', from: '', to: '' };
 
-/** Nhóm loại sự kiện theo tiền tố (`role.*`, `member.*`…) để `<select>` dễ quét. */
-const ACTION_GROUPS: { label: string; prefixes: string[] }[] = [
-  { label: 'Vai trò', prefixes: ['role.'] },
-  { label: 'Thành viên', prefixes: ['member.'] },
-  { label: 'Dự án', prefixes: ['project_member.', 'project.'] },
-  { label: 'Tài khoản', prefixes: ['account.'] },
-  { label: 'Tích hợp', prefixes: ['integration.'] },
-];
-
-const ACTIONS = Object.keys(AUDIT_ACTION_LABEL) as AuditAction[];
-
-const SELECT_CLASS =
-  'h-9 rounded-md border border-border bg-bg px-2 text-sm text-ink focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
+const ACTION_OPTIONS = groupedAuditActionOptions('Tất cả sự kiện');
 
 /** Thanh lọc: loại sự kiện, người thực hiện, khoảng ngày. */
 function AuditFilterBar({
@@ -56,25 +44,16 @@ function AuditFilterBar({
   );
   return (
     <div className="mb-4 flex flex-wrap items-end gap-3">
-      <label className="flex flex-col gap-1 text-xs text-muted">
-        Loại sự kiện
-        <select
+      <div className="flex min-w-48 flex-col gap-1 text-xs text-muted">
+        <span>Loại sự kiện</span>
+        <SearchSelect
           value={filters.action}
-          onChange={(e) => onChange({ action: e.target.value })}
-          className={SELECT_CLASS}
-        >
-          <option value="">Tất cả sự kiện</option>
-          {ACTION_GROUPS.map((g) => (
-            <optgroup key={g.label} label={g.label}>
-              {ACTIONS.filter((a) => g.prefixes.some((p) => a.startsWith(p))).map((a) => (
-                <option key={a} value={a}>
-                  {AUDIT_ACTION_LABEL[a]}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </label>
+          onChange={(action) => onChange({ action })}
+          options={ACTION_OPTIONS}
+          ariaLabel="Loại sự kiện"
+          searchPlaceholder="Tìm sự kiện…"
+        />
+      </div>
       <div className="flex min-w-48 flex-col gap-1 text-xs text-muted">
         <span>Người thực hiện</span>
         <SearchSelect

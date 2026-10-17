@@ -12,8 +12,10 @@ import { cn } from '@/lib/utils';
 import { useAdminWorkspaces, usePatchWorkspace, type AdminWorkspace } from './api';
 import { fmtInt, relTime } from './_ui';
 import { ScrollX } from '@/components/ui/ScrollX';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 
 const PLANS = ['FREE', 'PRO', 'ENTERPRISE'] as const;
+const PLAN_OPTIONS = PLANS.map((p) => ({ value: p, label: p }));
 const PLAN_STYLE: Record<string, string> = {
   FREE: 'text-muted',
   PRO: 'text-primary',
@@ -182,21 +184,15 @@ export function AdminWorkspacesPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <select
+                    <SearchSelect
                       value={w.plan}
-                      onChange={(e) => changePlan(w, e.target.value as (typeof PLANS)[number])}
+                      onChange={(v) => changePlan(w, v as (typeof PLANS)[number])}
+                      options={PLAN_OPTIONS}
                       disabled={patch.isPending}
-                      className={cn(
-                        'rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium focus-visible:outline-none focus-visible:border-primary',
-                        PLAN_STYLE[w.plan],
-                      )}
-                    >
-                      {PLANS.map((p) => (
-                        <option key={p} value={p} className="text-ink">
-                          {p}
-                        </option>
-                      ))}
-                    </select>
+                      ariaLabel={`Gói của ${w.name}`}
+                      className="h-7 w-32 px-2 text-xs font-medium"
+                      renderTrigger={() => <span className={PLAN_STYLE[w.plan]}>{w.plan}</span>}
+                    />
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted">
                     {fmtInt(w.members)} · {fmtInt(w.projects)} · {fmtInt(w.issues)}

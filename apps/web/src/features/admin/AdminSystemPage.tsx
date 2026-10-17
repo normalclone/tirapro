@@ -4,11 +4,12 @@ import { pageContainer } from '@/components/layout/page';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
-import { AUDIT_ACTION_LABEL, type AuditAction } from '@tirapro/types';
 import { cn } from '@/lib/utils';
+import { groupedAuditActionOptions } from '@/features/audit/auditFilters';
 import { useAdminAudit, useAdminHealth, type AuditKind } from './api';
 import { StatTile, StatusPill, relTime } from './_ui';
 import { fmtDateTime } from '@/lib/dateFormat';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 
 /** Bậc số lượng nhật ký tải mỗi lần. */
 const AUDIT_STEPS = [50, 100, 200] as const;
@@ -20,7 +21,7 @@ const AUDIT_TABS: { kind: AuditKind; label: string }[] = [
 ];
 
 /** Các loại hành động công việc thường gặp để lọc nhanh (backend nhận `action` bất kỳ). */
-const ACTIVITY_ACTIONS: { value: string; label: string }[] = [
+const ACTIVITY_ACTIONS: { value: string; label: string; group?: string }[] = [
   { value: '', label: 'Tất cả hành động' },
   { value: 'CREATE', label: 'Tạo' },
   { value: 'UPDATE', label: 'Cập nhật' },
@@ -30,13 +31,7 @@ const ACTIVITY_ACTIONS: { value: string; label: string }[] = [
 ];
 
 /** Loại sự kiện quản trị để lọc (nhãn tiếng Việt từ `AUDIT_ACTION_LABEL`). */
-const ADMIN_ACTIONS: { value: string; label: string }[] = [
-  { value: '', label: 'Tất cả sự kiện' },
-  ...(Object.entries(AUDIT_ACTION_LABEL) as [AuditAction, string][]).map(([value, label]) => ({
-    value,
-    label,
-  })),
-];
+const ADMIN_ACTIONS = groupedAuditActionOptions('Tất cả sự kiện');
 
 const fmtUptime = (s: number) => {
   const d = Math.floor(s / 86400),
@@ -200,23 +195,21 @@ export function AdminSystemPage() {
               setLimit(AUDIT_STEPS[0]);
             }}
           />
-          <label className="flex items-center gap-2 text-xs text-muted">
-            Lọc
-            <select
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <span>Lọc</span>
+            <SearchSelect
               value={action}
-              onChange={(e) => {
-                setAction(e.target.value);
+              onChange={(v) => {
+                setAction(v);
                 setLimit(AUDIT_STEPS[0]);
               }}
-              className="rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-ink focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-            >
-              {actionOptions.map((a) => (
-                <option key={a.value} value={a.value}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={actionOptions}
+              ariaLabel="Lọc nhật ký theo loại sự kiện"
+              searchPlaceholder="Tìm sự kiện…"
+              align="end"
+              className="h-8 w-56 text-xs"
+            />
+          </div>
         </div>
         <div role="tabpanel" id="audit-tabpanel" aria-labelledby={`audit-tab-${kind}`}>
           {aError ? (
