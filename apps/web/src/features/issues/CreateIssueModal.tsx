@@ -20,7 +20,6 @@ import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { openReportIssue } from '@/stores/reportIssue';
 import { isBugType } from '@/features/issue-edit/severity';
-import { cn } from '@/lib/utils';
 import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
 import { useProjectIssues } from './api';
@@ -38,12 +37,6 @@ import {
   type TokenFieldValues,
   type TokenResult,
 } from './titleTokens';
-
-const selectClass = cn(
-  'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
-  'transition-colors duration-150 focus-visible:outline-none focus-visible:border-primary',
-  'focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
-);
 
 // Nhớ dự án/loại đã dùng gần nhất để prefill lần sau (tăng tốc nhập liệu).
 function loadLast(): { projectKey?: string; typeId?: string } {
@@ -564,7 +557,6 @@ export function CreateIssueModal() {
               }}
               placeholder="Chọn dự án…"
               searchPlaceholder="Tìm dự án…"
-              className={selectClass}
               options={(projects ?? []).map((p) => ({ value: p.key, label: p.name, hint: p.key }))}
             />
             {preset.pickProject && !selKey && (
@@ -578,7 +570,6 @@ export function CreateIssueModal() {
               value={typeId}
               onChange={setTypeId}
               disabled={!meta}
-              className={selectClass}
               ariaLabel="Loại việc"
               options={(meta?.issueTypes ?? []).map((t) => ({
                 value: t.id,
@@ -647,7 +638,6 @@ export function CreateIssueModal() {
                 setAssigneeId(v);
               }}
               emptyLabel="Chưa gán"
-              className={selectClass}
               {...assignees}
             />
           </Field>
@@ -663,7 +653,6 @@ export function CreateIssueModal() {
                 setPriorityId(v);
               }}
               disabled={!meta}
-              className={selectClass}
               options={[
                 { value: '', label: '—' },
                 ...(meta?.priorities ?? []).map((p) => ({
@@ -687,7 +676,6 @@ export function CreateIssueModal() {
                 setSprintId(v);
               }}
               disabled={!selId}
-              className={selectClass}
               ariaLabel="Sprint"
               options={sprintOptions}
             />
@@ -746,7 +734,6 @@ export function CreateIssueModal() {
                     value={epicId}
                     onChange={setEpicId}
                     disabled={!selId}
-                    className={selectClass}
                     ariaLabel="Epic"
                     searchPlaceholder="Tìm epic theo mã hoặc tiêu đề…"
                     options={epicOptions}
@@ -763,7 +750,6 @@ export function CreateIssueModal() {
                     value={parentPick}
                     onChange={setParentPick}
                     disabled={!selId}
-                    className={selectClass}
                     ariaLabel="Việc cha"
                     searchPlaceholder="Tìm việc cha theo mã hoặc tiêu đề…"
                     options={parentOptions}
