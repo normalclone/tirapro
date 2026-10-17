@@ -97,7 +97,9 @@ export function EmptyState({
         compact ? 'gap-2 px-4 py-6 text-sm' : 'gap-3 px-6 py-12',
       )}
     >
-      <div className={cn('text-faint', compact && '[&_svg]:h-5 [&_svg]:w-5')}>{icon}</div>
+      <div aria-hidden="true" className={cn('text-faint', compact && '[&_svg]:h-5 [&_svg]:w-5')}>
+        {icon}
+      </div>
       <div>
         <p className="font-medium text-ink-strong">{title}</p>
         {description && (

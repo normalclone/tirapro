@@ -78,4 +78,9 @@ describe('EmptyState là cách duy nhất vẽ trạng thái trống', () => {
     );
     expect(bad.map(rel)).toEqual([]);
   });
+  it('khung icon của EmptyState là aria-hidden (tiêu đề mới là phần mang nghĩa)', () => {
+    const src = readFileSync(join(__dirname, 'primitives.tsx'), 'utf8');
+    const body = src.slice(src.indexOf('export function EmptyState('));
+    expect(body).toMatch(/<div\s+aria-hidden="true"[^>]*>\s*\{icon\}/);
+  });
 });
