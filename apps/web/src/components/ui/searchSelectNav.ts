@@ -82,3 +82,8 @@ export function filterOptions<
     o.disabled ? matchesQuery(q, o.label) : matchesQuery(q, o.label, o.hint, o.description),
   );
 }
+
+/** Phần tử nhận focus khi mở ô chọn, và khi ô tìm hiện/ẩn lúc đang mở (danh sách nạp muộn vượt/giảm dưới ngưỡng). */
+export function focusTarget(showSearch: boolean): 'input' | 'list' {
+  return showSearch ? 'input' : 'list';
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   filterOptions,
+  focusTarget,
   nextActiveIndex,
   shouldShowSearch,
   typeaheadIndex,
@@ -84,5 +85,12 @@ describe('filterOptions', () => {
   it('mô tả của mục disabled (lý do vô hiệu) không được tìm', () => {
     expect(filterOptions(opts, 'quyền')).toEqual([]);
     expect(filterOptions(opts, 'khoa').map((o) => o.label)).toEqual(['Khoá']);
+  });
+});
+
+describe('focusTarget', () => {
+  it('có ô tìm → focus ô tìm; không → focus listbox', () => {
+    expect(focusTarget(true)).toBe('input');
+    expect(focusTarget(false)).toBe('list');
   });
 });

@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/Input';
 import { groupHeadingAt } from './searchSelectGroups';
 import {
   filterOptions,
+  focusTarget,
   nextActiveIndex,
   shouldShowSearch,
   typeaheadIndex,
@@ -112,6 +113,8 @@ export function SearchSelect({
     onPick: (v) => pick(v),
   });
 
+  const focusSearchOrList = useFocusFollowsSearch(open, showSearch, inputRef, listRef);
+
   function resetSearch() {
     setQ('');
     onSearchChange?.('');
@@ -162,7 +165,7 @@ export function SearchSelect({
           onOpenAutoFocus={(e) => {
             // Focus vào ô tìm (nếu có) hoặc vào listbox — không để Radix chọn phần tử đầu tiên.
             e.preventDefault();
-            (showSearch ? inputRef.current : listRef.current)?.focus({ preventScroll: true });
+            focusSearchOrList();
           }}
         >
           {showSearch && (
@@ -244,6 +247,30 @@ function SearchBox({
       />
     </div>
   );
+}
+
+/**
+ * Focus vào ô tìm (nếu có) hoặc listbox. Ô tìm hiện/ẩn khi đang mở (options nạp muộn vượt/giảm dưới ngưỡng) thì focus
+ * chuyển theo, không để rơi ra body. Trả hàm focus để dùng cho lúc mở.
+ */
+function useFocusFollowsSearch(
+  open: boolean,
+  showSearch: boolean,
+  inputRef: RefObject<HTMLInputElement>,
+  listRef: RefObject<HTMLUListElement>,
+) {
+  const prev = useRef(showSearch);
+  const focusNow = () =>
+    (focusTarget(showSearch) === 'input' ? inputRef.current : listRef.current)?.focus({
+      preventScroll: true,
+    });
+  useEffect(() => {
+    const changed = prev.current !== showSearch;
+    prev.current = showSearch;
+    if (open && changed) focusNow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ phản ứng khi showSearch đổi lúc đang mở
+  }, [open, showSearch]);
+  return focusNow;
 }
 
 type ActiveSource = 'init' | 'key' | 'mouse';
