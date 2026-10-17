@@ -27,6 +27,8 @@ import {
   SLA_SOON_MINS,
   SLA_SOON_LABEL,
 } from './api';
+import { PriorityIcon } from '@/components/ui/PriorityIcon';
+import { usePriorityRanks } from '@/features/settings-admin/api';
 
 /** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Danh mục). */
 export function SlaBoardPage() {
@@ -90,6 +92,7 @@ function SlaBoard() {
 }
 
 function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
+  const ranks = usePriorityRanks();
   const breached = rows.filter((r) => r.resolveBreached).length;
   const soon = rows.filter((r) => !r.resolveBreached && r.remainingMins <= SLA_SOON_MINS).length;
 
@@ -125,9 +128,11 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
               <span className="min-w-0 flex-1 truncate text-sm text-ink">{r.summary}</span>
               {r.priority && (
                 <span className="hidden shrink-0 items-center gap-1 text-xs text-muted sm:flex">
-                  <span
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ background: r.priority.color ?? 'var(--faint)' }}
+                  <PriorityIcon
+                    name={r.priority.name}
+                    rank={r.priority.rank}
+                    ranks={ranks}
+                    color={r.priority.color}
                   />
                   {r.priority.name}
                 </span>

@@ -178,7 +178,7 @@ export class SlaService {
             summary: true,
             status: { select: { name: true, category: true } },
             assignee: { select: { id: true, displayName: true, avatarUrl: true } },
-            priority: { select: { name: true, color: true } },
+            priority: { select: { name: true, color: true, rank: true } },
           },
         },
       },

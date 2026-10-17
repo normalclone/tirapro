@@ -61,6 +61,8 @@ import { useRecents } from '@/stores/recentIssues';
 import { cn } from '@/lib/utils';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
+import { PriorityIcon } from '@/components/ui/PriorityIcon';
+import { usePriorityRanks } from '@/features/settings-admin/api';
 
 const CATEGORY_COLOR: Record<StatusCategory, string> = {
   TODO: 'var(--status-todo)',
@@ -942,6 +944,7 @@ function MyIssueRow({
 }) {
   const dot = CATEGORY_COLOR[issue.status.category];
   const to = `/issue/${issue.key}`;
+  const ranks = usePriorityRanks();
 
   return (
     <li>
@@ -959,11 +962,11 @@ function MyIssueRow({
         <span className="min-w-0 flex-1 truncate text-sm text-ink-strong">{issue.summary}</span>
         {showDue && <DueBadge issue={issue} warnOnly className="shrink-0" />}
         {issue.priority && (
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ background: issue.priority.color ?? 'var(--status-todo)' }}
-            title={issue.priority.name}
-            aria-hidden
+          <PriorityIcon
+            name={issue.priority.name}
+            rank={issue.priority.rank}
+            ranks={ranks}
+            color={issue.priority.color}
           />
         )}
         {projectKey && (
