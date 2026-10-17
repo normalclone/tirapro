@@ -9,7 +9,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { Skeleton } from '@/components/ui/primitives';
+import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import {
   DEPENDENCY_TYPES,
@@ -133,13 +133,12 @@ function DependencySection({
         }
         empty={(d) => d.length === 0}
         emptyState={
-          <p
-            className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted"
-            title="Đường găng là chuỗi việc quyết định ngày kết thúc dự án — trễ một việc trong chuỗi là trễ cả dự án."
-          >
-            Chưa khai báo phụ thuộc nào. Nối hai việc để hệ thống biết việc nào phải xong trước, và
-            tính được đường găng.
-          </p>
+          <EmptyState
+            size="compact"
+            icon={<Link2 />}
+            title="Chưa khai báo phụ thuộc nào"
+            description="Nối hai việc để hệ thống biết việc nào phải xong trước, và tính được đường găng (chuỗi việc quyết định ngày kết thúc dự án)."
+          />
         }
       >
         {(deps) => (
@@ -334,10 +333,12 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
         }
         empty={(d) => d.length === 0}
         emptyState={
-          <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted">
-            Chưa có cột mốc nào. Cột mốc là ngày quan trọng phải chốt — bàn giao, nghiệm thu; thêm
-            vào để nó hiện thành hình thoi trên biểu đồ lịch trình.
-          </p>
+          <EmptyState
+            size="compact"
+            icon={<Flag />}
+            title="Chưa có cột mốc nào"
+            description="Cột mốc là ngày quan trọng phải chốt — bàn giao, nghiệm thu; thêm vào để nó hiện thành hình thoi trên biểu đồ lịch trình."
+          />
         }
       >
         {(milestones) => (

@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Archive, ArchiveRestore, Search } from 'lucide-react';
+import { Archive, ArchiveRestore, Building2, Search, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
 import { pageContainer } from '@/components/layout/page';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { useConfirm } from '@/components/ui/useConfirm';
+import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
@@ -38,6 +39,9 @@ export function AdminWorkspacesPage() {
           w.owner.email.toLowerCase().includes(nq),
       );
   }, [data, q, showArchived]);
+
+  // Rỗng do từ khoá / ẩn mục đã lưu trữ (khác với chưa có không gian nào): mới có nút xoá bộ lọc.
+  const hasFilter = (q.trim() !== '' || !showArchived) && (data?.length ?? 0) > 0;
 
   function changePlan(w: AdminWorkspace, plan: (typeof PLANS)[number]) {
     if (plan === w.plan) return;
@@ -114,11 +118,27 @@ export function AdminWorkspacesPage() {
         </div>
       ) : rows.length === 0 ? (
         <EmptyState
+          icon={hasFilter ? <SearchX className="h-6 w-6" /> : <Building2 className="h-6 w-6" />}
           title="Không có không gian làm việc nào"
           description={
             q
               ? 'Không có tên nào khớp từ khoá. Thử từ khoá ngắn hơn.'
-              : 'Chưa có không gian làm việc nào được lập.'
+              : hasFilter
+                ? 'Mọi không gian làm việc đang bị ẩn vì bộ lọc “Hiện đã lưu trữ” đang tắt.'
+                : 'Chưa có không gian làm việc nào được lập.'
+          }
+          action={
+            hasFilter ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setQ('');
+                  setShowArchived(true);
+                }}
+              >
+                Xoá bộ lọc
+              </Button>
+            ) : undefined
           }
         />
       ) : (

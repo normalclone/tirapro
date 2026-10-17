@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Bug, Tag } from 'lucide-react';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { fmtDate } from '@/lib/dateFormat';
@@ -64,6 +65,8 @@ function SeverityBars({ rows }: { rows: QaReport['openBySeverity'] }) {
   if (rows.length === 0) {
     return (
       <EmptyState
+        size="compact"
+        icon={<Bug />}
         title="Không có bug đang mở"
         description="Mọi bug của dự án đã đóng, hoặc dự án chưa có bug nào."
       />
@@ -107,6 +110,8 @@ function ReleaseTable({ byRelease }: { byRelease: QaReport['byRelease'] }) {
   if (byRelease.rows.length === 0) {
     return (
       <EmptyState
+        size="compact"
+        icon={<Tag />}
         title="Chưa có bug nào gắn phiên bản"
         description="Gắn “Phiên bản bị ảnh hưởng” hoặc “Phiên bản sửa” trong chi tiết bug để thấy bug theo bản phát hành."
       />

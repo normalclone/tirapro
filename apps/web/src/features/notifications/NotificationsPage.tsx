@@ -1,6 +1,6 @@
 import { useRef, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCheck } from 'lucide-react';
+import { BellOff, CheckCheck } from 'lucide-react';
 import { notificationFilterSchema, type NotificationFilter } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
@@ -112,7 +112,7 @@ export function NotificationsPage() {
         <QueryBoundary
           query={query}
           empty={(d) => d.pages.every((p) => p.data.length === 0)}
-          emptyState={<EmptyState title={current.empty} />}
+          emptyState={<EmptyState icon={<BellOff className="h-6 w-6" />} title={current.empty} />}
         >
           {(d) => (
             <>

@@ -3,6 +3,7 @@ import {
   Building2,
   ChevronDown,
   ChevronRight,
+  FileText,
   FolderPlus,
   Mail,
   Pencil,
@@ -271,11 +272,18 @@ function ClientCard({
               )}
             </div>
             {client.contracts.length === 0 ? (
-              <p className="text-sm text-faint">
-                {canManage
-                  ? 'Chưa có hợp đồng nào. Thêm hợp đồng để theo dõi giá trị và thời hạn đã cam kết.'
-                  : 'Chưa có hợp đồng nào với khách hàng này.'}
-              </p>
+              <EmptyState
+                size="compact"
+                icon={<FileText />}
+                title={
+                  canManage ? 'Chưa có hợp đồng nào' : 'Chưa có hợp đồng nào với khách hàng này'
+                }
+                description={
+                  canManage
+                    ? 'Thêm hợp đồng để theo dõi giá trị và thời hạn đã cam kết.'
+                    : undefined
+                }
+              />
             ) : (
               <ul className="divide-y divide-border">
                 {client.contracts.map((c) => (

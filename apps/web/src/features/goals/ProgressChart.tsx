@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { LineChart as LineChartIcon } from 'lucide-react';
 import {
   CartesianGrid,
   Line,
@@ -9,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Skeleton } from '@/components/ui/primitives';
+import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { fmtDate } from '@/lib/dateFormat';
 import { AXIS_PROPS, TOOLTIP_STYLE } from '@/features/reports/charts';
 import { CHART_MARGIN } from '@/lib/chartAxis';
@@ -91,18 +92,22 @@ function ProgressChartBody({ goal, data }: { goal: GoalDto; data: GoalProgressHi
 
   if (!hasData) {
     return (
-      <div className="rounded-md border border-dashed border-border px-3 py-6 text-center">
-        <p className="text-sm text-ink">Chưa có lịch sử tiến độ.</p>
-        <p className="mt-1 text-xs text-faint">
-          Hệ thống ghi lại giá trị mỗi ngày lúc 01:30 UTC (khoảng 8:30 sáng giờ Việt Nam) — đường
-          tiến độ sẽ hiện từ ngày mai.
-        </p>
-        {hiddenNotes.map((l) => (
-          <p key={l.id} className="mt-1 text-xs text-faint">
-            {l.name}: {l.scopeNote}
-          </p>
-        ))}
-      </div>
+      <EmptyState
+        size="compact"
+        icon={<LineChartIcon />}
+        title="Chưa có lịch sử tiến độ"
+        description={
+          <>
+            Hệ thống ghi lại giá trị mỗi ngày lúc 01:30 UTC (khoảng 8:30 sáng giờ Việt Nam) — đường
+            tiến độ sẽ hiện từ ngày mai.
+            {hiddenNotes.map((l) => (
+              <span key={l.id} className="mt-1 block">
+                {l.name}: {l.scopeNote}
+              </span>
+            ))}
+          </>
+        }
+      />
     );
   }
 

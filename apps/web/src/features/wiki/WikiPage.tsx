@@ -14,6 +14,7 @@ import {
   Pencil,
   Plus,
   Search,
+  SearchX,
   Trash2,
   X,
 } from 'lucide-react';
@@ -461,10 +462,12 @@ export function WikiPage() {
             skeleton={<TreeSkeleton />}
             empty={(d) => !d.length}
             emptyState={
-              <p className="px-2 py-6 text-center text-sm text-muted">
-                Không có trang nào khớp “{q.trim()}”. Thử từ khoá ngắn hơn, hoặc đổi phạm vi sang
-                “Tất cả tài liệu”.
-              </p>
+              <EmptyState
+                size="compact"
+                icon={<SearchX />}
+                title={`Không có trang nào khớp “${q.trim()}”`}
+                description="Thử từ khoá ngắn hơn, hoặc đổi phạm vi sang “Tất cả tài liệu”."
+              />
             }
           >
             {(hits) => (
@@ -497,12 +500,16 @@ export function WikiPage() {
             skeleton={<TreeSkeleton />}
             empty={(d) => !d.length}
             emptyState={
-              <p className="px-2 py-6 text-center text-sm text-muted">
-                Chưa có trang nào ở phạm vi này.{' '}
-                {scopeWritable
-                  ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.'
-                  : 'Hãy chọn phạm vi khác — hướng dẫn xin quyền viết ở ngay bên dưới.'}
-              </p>
+              <EmptyState
+                size="compact"
+                icon={<FileText />}
+                title="Chưa có trang nào ở phạm vi này"
+                description={
+                  scopeWritable
+                    ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.'
+                    : 'Hãy chọn phạm vi khác — hướng dẫn xin quyền viết ở ngay bên dưới.'
+                }
+              />
             }
           >
             {(nodes) => (
@@ -768,10 +775,14 @@ export function WikiPage() {
                           }
                         />
                       ) : (
-                        <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-faint">
-                          Trang này chưa có nội dung.
-                          {canWrite(pg.projectId) ? ' Bấm “Sửa trang” để bắt đầu viết.' : ''}
-                        </p>
+                        <EmptyState
+                          size="compact"
+                          icon={<FileText />}
+                          title="Trang này chưa có nội dung"
+                          description={
+                            canWrite(pg.projectId) ? 'Bấm “Sửa trang” để bắt đầu viết.' : undefined
+                          }
+                        />
                       )}
                     </>
                   )}

@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Check, Copy, Plus, Search, ShieldCheck } from 'lucide-react';
+import { Check, Copy, Plus, Search, SearchX, ShieldCheck, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/stores/auth';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -25,6 +25,37 @@ const STATUS_FILTERS: { label: string; value: AccountStatusFilter | undefined }[
 ];
 
 /** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập không gian làm việc. */
+const ROWS_SKELETON = (
+  <div className="space-y-2">
+    {Array.from({ length: 4 }).map((_, i) => (
+      <Skeleton key={i} className="h-14 w-full" />
+    ))}
+  </div>
+);
+
+const NO_ACCOUNTS = (
+  <EmptyState
+    icon={<Users className="h-6 w-6" />}
+    title="Chưa có tài khoản"
+    description="Tạo tài khoản đầu tiên cho hệ thống."
+  />
+);
+
+function NoMatchingAccounts({ onReset }: { onReset: () => void }) {
+  return (
+    <EmptyState
+      icon={<SearchX className="h-6 w-6" />}
+      title="Không có tài khoản phù hợp"
+      description="Thử gõ ít chữ hơn hoặc chọn “Tất cả”."
+      action={
+        <Button variant="secondary" onClick={onReset}>
+          Xoá bộ lọc
+        </Button>
+      }
+    />
+  );
+}
+
 export function AdminUsersPage() {
   const me = useAuth((s) => s.user);
   const { data: users, isLoading, isError, error, refetch } = useAdminUsers();
@@ -79,13 +110,9 @@ export function AdminUsersPage() {
       {isError ? (
         <QueryError error={error} onRetry={() => void refetch()} />
       ) : isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-14 w-full" />
-          ))}
-        </div>
+        ROWS_SKELETON
       ) : !users || users.length === 0 ? (
-        <EmptyState title="Chưa có tài khoản" description="Tạo tài khoản đầu tiên cho hệ thống." />
+        NO_ACCOUNTS
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -118,9 +145,12 @@ export function AdminUsersPage() {
             </div>
           </div>
           {visible.length === 0 ? (
-            <EmptyState
-              title="Không có tài khoản phù hợp"
-              description="Thử gõ ít chữ hơn hoặc chọn “Tất cả”."
+            <NoMatchingAccounts
+              onReset={() => {
+                setSearchInput('');
+                setDebounced('');
+                setStatus(undefined);
+              }}
             />
           ) : (
             <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">

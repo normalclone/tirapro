@@ -78,18 +78,33 @@ export function EmptyState({
   title,
   description,
   action,
+  size = 'default',
 }: {
-  icon?: ReactNode;
+  /** Bắt buộc: khối trống luôn có hình để người dùng nhận ra đây là trạng thái, không phải lỗi tải. */
+  icon: ReactNode;
   title: string;
-  description?: string;
+  description?: ReactNode;
   action?: ReactNode;
+  /** `compact` cho khối nằm trong thẻ/panel; `default` cho cả vùng nội dung của trang. */
+  size?: 'default' | 'compact';
 }) {
+  const compact = size === 'compact';
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-12 text-center">
-      {icon && <div className="text-faint">{icon}</div>}
+    <div
+      role="status"
+      className={cn(
+        'flex flex-col items-center justify-center rounded-lg border border-dashed border-border text-center',
+        compact ? 'gap-2 px-4 py-6 text-sm' : 'gap-3 px-6 py-12',
+      )}
+    >
+      <div className={cn('text-faint', compact && '[&_svg]:h-5 [&_svg]:w-5')}>{icon}</div>
       <div>
         <p className="font-medium text-ink-strong">{title}</p>
-        {description && <p className="mt-1 text-sm text-muted max-w-sm">{description}</p>}
+        {description && (
+          <p className={cn('mt-1 max-w-sm text-muted', compact ? 'text-xs' : 'text-sm')}>
+            {description}
+          </p>
+        )}
       </div>
       {action}
     </div>

@@ -9,7 +9,7 @@ import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
-import { Badge, Skeleton } from '@/components/ui/primitives';
+import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -433,11 +433,11 @@ function SavedFilterList({
       }
       empty={(d) => d.length === 0}
       emptyState={
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
-          {canManage
-            ? 'Chưa có bộ lọc nào. Bấm “Tạo bộ lọc” để lưu một truy vấn.'
-            : 'Chưa có bộ lọc nào được chia sẻ với bạn.'}
-        </p>
+        <EmptyState
+          icon={<FilterIcon className="h-6 w-6" />}
+          title={canManage ? 'Chưa có bộ lọc nào' : 'Chưa có bộ lọc nào được chia sẻ với bạn'}
+          description={canManage ? 'Bấm “Tạo bộ lọc” để lưu một truy vấn.' : undefined}
+        />
       }
     >
       {(filters) => (

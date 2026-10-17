@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { LineChart as LineChartIcon } from 'lucide-react';
 import { EmptyState } from '@/components/ui/primitives';
 import { useCfd, useCreatedResolved } from './api';
 import { AXIS_PROPS, Card, ChartSkeleton, LEGEND_STYLE, TOOLTIP_STYLE } from './charts';
@@ -26,7 +27,12 @@ export function FlowTab({ projectId }: { projectId: string }) {
         {cfd.isLoading ? (
           <ChartSkeleton />
         ) : !cfd.data || cfd.data.series.length === 0 ? (
-          <EmptyState title="Chưa có dữ liệu" description="Chưa đủ dữ liệu để dựng biểu đồ." />
+          <EmptyState
+            size="compact"
+            icon={<LineChartIcon />}
+            title="Chưa có dữ liệu"
+            description="Biểu đồ dựng từ lịch sử chuyển trạng thái, hiện khi có công việc được tạo hoặc chuyển cột."
+          />
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={cfd.data.series}>
@@ -68,7 +74,12 @@ export function FlowTab({ projectId }: { projectId: string }) {
         {createdResolved.isLoading ? (
           <ChartSkeleton />
         ) : !createdResolved.data || createdResolved.data.series.length === 0 ? (
-          <EmptyState title="Chưa có dữ liệu" description="Chưa có hoạt động trong khoảng này." />
+          <EmptyState
+            size="compact"
+            icon={<LineChartIcon />}
+            title="Chưa có dữ liệu"
+            description="Biểu đồ hiện khi có công việc được tạo hoặc hoàn thành trong khoảng thời gian này."
+          />
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={createdResolved.data.series}>

@@ -318,9 +318,12 @@ function ChannelList({
         }
         empty={() => channels.length === 0}
         emptyState={
-          <p className="rounded-md border border-dashed border-border px-3 py-3 text-center text-xs text-muted">
-            Chưa có kênh nào. Bấm &ldquo;Thêm nhóm bằng mã&rdquo; để liên kết một nhóm Telegram.
-          </p>
+          <EmptyState
+            size="compact"
+            icon={<Send />}
+            title="Chưa có kênh nào"
+            description="Bấm “Thêm nhóm bằng mã” để liên kết một nhóm Telegram."
+          />
         }
       >
         {() => (

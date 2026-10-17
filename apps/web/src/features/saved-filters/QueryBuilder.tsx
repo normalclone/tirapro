@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronDown, Copy, Plus, Trash2, Wand2, X } from 'lucide-react';
+import { Check, ChevronDown, Copy, ListFilter, Plus, Trash2, Wand2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   CURRENT_USER_TOKEN,
@@ -14,6 +14,7 @@ import {
   type SimpleQuery,
 } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/primitives';
 import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -238,9 +239,12 @@ export function QueryBuilder({
       )}
 
       {query.conditions.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
-          Chưa có điều kiện. Thêm một dòng để lọc, hoặc để trống để xem tất cả công việc.
-        </p>
+        <EmptyState
+          size="compact"
+          icon={<ListFilter />}
+          title="Chưa có điều kiện"
+          description="Thêm một dòng để lọc, hoặc để trống để xem tất cả công việc."
+        />
       ) : (
         <ul className="flex flex-col gap-2">
           {query.conditions.map((c) => (
