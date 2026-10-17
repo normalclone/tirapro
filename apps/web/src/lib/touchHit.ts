@@ -50,3 +50,10 @@ export const STRIP_ROWS_GAP_COARSE = '[@media(pointer:coarse)]:max-sm:!gap-y-0';
  * Dùng chung cho `QuickFilterChips` và `ToolbarStrip` — cần `useScrollFade` (đặt `--scroll-fade`) và thanh chứa có lề ngang `px-4`.
  */
 export const MOBILE_SCROLL_STRIP = `max-sm:relative max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:[mask-image:var(--scroll-fade)] max-sm:-mx-4 max-sm:w-[calc(100%+2rem)] max-sm:px-4 ${CHIP_STRIP_COARSE_PAD}`;
+
+/**
+ * Mục của `SegmentedControl` (cao 26–30px, nằm sát nhau): mở vùng bấm THEO CHIỀU DỌC 9px mỗi phía (→ 44–48px), không mở
+ * ngang để vùng của hai mục kề nhau không chồng lên nhau.
+ */
+export const SEGMENT_TOUCH_HIT =
+  'relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-[9px]';

@@ -18,6 +18,7 @@ import { EmptyState } from '@/components/ui/primitives';
 import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useSearchUsers } from '@/features/members/api';
@@ -226,9 +227,11 @@ export function QueryBuilder({
       {query.conditions.length > 1 && (
         <div className="flex items-center gap-2 text-sm text-muted">
           <span>Khớp</span>
-          <Segmented
+          <SegmentedControl
+            ariaLabel="Khớp"
+            fullWidth={false}
             value={query.combinator}
-            onChange={(v) => commit({ ...query, combinator: v as 'AND' | 'OR' })}
+            onChange={(v) => commit({ ...query, combinator: v })}
             options={[
               { value: 'AND', label: 'tất cả' },
               { value: 'OR', label: 'bất kỳ' },
@@ -290,12 +293,14 @@ export function QueryBuilder({
             align="end"
           />
           {query.sort && (
-            <Segmented
+            <SegmentedControl
+              ariaLabel="Hướng sắp xếp"
+              fullWidth={false}
               value={query.sort.direction}
               onChange={(v) =>
                 commit({
                   ...query,
-                  sort: { field: query.sort!.field, direction: v as 'ASC' | 'DESC' },
+                  sort: { field: query.sort!.field, direction: v },
                 })
               }
               options={[
@@ -780,44 +785,5 @@ function SelectField({
     >
       {children}
     </select>
-  );
-}
-
-/** Segmented control 2–3 lựa chọn (combinator, hướng sort, tab chế độ). */
-export function Segmented({
-  value,
-  onChange,
-  options,
-  className,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  className?: string;
-}) {
-  return (
-    <div
-      role="tablist"
-      className={cn('inline-flex rounded-md border border-border bg-surface-2 p-0.5', className)}
-    >
-      {options.map((o) => {
-        const active = o.value === value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(o.value)}
-            className={cn(
-              'rounded-[5px] px-2.5 py-1 text-sm font-medium transition-colors',
-              active ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
-            )}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }

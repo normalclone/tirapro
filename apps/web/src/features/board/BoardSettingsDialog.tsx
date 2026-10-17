@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { DelayedSpinner } from '@/components/ui/primitives';
-import { QueryBuilder, Segmented } from '@/features/saved-filters/QueryBuilder';
+import { QueryBuilder } from '@/features/saved-filters/QueryBuilder';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { apiErrorMessage } from '@/lib/api';
 import { categoryColor } from '@/lib/statusColor';
 import { cn } from '@/lib/utils';
@@ -236,9 +237,10 @@ export function BoardSettingsDialog({
           />
         </div>
 
-        <Segmented
+        <SegmentedControl
+          ariaLabel="Mục cài đặt bảng"
           value={tab}
-          onChange={(v) => setTab(v as Tab)}
+          onChange={setTab}
           options={TABS.map((t) => ({ value: t.id, label: t.label }))}
         />
 
@@ -459,9 +461,11 @@ function FilterTab({
         cả.
       </p>
       <div className="flex items-center justify-between gap-2">
-        <Segmented
+        <SegmentedControl
+          ariaLabel="Chế độ bộ lọc bảng"
+          fullWidth={false}
           value={jqlMode}
-          onChange={(v) => setJqlMode(v as 'simple' | 'jql')}
+          onChange={setJqlMode}
           options={[
             { value: 'simple', label: 'Đơn giản' },
             { value: 'jql', label: 'JQL' },

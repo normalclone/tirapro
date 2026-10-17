@@ -7,6 +7,7 @@ import type { IssueDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -18,7 +19,7 @@ import { useAuth } from '@/stores/auth';
 import { JqlEditor } from './JqlEditor';
 import { ResultsTable } from './ResultsTable';
 import { appendResults, type ResultSet } from './resultPaging';
-import { QueryBuilder, Segmented } from './QueryBuilder';
+import { QueryBuilder } from './QueryBuilder';
 import {
   useCreateFilter,
   useDeleteFilter,
@@ -559,9 +560,11 @@ function CreateFilterModalInner({
     >
       <form id="create-filter-form" onSubmit={(e) => void submit(e)} className="space-y-4">
         <div className="flex items-center justify-between gap-2">
-          <Segmented
+          <SegmentedControl
+            ariaLabel="Chế độ tạo bộ lọc"
+            fullWidth={false}
             value={mode}
-            onChange={(v) => setMode(v as BuilderMode)}
+            onChange={setMode}
             options={[
               { value: 'simple', label: 'Đơn giản' },
               { value: 'jql', label: 'JQL' },
