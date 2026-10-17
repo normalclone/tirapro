@@ -37,6 +37,9 @@ const button = cva(
   },
 );
 
+/** Class của nút cho phần tử không phải <button> (vd `<Link>`): cùng biến thể/kích thước với `Button`. */
+export const buttonVariants = button;
+
 export interface ButtonProps
   extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof button> {
   loading?: boolean;

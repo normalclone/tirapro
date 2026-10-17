@@ -3,7 +3,10 @@ import { Link } from 'react-router-dom';
 import { ChevronRight, ExternalLink, Hash, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
-import { DelayedSpinner, EmptyState } from '@/components/ui/primitives';
+import { DelayedSpinner } from '@/components/ui/primitives';
+import { QueryError } from '@/components/ui/QueryError';
+import { StatusPanel } from '@/components/ui/StatusPanel';
+import { apiErrorCode } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import {
@@ -133,19 +136,23 @@ function PeekHeader({ issueKey, onClose }: { issueKey: string; onClose: () => vo
 }
 
 function PeekBody({ issueKey, onClose }: { issueKey: string; onClose: () => void }) {
-  const { data: issue, isLoading, isError } = useIssue(issueKey);
+  const { data: issue, isLoading, isError, error, refetch } = useIssue(issueKey);
   if (isError)
-    return (
+    return apiErrorCode(error) === 'NOT_FOUND' ? (
+      <StatusPanel
+        variant="not-found"
+        title={`Không tìm thấy công việc ${issueKey}`}
+        description="Mã này không còn tồn tại, hoặc bạn chưa được cấp quyền xem."
+        className="py-10"
+        actions={
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            Đóng
+          </Button>
+        }
+      />
+    ) : (
       <div className="p-4">
-        <EmptyState
-          title={`Không mở được công việc ${issueKey}`}
-          description="Công việc không còn tồn tại, hoặc bạn chưa được cấp quyền xem."
-          action={
-            <Button variant="secondary" size="sm" onClick={onClose}>
-              Đóng
-            </Button>
-          }
-        />
+        <QueryError error={error} onRetry={() => void refetch()} />
       </div>
     );
   if (isLoading || !issue) return <DelayedSpinner />;

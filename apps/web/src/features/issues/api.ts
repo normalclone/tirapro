@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-query';
 import type { CommentDto, IssueDto, IssueTransitionResultDto, ListResponse } from '@tirapro/types';
 import { extractMentionIds } from '@tirapro/shared';
-import { api } from '@/lib/api';
+import { api, apiErrorCode } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import {
   invalidateIssue,
@@ -128,6 +128,8 @@ export function useIssue(key: string | null) {
   return useQuery({
     queryKey: keys.issues.byKey(key ?? ''),
     queryFn: key ? async () => (await api.get<IssueDto>(`/issues/${key}`)).data : skipToken,
+    // 404 là kết luận cuối (mã không tồn tại/không có quyền) — thử lại chỉ làm trang báo lỗi chậm thêm 1-2s.
+    retry: (n, err) => apiErrorCode(err) !== 'NOT_FOUND' && n < 1,
   });
 }
 

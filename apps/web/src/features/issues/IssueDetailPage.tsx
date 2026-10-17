@@ -74,7 +74,10 @@ import { EpicParentField } from '@/features/issue-meta/EpicParentField';
 import { isEpicIssue } from '@/lib/issueRefs';
 import { IssueComponentsPicker } from '@/features/issue-meta/IssueComponentsPicker';
 import { EnvironmentPanel } from '@/features/issue-edit/EnvironmentPanel';
-import { DelayedSpinner, EmptyState } from '@/components/ui/primitives';
+import { DelayedSpinner } from '@/components/ui/primitives';
+import { QueryError } from '@/components/ui/QueryError';
+import { IssueNotFound } from './IssueNotFound';
+import { apiErrorCode } from '@/lib/api';
 import { pageContainer } from '@/components/layout/page';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -122,7 +125,13 @@ export function IssueDetailPage() {
   const me = useAuth((s) => s.user);
   const openCreate = useCreateIssueModal((s) => s.openCreate);
 
-  const { data: issue, isLoading, isError } = useIssue(key);
+  const {
+    data: issue,
+    isLoading,
+    isError,
+    error: issueError,
+    refetch: refetchIssue,
+  } = useIssue(key);
   const can = useCanIn(issue?.projectId);
   const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
   const canTransition = can('issue:transition');
@@ -527,14 +536,13 @@ export function IssueDetailPage() {
             </div>
           )}
 
-          {isError && (
-            <EmptyState
-              title="Không tìm thấy công việc này"
-              description={`Không có công việc mã ${key}, hoặc bạn chưa được cấp quyền xem. Kiểm tra lại mã, hoặc nhờ quản trị dự án cấp quyền.`}
-            />
-          )}
-
-          {isLoading || !issue ? (
+          {isError ? (
+            apiErrorCode(issueError) === 'NOT_FOUND' ? (
+              <IssueNotFound issueKey={key} />
+            ) : (
+              <QueryError error={issueError} onRetry={() => void refetchIssue()} />
+            )
+          ) : isLoading || !issue ? (
             <DelayedSpinner />
           ) : (
             <>
