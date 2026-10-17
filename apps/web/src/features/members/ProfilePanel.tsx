@@ -8,6 +8,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { useUpdateProfile, useUploadUserAvatar, useRemoveUserAvatar } from './api';
 import { browserTimeZone, timeZoneOptions } from '@/features/digests/schedule';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 const LOCALES: { value: string; label: string }[] = [
   { value: 'vi', label: 'Tiếng Việt' },
@@ -112,21 +113,19 @@ export function ProfilePanel() {
             </datalist>
           </label>
 
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-ink">Ngôn ngữ</span>
-            <select
+          <div className="block space-y-1.5">
+            <span id="profile-locale-label" className="block text-sm font-medium text-ink">
+              Ngôn ngữ
+            </span>
+            <SegmentedControl
+              ariaLabelledby="profile-locale-label"
               value={locale}
-              onChange={(e) => setLocale(e.target.value)}
+              onChange={setLocale}
               disabled={update.isPending}
-              className="h-9 w-full rounded-md border border-border bg-bg px-3 text-base text-ink transition-colors duration-150 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
-            >
-              {LOCALES.map((l) => (
-                <option key={l.value} value={l.value}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              fullWidth
+              options={LOCALES}
+            />
+          </div>
         </div>
 
         <div className="flex justify-end">

@@ -606,25 +606,23 @@ function CreateFilterModalInner({
             />
           </div>
           <div>
-            <label
-              htmlFor="create-visibility"
+            <span
+              id="create-visibility-label"
               className="mb-1.5 block text-sm font-medium text-muted"
             >
               Phạm vi chia sẻ
-            </label>
-            <select
-              id="create-visibility"
+            </span>
+            <SegmentedControl<FilterVisibility>
+              ariaLabelledby="create-visibility-label"
               value={visibility}
-              onChange={(e) => setVisibility(e.target.value as FilterVisibility)}
-              className={cn(
-                'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
-                'transition-colors focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              )}
-            >
-              <option value="PRIVATE">{VISIBILITY_LABEL.PRIVATE}</option>
-              <option value="WORKSPACE">{VISIBILITY_LABEL.WORKSPACE}</option>
-              <option value="PROJECT">{VISIBILITY_LABEL.PROJECT}</option>
-            </select>
+              onChange={setVisibility}
+              fullWidth
+              options={[
+                { value: 'PRIVATE', label: VISIBILITY_LABEL.PRIVATE },
+                { value: 'WORKSPACE', label: VISIBILITY_LABEL.WORKSPACE },
+                { value: 'PROJECT', label: VISIBILITY_LABEL.PROJECT },
+              ]}
+            />
           </div>
         </div>
       </form>

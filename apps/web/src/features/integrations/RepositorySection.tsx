@@ -17,6 +17,7 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 /** Icon "kho mã" — chồng logo GitHub + GitLab để gợi ý nhóm nguồn. */
 export function RepoStackIcon() {
@@ -148,18 +149,19 @@ export function RepositorySection() {
         <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label htmlFor="repo-provider" className="mb-1 block text-xs font-medium text-muted">
+              <span id="repo-provider-label" className="mb-1 block text-xs font-medium text-muted">
                 Nhà cung cấp
-              </label>
-              <select
-                id="repo-provider"
+              </span>
+              <SegmentedControl<RepositoryProvider>
+                ariaLabelledby="repo-provider-label"
                 value={provider}
-                onChange={(e) => setProvider(e.target.value as RepositoryProvider)}
-                className="h-9 w-full rounded-md border border-border bg-bg px-3 text-base text-ink focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-              >
-                <option value="GITHUB">GitHub</option>
-                <option value="GITLAB">GitLab</option>
-              </select>
+                onChange={setProvider}
+                fullWidth
+                options={[
+                  { value: 'GITHUB', label: 'GitHub' },
+                  { value: 'GITLAB', label: 'GitLab' },
+                ]}
+              />
             </div>
             <div>
               <label htmlFor="repo-name" className="mb-1 block text-xs font-medium text-muted">

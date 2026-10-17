@@ -38,6 +38,7 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 /* ------------------------------------------------------------------ */
 /* Hằng số phân loại trạng thái                                       */
@@ -635,22 +636,19 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                   }}
                 />
               </div>
-              <div className="w-40">
-                <label htmlFor="st-category" className="mb-1 block text-xs font-medium text-muted">
+              <div>
+                <span id="st-category-label" className="mb-1 block text-xs font-medium text-muted">
                   Phân loại
-                </label>
-                <select
-                  id="st-category"
+                </span>
+                <SegmentedControl<StatusCategory>
+                  ariaLabelledby="st-category-label"
                   value={category}
-                  onChange={(e) => setCategory(e.target.value as StatusCategory)}
-                  className="h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                >
-                  {CATEGORY_OPTIONS.map((c) => (
-                    <option key={c} value={c}>
-                      {STATUS_CATEGORY_LABEL[c]}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setCategory}
+                  options={CATEGORY_OPTIONS.map((c) => ({
+                    value: c,
+                    label: STATUS_CATEGORY_LABEL[c],
+                  }))}
+                />
               </div>
               <div>
                 <label htmlFor="st-color" className="mb-1 block text-xs font-medium text-muted">
