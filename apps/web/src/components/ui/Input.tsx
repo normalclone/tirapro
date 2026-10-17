@@ -14,7 +14,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
         !LARGE_TEXT.test(className ?? '') && 'max-sm:text-[16px]',
         'placeholder:text-faint transition-colors duration-150',
         'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-        'disabled:opacity-50',
+        'disabled:bg-disabled-bg disabled:text-disabled-fg disabled:cursor-not-allowed',
         className,
       )}
       {...props}

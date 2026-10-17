@@ -20,6 +20,8 @@ hue brand (chroma 0.004–0.008) để cả hệ thống "thuộc về nhau", kh
 | `--surface`        | `oklch(0.985 0.004 250)`      | panel, card, sidebar                     |
 | `--surface-2`      | `oklch(0.968 0.005 250)`      | hàng hover, input, vùng chìm             |
 | `--surface-3`      | `oklch(0.945 0.006 250)`      | column board, vùng nhấn nhẹ              |
+| `--disabled-bg`    | `oklch(0.93 0.006 250)`       | nền control vô hiệu (thay opacity)       |
+| `--disabled-fg`    | `oklch(0.62 0.01 256)`        | chữ/icon control vô hiệu                 |
 | `--border`         | `oklch(0.915 0.006 250)`      | đường kẻ, viền 1px                       |
 | `--border-strong`  | `oklch(0.86 0.008 250)`       | viền nhấn, divider rõ                    |
 | `--ink`            | `oklch(0.27 0.013 256)`       | text chính (body) — ~10:1 trên bg        |
@@ -40,6 +42,8 @@ hue brand (chroma 0.004–0.008) để cả hệ thống "thuộc về nhau", kh
 | `--surface`        | `oklch(0.205 0.014 256)`     | panel/card                      |
 | `--surface-2`      | `oklch(0.235 0.015 256)`     | hover, input                    |
 | `--surface-3`      | `oklch(0.265 0.015 256)`     | column board                    |
+| `--disabled-bg`    | `oklch(0.255 0.012 256)`     | nền control vô hiệu             |
+| `--disabled-fg`    | `oklch(0.52 0.012 256)`      | chữ/icon control vô hiệu        |
 | `--border`         | `oklch(0.30 0.012 256)`      | viền 1px                        |
 | `--border-strong`  | `oklch(0.37 0.012 256)`      | divider rõ                      |
 | `--ink`            | `oklch(0.92 0.006 256)`      | text chính                      |
@@ -131,6 +135,8 @@ shadcn/ui (Radix primitives) + Tailwind, restyle theo token trên. Primitives P0
 Button (primary/secondary/ghost/danger), Input, Textarea, Select, Combobox, Dialog (dùng
 `<dialog>`/portal — tránh bị clip trong overflow), Dropdown, Tooltip, Popover, Avatar,
 Badge/Tag, Tabs, Checkbox, Switch, Toast (sonner-style), Skeleton, Command palette (cmdk).
+
+**Button — vô hiệu:** nền `disabled-bg`, chữ `disabled-fg`, không dùng opacity (ghost/outline: nền trong suốt, chỉ đổi chữ); đang tải giữ màu biến thể + spinner (`aria-busy`). Hover chỉ khi bật. Ô nhập/trigger vô hiệu dùng cùng token + `cursor-not-allowed`.
 
 Đặc tả chủ đạo:
 

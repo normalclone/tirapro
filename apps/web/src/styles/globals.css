@@ -8,6 +8,8 @@
   --surface: oklch(0.985 0.004 250);
   --surface-2: oklch(0.968 0.005 250);
   --surface-3: oklch(0.945 0.006 250);
+  --disabled-bg: oklch(0.93 0.006 250);
+  --disabled-fg: oklch(0.62 0.01 256);
   --border: oklch(0.915 0.006 250);
   --border-strong: oklch(0.86 0.008 250);
   --ink: oklch(0.27 0.013 256);
@@ -38,6 +40,8 @@
   --surface: oklch(0.205 0.014 256);
   --surface-2: oklch(0.235 0.015 256);
   --surface-3: oklch(0.265 0.015 256);
+  --disabled-bg: oklch(0.255 0.012 256);
+  --disabled-fg: oklch(0.52 0.012 256);
   --border: oklch(0.3 0.012 256);
   --border-strong: oklch(0.37 0.012 256);
   --ink: oklch(0.92 0.006 256);
@@ -184,6 +188,8 @@
     --surface: oklch(0.985 0.004 250);
     --surface-2: oklch(0.968 0.005 250);
     --surface-3: oklch(0.945 0.006 250);
+    --disabled-bg: oklch(0.93 0.006 250);
+    --disabled-fg: oklch(0.62 0.01 256);
     --border: oklch(0.915 0.006 250);
     --border-strong: oklch(0.86 0.008 250);
     --ink: oklch(0.27 0.013 256);

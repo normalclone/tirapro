@@ -246,7 +246,7 @@ export function DateInput({
               if (!touchLike) inputRef.current?.focus();
             }}
             onClick={() => openNativePicker(pickerRef.current)}
-            className="absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
+            className="absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:bg-disabled-bg disabled:text-disabled-fg disabled:cursor-not-allowed"
           >
             <CalendarDays className="h-4 w-4" aria-hidden />
           </button>
