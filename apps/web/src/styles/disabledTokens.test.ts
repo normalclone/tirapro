@@ -21,4 +21,9 @@ describe('token vô hiệu', () => {
     expect(src(p)).not.toMatch(/disabled:opacity-/);
     expect(src(p)).toMatch(/disabled:bg-disabled-bg|disabled-bg/);
   });
+  it('Button: hover thường (không enabled:hover) + selector vô hiệu thắng hover', () => {
+    const btn = src('components/ui/Button.tsx');
+    expect(btn).not.toContain('enabled:hover:');
+    expect(btn).toContain('[&:disabled:not([aria-busy=true])]:bg-disabled-bg');
+  });
 });
