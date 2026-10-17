@@ -11,6 +11,7 @@ import { useArchiveProject, useUpdateProject } from '@/features/projects/api';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { PrivacySection } from './PrivacySection';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 
 function Card({
   icon,
@@ -170,19 +171,17 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
               />
             </div>
             <div>
-              <label htmlFor="proj-assign" className={field}>
-                Việc mới mặc định giao cho
-              </label>
-              <select
-                id="proj-assign"
+              <span className={field}>Việc mới mặc định giao cho</span>
+              <SearchSelect
+                ariaLabel="Việc mới mặc định giao cho"
                 value={assignMode}
                 disabled={!canAdmin}
-                onChange={(e) => setAssignMode(e.target.value as ProjectDto['defaultAssigneeMode'])}
-                className="h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink disabled:opacity-50 focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-              >
-                <option value="UNASSIGNED">Không ai (giao sau)</option>
-                <option value="PROJECT_LEAD">Người phụ trách dự án</option>
-              </select>
+                onChange={(v) => setAssignMode(v as ProjectDto['defaultAssigneeMode'])}
+                options={[
+                  { value: 'UNASSIGNED', label: 'Không ai (giao sau)' },
+                  { value: 'PROJECT_LEAD', label: 'Người phụ trách dự án' },
+                ]}
+              />
             </div>
           </div>
           {canAdmin && (

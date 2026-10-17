@@ -38,6 +38,7 @@ import { LAST_ACTIVE_KEY, lastViewKey } from '@/lib/currentProject';
 import { withKey } from '@/lib/shortcuts';
 import { useScrollFade } from '@/lib/useScrollFade';
 import { activeMoreSeg, tabLabelVisible } from './projectTabs';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 
 const VIEWS = [
   { seg: 'board', label: 'Bảng việc', icon: LayoutGrid },
@@ -167,22 +168,16 @@ export function ProjectLayout() {
         >
           {/* Chuyển dự án trên mobile/tablet (rail dự án ẩn dưới lg) */}
           {hasPicker && (
-            <div className="relative min-w-0 max-w-xs flex-1 lg:hidden">
-              <select
+            <div className="min-w-0 max-w-xs flex-1 lg:hidden">
+              <SearchSelect
                 value={key}
-                onChange={(e) => navigate(`/p/${e.target.value}/${view}`)}
-                aria-label="Chuyển dự án"
-                className="h-9 w-full truncate rounded-md border border-border bg-surface pl-2.5 pr-7 text-sm font-medium text-ink transition-colors focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.key}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint"
-                aria-hidden
+                onChange={(k) => navigate(`/p/${k}/${view}`)}
+                options={projects.map((p) => ({ value: p.key, label: p.name, hint: p.key }))}
+                ariaLabel="Chuyển dự án"
+                searchPlaceholder="Tìm dự án…"
+                align="start"
+                className="bg-surface"
+                renderTrigger={(sel) => <span className="font-medium text-ink">{sel?.label}</span>}
               />
             </div>
           )}
