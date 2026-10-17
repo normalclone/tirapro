@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { radioGroupKeyDownSkipDisabled } from '@/lib/radioNav';
+import { radioGroupKeyDownSkipDisabled, shouldEmitChange } from '@/lib/radioNav';
 import { SEGMENT_TOUCH_HIT } from '@/lib/touchHit';
 import { cn } from '@/lib/utils';
 
@@ -78,7 +78,9 @@ export function SegmentedControl<T extends string>({
             disabled={off}
             tabIndex={i === entry ? 0 : -1}
             title={o.label}
-            onClick={() => onChange(o.value)}
+            onClick={() => {
+              if (shouldEmitChange(value, o.value)) onChange(o.value);
+            }}
             className={cn(
               SEGMENT_TOUCH_HIT,
               'inline-flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[5px] px-2.5 text-sm font-medium transition-colors duration-150',

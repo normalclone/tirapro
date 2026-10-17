@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextEnabledRadioIndex, nextRadioIndex } from './radioNav';
+import { nextEnabledRadioIndex, nextRadioIndex, shouldEmitChange } from './radioNav';
 
 describe('nextRadioIndex — điều hướng bàn phím của radiogroup', () => {
   it('mũi tên phải/xuống: tới mục kế, vòng về đầu', () => {
@@ -41,5 +41,13 @@ describe('nextEnabledRadioIndex — bỏ qua mục vô hiệu', () => {
     for (const k of ['ArrowRight', 'ArrowLeft', 'Home', 'End', 'x']) {
       expect(nextEnabledRadioIndex(k, 1, [false, false, false])).toBe(nextRadioIndex(k, 1, 3));
     }
+  });
+});
+
+describe('shouldEmitChange — bấm lại mục đang chọn không phát onChange', () => {
+  it('cùng giá trị → false; khác giá trị → true', () => {
+    expect(shouldEmitChange('AND', 'AND')).toBe(false);
+    expect(shouldEmitChange('AND', 'OR')).toBe(true);
+    expect(shouldEmitChange('', 'x')).toBe(true);
   });
 });

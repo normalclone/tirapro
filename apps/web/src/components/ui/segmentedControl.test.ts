@@ -14,6 +14,11 @@ describe('SegmentedControl dùng chung', () => {
     expect(src).toContain('radioGroupKeyDownSkipDisabled');
     expect(src).not.toContain('role="tab');
   });
+  it('chỉ phát onChange khi chọn mục khác (qua shouldEmitChange)', () => {
+    const src = control();
+    expect(src).toContain('shouldEmitChange(value, o.value)');
+    expect(src).not.toMatch(/onClick=\{\(\) => onChange\(o\.value\)\}/);
+  });
   it('roving tabindex, aria-label/labelledby, vô hiệu nhóm bằng token disabled, vùng chạm 44px', () => {
     const src = control();
     expect(src).toContain('tabIndex');

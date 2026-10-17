@@ -64,3 +64,8 @@ export function radioGroupKeyDownSkipDisabled(e: KeyboardEvent<HTMLElement>) {
   items[next]!.focus();
   items[next]!.click();
 }
+
+/** Nhóm radio chỉ phát `onChange` khi chọn mục KHÁC mục hiện tại (như `<select>`/radio native): bấm lại mục đang chọn không làm gì. */
+export function shouldEmitChange<T>(current: T, next: T): boolean {
+  return current !== next;
+}
