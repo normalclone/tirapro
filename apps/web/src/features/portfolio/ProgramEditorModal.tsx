@@ -147,7 +147,7 @@ export function ProgramEditorModal({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
             {editing ? 'Lưu thay đổi' : 'Tạo chương trình'}

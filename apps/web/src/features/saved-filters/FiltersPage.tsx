@@ -281,7 +281,7 @@ export function FiltersPage() {
               <h2 className="truncate text-xl font-semibold text-ink-strong">{heading}</h2>
             </div>
             <p className="text-sm text-muted">
-              Chọn một bộ lọc bên trái để xem kết quả, hoặc chạy nhanh một truy vấn JQL bên dưới.
+              Chọn một bộ lọc đã lưu để xem kết quả, hoặc chạy nhanh một truy vấn JQL bên dưới.
             </p>
           </header>
 
@@ -550,7 +550,7 @@ function CreateFilterModalInner({
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button type="submit" form="create-filter-form" loading={saving} disabled={!canSubmit}>
             Lưu bộ lọc

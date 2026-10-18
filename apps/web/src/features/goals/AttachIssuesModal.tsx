@@ -92,7 +92,7 @@ export function AttachIssuesModal({
               : 'Chọn một hoặc nhiều công việc'}
           </span>
           <Button variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button
             onClick={() => void submit()}

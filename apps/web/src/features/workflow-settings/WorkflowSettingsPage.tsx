@@ -39,6 +39,8 @@ import {
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
+import { useProjects } from '@/features/projects/api';
 
 /* ------------------------------------------------------------------ */
 /* Hằng số phân loại trạng thái                                       */
@@ -72,6 +74,7 @@ export function WorkflowSettingsPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState('');
+  const { data: projects } = useProjects();
 
   const workflows = data ?? [];
   const groups = useMemo(() => groupWorkflows(data ?? []), [data]);
@@ -127,7 +130,7 @@ export function WorkflowSettingsPage() {
     <div className={pageContainer('lg')}>
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          Cấu hình quy trình
+          {SETTINGS_LABELS.workflows}
         </h1>
         <p className="mt-1 text-sm text-muted">
           Quản lý các bước một công việc đi qua: có những trạng thái nào và được chuyển từ trạng
@@ -247,16 +250,21 @@ export function WorkflowSettingsPage() {
                 </div>
                 <div>
                   <label htmlFor="wf-project" className="mb-1 block text-xs font-medium text-muted">
-                    Project ID (tuỳ chọn)
+                    Dự án (tuỳ chọn)
                   </label>
-                  <Input
+                  <SearchSelect
                     id="wf-project"
                     value={projectId}
-                    placeholder="Để trống = áp dụng cho mọi dự án"
-                    onChange={(e) => setProjectId(e.target.value)}
+                    onChange={setProjectId}
+                    options={[
+                      { value: '', label: 'Toàn không gian làm việc' },
+                      ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
+                    ]}
+                    searchPlaceholder="Tìm dự án…"
+                    className="w-full"
                   />
                   <p className="mt-1 text-xs text-faint">
-                    Để trống nếu quy trình dùng chung cho mọi dự án.
+                    Chọn “Toàn không gian làm việc” nếu quy trình dùng chung cho mọi dự án.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

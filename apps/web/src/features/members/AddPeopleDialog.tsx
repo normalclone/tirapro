@@ -212,7 +212,7 @@ export function AddPeopleDialog({
             <RoleMultiSelect options={roleOptions} value={roleIds} onChange={setRoleIds} />
           </div>
           <Button variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button onClick={() => void submit()} loading={busy} disabled={!canSubmit}>
             Thêm {selected.size > 0 ? `${selected.size} người` : ''}

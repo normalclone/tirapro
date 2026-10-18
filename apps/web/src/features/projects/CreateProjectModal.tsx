@@ -98,7 +98,7 @@ function CreateProjectModalInner({ open, onClose }: { open: boolean; onClose: ()
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button
             type="submit"

@@ -20,7 +20,7 @@ export interface ShortcutDef {
 
 export const SHORTCUT_GROUPS: { scope: ShortcutScope; title: string }[] = [
   { scope: 'issue', title: 'Trong công việc' },
-  { scope: 'board', title: 'Trên board' },
+  { scope: 'board', title: 'Trên bảng việc' },
   { scope: 'global', title: 'Toàn cục' },
 ];
 
@@ -39,7 +39,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     label: 'Chuyển sang trạng thái kế tiếp theo quy trình',
     scope: 'issue',
   },
-  // Trên board, Việc chờ, Việc mới vào, kết quả lọc
+  // Trên bảng việc, Việc chờ, Việc mới vào, kết quả lọc
   {
     id: 'board.next',
     keys: ['j'],

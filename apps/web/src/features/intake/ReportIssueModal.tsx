@@ -198,7 +198,7 @@ function AutoEnvLine({ summary, onEdit }: { summary: string; onEdit: () => void 
   );
 }
 
-/** Hàng nút đáy: gợi ý phím tắt, Hủy, Gửi. */
+/** Hàng nút đáy: gợi ý phím tắt, Huỷ, Gửi. */
 function ReportFooter({
   busy,
   canSubmit,
@@ -216,7 +216,7 @@ function ReportFooter({
         ⌘/Ctrl + Enter để gửi nhanh
       </span>
       <Button type="button" variant="ghost" onClick={onClose}>
-        Hủy
+        Huỷ
       </Button>
       <Button type="submit" form="report-issue-form" loading={busy} disabled={!canSubmit}>
         {label}

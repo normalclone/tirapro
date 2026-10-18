@@ -154,7 +154,7 @@ function EnvironmentForm({ issue, onDone }: { issue: IssueDto; onDone: () => voi
       )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onDone} disabled={patch.isPending}>
-          Hủy
+          Huỷ
         </Button>
         <Button type="button" size="sm" onClick={save} loading={patch.isPending}>
           Lưu

@@ -485,7 +485,7 @@ export function CreateIssueModal() {
             ⌘/Ctrl + Enter để tạo nhanh
           </span>
           <Button type="button" variant="ghost" onClick={close}>
-            Hủy
+            Huỷ
           </Button>
           <Button
             type="button"

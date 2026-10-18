@@ -78,7 +78,7 @@ function CreateWorkspaceModalInner({ open, onClose }: { open: boolean; onClose: 
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button type="submit" form="create-workspace-form" loading={busy} disabled={!canSubmit}>
             Tạo không gian làm việc

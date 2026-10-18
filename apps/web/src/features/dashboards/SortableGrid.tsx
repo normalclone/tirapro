@@ -140,7 +140,7 @@ function SortableWidget({
   } = useSortable({
     id: widget.id,
     transition: SORT_TRANSITION,
-    attributes: { roleDescription: 'ô dashboard có thể kéo' },
+    attributes: { roleDescription: 'ô bảng tổng quan có thể kéo' },
   });
   const style: CSSProperties = {
     transform: transform

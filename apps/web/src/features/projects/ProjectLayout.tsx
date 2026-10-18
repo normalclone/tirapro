@@ -376,7 +376,7 @@ export function ProjectLayout() {
                 <EmptyState
                   icon={<FolderX className="h-6 w-6" />}
                   title="Không tìm thấy dự án"
-                  description="Dự án không tồn tại, đã bị xoá hoặc bạn không có quyền xem. Chọn một dự án khác ở danh sách bên trái."
+                  description="Dự án không tồn tại, đã bị xoá hoặc bạn không có quyền xem. Chọn một dự án khác trong danh sách dự án."
                 />
               </div>
             ) : (

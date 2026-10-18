@@ -190,7 +190,7 @@ function AddLinkForm({
       )}
       <div className="flex items-center justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={onClose}>
-          Hủy
+          Huỷ
         </Button>
         <Button
           ref={addBtnRef}

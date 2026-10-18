@@ -878,7 +878,7 @@ export function BacklogPage() {
                   setNewName('');
                 }}
               >
-                Hủy
+                Huỷ
               </Button>
             </form>
           )}
