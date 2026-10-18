@@ -48,7 +48,11 @@ export function NotificationRow({
   const Icon = TYPE_ICON[item.type] ?? Bell;
   const unread = !item.readAt;
   const payload = item.payload ?? {};
-  const title = buildNotificationTitle(item.type, payload);
+  // `actorId` cho phép phân biệt "Một thành viên" (có người làm, thiếu tên) với "Hệ thống" (không có người làm).
+  const title = buildNotificationTitle(item.type, {
+    ...payload,
+    ...(item.actorId ? { actorId: item.actorId } : {}),
+  });
   const excerpt = SHOWS_EXCERPT.has(item.type) ? payload.excerpt : undefined;
   const time = fmtRelative(item.createdAt);
 

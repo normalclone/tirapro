@@ -237,3 +237,9 @@ describe('định dạng ngày/tháng thống nhất (lib/dateFormat.ts)', () =>
     expect(t).toMatch(/labelFormatter=\{fmtDate\}/);
   });
 });
+
+describe('thông báo: không nhận "Hệ thống" khi có người làm', () => {
+  it('NotificationRow truyền actorId vào buildNotificationTitle', () => {
+    expect(src('features/notifications/NotificationRow.tsx')).toMatch(/actorId:\s*item\.actorId/);
+  });
+});

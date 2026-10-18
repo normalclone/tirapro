@@ -81,6 +81,20 @@ describe('buildNotificationTitle', () => {
     );
     expect(t('COMMENT_ADDED', {})).not.toContain('Ai đó');
   });
+  it('có actorId nhưng không có tên (payload cũ, người đã xoá): "Một thành viên", không phải "Hệ thống"', () => {
+    expect(t('COMMENT_ADDED', { actorId: 'u1' })).toBe(
+      'Một thành viên bình luận trong một công việc',
+    );
+    expect(t('STATUS_CHANGED', { actorId: 'u1', key: 'DEMO-3', statusName: 'Done' })).toBe(
+      'Một thành viên chuyển DEMO-3 sang Done',
+    );
+  });
+  it('không có actorId lẫn tên: "Hệ thống"; có tên thì tên thắng actorId', () => {
+    expect(t('COMMENT_ADDED', {})).toBe('Hệ thống bình luận trong một công việc');
+    expect(t('COMMENT_ADDED', { actorId: 'u1', actorName: 'Trang' })).toBe(
+      'Trang bình luận trong một công việc',
+    );
+  });
   it('notificationBody ưu tiên trích đoạn rồi tiêu đề việc', () => {
     expect(notificationBody('COMMENT_ADDED', { excerpt: 'Đã sửa xong', summary: 'Sửa lỗi' })).toBe(
       'Đã sửa xong',

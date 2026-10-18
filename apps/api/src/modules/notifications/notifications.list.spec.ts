@@ -6,10 +6,15 @@ const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u
 function setup(opts: { isSystemAdmin?: boolean; workspaces?: string[]; visible?: unknown } = {}) {
   const prisma = {
     notification: {
-      findMany: vi.fn((_a?: unknown) => Promise.resolve([])),
+      findMany: vi.fn((_a?: unknown) => Promise.resolve([] as unknown[])),
       count: vi.fn((_a?: unknown) => Promise.resolve(0)),
     },
-    user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: !!opts.isSystemAdmin })) },
+    user: {
+      findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: !!opts.isSystemAdmin })),
+      findMany: vi.fn((_a?: unknown) =>
+        Promise.resolve([] as { id: string; displayName: string }[]),
+      ),
+    },
     workspaceMembership: {
       findMany: vi.fn(() =>
         Promise.resolve((opts.workspaces ?? ['w1']).map((workspaceId) => ({ workspaceId }))),
@@ -92,5 +97,73 @@ describe('NotificationsService — dự án riêng tư: thông báo cũ của d�
     const { service, prisma } = setup({ isSystemAdmin: true, visible });
     await service.listMine('u1', undefined, 30);
     expect(whereOf(prisma.notification.findMany)).toEqual({ recipientId: 'u1' });
+  });
+});
+
+describe('NotificationsService.listMine — điền tên người thực hiện khi đọc', () => {
+  const row = (id: string, actorId: string | null, payload: Record<string, unknown>) => ({
+    id,
+    type: 'STATUS_CHANGED',
+    issueId: 'i1',
+    commentId: null,
+    actorId,
+    payload,
+    readAt: null,
+    createdAt: new Date('2026-10-15T00:00:00Z'),
+  });
+
+  it('dòng có actorId mà payload thiếu actorName được điền tên; MỘT truy vấn user cho cả trang', async () => {
+    const { service, prisma } = setup();
+    prisma.notification.findMany.mockImplementation(() =>
+      Promise.resolve([
+        row('n1', 'a1', { key: 'D-1' }),
+        row('n2', 'a1', { key: 'D-2' }),
+        row('n3', 'a2', { key: 'D-3', actorName: 'Đã có tên' }),
+        row('n4', 'a3', { key: 'D-4' }),
+        row('n5', null, { key: 'D-5' }),
+      ]),
+    );
+    prisma.user.findMany.mockImplementation(() =>
+      Promise.resolve([
+        { id: 'a1', displayName: 'Dũng' },
+        { id: 'a3', displayName: 'Trang' },
+      ]),
+    );
+    const page = await service.listMine('u1', undefined, 30);
+    const names = page.data.map((n) => (n.payload as { actorName?: string }).actorName);
+    expect(names).toEqual(['Dũng', 'Dũng', 'Đã có tên', 'Trang', undefined]);
+    expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
+    const arg = prisma.user.findMany.mock.calls[0]![0] as { where: { id: { in: string[] } } };
+    expect([...arg.where.id.in].sort()).toEqual(['a1', 'a3']);
+  });
+
+  it('người đã xoá (không tra được): giữ nguyên payload, không bịa tên', async () => {
+    const { service, prisma } = setup();
+    prisma.notification.findMany.mockImplementation(() =>
+      Promise.resolve([row('n1', 'gone', { key: 'D-1' })]),
+    );
+    const page = await service.listMine('u1', undefined, 30);
+    expect(page.data[0]!.payload).toEqual({ key: 'D-1' });
+  });
+
+  it('không dòng nào cần tra tên: không truy vấn user', async () => {
+    const { service, prisma } = setup();
+    prisma.notification.findMany.mockImplementation(() =>
+      Promise.resolve([row('n1', 'a1', { actorName: 'X' }), row('n2', null, {})]),
+    );
+    await service.listMine('u1', undefined, 30);
+    expect(prisma.user.findMany).not.toHaveBeenCalled();
+  });
+
+  it('chỉ điền khi đọc: không ghi DB', async () => {
+    const { service, prisma } = setup();
+    prisma.notification.findMany.mockImplementation(() =>
+      Promise.resolve([row('n1', 'a1', { key: 'D-1' })]),
+    );
+    prisma.user.findMany.mockImplementation(() =>
+      Promise.resolve([{ id: 'a1', displayName: 'Dũng' }]),
+    );
+    await service.listMine('u1', undefined, 30);
+    expect((prisma.notification as Record<string, unknown>).update).toBeUndefined();
   });
 });
