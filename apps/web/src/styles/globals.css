@@ -158,9 +158,11 @@
   }
 }
 
-/* Cảm ứng không có bàn phím vật lý: gợi ý phím tắt (<kbd>) chỉ gây nhiễu → ẩn. */
+/* Cảm ứng không có bàn phím vật lý: GỢI Ý phím tắt chỉ gây nhiễu → ẩn. Chỉ phần tử gắn `.kbd-hint` (nút nổi, chân sidebar,
+   chân Bảng lệnh, số phím trên nút chuyển trạng thái). KHÔNG ẩn `<kbd>` trần: bảng Phím tắt và trang Hướng dẫn dùng
+   `<kbd>` làm NỘI DUNG câu ("Gõ g rồi b…") — ẩn đi là mất nghĩa. */
 @media (hover: none) and (pointer: coarse) {
-  kbd {
+  .kbd-hint {
     display: none;
   }
 }

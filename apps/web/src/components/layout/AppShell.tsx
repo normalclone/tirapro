@@ -86,7 +86,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="border-t border-border p-2 text-xs text-faint" data-tour="cmdk-hint">
-          <kbd className="rounded bg-surface-2 px-1.5 py-0.5 font-mono">⌘K</kbd> lệnh nhanh
+          <kbd className="kbd-hint rounded bg-surface-2 px-1.5 py-0.5 font-mono">⌘K</kbd> lệnh nhanh
         </div>
       </aside>
 

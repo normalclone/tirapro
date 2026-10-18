@@ -275,7 +275,9 @@ function ActionButton({
       >
         {label}
         {kbd && (
-          <kbd className="rounded bg-surface-2 px-1 font-mono text-[10px] text-muted">{kbd}</kbd>
+          <kbd className="kbd-hint rounded bg-surface-2 px-1 font-mono text-[10px] text-muted">
+            {kbd}
+          </kbd>
         )}
       </span>
       <span

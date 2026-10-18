@@ -910,8 +910,12 @@ export function BacklogPage() {
               // Xem nhanh mở → cột danh sách hẹp lại: dòng ẩn nhãn + tên người phụ trách (xem `group-data-[peeking]/list` ở IssueRow).
               data-peeking={peek.peekKey ? '' : undefined}
               // Đệm đáy `pb-24` chừa chỗ cho nút nổi — chỉ từ `lg` (dưới `lg` không có nút nổi, thanh tab đáy nằm NGOÀI vùng cuộn).
-              // Không đệm đáy dưới `lg`: `BulkActionBar` là `sticky bottom-0` và tính theo mép đệm → đệm lớn sẽ nâng nó lơ lửng giữa danh sách.
-              className="group/list min-w-0 flex-1 space-y-4 overflow-y-auto p-3 sm:p-6 lg:pb-24"
+              // Dưới `lg`: `BulkActionBar` là `sticky bottom-0` và tính theo mép ĐỆM của vùng cuộn → đang chọn thì bỏ đệm đáy
+              // (`pb-0`) để thanh nằm sát ngay trên thanh tab đáy, không để lọt dòng danh sách ở khe giữa hai thanh.
+              className={cn(
+                'group/list min-w-0 flex-1 space-y-4 overflow-y-auto p-3 sm:p-6 lg:pb-24',
+                selected.size > 0 && 'pb-0 sm:pb-0',
+              )}
             >
               {visibleSprints.map((sprint, sprintIdx) => {
                 const sprintIssues = bySprint.get(sprint.id) ?? [];

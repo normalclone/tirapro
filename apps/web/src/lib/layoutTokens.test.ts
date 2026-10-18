@@ -39,8 +39,12 @@ describe('FAB không che nội dung', () => {
     ])
       expect(src(f), f).toMatch(/\bpb-2[48]\b/);
   });
-  it('thanh thao tác hàng loạt né FAB', () =>
-    expect(src('features/backlog/BulkActionBar.tsx')).toMatch(/lg:mr-24/));
+  it('thanh thao tác hàng loạt né FAB chỉ từ lg (lg:mr-24); dưới lg không còn FAB nên không chừa mb-24, nằm sát thanh tab đáy', () => {
+    const bar = src('features/backlog/BulkActionBar.tsx');
+    expect(bar).toMatch(/lg:mr-24/);
+    expect(bar).toMatch(/\bmb-2\b[^'"]*\blg:mb-4\b/);
+    expect(bar).not.toMatch(/\bmb-24\b/);
+  });
   it('FAB và toast tính vùng an toàn iOS; toast luôn nằm trên FAB kể cả khi FAB được nâng', () => {
     expect(FAB_BOTTOM_CSS).toBe(`max(${FAB_EDGE_PX}px, env(safe-area-inset-bottom))`);
     expect(FAB_RIGHT_CSS).toMatch(/safe-area-inset-right/);

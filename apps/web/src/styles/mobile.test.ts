@@ -26,10 +26,28 @@ describe('mobile nền chung', () => {
   });
   it('có lớp scroll-fade-x', () => expect(css).toMatch(/\.scroll-fade-x/));
   it('viewport-fit=cover', () => expect(html).toMatch(/viewport-fit=cover/));
-  it('gợi ý phím <kbd> ẩn trên thiết bị cảm ứng (hover:none + pointer:coarse)', () =>
+  it('gợi ý phím (.kbd-hint) ẩn trên cảm ứng; KHÔNG có luật `kbd` trần toàn cục (kbd trong nội dung giữ nguyên)', () => {
     expect(css).toMatch(
-      /@media \(hover: none\) and \(pointer: coarse\)\s*\{[^@]*?kbd\s*\{[^}]*display:\s*none/,
-    ));
+      /@media \(hover: none\) and \(pointer: coarse\)\s*\{[^@]*?\.kbd-hint\s*\{[^}]*display:\s*none/,
+    );
+    // bỏ chú thích CSS rồi kiểm không có bộ chọn `kbd {` đứng riêng
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(bare).not.toMatch(/(^|[\s,{}])kbd\s*[,{]/);
+  });
+  it('kbd thuần gợi ý có .kbd-hint; kbd làm nội dung (Phím tắt, Hướng dẫn) thì không', () => {
+    for (const f of [
+      'components/layout/FloatingActions.tsx',
+      'components/layout/AppShell.tsx',
+      'features/command/CommandPalette.tsx',
+      'features/issues/IssueDetailPage.tsx',
+    ])
+      expect(src(f), f).toMatch(/kbd-hint/);
+    for (const f of [
+      'components/layout/ShortcutsDialog.tsx',
+      'features/docs/DocumentationPage.tsx',
+    ])
+      expect(src(f), f).not.toMatch(/kbd-hint/);
+  });
   it('nút nổi tránh thanh home iOS (hằng vị trí dùng env(safe-area-inset-bottom))', () =>
     expect(src('lib/layoutTokens.ts')).toMatch(/safe-area-inset-bottom/));
   it('toast dưới lg tránh thanh tab đáy (hằng riêng có safe-area-inset-bottom)', () =>

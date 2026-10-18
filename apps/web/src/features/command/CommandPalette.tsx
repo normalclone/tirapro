@@ -319,7 +319,7 @@ export function CommandPalette() {
         )}
       </Command.List>
 
-      <div className="flex items-center gap-2 border-t border-border px-3 py-2 text-xs text-faint">
+      <div className="kbd-hint flex items-center gap-2 border-t border-border px-3 py-2 text-xs text-faint">
         <kbd className="rounded bg-surface-2 px-1.5 py-0.5 font-mono">↵</kbd> mở ·{' '}
         <kbd className="rounded bg-surface-2 px-1.5 py-0.5 font-mono">esc</kbd> đóng
       </div>

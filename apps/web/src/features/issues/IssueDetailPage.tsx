@@ -748,7 +748,7 @@ export function IssueDetailPage() {
                           {i < 9 && (
                             <kbd
                               aria-hidden
-                              className="ml-0.5 grid h-4 min-w-4 place-items-center rounded border border-border bg-surface-2 px-1 font-mono text-[10px] leading-none text-faint transition-colors group-hover:border-primary/40 group-hover:text-primary"
+                              className="kbd-hint ml-0.5 grid h-4 min-w-4 place-items-center rounded border border-border bg-surface-2 px-1 font-mono text-[10px] leading-none text-faint transition-colors group-hover:border-primary/40 group-hover:text-primary"
                             >
                               {i + 1}
                             </kbd>
