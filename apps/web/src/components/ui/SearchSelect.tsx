@@ -118,10 +118,7 @@ export function SearchSelect({
 
   const focusSearchOrList = useFocusFollowsSearch(open, showSearch, inputRef, listRef);
 
-  // Ô tìm ẩn đi lúc đang mở (danh sách co lại ≤ ngưỡng): xoá từ khoá, kẻo bộ lọc ẩn vẫn che mất lựa chọn.
-  useEffect(() => {
-    if (!showSearch) setQ('');
-  }, [showSearch]);
+  useClearQueryWhenSearchHidden(showSearch, setQ);
 
   function resetSearch() {
     setQ('');
@@ -199,7 +196,6 @@ export function SearchSelect({
             role="listbox"
             aria-label={ariaLabel ?? placeholder}
             tabIndex={showSearch ? undefined : 0}
-            // Bấm vào mục disabled / tiêu đề nhóm không được cướp focus khỏi ô tìm hoặc danh sách.
             onMouseDown={(e) => e.preventDefault()}
             aria-activedescendant={
               !showSearch && filtered[activeIndex] ? optionId(activeIndex) : undefined
@@ -259,6 +255,13 @@ function SearchBox({
       />
     </div>
   );
+}
+
+/** Ô tìm ẩn đi lúc đang mở (danh sách co lại ≤ ngưỡng): xoá từ khoá, kẻo bộ lọc ẩn vẫn che mất lựa chọn. */
+function useClearQueryWhenSearchHidden(showSearch: boolean, setQ: (q: string) => void) {
+  useEffect(() => {
+    if (!showSearch) setQ('');
+  }, [showSearch, setQ]);
 }
 
 /**

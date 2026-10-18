@@ -119,6 +119,7 @@ describe('SearchSelect: hộp danh sách (kiểm nguồn)', () => {
   it('ul có tên truy cập dự phòng, chặn mousedown cướp focus, và xoá từ khoá khi ô tìm ẩn', () => {
     expect(src).toContain('aria-label={ariaLabel ?? placeholder}');
     expect(src).toMatch(/onMouseDown=\{\(e\) => e\.preventDefault\(\)\}/);
+    expect(src).toMatch(/useClearQueryWhenSearchHidden\(showSearch, setQ\)/);
     expect(src).toMatch(/if \(!showSearch\) setQ\(''\)/);
   });
 });
