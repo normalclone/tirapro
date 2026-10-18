@@ -60,11 +60,15 @@
 
 ## 9. Nhất quán & dự đoán được
 - Cùng một cách làm ở mọi nơi (cách edit, cách mở menu, cùng phím tắt). Cùng component, cùng spacing.
-- Trạng thái = **icon + nhãn + màu** (không chỉ màu). Nhớ ngữ cảnh (project/board/filter/theme gần nhất).
+- Trạng thái = **icon + nhãn + màu** (không chỉ màu). Nhớ ngữ cảnh (project/board/filter/theme gần nhất). Ưu tiên luôn là `PriorityIcon` (mũi tên theo hạng), không phải chấm màu.
+- **Một hành động chính (primary) mỗi màn/hộp thoại/thanh** — các nút còn lại là secondary/ghost. Nút vô hiệu dùng token `disabled-bg`/`disabled-fg`, không giảm độ mờ.
+- **Ô chọn:** cấm `<select>` native (test `noNativeSelect`). ≤ 4 lựa chọn ngắn, cố định → `SegmentedControl`; còn lại → `SearchSelect`. Bật/tắt có hiệu lực ngay → `Switch`; chọn trong biểu mẫu rồi mới Lưu → `Checkbox` (giữ nguyên).
+- **Form có nút Lưu cấp trang** dùng `UnsavedBar` ("Có thay đổi chưa lưu · Bỏ thay đổi · Lưu"); rời trang/đổi mục khi đang sửa thì hỏi xác nhận (`useLeaveGuard`).
 
 ## 10. Responsive & accessible = dễ cho tất cả
-- Mobile: sidebar→drawer, board vuốt ngang, touch target ≥44px, thao tác chính 1 tay.
-- Mobile 390px: không cuộn ngang trang; ô nhập ≥16px dưới `sm` (iOS không phóng to); dải/bảng cuộn ngang phải có mờ mép báo còn nội dung (`.scroll-fade-x` + `useScrollFade`); nút nổi tránh vùng an toàn iOS (`env(safe-area-inset-bottom)`); vùng chạm của điều khiển nhỏ trên dòng ≥ 36px chiều cao (cảm ứng: mở rộng vùng bấm lên ≥ 44px bằng `TOUCH_HIT`/`pointer:coarse`, không đổi cỡ hiển thị desktop). Kiểm bằng `pnpm --filter @tirapro/web mobile:audit` (và `-- --dialogs` cho hộp thoại).
+- Mobile (dưới `lg`): **thanh tab đáy** Tổng quan · Dự án · ＋ Tạo · Thông báo · Tôi (không drawer, không hamburger, **không nút nổi** — nút nổi "Tạo" chỉ từ `lg` trở lên); "Tạo"/"Tôi" mở sheet đáy; nút Tìm (Bảng lệnh) ở topbar. Board vuốt ngang, touch target ≥44px, thao tác chính 1 tay.
+- **Không gợi ý phím trên màn cảm ứng:** gợi ý chỉ-để-nhắc (⌘K, ↵, số phím tắt) gắn `.kbd-hint` (ẩn khi `hover:none` + `pointer:coarse`); trang Hướng dẫn và bảng phím tắt giữ nguyên tên phím. Thanh "chưa lưu" và thanh hàng loạt nằm **ngay trên** thanh tab đáy, không đè lên.
+- Mobile 390px: không cuộn ngang trang; ô nhập ≥16px dưới `sm` (iOS không phóng to); dải/bảng cuộn ngang phải có mờ mép báo còn nội dung (`.scroll-fade-x` + `useScrollFade`); phần tử cố định (thanh tab, toast, nút nổi desktop) tránh vùng an toàn iOS (`env(safe-area-inset-bottom)`); vùng chạm của điều khiển nhỏ trên dòng ≥ 36px chiều cao (cảm ứng: mở rộng vùng bấm lên ≥ 44px bằng `TOUCH_HIT`/`pointer:coarse`, không đổi cỡ hiển thị desktop). Kiểm bằng `pnpm --filter @tirapro/web mobile:audit` (và `-- --dialogs` cho hộp thoại); bộ đo cũng báo khi thiếu thanh tab đáy hoặc có phần tử cố định chồng lên.
 - WCAG AA: keyboard đầy đủ, focus rõ, screen-reader label, `prefers-reduced-motion`.
 
 ## 11. Notification — im lặng theo mặc định (từ nghiên cứu)
@@ -133,7 +137,8 @@ Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng A
 |---|---|---|
 | Issue | **Công việc** / **việc** (khi chật chỗ) | Tuyệt đối không "issue", "vấn đề", "ticket", "task" làm danh từ chung. `Task` chỉ là TÊN LOẠI. |
 | Backlog | **Việc chờ** | Tab, tiêu đề khu, nút "Về Việc chờ". |
-| Board | **Bảng việc** | "Board" chỉ còn trong tên riêng / URL. |
+| Board | **Bảng việc** | "Board" chỉ còn trong tên riêng / URL; nhóm phím tắt ghi "Trên bảng việc". |
+| Dashboard | **Bảng tổng quan** | Không "dashboard" trong chữ hiển thị; chỉ còn trong route/khoá cache/mã quyền. |
 | Sprint, Epic | **Sprint**, **Epic** | Giữ nguyên; không "đợt làm việc". |
 | Nhóm trạng thái | **To Do / In Progress / Done** | Không "Cần làm / Đang làm / Hoàn thành". "Hoàn thành" chỉ làm động từ (nút "Hoàn thành sprint"). |
 | Trạng thái (tên) | To Do / In Progress / In Review / Done | Theo cấu hình workflow. |
@@ -143,6 +148,9 @@ Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng A
 | Story points | **điểm** | |
 | Project | **Dự án** | |
 | Workspace | **Không gian làm việc** | |
+| Huỷ | **Huỷ** | Nút huỷ luôn viết "Huỷ", không "Hủy". |
+| Mã dự án | **Dự án** | Không "Project ID" ở chữ hiển thị. |
+| Chỉ hướng | — | Không "bên trái"/"cột trái" (trên mobile cột đó nằm trên nội dung). |
 | Cổng quản lý cấp công ty | **Danh mục** | Trước đây "Quản trị". |
 | `/admin` | **Quản trị hệ thống** | |
 | Workflow | **Quy trình** | |
@@ -151,21 +159,26 @@ Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng A
 | Assignee / Reporter | **Người phụ trách** / **Người báo cáo** | |
 | Triage | **Việc mới vào** | Đúng tên tab hiện có. |
 | Loại liên kết | `blocks`, `is blocked by`, `relates to`, `duplicates`, `clones`, `is caused by`, `is tested by` | Giữ tiếng Anh; loại mới theo bảng này. |
-| Ngày / giờ | `dd/MM/yyyy`, `HH:mm` (24h) | Thời gian tương đối tiếng Việt ("khoảng 5 giờ trước"). |
+| Ngày / giờ | `dd/MM/yyyy`, `HH:mm` (24h) | Thời gian tương đối tiếng Việt ("khoảng 5 giờ trước"). Chỉ qua `lib/dateFormat.ts`: `fmtDate` 17/10/2026, `fmtDayMonth` 17/10 (trục/chỗ hẹp), `fmtMonthYear` **T10/2026** (không "thg", không `T${…}` tự dựng), `fmtLongDate` "Thứ Bảy, 17/10/2026"; không ISO thô, không `toLocaleString`. |
+| Tên menu / tiêu đề trang | **Một nhãn** | Tên mục menu = tiêu đề trang (h1); nguồn duy nhất `apps/web/src/lib/navLabels.ts` (sidebar, thanh tab, gợi ý trang gần đúng ở 404, sub-nav, trang). Cụm dài hơn đặt ở dòng mô tả. |
+| Người thực hiện không rõ | **Hệ thống** / **Một thành viên** | "Hệ thống" CHỈ khi không có người thực hiện (automation/hệ thống); có người mà không tra được (tài khoản đã xoá) → "Một thành viên"; tên thật điền lúc đọc. Không "Ai đó". |
+| Vai trò | **Tên tiếng Việt** (`roleLabel`) | Không hiện tên enum/khoá vai trò thô. |
+| Giá trị enum / mã hành động | **Nhãn tiếng Việt** | Không lộ `TIME_SPENT`, `FUTURE/ACTIVE/CLOSED`…; hoạt động dự án in nhãn + icon. |
 | Worklog / Saved filter / Custom field | **Nhật ký thời gian** / **Bộ lọc đã lưu** / **Trường thông tin thêm** | Mọi chuỗi hiển thị (nút, toast, aria-label, mô tả quyền, lỗi, hướng dẫn); chỉ `key`/route/mã giữ tiếng Anh. |
 | Trạng thái sprint (người dùng thấy) | **chưa bắt đầu / đang chạy / đã kết thúc** | Không lộ enum `FUTURE / ACTIVE / CLOSED` trong thông báo lỗi. |
 
-**Kiểm bằng máy (chặn tái phạm):** `apps/web/src/lib/terminology.test.ts` (Backlog / "đợt làm việc" / Cần làm–Đang làm / Board / issue / "vấn đề" ngoài RAID / task làm danh từ chung / mô tả quyền và vai trò), `apps/web/src/components/ui/noNativeDate.test.ts` (không `<input type=date|datetime-local|time>` ngoài `DateInput.tsx`), `apps/api/src/common/terminology.spec.ts` (chuỗi API trả cho người dùng). Ngoại lệ được ghi chú ngay trong test: gloss "Việc chờ (backlog)" / "Bảng việc (Board)" ở trang Hướng dẫn, tên menu thật của Jira ("Export issues", "Xem tất cả issue"), thẻ phân tách prompt `<issue>`, dòng RAID "vấn đề". Nhãn nhóm trạng thái dùng chung `STATUS_CATEGORY_LABEL` (`@tirapro/types`, web re-export ở `lib/terms.ts`).
+**Kiểm bằng máy (chặn tái phạm):** `apps/web/src/lib/terminology.test.ts` (Backlog / "đợt làm việc" / Cần làm–Đang làm / Board / issue / "vấn đề" ngoài RAID / task làm danh từ chung / mô tả quyền và vai trò), `apps/web/src/components/ui/noNativeDate.test.ts` (không `<input type=date|datetime-local|time>` ngoài `DateInput.tsx`), `apps/web/src/lib/terminology2.test.ts` (đợt 1 UI: "Huỷ", "Project ID", "bên trái", "dashboard", nhãn menu = tiêu đề qua `navLabels`, "Ai đó", enum thô, vai trò thô, ngày/tháng tự dựng), `apps/web/src/components/ui/noNativeSelect.test.ts` (không `<select>` native), `apps/api/src/common/terminology.spec.ts` (chuỗi API trả cho người dùng). Ngoại lệ được ghi chú ngay trong test: gloss "Việc chờ (backlog)" / "Bảng việc (Board)" ở trang Hướng dẫn, tên menu thật của Jira ("Export issues", "Xem tất cả issue"), thẻ phân tách prompt `<issue>`, dòng RAID "vấn đề". Nhãn nhóm trạng thái dùng chung `STATUS_CATEGORY_LABEL` (`@tirapro/types`, web re-export ở `lib/terms.ts`).
 
 ## Definition of Done (UX) cho mỗi màn
 - [ ] Có thể hoàn thành task chính **chỉ bằng bàn phím**.
 - [ ] Hành động chính ≤ 2 click / hoặc 1 lệnh Cmd+K.
 - [ ] Optimistic + skeleton, không spinner chặn.
-- [ ] Empty / loading / error / first-run state đầy đủ.
+- [ ] Empty / loading / error / first-run state đầy đủ, dùng `EmptyState` (có icon; `compact` trong ô nhỏ) và `StatusPanel` (không tìm thấy / không có quyền / lỗi) — **không tự vẽ** khối trống hay màn lỗi.
+- [ ] Ô chọn dùng `SegmentedControl` (≤ 4 mục ngắn) hoặc `SearchSelect`; không `<select>` native, không tự dựng dropdown. Ưu tiên hiện bằng `PriorityIcon`.
 - [ ] Inline edit + quick-add nơi phù hợp.
 - [ ] Undo cho hành động đảo được; confirm chỉ cho phá hủy.
 - [ ] Tour + help cho màn; có `data-tour` anchors.
-- [ ] Responsive (mobile→desktop) + AA + reduced-motion.
+- [ ] Responsive (mobile→desktop) + AA + reduced-motion; dưới `lg` không phần tử cố định nào đè thanh tab đáy, không gợi ý phím trên cảm ứng.
 - [ ] Concurrent edit: conflict hiện merge banner, không crash (OCC `version`).
 - [ ] Notification của màn tuân quiet-by-default + coalesce.
 - [ ] Nếu màn nhận input ngoài → đi qua Triage, không thẳng backlog.
@@ -175,5 +188,5 @@ Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng A
 - [ ] Perf budget đạt (p95 < 100ms tương tác; first-paint < 1s/1.000 issue).
 - [ ] Tính năng mới qua "thuế tĩnh lặng" (không làm màn chính ồn hơn).
 - [ ] `/impeccable critique` không còn P0/P1.
-- [ ] Chuỗi hiển thị đúng bảng thuật ngữ §19; ngày dd/MM/yyyy; thời gian tương đối tiếng Việt.
+- [ ] Chuỗi hiển thị đúng bảng thuật ngữ §19; ngày qua `dateFormat` (dd/MM/yyyy, T10/2026); thời gian tương đối tiếng Việt; tên menu = tiêu đề trang.
 - [ ] Chạy `pnpm --filter @tirapro/web mobile:audit -- --route=<route mới>` (390px; 0 lỗi chặn hoặc có mục trong `scripts/mobile-audit.allow.json` kèm lý do). Màn có hộp thoại/popover mới: thêm kịch bản vào `DIALOG_SCENARIOS` trong `scripts/mobile-audit.mjs` rồi chạy `mobile:audit -- --dialogs`. Cần web + API + DB seed đang chạy (không nằm trong `pnpm test`).
