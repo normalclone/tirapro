@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { resumeLeaveGuard, useConfirmLeaveApp } from '@/lib/useLeaveGuard';
 import { useSwitchWorkspace } from './api';
 
 interface CreatedWorkspace {
@@ -35,6 +36,7 @@ export function CreateWorkspaceModal(props: ComponentProps<typeof CreateWorkspac
 function CreateWorkspaceModalInner({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useCreateWorkspace();
   const switchWs = useSwitchWorkspace();
+  const confirmLeave = useConfirmLeaveApp();
 
   const [name, setName] = useState('');
 
@@ -46,15 +48,21 @@ function CreateWorkspaceModalInner({ open, onClose }: { open: boolean; onClose: 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
+    // Sau khi tạo sẽ đổi sang nơi mới (tải lại trang): hỏi bỏ thay đổi chưa lưu TRƯỚC khi tạo gì cả.
+    if (!(await confirmLeave())) return;
     try {
       const created = await create.mutateAsync(trimmedName);
       toast.success(`Đã tạo không gian làm việc ${created.name}`);
       onClose();
       // Chuyển sang nơi vừa lập: cấp token mới + reload (xử lý trong useSwitchWorkspace).
       switchWs.mutate(created.id, {
-        onError: (err) => toast.error(apiErrorMessage(err)),
+        onError: (err) => {
+          resumeLeaveGuard();
+          toast.error(apiErrorMessage(err));
+        },
       });
     } catch (err) {
+      resumeLeaveGuard();
       toast.error(apiErrorMessage(err));
     }
   }
