@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { Plus, Shield, ShieldCheck, Trash2 } from 'lucide-react';
 import {
   PERMISSION_CATALOG,
+  roleLabel,
   type PermissionKey,
   type PermissionScope,
   type RoleDto,
@@ -393,8 +394,8 @@ function RoleDialog({
     const count = role.memberCount ?? 0;
     const warn =
       count > 0
-        ? `Vai trò "${role.name}" đang gán cho ${count} thành viên. Xoá vai trò?`
-        : `Xoá vai trò "${role.name}"? Hành động này không thể hoàn tác.`;
+        ? `Vai trò "${roleLabel(role.name)}" đang gán cho ${count} thành viên. Xoá vai trò?`
+        : `Xoá vai trò "${roleLabel(role.name)}"? Hành động này không thể hoàn tác.`;
     if (!(await confirm({ title: warn, destructive: true }))) return;
     deleteRole.mutate(role.id, { onSuccess: onClose });
   }

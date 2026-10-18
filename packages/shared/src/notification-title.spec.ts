@@ -74,11 +74,12 @@ describe('buildNotificationTitle', () => {
       'Trang cập nhật DEMO-3 2 lần',
     );
   });
-  it('payload cũ thiếu trường: không văng, dùng "Ai đó" / "một công việc"', () => {
-    expect(t('COMMENT_ADDED', {})).toBe('Ai đó bình luận trong một công việc');
+  it('payload cũ thiếu trường: không văng, dùng "Hệ thống" / "một công việc" (không bao giờ "Ai đó")', () => {
+    expect(t('COMMENT_ADDED', {})).toBe('Hệ thống bình luận trong một công việc');
     expect(t('STATUS_CHANGED', { key: 'DEMO-3', statusName: 'Done' })).toBe(
-      'Ai đó chuyển DEMO-3 sang Done',
+      'Hệ thống chuyển DEMO-3 sang Done',
     );
+    expect(t('COMMENT_ADDED', {})).not.toContain('Ai đó');
   });
   it('notificationBody ưu tiên trích đoạn rồi tiêu đề việc', () => {
     expect(notificationBody('COMMENT_ADDED', { excerpt: 'Đã sửa xong', summary: 'Sửa lỗi' })).toBe(

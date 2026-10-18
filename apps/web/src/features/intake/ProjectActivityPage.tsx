@@ -9,6 +9,7 @@ import {
   Layers,
   Package,
   Tag,
+  Timer,
   UserCog,
   type LucideIcon,
 } from 'lucide-react';
@@ -56,6 +57,8 @@ function fieldIcon(field: string): LucideIcon {
     case 'COMPONENT':
     case 'FIX_VERSION':
       return Package;
+    case 'TIME_SPENT':
+      return Timer;
     default:
       return CircleDot;
   }
@@ -148,17 +151,14 @@ function actionPhrase(a: ProjectActivityItem): ReactNode {
     case 'RESOLUTION':
       return (
         <>
-          đã đổi <span className="text-muted">resolution</span> {delta(oldV, newV)}
+          đã đổi <span className="text-muted">kết quả xử lý</span> {delta(oldV, newV)}
         </>
       );
     case 'SCOPE':
       return <>đã thay đổi phạm vi</>;
     default:
-      return (
-        <>
-          đã đổi <span className="text-muted">{a.field}</span> {delta(oldV, newV)}
-        </>
-      );
+      // Loại thay đổi chưa có câu riêng: nhãn chung, không in tên enum/trường thô.
+      return <>đã cập nhật thông tin</>;
   }
 }
 

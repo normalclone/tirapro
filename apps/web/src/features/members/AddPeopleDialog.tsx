@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Search, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { roleLabel } from '@tirapro/types';
 import { apiErrorCode, apiErrorMessage } from '@/lib/api';
 import { memberErrorText } from './memberErrors';
 import { Avatar } from '@/components/ui/primitives';
@@ -139,7 +140,9 @@ export function AddPeopleDialog({
   }, [candidates]);
   const roleOpts = useMemo(
     () =>
-      [...new Set(candidates.flatMap((c) => c.roleNames))].sort((a, b) => a.localeCompare(b, 'vi')),
+      [...new Set(candidates.flatMap((c) => c.roleNames))].sort((a, b) =>
+        roleLabel(a).localeCompare(roleLabel(b), 'vi'),
+      ),
     [candidates],
   );
   const statusOpts = useMemo(
@@ -253,7 +256,7 @@ export function AddPeopleDialog({
             onChange={setRoleFilter}
             options={[
               { value: '', label: 'Mọi vai trò' },
-              ...roleOpts.map((n) => ({ value: n, label: n })),
+              ...roleOpts.map((n) => ({ value: n, label: roleLabel(n) })),
             ]}
             placeholder="Mọi vai trò"
             searchPlaceholder="Tìm vai trò…"
@@ -327,7 +330,7 @@ export function AddPeopleDialog({
                         key={r}
                         className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted"
                       >
-                        {r}
+                        {roleLabel(r)}
                       </span>
                     ))}
                     {c.teams.slice(0, 2).map((t) => (

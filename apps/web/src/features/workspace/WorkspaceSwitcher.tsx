@@ -2,6 +2,7 @@ import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronsUpDown, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { roleLabel } from '@tirapro/types';
 import { useAuth } from '@/stores/auth';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -97,7 +98,9 @@ export function WorkspaceSwitcher() {
                         <span className="block truncate text-sm font-medium text-ink-strong">
                           {ws.name}
                         </span>
-                        <span className="block truncate text-[11px] text-muted">{ws.roleName}</span>
+                        <span className="block truncate text-[11px] text-muted">
+                          {roleLabel(ws.roleName)}
+                        </span>
                       </span>
                       {isActive && (
                         <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />

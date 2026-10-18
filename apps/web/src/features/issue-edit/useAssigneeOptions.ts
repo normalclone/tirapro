@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { roleLabel } from '@tirapro/types';
 import { rememberPeople, type PersonOption } from '@/components/ui/PeoplePicker';
 import { useProjectMembers, useSearchUsers } from '@/features/members/api';
 import { useTeams } from '@/features/teams/api';
@@ -47,7 +48,7 @@ export function useAssigneeOptions(
 
     return (users ?? []).map((u) => {
       const roleNames = roleByUser.get(u.id) ?? [];
-      const position = roleNames.join(' · ');
+      const position = roleNames.map(roleLabel).join(' · ');
       const userTeams = teamByUser.get(u.id) ?? [];
       const search = [u.displayName, u.email, position, ...userTeams.map((t) => t.name)]
         .filter(Boolean)

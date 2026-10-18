@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown, UserRound, Users } from 'lucide-react';
-import type { IssueDto } from '@tirapro/types';
+import { roleLabel, type IssueDto } from '@tirapro/types';
 import type { PersonOption } from '@/components/ui/PeoplePicker';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -39,7 +39,7 @@ export function AssigneeFilter({
   const [teamF, setTeamF] = useState('');
 
   const allRoles = [...new Set(options.flatMap((o) => o.roleNames ?? []))].sort((a, b) =>
-    a.localeCompare(b, 'vi'),
+    roleLabel(a).localeCompare(roleLabel(b), 'vi'),
   );
   const allTeams = [...new Set(options.flatMap((o) => (o.teams ?? []).map((t) => t.name)))].sort(
     (a, b) => a.localeCompare(b, 'vi'),
@@ -151,7 +151,7 @@ export function AssigneeFilter({
                     onChange={setRoleF}
                     options={[
                       { value: '', label: 'Mọi vai trò' },
-                      ...allRoles.map((r) => ({ value: r, label: r })),
+                      ...allRoles.map((r) => ({ value: r, label: roleLabel(r) })),
                     ]}
                     placeholder="Mọi vai trò"
                     searchPlaceholder="Tìm vai trò…"

@@ -27,7 +27,7 @@ export interface NotificationPayload {
   fromStatusName?: string;
 }
 
-const ANON = 'Ai đó';
+const ANON = 'Hệ thống';
 
 function who(p: NotificationPayload): string {
   const seen = new Set<string>();
