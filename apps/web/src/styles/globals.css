@@ -158,6 +158,13 @@
   }
 }
 
+/* Cảm ứng không có bàn phím vật lý: gợi ý phím tắt (<kbd>) chỉ gây nhiễu → ẩn. */
+@media (hover: none) and (pointer: coarse) {
+  kbd {
+    display: none;
+  }
+}
+
 /* Reduced motion: tắt mọi animation (DESIGN.md) */
 @media (prefers-reduced-motion: reduce) {
   *,

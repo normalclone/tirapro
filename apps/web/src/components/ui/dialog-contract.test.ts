@@ -140,3 +140,30 @@ describe('hợp đồng Dialog', () => {
     expect(t).not.toMatch(/role="dialog"/);
   });
 });
+
+describe('Dialog placement="bottom" (sheet đáy mobile)', () => {
+  const dialog = readFileSync(join(SRC, 'components', 'ui', 'Dialog.tsx'), 'utf8');
+  const block = /const BOTTOM_CLASS = \[([\s\S]*?)\];/.exec(dialog)?.[1] ?? '';
+
+  it('có placement bottom trong kiểu DialogProps', () =>
+    expect(dialog).toMatch(/placement\?: 'center' \| 'right' \| 'bottom'/));
+  it('mở = trượt lên, ĐÓNG = trượt xuống (data-state=closed có animate-out, giữ hợp đồng animation đóng)', () => {
+    expect(block).toMatch(/data-\[state=open\]:animate-in/);
+    expect(block).toMatch(/data-\[state=open\]:slide-in-from-bottom/);
+    expect(block).toMatch(/data-\[state=closed\]:animate-out/);
+    expect(block).toMatch(/data-\[state=closed\]:slide-out-to-bottom/);
+  });
+  it('240ms ease-out-quart (token slow), có nhánh motion-reduce, không nảy', () => {
+    expect(block).toMatch(/duration-slow/);
+    expect(block).toMatch(/ease-out-quart/);
+    expect(block).toMatch(/motion-reduce:/);
+    expect(block).not.toMatch(/bounce|spring|ease-out-back/);
+  });
+  it('neo đáy, rộng đủ, bo trên, cao tối đa 85dvh, đệm vùng an toàn đáy', () => {
+    expect(block).toMatch(/bottom-0/);
+    expect(block).toMatch(/w-full/);
+    expect(block).toMatch(/rounded-t-xl/);
+    expect(block).toMatch(/max-h-\[85dvh\]/);
+    expect(block).toMatch(/pb-\[env\(safe-area-inset-bottom\)\]/);
+  });
+});

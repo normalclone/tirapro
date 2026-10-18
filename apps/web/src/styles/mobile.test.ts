@@ -26,8 +26,16 @@ describe('mobile nền chung', () => {
   });
   it('có lớp scroll-fade-x', () => expect(css).toMatch(/\.scroll-fade-x/));
   it('viewport-fit=cover', () => expect(html).toMatch(/viewport-fit=cover/));
+  it('gợi ý phím <kbd> ẩn trên thiết bị cảm ứng (hover:none + pointer:coarse)', () =>
+    expect(css).toMatch(
+      /@media \(hover: none\) and \(pointer: coarse\)\s*\{[^@]*?kbd\s*\{[^}]*display:\s*none/,
+    ));
   it('nút nổi tránh thanh home iOS (hằng vị trí dùng env(safe-area-inset-bottom))', () =>
     expect(src('lib/layoutTokens.ts')).toMatch(/safe-area-inset-bottom/));
+  it('toast dưới lg tránh thanh tab đáy (hằng riêng có safe-area-inset-bottom)', () =>
+    expect(src('lib/layoutTokens.ts')).toMatch(
+      /TOAST_BOTTOM_MOBILE_CSS[^;]*env\(safe-area-inset-bottom\)/,
+    ));
   it('dải menu phụ cuộn ngang có dấu hiệu còn nội dung', () => {
     for (const f of [
       'features/settings/SettingsLayout.tsx',

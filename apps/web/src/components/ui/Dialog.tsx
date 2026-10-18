@@ -34,8 +34,11 @@ export interface DialogProps {
   iconTone?: 'primary' | 'danger';
   /** Nội dung phụ cạnh tiêu đề (vd pill trạng thái hiện tại). */
   headerExtra?: ReactNode;
-  /** `right` = ngăn kéo cạnh phải, dùng cho panel phụ (PlanningPanel). */
-  placement?: 'center' | 'right';
+  /**
+   * `right` = ngăn kéo cạnh phải, dùng cho panel phụ (PlanningPanel).
+   * `bottom` = sheet neo đáy (menu Tạo/Tôi trên mobile): rộng hết màn, bo trên, trượt lên/xuống 240ms.
+   */
+  placement?: 'center' | 'right' | 'bottom';
   /** Tuỳ biến focus khi mở (gọi `e.preventDefault()` rồi tự focus phần tử mong muốn). */
   onOpenAutoFocus?: (e: Event) => void;
   /**
@@ -58,6 +61,15 @@ const RIGHT_CLASS = [
   'fixed inset-y-0 right-0 z-modal flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-surface shadow-lg duration-base',
   'data-[state=open]:animate-in data-[state=open]:slide-in-from-right',
   'data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right',
+];
+
+// Sheet đáy: 240ms (token `slow`) ease-out-quart, không nảy. `animation-timing-function` đặt riêng vì `ease-*` của Tailwind
+// chỉ áp cho transition. Nhánh `motion-reduce` bỏ trượt (chỉ còn hiện/ẩn tức thời).
+const BOTTOM_CLASS = [
+  'fixed inset-x-0 bottom-0 z-modal flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-t-xl border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] shadow-lg duration-slow ease-out-quart [animation-timing-function:cubic-bezier(0.25,1,0.5,1)]',
+  'data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom',
+  'data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom',
+  'motion-reduce:data-[state=open]:animate-none motion-reduce:data-[state=closed]:animate-none',
 ];
 
 /**
@@ -107,10 +119,21 @@ export function Dialog({
           onCloseAutoFocus={onCloseAutoFocus}
           onEscapeKeyDown={onEscapeKeyDown}
           className={cn(
-            placement === 'right' ? RIGHT_CLASS : [CENTER_CLASS, SIZE[size]],
+            placement === 'right'
+              ? RIGHT_CLASS
+              : placement === 'bottom'
+                ? BOTTOM_CLASS
+                : [CENTER_CLASS, SIZE[size]],
             className,
           )}
         >
+          {placement === 'bottom' && (
+            // Tay nắm trang trí (không kéo được) — gợi ý đây là sheet trượt từ đáy.
+            <div
+              aria-hidden
+              className="mx-auto mt-2 h-1 w-8 shrink-0 rounded-full bg-border-strong"
+            />
+          )}
           <div
             className={cn(
               'shrink-0 px-5 pt-4 pr-14',
