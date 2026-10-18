@@ -42,7 +42,7 @@ export interface SearchSelectOption {
 }
 
 /**
- * Dropdown chọn-một CÓ Ô TÌM KIẾM — thay cho `<select>` native khi danh sách >5 lựa chọn
+ * Dropdown chọn-một CÓ Ô TÌM KIẾM — thay cho ô chọn native (thẻ select) khi danh sách >5 lựa chọn
  * hoặc số lượng không xác định (data động: người dùng, dự án, trạng thái…).
  *
  * Dùng như select: truyền `value` (chuỗi), `onChange(value)`, và `options`.

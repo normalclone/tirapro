@@ -12,7 +12,7 @@ export interface SegmentedOption<T extends string> {
 
 /**
  * Nhóm lựa chọn 2–4 mục loại trừ nhau (radiogroup): combinator, hướng sắp xếp, chế độ, phạm vi. Mũi tên/Home/End chuyển
- * chọn và focus (roving tabindex, bỏ qua mục tắt). Thay `<select>` khi ít lựa chọn và nhãn ngắn.
+ * chọn và focus (roving tabindex, bỏ qua mục tắt). Thay ô chọn native (thẻ select) khi ít lựa chọn và nhãn ngắn.
  * - `disabled`: tắt cả nhóm (token disabled). `size="sm"` (h-8) cho hàng gọn/trong bảng; mặc định `md` (h-9).
  * - `fullWidth`: `true` luôn chia đều chiều ngang, `false` không bao giờ, bỏ trống = chỉ dưới breakpoint `sm`.
  * - Cần `ariaLabel` hoặc `ariaLabelledby` (nhãn nhìn thấy của nhóm).
