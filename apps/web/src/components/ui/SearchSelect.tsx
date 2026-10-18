@@ -19,6 +19,7 @@ import {
   shouldShowSearch,
   typeaheadIndex,
 } from './searchSelectNav';
+import { shouldEmitChange } from '@/lib/radioNav';
 import { cn } from '@/lib/utils';
 
 const TYPEAHEAD_MS = 600;
@@ -121,7 +122,9 @@ export function SearchSelect({
   }
 
   function pick(v: string) {
-    onChange(v);
+    // Như ô chọn native: chọn lại mục đang chọn KHÔNG phát onChange (nhiều nơi reset dữ liệu khi giá trị đổi).
+    // Menu dạng "hành động" dùng `value=""` + option khác rỗng nên vẫn luôn phát.
+    if (shouldEmitChange(value, v)) onChange(v);
     setOpen(false);
     resetSearch();
   }

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   filterOptions,
@@ -92,5 +94,17 @@ describe('focusTarget', () => {
   it('có ô tìm → focus ô tìm; không → focus listbox', () => {
     expect(focusTarget(true)).toBe('input');
     expect(focusTarget(false)).toBe('list');
+  });
+});
+
+describe('SearchSelect.pick — chọn lại mục đang chọn không phát onChange', () => {
+  const src = readFileSync(join(__dirname, 'SearchSelect.tsx'), 'utf8');
+  const pick = src.slice(src.indexOf('function pick('), src.indexOf('function pick(') + 400);
+  it('chỉ gọi onChange qua shouldEmitChange(value, v), vẫn đóng popover và xoá ô tìm', () => {
+    expect(src).toContain("import { shouldEmitChange } from '@/lib/radioNav'");
+    expect(pick).toContain('if (shouldEmitChange(value, v)) onChange(v);');
+    expect(pick).not.toMatch(/^\s*onChange\(v\);/m);
+    expect(pick).toContain('setOpen(false)');
+    expect(pick).toContain('resetSearch()');
   });
 });
