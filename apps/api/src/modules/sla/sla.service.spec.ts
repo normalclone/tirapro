@@ -92,6 +92,19 @@ describe('SlaService — dự án riêng tư: bảng SLA và chính sách không
     });
   });
 
+  it('board: chọn priority kèm rank (FE suy mũi tên ưu tiên theo hạng, không chỉ màu)', async () => {
+    const { service, prisma } = withBoard();
+    await service.board('w1', 'u1');
+    const arg = prisma.issueSla.findMany.mock.calls[0] as unknown as [
+      { include: { issue: { select: { priority: { select: Record<string, boolean> } } } } },
+    ];
+    expect(arg[0].include.issue.select.priority.select).toMatchObject({
+      name: true,
+      color: true,
+      rank: true,
+    });
+  });
+
   it('board: người thấy hết (admin/thành viên) → không thêm điều kiện project', async () => {
     const { service, prisma } = withBoard();
     await service.board('w1', 'u1');
