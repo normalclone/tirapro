@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-  type SelectHTMLAttributes,
-} from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { SYSTEM_ROLES, type RuleTrigger } from '@tirapro/types';
@@ -28,7 +21,6 @@ import { useProjectLabels } from '@/features/issue-meta/api';
 import { useProjects } from '@/features/projects/api';
 import { QueryBuilder } from '@/features/saved-filters/QueryBuilder';
 import { useWorkflows } from '@/features/workflow-settings/api';
-import { cn } from '@/lib/utils';
 import { Field } from './IssueDefaultsFields';
 import {
   ACTION_LABELS,
@@ -364,12 +356,21 @@ function optionsForField(f: FieldName, o: Options): SearchSelectOption[] {
 
 /* ------------------------------ phần tử giao diện ------------------------------ */
 
-const selectCls =
-  'h-9 w-full rounded-md border border-border bg-bg px-2.5 text-sm text-ink focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50';
-
-function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn(selectCls, className)} {...props} />;
-}
+/** Cách giao việc: nhãn dài nên mỗi mục kèm một dòng mô tả (ngắn, đúng với `issue-patch.ts` phía API). */
+const ASSIGN_MODE_OPTIONS: SearchSelectOption[] = [
+  {
+    value: 'lead',
+    label: 'Trưởng dự án (lead)',
+    description: 'Người đứng đầu dự án chứa công việc',
+  },
+  { value: 'reporter', label: 'Người báo cáo', description: 'Giao lại cho người đã tạo công việc' },
+  {
+    value: 'roundRobin',
+    label: 'Luân phiên giữa các thành viên',
+    description: 'Lần lượt từng thành viên đang hoạt động',
+  },
+  { value: 'user', label: 'Một người cụ thể', description: 'Chọn một người cố định bên cạnh' },
+];
 
 function Card({
   children,
@@ -526,11 +527,12 @@ function ConditionCard({
   const options = optionsForField(c.field, opts);
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[10rem_11rem_1fr]">
-      <Select
-        aria-label="Trường điều kiện"
+      <SearchSelect
+        ariaLabel="Trường điều kiện"
         value={c.field}
-        onChange={(e) => {
-          const field = e.target.value as FieldName;
+        options={UI_FIELDS.map((f) => ({ value: f, label: FIELD_LABELS[f] ?? f }))}
+        onChange={(v) => {
+          const field = v as FieldName;
           onChange({
             ...c,
             field,
@@ -539,24 +541,13 @@ function ConditionCard({
             values: [],
           });
         }}
-      >
-        {UI_FIELDS.map((f) => (
-          <option key={f} value={f}>
-            {FIELD_LABELS[f]}
-          </option>
-        ))}
-      </Select>
-      <Select
-        aria-label="Phép so sánh"
+      />
+      <SearchSelect
+        ariaLabel="Phép so sánh"
         value={c.op}
-        onChange={(e) => onChange({ ...c, op: e.target.value as Op, values: [] })}
-      >
-        {ops.map((o) => (
-          <option key={o} value={o}>
-            {OP_LABELS[o]}
-          </option>
-        ))}
-      </Select>
+        options={ops.map((o) => ({ value: o, label: OP_LABELS[o] ?? o }))}
+        onChange={(v) => onChange({ ...c, op: v as Op, values: [] })}
+      />
       {needsValue ? (
         multi ? (
           <MultiPick
@@ -610,33 +601,32 @@ function ActionCard({
   );
   return (
     <div className="space-y-2">
-      <Select
-        aria-label="Loại hành động"
+      <SearchSelect
+        ariaLabel="Loại hành động"
         value={a.type}
-        onChange={(e) => onChange({ ...newAction(e.target.value as ActionType), id: a.id })}
-      >
-        {types.map((t) => (
-          <option key={t} value={t}>
-            {ACTION_LABELS[t]}
-          </option>
-        ))}
-      </Select>
+        options={types.map((t) => ({ value: t, label: ACTION_LABELS[t] }))}
+        onChange={(v) => onChange({ ...newAction(v as ActionType), id: a.id })}
+      />
 
       {a.type === 'setField' && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[10rem_1fr]">
-          <Select
-            aria-label="Trường cần đặt"
+          <SearchSelect
+            ariaLabel="Trường cần đặt"
             value={a.field}
-            onChange={(e) => set({ field: e.target.value as ActionDraft['field'], value: '' })}
-          >
-            <option value="priorityId">Độ ưu tiên</option>
-            <option value="assigneeId">Người làm</option>
-            <option value="sprintId" disabled={!scoped}>
-              Sprint{scoped ? '' : ' (chọn dự án trước)'}
-            </option>
-            <option value="dueDate">Hạn</option>
-            <option value="storyPoints">Điểm ước lượng</option>
-          </Select>
+            options={[
+              { value: 'priorityId', label: 'Độ ưu tiên' },
+              { value: 'assigneeId', label: 'Người làm' },
+              {
+                value: 'sprintId',
+                label: 'Sprint',
+                disabled: !scoped,
+                description: scoped ? undefined : 'Chọn dự án trước',
+              },
+              { value: 'dueDate', label: 'Hạn' },
+              { value: 'storyPoints', label: 'Điểm ước lượng' },
+            ]}
+            onChange={(v) => set({ field: v as ActionDraft['field'], value: '' })}
+          />
           {a.field === 'priorityId' || a.field === 'assigneeId' || a.field === 'sprintId' ? (
             <SearchSelect
               {...(a.field === 'assigneeId' ? opts.userPick : {})}
@@ -669,16 +659,12 @@ function ActionCard({
 
       {a.type === 'assign' && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[14rem_1fr]">
-          <Select
-            aria-label="Cách giao"
+          <SearchSelect
+            ariaLabel="Cách giao"
             value={a.mode}
-            onChange={(e) => set({ mode: e.target.value as ActionDraft['mode'] })}
-          >
-            <option value="lead">Trưởng dự án (lead)</option>
-            <option value="reporter">Người báo cáo</option>
-            <option value="roundRobin">Luân phiên giữa các thành viên</option>
-            <option value="user">Một người cụ thể</option>
-          </Select>
+            options={ASSIGN_MODE_OPTIONS}
+            onChange={(v) => set({ mode: v as ActionDraft['mode'] })}
+          />
           {a.mode === 'user' && (
             <SearchSelect
               {...opts.userPick}
@@ -937,17 +923,12 @@ export function RuleEditor({
         <section aria-label="Khi">
           <StepHeader n={1} title="Khi…" hint="Sự kiện làm quy tắc chạy." />
           <div className="space-y-3">
-            <Select
-              aria-label="Sự kiện kích hoạt"
+            <SearchSelect
+              ariaLabel="Sự kiện kích hoạt"
               value={draft.trigger}
-              onChange={(e) => set({ trigger: e.target.value as RuleTrigger })}
-            >
-              {RULE_TRIGGERS.map((t) => (
-                <option key={t} value={t}>
-                  {TRIGGER_LABELS[t]}
-                </option>
-              ))}
-            </Select>
+              options={RULE_TRIGGERS.map((t) => ({ value: t, label: TRIGGER_LABELS[t] }))}
+              onChange={(v) => set({ trigger: v as RuleTrigger })}
+            />
             {draft.trigger === 'ISSUE_TRANSITIONED' && (
               <Field
                 label="Chỉ khi chuyển đến trạng thái"

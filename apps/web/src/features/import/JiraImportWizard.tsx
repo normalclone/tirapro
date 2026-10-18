@@ -6,6 +6,7 @@ import { JIRA_CREATE, type JiraImportOptions, type JiraImportRunInput } from '@t
 import type { JiraAnalyzeResult, JiraDryRunResult, JiraImportTargets } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
 import { Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -28,12 +29,6 @@ import {
 
 const STEPS = ['Tải tệp', 'Ghép dữ liệu', 'Nhập & kết quả'] as const;
 const NEW_PROJECT = '__new__';
-
-const selectClass = cn(
-  'h-9 w-full rounded-md border border-border bg-bg px-2 text-sm text-ink',
-  'transition-colors focus-visible:outline-none focus-visible:border-primary',
-  'focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
-);
 
 type Mapping = Record<string, string>;
 
@@ -82,7 +77,7 @@ function MappingTable({
   rows,
   value,
   onChange,
-  children,
+  options,
   disabled,
   fallback = BLANK,
   rowExtra,
@@ -92,8 +87,8 @@ function MappingTable({
   rows: string[];
   value: Mapping;
   onChange: (jira: string, target: string) => void;
-  /** Các `<option>` đích (ngoài "Tạo mới"/"Để trống"). */
-  children: ReactNode;
+  /** Các mục đích, gồm cả "Tạo mới"/"Chưa ghép"/"Để trống" (giữ nguyên `value` gửi lên máy chủ). */
+  options: SearchSelectOption[];
   disabled?: boolean;
   /** Giá trị hiển thị khi dòng chưa có trong `value`. */
   fallback?: string;
@@ -114,15 +109,14 @@ function MappingTable({
             <span className="truncate text-sm text-ink" title={name}>
               {name}
             </span>
-            <select
-              aria-label={`${title}: ${name}`}
-              className={selectClass}
+            <SearchSelect
+              ariaLabel={`${title}: ${name}`}
+              className="w-full"
               value={value[name] ?? fallback}
               disabled={disabled}
-              onChange={(e) => onChange(name, e.target.value)}
-            >
-              {children}
-            </select>
+              onChange={(v) => onChange(name, v)}
+              options={options}
+            />
             {rowExtra?.(name)}
           </div>
         ))}
@@ -320,19 +314,17 @@ function ProjectPicker({
     <div>
       <h3 className="text-sm font-medium text-ink-strong">Dự án đích</h3>
       <div className="mt-2 grid gap-3 sm:grid-cols-2">
-        <select
-          aria-label="Dự án đích"
-          className={selectClass}
+        <SearchSelect
+          ariaLabel="Dự án đích"
+          className="w-full"
           value={choice}
-          onChange={(e) => onChoice(e.target.value)}
-        >
-          <option value={NEW_PROJECT}>Tạo dự án mới…</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.key} — {p.name}
-            </option>
-          ))}
-        </select>
+          onChange={onChoice}
+          options={[
+            { value: NEW_PROJECT, label: 'Tạo dự án mới…' },
+            ...projects.map((p) => ({ value: p.id, label: p.name, hint: p.key })),
+          ]}
+          searchPlaceholder="Tìm dự án…"
+        />
       </div>
       {choice === NEW_PROJECT && (
         <div className="mt-3 grid gap-3 sm:grid-cols-[8rem_1fr]">
@@ -455,14 +447,11 @@ function MappingTables({
         rows={analysis.issueTypes}
         value={maps.types[0]}
         onChange={(k, v) => maps.types[1]((m) => ({ ...m, [k]: v }))}
-      >
-        {targets.issueTypes.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name}
-          </option>
-        ))}
-        <option value={JIRA_CREATE}>＋ Tạo mới theo tên Jira</option>
-      </MappingTable>
+        options={[
+          ...targets.issueTypes.map((t) => ({ value: t.id, label: t.name })),
+          { value: JIRA_CREATE, label: '＋ Tạo mới theo tên Jira' },
+        ]}
+      />
 
       <MappingTable
         title="Trạng thái"
@@ -475,28 +464,22 @@ function MappingTables({
         value={maps.statuses[0]}
         disabled={newProject}
         onChange={(k, v) => maps.statuses[1]((m) => ({ ...m, [k]: v }))}
-      >
-        {targets.statuses.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-          </option>
-        ))}
-        <option value={JIRA_CREATE}>＋ Tạo mới / khớp theo tên</option>
-      </MappingTable>
+        options={[
+          ...targets.statuses.map((s) => ({ value: s.id, label: s.name })),
+          { value: JIRA_CREATE, label: '＋ Tạo mới / khớp theo tên' },
+        ]}
+      />
 
       <MappingTable
         title="Mức ưu tiên"
         rows={analysis.priorities}
         value={maps.priorities[0]}
         onChange={(k, v) => maps.priorities[1]((m) => ({ ...m, [k]: v }))}
-      >
-        {targets.priorities.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-        <option value={JIRA_CREATE}>＋ Tạo mới theo tên Jira</option>
-      </MappingTable>
+        options={[
+          ...targets.priorities.map((p) => ({ value: p.id, label: p.name })),
+          { value: JIRA_CREATE, label: '＋ Tạo mới theo tên Jira' },
+        ]}
+      />
 
       <MappingTable
         title="Người dùng"
@@ -505,6 +488,11 @@ function MappingTables({
         value={maps.users[0]}
         fallback={UNMAPPED}
         onChange={(k, v) => maps.users[1]((m) => ({ ...m, [k]: v }))}
+        options={[
+          { value: UNMAPPED, label: '— Chưa ghép —' },
+          { value: BLANK, label: '— Để trống (cố ý) —' },
+          ...targets.members.map((m) => ({ value: m.id, label: m.displayName, hint: m.email })),
+        ]}
         rowExtra={(name) =>
           (maps.users[0][name] ?? UNMAPPED) === UNMAPPED ? (
             <label className="col-span-2 flex flex-col gap-1 text-xs text-muted sm:col-span-1 sm:col-start-2">
@@ -521,15 +509,7 @@ function MappingTables({
             </label>
           ) : null
         }
-      >
-        <option value={UNMAPPED}>— Chưa ghép —</option>
-        <option value={BLANK}>— Để trống (cố ý) —</option>
-        {targets.members.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.displayName} ({m.email})
-          </option>
-        ))}
-      </MappingTable>
+      />
     </>
   );
 }
