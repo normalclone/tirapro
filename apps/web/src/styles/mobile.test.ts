@@ -69,6 +69,19 @@ describe('mobile nền chung', () => {
     ) as Record<string, string>;
     for (const [k, why] of Object.entries(allow)) expect(why.length, k).toBeGreaterThan(20);
   });
+  it('bộ đo mobile kiểm thanh tab đáy (hiện + không bị phần tử fixed/main chồng) và shot.mjs --open-nav mở sheet "Tôi"', () => {
+    const audit = readFileSync(join(__dirname, '..', '..', 'scripts', 'mobile-audit.mjs'), 'utf8');
+    expect(audit).toMatch(/bottom-bar-missing/);
+    expect(audit).toMatch(/bottom-bar-overlap/);
+    const allow = readFileSync(
+      join(__dirname, '..', '..', 'scripts', 'mobile-audit.allow.json'),
+      'utf8',
+    );
+    expect(allow).not.toMatch(/FAB phủ/); // ngoại lệ cũ: nút nổi không còn dưới lg
+    const shot = readFileSync(join(__dirname, '..', '..', 'scripts', 'shot.mjs'), 'utf8');
+    expect(shot).toMatch(/name: 'Tôi'/);
+    expect(shot).not.toMatch(/Mở menu/);
+  });
   it('khung flex-wrap chứa chip có gap-y ≥ 16px trên cảm ứng (hai vùng bấm 44px của hai hàng không chồng)', () => {
     for (const f of [
       'features/quick-filters/QuickFilterChips.tsx',
