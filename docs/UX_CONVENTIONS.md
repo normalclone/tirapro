@@ -61,7 +61,7 @@
 ## 9. Nhất quán & dự đoán được
 - Cùng một cách làm ở mọi nơi (cách edit, cách mở menu, cùng phím tắt). Cùng component, cùng spacing.
 - Trạng thái = **icon + nhãn + màu** (không chỉ màu). Nhớ ngữ cảnh (project/board/filter/theme gần nhất). Ưu tiên luôn là `PriorityIcon` (mũi tên theo hạng), không phải chấm màu.
-- **Một hành động chính (primary) mỗi màn/hộp thoại/thanh** — các nút còn lại là secondary/ghost. Nút vô hiệu dùng token `disabled-bg`/`disabled-fg`, không giảm độ mờ.
+- **Nên có một hành động chính (primary) mỗi màn/hộp thoại/thanh** — các nút còn lại là secondary/ghost (hướng dẫn, chưa có test ép). Nút vô hiệu dùng token `disabled-bg`/`disabled-fg`, không giảm độ mờ.
 - **Ô chọn:** cấm `<select>` native (test `noNativeSelect`). ≤ 4 lựa chọn ngắn, cố định → `SegmentedControl`; còn lại → `SearchSelect`. Bật/tắt có hiệu lực ngay → `Switch`; chọn trong biểu mẫu rồi mới Lưu → `Checkbox` (giữ nguyên).
 - **Form có nút Lưu cấp trang** dùng `UnsavedBar` ("Có thay đổi chưa lưu · Bỏ thay đổi · Lưu"); rời trang/đổi mục khi đang sửa thì hỏi xác nhận (`useLeaveGuard`).
 

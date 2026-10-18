@@ -4,6 +4,8 @@ Gộp toàn bộ thay đổi của nhánh (base `22c116c`) — phần follow-up 
 
 > **Vòng UX 2 (143 task, 28 migration) nằm ở phần cuối file** (mục "UX vòng 2", có đủ 5 phần: triển khai, hành vi, API, bảo mật, còn mở). Đọc cả hai phần khi nâng cấp từ bản trước đợt follow-up.
 
+> **Chuẩn hoá giao diện đợt 1 (2026-10-18) là phần cuối cùng của file** (mục "Giao diện đợt 1": triển khai, thay đổi người dùng thấy, còn mở). Không đổi cơ sở dữ liệu; cần triển khai lại cả web lẫn API.
+
 > **Merge PR bằng merge commit (không squash, không rebase-merge).** `.git-blame-ignore-revs` trỏ tới SHA `4fa8273…` của commit `prettier --write` toàn repo (T5); squash/rebase đổi SHA thì file này vô hiệu và `git blame` ngập trong diff format. Sau khi clone/pull chạy một lần: `git config blame.ignoreRevsFile .git-blame-ignore-revs`. Nhánh đang mở cần rebase lên sau commit format.
 
 ## 1. Cần làm khi triển khai
@@ -399,63 +401,74 @@ Cập nhật `docs/design/api-contract.md` theo từng route khi sửa.
 
 # Giao diện đợt 1 (2026-10-18)
 
-Đợt chuẩn hoá giao diện đầu tiên (nhánh `sdd/w1`, 13 task), chỉ đổi cách hiển thị và thao tác — **không thêm migration, không đổi dữ liệu**. Hai chỗ có chạm API (chỉ thêm/điền dữ liệu, không phá client cũ): bảng SLA trả thêm hạng ưu tiên để vẽ mũi tên; danh sách thông báo điền tên người thực hiện lúc đọc. **Cần triển khai lại cả web lẫn API** thì hai chỗ đó mới đúng (web mới + API cũ: SLA hiện mũi tên "trung bình", thông báo cũ có người thực hiện hiện "Một thành viên").
+Đợt chuẩn hoá giao diện đầu tiên, chỉ đổi cách hiển thị và thao tác — **không đổi cấu trúc cơ sở dữ liệu, không đổi dữ liệu có sẵn**.
 
-### Chuẩn hoá giao diện đợt 1
+## 1. Cần làm khi triển khai
 
-**Nút và ô nhập vô hiệu**
+- Không cần chạy thêm lệnh nào cho cơ sở dữ liệu.
+- **Triển khai lại cả web lẫn API cùng lúc.** Máy chủ mới trả thêm hạng ưu tiên cho bảng SLA (để vẽ mũi tên) và điền tên người thực hiện cho thông báo cũ khi mở. Nếu chỉ có web mới mà API cũ: bảng SLA hiện mũi tên "trung bình" cho mọi việc, và thông báo cũ có người thực hiện hiện "Một thành viên" thay vì tên thật. Cả hai chỗ chỉ thêm/điền dữ liệu nên client cũ không hỏng.
+- Máy chủ cũng đổi vài chữ hiển thị (cần biết nếu có ai đối chiếu bằng chữ cũ):
+  - Quy tắc tự động dùng `{{actorName}}` mà không tra ra tên người thực hiện nay ghi **"Hệ thống"** thay vì "Ai đó".
+  - Tiêu đề thông báo (trong app, email và Telegram) khi thiếu tên người thực hiện: "Hệ thống" nếu do hệ thống làm, "Một thành viên" nếu người đó không còn tài khoản — không còn "Ai đó".
+
+## 2. Thay đổi người dùng thấy
+
+### Nút và ô nhập vô hiệu
 
 - Nút, ô nhập, ô chọn, ô ngày bị vô hiệu nay có nền xám và chữ xám rõ ràng (cả giao diện sáng lẫn tối) thay vì mờ đi; con trỏ hiện dấu cấm. Nút đang xử lý vẫn giữ màu của nút kèm vòng quay, không bị nhầm với nút bị khoá.
 
-**Mức ưu tiên**
+### Mức ưu tiên
 
 - Ưu tiên hiện bằng **mũi tên theo thứ bậc** (⇈ cao nhất, ↑ cao, = trung bình, ↓ thấp, ⇊ thấp nhất) thay cho chấm màu, ở thẻ Bảng việc, dòng Việc chờ, Tổng quan, Việc mới vào, SLA và Cây việc. Rê chuột hoặc dùng trình đọc màn hình sẽ nghe "Ưu tiên: <tên>". Đổi tên/màu/số mức ở Cài đặt thì mũi tên vẫn đúng thứ bậc.
 
-**Không tìm thấy, không có quyền, lỗi**
+### Không tìm thấy, không có quyền, lỗi
 
 - Gõ sai đường dẫn → trang **"Không tìm thấy trang"** ngay trong khung ứng dụng (menu vẫn còn), gợi ý tối đa 3 trang gần đúng và nút "Về Tổng quan". Trang báo lỗi chỉ còn dành cho lỗi thật.
 - Mở công việc không tồn tại → "Không tìm thấy công việc <mã>" kèm gợi ý mã gần đúng, không còn vòng quay chạy mãi cạnh dòng báo lỗi.
 - Mất mạng/máy chủ lỗi được báo khác với "không tìm thấy" (và có nút thử lại). Nếu việc đang mở mà lần làm mới ngầm bị lỗi, nội dung đang xem **được giữ nguyên**, không bị thay bằng màn lỗi.
 
-**Màn trống**
+### Màn trống
 
 - Mọi màn/ô trống dùng cùng một kiểu: biểu tượng + một câu giải thích + nút hành động kế tiếp (khối trống tự vẽ, viền đứt, chữ trần đã được thay hết); ô nhỏ trong thẻ dùng bản gọn.
 - Ma trận rủi ro 5×5 ở Rủi ro & vướng mắc **ẩn khi chưa có mục nào** (không còn lưới trống). Trang quản trị có nút **"Xoá bộ lọc"** khi lọc ra kết quả rỗng.
 
-**Ô chọn**
+### Ô chọn
 
 - Hết ô chọn mặc định của trình duyệt trong toàn app. Lựa chọn ít (tối đa 4, nhãn ngắn) hiện thành **nhóm nút bấm** — bấm lại mục đang chọn không làm gì; lựa chọn nhiều dùng ô chọn có tìm kiếm.
 - Ô chọn có tìm kiếm dùng được hoàn toàn bằng bàn phím (↑ ↓ Home End, Enter chọn, Esc đóng), mục có thể có dòng mô tả và biểu tượng; danh sách từ 6 mục trở xuống **không hiện ô tìm** (gõ chữ cái đầu để nhảy tới mục), ô tìm chỉ hiện khi danh sách dài hoặc tìm trên máy chủ. Chọn lại giá trị đang có không còn làm mất những gì bạn vừa nhập ở các biểu mẫu quy tắc/bộ lọc.
 
-**Điện thoại và máy tính bảng (dưới 1024px)**
+### Điện thoại và máy tính bảng (dưới 1024px)
 
 - Thanh tab ở đáy màn hình: **Tổng quan · Dự án · ＋ Tạo · Thông báo · Tôi** (ở Quản trị hệ thống là 4 mục + Tôi). "Tạo" mở danh sách việc tạo mới, "Tôi" mở danh sách các mục còn lại và tài khoản (đổi giao diện sáng/tối, đăng xuất…). Hết menu trượt, nút ba gạch và nút nổi "Tạo" ở góc.
-- Thanh trên cùng có nút **Tìm** mở bảng lệnh. Thanh thao tác hàng loạt và thông báo nhanh nằm ngay trên thanh tab. Từ 1024px trở lên (máy tính) giao diện và nút nổi giữ nguyên.
+- Thanh trên cùng có nút **Tìm** mở bảng lệnh. Thanh thao tác hàng loạt và thông báo nhanh nằm ngay trên thanh tab; khi đang có thanh "Có thay đổi chưa lưu" thì thông báo nhanh nằm trên cả thanh đó (không che nút Lưu / Bỏ thay đổi). Từ 1024px trở lên (máy tính) giao diện và nút nổi giữ nguyên.
+- Cuối trang trên điện thoại không còn khoảng trắng thừa dành cho nút nổi (nút nổi chỉ có trên máy tính).
 - Màn cảm ứng không còn hiện gợi ý phím (⌘K, ↵…); trang Tài liệu hướng dẫn và bảng phím tắt vẫn ghi đủ tên phím.
 
-**Thay đổi chưa lưu**
+### Thay đổi chưa lưu
 
 - Ở Cấu hình dự án › Chung, Hồ sơ và banner bảo trì, nút Lưu cuối thẻ được thay bằng thanh dính ở đáy: **"Có thay đổi chưa lưu · Bỏ thay đổi · Lưu"**. Enter trong ô một dòng vẫn lưu.
 - Rời trang, đổi mục trong cùng trang, đổi hoặc tạo không gian làm việc khi đang sửa dở → hỏi trước khi bỏ. Đổi mật khẩu chỉ chặn khi rời trang (không có thanh Lưu).
 
-**Chữ và ngày tháng**
+### Chữ và ngày tháng
 
 - Nút huỷ luôn là "Huỷ". Tên mục menu **trùng tiêu đề trang** (ví dụ "Quy trình", "Kết nối", "Thành viên"); trang chứa danh sách quy trình tên "Danh sách quy trình".
 - Bỏ "Project ID" (thành "Dự án"), "dashboard" (thành "bảng tổng quan"), "board" ở chữ hiển thị (thành "bảng việc"), "bên trái" (sai trên điện thoại), "Trường tuỳ chỉnh" (thành "Trường thông tin thêm").
 - Người thực hiện: có tên thì hiện tên; **"Hệ thống"** chỉ khi do hệ thống/automation làm; thông báo cũ chưa lưu tên được điền tên thật khi mở, nếu không tra ra (tài khoản đã xoá) thì ghi **"Một thành viên"** — không còn "Ai đó".
-- Không còn lộ mã nội bộ (như `TIME_SPENT` trong lịch sử hoạt động — nay là "ghi thời gian" kèm biểu tượng); vai trò luôn bằng tiếng Việt.
+- Không còn lộ mã nội bộ bằng tiếng Anh trong lịch sử hoạt động (nay là "ghi thời gian" kèm biểu tượng); vai trò luôn bằng tiếng Việt.
 - Ngày tháng thống nhất: `17/10` (trục biểu đồ), `17/10/2026`, **`T10/2026`** (lộ trình, Gantt), "Thứ Bảy, 17/10/2026" (Tổng quan); số lớn có dấu phân cách.
 
-### Tồn đọng chuyển đợt sau
+## 3. Còn mở / tồn đọng
 
 Những điểm người dùng có thể nhận ra, đã biết và chưa sửa ở đợt 1:
 
 - **Gantt/Lộ trình:** khi khoảng thời gian chỉ 1 ngày, nhãn tháng bị tràn; nhãn `T10/2026` dài hơn trước nên dễ chật.
-- **Điện thoại:** một số trang (Bảng việc, Việc mới vào, Cây việc, Gantt, xem nhanh) còn chừa khoảng trống ~96px ở cuối trang, kéo xuống thấy trắng (vô hại). Tab "Không gian làm việc" ở Quản trị hệ thống bị cắt chữ trên thanh đáy.
+- **Điện thoại:** nhóm nút chọn trạng thái ở mục Phiên bản (Cấu hình dự án) có thể chật ở màn 390px (chưa kiểm). Một số ô chọn mới thay (Bộ lọc, Tự động hoá, một vài biểu mẫu) chưa được xem lại bằng mắt ở mọi kích cỡ.
 - **Hướng dẫn lần đầu (tour):** bước 4 vẫn ghi "Nhấn ⌘K" dù trên điện thoại nó chỉ vào nút Tìm.
 - **Cảm ứng:** dòng gợi ý "Ctrl/Cmd+Enter để lưu" ở chân một số hộp thoại vẫn hiện.
-- **Ô nhập/nút vô hiệu:** khoảng 35 chỗ ngoài các thành phần dùng chung vẫn làm mờ bằng độ mờ cũ; hai cách viết "Độ ưu tiên" (nhãn trường trong bộ lọc/automation) và "Mức ưu tiên" (menu) cùng tồn tại.
-- **Thay đổi chưa lưu:** chuyển không gian làm việc rồi bị lỗi thì bản nháp đã mất; mở Tích hợp bằng đường dẫn `?section=` không hỏi; trình duyệt tự điền mật khẩu có thể làm trang Tài khoản tưởng là đang sửa; gõ tiếp trong lúc đang lưu ở mục Chung có thể bị ghi đè.
-- **Vai trò:** tiêu đề hộp thoại ở Vai trò & quyền và nhãn tài khoản mẫu ở màn đăng nhập còn tên vai trò gốc tiếng Anh; ô tìm người phụ trách không khớp tên vai trò tiếng Anh nữa.
-- **Mũi tên ưu tiên:** gợi ý "bấm để đổi" bị tooltip "Ưu tiên: …" che; trang SLA đọc tên ưu tiên hai lần với trình đọc màn hình.
-- **404:** đường dẫn lạ bên trong một dự án (`/p/MÃ/…`) hiện trang không tìm thấy nhưng không có thanh điều hướng của dự án; gợi ý mã gần đúng ở trang công việc không tồn tại có thể thoáng hiện kết quả của mã trước.
+- **Ô nhập/nút vô hiệu:** khoảng 35 chỗ ngoài các thành phần dùng chung vẫn làm mờ bằng độ mờ cũ; nút đang xử lý còn đổi nền nhẹ khi rê chuột. Hai cách viết "Độ ưu tiên" (nhãn trường trong bộ lọc/automation) và "Mức ưu tiên" (menu) cùng tồn tại; một vài mô tả dưới tiêu đề còn lặp lại ý của tiêu đề.
+- **Thay đổi chưa lưu:** chuyển không gian làm việc rồi bị lỗi thì bản nháp đã mất; mở Tích hợp bằng đường dẫn có sẵn mục cần mở thì không hỏi trước khi bỏ bản nháp; trình duyệt tự điền mật khẩu có thể làm trang Tài khoản tưởng là đang sửa; gõ tiếp trong lúc đang lưu ở mục Chung có thể bị ghi đè; hộp xác nhận lồng nhau khi tạo không gian làm việc mới chưa được thử kỹ trên trình duyệt.
+- **Vai trò:** tiêu đề hộp thoại ở Vai trò & quyền và nhãn tài khoản mẫu ở màn đăng nhập còn tên vai trò gốc tiếng Anh. Một vài nhãn (Vai trò & quyền, Nhật ký quản trị, Tự động hoá, Danh mục dự án, bảng lệnh) vẫn viết tay thay vì lấy từ nguồn chung — hiện còn khớp, nhưng đổi tên menu sau này phải sửa thêm ở đó.
+- **Trợ năng:** các tab trong Cài đặt bảng được trình đọc màn hình đọc như nhóm nút chọn (cần thành phần Tab riêng); nhóm nút chọn chưa gắn được dòng mô tả/báo lỗi cho trình đọc màn hình; trang báo trạng thái hệ thống luôn dùng cấp tiêu đề lớn nhất.
+- **404:** đường dẫn lạ bên trong một dự án hiện trang không tìm thấy nhưng không có thanh điều hướng của dự án; gợi ý mã gần đúng ở trang công việc không tồn tại có thể thoáng hiện kết quả của mã trước.
+- **Chưa kiểm sau khi triển khai:** việc điền tên thật cho thông báo cũ mới được kiểm bằng test của API, sẽ kiểm trên trình duyệt sau khi API được triển khai lại.
+- **Kỹ thuật (không ảnh hưởng người dùng):** vị trí hàm lấy hạng ưu tiên, một số kiểm thử còn thiếu (gợi ý đường dẫn, rào chắn giữ-trang, kiểm thuật ngữ với chuỗi xuống dòng), hai hàm định dạng số trùng nhau.

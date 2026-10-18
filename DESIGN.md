@@ -134,7 +134,7 @@ Type scale (rem, 1rem=16px) — line-height đặc cho mật độ cao:
 ## Components (conventions)
 
 shadcn/ui (Radix primitives) + Tailwind, restyle theo token trên. Primitives P0:
-Button (primary/secondary/ghost/danger), Input, Textarea, Select, Combobox, Dialog (dùng
+Button (primary/secondary/ghost/danger), Input, Textarea, SearchSelect, SegmentedControl, Dialog (dùng
 `<dialog>`/portal — tránh bị clip trong overflow), Dropdown, Tooltip, Popover, Avatar,
 Badge/Tag, Tabs, Checkbox, Switch, Toast (sonner-style), Skeleton, Command palette (cmdk).
 
