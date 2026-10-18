@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { DateInput } from '@/components/ui/DateInput';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { LOCALE } from '@/lib/locale';
+import { fmtDateTime } from '@/lib/dateFormat';
 import { useAuth } from '@/stores/auth';
 import { useWorkspaceMembers } from '@/features/members/api';
 import { relTime } from '@/features/admin/_ui';
@@ -178,13 +178,7 @@ export function AuditLogPage() {
                     <time
                       className="shrink-0 text-xs text-faint"
                       dateTime={e.createdAt}
-                      title={new Date(e.createdAt).toLocaleString(LOCALE, {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      title={fmtDateTime(e.createdAt)}
                     >
                       {relTime(e.createdAt)}
                     </time>

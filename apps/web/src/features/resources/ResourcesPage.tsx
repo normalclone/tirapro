@@ -19,12 +19,12 @@ import {
   formatHours,
   isoDay,
   mondayOf,
-  shortDay,
   useWorkload,
   type WorkloadCell,
   type WorkloadReport,
   type WorkloadRow,
 } from './api';
+import { fmtDayMonth } from '@/lib/dateFormat';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { useScrollFade } from '@/lib/useScrollFade';
 import { MANAGE_LABELS } from '@/lib/navLabels';
@@ -384,7 +384,7 @@ function HeatMap({
                   key={w.start}
                   scope="col"
                   className="min-w-[5.5rem] px-2 py-2.5 text-center text-xs font-medium text-muted"
-                  title={`Tuần ${shortDay(w.start)} – ${shortDay(w.end)}`}
+                  title={`Tuần ${fmtDayMonth(w.start)} – ${fmtDayMonth(w.end)}`}
                 >
                   {w.label}
                 </th>
@@ -469,7 +469,7 @@ function LoadCell({
   const level = levelOf(cell);
   const meta = LEVEL_META[level];
   const percent = cell.ratio != null ? Math.round(cell.ratio * 100) : null;
-  const label = `${name}, tuần bắt đầu ${shortDay(cell.weekStart)}: ${meta.label}, được giao ${formatHours(cell.assignedHours)} trên ${formatHours(cell.capacityHours)} giờ làm được`;
+  const label = `${name}, tuần bắt đầu ${fmtDayMonth(cell.weekStart)}: ${meta.label}, được giao ${formatHours(cell.assignedHours)} trên ${formatHours(cell.capacityHours)} giờ làm được`;
 
   return (
     <td className="p-1 text-center align-middle">
@@ -505,7 +505,7 @@ function LoadCell({
             className="z-tooltip w-56 rounded-lg border border-border bg-surface p-3 text-xs shadow-lg animate-in fade-in zoom-in-95 duration-150"
           >
             <p className="mb-2 font-medium text-ink-strong">
-              Tuần bắt đầu {shortDay(cell.weekStart)}
+              Tuần bắt đầu {fmtDayMonth(cell.weekStart)}
             </p>
             <dl className="space-y-1 text-muted">
               <Line label="Làm được" value={formatHours(cell.capacityHours)} />

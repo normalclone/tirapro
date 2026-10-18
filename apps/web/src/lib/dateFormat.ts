@@ -30,6 +30,26 @@ export function fmtDate(v: DateLike): string {
   return d ? format(d, 'dd/MM/yyyy') : '—';
 }
 
+/** `05/08` — nhãn trục biểu đồ / chỗ hẹp (đầy đủ ngày-tháng-năm nằm ở tooltip); rỗng/không hợp lệ → `—`. */
+export function fmtDayMonth(v: DateLike): string {
+  const d = toDate(v);
+  return d ? format(d, 'dd/MM') : '—';
+}
+
+/** `T10/2026` — nhãn tháng (lộ trình, Gantt); rỗng/không hợp lệ → `—`. */
+export function fmtMonthYear(v: DateLike): string {
+  const d = toDate(v);
+  return d ? `T${d.getMonth() + 1}/${d.getFullYear()}` : '—';
+}
+
+const WEEKDAYS_VI = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+
+/** `Thứ Bảy, 17/10/2026` — dòng ngày hôm nay ở Tổng quan; rỗng/không hợp lệ → `—`. */
+export function fmtLongDate(v: DateLike): string {
+  const d = toDate(v);
+  return d ? `${WEEKDAYS_VI[d.getDay()]}, ${format(d, 'dd/MM/yyyy')}` : '—';
+}
+
 /** `05/08/2026 14:30`; rỗng/không hợp lệ → `—`. */
 export function fmtDateTime(v: DateLike): string {
   const d = toDate(v);

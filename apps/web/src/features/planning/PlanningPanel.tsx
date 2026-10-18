@@ -1,5 +1,4 @@
 import { useMemo, useRef, useState } from 'react';
-import { format } from 'date-fns';
 import { Check, Flag, Link2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
@@ -27,6 +26,7 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { fmtDate, toDateInput } from '@/lib/dateFormat';
 
 const MILESTONE_COLORS = ['#7c3aed', '#2563eb', '#0d9488', '#16a34a', '#f59e0b', '#dc2626'];
 /** Tên màu đọc được, dùng cho nhãn trợ năng thay vì mã hex. */
@@ -286,7 +286,7 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
 
   const [name, setName] = useState('');
   const formRef = useRef<HTMLDivElement>(null);
-  const [dueDate, setDueDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [dueDate, setDueDate] = useState(() => toDateInput(new Date()));
   const [color, setColor] = useState(MILESTONE_COLORS[0]);
 
   async function add() {
@@ -363,7 +363,7 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
                     className="text-xs text-faint"
                     title={m.completedAt ? 'Cột mốc này đã đạt.' : 'Ngày phải đạt cột mốc này.'}
                   >
-                    {format(new Date(m.dueDate), 'dd/MM/yyyy')}
+                    {fmtDate(m.dueDate)}
                     {m.completedAt && ' · Đã đạt'}
                   </p>
                 </div>

@@ -14,13 +14,13 @@ import { useProjects } from '@/features/projects/api';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
-  shortDay,
   useAllocations,
   useCreateAllocation,
   useDeleteAllocation,
   useUpdateAllocation,
   type AllocationDto,
 } from './api';
+import { fmtDayMonth } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 interface FormState {
@@ -143,7 +143,7 @@ export function AllocationsPanel({
           <h2 className="text-base font-semibold text-ink-strong">Phân bổ người vào dự án</h2>
           <p className="mt-0.5 text-sm text-muted">
             Ai dành bao nhiêu phần trăm thời gian cho dự án nào. Đang hiện các phân bổ có ngày rơi
-            vào khoảng {shortDay(from)} – {shortDay(to)}.
+            vào khoảng {fmtDayMonth(from)} – {fmtDayMonth(to)}.
           </p>
         </div>
         {canManage && !form && (
@@ -316,7 +316,7 @@ export function AllocationsPanel({
                       {a.percent}%
                     </td>
                     <td className="whitespace-nowrap py-2.5 pr-3 tabular-nums text-muted">
-                      {shortDay(a.startDate)} – {shortDay(a.endDate)}
+                      {fmtDayMonth(a.startDate)} – {fmtDayMonth(a.endDate)}
                     </td>
                     <td className="max-w-[16rem] truncate py-2.5 pr-3 text-muted">
                       {a.note ?? '—'}

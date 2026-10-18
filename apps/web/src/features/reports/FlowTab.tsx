@@ -14,6 +14,7 @@ import { LineChart as LineChartIcon } from 'lucide-react';
 import { EmptyState } from '@/components/ui/primitives';
 import { useCfd, useCreatedResolved } from './api';
 import { AXIS_PROPS, Card, ChartSkeleton, LEGEND_STYLE, TOOLTIP_STYLE } from './charts';
+import { fmtDate, fmtDayMonth } from '@/lib/dateFormat';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 /** Tab "Luồng công việc": Cumulative Flow và Tạo mới vs Đã xử lý. */
@@ -37,9 +38,9 @@ export function FlowTab({ projectId }: { projectId: string }) {
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={cfd.data.series}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="date" {...AXIS_PROPS} />
+              <XAxis dataKey="date" {...AXIS_PROPS} tickFormatter={fmtDayMonth} minTickGap={16} />
               <YAxis {...AXIS_PROPS} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={fmtDate} />
               <Legend wrapperStyle={LEGEND_STYLE} />
               <Area
                 type="monotone"
@@ -84,9 +85,9 @@ export function FlowTab({ projectId }: { projectId: string }) {
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={createdResolved.data.series}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="date" {...AXIS_PROPS} />
+              <XAxis dataKey="date" {...AXIS_PROPS} tickFormatter={fmtDayMonth} minTickGap={16} />
               <YAxis {...AXIS_PROPS} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={fmtDate} />
               <Legend wrapperStyle={LEGEND_STYLE} />
               <Line
                 type="monotone"

@@ -1,5 +1,6 @@
 import { toast } from 'sonner';
 import { downloadFile } from '@/lib/download';
+import { fmtNumber } from '@/lib/locale';
 import type { ResultColumnId } from '@/features/saved-filters/resultColumns';
 
 /** Trần dòng của máy chủ (`CSV_MAX_ROWS` ở api/export/export.service.ts) — chỉ để nói với người dùng. */
@@ -59,7 +60,7 @@ export function exportResultToast(
   text: string;
 } {
   if (!truncated) return { kind: 'success', text: 'Đã tải tệp CSV.' };
-  const head = `Chỉ xuất ${EXPORT_ROW_CAP.toLocaleString('vi-VN')} công việc đầu tiên`;
+  const head = `Chỉ xuất ${fmtNumber(EXPORT_ROW_CAP)} công việc đầu tiên`;
   return {
     kind: 'warning',
     text: hasFilter ? `${head} — hãy thu hẹp bộ lọc.` : `${head} (giới hạn mỗi lần xuất).`,

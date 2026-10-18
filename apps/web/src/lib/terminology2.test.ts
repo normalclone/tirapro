@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -143,5 +143,97 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
     expect(ADMIN_LABELS.config).toBe('Cấu hình');
     expect(CONNECT_LABELS.integrations).toBe('Ứng dụng bên ngoài');
     expect(PROJECT_CONFIG_LABELS.general).toBeTruthy();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* D8b: "Hệ thống" thay "Ai đó", không lộ enum, vai trò tiếng Việt, ngày */
+/* ------------------------------------------------------------------ */
+
+/** Quét `*.ts(x)` không phải test dưới một thư mục (đường dẫn tương đối từ `apps/web/src`, hoặc tuyệt đối). */
+function walkFiles(dir: string, out: string[] = []): string[] {
+  for (const f of readdirSync(dir)) {
+    const p = join(dir, f);
+    if (statSync(p).isDirectory()) {
+      if (f !== 'node_modules' && f !== 'dist') walkFiles(p, out);
+    } else if (/\.tsx?$/.test(f)) out.push(p);
+  }
+  return out;
+}
+const isTestFile = (f: string) => /\.(test|spec)\.tsx?$/.test(f);
+
+describe('"Hệ thống" thay "Ai đó"', () => {
+  it('không còn "Ai đó" trong apps/web/src và packages/shared/src (spec chỉ được giữ nếu khẳng định nó KHÔNG xuất hiện)', () => {
+    const roots = [join(__dirname, '..'), join(__dirname, '../../../../packages/shared/src')];
+    const bad = roots.flatMap((root) =>
+      walkFiles(root)
+        .filter((f) => !f.endsWith('terminology2.test.ts')) // file này nêu chuỗi để cấm
+        .filter((f) => {
+          const text = readFileSync(f, 'utf8');
+          if (!text.includes('Ai đó')) return false;
+          // Spec/test được phép nhắc tới chuỗi chỉ khi có khẳng định vắng mặt.
+          return !(isTestFile(f) && /not\.(toContain|toMatch)\(\s*['/]Ai đó/.test(text));
+        }),
+    );
+    expect(bad).toEqual([]);
+  });
+});
+
+describe('không lộ tên enum/trường thô trên giao diện', () => {
+  it('feed hoạt động dự án không in `{a.field}` thô', () => {
+    expect(src('features/intake/ProjectActivityPage.tsx')).not.toMatch(/\{a\.field\}/);
+  });
+  it('nhánh mặc định của describeActivity không nội suy `a.field`', () => {
+    expect(src('features/activity/activityFilters.ts')).not.toMatch(/\$\{a\.field\}/);
+  });
+  it('feed hoạt động dự án: "kết quả xử lý" thay "resolution", có icon Timer cho ghi thời gian', () => {
+    const t = src('features/intake/ProjectActivityPage.tsx');
+    expect(t).not.toMatch(/>resolution</);
+    expect(t).toMatch(/case 'TIME_SPENT'/);
+    expect(t).toMatch(/Timer/);
+  });
+});
+
+describe('vai trò hiển thị bằng tiếng Việt (roleLabel)', () => {
+  it.each([
+    ['features/workspace/WorkspaceSwitcher.tsx', /roleLabel\(ws\.roleName\)/],
+    ['features/issue-edit/useAssigneeOptions.ts', /roleNames\.map\(roleLabel\)/],
+    ['features/quick-filters/AssigneeFilter.tsx', /label: roleLabel\(r\)/],
+    ['features/members/AddPeopleDialog.tsx', /label: roleLabel\(n\)/],
+    ['features/members/AddPeopleDialog.tsx', /\{roleLabel\(r\)\}/],
+  ])('%s dịch tên vai trò qua roleLabel', (file, re) => {
+    expect(src(file)).toMatch(re);
+  });
+  it('không còn in `{ws.roleName}` thô', () => {
+    expect(hits(/\{ws\.roleName\}/)).toEqual([]);
+  });
+});
+
+describe('định dạng ngày/tháng thống nhất (lib/dateFormat.ts)', () => {
+  // Dòng chỉ hiển thị ngày: bỏ chú thích; lib/dateFormat.ts là nơi duy nhất được dựng mẫu.
+  const notDateLib = (l: string) => !/import /.test(l);
+  const inDisplayCode = (re: RegExp) =>
+    hits(re, notDateLib).filter((x) => x !== undefined && !x.startsWith('lib/dateFormat.ts'));
+
+  it('không còn nhãn tháng tự dựng `T${…}` hay "thg"', () => {
+    expect(inDisplayCode(/`T\$\{/)).toEqual([]);
+    expect(inDisplayCode(/\bthg\b/)).toEqual([]);
+  });
+  it('không còn `toLocaleString(` trong features/', () => {
+    expect(hits(/toLocaleString\(/).filter((x) => x.startsWith('features/'))).toEqual([]);
+  });
+  it("không còn date-fns `format(…, 'dd/MM…')` tự viết — dùng fmtDate/fmtDayMonth/fmtDateTime", () => {
+    const found = hits(/\bformat\([^)]*['"]dd\/MM/).filter(
+      (x) => !x.startsWith('lib/dateFormat.ts'),
+    );
+    expect(found).toEqual([]);
+  });
+  it('không còn bản `shortDay`/`shortDate` tự viết (một nguồn: fmtDayMonth)', () => {
+    expect(hits(/(function|const)\s+shortDay\b|function\s+shortDate\b/)).toEqual([]);
+  });
+  it('trục/tooltip biểu đồ Dòng chảy không còn ISO thô', () => {
+    const t = src('features/reports/FlowTab.tsx');
+    expect(t).toMatch(/tickFormatter=\{fmtDayMonth\}/);
+    expect(t).toMatch(/labelFormatter=\{fmtDate\}/);
   });
 });

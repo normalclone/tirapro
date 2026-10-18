@@ -9,11 +9,8 @@ import { QueryError } from '@/components/ui/QueryError';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
-import { LOCALE } from '@/lib/locale';
+import { fmtDateTime } from '@/lib/dateFormat';
 import { useRestoreIssue, useTrash, type TrashItem } from './api';
-
-const fmt = (iso: string) =>
-  new Date(iso).toLocaleString(LOCALE, { dateStyle: 'short', timeStyle: 'short' });
 
 /** Thùng rác của dự án — việc đã xoá, khôi phục 1 cú bấm. Chỉ người có `issue:delete` (quản trị dự án). */
 export function TrashPage() {
@@ -80,7 +77,7 @@ export function TrashPage() {
                     {item.summary}
                   </span>
                   <span className="shrink-0 text-xs text-muted">
-                    Xoá {fmt(item.deletedAt)}
+                    Xoá {fmtDateTime(item.deletedAt)}
                     {item.deletedBy ? ` bởi ${item.deletedBy.displayName}` : ''}
                   </span>
                   <Button

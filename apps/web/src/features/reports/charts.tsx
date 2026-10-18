@@ -15,7 +15,7 @@ import {
 } from 'recharts';
 import type { BurndownReport, VelocityReport } from '@tirapro/shared';
 import { Skeleton } from '@/components/ui/primitives';
-import { fmtDate } from '@/lib/dateFormat';
+import { fmtDate, fmtDayMonth } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 import { burndownSummary, todayMarker, velocitySummary } from './burndown';
 
@@ -34,11 +34,6 @@ export const TOOLTIP_STYLE = {
 } as const;
 
 export const LEGEND_STYLE = { fontSize: 11 } as const;
-
-/** `2026-10-14` → `14/10` cho nhãn trục X (đầy đủ ngày/tháng/năm nằm ở tooltip). */
-function shortDay(iso: string): string {
-  return /^\d{4}-\d{2}-\d{2}/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : iso;
-}
 
 /* ------------------------------------------------------------------ */
 /* Khung card & skeleton                                               */
@@ -144,7 +139,7 @@ export function BurndownChart({
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={report.series} margin={{ top: 16, right: 12, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-          <XAxis dataKey="date" {...AXIS_PROPS} tickFormatter={shortDay} minTickGap={16} />
+          <XAxis dataKey="date" {...AXIS_PROPS} tickFormatter={fmtDayMonth} minTickGap={16} />
           <YAxis {...AXIS_PROPS} allowDecimals={false} axisLine={false} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(d: string) => fmtDate(d)} />
           <Legend wrapperStyle={LEGEND_STYLE} />

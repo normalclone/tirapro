@@ -12,7 +12,6 @@ import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { apiErrorMessage } from '@/lib/api';
 import {
-  shortDay,
   useCreateTimeOff,
   useDeleteTimeOff,
   useTimeOffs,
@@ -20,6 +19,7 @@ import {
   type TimeOffDto,
   type TimeOffKind,
 } from './api';
+import { fmtDayMonth } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 
 const KIND_META: Record<TimeOffKind, { label: string; className: string }> = {
@@ -136,7 +136,7 @@ export function TimeOffPanel({
           <h2 className="text-base font-semibold text-ink-strong">Nghỉ phép & ngày lễ</h2>
           <p className="mt-0.5 text-sm text-muted">
             Ngày nghỉ được trừ thẳng khỏi số giờ làm được, nên bảng khối lượng không tính nhầm. Đang
-            hiện khoảng {shortDay(from)} – {shortDay(to)}.
+            hiện khoảng {fmtDayMonth(from)} – {fmtDayMonth(to)}.
           </p>
         </div>
         {canManage && !form && (
@@ -274,7 +274,7 @@ export function TimeOffPanel({
                 <Badge className={KIND_META[t.kind].className}>{KIND_META[t.kind].label}</Badge>
 
                 <span className="whitespace-nowrap text-sm tabular-nums text-muted">
-                  {shortDay(t.startDate)} – {shortDay(t.endDate)}
+                  {fmtDayMonth(t.startDate)} – {fmtDayMonth(t.endDate)}
                 </span>
 
                 <span className="max-w-[14rem] truncate text-sm text-faint">{t.note ?? ''}</span>
@@ -313,7 +313,7 @@ export function TimeOffPanel({
         title="Xoá ngày nghỉ?"
         description={
           pendingDelete
-            ? `${pendingDelete.user?.displayName ?? 'Cả tổ chức'} · ${shortDay(pendingDelete.startDate)} – ${shortDay(pendingDelete.endDate)}. Số giờ làm được sẽ được tính lại ngay.`
+            ? `${pendingDelete.user?.displayName ?? 'Cả tổ chức'} · ${fmtDayMonth(pendingDelete.startDate)} – ${fmtDayMonth(pendingDelete.endDate)}. Số giờ làm được sẽ được tính lại ngay.`
             : undefined
         }
         loading={remove.isPending}

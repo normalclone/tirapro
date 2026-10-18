@@ -3,7 +3,7 @@ import { CalendarRange } from 'lucide-react';
 import { EmptyState } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import type { RollupGroup } from './api';
-import { fmtDate } from '@/lib/dateFormat';
+import { fmtDate, fmtMonthYear } from '@/lib/dateFormat';
 
 const DAY = 86_400_000;
 
@@ -32,11 +32,6 @@ function startOfMonth(t: number): number {
 function addMonths(t: number, n: number): number {
   const d = new Date(t);
   return new Date(d.getFullYear(), d.getMonth() + n, 1).getTime();
-}
-
-function monthLabel(t: number): string {
-  const d = new Date(t);
-  return `T${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`;
 }
 
 /**
@@ -129,7 +124,7 @@ export function RoadmapTimeline({ groups }: { groups: RollupGroup[] }) {
                 className="absolute top-0 border-l border-border pl-1 text-[11px] text-faint"
                 style={{ left: `${m.left}%` }}
               >
-                {monthLabel(m.t)}
+                {fmtMonthYear(m.t)}
               </span>
             ))}
           </div>

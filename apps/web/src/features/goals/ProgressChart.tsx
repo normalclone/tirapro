@@ -11,7 +11,7 @@ import {
   YAxis,
 } from 'recharts';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
-import { fmtDate } from '@/lib/dateFormat';
+import { fmtDate, fmtDayMonth } from '@/lib/dateFormat';
 import { AXIS_PROPS, TOOLTIP_STYLE } from '@/features/reports/charts';
 import { CHART_MARGIN } from '@/lib/chartAxis';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
@@ -21,9 +21,6 @@ import { buildSeries, type SeriesLine, type SeriesRow } from './progressSeries';
 
 const SERIES_COLORS = [1, 2, 3, 4, 5].map((n) => `var(--series-${n})`);
 const colorOf = (index: number): string => SERIES_COLORS[index % SERIES_COLORS.length]!;
-
-/** `2026-10-14` → `14/10` cho nhãn trục X (đầy đủ ở tooltip). */
-const shortDay = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
 interface TooltipPayload {
   payload?: SeriesRow;
@@ -120,7 +117,7 @@ function ProgressChartBody({ goal, data }: { goal: GoalDto; data: GoalProgressHi
         <ResponsiveContainer width="100%" height={240}>
           <LineChart data={rows} margin={{ ...CHART_MARGIN, top: 20, right: 12 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="date" {...AXIS_PROPS} tickFormatter={shortDay} minTickGap={24} />
+            <XAxis dataKey="date" {...AXIS_PROPS} tickFormatter={fmtDayMonth} minTickGap={24} />
             <YAxis
               {...AXIS_PROPS}
               domain={[0, 100]}

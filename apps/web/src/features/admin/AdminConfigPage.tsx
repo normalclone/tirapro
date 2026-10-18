@@ -7,7 +7,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAdminConfig, useUpdateFlags, type SystemFlags } from './api';
 import { InfoRow } from './_ui';
-import { LOCALE } from '@/lib/locale';
+import { fmtNumber } from '@/lib/locale';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { ADMIN_LABELS } from '@/lib/navLabels';
 
@@ -212,7 +212,9 @@ export function AdminConfigPage() {
             <InfoRow label="Model chính">{data.ai.modelPrimary ?? '—'}</InfoRow>
             <InfoRow label="Model nhanh">{data.ai.modelFast ?? '—'}</InfoRow>
             <InfoRow label="Giới hạn token mỗi không gian làm việc / tháng">
-              {data.ai.monthlyQuotaPerWorkspace?.toLocaleString(LOCALE) ?? '—'}
+              {data.ai.monthlyQuotaPerWorkspace != null
+                ? fmtNumber(data.ai.monthlyQuotaPerWorkspace)
+                : '—'}
             </InfoRow>
           </Panel>
           <Panel title="Embedding / Tìm kiếm ngữ nghĩa">

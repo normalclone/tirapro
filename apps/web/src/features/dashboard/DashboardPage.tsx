@@ -55,6 +55,7 @@ import { useAuth } from '@/stores/auth';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { DueBadge } from '@/components/ui/DueBadge';
 import { dueState } from '@/lib/dueDate';
+import { fmtLongDate } from '@/lib/dateFormat';
 import { HealthBadge } from '@/components/ui/HealthBadge';
 import { PrintButton } from '@/components/ui/PrintButton';
 import { PrintHeader } from '@/components/ui/PrintHeader';
@@ -72,16 +73,10 @@ const CATEGORY_COLOR: Record<StatusCategory, string> = {
   DONE: 'var(--status-done)',
 };
 
-const WEEKDAYS = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
-
 /** Ngưỡng rank được coi là "ưu tiên cao" (Highest=5, High=4). */
 const HIGH_PRIORITY_RANK = 4;
 /** Số issue tối đa hiển thị trong mỗi mục nổi bật ở chế độ cá nhân. */
 const SECTION_LIMIT = 6;
-
-function formatToday(d: Date): string {
-  return `${WEEKDAYS[d.getDay()]}, ${d.getDate()} thg ${d.getMonth() + 1} ${d.getFullYear()}`;
-}
 
 function greetingPrefix(d: Date): string {
   const h = d.getHours();
@@ -133,7 +128,7 @@ export function DashboardPage() {
             {greetingPrefix(now)}
             {user?.displayName ? `, ${user.displayName}` : ''}
           </h1>
-          <p className="mt-1 text-sm text-muted">{formatToday(now)}</p>
+          <p className="mt-1 text-sm text-muted">{fmtLongDate(now)}</p>
         </div>
         {/* Chuyển sang dashboard tuỳ biến (của tôi / được chia sẻ); tự ẩn khi chưa có dashboard nào. */}
         <div className="print:hidden">
