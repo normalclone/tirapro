@@ -1,6 +1,7 @@
 import type { SprintDto } from '@tirapro/types';
-import { differenceInCalendarDays, format } from 'date-fns';
+import { differenceInCalendarDays } from 'date-fns';
 import { calendarDate } from './calendarDate';
+import { fmtDate, fmtDayMonth } from './dateFormat';
 
 export type SprintTone = 'muted' | 'warning' | 'danger';
 
@@ -24,10 +25,8 @@ function rangeOf(startDate: string | null, endDate: string | null, now: Date): s
   if (!endDate) return null;
   // Một trong hai ngày khác năm hiện tại → cả hai hiện đủ năm để khỏi mơ hồ.
   const dates = [startDate, endDate].filter((x): x is string => !!x).map(calendarDate);
-  const pattern = dates.every((d) => d.getFullYear() === now.getFullYear())
-    ? 'dd/MM'
-    : 'dd/MM/yyyy';
-  const fmt = (iso: string) => format(calendarDate(iso), pattern);
+  const fmtOne = dates.every((d) => d.getFullYear() === now.getFullYear()) ? fmtDayMonth : fmtDate;
+  const fmt = (iso: string) => fmtOne(calendarDate(iso));
   return startDate ? `${fmt(startDate)} – ${fmt(endDate)}` : `đến ${fmt(endDate)}`;
 }
 
