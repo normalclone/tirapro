@@ -733,7 +733,7 @@ export function BoardPage() {
             </div>
           ) : lanes ? (
             <div
-              className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4 pb-24"
+              className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4 lg:pb-24"
               data-tour="board-columns"
             >
               {lanes.length === 0 ? (
@@ -817,7 +817,7 @@ export function BoardPage() {
             </div>
           ) : (
             <div
-              className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4 pb-24"
+              className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4 lg:pb-24"
               data-tour="board-columns"
             >
               {board.columns.map((col, colIdx) => (

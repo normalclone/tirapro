@@ -11,7 +11,6 @@ import { dirtyEntries, summarizeDirty, useUnsavedStore } from '@/stores/unsaved'
 export function UnsavedBar() {
   const entries = useUnsavedStore((s) => s.entries);
   const { count, canSave, saving } = useMemo(() => summarizeDirty(entries), [entries]);
-  if (count === 0) return null;
 
   function discard() {
     for (const [, e] of dirtyEntries(useUnsavedStore.getState().entries)) e.reset();
@@ -21,21 +20,29 @@ export function UnsavedBar() {
   }
 
   return (
-    <div
-      role="region"
-      aria-label="Thay đổi chưa lưu"
-      className="flex shrink-0 items-center gap-3 border-t border-border bg-surface px-4 py-2.5 shadow-[0_-2px_8px_oklch(0.4_0.03_256/0.06)] duration-base animate-in fade-in-0 slide-in-from-bottom-2 motion-reduce:animate-none lg:pr-24 print:hidden"
-    >
-      <CircleDot className="h-4 w-4 shrink-0 text-warning-ink" aria-hidden />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
-        Có thay đổi chưa lưu
-      </span>
-      <Button variant="ghost" size="sm" onClick={discard} disabled={saving}>
-        Bỏ thay đổi
-      </Button>
-      <Button size="sm" onClick={saveAll} loading={saving} disabled={!canSave}>
-        Lưu
-      </Button>
-    </div>
+    <>
+      {/* Vùng thông báo luôn có mặt (mount sẵn) để đọc to khi thanh xuất hiện; chữ chỉ có khi đang dirty. */}
+      <div role="status" className="sr-only">
+        {count > 0 ? 'Có thay đổi chưa lưu' : ''}
+      </div>
+      {count > 0 && (
+        <div
+          role="region"
+          aria-label="Thay đổi chưa lưu"
+          className="flex shrink-0 items-center gap-3 border-t border-border bg-surface px-4 py-2.5 shadow-[0_-2px_8px_oklch(0.4_0.03_256/0.06)] duration-base animate-in fade-in-0 slide-in-from-bottom-2 motion-reduce:animate-none lg:pr-24 print:hidden"
+        >
+          <CircleDot className="h-4 w-4 shrink-0 text-warning-ink" aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+            Có thay đổi chưa lưu
+          </span>
+          <Button variant="ghost" size="sm" onClick={discard} disabled={saving}>
+            Bỏ thay đổi
+          </Button>
+          <Button size="sm" onClick={saveAll} loading={saving} disabled={!canSave}>
+            Lưu
+          </Button>
+        </div>
+      )}
+    </>
   );
 }

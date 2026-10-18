@@ -176,7 +176,7 @@ function PeekContent({ issue }: { issue: IssueDto }) {
   const canTransition = can('issue:transition');
 
   return (
-    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-24 pt-4">
+    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-6 pt-4 lg:pb-24">
       <div className="flex items-start gap-2">
         <div className="mt-1 flex shrink-0 items-center gap-1.5">
           <IssueTypeSelect issue={issue} />

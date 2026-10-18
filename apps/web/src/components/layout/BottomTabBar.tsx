@@ -103,7 +103,6 @@ export function BottomTabBar({ admin }: { admin: boolean }) {
   // Ô "Tôi" sáng khi đang ở một trang mà mục của nó nằm trong sheet (Cài đặt, Thành viên, Tài khoản…).
   const meActive =
     path.startsWith('/account') ||
-    path.startsWith('/documentation') ||
     sheetNavItems(admin ? ADMIN_NAV : NAV_ITEMS, admin).some((i) => i.match(path));
 
   return (

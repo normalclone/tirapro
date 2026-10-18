@@ -8,6 +8,8 @@ import {
   FAB_RIGHT_CSS,
   TOAST_BOTTOM_CSS,
   TOAST_BOTTOM_MOBILE_CSS,
+  UNSAVED_BAR_PX,
+  toastBottomCss,
 } from './layoutTokens';
 import { BOTTOM_BAR_PX } from './bottomBar';
 
@@ -16,11 +18,12 @@ const src = (p: string) => readFileSync(join(__dirname, '..', p), 'utf8');
 describe('FAB không che nội dung', () => {
   it('Toaster có offset để né FAB', () =>
     expect(src('App.tsx')).toMatch(/<Toaster[\s\S]*?offset=/));
-  it('Toaster dùng hằng TOAST_BOTTOM_CSS (tính vùng an toàn, không số cứng)', () =>
-    expect(src('App.tsx')).toMatch(/TOAST_BOTTOM_CSS/));
+  it('Toaster dùng toastBottomCss (hằng tính vùng an toàn, không số cứng)', () =>
+    expect(src('App.tsx')).toMatch(/toastBottomCss/));
   it('pageContainer chừa đệm đáy cho FAB', () => {
     const page = src('components/layout/page.ts');
-    expect(page).toMatch(/pb-28/);
+    expect(page).toMatch(/\bpb-8\b[^'"]*\blg:pb-28\b/);
+    expect(page).not.toMatch(/(?<!lg:)\bpb-28\b/);
     expect(page).not.toMatch(/\bpy-8\b/);
   });
   it('FAB dùng hằng cạnh thay số cứng', () => {
@@ -37,7 +40,7 @@ describe('FAB không che nội dung', () => {
       'features/tree/TreePage.tsx',
       'features/gantt/GanttPage.tsx',
     ])
-      expect(src(f), f).toMatch(/\bpb-2[48]\b/);
+      expect(src(f), f).toMatch(/\blg:pb-2[48]\b/);
   });
   it('thanh thao tác hàng loạt né FAB chỉ từ lg (lg:mr-24); dưới lg không còn FAB nên không chừa mb-24, nằm sát thanh tab đáy', () => {
     const bar = src('features/backlog/BulkActionBar.tsx');
@@ -55,9 +58,17 @@ describe('FAB không che nội dung', () => {
   it('dưới lg toast nằm trên thanh tab đáy: cao thanh + vùng an toàn + 8px; trên lg vẫn theo FAB', () => {
     expect(BOTTOM_BAR_PX).toBe(56);
     expect(TOAST_BOTTOM_MOBILE_CSS).toBe('calc(56px + env(safe-area-inset-bottom) + 8px)');
-    const app = src('App.tsx');
-    expect(app).toMatch(/TOAST_BOTTOM_MOBILE_CSS/);
-    expect(app).toMatch(/TOAST_BOTTOM_CSS/);
+    expect(src('App.tsx')).toMatch(/toastBottomCss\(desktop,/);
+  });
+  it('toast tránh thanh "thay đổi chưa lưu": chỉ dưới lg và chỉ khi đang dirty', () => {
+    expect(UNSAVED_BAR_PX).toBeGreaterThanOrEqual(53);
+    expect(toastBottomCss(true, false)).toBe(TOAST_BOTTOM_CSS);
+    expect(toastBottomCss(true, true)).toBe(TOAST_BOTTOM_CSS); // desktop: bar không nằm dưới toast
+    expect(toastBottomCss(false, false)).toBe(TOAST_BOTTOM_MOBILE_CSS);
+    expect(toastBottomCss(false, true)).toBe(
+      `calc(${BOTTOM_BAR_PX}px + env(safe-area-inset-bottom) + 8px + ${UNSAVED_BAR_PX}px)`,
+    );
+    expect(src('App.tsx')).toMatch(/toastBottomCss\(/);
   });
   it('thanh tab đáy đệm vùng an toàn đáy và là con flex (không fixed)', () => {
     const bar = src('components/layout/BottomTabBar.tsx');

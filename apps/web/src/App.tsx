@@ -7,7 +7,8 @@ import { InstantTooltip } from '@/components/ui/InstantTooltip';
 import { router } from '@/app/router';
 import { useAuth } from '@/stores/auth';
 import { useTheme } from '@/stores/theme';
-import { FAB_RIGHT_CSS, TOAST_BOTTOM_CSS, TOAST_BOTTOM_MOBILE_CSS } from '@/lib/layoutTokens';
+import { FAB_RIGHT_CSS, toastBottomCss } from '@/lib/layoutTokens';
+import { summarizeDirty, useUnsavedStore } from '@/stores/unsaved';
 import { DESKTOP_MIN_QUERY } from '@/lib/bottomBar';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
@@ -16,7 +17,9 @@ export function App() {
   const theme = useTheme((s) => s.theme);
   // Từ lg toast nằm trên nút nổi (FAB); dưới lg (không có FAB) nằm trên thanh tab đáy.
   const desktop = useMediaQuery(DESKTOP_MIN_QUERY);
-  const toastBottom = desktop ? TOAST_BOTTOM_CSS : TOAST_BOTTOM_MOBILE_CSS;
+  // Dưới lg, thanh "thay đổi chưa lưu" nằm giữa nội dung và thanh tab đáy: toast nâng thêm để không che Lưu/Bỏ.
+  const unsavedShown = useUnsavedStore((s) => summarizeDirty(s.entries).count > 0);
+  const toastBottom = toastBottomCss(desktop, unsavedShown);
 
   useEffect(() => {
     void bootstrap();

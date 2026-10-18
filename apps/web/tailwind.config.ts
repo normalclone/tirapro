@@ -83,9 +83,6 @@ export default {
         '3xl': ['2rem', { lineHeight: '1.15' }],
       },
       zIndex: {
-        // Chrome điều hướng (drawer mobile) nằm DƯỚI mọi lớp nổi.
-        'nav-backdrop': '800',
-        'nav-drawer': '900',
         sticky: '1100',
         backdrop: '1200',
         modal: '1300',

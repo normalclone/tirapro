@@ -111,7 +111,7 @@ export function TreePage() {
   return (
     <DndContext {...drag.dndProps}>
       <div className="flex h-full flex-col">
-        <div className="min-h-0 flex-1 overflow-auto pb-24">
+        <div className="min-h-0 flex-1 overflow-auto pb-6 lg:pb-24">
           {pe || issuesQ.isError ? (
             <div className={pageContainer('lg')}>
               <QueryError
