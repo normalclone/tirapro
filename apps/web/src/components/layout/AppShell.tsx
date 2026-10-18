@@ -9,6 +9,7 @@ import { UserMenu } from '@/components/layout/UserMenu';
 import { FloatingActions } from '@/components/layout/FloatingActions';
 import { BottomTabBar } from '@/components/layout/BottomTabBar';
 import { CreateDialogsHost } from '@/components/layout/createActions';
+import { UnsavedBar } from '@/components/layout/UnsavedBar';
 import { MaintenanceBanner } from '@/components/layout/MaintenanceBanner';
 import { ShortcutsDialog } from '@/components/layout/ShortcutsDialog';
 import { useShellEffects } from '@/components/layout/useShellEffects';
@@ -144,7 +145,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable] print:overflow-visible">
           {children}
         </main>
-        {/* Con flex cuối của cột (dưới <main>, trên đó là chỗ của thanh "chưa lưu"): không `fixed` nên không che nội dung. */}
+        {/* Hai con flex cuối của cột (dưới <main>): thanh "chưa lưu" rồi thanh tab đáy. Không `fixed` nên không che nội dung. */}
+        <UnsavedBar />
         {!desktop && <BottomTabBar admin={admin} />}
       </div>
 
