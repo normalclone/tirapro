@@ -1,3 +1,4 @@
+import { APP_NAV_LABELS } from '@/lib/navLabels';
 import { normalizeVi } from '@/lib/text';
 
 export interface RouteEntry {
@@ -8,21 +9,33 @@ export interface RouteEntry {
 }
 
 /**
- * Các trang cấp cao người dùng gõ tay/nhớ. Nhãn = nhãn menu hiện tại (Task 11 sẽ gom về một nguồn duy nhất).
+ * Các trang cấp cao người dùng gõ tay/nhớ. Nhãn lấy từ `lib/navLabels.ts` (một nguồn với menu).
  * Không đưa `/admin/*`: console quản trị chỉ dành admin hệ thống, không gợi ý cho người gõ nhầm.
  */
 export const ROUTE_CATALOG: readonly RouteEntry[] = [
-  { path: '/', label: 'Tổng quan', keywords: ['dashboard', 'home', 'trang chu'] },
-  { path: '/projects', label: 'Dự án', keywords: ['project', 'du an'] },
-  { path: '/filters', label: 'Bộ lọc đã lưu', keywords: ['filter', 'bo loc', 'search'] },
-  { path: '/members', label: 'Thành viên', keywords: ['member', 'users', 'people', 'thanh vien'] },
-  { path: '/manage', label: 'Danh mục', keywords: ['portfolio', 'danh muc', 'quan ly'] },
-  { path: '/wiki', label: 'Wiki', keywords: ['docs', 'tai lieu'] },
-  { path: '/connect', label: 'Kết nối', keywords: ['automation', 'integrations', 'ket noi'] },
-  { path: '/settings', label: 'Cài đặt', keywords: ['setting', 'config', 'cai dat'] },
-  { path: '/notifications', label: 'Thông báo', keywords: ['notification', 'thong bao'] },
-  { path: '/account', label: 'Tài khoản', keywords: ['profile', 'tai khoan'] },
-  { path: '/documentation', label: 'Tài liệu hướng dẫn', keywords: ['help', 'huong dan'] },
+  { path: '/', label: APP_NAV_LABELS.home, keywords: ['dashboard', 'home', 'trang chu'] },
+  { path: '/projects', label: APP_NAV_LABELS.projects, keywords: ['project', 'du an'] },
+  { path: '/filters', label: APP_NAV_LABELS.filters, keywords: ['filter', 'bo loc', 'search'] },
+  {
+    path: '/members',
+    label: APP_NAV_LABELS.members,
+    keywords: ['member', 'users', 'people', 'thanh vien'],
+  },
+  { path: '/manage', label: APP_NAV_LABELS.manage, keywords: ['portfolio', 'danh muc', 'quan ly'] },
+  { path: '/wiki', label: APP_NAV_LABELS.wiki, keywords: ['docs', 'tai lieu'] },
+  {
+    path: '/connect',
+    label: APP_NAV_LABELS.connect,
+    keywords: ['automation', 'integrations', 'ket noi'],
+  },
+  { path: '/settings', label: APP_NAV_LABELS.settings, keywords: ['setting', 'config', 'cai dat'] },
+  {
+    path: '/notifications',
+    label: APP_NAV_LABELS.notifications,
+    keywords: ['notification', 'thong bao'],
+  },
+  { path: '/account', label: APP_NAV_LABELS.account, keywords: ['profile', 'tai khoan'] },
+  { path: '/documentation', label: APP_NAV_LABELS.documentation, keywords: ['help', 'huong dan'] },
 ];
 
 /** Khoảng cách Levenshtein (số phép chèn/xoá/thay ký tự tối thiểu). */

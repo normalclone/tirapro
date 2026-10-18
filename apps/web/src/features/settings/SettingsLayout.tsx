@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { PermissionKey } from '@tirapro/types';
 import { NAV_RULES, useVisibleItems, type NavRule } from '@/lib/navAccess';
+import { APP_NAV_LABELS, SETTINGS_LABELS } from '@/lib/navLabels';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 import { useAuth } from '@/stores/auth';
@@ -36,20 +37,24 @@ const SETTINGS_GROUPS: {
     items: [
       {
         to: '/settings/general',
-        label: 'Thương hiệu',
+        label: SETTINGS_LABELS.general,
         icon: <Building2 className="h-4 w-4" />,
         rule: NAV_RULES.settingsGeneral,
       },
-      { to: '/settings/notifications', label: 'Thông báo', icon: <Bell className="h-4 w-4" /> },
+      {
+        to: '/settings/notifications',
+        label: SETTINGS_LABELS.notifications,
+        icon: <Bell className="h-4 w-4" />,
+      },
     ],
   },
   {
     group: 'Con người',
     items: [
-      { to: '/settings/roles', label: 'Vai trò & quyền', icon: <Shield className="h-4 w-4" /> },
+      { to: '/settings/roles', label: SETTINGS_LABELS.roles, icon: <Shield className="h-4 w-4" /> },
       {
         to: '/settings/audit',
-        label: 'Nhật ký quản trị',
+        label: SETTINGS_LABELS.audit,
         icon: <ScrollText className="h-4 w-4" />,
         permission: 'workspace:admin',
       },
@@ -58,16 +63,24 @@ const SETTINGS_GROUPS: {
   {
     group: 'Cách làm việc',
     items: [
-      { to: '/settings/workflows', label: 'Quy trình', icon: <GitBranch className="h-4 w-4" /> },
+      {
+        to: '/settings/workflows',
+        label: SETTINGS_LABELS.workflows,
+        icon: <GitBranch className="h-4 w-4" />,
+      },
       {
         to: '/settings/priorities',
-        label: 'Mức ưu tiên',
+        label: SETTINGS_LABELS.priorities,
         icon: <SignalHigh className="h-4 w-4" />,
       },
-      { to: '/settings/severities', label: 'Mức nghiêm trọng', icon: <Flag className="h-4 w-4" /> },
+      {
+        to: '/settings/severities',
+        label: SETTINGS_LABELS.severities,
+        icon: <Flag className="h-4 w-4" />,
+      },
       {
         to: '/settings/fields',
-        label: 'Trường thông tin thêm',
+        label: SETTINGS_LABELS.fields,
         icon: <ListChecks className="h-4 w-4" />,
       },
     ],
@@ -77,18 +90,18 @@ const SETTINGS_GROUPS: {
     items: [
       {
         to: '/settings/response-time',
-        label: 'Cam kết thời gian',
+        label: SETTINGS_LABELS.responseTime,
         icon: <AlarmClock className="h-4 w-4" />,
       },
       {
         to: '/settings/import',
-        label: 'Nhập dữ liệu',
+        label: SETTINGS_LABELS.import,
         icon: <FileUp className="h-4 w-4" />,
         rule: NAV_RULES.settingsImport,
       },
       {
         to: '/settings/api',
-        label: 'API & kết nối lập trình',
+        label: SETTINGS_LABELS.api,
         icon: <KeyRound className="h-4 w-4" />,
         rule: NAV_RULES.settingsApi,
       },
@@ -118,7 +131,9 @@ export function SettingsLayout() {
           'lg:w-60 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
         )}
       >
-        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">Cài đặt</h1>
+        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">
+          {APP_NAV_LABELS.settings}
+        </h1>
         {groups.map((g) => (
           <div key={g.group} className="contents lg:block lg:pb-1">
             <p className="hidden px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-faint lg:block">

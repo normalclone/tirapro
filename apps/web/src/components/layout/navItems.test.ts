@@ -36,4 +36,12 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
     expect(projects!.match('/p/PSL/board')).toBe(true);
     expect(projects!.match('/projects')).toBe(true);
   });
+  it('thanh tab admin: nhãn dài "Không gian làm việc" có nhãn ngắn, các ô khác không cần', () => {
+    const tabs = ADMIN_NAV.slice(0, ADMIN_TAB_COUNT);
+    const ws = tabs.find((i) => i.to === '/admin/workspaces')!;
+    expect(ws.label).toBe('Không gian làm việc');
+    expect(ws.tabLabel).toBe('Không gian');
+    for (const i of tabs) expect(i.tabLabel ?? i.label).not.toBe('');
+    expect(tabs.filter((i) => i.tabLabel).map((i) => i.to)).toEqual(['/admin/workspaces']);
+  });
 });

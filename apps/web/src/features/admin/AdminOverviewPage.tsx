@@ -4,6 +4,7 @@ import { Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { useAdminOverview } from './api';
 import { StatTile, StatusPill, fmtBytes, fmtInt, relTime } from './_ui';
+import { ADMIN_LABELS } from '@/lib/navLabels';
 
 export function AdminOverviewPage() {
   const { data, isLoading, isError, error, isFetching, refetch } = useAdminOverview();
@@ -13,7 +14,7 @@ export function AdminOverviewPage() {
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-            Tổng quan hệ thống
+            {ADMIN_LABELS.overview}
           </h1>
           <p className="mt-1 text-sm text-muted">
             Sức khoẻ &amp; quy mô toàn hệ thống, cập nhật tự động.

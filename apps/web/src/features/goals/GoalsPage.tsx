@@ -29,6 +29,7 @@ import { describeSource, isAutoSource } from './krSource';
 import { formatKrValue, krSummary } from './krFormat';
 import { CheckInButton, CheckInHistoryButton } from './CheckInPopover';
 import { ProgressChart } from './ProgressChart';
+import { MANAGE_LABELS } from '@/lib/navLabels';
 
 const STATUS_META: Record<ObjectiveStatus, { label: string; className: string; hint: string }> = {
   DRAFT: {
@@ -493,12 +494,12 @@ export function GoalsPage() {
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-            Mục tiêu &amp; kết quả then chốt
+            {MANAGE_LABELS.goals}
           </h1>
           <p className="mt-1 text-sm text-muted">
-            Mỗi kỳ (thường là một quý) đặt vài mục tiêu, mỗi mục tiêu kèm những kết quả then chốt đo
-            được bằng số. Tiến độ tính từ số đo hiện tại của các kết quả đó. Cách làm này quốc tế
-            gọi là OKR.
+            Mục tiêu và kết quả then chốt. Mỗi kỳ (thường là một quý) đặt vài mục tiêu, mỗi mục tiêu
+            kèm những kết quả then chốt đo được bằng số. Tiến độ tính từ số đo hiện tại của các kết
+            quả đó. Cách làm này quốc tế gọi là OKR.
           </p>
         </div>
         {canManage && (

@@ -17,6 +17,7 @@ import {
   type CustomFieldType,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 /** Nhãn tiếng Việt cho từng loại trường, giữ đúng thứ tự enum backend. */
 const FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
@@ -157,7 +158,7 @@ export function CustomFieldsAdminSection() {
   return (
     <SectionCard
       icon={<LayoutList className="h-4 w-4" />}
-      title="Trường tuỳ chỉnh"
+      title={SETTINGS_LABELS.fields}
       description="Thêm các ô thông tin riêng của bạn vào mỗi công việc. Không thể đổi kiểu dữ liệu của trường sau khi tạo."
     >
       <QueryBoundary
@@ -176,7 +177,7 @@ export function CustomFieldsAdminSection() {
             title="Chưa có trường tuỳ chỉnh nào"
             description={
               canManage
-                ? 'Trường tuỳ chỉnh là ô thông tin riêng của bạn trên mỗi công việc. Thêm trường đầu tiên để bắt đầu thu thập.'
+                ? 'Trường thông tin thêm là ô thông tin riêng của bạn trên mỗi công việc. Thêm trường đầu tiên để bắt đầu thu thập.'
                 : 'Chưa có trường tuỳ chỉnh nào. Liên hệ quản trị để thêm.'
             }
             action={

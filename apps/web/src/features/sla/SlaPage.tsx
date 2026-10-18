@@ -29,13 +29,16 @@ import {
 } from './api';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
 import { usePriorityRanks } from '@/features/settings-admin/api';
+import { MANAGE_LABELS, SETTINGS_LABELS } from '@/lib/navLabels';
 
 /** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Danh mục). */
 export function SlaBoardPage() {
   return (
     <div className={pageContainer('sm')}>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Thời gian xử lý</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+          {MANAGE_LABELS.responseTime}
+        </h1>
         <p className="mt-1 text-sm text-muted">
           Các công việc đang chạy đồng hồ đếm ngược theo cam kết thời gian xử lý. Việc sắp tới hạn
           tô vàng, việc đã quá hạn tô đỏ — hãy xử lý từ trên xuống.
@@ -53,7 +56,7 @@ export function SlaPoliciesPage() {
     <div className={pageContainer('sm')}>
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          Cam kết thời gian xử lý
+          {SETTINGS_LABELS.responseTime}
         </h1>
         <p className="mt-1 text-sm text-muted">
           Đặt thời hạn phải phản hồi và phải xử lý xong cho từng nhóm công việc. Hệ thống bấm giờ

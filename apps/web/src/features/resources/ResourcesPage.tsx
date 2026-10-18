@@ -27,6 +27,7 @@ import {
 } from './api';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { useScrollFade } from '@/lib/useScrollFade';
+import { MANAGE_LABELS } from '@/lib/navLabels';
 
 type Tab = 'load' | 'allocations' | 'time-off';
 
@@ -127,13 +128,13 @@ function ResourcesHeader({
     <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          Nhân lực & khối lượng việc
+          {MANAGE_LABELS.resources}
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Xem mỗi người đang gánh bao nhiêu giờ so với số giờ họ thật sự làm được. Số giờ làm được
-          (năng lực) = ngày làm việc trong tuần, đã trừ nghỉ phép và ngày lễ, nhân tỉ lệ phân bổ;
-          khối lượng việc = ước lượng giờ của các việc được giao, chia đều cho những ngày việc đó
-          kéo dài.
+          Nhân lực và khối lượng việc: xem mỗi người đang gánh bao nhiêu giờ so với số giờ họ thật
+          sự làm được. Số giờ làm được (năng lực) = ngày làm việc trong tuần, đã trừ nghỉ phép và
+          ngày lễ, nhân tỉ lệ phân bổ; khối lượng việc = ước lượng giờ của các việc được giao, chia
+          đều cho những ngày việc đó kéo dài.
         </p>
       </div>
       {showExport && <WorkloadExport report={exportReport} from={from} to={to} />}

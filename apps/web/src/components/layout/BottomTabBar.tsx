@@ -116,7 +116,13 @@ export function BottomTabBar({ admin }: { admin: boolean }) {
         <ul className="flex">
           {admin ? (
             ADMIN_NAV.slice(0, ADMIN_TAB_COUNT).map((i) => (
-              <TabLink key={i.to} to={i.to} active={i.match(path)} label={i.label}>
+              <TabLink
+                key={i.to}
+                to={i.to}
+                active={i.match(path)}
+                label={i.tabLabel ?? i.label}
+                ariaLabel={i.tabLabel ? i.label : undefined}
+              >
                 <i.Icon className="h-5 w-5" aria-hidden />
               </TabLink>
             ))

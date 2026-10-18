@@ -3,6 +3,7 @@ import { PERMISSIONS } from '@tirapro/types';
 import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { useAuth } from '@/stores/auth';
 import { useMyWorkspaces, useUploadWorkspaceAvatar, useRemoveWorkspaceAvatar } from './api';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 /** Logo/ảnh của không gian làm việc đang hoạt động. Chỉ quản trị chung mới đổi được. */
 export function WorkspaceBrandingPanel() {
@@ -23,9 +24,9 @@ export function WorkspaceBrandingPanel() {
           <Building2 className="h-4 w-4" />
         </span>
         <div>
-          <h2 className="text-base font-semibold text-ink-strong">Logo không gian làm việc</h2>
+          <h2 className="text-base font-semibold text-ink-strong">{SETTINGS_LABELS.general}</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Hiện ở nút chuyển không gian làm việc trên thanh trên cùng.{' '}
+            Logo hiện ở nút chuyển không gian làm việc trên thanh trên cùng.{' '}
             {!canAdmin && 'Chỉ quản trị viên mới đổi được.'}
           </p>
         </div>

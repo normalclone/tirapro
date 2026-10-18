@@ -28,6 +28,7 @@ import {
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { RoleMatrixTable } from './RoleMatrixTable';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 type RolesTab = 'list' | 'matrix';
 const ROLES_TABS: { id: RolesTab; label: string }[] = [
@@ -97,7 +98,9 @@ export function RolesPage() {
     <div className={pageContainer('sm')}>
       <header className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Vai trò</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+            {SETTINGS_LABELS.roles}
+          </h1>
           <p className="mt-1 text-sm text-muted">
             Vai trò gom các quyền lại để gán cho thành viên. Vai trò hệ thống là cố định; bạn có thể
             tạo vai trò tuỳ chỉnh riêng.

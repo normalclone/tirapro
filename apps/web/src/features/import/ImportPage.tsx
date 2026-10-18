@@ -3,6 +3,7 @@ import { FileUp } from 'lucide-react';
 import { pageContainer } from '@/components/layout/page';
 import { SectionCard } from '@/features/settings/SectionCard';
 import { JiraImportWizard } from './JiraImportWizard';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 /** Trang "Nhập dữ liệu" trong Cài đặt — hiện có nhập từ Jira (CSV). */
 export function ImportPage() {
@@ -10,8 +11,8 @@ export function ImportPage() {
     <div className={pageContainer('lg')}>
       <SectionCard
         icon={<FileUp className="h-4 w-4" />}
-        title="Nhập dữ liệu từ Jira"
-        description="Chuyển công việc từ Jira sang Tirapro bằng tệp CSV: ghép loại, trạng thái, ưu tiên và người dùng rồi nhập theo lô."
+        title={SETTINGS_LABELS.import}
+        description="Nhập từ Jira: chuyển công việc từ Jira sang Tirapro bằng tệp CSV: ghép loại, trạng thái, ưu tiên và người dùng rồi nhập theo lô."
       >
         <JiraImportWizard />
       </SectionCard>

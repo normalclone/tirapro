@@ -9,6 +9,7 @@ import { useAdminConfig, useUpdateFlags, type SystemFlags } from './api';
 import { InfoRow } from './_ui';
 import { LOCALE } from '@/lib/locale';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
+import { ADMIN_LABELS } from '@/lib/navLabels';
 
 /** Công tắc bật/tắt (accessible). */
 function Switch({
@@ -144,10 +145,11 @@ export function AdminConfigPage() {
     <div className={pageContainer('md')}>
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          Cấu hình &amp; Feature flags
+          {ADMIN_LABELS.config}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Cờ runtime bật/tắt ngay, không cần deploy. Cấu hình nền lấy từ biến môi trường.
+          Cấu hình hệ thống và feature flags: cờ runtime bật/tắt ngay, không cần deploy. Cấu hình
+          nền lấy từ biến môi trường.
         </p>
       </header>
 

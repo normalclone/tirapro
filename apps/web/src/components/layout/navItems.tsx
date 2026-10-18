@@ -15,10 +15,13 @@ import {
   Users,
 } from 'lucide-react';
 import { NAV_RULES, type NavRule } from '@/lib/navAccess';
+import { ADMIN_LABELS, APP_NAV_LABELS, TAB_SHORT_LABELS } from '@/lib/navLabels';
 
 export interface NavEntry {
   to: string;
   label: string;
+  /** Nhãn ngắn cho thanh tab đáy khi `label` quá dài (thanh hiện `tabLabel ?? label`, `aria-label` vẫn là `label`). */
+  tabLabel?: string;
   /** Component biểu tượng — nơi dùng tự đặt cỡ (sidebar 16px, thanh tab đáy 20px). */
   Icon: LucideIcon;
   match: (p: string) => boolean;
@@ -30,57 +33,57 @@ export interface NavEntry {
 export const NAV_ITEMS: NavEntry[] = [
   {
     to: '/',
-    label: 'Tổng quan',
+    label: APP_NAV_LABELS.home,
     Icon: LayoutDashboard,
     match: (p) => p === '/',
   },
   {
     to: '/projects',
-    label: 'Dự án',
+    label: APP_NAV_LABELS.projects,
     Icon: LayoutGrid,
     match: (p) => p.startsWith('/projects') || p.startsWith('/p/'),
   },
   {
     to: '/filters',
-    label: 'Bộ lọc đã lưu',
+    label: APP_NAV_LABELS.filters,
     Icon: Filter,
     match: (p) => p.startsWith('/filters'),
   },
   {
     to: '/members',
-    label: 'Thành viên',
+    label: APP_NAV_LABELS.members,
     Icon: Users,
     match: (p) => p.startsWith('/members'),
   },
   {
     to: '/manage',
-    label: 'Danh mục',
+    label: APP_NAV_LABELS.manage,
     Icon: Briefcase,
     match: (p) => p.startsWith('/manage'),
   },
   {
     to: '/wiki',
-    label: 'Wiki',
+    label: APP_NAV_LABELS.wiki,
     Icon: BookOpen,
     match: (p) => p.startsWith('/wiki'),
   },
   {
     to: '/connect',
-    label: 'Kết nối',
+    label: APP_NAV_LABELS.connect,
     Icon: Plug,
     match: (p) => p.startsWith('/connect'),
     rule: NAV_RULES.connect,
   },
   {
     to: '/settings',
-    label: 'Cài đặt',
+    label: APP_NAV_LABELS.settings,
     Icon: Settings,
     match: (p) => p.startsWith('/settings'),
   },
   // Admin hệ thống: lối vào console riêng ngay trên sidebar (trước đây chỉ có trong menu người dùng).
   {
     to: '/admin',
-    label: 'Quản trị hệ thống',
+    label: APP_NAV_LABELS.admin,
     Icon: ShieldCheck,
     match: (p) => p === '/admin' || p.startsWith('/admin/'),
     rule: NAV_RULES.admin,
@@ -91,31 +94,32 @@ export const NAV_ITEMS: NavEntry[] = [
 export const ADMIN_NAV: NavEntry[] = [
   {
     to: '/admin',
-    label: 'Tổng quan',
+    label: ADMIN_LABELS.overview,
     Icon: LayoutDashboard,
     match: (p) => p === '/admin',
   },
   {
     to: '/admin/workspaces',
-    label: 'Không gian làm việc',
+    label: ADMIN_LABELS.workspaces,
+    tabLabel: TAB_SHORT_LABELS.adminWorkspaces,
     Icon: Building2,
     match: (p) => p.startsWith('/admin/workspaces'),
   },
   {
     to: '/admin/accounts',
-    label: 'Tài khoản',
+    label: ADMIN_LABELS.accounts,
     Icon: Users,
     match: (p) => p.startsWith('/admin/accounts'),
   },
   {
     to: '/admin/config',
-    label: 'Cấu hình',
+    label: ADMIN_LABELS.config,
     Icon: SlidersHorizontal,
     match: (p) => p.startsWith('/admin/config'),
   },
   {
     to: '/admin/system',
-    label: 'Hệ thống',
+    label: ADMIN_LABELS.system,
     Icon: Activity,
     match: (p) => p.startsWith('/admin/system'),
   },

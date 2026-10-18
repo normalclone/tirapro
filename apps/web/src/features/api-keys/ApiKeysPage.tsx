@@ -29,6 +29,7 @@ import {
 } from './api';
 import { fmtDate, fmtDateTime } from '@/lib/dateFormat';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 // Chỉ fallback localhost khi chạy dev; production để trống nếu thiếu env (không lộ URL localhost sai).
 const DEV_FALLBACK = import.meta.env.DEV;
@@ -124,11 +125,11 @@ export function ApiKeysPage() {
     <div className={pageContainer('sm')}>
       <header className="mb-6">
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-ink-strong">
-          <KeyRound className="h-6 w-6 text-primary" /> API &amp; MCP
+          <KeyRound className="h-6 w-6 text-primary" /> {SETTINGS_LABELS.api}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Cấp khoá để phần mềm khác &amp; trợ lý AI (qua MCP) khai thác dữ liệu của không gian làm
-          việc.
+          Cấp khoá API để phần mềm khác &amp; trợ lý AI (qua MCP) khai thác dữ liệu của không gian
+          làm việc.
         </p>
       </header>
 
