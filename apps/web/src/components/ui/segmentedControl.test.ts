@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { SegmentedControlLabel } from './SegmentedControl';
 
 const read = (rel: string) => readFileSync(join(__dirname, '..', '..', rel), 'utf8');
 const control = () => read('components/ui/SegmentedControl.tsx');
@@ -43,5 +44,17 @@ describe('SegmentedControl dùng chung', () => {
       expect(uses.length, f).toBeGreaterThan(0);
       for (const u of uses) expect(u, f).toMatch(/ariaLabel(ledby)?=/);
     }
+  });
+});
+
+describe('SegmentedControl: nhãn truy cập bắt buộc (kiểm bằng typecheck)', () => {
+  it('thiếu cả ariaLabel lẫn ariaLabelledby thì lỗi biên dịch; có một trong hai thì hợp lệ', () => {
+    // @ts-expect-error — thiếu nhãn
+    const none: SegmentedControlLabel = {};
+    const a: SegmentedControlLabel = { ariaLabel: 'Hướng' };
+    const b: SegmentedControlLabel = { ariaLabelledby: 'lbl' };
+    // @ts-expect-error — không truyền cả hai
+    const both: SegmentedControlLabel = { ariaLabel: 'x', ariaLabelledby: 'y' };
+    expect([none, a, b, both]).toHaveLength(4);
   });
 });

@@ -10,36 +10,40 @@ export interface SegmentedOption<T extends string> {
   disabled?: boolean;
 }
 
+/** Nhóm radio PHẢI có tên truy cập: nhãn chuỗi (`ariaLabel`) hoặc trỏ tới nhãn nhìn thấy (`ariaLabelledby`). */
+export type SegmentedControlLabel =
+  | { ariaLabel: string; ariaLabelledby?: undefined }
+  | { ariaLabelledby: string; ariaLabel?: undefined };
+
 /**
  * Nhóm lựa chọn 2–4 mục loại trừ nhau (radiogroup): combinator, hướng sắp xếp, chế độ, phạm vi. Mũi tên/Home/End chuyển
  * chọn và focus (roving tabindex, bỏ qua mục tắt). Thay ô chọn native (thẻ select) khi ít lựa chọn và nhãn ngắn.
  * - `disabled`: tắt cả nhóm (token disabled). `size="sm"` (h-8) cho hàng gọn/trong bảng; mặc định `md` (h-9).
  * - `fullWidth`: `true` luôn chia đều chiều ngang, `false` không bao giờ, bỏ trống = chỉ dưới breakpoint `sm`.
- * - Cần `ariaLabel` hoặc `ariaLabelledby` (nhãn nhìn thấy của nhóm).
+ * - Bắt buộc một trong `ariaLabel` / `ariaLabelledby` (kiểu `SegmentedControlLabel`; trình biên dịch chặn khi thiếu).
  */
 export function SegmentedControl<T extends string>({
   value,
   onChange,
   options,
-  ariaLabel,
-  ariaLabelledby,
   disabled = false,
   size = 'md',
   fullWidth,
   className,
   id,
-}: {
+  ...labelProps
+}: SegmentedControlLabel & {
   value: T;
   onChange: (v: T) => void;
   options: readonly SegmentedOption<T>[];
-  ariaLabel?: string;
-  ariaLabelledby?: string;
   disabled?: boolean;
   size?: 'sm' | 'md';
   fullWidth?: boolean;
   className?: string;
   id?: string;
 }) {
+  const ariaLabel = 'ariaLabel' in labelProps ? labelProps.ariaLabel : undefined;
+  const ariaLabelledby = 'ariaLabelledby' in labelProps ? labelProps.ariaLabelledby : undefined;
   const isOff = (o: SegmentedOption<T>) => disabled || !!o.disabled;
   // Roving tabindex: mục đang chọn (nếu bật) là điểm vào; không khớp thì mục bật đầu tiên.
   const selected = options.findIndex((o) => o.value === value && !isOff(o));

@@ -48,6 +48,8 @@ export interface SearchSelectOption {
  *
  * Dùng như select: truyền `value` (chuỗi), `onChange(value)`, và `options`.
  * Lựa chọn rỗng (vd "Chưa gán") chỉ cần là một option `{ value: '', label: 'Chưa gán' }`.
+ * Chọn lại giá trị đang chọn KHÔNG phát `onChange` (như select native, xem `shouldEmitChange`): menu dạng "hành động"
+ * phải truyền `value=""` và để mọi option có `value` khác rỗng thì mới luôn phát.
  */
 export function SearchSelect({
   value,
@@ -115,6 +117,11 @@ export function SearchSelect({
   });
 
   const focusSearchOrList = useFocusFollowsSearch(open, showSearch, inputRef, listRef);
+
+  // Ô tìm ẩn đi lúc đang mở (danh sách co lại ≤ ngưỡng): xoá từ khoá, kẻo bộ lọc ẩn vẫn che mất lựa chọn.
+  useEffect(() => {
+    if (!showSearch) setQ('');
+  }, [showSearch]);
 
   function resetSearch() {
     setQ('');
@@ -188,10 +195,12 @@ export function SearchSelect({
           <ul
             ref={listRef}
             id={listId}
-            className="max-h-64 overflow-y-auto p-1 outline-none"
+            className="group max-h-64 overflow-y-auto p-1 outline-none"
             role="listbox"
-            aria-label={ariaLabel}
+            aria-label={ariaLabel ?? placeholder}
             tabIndex={showSearch ? undefined : 0}
+            // Bấm vào mục disabled / tiêu đề nhóm không được cướp focus khỏi ô tìm hoặc danh sách.
+            onMouseDown={(e) => e.preventDefault()}
             aria-activedescendant={
               !showSearch && filtered[activeIndex] ? optionId(activeIndex) : undefined
             }
@@ -443,6 +452,9 @@ function OptionRow({
         !o.disabled && 'cursor-pointer',
         (active || selected) && 'bg-surface-2',
         active && source === 'key' && 'ring-2 ring-inset ring-[var(--ring)]',
+        // Danh sách không có ô tìm: focus nằm ở <ul>, nên hàng đang trỏ vẽ viền khi ul focus-visible (mở bằng bàn phím); mở bằng chuột thì không.
+        active &&
+          'group-focus-visible:ring-2 group-focus-visible:ring-inset group-focus-visible:ring-[var(--ring)]',
         o.disabled && 'cursor-not-allowed text-muted',
       )}
     >

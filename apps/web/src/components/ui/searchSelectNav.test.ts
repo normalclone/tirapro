@@ -108,3 +108,17 @@ describe('SearchSelect.pick — chọn lại mục đang chọn không phát onC
     expect(pick).toContain('resetSearch()');
   });
 });
+
+describe('SearchSelect: hộp danh sách (kiểm nguồn)', () => {
+  const src = readFileSync(join(__dirname, 'SearchSelect.tsx'), 'utf8');
+  it('danh sách không có ô tìm: hàng đang trỏ vẽ viền khi ul focus-visible (WCAG 2.4.7)', () => {
+    expect(src).toMatch(/className="group max-h-64[^"]*outline-none"/);
+    expect(src).toContain('group-focus-visible:ring-2');
+    expect(src).toContain('group-focus-visible:ring-[var(--ring)]');
+  });
+  it('ul có tên truy cập dự phòng, chặn mousedown cướp focus, và xoá từ khoá khi ô tìm ẩn', () => {
+    expect(src).toContain('aria-label={ariaLabel ?? placeholder}');
+    expect(src).toMatch(/onMouseDown=\{\(e\) => e\.preventDefault\(\)\}/);
+    expect(src).toMatch(/if \(!showSearch\) setQ\(''\)/);
+  });
+});
