@@ -1,3 +1,5 @@
+import { BOTTOM_BAR_PX } from './bottomBar';
+
 /** Lề của nút nổi (FAB) so với mép dưới/phải màn hình (= `bottom-6 right-6`). */
 export const FAB_EDGE_PX = 24;
 
@@ -15,3 +17,6 @@ export const FAB_CLEARANCE_PX = 88;
 export const FAB_BOTTOM_CSS = `max(${FAB_EDGE_PX}px, env(safe-area-inset-bottom))`;
 export const FAB_RIGHT_CSS = `max(${FAB_EDGE_PX}px, env(safe-area-inset-right))`;
 export const TOAST_BOTTOM_CSS = `calc(${FAB_BOTTOM_CSS} + ${FAB_CLEARANCE_PX - FAB_EDGE_PX}px)`;
+
+/** Dưới `lg` (có thanh tab đáy, không có FAB): toast nằm trên thanh = cao thanh + vùng an toàn đáy + hở 8px. */
+export const TOAST_BOTTOM_MOBILE_CSS = `calc(${BOTTOM_BAR_PX}px + env(safe-area-inset-bottom) + 8px)`;

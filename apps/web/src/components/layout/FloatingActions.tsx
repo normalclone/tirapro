@@ -1,44 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
-import {
-  Plus,
-  FolderPlus,
-  Search,
-  Sparkles,
-  Bug,
-  Eye,
-  EyeOff,
-  X,
-  Settings2,
-  Check,
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { useProject, useProjects } from '@/features/projects/api';
-import { useIssue } from '@/features/issues/api';
-import { useToggleWatch, useWatchState } from '@/features/issue-widgets/api';
-import { useAi } from '@/stores/ai';
+import { Plus, Search, X, Settings2, Check } from 'lucide-react';
 import { useQuickActions, type QuickActionKey } from '@/stores/quickActions';
-import { useCreateIssueModal } from '@/stores/createIssue';
-import { useReportIssueModal } from '@/stores/reportIssue';
-import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
-import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
-import { apiErrorMessage } from '@/lib/api';
-import { createPresetFromTarget } from '@/lib/currentProject';
+import { useCreateActions } from '@/components/layout/createActions';
 import { keyLabel } from '@/lib/shortcuts';
-import { useCreateTarget } from '@/lib/useCreateTarget';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { FAB_BOTTOM_CSS, FAB_RIGHT_CSS } from '@/lib/layoutTokens';
-
-function projectKeyFromPath(pathname: string): string {
-  const parts = pathname.split('/').filter(Boolean);
-  if (parts[0] === 'p' && parts[1]) return parts[1].toUpperCase();
-  // Trang /issue/:key — mã theo LOẠI, không suy ra project key từ chuỗi; resolve theo projectId.
-  return '';
-}
-function issueKeyFromPath(pathname: string): string {
-  const parts = pathname.split('/').filter(Boolean);
-  return parts[0] === 'issue' && parts[1] ? parts[1].toUpperCase() : '';
-}
 
 interface QuickAction {
   key: QuickActionKey;
@@ -58,37 +25,21 @@ const ACTION_META: { key: QuickActionKey; label: string; hint?: string }[] = [
   { key: 'command', label: 'Lệnh nhanh' },
 ];
 
+/**
+ * Nút nổi (CHỈ từ `lg` — dưới `lg` đã có thanh tab đáy + sheet "Tạo", xem `AppShell`). Danh sách tác vụ lấy từ
+ * `useCreateActions` (dùng chung với sheet), ở đây chỉ thêm "Lệnh nhanh" + "Tuỳ biến" và lọc theo tuỳ chọn người dùng.
+ * Hộp thoại Tạo dự án / Tạo bằng AI nằm ở `CreateDialogsHost`.
+ */
 export function FloatingActions() {
-  const loc = useLocation();
-  const openCreate = useCreateIssueModal((s) => s.openCreate);
-  const openReport = useReportIssueModal((s) => s.openReport);
-  const aiEnabled = useAi((s) => s.enabled);
   const { enabled, toggle } = useQuickActions();
-  const projectKey = projectKeyFromPath(loc.pathname);
-  const issueKey = issueKeyFromPath(loc.pathname);
-  const { data: issue } = useIssue(issueKey || null);
-  const { data: projects } = useProjects();
-  const { data: projectByKey } = useProject(projectKey);
-  // Trên /p/:key dùng key; trên trang issue resolve project theo projectId của issue.
-  const project =
-    projectByKey ?? (issue ? (projects?.find((p) => p.id === issue.projectId) ?? null) : null);
-  const issueId = issue?.id ?? '';
-  const { data: watchState } = useWatchState(issueId);
-  const watchToggle = useToggleWatch(issueId);
+  const createActions = useCreateActions();
+  // Cảm ứng: tooltip native `title` bị kẹt sau khi chạm (InstantTooltip ẩn ở pointerdown nhưng iPad vẫn thấy dính).
+  const coarse = useMediaQuery('(pointer: coarse)');
 
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [customizing, setCustomizing] = useState(false);
-  const [createProject, setCreateProject] = useState(false);
-  const [genAi, setGenAi] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout>>();
-
-  const hasProject = !!project?.id;
-  const onIssue = !!issueId;
-  const watching = watchState?.watching ?? false;
-  // Tạo công việc = mở form tạo việc (popup toàn cục) vào dự án hiện tại. Dự án đang xem đã lưu trữ (không nằm trong danh
-  // sách hoạt động) → dự án hoạt động dùng gần nhất; không có thì mở form với ô Dự án trống để tự chọn; không còn dự án hoạt động nào → chặn.
-  const { target: createTarget, access: createAccess, canCreate } = useCreateTarget();
 
   // Đóng có chuyển động: chạy animate-out rồi mới unmount. Fallback tức thời khi
   // người dùng ưu tiên giảm chuyển động (đã có motion-reduce trên phần tử con).
@@ -115,64 +66,27 @@ export function FloatingActions() {
 
   // Tác vụ khả dụng theo ngữ cảnh, lọc theo tuỳ chọn người dùng.
   const actions: QuickAction[] = [
-    enabled.issue &&
-      createAccess !== 'deny' && {
-        key: 'issue',
-        icon: <Plus className="h-5 w-5" />,
-        label: 'Tạo công việc',
-        kbd: keyLabel('global.create'),
-        onClick: run(() => {
-          if (createTarget.notice) toast.info(createTarget.notice);
-          if (createTarget.block) return;
-          if (createTarget.projectKey || createTarget.pickProject)
-            openCreate(createPresetFromTarget(createTarget));
-          else
-            toast.error('Chưa có dự án nào — hãy tạo một dự án trước, rồi thêm công việc vào đó.');
-        }),
-      },
-    hasProject &&
-      !project?.archivedAt &&
-      canCreate !== false &&
-      aiEnabled &&
-      enabled.ai && {
-        key: 'ai',
-        icon: <Sparkles className="h-5 w-5 text-primary" />,
-        label: 'Tạo bằng AI',
-        onClick: run(() => setGenAi(true)),
-      },
-    hasProject &&
-      !project?.archivedAt &&
-      createAccess !== 'deny' &&
-      canCreate !== false &&
-      enabled.report && {
-        key: 'report',
-        icon: <Bug className="h-5 w-5" />,
-        label: 'Báo lỗi',
-        onClick: run(() => openReport({ projectKey: project.key, kind: 'BUG' })),
-      },
-    onIssue &&
-      enabled.watch && {
-        key: 'watch',
-        icon: watching ? <Eye className="h-5 w-5 text-primary" /> : <EyeOff className="h-5 w-5" />,
-        label: watching ? 'Bỏ theo dõi' : 'Theo dõi',
-        onClick: run(() =>
-          watchToggle.mutateAsync(watching).catch((e: unknown) => toast.error(apiErrorMessage(e))),
-        ),
-      },
-    enabled.project && {
-      key: 'project',
-      icon: <FolderPlus className="h-5 w-5" />,
-      label: 'Tạo dự án',
-      onClick: run(() => setCreateProject(true)),
-    },
-    enabled.command && {
-      key: 'command',
-      icon: <Search className="h-5 w-5" />,
-      label: 'Lệnh nhanh',
-      kbd: keyLabel('global.palette')?.replace(' ', ''),
-      onClick: run(() => window.dispatchEvent(new Event('tirapro:command'))),
-    },
-  ].filter(Boolean) as QuickAction[];
+    ...createActions
+      .filter((a) => enabled[a.key])
+      .map((a) => ({
+        key: a.key,
+        icon: a.icon,
+        label: a.label,
+        kbd: a.kbd,
+        onClick: run(a.perform),
+      })),
+    ...(enabled.command
+      ? [
+          {
+            key: 'command' as const,
+            icon: <Search className="h-5 w-5" />,
+            label: 'Lệnh nhanh',
+            kbd: keyLabel('global.palette')?.replace(' ', ''),
+            onClick: run(() => window.dispatchEvent(new Event('tirapro:command'))),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <>
@@ -274,7 +188,7 @@ export function FloatingActions() {
           }}
           aria-expanded={open}
           aria-label={open ? 'Đóng thao tác nhanh' : 'Thao tác nhanh'}
-          title="Thao tác nhanh"
+          title={coarse ? undefined : 'Thao tác nhanh'}
           className={cn(
             'grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-fg shadow-lg',
             'transition-[background-color,transform] duration-fast ease-out-quart',
@@ -293,20 +207,6 @@ export function FloatingActions() {
           </span>
         </button>
       </div>
-
-      <CreateProjectModal open={createProject} onClose={() => setCreateProject(false)} />
-      {hasProject && (
-        <>
-          {aiEnabled && (
-            <GenerateIssuesDialog
-              projectKey={project.key}
-              projectId={project.id}
-              open={genAi}
-              onClose={() => setGenAi(false)}
-            />
-          )}
-        </>
-      )}
     </>
   );
 }

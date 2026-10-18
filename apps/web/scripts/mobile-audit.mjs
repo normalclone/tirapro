@@ -26,7 +26,9 @@
  *   page-h-scroll      trang cuộn ngang (scrollWidth > 391)
  *   overflow-right     phần tử trong main/header tràn mép phải, không nằm trong vùng cuộn ngang
  *   squeezed-text      chữ ≥ 8 ký tự, ≥ 4 dòng nhưng rộng < 140px
- *   covered-by-fixed   nút/link/ô nhập trong màn hình đầu bị phần tử position:fixed (rộng < 120px) che ≥ 30%
+ *   covered-by-fixed   nút/link/ô nhập trong màn hình đầu bị phần tử position:fixed (rộng < 120px) che ≥ 30% (từ khi bỏ nút nổi dưới lg, loại này hiếm; che bởi thanh tab đáy xem bottom-bar-overlap)
+ *   bottom-bar-missing / bottom-bar-overlap
+ *                      (dưới lg) thanh tab đáy không hiện, hoặc <main>/phần tử fixed chồng lên thanh (che điều khiển)
  *   text-overlap       hai phần tử lá có chữ giao nhau > 4×4px (không lồng nhau)
  *   header-offscreen   nút/link trong header dự án có right > 390 (trên màn hình)
  *   touch-overlap      vùng bấm mở rộng (pseudo-element ::after tuyệt đối trên nút/link, vd TOUCH_HIT) đè lên một
@@ -224,6 +226,36 @@ function measure({ W, H, isProjectRoute, dialog = false }) {
       n: new Set(covered).size,
       sample: [...new Set(covered)].slice(0, 4),
     });
+
+  // (4b) thanh tab đáy (dưới lg): phải hiện, nằm TRONG luồng (đáy <main> chạm đỉnh thanh, không chồng) và không có
+  // phần tử fixed nào (nút nổi, thanh dính…) phủ lên nó → không điều khiển bấm được nào bị thanh che.
+  if (!dialog && document.querySelector('#app-sidebar') && W < 1024) {
+    const bar = document.querySelector('nav[aria-label="Điều hướng chính"]');
+    const br = bar?.getBoundingClientRect();
+    if (!bar || !br || br.height < 40 || br.bottom > H + 1) {
+      issues.push({ t: 'bottom-bar-missing', n: 1 });
+    } else {
+      const main = document.querySelector('main');
+      const bad = [];
+      if (main && main.getBoundingClientRect().bottom > br.top + 1)
+        bad.push('main chồng lên thanh');
+      for (const f of document.querySelectorAll('*')) {
+        if (getComputedStyle(f).position !== 'fixed' || !vis(f) || bar.contains(f)) continue;
+        if (f.closest('[role=dialog], [data-sonner-toaster], .driver-popover, .driver-overlay'))
+          continue;
+        const fr = f.getBoundingClientRect();
+        if (
+          fr.bottom > br.top + 1 &&
+          fr.top < br.bottom &&
+          fr.right > br.left &&
+          fr.left < br.right
+        )
+          bad.push(desc(f));
+      }
+      if (bad.length)
+        issues.push({ t: 'bottom-bar-overlap', n: bad.length, sample: bad.slice(0, 4) });
+    }
+  }
 
   // (5) chữ chồng nhau
   const leaves = [...document.querySelectorAll(`${R} *`)].filter(

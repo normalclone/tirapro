@@ -7,7 +7,9 @@ import {
   FAB_EDGE_PX,
   FAB_RIGHT_CSS,
   TOAST_BOTTOM_CSS,
+  TOAST_BOTTOM_MOBILE_CSS,
 } from './layoutTokens';
+import { BOTTOM_BAR_PX } from './bottomBar';
 
 const src = (p: string) => readFileSync(join(__dirname, '..', p), 'utf8');
 
@@ -46,10 +48,26 @@ describe('FAB không che nội dung', () => {
     expect(TOAST_BOTTOM_CSS).toBe(`calc(${FAB_BOTTOM_CSS} + ${FAB_CLEARANCE_PX - FAB_EDGE_PX}px)`);
     expect(FAB_CLEARANCE_PX - FAB_EDGE_PX).toBeGreaterThanOrEqual(56 + 8);
   });
-  it('khung gốc/drawer đệm vùng an toàn trái/phải (viewport-fit=cover)', () => {
+  it('dưới lg toast nằm trên thanh tab đáy: cao thanh + vùng an toàn + 8px; trên lg vẫn theo FAB', () => {
+    expect(BOTTOM_BAR_PX).toBe(56);
+    expect(TOAST_BOTTOM_MOBILE_CSS).toBe('calc(56px + env(safe-area-inset-bottom) + 8px)');
+    const app = src('App.tsx');
+    expect(app).toMatch(/TOAST_BOTTOM_MOBILE_CSS/);
+    expect(app).toMatch(/TOAST_BOTTOM_CSS/);
+  });
+  it('thanh tab đáy đệm vùng an toàn đáy và là con flex (không fixed)', () => {
+    const bar = src('components/layout/BottomTabBar.tsx');
+    expect(bar).toMatch(/safe-area-inset-bottom/);
+    expect(bar).not.toMatch(/className=(?:"|\{`)[^"`]*\bfixed\b/);
+    expect(bar).toMatch(/h-\[55px\]/);
+  });
+  it('FAB chỉ mount từ lg (dưới lg đã có thanh tab đáy)', () =>
+    expect(src('components/layout/AppShell.tsx')).toMatch(/DESKTOP_MIN_QUERY/));
+  it('khung gốc đệm vùng an toàn trái/phải (viewport-fit=cover)', () => {
     const css = readFileSync(join(__dirname, '..', 'styles', 'globals.css'), 'utf8');
     expect(css).toMatch(/#root\s*\{[^}]*safe-area-inset-left[^}]*\}/);
     expect(css).toMatch(/#root\s*\{[^}]*safe-area-inset-right[^}]*\}/);
-    expect(src('components/layout/AppShell.tsx')).toMatch(/safe-area-inset-left/);
+    // Không còn phần tử `fixed` tự đệm riêng (drawer đã bỏ; thanh tab đáy là con flex nằm trong #root đã đệm trái/phải).
+    expect(src('components/layout/AppShell.tsx')).not.toMatch(/\bfixed\b[^'"]*\binset-y-0\b/);
   });
 });
