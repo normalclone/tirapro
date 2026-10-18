@@ -9,6 +9,7 @@ import { UserMenu } from '@/components/layout/UserMenu';
 import { FloatingActions } from '@/components/layout/FloatingActions';
 import { BottomTabBar } from '@/components/layout/BottomTabBar';
 import { CreateDialogsHost } from '@/components/layout/createActions';
+import { LeaveGuardHost } from '@/components/layout/LeaveGuardHost';
 import { UnsavedBar } from '@/components/layout/UnsavedBar';
 import { MaintenanceBanner } from '@/components/layout/MaintenanceBanner';
 import { ShortcutsDialog } from '@/components/layout/ShortcutsDialog';
@@ -160,6 +161,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       {/* Hộp xác nhận dùng chung cho useConfirm() — chỉ mount một lần. */}
       <ConfirmHost />
+      {/* Bộ chặn rời trang duy nhất (useBlocker + beforeunload) cho mọi useLeaveGuard. */}
+      <LeaveGuardHost />
     </div>
   );
 }
