@@ -15,6 +15,7 @@ import {
   type IntegrationSectionId,
 } from './sections';
 import { useScrollFade } from '@/lib/useScrollFade';
+import { CONNECT_LABELS } from '@/lib/navLabels';
 
 /* ------------------------------------------------------------------ */
 /* Submenu — rail dọc trên desktop, hàng pill cuộn ngang trên mobile  */
@@ -60,7 +61,9 @@ export function IntegrationsPage() {
           'lg:w-60 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
         )}
       >
-        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">Tích hợp</h1>
+        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">
+          {CONNECT_LABELS.integrations}
+        </h1>
         {INTEGRATION_NAV.map((item) => {
           const isActive = item.id === active;
           return (

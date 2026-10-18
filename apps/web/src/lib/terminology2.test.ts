@@ -33,6 +33,10 @@ describe('thuật ngữ — bộ C', () => {
     expect(hits(old)).toEqual([]);
   });
 
+  it('không còn "Trường tuỳ chỉnh" (mọi cách gõ dấu: tuỳ / tùy / dạng tổ hợp) — dùng "Trường thông tin thêm"', () => {
+    expect(hits(/Trường t[uù]\p{M}*[yỳ]\p{M}*\s*ch(ỉ|i\p{M}*)nh/iu)).toEqual([]);
+  });
+
   it('không còn "bên trái"/"cột trái" trong chữ hiển thị của features/ (sai trên mobile, nơi rail nằm trên nội dung)', () => {
     // Bỏ chú thích JSX `{/* … */}` (hits chỉ bỏ dòng comment thuần). Hiện không có ngoại lệ desktop-only nào.
     const found = hits(/(bên|cột) trái/, (l) => !/\{\/\*/.test(l)).filter((x) =>
@@ -112,6 +116,17 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
     ['features/clients/ClientsPage.tsx', 'MANAGE_LABELS.clients', MANAGE_LABELS.clients],
     ['features/members/MembersPage.tsx', 'APP_NAV_LABELS.members', APP_NAV_LABELS.members],
     ['features/wiki/WikiPage.tsx', 'APP_NAV_LABELS.wiki', APP_NAV_LABELS.wiki],
+    ['features/connect/ConnectLayout.tsx', 'APP_NAV_LABELS.connect', APP_NAV_LABELS.connect],
+    [
+      'features/integrations/IntegrationsPage.tsx',
+      'CONNECT_LABELS.integrations',
+      CONNECT_LABELS.integrations,
+    ],
+    [
+      'features/issue-fields/CustomFieldsPanel.tsx',
+      'SETTINGS_LABELS.fields',
+      SETTINGS_LABELS.fields,
+    ],
     ['features/admin/AdminOverviewPage.tsx', 'ADMIN_LABELS.overview', ADMIN_LABELS.overview],
     ['features/admin/AdminConfigPage.tsx', 'ADMIN_LABELS.config', ADMIN_LABELS.config],
   ];

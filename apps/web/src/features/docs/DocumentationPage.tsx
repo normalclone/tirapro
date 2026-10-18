@@ -489,7 +489,7 @@ export function DocumentationPage() {
                 can={[
                   'Toàn bộ quyền của Lập trình viên, cộng thêm:',
                   'Cấu hình bảng việc (cột ↔ trạng thái, giới hạn việc đang làm, làn ngang) và quy trình.',
-                  'Tạo/sửa trường tuỳ chỉnh cấp dự án, nhãn / thành phần / phiên bản.',
+                  'Tạo/sửa trường thông tin thêm cấp dự án, nhãn / thành phần / phiên bản.',
                   'Quản lý thành viên & gán vai trò trong dự án.',
                   'Quản lý sprint: tạo, bắt đầu, kết thúc (sinh báo cáo); xoá công việc.',
                   'Dùng trợ lý AI lập kế hoạch sprint; xem mọi báo cáo dự án.',
@@ -511,7 +511,7 @@ export function DocumentationPage() {
                   'Thêm trực tiếp thành viên (không có lời mời — người được thêm vào ngay), gỡ thành viên, tạo tài khoản mới, khoá / mở khoá, đặt lại mật khẩu, gán vai trò.',
                   'Tạo dự án từ mẫu (Scrum / Kanban / Quản lý yêu cầu); đặt dự án riêng tư; xem Cài đặt → Nhật ký quản trị.',
                   'Tạo vai trò tuỳ biến và trộn bộ quyền (RBAC).',
-                  'Cấu hình chung (tên, đường dẫn, gói dịch vụ), trường tuỳ chỉnh & loại công việc dùng cho mọi dự án.',
+                  'Cấu hình chung (tên, đường dẫn, gói dịch vụ), trường thông tin thêm & loại công việc dùng cho mọi dự án.',
                   'Tạo bảng tổng quan & bộ lọc chia sẻ cho toàn tổ chức.',
                   'Quản lý tích hợp (Telegram, nhập từ Jira) và API key.',
                   'Kế thừa quyền Quản trị dự án ở mọi dự án.',
