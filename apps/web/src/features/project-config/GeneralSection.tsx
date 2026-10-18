@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Archive, ArchiveRestore, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProjectDto } from '@tirapro/types';
@@ -10,6 +10,7 @@ import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { useArchiveProject, useUpdateProject } from '@/features/projects/api';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { PrivacySection } from './PrivacySection';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 
@@ -49,35 +50,70 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
   const archive = useArchiveProject(project.key, project.id);
   const people = useAssigneePicker(project.id);
 
-  const [name, setName] = useState(project.name);
-  const [description, setDescription] = useState(project.description ?? '');
-  const [leadId, setLeadId] = useState(project.leadId ?? '');
-  const [assignMode, setAssignMode] = useState(project.defaultAssigneeMode);
+  // Mốc so sánh để biết "đã sửa": giá trị đã lưu gần nhất. Lưu xong cập nhật NGAY tại đây (không chờ refetch `project`)
+  // → dirty về false trước khi người dùng kịp điều hướng, không bị hỏi "bỏ thay đổi" oan.
+  const [saved, setSaved] = useState({
+    name: project.name,
+    description: project.description ?? '',
+    leadId: project.leadId ?? '',
+    assignMode: project.defaultAssigneeMode,
+  });
+  const [name, setName] = useState(saved.name);
+  const [description, setDescription] = useState(saved.description);
+  const [leadId, setLeadId] = useState(saved.leadId);
+  const [assignMode, setAssignMode] = useState(saved.assignMode);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const archived = !!project.archivedAt;
 
   const dirty =
-    name.trim() !== project.name ||
-    description.trim() !== (project.description ?? '') ||
-    leadId !== (project.leadId ?? '') ||
-    assignMode !== project.defaultAssigneeMode;
+    name.trim() !== saved.name ||
+    description.trim() !== saved.description ||
+    leadId !== saved.leadId ||
+    assignMode !== saved.assignMode;
   const canSave = canAdmin && dirty && !!name.trim() && !update.isPending;
 
+  function reset() {
+    setName(saved.name);
+    setDescription(saved.description);
+    setLeadId(saved.leadId);
+    setAssignMode(saved.assignMode);
+  }
+
   async function save() {
+    const next = {
+      name: name.trim(),
+      description: description.trim(),
+      leadId,
+      assignMode,
+    };
     try {
       await update.mutateAsync({
-        ...(name.trim() !== project.name ? { name: name.trim() } : {}),
-        ...(description.trim() !== (project.description ?? '')
-          ? { description: description.trim() || null }
+        ...(next.name !== saved.name ? { name: next.name } : {}),
+        ...(next.description !== saved.description
+          ? { description: next.description || null }
           : {}),
-        ...(leadId !== (project.leadId ?? '') ? { leadId: leadId || null } : {}),
-        ...(assignMode !== project.defaultAssigneeMode ? { defaultAssigneeMode: assignMode } : {}),
+        ...(next.leadId !== saved.leadId ? { leadId: next.leadId || null } : {}),
+        ...(next.assignMode !== saved.assignMode ? { defaultAssigneeMode: next.assignMode } : {}),
       });
+      setSaved(next);
+      setName(next.name);
+      setDescription(next.description);
       toast.success('Đã lưu thông tin dự án');
     } catch (e) {
       toast.error(apiErrorMessage(e));
     }
   }
+
+  // Thanh "thay đổi chưa lưu" thay nút Lưu cuối thẻ; Lưu qua requestSubmit để chạy đúng trình xử lý submit bên dưới.
+  useUnsavedChanges({
+    dirty: canAdmin && dirty,
+    saving: update.isPending,
+    canSave,
+    onSave: () => formRef.current?.requestSubmit(),
+    onReset: reset,
+    description: 'Tên, mô tả và người phụ trách bạn vừa sửa chưa được lưu.',
+  });
 
   async function toggleArchive(next: boolean) {
     try {
@@ -105,6 +141,7 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
         }
       >
         <form
+          ref={formRef}
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
@@ -184,13 +221,8 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
               />
             </div>
           </div>
-          {canAdmin && (
-            <div className="flex justify-end">
-              <Button type="submit" size="sm" loading={update.isPending} disabled={!canSave}>
-                Lưu thay đổi
-              </Button>
-            </div>
-          )}
+          {/* Enter trong ô nhập vẫn lưu: nút gửi mặc định ẩn (nút Lưu thật nằm ở thanh "thay đổi chưa lưu"). */}
+          {canAdmin && <button type="submit" className="sr-only" tabIndex={-1} aria-hidden />}
         </form>
       </Card>
 

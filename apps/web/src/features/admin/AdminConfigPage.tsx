@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { pageContainer } from '@/components/layout/page';
 import { Skeleton } from '@/components/ui/primitives';
-import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAdminConfig, useUpdateFlags, type SystemFlags } from './api';
 import { InfoRow } from './_ui';
 import { LOCALE } from '@/lib/locale';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 
 /** Công tắc bật/tắt (accessible). */
 function Switch({
@@ -83,23 +83,46 @@ export function AdminConfigPage() {
   const { data, isLoading, isError, error, refetch } = useAdminConfig();
   const update = useUpdateFlags();
   const [banner, setBanner] = useState('');
+  // Mốc "đã lưu": theo máy chủ, và cập nhật ngay khi lưu xong (không chờ refetch) → dirty về false tức thì.
+  const [savedBanner, setSavedBanner] = useState('');
+  const savedRef = useRef('');
+  savedRef.current = savedBanner;
 
   useEffect(() => {
-    if (data) setBanner(data.flags.maintenanceBanner);
+    if (!data) return;
+    const server = data.flags.maintenanceBanner;
+    // Đang gõ dở thì không đè (bật/tắt cờ cũng làm refetch); chỉ nạp lại khi ô chưa bị sửa.
+    setBanner((cur) => (cur === savedRef.current ? server : cur));
+    setSavedBanner(server);
   }, [data]);
+
+  const bannerDirty = banner !== savedBanner;
 
   function setFlag(patch: Partial<SystemFlags>) {
     update.mutate(patch, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
   function saveBanner() {
+    const next = banner;
     update.mutate(
-      { maintenanceBanner: banner },
+      { maintenanceBanner: next },
       {
-        onSuccess: () => toast.success(banner.trim() ? 'Đã bật banner bảo trì' : 'Đã ẩn banner'),
+        onSuccess: () => {
+          setSavedBanner(next);
+          toast.success(next.trim() ? 'Đã bật banner bảo trì' : 'Đã ẩn banner');
+        },
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
     );
   }
+
+  useUnsavedChanges({
+    dirty: bannerDirty,
+    saving: update.isPending,
+    canSave: !update.isPending,
+    onSave: saveBanner,
+    onReset: () => setBanner(savedRef.current),
+    description: 'Nội dung banner bảo trì bạn vừa sửa chưa được lưu.',
+  });
 
   if (isError) {
     return (
@@ -172,15 +195,6 @@ export function AdminConfigPage() {
               placeholder="VD: Hệ thống bảo trì 22:00–23:00 hôm nay…"
               className="mt-2 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             />
-            <div className="mt-2 flex justify-end">
-              <Button
-                size="sm"
-                onClick={saveBanner}
-                disabled={update.isPending || banner === f.maintenanceBanner}
-              >
-                Lưu banner
-              </Button>
-            </div>
           </div>
         </section>
 
