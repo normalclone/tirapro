@@ -82,7 +82,14 @@ function PriorityBadge({ priority }: { priority: IssueDto['priority'] }) {
       style={{ backgroundColor: `color-mix(in oklch, ${c} 16%, transparent)`, color: c }}
       title={`Mức ưu tiên: ${priority.name}. Bấm để đổi.`}
     >
-      <PriorityIcon withLabel name={priority.name} rank={priority.rank} ranks={ranks} color={c} />
+      <PriorityIcon
+        withLabel
+        name={priority.name}
+        rank={priority.rank}
+        ranks={ranks}
+        color={c}
+        title={`Mức ưu tiên: ${priority.name}. Bấm để đổi.`}
+      />
     </span>
   );
 }

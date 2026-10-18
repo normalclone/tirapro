@@ -11,10 +11,6 @@ import { cn } from '@/lib/utils';
 import { useAttachGoalIssues, useIssueSearch, type GoalDto } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
-/**
- * Chọn công việc (issue/epic) để gắn vào mục tiêu. Tìm theo mã hoặc tiêu đề, chọn nhiều
- * rồi gắn một lượt. Công việc đã gắn hiện dấu tích và không chọn lại được.
- */
 const NO_MATCH = (
   <div className="p-3">
     <EmptyState
@@ -26,6 +22,10 @@ const NO_MATCH = (
   </div>
 );
 
+/**
+ * Chọn công việc (issue/epic) để gắn vào mục tiêu. Tìm theo mã hoặc tiêu đề, chọn nhiều
+ * rồi gắn một lượt. Công việc đã gắn hiện dấu tích và không chọn lại được.
+ */
 export function AttachIssuesModal({
   open,
   goal,

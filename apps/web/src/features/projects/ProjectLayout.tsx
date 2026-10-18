@@ -177,7 +177,9 @@ export function ProjectLayout() {
                 searchPlaceholder="Tìm dự án…"
                 align="start"
                 className="bg-surface"
-                renderTrigger={(sel) => <span className="font-medium text-ink">{sel?.label}</span>}
+                renderTrigger={(sel) => (
+                  <span className="font-medium text-ink">{sel?.label ?? key}</span>
+                )}
               />
             </div>
           )}

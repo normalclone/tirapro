@@ -13,6 +13,7 @@ const GLYPH_ICON = {
 /**
  * Mức ưu tiên dạng mũi tên (hạng cao → mũi tên lên) tô màu cấu hình: không chỉ dựa vào màu.
  * `withLabel` → thêm tên bằng chữ thật (icon khi đó chỉ trang trí).
+ * `title`: gợi ý hover thay cho mặc định "Ưu tiên: tên" (vd "… — bấm để đổi" khi bấm được).
  */
 export function PriorityIcon({
   name,
@@ -21,6 +22,7 @@ export function PriorityIcon({
   color,
   className,
   withLabel,
+  title,
 }: {
   name: string;
   rank: number;
@@ -30,9 +32,11 @@ export function PriorityIcon({
   color?: string | null;
   className?: string;
   withLabel?: boolean;
+  title?: string;
 }) {
   const Icon = GLYPH_ICON[priorityGlyph(rank, ranks)];
   const label = `Ưu tiên: ${name}`;
+  const tip = title ?? label;
   const style = { color: color ?? 'var(--muted)' };
   const icon = (
     <Icon
@@ -44,12 +48,12 @@ export function PriorityIcon({
   );
   if (!withLabel)
     return (
-      <span title={label} className="inline-flex shrink-0">
+      <span title={tip} className="inline-flex shrink-0">
         {icon}
       </span>
     );
   return (
-    <span title={label} className="inline-flex min-w-0 items-center gap-1.5">
+    <span title={tip} className="inline-flex min-w-0 items-center gap-1.5">
       {icon}
       <span className="truncate">{name}</span>
     </span>

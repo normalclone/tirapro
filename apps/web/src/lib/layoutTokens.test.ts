@@ -23,7 +23,7 @@ describe('FAB không che nội dung', () => {
   it('pageContainer chừa đệm đáy cho FAB', () => {
     const page = src('components/layout/page.ts');
     expect(page).toMatch(/\bpb-8\b[^'"]*\blg:pb-28\b/);
-    expect(page).not.toMatch(/(?<!lg:)\bpb-28\b/);
+    expect(page.replace(/lg:pb-28/g, '')).not.toMatch(/\bpb-28\b/);
     expect(page).not.toMatch(/\bpy-8\b/);
   });
   it('FAB dùng hằng cạnh thay số cứng', () => {

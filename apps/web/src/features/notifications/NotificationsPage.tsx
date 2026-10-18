@@ -7,6 +7,7 @@ import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { EmptyState } from '@/components/ui/primitives';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
+import { APP_NAV_LABELS } from '@/lib/navLabels';
 import { NotificationRow } from './NotificationRow';
 import { notificationHref } from './notificationHref';
 import {
@@ -65,7 +66,9 @@ export function NotificationsPage() {
   return (
     <div className={pageContainer('sm')}>
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Thông báo</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+          {APP_NAV_LABELS.notifications}
+        </h1>
         <Button
           size="sm"
           variant="secondary"

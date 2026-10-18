@@ -211,6 +211,7 @@ export function InlinePriority({
                 rank={issue.priority.rank}
                 ranks={ranks}
                 color={issue.priority.color}
+                title={`Mức ưu tiên: ${issue.priority.name} — bấm để đổi`}
               />
             ) : (
               <span className="block h-2 w-2 rounded-full bg-faint" aria-hidden />

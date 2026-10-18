@@ -50,7 +50,13 @@ export function useAssigneeOptions(
       const roleNames = roleByUser.get(u.id) ?? [];
       const position = roleNames.map(roleLabel).join(' · ');
       const userTeams = teamByUser.get(u.id) ?? [];
-      const search = [u.displayName, u.email, position, ...userTeams.map((t) => t.name)]
+      const search = [
+        u.displayName,
+        u.email,
+        position,
+        ...roleNames,
+        ...userTeams.map((t) => t.name),
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();

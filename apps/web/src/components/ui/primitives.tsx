@@ -101,7 +101,7 @@ export function EmptyState({
         {icon}
       </div>
       <div>
-        <p className="font-medium text-ink-strong">{title}</p>
+        <p className="break-words font-medium text-ink-strong">{title}</p>
         {description && (
           <p className={cn('mt-1 max-w-sm text-muted', compact ? 'text-xs' : 'text-sm')}>
             {description}

@@ -130,14 +130,14 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
               </Link>
               <span className="min-w-0 flex-1 truncate text-sm text-ink">{r.summary}</span>
               {r.priority && (
-                <span className="hidden shrink-0 items-center gap-1 text-xs text-muted sm:flex">
+                <span className="hidden shrink-0 items-center text-xs text-muted sm:flex">
                   <PriorityIcon
+                    withLabel
                     name={r.priority.name}
                     rank={r.priority.rank}
                     ranks={ranks}
                     color={r.priority.color}
                   />
-                  {r.priority.name}
                 </span>
               )}
               <span

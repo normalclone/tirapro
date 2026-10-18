@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { lastViewKey } from '@/lib/currentProject';
+import { APP_NAV_LABELS } from '@/lib/navLabels';
 import { TERM } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
@@ -74,7 +75,9 @@ export function ProjectsPage() {
   return (
     <div className={pageContainer('lg')}>
       <header className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="mr-auto text-2xl font-semibold tracking-tight text-ink-strong">Dự án</h1>
+        <h1 className="mr-auto text-2xl font-semibold tracking-tight text-ink-strong">
+          {APP_NAV_LABELS.projects}
+        </h1>
         {createButton}
       </header>
 

@@ -23,13 +23,13 @@ import {
 import { SprintSummaryPanel } from './SprintSummaryPanel';
 import { completionPct, fmtPoints } from './sprintSummary';
 
-/** Tab "Sprint": chọn sprint (mặc định đang chạy), thẻ tóm tắt, Burndown và Velocity của sprint đó. */
 function burndownEmptyHint(state: string): string {
   return state === 'FUTURE'
     ? 'Sprint chưa bắt đầu. Biểu đồ hiện khi sprint chạy và có ngày kết thúc.'
     : 'Sprint chưa có ngày bắt đầu hoặc kết thúc nên chưa vẽ được đường lý tưởng.';
 }
 
+/** Tab "Sprint": chọn sprint (mặc định đang chạy), thẻ tóm tắt, Burndown và Velocity của sprint đó. */
 export function SprintTab({ projectId, projectKey }: { projectId: string; projectKey: string }) {
   const [params, setParams] = useSearchParams();
   const sprintsQ = useProjectSprints(projectId);

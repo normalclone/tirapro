@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { ADMIN_LABELS } from '@/lib/navLabels';
 import { useAdminWorkspaces, usePatchWorkspace, type AdminWorkspace } from './api';
 import { fmtInt, relTime } from './_ui';
 import { ScrollX } from '@/components/ui/ScrollX';
@@ -82,7 +83,7 @@ export function AdminWorkspacesPage() {
     <div className={pageContainer('lg')}>
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          Không gian làm việc
+          {ADMIN_LABELS.workspaces}
         </h1>
         <p className="mt-1 text-sm text-muted">
           Mọi không gian làm việc trong hệ thống — đổi gói dịch vụ, lưu trữ hoặc khôi phục.

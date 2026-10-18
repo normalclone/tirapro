@@ -10,6 +10,7 @@ import { QueryError } from '@/components/ui/QueryError';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { ADMIN_LABELS } from '@/lib/navLabels';
 import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import { fmtRelative } from '@/lib/dateFormat';
 import { passwordPolicyError } from '@/features/members/passwordPolicy';
@@ -24,7 +25,6 @@ const STATUS_FILTERS: { label: string; value: AccountStatusFilter | undefined }[
   { label: 'Đã vô hiệu hoá', value: 'DEACTIVATED' },
 ];
 
-/** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập không gian làm việc. */
 const ROWS_SKELETON = (
   <div className="space-y-2">
     {Array.from({ length: 4 }).map((_, i) => (
@@ -56,6 +56,7 @@ function NoMatchingAccounts({ onReset }: { onReset: () => void }) {
   );
 }
 
+/** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập không gian làm việc. */
 export function AdminUsersPage() {
   const me = useAuth((s) => s.user);
   const { data: users, isLoading, isError, error, refetch } = useAdminUsers();
@@ -89,7 +90,7 @@ export function AdminUsersPage() {
       <header className="mb-6 flex items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-ink-strong">
-            <ShieldCheck className="h-6 w-6 text-primary" /> Tài khoản
+            <ShieldCheck className="h-6 w-6 text-primary" /> {ADMIN_LABELS.accounts}
           </h1>
           <p className="mt-1 text-sm text-muted">
             Tạo tài khoản và cấp quyền: được lập không gian làm việc mới, hoặc quản trị toàn hệ

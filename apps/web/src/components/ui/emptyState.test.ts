@@ -84,3 +84,10 @@ describe('EmptyState là cách duy nhất vẽ trạng thái trống', () => {
     expect(body).toMatch(/<div\s+aria-hidden="true"[^>]*>\s*\{icon\}/);
   });
 });
+
+describe('EmptyState: tiêu đề chứa từ khoá người dùng gõ', () => {
+  it('tiêu đề xuống dòng khi quá dài (từ khoá tìm kiếm không tràn khung)', () => {
+    const body = readFileSync(join(__dirname, 'primitives.tsx'), 'utf8');
+    expect(body).toMatch(/<p className="break-words font-medium text-ink-strong">\{title\}<\/p>/);
+  });
+});

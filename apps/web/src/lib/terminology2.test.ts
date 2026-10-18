@@ -129,6 +129,21 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
     ],
     ['features/admin/AdminOverviewPage.tsx', 'ADMIN_LABELS.overview', ADMIN_LABELS.overview],
     ['features/admin/AdminConfigPage.tsx', 'ADMIN_LABELS.config', ADMIN_LABELS.config],
+    [
+      'features/notifications/NotificationsPage.tsx',
+      'APP_NAV_LABELS.notifications',
+      APP_NAV_LABELS.notifications,
+    ],
+    ['features/projects/ProjectsPage.tsx', 'APP_NAV_LABELS.projects', APP_NAV_LABELS.projects],
+    ['features/members/AccountPage.tsx', 'APP_NAV_LABELS.account', APP_NAV_LABELS.account],
+    ['features/admin/AdminSystemPage.tsx', 'ADMIN_LABELS.system', ADMIN_LABELS.system],
+    ['features/admin/AdminWorkspacesPage.tsx', 'ADMIN_LABELS.workspaces', ADMIN_LABELS.workspaces],
+    ['features/admin/AdminUsersPage.tsx', 'ADMIN_LABELS.accounts', ADMIN_LABELS.accounts],
+    [
+      'features/project-config/ProjectConfigPage.tsx',
+      'PROJECT_CONFIG_LABELS.general',
+      PROJECT_CONFIG_LABELS.general,
+    ],
   ];
   it.each(pageTitles)('%s dùng %s làm tiêu đề trang', (file, ref, label) => {
     expect(label.length).toBeGreaterThan(0);
