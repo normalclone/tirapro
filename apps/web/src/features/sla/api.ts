@@ -32,7 +32,7 @@ export interface SlaBoardRow {
   summary: string;
   status: { name: string; category: string };
   assignee: { id: string; displayName: string; avatarUrl: string | null } | null;
-  priority: { name: string; color: string | null } | null;
+  priority: { name: string; color: string | null; rank: number } | null;
   policyName: string;
   resolveDueAt: string;
   remainingMins: number;

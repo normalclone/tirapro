@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { BarChart3 } from 'lucide-react';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
@@ -69,8 +70,10 @@ export function OverviewTab({
             <ChartSkeleton />
           ) : !report.data || report.data.byStatus.length === 0 ? (
             <EmptyState
+              size="compact"
+              icon={<BarChart3 />}
               title="Chưa có dữ liệu"
-              description="Biểu đồ sẽ hiện khi dự án có công việc. Hãy tạo công việc đầu tiên ở Bảng hoặc Danh sách chờ."
+              description="Biểu đồ hiện khi dự án có ít nhất một công việc. Tạo công việc đầu tiên ở Bảng hoặc Việc chờ."
             />
           ) : (
             <StatusDonut slices={report.data.byStatus} />
@@ -81,7 +84,12 @@ export function OverviewTab({
           {report.isLoading ? (
             <ChartSkeleton />
           ) : !report.data || report.data.byType.length === 0 ? (
-            <EmptyState title="Chưa có dữ liệu" />
+            <EmptyState
+              size="compact"
+              icon={<BarChart3 />}
+              title="Chưa có dữ liệu"
+              description="Biểu đồ hiện khi dự án có công việc; mỗi công việc thuộc một loại."
+            />
           ) : (
             <SliceBar slices={report.data.byType} />
           )}
@@ -91,7 +99,12 @@ export function OverviewTab({
           {report.isLoading ? (
             <ChartSkeleton />
           ) : !report.data || report.data.byPriority.length === 0 ? (
-            <EmptyState title="Chưa có dữ liệu" />
+            <EmptyState
+              size="compact"
+              icon={<BarChart3 />}
+              title="Chưa có dữ liệu"
+              description="Biểu đồ hiện khi dự án có công việc (việc chưa đặt ưu tiên được tính vào “Chưa đặt”)."
+            />
           ) : (
             <SliceBar slices={report.data.byPriority} />
           )}
@@ -105,8 +118,10 @@ export function OverviewTab({
             <ChartSkeleton />
           ) : !report.data || report.data.byAssignee.length === 0 ? (
             <EmptyState
+              size="compact"
+              icon={<BarChart3 />}
               title="Chưa có dữ liệu"
-              description="Chưa công việc nào được giao cho ai. Hãy gán người phụ trách để xem khối lượng chia đều tới đâu."
+              description="Biểu đồ hiện khi dự án có công việc; việc chưa giao được tính vào “Chưa gán”. Gán người phụ trách để xem khối lượng chia đều tới đâu."
             />
           ) : (
             <AssigneeBar rows={report.data.byAssignee} />
@@ -117,7 +132,12 @@ export function OverviewTab({
           {report.isLoading ? (
             <ChartSkeleton />
           ) : !report.data || report.data.byAssignee.length === 0 ? (
-            <EmptyState title="Chưa có dữ liệu" />
+            <EmptyState
+              size="compact"
+              icon={<BarChart3 />}
+              title="Chưa có dữ liệu"
+              description="Bảng hiện khi dự án có ít nhất một công việc."
+            />
           ) : (
             <AssigneeTable rows={report.data.byAssignee} />
           )}

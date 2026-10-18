@@ -7,6 +7,7 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { useChangePassword, useLogoutAll } from './api';
 
 /** Quy tắc mật khẩu — khớp với passwordSchema ở backend. */
@@ -37,6 +38,15 @@ export function ChangePasswordPanel() {
     setConfirm('');
     setShow(false);
   }
+
+  // Chỉ chặn rời trang khi đã gõ vào ô nào; giữ nút "Đổi mật khẩu" riêng (không dùng thanh chung).
+  useUnsavedChanges({
+    dirty: current !== '' || next !== '' || confirm !== '',
+    onSave: () => undefined,
+    onReset: reset,
+    description: 'Mật khẩu bạn vừa nhập chưa được gửi đi.',
+    bar: false,
+  });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();

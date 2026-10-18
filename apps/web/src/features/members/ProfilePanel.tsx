@@ -1,13 +1,14 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { UserCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { useUpdateProfile, useUploadUserAvatar, useRemoveUserAvatar } from './api';
 import { browserTimeZone, timeZoneOptions } from '@/features/digests/schedule';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 const LOCALES: { value: string; label: string }[] = [
   { value: 'vi', label: 'Tiếng Việt' },
@@ -20,16 +21,37 @@ export function ProfilePanel() {
   const uploadAvatar = useUploadUserAvatar();
   const removeAvatar = useRemoveUserAvatar();
 
-  const [displayName, setDisplayName] = useState(user?.displayName ?? '');
-  const [timezone, setTimezone] = useState(user?.timezone ?? '');
-  const [locale, setLocale] = useState(user?.locale ?? 'vi');
-
-  if (!user) return null;
+  // Mốc "đã lưu gần nhất": lưu xong cập nhật ngay, không chờ `bootstrap()` làm mới user → dirty về false tức thì.
+  const [saved, setSaved] = useState({
+    displayName: user?.displayName ?? '',
+    timezone: user?.timezone ?? '',
+    locale: user?.locale ?? 'vi',
+  });
+  const [displayName, setDisplayName] = useState(saved.displayName);
+  const [timezone, setTimezone] = useState(saved.timezone);
+  const [locale, setLocale] = useState(saved.locale);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const dirty =
-    displayName.trim() !== user.displayName ||
-    timezone.trim() !== user.timezone ||
-    locale !== user.locale;
+    displayName.trim() !== saved.displayName ||
+    timezone.trim() !== saved.timezone ||
+    locale !== saved.locale;
+
+  useUnsavedChanges({
+    dirty,
+    saving: update.isPending,
+    canSave: !update.isPending,
+    // requestSubmit: chạy kiểm tra `required` + onSubmit y như bấm Enter.
+    onSave: () => formRef.current?.requestSubmit(),
+    onReset: () => {
+      setDisplayName(saved.displayName);
+      setTimezone(saved.timezone);
+      setLocale(saved.locale);
+    },
+    description: 'Tên hiển thị, múi giờ hoặc ngôn ngữ bạn vừa sửa chưa được lưu.',
+  });
+
+  if (!user) return null;
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -39,13 +61,16 @@ export function ProfilePanel() {
       toast.error('Hãy nhập tên hiển thị — đây là tên đồng nghiệp nhìn thấy');
       return;
     }
-    update.mutate(
-      { displayName: trimmed, timezone: timezone.trim(), locale },
-      {
-        onSuccess: () => toast.success('Đã lưu hồ sơ của bạn'),
-        onError: (err) => toast.error(apiErrorMessage(err)),
+    const next = { displayName: trimmed, timezone: timezone.trim(), locale };
+    update.mutate(next, {
+      onSuccess: () => {
+        setSaved(next);
+        setDisplayName(next.displayName);
+        setTimezone(next.timezone);
+        toast.success('Đã lưu hồ sơ của bạn');
       },
-    );
+      onError: (err) => toast.error(apiErrorMessage(err)),
+    });
   }
 
   return (
@@ -63,7 +88,7 @@ export function ProfilePanel() {
         </div>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-5 p-5">
+      <form ref={formRef} onSubmit={onSubmit} className="space-y-5 p-5">
         <AvatarUploader
           name={user.displayName}
           src={user.avatarUrl}
@@ -112,33 +137,23 @@ export function ProfilePanel() {
             </datalist>
           </label>
 
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-ink">Ngôn ngữ</span>
-            <select
+          <div className="block space-y-1.5">
+            <span id="profile-locale-label" className="block text-sm font-medium text-ink">
+              Ngôn ngữ
+            </span>
+            <SegmentedControl
+              ariaLabelledby="profile-locale-label"
               value={locale}
-              onChange={(e) => setLocale(e.target.value)}
+              onChange={setLocale}
               disabled={update.isPending}
-              className="h-9 w-full rounded-md border border-border bg-bg px-3 text-base text-ink transition-colors duration-150 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
-            >
-              {LOCALES.map((l) => (
-                <option key={l.value} value={l.value}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              fullWidth
+              options={LOCALES}
+            />
+          </div>
         </div>
 
-        <div className="flex justify-end">
-          <Button
-            type="submit"
-            loading={update.isPending}
-            disabled={!dirty}
-            title={dirty ? 'Lưu thay đổi hồ sơ' : 'Chưa có gì thay đổi để lưu'}
-          >
-            Lưu hồ sơ
-          </Button>
-        </div>
+        {/* Enter trong ô nhập vẫn lưu: nút gửi mặc định ẩn (nút Lưu thật nằm ở thanh "thay đổi chưa lưu"). */}
+        <button type="submit" className="sr-only" tabIndex={-1} aria-hidden />
       </form>
     </section>
   );

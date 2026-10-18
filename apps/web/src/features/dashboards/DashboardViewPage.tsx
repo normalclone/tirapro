@@ -35,7 +35,7 @@ export function DashboardViewPage() {
     return canManage ? (
       <DashboardEditor dashboard={null} />
     ) : (
-      <NoAccess who="người được cấp quyền quản lý dashboard" />
+      <NoAccess who="người được cấp quyền quản lý bảng tổng quan" />
     );
   }
   const editing = params.get('edit') === '1';
@@ -85,17 +85,17 @@ function DashboardView({
 
   async function onDelete() {
     const ok = await confirm({
-      title: `Xoá dashboard “${dashboard.name}”?`,
+      title: `Xoá bảng tổng quan “${dashboard.name}”?`,
       description:
         dashboard.scope === 'PRIVATE'
-          ? 'Dashboard bị xoá không khôi phục được.'
-          : 'Những người đang được chia sẻ sẽ không còn thấy dashboard này. Không khôi phục được.',
+          ? 'Bảng tổng quan bị xoá không khôi phục được.'
+          : 'Những người đang được chia sẻ sẽ không còn thấy bảng tổng quan này. Không khôi phục được.',
       destructive: true,
     });
     if (!ok) return;
     remove.mutate(dashboard.id, {
       onSuccess: () => {
-        toast.success('Đã xoá dashboard');
+        toast.success('Đã xoá bảng tổng quan');
         navigate('/');
       },
       onError: (err) => toast.error(apiErrorMessage(err)),
@@ -145,8 +145,8 @@ function DashboardView({
               variant="ghost"
               onClick={() => void onDelete()}
               loading={remove.isPending}
-              aria-label="Xoá dashboard"
-              title="Xoá dashboard"
+              aria-label="Xoá bảng tổng quan"
+              title="Xoá bảng tổng quan"
             >
               <Trash2 className="h-4 w-4" aria-hidden />
             </Button>
@@ -159,13 +159,13 @@ function DashboardView({
           icon={<LayoutDashboard className="h-8 w-8" />}
           title={
             dashboard.canEdit
-              ? 'Dashboard trống — thêm widget đầu tiên'
-              : 'Dashboard này chưa có widget nào'
+              ? 'Bảng tổng quan trống — thêm widget đầu tiên'
+              : 'Bảng tổng quan này chưa có widget nào'
           }
           description={
             dashboard.canEdit
-              ? 'Thêm ô số liệu, biểu đồ hay danh sách việc để dashboard có nội dung.'
-              : 'Chủ dashboard chưa thêm ô nào.'
+              ? 'Thêm ô số liệu, biểu đồ hay danh sách việc để bảng tổng quan có nội dung.'
+              : 'Chủ bảng tổng quan chưa thêm ô nào.'
           }
           action={
             dashboard.canEdit && canManage ? (

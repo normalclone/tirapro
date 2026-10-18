@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { DelayedSpinner } from '@/components/ui/primitives';
-import { QueryBuilder, Segmented } from '@/features/saved-filters/QueryBuilder';
+import { QueryBuilder } from '@/features/saved-filters/QueryBuilder';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { apiErrorMessage } from '@/lib/api';
 import { categoryColor } from '@/lib/statusColor';
 import { cn } from '@/lib/utils';
@@ -17,6 +18,7 @@ import {
   useUpdateBoard,
   type BoardColumnInput,
 } from './api';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 
 export const SWIMLANE_LABEL: Record<SwimlaneBy, string> = {
   none: 'Không chia hàng',
@@ -236,9 +238,10 @@ export function BoardSettingsDialog({
           />
         </div>
 
-        <Segmented
+        <SegmentedControl
+          ariaLabel="Mục cài đặt bảng"
           value={tab}
-          onChange={(v) => setTab(v as Tab)}
+          onChange={setTab}
           options={TABS.map((t) => ({ value: t.id, label: t.label }))}
         />
 
@@ -391,27 +394,30 @@ function ColumnsTab({
                 </span>
               )}
               {addable.length > 0 && (
-                <select
-                  aria-label={`Thêm trạng thái vào cột ${c.name || idx + 1}`}
+                <SearchSelect
+                  ariaLabel={`Thêm trạng thái vào cột ${c.name || idx + 1}`}
                   value=""
-                  onChange={(e) => {
-                    if (e.target.value) assignStatus(c.key, e.target.value);
+                  onChange={(v) => {
+                    if (v) assignStatus(c.key, v);
                   }}
-                  className="h-7 rounded-md border border-dashed border-border bg-surface px-2 text-xs text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                >
-                  <option value="">+ Thêm trạng thái…</option>
-                  {addable.map((s) => {
+                  options={addable.map((s) => {
                     const owner = columns.find(
                       (o) => o.key !== c.key && o.statusIds.includes(s.id),
                     );
-                    return (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                        {owner ? ` (chuyển từ “${owner.name || 'cột chưa đặt tên'}”)` : ''}
-                      </option>
-                    );
+                    return {
+                      value: s.id,
+                      label: s.name,
+                      color: categoryColor(s.category),
+                      description: owner
+                        ? `Chuyển từ “${owner.name || 'cột chưa đặt tên'}”`
+                        : undefined,
+                    };
                   })}
-                </select>
+                  searchPlaceholder="Tìm trạng thái…"
+                  hideChevron
+                  className="h-7 w-auto border-dashed bg-surface px-2 text-xs"
+                  renderTrigger={() => <span className="text-muted">+ Thêm trạng thái…</span>}
+                />
               )}
             </div>
           </div>
@@ -459,9 +465,11 @@ function FilterTab({
         cả.
       </p>
       <div className="flex items-center justify-between gap-2">
-        <Segmented
+        <SegmentedControl
+          ariaLabel="Chế độ bộ lọc bảng"
+          fullWidth={false}
           value={jqlMode}
-          onChange={(v) => setJqlMode(v as 'simple' | 'jql')}
+          onChange={setJqlMode}
           options={[
             { value: 'simple', label: 'Đơn giản' },
             { value: 'jql', label: 'JQL' },

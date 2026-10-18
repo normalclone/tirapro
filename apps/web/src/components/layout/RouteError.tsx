@@ -1,6 +1,6 @@
 import { isRouteErrorResponse, useRouteError } from 'react-router-dom';
-import { AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
+import { Button, buttonVariants } from '@/components/ui/Button';
+import { StatusPanel } from '@/components/ui/StatusPanel';
 
 /** Tách thông điệp lỗi route thành chuỗi ngắn để hiển thị (chỉ phục vụ chẩn đoán, không lộ stack). */
 function describeError(error: unknown): string | null {
@@ -18,33 +18,25 @@ export function RouteError() {
   const detail = describeError(error);
   // Dùng thẻ <a> (tải trang mới) thay vì <Link>: khi router đang lỗi, điều hướng client có thể kẹt.
   return (
-    <div role="alert" className="grid h-full min-h-[50vh] place-items-center p-6">
-      <div className="w-full max-w-md text-center">
-        <span
-          className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-danger/10 text-danger"
-          aria-hidden
-        >
-          <AlertTriangle className="h-5 w-5" />
-        </span>
-        <h1 className="mt-3 text-lg font-semibold text-ink-strong">
-          Có lỗi khi hiển thị trang này
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Hãy bấm “Tải lại” để thử lần nữa. Nếu vẫn lỗi, quay về trang chính rồi báo quản trị viên.
-        </p>
+    <div className="grid h-full min-h-[50vh] place-items-center p-6">
+      <StatusPanel
+        variant="error"
+        title="Có lỗi khi hiển thị trang này"
+        description="Hãy bấm “Tải lại” để thử lần nữa. Nếu vẫn lỗi, quay về trang chính rồi báo quản trị viên."
+        className="py-0"
+        actions={
+          <>
+            <Button variant="primary" size="sm" onClick={() => window.location.reload()}>
+              Tải lại
+            </Button>
+            <a href="/" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+              Về trang chính
+            </a>
+          </>
+        }
+      >
         {detail && <p className="mt-2 break-words font-mono text-xs text-faint">{detail}</p>}
-        <div className="mt-5 flex items-center justify-center gap-2">
-          <Button variant="primary" size="sm" onClick={() => window.location.reload()}>
-            Tải lại
-          </Button>
-          <a
-            href="/"
-            className="inline-flex h-8 items-center justify-center rounded-md border border-border px-3 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
-          >
-            Về trang chính
-          </a>
-        </div>
-      </div>
+      </StatusPanel>
     </div>
   );
 }

@@ -38,7 +38,7 @@ import { WidgetConfigDialog } from './WidgetConfigDialog';
 import { SortableGrid } from './SortableGrid';
 import { httpStatusOf } from './widgetState';
 
-const NEW_DASHBOARD_NAME = 'Dashboard mới';
+const NEW_DASHBOARD_NAME = 'Bảng tổng quan mới';
 
 const SCOPE_LABEL = {
   PRIVATE: 'Chỉ mình tôi',
@@ -102,12 +102,12 @@ function useSaveDraft({
           })
         : await save.mutateAsync({ body });
       exitingRef.current = true;
-      toast.success('Đã lưu dashboard');
+      toast.success('Đã lưu bảng tổng quan');
       navigate(`/dashboards/${dto.id}`, { replace: true });
     } catch (err) {
       const message = apiErrorMessage(err); // đánh dấu đã báo → toast chung không báo lần hai
       if (httpStatusOf(err) === 409 || apiErrorCode(err) === 'VERSION_CONFLICT') {
-        toast.error('Dashboard vừa được người khác sửa', {
+        toast.error('Bảng tổng quan vừa được người khác sửa', {
           duration: 10_000,
           action: onReload ? { label: 'Tải lại', onClick: onReload } : undefined,
         });
@@ -178,7 +178,7 @@ function NameFields({
   return (
     <div className="mb-4 flex flex-col gap-2">
       <Input
-        aria-label="Tên dashboard"
+        aria-label="Tên bảng tổng quan"
         value={name}
         maxLength={120}
         onChange={(e) => onChange({ name: e.target.value })}
@@ -186,7 +186,7 @@ function NameFields({
         className="h-10 max-w-xl text-xl font-semibold tracking-tight"
       />
       <Input
-        aria-label="Mô tả dashboard"
+        aria-label="Mô tả bảng tổng quan"
         value={description}
         maxLength={500}
         placeholder="Mô tả ngắn (không bắt buộc)"
@@ -227,7 +227,7 @@ function EditorToolbar({
         size="sm"
         onClick={onAdd}
         disabled={!canAdd}
-        title={canAdd ? undefined : 'Đã đủ số ô tối đa của một dashboard'}
+        title={canAdd ? undefined : 'Đã đủ số ô tối đa của một bảng tổng quan'}
       >
         <Plus className="h-4 w-4" aria-hidden /> Thêm widget
       </Button>
@@ -295,7 +295,7 @@ export function DashboardEditor({
   useLeaveGuard({
     dirty,
     shouldBlock: () => !exitingRef.current,
-    description: 'Dashboard có thay đổi chưa lưu. Rời trang bây giờ sẽ mất chúng.',
+    description: 'Bảng tổng quan có thay đổi chưa lưu. Rời trang bây giờ sẽ mất chúng.',
   });
   useEffect(
     () => () => {
@@ -371,7 +371,7 @@ export function DashboardEditor({
       {widgets.length === 0 ? (
         <EmptyState
           icon={<LayoutDashboard className="h-8 w-8" />}
-          title="Dashboard trống — thêm widget đầu tiên"
+          title="Bảng tổng quan trống — thêm widget đầu tiên"
           description="Chọn ô số liệu, biểu đồ hay danh sách việc từ danh mục."
           action={
             <Button onClick={() => setAddOpen(true)}>

@@ -375,7 +375,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
         actorName ??= input.triggerActorId
           ? this.prisma.user
               .findUnique({ where: { id: input.triggerActorId }, select: { displayName: true } })
-              .then((u) => u?.displayName ?? 'Ai đó')
+              .then((u) => u?.displayName ?? 'Hệ thống')
           : Promise.resolve('Tirapro Automation');
         return actorName;
       },

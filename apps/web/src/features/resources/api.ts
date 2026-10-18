@@ -220,12 +220,6 @@ export function mondayOf(d: Date): Date {
   return addDays(x, dow === 0 ? -6 : 1 - dow);
 }
 
-/** `2026-07-24` → `24/07`. */
-export function shortDay(iso: string): string {
-  const [, m, d] = iso.split('-');
-  return `${d}/${m}`;
-}
-
 /** Số giờ → chuỗi gọn: `0`, `6,5h`, `32h`. */
 export function formatHours(h: number): string {
   if (!h) return '0';

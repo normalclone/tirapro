@@ -58,7 +58,7 @@ export function ClientProjectsModal({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button onClick={() => void save()} loading={setProjects.isPending}>
             Lưu thay đổi

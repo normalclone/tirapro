@@ -14,6 +14,7 @@ import {
   Pencil,
   Plus,
   Search,
+  SearchX,
   Trash2,
   X,
 } from 'lucide-react';
@@ -54,6 +55,7 @@ import { WikiHistoryDialog } from './WikiHistoryDialog';
 import { RestoreDraftBanner } from './RestoreDraftBanner';
 import { useWikiDraft } from './useWikiDraft';
 import { WikiTrashDialog } from './WikiTrashDialog';
+import { APP_NAV_LABELS } from '@/lib/navLabels';
 
 /** Vị trí của một trang trong cây: danh sách anh em + chỉ số, để đổi thứ tự bằng nút lên/xuống. */
 interface Slot {
@@ -461,10 +463,12 @@ export function WikiPage() {
             skeleton={<TreeSkeleton />}
             empty={(d) => !d.length}
             emptyState={
-              <p className="px-2 py-6 text-center text-sm text-muted">
-                Không có trang nào khớp “{q.trim()}”. Thử từ khoá ngắn hơn, hoặc đổi phạm vi sang
-                “Tất cả tài liệu”.
-              </p>
+              <EmptyState
+                size="compact"
+                icon={<SearchX />}
+                title={`Không có trang nào khớp “${q.trim()}”`}
+                description="Thử từ khoá ngắn hơn, hoặc đổi phạm vi sang “Tất cả tài liệu”."
+              />
             }
           >
             {(hits) => (
@@ -497,12 +501,16 @@ export function WikiPage() {
             skeleton={<TreeSkeleton />}
             empty={(d) => !d.length}
             emptyState={
-              <p className="px-2 py-6 text-center text-sm text-muted">
-                Chưa có trang nào ở phạm vi này.{' '}
-                {scopeWritable
-                  ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.'
-                  : 'Hãy chọn phạm vi khác — hướng dẫn xin quyền viết ở ngay bên dưới.'}
-              </p>
+              <EmptyState
+                size="compact"
+                icon={<FileText />}
+                title="Chưa có trang nào ở phạm vi này"
+                description={
+                  scopeWritable
+                    ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.'
+                    : 'Hãy chọn phạm vi khác — hướng dẫn xin quyền viết ở ngay bên dưới.'
+                }
+              />
             }
           >
             {(nodes) => (
@@ -568,11 +576,11 @@ export function WikiPage() {
     <div className={pageContainer('xl')}>
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          Wiki — tài liệu nội bộ
+          {APP_NAV_LABELS.wiki}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Nơi lưu quy trình, hướng dẫn và biên bản họp. Viết bằng Markdown, xếp thành cây trang,
-          dùng chung cho cả tổ chức hoặc riêng từng dự án.
+          Tài liệu nội bộ: nơi lưu quy trình, hướng dẫn và biên bản họp. Viết bằng Markdown, xếp
+          thành cây trang, dùng chung cho cả tổ chức hoặc riêng từng dự án.
         </p>
       </header>
 
@@ -606,8 +614,8 @@ export function WikiPage() {
                 title="Chưa chọn trang nào"
                 description={
                   scopeWritable
-                    ? 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái, hoặc tạo trang mới để bắt đầu.'
-                    : 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái để đọc.'
+                    ? 'Nội dung trang sẽ hiện ở đây. Chọn một trang trong danh sách trang, hoặc tạo trang mới để bắt đầu.'
+                    : 'Nội dung trang sẽ hiện ở đây. Chọn một trang trong danh sách trang để đọc.'
                 }
                 action={
                   scopeWritable ? (
@@ -623,7 +631,7 @@ export function WikiPage() {
               <EmptyState
                 icon={<BookOpen className="h-6 w-6" />}
                 title="Trang không còn"
-                description="Trang này đã bị xoá hoặc không tồn tại. Chọn một trang khác ở danh sách bên trái."
+                description="Trang này đã bị xoá hoặc không tồn tại. Chọn một trang khác trong danh sách trang."
                 action={
                   <Button size="sm" variant="secondary" onClick={() => setSelectedId(null)}>
                     Xem trang khác
@@ -768,10 +776,14 @@ export function WikiPage() {
                           }
                         />
                       ) : (
-                        <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-faint">
-                          Trang này chưa có nội dung.
-                          {canWrite(pg.projectId) ? ' Bấm “Sửa trang” để bắt đầu viết.' : ''}
-                        </p>
+                        <EmptyState
+                          size="compact"
+                          icon={<FileText />}
+                          title="Trang này chưa có nội dung"
+                          description={
+                            canWrite(pg.projectId) ? 'Bấm “Sửa trang” để bắt đầu viết.' : undefined
+                          }
+                        />
                       )}
                     </>
                   )}

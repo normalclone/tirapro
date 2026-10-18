@@ -18,6 +18,8 @@ import {
   kindLabel,
   type AcceptPayload,
 } from './triageLogic';
+import { PriorityIcon } from '@/components/ui/PriorityIcon';
+import { usePriorityRanks } from '@/features/settings-admin/api';
 
 const SNOOZE_CHOICES: { label: string; days: number }[] = [
   { label: '1 ngày', days: 1 },
@@ -225,6 +227,7 @@ export function TriageRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const regionId = useId();
+  const ranks = usePriorityRanks();
 
   return (
     <li data-issue-key={issue.key} className={cn(peeking && 'bg-primary-subtle/60')}>
@@ -282,10 +285,11 @@ export function TriageRow({
         {!compact && <SeverityBadge severity={issue.severity} className="hidden sm:inline-flex" />}
 
         {issue.priority && (
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ background: issue.priority.color ?? 'var(--faint)' }}
-            title={`Ưu tiên: ${issue.priority.name}`}
+          <PriorityIcon
+            name={issue.priority.name}
+            rank={issue.priority.rank}
+            ranks={ranks}
+            color={issue.priority.color}
           />
         )}
 

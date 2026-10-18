@@ -4,23 +4,34 @@ import { HelpCircle } from 'lucide-react';
 import type { DriveStep, Driver, Config } from 'driver.js';
 import type { TourContent, TourStepDef } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
+import { firstVisible } from '@/lib/firstVisible';
 import { useScreenGuides, useMarkGuide, type ScreenGuide } from './api';
 import { isTour, primaryTourOf, routeToScreen } from './routeToScreen';
 
-/** Đổi step shape (shared) → DriveStep (driver.js), lọc bỏ step có selector không tồn tại. */
+/**
+ * Đổi step shape (shared) → DriveStep (driver.js), lọc bỏ step không có phần tử nào ĐANG HIỂN THỊ khớp selector.
+ * Cùng một `data-tour` có thể nằm ở hai nơi (sidebar desktop + thanh tab đáy mobile; chỉ một nơi hiện) nên lấy phần tử
+ * hiển thị đầu tiên và đưa thẳng cho driver.js — nếu để driver tự `querySelector` nó sẽ trỏ vào bản bị `display:none`.
+ */
 function toDriveSteps(steps: TourStepDef[]): DriveStep[] {
   return [...steps]
     .sort((a, b) => a.order - b.order)
-    .filter((s) => !s.selector || !!document.querySelector(s.selector))
-    .map((s) => ({
-      element: s.selector,
-      popover: {
-        title: s.title,
-        description: s.body,
-        // driver.js Side không có 'auto' → để mặc định; các giá trị còn lại hợp lệ.
-        side: s.placement === 'auto' ? undefined : s.placement,
-      },
-    }));
+    .flatMap((s) => {
+      const el = s.selector ? firstVisible(document.querySelectorAll(s.selector)) : null;
+      if (s.selector && !el) return [];
+      return [
+        {
+          // Bước không có selector → popover giữa màn hình (driver.js).
+          ...(el ? { element: el } : {}),
+          popover: {
+            title: s.title,
+            description: s.body,
+            // driver.js Side không có 'auto' → để mặc định; các giá trị còn lại hợp lệ.
+            side: s.placement === 'auto' ? undefined : s.placement,
+          },
+        } satisfies DriveStep,
+      ];
+    });
 }
 
 export function GuideLauncher() {

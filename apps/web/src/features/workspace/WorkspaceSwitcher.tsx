@@ -2,9 +2,11 @@ import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronsUpDown, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { roleLabel } from '@tirapro/types';
 import { useAuth } from '@/stores/auth';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { resumeLeaveGuard, useConfirmLeaveApp } from '@/lib/useLeaveGuard';
 import { useMyWorkspaces, useSwitchWorkspace, type MyWorkspace } from './api';
 import { CreateWorkspaceModal } from './CreateWorkspaceModal';
 
@@ -24,12 +26,22 @@ export function WorkspaceSwitcher() {
     workspaces.find((w) => w.id === activeId) ?? workspaces[0];
   const label = active?.name ?? 'Tirapro';
 
-  function pick(ws: MyWorkspace) {
+  const confirmLeave = useConfirmLeaveApp();
+
+  async function pick(ws: MyWorkspace) {
     if (ws.id === active?.id) {
       setOpen(false);
       return;
     }
-    switchWs.mutate(ws.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
+    // Hỏi TRƯỚC khi đổi: sau khi mutate thành công token đã bị thay, hỏi lúc tải lại là muộn.
+    setOpen(false);
+    if (!(await confirmLeave())) return;
+    switchWs.mutate(ws.id, {
+      onError: (e) => {
+        resumeLeaveGuard();
+        toast.error(apiErrorMessage(e));
+      },
+    });
   }
 
   return (
@@ -73,7 +85,7 @@ export function WorkspaceSwitcher() {
                       role="option"
                       aria-selected={isActive}
                       disabled={switchWs.isPending}
-                      onClick={() => pick(ws)}
+                      onClick={() => void pick(ws)}
                       className={cn(
                         'flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors',
                         'hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
@@ -86,7 +98,9 @@ export function WorkspaceSwitcher() {
                         <span className="block truncate text-sm font-medium text-ink-strong">
                           {ws.name}
                         </span>
-                        <span className="block truncate text-[11px] text-muted">{ws.roleName}</span>
+                        <span className="block truncate text-[11px] text-muted">
+                          {roleLabel(ws.roleName)}
+                        </span>
                       </span>
                       {isActive && (
                         <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />

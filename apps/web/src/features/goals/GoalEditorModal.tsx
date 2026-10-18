@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Target, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { EmptyState } from '@/components/ui/primitives';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
@@ -275,7 +276,7 @@ export function GoalEditorModal({
         <>
           <span className="mr-auto text-xs text-faint">Ctrl/Cmd + Enter để lưu</span>
           <Button variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
             {editing ? 'Lưu thay đổi' : 'Tạo mục tiêu'}
@@ -375,10 +376,12 @@ export function GoalEditorModal({
           </div>
 
           {krs.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-faint">
-              Chưa có kết quả then chốt nào. Bấm “Thêm kết quả” để đặt thước đo bằng số, hoặc thêm
-              sau cũng được.
-            </p>
+            <EmptyState
+              size="compact"
+              icon={<Target />}
+              title="Chưa có kết quả then chốt nào"
+              description="Bấm “Thêm kết quả” để đặt thước đo bằng số, hoặc thêm sau cũng được."
+            />
           ) : (
             <ul className="space-y-2">
               {krs.map((kr) => (

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { lastViewKey } from '@/lib/currentProject';
+import { APP_NAV_LABELS } from '@/lib/navLabels';
 import { TERM } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
@@ -20,6 +21,7 @@ import {
   type ProjectSort,
 } from './projectsFilter';
 import { useShowArchived } from './showArchived';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 const TYPE_LABEL: Record<ProjectDto['type'], string> = { SCRUM: 'Scrum', KANBAN: 'Kanban' };
 
@@ -73,7 +75,9 @@ export function ProjectsPage() {
   return (
     <div className={pageContainer('lg')}>
       <header className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="mr-auto text-2xl font-semibold tracking-tight text-ink-strong">Dự án</h1>
+        <h1 className="mr-auto text-2xl font-semibold tracking-tight text-ink-strong">
+          {APP_NAV_LABELS.projects}
+        </h1>
         {createButton}
       </header>
 
@@ -112,21 +116,20 @@ export function ProjectsPage() {
           />
           Hiện đã lưu trữ
         </label>
-        <label className="flex items-center gap-2 text-sm text-muted sm:ml-auto">
-          Sắp xếp
-          <select
+        <div className="flex items-center gap-2 text-sm text-muted sm:ml-auto">
+          <span id="project-sort-label">Sắp xếp</span>
+          <SegmentedControl<ProjectSort>
+            ariaLabelledby="project-sort-label"
+            size="sm"
+            fullWidth={false}
             value={sort}
-            onChange={(e) => setSort(e.target.value as ProjectSort)}
-            aria-label="Sắp xếp dự án"
-            className="h-9 rounded-md border border-border bg-bg px-2 text-sm text-ink focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-          >
-            {(Object.keys(PROJECT_SORT_LABEL) as ProjectSort[]).map((m) => (
-              <option key={m} value={m}>
-                {PROJECT_SORT_LABEL[m]}
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={setSort}
+            options={(Object.keys(PROJECT_SORT_LABEL) as ProjectSort[]).map((m) => ({
+              value: m,
+              label: PROJECT_SORT_LABEL[m],
+            }))}
+          />
+        </div>
       </div>
 
       <QueryBoundary

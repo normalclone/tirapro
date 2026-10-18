@@ -12,6 +12,7 @@ import {
 import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
+import { useConfirmDiscard } from '@/lib/useUnsavedChanges';
 import { useAuth } from '@/stores/auth';
 import { useCan } from '@/features/projects/permissions';
 import {
@@ -27,6 +28,7 @@ import { VersionsSection } from './VersionsSection';
 import { LabelsSection } from './LabelsSection';
 import { DataSection } from './DataSection';
 import { useScrollFade } from '@/lib/useScrollFade';
+import { PROJECT_CONFIG_LABELS } from '@/lib/navLabels';
 
 /** Khóa nhận diện từng mục cấu hình trong submenu. */
 type ConfigSectionId = 'general' | 'members' | 'components' | 'versions' | 'labels' | 'data';
@@ -39,12 +41,20 @@ interface ConfigSectionDef {
 
 /** Các mục con của Cấu hình (submenu dọc). */
 const CONFIG_NAV: ConfigSectionDef[] = [
-  { id: 'general', label: 'Chung', icon: <SlidersHorizontal className="h-4 w-4" /> },
-  { id: 'members', label: 'Thành viên', icon: <Users className="h-4 w-4" /> },
-  { id: 'components', label: 'Thành phần', icon: <Boxes className="h-4 w-4" /> },
-  { id: 'versions', label: 'Phiên bản', icon: <Tag className="h-4 w-4" /> },
-  { id: 'labels', label: 'Nhãn', icon: <Tags className="h-4 w-4" /> },
-  { id: 'data', label: 'Xuất / Nhập dữ liệu', icon: <Download className="h-4 w-4" /> },
+  {
+    id: 'general',
+    label: PROJECT_CONFIG_LABELS.general,
+    icon: <SlidersHorizontal className="h-4 w-4" />,
+  },
+  { id: 'members', label: PROJECT_CONFIG_LABELS.members, icon: <Users className="h-4 w-4" /> },
+  {
+    id: 'components',
+    label: PROJECT_CONFIG_LABELS.components,
+    icon: <Boxes className="h-4 w-4" />,
+  },
+  { id: 'versions', label: PROJECT_CONFIG_LABELS.versions, icon: <Tag className="h-4 w-4" /> },
+  { id: 'labels', label: PROJECT_CONFIG_LABELS.labels, icon: <Tags className="h-4 w-4" /> },
+  { id: 'data', label: PROJECT_CONFIG_LABELS.data, icon: <Download className="h-4 w-4" /> },
 ];
 
 export function ProjectConfigPage() {
@@ -57,6 +67,12 @@ export function ProjectConfigPage() {
 
   const [active, setActive] = useState<ConfigSectionId>('general');
   const navFade = useScrollFade<HTMLElement>(active, '[aria-current="page"]');
+  const confirmDiscard = useConfirmDiscard();
+  // Đổi mục là `useState` (không qua router) nên `useBlocker` không bắt: còn form chưa lưu thì hỏi trước khi tháo nó.
+  async function pick(id: ConfigSectionId) {
+    if (id === active) return;
+    if (await confirmDiscard()) setActive(id);
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
@@ -81,7 +97,7 @@ export function ProjectConfigPage() {
               key={item.id}
               type="button"
               aria-current={isActive ? 'page' : undefined}
-              onClick={() => setActive(item.id)}
+              onClick={() => void pick(item.id)}
               className={cn(
                 'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',

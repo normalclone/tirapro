@@ -257,11 +257,41 @@ export class NotificationsService {
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
+    const named = await this.fillActorNames(rows);
     return cursorPage(
-      rows.map((n) => this.toDto(n)),
+      named.map((n) => this.toDto(n)),
       limit,
       (n) => n.id,
     );
+  }
+
+  /**
+   * Payload cũ có `actorId` nhưng không có ảnh chụp `actorName`: điền tên khi ĐỌC (không ghi DB) bằng MỘT truy vấn
+   * `user.findMany` cho cả trang. Người đã xoá (không tra được) giữ nguyên — giao diện hiện "Một thành viên".
+   */
+  private async fillActorNames(rows: Notification[]): Promise<Notification[]> {
+    const lacksName = (n: Notification): boolean =>
+      !!n.actorId &&
+      (typeof n.payload !== 'object' ||
+        n.payload === null ||
+        Array.isArray(n.payload) ||
+        !(n.payload as { actorName?: unknown }).actorName);
+    const ids = [...new Set(rows.filter(lacksName).map((n) => n.actorId!))];
+    if (ids.length === 0) return rows;
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, displayName: true },
+    });
+    const nameOf = new Map(users.map((u) => [u.id, u.displayName]));
+    return rows.map((n) => {
+      const name = lacksName(n) ? nameOf.get(n.actorId!) : undefined;
+      if (!name) return n;
+      const base =
+        typeof n.payload === 'object' && n.payload !== null && !Array.isArray(n.payload)
+          ? n.payload
+          : {};
+      return { ...n, payload: { ...base, actorName: name } };
+    });
   }
 
   /** Số thông báo chưa đọc của tôi. */

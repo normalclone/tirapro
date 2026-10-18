@@ -194,7 +194,7 @@ export function RaidEditorModal({
         <>
           <span className="mr-auto text-xs text-faint">Ctrl/Cmd + Enter để lưu</span>
           <Button variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
             {editing ? 'Lưu thay đổi' : `Thêm ${kindMeta?.label.toLowerCase() ?? 'mục'}`}

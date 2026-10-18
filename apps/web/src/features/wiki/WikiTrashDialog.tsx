@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { Skeleton } from '@/components/ui/primitives';
+import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { fmtDateTime, fmtRelative } from '@/lib/dateFormat';
 import { useUndeleteWikiPage, useWikiTrash } from './api';
@@ -60,7 +60,12 @@ export function WikiTrashDialog({
         }
         empty={(d) => d.length === 0}
         emptyState={
-          <p className="py-6 text-center text-sm text-muted">Chưa có trang nào bị xoá.</p>
+          <EmptyState
+            size="compact"
+            icon={<Trash2 />}
+            title="Chưa có trang nào bị xoá"
+            description="Trang bị xoá sẽ nằm ở đây để bạn khôi phục."
+          />
         }
       >
         {(rows) => (

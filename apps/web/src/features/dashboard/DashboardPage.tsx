@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
+  BarChart3,
   CalendarClock,
+  CheckCircle2,
   ChevronRight,
   Flame,
   FolderKanban,
@@ -53,6 +55,7 @@ import { useAuth } from '@/stores/auth';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { DueBadge } from '@/components/ui/DueBadge';
 import { dueState } from '@/lib/dueDate';
+import { fmtLongDate } from '@/lib/dateFormat';
 import { HealthBadge } from '@/components/ui/HealthBadge';
 import { PrintButton } from '@/components/ui/PrintButton';
 import { PrintHeader } from '@/components/ui/PrintHeader';
@@ -61,6 +64,8 @@ import { useRecents } from '@/stores/recentIssues';
 import { cn } from '@/lib/utils';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
+import { PriorityIcon } from '@/components/ui/PriorityIcon';
+import { usePriorityRanks } from '@/features/settings-admin/api';
 
 const CATEGORY_COLOR: Record<StatusCategory, string> = {
   TODO: 'var(--status-todo)',
@@ -68,16 +73,10 @@ const CATEGORY_COLOR: Record<StatusCategory, string> = {
   DONE: 'var(--status-done)',
 };
 
-const WEEKDAYS = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
-
 /** Ngưỡng rank được coi là "ưu tiên cao" (Highest=5, High=4). */
 const HIGH_PRIORITY_RANK = 4;
 /** Số issue tối đa hiển thị trong mỗi mục nổi bật ở chế độ cá nhân. */
 const SECTION_LIMIT = 6;
-
-function formatToday(d: Date): string {
-  return `${WEEKDAYS[d.getDay()]}, ${d.getDate()} thg ${d.getMonth() + 1} ${d.getFullYear()}`;
-}
 
 function greetingPrefix(d: Date): string {
   const h = d.getHours();
@@ -129,7 +128,7 @@ export function DashboardPage() {
             {greetingPrefix(now)}
             {user?.displayName ? `, ${user.displayName}` : ''}
           </h1>
-          <p className="mt-1 text-sm text-muted">{formatToday(now)}</p>
+          <p className="mt-1 text-sm text-muted">{fmtLongDate(now)}</p>
         </div>
         {/* Chuyển sang dashboard tuỳ biến (của tôi / được chia sẻ); tự ẩn khi chưa có dashboard nào. */}
         <div className="print:hidden">
@@ -351,9 +350,12 @@ function AttentionCard({ items }: { items: OverviewAttention[] }) {
         <Flame className="h-4 w-4 text-danger" /> Cần chú ý
       </h3>
       {items.length === 0 ? (
-        <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-muted">
-          Không có việc nào cần chú ý gấp 👍
-        </p>
+        <EmptyState
+          size="compact"
+          icon={<CheckCircle2 className="text-success" />}
+          title="Không có việc nào cần chú ý gấp"
+          description="Việc quá hạn, sắp đến hạn hoặc ưu tiên cao chưa giao sẽ hiện ở đây."
+        />
       ) : (
         <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
           {items.map((it) => (
@@ -394,7 +396,10 @@ function AttentionCard({ items }: { items: OverviewAttention[] }) {
 }
 
 function TrendChart({ trend }: { trend: OverviewTrendPoint[] }) {
-  if (!trend || trend.length === 0) return <EmptyChart />;
+  if (!trend || trend.length === 0)
+    return (
+      <EmptyChart hint="Biểu đồ hiện khi có việc được tạo hoặc hoàn thành trong 8 tuần gần đây." />
+    );
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={trend} margin={{ ...CHART_MARGIN, right: 12 }}>
@@ -462,12 +467,17 @@ function ChartCard({ title, children }: { title: string; children: ReactNode }) 
   );
 }
 
-function EmptyChart() {
-  return <div className="grid h-full place-items-center text-xs text-faint">Chưa có dữ liệu</div>;
+function EmptyChart({ hint }: { hint: string }) {
+  return (
+    <div className="grid h-full place-items-center">
+      <EmptyState size="compact" icon={<BarChart3 />} title="Chưa có dữ liệu" description={hint} />
+    </div>
+  );
 }
 
 function StatusDonut({ totals }: { totals: OverviewTotals }) {
-  if (totals.total === 0) return <EmptyChart />;
+  if (totals.total === 0)
+    return <EmptyChart hint="Biểu đồ hiện khi dự án có ít nhất một công việc." />;
   const data = [
     { name: STATUS_CATEGORY_LABEL.TODO, value: totals.todo, color: 'var(--status-todo)' },
     {
@@ -506,7 +516,8 @@ function StatusDonut({ totals }: { totals: OverviewTotals }) {
 }
 
 function SliceBar({ slices }: { slices: OverviewSlice[] }) {
-  if (!slices || slices.length === 0) return <EmptyChart />;
+  if (!slices || slices.length === 0)
+    return <EmptyChart hint="Biểu đồ hiện khi dự án có ít nhất một công việc." />;
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={slices} margin={CHART_MARGIN}>
@@ -788,9 +799,12 @@ function PersonalOverview() {
         {isLoading && <IssueListSkeleton />}
         {isError && <p className="text-sm text-danger">Không tải được danh sách việc của bạn.</p>}
         {issues && highPriority.length === 0 && !isLoading && (
-          <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
-            Không có việc ưu tiên cao nào đang chờ.
-          </p>
+          <EmptyState
+            size="compact"
+            icon={<CheckCircle2 />}
+            title="Không có việc ưu tiên cao nào đang chờ"
+            description="Việc được giao cho bạn ở mức ưu tiên cao trở lên sẽ hiện ở đây."
+          />
         )}
         {highPriority.length > 0 && (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
@@ -810,9 +824,12 @@ function PersonalOverview() {
 
         {isLoading && <IssueListSkeleton />}
         {issues && dueSoon.length === 0 && !isLoading && (
-          <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
-            Không có việc nào sắp đến hạn.
-          </p>
+          <EmptyState
+            size="compact"
+            icon={<CalendarClock />}
+            title="Không có việc nào sắp đến hạn"
+            description="Việc của bạn có hạn trong thời gian tới hoặc đã trễ hạn sẽ hiện ở đây."
+          />
         )}
         {dueSoon.length > 0 && (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
@@ -942,6 +959,7 @@ function MyIssueRow({
 }) {
   const dot = CATEGORY_COLOR[issue.status.category];
   const to = `/issue/${issue.key}`;
+  const ranks = usePriorityRanks();
 
   return (
     <li>
@@ -959,11 +977,11 @@ function MyIssueRow({
         <span className="min-w-0 flex-1 truncate text-sm text-ink-strong">{issue.summary}</span>
         {showDue && <DueBadge issue={issue} warnOnly className="shrink-0" />}
         {issue.priority && (
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ background: issue.priority.color ?? 'var(--status-todo)' }}
-            title={issue.priority.name}
-            aria-hidden
+          <PriorityIcon
+            name={issue.priority.name}
+            rank={issue.priority.rank}
+            ranks={ranks}
+            color={issue.priority.color}
           />
         )}
         {projectKey && (

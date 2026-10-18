@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
-import { Lock } from 'lucide-react';
-import { EmptyState } from '@/components/ui/primitives';
+import { StatusPanel } from '@/components/ui/StatusPanel';
+import { buttonVariants } from '@/components/ui/Button';
 import { pageContainer } from '@/components/layout/page';
 
 /**
@@ -10,15 +10,12 @@ import { pageContainer } from '@/components/layout/page';
 export function NoAccess({ who = 'quản trị viên' }: { who?: string }) {
   return (
     <div className={pageContainer('sm')}>
-      <EmptyState
-        icon={<Lock className="h-6 w-6" />}
+      <StatusPanel
+        variant="forbidden"
         title="Bạn không có quyền xem trang này"
         description={`Trang này chỉ dành cho ${who}. Nếu bạn cần dùng, hãy nhờ quản trị viên cấp quyền.`}
-        action={
-          <Link
-            to="/"
-            className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-base font-medium text-primary-fg transition-colors hover:bg-primary-hover"
-          >
+        actions={
+          <Link to="/" className={buttonVariants({ variant: 'primary' })}>
             Về Tổng quan
           </Link>
         }

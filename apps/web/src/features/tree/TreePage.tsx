@@ -20,6 +20,8 @@ import { buildRowRollups, type PointsRollup } from '@/lib/epic';
 import { cn } from '@/lib/utils';
 import { pointsCell } from './pointsCell';
 import { ROOT_DROP_ID, rowDropId, useTreeDrag, type DropState } from './useTreeDrag';
+import { PriorityIcon } from '@/components/ui/PriorityIcon';
+import { usePriorityRanks } from '@/features/settings-admin/api';
 
 /**
  * Bố cục cột dùng chung cho hàng tiêu đề (header) và mọi hàng dữ liệu, để các cột
@@ -109,7 +111,7 @@ export function TreePage() {
   return (
     <DndContext {...drag.dndProps}>
       <div className="flex h-full flex-col">
-        <div className="min-h-0 flex-1 overflow-auto pb-24">
+        <div className="min-h-0 flex-1 overflow-auto pb-6 lg:pb-24">
           {pe || issuesQ.isError ? (
             <div className={pageContainer('lg')}>
               <QueryError
@@ -261,6 +263,7 @@ function TreeRow({
   const cell = pointsCell(issue.storyPoints ?? null, rollup);
   const drag = useDraggable({ id: issue.id, disabled: !canDrag });
   const drop = useDroppable({ id: rowDropId(issue.id) });
+  const ranks = usePriorityRanks();
 
   return (
     <li
@@ -361,12 +364,15 @@ function TreeRow({
       <div className="hidden min-w-0 items-center gap-2 sm:flex">
         {issue.priority ? (
           <>
-            <span
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ background: issue.priority.color ?? 'var(--faint)' }}
-              aria-hidden
-            />
-            <span className="truncate text-sm text-muted">{issue.priority.name}</span>
+            <span className="min-w-0 text-sm text-muted">
+              <PriorityIcon
+                withLabel
+                name={issue.priority.name}
+                rank={issue.priority.rank}
+                ranks={ranks}
+                color={issue.priority.color}
+              />
+            </span>
           </>
         ) : (
           <span className="text-sm text-faint">—</span>

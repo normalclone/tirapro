@@ -107,7 +107,7 @@ export function ClientEditorModal({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
             {editing ? 'Lưu thay đổi' : 'Thêm khách hàng'}

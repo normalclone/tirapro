@@ -20,6 +20,7 @@ import { useRoles } from '@/features/roles/api';
 import { EditRolesPopover } from './EditRolesPopover';
 import { useRemoveMember, useSetMemberRoles, useWorkspaceMembers } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { APP_NAV_LABELS } from '@/lib/navLabels';
 
 /** Nhãn + màu badge tiếng Việt cho từng trạng thái tài khoản. */
 const STATUS_META: Record<UserStatus, { label: string; className: string }> = {
@@ -51,10 +52,12 @@ export function MembersPage() {
   return (
     <div className={pageContainer('sm')}>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Thành viên & nhóm</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+          {APP_NAV_LABELS.members}
+        </h1>
         <p className="mt-1 text-sm text-muted">
-          Thành viên thuộc về cả không gian làm việc, nên ai có tên ở đây đều tham gia mọi dự án.
-          Nhóm dùng để sắp xếp họ theo chức năng và giao vai trò hàng loạt.
+          Thành viên và nhóm. Thành viên thuộc về cả không gian làm việc, nên ai có tên ở đây đều
+          tham gia mọi dự án. Nhóm dùng để sắp xếp họ theo chức năng và giao vai trò hàng loạt.
         </p>
       </header>
 

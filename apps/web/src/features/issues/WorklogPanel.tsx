@@ -4,7 +4,7 @@ import { Clock, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDuration, parseDuration } from '@tirapro/shared';
 import type { IssueDto, WorklogDto } from '@tirapro/types';
-import { Avatar, Skeleton } from '@/components/ui/primitives';
+import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DateTimeInput } from '@/components/ui/DateInput';
@@ -190,9 +190,12 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
           skeleton={<Skeleton className="h-10 w-full" />}
           empty={(d) => !d.items.length}
           emptyState={
-            <p className="text-sm text-muted">
-              Chưa ai ghi thời gian cho việc này.{canLog ? ' Bấm “Ghi thời gian” hoặc phím w.' : ''}
-            </p>
+            <EmptyState
+              size="compact"
+              icon={<Clock />}
+              title="Chưa ai ghi thời gian cho việc này"
+              description={canLog ? 'Bấm “Ghi thời gian” hoặc phím w.' : undefined}
+            />
           }
         >
           {(worklogs) => (

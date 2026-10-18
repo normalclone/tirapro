@@ -3,7 +3,10 @@ import { Link } from 'react-router-dom';
 import { ChevronRight, ExternalLink, Hash, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
-import { DelayedSpinner, EmptyState } from '@/components/ui/primitives';
+import { DelayedSpinner } from '@/components/ui/primitives';
+import { QueryError } from '@/components/ui/QueryError';
+import { StatusPanel } from '@/components/ui/StatusPanel';
+import { apiErrorCode } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import {
@@ -24,6 +27,7 @@ import { IssueRelations } from '@/features/tree/IssueRelations';
 import { activeDrag } from '@/lib/activeDrag';
 import { hasDraftText, isOverlayOpen, shouldClosePeekOnEscape } from '@/lib/hotkeys';
 import { useIssue } from '../api';
+import { issueViewState } from '../issueViewState';
 import { ActivityTabs } from '../ActivityTabs';
 import { LazyPanel } from '../LazyPanel';
 import { useIssueTransitions } from '../useIssueTransitions';
@@ -133,22 +137,34 @@ function PeekHeader({ issueKey, onClose }: { issueKey: string; onClose: () => vo
 }
 
 function PeekBody({ issueKey, onClose }: { issueKey: string; onClose: () => void }) {
-  const { data: issue, isLoading, isError } = useIssue(issueKey);
-  if (isError)
+  const { data: issue, isLoading, isError, error, refetch } = useIssue(issueKey);
+  const view = issueViewState({
+    isError,
+    isLoading,
+    hasData: !!issue,
+    notFound: apiErrorCode(error) === 'NOT_FOUND',
+  });
+  if (view === 'not-found')
+    return (
+      <StatusPanel
+        variant="not-found"
+        title={`Không tìm thấy công việc ${issueKey}`}
+        description="Mã này không còn tồn tại, hoặc bạn chưa được cấp quyền xem."
+        className="py-10"
+        actions={
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            Đóng
+          </Button>
+        }
+      />
+    );
+  if (view === 'error')
     return (
       <div className="p-4">
-        <EmptyState
-          title={`Không mở được công việc ${issueKey}`}
-          description="Công việc không còn tồn tại, hoặc bạn chưa được cấp quyền xem."
-          action={
-            <Button variant="secondary" size="sm" onClick={onClose}>
-              Đóng
-            </Button>
-          }
-        />
+        <QueryError error={error} onRetry={() => void refetch()} />
       </div>
     );
-  if (isLoading || !issue) return <DelayedSpinner />;
+  if (view === 'loading' || !issue) return <DelayedSpinner />;
   return <PeekContent issue={issue} />;
 }
 
@@ -160,7 +176,7 @@ function PeekContent({ issue }: { issue: IssueDto }) {
   const canTransition = can('issue:transition');
 
   return (
-    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-24 pt-4">
+    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-6 pt-4 lg:pb-24">
       <div className="flex items-start gap-2">
         <div className="mt-1 flex shrink-0 items-center gap-1.5">
           <IssueTypeSelect issue={issue} />

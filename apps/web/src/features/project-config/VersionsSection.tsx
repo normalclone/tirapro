@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
 import { apiErrorMessage } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import {
   useVersions,
   useCreateVersion,
@@ -20,6 +19,7 @@ import {
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from './SectionCard';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 /** Nhãn + style cho từng trạng thái phiên bản. */
 const VERSION_STATUS: Record<VersionStatus, { label: string; className: string }> = {
@@ -241,11 +241,15 @@ export function VersionsSection({
                   }}
                 />
               </div>
-              <div className="w-40">
-                <label htmlFor="ver-status" className="mb-1 block text-xs font-medium text-muted">
+              <div>
+                <span id="ver-status-label" className="mb-1 block text-xs font-medium text-muted">
                   Trạng thái
-                </label>
-                <StatusSelect id="ver-status" value={status} onChange={(s) => setStatus(s)} />
+                </span>
+                <StatusSelect
+                  ariaLabelledby="ver-status-label"
+                  value={status}
+                  onChange={(s) => setStatus(s)}
+                />
               </div>
               <div className="flex items-center gap-2">
                 <Button size="sm" onClick={submitAdd} loading={create.isPending}>
@@ -335,9 +339,15 @@ function VersionEditRow({
           }}
         />
       </div>
-      <div className="w-40">
-        <label className="mb-1 block text-xs font-medium text-muted">Trạng thái</label>
-        <StatusSelect value={status} onChange={(s) => setStatus(s)} />
+      <div>
+        <span id="ver-edit-status-label" className="mb-1 block text-xs font-medium text-muted">
+          Trạng thái
+        </span>
+        <StatusSelect
+          ariaLabelledby="ver-edit-status-label"
+          value={status}
+          onChange={(s) => setStatus(s)}
+        />
       </div>
       <div className="w-40">
         <label className="mb-1 block text-xs font-medium text-muted">Ngày phát hành</label>
@@ -358,31 +368,21 @@ function VersionEditRow({
 }
 
 function StatusSelect({
-  id,
+  ariaLabelledby,
   value,
   onChange,
 }: {
-  id?: string;
+  ariaLabelledby: string;
   value: VersionStatus;
   onChange: (status: VersionStatus) => void;
 }) {
   return (
-    <select
-      id={id}
+    <SegmentedControl<VersionStatus>
+      ariaLabelledby={ariaLabelledby}
+      size="sm"
       value={value}
-      onChange={(e) => onChange(e.target.value as VersionStatus)}
-      className={cn(
-        'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
-        'transition-colors duration-150',
-        'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-        'disabled:opacity-50',
-      )}
-    >
-      {STATUS_OPTIONS.map((s) => (
-        <option key={s} value={s}>
-          {VERSION_STATUS[s].label}
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+      options={STATUS_OPTIONS.map((s) => ({ value: s, label: VERSION_STATUS[s].label }))}
+    />
   );
 }

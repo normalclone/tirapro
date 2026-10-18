@@ -34,6 +34,8 @@ export default {
         surface: token('--surface'),
         'surface-2': token('--surface-2'),
         'surface-3': token('--surface-3'),
+        'disabled-bg': token('--disabled-bg'),
+        'disabled-fg': token('--disabled-fg'),
         border: token('--border'),
         'border-strong': token('--border-strong'),
         ink: token('--ink'),
@@ -81,9 +83,6 @@ export default {
         '3xl': ['2rem', { lineHeight: '1.15' }],
       },
       zIndex: {
-        // Chrome điều hướng (drawer mobile) nằm DƯỚI mọi lớp nổi.
-        'nav-backdrop': '800',
-        'nav-drawer': '900',
         sticky: '1100',
         backdrop: '1200',
         modal: '1300',

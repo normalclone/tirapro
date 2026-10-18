@@ -16,8 +16,6 @@ export type SetDigestForm = <K extends keyof DigestFormState>(
   value: DigestFormState[K],
 ) => void;
 
-const SELECT_CLASS =
-  'h-9 w-full rounded-md border border-border bg-bg px-3 text-base text-ink focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
 const CHECKBOX_CLASS =
   'mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
 
@@ -27,6 +25,10 @@ const SCHEDULE_CHOICES: { value: DigestSchedule; label: string }[] = [
   { value: 'SPRINT_END', label: 'Khi kết thúc sprint' },
   { value: 'MANUAL', label: 'Chỉ gửi thủ công' },
 ];
+
+// SearchSelect nhận `value` dạng chuỗi trong khi thứ/giờ của form là số (0 = Chủ nhật) → đổi qua `String`/`Number` ở ranh giới.
+const WEEKDAY_CHOICES = WEEKDAY_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }));
+const HOUR_CHOICES = HOUR_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }));
 
 export function Field({
   id,
@@ -60,50 +62,35 @@ export function ScheduleFields({ form, set }: { form: DigestFormState; set: SetD
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <Field id="digest-schedule" label="Lịch gửi">
-        <select
+        <SearchSelect
           id="digest-schedule"
           value={form.schedule}
-          onChange={(e) => set('schedule', e.target.value as DigestSchedule)}
-          className={SELECT_CLASS}
-        >
-          {SCHEDULE_CHOICES.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => set('schedule', v as DigestSchedule)}
+          options={SCHEDULE_CHOICES}
+          className="w-full"
+        />
       </Field>
       {form.schedule === 'WEEKLY' && (
         <Field id="digest-weekday" label="Vào thứ">
-          <select
+          <SearchSelect
             id="digest-weekday"
-            value={form.weekday}
-            onChange={(e) => set('weekday', Number(e.target.value))}
-            className={SELECT_CLASS}
-          >
-            {WEEKDAY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            value={String(form.weekday)}
+            onChange={(v) => set('weekday', Number(v))}
+            options={WEEKDAY_CHOICES}
+            className="w-full"
+          />
         </Field>
       )}
       {timed && (
         <>
           <Field id="digest-hour" label="Lúc">
-            <select
+            <SearchSelect
               id="digest-hour"
-              value={form.hour}
-              onChange={(e) => set('hour', Number(e.target.value))}
-              className={SELECT_CLASS}
-            >
-              {HOUR_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              value={String(form.hour)}
+              onChange={(v) => set('hour', Number(v))}
+              options={HOUR_CHOICES}
+              className="w-full"
+            />
           </Field>
           <Field id="digest-timezone" label="Múi giờ">
             <SearchSelect

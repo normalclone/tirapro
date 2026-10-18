@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { Skeleton } from '@/components/ui/primitives';
+import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { MarkdownView } from '@/features/issue-edit/MarkdownView';
 import { apiErrorCode, apiErrorMessage } from '@/lib/api';
@@ -78,9 +78,14 @@ export function WikiHistoryDialog({
         }
         empty={(d) => d.length === 0}
         emptyState={
-          <p className="p-6 text-center text-sm text-muted">
-            Trang này chưa có phiên bản nào. Lần lưu tiếp theo sẽ được ghi lại.
-          </p>
+          <div className="p-6">
+            <EmptyState
+              size="compact"
+              icon={<History />}
+              title="Trang này chưa có phiên bản nào"
+              description="Lần lưu tiếp theo sẽ được ghi lại."
+            />
+          </div>
         }
       >
         {(rows) => (

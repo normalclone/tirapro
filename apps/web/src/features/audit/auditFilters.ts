@@ -1,3 +1,5 @@
+import { AUDIT_ACTION_LABEL, type AuditAction } from '@tirapro/types';
+
 /** Bộ lọc trang nhật ký quản trị — dạng giá trị ô nhập (chuỗi rỗng = không lọc). */
 export interface AuditFilterInput {
   action: string;
@@ -44,4 +46,41 @@ export function toAuditQuery(f: AuditFilterInput): AuditQuery {
   const to = parseDayInput(f.to);
   if (to) q.to = new Date(to.y, to.m - 1, to.d, 23, 59, 59, 999).toISOString();
   return q;
+}
+
+/** Nhóm loại sự kiện theo tiền tố (`role.*`, `member.*`…) để danh sách dài dễ quét. Tiền tố khớp đầu tiên thắng. */
+const AUDIT_ACTION_GROUPS: { label: string; prefixes: string[] }[] = [
+  { label: 'Vai trò', prefixes: ['role.'] },
+  { label: 'Thành viên', prefixes: ['member.'] },
+  { label: 'Dự án', prefixes: ['project_member.', 'project.'] },
+  { label: 'Tài khoản', prefixes: ['account.'] },
+  { label: 'Tích hợp', prefixes: ['integration.'] },
+  { label: 'Wiki', prefixes: ['wiki.'] },
+];
+
+export interface AuditActionOption {
+  value: string;
+  label: string;
+  group?: string;
+}
+
+/**
+ * Lựa chọn lọc loại sự kiện cho `SearchSelect`: mục "tất cả" (giá trị rỗng, không nhóm) rồi các sự kiện theo nhóm tiền tố.
+ * Sự kiện không thuộc nhóm nào vào nhóm "Khác" — không mục nào bị rơi khỏi danh sách.
+ */
+export function groupedAuditActionOptions(allLabel: string): AuditActionOption[] {
+  const actions = Object.keys(AUDIT_ACTION_LABEL) as AuditAction[];
+  const used = new Set<AuditAction>();
+  const out: AuditActionOption[] = [{ value: '', label: allLabel }];
+  for (const g of AUDIT_ACTION_GROUPS) {
+    for (const a of actions) {
+      if (used.has(a) || !g.prefixes.some((p) => a.startsWith(p))) continue;
+      used.add(a);
+      out.push({ value: a, label: AUDIT_ACTION_LABEL[a], group: g.label });
+    }
+  }
+  for (const a of actions) {
+    if (!used.has(a)) out.push({ value: a, label: AUDIT_ACTION_LABEL[a], group: 'Khác' });
+  }
+  return out;
 }

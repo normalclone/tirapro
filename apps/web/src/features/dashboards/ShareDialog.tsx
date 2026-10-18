@@ -16,18 +16,18 @@ export interface ShareValue {
 }
 
 const SCOPE_META: Record<DashboardScopeValue, { label: string; note: string }> = {
-  PRIVATE: { label: 'Chỉ mình tôi', note: 'Chỉ bạn xem được dashboard này.' },
+  PRIVATE: { label: 'Chỉ mình tôi', note: 'Chỉ bạn xem được bảng tổng quan này.' },
   GLOBAL: {
     label: 'Cả không gian làm việc',
-    note: 'Mọi thành viên sẽ thấy dashboard này; dữ liệu từng ô vẫn theo quyền của người xem.',
+    note: 'Mọi thành viên sẽ thấy bảng tổng quan này; dữ liệu từng ô vẫn theo quyền của người xem.',
   },
   PROJECT: {
     label: 'Thành viên dự án…',
-    note: 'Thành viên của dự án sẽ thấy dashboard này; dữ liệu từng ô vẫn theo quyền của người xem.',
+    note: 'Thành viên của dự án sẽ thấy bảng tổng quan này; dữ liệu từng ô vẫn theo quyền của người xem.',
   },
   TEAM: {
     label: 'Thành viên nhóm…',
-    note: 'Thành viên của nhóm sẽ thấy dashboard này; dữ liệu từng ô vẫn theo quyền của người xem.',
+    note: 'Thành viên của nhóm sẽ thấy bảng tổng quan này; dữ liệu từng ô vẫn theo quyền của người xem.',
   },
 };
 
@@ -94,7 +94,7 @@ export function ShareDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Ai xem được dashboard này"
+      title="Ai xem được bảng tổng quan này"
       size="md"
       onSubmit={() => {
         if (!error) {

@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { Plus, Shield, ShieldCheck, Trash2 } from 'lucide-react';
 import {
   PERMISSION_CATALOG,
+  roleLabel,
   type PermissionKey,
   type PermissionScope,
   type RoleDto,
@@ -27,6 +28,8 @@ import {
 } from '@/features/roles/api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { RoleMatrixTable } from './RoleMatrixTable';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 type RolesTab = 'list' | 'matrix';
 const ROLES_TABS: { id: RolesTab; label: string }[] = [
@@ -96,7 +99,9 @@ export function RolesPage() {
     <div className={pageContainer('sm')}>
       <header className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Vai trò</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+            {SETTINGS_LABELS.roles}
+          </h1>
           <p className="mt-1 text-sm text-muted">
             Vai trò gom các quyền lại để gán cho thành viên. Vai trò hệ thống là cố định; bạn có thể
             tạo vai trò tuỳ chỉnh riêng.
@@ -389,8 +394,8 @@ function RoleDialog({
     const count = role.memberCount ?? 0;
     const warn =
       count > 0
-        ? `Vai trò "${role.name}" đang gán cho ${count} thành viên. Xoá vai trò?`
-        : `Xoá vai trò "${role.name}"? Hành động này không thể hoàn tác.`;
+        ? `Vai trò "${roleLabel(role.name)}" đang gán cho ${count} thành viên. Xoá vai trò?`
+        : `Xoá vai trò "${roleLabel(role.name)}"? Hành động này không thể hoàn tác.`;
     if (!(await confirm({ title: warn, destructive: true }))) return;
     deleteRole.mutate(role.id, { onSuccess: onClose });
   }
@@ -467,23 +472,20 @@ function RoleDialog({
                 />
               </div>
               <div>
-                <label htmlFor="role-scope" className="mb-1.5 block text-sm font-medium text-muted">
+                <span id="role-scope-label" className="mb-1.5 block text-sm font-medium text-muted">
                   Phạm vi
-                </label>
-                <select
-                  id="role-scope"
+                </span>
+                <SegmentedControl<RoleScope>
+                  ariaLabelledby="role-scope-label"
                   value={scope}
                   disabled={!isCreate}
-                  onChange={(e) => setScopeAndPrune(e.target.value as RoleScope)}
-                  className={cn(
-                    'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
-                    'transition-colors focus-visible:outline-none focus-visible:border-primary',
-                    'focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
-                  )}
-                >
-                  <option value="WORKSPACE">Không gian làm việc</option>
-                  <option value="PROJECT">Dự án</option>
-                </select>
+                  onChange={setScopeAndPrune}
+                  fullWidth
+                  options={[
+                    { value: 'WORKSPACE', label: 'Không gian làm việc' },
+                    { value: 'PROJECT', label: 'Dự án' },
+                  ]}
+                />
               </div>
             </div>
 

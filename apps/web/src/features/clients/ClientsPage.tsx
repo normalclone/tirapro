@@ -3,6 +3,7 @@ import {
   Building2,
   ChevronDown,
   ChevronRight,
+  FileText,
   FolderPlus,
   Mail,
   Pencil,
@@ -32,6 +33,7 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { fmtDate } from '@/lib/dateFormat';
+import { MANAGE_LABELS } from '@/lib/navLabels';
 
 function term(contract: ContractDto): string {
   if (!contract.startDate && !contract.endDate) return 'Chưa đặt thời hạn';
@@ -271,11 +273,18 @@ function ClientCard({
               )}
             </div>
             {client.contracts.length === 0 ? (
-              <p className="text-sm text-faint">
-                {canManage
-                  ? 'Chưa có hợp đồng nào. Thêm hợp đồng để theo dõi giá trị và thời hạn đã cam kết.'
-                  : 'Chưa có hợp đồng nào với khách hàng này.'}
-              </p>
+              <EmptyState
+                size="compact"
+                icon={<FileText />}
+                title={
+                  canManage ? 'Chưa có hợp đồng nào' : 'Chưa có hợp đồng nào với khách hàng này'
+                }
+                description={
+                  canManage
+                    ? 'Thêm hợp đồng để theo dõi giá trị và thời hạn đã cam kết.'
+                    : undefined
+                }
+              />
             ) : (
               <ul className="divide-y divide-border">
                 {client.contracts.map((c) => (
@@ -376,11 +385,11 @@ export function ClientsPage() {
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-            Khách hàng &amp; hợp đồng
+            {MANAGE_LABELS.clients}
           </h1>
           <p className="mt-1 text-sm text-muted">
-            Lưu thông tin liên hệ của khách hàng, nối họ với dự án đang làm và ghi lại giá trị, thời
-            hạn của từng hợp đồng để không bỏ sót cam kết.
+            Khách hàng và hợp đồng: lưu thông tin liên hệ của khách hàng, nối họ với dự án đang làm
+            và ghi lại giá trị, thời hạn của từng hợp đồng để không bỏ sót cam kết.
           </p>
         </div>
         {canManage && (

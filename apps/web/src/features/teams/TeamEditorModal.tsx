@@ -144,7 +144,7 @@ export function TeamEditorModal({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
             {editing ? 'Lưu' : 'Tạo nhóm'}

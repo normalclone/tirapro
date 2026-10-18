@@ -33,6 +33,7 @@ import {
   type Workflow,
 } from './api';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 const ANY_ID = '__any__';
 
@@ -402,18 +403,17 @@ function AddStatusForm({
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-muted">Nhóm</label>
-        <select
+        <span id="wf-add-category-label" className="mb-1 block text-xs font-medium text-muted">
+          Nhóm
+        </span>
+        <SegmentedControl<StatusCategory>
+          ariaLabelledby="wf-add-category-label"
+          size="sm"
+          fullWidth={false}
           value={category}
-          onChange={(e) => setCategory(e.target.value as StatusCategory)}
-          className="h-8 rounded-md border border-border bg-bg px-2 text-sm text-ink focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-        >
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {STATUS_CATEGORY_LABEL[c]}
-            </option>
-          ))}
-        </select>
+          onChange={setCategory}
+          options={CATEGORIES.map((c) => ({ value: c, label: STATUS_CATEGORY_LABEL[c] }))}
+        />
       </div>
       <Button size="sm" onClick={submit} loading={adding}>
         Thêm

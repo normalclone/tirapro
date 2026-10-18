@@ -20,6 +20,8 @@ hue brand (chroma 0.004–0.008) để cả hệ thống "thuộc về nhau", kh
 | `--surface`        | `oklch(0.985 0.004 250)`      | panel, card, sidebar                     |
 | `--surface-2`      | `oklch(0.968 0.005 250)`      | hàng hover, input, vùng chìm             |
 | `--surface-3`      | `oklch(0.945 0.006 250)`      | column board, vùng nhấn nhẹ              |
+| `--disabled-bg`    | `oklch(0.93 0.006 250)`       | nền control vô hiệu (thay opacity)       |
+| `--disabled-fg`    | `oklch(0.62 0.01 256)`        | chữ/icon control vô hiệu                 |
 | `--border`         | `oklch(0.915 0.006 250)`      | đường kẻ, viền 1px                       |
 | `--border-strong`  | `oklch(0.86 0.008 250)`       | viền nhấn, divider rõ                    |
 | `--ink`            | `oklch(0.27 0.013 256)`       | text chính (body) — ~10:1 trên bg        |
@@ -40,6 +42,8 @@ hue brand (chroma 0.004–0.008) để cả hệ thống "thuộc về nhau", kh
 | `--surface`        | `oklch(0.205 0.014 256)`     | panel/card                      |
 | `--surface-2`      | `oklch(0.235 0.015 256)`     | hover, input                    |
 | `--surface-3`      | `oklch(0.265 0.015 256)`     | column board                    |
+| `--disabled-bg`    | `oklch(0.255 0.012 256)`     | nền control vô hiệu             |
+| `--disabled-fg`    | `oklch(0.52 0.012 256)`      | chữ/icon control vô hiệu        |
 | `--border`         | `oklch(0.30 0.012 256)`      | viền 1px                        |
 | `--border-strong`  | `oklch(0.37 0.012 256)`      | divider rõ                      |
 | `--ink`            | `oklch(0.92 0.006 256)`      | text chính                      |
@@ -70,6 +74,8 @@ Status category (Jira): TODO / IN_PROGRESS / DONE.
 
 Priority ramp (highest→lowest): `danger` → `oklch(0.65 0.17 45)` (cam) → `warning` →
 `status-progress` → `faint`. Hiển thị kèm icon mũi tên, không chỉ màu.
+
+**Ưu tiên = `PriorityIcon`**, không bao giờ chỉ là chấm màu: mũi tên chọn theo **vị trí hạng** trong cấu hình ưu tiên (⇈ cao nhất · ↑ cao · = trung bình · ↓ thấp · ⇊ thấp nhất; cấu hình 2–3 mức thì chỉ dùng ↓ / ↑ hoặc ↓ = ↑), màu lấy từ ramp trên / cấu hình, kèm `aria-label` + tooltip "Ưu tiên: <tên>". Dùng ở thẻ board, dòng Việc chờ, Tổng quan, Việc mới vào, SLA, Cây việc.
 
 ## Typography
 
@@ -103,7 +109,7 @@ Type scale (rem, 1rem=16px) — line-height đặc cho mật độ cao:
 - App shell: sidebar trái (collapsible, 240px / 56px) + topbar (52px) + content. Flexbox cho
   1D, Grid cho 2D. Board = flex ngang các column, mỗi column flex dọc các card.
 - Responsive grid không breakpoint: `repeat(auto-fit, minmax(280px,1fr))` (vd lưới project).
-- Mobile: sidebar → drawer; board column → vuốt ngang; touch target ≥ 44px.
+- Mobile (dưới `lg`): sidebar **thay bằng thanh tab đáy** (xem "Điều hướng mobile"); board column → vuốt ngang; touch target ≥ 44px.
 
 ## Radius, Border, Elevation
 
@@ -128,9 +134,11 @@ Type scale (rem, 1rem=16px) — line-height đặc cho mật độ cao:
 ## Components (conventions)
 
 shadcn/ui (Radix primitives) + Tailwind, restyle theo token trên. Primitives P0:
-Button (primary/secondary/ghost/danger), Input, Textarea, Select, Combobox, Dialog (dùng
+Button (primary/secondary/ghost/danger), Input, Textarea, SearchSelect, SegmentedControl, Dialog (dùng
 `<dialog>`/portal — tránh bị clip trong overflow), Dropdown, Tooltip, Popover, Avatar,
 Badge/Tag, Tabs, Checkbox, Switch, Toast (sonner-style), Skeleton, Command palette (cmdk).
+
+**Button — vô hiệu:** nền `disabled-bg`, chữ `disabled-fg`, không dùng opacity (ghost/outline: nền trong suốt, chỉ đổi chữ); đang tải giữ màu biến thể + spinner (`aria-busy`). Hover chỉ khi bật. Ô nhập/trigger vô hiệu dùng cùng token + `cursor-not-allowed`.
 
 Đặc tả chủ đạo:
 
@@ -140,7 +148,22 @@ Badge/Tag, Tabs, Checkbox, Switch, Toast (sonner-style), Skeleton, Command palet
 - **Board column**: nền `--surface-3`, header dính (count + WIP), cuộn dọc độc lập.
 - **Issue detail**: hai cột (nội dung + sidebar field), KHÔNG card lồng; divider mảnh.
 - **Status badge**: chấm màu category + nhãn; pill bo `full`, nền `*-subtle`.
-- **Empty/loading/error states**: bắt buộc cho mọi list (onboard/harden sau).
+- **Thay đổi chưa lưu** (form trang có nút Lưu: Chung của dự án, Hồ sơ, banner bảo trì): `UnsavedBar` dính đáy vùng nội dung — "Có thay đổi chưa lưu · Bỏ thay đổi · Lưu" — thay nút Lưu cuối thẻ; rời trang/đổi mục khi đang sửa thì hỏi xác nhận (một `LeaveGuardHost` duy nhất giữ chặn điều hướng).
+- **Empty/loading/error states**: bắt buộc cho mọi list. Dùng đúng component dùng chung, không tự vẽ:
+  - `EmptyState` — danh sách/khối trống (viền đứt): `icon` **bắt buộc** (trang trí, `aria-hidden`), tiêu đề + một câu giải thích + nút hành động kế tiếp; `compact` cho ô nhỏ trong thẻ/panel. Khối phụ thuộc dữ liệu (vd ma trận rủi ro) **ẩn** khi danh sách rỗng, không vẽ khung trống.
+  - `StatusPanel` — cả màn không dùng được, 3 loại: `not-found` (không tìm thấy), `forbidden` (không có quyền), `error` (lỗi, `role="alert"`). Lỗi mạng ≠ không tìm thấy; refetch nền lỗi thì **giữ nội dung đang hiển thị**, không thay bằng màn lỗi. Đường lạ → trang 404 thật trong khung app (gợi ý tối đa 3 trang gần đúng); công việc không tồn tại → gợi ý mã gần đúng.
+
+**Chọn ô nhập lựa chọn:** KHÔNG dùng `<select>` native (test `noNativeSelect` chặn).
+
+- `SegmentedControl` (radiogroup) khi **≤ 4 lựa chọn ngắn, cố định**, loại trừ nhau (hướng sắp xếp, chế độ, phạm vi). Bấm lại mục đang chọn không làm gì.
+- `SearchSelect` cho mọi trường hợp còn lại (danh sách dài/động/nhóm). Có đủ bàn phím (↑↓ Home End, Enter, Esc) và ARIA combobox/listbox; mục được 2 dòng (mô tả) + icon; **≤ 6 mục thì ẩn ô tìm** (gõ chữ cái để nhảy), trừ khi tìm phía máy chủ hoặc đặt `searchable`. Chọn lại giá trị hiện tại không phát `onChange`.
+
+## Điều hướng mobile (dưới `lg`)
+
+- **Thanh tab đáy** 5 ô: Tổng quan · Dự án · ＋ Tạo · Thông báo · Tôi. Không drawer, không nút hamburger, **không nút nổi (FAB)** — FAB chỉ còn từ `lg` trở lên.
+- "＋ Tạo" và "Tôi" mở **sheet đáy** (`Dialog placement="bottom"`): Tạo = các tác vụ tạo giống menu FAB; Tôi = các mục điều hướng còn lại + tài khoản. Chế độ Quản trị: 4 mục + "Tôi".
+- Topbar có nút **Tìm** (mở Bảng lệnh). Gợi ý phím (`.kbd-hint`) ẩn trên màn cảm ứng; trang Hướng dẫn và bảng phím tắt vẫn hiện tên phím.
+- Thanh hàng loạt và thanh "chưa lưu" (`UnsavedBar`) nằm **ngay trên** thanh tab, không đè lên. Toast nổi trên thanh tab (+ vùng an toàn iOS). Không notch, không gradient, không nảy.
 
 ## Absolute Bans (kế thừa impeccable)
 

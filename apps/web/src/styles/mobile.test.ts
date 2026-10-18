@@ -26,8 +26,34 @@ describe('mobile nền chung', () => {
   });
   it('có lớp scroll-fade-x', () => expect(css).toMatch(/\.scroll-fade-x/));
   it('viewport-fit=cover', () => expect(html).toMatch(/viewport-fit=cover/));
+  it('gợi ý phím (.kbd-hint) ẩn trên cảm ứng; KHÔNG có luật `kbd` trần toàn cục (kbd trong nội dung giữ nguyên)', () => {
+    expect(css).toMatch(
+      /@media \(hover: none\) and \(pointer: coarse\)\s*\{[^@]*?\.kbd-hint\s*\{[^}]*display:\s*none/,
+    );
+    // bỏ chú thích CSS rồi kiểm không có bộ chọn `kbd {` đứng riêng
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(bare).not.toMatch(/(^|[\s,{}])kbd\s*[,{]/);
+  });
+  it('kbd thuần gợi ý có .kbd-hint; kbd làm nội dung (Phím tắt, Hướng dẫn) thì không', () => {
+    for (const f of [
+      'components/layout/FloatingActions.tsx',
+      'components/layout/AppShell.tsx',
+      'features/command/CommandPalette.tsx',
+      'features/issues/IssueDetailPage.tsx',
+    ])
+      expect(src(f), f).toMatch(/kbd-hint/);
+    for (const f of [
+      'components/layout/ShortcutsDialog.tsx',
+      'features/docs/DocumentationPage.tsx',
+    ])
+      expect(src(f), f).not.toMatch(/kbd-hint/);
+  });
   it('nút nổi tránh thanh home iOS (hằng vị trí dùng env(safe-area-inset-bottom))', () =>
     expect(src('lib/layoutTokens.ts')).toMatch(/safe-area-inset-bottom/));
+  it('toast dưới lg tránh thanh tab đáy (hằng riêng có safe-area-inset-bottom)', () =>
+    expect(src('lib/layoutTokens.ts')).toMatch(
+      /TOAST_BOTTOM_MOBILE_CSS[^;]*env\(safe-area-inset-bottom\)/,
+    ));
   it('dải menu phụ cuộn ngang có dấu hiệu còn nội dung', () => {
     for (const f of [
       'features/settings/SettingsLayout.tsx',
@@ -60,6 +86,19 @@ describe('mobile nền chung', () => {
       readFileSync(join(__dirname, '..', '..', 'scripts', 'mobile-audit.allow.json'), 'utf8'),
     ) as Record<string, string>;
     for (const [k, why] of Object.entries(allow)) expect(why.length, k).toBeGreaterThan(20);
+  });
+  it('bộ đo mobile kiểm thanh tab đáy (hiện + không bị phần tử fixed/main chồng) và shot.mjs --open-nav mở sheet "Tôi"', () => {
+    const audit = readFileSync(join(__dirname, '..', '..', 'scripts', 'mobile-audit.mjs'), 'utf8');
+    expect(audit).toMatch(/bottom-bar-missing/);
+    expect(audit).toMatch(/bottom-bar-overlap/);
+    const allow = readFileSync(
+      join(__dirname, '..', '..', 'scripts', 'mobile-audit.allow.json'),
+      'utf8',
+    );
+    expect(allow).not.toMatch(/FAB phủ/); // ngoại lệ cũ: nút nổi không còn dưới lg
+    const shot = readFileSync(join(__dirname, '..', '..', 'scripts', 'shot.mjs'), 'utf8');
+    expect(shot).toMatch(/name: 'Tôi'/);
+    expect(shot).not.toMatch(/Mở menu/);
   });
   it('khung flex-wrap chứa chip có gap-y ≥ 16px trên cảm ứng (hai vùng bấm 44px của hai hàng không chồng)', () => {
     for (const f of [

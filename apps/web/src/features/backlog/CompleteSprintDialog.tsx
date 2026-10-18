@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { cn } from '@/lib/utils';
 import type { MoveIncompleteTo } from './api';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 
 type Choice = 'backlog' | 'new' | 'existing';
 
@@ -118,18 +119,14 @@ export function CompleteSprintDialog({
                   <span className="block text-sm font-medium text-ink">{o.label}</span>
                   <span className="block text-xs text-muted">{o.hint}</span>
                   {o.id === 'existing' && choice === 'existing' && canPickExisting && (
-                    <select
-                      aria-label="Sprint đích"
+                    <SearchSelect
+                      ariaLabel="Sprint đích"
                       value={target}
-                      onChange={(e) => setTargetId(e.target.value)}
-                      className="mt-2 h-8 w-full rounded-md border border-border bg-bg px-2 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                    >
-                      {futureSprints.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setTargetId}
+                      options={futureSprints.map((s) => ({ value: s.id, label: s.name }))}
+                      searchPlaceholder="Tìm sprint…"
+                      className="mt-2 h-8"
+                    />
                   )}
                 </span>
               </label>

@@ -104,7 +104,7 @@ export function ResultsTable({
       <EmptyState
         icon={<FilterIcon className="h-8 w-8" aria-hidden />}
         title="Chọn hoặc chạy một bộ lọc"
-        description="Chọn một bộ lọc đã lưu ở cột trái, hoặc chạy nhanh một truy vấn JQL để xem kết quả."
+        description="Chọn một bộ lọc đã lưu, hoặc chạy nhanh một truy vấn JQL để xem kết quả."
       />
     );
   }

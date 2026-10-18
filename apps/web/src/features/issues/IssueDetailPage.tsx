@@ -74,7 +74,11 @@ import { EpicParentField } from '@/features/issue-meta/EpicParentField';
 import { isEpicIssue } from '@/lib/issueRefs';
 import { IssueComponentsPicker } from '@/features/issue-meta/IssueComponentsPicker';
 import { EnvironmentPanel } from '@/features/issue-edit/EnvironmentPanel';
-import { DelayedSpinner, EmptyState } from '@/components/ui/primitives';
+import { DelayedSpinner } from '@/components/ui/primitives';
+import { QueryError } from '@/components/ui/QueryError';
+import { IssueNotFound } from './IssueNotFound';
+import { issueViewState } from './issueViewState';
+import { apiErrorCode } from '@/lib/api';
 import { pageContainer } from '@/components/layout/page';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -122,7 +126,19 @@ export function IssueDetailPage() {
   const me = useAuth((s) => s.user);
   const openCreate = useCreateIssueModal((s) => s.openCreate);
 
-  const { data: issue, isLoading, isError } = useIssue(key);
+  const {
+    data: issue,
+    isLoading,
+    isError,
+    error: issueError,
+    refetch: refetchIssue,
+  } = useIssue(key);
+  const viewState = issueViewState({
+    isError,
+    isLoading,
+    hasData: !!issue,
+    notFound: apiErrorCode(issueError) === 'NOT_FOUND',
+  });
   const can = useCanIn(issue?.projectId);
   const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
   const canTransition = can('issue:transition');
@@ -527,14 +543,11 @@ export function IssueDetailPage() {
             </div>
           )}
 
-          {isError && (
-            <EmptyState
-              title="Không tìm thấy công việc này"
-              description={`Không có công việc mã ${key}, hoặc bạn chưa được cấp quyền xem. Kiểm tra lại mã, hoặc nhờ quản trị dự án cấp quyền.`}
-            />
-          )}
-
-          {isLoading || !issue ? (
+          {viewState === 'not-found' ? (
+            <IssueNotFound issueKey={key} />
+          ) : viewState === 'error' ? (
+            <QueryError error={issueError} onRetry={() => void refetchIssue()} />
+          ) : viewState === 'loading' || !issue ? (
             <DelayedSpinner />
           ) : (
             <>
@@ -735,7 +748,7 @@ export function IssueDetailPage() {
                           {i < 9 && (
                             <kbd
                               aria-hidden
-                              className="ml-0.5 grid h-4 min-w-4 place-items-center rounded border border-border bg-surface-2 px-1 font-mono text-[10px] leading-none text-faint transition-colors group-hover:border-primary/40 group-hover:text-primary"
+                              className="kbd-hint ml-0.5 grid h-4 min-w-4 place-items-center rounded border border-border bg-surface-2 px-1 font-mono text-[10px] leading-none text-faint transition-colors group-hover:border-primary/40 group-hover:text-primary"
                             >
                               {i + 1}
                             </kbd>

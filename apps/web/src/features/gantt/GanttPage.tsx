@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { addDays, differenceInCalendarDays, format, startOfDay } from 'date-fns';
+import { addDays, differenceInCalendarDays, startOfDay } from 'date-fns';
 import { CalendarRange, Camera, Link2, ListTodo, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
 import { isOverdue } from '@/lib/dueDate';
+import { fmtDate, fmtDateTime, fmtDayMonth, fmtMonthYear } from '@/lib/dateFormat';
 import { categoryColor } from '@/lib/statusColor';
 import { apiErrorMessage } from '@/lib/api';
 import { useCanEditSchedule, useCanIn } from '@/features/projects/permissions';
@@ -270,7 +271,7 @@ export function GanttPage() {
         days[j]!.getFullYear() === m.getFullYear()
       )
         j++;
-      months.push({ label: format(m, 'MM/yyyy'), span: j - i });
+      months.push({ label: fmtMonthYear(m), span: j - i });
       i = j;
     }
 
@@ -318,7 +319,7 @@ export function GanttPage() {
             const old: Record<string, string | null> = {};
             for (const f of fields) old[f] = issue[f];
             toast.success(
-              `Đã đổi lịch ${issue.key}: ${format(next.start, 'dd/MM')} → ${format(next.end, 'dd/MM')}`,
+              `Đã đổi lịch ${issue.key}: ${fmtDayMonth(next.start)} → ${fmtDayMonth(next.end)}`,
               {
                 duration: 5000,
                 action: {
@@ -387,7 +388,7 @@ export function GanttPage() {
       ...(baselinesQ.data ?? []).map((b) => ({
         value: b.id,
         label: b.name,
-        hint: format(new Date(b.capturedAt), 'dd/MM/yy'),
+        hint: fmtDate(b.capturedAt),
       })),
     ],
     [baselinesQ.data],
@@ -395,7 +396,7 @@ export function GanttPage() {
 
   async function captureBaseline() {
     if (!projectId) return;
-    const name = `Kế hoạch gốc ${format(new Date(), 'dd/MM/yyyy HH:mm')}`;
+    const name = `Kế hoạch gốc ${fmtDateTime(new Date())}`;
     try {
       const created = await createBaseline.mutateAsync({ name });
       setBaselineId(created.id);
@@ -406,7 +407,7 @@ export function GanttPage() {
   }
 
   function barTitle(s: Span): string {
-    const parts = [`${s.issue.key} · ${format(s.start, 'dd/MM')} → ${format(s.end, 'dd/MM')}`];
+    const parts = [`${s.issue.key} · ${fmtDayMonth(s.start)} → ${fmtDayMonth(s.end)}`];
     if (s.inferred) parts.push('Chưa đặt ngày — hệ thống suy ra từ phụ thuộc');
     if (s.overdue) parts.push('Đã quá hạn');
     if (highlightCritical && s.critical) {
@@ -423,7 +424,7 @@ export function GanttPage() {
             ? `chậm ${delta} ngày so với kế hoạch`
             : `sớm ${-delta} ngày so với kế hoạch`;
       parts.push(
-        `Kế hoạch gốc: ${format(s.baseStart, 'dd/MM')} → ${format(s.baseEnd, 'dd/MM')} (${drift})`,
+        `Kế hoạch gốc: ${fmtDayMonth(s.baseStart)} → ${fmtDayMonth(s.baseEnd)} (${drift})`,
       );
     }
     if (!canSchedule(s.issue)) parts.push(NO_SCHEDULE_PERM_HINT);
@@ -565,7 +566,7 @@ export function GanttPage() {
         />
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto p-4 pb-24">
+      <div className="min-h-0 flex-1 overflow-auto p-4 lg:pb-24">
         {pe || issuesQ.isError ? (
           <QueryError
             error={pErr ?? issuesQ.error}
@@ -649,7 +650,7 @@ export function GanttPage() {
                           key={m.id}
                           className="absolute top-1/2 flex -translate-y-1/2 items-center gap-1.5"
                           style={{ left: x }}
-                          title={`Cột mốc: ${m.name}\nNgày phải đạt: ${format(new Date(m.dueDate), 'dd/MM/yyyy')}${m.completedAt ? '\nĐã đạt' : '\nChưa đạt'}`}
+                          title={`Cột mốc: ${m.name}\nNgày phải đạt: ${fmtDate(m.dueDate)}${m.completedAt ? '\nĐã đạt' : '\nChưa đạt'}`}
                         >
                           <span
                             className={cn(
@@ -671,7 +672,7 @@ export function GanttPage() {
                             {m.name}
                           </span>
                           <span className="whitespace-nowrap text-[11px] tabular text-faint">
-                            {format(new Date(m.dueDate), 'dd/MM')}
+                            {fmtDayMonth(m.dueDate)}
                           </span>
                         </div>
                       );
@@ -787,7 +788,7 @@ export function GanttPage() {
                         {compareOn && baseWidth > 0 && (
                           <div
                             className="absolute top-1/2 -translate-y-1/2 rounded-md border border-dashed"
-                            title={`Kế hoạch gốc của ${issue.key}: ${format(s.baseStart!, 'dd/MM')} → ${format(s.baseEnd!, 'dd/MM')}. Thanh đặc là lịch hiện tại.`}
+                            title={`Kế hoạch gốc của ${issue.key}: ${fmtDayMonth(s.baseStart)} → ${fmtDayMonth(s.baseEnd)}. Thanh đặc là lịch hiện tại.`}
                             style={{
                               left: baseLeft,
                               width: baseWidth,
@@ -867,7 +868,7 @@ export function GanttPage() {
                             className="pointer-events-none absolute top-0 z-20 -translate-y-full whitespace-nowrap rounded bg-ink px-1.5 py-0.5 text-[11px] tabular text-surface"
                             style={{ left }}
                           >
-                            {format(live.start, 'dd/MM')} → {format(live.end, 'dd/MM')}
+                            {fmtDayMonth(live.start)} → {fmtDayMonth(live.end)}
                           </span>
                         )}
                       </div>

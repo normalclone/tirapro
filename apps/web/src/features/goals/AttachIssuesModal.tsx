@@ -1,15 +1,26 @@
 import { useEffect, useState } from 'react';
-import { Check, Search } from 'lucide-react';
+import { Check, Search, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
-import { Skeleton } from '@/components/ui/primitives';
+import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
 import { useAttachGoalIssues, useIssueSearch, type GoalDto } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+
+const NO_MATCH = (
+  <div className="p-3">
+    <EmptyState
+      size="compact"
+      icon={<SearchX />}
+      title="Không có công việc nào khớp"
+      description="Thử từ khoá ngắn hơn, hoặc nhập đúng mã công việc."
+    />
+  </div>
+);
 
 /**
  * Chọn công việc (issue/epic) để gắn vào mục tiêu. Tìm theo mã hoặc tiêu đề, chọn nhiều
@@ -81,7 +92,7 @@ export function AttachIssuesModal({
               : 'Chọn một hoặc nhiều công việc'}
           </span>
           <Button variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button
             onClick={() => void submit()}
@@ -126,11 +137,7 @@ export function AttachIssuesModal({
             </div>
           }
           empty={(d) => d.length === 0}
-          emptyState={
-            <p className="px-3 py-8 text-center text-sm text-muted">
-              Không có công việc nào khớp. Thử từ khoá ngắn hơn, hoặc nhập đúng mã công việc.
-            </p>
-          }
+          emptyState={NO_MATCH}
         >
           {(results) => (
             <ul role="listbox" aria-label="Kết quả tìm công việc" aria-multiselectable="true">

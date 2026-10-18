@@ -17,7 +17,7 @@ export function AddWidgetDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Thêm widget"
-      description="Chọn loại ô — ô mới nằm ở cuối dashboard, kéo để đổi chỗ."
+      description="Chọn loại ô — ô mới nằm ở cuối bảng tổng quan, kéo để đổi chỗ."
       size="lg"
     >
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">

@@ -23,8 +23,8 @@ export type PageSize = keyof typeof PAGE_SIZES;
 
 export function pageContainer(size: PageSize, className?: string): string {
   return cn(
-    // pb-28: chừa chỗ cho nút nổi (FAB) để dòng cuối không bị che.
-    'mx-auto w-full px-4 pb-28 pt-6 sm:px-6 sm:pt-8',
+    // lg:pb-28: chừa chỗ cho nút nổi (FAB, chỉ có từ lg) để dòng cuối không bị che; dưới lg chỉ đệm pb-8.
+    'mx-auto w-full px-4 pb-8 pt-6 sm:px-6 sm:pt-8 lg:pb-28',
     PAGE_SIZES[size],
     className,
   );

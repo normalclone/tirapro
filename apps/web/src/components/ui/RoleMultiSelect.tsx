@@ -89,7 +89,7 @@ export function RoleMultiSelect({
           className={cn(
             'flex min-h-9 w-full items-center gap-2 rounded-md border border-border bg-bg px-2.5 py-1 text-left text-sm transition-colors',
             'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            'disabled:opacity-50 data-[state=open]:border-primary',
+            'disabled:bg-disabled-bg disabled:text-disabled-fg disabled:cursor-not-allowed data-[state=open]:border-primary',
           )}
         >
           <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">

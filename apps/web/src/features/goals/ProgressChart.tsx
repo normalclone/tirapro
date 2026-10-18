@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { LineChart as LineChartIcon } from 'lucide-react';
 import {
   CartesianGrid,
   Line,
@@ -9,8 +10,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Skeleton } from '@/components/ui/primitives';
-import { fmtDate } from '@/lib/dateFormat';
+import { EmptyState, Skeleton } from '@/components/ui/primitives';
+import { fmtDate, fmtDayMonth } from '@/lib/dateFormat';
 import { AXIS_PROPS, TOOLTIP_STYLE } from '@/features/reports/charts';
 import { CHART_MARGIN } from '@/lib/chartAxis';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
@@ -20,9 +21,6 @@ import { buildSeries, type SeriesLine, type SeriesRow } from './progressSeries';
 
 const SERIES_COLORS = [1, 2, 3, 4, 5].map((n) => `var(--series-${n})`);
 const colorOf = (index: number): string => SERIES_COLORS[index % SERIES_COLORS.length]!;
-
-/** `2026-10-14` → `14/10` cho nhãn trục X (đầy đủ ở tooltip). */
-const shortDay = (iso: string): string => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
 interface TooltipPayload {
   payload?: SeriesRow;
@@ -91,18 +89,22 @@ function ProgressChartBody({ goal, data }: { goal: GoalDto; data: GoalProgressHi
 
   if (!hasData) {
     return (
-      <div className="rounded-md border border-dashed border-border px-3 py-6 text-center">
-        <p className="text-sm text-ink">Chưa có lịch sử tiến độ.</p>
-        <p className="mt-1 text-xs text-faint">
-          Hệ thống ghi lại giá trị mỗi ngày lúc 01:30 UTC (khoảng 8:30 sáng giờ Việt Nam) — đường
-          tiến độ sẽ hiện từ ngày mai.
-        </p>
-        {hiddenNotes.map((l) => (
-          <p key={l.id} className="mt-1 text-xs text-faint">
-            {l.name}: {l.scopeNote}
-          </p>
-        ))}
-      </div>
+      <EmptyState
+        size="compact"
+        icon={<LineChartIcon />}
+        title="Chưa có lịch sử tiến độ"
+        description={
+          <>
+            Hệ thống ghi lại giá trị mỗi ngày lúc 01:30 UTC (khoảng 8:30 sáng giờ Việt Nam) — đường
+            tiến độ sẽ hiện từ ngày mai.
+            {hiddenNotes.map((l) => (
+              <span key={l.id} className="mt-1 block">
+                {l.name}: {l.scopeNote}
+              </span>
+            ))}
+          </>
+        }
+      />
     );
   }
 
@@ -115,7 +117,7 @@ function ProgressChartBody({ goal, data }: { goal: GoalDto; data: GoalProgressHi
         <ResponsiveContainer width="100%" height={240}>
           <LineChart data={rows} margin={{ ...CHART_MARGIN, top: 20, right: 12 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="date" {...AXIS_PROPS} tickFormatter={shortDay} minTickGap={24} />
+            <XAxis dataKey="date" {...AXIS_PROPS} tickFormatter={fmtDayMonth} minTickGap={24} />
             <YAxis
               {...AXIS_PROPS}
               domain={[0, 100]}

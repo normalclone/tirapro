@@ -7,9 +7,10 @@ import type { IssueDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
-import { Badge, Skeleton } from '@/components/ui/primitives';
+import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -18,7 +19,7 @@ import { useAuth } from '@/stores/auth';
 import { JqlEditor } from './JqlEditor';
 import { ResultsTable } from './ResultsTable';
 import { appendResults, type ResultSet } from './resultPaging';
-import { QueryBuilder, Segmented } from './QueryBuilder';
+import { QueryBuilder } from './QueryBuilder';
 import {
   useCreateFilter,
   useDeleteFilter,
@@ -280,7 +281,7 @@ export function FiltersPage() {
               <h2 className="truncate text-xl font-semibold text-ink-strong">{heading}</h2>
             </div>
             <p className="text-sm text-muted">
-              Chọn một bộ lọc bên trái để xem kết quả, hoặc chạy nhanh một truy vấn JQL bên dưới.
+              Chọn một bộ lọc đã lưu để xem kết quả, hoặc chạy nhanh một truy vấn JQL bên dưới.
             </p>
           </header>
 
@@ -433,11 +434,11 @@ function SavedFilterList({
       }
       empty={(d) => d.length === 0}
       emptyState={
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
-          {canManage
-            ? 'Chưa có bộ lọc nào. Bấm “Tạo bộ lọc” để lưu một truy vấn.'
-            : 'Chưa có bộ lọc nào được chia sẻ với bạn.'}
-        </p>
+        <EmptyState
+          icon={<FilterIcon className="h-6 w-6" />}
+          title={canManage ? 'Chưa có bộ lọc nào' : 'Chưa có bộ lọc nào được chia sẻ với bạn'}
+          description={canManage ? 'Bấm “Tạo bộ lọc” để lưu một truy vấn.' : undefined}
+        />
       }
     >
       {(filters) => (
@@ -549,7 +550,7 @@ function CreateFilterModalInner({
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button type="submit" form="create-filter-form" loading={saving} disabled={!canSubmit}>
             Lưu bộ lọc
@@ -559,9 +560,11 @@ function CreateFilterModalInner({
     >
       <form id="create-filter-form" onSubmit={(e) => void submit(e)} className="space-y-4">
         <div className="flex items-center justify-between gap-2">
-          <Segmented
+          <SegmentedControl
+            ariaLabel="Chế độ tạo bộ lọc"
+            fullWidth={false}
             value={mode}
-            onChange={(v) => setMode(v as BuilderMode)}
+            onChange={setMode}
             options={[
               { value: 'simple', label: 'Đơn giản' },
               { value: 'jql', label: 'JQL' },
@@ -603,25 +606,23 @@ function CreateFilterModalInner({
             />
           </div>
           <div>
-            <label
-              htmlFor="create-visibility"
+            <span
+              id="create-visibility-label"
               className="mb-1.5 block text-sm font-medium text-muted"
             >
               Phạm vi chia sẻ
-            </label>
-            <select
-              id="create-visibility"
+            </span>
+            <SegmentedControl<FilterVisibility>
+              ariaLabelledby="create-visibility-label"
               value={visibility}
-              onChange={(e) => setVisibility(e.target.value as FilterVisibility)}
-              className={cn(
-                'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
-                'transition-colors focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              )}
-            >
-              <option value="PRIVATE">{VISIBILITY_LABEL.PRIVATE}</option>
-              <option value="WORKSPACE">{VISIBILITY_LABEL.WORKSPACE}</option>
-              <option value="PROJECT">{VISIBILITY_LABEL.PROJECT}</option>
-            </select>
+              onChange={setVisibility}
+              fullWidth
+              options={[
+                { value: 'PRIVATE', label: VISIBILITY_LABEL.PRIVATE },
+                { value: 'WORKSPACE', label: VISIBILITY_LABEL.WORKSPACE },
+                { value: 'PROJECT', label: VISIBILITY_LABEL.PROJECT },
+              ]}
+            />
           </div>
         </div>
       </form>

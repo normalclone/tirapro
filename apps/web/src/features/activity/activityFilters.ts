@@ -62,20 +62,29 @@ export function describeActivity(a: ActivityLike): string {
     case 'TYPE':
       return 'đổi loại';
     case 'RESOLUTION':
-      return 'đổi resolution';
+      return 'đổi kết quả xử lý';
+    case 'TIME_SPENT':
+      // Giá trị đã được API định dạng ("1h 30m"); lần ghi đầu chưa có giá trị cũ.
+      return a.oldValue
+        ? `ghi thời gian: ${a.oldValue} → ${val(a.newValue)}`
+        : `ghi thời gian: ${val(a.newValue)}`;
     case 'SCOPE':
       return 'thay đổi phạm vi';
     default:
-      return `${a.field}: ${val(a.oldValue)} → ${val(a.newValue)}`;
+      // Không bao giờ in tên enum/trường thô (HistoryField có thể thêm loại mới trước khi giao diện kịp dịch).
+      return 'cập nhật thông tin';
   }
 }
 
 /**
  * Loại thay đổi mà feed hoạt động dự án phải viết thành MỘT câu thuần, không dựng cặp chip cũ → mới: mô tả (bản xem trước
- * dài, lộ nội dung) và gắn/bỏ thành phần-phiên bản. `null` = loại khác, feed tự dựng chip như trước.
+ * dài, lộ nội dung), gắn/bỏ thành phần-phiên bản và ghi thời gian. `null` = loại khác, feed tự dựng chip như trước.
  */
 export function projectFeedSentence(a: ActivityLike): string | null {
-  return a.field === 'DESCRIPTION' || a.field === 'COMPONENT' || a.field === 'FIX_VERSION'
+  return a.field === 'DESCRIPTION' ||
+    a.field === 'COMPONENT' ||
+    a.field === 'FIX_VERSION' ||
+    a.field === 'TIME_SPENT'
     ? `đã ${describeActivity(a)}`
     : null;
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Bug, Layers, UserRound, Users } from 'lucide-react';
+import { Bug, Columns3, Layers, SearchX, UserRound, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { BoardColumnDto, BoardDto, IssueDto, SwimlaneBy } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
@@ -622,6 +622,7 @@ export function BoardPage() {
     return (
       <div className="p-6">
         <EmptyState
+          icon={<Columns3 className="h-6 w-6" />}
           title="Chưa có bảng công việc"
           description="Bảng là nơi xem việc theo cột trạng thái và kéo thả để đổi trạng thái. Dự án này chưa có bảng nào — nhờ quản trị dự án tạo giúp trong phần Cấu hình."
         />
@@ -721,6 +722,7 @@ export function BoardPage() {
           {isScrum && !activeSprintId ? (
             <div className="flex min-h-0 flex-1 items-center justify-center p-6">
               <EmptyState
+                icon={<Columns3 className="h-6 w-6" />}
                 title="Chưa có sprint nào đang chạy"
                 description={noActiveSprintHint({
                   canManageSprint,
@@ -731,29 +733,35 @@ export function BoardPage() {
             </div>
           ) : lanes ? (
             <div
-              className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4 pb-24"
+              className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4 lg:pb-24"
               data-tour="board-columns"
             >
               {lanes.length === 0 ? (
                 swimlaneEmpty === 'filtered' ? (
-                  <p className="py-10 text-center text-sm text-faint">
-                    Không có việc nào khớp bộ lọc. Tắt bớt bộ lọc phía trên để xem thêm.
-                  </p>
+                  <EmptyState
+                    icon={<SearchX className="h-6 w-6" />}
+                    title="Không có việc nào khớp bộ lọc"
+                    description="Tắt bớt bộ lọc phía trên để xem thêm."
+                  />
                 ) : (
-                  <div className="flex flex-col items-center gap-3 py-10 text-center">
-                    <p className="text-sm text-faint">
-                      {swimlaneEmpty === 'sprint'
-                        ? 'Sprint này chưa có việc nào. Thêm việc từ Việc chờ.'
-                        : 'Bảng chưa có việc nào. Thêm việc từ Việc chờ.'}
-                    </p>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => navigate(`/p/${key}/backlog`)}
-                    >
-                      Mở Việc chờ
-                    </Button>
-                  </div>
+                  <EmptyState
+                    icon={<Columns3 className="h-6 w-6" />}
+                    title={
+                      swimlaneEmpty === 'sprint'
+                        ? 'Sprint này chưa có việc nào'
+                        : 'Bảng chưa có việc nào'
+                    }
+                    description="Thêm việc từ Việc chờ."
+                    action={
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => navigate(`/p/${key}/backlog`)}
+                      >
+                        Mở Việc chờ
+                      </Button>
+                    }
+                  />
                 )
               ) : (
                 lanes.map((lane, laneIdx) => {
@@ -809,7 +817,7 @@ export function BoardPage() {
             </div>
           ) : (
             <div
-              className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4 pb-24"
+              className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4 lg:pb-24"
               data-tour="board-columns"
             >
               {board.columns.map((col, colIdx) => (

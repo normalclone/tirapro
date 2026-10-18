@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router
 import { useAuth } from '@/stores/auth';
 import { AppShell } from '@/components/layout/AppShell';
 import { RouteError } from '@/components/layout/RouteError';
+import { NotFoundPage } from '@/components/layout/NotFoundPage';
 import { RequireAccess } from '@/components/layout/RequireAccess';
 import { ConnectIndexRedirect } from '@/features/connect/ConnectIndexRedirect';
 import { SettingsIndexRedirect } from '@/features/settings/SettingsIndexRedirect';
@@ -362,6 +363,8 @@ export const router = createBrowserRouter([
           { path: 'config', element: <ProjectConfigPage /> },
         ],
       },
+      // Phải là con CUỐI: URL lạ vẫn đi qua RequireAuth (chưa đăng nhập → /login) và có sidebar/topbar.
+      { path: '*', element: <NotFoundPage /> },
     ],
   },
 ]);

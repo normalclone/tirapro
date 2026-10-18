@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { CalendarClock } from 'lucide-react';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
+import { useConfirmDiscard } from '@/lib/useUnsavedChanges';
 import { FEATURES } from '@/lib/features';
 import { DigestsSection } from '@/features/digests/DigestsSection';
 import { PlatformLogo } from './PlatformLogo';
@@ -14,6 +15,7 @@ import {
   type IntegrationSectionId,
 } from './sections';
 import { useScrollFade } from '@/lib/useScrollFade';
+import { CONNECT_LABELS } from '@/lib/navLabels';
 
 /* ------------------------------------------------------------------ */
 /* Submenu — rail dọc trên desktop, hàng pill cuộn ngang trên mobile  */
@@ -39,6 +41,12 @@ export function IntegrationsPage() {
   // Mục đang chọn không còn trong danh sách (cờ tắt) → rơi về Telegram.
   const active = INTEGRATION_NAV.some((s) => s.id === picked) ? picked : 'telegram';
   const navFade = useScrollFade<HTMLElement>(active, '[aria-current="page"]');
+  const confirmDiscard = useConfirmDiscard();
+  // Đổi mục là `useState` (không qua router) nên `useBlocker` không bắt: còn form chưa lưu thì hỏi trước khi tháo nó.
+  async function pick(id: IntegrationSectionId) {
+    if (id === active) return;
+    if (await confirmDiscard()) setPicked(id);
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
@@ -53,14 +61,16 @@ export function IntegrationsPage() {
           'lg:w-60 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
         )}
       >
-        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">Tích hợp</h1>
+        <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">
+          {CONNECT_LABELS.integrations}
+        </h1>
         {INTEGRATION_NAV.map((item) => {
           const isActive = item.id === active;
           return (
             <button
               key={item.id}
               type="button"
-              onClick={() => setPicked(item.id)}
+              onClick={() => void pick(item.id)}
               aria-current={isActive ? 'page' : undefined}
               className={cn(
                 'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',

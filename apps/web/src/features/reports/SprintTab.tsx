@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import type { SprintSummaryReport } from '@tirapro/shared';
+import { BarChart3, LineChart as LineChartIcon } from 'lucide-react';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { ExportMenu } from '@/components/ui/ExportMenu';
 import { exportIssuesCsvWithToast } from '@/features/export/api';
@@ -21,6 +22,12 @@ import {
 } from './charts';
 import { SprintSummaryPanel } from './SprintSummaryPanel';
 import { completionPct, fmtPoints } from './sprintSummary';
+
+function burndownEmptyHint(state: string): string {
+  return state === 'FUTURE'
+    ? 'Sprint chưa bắt đầu. Biểu đồ hiện khi sprint chạy và có ngày kết thúc.'
+    : 'Sprint chưa có ngày bắt đầu hoặc kết thúc nên chưa vẽ được đường lý tưởng.';
+}
 
 /** Tab "Sprint": chọn sprint (mặc định đang chạy), thẻ tóm tắt, Burndown và Velocity của sprint đó. */
 export function SprintTab({ projectId, projectKey }: { projectId: string; projectKey: string }) {
@@ -62,6 +69,7 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
   if (!sprint || !sprintsQ.data) {
     return (
       <EmptyState
+        icon={<BarChart3 className="h-6 w-6" />}
         title="Chưa có sprint nào"
         description="Tạo sprint ở trang Việc chờ và bắt đầu nó để xem Burndown, Velocity và tóm tắt tại đây."
       />
@@ -135,12 +143,10 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
             <QueryError error={burndown.error} onRetry={() => void burndown.refetch()} />
           ) : !burndown.data || burndown.data.series.length === 0 ? (
             <EmptyState
+              size="compact"
+              icon={<LineChartIcon />}
               title="Chưa có dữ liệu burndown"
-              description={
-                sprint.state === 'FUTURE'
-                  ? 'Sprint chưa bắt đầu. Biểu đồ hiện khi sprint chạy và có ngày kết thúc.'
-                  : 'Sprint chưa có ngày bắt đầu hoặc kết thúc nên chưa vẽ được đường lý tưởng.'
-              }
+              description={burndownEmptyHint(sprint.state)}
             />
           ) : (
             <>
@@ -167,6 +173,8 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
             <QueryError error={velocity.error} onRetry={() => void velocity.refetch()} />
           ) : !velocity.data || velocity.data.sprints.length === 0 ? (
             <EmptyState
+              size="compact"
+              icon={<BarChart3 />}
               title="Chưa có dữ liệu"
               description="Velocity hiện sau khi có sprint đầu tiên kết thúc."
             />

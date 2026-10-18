@@ -1,18 +1,22 @@
 import { useMemo, useState } from 'react';
-import { Archive, ArchiveRestore, Search } from 'lucide-react';
+import { Archive, ArchiveRestore, Building2, Search, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
 import { pageContainer } from '@/components/layout/page';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { useConfirm } from '@/components/ui/useConfirm';
+import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { ADMIN_LABELS } from '@/lib/navLabels';
 import { useAdminWorkspaces, usePatchWorkspace, type AdminWorkspace } from './api';
 import { fmtInt, relTime } from './_ui';
 import { ScrollX } from '@/components/ui/ScrollX';
+import { SearchSelect } from '@/components/ui/SearchSelect';
 
 const PLANS = ['FREE', 'PRO', 'ENTERPRISE'] as const;
+const PLAN_OPTIONS = PLANS.map((p) => ({ value: p, label: p }));
 const PLAN_STYLE: Record<string, string> = {
   FREE: 'text-muted',
   PRO: 'text-primary',
@@ -38,6 +42,9 @@ export function AdminWorkspacesPage() {
           w.owner.email.toLowerCase().includes(nq),
       );
   }, [data, q, showArchived]);
+
+  // Rỗng do từ khoá / ẩn mục đã lưu trữ (khác với chưa có không gian nào): mới có nút xoá bộ lọc.
+  const hasFilter = (q.trim() !== '' || !showArchived) && (data?.length ?? 0) > 0;
 
   function changePlan(w: AdminWorkspace, plan: (typeof PLANS)[number]) {
     if (plan === w.plan) return;
@@ -76,7 +83,7 @@ export function AdminWorkspacesPage() {
     <div className={pageContainer('lg')}>
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          Không gian làm việc
+          {ADMIN_LABELS.workspaces}
         </h1>
         <p className="mt-1 text-sm text-muted">
           Mọi không gian làm việc trong hệ thống — đổi gói dịch vụ, lưu trữ hoặc khôi phục.
@@ -114,11 +121,27 @@ export function AdminWorkspacesPage() {
         </div>
       ) : rows.length === 0 ? (
         <EmptyState
+          icon={hasFilter ? <SearchX className="h-6 w-6" /> : <Building2 className="h-6 w-6" />}
           title="Không có không gian làm việc nào"
           description={
             q
               ? 'Không có tên nào khớp từ khoá. Thử từ khoá ngắn hơn.'
-              : 'Chưa có không gian làm việc nào được lập.'
+              : hasFilter
+                ? 'Mọi không gian làm việc đang bị ẩn vì bộ lọc “Hiện đã lưu trữ” đang tắt.'
+                : 'Chưa có không gian làm việc nào được lập.'
+          }
+          action={
+            hasFilter ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setQ('');
+                  setShowArchived(true);
+                }}
+              >
+                Xoá bộ lọc
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -162,21 +185,15 @@ export function AdminWorkspacesPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <select
+                    <SearchSelect
                       value={w.plan}
-                      onChange={(e) => changePlan(w, e.target.value as (typeof PLANS)[number])}
+                      onChange={(v) => changePlan(w, v as (typeof PLANS)[number])}
+                      options={PLAN_OPTIONS}
                       disabled={patch.isPending}
-                      className={cn(
-                        'rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium focus-visible:outline-none focus-visible:border-primary',
-                        PLAN_STYLE[w.plan],
-                      )}
-                    >
-                      {PLANS.map((p) => (
-                        <option key={p} value={p} className="text-ink">
-                          {p}
-                        </option>
-                      ))}
-                    </select>
+                      ariaLabel={`Gói của ${w.name}`}
+                      className="h-7 w-32 px-2 text-xs font-medium"
+                      renderTrigger={() => <span className={PLAN_STYLE[w.plan]}>{w.plan}</span>}
+                    />
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted">
                     {fmtInt(w.members)} · {fmtInt(w.projects)} · {fmtInt(w.issues)}

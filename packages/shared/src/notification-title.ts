@@ -10,6 +10,8 @@ export interface NotificationPayload {
   summary?: string;
   /** Người thực hiện — ảnh chụp tên lúc sự việc xảy ra. */
   actorName?: string;
+  /** Id người thực hiện (từ `Notification.actorId`) — để phân biệt "không có người làm" với "có người nhưng thiếu ảnh chụp tên". */
+  actorId?: string;
   /** Khi gộp nhiều lần: danh sách người (khử trùng theo id). */
   actors?: { id: string; name: string }[];
   /** Số lần đã gộp, mặc định 1. */
@@ -27,7 +29,7 @@ export interface NotificationPayload {
   fromStatusName?: string;
 }
 
-const ANON = 'Ai đó';
+const ANON = 'Hệ thống';
 
 function who(p: NotificationPayload): string {
   const seen = new Set<string>();
@@ -37,7 +39,8 @@ function who(p: NotificationPayload): string {
     seen.add(a.id);
     names.push(a.name);
   }
-  if (names.length === 0) return p.actorName || ANON;
+  // Có người làm mà không biết tên (payload cũ, người đã xoá) ≠ không có người làm (sự kiện hệ thống).
+  if (names.length === 0) return p.actorName || (p.actorId ? 'Một thành viên' : ANON);
   if (names.length === 1) return names[0]!;
   if (names.length === 2) return `${names[0]} và ${names[1]}`;
   return `${names[0]}, ${names[1]} và ${names.length - 2} người khác`;

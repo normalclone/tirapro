@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronDown, Copy, Plus, Trash2, Wand2, X } from 'lucide-react';
+import { Check, ChevronDown, Copy, ListFilter, Plus, Trash2, Wand2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   CURRENT_USER_TOKEN,
@@ -14,9 +14,11 @@ import {
   type SimpleQuery,
 } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/primitives';
 import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useSearchUsers } from '@/features/members/api';
@@ -225,9 +227,11 @@ export function QueryBuilder({
       {query.conditions.length > 1 && (
         <div className="flex items-center gap-2 text-sm text-muted">
           <span>Khớp</span>
-          <Segmented
+          <SegmentedControl
+            ariaLabel="Khớp"
+            fullWidth={false}
             value={query.combinator}
-            onChange={(v) => commit({ ...query, combinator: v as 'AND' | 'OR' })}
+            onChange={(v) => commit({ ...query, combinator: v })}
             options={[
               { value: 'AND', label: 'tất cả' },
               { value: 'OR', label: 'bất kỳ' },
@@ -238,9 +242,12 @@ export function QueryBuilder({
       )}
 
       {query.conditions.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
-          Chưa có điều kiện. Thêm một dòng để lọc, hoặc để trống để xem tất cả công việc.
-        </p>
+        <EmptyState
+          size="compact"
+          icon={<ListFilter />}
+          title="Chưa có điều kiện"
+          description="Thêm một dòng để lọc, hoặc để trống để xem tất cả công việc."
+        />
       ) : (
         <ul className="flex flex-col gap-2">
           {query.conditions.map((c) => (
@@ -286,12 +293,14 @@ export function QueryBuilder({
             align="end"
           />
           {query.sort && (
-            <Segmented
+            <SegmentedControl
+              ariaLabel="Hướng sắp xếp"
+              fullWidth={false}
               value={query.sort.direction}
               onChange={(v) =>
                 commit({
                   ...query,
-                  sort: { field: query.sort!.field, direction: v as 'ASC' | 'DESC' },
+                  sort: { field: query.sort!.field, direction: v },
                 })
               }
               options={[
@@ -386,18 +395,13 @@ function ConditionRow({
         className="w-40"
       />
 
-      <SelectField
-        aria-label="Điều kiện"
+      <SearchSelect
+        ariaLabel="Điều kiện"
         value={operator}
-        onChange={(e) => onOperatorChange(e.target.value as BuilderOperator)}
+        onChange={(v) => onOperatorChange(v as BuilderOperator)}
+        options={operatorChoices.map((o) => ({ value: o.value, label: o.label }))}
         className="w-32"
-      >
-        {operatorChoices.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </SelectField>
+      />
 
       <div className="min-w-[12rem] flex-1">
         <ValueControl
@@ -529,25 +533,17 @@ function DateValueControl({ value, onChange }: { value: string; onChange: (v: st
 
   return (
     <div className="flex items-center gap-2">
-      <SelectField
-        aria-label="Loại ngày"
+      <SearchSelect
+        ariaLabel="Loại ngày"
         value={absolute ? ABS_SENTINEL : value}
-        onChange={(e) => {
-          const v = e.target.value;
-          onChange(v === ABS_SENTINEL ? todayIso() : v);
-        }}
+        onChange={(v) => onChange(v === ABS_SENTINEL ? todayIso() : v)}
+        options={[
+          { value: '', label: '— chọn mốc —' },
+          ...presets.map((p) => ({ value: p.value, label: p.label, group: 'Tương đối' })),
+          { value: ABS_SENTINEL, label: 'Ngày cụ thể…', group: 'Tuyệt đối' },
+        ]}
         className="min-w-0 flex-1"
-      >
-        <option value="">— chọn mốc —</option>
-        <optgroup label="Tương đối">
-          {presets.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </optgroup>
-        <option value={ABS_SENTINEL}>Ngày cụ thể…</option>
-      </SelectField>
+      />
       {absolute && (
         <div className="w-40">
           <DateInput
@@ -752,68 +748,6 @@ function JqlPreview({ jql }: { jql: string }) {
       <code className="block break-all font-mono text-xs text-ink">
         {jql || 'Tất cả công việc (không có điều kiện lọc)'}
       </code>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Primitives dùng chung trong builder                                 */
-/* ------------------------------------------------------------------ */
-
-function SelectField({
-  className,
-  children,
-  ...props
-}: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select
-      className={cn(
-        'h-9 rounded-md border border-border bg-bg px-2.5 text-sm text-ink transition-colors',
-        'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </select>
-  );
-}
-
-/** Segmented control 2–3 lựa chọn (combinator, hướng sort, tab chế độ). */
-export function Segmented({
-  value,
-  onChange,
-  options,
-  className,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  className?: string;
-}) {
-  return (
-    <div
-      role="tablist"
-      className={cn('inline-flex rounded-md border border-border bg-surface-2 p-0.5', className)}
-    >
-      {options.map((o) => {
-        const active = o.value === value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(o.value)}
-            className={cn(
-              'rounded-[5px] px-2.5 py-1 text-sm font-medium transition-colors',
-              active ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
-            )}
-          >
-            {o.label}
-          </button>
-        );
-      })}
     </div>
   );
 }

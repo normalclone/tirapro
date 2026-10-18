@@ -22,7 +22,7 @@ export function scopeDescription(
 ): string {
   switch (d.scope) {
     case 'PRIVATE':
-      return 'Chỉ mình chủ dashboard xem được';
+      return 'Chỉ mình chủ bảng tổng quan xem được';
     case 'GLOBAL':
       return 'Mọi thành viên không gian làm việc xem được';
     case 'PROJECT':

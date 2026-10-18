@@ -28,7 +28,8 @@ export function DashboardSwitcher({ currentId }: { currentId?: string }) {
         opts.push({ value: d.id, label: d.name, badge: scopeBadge(d), group: g.title });
       }
     }
-    if (canManage) opts.push({ value: NEW_VALUE, label: 'Tạo dashboard mới…', group: 'Tạo mới' });
+    if (canManage)
+      opts.push({ value: NEW_VALUE, label: 'Tạo bảng tổng quan mới…', group: 'Tạo mới' });
     return opts;
   }, [data, canManage]);
 
@@ -42,8 +43,8 @@ export function DashboardSwitcher({ currentId }: { currentId?: string }) {
         navigate(v === HOME_VALUE ? '/' : v === NEW_VALUE ? '/dashboards/new' : `/dashboards/${v}`)
       }
       options={options}
-      ariaLabel="Chọn dashboard"
-      searchPlaceholder="Tìm dashboard…"
+      ariaLabel="Chọn bảng tổng quan"
+      searchPlaceholder="Tìm bảng tổng quan…"
       className="w-full sm:w-64"
       align="end"
       renderTrigger={(selected) => (

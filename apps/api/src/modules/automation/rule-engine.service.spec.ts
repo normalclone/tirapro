@@ -326,6 +326,24 @@ describe('RuleEngineService — hành động', () => {
     expect(lastRun(prisma).status).toBe('SUCCESS');
   });
 
+  it('{{actor.displayName}} khi không tìm thấy người kích hoạt: "Hệ thống", không phải "Ai đó"', async () => {
+    const rule = makeRule({
+      conditions: [],
+      actions: [{ type: 'addComment', body: '{{actor.displayName}} vừa tạo {{issue.key}}' }],
+    });
+    const { engine, comments, prisma } = setup(rule);
+    prisma.user.findUnique.mockImplementation(() => Promise.resolve(null as never));
+    await engine.handle('ISSUE_CREATED', { issue: issueDto() as never, actorId: 'u1' });
+    const args = comments.create.mock.calls[0] as unknown as [
+      string,
+      string,
+      string,
+      { body: string },
+    ];
+    expect(args[3].body).toBe('Hệ thống vừa tạo P-TASK-1');
+    expect(args[3].body).not.toContain('Ai đó');
+  });
+
   it('addComment thay {{issue.key}} {{issue.summary}} {{actor.displayName}} và truyền meta', async () => {
     const rule = makeRule({
       conditions: [],

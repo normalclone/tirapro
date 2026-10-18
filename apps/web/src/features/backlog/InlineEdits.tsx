@@ -1,8 +1,10 @@
 import { useMemo, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import type { IssueDto, PriorityDto, SprintDto } from '@tirapro/types';
+import { PriorityIcon } from '@/components/ui/PriorityIcon';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useConfirm } from '@/components/ui/useConfirm';
+import { usePriorityRanks } from '@/features/settings-admin/api';
 import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { parsePointsInput } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
@@ -136,14 +138,21 @@ export function InlinePoints({
   );
 }
 
-/** Chấm ưu tiên (tĩnh). */
+/** Mũi tên ưu tiên (tĩnh). */
 export function PriorityDot({ priority }: { priority: IssueDto['priority'] }) {
+  const ranks = usePriorityRanks();
+  if (!priority) {
+    return (
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full bg-faint"
+        title="Chưa đặt mức ưu tiên"
+        role="img"
+        aria-label="Chưa đặt mức ưu tiên"
+      />
+    );
+  }
   return (
-    <span
-      className="h-1.5 w-1.5 shrink-0 rounded-full"
-      style={{ background: priority?.color ?? 'var(--faint)' }}
-      title={priority ? `Mức ưu tiên: ${priority.name}` : 'Chưa đặt mức ưu tiên'}
-    />
+    <PriorityIcon name={priority.name} rank={priority.rank} ranks={ranks} color={priority.color} />
   );
 }
 
@@ -164,10 +173,16 @@ export function InlinePriority({
     ],
     [priorities],
   );
+  // Danh sách của dự án đã có trong scope thì dùng nó; chưa có (meta đang tải) → hạng toàn workspace.
+  const workspaceRanks = usePriorityRanks();
+  const ranks = useMemo(
+    () => (priorities.length > 0 ? priorities.map((p) => p.rank) : workspaceRanks),
+    [priorities, workspaceRanks],
+  );
   return (
     <NoRowAction className="inline-flex shrink-0">
       <SearchSelect
-        ariaLabel={`Ưu tiên của ${issue.key}`}
+        ariaLabel={`Ưu tiên của ${issue.key}: ${issue.priority?.name ?? 'chưa đặt'}`}
         value={issue.priority?.id ?? ''}
         options={options}
         hideChevron
@@ -183,14 +198,25 @@ export function InlinePriority({
         }}
         renderTrigger={() => (
           <span
-            className="mx-auto block h-2 w-2 rounded-full"
-            style={{ background: issue.priority?.color ?? 'var(--faint)' }}
+            className="mx-auto flex items-center justify-center"
             title={
               issue.priority
                 ? `Mức ưu tiên: ${issue.priority.name} — bấm để đổi`
                 : 'Chưa đặt mức ưu tiên — bấm để chọn'
             }
-          />
+          >
+            {issue.priority ? (
+              <PriorityIcon
+                name={issue.priority.name}
+                rank={issue.priority.rank}
+                ranks={ranks}
+                color={issue.priority.color}
+                title={`Mức ưu tiên: ${issue.priority.name} — bấm để đổi`}
+              />
+            ) : (
+              <span className="block h-2 w-2 rounded-full bg-faint" aria-hidden />
+            )}
+          </span>
         )}
       />
     </NoRowAction>

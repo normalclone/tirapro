@@ -17,6 +17,7 @@ import {
   type CustomFieldType,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 /** Nhãn tiếng Việt cho từng loại trường, giữ đúng thứ tự enum backend. */
 const FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
@@ -157,7 +158,7 @@ export function CustomFieldsAdminSection() {
   return (
     <SectionCard
       icon={<LayoutList className="h-4 w-4" />}
-      title="Trường tuỳ chỉnh"
+      title={SETTINGS_LABELS.fields}
       description="Thêm các ô thông tin riêng của bạn vào mỗi công việc. Không thể đổi kiểu dữ liệu của trường sau khi tạo."
     >
       <QueryBoundary
@@ -173,11 +174,11 @@ export function CustomFieldsAdminSection() {
         emptyState={
           <EmptyState
             icon={<LayoutList className="h-6 w-6" />}
-            title="Chưa có trường tuỳ chỉnh nào"
+            title="Chưa có trường thông tin thêm nào"
             description={
               canManage
-                ? 'Trường tuỳ chỉnh là ô thông tin riêng của bạn trên mỗi công việc. Thêm trường đầu tiên để bắt đầu thu thập.'
-                : 'Chưa có trường tuỳ chỉnh nào. Liên hệ quản trị để thêm.'
+                ? 'Trường thông tin thêm là ô thông tin riêng của bạn trên mỗi công việc. Thêm trường đầu tiên để bắt đầu thu thập.'
+                : 'Chưa có trường thông tin thêm nào. Liên hệ quản trị để thêm.'
             }
             action={
               canManage ? (
@@ -248,7 +249,7 @@ export function CustomFieldsAdminSection() {
         )}
       </QueryBoundary>
 
-      {/* Form thêm trường — chỉ người có quyền quản lý trường tuỳ chỉnh */}
+      {/* Form thêm trường — chỉ người có quyền quản lý trường thông tin thêm */}
       {canManage && adding ? (
         <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
           <div className="space-y-3">

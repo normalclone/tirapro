@@ -105,7 +105,7 @@ export function TriagePage() {
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto pb-24">
+        <div className="flex-1 overflow-y-auto pb-6 lg:pb-24">
           {inbox.isError ? (
             <div className={pageContainer('md')}>
               <QueryError error={inbox.error} onRetry={() => inbox.refetch()} />

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseDayInput, toAuditQuery } from './auditFilters';
+import { AUDIT_ACTION_LABEL } from '@tirapro/types';
+import { groupedAuditActionOptions, parseDayInput, toAuditQuery } from './auditFilters';
 
 describe('toAuditQuery', () => {
   it('bỏ các trường rỗng', () => {
@@ -32,5 +33,32 @@ describe('parseDayInput', () => {
     expect(parseDayInput('2026-03-05')).toEqual({ y: 2026, m: 3, d: 5 });
     expect(parseDayInput('5-3-26')).toBeNull();
     expect(parseDayInput('')).toBeNull();
+  });
+});
+
+describe('groupedAuditActionOptions', () => {
+  const opts = groupedAuditActionOptions('Tất cả sự kiện');
+
+  it('mục đầu là "tất cả" (giá trị rỗng, không nhóm)', () => {
+    expect(opts[0]).toEqual({ value: '', label: 'Tất cả sự kiện' });
+  });
+
+  it('đủ mọi sự kiện đúng một lần, mỗi mục có nhóm', () => {
+    const rest = opts.slice(1);
+    expect(rest.map((o) => o.value).sort()).toEqual(Object.keys(AUDIT_ACTION_LABEL).sort());
+    expect(rest.every((o) => !!o.group)).toBe(true);
+  });
+
+  it('các mục cùng nhóm liền nhau (mỗi tiêu đề nhóm chỉ hiện một lần)', () => {
+    const seen: string[] = [];
+    for (const o of opts.slice(1)) {
+      if (seen[seen.length - 1] !== o.group) seen.push(o.group!);
+    }
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  it('project_member.* vào nhóm Dự án, wiki.* vào Wiki', () => {
+    expect(opts.find((o) => o.value === 'project_member.added')?.group).toBe('Dự án');
+    expect(opts.find((o) => o.value === 'wiki.page_deleted')?.group).toBe('Wiki');
   });
 });

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { fmtDate, fmtDateTime, fmtRelative, toDateInput, toDateTimeInput } from './dateFormat';
+import {
+  fmtDate,
+  fmtDateTime,
+  fmtDayMonth,
+  fmtLongDate,
+  fmtMonthYear,
+  fmtRelative,
+  toDateInput,
+  toDateTimeInput,
+} from './dateFormat';
 
 describe('fmtDate / fmtDateTime', () => {
   it('dd/MM/yyyy có đệm số 0', () => {
@@ -40,5 +49,38 @@ describe('toDateInput / toDateTimeInput', () => {
   it('không hợp lệ → chuỗi rỗng (không ném lỗi)', () => {
     expect(toDateInput(null)).toBe('');
     expect(toDateTimeInput('abc')).toBe('');
+  });
+});
+
+describe('fmtDayMonth / fmtMonthYear / fmtLongDate', () => {
+  it('ngày/tháng rút gọn, có đệm số 0, nhận Date / ISO / yyyy-MM-dd', () => {
+    expect(fmtDayMonth(new Date(2026, 9, 17))).toBe('17/10');
+    expect(fmtDayMonth('2026-08-05')).toBe('05/08');
+    expect(fmtDayMonth(new Date(2026, 7, 5, 9, 0).toISOString())).toBe('05/08');
+  });
+  it('yyyy-MM-dd thuần không lệch ngày theo múi giờ', () => {
+    expect(fmtDayMonth('2026-10-01')).toBe('01/10');
+    expect(fmtMonthYear('2026-10-01')).toBe('T10/2026');
+    expect(fmtLongDate('2026-10-17')).toBe('Thứ Bảy, 17/10/2026');
+  });
+  it('tháng/năm: "T10/2026", năm đủ 4 chữ số', () => {
+    expect(fmtMonthYear(new Date(2026, 9, 17))).toBe('T10/2026');
+    expect(fmtMonthYear(new Date(2027, 0, 1).getTime())).toBe('T1/2027');
+  });
+  it('ngày dài có thứ tiếng Việt', () => {
+    expect(fmtLongDate(new Date(2026, 9, 17))).toBe('Thứ Bảy, 17/10/2026');
+    expect(fmtLongDate(new Date(2026, 9, 18))).toBe('Chủ nhật, 18/10/2026');
+    expect(fmtLongDate(new Date(2026, 9, 19))).toBe('Thứ Hai, 19/10/2026');
+    expect(fmtLongDate(new Date(2026, 9, 21))).toBe('Thứ Tư, 21/10/2026');
+  });
+  it('không bao giờ ra "thg" hay ISO thô', () => {
+    expect(fmtLongDate(new Date(2026, 9, 17))).not.toMatch(/thg/);
+    expect(fmtDayMonth('2026-10-17')).not.toMatch(/\d{4}-/);
+  });
+  it('rỗng / không hợp lệ → —', () => {
+    for (const f of [fmtDayMonth, fmtMonthYear, fmtLongDate]) {
+      expect(f(null)).toBe('—');
+      expect(f('abc')).toBe('—');
+    }
   });
 });

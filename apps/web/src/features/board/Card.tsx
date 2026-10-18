@@ -6,7 +6,9 @@ import { AcceptanceBadge } from '@/components/ui/AcceptanceBadge';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { Avatar } from '@/components/ui/primitives';
+import { PriorityIcon } from '@/components/ui/PriorityIcon';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
+import { usePriorityRanks } from '@/features/settings-admin/api';
 import { isBugType } from '@/features/issue-edit/severity';
 import { cn } from '@/lib/utils';
 import { useDropEdge } from '@/lib/dropHint';
@@ -74,6 +76,7 @@ export function CardBody({
   onOpenKey?: (key: string) => void;
 }) {
   const labels = issue.labels ?? [];
+  const ranks = usePriorityRanks();
   return (
     <div
       ref={rootRef}
@@ -130,10 +133,11 @@ export function CardBody({
           </span>
         )}
         {issue.priority && (
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: issue.priority.color ?? 'var(--faint)' }}
-            title={`Mức ưu tiên: ${issue.priority.name}`}
+          <PriorityIcon
+            name={issue.priority.name}
+            rank={issue.priority.rank}
+            ranks={ranks}
+            color={issue.priority.color}
           />
         )}
         <AcceptanceBadge progress={issue.acceptanceProgress} />

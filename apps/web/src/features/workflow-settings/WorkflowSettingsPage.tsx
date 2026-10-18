@@ -38,6 +38,9 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
+import { useProjects } from '@/features/projects/api';
 
 /* ------------------------------------------------------------------ */
 /* Hằng số phân loại trạng thái                                       */
@@ -71,6 +74,7 @@ export function WorkflowSettingsPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState('');
+  const { data: projects } = useProjects();
 
   const workflows = data ?? [];
   const groups = useMemo(() => groupWorkflows(data ?? []), [data]);
@@ -126,7 +130,7 @@ export function WorkflowSettingsPage() {
     <div className={pageContainer('lg')}>
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          Cấu hình quy trình
+          {SETTINGS_LABELS.workflows}
         </h1>
         <p className="mt-1 text-sm text-muted">
           Quản lý các bước một công việc đi qua: có những trạng thái nào và được chuyển từ trạng
@@ -142,7 +146,7 @@ export function WorkflowSettingsPage() {
               <GitBranch className="h-4 w-4" />
             </span>
             <div>
-              <h2 className="text-base font-semibold text-ink-strong">Quy trình</h2>
+              <h2 className="text-base font-semibold text-ink-strong">Danh sách quy trình</h2>
               <p className="mt-0.5 text-sm text-muted">
                 Chọn một quy trình để xem và chỉnh sửa chi tiết.
               </p>
@@ -246,16 +250,21 @@ export function WorkflowSettingsPage() {
                 </div>
                 <div>
                   <label htmlFor="wf-project" className="mb-1 block text-xs font-medium text-muted">
-                    Project ID (tuỳ chọn)
+                    Dự án (tuỳ chọn)
                   </label>
-                  <Input
+                  <SearchSelect
                     id="wf-project"
                     value={projectId}
-                    placeholder="Để trống = áp dụng cho mọi dự án"
-                    onChange={(e) => setProjectId(e.target.value)}
+                    onChange={setProjectId}
+                    options={[
+                      { value: '', label: 'Toàn không gian làm việc' },
+                      ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
+                    ]}
+                    searchPlaceholder="Tìm dự án…"
+                    className="w-full"
                   />
                   <p className="mt-1 text-xs text-faint">
-                    Để trống nếu quy trình dùng chung cho mọi dự án.
+                    Chọn “Toàn không gian làm việc” nếu quy trình dùng chung cho mọi dự án.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -635,22 +644,19 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
                   }}
                 />
               </div>
-              <div className="w-40">
-                <label htmlFor="st-category" className="mb-1 block text-xs font-medium text-muted">
+              <div>
+                <span id="st-category-label" className="mb-1 block text-xs font-medium text-muted">
                   Phân loại
-                </label>
-                <select
-                  id="st-category"
+                </span>
+                <SegmentedControl<StatusCategory>
+                  ariaLabelledby="st-category-label"
                   value={category}
-                  onChange={(e) => setCategory(e.target.value as StatusCategory)}
-                  className="h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                >
-                  {CATEGORY_OPTIONS.map((c) => (
-                    <option key={c} value={c}>
-                      {STATUS_CATEGORY_LABEL[c]}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setCategory}
+                  options={CATEGORY_OPTIONS.map((c) => ({
+                    value: c,
+                    label: STATUS_CATEGORY_LABEL[c],
+                  }))}
+                />
               </div>
               <div>
                 <label htmlFor="st-color" className="mb-1 block text-xs font-medium text-muted">

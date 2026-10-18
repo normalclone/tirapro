@@ -13,6 +13,7 @@ import { useWorkspaceOverview } from '@/features/dashboard/api';
 import { useCreatedResolved } from '@/features/reports/api';
 import { AXIS_PROPS, LEGEND_STYLE, TOOLTIP_STYLE } from '@/features/reports/charts';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
+import { fmtDayMonth } from '@/lib/dateFormat';
 import { cfgString } from '../widgetConfig';
 import { queryWidgetState } from '../widgetState';
 import { WidgetFrame } from '../WidgetFrame';
@@ -23,9 +24,6 @@ interface Point {
   created: number;
   resolved: number;
 }
-
-/** `2026-10-14` → `14/10` cho nhãn trục X. */
-const shortDay = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
 /** Tạo mới vs Đã xử lý: theo ngày (một dự án) hoặc theo tuần (toàn workspace). */
 export function CreatedResolvedWidget({ title, config }: WidgetProps) {
@@ -41,7 +39,7 @@ export function CreatedResolvedWidget({ title, config }: WidgetProps) {
   const q = projectId ? daily : weekly;
   let points: Point[] | undefined;
   if (projectId && daily.data) {
-    points = daily.data.series.map((p) => ({ ...p, label: shortDay(p.date) }));
+    points = daily.data.series.map((p) => ({ ...p, label: fmtDayMonth(p.date) }));
   } else if (!projectId && weekly.data) {
     points = weekly.data.trend;
   }

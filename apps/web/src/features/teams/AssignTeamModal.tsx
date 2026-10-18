@@ -72,7 +72,7 @@ export function AssignTeamModal({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Hủy
+            Huỷ
           </Button>
           <Button onClick={() => void submit()} loading={busy} disabled={!canSave}>
             Đặt vai trò

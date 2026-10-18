@@ -74,10 +74,25 @@ describe('buildNotificationTitle', () => {
       'Trang cập nhật DEMO-3 2 lần',
     );
   });
-  it('payload cũ thiếu trường: không văng, dùng "Ai đó" / "một công việc"', () => {
-    expect(t('COMMENT_ADDED', {})).toBe('Ai đó bình luận trong một công việc');
+  it('payload cũ thiếu trường: không văng, dùng "Hệ thống" / "một công việc" (không bao giờ "Ai đó")', () => {
+    expect(t('COMMENT_ADDED', {})).toBe('Hệ thống bình luận trong một công việc');
     expect(t('STATUS_CHANGED', { key: 'DEMO-3', statusName: 'Done' })).toBe(
-      'Ai đó chuyển DEMO-3 sang Done',
+      'Hệ thống chuyển DEMO-3 sang Done',
+    );
+    expect(t('COMMENT_ADDED', {})).not.toContain('Ai đó');
+  });
+  it('có actorId nhưng không có tên (payload cũ, người đã xoá): "Một thành viên", không phải "Hệ thống"', () => {
+    expect(t('COMMENT_ADDED', { actorId: 'u1' })).toBe(
+      'Một thành viên bình luận trong một công việc',
+    );
+    expect(t('STATUS_CHANGED', { actorId: 'u1', key: 'DEMO-3', statusName: 'Done' })).toBe(
+      'Một thành viên chuyển DEMO-3 sang Done',
+    );
+  });
+  it('không có actorId lẫn tên: "Hệ thống"; có tên thì tên thắng actorId', () => {
+    expect(t('COMMENT_ADDED', {})).toBe('Hệ thống bình luận trong một công việc');
+    expect(t('COMMENT_ADDED', { actorId: 'u1', actorName: 'Trang' })).toBe(
+      'Trang bình luận trong một công việc',
     );
   });
   it('notificationBody ưu tiên trích đoạn rồi tiêu đề việc', () => {

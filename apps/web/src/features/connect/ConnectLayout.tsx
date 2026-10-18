@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { ArrowLeft, Plug, Repeat } from 'lucide-react';
 import { useProjects } from '@/features/projects/api';
 import { useScopeParam } from '@/lib/scopeParam';
+import { APP_NAV_LABELS, CONNECT_LABELS } from '@/lib/navLabels';
 import { cn } from '@/lib/utils';
 import { NAV_RULES, useVisibleItems, type NavRule } from '@/lib/navAccess';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
@@ -15,11 +16,15 @@ import { useScrollFade } from '@/lib/useScrollFade';
 const CONNECT_NAV: { to: string; label: string; icon: ReactNode; rule?: NavRule }[] = [
   {
     to: '/connect/integrations',
-    label: 'Ứng dụng bên ngoài',
+    label: CONNECT_LABELS.integrations,
     icon: <Plug className="h-4 w-4" />,
     rule: NAV_RULES.connectIntegrations,
   },
-  { to: '/connect/automation', label: 'Tự động hoá', icon: <Repeat className="h-4 w-4" /> },
+  {
+    to: '/connect/automation',
+    label: CONNECT_LABELS.automation,
+    icon: <Repeat className="h-4 w-4" />,
+  },
 ];
 
 export function ConnectLayout() {
@@ -43,7 +48,7 @@ export function ConnectLayout() {
         )}
       >
         <h1 className="hidden px-3 pb-2 text-xs font-semibold text-faint lg:block">
-          Kết nối &amp; tự động hoá
+          {APP_NAV_LABELS.connect}
         </h1>
         {fromProject && (
           <Link

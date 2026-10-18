@@ -14,6 +14,7 @@ import {
   type IssueCustomField,
 } from './api';
 import { toDateTimeInput } from '@/lib/dateFormat';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 /** `canEdit`: được sửa issue này (`useCanEditIssue`) — không thì hiện giá trị chỉ-đọc, không dựng ô nhập (tránh 403 khi lưu). */
 export function CustomFieldsPanel({ issueId, canEdit }: { issueId: string; canEdit: boolean }) {
@@ -33,7 +34,7 @@ export function CustomFieldsPanel({ issueId, canEdit }: { issueId: string; canEd
 
   return (
     <div>
-      <p className="mb-1.5 text-sm font-medium text-muted">Trường tùy chỉnh</p>
+      <p className="mb-1.5 text-sm font-medium text-muted">{SETTINGS_LABELS.fields}</p>
       {/* Chỉ-đọc dùng dl/dt/dd (cặp tên-giá trị đúng ngữ nghĩa); sửa được dùng label gắn với ô nhập. */}
       <Rows as={canEdit ? 'div' : 'dl'}>
         {data.map((item) => (

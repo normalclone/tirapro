@@ -27,13 +27,18 @@ import {
   SLA_SOON_MINS,
   SLA_SOON_LABEL,
 } from './api';
+import { PriorityIcon } from '@/components/ui/PriorityIcon';
+import { usePriorityRanks } from '@/features/settings-admin/api';
+import { MANAGE_LABELS, SETTINGS_LABELS } from '@/lib/navLabels';
 
 /** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Danh mục). */
 export function SlaBoardPage() {
   return (
     <div className={pageContainer('sm')}>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Thời gian xử lý</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+          {MANAGE_LABELS.responseTime}
+        </h1>
         <p className="mt-1 text-sm text-muted">
           Các công việc đang chạy đồng hồ đếm ngược theo cam kết thời gian xử lý. Việc sắp tới hạn
           tô vàng, việc đã quá hạn tô đỏ — hãy xử lý từ trên xuống.
@@ -51,7 +56,7 @@ export function SlaPoliciesPage() {
     <div className={pageContainer('sm')}>
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          Cam kết thời gian xử lý
+          {SETTINGS_LABELS.responseTime}
         </h1>
         <p className="mt-1 text-sm text-muted">
           Đặt thời hạn phải phản hồi và phải xử lý xong cho từng nhóm công việc. Hệ thống bấm giờ
@@ -90,6 +95,7 @@ function SlaBoard() {
 }
 
 function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
+  const ranks = usePriorityRanks();
   const breached = rows.filter((r) => r.resolveBreached).length;
   const soon = rows.filter((r) => !r.resolveBreached && r.remainingMins <= SLA_SOON_MINS).length;
 
@@ -124,12 +130,14 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
               </Link>
               <span className="min-w-0 flex-1 truncate text-sm text-ink">{r.summary}</span>
               {r.priority && (
-                <span className="hidden shrink-0 items-center gap-1 text-xs text-muted sm:flex">
-                  <span
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ background: r.priority.color ?? 'var(--faint)' }}
+                <span className="hidden shrink-0 items-center text-xs text-muted sm:flex">
+                  <PriorityIcon
+                    withLabel
+                    name={r.priority.name}
+                    rank={r.priority.rank}
+                    ranks={ranks}
+                    color={r.priority.color}
                   />
-                  {r.priority.name}
                 </span>
               )}
               <span

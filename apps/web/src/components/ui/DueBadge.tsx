@@ -1,6 +1,7 @@
 import { AlertTriangle, CalendarClock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { calendarDate } from '@/lib/calendarDate';
+import { fmtDayMonth } from '@/lib/dateFormat';
 import { dueDaysFromToday, dueState, type DueLike } from '@/lib/dueDate';
 
 /**
@@ -15,9 +16,8 @@ export function dueBorderClass(issue: DueLike): string {
   return '';
 }
 
-function shortDate(iso: string): string {
-  const d = calendarDate(iso);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+function dueLabel(iso: string): string {
+  return fmtDayMonth(calendarDate(iso));
 }
 
 /**
@@ -47,7 +47,7 @@ export function DueBadge({
           'bg-danger/10 text-danger',
           className,
         )}
-        title={`Quá hạn ${late} ngày (hạn ${shortDate(issue.dueDate)})`}
+        title={`Quá hạn ${late} ngày (hạn ${dueLabel(issue.dueDate)})`}
       >
         <AlertTriangle className="h-3 w-3" aria-hidden />
         Quá hạn{late > 0 ? ` ${late}n` : ''}
@@ -61,12 +61,12 @@ export function DueBadge({
       className={cn('inline-flex items-center gap-1 text-xs font-medium', tone, className)}
       title={
         st === 'soon'
-          ? `Sắp đến hạn (${shortDate(issue.dueDate)})`
-          : `Hạn ${shortDate(issue.dueDate)}`
+          ? `Sắp đến hạn (${dueLabel(issue.dueDate)})`
+          : `Hạn ${dueLabel(issue.dueDate)}`
       }
     >
       <CalendarClock className="h-3 w-3" aria-hidden />
-      {shortDate(issue.dueDate)}
+      {dueLabel(issue.dueDate)}
     </span>
   );
 }

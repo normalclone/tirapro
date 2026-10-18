@@ -17,6 +17,7 @@ import {
   type PriorityUpdateInput,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 const DEFAULT_COLOR = '#64748b';
 
@@ -115,7 +116,7 @@ export function PrioritiesSection() {
   return (
     <SectionCard
       icon={<SignalHigh className="h-4 w-4" />}
-      title="Độ ưu tiên"
+      title={SETTINGS_LABELS.priorities}
       description="Đặt các mức ưu tiên để sắp xếp thứ tự làm công việc. Số thứ tự càng nhỏ thì càng ưu tiên."
     >
       {!canManage && <ReadOnlyNote />}

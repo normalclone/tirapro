@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { sprintTimeInfo } from './sprintTime';
 
@@ -91,4 +93,13 @@ describe('sprintTimeInfo', () => {
     expect(
       sprintTimeInfo(active('2026-10-20T00:00:00.000Z'), new Date(2026, 9, 15, 23, 59)).daysLeft,
     ).toBe(5));
+});
+
+describe('sprintTime định dạng ngày qua dateFormat', () => {
+  it('không tự `format()` dd/MM bằng date-fns (một nguồn: fmtDayMonth/fmtDate)', () => {
+    const src = readFileSync(join(__dirname, 'sprintTime.ts'), 'utf8');
+    expect(src).toMatch(/from '\.\/dateFormat'/);
+    expect(src).not.toMatch(/format\(calendarDate/);
+    expect(src).not.toMatch(/import \{[^}]*\bformat\b[^}]*\} from 'date-fns'/);
+  });
 });

@@ -19,7 +19,7 @@ describe('kho phím tắt', () => {
   it('ba nhóm đúng tên', () => {
     expect(SHORTCUT_GROUPS.map((g) => g.title)).toEqual([
       'Trong công việc',
-      'Trên board',
+      'Trên bảng việc',
       'Toàn cục',
     ]);
   });

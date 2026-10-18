@@ -113,3 +113,32 @@ describe('projectFeedSentence (feed hoạt động dự án)', () => {
     expect(projectFeedSentence(a({ field: 'PRIORITY' }))).toBeNull();
   });
 });
+
+describe('ghi thời gian & không lộ tên enum', () => {
+  it('TIME_SPENT: "ghi thời gian: cũ → mới" (giá trị API đã định dạng)', () => {
+    expect(describeActivity(a({ field: 'TIME_SPENT', oldValue: '1h', newValue: '2h 30m' }))).toBe(
+      'ghi thời gian: 1h → 2h 30m',
+    );
+  });
+  it('TIME_SPENT lần đầu (chưa có giá trị cũ): chỉ giá trị mới', () => {
+    expect(describeActivity(a({ field: 'TIME_SPENT', oldValue: null, newValue: '1h' }))).toBe(
+      'ghi thời gian: 1h',
+    );
+    expect(describeActivity(a({ field: 'TIME_SPENT', oldValue: '', newValue: '1h' }))).toBe(
+      'ghi thời gian: 1h',
+    );
+  });
+  it('feed dự án: TIME_SPENT là một câu thuần', () => {
+    expect(projectFeedSentence(a({ field: 'TIME_SPENT', oldValue: '1h', newValue: '2h' }))).toBe(
+      'đã ghi thời gian: 1h → 2h',
+    );
+  });
+  it('"resolution" viết tiếng Việt: kết quả xử lý', () => {
+    expect(describeActivity(a({ field: 'RESOLUTION' }))).toBe('đổi kết quả xử lý');
+  });
+  it('trường lạ: nhãn chung, KHÔNG in tên enum/trường thô', () => {
+    const s = describeActivity(a({ field: 'SOME_NEW_FIELD', oldValue: 'x', newValue: 'y' }));
+    expect(s).toBe('cập nhật thông tin');
+    expect(s).not.toMatch(/SOME_NEW_FIELD|[A-Z]{2,}_[A-Z]{2,}/);
+  });
+});

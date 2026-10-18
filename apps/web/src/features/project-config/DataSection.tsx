@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Download, Upload, History } from 'lucide-react';
 import { toast } from 'sonner';
-import { Badge, Skeleton } from '@/components/ui/primitives';
+import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -242,7 +242,16 @@ export function DataSection({ projectId, canImport }: { projectId?: string; canI
               </div>
             }
             empty={() => jobs.length === 0}
-            emptyState={<p className="mt-3 text-sm text-muted">Chưa có lần nhập nào.</p>}
+            emptyState={
+              <div className="mt-3">
+                <EmptyState
+                  size="compact"
+                  icon={<History />}
+                  title="Chưa có lần nhập nào"
+                  description="Lịch sử hiện sau lần nhập dữ liệu đầu tiên."
+                />
+              </div>
+            }
           >
             {(jobList) => (
               <ul className="mt-3 divide-y divide-border">

@@ -18,6 +18,8 @@ import { AssigneeSuggestButton } from '@/features/ai/AssigneeSuggestButton';
 import { useAuth } from '@/stores/auth';
 import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/primitives';
+import { PriorityIcon } from '@/components/ui/PriorityIcon';
+import { usePriorityRanks } from '@/features/settings-admin/api';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { isBugType } from './severity';
@@ -66,6 +68,7 @@ export function InfoRow({
 
 /** Badge độ ưu tiên (tô theo màu ưu tiên). */
 function PriorityBadge({ priority }: { priority: IssueDto['priority'] }) {
+  const ranks = usePriorityRanks();
   if (!priority)
     return (
       <span className="text-sm text-faint" title="Chưa đặt mức ưu tiên. Bấm để chọn.">
@@ -79,12 +82,14 @@ function PriorityBadge({ priority }: { priority: IssueDto['priority'] }) {
       style={{ backgroundColor: `color-mix(in oklch, ${c} 16%, transparent)`, color: c }}
       title={`Mức ưu tiên: ${priority.name}. Bấm để đổi.`}
     >
-      <span
-        className="h-1.5 w-1.5 shrink-0 rounded-full"
-        style={{ backgroundColor: c }}
-        aria-hidden
+      <PriorityIcon
+        withLabel
+        name={priority.name}
+        rank={priority.rank}
+        ranks={ranks}
+        color={c}
+        title={`Mức ưu tiên: ${priority.name}. Bấm để đổi.`}
       />
-      {priority.name}
     </span>
   );
 }
