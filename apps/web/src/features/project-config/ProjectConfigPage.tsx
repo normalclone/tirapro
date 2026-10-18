@@ -12,6 +12,7 @@ import {
 import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { pageContainer } from '@/components/layout/page';
 import { cn } from '@/lib/utils';
+import { useConfirmDiscard } from '@/lib/useUnsavedChanges';
 import { useAuth } from '@/stores/auth';
 import { useCan } from '@/features/projects/permissions';
 import {
@@ -57,6 +58,12 @@ export function ProjectConfigPage() {
 
   const [active, setActive] = useState<ConfigSectionId>('general');
   const navFade = useScrollFade<HTMLElement>(active, '[aria-current="page"]');
+  const confirmDiscard = useConfirmDiscard();
+  // Đổi mục là `useState` (không qua router) nên `useBlocker` không bắt: còn form chưa lưu thì hỏi trước khi tháo nó.
+  async function pick(id: ConfigSectionId) {
+    if (id === active) return;
+    if (await confirmDiscard()) setActive(id);
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
@@ -81,7 +88,7 @@ export function ProjectConfigPage() {
               key={item.id}
               type="button"
               aria-current={isActive ? 'page' : undefined}
-              onClick={() => setActive(item.id)}
+              onClick={() => void pick(item.id)}
               className={cn(
                 'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
