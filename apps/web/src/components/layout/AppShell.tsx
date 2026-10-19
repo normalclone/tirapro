@@ -12,6 +12,7 @@ import { CreateDialogsHost } from '@/components/layout/createActions';
 import { LeaveGuardHost } from '@/components/layout/LeaveGuardHost';
 import { UnsavedBar } from '@/components/layout/UnsavedBar';
 import { MaintenanceBanner } from '@/components/layout/MaintenanceBanner';
+import { ConnectionBanner } from '@/components/layout/ConnectionBanner';
 import { ShortcutsDialog } from '@/components/layout/ShortcutsDialog';
 import { useShellEffects } from '@/components/layout/useShellEffects';
 import { ADMIN_NAV, NAV_ITEMS } from '@/components/layout/navItems';
@@ -142,6 +143,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         <div className="print:hidden">
           <MaintenanceBanner />
+          <ConnectionBanner />
         </div>
         {/* scrollbar-gutter:stable — nội dung căn giữa không lệch ngang giữa trang dài (có scrollbar) và trang ngắn */}
         <main className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable] print:overflow-visible">

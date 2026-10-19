@@ -1,6 +1,14 @@
+import { useSyncExternalStore } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import type { ClientToServerEvents, RoomTarget, ServerToClientEvents } from '@tirapro/shared';
 import { getAccessToken } from './auth-token';
+import {
+  connReduce,
+  INITIAL_CONN,
+  retryDelayMs,
+  type ConnEvent,
+  type ConnState,
+} from './connectionState';
 
 const WS_URL = import.meta.env.VITE_WS_URL ?? 'http://localhost:4000';
 
@@ -18,8 +26,81 @@ export function getSocket(): AppSocket {
       transports: ['websocket'],
       auth: (cb) => cb({ token: getAccessToken() ?? '' }),
     });
+    bindStatus(socket);
   }
   return socket;
+}
+
+/* ------------------------------------------------------------------ */
+/* Trạng thái kết nối (091) — store nhỏ cho banner                      */
+/* ------------------------------------------------------------------ */
+
+let connState: ConnState = { ...INITIAL_CONN };
+const connListeners = new Set<() => void>();
+
+/** Nạp một sự kiện vào máy trạng thái thuần; chỉ báo cho UI khi trạng thái thật sự đổi. */
+function dispatchConn(e: ConnEvent): void {
+  const next = connReduce(connState, e);
+  if (next === connState) return;
+  const changed = (Object.keys(next) as (keyof ConnState)[]).some((k) => next[k] !== connState[k]);
+  if (!changed) return;
+  connState = next;
+  connListeners.forEach((l) => l());
+}
+
+const subscribeConn = (l: () => void) => {
+  connListeners.add(l);
+  return () => {
+    connListeners.delete(l);
+  };
+};
+const getConn = () => connState;
+
+/** Trạng thái thô (mốc mất/nối lại, tab ẩn…) cho `ConnectionBanner`. */
+export function useConnectionState(): ConnState {
+  return useSyncExternalStore(subscribeConn, getConn, getConn);
+}
+
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryAttempt = 0;
+function clearRetry(): void {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+}
+/** socket.io không tự nối lại trong hai trường hợp này → tự hẹn nối lại (lùi dần). */
+function scheduleRetry(s: AppSocket): void {
+  if (retryTimer || s !== socket) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    retryAttempt += 1;
+    if (s === socket && !s.connected) s.connect();
+  }, retryDelayMs(retryAttempt));
+}
+
+function bindStatus(s: AppSocket): void {
+  s.on('connect', () => {
+    clearRetry();
+    retryAttempt = 0;
+    dispatchConn({ type: 'connect', at: Date.now() });
+  });
+  s.on('disconnect', (reason) => {
+    dispatchConn({ type: 'disconnect', at: Date.now(), reason });
+    if (reason === 'io server disconnect') scheduleRetry(s);
+  });
+  s.on('connect_error', () => {
+    dispatchConn({ type: 'connect_error', at: Date.now() });
+    if (!s.active) scheduleRetry(s);
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => dispatchConn({ type: 'online', at: Date.now() }));
+  window.addEventListener('offline', () => dispatchConn({ type: 'offline', at: Date.now() }));
+  document.addEventListener('visibilitychange', () =>
+    dispatchConn({ type: 'visibility', at: Date.now(), hidden: document.hidden }),
+  );
+  // Trạng thái mạng/tab thật ngay từ đầu (module có thể nạp khi đã offline hoặc tab nền).
+  connState = { ...connState, online: navigator.onLine, hidden: document.hidden };
 }
 
 /* ------------------------------------------------------------------ */
@@ -114,6 +195,8 @@ export function reconnectSocket(): void {
 
 /** Ngắt kết nối (vd khi đăng xuất) để socket cũ không giữ phiên/room của người dùng trước. */
 export function disconnectSocket(): void {
+  clearRetry();
+  retryAttempt = 0;
   // Registry room gắn với socket cũ → bỏ luôn, các hàm release còn sót sẽ thành no-op.
   rooms.clear();
   roomsBoundTo = null;
@@ -123,6 +206,8 @@ export function disconnectSocket(): void {
     socket.removeAllListeners();
     socket = null;
   }
+  // Quên lịch sử nối: ở trang đăng nhập / sau đăng xuất không có banner.
+  dispatchConn({ type: 'reset' });
 }
 
 if (typeof window !== 'undefined') {
