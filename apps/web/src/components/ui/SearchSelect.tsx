@@ -22,6 +22,8 @@ import {
   typeaheadIndex,
 } from './searchSelectNav';
 import { shouldEmitChange } from '@/lib/radioNav';
+import { shouldSubmitOnEnter } from '@/lib/confirmText';
+import { useJustComposed } from '@/lib/useJustComposed';
 import { cn } from '@/lib/utils';
 
 const TYPEAHEAD_MS = 600;
@@ -77,25 +79,7 @@ function TriggerLabel({
   );
 }
 
-function SearchSelectControl({
-  value,
-  onChange,
-  options,
-  placeholder = 'Chọn…',
-  searchPlaceholder = 'Tìm…',
-  disabled,
-  id,
-  ariaLabel,
-  className,
-  align = 'start',
-  renderTrigger,
-  hideChevron,
-  onSearchChange,
-  moreHint,
-  resolveOption,
-  searchable,
-  invalidAria,
-}: {
+interface SearchSelectControlProps {
   value: string;
   onChange: (value: string) => void;
   options: SearchSelectOption[];
@@ -120,7 +104,42 @@ function SearchSelectControl({
   searchable?: boolean;
   /** Thuộc tính aria của lỗi (từ `invalidAttrs`); có `aria-invalid` thì trigger viền danger. */
   invalidAria?: { 'aria-invalid'?: true; 'aria-describedby'?: string };
-}) {
+  /**
+   * Dòng GHIM cuối danh sách, KHÔNG bị bộ lọc tìm kiếm loại (vd "Tạo nhãn “abc”" theo chữ đang gõ, hoặc câu giải thích
+   * vì sao không tạo được). Chọn được thì đi qua `onChange` như mục thường; `disabled` thì chỉ là chữ.
+   */
+  pinnedOptions?: SearchSelectOption[];
+  /**
+   * Móc phím của ô tìm — chạy TRƯỚC điều hướng mặc định, với chữ đang gõ `q`. `preventDefault()` để chặn điều hướng/chọn
+   * mặc định cho phím đó (vd Backspace ở ô trống). Không gọi khi bộ gõ đang soạn chữ.
+   */
+  onSearchKeyDown?: (e: KeyboardEvent<HTMLElement>, q: string) => void;
+  /** Báo mở/đóng danh sách. */
+  onOpenChange?: (open: boolean) => void;
+}
+
+function SearchSelectControl({
+  value,
+  onChange,
+  options,
+  placeholder = 'Chọn…',
+  searchPlaceholder = 'Tìm…',
+  disabled,
+  id,
+  ariaLabel,
+  className,
+  align = 'start',
+  renderTrigger,
+  hideChevron,
+  onSearchChange,
+  moreHint,
+  resolveOption,
+  searchable,
+  invalidAria,
+  pinnedOptions,
+  onSearchKeyDown,
+  onOpenChange,
+}: SearchSelectControlProps) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const baseId = useId();
@@ -135,14 +154,17 @@ function SearchSelectControl({
     options.find((o) => o.value === value) ?? (value ? resolveOption?.(value) : undefined);
   // Không phân biệt hoa thường/dấu, tìm theo nhãn + mã hiển thị (`hint`) + `description`, KHÔNG theo `value` (id nội bộ).
   const filtered = filterOptions(options, q);
+  const items = pinnedOptions?.length ? [...filtered, ...pinnedOptions] : filtered;
+  const composed = useJustComposed();
 
   const { activeIndex, setActive, source, onNavKeyDown } = useActiveOption({
     open,
     q,
     value,
-    items: filtered,
+    items,
     typeahead: !showSearch,
     onPick: (v) => pick(v),
+    composed,
   });
 
   const focusSearchOrList = useFocusFollowsSearch(open, showSearch, inputRef, listRef);
@@ -167,6 +189,7 @@ function SearchSelectControl({
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
+        onOpenChange?.(o);
         if (!o) resetSearch();
       }}
     >
@@ -202,14 +225,18 @@ function SearchSelectControl({
             <SearchBox
               inputRef={inputRef}
               listId={listId}
-              activeId={filtered[activeIndex] ? optionId(activeIndex) : undefined}
+              activeId={items[activeIndex] ? optionId(activeIndex) : undefined}
               placeholder={searchPlaceholder}
               value={q}
               onChange={(v) => {
                 setQ(v);
                 onSearchChange?.(v);
               }}
-              onKeyDown={onNavKeyDown}
+              onKeyDown={(e) => {
+                if (!e.nativeEvent.isComposing) onSearchKeyDown?.(e, q);
+                if (!e.defaultPrevented) onNavKeyDown(e);
+              }}
+              onCompositionEnd={composed.onCompositionEnd}
             />
           )}
           <ul
@@ -221,12 +248,12 @@ function SearchSelectControl({
             tabIndex={showSearch ? undefined : 0}
             onMouseDown={(e) => e.preventDefault()}
             aria-activedescendant={
-              !showSearch && filtered[activeIndex] ? optionId(activeIndex) : undefined
+              !showSearch && items[activeIndex] ? optionId(activeIndex) : undefined
             }
             onKeyDown={showSearch ? undefined : onNavKeyDown}
           >
             <OptionRows
-              items={filtered}
+              items={items}
               value={value}
               activeIndex={activeIndex}
               source={source}
@@ -251,6 +278,7 @@ function SearchBox({
   value,
   onChange,
   onKeyDown,
+  onCompositionEnd,
 }: {
   inputRef: RefObject<HTMLInputElement>;
   listId: string;
@@ -259,6 +287,7 @@ function SearchBox({
   value: string;
   onChange: (value: string) => void;
   onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
+  onCompositionEnd: () => void;
 }) {
   return (
     <div className="border-b border-border p-2">
@@ -275,6 +304,7 @@ function SearchBox({
         placeholder={placeholder}
         className="h-8 text-sm max-sm:text-[16px]"
         onKeyDown={onKeyDown}
+        onCompositionEnd={onCompositionEnd}
       />
     </div>
   );
@@ -325,6 +355,7 @@ function useActiveOption({
   items,
   typeahead,
   onPick,
+  composed,
 }: {
   open: boolean;
   q: string;
@@ -332,6 +363,8 @@ function useActiveOption({
   items: SearchSelectOption[];
   typeahead: boolean;
   onPick: (value: string) => void;
+  /** Cờ "bộ gõ vừa chốt chữ" (Safari phát Enter ngay sau compositionend) — Enter chốt chữ không được chọn mục. */
+  composed: ReturnType<typeof useJustComposed>;
 }) {
   const [activeIndex, setActiveIndex] = useState(-1);
   const [source, setSource] = useState<ActiveSource>('init');
@@ -353,6 +386,7 @@ function useActiveOption({
   };
 
   function onNavKeyDown(e: KeyboardEvent<HTMLElement>) {
+    const justComposed = composed.take();
     if (e.nativeEvent.isComposing) return;
     const next = nextActiveIndex(items, activeIndex, e.key);
     if (next !== null) {
@@ -364,6 +398,14 @@ function useActiveOption({
     const buffering = Date.now() - t.at < TYPEAHEAD_MS;
     if (e.key === 'Enter' || (typeahead && e.key === ' ' && !buffering)) {
       e.preventDefault();
+      const enterOk = shouldSubmitOnEnter({
+        key: e.key,
+        isComposing: false,
+        keyCode: e.nativeEvent.keyCode,
+        justComposed,
+        matches: true,
+      });
+      if (e.key === 'Enter' && !enterOk) return;
       const cur = items[activeIndex];
       if (cur && !cur.disabled) onPick(cur.value);
       return;

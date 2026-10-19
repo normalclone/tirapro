@@ -14,6 +14,7 @@ import { PointsPopover } from './PointsPopover';
 import type { PriorityChoice } from './InlineEdits';
 import { cn } from '@/lib/utils';
 import { TERM } from '@/lib/terms';
+import { labelTone } from '@/lib/labelPalette';
 
 /** id ảo cho lựa chọn "Backlog" trong picker chuyển sprint (sprintId thực = null). */
 const BACKLOG_OPTION = '__backlog__';
@@ -269,7 +270,11 @@ function BulkEditControls({
           <SearchSelect
             value=""
             onChange={(v) => v && onAddLabel(v)}
-            options={labels.map((l) => ({ value: l.id, label: l.name, color: l.color }))}
+            options={labels.map((l) => ({
+              value: l.id,
+              label: l.name,
+              color: labelTone(l.color).fg,
+            }))}
             placeholder="Nhãn"
             searchPlaceholder="Tìm nhãn…"
             ariaLabel="Gắn nhãn cho các việc đang chọn"

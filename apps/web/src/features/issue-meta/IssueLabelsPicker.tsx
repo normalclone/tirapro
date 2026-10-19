@@ -1,32 +1,80 @@
-import { useState } from 'react';
-import * as Popover from '@radix-ui/react-popover';
-import { Plus, Tag, X } from 'lucide-react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
-import type { IssueDto } from '@tirapro/types';
+import { PERMISSIONS, type IssueDto } from '@tirapro/types';
+import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
+import { labelToneStyle } from '@/lib/labelPalette';
 import { cn } from '@/lib/utils';
-import { useCanEditIssue } from '@/features/projects/permissions';
-import { useProjectLabels, useToggleLabel } from './api';
+import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
+import { useCreateAndAttachLabel, useProjectLabels, useToggleLabel } from './api';
+import {
+  CREATE_VALUE,
+  createOffer,
+  emptyRows,
+  labelOptions,
+  nextLabelColor,
+  pendingAnnouncement,
+  pinnedRows,
+  reducePending,
+  type PendingAction,
+  type PendingState,
+} from './labelCombo';
+
+const TEMP_PREFIX = 'tmp-label-';
+const IDLE: PendingState = { pendingId: null };
 
 /**
- * Picker nhãn cho chi tiết issue: hiển thị nhãn hiện tại (`issue.labels`) dưới dạng
- * chip màu có thể gỡ, kèm nút "+ Nhãn" mở popover liệt kê nhãn dự án chưa gắn.
- * Gọn gàng, vừa cột phụ (sidebar). Sau mỗi thay đổi, làm mới query issue.
+ * Ô nhãn cho chi tiết issue: chip màu (tông `labelToneStyle`, chữ ≥ 4.5:1 ở cả hai giao diện) có thể gỡ, và nút "+ Nhãn" mở
+ * ô chọn có tìm kiếm (dựng trên `SearchSelect`: combobox + listbox + `aria-activedescendant`).
+ * - Gõ để lọc; Enter chọn mục đang trỏ (nhãn trùng tên chính xác đứng đầu). KHÔNG bao giờ tạo nhãn trùng tên chỉ khác
+ *   hoa/thường/dấu — chọn nhãn có sẵn.
+ * - Chưa có nhãn trùng + người dùng có `project:admin` (đúng quyền của trang Nhãn): dòng "Tạo nhãn “X”" ở cuối danh sách (hoặc
+ *   Enter khi không còn mục nào khác). Chip hiện NGAY (lạc quan), tên nhãn mới nhận màu chưa dùng đầu tiên của bảng màu chung;
+ *   lỗi thì hoàn lại + báo. Không có quyền: dòng gợi ý "Nhờ quản trị dự án tạo nhãn".
+ * - Ô tìm trống: Backspace lần 1 đánh dấu chip cuối (viền + báo trình đọc màn hình), lần 2 gỡ nó; phím khác/gõ chữ huỷ đánh dấu.
  */
 export function IssueLabelsPicker({ issue, inline }: { issue: IssueDto; inline?: boolean }) {
-  const [open, setOpen] = useState(false);
   const canEdit = useCanEditIssue(issue.projectId)(issue);
+  const canCreate = useCanIn(issue.projectId)(PERMISSIONS.PROJECT_ADMIN);
   const { data: projectLabels } = useProjectLabels(issue.projectId);
   const { attach, detach } = useToggleLabel(issue.id, issue.key, issue.projectId);
+  const createAttach = useCreateAndAttachLabel(issue);
 
+  const [q, setQ] = useState('');
+  const [pending, setPendingState] = useState<PendingState>(IDLE);
+  const pendingRef = useRef(IDLE);
+  const setPending = (p: PendingState) => {
+    pendingRef.current = p;
+    setPendingState(p);
+  };
+
+  const labels = projectLabels ?? [];
   const attachedIds = new Set(issue.labels.map((l) => l.id));
-  const available = (projectLabels ?? []).filter((l) => !attachedIds.has(l.id));
-  const busy = attach.isPending || detach.isPending;
+  const removableIds = issue.labels.map((l) => l.id).filter((id) => !id.startsWith(TEMP_PREFIX));
+  const offer = createOffer({ q, labels, attachedIds, canCreate });
+  const options = labelOptions(labels, attachedIds, q);
+  const pinned: SearchSelectOption[] = (
+    q.trim() === '' ? emptyRows(labels.length, options.length, canCreate) : pinnedRows(offer)
+  ).map((o) => (o.value === CREATE_VALUE ? { ...o, icon: <Plus className="h-3.5 w-3.5" /> } : o));
+
+  // Chip đang chờ gỡ biến mất (gỡ xong/lỗi) → bỏ đánh dấu.
+  const chipKey = removableIds.join(',');
+  useEffect(() => {
+    const r = reducePending(pendingRef.current, { type: 'chips', chipIds: removableIds });
+    if (r.state !== pendingRef.current) setPending(r.state);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ khi tập chip đổi
+  }, [chipKey]);
+
+  function dispatch(action: PendingAction) {
+    const r = reducePending(pendingRef.current, action);
+    if (r.state.pendingId !== pendingRef.current.pendingId) setPending(r.state);
+    return r;
+  }
 
   async function onAttach(labelId: string) {
     try {
       await attach.mutateAsync(labelId);
-      setOpen(false);
     } catch (e) {
       toast.error(apiErrorMessage(e));
     }
@@ -42,40 +90,68 @@ export function IssueLabelsPicker({ issue, inline }: { issue: IssueDto; inline?:
     toast.success(`Đã gỡ nhãn "${name}"`);
   }
 
+  function onPick(value: string) {
+    if (value !== CREATE_VALUE) {
+      void onAttach(value);
+      return;
+    }
+    if (offer.kind !== 'create') return;
+    createAttach.mutate(
+      { name: offer.name, color: nextLabelColor(labels) },
+      { onError: (e) => toast.error(`Chưa tạo được nhãn “${offer.name}”: ${apiErrorMessage(e)}`) },
+    );
+  }
+
+  function onSearchKeyDown(e: KeyboardEvent<HTMLElement>, query: string) {
+    const r = dispatch(
+      e.key === 'Backspace'
+        ? { type: 'backspace', query, chipIds: removableIds }
+        : { type: 'key', key: e.key },
+    );
+    if (r.handled) e.preventDefault();
+    if (r.remove) {
+      const chip = issue.labels.find((l) => l.id === r.remove);
+      if (chip) void onDetach(chip.id, chip.name);
+    }
+  }
+
+  const pendingName = issue.labels.find((l) => l.id === pending.pendingId)?.name;
+
   return (
     <div>
       {!inline && <p className="mb-1.5 text-sm font-medium text-muted">Nhãn</p>}
       <div className="flex flex-wrap items-center gap-1.5">
         {issue.labels.map((label) => {
-          const color = label.color ?? 'var(--faint)';
+          const temp = label.id.startsWith(TEMP_PREFIX);
+          const marked = pending.pendingId === label.id;
           return (
             <span
               key={label.id}
+              data-pending-removal={marked || undefined}
+              aria-busy={temp || undefined}
               className={cn(
-                'group inline-flex items-center gap-1 rounded-full border border-border bg-surface-2 py-0.5 pl-2 text-xs font-medium text-ink',
+                'inline-flex items-center gap-1 rounded-full py-0.5 pl-2 text-xs font-medium [@media(pointer:coarse)]:min-h-11',
                 canEdit ? 'pr-1' : 'pr-2',
+                temp && 'opacity-70',
+                marked && 'ring-2 ring-danger ring-offset-1 ring-offset-bg',
               )}
+              style={labelToneStyle(label.color)}
             >
-              <span
-                className="h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{ background: color }}
-                aria-hidden="true"
-              />
               <span className="max-w-[10rem] truncate">{label.name}</span>
               {canEdit && (
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={temp || detach.isPending}
                   onClick={() => void onDetach(label.id, label.name)}
                   aria-label={`Gỡ nhãn ${label.name}`}
                   className={cn(
-                    'grid h-4 w-4 shrink-0 place-items-center rounded-full text-faint transition-colors',
-                    'hover:bg-surface-3 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                    // Giữ disabled:opacity (không dùng token vô hiệu) — nút X nhỏ không nền trong chip nhãn: chỉ cần mờ đi.
+                    'grid h-4 w-4 shrink-0 place-items-center rounded-full transition-colors [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
+                    'hover:bg-[color-mix(in_oklch,currentColor_16%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                    // Nút X nhỏ không nền trong chip màu: chỉ cần mờ đi khi tắt (không dùng token vô hiệu — chữ chip có màu riêng).
                     'disabled:opacity-50',
                   )}
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-3 w-3" aria-hidden="true" />
                 </button>
               )}
             </span>
@@ -83,68 +159,39 @@ export function IssueLabelsPicker({ issue, inline }: { issue: IssueDto; inline?:
         })}
 
         {canEdit && (
-          <Popover.Root open={open} onOpenChange={setOpen}>
-            <Popover.Trigger asChild>
-              <button
-                type="button"
-                aria-label="Thêm nhãn"
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-xs font-medium text-muted transition-colors [@media(pointer:coarse)]:min-h-9',
-                  'hover:border-primary hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                )}
-              >
-                <Plus className="h-3 w-3" />
+          <SearchSelect
+            value=""
+            onChange={onPick}
+            options={options}
+            pinnedOptions={pinned}
+            searchable
+            ariaLabel="Thêm nhãn"
+            searchPlaceholder={canCreate ? 'Tìm hoặc tạo nhãn…' : 'Tìm nhãn…'}
+            onSearchChange={(next) => {
+              setQ(next);
+              dispatch({ type: 'input' });
+            }}
+            onSearchKeyDown={onSearchKeyDown}
+            onOpenChange={(o) => {
+              if (!o) dispatch({ type: 'close' });
+            }}
+            hideChevron
+            className={cn(
+              'h-auto w-auto gap-1 rounded-full border-dashed px-2 py-0.5 text-xs font-medium text-muted',
+              'hover:border-primary hover:text-ink [@media(pointer:coarse)]:min-h-11',
+            )}
+            renderTrigger={() => (
+              <span className="inline-flex items-center gap-1">
+                <Plus className="h-3 w-3" aria-hidden="true" />
                 Nhãn
-              </button>
-            </Popover.Trigger>
-            <Popover.Portal>
-              <Popover.Content
-                align="start"
-                sideOffset={6}
-                className="z-dropdown w-[min(16rem,calc(100vw-1rem))] overflow-hidden rounded-lg border border-border bg-surface shadow-lg outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
-              >
-                {available.length === 0 ? (
-                  <p className="px-3 py-3 text-sm text-faint">
-                    {(projectLabels ?? []).length === 0
-                      ? 'Dự án chưa có nhãn nào.'
-                      : 'Đã gắn hết nhãn.'}
-                  </p>
-                ) : (
-                  <ul
-                    className="max-h-64 overflow-y-auto py-1"
-                    role="listbox"
-                    aria-label="Nhãn của dự án"
-                  >
-                    {available.map((label) => (
-                      <li key={label.id}>
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={false}
-                          disabled={busy}
-                          onClick={() => void onAttach(label.id)}
-                          className={cn(
-                            'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors',
-                            'hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
-                            'disabled:pointer-events-none [&:disabled_.text-ink]:text-disabled-fg',
-                          )}
-                        >
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{ background: label.color ?? 'var(--faint)' }}
-                            aria-hidden="true"
-                          />
-                          <span className="min-w-0 flex-1 truncate text-ink">{label.name}</span>
-                          <Tag className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden="true" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Popover.Content>
-            </Popover.Portal>
-          </Popover.Root>
+              </span>
+            )}
+          />
         )}
+        {/* Báo cho trình đọc màn hình chip nào đang chờ gỡ (Backspace lần 2 sẽ gỡ). */}
+        <span role="status" className="sr-only">
+          {pendingName ? pendingAnnouncement(pendingName) : ''}
+        </span>
       </div>
     </div>
   );

@@ -25,6 +25,7 @@ import { QueryBuilder } from '@/features/saved-filters/QueryBuilder';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { INVALID_FIELD_CLS, fieldErrorId } from '@/lib/formErrors';
 import { useErrorFlow } from '@/lib/useErrorFlow';
+import { labelTone } from '@/lib/labelPalette';
 import { ConditionSentence } from './ConditionSentence';
 import { Field } from './IssueDefaultsFields';
 import {
@@ -361,7 +362,11 @@ function useOptions(projectId: string): Options {
         moreHint: people.moreHint,
         resolveOption: people.resolveOption,
       },
-      labels: (labels ?? []).map((l) => ({ value: l.id, label: l.name, color: l.color })),
+      labels: (labels ?? []).map((l) => ({
+        value: l.id,
+        label: l.name,
+        color: labelTone(l.color).fg,
+      })),
       sprints: (sprints ?? []).map((s) => ({ value: s.id, label: s.name })),
     };
   }, [meta, workflows, people, labels, sprints]);

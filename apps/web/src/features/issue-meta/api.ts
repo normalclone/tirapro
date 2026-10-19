@@ -2,7 +2,8 @@ import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/reac
 import type { IssueDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
-import { patchIssueSets } from './patchIssueSets';
+import { patchIssueLabels, patchIssueSets } from './patchIssueSets';
+import { labelKey } from './labelCombo';
 import { withComponent, withoutComponent, withVersion, withoutVersion } from './issueSets';
 
 /** Nhãn / thành phần / phiên bản ở cấp dự án — cho picker trong chi tiết issue. */
@@ -78,6 +79,77 @@ export function useToggleLabel(
     onSuccess: invalidate,
   });
   return { attach, detach };
+}
+
+let tempLabelSeq = 0;
+
+/**
+ * Tạo nhãn mới rồi gắn vào việc ("tạo nhãn khi gắn", chỉ người có `project:admin` — cùng quyền với trang Nhãn). Lạc quan:
+ * chip tạm hiện NGAY ở mọi cache giữ việc (chi tiết, danh sách, board), thay bằng nhãn thật khi máy chủ trả về, hoàn lại khi
+ * lỗi (nhãn có thể đã được tạo nếu chỉ bước gắn lỗi). Nhãn trùng tên do người khác vừa tạo → gắn nhãn có sẵn thay vì lỗi.
+ * Gắn nhãn không dùng OCC `version` (API không tăng version) nên không đổi `version` ở cache.
+ */
+export function useCreateAndAttachLabel(issue: IssueDto) {
+  const qc = useQueryClient();
+  const sync = () => {
+    void qc.invalidateQueries({ queryKey: keys.issues.byKey(issue.key) });
+    void qc.invalidateQueries({ queryKey: keys.issues.byProject(issue.projectId) });
+    void qc.invalidateQueries({ queryKey: keys.projectMeta.all(issue.projectId) });
+  };
+  return useMutation({
+    mutationFn: async (v: { name: string; color: string }): Promise<ProjectLabel> => {
+      let label: ProjectLabel;
+      try {
+        label = (await api.post<ProjectLabel>(`/projects/${issue.projectId}/labels`, v)).data;
+      } catch (e) {
+        // Trùng tên (người khác vừa tạo): dùng nhãn có sẵn; không tìm thấy thì báo lỗi gốc.
+        const list = await api
+          .get<ProjectLabel[]>(`/projects/${issue.projectId}/labels`)
+          .then((r) => r.data)
+          .catch(() => null);
+        const found = list?.find((l) => labelKey(l.name) === labelKey(v.name));
+        if (!found) throw e;
+        label = found;
+      }
+      await api.post(`/issues/${issue.id}/labels`, { labelId: label.id });
+      return label;
+    },
+    onMutate: async (v) => {
+      await cancelIssueQueries(qc, issue);
+      const tempId = `tmp-label-${++tempLabelSeq}`;
+      const temp = { id: tempId, projectId: issue.projectId, name: v.name, color: v.color };
+      const undo = patchIssueLabels(
+        qc,
+        issue,
+        (i) => ({ labels: [...i.labels, temp] }),
+        (i) => ({ labels: i.labels.filter((l) => l.id !== tempId) }),
+      );
+      return { tempId, undo };
+    },
+    onSuccess: (label, _v, ctx) => {
+      patchIssueLabels(
+        qc,
+        issue,
+        (i) => ({
+          labels: i.labels.some((l) => l.id === label.id)
+            ? i.labels.filter((l) => l.id !== ctx?.tempId)
+            : i.labels.map((l) =>
+                l.id === ctx?.tempId
+                  ? {
+                      id: label.id,
+                      projectId: issue.projectId,
+                      name: label.name,
+                      color: label.color,
+                    }
+                  : l,
+              ),
+        }),
+        (i) => ({ labels: i.labels.filter((l) => l.id !== label.id) }),
+      );
+    },
+    onError: (_e, _v, ctx) => ctx?.undo(),
+    onSettled: sync,
+  });
 }
 
 /* ------------------- Thành phần & phiên bản của MỘT công việc ------------------- */
