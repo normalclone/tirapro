@@ -134,7 +134,7 @@ export function TelegramSection() {
             }
             action={
               canManage ? (
-                <Button size="sm" onClick={startNew}>
+                <Button variant="secondary" size="sm" onClick={startNew}>
                   <Plus className="h-4 w-4" />
                   Kết nối Telegram
                 </Button>

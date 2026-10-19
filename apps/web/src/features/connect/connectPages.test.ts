@@ -85,4 +85,18 @@ describe('Kết nối: Tự động hoá + Quy tắc dùng khung chung', () => {
     ])
       expect(src(f), f).not.toMatch(/\bback=\{/);
   });
+
+  it('Báo cáo định kỳ: nút tạo ở header hiện khi canManage (kể cả danh sách trống); EmptyState secondary', () => {
+    const s = src('features/digests/DigestsSection.tsx');
+    expect(s).toMatch(/actions=\{\s*canManage \? \(/);
+    expect(s).not.toMatch(/digests\.length > 0/);
+    expect(s).toMatch(
+      /action=\{[\s\S]{0,60}<Button variant="secondary" size="sm" onClick=\{\(\) => openEditor\(null\)\}/,
+    );
+  });
+  it('Telegram: nút "Kết nối" trong EmptyState là secondary', () => {
+    expect(src('features/integrations/TelegramSection.tsx')).toMatch(
+      /action=\{[\s\S]{0,60}<Button variant="secondary" size="sm" onClick=\{startNew\}/,
+    );
+  });
 });

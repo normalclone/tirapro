@@ -74,7 +74,7 @@ export function DigestsSection() {
       title="Báo cáo định kỳ"
       description="Tổng hợp tiến độ dự án theo lịch rồi gửi qua Telegram và/hoặc email."
       actions={
-        canManage && digests.length > 0 ? (
+        canManage ? (
           <Button size="sm" className="max-sm:w-full" onClick={() => openEditor(null)}>
             <Plus className="h-4 w-4" />
             Tạo báo cáo định kỳ
@@ -104,7 +104,7 @@ export function DigestsSection() {
             }
             action={
               canManage ? (
-                <Button size="sm" onClick={() => openEditor(null)}>
+                <Button variant="secondary" size="sm" onClick={() => openEditor(null)}>
                   <Plus className="h-4 w-4" />
                   Tạo báo cáo định kỳ
                 </Button>
