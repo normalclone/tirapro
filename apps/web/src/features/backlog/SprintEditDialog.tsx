@@ -5,11 +5,12 @@ import type { SprintDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
-import { DateInput } from '@/components/ui/DateInput';
+import { DateRangeInput } from '@/components/ui/DateRangeInput';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
 import { apiErrorMessage } from '@/lib/api';
 import { useDeleteSprint, useUpdateSprint } from './api';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { dateRangeError } from '@/lib/dateRange';
 
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : '');
 /** Ngày (yyyy-mm-dd) → ISO UTC 00:00 — burndown cũng tính theo ngày UTC nên không lệch ngày. */
@@ -41,8 +42,8 @@ export function SprintEditDialog({
   const [end, setEnd] = useState(toDateInput(sprint.endDate));
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Câu báo hiện MỘT lần, ngay tại ô Ngày kết thúc (DateInput `rangeError`); ở đây chỉ để khoá nút Lưu.
-  const dateError = !!start && !!end && end < start;
+  // Câu báo hiện MỘT lần, ngay tại ô Ngày kết thúc (DateRangeInput); ở đây chỉ để khoá nút Lưu.
+  const dateError = dateRangeError(start, end) !== null;
   const dirty =
     (future && name.trim() !== sprint.name) ||
     goal.trim() !== (sprint.goal ?? '') ||
@@ -150,33 +151,19 @@ export function SprintEditDialog({
               className="w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-faint focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="sprint-start" className="mb-1.5 block text-sm font-medium text-muted">
-                Ngày bắt đầu
-              </label>
-              <DateInput
-                id="sprint-start"
-                value={start}
-                disabled={!future}
-                onChange={setStart}
-                className="text-sm"
-              />
-            </div>
-            <div>
-              <label htmlFor="sprint-end" className="mb-1.5 block text-sm font-medium text-muted">
-                Ngày kết thúc
-              </label>
-              <DateInput
-                id="sprint-end"
-                value={end}
-                min={start || undefined}
-                rangeError="Ngày kết thúc không được trước ngày bắt đầu"
-                onChange={setEnd}
-                className="text-sm"
-              />
-            </div>
-          </div>
+          <DateRangeInput
+            groupLabel="Thời gian sprint"
+            startId="sprint-start"
+            endId="sprint-end"
+            startLabel="Ngày bắt đầu"
+            endLabel="Ngày kết thúc"
+            start={start}
+            end={end}
+            onStartChange={setStart}
+            onEndChange={setEnd}
+            startDisabled={!future}
+            inputClassName="text-sm"
+          />
         </div>
       </Dialog>
 

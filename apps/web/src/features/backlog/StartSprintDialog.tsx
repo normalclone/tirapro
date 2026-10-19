@@ -2,18 +2,11 @@ import { useState } from 'react';
 import { AlertTriangle, Play } from 'lucide-react';
 import type { SprintDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
-import { DateInput } from '@/components/ui/DateInput';
+import { DateRangeInput } from '@/components/ui/DateRangeInput';
 import { Dialog } from '@/components/ui/Dialog';
-import { fmtDate } from '@/lib/dateFormat';
+import { dateRangeError } from '@/lib/dateRange';
 import { cn } from '@/lib/utils';
-import {
-  dayOf,
-  defaultStart,
-  startRangeError,
-  startWarnings,
-  suggestEnd,
-  toDayIso,
-} from './sprintDefaults';
+import { dayOf, defaultStart, startWarnings, suggestEnd, toDayIso } from './sprintDefaults';
 
 export interface StartSprintValues {
   startDate: string;
@@ -60,13 +53,12 @@ export function StartSprintDialog({
   // Số tuần của ngày kết thúc đang là "gợi ý" (đổi theo ngày bắt đầu); null khi người dùng đã tự nhập.
   const [weeks, setWeeks] = useState<number | null>(sprint.endDate ? null : DEFAULT_WEEKS);
   const [goal, setGoal] = useState(sprint.goal ?? '');
-  const [startErr, setStartErr] = useState('');
-  const [endErr, setEndErr] = useState('');
+  // Lỗi hiện có của cặp ngày (chữ ngày sai ở một ô hoặc kết thúc < bắt đầu) — do DateRangeInput báo lên.
+  const [dateErr, setDateErr] = useState('');
 
   const issueCount = sprint.issueCount ?? 0;
   const totalPoints = sprint.totalPoints ?? 0;
-  const rangeError = startRangeError(start, end);
-  const canConfirm = !!start && !startErr && !endErr && !rangeError && !loading;
+  const canConfirm = !!start && !dateErr && !dateRangeError(start, end) && !loading;
   const warnings = startWarnings({
     issueCount,
     totalPoints,
@@ -117,47 +109,23 @@ export function StartSprintDialog({
       }
     >
       <div className="space-y-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label
-              htmlFor="start-sprint-start"
-              className="mb-1.5 block text-sm font-medium text-muted"
-            >
-              Ngày bắt đầu
-            </label>
-            <DateInput
-              id="start-sprint-start"
-              value={start}
-              onChange={changeStart}
-              onErrorChange={setStartErr}
-              required
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="start-sprint-end"
-              className="mb-1.5 block text-sm font-medium text-muted"
-            >
-              Ngày kết thúc
-            </label>
-            <DateInput
-              id="start-sprint-end"
-              value={end}
-              onChange={(iso) => {
-                setEnd(iso);
-                setWeeks(null);
-              }}
-              onErrorChange={setEndErr}
-            />
-          </div>
-        </div>
-
-        <DurationChips weeks={weeks} start={start} end={end} onPick={pickWeeks} />
-        {rangeError && (
-          <p role="alert" className="text-xs text-danger">
-            {rangeError}
-          </p>
-        )}
+        <DateRangeInput
+          groupLabel="Thời gian sprint"
+          startId="start-sprint-start"
+          endId="start-sprint-end"
+          startLabel="Ngày bắt đầu"
+          endLabel="Ngày kết thúc"
+          start={start}
+          end={end}
+          onStartChange={changeStart}
+          onEndChange={(iso) => {
+            setEnd(iso);
+            setWeeks(null);
+          }}
+          onErrorChange={setDateErr}
+          startRequired
+        />
+        <DurationChips weeks={weeks} start={start} onPick={pickWeeks} />
 
         <div>
           <label
@@ -188,16 +156,14 @@ export function StartSprintDialog({
   );
 }
 
-/** Chip 1/2/3 tuần + khoảng ngày xem trước `dd/MM/yyyy → dd/MM/yyyy`. */
+/** Chip 1/2/3 tuần (khoảng ngày xem trước nằm ở dòng tóm tắt của DateRangeInput). */
 function DurationChips({
   weeks,
   start,
-  end,
   onPick,
 }: {
   weeks: number | null;
   start: string;
-  end: string;
   onPick: (weeks: number) => void;
 }) {
   return (
@@ -224,11 +190,6 @@ function DurationChips({
           </button>
         );
       })}
-      {start && (
-        <span className="ml-auto text-xs tabular text-muted">
-          {fmtDate(start)} → {end ? fmtDate(end) : 'chưa đặt'}
-        </span>
-      )}
     </div>
   );
 }

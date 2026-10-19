@@ -4,7 +4,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
-import { DateInput } from '@/components/ui/DateInput';
+import { DateRangeInput } from '@/components/ui/DateRangeInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
 import { useUserSelect } from '@/features/members/useUserSelect';
@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useCreateProgram, useUpdateProgram, type ProgramDto } from './api';
 import { toDateInput } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { dateRangeError } from '@/lib/dateRange';
 
 /** Bảng màu nhãn chương trình — cùng hệ với nhãn nhóm để đọc nhanh trên dòng thời gian. */
 const PROGRAM_COLORS = [
@@ -104,7 +105,7 @@ export function ProgramEditorModal({
     [projects],
   );
 
-  const dateOrderInvalid = !!startDate && !!targetDate && startDate > targetDate;
+  const dateOrderInvalid = dateRangeError(startDate, targetDate) !== null;
 
   const busy = create.isPending || update.isPending;
   const canSave = name.trim().length > 0 && !dateOrderInvalid && !busy;
@@ -213,19 +214,20 @@ export function ProgramEditorModal({
           />
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Ngày bắt đầu" hint="(tùy chọn)" htmlFor="program-start">
-            <DateInput id="program-start" value={startDate} onChange={setStartDate} />
-          </Field>
-          <Field label="Ngày mục tiêu" hint="(tùy chọn — ngày muốn xong)" htmlFor="program-target">
-            <DateInput id="program-target" value={targetDate} onChange={setTargetDate} />
-          </Field>
-        </div>
-        {dateOrderInvalid && (
-          <p className="text-xs text-danger" role="alert">
-            Ngày mục tiêu đang sớm hơn ngày bắt đầu — hãy sửa lại một trong hai ngày.
-          </p>
-        )}
+        <DateRangeInput
+          groupLabel="Thời hạn chương trình"
+          startId="program-start"
+          endId="program-target"
+          startLabel="Ngày bắt đầu"
+          endLabel="Ngày mục tiêu"
+          startHint="(tùy chọn)"
+          endHint="(tùy chọn — ngày muốn xong)"
+          start={startDate}
+          end={targetDate}
+          onStartChange={setStartDate}
+          onEndChange={setTargetDate}
+          errorMessage="Ngày mục tiêu đang sớm hơn ngày bắt đầu — hãy sửa lại một trong hai ngày."
+        />
 
         <Field
           label="Dự án thuộc chương trình"

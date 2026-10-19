@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { DateInput } from '@/components/ui/DateInput';
+import { DateRangeInput } from '@/components/ui/DateRangeInput';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
@@ -22,6 +22,7 @@ import {
 import { SectionCard } from '@/components/ui/SectionCard';
 import { fmtDayMonth } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { DEFAULT_RANGE_ERROR, dateRangeError } from '@/lib/dateRange';
 
 const KIND_META: Record<TimeOffKind, { label: string; className: string }> = {
   LEAVE: { label: 'Nghỉ phép', className: 'bg-primary-subtle text-primary' },
@@ -98,8 +99,7 @@ export function TimeOffPanel({
       return toast.error('Hãy chọn người nghỉ, hoặc đổi phạm vi sang “Cả tổ chức”');
     if (!form.startDate || !form.endDate)
       return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
-    if (form.endDate < form.startDate)
-      return toast.error('Ngày kết thúc không được trước ngày bắt đầu');
+    if (dateRangeError(form.startDate, form.endDate)) return toast.error(DEFAULT_RANGE_ERROR);
 
     const payload = {
       userId: form.scope === 'workspace' ? null : form.userId,
@@ -191,24 +191,20 @@ export function TimeOffPanel({
                 ariaLabel="Loại nghỉ"
               />
             </Field>
-            <Field label="Từ ngày" htmlFor="off-start">
-              <DateInput
-                id="off-start"
-                value={form.startDate}
-                onChange={(iso) => setForm({ ...form, startDate: iso })}
-                className="text-sm"
-              />
-            </Field>
-            <Field label="Đến ngày" htmlFor="off-end">
-              <DateInput
-                id="off-end"
-                value={form.endDate}
-                min={form.startDate || undefined}
-                rangeError="Ngày kết thúc không được trước ngày bắt đầu"
-                onChange={(iso) => setForm({ ...form, endDate: iso })}
-                className="text-sm"
-              />
-            </Field>
+            <DateRangeInput
+              className="sm:col-span-2"
+              groupLabel="Khoảng nghỉ"
+              startId="off-start"
+              endId="off-end"
+              startLabel="Từ ngày"
+              endLabel="Đến ngày"
+              start={form.startDate}
+              end={form.endDate}
+              onStartChange={(iso) => setForm({ ...form, startDate: iso })}
+              onEndChange={(iso) => setForm({ ...form, endDate: iso })}
+              compact
+              inputClassName="text-sm"
+            />
             <Field label="Ghi chú" htmlFor="off-note">
               <Input
                 id="off-note"

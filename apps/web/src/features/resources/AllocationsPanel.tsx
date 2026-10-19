@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { DateInput } from '@/components/ui/DateInput';
+import { DateRangeInput } from '@/components/ui/DateRangeInput';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
@@ -23,6 +23,7 @@ import {
 import { SectionCard } from '@/components/ui/SectionCard';
 import { fmtDayMonth } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { DEFAULT_RANGE_ERROR, dateRangeError } from '@/lib/dateRange';
 
 interface FormState {
   id: string | null;
@@ -103,8 +104,7 @@ export function AllocationsPanel({
       return toast.error('Tỉ lệ thời gian phải từ 1% đến 200%');
     if (!form.startDate || !form.endDate)
       return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
-    if (form.endDate < form.startDate)
-      return toast.error('Ngày kết thúc không được trước ngày bắt đầu');
+    if (dateRangeError(form.startDate, form.endDate)) return toast.error(DEFAULT_RANGE_ERROR);
 
     const payload = {
       userId: form.userId,
@@ -191,24 +191,20 @@ export function AllocationsPanel({
                 className="text-sm tabular-nums"
               />
             </Field>
-            <Field label="Từ ngày" htmlFor="alloc-start">
-              <DateInput
-                id="alloc-start"
-                value={form.startDate}
-                onChange={(iso) => setForm({ ...form, startDate: iso })}
-                className="text-sm"
-              />
-            </Field>
-            <Field label="Đến ngày" htmlFor="alloc-end">
-              <DateInput
-                id="alloc-end"
-                value={form.endDate}
-                min={form.startDate || undefined}
-                rangeError="Ngày kết thúc không được trước ngày bắt đầu"
-                onChange={(iso) => setForm({ ...form, endDate: iso })}
-                className="text-sm"
-              />
-            </Field>
+            <DateRangeInput
+              className="sm:col-span-2"
+              groupLabel="Thời gian phân bổ"
+              startId="alloc-start"
+              endId="alloc-end"
+              startLabel="Từ ngày"
+              endLabel="Đến ngày"
+              start={form.startDate}
+              end={form.endDate}
+              onStartChange={(iso) => setForm({ ...form, startDate: iso })}
+              onEndChange={(iso) => setForm({ ...form, endDate: iso })}
+              compact
+              inputClassName="text-sm"
+            />
             <Field label="Ghi chú" htmlFor="alloc-note">
               <Input
                 id="alloc-note"

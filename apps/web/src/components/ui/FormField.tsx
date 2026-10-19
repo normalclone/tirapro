@@ -20,6 +20,7 @@ export function FormField({
   hint,
   error,
   className,
+  labelClassName,
   children,
 }: {
   id: string;
@@ -28,6 +29,8 @@ export function FormField({
   /** Lời lỗi (chuỗi không rỗng = trường đang sai). */
   error?: string;
   className?: string;
+  /** Thay kiểu nhãn mặc định (`mb-1 block text-xs font-medium text-muted`) cho khớp hộp thoại dùng nhãn `text-sm`. */
+  labelClassName?: string;
   children: ReactNode | ((a11y: FormFieldA11y) => ReactNode);
 }) {
   const hintId = hint ? `${id}-hint` : undefined;
@@ -39,7 +42,7 @@ export function FormField({
   };
   return (
     <div className={className}>
-      <label htmlFor={id} className="mb-1 block text-xs font-medium text-muted">
+      <label htmlFor={id} className={labelClassName ?? 'mb-1 block text-xs font-medium text-muted'}>
         {label}
       </label>
       {typeof children === 'function' ? children(a11y) : children}

@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  dayOf,
-  defaultStart,
-  startRangeError,
-  startWarnings,
-  suggestEnd,
-  toDayIso,
-} from './sprintDefaults';
+import { dayOf, defaultStart, startWarnings, suggestEnd, toDayIso } from './sprintDefaults';
 
 describe('suggestEnd', () => {
   it('cộng đúng số tuần, giữ định dạng ISO UTC 00:00', () => {
@@ -79,23 +72,5 @@ describe('startWarnings', () => {
       unestimatedCount: 0,
     });
     expect(w).toEqual(['Sprint chưa có việc nào.']);
-  });
-});
-
-describe('startRangeError', () => {
-  it('kết thúc trước bắt đầu → lỗi, nói "không được trước"', () => {
-    expect(startRangeError('2026-10-15', '2026-10-10')).toBe(
-      'Ngày kết thúc không được trước ngày bắt đầu.',
-    );
-  });
-
-  it('bằng nhau hoặc sau → hợp lệ (khớp luật máy chủ: cho phép bằng nhau)', () => {
-    expect(startRangeError('2026-10-15', '2026-10-15')).toBeNull();
-    expect(startRangeError('2026-10-15', '2026-10-29')).toBeNull();
-  });
-
-  it('thiếu một trong hai ngày → không báo lỗi', () => {
-    expect(startRangeError('', '2026-10-10')).toBeNull();
-    expect(startRangeError('2026-10-15', '')).toBeNull();
   });
 });
