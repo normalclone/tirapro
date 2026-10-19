@@ -16,6 +16,16 @@ export interface PeekPosition {
   hasNext: boolean;
   /** false = DOM chỉ có một cửa sổ của danh sách ảo hoá: vẫn bước được nhưng không hiện "n/N". */
   countKnown: boolean;
+  /** Danh sách phân trang còn kết quả ngoài phần đã nạp: nhãn "3/50+" (N là số đã nạp, không phải tổng). */
+  more: boolean;
+  /** Đang ở dòng cuối phần đã nạp, còn trang và trang có `loadMore` → "Việc sau" nạp thêm rồi bước. */
+  needsLoadMore: boolean;
+}
+
+/** Trạng thái phân trang của danh sách (từ `PeekOrder`): còn nữa không, và trang có nạp thêm được không. */
+export interface PeekPaging {
+  more: boolean;
+  canLoadMore: boolean;
 }
 
 /**
@@ -27,23 +37,30 @@ export function peekPosition(
   keys: readonly (string | null)[],
   peekKey: string | null,
   partial = false,
+  paging?: PeekPaging,
 ): PeekPosition | null {
   if (!peekKey) return null;
   const i = keys.indexOf(peekKey);
   if (i < 0) return null;
+  const more = !!paging?.more;
+  const needsLoadMore = i === keys.length - 1 && more && !!paging?.canLoadMore;
   return {
     number: i + 1,
     total: keys.length,
     hasPrev: nextNavIndex(keys.length, i, -1) !== i,
-    hasNext: nextNavIndex(keys.length, i, 1) !== i,
+    hasNext: nextNavIndex(keys.length, i, 1) !== i || needsLoadMore,
     countKnown: !partial,
+    more,
+    needsLoadMore,
   };
 }
 
-/** "3/25" — hiển thị. */
-export const peekCountText = (p: PeekPosition): string => `${p.number}/${p.total}`;
-/** "Việc 3 trên 25" — tên truy cập cho trình đọc màn hình. */
-export const peekAriaLabel = (p: PeekPosition): string => `Việc ${p.number} trên ${p.total}`;
+/** "3/25" (hoặc "3/50+" khi còn kết quả chưa nạp) — hiển thị. */
+export const peekCountText = (p: PeekPosition): string =>
+  `${p.number}/${p.total}${p.more ? '+' : ''}`;
+/** "Việc 3 trên 25" ("Việc 3 trên ít nhất 50" khi còn nữa) — tên truy cập cho trình đọc màn hình. */
+export const peekAriaLabel = (p: PeekPosition): string =>
+  `Việc ${p.number} trên ${p.more ? 'ít nhất ' : ''}${p.total}`;
 
 export function sameNavSnapshot(a: NavSnapshot, b: NavSnapshot): boolean {
   return (
@@ -62,4 +79,17 @@ export function peekedKeyIn(
   peekKey: string | null,
 ): string | null {
   return peekKey && issues.some((i) => i.key === peekKey) ? peekKey : null;
+}
+
+/** Nối khoá của các khu theo thứ tự hiển thị (bỏ trùng, giữ lần đầu) — thứ tự thật của trang có nhiều khu như Việc chờ. */
+export function concatKeys(groups: readonly (readonly { key: string }[])[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const g of groups)
+    for (const { key } of g)
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(key);
+      }
+  return out;
 }

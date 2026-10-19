@@ -1,4 +1,4 @@
-import { useMemo, type KeyboardEvent, type MouseEvent } from 'react';
+import { useMemo } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronLeft, ChevronRight, Columns3, Filter as FilterIcon, SearchX } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
@@ -9,16 +9,20 @@ import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { ExportMenu } from '@/components/ui/ExportMenu';
 import { exportIssuesCsvWithToast } from '@/features/export/api';
-import { openOnClick, openOnRowKey } from '@/lib/rowOpen';
+import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
+import {
+  PEEKED_ROW_CLS,
+  PEEKED_TABLE_ROW_CLS,
+  peekedAttrs,
+} from '@/features/issues/peek/peekedRow';
+import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { categoryColor } from '@/lib/statusColor';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { resultCountLabel } from './resultPaging';
+import { RESULTS_PAGE_SIZE, resultCountLabel } from './resultPaging';
 import { cn } from '@/lib/utils';
 import { ColumnHeader } from './ColumnHeader';
 import { RESULT_COLUMNS, cellText, isDefaultColumns, type ResultColumnId } from './resultColumns';
 import { useResultColumns } from './useResultColumns';
-
-const RESULTS_PAGE_SIZE = 25;
 
 export function ResultsTable({
   issues,
@@ -29,6 +33,7 @@ export function ResultsTable({
   onPageChange,
   projectKeyById,
   onOpen,
+  peekedKey = null,
   exportJql,
   hasMore = false,
   loadingMore = false,
@@ -43,7 +48,10 @@ export function ResultsTable({
   page: number;
   onPageChange: (p: number) => void;
   projectKeyById: Map<string, string>;
+  /** Bấm dòng/mã → xem nhanh ở panel phải (Cmd/Ctrl+bấm, chuột giữa → trang đầy đủ ở tab mới). */
   onOpen: (key: string) => void;
+  /** Khoá việc đang xem nhanh → dòng/thẻ đó được tô + `aria-current`. */
+  peekedKey?: string | null;
   /** JQL của kết quả đang xem; có thì hiện nút Xuất CSV (tải ĐỦ mọi dòng ở máy chủ, theo cột đang chọn). */
   exportJql?: string;
   /** Máy chủ còn kết quả sau phần đã nạp: nhãn đếm không ghi như tổng, có nút "Tải thêm" + gợi ý Xuất CSV. */
@@ -121,11 +129,17 @@ export function ResultsTable({
           pageItems={pageItems}
           ctx={ctx}
           onOpen={onOpen}
+          peekedKey={peekedKey}
         />
       ) : (
         <ul className="divide-y divide-border">
           {pageItems.map((issue) => (
-            <ResultCard key={issue.id} issue={issue} onOpen={onOpen} />
+            <ResultCard
+              key={issue.id}
+              issue={issue}
+              onOpen={onOpen}
+              peeked={peekedKey === issue.key}
+            />
           ))}
         </ul>
       )}
@@ -173,12 +187,14 @@ function ResultsGrid({
   pageItems,
   ctx,
   onOpen,
+  peekedKey,
 }: {
   columns: ResultColumnId[];
   cols: ReturnType<typeof useResultColumns>;
   pageItems: IssueDto[];
   ctx: { projectKeyById: Map<string, string> };
   onOpen: (key: string) => void;
+  peekedKey: string | null;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -207,7 +223,14 @@ function ResultsGrid({
         </thead>
         <tbody className="divide-y divide-border">
           {pageItems.map((issue) => (
-            <ResultRow key={issue.id} issue={issue} columns={columns} ctx={ctx} onOpen={onOpen} />
+            <ResultRow
+              key={issue.id}
+              issue={issue}
+              columns={columns}
+              ctx={ctx}
+              onOpen={onOpen}
+              peeked={peekedKey === issue.key}
+            />
           ))}
         </tbody>
       </table>
@@ -365,15 +388,22 @@ function Cell({
   issue,
   col,
   ctx,
+  onPeek,
 }: {
   issue: IssueDto;
   col: ResultColumnId;
   ctx: { projectKeyById: Map<string, string> };
+  onPeek: (key: string) => void;
 }) {
   const text = cellText(issue, col, ctx);
   switch (col) {
     case 'key':
-      return <span className="font-mono text-xs font-medium text-muted">{text}</span>;
+      // Link thật: bấm = xem nhanh, Cmd/Ctrl+bấm / chuột giữa = trang đầy đủ ở tab mới (chuột phải → "Mở trong tab mới").
+      return (
+        <IssueKeyLink issueKey={issue.key} onPeek={onPeek} className="font-medium">
+          {text}
+        </IssueKeyLink>
+      );
     case 'summary':
       return <span className="block max-w-[32rem] truncate text-ink-strong">{text}</span>;
     case 'type':
@@ -416,11 +446,13 @@ function ResultRow({
   columns,
   ctx,
   onOpen,
+  peeked,
 }: {
   issue: IssueDto;
   columns: ResultColumnId[];
   ctx: { projectKeyById: Map<string, string> };
   onOpen: (key: string) => void;
+  peeked: boolean;
 }) {
   return (
     <tr
@@ -428,15 +460,17 @@ function ResultRow({
       data-nav-item
       data-issue-key={issue.key}
       aria-roledescription="dòng việc"
-      onClick={(e: MouseEvent<HTMLTableRowElement>) => void openOnClick(e, issue.key, onOpen)}
-      onKeyDown={(e: KeyboardEvent<HTMLTableRowElement>) =>
-        void openOnRowKey(e, { key: issue.key, open: onOpen })
-      }
-      className="cursor-pointer transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]"
+      {...peekedAttrs(peeked)}
+      {...rowPeekProps(issue.key, onOpen)}
+      className={cn(
+        'cursor-pointer transition-colors focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]',
+        // Đang xem: nền token KHÔNG đổi khi rê chuột (hover thường sẽ đè lên và dòng đang xem biến mất).
+        peeked ? PEEKED_TABLE_ROW_CLS : 'hover:bg-surface-2',
+      )}
     >
       {columns.map((col) => (
         <td key={col} className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
-          <Cell issue={issue} col={col} ctx={ctx} />
+          <Cell issue={issue} col={col} ctx={ctx} onPeek={onOpen} />
         </td>
       ))}
     </tr>
@@ -444,15 +478,27 @@ function ResultRow({
 }
 
 /** Dạng thẻ cho điện thoại: mã + tiêu đề, kèm hai chip trạng thái / người được giao — không cuộn ngang. */
-function ResultCard({ issue, onOpen }: { issue: IssueDto; onOpen: (key: string) => void }) {
+function ResultCard({
+  issue,
+  onOpen,
+  peeked,
+}: {
+  issue: IssueDto;
+  onOpen: (key: string) => void;
+  peeked: boolean;
+}) {
   return (
     <li>
       <button
         type="button"
         data-nav-item
         data-issue-key={issue.key}
-        onClick={() => onOpen(issue.key)}
-        className="flex w-full flex-col gap-1.5 px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
+        {...peekedAttrs(peeked)}
+        {...rowPeekProps(issue.key, onOpen)}
+        className={cn(
+          'flex w-full flex-col gap-1.5 px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
+          peeked && PEEKED_ROW_CLS,
+        )}
       >
         <span className="flex items-baseline gap-2">
           <span className="shrink-0 font-mono text-xs font-medium text-muted">{issue.key}</span>

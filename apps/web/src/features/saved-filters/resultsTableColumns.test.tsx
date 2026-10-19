@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import type { IssueDto } from '@tirapro/types';
 import { ResultsTable } from './ResultsTable';
@@ -17,18 +18,23 @@ const issue = {
   projectId: 'p1',
 } as unknown as IssueDto;
 
-const html = renderToStaticMarkup(
-  <ResultsTable
-    issues={[issue]}
-    loading={false}
-    hasRun
-    error={null}
-    page={1}
-    onPageChange={() => undefined}
-    projectKeyById={new Map([['p1', 'DEMO']])}
-    onOpen={() => undefined}
-  />,
-);
+const render = (peekedKey: string | null) =>
+  renderToStaticMarkup(
+    <MemoryRouter>
+      <ResultsTable
+        issues={[issue]}
+        loading={false}
+        hasRun
+        error={null}
+        page={1}
+        onPageChange={() => undefined}
+        projectKeyById={new Map([['p1', 'DEMO']])}
+        onOpen={() => undefined}
+        peekedKey={peekedKey}
+      />
+    </MemoryRouter>,
+  );
+const html = render(null);
 
 describe('tiêu đề cột bảng kết quả — nút mở menu', () => {
   const theadCells = /<thead>[\s\S]*?<\/thead>/.exec(html)![0].split('<th ').slice(1);
@@ -93,5 +99,18 @@ describe('nối dây', () => {
     expect(src('ResultsTable.tsx')).toMatch(
       /exportIssuesCsvWithToast\(\{ jql: exportJql, columns \}\)/,
     );
+  });
+});
+
+describe('dòng bảng kết quả — xem nhanh', () => {
+  const row = (h: string) => /<tr[^>]*data-nav-item[^>]*>/.exec(h)![0];
+  it('mã là link thật tới trang đầy đủ (Cmd/Ctrl+bấm, chuột giữa, "Mở trong tab mới" vẫn dùng được)', () => {
+    expect(/<a [^>]*href="\/issue\/[^"]+"/.test(html)).toBe(true);
+  });
+  it('không xem: dòng không có aria-current; đang xem: aria-current="true" + nền token', () => {
+    expect(row(html)).not.toContain('aria-current');
+    const peeked = row(render(/data-issue-key="([^"]+)"/.exec(html)![1]!));
+    expect(peeked).toContain('aria-current="true"');
+    expect(peeked).toContain('bg-primary-subtle');
   });
 });

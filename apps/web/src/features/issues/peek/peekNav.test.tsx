@@ -134,20 +134,20 @@ describe('panel xem nhanh — nối dây', () => {
     expect(panel).toMatch(/onNavigate\?:/);
   });
   it('nút gọi ĐÚNG moveNavFocus của j/k (fromPeek, không cướp focus) — không viết đường điều hướng thứ hai', () => {
-    expect(panel).toContain('moveNavFocus(dir, {');
+    expect(panel).toMatch(/moveNavFocus\(\s*dir,/);
     expect(panel).toContain('fromPeek: true');
     expect(panel).toContain('focus: false');
     expect(panel).toContain('peekKey: issueKey');
     expect(panel).toContain('onPeek: onNavigate');
     expect(panel).not.toMatch(/nextNavIndex|querySelectorAll\('\[data-nav-item\]/);
   });
-  it('vị trí lấy qua hook đọc DOM + MutationObserver (childList) trên danh sách bên cạnh panel, gộp bằng rAF', () => {
+  it('vị trí lấy qua hook đọc DOM + MutationObserver (childList) trên khung danh sách của context, gộp bằng rAF', () => {
     const hook = read('features/issues/peek/usePeekPosition.ts');
     expect(hook).toContain('new MutationObserver(');
     expect(hook).toContain('childList: true');
     expect(hook).toContain('requestAnimationFrame(');
-    expect(hook).toContain('previousElementSibling');
-    expect(hook).toContain('readNavKeys()');
+    expect(hook).toContain('listRef.current');
+    expect(hook).toContain('readNavKeys(root)');
     expect(hook).toContain('sameNavSnapshot(');
   });
   it('mở/đổi việc đang xem → cuộn dòng đó vào khung CHỈ khi ngoài tầm nhìn (block: nearest; scroll-behavior do reduced-motion quản)', () => {

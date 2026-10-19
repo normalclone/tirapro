@@ -31,3 +31,11 @@ export function appendResults(base: ResultSet, next: ResultSet): ResultSet {
 export function resultCountLabel(count: number, hasMore: boolean): string {
   return hasMore ? `${count} công việc đầu tiên` : `${count} công việc`;
 }
+
+/** Số dòng mỗi trang của bảng kết quả. */
+export const RESULTS_PAGE_SIZE = 25;
+
+/** Trang (1-based) chứa dòng thứ `index` (0-based) của kết quả đã nạp — để `reveal` mở đúng trang. */
+export function pageOfIndex(index: number, pageSize = RESULTS_PAGE_SIZE): number {
+  return index < 0 ? 1 : Math.floor(index / pageSize) + 1;
+}

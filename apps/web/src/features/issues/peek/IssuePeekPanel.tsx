@@ -34,6 +34,7 @@ import { LazyPanel } from '../LazyPanel';
 import { useIssueTransitions } from '../useIssueTransitions';
 import { IssueSummaryEdit } from '../IssueSummaryEdit';
 import { PeekNavControls } from './PeekNavControls';
+import { usePeekContext } from './PeekOrderContext';
 import { usePeekPosition } from './usePeekPosition';
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -59,7 +60,10 @@ export function IssuePeekPanel({
   const ref = useRef<HTMLElement>(null);
   const keyRef = useRef(issueKey);
   keyRef.current = issueKey;
-  const position = usePeekPosition(issueKey, ref);
+  const { listRef, order } = usePeekContext();
+  const position = usePeekPosition(issueKey);
+  // "Việc sau" ở dòng cuối phần đã nạp: nạp thêm rồi tự bước khi có dòng mới (khoá việc đang xem lúc bấm).
+  const pendingMore = useRef<string | null>(null);
 
   // Esc đóng panel (nghe ở `window`, sau `document`): lớp phủ mở → nhường; Esc đã có người dùng (bỏ chọn hàng loạt,
   // huỷ sửa tại chỗ) → bỏ qua; Esc từ ô nhập TRONG panel đang có chữ chưa gửi (bình luận, bước checklist, liên kết…)
@@ -85,23 +89,40 @@ export function IssuePeekPanel({
   }, [onClose]);
 
   // Việc đang xem đổi (bấm dòng, j/k, ‹ ›, quay lại): cuộn dòng/thẻ của nó vào khung CHỈ khi đang ngoài tầm nhìn (`nearest` không
-  // làm gì nếu đã thấy; `scroll-behavior` do CSS reduced-motion quản, không ép cuộn mượt).
+  // làm gì nếu đã thấy; `scroll-behavior` do CSS reduced-motion quản, không ép cuộn mượt). Tìm TRONG khung danh sách của trang
+  // (không phải mọi `[data-issue-key]` của tài liệu). Dòng chưa vẽ (ảo hoá, trang khác) → `reveal` của trang đưa nó vào.
   useEffect(() => {
-    document
-      .querySelector<HTMLElement>(`[data-issue-key="${CSS.escape(issueKey)}"]`)
-      ?.scrollIntoView({ block: 'nearest' });
-  }, [issueKey]);
+    pendingMore.current = null;
+    const el = listRef.current?.querySelector<HTMLElement>(
+      `[data-issue-key="${CSS.escape(issueKey)}"]`,
+    );
+    if (el) el.scrollIntoView({ block: 'nearest' });
+    else order?.reveal?.(issueKey);
+    // `order` chỉ để lấy `reveal` mới nhất; đổi thứ tự không được cuộn lại.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [issueKey, listRef]);
+
+  // Đã nạp thêm sau "Việc sau" ở cuối: bước sang dòng đầu của phần mới.
+  useEffect(() => {
+    if (pendingMore.current !== issueKey || !order || !onNavigate) return;
+    const i = order.keys.indexOf(issueKey);
+    const next = i >= 0 ? order.keys[i + 1] : undefined;
+    if (next === undefined) return;
+    pendingMore.current = null;
+    onNavigate(next);
+  }, [order, issueKey, onNavigate]);
 
   // Focus: mở → vào khung panel; đóng → về dòng đang xem nếu còn trong DOM (dòng ảo hoá đã gỡ thì thôi).
   // Chỉ lúc mount/unmount, không mỗi lần đổi `issueKey`.
   useEffect(() => {
     ref.current?.focus({ preventScroll: true });
+    const list = listRef.current; // khung danh sách sống lâu hơn panel
     return () => {
-      document
-        .querySelector<HTMLElement>(`[data-issue-key="${CSS.escape(keyRef.current)}"]`)
+      list
+        ?.querySelector<HTMLElement>(`[data-issue-key="${CSS.escape(keyRef.current)}"]`)
         ?.focus({ preventScroll: true });
     };
-  }, []);
+  }, [listRef]);
 
   return (
     <aside
@@ -119,15 +140,26 @@ export function IssuePeekPanel({
           onNavigate && (
             <PeekNavControls
               position={position}
-              // CÙNG hàm với phím j/k (`useGlobalHotkeys`): đi từ việc đang xem, kẹp ở hai đầu, panel theo qua `onPeek`.
-              onStep={(dir) =>
-                moveNavFocus(dir, {
-                  peekKey: issueKey,
-                  onPeek: onNavigate,
-                  fromPeek: true,
-                  focus: false,
-                })
-              }
+              // CÙNG hàm với phím j/k (`useGlobalHotkeys`): đi từ việc đang xem, kẹp ở hai đầu, panel theo qua `onPeek`;
+              // trang có thứ tự thật → bước theo nó (kể cả dòng chưa vẽ), cùng khung danh sách.
+              onStep={(dir) => {
+                if (dir === 1 && position?.needsLoadMore && order?.loadMore) {
+                  pendingMore.current = issueKey;
+                  order.loadMore();
+                  return;
+                }
+                moveNavFocus(
+                  dir,
+                  {
+                    peekKey: issueKey,
+                    onPeek: onNavigate,
+                    fromPeek: true,
+                    focus: false,
+                    order: order ?? undefined,
+                  },
+                  listRef.current ?? document,
+                );
+              }}
             />
           )
         }

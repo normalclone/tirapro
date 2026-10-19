@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -103,6 +104,9 @@ import { epicPanelShown, useEpicPanel } from '@/stores/epicPanel';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeekShell } from '@/features/issues/peek/PeekShell';
+import type { PeekOrder } from '@/features/issues/peek/PeekOrderContext';
+import { concatKeys } from '@/lib/peekPosition';
+import { PeekRevealContext, createRevealRegistry } from './peekReveal';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import { SprintAssistantDialog } from '@/features/ai/SprintAssistantDialog';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
@@ -328,6 +332,21 @@ export function BacklogPage() {
   const quickAddEpicId = epicFilter && epicFilter !== 'none' ? epicFilter : undefined;
 
   const progressMap = useMemo(() => buildListProgressMap(issues ?? []), [issues]);
+
+  // Thứ tự THẬT cho panel xem nhanh: mọi khu đang hiển thị theo thứ tự trên trang (sprint đang chạy/sắp tới → Việc chờ → sprint
+  // đã đóng nếu đang mở), gồm cả dòng chưa vẽ do ảo hoá. `reveal` cuộn danh sách ảo hoá tới dòng (xem `VirtualRows`).
+  const reveals = useMemo(createRevealRegistry, []);
+  const peekOrder = useMemo<PeekOrder>(
+    () => ({
+      keys: concatKeys([
+        ...visibleSprints.map((sp) => bySprint.get(sp.id) ?? []),
+        bySprint.get(BACKLOG_ID) ?? [],
+        ...(showClosed ? closedSprints.map((sp) => bySprint.get(sp.id) ?? []) : []),
+      ]),
+      reveal: (key) => void reveals.reveal(key),
+    }),
+    [visibleSprints, bySprint, showClosed, closedSprints, reveals],
+  );
 
   function onDragStart(e: DragStartEvent) {
     activeDrag.set(String(e.active.id));
@@ -772,411 +791,413 @@ export function BacklogPage() {
   );
 
   return (
-    <PeekShell>
-      <div className="flex min-h-0 flex-1 flex-col">
-        <TruncatedBanner projectId={projectId} />
-        <div
-          className={cn(
-            'flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-6',
-            CHIP_ROW_GAP_COARSE,
-            // Mobile: hai dải cuộn ngang (chip nhanh + điều khiển phụ) → bỏ khoảng hở hàng (xem STRIP_ROWS_GAP_COARSE).
-            STRIP_ROWS_GAP_COARSE,
-          )}
-        >
-          {!epicPanelOpen && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="hidden lg:inline-flex"
-              title="Mở panel Epic"
-              onClick={toggleEpicPanel}
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-              Epic
-            </Button>
-          )}
-          <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
-          <ToolbarStrip ariaLabel="Điều khiển danh sách">
-            {/* Mobile: hành động chính "Tạo sprint" đứng ĐẦU dải (thấy ngay, không cần cuộn); từ sm nút nằm bên phải như cũ.
+    <PeekRevealContext.Provider value={reveals}>
+      <PeekShell order={peekOrder}>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <TruncatedBanner projectId={projectId} />
+          <div
+            className={cn(
+              'flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-6',
+              CHIP_ROW_GAP_COARSE,
+              // Mobile: hai dải cuộn ngang (chip nhanh + điều khiển phụ) → bỏ khoảng hở hàng (xem STRIP_ROWS_GAP_COARSE).
+              STRIP_ROWS_GAP_COARSE,
+            )}
+          >
+            {!epicPanelOpen && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="hidden lg:inline-flex"
+                title="Mở panel Epic"
+                onClick={toggleEpicPanel}
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+                Epic
+              </Button>
+            )}
+            <QuickFilterChips active={quickFilters} onToggle={toggleQuickFilter} />
+            <ToolbarStrip ariaLabel="Điều khiển danh sách">
+              {/* Mobile: hành động chính "Tạo sprint" đứng ĐẦU dải (thấy ngay, không cần cuộn); từ sm nút nằm bên phải như cũ.
                 Hai bản, mỗi bản ẩn ở cỡ kia (display: none → không nhận Tab) nên thứ tự Tab = thứ tự hiển thị. */}
-            {canManageSprint && !creating && createSprintButton('sm:hidden')}
-            {/* `sm:order-[-1]`: từ sm trở lên ô epic vẫn đứng TRƯỚC hàng chip như trước khi gom dải. */}
-            <div className="w-44 shrink-0 sm:order-[-1] lg:hidden">
-              <SearchSelect
-                ariaLabel="Lọc theo epic"
-                value={epicFilter ?? ''}
-                onChange={(v) => setEpicFilter(v || null)}
-                options={[
-                  { value: '', label: 'Epic: Tất cả việc' },
-                  { value: 'none', label: 'Không thuộc epic' },
-                  ...epics.map((e) => ({ value: e.id, label: e.summary, hint: e.key })),
-                ]}
-                searchPlaceholder="Tìm epic theo mã hoặc tiêu đề…"
-                className={cn('h-8', CHIP_TOUCH_HIT)}
-              />
-            </div>
-            <AssigneeFilter options={assigneeOptions} value={assignee} onChange={setAssignee} />
-            {/* Mobile: `contents` → Xuất và Tạo sprint là mục của dải cuộn. */}
-            <div className="contents sm:ml-auto sm:flex sm:flex-nowrap sm:items-center sm:gap-2">
-              <ExportMenu
-                className={CHIP_TOUCH_HIT}
-                items={[
-                  {
-                    id: 'backlog',
-                    label: 'Việc chờ (CSV)',
-                    hint: 'Việc chưa xong và chưa vào sprint',
-                    run: () => exportIssuesCsvWithToast({ projectId, preset: 'backlog' }),
-                  },
-                  {
-                    id: 'bugs',
-                    label: 'Danh sách bug (CSV)',
-                    hint: 'Mọi công việc loại Bug của dự án',
-                    run: () => exportIssuesCsvWithToast({ projectId, preset: 'bugs' }),
-                  },
-                ]}
-              />
-              {canManageSprint && !creating && createSprintButton('max-sm:hidden')}
-            </div>
-          </ToolbarStrip>
-          {canManageSprint && creating && (
-            <form
-              className="flex w-full items-center gap-2 sm:w-auto"
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleCreate();
-              }}
-            >
-              <Input
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
+              {canManageSprint && !creating && createSprintButton('sm:hidden')}
+              {/* `sm:order-[-1]`: từ sm trở lên ô epic vẫn đứng TRƯỚC hàng chip như trước khi gom dải. */}
+              <div className="w-44 shrink-0 sm:order-[-1] lg:hidden">
+                <SearchSelect
+                  ariaLabel="Lọc theo epic"
+                  value={epicFilter ?? ''}
+                  onChange={(v) => setEpicFilter(v || null)}
+                  options={[
+                    { value: '', label: 'Epic: Tất cả việc' },
+                    { value: 'none', label: 'Không thuộc epic' },
+                    ...epics.map((e) => ({ value: e.id, label: e.summary, hint: e.key })),
+                  ]}
+                  searchPlaceholder="Tìm epic theo mã hoặc tiêu đề…"
+                  className={cn('h-8', CHIP_TOUCH_HIT)}
+                />
+              </div>
+              <AssigneeFilter options={assigneeOptions} value={assignee} onChange={setAssignee} />
+              {/* Mobile: `contents` → Xuất và Tạo sprint là mục của dải cuộn. */}
+              <div className="contents sm:ml-auto sm:flex sm:flex-nowrap sm:items-center sm:gap-2">
+                <ExportMenu
+                  className={CHIP_TOUCH_HIT}
+                  items={[
+                    {
+                      id: 'backlog',
+                      label: 'Việc chờ (CSV)',
+                      hint: 'Việc chưa xong và chưa vào sprint',
+                      run: () => exportIssuesCsvWithToast({ projectId, preset: 'backlog' }),
+                    },
+                    {
+                      id: 'bugs',
+                      label: 'Danh sách bug (CSV)',
+                      hint: 'Mọi công việc loại Bug của dự án',
+                      run: () => exportIssuesCsvWithToast({ projectId, preset: 'bugs' }),
+                    },
+                  ]}
+                />
+                {canManageSprint && !creating && createSprintButton('max-sm:hidden')}
+              </div>
+            </ToolbarStrip>
+            {canManageSprint && creating && (
+              <form
+                className="flex w-full items-center gap-2 sm:w-auto"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleCreate();
+                }}
+              >
+                <Input
+                  autoFocus
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setCreating(false);
+                      setNewName('');
+                    }
+                  }}
+                  placeholder="VD: Sprint 1 — tuần 1 và 2"
+                  className="h-8 min-w-0 flex-1 sm:w-56 sm:flex-none"
+                  aria-label="Tên sprint mới"
+                  title={SPRINT_TIP}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  loading={createSprint.isPending}
+                  disabled={!newName.trim()}
+                >
+                  Tạo
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
                     setCreating(false);
                     setNewName('');
-                  }
-                }}
-                placeholder="VD: Sprint 1 — tuần 1 và 2"
-                className="h-8 min-w-0 flex-1 sm:w-56 sm:flex-none"
-                aria-label="Tên sprint mới"
-                title={SPRINT_TIP}
-              />
-              <Button
-                type="submit"
-                size="sm"
-                loading={createSprint.isPending}
-                disabled={!newName.trim()}
-              >
-                Tạo
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setCreating(false);
-                  setNewName('');
-                }}
-              >
-                Huỷ
-              </Button>
-            </form>
-          )}
-        </div>
-
-        <DndContext
-          sensors={sensors}
-          collisionDetection={epicAwareCollision}
-          onDragStart={onDragStart}
-          onDragMove={onDragMove}
-          onDragEnd={(e) => void onDragEnd(e)}
-          onDragCancel={onDragCancel}
-          accessibility={{ announcements, screenReaderInstructions: SCREEN_READER_INSTRUCTIONS }}
-        >
-          <div className="flex min-h-0 flex-1">
-            <EpicPanel
-              epics={epics}
-              issues={issues ?? []}
-              counts={counts}
-              selected={epicFilter}
-              onSelect={setEpicFilter}
-              // Không có quyền sửa việc đang kéo → mục epic không nhận thả (không sáng viền gợi ý rồi mới từ chối).
-              dropEnabled={dragRoute !== null && (!dragging || canEditIssue(dragging))}
-              collapsed={!epicPanelOpen}
-              onToggle={toggleEpicPanel}
-            />
-            <div
-              ref={setScrollEl}
-              // Xem nhanh mở → cột danh sách hẹp lại: dòng ẩn nhãn + tên người phụ trách (xem `group-data-[peeking]/list` ở IssueRow).
-              data-peeking={peek.peekKey ? '' : undefined}
-              // Đệm đáy `pb-24` chừa chỗ cho nút nổi — chỉ từ `lg` (dưới `lg` không có nút nổi, thanh tab đáy nằm NGOÀI vùng cuộn).
-              // Dưới `lg`: `BulkActionBar` là `sticky bottom-0` và tính theo mép ĐỆM của vùng cuộn → đang chọn thì bỏ đệm đáy
-              // (`pb-0`) để thanh nằm sát ngay trên thanh tab đáy, không để lọt dòng danh sách ở khe giữa hai thanh.
-              className={cn(
-                'group/list min-w-0 flex-1 space-y-4 overflow-y-auto p-3 sm:p-6 lg:pb-24',
-                selected.size > 0 && 'pb-0 sm:pb-0',
-              )}
-            >
-              {visibleSprints.map((sprint, sprintIdx) => {
-                const sprintIssues = bySprint.get(sprint.id) ?? [];
-                // Chưa lọc: cùng số với hộp xác nhận Kết thúc sprint và lệnh Cmd+K.
-                const notDone = (fullBySprint.get(sprint.id) ?? []).filter(
-                  (i) => i.status.category !== 'DONE',
-                ).length;
-                return (
-                  <div key={sprint.id} data-tour={sprintIdx === 0 ? 'backlog-sprint' : undefined}>
-                    <Section
-                      id={sprint.id}
-                      title={sprint.name}
-                      badge={STATE_BADGE[sprint.state]}
-                      meta={
-                        sprint.state === 'ACTIVE' ? (
-                          <SprintTimeText sprint={sprint} className="text-xs" />
-                        ) : undefined
-                      }
-                      points={pointsSum(sprintIssues)}
-                      count={sprintIssues.length}
-                      issues={sprintIssues}
-                      progressMap={progressMap}
-                      scrollEl={scrollEl}
-                      projectKey={key}
-                      projectId={projectId}
-                      canCreate={canCreate}
-                      quickAddSprintId={sprint.state !== 'CLOSED' ? sprint.id : undefined}
-                      quickAddEpicId={quickAddEpicId}
-                      selectable={canAssign || canManageBacklog}
-                      canDrag={canDragIssue}
-                      rowEdit={rowEdit}
-                      canEditRow={canEditIssue}
-                      selected={selected}
-                      onToggleSelect={toggleSelect}
-                      onToggleSection={toggleSelectSection}
-                      onOpen={peek.open}
-                      peekedKey={peek.peekKey}
-                      action={
-                        canManageSprint ? (
-                          <div className="flex flex-wrap items-center justify-end gap-1.5">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8"
-                              aria-label={`Sửa sprint ${sprint.name}`}
-                              title={
-                                sprint.state === 'FUTURE'
-                                  ? 'Sửa tên, mục tiêu, ngày — hoặc xoá sprint'
-                                  : 'Sửa mục tiêu và ngày kết thúc'
-                              }
-                              onClick={() => setEditing(sprint)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            {sprint.state === 'FUTURE' ? (
-                              <>
-                                {canUseAi && (
-                                  <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    title="Gợi ý việc trong Việc chờ vừa với năng lực của đội"
-                                    aria-label="Trợ lý lập sprint"
-                                    onClick={() =>
-                                      setAssistantFor({
-                                        id: sprint.id,
-                                        name: sprint.name,
-                                        goal: sprint.goal ?? null,
-                                      })
-                                    }
-                                  >
-                                    <Sparkles className="h-4 w-4" />
-                                    <span className="hidden sm:inline">Trợ lý lập sprint</span>
-                                  </Button>
-                                )}
-                                <Button
-                                  size="sm"
-                                  title={`Bắt đầu sprint này. ${SPRINT_TIP}`}
-                                  onClick={() => openStartDialog(sprint.id)}
-                                >
-                                  <Play className="h-4 w-4" />
-                                  Bắt đầu sprint
-                                </Button>
-                              </>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                title="Kết thúc sprint này. Bạn chọn việc chưa xong đi đâu: Việc chờ, sprint mới hoặc sprint có sẵn."
-                                loading={
-                                  completeSprint.isPending &&
-                                  completeSprint.variables?.sprintId === sprint.id
-                                }
-                                onClick={() => requestComplete(sprint)}
-                              >
-                                <CheckCircle2 className="h-4 w-4" />
-                                Kết thúc sprint
-                              </Button>
-                            )}
-                          </div>
-                        ) : undefined
-                      }
-                      hint={
-                        sprint.state === 'FUTURE'
-                          ? hasActive
-                            ? 'Đang có một sprint chạy dở — kết thúc sprint đó trước rồi mới bắt đầu sprint này.'
-                            : sprint.goal
-                          : notDone > 0
-                            ? `Còn ${notDone} việc chưa xong. Khi kết thúc sprint, bạn chọn đưa chúng về Việc chờ hoặc sang sprint khác.`
-                            : sprint.goal
-                      }
-                    />
-                  </div>
-                );
-              })}
-
-              <Section
-                id={BACKLOG_ID}
-                title={TERM.backlog}
-                badge={null}
-                points={pointsSum(backlogIssues)}
-                count={backlogIssues.length}
-                issues={backlogIssues}
-                progressMap={progressMap}
-                scrollEl={scrollEl}
-                projectKey={key}
-                projectId={projectId}
-                canCreate={canCreate}
-                quickAddSprintId={null}
-                quickAddEpicId={quickAddEpicId}
-                selectable={canAssign || canManageBacklog}
-                canDrag={canDragIssue}
-                rowEdit={rowEdit}
-                canEditRow={canEditIssue}
-                selected={selected}
-                onToggleSelect={toggleSelect}
-                onToggleSection={toggleSelectSection}
-                onOpen={peek.open}
-                peekedKey={peek.peekKey}
-                emptyTitle="Việc chờ đang trống"
-                emptyDescription="Đây là nơi chứa việc chưa xếp vào sprint nào. Thêm việc ở ô bên dưới, hoặc kéo việc từ sprint về đây."
-              />
-
-              {/* Sprint đã kết thúc — xem lại (chỉ đọc) */}
-              {closedSprints.length > 0 && (
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowClosed((v) => !v)}
-                    aria-expanded={showClosed}
-                    title="Các sprint đã kết thúc — chỉ xem lại, không sửa được."
-                    className="flex items-center gap-1.5 rounded-md px-1 py-1 text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                  >
-                    <ChevronRight
-                      className={cn('h-4 w-4 transition-transform', showClosed && 'rotate-90')}
-                    />
-                    Sprint đã kết thúc ({closedSprints.length})
-                  </button>
-                  {showClosed && (
-                    <div className="mt-3 space-y-4">
-                      {closedSprints.map((sprint) => {
-                        const sprintIssues = bySprint.get(sprint.id) ?? [];
-                        return (
-                          <Section
-                            key={sprint.id}
-                            id={sprint.id}
-                            title={sprint.name}
-                            badge={STATE_BADGE.CLOSED}
-                            points={pointsSum(sprintIssues)}
-                            count={sprintIssues.length}
-                            issues={sprintIssues}
-                            progressMap={progressMap}
-                            scrollEl={scrollEl}
-                            readOnly
-                            hint={sprint.goal}
-                            onOpen={peek.open}
-                            peekedKey={peek.peekKey}
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {selected.size > 0 && (
-                <BulkActionBar
-                  count={selected.size}
-                  projectId={projectId}
-                  sprints={visibleSprints}
-                  busy={bulk.busy}
-                  canAssign={canAssign}
-                  canManageBacklog={canManageBacklog}
-                  onAssignToMe={() => {
-                    if (currentUserId) void bulk.assign(currentUserId);
                   }}
-                  onAssignTo={(userId) => void bulk.assign(userId)}
-                  onMoveToSprint={(sprintId) => void bulk.moveToSprint(sprintId)}
-                  onClear={clearSelection}
-                  canEdit={canEditAll}
-                  canTransition={can('issue:transition')}
-                  priorities={meta?.priorities ?? NO_PRIORITIES}
-                  epics={epicOptions}
-                  labels={projectLabels ?? NO_LABELS}
-                  statusOptions={statusOptions}
-                  onSetPoints={(points) => void bulk.setPoints(points)}
-                  onSetPriority={(id) => void bulk.setPriority(id)}
-                  onAddLabel={(id) => void bulk.addLabel(id)}
-                  onSetEpic={(id) => void bulk.setEpic(id)}
-                  onSetStatus={(id) => void bulk.setStatus(id)}
-                />
-              )}
-            </div>
+                >
+                  Huỷ
+                </Button>
+              </form>
+            )}
           </div>
 
-          <DragOverlay>{dragging ? <IssueRowBody issue={dragging} overlay /> : null}</DragOverlay>
-        </DndContext>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={epicAwareCollision}
+            onDragStart={onDragStart}
+            onDragMove={onDragMove}
+            onDragEnd={(e) => void onDragEnd(e)}
+            onDragCancel={onDragCancel}
+            accessibility={{ announcements, screenReaderInstructions: SCREEN_READER_INSTRUCTIONS }}
+          >
+            <div className="flex min-h-0 flex-1">
+              <EpicPanel
+                epics={epics}
+                issues={issues ?? []}
+                counts={counts}
+                selected={epicFilter}
+                onSelect={setEpicFilter}
+                // Không có quyền sửa việc đang kéo → mục epic không nhận thả (không sáng viền gợi ý rồi mới từ chối).
+                dropEnabled={dragRoute !== null && (!dragging || canEditIssue(dragging))}
+                collapsed={!epicPanelOpen}
+                onToggle={toggleEpicPanel}
+              />
+              <div
+                ref={setScrollEl}
+                // Xem nhanh mở → cột danh sách hẹp lại: dòng ẩn nhãn + tên người phụ trách (xem `group-data-[peeking]/list` ở IssueRow).
+                data-peeking={peek.peekKey ? '' : undefined}
+                // Đệm đáy `pb-24` chừa chỗ cho nút nổi — chỉ từ `lg` (dưới `lg` không có nút nổi, thanh tab đáy nằm NGOÀI vùng cuộn).
+                // Dưới `lg`: `BulkActionBar` là `sticky bottom-0` và tính theo mép ĐỆM của vùng cuộn → đang chọn thì bỏ đệm đáy
+                // (`pb-0`) để thanh nằm sát ngay trên thanh tab đáy, không để lọt dòng danh sách ở khe giữa hai thanh.
+                className={cn(
+                  'group/list min-w-0 flex-1 space-y-4 overflow-y-auto p-3 sm:p-6 lg:pb-24',
+                  selected.size > 0 && 'pb-0 sm:pb-0',
+                )}
+              >
+                {visibleSprints.map((sprint, sprintIdx) => {
+                  const sprintIssues = bySprint.get(sprint.id) ?? [];
+                  // Chưa lọc: cùng số với hộp xác nhận Kết thúc sprint và lệnh Cmd+K.
+                  const notDone = (fullBySprint.get(sprint.id) ?? []).filter(
+                    (i) => i.status.category !== 'DONE',
+                  ).length;
+                  return (
+                    <div key={sprint.id} data-tour={sprintIdx === 0 ? 'backlog-sprint' : undefined}>
+                      <Section
+                        id={sprint.id}
+                        title={sprint.name}
+                        badge={STATE_BADGE[sprint.state]}
+                        meta={
+                          sprint.state === 'ACTIVE' ? (
+                            <SprintTimeText sprint={sprint} className="text-xs" />
+                          ) : undefined
+                        }
+                        points={pointsSum(sprintIssues)}
+                        count={sprintIssues.length}
+                        issues={sprintIssues}
+                        progressMap={progressMap}
+                        scrollEl={scrollEl}
+                        projectKey={key}
+                        projectId={projectId}
+                        canCreate={canCreate}
+                        quickAddSprintId={sprint.state !== 'CLOSED' ? sprint.id : undefined}
+                        quickAddEpicId={quickAddEpicId}
+                        selectable={canAssign || canManageBacklog}
+                        canDrag={canDragIssue}
+                        rowEdit={rowEdit}
+                        canEditRow={canEditIssue}
+                        selected={selected}
+                        onToggleSelect={toggleSelect}
+                        onToggleSection={toggleSelectSection}
+                        onOpen={peek.open}
+                        peekedKey={peek.peekKey}
+                        action={
+                          canManageSprint ? (
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                aria-label={`Sửa sprint ${sprint.name}`}
+                                title={
+                                  sprint.state === 'FUTURE'
+                                    ? 'Sửa tên, mục tiêu, ngày — hoặc xoá sprint'
+                                    : 'Sửa mục tiêu và ngày kết thúc'
+                                }
+                                onClick={() => setEditing(sprint)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              {sprint.state === 'FUTURE' ? (
+                                <>
+                                  {canUseAi && (
+                                    <Button
+                                      size="sm"
+                                      variant="secondary"
+                                      title="Gợi ý việc trong Việc chờ vừa với năng lực của đội"
+                                      aria-label="Trợ lý lập sprint"
+                                      onClick={() =>
+                                        setAssistantFor({
+                                          id: sprint.id,
+                                          name: sprint.name,
+                                          goal: sprint.goal ?? null,
+                                        })
+                                      }
+                                    >
+                                      <Sparkles className="h-4 w-4" />
+                                      <span className="hidden sm:inline">Trợ lý lập sprint</span>
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    title={`Bắt đầu sprint này. ${SPRINT_TIP}`}
+                                    onClick={() => openStartDialog(sprint.id)}
+                                  >
+                                    <Play className="h-4 w-4" />
+                                    Bắt đầu sprint
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  title="Kết thúc sprint này. Bạn chọn việc chưa xong đi đâu: Việc chờ, sprint mới hoặc sprint có sẵn."
+                                  loading={
+                                    completeSprint.isPending &&
+                                    completeSprint.variables?.sprintId === sprint.id
+                                  }
+                                  onClick={() => requestComplete(sprint)}
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  Kết thúc sprint
+                                </Button>
+                              )}
+                            </div>
+                          ) : undefined
+                        }
+                        hint={
+                          sprint.state === 'FUTURE'
+                            ? hasActive
+                              ? 'Đang có một sprint chạy dở — kết thúc sprint đó trước rồi mới bắt đầu sprint này.'
+                              : sprint.goal
+                            : notDone > 0
+                              ? `Còn ${notDone} việc chưa xong. Khi kết thúc sprint, bạn chọn đưa chúng về Việc chờ hoặc sang sprint khác.`
+                              : sprint.goal
+                        }
+                      />
+                    </div>
+                  );
+                })}
 
-        {assistantShown && projectId && (
-          <SprintAssistantDialog
-            key={assistantKey}
-            open={!!assistantFor}
-            projectId={projectId}
-            sprint={assistantShown}
-            onClose={() => setAssistantFor(null)}
-          />
-        )}
+                <Section
+                  id={BACKLOG_ID}
+                  title={TERM.backlog}
+                  badge={null}
+                  points={pointsSum(backlogIssues)}
+                  count={backlogIssues.length}
+                  issues={backlogIssues}
+                  progressMap={progressMap}
+                  scrollEl={scrollEl}
+                  projectKey={key}
+                  projectId={projectId}
+                  canCreate={canCreate}
+                  quickAddSprintId={null}
+                  quickAddEpicId={quickAddEpicId}
+                  selectable={canAssign || canManageBacklog}
+                  canDrag={canDragIssue}
+                  rowEdit={rowEdit}
+                  canEditRow={canEditIssue}
+                  selected={selected}
+                  onToggleSelect={toggleSelect}
+                  onToggleSection={toggleSelectSection}
+                  onOpen={peek.open}
+                  peekedKey={peek.peekKey}
+                  emptyTitle="Việc chờ đang trống"
+                  emptyDescription="Đây là nơi chứa việc chưa xếp vào sprint nào. Thêm việc ở ô bên dưới, hoặc kéo việc từ sprint về đây."
+                />
 
-        {completingShown && (
-          <CompleteSprintDialog
-            key={completingKey}
-            open={!!completing}
-            name={completingShown.name}
-            notDone={completingShown.notDone}
-            futureSprints={visibleSprints.filter((sp) => sp.state === 'FUTURE')}
-            loading={completeSprint.isPending}
-            onConfirm={confirmComplete}
-            onCancel={() => setCompleting(null)}
-          />
-        )}
-        {startingShown && (
-          <StartSprintDialog
-            key={startingKey}
-            open={!!starting}
-            sprint={startingShown.sprint}
-            unestimatedCount={startingShown.unestimated}
-            loading={startSprint.isPending}
-            onConfirm={confirmStart}
-            onCancel={() => setStarting(null)}
-          />
-        )}
-        {editingShown && projectId && (
-          <SprintEditDialog
-            key={editingKey}
-            open={!!editing}
-            sprint={editingShown}
-            projectId={projectId}
-            onClose={() => setEditing(null)}
-          />
-        )}
-      </div>
-    </PeekShell>
+                {/* Sprint đã kết thúc — xem lại (chỉ đọc) */}
+                {closedSprints.length > 0 && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowClosed((v) => !v)}
+                      aria-expanded={showClosed}
+                      title="Các sprint đã kết thúc — chỉ xem lại, không sửa được."
+                      className="flex items-center gap-1.5 rounded-md px-1 py-1 text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                    >
+                      <ChevronRight
+                        className={cn('h-4 w-4 transition-transform', showClosed && 'rotate-90')}
+                      />
+                      Sprint đã kết thúc ({closedSprints.length})
+                    </button>
+                    {showClosed && (
+                      <div className="mt-3 space-y-4">
+                        {closedSprints.map((sprint) => {
+                          const sprintIssues = bySprint.get(sprint.id) ?? [];
+                          return (
+                            <Section
+                              key={sprint.id}
+                              id={sprint.id}
+                              title={sprint.name}
+                              badge={STATE_BADGE.CLOSED}
+                              points={pointsSum(sprintIssues)}
+                              count={sprintIssues.length}
+                              issues={sprintIssues}
+                              progressMap={progressMap}
+                              scrollEl={scrollEl}
+                              readOnly
+                              hint={sprint.goal}
+                              onOpen={peek.open}
+                              peekedKey={peek.peekKey}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selected.size > 0 && (
+                  <BulkActionBar
+                    count={selected.size}
+                    projectId={projectId}
+                    sprints={visibleSprints}
+                    busy={bulk.busy}
+                    canAssign={canAssign}
+                    canManageBacklog={canManageBacklog}
+                    onAssignToMe={() => {
+                      if (currentUserId) void bulk.assign(currentUserId);
+                    }}
+                    onAssignTo={(userId) => void bulk.assign(userId)}
+                    onMoveToSprint={(sprintId) => void bulk.moveToSprint(sprintId)}
+                    onClear={clearSelection}
+                    canEdit={canEditAll}
+                    canTransition={can('issue:transition')}
+                    priorities={meta?.priorities ?? NO_PRIORITIES}
+                    epics={epicOptions}
+                    labels={projectLabels ?? NO_LABELS}
+                    statusOptions={statusOptions}
+                    onSetPoints={(points) => void bulk.setPoints(points)}
+                    onSetPriority={(id) => void bulk.setPriority(id)}
+                    onAddLabel={(id) => void bulk.addLabel(id)}
+                    onSetEpic={(id) => void bulk.setEpic(id)}
+                    onSetStatus={(id) => void bulk.setStatus(id)}
+                  />
+                )}
+              </div>
+            </div>
+
+            <DragOverlay>{dragging ? <IssueRowBody issue={dragging} overlay /> : null}</DragOverlay>
+          </DndContext>
+
+          {assistantShown && projectId && (
+            <SprintAssistantDialog
+              key={assistantKey}
+              open={!!assistantFor}
+              projectId={projectId}
+              sprint={assistantShown}
+              onClose={() => setAssistantFor(null)}
+            />
+          )}
+
+          {completingShown && (
+            <CompleteSprintDialog
+              key={completingKey}
+              open={!!completing}
+              name={completingShown.name}
+              notDone={completingShown.notDone}
+              futureSprints={visibleSprints.filter((sp) => sp.state === 'FUTURE')}
+              loading={completeSprint.isPending}
+              onConfirm={confirmComplete}
+              onCancel={() => setCompleting(null)}
+            />
+          )}
+          {startingShown && (
+            <StartSprintDialog
+              key={startingKey}
+              open={!!starting}
+              sprint={startingShown.sprint}
+              unestimatedCount={startingShown.unestimated}
+              loading={startSprint.isPending}
+              onConfirm={confirmStart}
+              onCancel={() => setStarting(null)}
+            />
+          )}
+          {editingShown && projectId && (
+            <SprintEditDialog
+              key={editingKey}
+              open={!!editing}
+              sprint={editingShown}
+              projectId={projectId}
+              onClose={() => setEditing(null)}
+            />
+          )}
+        </div>
+      </PeekShell>
+    </PeekRevealContext.Provider>
   );
 }
 
@@ -1211,15 +1232,18 @@ function VirtualRows({
   const activeIndex = activeId ? issues.findIndex((i) => i.id === activeId) : -1;
 
   // Khoảng cách từ đỉnh nội dung cuộn tới đầu danh sách (các khu phía trên đổi chiều cao thì đo lại ở lần vẽ sau).
-  const measureMargin = useCallback(() => {
-    if (!listEl || !scrollEl) return;
-    const m = Math.round(
+  const readMargin = useCallback((): number | null => {
+    if (!listEl || !scrollEl) return null;
+    return Math.round(
       listEl.getBoundingClientRect().top -
         scrollEl.getBoundingClientRect().top +
         scrollEl.scrollTop,
     );
-    setMargin((prev) => (prev === m ? prev : m));
   }, [listEl, scrollEl]);
+  const measureMargin = useCallback(() => {
+    const m = readMargin();
+    if (m !== null) setMargin((prev) => (prev === m ? prev : m));
+  }, [readMargin]);
   useLayoutEffect(() => {
     measureMargin();
   });
@@ -1244,6 +1268,36 @@ function VirtualRows({
     [activeIndex, listEl],
   );
 
+  const issuesRef = useRef(issues);
+  issuesRef.current = issues;
+  const scrollElRef = useRef(scrollEl);
+  scrollElRef.current = scrollEl;
+  const virtualizerRef = useRef<ReturnType<typeof useVirtualizer<HTMLDivElement, Element>> | null>(
+    null,
+  );
+  const reveals = useContext(PeekRevealContext);
+  // Panel xem nhanh bước tới dòng chưa vẽ của khu này → cuộn ảo hoá tới đó (dòng được vẽ ngay khi tới tầm nhìn). Mở panel ngay lúc
+  // trang vừa tải (`?peek=` còn trên URL) thì phần tử cuộn/đệm đầu chưa đo xong → nhớ khoá và cuộn khi sẵn sàng.
+  const pendingReveal = useRef<string | null>(null);
+  const scrollToKey = useCallback((key: string): boolean => {
+    const i = issuesRef.current.findIndex((x) => x.key === key);
+    if (i < 0) return false;
+    // `center`: dòng chưa vẽ chắc chắn đang ngoài khung nên đặt giữa khung cho thấy cả dòng trước/sau (`auto` của thư viện
+    // có lúc cuộn quá tay xuống cuối trang khi các dòng phía dưới chưa đo).
+    virtualizerRef.current?.scrollToIndex(i, { align: 'center' });
+    return true;
+  }, []);
+  useEffect(
+    () =>
+      reveals?.add((key) => {
+        if (!issuesRef.current.some((x) => x.key === key)) return false;
+        if (scrollElRef.current) scrollToKey(key);
+        else pendingReveal.current = key;
+        return true;
+      }),
+    [reveals, scrollToKey],
+  );
+
   const virtualizer = useVirtualizer({
     count: issues.length,
     getScrollElement: () => scrollEl,
@@ -1255,6 +1309,14 @@ function VirtualRows({
     rangeExtractor,
   });
 
+  virtualizerRef.current = virtualizer;
+  useEffect(() => {
+    const key = pendingReveal.current;
+    // Chờ `scrollMargin` của virtualizer khớp vị trí thật của danh sách (đo ở layout effect → vẽ lại): cuộn khi chưa khớp sẽ lệch.
+    if (!key || readMargin() !== margin) return;
+    pendingReveal.current = null;
+    scrollToKey(key);
+  }, [margin, readMargin, scrollToKey]);
   const virtualItems = virtualizer.getVirtualItems();
   return (
     <div

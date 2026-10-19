@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ComponentProps } from 'react';
 import { DocsLink } from '@/components/ui/DocsLink';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { Bookmark, ChevronDown, Filter as FilterIcon, Play, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,7 +21,10 @@ import { useProjects } from '@/features/projects/api';
 import { useAuth } from '@/stores/auth';
 import { JqlEditor } from './JqlEditor';
 import { ResultsTable } from './ResultsTable';
-import { appendResults, type ResultSet } from './resultPaging';
+import { PeekShell } from '@/features/issues/peek/PeekShell';
+import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
+import type { PeekOrder } from '@/features/issues/peek/PeekOrderContext';
+import { appendResults, pageOfIndex, type ResultSet } from './resultPaging';
 import { QueryBuilder } from './QueryBuilder';
 import {
   useCreateFilter,
@@ -72,7 +75,7 @@ async function saveWithToast(
 
 // eslint-disable-next-line max-lines-per-function -- U17/U18 dựng cả bộ lọc + bảng kết quả trong một trang (173 dòng); tách trang là việc riêng
 export function FiltersPage() {
-  const navigate = useNavigate();
+  const peek = useIssuePeek();
   const { data: projects } = useProjects();
   const canManageFilters = useAuth((s) => s.can('filter:manage'));
 
@@ -116,7 +119,12 @@ export function FiltersPage() {
     setMore(null);
     setLoadingMore(false);
   }, [baseResults]);
-  const shownSet = baseResults ? (more ? appendResults(baseResults, more) : baseResults) : null;
+  // Memo: `appendResults` dựng đối tượng mới mỗi lần gọi → không memo thì `shownResults` đổi tham chiếu MỖI lần vẽ, effect "về trang 1"
+  // chạy liên tục và sau "Tải thêm" không ở được trang 2+ (cũng làm `reveal` của xem nhanh bị đạp về trang 1).
+  const shownSet = useMemo(
+    () => (baseResults ? (more ? appendResults(baseResults, more) : baseResults) : null),
+    [baseResults, more],
+  );
   const shownResults: IssueDto[] | null = shownSet?.items ?? null;
 
   // Đổi nguồn kết quả → về trang 1.
@@ -174,10 +182,6 @@ export function FiltersPage() {
     setAdhocJql(jql);
   }
 
-  function openIssue(key: string) {
-    navigate(`/issue/${key}`);
-  }
-
   async function handleDelete(f: SavedFilter) {
     if (!(await confirm({ title: `Xoá bộ lọc "${f.name}"?`, destructive: true }))) return;
     try {
@@ -192,6 +196,27 @@ export function FiltersPage() {
     }
   }
 
+  // Thứ tự THẬT cho panel xem nhanh: mọi dòng đã nạp (không chỉ trang 25 dòng đang hiện) → "n/N+" đúng với phần đã nạp, ‹ › bước
+  // qua cả trang khác (reveal = sang trang chứa dòng đó) và nạp thêm ở cuối khi máy chủ còn kết quả. Hàm đọc state qua ref.
+  const peekKeys = useMemo(() => (shownResults ?? []).map((i) => i.key), [shownResults]);
+  const peekKeysRef = useRef(peekKeys);
+  peekKeysRef.current = peekKeys;
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+  const hasMore = shownSet?.hasMore ?? false;
+  const peekOrder = useMemo<PeekOrder>(
+    () => ({
+      keys: peekKeys,
+      hasMore,
+      loadMore: hasMore ? () => void loadMoreRef.current() : undefined,
+      reveal: (key) => {
+        const i = peekKeysRef.current.indexOf(key);
+        if (i >= 0) setPage(pageOfIndex(i));
+      },
+    }),
+    [peekKeys, hasMore],
+  );
+
   const isRunning = active.kind === 'adhoc' ? adhoc.isFetching : runFilter.isPending;
   const runError = active.kind === 'adhoc' && adhoc.error ? apiErrorMessage(adhoc.error) : null;
   const hasRun = active.kind !== 'none';
@@ -205,130 +230,133 @@ export function FiltersPage() {
         : 'Bộ lọc';
 
   return (
-    <RailLayout
-      ariaLabel="Bộ lọc đã lưu"
-      rail={
-        <>
-          <p className="px-2 pb-1 text-xs font-medium text-muted max-lg:hidden">Bộ lọc đã lưu</p>
-          {/* < lg: rail thu thành một nút (mặc định đóng) để thấy ô JQL ngay; mở ra xổ danh sách tại chỗ. */}
-          <button
-            type="button"
-            onClick={() => setRailOpen((v) => !v)}
-            aria-expanded={railOpen}
-            aria-controls="saved-filters-body"
-            className="flex min-h-9 w-full items-center gap-1.5 rounded-md px-1 text-left text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] lg:hidden"
-          >
-            <Bookmark className="h-4 w-4 text-faint" aria-hidden />
-            <span>
-              Bộ lọc đã lưu
-              {savedFilters.data ? ` (${savedFilters.data.length})` : ''}
-            </span>
-            <ChevronDown
-              className={cn(
-                'ml-auto h-4 w-4 text-faint transition-transform',
-                railOpen && 'rotate-180',
-              )}
-              aria-hidden
-            />
-          </button>
+    <PeekShell order={peekOrder}>
+      <RailLayout
+        ariaLabel="Bộ lọc đã lưu"
+        rail={
+          <>
+            <p className="px-2 pb-1 text-xs font-medium text-muted max-lg:hidden">Bộ lọc đã lưu</p>
+            {/* < lg: rail thu thành một nút (mặc định đóng) để thấy ô JQL ngay; mở ra xổ danh sách tại chỗ. */}
+            <button
+              type="button"
+              onClick={() => setRailOpen((v) => !v)}
+              aria-expanded={railOpen}
+              aria-controls="saved-filters-body"
+              className="flex min-h-9 w-full items-center gap-1.5 rounded-md px-1 text-left text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] lg:hidden"
+            >
+              <Bookmark className="h-4 w-4 text-faint" aria-hidden />
+              <span>
+                Bộ lọc đã lưu
+                {savedFilters.data ? ` (${savedFilters.data.length})` : ''}
+              </span>
+              <ChevronDown
+                className={cn(
+                  'ml-auto h-4 w-4 text-faint transition-transform',
+                  railOpen && 'rotate-180',
+                )}
+                aria-hidden
+              />
+            </button>
 
-          <div
-            id="saved-filters-body"
-            className={cn('flex flex-col gap-2', !railOpen && 'max-lg:hidden')}
-          >
-            <SavedFilterList
-              query={savedFilters}
-              activeId={activeFilterId}
-              onSelect={(f) => {
-                setRailOpen(false);
-                void loadAndRunSaved(f);
-              }}
-              onDelete={handleDelete}
-              canManage={canManageFilters}
-              deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
-            />
-          </div>
-        </>
-      }
-    >
-      {/* Nội dung: JQL nhanh + kết quả có phân trang */}
-      <PageFrame size="lg" className="flex flex-col gap-5">
-        <PageHeader
-          className="mb-0"
-          title={heading}
-          description={
-            <>
-              Chọn một bộ lọc đã lưu để xem kết quả, hoặc chạy nhanh một truy vấn JQL.{' '}
-              <DocsLink anchor="tim-kiem" />
-            </>
-          }
-          actions={
-            canManageFilters ? (
-              <Button
-                size="sm"
-                onClick={() => {
-                  setCreateInitialJql('');
-                  setCreateOpen(true);
+            <div
+              id="saved-filters-body"
+              className={cn('flex flex-col gap-2', !railOpen && 'max-lg:hidden')}
+            >
+              <SavedFilterList
+                query={savedFilters}
+                activeId={activeFilterId}
+                onSelect={(f) => {
+                  setRailOpen(false);
+                  void loadAndRunSaved(f);
                 }}
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                Tạo bộ lọc
-              </Button>
-            ) : undefined
-          }
-        />
+                onDelete={handleDelete}
+                canManage={canManageFilters}
+                deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
+              />
+            </div>
+          </>
+        }
+      >
+        {/* Nội dung: JQL nhanh + kết quả có phân trang */}
+        <PageFrame size="lg" className="flex flex-col gap-5">
+          <PageHeader
+            className="mb-0"
+            title={heading}
+            description={
+              <>
+                Chọn một bộ lọc đã lưu để xem kết quả, hoặc chạy nhanh một truy vấn JQL.{' '}
+                <DocsLink anchor="tim-kiem" />
+              </>
+            }
+            actions={
+              canManageFilters ? (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCreateInitialJql('');
+                    setCreateOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Tạo bộ lọc
+                </Button>
+              ) : undefined
+            }
+          />
 
-        <AdhocBar
-          value={jqlDraft}
-          onChange={setJqlDraft}
-          onRun={runAdhoc}
-          running={active.kind === 'adhoc' && isRunning}
-          error={runError}
-          onSave={
-            canManageFilters
-              ? () => {
-                  setCreateInitialJql(jqlDraft.trim());
-                  setCreateOpen(true);
-                }
-              : undefined
-          }
-        />
-
-        <ResultsTable
-          issues={shownResults}
-          loading={isRunning}
-          hasRun={hasRun}
-          error={runError}
-          page={page}
-          onPageChange={setPage}
-          projectKeyById={projectKeyById}
-          onOpen={openIssue}
-          hasMore={shownSet?.hasMore ?? false}
-          loadingMore={loadingMore}
-          onLoadMore={() => void loadMore()}
-          scopeKey={active.kind === 'filter' ? `filter:${active.filter.id}` : 'adhoc'}
-          exportJql={
-            active.kind === 'adhoc'
-              ? active.jql
-              : active.kind === 'filter'
-                ? active.filter.jql
+          <AdhocBar
+            value={jqlDraft}
+            onChange={setJqlDraft}
+            onRun={runAdhoc}
+            running={active.kind === 'adhoc' && isRunning}
+            error={runError}
+            onSave={
+              canManageFilters
+                ? () => {
+                    setCreateInitialJql(jqlDraft.trim());
+                    setCreateOpen(true);
+                  }
                 : undefined
-          }
-        />
-      </PageFrame>
+            }
+          />
 
-      {canManageFilters && (
-        <CreateFilterModal
-          open={createOpen}
-          onClose={() => setCreateOpen(false)}
-          initialJql={createInitialJql}
-          saving={createFilter.isPending}
-          onSave={(name, jql, visibility) =>
-            saveWithToast(createFilter.mutateAsync, name, jql, visibility)
-          }
-        />
-      )}
-    </RailLayout>
+          <ResultsTable
+            issues={shownResults}
+            loading={isRunning}
+            hasRun={hasRun}
+            error={runError}
+            page={page}
+            onPageChange={setPage}
+            projectKeyById={projectKeyById}
+            onOpen={peek.open}
+            peekedKey={peek.peekKey}
+            hasMore={shownSet?.hasMore ?? false}
+            loadingMore={loadingMore}
+            onLoadMore={() => void loadMore()}
+            scopeKey={active.kind === 'filter' ? `filter:${active.filter.id}` : 'adhoc'}
+            exportJql={
+              active.kind === 'adhoc'
+                ? active.jql
+                : active.kind === 'filter'
+                  ? active.filter.jql
+                  : undefined
+            }
+          />
+        </PageFrame>
+
+        {canManageFilters && (
+          <CreateFilterModal
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            initialJql={createInitialJql}
+            saving={createFilter.isPending}
+            onSave={(name, jql, visibility) =>
+              saveWithToast(createFilter.mutateAsync, name, jql, visibility)
+            }
+          />
+        )}
+      </RailLayout>
+    </PeekShell>
   );
 }
 
