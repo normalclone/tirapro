@@ -7,7 +7,7 @@ const html = (phase: Parameters<typeof ConnectionBannerView>[0]['phase'], pendin
 
 describe('ConnectionBannerView', () => {
   it('luôn có vùng live role=status aria-live=polite (kể cả khi ẩn, để thông báo chữ mới)', () => {
-    for (const p of ['hidden', 'paused', 'offline', 'restored'] as const) {
+    for (const p of ['hidden', 'paused', 'offline', 'restored', 'stopped'] as const) {
       const h = html(p);
       expect(h).toContain('role="status"');
       expect(h).toContain('aria-live="polite"');
@@ -37,11 +37,26 @@ describe('ConnectionBannerView', () => {
     expect(html('restored')).toContain('bg-success/10');
     expect(html('paused')).toContain('border-warning/30 bg-warning/10');
   });
-  it('không có nút (không "Tải lại"), không che nội dung (không fixed/absolute)', () => {
-    for (const p of ['paused', 'offline', 'restored'] as const) {
-      const h = html(p);
-      expect(h).not.toContain('<button');
-      expect(h).not.toMatch(/\b(fixed|absolute)\b/);
-    }
+  it('đếm chờ gửi KHÔNG nằm trong vùng live (đổi số không đọc lại): chỉ ở chữ aria-hidden', () => {
+    const h = html('offline', 3);
+    const live = /<div role="status"[^>]*>([\s\S]*?)<\/div>/.exec(h)?.[1] ?? '';
+    expect(live).not.toContain('đang chờ gửi');
+    expect(live).toContain('Không có mạng');
+    expect(h.replace(/<!-- -->/g, '')).toMatch(
+      /aria-hidden="true"[^>]*>[^<]*3 thay đổi đang chờ gửi/,
+    );
+  });
+  it('hết lượt nối lại ("stopped"): chữ ổn định + nút phụ "Tải lại"; các pha khác KHÔNG có nút', () => {
+    const t = html('stopped');
+    expect(t).toContain('Mất kết nối thời gian thực — tải lại trang để thử lại');
+    expect(t).not.toContain('đang thử lại');
+    expect(t).toMatch(/<button[^>]*>[^<]*Tải lại/);
+    expect(t).toContain('border-border'); // Button variant secondary
+    for (const p of ['hidden', 'paused', 'offline', 'restored'] as const)
+      expect(html(p)).not.toContain('<button');
+  });
+  it('không che nội dung (không fixed/absolute)', () => {
+    for (const p of ['paused', 'offline', 'restored', 'stopped'] as const)
+      expect(html(p)).not.toMatch(/\b(fixed|absolute)\b/);
   });
 });
