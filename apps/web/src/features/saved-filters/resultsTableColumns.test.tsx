@@ -32,16 +32,12 @@ const html = renderToStaticMarkup(
 
 describe('tiêu đề cột bảng kết quả — nút mở menu', () => {
   const theadCells = /<thead>[\s\S]*?<\/thead>/.exec(html)![0].split('<th ').slice(1);
-  it('mỗi cột mặc định có một nút, đúng thứ tự, tên truy cập chứa tên cột', () => {
-    const labels = (c: string) => /aria-label="Tuỳ chỉnh cột ([^"]+)"/.exec(c)?.[1];
-    expect(theadCells.map(labels)).toEqual(
+  it('mỗi cột mặc định có một nút, đúng thứ tự; tên truy cập CHỈ là tên cột (không aria-label dài)', () => {
+    const text = (c: string) => />([^<>]+)<svg/.exec(/<button[\s\S]*?<\/button>/.exec(c)![0])?.[1];
+    expect(theadCells.map(text)).toEqual(
       DEFAULT_RESULT_COLUMNS.map((id) => RESULT_COLUMNS.find((c) => c.id === id)!.label),
     );
-    for (const c of theadCells) {
-      const name = labels(c)!;
-      const visible = name; // chữ hiển thị nằm trong nút
-      expect(c).toContain(`>${visible}<`);
-    }
+    for (const c of theadCells) expect(/<button[^>]*>/.exec(c)![0]).not.toContain('aria-label');
   });
   it('nút là <button type="button"> có aria-haspopup="menu"; th giữ scope="col"', () => {
     for (const c of theadCells) {
@@ -64,6 +60,12 @@ describe('ColumnHeader — nguồn', () => {
   it('dùng Radix DropdownMenu (bàn phím + trả focus có sẵn) và đúng chữ tiếng Việt', () => {
     expect(s).toContain('@radix-ui/react-dropdown-menu');
     for (const t of ['Dời trái', 'Dời phải', 'Ẩn cột', 'Hiện lại cột ẩn']) expect(s).toContain(t);
+  });
+  it('trigger không có aria-label; ghi chú cột khoá gắn vào menu bằng aria-describedby', () => {
+    const trigger = /<button[\s\S]*?>/.exec(s)![0];
+    expect(trigger).not.toContain('aria-label');
+    expect(s).toMatch(/aria-describedby=\{def\.locked \? noteId : undefined\}/);
+    expect(s).toMatch(/<p id=\{noteId\}/);
   });
   it('mục không dùng được thì VÔ HIỆU (disabled), không giấu', () => {
     expect(s).toMatch(/disabled=\{!canMoveColumn\(columns, id, -1\)\}/);

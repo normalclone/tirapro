@@ -1,4 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { useId } from 'react';
 import { ArrowLeft, ArrowRight, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -34,13 +35,13 @@ export function ColumnHeader({
 }) {
   const def = RESULT_COLUMNS.find((c) => c.id === id)!;
   const hidden = hiddenColumns(columns);
+  const noteId = useId();
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
           data-col-trigger={id}
-          aria-label={`Tuỳ chỉnh cột ${def.label}`}
           className={cn(
             '-mx-1.5 inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] data-[state=open]:bg-surface-2 data-[state=open]:text-ink [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
           )}
@@ -55,6 +56,7 @@ export function ColumnHeader({
           collisionPadding={12}
           sideOffset={4}
           aria-label={`Cột ${def.label}`}
+          aria-describedby={def.locked ? noteId : undefined}
           className={MENU_CLS}
         >
           <DropdownMenu.Item
@@ -82,7 +84,7 @@ export function ColumnHeader({
             Ẩn cột
           </DropdownMenu.Item>
           {def.locked && (
-            <p className="px-2.5 pb-1.5 pt-1 text-xs text-muted">
+            <p id={noteId} className="px-2.5 pb-1.5 pt-1 text-xs text-muted">
               Mã và Tiêu đề luôn hiện, ghim ở đầu bảng.
             </p>
           )}
